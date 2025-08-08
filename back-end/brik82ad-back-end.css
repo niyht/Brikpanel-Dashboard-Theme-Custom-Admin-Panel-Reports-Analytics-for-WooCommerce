@@ -1,0 +1,360 @@
+/* filters */ 
+.brik82adRadioFilter {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    border-radius: 0.5rem;
+    box-sizing: border-box;
+    box-shadow: 0 0 0px 1px rgba(0, 0, 0, 0.06);
+    padding: 0.50rem;
+    width: 100%;
+    font-size: 14px;
+  }
+
+  .brik82adRadioFilterTotalOrders,
+  .brik82adRadioFilterOrderValue,
+  .brik82adConversionCountFilter,
+  .brik82adMostAddtocartFilter,
+  .brik82adMostViewFilter,
+  .brik82adMostSaleFilter
+  {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    border-radius: 0.5rem;
+    box-sizing: border-box;
+    box-shadow: 0 0 0px 1px rgba(0, 0, 0, 0.06);
+    padding: 0rem;
+    width: 100%;
+    font-size: 14px;
+  }
+  
+  .brik82adRadioFilter .filter,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders,
+  .brik82adRadioFilterOrderValue .filterOrderValue,
+  .brik82adConversionCountFilter .filterConversionCount, 
+  .brik82adMostAddtocartFilter .filterMostAddtocart,
+  .brik82adMostViewFilter .filterMostView,
+  .brik82adMostSaleFilter .filterMostSale
+  {
+    flex: 2 1 auto;
+    text-align: center;
+    width: 30%; 
+  }
+  
+  .brik82adRadioFilter .filter input,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input,
+  .brik82adRadioFilterOrderValue .filterOrderValue input,
+  .brik82adConversionCountFilter .filterConversionCount input,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input,
+  .brik82adMostViewFilter .filterMostView input,
+  .brik82adMostSaleFilter .filterMostSale input
+  {
+    display: none;
+  }
+  
+  .brik82adRadioFilter .filter .name,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders .name,
+  .brik82adRadioFilterOrderValue .filterOrderValue .name,
+  .brik82adConversionCountFilter .filterConversionCount .name,
+  .brik82adMostAddtocartFilter .filterMostAddtocart .name,
+  .brik82adMostViewFilter .filterMostView .name,
+  .brik82adMostSaleFilter .filterMostSale .name
+  {
+    display: flex;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border: none;
+    padding: 0.5rem 0;
+    color: rgba(51, 65, 85, 1);
+    transition: all 0.15s ease-in-out;
+  }
+  
+  .brik82adRadioFilter .filter input:checked + .name,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input:checked + .name,
+  .brik82adRadioFilterOrderValue .filterOrderValue input:checked + .name,
+  .brik82adConversionCountFilter .filterConversionCount input:checked + .name,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input:checked + .name,
+  .brik82adMostViewFilter .filterMostView input:checked + .name,
+  .brik82adMostSaleFilter .filterMostSale input:checked + .name
+  {
+    background-color: #fff;
+    font-weight: 600;
+  }
+  
+  /* Hover effect */
+  .brik82adRadioFilter .filter:hover .name,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders:hover .name,
+  .brik82adRadioFilterOrderValue .filterOrderValue:hover .name,
+  .brik82adConversionCountFilter .filterConversionCount:hover .name,
+  .brik82adMostAddtocartFilter .filterMostAddtocart:hover .name,
+  .brik82adMostViewFilter .filterMostView:hover .name,
+  .brik82adMostSaleFilter .filterMostSale:hover .name
+  {
+    background-color: rgba(255, 255, 255, 0.5);
+  }
+  
+  /* Animation */
+  .brik82adRadioFilter .filter input:checked + .name,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input:checked + .name,
+  .brik82adRadioFilterOrderValue .filterOrderValue input:checked + .name,
+  .brik82adConversionCountFilter .filterConversionCount input:checked + .name,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input:checked + .name,
+  .brik82adMostViewFilter .filterMostView input:checked + .name,
+  .brik82adMostSaleFilter .filterMostSale input:checked + .name
+  {
+    position: relative;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    animation: select 0.3s ease;
+  }
+  
+  @keyframes select {
+    0% {
+      transform: scale(0.95);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  
+  /* Particles */
+  .brik82adRadioFilter .filter input:checked + .name::before,
+  .brik82adRadioFilter .filter input:checked + .name::after,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input:checked + .name::before,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input:checked + .name::after,
+  .brik82adRadioFilterOrderValue .filterOrderValue input:checked + .name::before,
+  .brik82adRadioFilterOrderValue .filterOrderValue input:checked + .name::after,
+  .brik82adConversionCountFilter .filterConversionCount input:checked + .name::before,
+  .brik82adConversionCountFilter .filterConversionCount input:checked + .name::after,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input:checked + .name::before,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input:checked + .name::after,
+  .brik82adMostViewFilter .filterMostView input:checked + .name::before,
+  .brik82adMostViewFilter .filterMostView input:checked + .name::after,
+  .brik82adMostSaleFilter .filterMostSale input:checked + .name::before,
+  .brik82adMostSaleFilter .filterMostSale input:checked + .name::after
+   {
+    content: "";
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #000000;
+    opacity: 0;
+    animation: particles 0.5s ease forwards;
+  }
+  
+  .brik82adRadioFilter .filter input:checked + .name::before,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input:checked + .name::before,
+  .brik82adRadioFilterOrderValue .filterOrderValue input:checked + .name::before,
+  .brik82adConversionCountFilter .filterConversionCount input:checked + .name::before,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input:checked + .name::before,
+  .brik82adMostViewFilter .filterMostView input:checked + .name::before,
+  .brik82adMostSaleFilter .filterMostSale input:checked + .name::before
+  {
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  .brik82adRadioFilter .filter input:checked + .name::after,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input:checked + .name::after,
+  .brik82adRadioFilterOrderValue .filterOrderValue input:checked + .name::after,
+  .brik82adConversionCountFilter .filterConversionCount input:checked + .name::after,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input:checked + .name::after,
+  .brik82adMostViewFilter .filterMostView input:checked + .name::after,
+  .brik82adMostSaleFilter .filterMostSale input:checked + .name::after
+  {
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  @keyframes particles {
+    0% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(0);
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(var(--direction));
+    }
+  }
+  
+  .brik82adRadioFilter .filter input:checked + .name::before,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input:checked + .name::before,
+  .brik82adRadioFilterOrderValue .filterOrderValue input:checked + .name::before,
+  .brik82adConversionCountFilter .filterConversionCount input:checked + .name::before,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input:checked + .name::before,
+  .brik82adMostViewFilter .filterMostView input:checked + .name::before,
+  .brik82adMostSaleFilter .filterMostSale input:checked + .name::before
+  {
+    --direction: -10px;
+  }
+  
+  .brik82adRadioFilter .filter input:checked + .name::after,
+  .brik82adRadioFilterTotalOrders .filterTotalOrders input:checked + .name::after,
+  .brik82adRadioFilterOrderValue .filterOrderValue input:checked + .name::after,
+  .brik82adConversionCountFilter .filterConversionCount input:checked + .name::after,
+  .brik82adMostAddtocartFilter .filterMostAddtocart input:checked + .name::after,
+  .brik82adMostViewFilter .filterMostView input:checked + .name::after,
+  .brik82adMostSaleFilter .filterMostSale input:checked + .name::after
+  {
+    --direction: 10px;
+}
+
+/* text */
+#brik82adAjaxValue, #brik82adAjaxOrderValue
+{
+    color: rgb(0, 0, 0);
+    font-family: "Source Sans Pro", sans-serif;
+    text-align: center;
+    width: 100%;
+    font-size: 19px;
+    font-weight: 500;
+}
+
+#brik82adAjaxValueConversionRate {
+    color: rgb(0, 0, 0);
+    font-family: "Source Sans Pro", sans-serif;
+    text-align: center;
+    width: 100%;
+    font-size: 17px;
+    font-weight: 500;
+}
+
+/* button */ 
+#brik82adSendButton, 
+#brik82adSendButtonTotalOrders, 
+#brik82adSendButtonOrderValue, 
+#brik82adSendButtonVisitorCount, 
+#brik82adSendButtonConversionRate,
+#brik82adSendButtonMostAddtocart,
+#brik82adSendButtonMostView,
+#brik82adSendButtonMostSale
+{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+    cursor: pointer;
+    width: 100px;
+    height: 40px;
+    background-image: linear-gradient(to top, #D8D9DB 0%, #fff 80%, #FDFDFD 100%);
+    border-radius: 30px;
+    border: 1px solid #8F9092;
+    transition: all 0.2s ease;
+    font-family: "Source Sans Pro", sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #606060;
+    text-shadow: 0 1px #fff;
+    text-align: center;
+    
+  }
+  
+  #brik82adSendButton:hover,
+  #brik82adSendButtonTotalOrders:hover,
+  #brik82adSendButtonOrderValue:hover,
+  #brik82adSendButtonVisitorCount:hover,
+  #brik82adSendButtonConversionRate:hover,
+  #brik82adSendButtonMostAddtocart:hover,
+  #brik82adSendButtonMostView:hover,
+  #brik82adSendButtonMostSale:hover
+  {
+    box-shadow: 0 4px 3px 1px #FCFCFC, 0 6px 8px #D6D7D9, 0 -4px 4px #CECFD1, 0 -6px 4px #FEFEFE, inset 0 0 3px 3px #CECFD1;
+  }
+  
+  #brik82adSendButton:active,
+  #brik82adSendButtonTotalOrders:active,
+  #brik82adSendButtonOrderValue:active,
+  #brik82adSendButtonVisitorCount:active,
+  #brik82adSendButtonConversionRate:active,
+  #brik82adSendButtonMostAddtocart:active,
+  #brik82adSendButtonMostView:active,
+  #brik82adSendButtonMostSale:active
+  {
+    box-shadow: 0 4px 3px 1px #FCFCFC, 0 6px 8px #D6D7D9, 0 -4px 4px #CECFD1, 0 -6px 4px #FEFEFE, inset 0 0 5px 3px #999, inset 0 0 30px #aaa;
+  }
+  
+  #brik82adSendButton:focus,
+  #brik82adSendButtonTotalOrders:focus,
+  #brik82adSendButtonOrderValue:focus,
+  #brik82adSendButtonVisitorCount:focus,
+  #brik82adSendButtonConversionRate:focus,
+  #brik82adSendButtonMostAddtocart:focus,
+  #brik82adSendButtonMostView:focus,
+  #brik82adSendButtonMostSale:focus
+{
+    box-shadow: 0 4px 3px 1px #FCFCFC, 0 6px 8px #D6D7D9, 0 -4px 4px #CECFD1, 0 -6px 4px #FEFEFE, inset 0 0 5px 3px #999, inset 0 0 30px #aaa;
+}
+  
+/* Ana kapsayıcı */
+.container {
+    display: flex;
+    justify-content: center; /* Yatay ortalama */
+    align-items: center; /* Dikey ortalama */
+}
+
+/* Date Select kutusu */
+#brik82adDateSelect,
+#brik82adDateSelectTotalOrders,
+#brik82adDateSelectOrderValue,
+#brik82adDateSelectConversionCount,
+#brik82adDateSelectMostAddtocart,
+#brik82adDateSelectMostView,
+#brik82adDateSelectMostSale
+{
+    width: 100%;
+    max-width: 220px;
+    height: 45px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1.5px solid lightgrey;
+    outline: none;
+    transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
+    box-shadow: 0px 0px 20px -18px;
+    margin-right: 5px;
+    background-color: white;
+}
+
+#brik82adDateSelect:hover,
+#brik82adDateSelectTotalOrders:hover,
+#brik82adDateSelectOrderValue:hover,
+#brik82adDateSelectConversionCount:hover,
+#brik82adDateSelectMostAddtocart:hover,
+#brik82adDateSelectMostView:hover,
+#brik82adDateSelectMostSale:hover
+{
+    border: 2px solid lightgrey;
+    box-shadow: 0px 0px 20px -17px;
+}
+
+#brik82adDateSelect:active,
+#brik82adDateSelectTotalOrders:active,
+#brik82adDateSelectOrderValue:active,
+#brik82adDateSelectConversionCount:active,
+#brik82adDateSelectMostAddtocart:active,
+#brik82adDateSelectMostView:active,
+#brik82adDateSelectMostSale:active
+{
+    transform: scale(0.95);
+}
+
+#brik82adDateSelect:focus,
+#brik82adDateSelectTotalOrders:focus,
+#brik82adDateSelectOrderValue:focus,
+#brik82adDateSelectConversionCount:focus,
+#brik82adDateSelectMostAddtocart:focus,
+#brik82adDateSelectMostView:focus,
+#brik82adDateSelectMostSale:focus
+{
+    border: 2px solid grey;
+}

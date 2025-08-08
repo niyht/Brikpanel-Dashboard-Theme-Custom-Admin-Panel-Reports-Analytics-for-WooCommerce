@@ -1,0 +1,149 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Brikpanel - Admin Panel Dashboard for WooCommerce\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-05-02 10:56+0000\n"
+"PO-Revision-Date: 2025-05-30 17:22+0000\n"
+"Last-Translator: admin\n"
+"Language-Team: Türkçe\n"
+"Language: tr_TR\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Loco https://localise.biz/\n"
+"X-Loco-Version: 2.8.0; wp-6.8.1; php-8.2.27\n"
+"X-Domain: brikpanel-admin-panel-dashboard-for-woocommerce"
+
+#: front-end/brik82ad-site-submenu.php:32
+msgid "Analytics"
+msgstr "Analitik"
+
+#: back-end/order-value/brik82ad-order-value.php:7
+msgid "Average Order Value"
+msgstr "Ortalama Sipariş Değeri"
+
+#. Description of the plugin
+msgid "Beautiful and modern admin panel dashboard for WooCommerce"
+msgstr "WooCommerce için güzel ve modern yönetici paneli panosu"
+
+#. Name of the plugin
+msgid "Brikpanel - Admin Panel Dashboard for WooCommerce"
+msgstr "Brikpanel - WooCommerce için Yönetici Paneli Panosu"
+
+#. Author of the plugin
+msgid "Brksoft"
+msgstr "Brksoft"
+
+#: back-end/order-value/brik82ad-order-value.php:45
+#: back-end/total-sales/brik82ad-total-sales.php:47
+msgid "Custom"
+msgstr "Özel"
+
+#: front-end/orders/brik82ad-orders.php:14
+#: front-end/orders/brik82ad-orders.php:43
+msgid "Delivery Type"
+msgstr "Teslimat Türü"
+
+#. Author URI of the plugin
+msgid "https://brksoft.com/"
+msgstr ""
+
+#: front-end/orders/brik82ad-orders.php:15
+#: front-end/orders/brik82ad-orders.php:44
+msgid "Items"
+msgstr "Ürünler"
+
+#: back-end/order-value/brik82ad-order-value.php:33
+#: back-end/total-sales/brik82ad-total-sales.php:35
+msgid "Last 30 Days"
+msgstr "Son 30 Gün"
+
+#: back-end/order-value/brik82ad-order-value.php:41
+#: back-end/total-sales/brik82ad-total-sales.php:43
+msgid "Last 365 Days"
+msgstr "Son 365 Gün"
+
+#: back-end/order-value/brik82ad-order-value.php:29
+#: back-end/total-sales/brik82ad-total-sales.php:31
+msgid "Last 7 Days"
+msgstr "Son 7 Gün"
+
+#: back-end/order-value/brik82ad-order-value.php:37
+#: back-end/total-sales/brik82ad-total-sales.php:39
+msgid "Last 90 Days"
+msgstr "Son 90 Gün"
+
+#: front-end/navigation/brik82ad-navigation.php:75
+msgid "More"
+msgstr "Daha Fazla"
+
+#: front-end/brik82ad-site-submenu.php:16
+#: front-end/search/brik82ad-search.php:51
+msgid "Orders"
+msgstr "Siparişler"
+
+#: front-end/brik82ad-site-submenu.php:24
+msgid "Products"
+msgstr "Ürünler"
+
+#: front-end/search/brik82ad-search.php:60
+msgid "Recent orders"
+msgstr "Son siparişler"
+
+#: front-end/search/brik82ad-search.php:30
+#: front-end/search/brik82ad-search.php:38
+#: front-end/search/brik82ad-search.php:47
+msgid "Search orders"
+msgstr "Siparişleri ara"
+
+#: back-end/order-value/brik82ad-order-value.php:51
+#: back-end/total-sales/brik82ad-total-sales.php:53
+msgid "Select Date"
+msgstr "Tarih Seç"
+
+#: back-end/order-value/brik82ad-order-value.php:52
+#: back-end/total-sales/brik82ad-total-sales.php:54
+msgid "Send"
+msgstr "Gönder"
+
+#: front-end/orders/brik82ad-orders.php:26
+#: front-end/orders/brik82ad-orders.php:57
+msgid "Shipping"
+msgstr "Kargo"
+
+#: front-end/navigation/brik82ad-navigation.php:303
+msgid "Site management"
+msgstr "Site yönetimi"
+
+#: front-end/orders/brik82ad-orders.php:25
+#: front-end/orders/brik82ad-orders.php:56
+msgid "Store Pickup"
+msgstr "Mağazadan Teslim "
+
+#: front-end/orders/brik82ad-orders.php:16
+#: front-end/orders/brik82ad-orders.php:45
+msgid "Tax Total"
+msgstr "Vergi"
+
+#: back-end/order-value/brik82ad-order-value.php:21
+#: back-end/total-sales/brik82ad-total-sales.php:23
+msgid "Today"
+msgstr "Bugün"
+
+#: back-end/total-sales/brik82ad-total-sales.php:9
+msgid "Total Sales"
+msgstr "Toplam Satışlar"
+
+#: back-end/order-value/brik82ad-order-value.php:25
+#: back-end/total-sales/brik82ad-total-sales.php:27
+msgid "Yesterday"
+msgstr "Dün"
+
+#: front-end/search/brik82ad-search.php:54
+msgid ""
+"You can search orders by customer name, email, phone, order ID, or product "
+"SKUs within an order."
+msgstr ""
+"Siparişleri, sipariş içindeki müşteri adı, e-posta, telefon, sipariş kimliği "
+"veya ürün sku'larına göre arayabilirsiniz."

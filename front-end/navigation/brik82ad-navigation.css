@@ -1,0 +1,288 @@
+/* Hide the original menu and make the space wider. */
+#adminmenu {
+	display: none;
+}
+#adminmenuback {
+	background-color: #ebebeb;
+	width: 240px;
+}
+#adminmenuwrap {
+	background-color: #ebebeb;
+	width: 240px;
+}
+
+li.wp-has-submenu.wp-not-current-submenu.menu-top.toplevel_page_revslider.menu-top-first.menu-top-last {
+  background-color: #ebebeb !important;
+}
+
+div.brik82ad-menu-icon-title-container.toplevel_page_revslider {
+  background-color: #ebebeb !important;
+}
+a.wp-has-submenu.wp-not-current-submenu.menu-top.toplevel_page_revslider.menu-top-first.menu-top-last {
+  background-color: #ebebeb !important;
+}
+
+
+/* Instead of going to an icon-only menu at this size, we make it show the mobile version. */
+@media screen and (max-width: 960px) {
+	.auto-fold #adminmenuback,
+	.auto-fold #adminmenuwrap {
+		display: none;
+	}
+	#wpadminbar li#wp-admin-bar-menu-toggle {
+		display: block;
+	}
+	#wpadminbar #wp-admin-bar-menu-toggle .ab-item {
+		display: flex;
+		align-items: center;
+	}
+	#wpadminbar #wp-admin-bar-menu-toggle .ab-icon {
+		margin-right: 0 !important;
+	}
+	#wpadminbar #wp-admin-bar-menu-toggle .ab-icon::before {
+		content: "\f228";
+		border: none;
+		text-align: center;
+	}
+	.auto-fold .wp-responsive-open #adminmenuback, .auto-fold .wp-responsive-open #adminmenuwrap {
+		display: block;
+	}
+	.auto-fold #adminmenu, .auto-fold #adminmenuback, .auto-fold #adminmenuwrap {
+		position: absolute;
+		width: 190px;
+		z-index: 100;
+	}
+	.woocommerce-admin-page .wp-responsive-open #woocommerce-embedded-root, .woocommerce-admin-page .wp-responsive-open #wpbody {
+		position: relative;
+		right: -14.5em;
+	}
+	.wp-responsive-open #wpbody {
+		right: -16em;
+	}
+	.auto-fold #wpcontent {
+		margin-left: 0;
+		padding-left: 10px;
+	}
+}
+#wpcontent,
+#wpfooter {
+	margin-left: 240px;
+}
+
+/* Page editor */
+@media (min-width: 783px) {
+	.auto-fold .interface-interface-skeleton {
+		/* This is 0 instead of the original 32px because we don’t have an icon-only navigation menu. */
+		left: 0;
+	}
+}
+@media (min-width: 961px) {
+	.auto-fold .interface-interface-skeleton {
+		/* Our admin navigation menu is wider. */
+		left: 240px;
+	}
+}
+
+/* Compatibility for https://wordpress.org/plugins/instagram-feed/ */
+.sb-customizer-sidebar {
+	left: 240px;
+}
+.sbi-csz-header-insider {
+	width: calc(100% - 240px);
+}
+#toplevel_page_sb-instagram-feed .toplevel_page_sb-instagram-feed .wp-menu-image::before {
+	margin-top: -1px;
+}
+.sbi-notice-alert {
+	display: inherit;
+	position: inherit;
+}
+
+/* Remove the WooCommerce secondary header. */
+.woocommerce-layout__header {
+	display: none !important;
+}
+#wpbody {
+	margin-top: 0 !important;
+}
+
+/* Remove styles that affect our own menu. */
+#brik82ad-navigation > ul {
+	margin: 0 !important;
+}
+
+/* Style our own menu. */
+#brik82ad-navigation {
+	padding: 0.75rem;
+	font-weight: 500;
+	font-size: 0.85rem;
+	overflow-y: auto;
+	height: 100vh;
+}
+#brik82ad-navigation li {
+	margin: 0;
+	position: relative;
+}
+#brik82ad-navigation li:where(
+	:not(.admin-menu-editor-active):not(#toplevel_page_woocommerce),
+	.admin-menu-editor-active
+) {
+	padding: 0.4rem 0.5rem;
+	border-radius: 0.5rem;
+	transition: background-color 0.15s cubic-bezier(0.19, 0.91, 0.38, 1);
+}
+#brik82ad-navigation li.brik82ad-has-open-submenu .brik82ad-menu-icon-title-chevron-container {
+	padding-bottom: 0.4rem;
+}
+#brik82ad-navigation .wp-submenu:where(
+	:not(#toplevel_page_woocommerce ul),
+	#toplevel_page_woocommerce.admin-menu-editor-active ul
+) li {
+	margin-left: -0.5rem;
+	margin-right: -0.5rem;
+}
+#brik82ad-navigation .wp-submenu.wp-submenu:where(
+	:not(#toplevel_page_woocommerce ul),
+	#toplevel_page_woocommerce.admin-menu-editor-active ul
+) li a {
+	padding-left: 1.5rem;
+}
+#brik82ad-navigation a {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.5rem;
+	border-radius: 0.5rem;
+	color: #303030 !important;
+	text-decoration: none;
+	z-index: 0;
+}
+#brik82ad-navigation a::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+}
+#brik82ad-navigation li:hover:not(.wp-menu-separator) {
+	cursor: pointer;
+}
+#brik82ad-navigation li:hover:not(.brik82ad-current):not(.brik82ad-has-open-submenu):not(.wp-menu-separator):where(
+	:not(#toplevel_page_woocommerce),
+	#toplevel_page_woocommerce.admin-menu-editor-active
+) {
+	background-color: #f1f1f1;
+}
+#brik82ad-navigation:has(.brik82ad-menu-chevron:hover) ul li:not(.brik82ad-current) {
+	background-color: inherit !important;
+}
+#brik82ad-navigation a:focus {
+	box-shadow: none;
+}
+#brik82ad-navigation a:focus::after {
+	background-color: #f1f1f1;
+	z-index: -1;
+	border-radius: 0.5rem;
+}
+.brik82ad-menu-icon-title-container {
+	display: flex;
+	gap: 0.5rem;
+	align-items: center;
+}
+.brik82ad-menu-icon-title-chevron-container {
+	display: flex;
+	justify-content: space-between;
+}
+#brik82ad-navigation a > span[class*="count"],
+#brik82ad-navigation a > span[class*="awaiting-mod"] {
+	font-size: 0.75rem;
+	font-weight: 500;
+	border-radius: 0.5rem;
+	background-color: rgb(0, 0, 0, 0.06);
+	padding: 0 0.5rem;
+	margin-top: 0.06rem;
+}
+/* This ensures that no submenu item will get an icon, except for the
+WooCommerce submenu which we move out of a submenu visually. */
+#brik82ad-navigation .wp-submenu:not(#toplevel_page_woocommerce ul) img {
+	display: none;
+}
+.brik82ad-current {
+	font-weight: 600;
+	background-color: #fafafa;
+	border-radius: 0.5rem;
+}
+.brik82ad-submenu {
+	font-weight: 400;
+	display: none;
+}
+.visible {
+	display: block;
+}
+.brik82ad-has-open-submenu .brik82ad-submenu {
+	display: block;
+}
+.brik82ad-has-open-submenu:not(.wp-not-current-submenu) .brik82ad-menu-chevron {
+	display: none;
+}
+.brik82ad-menu-chevron {
+	padding: 0.3rem;
+	border-radius: 0.25rem;
+	transition: background-color 0.1s linear;
+	z-index: 1;
+	box-sizing: content-box;
+}
+.brik82ad-menu-chevron:hover {
+	background: #d6d6d6;
+	cursor: pointer;
+}
+.brik82ad-menu-heading {
+	font-size: 0.75rem;
+	font-weight: normal;
+	display: block;
+	margin: 2.5rem 0 0.5rem 0;
+	padding: 0;
+}
+#brik82ad-navigation div.wp-menu-image::before {
+	padding: 0;
+	color: #303030;
+}
+#brik82ad-navigation .wp-menu-image,
+#brik82ad-navigation .wp-menu-image img {
+	width: 15px;
+	height: 15px;
+	margin-right: 0.1rem;
+}
+
+/* Compatibility: Rank Math */
+
+/* Without this, the submenu items are hidden by the plugin using this same
+rule, but set to `display:none`. */
+a#toplevel_page_rank-math:not(.wp-has-submenu) {
+	display: flex;
+}
+
+/* This is the red circle next to Analytics in the Rank Math submenu. */
+span.rm-menu-new {
+	margin-left: 0 !important;
+	margin-top: 1px !important;
+	border-radius: 1rem;
+}
+
+/* Move the external link icon a little to the left. */
+a[href^="https://rankmath.com/kb/"] i {
+	margin-left: -6px;
+}
+
+/* Compatibility: Admin Menu Editor */
+li#toplevel_page_woocommerce .wp-menu-image {
+	background-image: none !important;
+	mask-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiPjxwYXRoIGZpbGw9IiNhMmFhYjIiIGQ9Ik02MTIuMTkyIDQyNi4zMzZjMC02Ljg5Ni0zLjEzNi01MS42LTI4LTUxLjYtMzcuMzYgMC00Ni43MDQgNzIuMjU2LTQ2LjcwNCA4Mi42MjQgMCAzLjQwOCAzLjE1MiA1OC40OTYgMjguMDMyIDU4LjQ5NiAzNC4xOTItLjAzMiA0Ni42NzItNzIuMjg4IDQ2LjY3Mi04OS41MnptMjAyLjE5MiAwYzAtNi44OTYtMy4xNTItNTEuNi0yOC4wMzItNTEuNi0zNy4yOCAwLTQ2LjYwOCA3Mi4yNTYtNDYuNjA4IDgyLjYyNCAwIDMuNDA4IDMuMDcyIDU4LjQ5NiAyNy45NTIgNTguNDk2IDM0LjE5Mi0uMDMyIDQ2LjY4OC03Mi4yODggNDYuNjg4LTg5LjUyek0xNDEuMjk2Ljc2OGMtNjguMjI0IDAtMTIzLjUwNCA1NS40ODgtMTIzLjUwNCAxMjMuOTJ2NjUwLjcyYzAgNjguNDMyIDU1LjI5NiAxMjMuOTIgMTIzLjUwNCAxMjMuOTJoMzM5LjgwOGwxMjMuNTA0IDEyMy45MzZWODk5LjMyOGgyNzguMDQ4YzY4LjIyNCAwIDEyMy41Mi01NS40NzIgMTIzLjUyLTEyMy45MnYtNjUwLjcyYzAtNjguNDMyLTU1LjI5Ni0xMjMuOTItMTIzLjUyLTEyMy45MmgtNzQxLjM2em01MjYuODY0IDQyMi4xNmMwIDU1LjA4OC0zMS4wODggMTU0Ljg4LTEwMi42NCAxNTQuODgtNi4yMDggMC0xOC40OTYtMy42MTYtMjUuNDI0LTYuMDE2LTMyLjUxMi0xMS4xNjgtNTAuMTkyLTQ5LjY5Ni01Mi4zNTItNjYuMjU2IDAgMC0zLjA3Mi0xNy43OTItMy4wNzItNDAuNzUyIDAtMjIuOTkyIDMuMDcyLTQ1LjMyOCAzLjA3Mi00NS4zMjggMTUuNTUyLTc1LjcyOCA0My41NTItMTA2LjczNiA5Ni40NDgtMTA2LjczNiA1OS4wNzItLjAzMiA4My45NjggNTguNTI4IDgzLjk2OCAxMTAuMjA4ek00ODYuNDk2IDMwMi40YzAgMy4zOTItNDMuNTUyIDE0MS4xNjgtNDMuNTUyIDIxMy40MjR2NzUuNzEyYy0yLjU5MiAxMi4wOC00LjE2IDI0LjE0NC0yMS44MjQgMjQuMTQ0LTQ2LjYwOCAwLTg4Ljg4LTE1MS40NzItOTIuMDE2LTE2MS44NC02LjIwOCA2Ljg5Ni02Mi4yNCAxNjEuODQtOTYuNDQ4IDE2MS44NC0yNC44NjQgMC00My41NTItMTEzLjY0OC00Ni42MDgtMTIzLjkzNkMxNzYuNzA0IDQzNi42NzIgMTYwIDMzNC4yMjQgMTYwIDMyNy4zMjhjMC0yMC42NzIgMS4xNTItMzguNzM2IDI2LjA0OC0zOC43MzYgNi4yMDggMCAyMS42IDYuMDY0IDIzLjcxMiAxNy4xNjggMTEuNjQ4IDYyLjAzMiAxNi42ODggMTIwLjUxMiAyOS4xNjggMTg1Ljk2OCAxLjg1NiAyLjkyOCAxLjUwNCA3LjAwOCA0LjU2IDEwLjQzMiAzLjE1Mi0xMC4yODggNjYuOTI4LTE2OC43ODQgOTQuOTYtMTY4Ljc4NCAyMi41NDQgMCAzMC40IDQ0LjU5MiAzMy41MzYgNjEuODI0IDYuMjA4IDIwLjY1NiAxMy4wODggNTUuMjE2IDIyLjQxNiA4Mi43NTIgMC0xMy43NzYgMTIuNDgtMjAzLjEyIDY1LjM5Mi0yMDMuMTIgMTguNTkyLjAzMiAyNi43MDQgNi45MjggMjYuNzA0IDI3LjU2OHpNODcwLjMyIDQyMi45MjhjMCA1NS4wODgtMzEuMDg4IDE1NC44OC0xMDIuNjQgMTU0Ljg4LTYuMTkyIDAtMTguNDQ4LTMuNjE2LTI1LjQyNC02LjAxNi0zMi40MzItMTEuMTY4LTUwLjE3Ni00OS42OTYtNTIuMjg4LTY2LjI1NiAwIDAtMy44ODgtMTcuOTItMy44ODgtNDAuODk2czMuODg4LTQ1LjE4NCAzLjg4OC00NS4xODRjMTUuNTUyLTc1LjcyOCA0My40ODgtMTA2LjczNiA5Ni4zODQtMTA2LjczNiA1OS4xMDQtLjAzMiA4My45NjggNTguNTI4IDgzLjk2OCAxMTAuMjA4eiIvPjwvc3ZnPg==);
+	background-color: #000000;
+}
+
+/* Compatibility: WPFactory */
+#toplevel_page_wpfactory .wp-menu-image {
+	background-size: contain;
+}
