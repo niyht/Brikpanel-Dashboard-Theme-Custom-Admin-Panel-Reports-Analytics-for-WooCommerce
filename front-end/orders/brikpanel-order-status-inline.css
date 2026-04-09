@@ -1,0 +1,99 @@
+/* ── Clickable Status ──────────────────────────────────────────────── */
+td.column-order_status .order-status {
+	cursor: pointer;
+	transition: opacity 0.15s;
+}
+
+td.column-order_status .order-status:hover {
+	opacity: 0.75;
+}
+
+/* ── Status Dropdown ──────────────────────────────────────────────── */
+.brikpanel-status-dropdown {
+	display: none;
+	position: absolute;
+	z-index: 99999;
+	background: #fff;
+	border-radius: 0.75rem;
+	box-shadow: 0 4px 12px -2px rgba(26, 26, 26, 0.16),
+		0 0 0 1px rgba(0, 0, 0, 0.06);
+	padding: 0.375rem;
+	min-width: 180px;
+	max-height: 320px;
+	overflow-y: auto;
+}
+
+.brikpanel-status-dropdown.open {
+	display: block;
+	animation: brikpanel-sd-in 0.12s ease-out;
+}
+
+@keyframes brikpanel-sd-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.brikpanel-status-dropdown-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	width: 100%;
+	padding: 0.375rem 0.625rem;
+	border: none;
+	background: transparent;
+	border-radius: 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 450;
+	color: #303030;
+	cursor: pointer;
+	text-align: left;
+	white-space: nowrap;
+}
+
+.brikpanel-status-dropdown-item:hover {
+	background: #f5f5f5;
+}
+
+.brikpanel-status-dropdown-item.current {
+	background: #f0f0f0;
+	font-weight: 600;
+}
+
+/* ── Dot indicator per status ─────────────────────────────────────── */
+.brikpanel-sdi-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+
+.status-dot-pending        { background: #9e9e9e; }
+.status-dot-processing     { background: #73a724; }
+.status-dot-on-hold        { background: #f0b849; }
+.status-dot-completed      { background: #4a90d9; }
+.status-dot-cancelled      { background: #a16207; }
+.status-dot-refunded       { background: #9e9e9e; }
+.status-dot-failed         { background: #d72c0d; }
+.status-dot-draft          { background: #bdbdbd; }
+.status-dot-checkout-draft { background: #bdbdbd; }
+.status-dot-return-draft   { background: #7c3aed; }
+.status-dot-change         { background: #f59e0b; }
+
+/* ── Custom Status Badge Colors ───────────────────────────────────── */
+mark.order-status.status-return-draft,
+.order-status.status-return-draft {
+	background: #ede9fe;
+	color: #6d28d9;
+}
+
+mark.order-status.status-change,
+.order-status.status-change {
+	background: #fef3c7;
+	color: #92400e;
+}

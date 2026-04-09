@@ -1,0 +1,52 @@
+<?php
+if( ! defined( 'ABSPATH' ) ) exit;
+
+/**
+ * Returns the count of successful orders (processing + completed) within a given date range.
+ *
+ * @param string|null $start_date_gmt Start date in GMT (Y-m-d H:i:s format).
+ * @param string|null $end_date_gmt   End date in GMT (Y-m-d H:i:s format).
+ * @return int Order count.
+ */
+function brikpanel_get_order_count( $start_date_gmt = null, $end_date_gmt = null ) {
+    global $wpdb;
+
+    $include_statuses = array('wc-processing', 'wc-completed');
+
+    $status_placeholders = implode( ', ', array_fill( 0, count( $include_statuses ), '%s' ) );
+    $query_args = $include_statuses;
+
+    $date_column_name = '';
+    $is_hpos = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+
+    if ( $is_hpos ) {
+        // HPOS enabled
+        $table_name = $wpdb->prefix . 'wc_orders';
+        $date_column_name = 'date_created_gmt';
+
+        $query_sql = "SELECT COUNT(id) FROM {$table_name} WHERE type = 'shop_order' AND status IN ({$status_placeholders})";
+    } else {
+        // HPOS disabled (legacy)
+        $table_name = $wpdb->posts;
+        $date_column_name = 'post_date_gmt';
+
+        $query_sql = "SELECT COUNT(ID) FROM {$table_name} WHERE post_type = 'shop_order' AND post_status IN ({$status_placeholders})";
+    }
+
+    // Exclude orders placed by admin users
+    $exclusion = brikpanel_admin_order_exclusion_sql( $is_hpos, 'ID' );
+    $query_sql .= $exclusion['sql'];
+    $query_args = array_merge( $query_args, $exclusion['args'] );
+
+    if ( $start_date_gmt ) {
+        $query_sql .= " AND {$date_column_name} >= %s";
+        $query_args[] = $start_date_gmt;
+    }
+    if ( $end_date_gmt ) {
+        $query_sql .= " AND {$date_column_name} <= %s";
+        $query_args[] = $end_date_gmt;
+    }
+
+    $query = $wpdb->prepare($query_sql, $query_args);
+    return (int) $wpdb->get_var($query);
+}

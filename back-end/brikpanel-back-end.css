@@ -1,0 +1,407 @@
+/* filters */ 
+.brikpanelRadioFilter {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    border-radius: 0.5rem;
+    box-sizing: border-box;
+    box-shadow: 0 0 0px 1px rgba(0, 0, 0, 0.06);
+    padding: 0.50rem;
+    width: 100%;
+    font-size: 14px;
+  }
+
+  .brikpanelRadioFilterTotalOrders,
+  .brikpanelRadioFilterOrderValue,
+  .brikpanelConversionCountFilter,
+  .brikpanelMostAddtocartFilter,
+  .brikpanelMostViewFilter,
+  .brikpanelMostSaleFilter,
+  .brikpanelRadioFilterProductSales,
+  .brikpanelRadioFilterOrderRates
+  {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    border-radius: 0.5rem;
+    box-sizing: border-box;
+    box-shadow: 0 0 0px 1px rgba(0, 0, 0, 0.06);
+    padding: 0rem;
+    width: 100%;
+    font-size: 14px;
+  }
+  
+  .brikpanelRadioFilter .filter,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders,
+  .brikpanelRadioFilterOrderValue .filterOrderValue,
+  .brikpanelConversionCountFilter .filterConversionCount, 
+  .brikpanelMostAddtocartFilter .filterMostAddtocart,
+  .brikpanelMostViewFilter .filterMostView,
+  .brikpanelMostSaleFilter .filterMostSale,
+  .brikpanelRadioFilterProductSales .filterProductSales,
+  .brikpanelRadioFilterOrderRates .filterOrderRates
+  {
+    flex: 2 1 auto;
+    text-align: center;
+    width: 30%; 
+  }
+  
+  .brikpanelRadioFilter .filter input,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input,
+  .brikpanelConversionCountFilter .filterConversionCount input,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input,
+  .brikpanelMostViewFilter .filterMostView input,
+  .brikpanelMostSaleFilter .filterMostSale input,
+  .brikpanelRadioFilterProductSales .filterProductSales input,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input
+  {
+    display: none;
+  }
+  
+  .brikpanelRadioFilter .filter .name,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders .name,
+  .brikpanelRadioFilterOrderValue .filterOrderValue .name,
+  .brikpanelConversionCountFilter .filterConversionCount .name,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart .name,
+  .brikpanelMostViewFilter .filterMostView .name,
+  .brikpanelMostSaleFilter .filterMostSale .name,
+  .brikpanelRadioFilterProductSales .filterProductSales .name,
+  .brikpanelRadioFilterOrderRates .filterOrderRates .name
+  {
+    display: flex;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border: none;
+    padding: 0.5rem 0;
+    color: rgba(51, 65, 85, 1);
+    transition: all 0.15s ease-in-out;
+  }
+  
+  .brikpanelRadioFilter .filter input:checked + .name,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input:checked + .name,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input:checked + .name,
+  .brikpanelConversionCountFilter .filterConversionCount input:checked + .name,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input:checked + .name,
+  .brikpanelMostViewFilter .filterMostView input:checked + .name,
+  .brikpanelMostSaleFilter .filterMostSale input:checked + .name,
+  .brikpanelRadioFilterProductSales .filterProductSales input:checked + .name,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input:checked + .name
+  {
+    background-color: #fff;
+    font-weight: 600;
+  }
+  
+  /* Hover effect */
+  .brikpanelRadioFilter .filter:hover .name,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders:hover .name,
+  .brikpanelRadioFilterOrderValue .filterOrderValue:hover .name,
+  .brikpanelConversionCountFilter .filterConversionCount:hover .name,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart:hover .name,
+  .brikpanelMostViewFilter .filterMostView:hover .name,
+  .brikpanelMostSaleFilter .filterMostSale:hover .name,
+  .brikpanelRadioFilterProductSales .filterProductSales:hover .name,
+  .brikpanelRadioFilterOrderRates .filterOrderRates:hover .name
+  {
+    background-color: rgba(255, 255, 255, 0.5);
+  }
+  
+  /* Animation */
+  .brikpanelRadioFilter .filter input:checked + .name,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input:checked + .name,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input:checked + .name,
+  .brikpanelConversionCountFilter .filterConversionCount input:checked + .name,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input:checked + .name,
+  .brikpanelMostViewFilter .filterMostView input:checked + .name,
+  .brikpanelMostSaleFilter .filterMostSale input:checked + .name,
+  .brikpanelRadioFilterProductSales .filterProductSales input:checked + .name,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input:checked + .name
+  {
+    position: relative;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    animation: select 0.3s ease;
+  }
+  
+  @keyframes select {
+    0% {
+      transform: scale(0.95);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  
+  /* Particles */
+  .brikpanelRadioFilter .filter input:checked + .name::before,
+  .brikpanelRadioFilter .filter input:checked + .name::after,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input:checked + .name::before,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input:checked + .name::after,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input:checked + .name::before,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input:checked + .name::after,
+  .brikpanelConversionCountFilter .filterConversionCount input:checked + .name::before,
+  .brikpanelConversionCountFilter .filterConversionCount input:checked + .name::after,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input:checked + .name::before,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input:checked + .name::after,
+  .brikpanelMostViewFilter .filterMostView input:checked + .name::before,
+  .brikpanelMostViewFilter .filterMostView input:checked + .name::after,
+  .brikpanelMostSaleFilter .filterMostSale input:checked + .name::before,
+  .brikpanelMostSaleFilter .filterMostSale input:checked + .name::after,
+  .brikpanelRadioFilterProductSales .filterProductSales input:checked + .name::before,
+  .brikpanelRadioFilterProductSales .filterProductSales input:checked + .name::after,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input:checked + .name::before,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input:checked + .name::after
+   {
+    content: "";
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #000000;
+    opacity: 0;
+    animation: particles 0.5s ease forwards;
+  }
+  
+  .brikpanelRadioFilter .filter input:checked + .name::before,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input:checked + .name::before,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input:checked + .name::before,
+  .brikpanelConversionCountFilter .filterConversionCount input:checked + .name::before,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input:checked + .name::before,
+  .brikpanelMostViewFilter .filterMostView input:checked + .name::before,
+  .brikpanelMostSaleFilter .filterMostSale input:checked + .name::before,
+  .brikpanelRadioFilterProductSales .filterProductSales input:checked + .name::before,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input:checked + .name::before
+  {
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  .brikpanelRadioFilter .filter input:checked + .name::after,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input:checked + .name::after,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input:checked + .name::after,
+  .brikpanelConversionCountFilter .filterConversionCount input:checked + .name::after,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input:checked + .name::after,
+  .brikpanelMostViewFilter .filterMostView input:checked + .name::after,
+  .brikpanelMostSaleFilter .filterMostSale input:checked + .name::after,
+  .brikpanelRadioFilterProductSales .filterProductSales input:checked + .name::after,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input:checked + .name::after
+  {
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  @keyframes particles {
+    0% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(0);
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(var(--direction));
+    }
+  }
+  
+  .brikpanelRadioFilter .filter input:checked + .name::before,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input:checked + .name::before,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input:checked + .name::before,
+  .brikpanelConversionCountFilter .filterConversionCount input:checked + .name::before,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input:checked + .name::before,
+  .brikpanelMostViewFilter .filterMostView input:checked + .name::before,
+  .brikpanelMostSaleFilter .filterMostSale input:checked + .name::before,
+  .brikpanelRadioFilterProductSales .filterProductSales input:checked + .name::before,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input:checked + .name::before
+  {
+    --direction: -10px;
+  }
+  
+  .brikpanelRadioFilter .filter input:checked + .name::after,
+  .brikpanelRadioFilterTotalOrders .filterTotalOrders input:checked + .name::after,
+  .brikpanelRadioFilterOrderValue .filterOrderValue input:checked + .name::after,
+  .brikpanelConversionCountFilter .filterConversionCount input:checked + .name::after,
+  .brikpanelMostAddtocartFilter .filterMostAddtocart input:checked + .name::after,
+  .brikpanelMostViewFilter .filterMostView input:checked + .name::after,
+  .brikpanelMostSaleFilter .filterMostSale input:checked + .name::after,
+  .brikpanelRadioFilterProductSales .filterProductSales input:checked + .name::after,
+  .brikpanelRadioFilterOrderRates .filterOrderRates input:checked + .name::after
+  {
+    --direction: 10px;
+}
+
+/* text */
+#brikpanelAjaxValue, #brikpanelAjaxOrderValue, #brikpanelAjaxProductSales, #brikpanelAjaxOrderRates
+{
+    color: rgb(0, 0, 0);
+    font-family: "Source Sans Pro", sans-serif;
+    text-align: center;
+    width: 100%;
+    font-size: 19px;
+    font-weight: 500;
+}
+
+#brikpanelAjaxValueConversionRate {
+    color: rgb(0, 0, 0);
+    font-family: "Source Sans Pro", sans-serif;
+    text-align: center;
+    width: 100%;
+    font-size: 17px;
+    font-weight: 500;
+}
+
+/* button */ 
+#brikpanelSendButton, 
+#brikpanelSendButtonTotalOrders, 
+#brikpanelSendButtonOrderValue, 
+#brikpanelSendButtonVisitorCount, 
+#brikpanelSendButtonConversionRate,
+#brikpanelSendButtonMostAddtocart,
+#brikpanelSendButtonMostView,
+#brikpanelSendButtonMostSale,
+#brikpanelSendButtonProductSales,
+#brikpanelSendButtonOrderRates
+{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+    cursor: pointer;
+    width: 100px;
+    height: 40px;
+    background-image: linear-gradient(to top, #D8D9DB 0%, #fff 80%, #FDFDFD 100%);
+    border-radius: 30px;
+    border: 1px solid #8F9092;
+    transition: all 0.2s ease;
+    font-family: "Source Sans Pro", sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #606060;
+    text-shadow: 0 1px #fff;
+    text-align: center;
+    
+  }
+  
+  #brikpanelSendButton:hover,
+  #brikpanelSendButtonTotalOrders:hover,
+  #brikpanelSendButtonOrderValue:hover,
+  #brikpanelSendButtonVisitorCount:hover,
+  #brikpanelSendButtonConversionRate:hover,
+  #brikpanelSendButtonMostAddtocart:hover,
+  #brikpanelSendButtonMostView:hover,
+  #brikpanelSendButtonMostSale:hover,
+  #brikpanelSendButtonProductSales:hover,
+  #brikpanelSendButtonOrderRates:hover
+  {
+    box-shadow: 0 4px 3px 1px #FCFCFC, 0 6px 8px #D6D7D9, 0 -4px 4px #CECFD1, 0 -6px 4px #FEFEFE, inset 0 0 3px 3px #CECFD1;
+  }
+  
+  #brikpanelSendButton:active,
+  #brikpanelSendButtonTotalOrders:active,
+  #brikpanelSendButtonOrderValue:active,
+  #brikpanelSendButtonVisitorCount:active,
+  #brikpanelSendButtonConversionRate:active,
+  #brikpanelSendButtonMostAddtocart:active,
+  #brikpanelSendButtonMostView:active,
+  #brikpanelSendButtonMostSale:active,
+  #brikpanelSendButtonProductSales:active,
+  #brikpanelSendButtonOrderRates:active
+  {
+    box-shadow: 0 4px 3px 1px #FCFCFC, 0 6px 8px #D6D7D9, 0 -4px 4px #CECFD1, 0 -6px 4px #FEFEFE, inset 0 0 5px 3px #999, inset 0 0 30px #aaa;
+  }
+  
+  #brikpanelSendButton:focus,
+  #brikpanelSendButtonTotalOrders:focus,
+  #brikpanelSendButtonOrderValue:focus,
+  #brikpanelSendButtonVisitorCount:focus,
+  #brikpanelSendButtonConversionRate:focus,
+  #brikpanelSendButtonMostAddtocart:focus,
+  #brikpanelSendButtonMostView:focus,
+  #brikpanelSendButtonMostSale:focus,
+  #brikpanelSendButtonProductSales:focus,
+  #brikpanelSendButtonOrderRates:focus
+{
+    box-shadow: 0 4px 3px 1px #FCFCFC, 0 6px 8px #D6D7D9, 0 -4px 4px #CECFD1, 0 -6px 4px #FEFEFE, inset 0 0 5px 3px #999, inset 0 0 30px #aaa;
+}
+  
+/* Ana kapsayıcı */
+.container {
+    display: flex;
+    justify-content: center; /* Yatay ortalama */
+    align-items: center; /* Dikey ortalama */
+}
+
+/* Date Select kutusu */
+#brikpanelDateSelect,
+#brikpanelDateSelectTotalOrders,
+#brikpanelDateSelectOrderValue,
+#brikpanelDateSelectConversionCount,
+#brikpanelDateSelectMostAddtocart,
+#brikpanelDateSelectMostView,
+#brikpanelDateSelectMostSale,
+#brikpanelDateSelectProductSales,
+#brikpanelDateSelectOrderRates
+{
+    width: 100%;
+    max-width: 220px;
+    height: 45px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1.5px solid lightgrey;
+    outline: none;
+    transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
+    box-shadow: 0px 0px 20px -18px;
+    margin-right: 5px;
+    background-color: white;
+}
+
+#brikpanelDateSelect:hover,
+#brikpanelDateSelectTotalOrders:hover,
+#brikpanelDateSelectOrderValue:hover,
+#brikpanelDateSelectConversionCount:hover,
+#brikpanelDateSelectMostAddtocart:hover,
+#brikpanelDateSelectMostView:hover,
+#brikpanelDateSelectMostSale:hover,
+#brikpanelDateSelectProductSales:hover,
+#brikpanelDateSelectOrderRates:hover
+{
+    border: 2px solid lightgrey;
+    box-shadow: 0px 0px 20px -17px;
+}
+
+#brikpanelDateSelect:active,
+#brikpanelDateSelectTotalOrders:active,
+#brikpanelDateSelectOrderValue:active,
+#brikpanelDateSelectConversionCount:active,
+#brikpanelDateSelectMostAddtocart:active,
+#brikpanelDateSelectMostView:active,
+#brikpanelDateSelectMostSale:active,
+#brikpanelDateSelectProductSales:active,
+#brikpanelDateSelectOrderRates:active
+{
+    transform: scale(0.95);
+}
+
+#brikpanelDateSelect:focus,
+#brikpanelDateSelectTotalOrders:focus,
+#brikpanelDateSelectOrderValue:focus,
+#brikpanelDateSelectConversionCount:focus,
+#brikpanelDateSelectMostAddtocart:focus,
+#brikpanelDateSelectMostView:focus,
+#brikpanelDateSelectMostSale:focus,
+#brikpanelDateSelectProductSales:focus,
+#brikpanelDateSelectOrderRates:focus
+{
+    border: 2px solid grey;
+}
+
+#brikpanelAjaxOrderRates{
+  margin-top: 30px;
+  margin-bottom: 30px;
+}

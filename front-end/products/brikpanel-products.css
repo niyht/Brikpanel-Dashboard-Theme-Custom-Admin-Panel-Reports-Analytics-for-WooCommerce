@@ -1,0 +1,502 @@
+html {
+	--light-bevel: inset 0 -0.0625rem 0 #b5b5b5,
+		inset -0.0625rem 0 0 #e3e3e3,
+		inset 0.0625rem 0 0 #e3e3e3,
+		inset 0 0.0625rem 0 #e3e3e3;
+	--light-bevel-active: 0rem 0.125rem 0.0625rem 0rem #1a1a1a33 inset,
+		0.0625rem 0rem 0.0625rem 0rem #1a1a1a1f inset,
+		-0.0625rem 0rem 0.0625rem 0rem #1a1a1a1f inset;
+	--soft-light-bevel: 0 1px 1px rgba(0, 0, 0, 0.04);
+	--dark-bevel: 0rem 0.125rem 0rem 0rem #fff3 inset,
+		0.125rem 0rem 0rem 0rem #fff3 inset,
+		-0.125rem 0rem 0rem 0rem #fff3 inset,
+		0rem -0.0625rem 0rem 0.0625rem #000 inset,
+		0rem 0.0625rem 0rem 0rem #000 inset;
+	--outline: 0.0625rem 0rem 0rem 0rem #00000021 inset,
+		-0.0625rem 0rem 0rem 0rem #00000021 inset,
+		0rem -0.0625rem 0rem 0rem #0000002b inset,
+		0rem 0.0625rem 0rem 0rem #cccccc80 inset;
+	--shadow: 0rem 0.25rem 0.375rem -0.125rem #1a1a1a33;
+	--even-shadow: 0 0 0.25rem -0.125rem #1a1a1a80;
+}
+
+body {
+	background-color: #f1f1f1;
+}
+
+#wpbody-content {
+	display: flex;
+	flex-direction: column;
+	opacity: 1;
+	margin-bottom: 2rem;
+	transition: all .2s;
+}
+
+#wpbody-content.show {
+	opacity: 1;
+}
+
+.woocommerce-embed-page .woocommerce-store-alerts {
+	margin-top: 20px !important;
+}
+
+.wp-heading-inline {
+	color: rgb(48, 48, 48);
+	font-size: 1rem !important; /* Daha uyumlu bir boyut */
+	font-weight: 600 !important; /* Çok kalın olmasını engelle */
+	margin-bottom: 0.5rem; /* Diğer elemanlarla boşluk dengesi */
+	line-height: 1.4; /* Daha okunaklı hale getirme */
+}
+
+.wp-list-table-container {
+	width: 100%;
+	border-radius: 0 0 0.75rem 0.75rem;
+	overflow-x: auto;
+	scroll-behavior: smooth;
+	padding: 0.5rem; /* Kenar boşluğu ekleyerek sıkışıklığı önleme */
+}
+
+.subsubsub {
+	display: flex;
+	align-items: center;
+	margin: 0;
+	overflow-x: auto;
+	width: 100%;
+	gap: 0.25rem;
+	transition: all .3s ease-out;
+	padding-bottom: 0.5rem; /* Alt boşluk eklendi */
+}
+
+.subsubsub a {
+	border-radius: .5rem;
+	padding: 0.375rem 0.75rem;
+	height: 1.75rem; /* Daha iyi hizalama */
+	font-size: 0.8125rem; /* Daha iyi ölçeklendirme */
+	font-weight: 500; /* Daha dengeli bir kalınlık */
+	color: #4a4a4a;
+	align-items: center;
+	gap: 4px;
+	transition: background-color 0.2s ease-in-out;
+}
+
+.subsubsub a:hover {
+	background-color: #0000000d;
+}
+
+.subsubsub .current {
+	background-color: #00000014;
+	font-weight: 600; /* Aktif bağlantıyı belirginleştirme */
+}
+
+
+
+
+
+
+#post-search-input:hover,
+#orders-search-input-search-input:hover,
+#post-search-input:focus,
+#orders-search-input-search-input:focus {
+	background-color: #fafafa;
+}
+
+.expanded #post-search-input,
+.expanded #orders-search-input-search-input {
+	opacity: 1;
+}
+
+.select2-dropdown--above,
+.select2-dropdown--below {
+	border: none !important;
+	background-color: white;
+	padding: .5rem .75rem .375rem;
+	z-index: 2;
+	border-radius: .75rem;
+}
+
+.select2-dropdown--above {
+	transform: translateY(-22px);
+	box-shadow: 0rem -0.25rem 0.275rem -0.125rem #1a1a1a33 !important;
+}
+
+.select2-dropdown--below {
+	transform: translateY(5px);
+	box-shadow: 0rem 0.25rem 0.375rem -0.125rem #1a1a1a33 !important;
+}
+
+.select2-search__field {
+	border: 0.5px solid gray !important;
+}
+
+.select2-search__field {
+	box-shadow: none !important;
+}
+
+.pagination-links {
+	display: flex;
+	align-items: center;
+	height: 28px;
+}
+
+.wp-list-table {
+	border: none !important;
+	margin-top: 0 !important;
+	width: 100%;
+	min-width: 620px;
+	table-layout: auto !important;
+}
+
+.wp-list-table thead,
+.wp-list-table tfoot {
+	background-color: #f7f7f7;
+	border: 1px solid rgb(97, 97, 97);
+	border-width: 1px 0;
+}
+
+.wp-list-table thead tr>* {
+	border-bottom: none;
+}
+
+.wp-list-table tfoot tr>* {
+	border-top: none;
+}
+
+.wp-list-table thead th,
+.wp-list-table tfoot th {
+	padding: 1em !important;
+}
+
+.wp-list-table thead th,
+.wp-list-table thead th a {
+	color: #616161 !important;
+	font-weight: 550;
+	font-size: .75rem;
+	white-space: nowrap;
+	width: max-content;
+}
+
+.wp-list-table .sortable .sorting-indicators {
+	opacity: 0;
+}
+
+.wp-list-table .sortable:hover .sorting-indicators {
+	opacity: 1;
+}
+
+.wp-list-table .column-billing_address,
+.wp-list-table .column-shipping_address {
+	min-width: 150px;
+}
+
+.wp-list-table th.manage-column.column-order_total a {
+	float: inline-end;
+}
+
+.post-type-shop_order .wp-list-table td.column-order_total,
+.post-type-shop_order .wp-list-table td.column-wc_actions,
+.woocommerce_page_wc-orders .wc-orders-list-table.wp-list-table td.column-order_total,
+.woocommerce_page_wc-orders .wc-orders-list-table.wp-list-table td.column-wc_actions {
+	text-align: right !important;
+}
+
+.wp-list-table .column-order_date {
+	width: revert !important;
+	white-space: nowrap;
+}
+
+.wp-list-table .column-order_status {
+	width: revert !important;
+}
+
+.wp-list-table .column-wc_actions .wc-action-button {
+	display: inline-flex !important;
+	justify-content: center;
+	line-height: 0;
+	width: 2rem !important;
+	height: 2rem !important;
+	border: none;
+	box-shadow: var(--light-bevel);
+	border-radius: .5rem;
+	background-color: transparent;
+}
+
+.wp-list-table .column-wc_actions .wc-action-button::after {
+	color: #4a4a4a !important;
+	font-size: 16px !important;
+	margin-top: 1px !important;
+}
+
+.wp-list-table .order-preview {
+	display: flex;
+	flex-shrink: 0;
+	float: none !important;
+	width: 20px !important;
+	margin-top: 0 !important;
+}
+
+.wp-list-table .order-view {
+	display: flex !important;
+	flex-grow: 0;
+	overflow: hidden !important;
+	width: fit-content !important;
+}
+
+.wp-list-table .order-view strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: #303030;
+}
+
+.bulkactions-bg {
+	height: 0;
+	transition: all .2s;
+}
+
+.bulkactions-bg.show {
+	height: 5.75rem;
+}
+
+#delete_all {
+	background-color: #fff;
+	border: 0 !important;
+	border-radius: 0.5rem !important;
+	box-shadow: var(--light-bevel);
+	color: #303030;
+	font-weight: 550;
+	height: 2rem;
+}
+
+#delete_all:hover {
+	background-color: #fafafa !important;
+}
+
+.striped>tbody> :nth-child(odd),
+ul.striped> :nth-child(odd),
+.alternate {
+	background-color: transparent;
+}
+
+.wp-list-table tr td,
+.wp-list-table tr th {
+	border-top: 1px solid #e3e3e3 !important;
+}
+
+.wp-list-table .check-column {
+	position: sticky;
+	left: 0;
+}
+
+.wp-list-table .column-order_number {
+	position: sticky !important;
+	left: 31px;
+	border-right: 1px solid transparent;
+	transition: all .2s;
+}
+
+.wp-list-table-container:not([scroll-x="0"]) .column-order_number {
+	border-right-color: #f5f5f5;
+}
+
+.wp-list-table thead .check-column,
+.wp-list-table thead .column-order_number {
+	background-color: #f7f7f7;
+}
+
+.wp-list-table tbody .check-column,
+.wp-list-table tbody .column-order_number {
+	background-color: white;
+	z-index: 1;
+}
+
+.wp-list-table tbody#the-list .check-column,
+.wp-list-table thead .check-column#cb {
+	padding: 6px 18px 6px 12px !important;
+	width: 16px !important;
+}
+
+.wp-list-table tbody#the-list .check-column input,
+.wp-list-table thead .check-column#cb input {
+	box-shadow: rgb(138, 138, 138) 0px 0px 0px 0.66px inset;
+	border: none;
+}
+
+.wp-list-table tbody#the-list .check-column label .screen-reader-text,
+.wp-list-table thead .check-column#cb label .screen-reader-text {
+	width: 1px;
+}
+
+.order-status {
+	padding: .125rem .5rem;
+	border-radius: .5rem;
+	font-size: 13px;
+	line-height: 20px;
+	font-weight: 550;
+	display: flex;
+	overflow: unset;
+	max-width: unset;
+	width: fit-content;
+}
+
+.order-status>span {
+	line-height: initial;
+	margin: 0 !important;
+	overflow: unset;
+}
+
+.wp-heading-inline {
+	padding: 0 !important;
+}
+
+.page-title-action {
+	position: relative !important;
+	inset: 0 !important;
+	border: none !important;
+	font-size: 13px !important;
+	line-height: 13px !important;
+	font-weight: 450 !important;
+	padding: 0.375rem 0.75rem !important;
+	border-radius: 8px !important;
+	min-height: 28px !important;
+	cursor: pointer !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	transition: all .2s;
+	/* This is needed for when there are no orders/products/etc. (fresh store) */
+	float: right;
+}
+
+.page-title-action {
+	margin: 0;
+}
+
+.page-title-action:first-of-type {
+	background: #303030;
+	color: white;
+}
+
+.page-title-action:not(:first-of-type) {
+	color: #303030 !important;
+	background-color: rgb(227, 227, 227) !important;
+}
+
+.page-title-action:active {
+	box-shadow: 0rem 0.1875rem 0rem 0rem #000 inset;
+}
+
+.page-title-action:first-of-type:active {
+	color: #ccc;
+	background: #1a1a1a;
+}
+
+.page-title-action:first-of-type:hover {
+	color: #e3e3e3;
+	background: #1a1a1a;
+}
+
+.page-title-action:not(:first-of-type):hover {
+	background-color: #d4d4d4 !important;
+}
+
+.page-title-action::before {
+	position: absolute;
+	content: '';
+	inset: 0;
+	border-radius: 9px;
+}
+
+.page-title-action:first-of-type::before {
+	background-image: linear-gradient(rgba(255, 255, 255, 0.07) 80%, rgba(255, 255, 255, 0.15));
+	box-shadow: var(--dark-bevel);
+}
+
+.wp-list-table thead th,
+.wp-list-table tr:not(.inline-edit-row):not(.no-items):not(.type-product):not(.type-shop_subscription) td:not(.check-column) {
+	width: fit-content !important;
+	top: inherit !important;
+	right: inherit !important;
+	vertical-align: inherit !important;
+}
+
+@media screen and (max-width: 782px) {
+	.wp-list-table tr:not(.inline-edit-row):not(.no-items) td.column-primary~td:not(.check-column) {
+		padding: .75em 1em !important;
+		margin: auto;
+	}
+
+	.wp-list-table th.column-primary~th,
+	.wp-list-table tr:not(.inline-edit-row):not(.no-items) td.column-primary~td:not(.check-column) {
+		float: none !important;
+		display: revert;
+	}
+
+	.post-type-shop_order .wp-list-table tr:not(.is-expanded) td.column-order_date,
+	.woocommerce_page_wc-orders .wc-orders-list-table.wp-list-table tr:not(.is-expanded) td.column-order_date {
+		display: table-cell !important;
+	}
+
+	.post-type-shop_order .wp-list-table tbody#the-list td.column-order_date,
+	.post-type-shop_order .wp-list-table tbody#the-list td.column-order_status {
+		display: table-cell !important;
+	}
+
+	.wp-list-table tr:not(.inline-edit-row):not(.no-items) td:not(.column-primary)::before {
+		content: none;
+	}
+
+	.wp-list-table tbody#the-list .check-column,
+	.wp-list-table thead .check-column#cb {
+		width: 25px !important;
+		vertical-align: inherit;
+	}
+
+	.wp-list-table .column-order_number {
+		overflow-wrap: normal;
+		white-space: nowrap;
+		left: 55px;
+	}
+
+	#post-search-input,
+	#orders-search-input-search-input {
+		margin-bottom: 0;
+	}
+
+	.search-box {
+		margin: 0 !important;
+		width: 100% !important;
+	}
+
+	.tablenav.bottom .displaying-num {
+		position: unset;
+		margin-right: 7px;
+	}
+
+	.tablenav.bottom .tablenav-pages {
+		margin-top: 0;
+	}
+
+	.tablenav.bottom {
+		margin-top: 0;
+	}
+
+	.select2-results__option.select2-results__message {
+		font-size: 14px !important;
+		line-height: 1.3;
+	}
+
+	html #wpadminbar {
+		min-width: unset !important;
+	}
+}
+
+p.search-box {
+    display: flex
+;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.5rem;
+    position: relative;
+    float: right;
+    margin: 11px 0;
+    margin-top: -20px;
+}

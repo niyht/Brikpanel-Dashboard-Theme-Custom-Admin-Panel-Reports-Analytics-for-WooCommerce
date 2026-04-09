@@ -1,0 +1,1558 @@
+/* ==========================================================================
+   BrikPanel – Products List
+   Modern, AJAX-powered product management interface
+   ========================================================================== */
+
+/* ---------- Variables ---------- */
+.brikpanel-pl {
+    --bg: #f1f1f1;
+    --card: #ffffff;
+    --text: #303030;
+    --text-secondary: #616161;
+    --text-muted: #8a8a8a;
+    --border: #e3e3e3;
+    --input-border: #8a8a8a;
+    --input-focus: #303030;
+    --primary: #303030;
+    --primary-hover: #1a1a1a;
+    --success: #1a8917;
+    --error: #d72c0d;
+    --hover-bg: #f7f7f7;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    color: var(--text);
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* ---------- Header ---------- */
+.brikpanel-pl-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 0;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-pl-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.brikpanel-pl-header-left h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    color: var(--text);
+}
+
+.brikpanel-pl-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    height: 1.375rem;
+    padding: 0 0.5rem;
+    border-radius: 1rem;
+    background: var(--border);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.brikpanel-pl-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+/* ---------- Search ---------- */
+.brikpanel-pl-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.brikpanel-pl-search-icon {
+    position: absolute;
+    left: 0.75rem;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.brikpanel-pl input[type="text"].brikpanel-pl-search {
+    width: 240px;
+    padding: 8px 12px 8px 36px;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--text);
+    background: var(--card);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+    height: auto;
+    line-height: 1.4;
+}
+
+.brikpanel-pl input[type="text"].brikpanel-pl-search:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+/* ---------- Buttons ---------- */
+.brikpanel-pl-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-decoration: none;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.brikpanel-pl-btn.primary {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.brikpanel-pl-btn.primary:hover {
+    background: var(--primary-hover);
+}
+
+.brikpanel-pl-btn.secondary {
+    background: var(--card);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--border), 0 1px 0 rgba(0,0,0,0.05);
+}
+
+.brikpanel-pl-btn.secondary:hover {
+    background: var(--hover-bg);
+}
+
+.brikpanel-pl-btn.danger {
+    background: var(--card);
+    color: var(--error);
+    box-shadow: inset 0 0 0 1px var(--border), 0 1px 0 rgba(0,0,0,0.05);
+}
+
+.brikpanel-pl-btn.danger:hover {
+    background: #fef2f2;
+}
+
+.brikpanel-pl-btn.small {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+.brikpanel-pl-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ---------- Filters Bar ---------- */
+.brikpanel-pl-filters {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+/* ---------- Status Tabs ---------- */
+.brikpanel-pl-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.brikpanel-pl-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brikpanel-pl-tab:hover {
+    background: rgba(0,0,0,0.05);
+}
+
+.brikpanel-pl-tab.active {
+    background: rgba(0,0,0,0.08);
+    color: var(--text);
+    font-weight: 600;
+}
+
+.brikpanel-pl-tab-count {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* ---------- Filter Selects ---------- */
+.brikpanel-pl-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-pl-select {
+    padding: 0.375rem 2rem 0.375rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--text);
+    background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23616161' stroke-width='2'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E") no-repeat right 0.5rem center;
+    background-size: 12px;
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: border-color 0.15s;
+    max-width: 180px;
+}
+
+.brikpanel-pl-select:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+/* ---------- Bulk Bar ---------- */
+.brikpanel-pl-bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.625rem 1rem;
+    background: #f0f4ff;
+    border: 1px solid #d0daf7;
+    border-radius: 0.5rem;
+    margin-bottom: 0.75rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-pl-bulk-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    color: var(--text);
+}
+
+.brikpanel-pl-bulk-link {
+    background: none;
+    border: none;
+    color: #4a6cf7;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.brikpanel-pl-bulk-link:hover {
+    color: #3451d1;
+}
+
+.brikpanel-pl-bulk-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ---------- Products Card ---------- */
+.brikpanel-pl-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+/* ---------- Table ---------- */
+.brikpanel-pl-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.brikpanel-pl-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 700px;
+}
+
+.brikpanel-pl-table thead {
+    background: var(--hover-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+.brikpanel-pl-table thead th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.brikpanel-pl-table thead th:first-child {
+    padding-left: 1.25rem;
+}
+
+.brikpanel-pl-th-check {
+    width: 40px;
+}
+
+.brikpanel-pl-th-image {
+    width: 50px;
+}
+
+.brikpanel-pl-th-actions {
+    width: 100px;
+}
+
+/* ---------- Table Rows ---------- */
+.brikpanel-pl-row {
+    border-bottom: 1px solid var(--border);
+    transition: background-color 0.1s;
+    cursor: pointer;
+}
+
+.brikpanel-pl-row:last-child {
+    border-bottom: none;
+}
+
+.brikpanel-pl-row:hover {
+    background: var(--hover-bg);
+}
+
+.brikpanel-pl-row td {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    vertical-align: middle;
+    color: var(--text);
+}
+
+.brikpanel-pl-row td:first-child {
+    padding-left: 1.25rem;
+}
+
+.brikpanel-pl-row-deleting {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* ---------- Checkbox ---------- */
+.brikpanel-pl-checkbox {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+/* ---------- Product Image ---------- */
+.brikpanel-pl-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 0.375rem;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    background: var(--hover-bg);
+}
+
+/* ---------- Product Name ---------- */
+.brikpanel-pl-cell-name {
+    font-weight: 550;
+    max-width: 280px;
+}
+
+.brikpanel-pl-product-name-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 280px;
+}
+
+.brikpanel-pl-type-badge {
+    display: inline-block;
+    margin-top: 0.125rem;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 0.25rem;
+    background: #f0f0f0;
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+    font-weight: 500;
+}
+
+/* ---------- SKU ---------- */
+.brikpanel-pl-cell-sku {
+    white-space: nowrap;
+}
+
+.brikpanel-pl-sku-cell {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 0.8125rem;
+}
+
+/* ---------- Price Cell ---------- */
+.brikpanel-pl-cell-price {
+    white-space: nowrap;
+}
+
+.brikpanel-pl-price-display ins {
+    text-decoration: none;
+}
+
+.brikpanel-pl-price-cell del {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+}
+
+.brikpanel-pl-price-cell ins {
+    text-decoration: none;
+    color: var(--success);
+    font-weight: 550;
+}
+
+/* ---------- Stock Badge ---------- */
+.brikpanel-pl-stock-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 1rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    background: #e8f5e9;
+    color: #1b5e20;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brikpanel-pl-stock-badge:hover {
+    box-shadow: 0 0 0 2px var(--primary);
+}
+
+.brikpanel-pl-stock-badge.low {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.brikpanel-pl-stock-badge.out {
+    background: #fce4e4;
+    color: #c62828;
+}
+
+.brikpanel-pl-stock-na {
+    color: var(--text-muted);
+}
+
+/* ---------- Status Badge ---------- */
+.brikpanel-pl-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.brikpanel-pl-status-badge.published {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.brikpanel-pl-status-badge.draft {
+    background: #f5f5f5;
+    color: var(--text-muted);
+}
+
+.brikpanel-pl-status-badge.trashed {
+    background: #fce4e4;
+    color: #c62828;
+}
+
+.brikpanel-pl-status-badge:hover {
+    box-shadow: 0 0 0 2px var(--primary);
+}
+
+.brikpanel-pl-status-saving {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* ---------- Actions ---------- */
+.brikpanel-pl-actions-cell {
+    text-align: right;
+    padding-right: 1.25rem !important;
+}
+
+.brikpanel-pl-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.brikpanel-pl-row:hover .brikpanel-pl-actions {
+    opacity: 1;
+}
+
+.brikpanel-pl-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.brikpanel-pl-actions button:hover {
+    background: var(--border);
+    color: var(--text);
+}
+
+.brikpanel-pl-action-delete:hover {
+    color: var(--error) !important;
+    background: #fef2f2 !important;
+}
+
+.brikpanel-pl-action-view {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.1s;
+    text-decoration: none;
+}
+
+.brikpanel-pl-action-view:hover {
+    background: var(--border);
+    color: var(--text);
+}
+
+/* ---------- Editable Cells ---------- */
+.brikpanel-pl-editable {
+    cursor: text;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.375rem;
+    transition: background-color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.75rem;
+}
+
+.brikpanel-pl-editable:hover {
+    background: rgba(0,0,0,0.04);
+    box-shadow: 0 0 0 1px var(--border);
+}
+
+.brikpanel-pl-editable.saving {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.brikpanel-pl-inline-input {
+    width: 80px;
+    padding: 0.25rem 0.375rem;
+    border: 1px solid var(--input-focus);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--input-focus);
+    background: var(--card);
+}
+
+.brikpanel-pl-inline-input:focus {
+    border-color: var(--input-focus);
+}
+
+/* ---------- Pagination ---------- */
+.brikpanel-pl-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--border);
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-pl-showing {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.brikpanel-pl-page-btns {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.brikpanel-pl-page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    background: var(--card);
+    color: var(--text);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brikpanel-pl-page-btn:hover:not(.disabled):not(.active) {
+    background: var(--hover-bg);
+    border-color: var(--text-muted);
+}
+
+.brikpanel-pl-page-btn.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.brikpanel-pl-page-btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.brikpanel-pl-page-dots {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+}
+
+/* ---------- Empty State ---------- */
+.brikpanel-pl-empty {
+    text-align: center;
+    padding: 3rem 1rem !important;
+}
+
+.brikpanel-pl-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.brikpanel-pl-empty-state p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* ---------- Loading Spinner ---------- */
+.brikpanel-pl-loading-row td {
+    text-align: center;
+    padding: 3rem 1rem !important;
+}
+
+.brikpanel-pl-spinner {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: bpl-spin 0.6s linear infinite;
+}
+
+@keyframes bpl-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- Drawer Overlay ---------- */
+.brikpanel-pl-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 99999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s, visibility 0.25s;
+}
+
+.brikpanel-pl-drawer-overlay.open {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ---------- Quick Edit Drawer ---------- */
+.brikpanel-pl-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 420px;
+    max-width: 90vw;
+    background: var(--card);
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brikpanel-pl-drawer.open {
+    transform: translateX(0);
+}
+
+.brikpanel-pl-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.brikpanel-pl-drawer-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.brikpanel-pl-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brikpanel-pl-drawer-close:hover {
+    background: var(--hover-bg);
+    color: var(--text);
+}
+
+.brikpanel-pl-drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+}
+
+.brikpanel-pl-drawer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
+}
+
+/* ---------- Quick Edit Fields ---------- */
+.brikpanel-pl-qe-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.brikpanel-pl-qe-field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.brikpanel-pl-qe-field input[type="text"],
+.brikpanel-pl-qe-field input[type="number"],
+.brikpanel-pl-qe-field select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--input-border);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+    background: var(--card);
+}
+
+.brikpanel-pl-qe-field input:focus,
+.brikpanel-pl-qe-field select:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.brikpanel-pl-qe-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+/* Input Group */
+.brikpanel-pl-input-group {
+    display: flex;
+    border: 1px solid var(--input-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.brikpanel-pl-input-group:focus-within {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.brikpanel-pl-input-prefix {
+    display: flex;
+    align-items: center;
+    padding: 0 0.625rem;
+    background: #f7f7f7;
+    border-right: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.brikpanel-pl-input-group input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: none !important;
+    box-shadow: none !important;
+    font-size: 0.875rem;
+    outline: none;
+    min-width: 0;
+}
+
+/* ---------- Toast Notifications ---------- */
+.brikpanel-pl-toast-container {
+    position: fixed;
+    top: 44px;
+    right: 20px;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.brikpanel-pl-toast {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    transform: translateX(110%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: auto;
+    max-width: 360px;
+}
+
+.brikpanel-pl-toast.show {
+    transform: translateX(0);
+}
+
+.brikpanel-pl-toast.success {
+    background: #e4f5e1;
+    color: #1a6b15;
+    border: 1px solid #b7e1b0;
+}
+
+.brikpanel-pl-toast.error {
+    background: #fce4e4;
+    color: #c62828;
+    border: 1px solid #f1b0b0;
+}
+
+.brikpanel-pl-toast.info {
+    background: #e8f0fe;
+    color: #1a56db;
+    border: 1px solid #bdd3f7;
+}
+
+.brikpanel-pl-toast-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 1.125rem;
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 0;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.brikpanel-pl-toast-close:hover {
+    opacity: 1;
+}
+
+.brikpanel-pl-text-muted {
+    color: var(--text-muted);
+}
+
+/* ---------- Responsive ---------- */
+@media screen and (max-width: 782px) {
+    .brikpanel-pl-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .brikpanel-pl-header-right {
+        width: 100%;
+    }
+
+    .brikpanel-pl-search {
+        flex: 1;
+        width: auto;
+        min-width: 0;
+    }
+
+    .brikpanel-pl-filters {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .brikpanel-pl-tabs {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+    }
+
+    .brikpanel-pl-filter-group {
+        width: 100%;
+    }
+
+    .brikpanel-pl-select {
+        flex: 1;
+        max-width: none;
+    }
+
+    .brikpanel-pl-bulk-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .brikpanel-pl-bulk-right {
+        width: 100%;
+    }
+
+    .brikpanel-pl-bulk-right .brikpanel-pl-btn {
+        flex: 1;
+    }
+
+    .brikpanel-pl-pagination {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .brikpanel-pl-th-sku,
+    .brikpanel-pl-cell-sku,
+    .brikpanel-pl-th-cat,
+    .brikpanel-pl-cell-cat,
+    .brikpanel-pl-th-price,
+    .brikpanel-pl-cell-price,
+    .brikpanel-pl-th-stock,
+    .brikpanel-pl-cell-stock,
+    .brikpanel-pl-th-status,
+    .brikpanel-pl-cell-status {
+        display: none;
+    }
+
+    .brikpanel-pl-table-wrap {
+        overflow-x: hidden;
+    }
+
+    .brikpanel-pl-drawer {
+        width: 100vw;
+        max-width: 100vw;
+        top: 46px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+    }
+
+    .brikpanel-pl-drawer-overlay.open ~ .brikpanel-pl-wrap {
+        pointer-events: none;
+    }
+}
+
+/* Prevent horizontal scroll from off-screen drawer */
+body.admin_page_brikpanel-products,
+html:has(body.admin_page_brikpanel-products) {
+    overflow-x: hidden;
+}
+
+/* ---------- Hide WP Admin defaults ---------- */
+body.admin_page_brikpanel-products .screen-meta-links,
+body.admin_page_brikpanel-products .notice:not(.brikpanel-notice),
+body.admin_page_brikpanel-products #screen-meta {
+    display: none;
+}
+
+/* Body background */
+body.admin_page_brikpanel-products #wpbody-content {
+    padding-bottom: 2rem;
+    margin: 0 !important;
+}
+
+body.admin_page_brikpanel-products .wrap {
+    margin: 0 !important;
+    padding: 0 10px !important;
+    max-width: none !important;
+}
+
+/* Lock body scroll when drawer/modal is open */
+body.brikpanel-pl-drawer-open {
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   Bulk Update Modal
+   ========================================================================== */
+
+.brikpanel-pl-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+}
+
+.brikpanel-pl-modal-overlay.open {
+    opacity: 1;
+    visibility: visible;
+}
+
+.brikpanel-pl-modal {
+    background: var(--card);
+    border-radius: 0.75rem;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+    width: 560px;
+    max-width: 92vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(12px) scale(0.97);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brikpanel-pl-modal-overlay.open .brikpanel-pl-modal {
+    transform: translateY(0) scale(1);
+}
+
+.brikpanel-pl-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.brikpanel-pl-modal-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.brikpanel-pl-modal-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brikpanel-pl-modal-close:hover {
+    background: var(--hover-bg);
+    color: var(--text);
+}
+
+.brikpanel-pl-modal-body {
+    padding: 1.25rem 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.brikpanel-pl-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
+}
+
+/* Modal Tabs */
+.brikpanel-pl-modal-tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+}
+
+.brikpanel-pl-modal-tab {
+    padding: 0.5rem 1rem;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+}
+
+.brikpanel-pl-modal-tab:hover {
+    color: var(--text);
+}
+
+.brikpanel-pl-modal-tab.active {
+    color: var(--text);
+    font-weight: 600;
+    border-bottom-color: var(--primary);
+}
+
+.brikpanel-pl-modal-tab-content {
+    display: none;
+}
+
+.brikpanel-pl-modal-tab-content.active {
+    display: block;
+}
+
+/* Modal Fields */
+.brikpanel-pl-modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-bottom: 0.875rem;
+}
+
+.brikpanel-pl-modal-field.grow {
+    flex: 1;
+    min-width: 0;
+}
+
+.brikpanel-pl-modal-field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.brikpanel-pl-modal-field input[type="text"],
+.brikpanel-pl-modal-field input[type="number"] {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--input-border);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+    background: var(--card);
+    height: auto;
+    line-height: 1.4;
+}
+
+.brikpanel-pl-modal-field input:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.brikpanel-pl-select.full {
+    width: 100%;
+    max-width: none;
+}
+
+.brikpanel-pl-modal-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+}
+
+.brikpanel-pl-modal-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 1rem 0;
+}
+
+.brikpanel-pl-modal-field-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.5rem;
+}
+
+.brikpanel-pl-modal-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0.25rem 0 0;
+    line-height: 1.4;
+}
+
+.brikpanel-pl-modal-info {
+    font-size: 0.875rem;
+    color: var(--text);
+    margin: 0 0 1rem;
+    font-weight: 500;
+}
+
+.brikpanel-pl-modal-info.brikpanel-pl-modal-warn {
+    color: var(--error);
+}
+
+/* ==========================================================================
+   Variation Inline Popup
+   ========================================================================== */
+
+/* Overlay behind popup */
+.brikpanel-pl-var-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 99997;
+}
+
+.brikpanel-pl-var-popup {
+    position: fixed;
+    z-index: 99998;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+    width: 460px;
+    max-width: 92vw;
+    animation: bpl-popup-in 0.2s ease-out;
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+}
+
+@keyframes bpl-popup-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.brikpanel-pl-var-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.brikpanel-pl-var-popup-close {
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.brikpanel-pl-var-popup-close:hover {
+    color: var(--text);
+}
+
+.brikpanel-pl-var-popup-body {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+}
+
+.brikpanel-pl-var-popup-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 1rem;
+    transition: background 0.15s;
+}
+
+.brikpanel-pl-var-popup-row:hover {
+    background: var(--hover-bg);
+}
+
+.brikpanel-pl-var-popup-saved {
+    background: #e4f5e1 !important;
+}
+
+.brikpanel-pl-var-popup-name {
+    flex: 1;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brikpanel-pl-var-popup-input {
+    width: 72px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    color: var(--text);
+    text-align: right;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.brikpanel-pl-var-popup-input:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.brikpanel-pl-var-popup-input.sale {
+    width: 64px;
+    color: var(--text-secondary);
+}
+
+.brikpanel-pl-var-popup-save {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.875rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+
+.brikpanel-pl-var-popup-save:hover {
+    background: var(--primary-hover);
+}
+
+.brikpanel-pl-var-popup-save:disabled {
+    opacity: 0.5;
+}
+
+.brikpanel-pl-var-popup-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.brikpanel-pl-var-popup-loading,
+.brikpanel-pl-var-popup-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+}
+
+/* ==========================================================================
+   Quick Edit Drawer – Variation List
+   ========================================================================== */
+
+.brikpanel-pl-qe-var-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.brikpanel-pl-qe-var-item {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.brikpanel-pl-qe-var-item:last-child {
+    border-bottom: none;
+}
+
+.brikpanel-pl-qe-var-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+
+.brikpanel-pl-qe-var-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr 80px;
+    gap: 0.5rem;
+}
+
+.brikpanel-pl-qe-var-fields .brikpanel-pl-qe-field label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.brikpanel-pl-qe-var-input {
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--input-border);
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    color: var(--text);
+    outline: none;
+    width: 100%;
+    transition: border-color 0.15s;
+}
+
+.brikpanel-pl-qe-var-input:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+/* Danger tab */
+.brikpanel-pl-modal-tab-danger {
+    color: var(--error) !important;
+}
+
+.brikpanel-pl-modal-tab-danger.active {
+    border-bottom-color: var(--error) !important;
+}
+
+/* Danger banner */
+.brikpanel-pl-modal-danger-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    background: #fef2f2;
+    border: 1px solid #f1b0b0;
+    border-radius: 0.5rem;
+    color: #c62828;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.brikpanel-pl-modal-danger-banner svg {
+    flex-shrink: 0;
+    stroke: #c62828;
+}
+
+/* Checkbox label */
+.brikpanel-pl-modal-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.brikpanel-pl-modal-check input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+@media screen and (max-width: 600px) {
+    .brikpanel-pl-modal {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 0;
+        max-height: 100vh;
+    }
+
+    .brikpanel-pl-modal-row {
+        flex-direction: column;
+    }
+}

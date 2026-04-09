@@ -1,0 +1,1530 @@
+/* =================================================================
+   BRIKPANEL ORDER EDIT — Base styles (always loaded)
+   ================================================================= */
+
+/* -------- Order items -------- */
+
+#woocommerce-order-items {
+	border: none !important;
+	background-color: transparent;
+	box-shadow: none !important;
+}
+
+.wc-order-totals-items table {
+	min-width: 230px;
+}
+
+.woocommerce_order_items {
+	background: transparent !important;
+	border-collapse: separate;
+	border-radius: 0.75rem;
+	border-spacing: 0;
+	margin-bottom: 1rem;
+}
+
+#order_line_items tr:last-child td:first-child {
+	border-bottom-left-radius: 0.75rem;
+}
+
+#order_line_items tr:last-child td:last-child {
+	border-bottom-right-radius: 0.75rem;
+}
+
+#order_line_items tr:last-child td {
+	border: none !important;
+}
+
+#order_fee_line_items tr:first-child td:first-child,
+#order_shipping_line_items tr:first-child td:first-child,
+#order_refunds tr:first-child td:first-child {
+	border-top-left-radius: 0.75rem;
+}
+
+#order_fee_line_items tr:first-child td:last-child,
+#order_shipping_line_items tr:first-child td:last-child,
+#order_refunds tr:first-child td:last-child {
+	border-top-right-radius: 0.75rem;
+}
+
+#order_fee_line_items tr:last-child td:first-child,
+#order_shipping_line_items tr:last-child td:first-child,
+#order_refunds tr:last-child td:first-child {
+	border-bottom-left-radius: 0.75rem;
+}
+
+#order_fee_line_items tr:last-child td:last-child,
+#order_shipping_line_items tr:last-child td:last-child,
+#order_refunds tr:last-child td:last-child {
+	border-bottom-right-radius: 0.75rem;
+}
+
+#order_fee_line_items tr:first-child td {
+	border-top: 1px solid #f8f8f8 !important;
+}
+
+.woocommerce_order_items tbody:not(:last-child)::after {
+	content: '';
+	display: table-row;
+	height: 1rem;
+}
+
+#woocommerce-order-items .inside,
+.woocommerce_order_items_wrapper {
+	border-radius: 0.75rem !important;
+	background-color: transparent !important;
+}
+
+.woocommerce_order_items thead th {
+	background-color: transparent !important;
+	color: #303030 !important;
+	font-weight: 600 !important;
+}
+
+.woocommerce_order_items tr:not(:last-of-type) {
+	border-bottom: 0.5px solid rgba(200, 200, 200, 0.5);
+}
+
+#order_line_items,
+#order_fee_line_items,
+#order_shipping_line_items,
+#order_refunds,
+#wc-order-totals-items {
+	border-radius: 1rem;
+}
+
+#order_line_items tr,
+#order_fee_line_items tr,
+#order_shipping_line_items tr,
+#order_refunds tr,
+#wc-order-totals-items tr {
+	position: relative;
+}
+
+.wc-order-item-name {
+	text-decoration: none;
+	font-weight: 550;
+	font-size: 13.5px;
+}
+
+#order_line_items tr td,
+#order_fee_line_items tr td,
+#order_shipping_line_items tr td,
+#order_refunds tr td {
+	background-color: white;
+}
+
+.wc-order-edit-line-item {
+	position: relative;
+	width: 1.5rem !important;
+	padding: 0 !important;
+}
+
+.wc-order-edit-line-item-actions {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	width: fit-content !important;
+	gap: .5rem;
+	inset: 0;
+	left: -0.4rem;
+}
+
+.edit-order-item,
+.delete-order-item,
+.delete_refund {
+	display: block !important;
+	padding-bottom: 0 !important;
+	width: 24px !important;
+	height: 24px !important;
+	border-radius: 12px;
+	background-color: rgba(255, 255, 255, 0.5);
+	border: 0.5px solid rgba(200, 200, 200, 0.5);
+	box-shadow: var(--shadow);
+	line-height: 24px !important;
+	margin-left: 0 !important;
+}
+
+.edit-order-item::before,
+.delete-order-item::before,
+.delete_refund::before {
+	display: block;
+	font-size: 20px !important;
+	line-height: 24px !important;
+}
+
+.woocommerce_order_items thead {
+	background-color: #f7f7f7;
+}
+
+.woocommerce_order_items td {
+	border-top: none !important;
+}
+
+.woocommerce_order_items .thumb {
+	padding-left: 1.5rem !important;
+}
+
+.woocommerce_order_items .line_cost {
+	padding-right: 1.5rem !important;
+}
+
+.wc-order-totals-items {
+	border-top: 1px solid #e3e3e3;
+	border-right: 1px solid #e3e3e3;
+	border-left: 1px solid #e3e3e3;
+	border-radius: 1rem 1rem 0 0;
+	background-color: white !important;
+}
+
+.wc-order-bulk-actions {
+	border-bottom: 1px solid #e3e3e3;
+	border-right: 1px solid #e3e3e3;
+	border-left: 1px solid #e3e3e3;
+}
+
+.wc-order-bulk-actions,
+.wc-order-add-item {
+	border-radius: 0 0 1rem 1rem;
+	background-color: white !important;
+}
+
+.wc-order-refund-items {
+	border-radius: 1rem;
+	background-color: white !important;
+}
+
+/* -------- Screen option and help buttons -------- */
+
+#screen-meta-links {
+	display: flex;
+	float: none;
+	justify-content: flex-end;
+}
+
+/* -------- Downloadable product permissions -------- */
+
+button.grant_access {
+	margin-top: 0.5rem !important;
+}
+
+/* -------- Custom fields -------- */
+
+#postcustomstuff {
+	margin-top: 0.9rem;
+}
+
+#postcustomstuff table {
+	border-radius: 0.75rem;
+	padding: 0.35rem;
+}
+
+#postcustomstuff thead th {
+	background-color: initial;
+	text-align: left;
+}
+
+#postcustomstuff textarea {
+	height: 1.875rem;
+	padding-top: 0.25rem;
+	border-radius: 0.5rem;
+}
+
+/* Non-HPOS */
+#post #postcustom #postcustomstuff #the-list textarea {
+	height: 1.875rem;
+}
+
+@media screen and (max-width: 782px) {
+	#postcustomstuff textarea {
+		height: 2.475rem !important;
+	}
+}
+
+#postcustomstuff > p:has(strong) {
+	margin-bottom: 0.5em;
+}
+
+#postcustomstuff .submit:not(.add-custom-field) {
+	display: flex;
+	gap: 5px;
+	margin-top: 0;
+	margin-bottom: 0.6rem;
+	margin-left: 8px;
+	padding: 0 !important;
+}
+
+#side-sortables #postcustomstuff .submit {
+	gap: 0;
+	margin-left: 0;
+}
+
+#side-sortables #postcustomstuff #newmeta-button {
+	margin: 3px;
+}
+
+.add-custom-field {
+	margin-bottom: 0 !important;
+	margin-left: 0 !important;
+	padding: 8px 0 0 0 !important;
+}
+
+#side-sortables #postcustomstuff .add-custom-field {
+	padding-top: 3px !important;
+}
+
+#post #postcustomstuff table,
+#post #postcustomstuff thead,
+#post #postcustomstuff tbody {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+}
+
+#post #postcustomstuff thead tr {
+	display: flex;
+	width: 100%;
+}
+
+#post #postcustomstuff thead .left {
+	padding-right: 0 !important;
+	box-sizing: border-box;
+}
+
+#post #postcustomstuff tbody tr {
+	display: flex;
+	margin-bottom: 0.5rem;
+}
+
+#post #postcustomstuff tbody tr td {
+	display: flex;
+}
+
+#post #postcustomstuff tbody tr .left {
+	width: 38%;
+	padding-right: 0 !important;
+	flex-direction: column;
+}
+
+#post #newmeta-button {
+	margin-top: 0;
+	width: fit-content;
+}
+
+#post #side-sortables #postcustomstuff input[type="submit"] {
+	margin-top: 3px !important;
+}
+
+/* -------- WooCommerce Subscriptions -------- */
+
+.woocommerce_subscriptions_related_orders table {
+	border-radius: 0.75rem;
+}
+
+/* Make the price edit fields in RD Order Modifier for WooCommerce look like the
+standard WooCommerce ones. */
+
+.item_cost_incl .split-input {
+	display: inline-block;
+	background: #fff;
+	border: 1px solid #ddd;
+	box-shadow: inset 0 1px 2px rgba(0,0,0,.07);
+	margin: 1px 0;
+	min-width: 80px;
+	overflow: hidden;
+	line-height: 1em;
+	text-align: right;
+}
+
+.item_cost_incl .input:first-child {
+	border-bottom: 1px dashed #ddd;
+	background: #fff;
+}
+
+.item_cost_incl .input input {
+	width: 100%;
+	box-sizing: border-box;
+	border: 0;
+	box-shadow: none;
+	margin: 0;
+	padding: 0 6px 4px;
+	color: #555;
+	background: 0 0;
+	vertical-align: middle;
+	text-align: right;
+}
+
+.item_cost_incl label {
+	font-size: .75em;
+	padding: 4px 6px 0;
+	color: #555;
+	display: block;
+}
+
+.item_cost_incl .input:first-child input,
+.item_cost_incl .input:first-child label {
+	color: #ccc !important;
+}
+
+
+/* =================================================================
+   MODERN ORDER EDIT — scoped under .brikpanel-modern-edit
+   Shopify-inspired, monochrome, CLAUDE.md design system
+   ================================================================= */
+
+:root {
+	--brk-bg: #f1f1f1;
+	--brk-card: #ffffff;
+	--brk-text: #303030;
+	--brk-text-secondary: #616161;
+	--brk-text-muted: #8a8a8a;
+	--brk-border: #e3e3e3;
+	--brk-input-border: #8a8a8a;
+	--brk-input-focus: #303030;
+	--brk-primary: #303030;
+	--brk-primary-hover: #1a1a1a;
+	--brk-success: #1a8917;
+	--brk-error: #d72c0d;
+}
+
+/* ---- Hide unnecessary metaboxes ---- */
+.brikpanel-modern-edit #order_custom,
+.brikpanel-modern-edit #woocommerce-order-downloads,
+.brikpanel-modern-edit #woocommerce-order-source-data,
+.brikpanel-modern-edit #woocommerce-customer-history {
+	display: none !important;
+}
+
+/* ---- Hide WooCommerce footer ---- */
+.brikpanel-modern-edit .woocommerce-rating-link,
+.brikpanel-modern-edit #wpfooter {
+	display: none !important;
+}
+
+/* ---- Page background ---- */
+.brikpanel-modern-edit {
+	background: var(--brk-bg) !important;
+}
+
+/* ---- Page-level layout ---- */
+.brikpanel-modern-edit .wrap {
+	max-width: 1400px;
+}
+
+.brikpanel-modern-edit .wrap > h1:first-of-type,
+.brikpanel-modern-edit .wrap > .wp-heading-inline {
+	font-size: 1.125rem;
+	font-weight: 600;
+	color: var(--brk-text);
+	padding: 0;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.brikpanel-modern-edit #poststuff {
+	padding-top: 0;
+}
+
+.brikpanel-modern-edit #post-body-content {
+	margin-bottom: 0;
+}
+
+/* ---- Screen options subtle ---- */
+.brikpanel-modern-edit #screen-meta-links {
+	opacity: 0.3;
+	transition: opacity 0.2s;
+}
+
+.brikpanel-modern-edit #screen-meta-links:hover {
+	opacity: 1;
+}
+
+/* =================================================================
+   STICKY ORDER HEADER BAR
+   ================================================================= */
+
+.brikpanel-order-header {
+	position: fixed;
+	top: 32px;
+	left: 0;
+	right: 0;
+	z-index: 100;
+	background: var(--brk-card);
+	border-bottom: 1px solid var(--brk-border);
+	box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+	padding: 0.625rem 1.5rem;
+	display: flex !important;
+	flex-wrap: nowrap !important;
+	flex-direction: row !important;
+	align-items: center !important;
+	justify-content: space-between !important;
+	gap: 1rem;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	min-height: 48px;
+	box-sizing: border-box;
+}
+
+/* Spacer to prevent content from going behind fixed header */
+.brikpanel-order-header + * {
+	margin-top: 60px;
+}
+
+
+.brikpanel-order-header__left {
+	display: flex !important;
+	flex-direction: row !important;
+	align-items: center !important;
+	gap: 0.75rem;
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+
+.brikpanel-order-header__back {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	color: var(--brk-text-secondary);
+	text-decoration: none;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	transition: color 0.15s;
+	padding: 0.375rem 0.5rem;
+	border-radius: 0.5rem;
+}
+
+.brikpanel-order-header__back:hover {
+	color: var(--brk-text);
+	background: rgba(0,0,0,0.04);
+}
+
+.brikpanel-order-header__back svg {
+	width: 16px;
+	height: 16px;
+}
+
+.brikpanel-order-header__divider {
+	width: 1px;
+	height: 24px;
+	background: var(--brk-border);
+}
+
+.brikpanel-order-header__title {
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--brk-text);
+}
+
+.brikpanel-order-header__date {
+	font-size: 0.75rem;
+	color: var(--brk-text-muted);
+	font-weight: 400;
+}
+
+.brikpanel-order-header__right {
+	display: flex !important;
+	flex-direction: row !important;
+	align-items: center !important;
+	gap: 0.5rem;
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+
+/* ---- Status badge in header ---- */
+.brikpanel-order-header__status {
+	position: relative;
+}
+
+.brikpanel-order-header__status-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	padding: 0.3125rem 0.75rem;
+	border-radius: 2rem;
+	font-size: 0.75rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s;
+	border: 1px solid var(--brk-border);
+	background: #f7f7f7;
+	color: var(--brk-text);
+	user-select: none;
+}
+
+.brikpanel-order-header__status-badge:hover {
+	background: #eee;
+	border-color: #ccc;
+}
+
+.brikpanel-order-header__status-badge::before {
+	content: '';
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--brk-text-muted);
+	flex-shrink: 0;
+}
+
+.brikpanel-order-header__status-badge.status--processing::before { background: #e6a817; }
+.brikpanel-order-header__status-badge.status--completed::before { background: var(--brk-success); }
+.brikpanel-order-header__status-badge.status--on-hold::before { background: #e6a817; }
+.brikpanel-order-header__status-badge.status--pending::before { background: #e6a817; }
+.brikpanel-order-header__status-badge.status--cancelled::before,
+.brikpanel-order-header__status-badge.status--failed::before { background: var(--brk-error); }
+.brikpanel-order-header__status-badge.status--refunded::before { background: var(--brk-text-muted); }
+
+.brikpanel-order-header__status-badge svg {
+	width: 14px;
+	height: 14px;
+	margin-left: 0.125rem;
+	color: var(--brk-text-muted);
+	transition: transform 0.15s;
+}
+
+.brikpanel-order-header__status-badge[aria-expanded="true"] svg {
+	transform: rotate(180deg);
+}
+
+/* Status dropdown (order edit page header) */
+.brikpanel-order-header .brikpanel-status-dropdown {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+	background: var(--brk-card);
+	border: 1px solid var(--brk-border);
+	border-radius: 0.75rem;
+	box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08);
+	min-width: 200px;
+	padding: 0.375rem;
+	z-index: 200;
+	display: none !important;
+	opacity: 0;
+	transform: translateY(-4px);
+	pointer-events: none;
+	transition: opacity 0.15s, transform 0.15s;
+}
+
+.brikpanel-order-header .brikpanel-status-dropdown.is-open {
+	display: block !important;
+	opacity: 1;
+	transform: translateY(0);
+	pointer-events: auto;
+}
+
+.brikpanel-status-dropdown__item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.625rem;
+	border-radius: 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--brk-text);
+	cursor: pointer;
+	transition: background 0.1s;
+	border: none;
+	background: none;
+	width: 100%;
+	text-align: left;
+}
+
+.brikpanel-status-dropdown__item:hover {
+	background: rgba(0,0,0,0.04);
+}
+
+.brikpanel-status-dropdown__item.is-active {
+	background: rgba(0,0,0,0.06);
+	font-weight: 600;
+}
+
+.brikpanel-status-dropdown__item::before {
+	content: '';
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--brk-text-muted);
+	flex-shrink: 0;
+}
+
+.brikpanel-status-dropdown__item[data-status="processing"]::before { background: #e6a817; }
+.brikpanel-status-dropdown__item[data-status="completed"]::before { background: var(--brk-success); }
+.brikpanel-status-dropdown__item[data-status="on-hold"]::before { background: #e6a817; }
+.brikpanel-status-dropdown__item[data-status="pending"]::before { background: #e6a817; }
+.brikpanel-status-dropdown__item[data-status="cancelled"]::before,
+.brikpanel-status-dropdown__item[data-status="failed"]::before { background: var(--brk-error); }
+.brikpanel-status-dropdown__item[data-status="refunded"]::before { background: var(--brk-text-muted); }
+
+.brikpanel-status-dropdown__item .brk-check {
+	margin-left: auto;
+	width: 16px;
+	height: 16px;
+	color: var(--brk-text);
+	opacity: 0;
+}
+
+.brikpanel-status-dropdown__item.is-active .brk-check {
+	opacity: 1;
+}
+
+/* ---- Header buttons ---- */
+.brikpanel-order-header .brk-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	padding: 0.5rem 1rem;
+	border-radius: 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	cursor: pointer;
+	transition: all 0.15s;
+	border: none;
+	text-decoration: none;
+	line-height: 1;
+}
+
+.brikpanel-order-header .brk-btn svg {
+	width: 15px;
+	height: 15px;
+}
+
+.brikpanel-order-header .brk-btn--secondary {
+	background: var(--brk-card);
+	color: var(--brk-text);
+	box-shadow: inset 0 0 0 1px var(--brk-border), 0 1px 0 rgba(0,0,0,0.05);
+}
+
+.brikpanel-order-header .brk-btn--secondary:hover {
+	background: #f7f7f7;
+}
+
+.brikpanel-order-header .brk-btn--primary {
+	background: var(--brk-primary);
+	color: #fff;
+	box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.brikpanel-order-header .brk-btn--primary:hover {
+	background: var(--brk-primary-hover);
+}
+
+/* hide original WP/WC page title + add-order button row when header is present */
+.brikpanel-modern-edit .wrap > .wp-heading-inline,
+.brikpanel-modern-edit .wrap > .page-title-action,
+.brikpanel-modern-edit .wrap > h1,
+.brikpanel-modern-edit .wrap > hr.wp-header-end {
+	display: none !important;
+}
+
+
+/* =================================================================
+   POSTBOXES — ALL CARDS
+   ================================================================= */
+
+.brikpanel-modern-edit .postbox {
+	background: var(--brk-card) !important;
+	border: 1px solid var(--brk-border) !important;
+	border-radius: 0.75rem !important;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+	overflow: hidden;
+}
+
+.brikpanel-modern-edit .postbox .postbox-header {
+	background: var(--brk-card) !important;
+	border-bottom: 1px solid var(--brk-border) !important;
+	padding: 0.75rem 1.25rem !important;
+}
+
+.brikpanel-modern-edit .postbox .postbox-header .hndle {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--brk-text);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.brikpanel-modern-edit .postbox .inside {
+	padding: 1.25rem 1.5rem !important;
+	font-size: 0.875rem;
+	color: var(--brk-text);
+	line-height: 1.5;
+}
+
+/* Hide drag/toggle handles */
+.brikpanel-modern-edit .postbox .postbox-header .handle-order-higher,
+.brikpanel-modern-edit .postbox .postbox-header .handle-order-lower,
+.brikpanel-modern-edit .postbox .postbox-header .handlediv {
+	display: none !important;
+}
+
+/* Main content cards */
+.brikpanel-modern-edit #normal-sortables .postbox {
+	margin-bottom: 1rem;
+}
+
+/* =================================================================
+   SIDEBAR — tight, compact, refined
+   ================================================================= */
+
+.brikpanel-modern-edit #side-sortables .postbox {
+	margin-bottom: 0.625rem;
+	border-radius: 0.625rem !important;
+}
+
+.brikpanel-modern-edit #side-sortables .postbox .postbox-header {
+	padding: 0.5rem 1rem !important;
+	min-height: auto;
+}
+
+.brikpanel-modern-edit #side-sortables .postbox .postbox-header .hndle {
+	font-size: 0.75rem !important;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+}
+
+.brikpanel-modern-edit #side-sortables .postbox .inside {
+	padding: 0.75rem 1rem !important;
+	font-size: 0.8125rem;
+}
+
+
+/* ---- Marketplace cards — ultra compact when empty ---- */
+.brikpanel-modern-edit [id^="brikmarket_"] .inside {
+	padding: 0.5rem 1rem !important;
+	font-size: 0.75rem;
+	color: var(--brk-text-secondary);
+}
+
+.brikpanel-modern-edit [id^="brikmarket_"] .inside p {
+	margin: 0.125rem 0;
+	line-height: 1.4;
+}
+
+/* "This is not an X order" — very subtle */
+.brikpanel-modern-edit [id^="brikmarket_"] .inside p:only-child {
+	color: var(--brk-text-muted);
+	font-size: 0.6875rem;
+	font-style: italic;
+	margin: 0;
+	padding: 0.125rem 0;
+}
+
+.brikpanel-modern-edit [id^="brikmarket_"] .inside strong,
+.brikpanel-modern-edit [id^="brikmarket_"] .inside b {
+	font-weight: 600;
+	color: var(--brk-text);
+}
+
+/* Marketplace data rows (e.g., Ozon Order) */
+.brikpanel-modern-edit [id^="brikmarket_"] .inside table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.brikpanel-modern-edit [id^="brikmarket_"] .inside table td,
+.brikpanel-modern-edit [id^="brikmarket_"] .inside table th {
+	padding: 0.25rem 0;
+	font-size: 0.75rem;
+	vertical-align: top;
+	border: none !important;
+}
+
+.brikpanel-modern-edit [id^="brikmarket_"] .inside table td:first-child,
+.brikpanel-modern-edit [id^="brikmarket_"] .inside table th:first-child {
+	font-weight: 600;
+	color: var(--brk-text-muted);
+	white-space: nowrap;
+	padding-right: 0.75rem;
+	width: 1%;
+}
+
+.brikpanel-modern-edit [id^="brikmarket_"] .inside table td:last-child {
+	color: var(--brk-text);
+	word-break: break-all;
+}
+
+/* Ship Order / marketplace action buttons — compact */
+.brikpanel-modern-edit [id^="brikmarket_"] .button,
+.brikpanel-modern-edit [id^="brikmarket_"] input[type="submit"] {
+	font-size: 0.75rem !important;
+	padding: 0.375rem 0.75rem !important;
+	margin-top: 0.375rem;
+}
+
+
+/* =================================================================
+   ORDER DATA CARD (General / Billing / Shipping)
+   ================================================================= */
+
+.brikpanel-modern-edit #woocommerce-order-data {
+	border: 1px solid var(--brk-border) !important;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+	margin-bottom: 1rem;
+}
+
+.brikpanel-modern-edit #woocommerce-order-data .postbox-header {
+	padding: 0.75rem 1.25rem !important;
+}
+
+.brikpanel-modern-edit #woocommerce-order-data .postbox-header .hndle {
+	font-size: 0.875rem;
+	font-weight: 600;
+}
+
+.brikpanel-modern-edit #woocommerce-order-data .inside {
+	padding: 1.25rem 1.5rem !important;
+}
+
+.brikpanel-modern-edit .order_data_column_container {
+	gap: 1.5rem;
+}
+
+/* Column headers (General, Billing, Shipping) */
+.brikpanel-modern-edit .order_data_column > h3,
+.brikpanel-modern-edit .order_data_column > h4 {
+	font-size: 0.75rem !important;
+	font-weight: 600 !important;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--brk-text-muted);
+	border-bottom: 1px solid var(--brk-border);
+	padding-bottom: 0.5rem;
+	margin-bottom: 0.75rem;
+}
+
+/* Address text */
+.brikpanel-modern-edit .order_data_column .address {
+	padding: 0.375rem 0;
+	line-height: 1.6;
+	color: var(--brk-text);
+	font-size: 0.8125rem;
+}
+
+.brikpanel-modern-edit .order_data_column .edit_address {
+	padding: 0.25rem 0;
+}
+
+.brikpanel-modern-edit a.edit_address {
+	font-size: 0.75rem;
+	color: var(--brk-text-muted) !important;
+	text-decoration: none !important;
+	transition: color 0.15s;
+}
+
+.brikpanel-modern-edit a.edit_address:hover {
+	color: var(--brk-text) !important;
+}
+
+/* Copy address button */
+.brikpanel-copy-address {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.25rem 0.5rem;
+	border-radius: 0.375rem;
+	font-size: 0.6875rem;
+	font-weight: 550;
+	color: var(--brk-text-muted);
+	background: none;
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition: all 0.15s;
+	margin-left: 0.5rem;
+}
+
+.brikpanel-copy-address:hover {
+	color: var(--brk-text);
+	background: rgba(0,0,0,0.03);
+	border-color: var(--brk-border);
+}
+
+.brikpanel-copy-address.is-copied {
+	color: var(--brk-success);
+}
+
+.brikpanel-copy-address svg {
+	width: 13px;
+	height: 13px;
+}
+
+
+/* =================================================================
+   ORDER ITEMS CARD
+   ================================================================= */
+
+.brikpanel-modern-edit #woocommerce-order-items {
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	margin-bottom: 1rem;
+}
+
+.brikpanel-modern-edit #woocommerce-order-items .inside {
+	border: 1px solid var(--brk-border);
+	box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+	border-radius: 0.75rem;
+	overflow: hidden;
+	padding: 0 !important;
+}
+
+/* Table header */
+.brikpanel-modern-edit .woocommerce_order_items thead {
+	background: #fafafa !important;
+}
+
+.brikpanel-modern-edit .woocommerce_order_items thead th {
+	font-size: 0.6875rem !important;
+	font-weight: 600 !important;
+	text-transform: uppercase !important;
+	letter-spacing: 0.06em !important;
+	color: var(--brk-text-muted) !important;
+	padding: 0.625rem 0.75rem !important;
+	border-bottom: 1px solid var(--brk-border) !important;
+}
+
+/* Item row */
+.brikpanel-modern-edit #order_line_items tr,
+.brikpanel-modern-edit #order_fee_line_items tr,
+.brikpanel-modern-edit #order_shipping_line_items tr {
+	transition: background 0.15s;
+}
+
+.brikpanel-modern-edit #order_line_items tr:hover td,
+.brikpanel-modern-edit #order_fee_line_items tr:hover td,
+.brikpanel-modern-edit #order_shipping_line_items tr:hover td {
+	background: #fafafa !important;
+}
+
+/* Product thumbnail */
+.brikpanel-modern-edit .woocommerce_order_items .thumb a img,
+.brikpanel-modern-edit .woocommerce_order_items .thumb img {
+	border-radius: 0.5rem !important;
+	border: 1px solid var(--brk-border) !important;
+}
+
+/* Totals bar */
+.brikpanel-modern-edit .wc-order-totals-items {
+	background: #fafafa !important;
+	border-color: var(--brk-border) !important;
+}
+
+.brikpanel-modern-edit .wc-order-totals-items .wc-order-totals .total {
+	font-weight: 650 !important;
+	color: var(--brk-text);
+}
+
+/* Bulk action & add item bar */
+.brikpanel-modern-edit .wc-order-bulk-actions,
+.brikpanel-modern-edit .wc-order-add-item {
+	background: #fafafa !important;
+	border-color: var(--brk-border) !important;
+}
+
+.brikpanel-modern-edit .wc-order-bulk-actions .description {
+	color: var(--brk-text-muted) !important;
+	font-size: 0.75rem;
+}
+
+
+/* =================================================================
+   ORDER ACTIONS CARD (sidebar)
+   ================================================================= */
+
+.brikpanel-modern-edit #woocommerce-order-actions select {
+	border-radius: 0.5rem;
+	border: 1px solid var(--brk-input-border);
+	font-size: 0.8125rem;
+	padding: 0.625rem 0.75rem;
+	background: var(--brk-card);
+	width: 100%;
+	transition: border-color 0.15s, box-shadow 0.15s;
+	color: var(--brk-text);
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions select:focus {
+	border-color: var(--brk-input-focus);
+	outline: none;
+	box-shadow: 0 0 0 1px var(--brk-input-focus);
+}
+
+
+/* =================================================================
+   MARKETPLACE SIDEBAR BOXES (BrikMarket)
+   ================================================================= */
+
+.brikpanel-modern-edit [id^="brikmarket_"] .inside {
+	font-size: 0.8125rem;
+	color: var(--brk-text-secondary);
+	line-height: 1.5;
+}
+
+.brikpanel-modern-edit [id^="brikmarket_"] .inside p {
+	margin: 0.25rem 0;
+}
+
+/* "This is not an X order" */
+.brikpanel-modern-edit [id^="brikmarket_"] .inside p:only-child {
+	color: var(--brk-text-muted);
+	font-size: 0.75rem;
+	font-style: italic;
+	margin: 0;
+}
+
+.brikpanel-modern-edit [id^="brikmarket_"] .inside strong,
+.brikpanel-modern-edit [id^="brikmarket_"] .inside b {
+	font-weight: 600;
+	color: var(--brk-text);
+}
+
+
+/* =================================================================
+   ORDER NOTES — Timeline
+   ================================================================= */
+
+/* =================================================================
+   ORDER NOTES — Compact sidebar timeline
+   ================================================================= */
+
+.brikpanel-modern-edit #woocommerce-order-notes {
+	border: none !important;
+	box-shadow: none !important;
+	background: transparent !important;
+}
+
+.brikpanel-modern-edit #woocommerce-order-notes .postbox-header {
+	background: transparent !important;
+	border-bottom: none !important;
+	padding: 0.375rem 0 !important;
+}
+
+.brikpanel-modern-edit #woocommerce-order-notes .postbox-header .hndle {
+	font-size: 0.75rem !important;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--brk-text-muted) !important;
+}
+
+.brikpanel-modern-edit .order_notes {
+	background-color: transparent;
+	border-left: 2px solid var(--brk-border);
+	margin-left: 0.5rem;
+	padding-left: 0;
+}
+
+.brikpanel-modern-edit ul.order_notes li {
+	margin-bottom: 0.375rem;
+}
+
+.brikpanel-modern-edit ul.order_notes li .note_content {
+	background: var(--brk-card) !important;
+	border-radius: 0.375rem;
+	border: 1px solid var(--brk-border);
+	box-shadow: none;
+	padding: 0.375rem 0.625rem !important;
+	transition: box-shadow 0.15s;
+}
+
+.brikpanel-modern-edit ul.order_notes li .note_content:hover {
+	box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.brikpanel-modern-edit ul.order_notes li .note_content p {
+	font-size: 0.6875rem;
+	line-height: 1.4;
+	color: var(--brk-text);
+	margin-left: 0 !important;
+	padding-left: 0.375rem !important;
+}
+
+.brikpanel-modern-edit ul.order_notes li .note_content p::before {
+	content: '' !important;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--brk-text-muted);
+	position: absolute;
+	left: -14px;
+	top: 50%;
+	transform: translateY(-50%);
+	font-size: 0 !important;
+}
+
+/* Customer note dot */
+.brikpanel-modern-edit ul.order_notes li.customer-note .note_content p::before {
+	background: var(--brk-primary);
+}
+
+/* System note dot */
+.brikpanel-modern-edit ul.order_notes li.system-note .note_content p::before {
+	background: var(--brk-border);
+}
+
+.brikpanel-modern-edit .order_notes .note:first-child {
+	margin-top: 0.5rem;
+}
+
+.brikpanel-modern-edit .order_notes .meta {
+	color: var(--brk-text-muted) !important;
+	font-size: 0.5625rem;
+	gap: 0.0625rem;
+}
+
+.brikpanel-modern-edit .order_notes .meta .exact-date {
+	color: var(--brk-text-muted);
+}
+
+.brikpanel-modern-edit .order_notes .meta .delete_note {
+	color: var(--brk-error) !important;
+	font-size: 0.5625rem;
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+
+.brikpanel-modern-edit ul.order_notes li:hover .meta .delete_note {
+	opacity: 0.6;
+}
+
+.brikpanel-modern-edit .order_notes .meta .delete_note:hover {
+	opacity: 1 !important;
+}
+
+/* ---- Add note area ---- */
+.brikpanel-modern-edit div.add_note {
+	background-color: var(--brk-card);
+	border: 1px solid var(--brk-border) !important;
+	border-radius: 0.625rem;
+	box-shadow: none;
+	padding: 0.75rem !important;
+}
+
+.brikpanel-modern-edit textarea#add_order_note {
+	border: 1px solid var(--brk-input-border);
+	border-radius: 0.375rem;
+	padding: 0.5rem 0.625rem;
+	font-size: 0.8125rem;
+	background: var(--brk-card);
+	transition: border-color 0.15s, box-shadow 0.15s;
+	color: var(--brk-text);
+	width: 100%;
+	min-height: 60px;
+}
+
+.brikpanel-modern-edit textarea#add_order_note:focus {
+	border-color: var(--brk-input-focus);
+	outline: none;
+	box-shadow: 0 0 0 1px var(--brk-input-focus);
+}
+
+.brikpanel-modern-edit div.add_note .button {
+	border-radius: 0.375rem !important;
+	font-size: 0.75rem !important;
+	font-weight: 550 !important;
+	padding: 0.375rem 0.75rem !important;
+	transition: all 0.15s !important;
+}
+
+.brikpanel-modern-edit div.add_note p {
+	margin-top: 0.5rem;
+}
+
+
+/* =================================================================
+   INPUTS & SELECTS
+   ================================================================= */
+
+.brikpanel-modern-edit #woocommerce-order-data input[type="text"],
+.brikpanel-modern-edit #woocommerce-order-data input[type="email"],
+.brikpanel-modern-edit #woocommerce-order-data input[type="tel"],
+.brikpanel-modern-edit #woocommerce-order-data select {
+	border-radius: 0.5rem;
+	border: 1px solid var(--brk-input-border);
+	padding: 0.625rem 0.75rem;
+	font-size: 0.875rem;
+	background: var(--brk-card);
+	transition: border-color 0.15s, box-shadow 0.15s;
+	color: var(--brk-text);
+}
+
+.brikpanel-modern-edit #woocommerce-order-data input[type="text"]:focus,
+.brikpanel-modern-edit #woocommerce-order-data input[type="email"]:focus,
+.brikpanel-modern-edit #woocommerce-order-data input[type="tel"]:focus,
+.brikpanel-modern-edit #woocommerce-order-data select:focus {
+	border-color: var(--brk-input-focus);
+	outline: none;
+	box-shadow: 0 0 0 1px var(--brk-input-focus);
+}
+
+
+/* =================================================================
+   BUTTONS
+   ================================================================= */
+
+/* Update / Save — primary dark */
+.brikpanel-modern-edit .save_order.button-primary {
+	background: var(--brk-primary) !important;
+	border: none !important;
+	border-radius: 0.5rem !important;
+	color: #fff !important;
+	font-weight: 550 !important;
+	font-size: 0.8125rem !important;
+	padding: 0.5rem 1rem !important;
+	box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1) !important;
+	transition: all 0.15s !important;
+	cursor: pointer;
+}
+
+.brikpanel-modern-edit .save_order.button-primary:hover {
+	background: var(--brk-primary-hover) !important;
+}
+
+.brikpanel-modern-edit .save_order.button-primary:active {
+	box-shadow: inset 0 1px 2px rgba(0,0,0,0.25) !important;
+}
+
+/* Refund */
+.brikpanel-modern-edit .refund-items {
+	background: var(--brk-card) !important;
+	border: none !important;
+	border-radius: 0.5rem !important;
+	color: var(--brk-text) !important;
+	font-weight: 550 !important;
+	font-size: 0.8125rem !important;
+	padding: 0.5rem 1rem !important;
+	box-shadow: inset 0 0 0 1px var(--brk-border), 0 1px 0 rgba(0,0,0,0.05) !important;
+	transition: all 0.15s !important;
+}
+
+.brikpanel-modern-edit .refund-items:hover {
+	background: #f7f7f7 !important;
+}
+
+/* Secondary buttons */
+.brikpanel-modern-edit button.add-line-item,
+.brikpanel-modern-edit button.add_custom_item {
+	border-radius: 0.5rem !important;
+	transition: all 0.15s !important;
+}
+
+/* Edit/delete icons */
+.brikpanel-modern-edit .edit-order-item,
+.brikpanel-modern-edit .delete-order-item,
+.brikpanel-modern-edit .delete_refund {
+	transition: background 0.15s, box-shadow 0.15s, transform 0.1s !important;
+}
+
+.brikpanel-modern-edit .edit-order-item:hover,
+.brikpanel-modern-edit .delete-order-item:hover {
+	background: rgba(255,255,255,0.95) !important;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+	transform: scale(1.05);
+}
+
+/* BrikMarket Ship buttons */
+.brikpanel-modern-edit [id^="brikmarket_"] .button,
+.brikpanel-modern-edit [id^="brikmarket_"] input[type="submit"] {
+	background: var(--brk-card) !important;
+	border: none !important;
+	border-radius: 0.5rem !important;
+	color: var(--brk-text) !important;
+	font-weight: 550 !important;
+	font-size: 0.8125rem !important;
+	padding: 0.5rem 1rem !important;
+	box-shadow: inset 0 0 0 1px var(--brk-border), 0 1px 0 rgba(0,0,0,0.05) !important;
+	transition: all 0.15s !important;
+	cursor: pointer;
+}
+
+.brikpanel-modern-edit [id^="brikmarket_"] .button:hover,
+.brikpanel-modern-edit [id^="brikmarket_"] input[type="submit"]:hover {
+	background: #f7f7f7 !important;
+}
+
+
+/* =================================================================
+   STATUS BADGE (in WC order data)
+   ================================================================= */
+
+.brikpanel-modern-edit .order-status {
+	border-radius: 2rem !important;
+	font-size: 0.6875rem !important;
+	font-weight: 600 !important;
+	letter-spacing: 0.02em !important;
+	padding: 0.25rem 0.625rem !important;
+}
+
+
+/* =================================================================
+   MISC
+   ================================================================= */
+
+.brikpanel-modern-edit #misc-publishing-actions,
+.brikpanel-modern-edit #minor-publishing-actions {
+	padding: 0.5rem;
+}
+
+
+/* =================================================================
+   TOAST NOTIFICATION
+   ================================================================= */
+
+.brikpanel-toast {
+	position: fixed;
+	top: 44px;
+	right: 20px;
+	z-index: 10000;
+	padding: 0.75rem 1.25rem;
+	border-radius: 0.75rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+	transform: translateX(110%);
+	transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.brikpanel-toast.is-visible {
+	transform: translateX(0);
+}
+
+.brikpanel-toast--success {
+	background: #e4f5e1;
+	color: #1a6b15;
+	border: 1px solid #b7e1b0;
+}
+
+.brikpanel-toast--error {
+	background: #fce4e4;
+	color: #c62828;
+	border: 1px solid #f1b0b0;
+}
+
+.brikpanel-toast svg {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+}
+
+
+/* =================================================================
+   ORDER ACTIONS CARD — extra styling
+   ================================================================= */
+
+/* Move to Trash link */
+.brikpanel-modern-edit #woocommerce-order-actions .inside a.submitdelete {
+	color: var(--brk-text-muted) !important;
+	text-decoration: none !important;
+	font-size: 0.75rem;
+	font-weight: 500;
+	transition: color 0.15s;
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions .inside a.submitdelete:hover {
+	color: var(--brk-error) !important;
+}
+
+/* Update button in Order actions */
+.brikpanel-modern-edit #woocommerce-order-actions .inside .button.save_order,
+.brikpanel-modern-edit #woocommerce-order-actions .inside .button.button-primary {
+	background: var(--brk-primary) !important;
+	color: #fff !important;
+	border: none !important;
+	border-radius: 0.375rem !important;
+	font-size: 0.75rem !important;
+	font-weight: 550 !important;
+	padding: 0.375rem 0.75rem !important;
+	box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1) !important;
+	transition: all 0.15s !important;
+	cursor: pointer;
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions .inside .button.save_order:hover,
+.brikpanel-modern-edit #woocommerce-order-actions .inside .button.button-primary:hover {
+	background: var(--brk-primary-hover) !important;
+}
+
+/* Add note label */
+.brikpanel-modern-edit .add_note label {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--brk-text);
+}
+
+/* Add note button */
+.brikpanel-modern-edit .add_note .button {
+	background: var(--brk-primary) !important;
+	color: #fff !important;
+	border: none !important;
+	border-radius: 0.375rem !important;
+	padding: 0.375rem 0.75rem !important;
+	box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1) !important;
+}
+
+.brikpanel-modern-edit .add_note .button:hover {
+	background: var(--brk-primary-hover) !important;
+}
+
+/* Note type select */
+.brikpanel-modern-edit .add_note select {
+	border-radius: 0.375rem !important;
+	border: 1px solid var(--brk-input-border) !important;
+	font-size: 0.75rem !important;
+	padding: 0.3125rem 0.375rem !important;
+}
+
+/* General links in sidebar cards */
+.brikpanel-modern-edit #side-sortables .postbox .inside a {
+	color: var(--brk-text-secondary);
+	transition: color 0.15s;
+}
+
+.brikpanel-modern-edit #side-sortables .postbox .inside a:hover {
+	color: var(--brk-text);
+}
+
+/* WP notices styling */
+.brikpanel-modern-edit .notice {
+	border-radius: 0.5rem;
+	margin: 0.5rem 0;
+}
+
+
+/* =================================================================
+   RESPONSIVE
+   ================================================================= */
+
+@media screen and (max-width: 782px) {
+	.brikpanel-order-header {
+		flex-direction: column !important;
+		align-items: flex-start !important;
+		padding: 0.75rem 1rem;
+		top: 46px;
+		left: 0 !important;
+	}
+
+	.brikpanel-order-header__right {
+		width: 100%;
+		justify-content: flex-end;
+	}
+
+	.brikpanel-order-header__divider {
+		display: none;
+	}
+
+	.brikpanel-order-header + * {
+		margin-top: 90px;
+	}
+
+	.woocommerce_order_items_wrapper {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.woocommerce_order_items {
+		min-width: 500px;
+	}
+
+	.wc-order-totals-items {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+}

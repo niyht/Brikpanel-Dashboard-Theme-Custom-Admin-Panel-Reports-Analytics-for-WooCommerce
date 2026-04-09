@@ -1,0 +1,486 @@
+/* ==========================================================================
+   BrikPanel — Custom Login Page
+   Modern, monochrome design inspired by Shopify Admin
+   ========================================================================== */
+
+/* ---------- Reset & Base ---------- */
+html, body.login {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+body.login {
+    background: #f1f1f1 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+/* ---------- Login Wrapper ---------- */
+#login {
+    width: 100%;
+    max-width: 400px;
+    padding: 0 1.25rem;
+    box-sizing: border-box;
+}
+
+/* ---------- Logo / Header Area ---------- */
+.login h1 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.login h1::before {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 0.75rem;
+    background: #303030;
+    border-radius: 12px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4'/%3E%3Cpolyline points='10 17 15 12 10 7'/%3E%3Cline x1='15' y1='12' x2='3' y2='12'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 24px;
+}
+
+.login h1::after {
+    content: 'Welcome back';
+    display: block;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #303030;
+    line-height: 1.5;
+}
+
+/* ---------- Login Form Card ---------- */
+#loginform,
+#lostpasswordform,
+#registerform {
+    background: #ffffff;
+    border: 1px solid #e3e3e3;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    padding: 1.5rem;
+    margin: 0;
+}
+
+/* ---------- Labels ---------- */
+#loginform label,
+#lostpasswordform label,
+#registerform label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #303030;
+    margin-bottom: 0.375rem;
+    line-height: 1.5;
+}
+
+#loginform label[for="user_login"],
+#loginform label[for="user_pass"] {
+    margin-bottom: 0.375rem;
+}
+
+/* ---------- Input Fields ---------- */
+#loginform input[type="text"],
+#loginform input[type="password"],
+#lostpasswordform input[type="text"],
+#registerform input[type="text"],
+#registerform input[type="email"] {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #8a8a8a;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: #303030;
+    background: #ffffff;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    outline: none;
+    line-height: 1.5;
+    margin-bottom: 0;
+    margin-top: 0;
+}
+
+#loginform input[type="text"]:focus,
+#loginform input[type="password"]:focus,
+#lostpasswordform input[type="text"]:focus,
+#registerform input[type="text"]:focus,
+#registerform input[type="email"]:focus {
+    border-color: #303030;
+    box-shadow: 0 0 0 1px #303030;
+}
+
+#loginform input[type="text"]::placeholder,
+#loginform input[type="password"]::placeholder {
+    color: #8a8a8a;
+}
+
+/* ---------- Password field wrapper ---------- */
+.wp-pwd {
+    position: relative;
+}
+
+.wp-pwd input[type="password"],
+.wp-pwd input[type="text"] {
+    padding-right: 2.75rem;
+}
+
+/* Toggle password visibility button */
+.wp-pwd .button.wp-hide-pw {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: #8a8a8a;
+    cursor: pointer;
+    padding: 0.25rem;
+    min-height: auto;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wp-pwd .button.wp-hide-pw:hover,
+.wp-pwd .button.wp-hide-pw:focus {
+    color: #303030;
+    background: none;
+    border: none;
+    box-shadow: none;
+    outline: none;
+}
+
+.wp-pwd .button.wp-hide-pw .dashicons {
+    font-size: 1.125rem;
+    width: 1.125rem;
+    height: 1.125rem;
+}
+
+/* ---------- Form Rows / Spacing ---------- */
+#loginform p,
+#lostpasswordform p,
+#registerform p {
+    margin: 0 0 0.75rem;
+}
+
+#loginform p:last-of-type,
+#lostpasswordform p:last-of-type,
+#registerform p:last-of-type {
+    margin-bottom: 0;
+}
+
+/* Username field container */
+#loginform .user-pass-wrap {
+    margin-bottom: 0.75rem;
+}
+
+/* ---------- Remember Me + Submit Row ---------- */
+.forgetmenot {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem !important;
+}
+
+.forgetmenot label {
+    display: flex !important;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem !important;
+    font-weight: 400 !important;
+    color: #616161 !important;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 0 !important;
+}
+
+/* Custom checkbox */
+.forgetmenot input[type="checkbox"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid #8a8a8a;
+    border-radius: 0.25rem;
+    background: #ffffff;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    margin: 0 0.25rem 0 0;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.forgetmenot input[type="checkbox"]:checked {
+    background: #303030;
+    border-color: #303030;
+}
+
+.forgetmenot input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 0.3rem;
+    top: 0.1rem;
+    width: 0.3rem;
+    height: 0.55rem;
+    border: solid #ffffff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.forgetmenot input[type="checkbox"]:focus {
+    box-shadow: 0 0 0 1px #303030;
+    border-color: #303030;
+    outline: none;
+}
+
+/* ---------- Submit Button ---------- */
+#wp-submit,
+.brikpanel-login-btn {
+    width: 100%;
+    padding: 0.625rem 1rem;
+    background: #303030;
+    color: #ffffff;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 550;
+    cursor: pointer;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transition: background 0.15s ease, transform 0.1s ease;
+    line-height: 1.5;
+    text-transform: none;
+    letter-spacing: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+#wp-submit:hover,
+.brikpanel-login-btn:hover {
+    background: #1a1a1a;
+}
+
+#wp-submit:active,
+.brikpanel-login-btn:active {
+    transform: scale(0.985);
+}
+
+#wp-submit:focus,
+.brikpanel-login-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #303030, inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Submit wrapper */
+.submit {
+    margin-top: 0.25rem !important;
+    padding: 0 !important;
+}
+
+/* ---------- Spinner (AJAX loading) ---------- */
+.brikpanel-spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: brikpanel-spin 0.5s linear infinite;
+}
+
+@keyframes brikpanel-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- Links Below Form ---------- */
+#login #nav,
+#login #backtoblog {
+    text-align: center;
+    margin: 0.75rem 0 0;
+    padding: 0;
+}
+
+#login #nav a,
+#login #backtoblog a {
+    font-size: 0.8125rem;
+    color: #616161;
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+#login #nav a:hover,
+#login #backtoblog a:hover {
+    color: #303030;
+}
+
+#login #nav a:focus,
+#login #backtoblog a:focus {
+    color: #303030;
+    box-shadow: none;
+    outline: 1px solid #303030;
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+#login #nav {
+    border: none;
+}
+
+/* Separator between links */
+#login #nav .privacy-policy-page-link::before {
+    content: '·';
+    display: inline;
+    margin: 0 0.5rem;
+    color: #8a8a8a;
+}
+
+/* ---------- Error / Success Messages ---------- */
+#login_error,
+.login .message,
+.login .success {
+    border: none !important;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    margin: 0 0 1rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    box-shadow: none;
+}
+
+#login_error {
+    background: #fce4e4;
+    color: #c62828;
+    border: 1px solid #f1b0b0 !important;
+}
+
+#login_error a {
+    color: #c62828;
+    font-weight: 600;
+}
+
+.login .message,
+.login .success {
+    background: #e4f5e1;
+    color: #1a6b15;
+    border: 1px solid #b7e1b0 !important;
+}
+
+/* ---------- Toast Notification ---------- */
+.brikpanel-toast {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 100000;
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    line-height: 1.5;
+    max-width: 340px;
+    transform: translateX(110%);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+.brikpanel-toast.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.brikpanel-toast.is-success {
+    background: #e4f5e1;
+    color: #1a6b15;
+    border: 1px solid #b7e1b0;
+}
+
+.brikpanel-toast.is-error {
+    background: #fce4e4;
+    color: #c62828;
+    border: 1px solid #f1b0b0;
+}
+
+/* ---------- Custom Footer ---------- */
+.brikpanel-login-footer {
+    text-align: center;
+    margin-top: 2rem;
+    font-size: 0.75rem;
+    color: #8a8a8a;
+    line-height: 1.5;
+}
+
+/* ---------- Input shake animation (on error) ---------- */
+@keyframes brikpanel-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+
+.brikpanel-shake {
+    animation: brikpanel-shake 0.4s ease;
+}
+
+/* Error state for inputs */
+.brikpanel-input-error {
+    border-color: #d72c0d !important;
+    box-shadow: 0 0 0 1px #d72c0d !important;
+}
+
+/* ---------- Responsive ---------- */
+@media screen and (max-width: 480px) {
+    #login {
+        max-width: 100%;
+        padding: 0 1rem;
+    }
+
+    #loginform,
+    #lostpasswordform,
+    #registerform {
+        padding: 1.25rem;
+        border-radius: 0.5rem;
+    }
+}
+
+/* ---------- Transition for form elements ---------- */
+#loginform,
+#lostpasswordform,
+#registerform {
+    transition: box-shadow 0.2s ease;
+}
+
+#loginform:focus-within,
+#lostpasswordform:focus-within,
+#registerform:focus-within {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- Hide default WP elements ---------- */
+.login #login_error + form,
+.login .message + form {
+    margin-top: 0;
+}
+
+/* Remove WP default padding on p.submit */
+.login form .submit {
+    padding-top: 0;
+}
+
+/* Fix the password field label spacing */
+.user-pass-wrap > label {
+    margin-bottom: 0.375rem;
+}

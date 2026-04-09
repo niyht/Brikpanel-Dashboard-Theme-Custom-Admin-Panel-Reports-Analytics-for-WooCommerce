@@ -1,0 +1,652 @@
+<?php
+/**
+ * BrikPanel - AJAX Coupons Management
+ *
+ * Replaces the default WooCommerce coupons list with a modern,
+ * fully AJAX-powered interface with drawer editing.
+ *
+ * @package BrikPanel
+ * @since 1.8.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class Brikpanel_Coupons {
+
+    public function __construct() {
+        if (get_option('brikpanel_modern_coupons', 'yes') !== 'yes') {
+            return;
+        }
+
+        add_action('admin_menu', [$this, 'register_page']);
+        add_action('admin_init', [$this, 'redirect_default_list']);
+
+        // AJAX endpoints
+        add_action('wp_ajax_brikpanel_fetch_coupons', [$this, 'ajax_fetch_coupons']);
+        add_action('wp_ajax_brikpanel_save_coupon', [$this, 'ajax_save_coupon']);
+        add_action('wp_ajax_brikpanel_delete_coupon', [$this, 'ajax_delete_coupon']);
+        add_action('wp_ajax_brikpanel_toggle_coupon_status', [$this, 'ajax_toggle_coupon_status']);
+        add_action('wp_ajax_brikpanel_duplicate_coupon', [$this, 'ajax_duplicate_coupon']);
+    }
+
+    // =========================================================================
+    // PAGE REGISTRATION & REDIRECT
+    // =========================================================================
+
+    public function register_page() {
+        $hook = add_submenu_page(
+            '',
+            __('Coupons', 'brikpanel'),
+            '',
+            'manage_woocommerce',
+            'brikpanel-coupons',
+            [$this, 'render_page']
+        );
+
+        if ($hook) {
+            add_action('load-' . $hook, function () {
+                global $title;
+                $title = __('Coupons', 'brikpanel');
+            });
+        }
+    }
+
+    public function redirect_default_list() {
+        global $pagenow;
+
+        if (!current_user_can('manage_woocommerce')) {
+            return;
+        }
+
+        // Redirect from edit.php?post_type=shop_coupon
+        if ($pagenow === 'edit.php' && isset($_GET['post_type']) && sanitize_key($_GET['post_type']) === 'shop_coupon') {
+            if (!empty($_GET['action']) || !empty($_GET['action2']) || !empty($_GET['page']) || !empty($_GET['taxonomy'])) {
+                return;
+            }
+            wp_safe_redirect(admin_url('admin.php?page=brikpanel-coupons'));
+            exit;
+        }
+
+        // Redirect from post-new.php?post_type=shop_coupon
+        if ($pagenow === 'post-new.php' && isset($_GET['post_type']) && sanitize_key($_GET['post_type']) === 'shop_coupon') {
+            wp_safe_redirect(admin_url('admin.php?page=brikpanel-coupons'));
+            exit;
+        }
+    }
+
+    // =========================================================================
+    // RENDER PAGE
+    // =========================================================================
+
+    public function render_page() {
+        $currency = get_woocommerce_currency_symbol();
+
+        // Count coupons by status
+        $counts  = wp_count_posts('shop_coupon');
+        $publish = isset($counts->publish) ? (int) $counts->publish : 0;
+        $draft   = isset($counts->draft) ? (int) $counts->draft : 0;
+        $trash   = isset($counts->trash) ? (int) $counts->trash : 0;
+        $all     = $publish + $draft;
+        ?>
+        <div class="wrap">
+        <div class="brikpanel-cp" id="brikpanel-coupons-list">
+
+            <!-- Header -->
+            <div class="brikpanel-cp-header">
+                <div class="brikpanel-cp-header-left">
+                    <h1><?php esc_html_e('Coupons', 'brikpanel'); ?></h1>
+                    <span class="brikpanel-cp-count" id="bpc-total-count"><?php echo esc_html($all); ?></span>
+                </div>
+                <div class="brikpanel-cp-header-right">
+                    <div class="brikpanel-cp-search-wrap">
+                        <svg class="brikpanel-cp-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                        <input type="text" id="bpc-search" class="brikpanel-cp-search" placeholder="<?php esc_attr_e('Search coupons...', 'brikpanel'); ?>">
+                    </div>
+                    <button type="button" class="brikpanel-cp-btn primary" id="bpc-add-new">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        <?php esc_html_e('Add coupon', 'brikpanel'); ?>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filters Bar -->
+            <div class="brikpanel-cp-filters">
+                <div class="brikpanel-cp-tabs">
+                    <button class="brikpanel-cp-tab active" data-status="any">
+                        <?php esc_html_e('All', 'brikpanel'); ?>
+                        <span class="brikpanel-cp-tab-count" data-count="all"><?php echo esc_html($all); ?></span>
+                    </button>
+                    <button class="brikpanel-cp-tab" data-status="publish">
+                        <?php esc_html_e('Published', 'brikpanel'); ?>
+                        <span class="brikpanel-cp-tab-count" data-count="publish"><?php echo esc_html($publish); ?></span>
+                    </button>
+                    <button class="brikpanel-cp-tab" data-status="draft">
+                        <?php esc_html_e('Draft', 'brikpanel'); ?>
+                        <span class="brikpanel-cp-tab-count" data-count="draft"><?php echo esc_html($draft); ?></span>
+                    </button>
+                    <?php if ($trash > 0) : ?>
+                    <button class="brikpanel-cp-tab" data-status="trash">
+                        <?php esc_html_e('Trash', 'brikpanel'); ?>
+                        <span class="brikpanel-cp-tab-count" data-count="trash"><?php echo esc_html($trash); ?></span>
+                    </button>
+                    <?php endif; ?>
+                </div>
+                <div class="brikpanel-cp-filter-group">
+                    <select id="bpc-sort" class="brikpanel-cp-select">
+                        <option value="date-desc"><?php esc_html_e('Newest first', 'brikpanel'); ?></option>
+                        <option value="date-asc"><?php esc_html_e('Oldest first', 'brikpanel'); ?></option>
+                        <option value="title-asc"><?php esc_html_e('Code A-Z', 'brikpanel'); ?></option>
+                        <option value="title-desc"><?php esc_html_e('Code Z-A', 'brikpanel'); ?></option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Bulk Actions Bar (hidden by default) -->
+            <div class="brikpanel-cp-bulk-bar" id="bpc-bulk-bar" style="display:none;">
+                <div class="brikpanel-cp-bulk-left">
+                    <span id="bpc-selected-count">0</span> <?php esc_html_e('selected', 'brikpanel'); ?>
+                    <button type="button" class="brikpanel-cp-bulk-link" id="bpc-select-all-btn"><?php esc_html_e('Select all', 'brikpanel'); ?></button>
+                    <button type="button" class="brikpanel-cp-bulk-link" id="bpc-deselect-all-btn"><?php esc_html_e('Deselect all', 'brikpanel'); ?></button>
+                </div>
+                <div class="brikpanel-cp-bulk-right">
+                    <button type="button" class="brikpanel-cp-btn secondary small" id="bpc-bulk-publish"><?php esc_html_e('Publish', 'brikpanel'); ?></button>
+                    <button type="button" class="brikpanel-cp-btn secondary small" id="bpc-bulk-draft"><?php esc_html_e('Set as draft', 'brikpanel'); ?></button>
+                    <button type="button" class="brikpanel-cp-btn danger small" id="bpc-bulk-trash"><?php esc_html_e('Move to trash', 'brikpanel'); ?></button>
+                </div>
+            </div>
+
+            <!-- Coupons Table -->
+            <div class="brikpanel-cp-card">
+                <div class="brikpanel-cp-table-wrap">
+                    <table class="brikpanel-cp-table" id="bpc-table">
+                        <thead>
+                            <tr>
+                                <th class="brikpanel-cp-th-check">
+                                    <input type="checkbox" id="bpc-check-all" class="brikpanel-cp-checkbox">
+                                </th>
+                                <th class="brikpanel-cp-th-code"><?php esc_html_e('Code', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-type"><?php esc_html_e('Type', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-amount"><?php esc_html_e('Amount', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-desc"><?php esc_html_e('Description', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-usage"><?php esc_html_e('Usage / Limit', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-expiry"><?php esc_html_e('Expiry date', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-status"><?php esc_html_e('Status', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-actions"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="bpc-table-body">
+                            <tr class="brikpanel-cp-loading-row">
+                                <td colspan="9">
+                                    <div class="brikpanel-cp-spinner"></div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="brikpanel-cp-pagination" id="bpc-pagination"></div>
+            </div>
+
+            <!-- Drawer Overlay -->
+            <div class="brikpanel-cp-drawer-overlay" id="bpc-drawer-overlay"></div>
+
+            <!-- Coupon Drawer (Edit / Create) -->
+            <div class="brikpanel-cp-drawer" id="bpc-drawer">
+                <div class="brikpanel-cp-drawer-header">
+                    <h3 id="bpc-drawer-title"><?php esc_html_e('Edit coupon', 'brikpanel'); ?></h3>
+                    <button type="button" class="brikpanel-cp-drawer-close" id="bpc-drawer-close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="brikpanel-cp-drawer-body">
+                    <input type="hidden" id="bpc-coupon-id" value="">
+
+                    <!-- General Section -->
+                    <div class="brikpanel-cp-drawer-section">
+                        <h4 class="brikpanel-cp-drawer-section-title"><?php esc_html_e('General', 'brikpanel'); ?></h4>
+
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-code"><?php esc_html_e('Coupon code', 'brikpanel'); ?></label>
+                            <div class="brikpanel-cp-code-row">
+                                <input type="text" id="bpc-code" placeholder="<?php esc_attr_e('e.g. SUMMER2024', 'brikpanel'); ?>">
+                                <button type="button" class="brikpanel-cp-btn secondary small" id="bpc-generate-code">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                                    <?php esc_html_e('Generate', 'brikpanel'); ?>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-description"><?php esc_html_e('Description', 'brikpanel'); ?></label>
+                            <textarea id="bpc-description" rows="2" placeholder="<?php esc_attr_e('Optional description for internal use', 'brikpanel'); ?>"></textarea>
+                        </div>
+
+                        <div class="brikpanel-cp-qe-row">
+                            <div class="brikpanel-cp-qe-field">
+                                <label for="bpc-discount-type"><?php esc_html_e('Discount type', 'brikpanel'); ?></label>
+                                <select id="bpc-discount-type" class="brikpanel-cp-select full">
+                                    <option value="percent"><?php esc_html_e('Percentage discount', 'brikpanel'); ?></option>
+                                    <option value="fixed_cart"><?php esc_html_e('Fixed cart discount', 'brikpanel'); ?></option>
+                                    <option value="fixed_product"><?php esc_html_e('Fixed product discount', 'brikpanel'); ?></option>
+                                </select>
+                            </div>
+                            <div class="brikpanel-cp-qe-field">
+                                <label for="bpc-amount"><?php esc_html_e('Amount', 'brikpanel'); ?></label>
+                                <div class="brikpanel-cp-input-group" id="bpc-amount-group">
+                                    <span class="brikpanel-cp-input-prefix" id="bpc-amount-prefix">%</span>
+                                    <input type="text" id="bpc-amount" placeholder="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="brikpanel-cp-qe-field">
+                            <label class="brikpanel-cp-toggle-label">
+                                <span><?php esc_html_e('Free shipping', 'brikpanel'); ?></span>
+                                <span class="brikpanel-cp-toggle" id="bpc-free-shipping-toggle">
+                                    <input type="checkbox" id="bpc-free-shipping">
+                                    <span class="brikpanel-cp-toggle-slider"></span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-expiry"><?php esc_html_e('Expiry date', 'brikpanel'); ?></label>
+                            <input type="date" id="bpc-expiry">
+                        </div>
+                    </div>
+
+                    <!-- Usage Restrictions Section -->
+                    <div class="brikpanel-cp-drawer-section">
+                        <h4 class="brikpanel-cp-drawer-section-title"><?php esc_html_e('Usage restrictions', 'brikpanel'); ?></h4>
+
+                        <div class="brikpanel-cp-qe-row">
+                            <div class="brikpanel-cp-qe-field">
+                                <label for="bpc-min-spend"><?php esc_html_e('Minimum spend', 'brikpanel'); ?></label>
+                                <div class="brikpanel-cp-input-group">
+                                    <span class="brikpanel-cp-input-prefix"><?php echo esc_html($currency); ?></span>
+                                    <input type="text" id="bpc-min-spend" placeholder="<?php esc_attr_e('No minimum', 'brikpanel'); ?>">
+                                </div>
+                            </div>
+                            <div class="brikpanel-cp-qe-field">
+                                <label for="bpc-max-spend"><?php esc_html_e('Maximum spend', 'brikpanel'); ?></label>
+                                <div class="brikpanel-cp-input-group">
+                                    <span class="brikpanel-cp-input-prefix"><?php echo esc_html($currency); ?></span>
+                                    <input type="text" id="bpc-max-spend" placeholder="<?php esc_attr_e('No maximum', 'brikpanel'); ?>">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="brikpanel-cp-qe-field">
+                            <label class="brikpanel-cp-toggle-label">
+                                <span><?php esc_html_e('Individual use only', 'brikpanel'); ?></span>
+                                <span class="brikpanel-cp-toggle">
+                                    <input type="checkbox" id="bpc-individual-use">
+                                    <span class="brikpanel-cp-toggle-slider"></span>
+                                </span>
+                            </label>
+                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Cannot be used with other coupons', 'brikpanel'); ?></span>
+                        </div>
+
+                        <div class="brikpanel-cp-qe-field">
+                            <label class="brikpanel-cp-toggle-label">
+                                <span><?php esc_html_e('Exclude sale items', 'brikpanel'); ?></span>
+                                <span class="brikpanel-cp-toggle">
+                                    <input type="checkbox" id="bpc-exclude-sale">
+                                    <span class="brikpanel-cp-toggle-slider"></span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Usage Limits Section -->
+                    <div class="brikpanel-cp-drawer-section">
+                        <h4 class="brikpanel-cp-drawer-section-title"><?php esc_html_e('Usage limits', 'brikpanel'); ?></h4>
+
+                        <div class="brikpanel-cp-qe-row">
+                            <div class="brikpanel-cp-qe-field">
+                                <label for="bpc-usage-limit"><?php esc_html_e('Usage limit per coupon', 'brikpanel'); ?></label>
+                                <input type="number" id="bpc-usage-limit" min="0" placeholder="<?php esc_attr_e('Unlimited', 'brikpanel'); ?>">
+                            </div>
+                            <div class="brikpanel-cp-qe-field">
+                                <label for="bpc-usage-limit-user"><?php esc_html_e('Usage limit per user', 'brikpanel'); ?></label>
+                                <input type="number" id="bpc-usage-limit-user" min="0" placeholder="<?php esc_attr_e('Unlimited', 'brikpanel'); ?>">
+                            </div>
+                        </div>
+
+                        <div class="brikpanel-cp-qe-field" id="bpc-usage-count-field" style="display:none;">
+                            <label><?php esc_html_e('Usage count', 'brikpanel'); ?></label>
+                            <span class="brikpanel-cp-usage-count-display" id="bpc-usage-count-display">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="brikpanel-cp-drawer-footer">
+                    <button type="button" class="brikpanel-cp-btn secondary" id="bpc-drawer-cancel"><?php esc_html_e('Cancel', 'brikpanel'); ?></button>
+                    <button type="button" class="brikpanel-cp-btn primary" id="bpc-drawer-save"><?php esc_html_e('Save changes', 'brikpanel'); ?></button>
+                </div>
+            </div>
+
+            <!-- Toast Container -->
+            <div class="brikpanel-cp-toast-container" id="bpc-toast-container"></div>
+
+        </div>
+        </div>
+        <?php
+    }
+
+    // =========================================================================
+    // AJAX: FETCH COUPONS
+    // =========================================================================
+
+    public function ajax_fetch_coupons() {
+        check_ajax_referer('brikpanel_coupons_nonce', 'security');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $page     = max(1, intval($_POST['page'] ?? 1));
+        $per_page = max(1, min(100, intval($_POST['per_page'] ?? 20)));
+        $search   = sanitize_text_field($_POST['search'] ?? '');
+        $status   = sanitize_key($_POST['status'] ?? 'any');
+        $sort     = sanitize_text_field($_POST['sort'] ?? 'date-desc');
+
+        // Parse sort
+        $sort_parts = explode('-', $sort);
+        $orderby = $sort_parts[0] ?? 'date';
+        $order   = strtoupper($sort_parts[1] ?? 'DESC');
+
+        if (!in_array($orderby, ['date', 'title'], true)) {
+            $orderby = 'date';
+        }
+        if (!in_array($order, ['ASC', 'DESC'], true)) {
+            $order = 'DESC';
+        }
+
+        $statuses = ['publish', 'draft'];
+        if ($status === 'publish') {
+            $statuses = ['publish'];
+        } elseif ($status === 'draft') {
+            $statuses = ['draft'];
+        } elseif ($status === 'trash') {
+            $statuses = ['trash'];
+        }
+
+        $args = [
+            'post_type'      => 'shop_coupon',
+            'post_status'    => $statuses,
+            'posts_per_page' => $per_page,
+            'paged'          => $page,
+            'orderby'        => $orderby,
+            'order'          => $order,
+        ];
+
+        if ($search) {
+            $args['s'] = $search;
+        }
+
+        $query   = new WP_Query($args);
+        $coupons = [];
+
+        foreach ($query->posts as $post) {
+            $coupon = new WC_Coupon($post->ID);
+
+            $expiry_ts   = $coupon->get_date_expires();
+            $expiry_date = $expiry_ts ? $expiry_ts->date('Y-m-d') : '';
+
+            $usage_limit = $coupon->get_usage_limit();
+            $usage_count = $coupon->get_usage_count();
+
+            $coupons[] = [
+                'id'                   => $post->ID,
+                'code'                 => $coupon->get_code() ?? '',
+                'description'          => $coupon->get_description() ?? '',
+                'discount_type'        => $coupon->get_discount_type(),
+                'amount'               => $coupon->get_amount(),
+                'free_shipping'        => $coupon->get_free_shipping() ? 'yes' : 'no',
+                'expiry_date'          => $expiry_date,
+                'minimum_amount'       => $coupon->get_minimum_amount(),
+                'maximum_amount'       => $coupon->get_maximum_amount(),
+                'individual_use'       => $coupon->get_individual_use() ? 'yes' : 'no',
+                'exclude_sale_items'   => $coupon->get_exclude_sale_items() ? 'yes' : 'no',
+                'usage_limit'          => $usage_limit ? $usage_limit : '',
+                'usage_limit_per_user' => $coupon->get_usage_limit_per_user() ? $coupon->get_usage_limit_per_user() : '',
+                'usage_count'          => $usage_count,
+                'status'               => $post->post_status,
+            ];
+        }
+
+        // Counts
+        $all_counts = wp_count_posts('shop_coupon');
+
+        wp_send_json_success([
+            'coupons' => $coupons,
+            'total'   => (int) $query->found_posts,
+            'pages'   => (int) $query->max_num_pages,
+            'counts'  => [
+                'all'     => (int) (($all_counts->publish ?? 0) + ($all_counts->draft ?? 0)),
+                'publish' => (int) ($all_counts->publish ?? 0),
+                'draft'   => (int) ($all_counts->draft ?? 0),
+                'trash'   => (int) ($all_counts->trash ?? 0),
+            ],
+        ]);
+    }
+
+    // =========================================================================
+    // AJAX: SAVE COUPON (Create or Update)
+    // =========================================================================
+
+    public function ajax_save_coupon() {
+        check_ajax_referer('brikpanel_coupons_nonce', 'security');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $coupon_id = intval($_POST['coupon_id'] ?? 0);
+        $code      = sanitize_text_field($_POST['code'] ?? '');
+
+        if (empty($code)) {
+            wp_send_json_error(['message' => __('Coupon code is required.', 'brikpanel')]);
+        }
+
+        // Check for duplicate coupon code (only for new coupons or code changes)
+        if ($coupon_id > 0) {
+            $coupon = new WC_Coupon($coupon_id);
+        } else {
+            $coupon = new WC_Coupon();
+        }
+
+        // Check duplicate code
+        $existing = wc_get_coupon_id_by_code($code);
+        if ($existing && $existing !== $coupon_id) {
+            wp_send_json_error(['message' => __('A coupon with this code already exists.', 'brikpanel')]);
+        }
+
+        $coupon->set_code($code);
+        $coupon->set_description(sanitize_textarea_field($_POST['description'] ?? ''));
+
+        $discount_type = sanitize_key($_POST['discount_type'] ?? 'percent');
+        if (!in_array($discount_type, ['percent', 'fixed_cart', 'fixed_product'], true)) {
+            $discount_type = 'percent';
+        }
+        $coupon->set_discount_type($discount_type);
+
+        $amount = floatval($_POST['amount'] ?? 0);
+        $coupon->set_amount($amount);
+
+        $free_shipping = sanitize_key($_POST['free_shipping'] ?? 'no');
+        $coupon->set_free_shipping($free_shipping === 'yes');
+
+        // Expiry date
+        $expiry = sanitize_text_field($_POST['expiry_date'] ?? '');
+        if ($expiry) {
+            $coupon->set_date_expires(strtotime($expiry . ' 23:59:59'));
+        } else {
+            $coupon->set_date_expires(null);
+        }
+
+        // Usage restrictions
+        $min_amount = sanitize_text_field($_POST['minimum_amount'] ?? '');
+        $coupon->set_minimum_amount($min_amount !== '' ? floatval($min_amount) : '');
+
+        $max_amount = sanitize_text_field($_POST['maximum_amount'] ?? '');
+        $coupon->set_maximum_amount($max_amount !== '' ? floatval($max_amount) : '');
+
+        $individual_use = sanitize_key($_POST['individual_use'] ?? 'no');
+        $coupon->set_individual_use($individual_use === 'yes');
+
+        $exclude_sale = sanitize_key($_POST['exclude_sale_items'] ?? 'no');
+        $coupon->set_exclude_sale_items($exclude_sale === 'yes');
+
+        // Usage limits
+        $usage_limit = sanitize_text_field($_POST['usage_limit'] ?? '');
+        $coupon->set_usage_limit($usage_limit !== '' ? intval($usage_limit) : 0);
+
+        $usage_limit_user = sanitize_text_field($_POST['usage_limit_per_user'] ?? '');
+        $coupon->set_usage_limit_per_user($usage_limit_user !== '' ? intval($usage_limit_user) : 0);
+
+        // Set status - default publish for new coupons
+        if ($coupon_id === 0) {
+            $coupon->set_status('publish');
+        }
+
+        $coupon->save();
+
+        wp_send_json_success([
+            'message'   => $coupon_id > 0 ? __('Coupon updated!', 'brikpanel') : __('Coupon created!', 'brikpanel'),
+            'coupon_id' => $coupon->get_id(),
+        ]);
+    }
+
+    // =========================================================================
+    // AJAX: DELETE COUPON
+    // =========================================================================
+
+    public function ajax_delete_coupon() {
+        check_ajax_referer('brikpanel_coupons_nonce', 'security');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $coupon_id = intval($_POST['coupon_id'] ?? 0);
+        $permanent = sanitize_key($_POST['permanent'] ?? 'no') === 'yes';
+
+        if (!$coupon_id) {
+            wp_send_json_error(['message' => __('Invalid coupon ID.', 'brikpanel')]);
+        }
+
+        $post = get_post($coupon_id);
+        if (!$post || $post->post_type !== 'shop_coupon') {
+            wp_send_json_error(['message' => __('Coupon not found.', 'brikpanel')]);
+        }
+
+        if ($permanent) {
+            wp_delete_post($coupon_id, true);
+            wp_send_json_success(['message' => __('Coupon permanently deleted.', 'brikpanel')]);
+        } else {
+            wp_trash_post($coupon_id);
+            wp_send_json_success(['message' => __('Coupon moved to trash.', 'brikpanel')]);
+        }
+    }
+
+    // =========================================================================
+    // AJAX: TOGGLE COUPON STATUS
+    // =========================================================================
+
+    public function ajax_toggle_coupon_status() {
+        check_ajax_referer('brikpanel_coupons_nonce', 'security');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $coupon_id = intval($_POST['coupon_id'] ?? 0);
+        if (!$coupon_id) {
+            wp_send_json_error(['message' => __('Invalid coupon ID.', 'brikpanel')]);
+        }
+
+        $post = get_post($coupon_id);
+        if (!$post || $post->post_type !== 'shop_coupon') {
+            wp_send_json_error(['message' => __('Coupon not found.', 'brikpanel')]);
+        }
+
+        $new_status = ($post->post_status === 'publish') ? 'draft' : 'publish';
+
+        wp_update_post([
+            'ID'          => $coupon_id,
+            'post_status' => $new_status,
+        ]);
+
+        $label = $new_status === 'publish' ? __('Published', 'brikpanel') : __('Draft', 'brikpanel');
+
+        wp_send_json_success([
+            'status'  => $new_status,
+            'message' => sprintf(
+                /* translators: %s: status label */
+                __('Coupon status changed to %s.', 'brikpanel'),
+                $label
+            ),
+        ]);
+    }
+
+    // =========================================================================
+    // AJAX: DUPLICATE COUPON
+    // =========================================================================
+
+    public function ajax_duplicate_coupon() {
+        check_ajax_referer('brikpanel_coupons_nonce', 'security');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $coupon_id = intval($_POST['coupon_id'] ?? 0);
+        if (!$coupon_id) {
+            wp_send_json_error(['message' => __('Invalid coupon ID.', 'brikpanel')]);
+        }
+
+        $original = new WC_Coupon($coupon_id);
+        if (!$original->get_id()) {
+            wp_send_json_error(['message' => __('Coupon not found.', 'brikpanel')]);
+        }
+
+        $new_coupon = new WC_Coupon();
+
+        // Generate unique code
+        $base_code = $original->get_code();
+        $new_code  = $base_code . '-copy';
+        $suffix    = 1;
+        while (wc_get_coupon_id_by_code($new_code)) {
+            $suffix++;
+            $new_code = $base_code . '-copy-' . $suffix;
+        }
+
+        $new_coupon->set_code($new_code);
+        $new_coupon->set_description($original->get_description());
+        $new_coupon->set_discount_type($original->get_discount_type());
+        $new_coupon->set_amount($original->get_amount());
+        $new_coupon->set_free_shipping($original->get_free_shipping());
+        $new_coupon->set_date_expires($original->get_date_expires() ? $original->get_date_expires()->getTimestamp() : null);
+        $new_coupon->set_minimum_amount($original->get_minimum_amount());
+        $new_coupon->set_maximum_amount($original->get_maximum_amount());
+        $new_coupon->set_individual_use($original->get_individual_use());
+        $new_coupon->set_exclude_sale_items($original->get_exclude_sale_items());
+        $new_coupon->set_usage_limit($original->get_usage_limit());
+        $new_coupon->set_usage_limit_per_user($original->get_usage_limit_per_user());
+        $new_coupon->set_status('draft');
+
+        $new_coupon->save();
+
+        wp_send_json_success([
+            'message'   => __('Coupon duplicated!', 'brikpanel'),
+            'coupon_id' => $new_coupon->get_id(),
+        ]);
+    }
+}
+
+new Brikpanel_Coupons();

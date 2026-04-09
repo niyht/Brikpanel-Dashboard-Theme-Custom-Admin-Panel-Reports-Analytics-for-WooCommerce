@@ -1,0 +1,1168 @@
+/* ==========================================================================
+   BrikPanel - Coupons List
+   Modern, AJAX-powered coupon management interface
+   ========================================================================== */
+
+/* ---------- Variables ---------- */
+.brikpanel-cp {
+    --bg: #f1f1f1;
+    --card: #ffffff;
+    --text: #303030;
+    --text-secondary: #616161;
+    --text-muted: #8a8a8a;
+    --border: #e3e3e3;
+    --input-border: #8a8a8a;
+    --input-focus: #303030;
+    --primary: #303030;
+    --primary-hover: #1a1a1a;
+    --success: #1a8917;
+    --error: #d72c0d;
+    --hover-bg: #f7f7f7;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    color: var(--text);
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* ---------- Header ---------- */
+.brikpanel-cp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 0;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-cp-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.brikpanel-cp-header-left h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    color: var(--text);
+}
+
+.brikpanel-cp-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    height: 1.375rem;
+    padding: 0 0.5rem;
+    border-radius: 1rem;
+    background: var(--border);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.brikpanel-cp-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+/* ---------- Search ---------- */
+.brikpanel-cp-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.brikpanel-cp-search-icon {
+    position: absolute;
+    left: 0.75rem;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.brikpanel-cp input[type="text"].brikpanel-cp-search {
+    width: 240px;
+    padding: 8px 12px 8px 36px;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--text);
+    background: var(--card);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+    height: auto;
+    line-height: 1.4;
+}
+
+.brikpanel-cp input[type="text"].brikpanel-cp-search:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+/* ---------- Buttons ---------- */
+.brikpanel-cp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-decoration: none;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.brikpanel-cp-btn.primary {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.brikpanel-cp-btn.primary:hover {
+    background: var(--primary-hover);
+}
+
+.brikpanel-cp-btn.secondary {
+    background: var(--card);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--border), 0 1px 0 rgba(0,0,0,0.05);
+}
+
+.brikpanel-cp-btn.secondary:hover {
+    background: var(--hover-bg);
+}
+
+.brikpanel-cp-btn.danger {
+    background: var(--card);
+    color: var(--error);
+    box-shadow: inset 0 0 0 1px var(--border), 0 1px 0 rgba(0,0,0,0.05);
+}
+
+.brikpanel-cp-btn.danger:hover {
+    background: #fef2f2;
+}
+
+.brikpanel-cp-btn.small {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+.brikpanel-cp-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ---------- Filters Bar ---------- */
+.brikpanel-cp-filters {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+/* ---------- Status Tabs ---------- */
+.brikpanel-cp-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.brikpanel-cp-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brikpanel-cp-tab:hover {
+    background: rgba(0,0,0,0.05);
+}
+
+.brikpanel-cp-tab.active {
+    background: rgba(0,0,0,0.08);
+    color: var(--text);
+    font-weight: 600;
+}
+
+.brikpanel-cp-tab-count {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* ---------- Filter Selects ---------- */
+.brikpanel-cp-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-cp-select {
+    padding: 0.375rem 2rem 0.375rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--text);
+    background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23616161' stroke-width='2'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E") no-repeat right 0.5rem center;
+    background-size: 12px;
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: border-color 0.15s;
+    max-width: 180px;
+}
+
+.brikpanel-cp-select:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.brikpanel-cp-select.full {
+    max-width: none;
+    width: 100%;
+}
+
+/* ---------- Bulk Bar ---------- */
+.brikpanel-cp-bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.625rem 1rem;
+    background: #f0f4ff;
+    border: 1px solid #d0daf7;
+    border-radius: 0.5rem;
+    margin-bottom: 0.75rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-cp-bulk-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    color: var(--text);
+}
+
+.brikpanel-cp-bulk-link {
+    background: none;
+    border: none;
+    color: #4a6cf7;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.brikpanel-cp-bulk-link:hover {
+    color: #3451d1;
+}
+
+.brikpanel-cp-bulk-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ---------- Card ---------- */
+.brikpanel-cp-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+/* ---------- Table ---------- */
+.brikpanel-cp-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.brikpanel-cp-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 700px;
+}
+
+.brikpanel-cp-table thead {
+    background: var(--hover-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+.brikpanel-cp-table thead th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.brikpanel-cp-table thead th:first-child {
+    padding-left: 1.25rem;
+}
+
+.brikpanel-cp-th-check {
+    width: 40px;
+}
+
+.brikpanel-cp-th-code {
+    min-width: 140px;
+}
+
+.brikpanel-cp-th-type {
+    min-width: 100px;
+}
+
+.brikpanel-cp-th-amount {
+    min-width: 80px;
+}
+
+.brikpanel-cp-th-desc {
+    min-width: 120px;
+}
+
+.brikpanel-cp-th-usage {
+    min-width: 80px;
+}
+
+.brikpanel-cp-th-expiry {
+    min-width: 100px;
+}
+
+.brikpanel-cp-th-status {
+    min-width: 80px;
+}
+
+.brikpanel-cp-th-actions {
+    width: 100px;
+}
+
+/* ---------- Table Rows ---------- */
+.brikpanel-cp-row {
+    border-bottom: 1px solid var(--border);
+    transition: background-color 0.1s;
+    cursor: default;
+}
+
+.brikpanel-cp-row:last-child {
+    border-bottom: none;
+}
+
+.brikpanel-cp-row:hover {
+    background: var(--hover-bg);
+}
+
+.brikpanel-cp-row td {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    vertical-align: middle;
+    color: var(--text);
+}
+
+.brikpanel-cp-row td:first-child {
+    padding-left: 1.25rem;
+}
+
+.brikpanel-cp-row-deleting {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* ---------- Checkbox ---------- */
+.brikpanel-cp-checkbox {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+/* ---------- Coupon Code ---------- */
+.brikpanel-cp-code-text {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    cursor: pointer;
+}
+
+.brikpanel-cp-code-text:hover {
+    color: var(--primary-hover);
+}
+
+/* ---------- Type Badge ---------- */
+.brikpanel-cp-type-badge {
+    display: inline-block;
+    padding: 0.0625rem 0.5rem;
+    border-radius: 0.25rem;
+    background: #f0f0f0;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+/* ---------- Amount Cell ---------- */
+.brikpanel-cp-amount-cell {
+    font-weight: 550;
+    white-space: nowrap;
+}
+
+/* ---------- Description Cell ---------- */
+.brikpanel-cp-desc-cell {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+}
+
+/* ---------- Usage Cell ---------- */
+.brikpanel-cp-usage-cell {
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+/* ---------- Expiry Cell ---------- */
+.brikpanel-cp-expiry-cell {
+    white-space: nowrap;
+    font-size: 0.8125rem;
+}
+
+.brikpanel-cp-expiry-expired {
+    color: var(--error);
+    font-weight: 550;
+}
+
+/* ---------- Status Badge ---------- */
+.brikpanel-cp-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.brikpanel-cp-status-badge.published {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.brikpanel-cp-status-badge.draft {
+    background: #f5f5f5;
+    color: var(--text-muted);
+}
+
+.brikpanel-cp-status-badge.trashed {
+    background: #fce4e4;
+    color: #c62828;
+}
+
+.brikpanel-cp-status-badge:hover {
+    box-shadow: 0 0 0 2px var(--primary);
+}
+
+.brikpanel-cp-status-saving {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* ---------- Actions ---------- */
+.brikpanel-cp-actions-cell {
+    text-align: right;
+    padding-right: 1.25rem !important;
+}
+
+.brikpanel-cp-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.brikpanel-cp-row:hover .brikpanel-cp-actions {
+    opacity: 1;
+}
+
+.brikpanel-cp-actions button,
+.brikpanel-cp-actions a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.1s;
+    text-decoration: none;
+}
+
+.brikpanel-cp-actions button:hover,
+.brikpanel-cp-actions a:hover {
+    background: var(--border);
+    color: var(--text);
+}
+
+.brikpanel-cp-action-delete:hover {
+    color: var(--error) !important;
+    background: #fef2f2 !important;
+}
+
+/* ---------- Editable Cells ---------- */
+.brikpanel-cp-editable {
+    cursor: text;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.375rem;
+    transition: background-color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.75rem;
+}
+
+.brikpanel-cp-editable:hover {
+    background: rgba(0,0,0,0.04);
+    box-shadow: 0 0 0 1px var(--border);
+}
+
+.brikpanel-cp-editable.saving {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.brikpanel-cp-inline-input {
+    width: 80px;
+    padding: 0.25rem 0.375rem;
+    border: 1px solid var(--input-focus);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--input-focus);
+    background: var(--card);
+}
+
+.brikpanel-cp-inline-input:focus {
+    border-color: var(--input-focus);
+}
+
+/* ---------- Pagination ---------- */
+.brikpanel-cp-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--border);
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-cp-showing {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.brikpanel-cp-page-btns {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.brikpanel-cp-page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    background: var(--card);
+    color: var(--text);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brikpanel-cp-page-btn:hover:not(.disabled):not(.active) {
+    background: var(--hover-bg);
+    border-color: var(--text-muted);
+}
+
+.brikpanel-cp-page-btn.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.brikpanel-cp-page-btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.brikpanel-cp-page-dots {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+}
+
+/* ---------- Empty State ---------- */
+.brikpanel-cp-empty {
+    text-align: center;
+    padding: 3rem 1rem !important;
+}
+
+.brikpanel-cp-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.brikpanel-cp-empty-state p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* ---------- Loading Spinner ---------- */
+.brikpanel-cp-loading-row td {
+    text-align: center;
+    padding: 3rem 1rem !important;
+}
+
+.brikpanel-cp-spinner {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: bpc-spin 0.6s linear infinite;
+}
+
+@keyframes bpc-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- Drawer Overlay ---------- */
+.brikpanel-cp-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 99999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s, visibility 0.25s;
+}
+
+.brikpanel-cp-drawer-overlay.open {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ---------- Drawer ---------- */
+.brikpanel-cp-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 440px;
+    max-width: 90vw;
+    background: var(--card);
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brikpanel-cp-drawer.open {
+    transform: translateX(0);
+}
+
+.brikpanel-cp-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.brikpanel-cp-drawer-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.brikpanel-cp-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brikpanel-cp-drawer-close:hover {
+    background: var(--hover-bg);
+    color: var(--text);
+}
+
+.brikpanel-cp-drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.brikpanel-cp-drawer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+/* ---------- Drawer Sections ---------- */
+.brikpanel-cp-drawer-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.brikpanel-cp-drawer-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.brikpanel-cp-drawer-section-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 0.25rem 0;
+    padding: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* ---------- Drawer Fields ---------- */
+.brikpanel-cp-qe-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.brikpanel-cp-qe-field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.brikpanel-cp-qe-field input[type="text"],
+.brikpanel-cp-qe-field input[type="number"],
+.brikpanel-cp-qe-field input[type="date"],
+.brikpanel-cp-qe-field textarea,
+.brikpanel-cp-qe-field select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--input-border);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+    background: var(--card);
+    font-family: inherit;
+}
+
+.brikpanel-cp-qe-field input:focus,
+.brikpanel-cp-qe-field textarea:focus,
+.brikpanel-cp-qe-field select:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.brikpanel-cp-qe-field textarea {
+    resize: vertical;
+    min-height: 48px;
+}
+
+.brikpanel-cp-qe-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+/* ---------- Code Row ---------- */
+.brikpanel-cp-code-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.brikpanel-cp-code-row input[type="text"] {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--input-border);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.brikpanel-cp-code-row input[type="text"]:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+/* ---------- Input Group ---------- */
+.brikpanel-cp-input-group {
+    display: flex;
+    border: 1px solid var(--input-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.brikpanel-cp-input-group:focus-within {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.brikpanel-cp-input-prefix {
+    display: flex;
+    align-items: center;
+    padding: 0 0.625rem;
+    background: #f7f7f7;
+    border-right: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.brikpanel-cp-input-group input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: none !important;
+    box-shadow: none !important;
+    font-size: 0.875rem;
+    outline: none;
+    min-width: 0;
+    background: var(--card);
+}
+
+/* ---------- Toggle Switch ---------- */
+.brikpanel-cp-toggle-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.brikpanel-cp-toggle {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.brikpanel-cp-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.brikpanel-cp-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.15s ease;
+    border-radius: 22px;
+}
+
+.brikpanel-cp-toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.15s ease;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.brikpanel-cp-toggle input:checked + .brikpanel-cp-toggle-slider {
+    background-color: var(--primary);
+}
+
+.brikpanel-cp-toggle input:checked + .brikpanel-cp-toggle-slider::before {
+    transform: translateX(18px);
+}
+
+/* ---------- Field Hint ---------- */
+.brikpanel-cp-field-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: -0.125rem;
+}
+
+/* ---------- Usage Count Display ---------- */
+.brikpanel-cp-usage-count-display {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 1rem;
+    background: #f0f0f0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 550;
+}
+
+/* ---------- Toast Notifications ---------- */
+.brikpanel-cp-toast-container {
+    position: fixed;
+    top: 44px;
+    right: 20px;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.brikpanel-cp-toast {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    transform: translateX(110%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: auto;
+    max-width: 360px;
+}
+
+.brikpanel-cp-toast.show {
+    transform: translateX(0);
+}
+
+.brikpanel-cp-toast.success {
+    background: #e4f5e1;
+    color: #1a6b15;
+    border: 1px solid #b7e1b0;
+}
+
+.brikpanel-cp-toast.error {
+    background: #fce4e4;
+    color: #c62828;
+    border: 1px solid #f1b0b0;
+}
+
+.brikpanel-cp-toast.info {
+    background: #e8f0fe;
+    color: #1a56db;
+    border: 1px solid #bdd3f7;
+}
+
+.brikpanel-cp-toast-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 1.125rem;
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 0;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.brikpanel-cp-toast-close:hover {
+    opacity: 1;
+}
+
+/* ---------- Misc ---------- */
+.brikpanel-cp-text-muted {
+    color: var(--text-muted);
+}
+
+/* ---------- Responsive ---------- */
+@media screen and (max-width: 782px) {
+    .brikpanel-cp-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .brikpanel-cp-header-right {
+        width: 100%;
+    }
+
+    .brikpanel-cp input[type="text"].brikpanel-cp-search {
+        flex: 1;
+        width: auto;
+        min-width: 0;
+    }
+
+    .brikpanel-cp-filters {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .brikpanel-cp-tabs {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+    }
+
+    .brikpanel-cp-filter-group {
+        width: 100%;
+    }
+
+    .brikpanel-cp-select {
+        flex: 1;
+        max-width: none;
+    }
+
+    .brikpanel-cp-bulk-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .brikpanel-cp-bulk-right {
+        width: 100%;
+    }
+
+    .brikpanel-cp-bulk-right .brikpanel-cp-btn {
+        flex: 1;
+    }
+
+    .brikpanel-cp-pagination {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .brikpanel-cp-th-desc,
+    .brikpanel-cp-cell-desc,
+    .brikpanel-cp-th-usage,
+    .brikpanel-cp-cell-usage {
+        display: none;
+    }
+
+    .brikpanel-cp-drawer {
+        width: 100vw;
+        max-width: 100vw;
+    }
+
+    .brikpanel-cp-qe-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------- Hide WP Admin defaults ---------- */
+body.admin_page_brikpanel-coupons .screen-meta-links,
+body.admin_page_brikpanel-coupons .notice:not(.brikpanel-notice),
+body.admin_page_brikpanel-coupons #screen-meta {
+    display: none;
+}
+
+body.admin_page_brikpanel-coupons #wpbody-content {
+    padding-bottom: 2rem;
+    margin: 0 !important;
+}
+
+body.admin_page_brikpanel-coupons .wrap {
+    margin: 0 !important;
+    padding: 0 10px !important;
+    max-width: none !important;
+}
+
+/* Lock body scroll when drawer open */
+body.brikpanel-cp-drawer-open {
+    overflow: hidden;
+}
