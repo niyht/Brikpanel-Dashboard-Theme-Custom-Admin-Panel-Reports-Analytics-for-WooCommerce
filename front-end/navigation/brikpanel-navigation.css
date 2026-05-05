@@ -144,11 +144,12 @@
 
 /* Style our own menu. */
 #brikpanel-navigation {
-	padding: 0.75rem;
+	box-sizing: border-box;
+	padding: 0.75rem 0.75rem 1.5rem;
 	font-weight: 500;
 	font-size: 0.85rem;
 	overflow-y: auto;
-	height: 100vh;
+	height: 100%;
 }
 #brikpanel-navigation li {
 	margin: 0;
@@ -323,4 +324,46 @@ li#toplevel_page_woocommerce .wp-menu-image {
 /* Compatibility: WPFactory */
 #toplevel_page_wpfactory .wp-menu-image {
 	background-size: contain;
+}
+
+/* ── Classic Navigation Mode ────────────────────────────────────────────
+   When the user disables modern navigation, restore the default
+   WordPress admin menu while keeping BrikPanel's layout overrides. */
+.brikpanel-classic-nav #adminmenu {
+	display: block !important;
+}
+.brikpanel-classic-nav #adminmenuback {
+	background-color: #23282d;
+	width: 160px;
+}
+.brikpanel-classic-nav #adminmenuwrap {
+	background-color: #23282d;
+	width: 160px;
+}
+.brikpanel-classic-nav #wpcontent {
+	margin-left: 160px;
+}
+.brikpanel-classic-nav #brikpanel-navigation {
+	display: none !important;
+}
+@media (min-width: 783px) {
+	.brikpanel-classic-nav.auto-fold .interface-interface-skeleton {
+		left: 36px;
+	}
+}
+@media (min-width: 961px) {
+	.brikpanel-classic-nav.auto-fold .interface-interface-skeleton {
+		left: 160px;
+	}
+}
+@media screen and (max-width: 782px) {
+	.brikpanel-classic-nav #wpcontent {
+		margin-left: 0;
+	}
+}
+.brikpanel-classic-nav .sb-customizer-sidebar {
+	left: 160px;
+}
+.brikpanel-classic-nav .sbi-csz-header-insider {
+	width: calc(100% - 160px);
 }

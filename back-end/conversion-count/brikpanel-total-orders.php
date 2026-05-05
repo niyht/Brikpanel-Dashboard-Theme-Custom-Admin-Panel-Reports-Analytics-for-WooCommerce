@@ -8,7 +8,7 @@ if( ! defined( 'ABSPATH' ) ) exit;
  * @param string|null $end_date_gmt   End date in GMT (Y-m-d H:i:s format).
  * @return int Order count.
  */
-function brikpanel_get_order_count( $start_date_gmt = null, $end_date_gmt = null ) {
+function brikpanel_get_order_count( $start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false ) {
     global $wpdb;
 
     $include_statuses = array('wc-processing', 'wc-completed');
@@ -37,6 +37,12 @@ function brikpanel_get_order_count( $start_date_gmt = null, $end_date_gmt = null
     $exclusion = brikpanel_admin_order_exclusion_sql( $is_hpos, 'ID' );
     $query_sql .= $exclusion['sql'];
     $query_args = array_merge( $query_args, $exclusion['args'] );
+
+    if ( $exclude_marketplace ) {
+        $mp_exclusion = brikpanel_marketplace_order_exclusion_sql( $is_hpos );
+        $query_sql   .= $mp_exclusion['sql'];
+        $query_args   = array_merge( $query_args, $mp_exclusion['args'] );
+    }
 
     if ( $start_date_gmt ) {
         $query_sql .= " AND {$date_column_name} >= %s";

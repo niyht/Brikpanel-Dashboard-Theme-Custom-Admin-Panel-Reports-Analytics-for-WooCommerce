@@ -1,0 +1,866 @@
+/* =============================================================================
+   BrikPanel — RTL Override Stylesheet
+   -----------------------------------------------------------------------------
+   Loaded only when WordPress reports `is_rtl()` (Arabic, Hebrew, Persian, Urdu …).
+   All overrides are scoped under `body.rtl` so the file is a no-op if mistakenly
+   shipped to LTR sites.
+   ============================================================================= */
+
+
+/* =============================================================================
+   GLOBAL — direction baseline
+   ============================================================================= */
+body.rtl .brikpanel-pl,
+body.rtl .brikpanel-cp,
+body.rtl .brikpanel-product-editor-page,
+body.rtl .brikpanel-modern-edit,
+body.rtl .brikpanel-dash,
+body.rtl .brikpanel-segments,
+body.rtl .brikpanel-expenses,
+body.rtl .brikpanel-customer-analytics-page,
+body.rtl .brikpanel-cron-page {
+    direction: rtl;
+}
+
+
+/* =============================================================================
+   FILE: front-end/products/brikpanel-products-list.css
+   ============================================================================= */
+body.rtl .brikpanel-pl-search-icon { left: auto; right: 0.75rem; }
+body.rtl .brikpanel-pl input[type="text"].brikpanel-pl-search { padding: 8px 36px 8px 12px; }
+
+body.rtl .brikpanel-pl-select {
+    padding: 0.375rem 0.625rem 0.375rem 2rem;
+    background-position: left 0.5rem center;
+}
+
+body.rtl .brikpanel-pl-progress { left: auto; right: 0; }
+body.rtl .brikpanel-pl-progress::after { left: auto; right: 0; animation-direction: reverse; }
+
+@keyframes bpl-progress-slide-rtl {
+    0%   { right: -40%; left: auto; }
+    100% { right: 100%; left: auto; }
+}
+body.rtl .brikpanel-pl-progress::after { animation-name: bpl-progress-slide-rtl; }
+
+body.rtl .brikpanel-pl-table thead th { text-align: right; }
+body.rtl .brikpanel-pl-table thead th:first-child { padding-left: 1rem; padding-right: 1.25rem; }
+body.rtl .brikpanel-pl-row td:first-child { padding-left: 1rem; padding-right: 1.25rem; }
+body.rtl .brikpanel-pl-ss-thumb { left: auto; right: 2px; }
+body.rtl .brikpanel-pl-ss-toggle.is-on .brikpanel-pl-ss-thumb { transform: translateX(-12px); }
+
+body.rtl .brikpanel-pl-actions-cell {
+    text-align: left;
+    padding-right: 1rem !important;
+    padding-left: 1.25rem !important;
+}
+
+body.rtl .brikpanel-pl-drawer {
+    right: auto;
+    left: 0;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.12);
+}
+body.rtl .brikpanel-pl-drawer.open { transform: translateX(0); }
+
+body.rtl .brikpanel-pl-input-prefix {
+    border-right: none;
+    border-left: 1px solid var(--border);
+}
+
+body.rtl .brikpanel-pl-toast-container { right: auto; left: 20px; }
+body.rtl .brikpanel-pl-toast { transform: translateX(-110%); }
+body.rtl .brikpanel-pl-toast.show { transform: translateX(0); }
+body.rtl .brikpanel-pl-toast-close { margin-left: 0; margin-right: auto; }
+
+body.rtl .bpl-fast-warning-list { padding-left: 0; padding-right: 1.125rem; }
+
+body.rtl .brikpanel-pl-stock-popover-actions { justify-content: flex-start; }
+
+body.rtl .brikpanel-pl-switch-slider::before { left: auto; right: 3px; }
+body.rtl .brikpanel-pl-switch input:checked + .brikpanel-pl-switch-slider::before { transform: translateX(-18px); }
+
+body.rtl .brikpanel-pl-var-popup-input { text-align: left; }
+body.rtl .brikpanel-pl-var-popup.is-price .brikpanel-pl-var-popup-input { text-align: right; }
+
+body.rtl .brikpanel-pl-columns-popover { right: auto; left: 0; }
+
+body.rtl .brikpanel-pl-cat-more { margin-left: 0; margin-right: 0.375rem; }
+body.rtl .brikpanel-pl-row-actions { margin-left: 0; margin-right: 0.5rem; }
+body.rtl .brikpanel-pl-th-ase { text-align: right; }
+
+body.rtl .brikpanel-pl-qe-term-children {
+    padding: 0 1rem 0 0;
+    border-left: none;
+    border-right: 1px solid #e3e3e3;
+    margin-left: 0;
+    margin-right: 0.625rem;
+}
+
+body.rtl .brikpanel-pl.is-sort-mode .brikpanel-pl-th-handle,
+body.rtl .brikpanel-pl.is-sort-mode .brikpanel-pl-cell-handle {
+    padding: 0.625rem 0.5rem 0.625rem 0 !important;
+}
+
+@media screen and (max-width: 782px) {
+    body.rtl .brikpanel-pl-table thead th,
+    body.rtl .brikpanel-pl-row td { padding-left: 0.375rem; padding-right: 0.375rem; }
+
+    body.rtl .brikpanel-pl-table thead th:first-child,
+    body.rtl .brikpanel-pl-row td:first-child { padding-left: 0.375rem; padding-right: 0.625rem; }
+
+    body.rtl .brikpanel-pl-actions-cell { padding-right: 0.5rem !important; padding-left: 0.5rem !important; }
+
+    body.rtl .brikpanel-pl-drawer { left: 0; right: 0; }
+}
+
+
+/* =============================================================================
+   FILE: front-end/order/brikpanel-order.css
+   ============================================================================= */
+body.rtl #order_line_items tr:last-child td:first-child {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0.75rem;
+}
+body.rtl #order_line_items tr:last-child td:last-child {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0.75rem;
+}
+
+body.rtl #order_fee_line_items tr:first-child td:first-child,
+body.rtl #order_shipping_line_items tr:first-child td:first-child,
+body.rtl #order_refunds tr:first-child td:first-child {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0.75rem;
+}
+body.rtl #order_fee_line_items tr:first-child td:last-child,
+body.rtl #order_shipping_line_items tr:first-child td:last-child,
+body.rtl #order_refunds tr:first-child td:last-child {
+    border-top-right-radius: 0;
+    border-top-left-radius: 0.75rem;
+}
+body.rtl #order_fee_line_items tr:last-child td:first-child,
+body.rtl #order_shipping_line_items tr:last-child td:first-child,
+body.rtl #order_refunds tr:last-child td:first-child {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0.75rem;
+}
+body.rtl #order_fee_line_items tr:last-child td:last-child,
+body.rtl #order_shipping_line_items tr:last-child td:last-child,
+body.rtl #order_refunds tr:last-child td:last-child {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0.75rem;
+}
+
+body.rtl .wc-order-edit-line-item-actions { left: auto; right: -0.4rem; }
+
+body.rtl .woocommerce_order_items .thumb { padding-left: 0 !important; padding-right: 1.5rem !important; }
+body.rtl .woocommerce_order_items .line_cost { padding-right: 0 !important; padding-left: 1.5rem !important; }
+
+body.rtl #postcustomstuff thead th { text-align: right; }
+body.rtl #postcustomstuff .submit:not(.add-custom-field) { margin-left: 0; margin-right: 8px; }
+body.rtl #side-sortables #postcustomstuff .submit { margin-right: 0; }
+body.rtl .add-custom-field { margin-left: auto; margin-right: 0 !important; }
+
+body.rtl .item_cost_incl .split-input { text-align: left; }
+body.rtl .item_cost_incl .input input { text-align: left; }
+
+body.rtl .brikpanel-order-header { left: 0; right: 0; }
+body.rtl .brikpanel-order-header__back svg { transform: scaleX(-1); }
+body.rtl .brikpanel-order-header__status-badge svg { margin-left: 0; margin-right: 0.125rem; }
+body.rtl .brikpanel-order-header .brikpanel-status-dropdown { right: auto; left: 0; }
+body.rtl .brikpanel-status-dropdown__item { text-align: right; }
+body.rtl .brikpanel-status-dropdown__item .brk-check { margin-left: 0; margin-right: auto; }
+
+body.rtl .brikpanel-modern-edit [id^="brikmarket_"] .inside table td:first-child,
+body.rtl .brikpanel-modern-edit [id^="brikmarket_"] .inside table th:first-child {
+    padding-right: 0;
+    padding-left: 0.75rem;
+}
+
+body.rtl .brikpanel-copy-address { margin-left: 0; margin-right: 0.5rem; }
+
+body.rtl .brikpanel-modern-edit .order_notes {
+    border-left: none;
+    border-right: 2px solid var(--brk-border);
+}
+
+body.rtl .brikpanel-modern-edit ul.order_notes li .note_content p {
+    margin-right: 0 !important;
+    padding-right: 0.375rem !important;
+    padding-left: 0 !important;
+}
+body.rtl .brikpanel-modern-edit ul.order_notes li .note_content p::before {
+    left: auto;
+    right: -14px;
+}
+
+body.rtl .brikpanel-toast {
+    right: auto;
+    left: 20px;
+    transform: translateX(-110%);
+}
+body.rtl .brikpanel-toast.is-visible { transform: translateX(0); }
+
+body.rtl .brk-item-downloads__total { margin-left: 0; margin-right: auto; }
+body.rtl .brk-item-downloads__file { padding: 0.25rem 1.125rem 0.25rem 0; }
+body.rtl .brk-item-downloads__file::before { left: auto; right: 0.25rem; }
+
+@media screen and (max-width: 782px) {
+    body.rtl .brikpanel-order-header { left: 0 !important; right: 0 !important; }
+    body.rtl .brikpanel-order-header__right { justify-content: flex-start; }
+}
+
+
+/* =============================================================================
+   FILE: front-end/products/brikpanel-product-editor.css
+   ============================================================================= */
+body.rtl .brikpanel-pe-back svg { transform: scaleX(-1); }
+body.rtl .brikpanel-pe-header-right { justify-content: flex-start; }
+
+body.rtl .brikpanel-pe-input-prefix,
+body.rtl .brikpanel-pe-input-suffix { border-right: none; }
+body.rtl .brikpanel-pe-input-prefix { border-left: 1px solid var(--pe-border); }
+body.rtl .brikpanel-pe-input-suffix { border-left: none; border-right: 1px solid var(--pe-border); }
+
+body.rtl .brikpanel-pe-slider::before { left: auto; right: 3px; }
+body.rtl .brikpanel-pe-switch input:checked + .brikpanel-pe-slider::before { transform: translateX(-18px); }
+
+body.rtl .brikpanel-pe-tooltip { margin-left: 0; margin-right: 0.25rem; }
+body.rtl .brikpanel-pe-char-count { text-align: left; }
+
+body.rtl .brikpanel-pe-gallery-item-remove { right: auto; left: 2px; }
+
+body.rtl .brikpanel-pe-cat-children {
+    padding: 0 1rem 0 0;
+    border-left: none;
+    border-right: 1px solid var(--pe-border);
+    margin-left: 0;
+    margin-right: 0.625rem;
+}
+
+body.rtl .brikpanel-pe-editor ul { padding-left: 0; padding-right: 1.5rem; }
+
+body.rtl .brikpanel-pe-attr-term-suggestions { left: 0; right: 0; }
+
+body.rtl .brikpanel-pe-select {
+    background-position: left 0.75rem center;
+    padding-left: 2rem;
+    padding-right: 0.75rem;
+}
+
+body.rtl .brikpanel-pe-metabox-content label input[type="checkbox"],
+body.rtl .brikpanel-pe-metabox-content label input[type="radio"],
+body.rtl .brikpanel-pe-wc-fields-content label input[type="checkbox"],
+body.rtl .brikpanel-pe-wc-fields-content label input[type="radio"] {
+    margin: 0 0 0 0.375rem !important;
+}
+
+body.rtl .brikpanel-pe-metabox-content .acf-switch .acf-switch-slider,
+body.rtl .brikpanel-pe-wc-fields-content .acf-switch .acf-switch-slider {
+    left: auto !important;
+    right: 3px !important;
+}
+body.rtl .brikpanel-pe-metabox-content .acf-switch.-on .acf-switch-slider,
+body.rtl .brikpanel-pe-wc-fields-content .acf-switch.-on .acf-switch-slider {
+    transform: translateX(-18px) !important;
+}
+
+body.rtl .brikpanel-pe-metabox-content .acf-checkbox-list label,
+body.rtl .brikpanel-pe-metabox-content .acf-radio-list label,
+body.rtl .brikpanel-pe-wc-fields-content .acf-checkbox-list label,
+body.rtl .brikpanel-pe-wc-fields-content .acf-radio-list label {
+    margin: 0 0 0.25rem 0.75rem !important;
+}
+
+body.rtl .brikpanel-pe-metabox-content .select2-container--default .select2-selection--single .select2-selection__arrow,
+body.rtl .brikpanel-pe-wc-fields-content .select2-container--default .select2-selection--single .select2-selection__arrow {
+    right: auto !important;
+    left: 0.25rem !important;
+}
+
+body.rtl .brikpanel-pe-var-table th { text-align: right; }
+body.rtl .brikpanel-pe-var-table .var-stock-status { background-position: left 0.5rem center; }
+
+body.rtl .var-image-count { right: auto; left: -6px; }
+
+body.rtl .brikpanel-pe-var-bulk #bpe-apply-bulk { margin-left: 0; margin-right: auto; }
+
+body.rtl .bpe-toast-container { right: auto; left: 20px; }
+body.rtl .bpe-toast { transform: translateX(-110%); }
+body.rtl .bpe-toast.show { transform: translateX(0); }
+
+body.rtl .brikpanel-pe-status-trigger { padding: 0.4375rem 0.75rem 0.4375rem 0.625rem; }
+body.rtl .brikpanel-pe-status-trigger-label { text-align: right; }
+
+body.rtl .brikpanel-pe-status-menu,
+body.rtl .brikpanel-pe-catvis-menu {
+    right: auto;
+    left: 0;
+    transform-origin: top left;
+}
+
+body.rtl .brikpanel-pe-metaboxes-wrap .categorydiv ul.categorychecklist ul.children {
+    margin-left: 0;
+    margin-right: 1.25rem;
+}
+
+body.rtl .brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist li {
+    padding: 0.25rem 0.5rem 0.25rem 0.625rem;
+}
+
+@media screen and (max-width: 782px) {
+    body.rtl .brikpanel-pe-var-bulk #bpe-apply-bulk { margin-right: 0; }
+}
+
+@media screen and (max-width: 480px) {
+    body.rtl .brikpanel-pe-header-right { justify-content: flex-start; }
+    body.rtl .brikpanel-pe-status-trigger { padding: 0.4375rem 0.625rem 0.4375rem 0.5rem; }
+    body.rtl .brikpanel-pe-status-menu { right: 0; left: auto; }
+}
+
+
+/* =============================================================================
+   FILE: front-end/products/brikpanel-products.css
+   ============================================================================= */
+body.rtl.post-type-shop_order .wp-list-table td.column-order_total,
+body.rtl.post-type-shop_order .wp-list-table td.column-wc_actions,
+body.rtl.woocommerce_page_wc-orders .wc-orders-list-table.wp-list-table td.column-order_total,
+body.rtl.woocommerce_page_wc-orders .wc-orders-list-table.wp-list-table td.column-wc_actions {
+    text-align: left !important;
+}
+
+body.rtl .wp-list-table th.manage-column.column-order_total a { float: inline-start; }
+body.rtl .page-title-action { float: left; }
+body.rtl p.search-box { float: left; }
+
+@media screen and (max-width: 782px) {
+    body.rtl .tablenav.bottom .displaying-num { margin-right: 0; margin-left: 7px; }
+}
+
+
+/* =============================================================================
+   FILE: front-end/dashboard/brikpanel-dashboard.css
+   ============================================================================= */
+body.rtl .brikpanel-dash-preset { border-right: none; border-left: 1px solid var(--bp-border); }
+body.rtl .brikpanel-dash-preset:last-child { border-left: none; }
+
+body.rtl .brikpanel-dash-table th { text-align: right; }
+body.rtl .brikpanel-dash-table th:last-child,
+body.rtl .brikpanel-dash-table td:last-child { text-align: left; }
+
+body.rtl .brikpanel-dash-live-ip { margin-left: 0; margin-right: 0.375rem; }
+
+body.rtl .brikpanel-device-pct,
+body.rtl .brikpanel-device-count { text-align: left; }
+
+body.rtl .brikpanel-subs-card--active,
+body.rtl .brikpanel-subs-card--hold,
+body.rtl .brikpanel-subs-card--cancelled,
+body.rtl .brikpanel-subs-card--expired,
+body.rtl .brikpanel-subs-card--pending,
+body.rtl .brikpanel-subs-card--pending-cancel { border-left: none; }
+
+body.rtl .brikpanel-subs-card--active         { border-right: 3px solid #1a8917; }
+body.rtl .brikpanel-subs-card--hold           { border-right: 3px solid #d07000; }
+body.rtl .brikpanel-subs-card--cancelled      { border-right: 3px solid #d72c0d; }
+body.rtl .brikpanel-subs-card--expired        { border-right: 3px solid #8a8a8a; }
+body.rtl .brikpanel-subs-card--pending        { border-right: 3px solid #616161; }
+body.rtl .brikpanel-subs-card--pending-cancel { border-right: 3px solid #c0392b; }
+
+body.rtl .globe-code-tag { left: auto; right: 6px; }
+
+body.rtl .brikpanel-dash-wp-widget-body table td,
+body.rtl .brikpanel-dash-wp-widget-body table th { text-align: right; }
+
+body.rtl .brikpanel-dash-header-suffix { margin-left: 0; margin-right: 0.25rem; }
+
+body.rtl .brikpanel-dash-copy-progress { left: auto; right: 0; }
+
+
+/* =============================================================================
+   FILE: front-end/orders/brikpanel-orders.css
+   ============================================================================= */
+/* Tooltip uses `width: max-content` + `left: 50%; transform: translateX(-50%)`
+   to center-anchor itself relative to its parent. In RTL, this combination
+   makes Chromium compute the element's intrinsic width against the parent's
+   right edge instead of its content, producing 2000+px wide hidden boxes
+   that blow out the page's scrollWidth and squeeze the orders table out of
+   view. Constrain the width so it stays within sane bounds. */
+body.rtl .brikpanel-tooltip {
+    width: auto !important;
+    max-width: 240px;
+    white-space: nowrap;
+}
+
+body.rtl #screen-meta-links { justify-content: flex-start; }
+
+body.rtl .brikpanel-search { margin-left: 0; margin-right: 0.25rem; }
+body.rtl .brikpanel-search.expanded .icons { left: auto; right: 6px; }
+
+body.rtl #post-search-input,
+body.rtl #orders-search-input-search-input {
+    padding: 0.125rem 1rem 0.125rem 0.75rem;
+}
+
+body.rtl .brikpanel-filters [class*="-filter"],
+body.rtl .brikpanel-filters .select2-selection {
+    padding: 0 0.5rem 0 0.375rem;
+}
+
+body.rtl .brikpanel-filter-dropdown {
+    left: auto;
+    right: 0.375rem;
+    padding: 0.5rem 0.75rem 0.375rem 1rem;
+}
+
+body.rtl .brikpanel-pagination { justify-content: flex-start; }
+
+/* Pagination chevrons: original LTR file uses scaleX(-1) to repurpose a
+   single right-arrow asset for the "previous" / "first" buttons. In RTL the
+   visual reading flow is reversed, so previous/first should point the other
+   way (no scaleX), and next/last should now flip. */
+body.rtl .brikpanel-pagination .chevron.double-left,
+body.rtl .brikpanel-pagination .chevron.left { transform: scaleX(1) !important; }
+body.rtl .brikpanel-pagination .chevron.double-right,
+body.rtl .brikpanel-pagination .chevron.right { transform: scaleX(-1) !important; }
+
+body.rtl .brikpanel-order-number { padding-right: 0 !important; padding-left: 2rem !important; }
+
+body.rtl .wp-list-table tbody#the-list .check-column,
+body.rtl .wp-list-table thead .check-column#cb {
+    padding: 6px 12px 6px 18px !important;
+}
+
+/* Sticky check-column / order-number columns are anchored with `left: 0` and
+   `left: 31px` in LTR. Browsers compute scroll origin differently for RTL +
+   sticky elements inside an `overflow-x: auto` container, which causes the
+   whole table to render shifted negatively past the left edge. Disabling
+   sticky in RTL keeps the table within bounds; users can still scroll to
+   see all columns, they just lose the pinned column behaviour. */
+body.rtl .wp-list-table .check-column,
+body.rtl .wp-list-table .column-order_number {
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+}
+
+body.rtl .brikpanel-analytics-date-dropdown {
+    left: auto;
+    right: 0;
+    border-right: none;
+    border-left: 1px solid #ebebeb;
+}
+body.rtl .brikpanel-analytics-date-dropdown-content { left: auto; right: 0; }
+body.rtl .brikpanel-analytics-date-dropdown-content input[type=radio] { margin: 0 0 0 0.25rem !important; }
+
+body.rtl .brikpanel-analytics-data-group .fade-left { left: auto; right: 0; }
+body.rtl .brikpanel-analytics-data-group .fade-left::before {
+    background: linear-gradient(to left, white, rgba(255, 255, 255, 0));
+}
+
+body.rtl .brikpanel-analytics-data:not(:last-child) {
+    border-right: none;
+    border-left: 1px solid #ebebeb;
+}
+
+body.rtl .brikpanel-stat:not(:last-child) {
+    border-right: none;
+    border-left: 1px solid #ebebeb;
+}
+body.rtl .brikpanel-stat:first-child { padding-left: 1rem; padding-right: 0; }
+
+@media screen and (max-width: 782px) {
+    body.rtl .brikpanel-order-number { padding-right: 0 !important; padding-left: 0 !important; }
+}
+
+
+/* =============================================================================
+   FILE: front-end/orders/brikpanel-order-status-inline.css
+   ============================================================================= */
+body.rtl .brikpanel-status-dropdown-item { text-align: right; }
+
+
+/* =============================================================================
+   FILE: front-end/customer-analytics/brikpanel-customer-analytics.css
+   ============================================================================= */
+body.rtl .bp-ca-table thead th { text-align: right; }
+body.rtl .bp-ca-table thead th.num { text-align: left; }
+body.rtl .bp-ca-table tbody td.num { text-align: left; }
+
+body.rtl .bp-ca-guest-pill { margin-left: 0; margin-right: 0.5rem; }
+
+body.rtl .bp-ca-rfm-card { text-align: right; }
+body.rtl .bp-ca-rfm-card-share { margin-left: 0; margin-right: 0.25rem; }
+
+body.rtl .bp-ca-cohort-cell-month {
+    justify-content: flex-end;
+    padding-left: 0;
+    padding-right: 0.25rem;
+}
+
+body.rtl .bp-ca-toast { right: auto; left: 20px; transform: translateX(-110%); }
+body.rtl .bp-ca-toast.is-visible { transform: translateX(0); }
+
+
+/* =============================================================================
+   FILE: front-end/coupons/brikpanel-coupons.css
+   ============================================================================= */
+body.rtl .brikpanel-cp-search-icon { left: auto; right: 0.75rem; }
+body.rtl .brikpanel-cp input[type="text"].brikpanel-cp-search { padding: 8px 36px 8px 12px; }
+
+body.rtl .brikpanel-cp-select {
+    padding: 0.375rem 0.625rem 0.375rem 2rem;
+    background-position: left 0.5rem center;
+}
+
+body.rtl .brikpanel-cp-table thead th { text-align: right; }
+body.rtl .brikpanel-cp-table thead th:first-child { padding-left: 1rem; padding-right: 1.25rem; }
+body.rtl .brikpanel-cp-row td:first-child { padding-left: 1rem; padding-right: 1.25rem; }
+
+body.rtl .brikpanel-cp-actions-cell {
+    text-align: left;
+    padding-right: 1rem !important;
+    padding-left: 1.25rem !important;
+}
+body.rtl .brikpanel-cp-actions { justify-content: flex-start; }
+
+body.rtl .brikpanel-cp-drawer {
+    right: auto;
+    left: 0;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.12);
+    transform: translateX(-100%);
+}
+body.rtl .brikpanel-cp-drawer.open { transform: translateX(0); }
+body.rtl .brikpanel-cp-drawer-footer { justify-content: flex-start; }
+
+body.rtl .brikpanel-cp-input-prefix {
+    border-right: none;
+    border-left: 1px solid var(--border);
+}
+
+body.rtl .brikpanel-cp-toggle-slider::before { left: auto; right: 3px; }
+body.rtl .brikpanel-cp-toggle input:checked + .brikpanel-cp-toggle-slider::before { transform: translateX(-18px); }
+
+body.rtl .brikpanel-cp-toast-container { right: auto; left: 20px; }
+body.rtl .brikpanel-cp-toast { transform: translateX(-110%); }
+body.rtl .brikpanel-cp-toast.show { transform: translateX(0); }
+body.rtl .brikpanel-cp-toast-close { margin-left: 0; margin-right: auto; }
+
+body.rtl .brikpanel-cp-th-ase { text-align: right; }
+body.rtl .brikpanel-cp-row-actions { margin-left: 0; margin-right: 0.5rem; }
+
+
+/* =============================================================================
+   FILE: front-end/products/brikpanel-taxonomy.css
+   ============================================================================= */
+body.rtl.taxonomy-product_cat .wp-list-table td.column-description:hover::after,
+body.rtl.taxonomy-product_tag .wp-list-table td.column-description:hover::after {
+    left: auto;
+    right: 1rem;
+}
+
+body.rtl.taxonomy-product_cat .tablenav-pages .displaying-num,
+body.rtl.taxonomy-product_tag .tablenav-pages .displaying-num {
+    margin-right: 0;
+    margin-left: 0.5rem;
+}
+
+body.rtl .brikpanel-cat-drag-handle { margin-right: 0; margin-left: 0.375rem; }
+
+body.rtl .brikpanel-cat-toast-container { right: auto; left: 20px; }
+body.rtl .brikpanel-cat-toast { transform: translateX(-110%); }
+body.rtl .brikpanel-cat-toast.show { transform: translateX(0); }
+
+
+/* =============================================================================
+   FILE: front-end/segments/brikpanel-segments.css
+   ============================================================================= */
+body.rtl .bp-seg-quick-search { justify-content: flex-start; }
+body.rtl .bp-seg-count-badge { margin-left: 0; margin-right: 0.25rem; }
+
+body.rtl .bp-seg-prefix {
+    border-right: none;
+    border-left: 1px solid var(--bp-seg-border);
+}
+
+body.rtl .bp-seg-selected-chip { padding: 0.25rem 0.625rem 0.25rem 0.5rem; }
+
+body.rtl .bp-seg-table thead th { text-align: right; }
+body.rtl .bp-seg-table td.bp-seg-num,
+body.rtl .bp-seg-table th.bp-seg-num { text-align: left; }
+
+@media (max-width: 720px) {
+    body.rtl .bp-seg-quick-search { justify-content: flex-end; }
+    body.rtl .bp-seg-header-right { justify-content: flex-start; }
+}
+
+
+/* =============================================================================
+   FILE: front-end/expenses/brikpanel-expenses.css
+   ============================================================================= */
+body.rtl .brikpanel-ex-prefix,
+body.rtl .brikpanel-ex-suffix { border-right: none; }
+
+body.rtl .brikpanel-ex-prefix { border-left: 1px solid var(--ex-border); }
+body.rtl .brikpanel-ex-suffix { border-left: none; border-right: 1px solid var(--ex-border); }
+
+body.rtl .brikpanel-ex-table thead th { text-align: right; }
+body.rtl .brikpanel-ex-table th.brikpanel-ex-num,
+body.rtl .brikpanel-ex-table td.brikpanel-ex-num { text-align: left; }
+
+body.rtl .brikpanel-ex-table th.brikpanel-ex-actions-th,
+body.rtl .brikpanel-ex-actions-cell { text-align: left; }
+
+body.rtl .brikpanel-ex-actions-cell {
+    justify-content: flex-start;
+    padding-right: 0;
+    padding-left: 0.75rem;
+}
+
+body.rtl .brikpanel-ex-modal-footer { justify-content: flex-start; }
+
+body.rtl .brikpanel-ex-toast { right: auto; left: 20px; transform: translateX(-110%); }
+body.rtl .brikpanel-ex-toast--visible { transform: translateX(0); }
+
+
+/* =============================================================================
+   FILE: front-end/topbar/brikpanel-topbar.css
+   ============================================================================= */
+body.rtl .brikpanel-topbar { left: 0; right: 0; }
+
+/* The mobile-nav backdrop is rendered as a fixed full-viewport overlay in
+   the LTR file with `opacity: 0; pointer-events: none` until the off-canvas
+   sidebar opens. On RTL desktop sessions some browsers still let the
+   invisible layer interfere with wheel scrolling near the bottom of the
+   page. Hide it outright on viewports wider than the mobile breakpoint —
+   the real activation rule below restores it on small screens. */
+body.rtl .brikpanel-topbar-mobile-backdrop { display: none; }
+@media (max-width: 782px) {
+    body.rtl .brikpanel-topbar-mobile-backdrop { display: block; }
+}
+
+body.rtl.brikpanel-has-topbar #adminmenuback,
+body.rtl.brikpanel-has-topbar #adminmenuwrap { left: auto; right: 0; }
+
+body.rtl .brikpanel-topbar-search-text { text-align: right; }
+
+body.rtl .brikpanel-topbar-badge { right: auto; left: -4px; }
+
+body.rtl .brikpanel-topbar-dropdown { right: auto; left: 0; }
+
+body.rtl .brikpanel-topbar-user-btn { padding: 0.25rem 0.25rem 0.25rem 0.5rem; }
+
+body.rtl .brikpanel-topbar-toast-container { right: auto; left: 16px; }
+body.rtl .brikpanel-topbar-toast { padding: 0.625rem 0.875rem 0.625rem 0.75rem; transform: translateX(-110%); }
+body.rtl .brikpanel-topbar-toast.is-visible { transform: translateX(0); }
+
+body.rtl .brikpanel-topbar-cache-item { text-align: right; }
+
+@media (max-width: 782px) {
+    body.rtl.brikpanel-has-topbar #adminmenuback,
+    body.rtl.brikpanel-has-topbar #adminmenuwrap { transform: translateX(100%); }
+
+    body.rtl.brikpanel-mobile-nav-open #adminmenuback,
+    body.rtl.brikpanel-mobile-nav-open #adminmenuwrap { transform: translateX(0); }
+
+    body.rtl.brikpanel-has-topbar #wpcontent,
+    body.rtl.brikpanel-has-topbar #wpfooter {
+        margin-left: auto !important;
+        margin-right: 0 !important;
+    }
+
+    body.rtl .brikpanel-topbar-dropdown,
+    body.rtl .brikpanel-topbar-dropdown-wide,
+    body.rtl .brikpanel-topbar-dropdown-user { left: 8px; right: 8px; }
+}
+
+
+/* =============================================================================
+   FILE: front-end/welcome/brikpanel-welcome.css
+   ============================================================================= */
+body.rtl .brikpanel-welcome-close { right: auto; left: 16px; }
+
+body.rtl .brikpanel-welcome-slide { transform: translateX(-60px); }
+body.rtl .brikpanel-welcome-slide.is-active { transform: translateX(0); }
+body.rtl .brikpanel-welcome-slide.is-exiting-left { transform: translateX(60px); }
+
+body.rtl .brikpanel-welcome-feature-mini,
+body.rtl .brikpanel-welcome-highlights li { text-align: right; }
+
+@keyframes bwListItemRtl {
+    from { transform: translateX(-20px); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
+}
+body.rtl .brikpanel-welcome-slide.is-active .brikpanel-welcome-highlights li {
+    animation-name: bwListItemRtl;
+}
+
+body.rtl .brikpanel-welcome-confetti { left: auto; right: 0; }
+body.rtl .brikpanel-welcome-kbd { margin-left: 0; margin-right: 4px; }
+
+
+/* =============================================================================
+   FILE: front-end/login/brikpanel-login.css
+   ============================================================================= */
+body.rtl.login .wp-pwd input[type="password"],
+body.rtl.login .wp-pwd input[type="text"] {
+    padding-right: 0.75rem;
+    padding-left: 2.75rem;
+}
+body.rtl.login .wp-pwd .button.wp-hide-pw { right: auto; left: 0.5rem; }
+body.rtl.login .forgetmenot input[type="checkbox"] { margin: 0 0 0 0.25rem; }
+body.rtl.login .forgetmenot input[type="checkbox"]:checked::after { left: auto; right: 0.3rem; }
+
+
+/* =============================================================================
+   FILE: includes/cron/brikpanel-cron-page.css
+   ============================================================================= */
+body.rtl .brikpanel-cron-table thead th { text-align: right; }
+body.rtl .brikpanel-cron-filter-actions { margin-left: 0; margin-right: auto; }
+body.rtl .brikpanel-cron-row-actions { justify-content: flex-start; }
+body.rtl .brikpanel-cron-toast { right: auto; left: 20px; transform: translateX(-110%); }
+body.rtl .brikpanel-cron-toast.is-visible { transform: translateX(0); }
+
+
+/* =============================================================================
+   FILE: front-end/navigation/brikpanel-nav-customizer.css
+   ============================================================================= */
+body.rtl .brikpanel-navc-toggle-thumb { left: auto; right: 3px; }
+body.rtl .brikpanel-navc-toggle input:checked + .brikpanel-navc-toggle-track .brikpanel-navc-toggle-thumb {
+    transform: translateX(-18px);
+}
+body.rtl .brikpanel-navc-dialog-footer { justify-content: flex-start; }
+
+
+/* =============================================================================
+   FILE: back-end/brikpanel-back-end.css
+   Most translateX(-50%) here are centering tricks paired with left:50% — those
+   should NOT flip. Only directional fix is the date select margin.
+   ============================================================================= */
+body.rtl #brikpanelDateSelect,
+body.rtl #brikpanelDateSelectTotalOrders,
+body.rtl #brikpanelDateSelectOrderValue,
+body.rtl #brikpanelDateSelectConversionCount,
+body.rtl #brikpanelDateSelectMostAddtocart,
+body.rtl #brikpanelDateSelectMostView,
+body.rtl #brikpanelDateSelectMostSale,
+body.rtl #brikpanelDateSelectProductSales,
+body.rtl #brikpanelDateSelectOrderRates {
+    margin-right: 0;
+    margin-left: 5px;
+}
+
+
+/* =============================================================================
+   FILE: front-end/navigation/brikpanel-navigation.css
+   ============================================================================= */
+body.rtl .brikpanel-site-management-toggle { margin-left: 0; margin-right: 10px; }
+body.rtl .brikpanel-site-management-toggle.collapsed { transform: rotate(90deg); }
+
+body.rtl #wpcontent {
+    margin-left: 0;
+    margin-right: var(--brikpanel-sidebar-width);
+    /* WP core RTL stylesheet adds padding-right: 20px to #wpcontent to give
+       breathing room between content and sidebar. BrikPanel's LTR design
+       already uses padding-left: 0 (the dashboard wrap handles its own
+       padding), so mirror that and zero the right padding too. Otherwise
+       the RTL layout has 220px margin + 20px padding = 240px gap on the
+       right side, which the user perceives as an empty strip. */
+    padding-right: 0;
+}
+
+@media (min-width: 783px) {
+    body.rtl .auto-fold .interface-interface-skeleton { left: auto; right: 0; }
+}
+@media (min-width: 961px) {
+    body.rtl .auto-fold .interface-interface-skeleton { left: auto; right: var(--brikpanel-sidebar-width); }
+}
+
+body.rtl .sb-customizer-sidebar { left: auto; right: var(--brikpanel-sidebar-width); }
+
+body.rtl #brikpanel-navigation a::after { left: 0; right: 0; }
+
+body.rtl #brikpanel-navigation .wp-submenu:where(
+    :not(#toplevel_page_woocommerce ul),
+    #toplevel_page_woocommerce.admin-menu-editor-active ul
+) li {
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+}
+body.rtl #brikpanel-navigation .wp-submenu.wp-submenu:where(
+    :not(#toplevel_page_woocommerce ul),
+    #toplevel_page_woocommerce.admin-menu-editor-active ul
+) li a {
+    padding-left: 0;
+    padding-right: 1.5rem;
+}
+
+body.rtl #brikpanel-navigation .wp-menu-image,
+body.rtl #brikpanel-navigation .wp-menu-image img {
+    margin-right: 0;
+    margin-left: 0.1rem;
+}
+
+body.rtl span.rm-menu-new { margin-left: auto !important; margin-right: 0 !important; }
+body.rtl a[href^="https://rankmath.com/kb/"] i { margin-left: 0; margin-right: -6px; }
+
+body.rtl .brikpanel-classic-nav #wpcontent { margin-left: 0; margin-right: 160px; }
+
+@media (min-width: 783px) {
+    body.rtl .brikpanel-classic-nav.auto-fold .interface-interface-skeleton { left: auto; right: 36px; }
+}
+@media (min-width: 961px) {
+    body.rtl .brikpanel-classic-nav.auto-fold .interface-interface-skeleton { left: auto; right: 160px; }
+}
+@media screen and (max-width: 782px) {
+    body.rtl .brikpanel-classic-nav #wpcontent { margin-left: 0; margin-right: 0; }
+}
+body.rtl .brikpanel-classic-nav .sb-customizer-sidebar { left: auto; right: 160px; }
+
+
+/* =============================================================================
+   FILE: front-end/search/brikpanel-search.css
+   ============================================================================= */
+body.rtl .brikpanel-search-menu-item .icon { margin-right: 0 !important; margin-left: 0.5rem !important; }
+body.rtl .brikpanel-search-menu-item .placeholder { text-align: right; }
+body.rtl .brikpanel-search-menu-item .shortcut { margin-left: 0 !important; margin-right: 6px !important; }
+
+body.rtl .brikpanel-search-overlay {
+    left: auto;
+    right: 0;
+    margin-left: 0 !important;
+    margin-right: -10px !important;
+}
+
+body.rtl .brikpanel-search-modal .heading { margin-left: 0 !important; margin-right: 0.65rem !important; }
+body.rtl .brikpanel-search-modal .status-badge { margin-left: 0 !important; margin-right: 0.25rem !important; }
+
+
+/* =============================================================================
+   FILE: front-end/sound/brikpanel-order-notify.css
+   ============================================================================= */
+body.rtl #brikpanel-order-notify-stack { right: auto; left: 20px; }
+
+body.rtl .bp-order-notify { transform: translateX(-120%); }
+body.rtl .bp-order-notify.is-visible { transform: translateX(0); }
+body.rtl .bp-order-notify.is-leaving { transform: translateX(-120%); }
+
+body.rtl .bp-order-notify__row .value { text-align: left; }
+body.rtl .bp-order-notify__progress { transform-origin: right center; }
+
+@media (max-width: 600px) {
+    body.rtl #brikpanel-order-notify-stack { right: 10px; left: 10px; }
+}
+
+
+/* =============================================================================
+   DIRECTIONAL ICONS — generic mirror for chevron / arrow / back / next icons
+   that don't have project-specific overrides above.
+   ============================================================================= */
+body.rtl .brikpanel-icon-chevron-left,
+body.rtl .brikpanel-icon-chevron-right,
+body.rtl .brikpanel-icon-arrow-left,
+body.rtl .brikpanel-icon-arrow-right,
+body.rtl .brikpanel-icon-caret-left,
+body.rtl .brikpanel-icon-caret-right { transform: scaleX(-1); }

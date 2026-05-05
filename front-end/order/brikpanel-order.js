@@ -291,6 +291,108 @@
 	}
 
 	/* ============================================================
+	   DOWNLOADABLE PRODUCT DOWNLOAD STATS (per line item)
+	   ============================================================ */
+	function renderItemDownloads() {
+		var data = cfg.item_downloads || {};
+		if (!data || typeof data !== 'object') return;
+
+		var itemIds = Object.keys(data);
+		if (!itemIds.length) return;
+
+		var paint = function () {
+			itemIds.forEach(function (itemId) {
+				var files = data[itemId];
+				if (!Array.isArray(files) || !files.length) return;
+
+				var row = document.querySelector('#order_line_items tr.item[data-order_item_id="' + itemId + '"]');
+				if (!row) return;
+
+				var nameCell = row.querySelector('td.name');
+				if (!nameCell) return;
+				if (nameCell.querySelector('.brk-item-downloads')) return;
+
+				nameCell.appendChild(buildDownloadsBlock(files));
+			});
+		};
+
+		paint();
+
+		// WooCommerce re-renders the line items table after actions like
+		// "Add item" / quantity edits via AJAX, which wipes our injected
+		// markup. Re-paint on any childList mutation of the line items tbody.
+		var items = document.getElementById('order_line_items');
+		if (items && 'MutationObserver' in window) {
+			var debounce;
+			var observer = new MutationObserver(function () {
+				clearTimeout(debounce);
+				debounce = setTimeout(paint, 50);
+			});
+			observer.observe(items, { childList: true, subtree: true });
+		}
+	}
+
+	function buildDownloadsBlock(files) {
+		var wrap = document.createElement('div');
+		wrap.className = 'brk-item-downloads';
+
+		var total = 0;
+		files.forEach(function (f) { total += (f.count | 0); });
+
+		var header = document.createElement('div');
+		header.className = 'brk-item-downloads__header';
+		header.innerHTML =
+			'<svg class="brk-item-downloads__icon" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' +
+				'<path d="M10 3v10"/><path d="M5 9l5 5 5-5"/><path d="M4 16h12"/>' +
+			'</svg>' +
+			'<span class="brk-item-downloads__title">' + escHtml(cfg.i18n.downloads) + '</span>' +
+			'<span class="brk-item-downloads__total">' + escHtml(formatCount(total)) + '</span>';
+		wrap.appendChild(header);
+
+		var list = document.createElement('ul');
+		list.className = 'brk-item-downloads__list';
+
+		files.forEach(function (f) {
+			var li = document.createElement('li');
+			li.className = 'brk-item-downloads__file';
+
+			var name = document.createElement('span');
+			name.className = 'brk-item-downloads__name';
+			name.textContent = f.name || '—';
+			li.appendChild(name);
+
+			var meta = document.createElement('span');
+			meta.className = 'brk-item-downloads__meta';
+
+			var parts = [];
+			parts.push(formatCount(f.count | 0));
+
+			if (f.remaining === null || typeof f.remaining === 'undefined') {
+				parts.push(cfg.i18n.unlimited);
+			} else {
+				parts.push(cfg.i18n.remaining.replace('%s', String(f.remaining)));
+			}
+
+			if (f.expires) {
+				parts.push(cfg.i18n.expires.replace('%s', f.expires));
+			}
+
+			meta.textContent = parts.join(' · ');
+			li.appendChild(meta);
+
+			list.appendChild(li);
+		});
+
+		wrap.appendChild(list);
+		return wrap;
+	}
+
+	function formatCount(n) {
+		var tmpl = n === 1 ? cfg.i18n.download_one : cfg.i18n.download_many;
+		return tmpl.replace('%d', String(n));
+	}
+
+	/* ============================================================
 	   HELPERS
 	   ============================================================ */
 	function escHtml(str) {
@@ -330,6 +432,7 @@
 		buildHeader();
 		addCopyButtons();
 		enhanceNotes();
+		renderItemDownloads();
 	}
 
 	if (document.readyState === 'loading') {

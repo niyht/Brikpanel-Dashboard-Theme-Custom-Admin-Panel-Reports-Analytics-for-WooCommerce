@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) { exit; }
  * ANA YARDIMCI FONKSİYON
  * GÜNCELLENDİ: Sadece 'wc-processing' ve 'wc-completed' durumlarını hesaplar.
  */
-function brikpanel_get_average_order_value( $start_date_gmt = null, $end_date_gmt = null ) {
+function brikpanel_get_average_order_value( $start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false ) {
     global $wpdb;
 
     // 1. DEĞİŞİKLİK: Sadece dahil edilecek durumlar
@@ -43,6 +43,12 @@ function brikpanel_get_average_order_value( $start_date_gmt = null, $end_date_gm
     $exclusion = brikpanel_admin_order_exclusion_sql( $is_hpos, 'p.ID' );
     $query_sql .= $exclusion['sql'];
     $query_args = array_merge( $query_args, $exclusion['args'] );
+
+    if ( $exclude_marketplace ) {
+        $mp_exclusion = brikpanel_marketplace_order_exclusion_sql( $is_hpos, $is_hpos ? 'id' : 'p.ID' );
+        $query_sql   .= $mp_exclusion['sql'];
+        $query_args   = array_merge( $query_args, $mp_exclusion['args'] );
+    }
 
     if ( $start_date_gmt ) {
         $query_sql .= " AND {$date_column_name} >= %s";

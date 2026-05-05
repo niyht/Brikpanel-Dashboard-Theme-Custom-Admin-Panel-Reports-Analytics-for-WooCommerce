@@ -6,7 +6,7 @@
  * Displayed once per user; dismissed via AJAX.
  *
  * @package BrikPanel
- * @since   2.0.1
+ * @since   2.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

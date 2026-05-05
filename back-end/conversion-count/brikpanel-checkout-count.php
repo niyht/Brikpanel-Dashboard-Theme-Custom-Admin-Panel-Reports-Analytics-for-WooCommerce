@@ -20,21 +20,25 @@ function brikpanel_checkout_counter() {
         return;
     }
 
+    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
+        return;
+    }
+
     global $wpdb;
-    $table_name = $wpdb->prefix . "brikpanel_visitors";
+    $table_name   = $wpdb->prefix . "brikpanel_visitors";
+    $current_date = wp_date( 'Y-m-d' );
 
-    // --- DÜZELTME: gmdate() yerine wp_date() kullanıyoruz ---
-    // Bu, sitenin saat dilimine göre doğru günü kaydeder.
-    $current_date = wp_date('Y-m-d');
+    $updated = $wpdb->query( $wpdb->prepare(
+        "UPDATE {$table_name} SET checkout_count = checkout_count + 1 WHERE date_column = %s",
+        $current_date
+    ) );
 
-    $checkout_count = $wpdb->get_var(
-        $wpdb->prepare("SELECT checkout_count FROM {$table_name} WHERE date_column = %s", $current_date)
-    );
-
-    if ($checkout_count !== NULL) {
-        $wpdb->update($table_name, ['checkout_count' => $checkout_count + 1], ['date_column' => $current_date], ['%d'], ['%s']);
-    } else {
-        $wpdb->insert($table_name, ['date_column' => $current_date, 'checkout_count' => 1], ['%s', '%d']);
+    if ( ! $updated ) {
+        $wpdb->insert(
+            $table_name,
+            [ 'date_column' => $current_date, 'checkout_count' => 1 ],
+            [ '%s', '%d' ]
+        );
     }
 
     // --- DÜZELTME: Cookie'yi gün sonuna kadar geçerli yapıyoruz ---

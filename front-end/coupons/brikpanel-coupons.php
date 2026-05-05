@@ -171,6 +171,7 @@ class Brikpanel_Coupons {
                                 <th class="brikpanel-cp-th-amount"><?php esc_html_e('Amount', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-desc"><?php esc_html_e('Description', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-usage"><?php esc_html_e('Usage / Limit', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-revenue"><?php esc_html_e('Revenue', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-expiry"><?php esc_html_e('Expiry date', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-status"><?php esc_html_e('Status', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-actions"></th>
@@ -391,14 +392,44 @@ class Brikpanel_Coupons {
         $query   = new WP_Query($args);
         $coupons = [];
 
+        // Resolve once per request: third-party (ASE etc.) extra columns
+        // contributed via manage_{post_type}_posts_columns filter.
+        $extra_columns = class_exists('Brikpanel_ASE_Bridge')
+            ? Brikpanel_ASE_Bridge::get_extra_columns('shop_coupon')
+            : [];
+
+        // First pass: build coupon objects and collect codes for batch revenue query.
+        $coupon_objects = [];
+        $coupon_codes   = [];
         foreach ($query->posts as $post) {
-            $coupon = new WC_Coupon($post->ID);
+            $coupon                      = new WC_Coupon($post->ID);
+            $coupon_objects[$post->ID]   = $coupon;
+            $coupon_codes[]              = $coupon->get_code();
+        }
+
+        // Single DB query for all coupon revenues on this page.
+        $revenue_map = $this->get_coupons_revenue_batch($coupon_codes);
+
+        foreach ($query->posts as $post) {
+            $coupon = $coupon_objects[$post->ID];
 
             $expiry_ts   = $coupon->get_date_expires();
             $expiry_date = $expiry_ts ? $expiry_ts->date('Y-m-d') : '';
 
-            $usage_limit = $coupon->get_usage_limit();
-            $usage_count = $coupon->get_usage_count();
+            $usage_limit     = $coupon->get_usage_limit();
+            $usage_count     = $coupon->get_usage_count();
+            $coupon_revenue  = $revenue_map[ strtolower( $coupon->get_code() ) ] ?? 0.0;
+
+            $extra_cells = [];
+            if ($extra_columns) {
+                foreach ($extra_columns as $col_id => $col_label) {
+                    $extra_cells[$col_id] = Brikpanel_ASE_Bridge::render_cell('shop_coupon', $col_id, $post->ID);
+                }
+            }
+
+            $extra_actions = class_exists('Brikpanel_ASE_Bridge')
+                ? Brikpanel_ASE_Bridge::get_row_actions($post)
+                : [];
 
             $coupons[] = [
                 'id'                   => $post->ID,
@@ -415,7 +446,11 @@ class Brikpanel_Coupons {
                 'usage_limit'          => $usage_limit ? $usage_limit : '',
                 'usage_limit_per_user' => $coupon->get_usage_limit_per_user() ? $coupon->get_usage_limit_per_user() : '',
                 'usage_count'          => $usage_count,
+                'revenue'              => $coupon_revenue,
+                'revenue_formatted'    => $coupon_revenue > 0 ? wc_price($coupon_revenue) : '',
                 'status'               => $post->post_status,
+                'extra_cells'          => (object) $extra_cells,
+                'extra_actions'        => $extra_actions,
             ];
         }
 
@@ -423,16 +458,74 @@ class Brikpanel_Coupons {
         $all_counts = wp_count_posts('shop_coupon');
 
         wp_send_json_success([
-            'coupons' => $coupons,
-            'total'   => (int) $query->found_posts,
-            'pages'   => (int) $query->max_num_pages,
-            'counts'  => [
+            'coupons'       => $coupons,
+            'total'         => (int) $query->found_posts,
+            'pages'         => (int) $query->max_num_pages,
+            'extra_columns' => (object) $extra_columns,
+            'counts'        => [
                 'all'     => (int) (($all_counts->publish ?? 0) + ($all_counts->draft ?? 0)),
                 'publish' => (int) ($all_counts->publish ?? 0),
                 'draft'   => (int) ($all_counts->draft ?? 0),
                 'trash'   => (int) ($all_counts->trash ?? 0),
             ],
         ]);
+    }
+
+    // =========================================================================
+    // REVENUE BATCH QUERY
+    // =========================================================================
+
+    /**
+     * Returns total order revenue (wc-processing + wc-completed) per coupon code.
+     * Uses a single JOIN query so N coupons on a page = 1 DB hit, not N.
+     *
+     * @param string[] $coupon_codes  Raw coupon codes (case-insensitive match).
+     * @return array<string,float>    Keys are lowercase coupon codes.
+     */
+    private function get_coupons_revenue_batch( array $coupon_codes ): array {
+        if ( empty( $coupon_codes ) ) {
+            return [];
+        }
+
+        global $wpdb;
+
+        $lower_codes  = array_map( 'strtolower', $coupon_codes );
+        $placeholders = implode( ',', array_fill( 0, count( $lower_codes ), '%s' ) );
+        $hpos         = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+
+        if ( $hpos ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT LOWER(oi.order_item_name) AS code, SUM(o.total_amount) AS revenue
+                 FROM {$wpdb->prefix}woocommerce_order_items oi
+                 INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = oi.order_id
+                 WHERE oi.order_item_type = 'coupon'
+                 AND LOWER(oi.order_item_name) IN ($placeholders)
+                 AND o.status IN ('wc-processing', 'wc-completed')
+                 GROUP BY LOWER(oi.order_item_name)",
+                ...$lower_codes
+            ) );
+        } else {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT LOWER(oi.order_item_name) AS code, SUM(pm.meta_value) AS revenue
+                 FROM {$wpdb->prefix}woocommerce_order_items oi
+                 INNER JOIN {$wpdb->prefix}posts p ON p.ID = oi.order_id
+                 INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = oi.order_id AND pm.meta_key = '_order_total'
+                 WHERE oi.order_item_type = 'coupon'
+                 AND LOWER(oi.order_item_name) IN ($placeholders)
+                 AND p.post_status IN ('wc-processing', 'wc-completed')
+                 GROUP BY LOWER(oi.order_item_name)",
+                ...$lower_codes
+            ) );
+        }
+
+        $map = [];
+        foreach ( $rows as $row ) {
+            $map[ $row->code ] = (float) $row->revenue;
+        }
+
+        return $map;
     }
 
     // =========================================================================

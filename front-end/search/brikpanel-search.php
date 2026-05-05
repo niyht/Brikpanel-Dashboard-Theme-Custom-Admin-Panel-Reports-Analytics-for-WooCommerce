@@ -284,6 +284,7 @@ class Brikpanel_Pro_Search {
 						AND variation_meta.meta_key = '_sku'
 					WHERE (product_meta.meta_value = %s OR variation_meta.meta_value = %s)
 					AND orders.type = 'shop_order'
+					LIMIT 50
 					",
 					$sku,
 					$sku
@@ -316,6 +317,7 @@ class Brikpanel_Pro_Search {
 						AND variation_meta.meta_key = '_sku'
 					WHERE (product_meta.meta_value = %s OR variation_meta.meta_value = %s)
 					AND orders.post_type = 'shop_order'
+					LIMIT 50
 					",
 					$sku,
 					$sku
@@ -327,18 +329,27 @@ class Brikpanel_Pro_Search {
 			return array();
 		}
 
-		// Batch-load orders and products to avoid N+1 queries.
-		$order_ids   = array_unique( wp_list_pluck( $results, 'order_id' ) );
-		$product_ids = array_unique( wp_list_pluck( $results, 'product_id' ) );
+		// Batch-load orders and products to avoid N+1 queries. Hard cap to prevent OOM on weak hosts.
+		$order_ids   = array_slice( array_unique( wp_list_pluck( $results, 'order_id' ) ), 0, 50 );
+		$product_ids = array_slice( array_unique( wp_list_pluck( $results, 'product_id' ) ), 0, 50 );
 
 		$orders_map = array();
-		foreach ( wc_get_orders( array( 'post__in' => $order_ids, 'limit' => -1 ) ) as $o ) {
-			$orders_map[ $o->get_id() ] = $o;
+		if ( ! empty( $order_ids ) ) {
+			foreach ( wc_get_orders( array( 'post__in' => $order_ids, 'limit' => 50 ) ) as $o ) {
+				$orders_map[ $o->get_id() ] = $o;
+			}
 		}
 
+		// wc_get_products() defaults to post_type=product and silently drops
+		// product_variation IDs from the include list — so a search match on
+		// a variation SKU would never resolve here. wc_get_product() handles
+		// both types transparently, which is what we need.
 		$products_map = array();
-		foreach ( wc_get_products( array( 'include' => $product_ids, 'limit' => -1 ) ) as $p ) {
-			$products_map[ $p->get_id() ] = $p;
+		foreach ( $product_ids as $pid ) {
+			$prod = wc_get_product( (int) $pid );
+			if ( $prod ) {
+				$products_map[ $prod->get_id() ] = $prod;
+			}
 		}
 
 		$orders_with_products = array();

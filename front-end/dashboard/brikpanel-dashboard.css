@@ -534,6 +534,243 @@
     100% { background-position: -200% 0; }
 }
 
+/* ===== Device breakdown widget ===== */
+.brikpanel-device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding: 0.5rem 0;
+}
+
+.brikpanel-device-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 40px 56px;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.brikpanel-device-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--bp-text);
+}
+
+.brikpanel-device-bar-wrap {
+    background: var(--bp-border);
+    border-radius: 999px;
+    height: 6px;
+    overflow: hidden;
+}
+
+.brikpanel-device-bar {
+    background: var(--bp-text);
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.4s ease;
+    min-width: 2px;
+}
+
+.brikpanel-device-pct {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--bp-text);
+    text-align: right;
+}
+
+.brikpanel-device-count {
+    font-size: 0.75rem;
+    text-align: right;
+}
+
+/* ===== Returns & Refunds widget ===== */
+.brikpanel-dash-returns {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+}
+
+.brikpanel-dash-returns-kpi {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.brikpanel-dash-returns-rate {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.brikpanel-dash-returns-label {
+    font-size: 0.8125rem;
+    color: var(--bp-text-secondary);
+}
+
+.brikpanel-dash-badge-ok      { color: var(--bp-success, #1a8917); }
+.brikpanel-dash-badge-warning  { color: #d07000; }
+.brikpanel-dash-badge-danger   { color: var(--bp-error, #d72c0d); }
+
+/* ===== Customer LTV widget (replaces Returns & Refunds panel) ===== */
+.brikpanel-dash-ltv {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+}
+
+.brikpanel-dash-ltv-headline {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.brikpanel-dash-ltv-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #303030;
+}
+
+.brikpanel-dash-ltv-label {
+    font-size: 0.8125rem;
+    color: var(--bp-text-secondary, #616161);
+}
+
+/* ===== Globe location view tabs ===== */
+.brikpanel-dash-globe-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-loc-tabs {
+    display: inline-flex;
+    background: var(--bp-bg, #f1f1f1);
+    border: 1px solid var(--bp-border);
+    border-radius: 0.375rem;
+    padding: 2px;
+    gap: 2px;
+}
+
+.brikpanel-loc-tab {
+    font-size: 0.75rem;
+    font-weight: 550;
+    padding: 0.25rem 0.625rem;
+    border: none;
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--bp-text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    line-height: 1.4;
+}
+
+.brikpanel-loc-tab:hover {
+    background: var(--bp-card, #fff);
+    color: var(--bp-text);
+}
+
+.brikpanel-loc-tab--active {
+    background: var(--bp-card, #fff);
+    color: var(--bp-text);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+/* ===== Panel head row (h2 + inline tabs/actions) ===== */
+.brikpanel-dash-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-dash-panel-head h2 {
+    margin: 0;
+}
+
+/* ===== Subscriptions widget ===== */
+.brikpanel-subs-total {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.25rem 0 0.875rem;
+    border-bottom: 1px solid var(--bp-border);
+    margin-bottom: 0.875rem;
+}
+
+.brikpanel-subs-total-num {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--bp-text);
+    line-height: 1;
+}
+
+.brikpanel-subs-total-label {
+    font-size: 0.8125rem;
+    color: var(--bp-text-secondary);
+}
+
+.brikpanel-subs-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+}
+
+.brikpanel-subs-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+    background: var(--bp-bg, #f7f7f7);
+    border: 1px solid var(--bp-border);
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.75rem;
+}
+
+.brikpanel-subs-card-icon {
+    font-size: 0.75rem;
+    color: var(--bp-text-muted, #8a8a8a);
+    line-height: 1;
+    margin-bottom: 0.125rem;
+}
+
+.brikpanel-subs-card-count {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--bp-text);
+    line-height: 1;
+}
+
+.brikpanel-subs-card-label {
+    font-size: 0.75rem;
+    color: var(--bp-text-secondary);
+    line-height: 1.3;
+}
+
+.brikpanel-subs-card-pct {
+    font-size: 0.75rem;
+    color: var(--bp-text-muted, #8a8a8a);
+    margin-top: 0.125rem;
+}
+
+/* Status accent — left border only */
+.brikpanel-subs-card--active         { border-left: 3px solid #1a8917; }
+.brikpanel-subs-card--hold           { border-left: 3px solid #d07000; }
+.brikpanel-subs-card--cancelled      { border-left: 3px solid #d72c0d; }
+.brikpanel-subs-card--expired        { border-left: 3px solid #8a8a8a; }
+.brikpanel-subs-card--pending        { border-left: 3px solid #616161; }
+.brikpanel-subs-card--pending-cancel { border-left: 3px solid #c0392b; }
+
+@media (max-width: 600px) {
+    .brikpanel-subs-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 1200px) {
     .brikpanel-dash-cards {
@@ -580,7 +817,13 @@
     .brikpanel-dash-table-wrap {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
     }
+    .brikpanel-dash-table-wrap::-webkit-scrollbar { height: 6px; }
+    .brikpanel-dash-table-wrap::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+    /* Keep cells from wrapping awkwardly so the table reads cleanly when scrolled. */
+    .brikpanel-dash-table th,
+    .brikpanel-dash-table td { white-space: nowrap; }
 
     .brikpanel-dash-globe-wrap {
         min-height: 300px;
@@ -738,3 +981,516 @@
     color: var(--bp-text-muted);
 }
 
+/* =============================================================================
+   Embedded WordPress Dashboard Widgets
+   ============================================================================= */
+.brikpanel-dash-wp-widgets-section {
+    margin-top: 1rem;
+}
+
+.brikpanel-dash-section-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--bp-text);
+    margin: 0 0 1rem;
+    padding: 0;
+}
+
+.brikpanel-dash-wp-widgets-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    align-items: start;
+}
+
+@media (max-width: 1100px) {
+    .brikpanel-dash-wp-widgets-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 700px) {
+    .brikpanel-dash-wp-widgets-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.brikpanel-dash-wp-widget {
+    min-width: 0;
+}
+
+.brikpanel-dash-wp-widget > h2 {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--bp-text);
+    margin: 0 0 0.875rem;
+}
+
+.brikpanel-dash-wp-widget-body {
+    font-size: 0.8125rem;
+    color: var(--bp-text);
+    line-height: 1.5;
+    overflow-x: auto;
+}
+
+/* Neutralise WP admin styles that clash with the BrikPanel card look */
+.brikpanel-dash-wp-widget-body .hndle,
+.brikpanel-dash-wp-widget-body .handlediv,
+.brikpanel-dash-wp-widget-body .postbox-header,
+.brikpanel-dash-wp-widget-body .inside > .main > ul,
+.brikpanel-dash-wp-widget-body .rss-widget cite {
+    /* keep cite visible, but normalise */
+}
+
+.brikpanel-dash-wp-widget-body .inside {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.brikpanel-dash-wp-widget-body ul,
+.brikpanel-dash-wp-widget-body ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.brikpanel-dash-wp-widget-body ul li,
+.brikpanel-dash-wp-widget-body ol li {
+    padding: 0.375rem 0;
+    border-bottom: 1px solid #f1f1f1;
+    font-size: 0.8125rem;
+    color: var(--bp-text-secondary);
+}
+
+.brikpanel-dash-wp-widget-body ul li:last-child,
+.brikpanel-dash-wp-widget-body ol li:last-child {
+    border-bottom: none;
+}
+
+.brikpanel-dash-wp-widget-body a {
+    color: var(--bp-text);
+    text-decoration: none;
+    font-weight: 550;
+}
+
+.brikpanel-dash-wp-widget-body a:hover {
+    text-decoration: underline;
+}
+
+.brikpanel-dash-wp-widget-body p {
+    margin: 0 0 0.5rem;
+    color: var(--bp-text-secondary);
+}
+
+.brikpanel-dash-wp-widget-body table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.brikpanel-dash-wp-widget-body table td,
+.brikpanel-dash-wp-widget-body table th {
+    padding: 0.375rem 0.5rem;
+    border-bottom: 1px solid #f1f1f1;
+    text-align: left;
+}
+
+.brikpanel-dash-wp-widget-body h3,
+.brikpanel-dash-wp-widget-body h4 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--bp-text);
+    margin: 0.75rem 0 0.375rem;
+}
+
+.brikpanel-dash-wp-widget-body input[type="text"],
+.brikpanel-dash-wp-widget-body input[type="url"],
+.brikpanel-dash-wp-widget-body input[type="email"],
+.brikpanel-dash-wp-widget-body textarea {
+    width: 100%;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid var(--bp-input-border);
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--bp-text);
+    background: #fff;
+    box-sizing: border-box;
+    margin-bottom: 0.5rem;
+    font-family: inherit;
+}
+
+.brikpanel-dash-wp-widget-body input[type="text"]:focus,
+.brikpanel-dash-wp-widget-body input[type="url"]:focus,
+.brikpanel-dash-wp-widget-body input[type="email"]:focus,
+.brikpanel-dash-wp-widget-body textarea:focus {
+    outline: none;
+    border-color: var(--bp-input-focus);
+    box-shadow: 0 0 0 1px var(--bp-input-focus);
+}
+
+.brikpanel-dash-wp-widget-body .button,
+.brikpanel-dash-wp-widget-body button.button-primary,
+.brikpanel-dash-wp-widget-body input[type="submit"] {
+    background: var(--bp-primary);
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    cursor: pointer;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    text-decoration: none;
+    display: inline-block;
+    line-height: 1.4;
+    height: auto;
+    text-shadow: none;
+}
+
+.brikpanel-dash-wp-widget-body .button:hover,
+.brikpanel-dash-wp-widget-body button.button-primary:hover,
+.brikpanel-dash-wp-widget-body input[type="submit"]:hover {
+    background: var(--bp-primary-hover);
+    color: #fff;
+}
+
+/* At-a-Glance specific */
+.brikpanel-dash-wp-widget-body #dashboard_right_now .main ul {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.375rem;
+}
+
+.brikpanel-dash-wp-widget-body #dashboard_right_now .main ul li {
+    padding: 0.375rem 0;
+    border: none;
+}
+
+/* Activity widget */
+.brikpanel-dash-wp-widget-body #activity-widget h3 {
+    border-bottom: 1px solid #f1f1f1;
+    padding-bottom: 0.375rem;
+}
+
+
+/* =============================================================================
+   Marketplace Analytics (BrikMarket integration)
+   ============================================================================= */
+
+.brikpanel-dash-marketplace {
+    margin-bottom: 1.25rem;
+}
+
+.brikpanel-dash-header-suffix {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--bp-text-muted);
+    margin-left: 0.25rem;
+    letter-spacing: 0.005em;
+}
+
+.brikpanel-dash-mp-cards {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.brikpanel-dash-card-delta-static {
+    color: var(--bp-text-muted);
+    font-weight: 500;
+}
+
+/* Per-marketplace list */
+.brikpanel-dash-mp-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+}
+
+.brikpanel-dash-mp-item {
+    border: 1px solid var(--bp-border);
+    border-radius: 0.625rem;
+    padding: 0.75rem 0.875rem;
+    background: #fafafa;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.brikpanel-dash-mp-item:hover {
+    background: #ffffff;
+    border-color: #cfcfcf;
+}
+
+.brikpanel-dash-mp-item-head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.brikpanel-dash-mp-badge {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 0.5rem;
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.18);
+}
+
+.brikpanel-dash-mp-name {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--bp-text);
+}
+
+.brikpanel-dash-mp-share {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--bp-text-secondary);
+    background: #ffffff;
+    border: 1px solid var(--bp-border);
+    padding: 0.125rem 0.4375rem;
+    border-radius: 999px;
+}
+
+.brikpanel-dash-mp-bar {
+    width: 100%;
+    height: 6px;
+    background: #ececec;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.brikpanel-dash-mp-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.3s cubic-bezier(.4,0,.2,1);
+}
+
+.brikpanel-dash-mp-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+}
+
+.brikpanel-dash-mp-stats > div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.brikpanel-dash-mp-stats span {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--bp-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.brikpanel-dash-mp-stats strong {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--bp-text);
+}
+
+.brikpanel-dash-mp-stats strong .woocommerce-Price-amount {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+.brikpanel-dash-mp-delta.positive {
+    color: var(--bp-success);
+}
+
+.brikpanel-dash-mp-delta.negative {
+    color: var(--bp-error);
+}
+
+.brikpanel-dash-mp-delta.neutral {
+    color: var(--bp-text-muted);
+}
+
+.brikpanel-dash-mp-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3125rem;
+    margin-top: 0.125rem;
+}
+
+.brikpanel-dash-mp-cat {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--bp-text-secondary);
+    background: #ffffff;
+    border: 1px solid var(--bp-border);
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+}
+
+@media (max-width: 1100px) {
+    .brikpanel-dash-mp-cards { grid-template-columns: repeat(2, 1fr); }
+    .brikpanel-dash-mp-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 782px) {
+    .brikpanel-dash-mp-cards { grid-template-columns: 1fr; }
+    .brikpanel-dash-mp-stats { grid-template-columns: 1fr 1fr; }
+}
+
+/* =========================================================================
+   COPY EVERYTHING BUTTON (store summary)
+   ========================================================================= */
+.brikpanel-dash-copy-summary {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    line-height: 1;
+    color: #fff;
+    background: var(--bp-primary, #303030);
+    border: 0;
+    border-radius: 0.5rem;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+    overflow: hidden;
+    white-space: nowrap;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.brikpanel-dash-copy-summary:hover:not(:disabled) {
+    background: var(--bp-primary-hover, #1a1a1a);
+}
+
+.brikpanel-dash-copy-summary:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.brikpanel-dash-copy-summary:focus-visible {
+    outline: 2px solid var(--bp-primary, #303030);
+    outline-offset: 2px;
+}
+
+.brikpanel-dash-copy-summary:disabled {
+    cursor: progress;
+    opacity: 0.95;
+}
+
+.brikpanel-dash-copy-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    color: rgba(255,255,255,0.95);
+}
+
+.brikpanel-dash-copy-icon svg {
+    display: block;
+}
+
+.brikpanel-dash-copy-label {
+    pointer-events: none;
+}
+
+/* Progress bar — sits at the bottom edge, only visible while loading */
+.brikpanel-dash-copy-progress {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 100%;
+    background: transparent;
+    pointer-events: none;
+}
+
+.brikpanel-dash-copy-progress > span {
+    display: block;
+    width: 0%;
+    height: 100%;
+    background: rgba(255,255,255,0.85);
+    transition: width 0.25s ease;
+}
+
+/* Loading: swap icon for a spinner */
+.brikpanel-dash-copy-summary.is-loading .brikpanel-dash-copy-icon svg {
+    display: none;
+}
+
+.brikpanel-dash-copy-summary.is-loading .brikpanel-dash-copy-icon::before {
+    content: '';
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: brikpanel-summary-spin 0.7s linear infinite;
+}
+
+@keyframes brikpanel-summary-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Success state — green flash, hides spinner */
+.brikpanel-dash-copy-summary.is-success {
+    background: var(--bp-success, #1a8917);
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+
+.brikpanel-dash-copy-summary.is-success .brikpanel-dash-copy-icon::before {
+    content: '';
+    width: 14px;
+    height: 14px;
+    border: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/contain no-repeat;
+    animation: none;
+    border-radius: 0;
+}
+
+.brikpanel-dash-copy-summary.is-success .brikpanel-dash-copy-icon svg {
+    display: none;
+}
+
+/* Error state */
+.brikpanel-dash-copy-summary.is-error {
+    background: var(--bp-error, #d72c0d);
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.brikpanel-dash-copy-summary.is-error .brikpanel-dash-copy-icon::before {
+    content: '!';
+    width: 14px;
+    height: 14px;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    line-height: 14px;
+    text-align: center;
+    border: 0;
+    animation: none;
+    border-radius: 0;
+}
+
+.brikpanel-dash-copy-summary.is-error .brikpanel-dash-copy-icon svg {
+    display: none;
+}
+
+@media (max-width: 600px) {
+    .brikpanel-dash-copy-summary {
+        order: -1;
+        flex: 1 1 100%;
+        justify-content: center;
+    }
+}

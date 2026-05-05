@@ -1,0 +1,225 @@
+/**
+ * BrikPanel - New Order Notification Popup
+ * Design system: see CLAUDE.md (BrikPanel UI). Monochrome, Shopify-inspired.
+ */
+
+#brikpanel-order-notify-stack {
+    position: fixed;
+    top: 44px;
+    right: 20px;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    pointer-events: none;
+    max-width: 360px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #303030;
+}
+
+.bp-order-notify {
+    pointer-events: auto;
+    width: 360px;
+    background: #ffffff;
+    border: 1px solid #e3e3e3;
+    border-radius: 0.75rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    transform: translateX(120%);
+    opacity: 0;
+    transition: transform 0.32s cubic-bezier(.4, 0, .2, 1), opacity 0.25s ease;
+    will-change: transform, opacity;
+}
+
+.bp-order-notify.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.bp-order-notify.is-leaving {
+    transform: translateX(120%);
+    opacity: 0;
+}
+
+.bp-order-notify__head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.875rem 1rem 0.5rem;
+}
+
+.bp-order-notify__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #e4f5e1;
+    color: #1a8917;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.bp-order-notify__icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.bp-order-notify__title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #303030;
+    line-height: 1.3;
+    flex: 1;
+    min-width: 0;
+}
+
+.bp-order-notify__title small {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #8a8a8a;
+    margin-top: 2px;
+}
+
+.bp-order-notify__close {
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    color: #8a8a8a;
+    padding: 4px;
+    border-radius: 4px;
+    line-height: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.bp-order-notify__close:hover {
+    background: #f1f1f1;
+    color: #303030;
+}
+
+.bp-order-notify__close svg {
+    width: 14px;
+    height: 14px;
+}
+
+.bp-order-notify__body {
+    padding: 0 1rem 0.625rem;
+    font-size: 0.8125rem;
+    color: #616161;
+    line-height: 1.5;
+}
+
+.bp-order-notify__row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.25rem 0;
+}
+
+.bp-order-notify__row .label {
+    color: #8a8a8a;
+    font-size: 0.75rem;
+    font-weight: 550;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.bp-order-notify__row .value {
+    color: #303030;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+}
+
+.bp-order-notify__row .value--total {
+    font-size: 0.9375rem;
+    font-weight: 700;
+}
+
+.bp-order-notify__actions {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem 0.875rem;
+    border-top: 1px solid #f1f1f1;
+    margin-top: 0.5rem;
+}
+
+.bp-order-notify__btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+    border: 0;
+    line-height: 1.2;
+    box-sizing: border-box;
+}
+
+.bp-order-notify__btn--primary {
+    background: #303030;
+    color: #ffffff;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.bp-order-notify__btn--primary:hover,
+.bp-order-notify__btn--primary:focus {
+    background: #1a1a1a;
+    color: #ffffff;
+}
+
+.bp-order-notify__btn--secondary {
+    background: #ffffff;
+    color: #303030;
+    box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.bp-order-notify__btn--secondary:hover,
+.bp-order-notify__btn--secondary:focus {
+    background: #f7f7f7;
+    color: #303030;
+}
+
+.bp-order-notify__progress {
+    height: 2px;
+    background: #303030;
+    transform-origin: left center;
+    animation: bp-order-notify-progress var(--bp-notify-duration, 8s) linear forwards;
+}
+
+@keyframes bp-order-notify-progress {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
+}
+
+@media (max-width: 600px) {
+    #brikpanel-order-notify-stack {
+        right: 10px;
+        left: 10px;
+        max-width: none;
+        top: 56px;
+    }
+    .bp-order-notify {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bp-order-notify {
+        transition: opacity 0.2s ease;
+        transform: none !important;
+    }
+    .bp-order-notify__progress {
+        animation: none;
+    }
+}

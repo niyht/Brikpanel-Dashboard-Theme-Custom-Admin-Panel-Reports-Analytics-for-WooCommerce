@@ -1,0 +1,718 @@
+/**
+ * BrikPanel — BrikControl Styles
+ *
+ * Two scopes:
+ *  1. .brikpanel-bc-wrap   → main page (admin.php?page=brikpanel-brikcontrol)
+ *  2. .brikpanel-bc-*      → topbar button + dashboard banner (loaded everywhere)
+ *
+ * Design system reuses --bp-* tokens from brikpanel-dashboard.css. We only
+ * declare the missing warning tone here so the topbar / banner can stand on
+ * its own when the dashboard CSS isn't loaded.
+ */
+
+:root {
+    --bp-warning: #b8860b;
+    --bp-warning-bg: #fdf6e3;
+    --bp-warning-border: #f0d590;
+    --bp-success-bg: #e4f5e1;
+    --bp-error-bg: #fce4e4;
+    --bp-error-border: #f1b0b0;
+}
+
+/* =============================================================================
+   PAGE WRAPPER
+   ============================================================================= */
+.brikpanel-bc-wrap {
+    max-width: 880px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+    color: #303030;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.brikpanel-bc-wrap *, .brikpanel-bc-wrap *::before, .brikpanel-bc-wrap *::after {
+    box-sizing: border-box;
+}
+
+.brikpanel-bc-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.brikpanel-bc-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 0.25rem 0;
+    color: #303030;
+}
+
+.brikpanel-bc-subtitle {
+    font-size: 0.8125rem;
+    color: #616161;
+    margin: 0;
+}
+
+.brikpanel-bc-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.05s ease;
+    font-family: inherit;
+}
+
+.brikpanel-bc-button-primary {
+    background: #303030;
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-bc-button-primary:hover:not(:disabled) {
+    background: #1a1a1a;
+}
+
+.brikpanel-bc-button-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.brikpanel-bc-button-primary:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+/* =============================================================================
+   SUMMARY CARD
+   ============================================================================= */
+.brikpanel-bc-summary-card {
+    background: #fff;
+    border: 1px solid #e3e3e3;
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    margin-bottom: 1rem;
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-bc-summary-chip {
+    flex: 1 1 auto;
+    min-width: 110px;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    border: 1px solid transparent;
+}
+
+.brikpanel-bc-chip-num {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.brikpanel-bc-chip-label {
+    font-size: 0.75rem;
+    font-weight: 550;
+    color: #616161;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.brikpanel-bc-chip-critical { background: var(--bp-error-bg); border-color: var(--bp-error-border); }
+.brikpanel-bc-chip-critical .brikpanel-bc-chip-num { color: #d72c0d; }
+.brikpanel-bc-chip-warning { background: var(--bp-warning-bg); border-color: var(--bp-warning-border); }
+.brikpanel-bc-chip-warning .brikpanel-bc-chip-num { color: var(--bp-warning); }
+.brikpanel-bc-chip-ok { background: var(--bp-success-bg); border-color: #b7e1b0; }
+.brikpanel-bc-chip-ok .brikpanel-bc-chip-num { color: #1a8917; }
+.brikpanel-bc-chip-unknown { background: #f7f7f7; border-color: #e3e3e3; }
+.brikpanel-bc-chip-unknown .brikpanel-bc-chip-num { color: #616161; }
+
+/* =============================================================================
+   PROGRESS
+   ============================================================================= */
+.brikpanel-bc-progress {
+    background: #fff;
+    border: 1px solid #e3e3e3;
+    border-radius: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.brikpanel-bc-progress[hidden] {
+    display: none;
+}
+
+.brikpanel-bc-progress-text {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    color: #303030;
+}
+
+.brikpanel-bc-progress-track {
+    height: 6px;
+    background: #f1f1f1;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.brikpanel-bc-progress-bar {
+    height: 100%;
+    background: #303030;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+/* =============================================================================
+   CHECK CARDS
+   ============================================================================= */
+.brikpanel-bc-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.brikpanel-bc-card {
+    background: #fff;
+    border: 1px solid #e3e3e3;
+    border-radius: 0.75rem;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.brikpanel-bc-card-critical { border-left: 3px solid #d72c0d; }
+.brikpanel-bc-card-warning { border-left: 3px solid var(--bp-warning); }
+.brikpanel-bc-card-ok { border-left: 3px solid #1a8917; }
+.brikpanel-bc-card-unknown { border-left: 3px solid #c0c0c0; }
+
+.brikpanel-bc-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.brikpanel-bc-card-head-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-bc-card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+    color: #303030;
+}
+
+.brikpanel-bc-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 550;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.brikpanel-bc-status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.brikpanel-bc-status-critical { background: var(--bp-error-bg); color: #d72c0d; }
+.brikpanel-bc-status-critical .brikpanel-bc-status-dot { background: #d72c0d; }
+.brikpanel-bc-status-warning { background: var(--bp-warning-bg); color: var(--bp-warning); }
+.brikpanel-bc-status-warning .brikpanel-bc-status-dot { background: var(--bp-warning); }
+.brikpanel-bc-status-ok { background: var(--bp-success-bg); color: #1a8917; }
+.brikpanel-bc-status-ok .brikpanel-bc-status-dot { background: #1a8917; }
+.brikpanel-bc-status-unknown { background: #f1f1f1; color: #616161; }
+.brikpanel-bc-status-unknown .brikpanel-bc-status-dot { background: #c0c0c0; }
+
+.brikpanel-bc-card-score {
+    display: flex;
+    align-items: baseline;
+    gap: 0.125rem;
+    color: #616161;
+    font-weight: 550;
+}
+
+.brikpanel-bc-score-num {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #303030;
+}
+
+.brikpanel-bc-score-suffix {
+    font-size: 0.75rem;
+    color: #8a8a8a;
+}
+
+.brikpanel-bc-card-summary {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.875rem;
+    color: #303030;
+}
+
+.brikpanel-bc-card-message {
+    margin: 0 0 0.75rem 0;
+    color: #616161;
+    font-size: 0.8125rem;
+}
+
+/* Active plugins pills */
+.brikpanel-bc-active-plugins {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.75rem 0;
+    font-size: 0.8125rem;
+    color: #616161;
+}
+
+.brikpanel-bc-active-plugins-label {
+    font-weight: 550;
+    color: #303030;
+}
+
+.brikpanel-bc-plugin-pill {
+    background: var(--bp-success-bg);
+    color: #1a8917;
+    border: 1px solid #b7e1b0;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 550;
+}
+
+/* Recommendations */
+.brikpanel-bc-recommendations {
+    list-style: none;
+    margin: 0.75rem 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.brikpanel-bc-rec {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.625rem 0.75rem;
+    background: #fafafa;
+    border: 1px solid #e3e3e3;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    color: #303030;
+    line-height: 1.5;
+}
+
+.brikpanel-bc-rec-prio {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 50%;
+    margin-top: 0.4375rem;
+    flex-shrink: 0;
+    background: #c0c0c0;
+}
+
+.brikpanel-bc-rec-high .brikpanel-bc-rec-prio { background: #d72c0d; }
+.brikpanel-bc-rec-medium .brikpanel-bc-rec-prio { background: var(--bp-warning); }
+.brikpanel-bc-rec-low .brikpanel-bc-rec-prio { background: #1a8917; }
+
+.brikpanel-bc-rec-text {
+    flex: 1 1 auto;
+}
+
+.brikpanel-bc-rec-link {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: #303030;
+    color: #fff !important;
+    padding: 0.3125rem 0.625rem;
+    border-radius: 0.375rem;
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 550;
+    transition: background-color 0.15s ease;
+}
+
+.brikpanel-bc-rec-link:hover {
+    background: #1a1a1a;
+    color: #fff;
+}
+
+/* Stats grid */
+.brikpanel-bc-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 0.5rem;
+    margin: 0.75rem 0 0 0;
+    padding: 0.75rem;
+    background: #fafafa;
+    border-radius: 0.5rem;
+    border: 1px solid #e3e3e3;
+}
+
+.brikpanel-bc-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.brikpanel-bc-stat-num {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #303030;
+    line-height: 1.1;
+}
+
+.brikpanel-bc-stat-label {
+    font-size: 0.6875rem;
+    color: #616161;
+    text-transform: uppercase;
+    font-weight: 550;
+    letter-spacing: 0.03em;
+}
+
+.brikpanel-bc-stat-warn .brikpanel-bc-stat-num { color: var(--bp-warning); }
+.brikpanel-bc-stat-good .brikpanel-bc-stat-num { color: #1a8917; }
+.brikpanel-bc-stat-error .brikpanel-bc-stat-num { color: #d72c0d; }
+
+/* Largest images table */
+.brikpanel-bc-details {
+    margin-top: 0.875rem;
+    background: #fafafa;
+    border: 1px solid #e3e3e3;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.brikpanel-bc-details summary {
+    cursor: pointer;
+    font-weight: 550;
+    font-size: 0.8125rem;
+    color: #303030;
+    padding: 0.25rem 0;
+    user-select: none;
+}
+
+.brikpanel-bc-details summary:hover {
+    color: #1a1a1a;
+}
+
+.brikpanel-bc-largest-table {
+    width: 100%;
+    margin-top: 0.5rem;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.brikpanel-bc-largest-table th,
+.brikpanel-bc-largest-table td {
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid #e3e3e3;
+}
+
+.brikpanel-bc-largest-table th {
+    font-weight: 550;
+    color: #616161;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: #fff;
+}
+
+.brikpanel-bc-largest-table tr:last-child td {
+    border-bottom: none;
+}
+
+.brikpanel-bc-largest-table a {
+    color: #303030;
+    text-decoration: none;
+    font-weight: 550;
+}
+
+.brikpanel-bc-largest-table a:hover {
+    text-decoration: underline;
+}
+
+.brikpanel-bc-table-link {
+    font-size: 0.75rem;
+    color: #616161 !important;
+}
+
+/* Card footer */
+.brikpanel-bc-card-foot {
+    margin-top: 0.875rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid #f1f1f1;
+}
+
+.brikpanel-bc-card-meta {
+    font-size: 0.75rem;
+    color: #8a8a8a;
+}
+
+.brikpanel-bc-empty-state {
+    text-align: center;
+    color: #8a8a8a;
+    padding: 2rem 1rem;
+}
+
+/* =============================================================================
+   TOPBAR BUTTON
+   ============================================================================= */
+.brikpanel-bc-btn {
+    position: relative;
+}
+
+.brikpanel-bc-state-ok { color: #8a8a8a; }
+.brikpanel-bc-state-warning { color: var(--bp-warning); }
+.brikpanel-bc-state-critical { color: #d72c0d; }
+
+.brikpanel-bc-state-warning .brikpanel-bc-badge { background: var(--bp-warning); }
+.brikpanel-bc-state-critical .brikpanel-bc-badge { background: #d72c0d; }
+
+.brikpanel-bc-dropdown {
+    min-width: 320px;
+}
+
+.brikpanel-bc-last-scan {
+    font-size: 0.75rem;
+    color: #8a8a8a;
+    font-weight: 400;
+}
+
+.brikpanel-bc-dropdown-list {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.brikpanel-bc-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid #f1f1f1;
+}
+
+.brikpanel-bc-row:last-of-type {
+    border-bottom: none;
+}
+
+.brikpanel-bc-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 0.4rem;
+}
+
+.brikpanel-bc-dot-critical { background: #d72c0d; }
+.brikpanel-bc-dot-warning  { background: var(--bp-warning); }
+.brikpanel-bc-dot-ok       { background: #1a8917; }
+.brikpanel-bc-dot-unknown  { background: #c0c0c0; }
+
+.brikpanel-bc-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+
+.brikpanel-bc-row-label {
+    font-size: 0.8125rem;
+    font-weight: 550;
+    color: #303030;
+}
+
+.brikpanel-bc-row-summary {
+    font-size: 0.75rem;
+    color: #616161;
+    line-height: 1.4;
+}
+
+.brikpanel-bc-empty {
+    padding: 1rem 0.875rem;
+    color: #8a8a8a;
+    font-size: 0.8125rem;
+    text-align: center;
+}
+
+.brikpanel-bc-dropdown-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.875rem;
+    border-top: 1px solid #e3e3e3;
+    background: #fafafa;
+    gap: 0.5rem;
+}
+
+.brikpanel-bc-rescan-btn {
+    background: none;
+    border: 1px solid #e3e3e3;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 550;
+    color: #303030;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background-color 0.15s ease;
+}
+
+.brikpanel-bc-rescan-btn:hover:not(:disabled) {
+    background: #f1f1f1;
+}
+
+.brikpanel-bc-rescan-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.brikpanel-bc-report-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #303030 !important;
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 550;
+}
+
+.brikpanel-bc-report-link:hover {
+    color: #1a1a1a;
+    text-decoration: underline;
+}
+
+/* =============================================================================
+   DASHBOARD BANNER
+   ============================================================================= */
+.brikpanel-bc-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    background: var(--bp-error-bg);
+    border: 1px solid var(--bp-error-border);
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    margin-bottom: 1rem;
+    color: #c62828;
+    font-size: 0.8125rem;
+    box-shadow: 0 1px 3px rgba(215, 44, 13, 0.06);
+}
+
+.brikpanel-bc-banner-icon {
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    color: #d72c0d;
+}
+
+.brikpanel-bc-banner-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.brikpanel-bc-banner-text {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+
+.brikpanel-bc-banner-text strong {
+    color: #b8240a;
+    font-weight: 600;
+}
+
+.brikpanel-bc-banner-text span {
+    color: #616161;
+    font-size: 0.75rem;
+}
+
+.brikpanel-bc-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+.brikpanel-bc-banner-cta {
+    background: #303030;
+    color: #fff !important;
+    text-decoration: none;
+    padding: 0.4rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 550;
+    transition: background-color 0.15s ease;
+}
+
+.brikpanel-bc-banner-cta:hover {
+    background: #1a1a1a;
+    color: #fff !important;
+}
+
+.brikpanel-bc-banner-dismiss {
+    background: none;
+    border: 1px solid var(--bp-error-border);
+    color: #d72c0d;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.375rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.brikpanel-bc-banner-dismiss:hover {
+    background: rgba(215, 44, 13, 0.08);
+}
+
+@media (max-width: 600px) {
+    .brikpanel-bc-banner {
+        flex-wrap: wrap;
+    }
+    .brikpanel-bc-banner-text {
+        flex-basis: 100%;
+        order: 2;
+    }
+    .brikpanel-bc-banner-actions {
+        order: 1;
+        margin-left: auto;
+    }
+}

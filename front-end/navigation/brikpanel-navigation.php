@@ -154,7 +154,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			'wc-orders',
 			'edit.php?post_type=shop_order',
 			'wc-orders--shop_subscription',
-			'wc-admin&path=/customers'
+			'wc-admin&path=/customers',
 		);
 
 		foreach ( $submenu_items as $sub_key => $sub_item ) {
@@ -203,6 +203,23 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				$menu = brikpanel_move_item_after( $menu, 'admin.php?page=wc-settings', 'woocommerce-marketing' );
 				$menu = brikpanel_move_item_after( $menu, 'admin.php?page=wc-settings&tab=checkout', 'edit.php?post_type=product' );
 				$menu = brikpanel_move_item_after( $menu, 'wf_woocommerce_packing_list', 'edit.php?post_type=product' );
+
+				// BrikPanel custom analytics: Segments and Customer Analytics
+				// sit directly under Products in the sidebar.
+				$menu = brikpanel_move_item_after( $menu, 'brikpanel-segments', 'edit.php?post_type=product' );
+				$menu = brikpanel_move_item_after( $menu, 'brikpanel-customer-analytics', 'brikpanel-segments' );
+			}
+
+			// Apply user-defined sidebar customization (reorder / hide / inject
+			// custom links / promote items into More / hide individual submenus
+			// / override icons). Returns the slug used as the anchor for the
+			// "Site management" heading; defaults to 'edit.php' when no config
+			// is saved. Pass $submenu by reference so More-section + per-submenu
+			// hide can mutate it.
+			$brikpanel_sitemgmt_anchor = 'edit.php';
+			$brikpanel_custom_icons    = array();
+			if ( function_exists( 'brikpanel_nav_customizer_apply' ) ) {
+				list( $brikpanel_sitemgmt_anchor, $brikpanel_custom_icons ) = brikpanel_nav_customizer_apply( $menu, $submenu );
 			}
 
 			$first = true;
@@ -349,9 +366,12 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		}
 
 		// Bazı özel başlıklar (örn: Edit Posts / Pages) için heading ekliyoruz (isteğe bağlı).
+		// The anchor slug is dynamic — set by the nav customizer to the first
+		// item the user has placed in the "Site management" section. Defaults
+		// to 'edit.php' (the legacy hardcoded position) when no config exists.
 		$heading = '';
 		if ( ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
-			$heading = $item_slug === 'edit.php' ? '<span class="brikpanel-menu-heading">' . __('Site management', 'brikpanel') . '<img class="brikpanel-site-management-toggle" src="' . plugins_url( 'icons/chevron-down.svg', __FILE__ ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">' : '';
+			$heading = $item_slug === $brikpanel_sitemgmt_anchor ? '<span class="brikpanel-menu-heading">' . __('Site management', 'brikpanel') . '<img class="brikpanel-site-management-toggle" src="' . plugins_url( 'icons/chevron-down.svg', __FILE__ ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">' : '';
 		}
 
 		$html .= "
@@ -359,9 +379,34 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			<li $class $id $aria_hidden>
 		";
 
+		// Custom user-defined link injected by the nav customizer. Render it
+		// with the user's URL / icon / target and skip the rest of the loop
+		// (it has no submenu and bypasses the normal slug-based icon map).
+		$brikpanel_custom_meta = function_exists( 'brikpanel_nav_customizer_extract_meta' )
+			? brikpanel_nav_customizer_extract_meta( $item )
+			: null;
+		if ( $brikpanel_custom_meta ) {
+			$custom_url    = isset( $brikpanel_custom_meta['url'] ) ? (string) $brikpanel_custom_meta['url'] : '#';
+			$custom_icon   = isset( $brikpanel_custom_meta['icon'] ) ? (string) $brikpanel_custom_meta['icon'] : 'default';
+			$custom_target = ! empty( $brikpanel_custom_meta['new_tab'] ) ? ' target="_blank" rel="noopener"' : '';
+			$icon_html     = '<img src="' . esc_url( plugins_url( 'icons/' . $custom_icon . '.svg', __FILE__ ) ) . '" width="15" height="18">';
+			$html .= "
+				<div class='brikpanel-menu-icon-title-container $toplevel_page_class'>
+					$icon_html
+					<a href='" . esc_url( $custom_url ) . "'" . $custom_target . " class='brikpanel-custom-nav-link'>
+						" . esc_html( $title ) . "
+					</a>
+				</div>
+			";
+			$html .= '</li>';
+			continue;
+		}
+
 		// Özel ikon atamaları:
 		$has_custom_icon = array(
 			'edit.php?post_type=product' => 'products',
+			'brikpanel-segments' => 'payments',
+			'brikpanel-customer-analytics' => 'credit-card',
 			'wf_woocommerce_packing_list' => 'invoice',
 			'admin.php?page=wc-settings&tab=checkout' => 'payments',
 			'wc-admin&path=/wc-pay-welcome-page' => 'payments',
@@ -388,10 +433,18 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		);
 
 		$icon = '';
-		foreach ( $has_custom_icon as $slug => $icon_file ) {
-			if ( $item_slug === $slug ) {
-				$icon = '<img src="' . plugins_url( 'icons/' . $icon_file . '.svg', __FILE__ ) . '" width="15" height="18">';
-				break;
+		// User-defined icon override (from the customizer) takes precedence
+		// over the built-in slug→icon map.
+		if ( isset( $brikpanel_custom_icons[ $item_slug ] ) ) {
+			$override_slug = $brikpanel_custom_icons[ $item_slug ];
+			$icon = '<img src="' . esc_url( plugins_url( 'icons/' . $override_slug . '.svg', __FILE__ ) ) . '" width="15" height="18">';
+		}
+		if ( $icon === '' ) {
+			foreach ( $has_custom_icon as $slug => $icon_file ) {
+				if ( $item_slug === $slug ) {
+					$icon = '<img src="' . plugins_url( 'icons/' . $icon_file . '.svg', __FILE__ ) . '" width="15" height="18">';
+					break;
+				}
 			}
 		}
 		// Eğer özel ikon yoksa orijinal ikonu kullanmaya devam ediyoruz.
@@ -514,6 +567,31 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				$sub_item[4] = $sub_item[4] ?? '';
 
 				$sub_item_slug = $sub_item[2];
+
+				// Customizer-injected custom link inside a submenu (e.g. when an
+				// admin promotes a custom URL into the "More" dropdown). Render
+				// it with our own URL/icon/target and skip the slug-based logic.
+				$brikpanel_sub_custom = function_exists( 'brikpanel_nav_customizer_extract_meta' )
+					? brikpanel_nav_customizer_extract_meta( $sub_item )
+					: null;
+				if ( $brikpanel_sub_custom ) {
+					$sub_url    = isset( $brikpanel_sub_custom['url'] ) ? (string) $brikpanel_sub_custom['url'] : '#';
+					$sub_icon   = isset( $brikpanel_sub_custom['icon'] ) ? (string) $brikpanel_sub_custom['icon'] : 'default';
+					$sub_target = ! empty( $brikpanel_sub_custom['new_tab'] ) ? ' target="_blank" rel="noopener"' : '';
+					$sub_title  = wptexturize( $sub_item[0] ?? '' );
+					$sub_icon_html = '<img src="' . esc_url( plugins_url( 'icons/' . $sub_icon . '.svg', __FILE__ ) ) . '" width="12">';
+					$html .= "
+						<li class='brikpanel-more-custom-item'>
+							<div class='brikpanel-menu-icon-title-container'>
+								$sub_icon_html
+								<a href='" . esc_url( $sub_url ) . "'" . $sub_target . " class='brikpanel-custom-nav-link'>
+									" . esc_html( $sub_title ) . "
+								</a>
+							</div>
+						</li>
+					";
+					continue;
+				}
 
 				// ---------------------------------------------------
 				// --- WooCommerce Home (wc-admin) alt menüsünü kaldır ---

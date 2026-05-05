@@ -10,6 +10,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "cobe": "^2.0.1"
+    "cobe": "^2.1.0"
   }
 }

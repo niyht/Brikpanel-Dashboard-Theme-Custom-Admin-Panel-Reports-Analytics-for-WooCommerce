@@ -1,0 +1,537 @@
+/**
+ * BrikPanel — Sidebar Navigation Customizer (settings page UI styles)
+ *
+ * Follows the BrikPanel design system: monochrome palette, soft borders,
+ * Shopify-inspired bevels on primary buttons, 0.75rem rounded cards.
+ */
+
+.brikpanel-nav-customizer {
+	--bg: #f1f1f1;
+	--card: #ffffff;
+	--text: #303030;
+	--text-secondary: #616161;
+	--text-muted: #8a8a8a;
+	--border: #e3e3e3;
+	--input-border: #8a8a8a;
+	--input-focus: #303030;
+	--primary: #303030;
+	--primary-hover: #1a1a1a;
+	--success: #1a8917;
+	--error: #d72c0d;
+
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	color: var(--text);
+	font-size: 0.875rem;
+	line-height: 1.5;
+	margin: 0 0 1rem;
+	max-width: 820px;
+}
+
+/* ----- Card shell ----- */
+.brikpanel-navc-card {
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: 0.75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	padding: 1.25rem 1.5rem;
+}
+
+.brikpanel-navc-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 1.25rem;
+	padding-bottom: 1rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.brikpanel-navc-title {
+	font-size: 1.125rem;
+	font-weight: 600;
+	margin: 0 0 0.25rem;
+	color: var(--text);
+}
+
+.brikpanel-navc-subtitle {
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+	margin: 0;
+}
+
+/* ----- Section ----- */
+.brikpanel-navc-section + .brikpanel-navc-section {
+	margin-top: 1.5rem;
+	padding-top: 1.5rem;
+	border-top: 1px dashed var(--border);
+}
+
+.brikpanel-navc-section-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 0.625rem;
+}
+
+.brikpanel-navc-section-title {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--text);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.brikpanel-navc-section-hint {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+}
+
+/* ----- List of items ----- */
+.brikpanel-navc-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	min-height: 0.5rem;
+}
+
+.brikpanel-navc-item {
+	display: block;
+	background: #fafafa;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+	overflow: hidden;
+}
+
+.brikpanel-navc-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.5rem 0.625rem;
+}
+
+.brikpanel-navc-item:hover {
+	background: #f5f5f5;
+	border-color: #d0d0d0;
+}
+
+.brikpanel-navc-item.is-hidden {
+	opacity: 0.55;
+}
+
+.brikpanel-navc-item.is-hidden .brikpanel-navc-label-text {
+	text-decoration: line-through;
+}
+
+/* ----- Submenu manage panel (collapsible inside system row) ----- */
+.brikpanel-navc-submenus {
+	background: #fff;
+	border-top: 1px dashed var(--border);
+}
+
+.brikpanel-navc-submenus[hidden] {
+	display: none;
+}
+
+.brikpanel-navc-submenus-inner {
+	padding: 0.5rem 0.75rem 0.625rem 2.625rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+}
+
+.brikpanel-navc-submenus-title {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 0.125rem;
+}
+
+.brikpanel-navc-submenu-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.brikpanel-navc-submenu-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.25rem 0;
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+	transition: opacity 0.15s ease;
+}
+
+.brikpanel-navc-submenu-item.is-hidden {
+	opacity: 0.55;
+}
+
+.brikpanel-navc-submenu-item.is-hidden .brikpanel-navc-submenu-label {
+	text-decoration: line-through;
+}
+
+.brikpanel-navc-submenu-label {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Smaller toggle for submenu rows. */
+.brikpanel-navc-toggle-sm {
+	width: 32px;
+	height: 18px;
+}
+
+.brikpanel-navc-toggle-sm .brikpanel-navc-toggle-thumb {
+	width: 12px;
+	height: 12px;
+	top: 3px;
+	left: 3px;
+}
+
+.brikpanel-navc-toggle-sm input:checked + .brikpanel-navc-toggle-track .brikpanel-navc-toggle-thumb {
+	transform: translateX(14px);
+}
+
+/* Submenu chevron rotation when expanded. */
+.brikpanel-navc-submenu-chevron {
+	transition: transform 0.15s ease;
+}
+
+.brikpanel-navc-submenu-chevron.is-open {
+	transform: rotate(180deg);
+}
+
+.brikpanel-navc-drag {
+	cursor: grab;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+}
+
+.brikpanel-navc-drag:active {
+	cursor: grabbing;
+}
+
+.brikpanel-navc-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	color: var(--text-secondary);
+	flex-shrink: 0;
+}
+
+.brikpanel-navc-icon img {
+	width: 14px;
+	height: 14px;
+	object-fit: contain;
+}
+
+.brikpanel-navc-label {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+}
+
+.brikpanel-navc-label-text {
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: var(--text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.brikpanel-navc-label-meta {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* ----- Toggle switch ----- */
+.brikpanel-navc-toggle {
+	position: relative;
+	display: inline-block;
+	width: 40px;
+	height: 22px;
+	flex-shrink: 0;
+	cursor: pointer;
+}
+
+.brikpanel-navc-toggle input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+	position: absolute;
+}
+
+.brikpanel-navc-toggle-track {
+	position: absolute;
+	inset: 0;
+	background: #ccc;
+	border-radius: 22px;
+	transition: background 0.15s ease;
+}
+
+.brikpanel-navc-toggle-thumb {
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 16px;
+	height: 16px;
+	background: #fff;
+	border-radius: 50%;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+	transition: transform 0.15s ease;
+}
+
+.brikpanel-navc-toggle input:checked + .brikpanel-navc-toggle-track {
+	background: var(--primary);
+}
+
+.brikpanel-navc-toggle input:checked + .brikpanel-navc-toggle-track .brikpanel-navc-toggle-thumb {
+	transform: translateX(18px);
+}
+
+.brikpanel-navc-toggle input:focus-visible + .brikpanel-navc-toggle-track {
+	box-shadow: 0 0 0 2px var(--card), 0 0 0 3px var(--primary);
+}
+
+/* ----- Icon-only buttons (edit/delete on custom rows) ----- */
+.brikpanel-navc-iconbtn {
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 0.375rem;
+	padding: 0.25rem;
+	cursor: pointer;
+	color: var(--text-secondary);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+	flex-shrink: 0;
+}
+
+.brikpanel-navc-iconbtn:hover {
+	background: #ececec;
+	color: var(--text);
+}
+
+.brikpanel-navc-iconbtn-danger:hover {
+	background: #fde7e3;
+	color: var(--error);
+}
+
+/* ----- "Add custom link" button ----- */
+.brikpanel-navc-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	background: transparent;
+	color: var(--text-secondary);
+	border: 1px dashed #c2c2c2;
+	border-radius: 0.5rem;
+	padding: 0.5rem 0.875rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	cursor: pointer;
+	margin-top: 0.625rem;
+	transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.brikpanel-navc-add:hover {
+	background: #fafafa;
+	border-color: var(--input-border);
+	color: var(--text);
+}
+
+/* ----- Primary / secondary buttons ----- */
+.brikpanel-navc-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	border-radius: 0.5rem;
+	padding: 0.5rem 1rem;
+	cursor: pointer;
+	border: none;
+	font-family: inherit;
+	line-height: 1.2;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.brikpanel-navc-btn-primary {
+	background: var(--primary);
+	color: #fff;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-navc-btn-primary:hover {
+	background: var(--primary-hover);
+}
+
+.brikpanel-navc-btn-secondary {
+	background: #fff;
+	color: var(--text);
+	box-shadow: inset 0 0 0 1px var(--border), 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.brikpanel-navc-btn-secondary:hover {
+	background: #f7f7f7;
+}
+
+/* ----- Sortable placeholder while dragging ----- */
+.brikpanel-navc-placeholder {
+	background: #f0f0f0;
+	border: 1px dashed #c2c2c2;
+	border-radius: 0.5rem;
+	height: 2.25rem;
+	margin: 0;
+	list-style: none;
+}
+
+.ui-sortable-helper {
+	background: #fff !important;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+	border-color: var(--input-border) !important;
+}
+
+/* ----- Dialog ----- */
+.brikpanel-navc-dialog-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.4);
+	z-index: 100050;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1rem;
+}
+
+.brikpanel-navc-dialog-backdrop[hidden] {
+	display: none;
+}
+
+.brikpanel-navc-dialog {
+	background: var(--card);
+	border-radius: 0.75rem;
+	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+	width: 100%;
+	max-width: 460px;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.brikpanel-navc-dialog-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 1rem 1.25rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.brikpanel-navc-dialog-header h4 {
+	font-size: 1rem;
+	font-weight: 600;
+	margin: 0;
+	color: var(--text);
+}
+
+.brikpanel-navc-dialog-body {
+	padding: 1.25rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.875rem;
+}
+
+.brikpanel-navc-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+}
+
+.brikpanel-navc-field > span {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.brikpanel-navc-field input[type="text"],
+.brikpanel-navc-field select {
+	font-family: inherit;
+	font-size: 0.875rem;
+	padding: 0.625rem 0.75rem;
+	border: 1px solid var(--input-border);
+	border-radius: 0.5rem;
+	background: #fff;
+	color: var(--text);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	width: 100%;
+	box-sizing: border-box;
+	height: auto;
+	line-height: 1.4;
+}
+
+.brikpanel-navc-field input[type="text"]:focus,
+.brikpanel-navc-field select:focus {
+	outline: none;
+	border-color: var(--input-focus);
+	box-shadow: 0 0 0 1px var(--input-focus);
+}
+
+.brikpanel-navc-field-checkbox {
+	flex-direction: row;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.brikpanel-navc-field-checkbox input {
+	margin: 0;
+}
+
+.brikpanel-navc-field-checkbox span {
+	font-weight: 400;
+	color: var(--text-secondary);
+}
+
+.brikpanel-navc-dialog-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	padding: 1rem 1.25rem;
+	border-top: 1px solid var(--border);
+	background: #fafafa;
+}
+
+/* ----- The customizer renders OUTSIDE the WC form-table (the field handler
+       closes </table> before printing this wrap and reopens a fresh
+       <table class="form-table"> after) so we get the full content width
+       instead of being squeezed into the form-table's fixed-width column. ----- */
+.brikpanel-nav-customizer-wrap {
+	margin: 1rem 0;
+}

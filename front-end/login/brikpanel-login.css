@@ -23,7 +23,7 @@ body.login {
 /* ---------- Login Wrapper ---------- */
 #login {
     width: 100%;
-    max-width: 400px;
+    max-width: 420px;
     padding: 0 1.25rem;
     box-sizing: border-box;
 }
@@ -289,6 +289,56 @@ body.login {
     padding: 0 !important;
 }
 
+/* ---------- Captcha widgets (Turnstile / hCaptcha / reCAPTCHA) ----------
+   The Cloudflare Turnstile widget renders at ~300px which, combined with
+   the plugin's own padding, can exceed the form's inner content width.
+   We pull the container edge-to-edge with negative horizontal margin and
+   center the widget inside it so it sits symmetrically regardless of
+   which login form it appears in. `!important` on margin defeats the
+   inline `<style>` block that 3rd-party captcha plugins inject per unique
+   widget ID (e.g. `#cf-turnstile-XYZ { margin-left: -15px }`). */
+#loginform .cf-turnstile,
+#loginform .h-captcha,
+#loginform .g-recaptcha,
+#loginform [data-sitekey],
+#lostpasswordform .cf-turnstile,
+#lostpasswordform .h-captcha,
+#lostpasswordform .g-recaptcha,
+#lostpasswordform [data-sitekey],
+#registerform .cf-turnstile,
+#registerform .h-captcha,
+#registerform .g-recaptcha,
+#registerform [data-sitekey] {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center;
+    margin: 0.75rem -0.5rem 0.25rem !important;
+    padding: 0 !important;
+    overflow: visible;
+    min-width: 0;
+}
+
+/* Simple Cloudflare Turnstile injects a <br class="cf-turnstile-br"> after
+   the widget as a spacer. Combined with our own margin it adds ~22px of
+   extra space below the widget. Collapse it so the rhythm stays even. */
+#loginform .cf-turnstile-br,
+#lostpasswordform .cf-turnstile-br,
+#registerform .cf-turnstile-br {
+    display: none !important;
+}
+
+#loginform .cf-turnstile iframe,
+#loginform .h-captcha iframe,
+#loginform .g-recaptcha iframe,
+#lostpasswordform .cf-turnstile iframe,
+#lostpasswordform .h-captcha iframe,
+#lostpasswordform .g-recaptcha iframe,
+#registerform .cf-turnstile iframe,
+#registerform .h-captcha iframe,
+#registerform .g-recaptcha iframe {
+    max-width: 100%;
+}
+
 /* ---------- Spinner (AJAX loading) ---------- */
 .brikpanel-spinner {
     display: inline-block;
@@ -381,22 +431,23 @@ body.login {
 .brikpanel-toast {
     position: fixed;
     top: 1.25rem;
-    right: 1.25rem;
+    left: 50%;
     z-index: 100000;
     padding: 0.75rem 1.25rem;
     border-radius: 0.5rem;
     font-size: 0.8125rem;
     font-weight: 550;
     line-height: 1.5;
-    max-width: 340px;
-    transform: translateX(110%);
+    max-width: min(340px, calc(100vw - 2rem));
+    text-align: center;
+    transform: translate(-50%, -150%);
     opacity: 0;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: none;
 }
 
 .brikpanel-toast.is-visible {
-    transform: translateX(0);
+    transform: translate(-50%, 0);
     opacity: 1;
     pointer-events: auto;
 }

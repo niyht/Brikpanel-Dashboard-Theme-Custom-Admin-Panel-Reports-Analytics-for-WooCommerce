@@ -301,12 +301,13 @@ body.taxonomy-product_cat .wp-list-table tbody td,
 body.taxonomy-product_tag .wp-list-table tbody td,
 body.product_page_product_attributes .widefat tbody td,
 body.product_page_product_attributes .widefat tbody th {
-    padding: 0.75rem 1rem !important;
-    font-size: 0.875rem !important;
+    padding: 0.375rem 1rem !important;
+    font-size: 0.8125rem !important;
     color: var(--bpl-text) !important;
     border-top: 1px solid var(--bpl-border) !important;
     border-bottom: none !important;
     vertical-align: middle !important;
+    line-height: 1.4 !important;
 }
 
 body.taxonomy-product_cat .wp-list-table tbody tr:hover,
@@ -327,18 +328,34 @@ body.taxonomy-product_tag .wp-list-table .column-name a:hover {
     color: var(--bpl-primary);
 }
 
-/* Row actions */
+/* Row actions - collapsed by default, expand to natural content height on hover.
+   Uses grid-template-rows 0fr -> 1fr so any number of wrapped action lines fit. */
 body.taxonomy-product_cat .row-actions,
 body.taxonomy-product_tag .row-actions,
 body.product_page_product_attributes .row-actions {
+    display: grid;
+    grid-template-rows: 0fr;
     opacity: 0;
-    transition: opacity 0.15s;
+    margin: 0 !important;
+    padding: 0 !important;
+    transition: grid-template-rows 0.25s cubic-bezier(.4,0,.2,1),
+                opacity 0.15s,
+                padding 0.2s;
+}
+
+body.taxonomy-product_cat .row-actions > .brikpanel-row-actions-inner,
+body.taxonomy-product_tag .row-actions > .brikpanel-row-actions-inner,
+body.product_page_product_attributes .row-actions > .brikpanel-row-actions-inner {
+    overflow: hidden;
+    min-height: 0;
 }
 
 body.taxonomy-product_cat tr:hover .row-actions,
 body.taxonomy-product_tag tr:hover .row-actions,
 body.product_page_product_attributes tr:hover .row-actions {
+    grid-template-rows: 1fr;
     opacity: 1;
+    padding-top: 0.25rem !important;
 }
 
 body.taxonomy-product_cat .row-actions a,
@@ -397,13 +414,91 @@ body.product_page_product_attributes .widefat .check-column input {
 }
 
 /* Category image column */
+body.taxonomy-product_cat .wp-list-table .column-thumb,
+body.taxonomy-product_tag .wp-list-table .column-thumb {
+    width: 40px;
+}
+
 body.taxonomy-product_cat .wp-list-table .column-thumb img,
 body.taxonomy-product_tag .wp-list-table .column-thumb img {
-    width: 36px;
-    height: 36px;
-    border-radius: 0.375rem;
+    width: 28px;
+    height: 28px;
+    border-radius: 0.25rem;
     object-fit: cover;
     border: 1px solid var(--bpl-border);
+    display: block;
+}
+
+/* Column widths: give description room, keep slug/count compact */
+body.taxonomy-product_cat .wp-list-table .column-name,
+body.taxonomy-product_tag .wp-list-table .column-name {
+    width: 22%;
+}
+
+body.taxonomy-product_cat .wp-list-table .column-description,
+body.taxonomy-product_tag .wp-list-table .column-description {
+    width: auto;
+}
+
+body.taxonomy-product_cat .wp-list-table .column-slug,
+body.taxonomy-product_tag .wp-list-table .column-slug {
+    width: 18%;
+}
+
+body.taxonomy-product_cat .wp-list-table .column-posts,
+body.taxonomy-product_tag .wp-list-table .column-posts {
+    width: 80px;
+}
+
+/* Description column: truncate inner span with ellipsis, show full on td hover */
+body.taxonomy-product_cat .wp-list-table td.column-description,
+body.taxonomy-product_tag .wp-list-table td.column-description {
+    max-width: 0;
+    color: var(--bpl-text-secondary);
+    position: relative;
+    overflow: visible;
+}
+
+.brikpanel-desc-text {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+body.taxonomy-product_cat .wp-list-table td.column-description:hover::after,
+body.taxonomy-product_tag .wp-list-table td.column-description:hover::after {
+    content: attr(data-description);
+    position: absolute;
+    top: calc(100% - 4px);
+    left: 1rem;
+    z-index: 20;
+    background: var(--bpl-card);
+    color: var(--bpl-text);
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--bpl-border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    white-space: normal;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    max-width: 360px;
+    min-width: 200px;
+    width: max-content;
+    pointer-events: none;
+}
+
+/* Hide tooltip when there is no description */
+body.taxonomy-product_cat .wp-list-table td.column-description[data-description=""]:hover::after,
+body.taxonomy-product_tag .wp-list-table td.column-description[data-description=""]:hover::after,
+body.taxonomy-product_cat .wp-list-table td.column-description:not([data-description]):hover::after,
+body.taxonomy-product_tag .wp-list-table td.column-description:not([data-description]):hover::after {
+    display: none;
+}
+
+.brikpanel-desc-empty {
+    color: var(--bpl-text-muted);
 }
 
 /* ---------- Tablenav (Bulk + Pagination) ---------- */
@@ -722,11 +817,17 @@ body.taxonomy-product_cat .form-field .button:not(.button-primary):hover {
     margin: 0 !important;
 }
 
+.brikpanel-cat-header form.search-form {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
 .brikpanel-cat-header .search-box {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin: 0 !important;
+    padding: 0 !important;
     float: none !important;
     position: static !important;
 }

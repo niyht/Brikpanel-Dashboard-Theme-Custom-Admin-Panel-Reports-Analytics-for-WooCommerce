@@ -6,8 +6,14 @@ document.addEventListener('DOMContentLoaded', () => {
 	document.querySelector('.brikpanel-search-menu-item-mobile').addEventListener('click', brikpanelSearch.openModal);
 	document.querySelector('.brikpanel-search-overlay').addEventListener('click', brikpanelSearch.handleOverlayClick);
 
-	// Opening and closing the modal with keyboard
-	document.addEventListener('keydown', brikpanelSearch.handleOpenShortcut);
+	// Opening and closing the modal with keyboard.
+	// Ctrl/Cmd+K is registered in the capture phase so we run before any
+	// bubble-phase listeners — notably WordPress core's Command Palette
+	// (`commands-command-menu`), which also binds Ctrl/Cmd+K. Without
+	// this, both modals open simultaneously and the WP one stays behind
+	// our overlay; closing ours via Escape then reveals an empty WP
+	// search modal underneath.
+	document.addEventListener('keydown', brikpanelSearch.handleOpenShortcut, true);
 	document.addEventListener('keydown', brikpanelSearch.handleEscapeKey);
 
 	// Alter what gets focused when the modal’s input is focused
@@ -45,6 +51,8 @@ const brikpanelSearch = {
 	handleOpenShortcut: function (event) {
 		if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
 			event.preventDefault();
+			event.stopPropagation();
+			event.stopImmediatePropagation();
 			brikpanelSearch.openModal();
 		}
 	},

@@ -1,0 +1,22 @@
+{
+  "summary": {
+    "action": "brikpanel_ca_ltv_summary",
+    "status": 404,
+    "raw": "<!doctype html>\n<html lang=\"en-US\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"height=device-height, width=device-width, initial-scale=1\">\n<link rel=\"profile\" href=\"https://gmpg.org/xfn/11\">\n<link rel=\"pingback\" href=\"http://kodlama.test/xmlrpc.php\">\n\n<title>404 - Page not found - Kodlama</title>\n<meta name=\"robots\" content=\"follow, noindex\">\n<meta property=\"fb:pages\" content=\"\">\n<link rel=\"alternate\" type=\"application/rss+xml\" title=\"Kodlama &raquo; Feed\" href=\"http://kodlama."
+  },
+  "dist": {
+    "action": "brikpanel_ca_ltv_distribution",
+    "status": 404,
+    "raw": "<!doctype html>\n<html lang=\"en-US\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"height=device-height, width=device-width, initial-scale=1\">\n<link rel=\"profile\" href=\"https://gmpg.org/xfn/11\">\n<link rel=\"pingback\" href=\"http://kodlama.test/xmlrpc.php\">\n\n<title>404 - Page not found - Kodlama</title>\n<meta name=\"robots\" content=\"follow, noindex\">\n<meta property=\"fb:pages\" content=\"\">\n<link rel=\"alternate\" type=\"application/rss+xml\" title=\"Kodlama &raquo; Feed\" href=\"http://kodlama."
+  },
+  "rfm": {
+    "action": "brikpanel_ca_rfm_summary",
+    "status": 404,
+    "raw": "<!doctype html>\n<html lang=\"en-US\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"height=device-height, width=device-width, initial-scale=1\">\n<link rel=\"profile\" href=\"https://gmpg.org/xfn/11\">\n<link rel=\"pingback\" href=\"http://kodlama.test/xmlrpc.php\">\n\n<title>404 - Page not found - Kodlama</title>\n<meta name=\"robots\" content=\"follow, noindex\">\n<meta property=\"fb:pages\" content=\"\">\n<link rel=\"alternate\" type=\"application/rss+xml\" title=\"Kodlama &raquo; Feed\" href=\"http://kodlama."
+  },
+  "cohort": {
+    "action": "brikpanel_ca_cohort_matrix",
+    "status": 404,
+    "raw": "<!doctype html>\n<html lang=\"en-US\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"height=device-height, width=device-width, initial-scale=1\">\n<link rel=\"profile\" href=\"https://gmpg.org/xfn/11\">\n<link rel=\"pingback\" href=\"http://kodlama.test/xmlrpc.php\">\n\n<title>404 - Page not found - Kodlama</title>\n<meta name=\"robots\" content=\"follow, noindex\">\n<meta property=\"fb:pages\" content=\"\">\n<link rel=\"alternate\" type=\"application/rss+xml\" title=\"Kodlama &raquo; Feed\" href=\"http://kodlama."
+  }
+}

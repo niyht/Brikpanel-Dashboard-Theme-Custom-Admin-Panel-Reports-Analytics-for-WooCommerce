@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
  * @param string|null $end_date_gmt   End date in GMT (Y-m-d H:i:s format).
  * @return int Successful order count.
  */
-function brikpanel_get_successful_order_count($start_date_gmt = null, $end_date_gmt = null) {
+function brikpanel_get_successful_order_count($start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false) {
     global $wpdb;
 
     $include_statuses = ['wc-processing', 'wc-completed'];
@@ -39,6 +39,12 @@ function brikpanel_get_successful_order_count($start_date_gmt = null, $end_date_
     $query_sql .= $exclusion['sql'];
     $query_args = array_merge( $query_args, $exclusion['args'] );
 
+    if ( $exclude_marketplace ) {
+        $mp_exclusion = brikpanel_marketplace_order_exclusion_sql( $is_hpos );
+        $query_sql   .= $mp_exclusion['sql'];
+        $query_args   = array_merge( $query_args, $mp_exclusion['args'] );
+    }
+
     if ($start_date_gmt) {
         $query_sql .= " AND {$date_column_name} >= %s";
         $query_args[] = $start_date_gmt;
@@ -61,7 +67,7 @@ function brikpanel_get_successful_order_count($start_date_gmt = null, $end_date_
  * @param string|null $end_date_gmt   End date in GMT (Y-m-d H:i:s format).
  * @return int Order count matching the given statuses.
  */
-function brikpanel_get_order_count_by_status($statuses = [], $start_date_gmt = null, $end_date_gmt = null) {
+function brikpanel_get_order_count_by_status($statuses = [], $start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false) {
     global $wpdb;
 
     if (empty($statuses)) {
@@ -76,7 +82,7 @@ function brikpanel_get_order_count_by_status($statuses = [], $start_date_gmt = n
     if ($is_hpos) {
         // HPOS enabled
         $date_column_name = 'date_created_gmt';
-        $query_sql = "SELECT COUNT(id) FROM {$wpdb->prefix}wc_orders WHERE status IN ({$status_placeholders})";
+        $query_sql = "SELECT COUNT(id) FROM {$wpdb->prefix}wc_orders WHERE type = 'shop_order' AND status IN ({$status_placeholders})";
     } else {
         // HPOS disabled (legacy)
         $date_column_name = 'post_date_gmt';
@@ -87,6 +93,12 @@ function brikpanel_get_order_count_by_status($statuses = [], $start_date_gmt = n
     $exclusion = brikpanel_admin_order_exclusion_sql( $is_hpos, 'ID' );
     $query_sql .= $exclusion['sql'];
     $query_args = array_merge( $query_args, $exclusion['args'] );
+
+    if ( $exclude_marketplace ) {
+        $mp_exclusion = brikpanel_marketplace_order_exclusion_sql( $is_hpos );
+        $query_sql   .= $mp_exclusion['sql'];
+        $query_args   = array_merge( $query_args, $mp_exclusion['args'] );
+    }
 
     if ($start_date_gmt) {
         $query_sql .= " AND {$date_column_name} >= %s";
@@ -103,18 +115,33 @@ function brikpanel_get_order_count_by_status($statuses = [], $start_date_gmt = n
 }
 
 /**
- * Returns the total order count excluding trash and auto-draft statuses.
+ * Returns the total order count for the order-rate denominator. Restricted to the
+ * union of the four slices the dashboard splits orders into (successful = processing
+ * + completed, failed, refunded/return-draft, cancelled) so the percentages always
+ * sum to 100%. Excludes pending/checkout-draft/on-hold/change rows that have no
+ * corresponding slice.
  *
  * @param string|null $start_date_gmt Start date in GMT (Y-m-d H:i:s format).
  * @param string|null $end_date_gmt   End date in GMT (Y-m-d H:i:s format).
  * @return int Total order count.
  */
-function brikpanel_get_total_orders_count($start_date_gmt = null, $end_date_gmt = null) {
+function brikpanel_get_total_orders_count($start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false) {
     global $wpdb;
 
-    $exclude_statuses = ['trash', 'auto-draft'];
-    $status_placeholders = implode(', ', array_fill(0, count($exclude_statuses), '%s'));
-    $query_args = $exclude_statuses;
+    // Must match the union of the slices computed in get_order_rates(): successful
+    // (processing + completed), failed, refunded/return-draft, cancelled. Adding any
+    // status here without a matching slice will make the rate percentages stop
+    // adding up to 100%.
+    $include_statuses = [
+        'wc-processing',
+        'wc-completed',
+        'wc-failed',
+        'wc-refunded',
+        'wc-return-draft',
+        'wc-cancelled',
+    ];
+    $status_placeholders = implode(', ', array_fill(0, count($include_statuses), '%s'));
+    $query_args = $include_statuses;
 
     $date_column_name = '';
     $is_hpos = get_option('woocommerce_custom_orders_table_enabled') === 'yes';
@@ -122,17 +149,23 @@ function brikpanel_get_total_orders_count($start_date_gmt = null, $end_date_gmt 
     if ($is_hpos) {
         // HPOS enabled
         $date_column_name = 'date_created_gmt';
-        $query_sql = "SELECT COUNT(id) FROM {$wpdb->prefix}wc_orders WHERE type = 'shop_order' AND status NOT IN ({$status_placeholders})";
+        $query_sql = "SELECT COUNT(id) FROM {$wpdb->prefix}wc_orders WHERE type = 'shop_order' AND status IN ({$status_placeholders})";
     } else {
         // HPOS disabled (legacy)
         $date_column_name = 'post_date_gmt';
-        $query_sql = "SELECT COUNT(ID) FROM {$wpdb->posts} WHERE post_type = 'shop_order' AND post_status NOT IN ({$status_placeholders})";
+        $query_sql = "SELECT COUNT(ID) FROM {$wpdb->posts} WHERE post_type = 'shop_order' AND post_status IN ({$status_placeholders})";
     }
 
     // Exclude orders placed by admin users
     $exclusion = brikpanel_admin_order_exclusion_sql( $is_hpos, 'ID' );
     $query_sql .= $exclusion['sql'];
     $query_args = array_merge( $query_args, $exclusion['args'] );
+
+    if ( $exclude_marketplace ) {
+        $mp_exclusion = brikpanel_marketplace_order_exclusion_sql( $is_hpos );
+        $query_sql   .= $mp_exclusion['sql'];
+        $query_args   = array_merge( $query_args, $mp_exclusion['args'] );
+    }
 
     if ($start_date_gmt) {
         $query_sql .= " AND {$date_column_name} >= %s";

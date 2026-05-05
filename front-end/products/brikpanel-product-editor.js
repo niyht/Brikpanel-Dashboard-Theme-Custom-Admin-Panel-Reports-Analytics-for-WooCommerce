@@ -9,10 +9,12 @@
     var PE = brikpanelPE || {};
     var productData = window.brikpanelProductData || {};
 
-    var state = { images: [], saving: false, dirty: false, varTemplate: null, varAttributes: [], variations: [] };
+    var state = { images: [], saving: false, dirty: false, varTemplate: null, varAttributes: [], variations: [], downloads: [], tags: [] };
 
     function init() {
         bindEvents();
+        initStatusDropdown();
+        initCatalogVisibility();
         initToggles();
         initImages();
         initCharCounter();
@@ -22,12 +24,38 @@
         initSeoPreview();
         initAutoSave();
         initInlineEdit();
+        initTags();
+        initSaleDates();
         loadExistingData();
     }
 
+    /* Sale schedule date pickers (flatpickr) */
+    function initSaleDates() {
+        if (typeof flatpickr !== 'function') return;
+        var $from = $('#bpe-sale-from'), $to = $('#bpe-sale-to');
+        if (!$from.length || !$to.length) return;
+
+        var fpFrom = flatpickr($from.get(0), {
+            dateFormat: 'Y-m-d',
+            allowInput: false,
+            onChange: function (dates) {
+                if (fpTo && dates[0]) {
+                    fpTo.set('minDate', dates[0]);
+                }
+            }
+        });
+        var fpTo = flatpickr($to.get(0), {
+            dateFormat: 'Y-m-d',
+            allowInput: false,
+            minDate: $from.val() || null
+        });
+    }
+
     function bindEvents() {
-        $('#bpe-save-draft').on('click', function () { saveProduct('draft'); });
-        $('#bpe-publish').on('click', function () { saveProduct('publish'); });
+        $('#bpe-publish').on('click', function () {
+            var status = $('#bpe-status').val() || 'publish';
+            saveProduct(status);
+        });
 
         var $dz = $('#bpe-dropzone');
         $dz.on('click', openMediaLibrary);
@@ -45,8 +73,8 @@
         $('#bpe-generate-vars').on('click', generateVariations);
         $('#bpe-apply-bulk').on('click', applyBulk);
 
-        // Duplicate
-        $('#bpe-duplicate').on('click', duplicateProduct);
+        // Duplicate (delegated so dynamically injected button still works)
+        $(document).on('click', '#bpe-duplicate', duplicateProduct);
 
         $('[data-required]').on('blur', function () { validateField($(this)); });
 
@@ -54,13 +82,17 @@
         $(document).on('keydown', function (e) {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
-                var status = $('#bpe-product-id').val() && $('#bpe-publish').text() === (PE.i18n.update || 'Update') ? 'publish' : 'draft';
+                var status = $('#bpe-status').val() || 'publish';
                 saveProduct(status);
             }
         });
 
         // Track dirty state
         $(document).on('input change', '.brikpanel-pe-content input, .brikpanel-pe-content textarea, .brikpanel-pe-content select, .brikpanel-pe-content [contenteditable]', function () {
+            state.dirty = true;
+        });
+        // Password field lives in the header — track it separately
+        $(document).on('input', '#bpe-post-password', function () {
             state.dirty = true;
         });
 
@@ -70,13 +102,145 @@
         });
     }
 
+    /* Custom Visibility dropdown (replaces the old <select>) */
+    function initStatusDropdown() {
+        var $wrap = $('.brikpanel-pe-status-wrap');
+        if (!$wrap.length) return;
+        var $trigger = $('#bpe-status-trigger');
+        var $menu = $wrap.find('.brikpanel-pe-status-menu');
+        var $hidden = $('#bpe-status');
+
+        function close() {
+            $wrap.removeClass('is-open');
+            $trigger.attr('aria-expanded', 'false');
+        }
+        function open() {
+            $wrap.addClass('is-open');
+            $trigger.attr('aria-expanded', 'true');
+        }
+
+        $trigger.on('click', function (e) {
+            e.stopPropagation();
+            $wrap.hasClass('is-open') ? close() : open();
+        });
+
+        $menu.on('click', 'li[role="option"]', function () {
+            var v = $(this).data('value');
+            $hidden.val(v).trigger('change');
+            $wrap.attr('data-status', v);
+            $menu.find('li').removeClass('is-active');
+            $(this).addClass('is-active');
+            $trigger.find('.brikpanel-pe-status-trigger-label').text($(this).find('strong').text());
+            // Show/hide password field
+            var $pwWrap = $('#bpe-password-wrap');
+            if (v === 'password') {
+                $pwWrap.addClass('is-visible');
+                $('#bpe-post-password').focus();
+            } else {
+                $pwWrap.removeClass('is-visible');
+            }
+            close();
+        });
+
+        $(document).on('click', function (e) {
+            if (!$(e.target).closest('.brikpanel-pe-status-wrap').length) close();
+        });
+
+        $(document).on('keydown', function (e) {
+            if (e.key === 'Escape' && $wrap.hasClass('is-open')) close();
+        });
+    }
+
+    /* Catalog visibility dropdown */
+    function initCatalogVisibility() {
+        var $wrap = $('#bpe-catvis-wrap');
+        if (!$wrap.length) return;
+        var $trigger = $('#bpe-catvis-trigger');
+        var $menu = $wrap.find('.brikpanel-pe-catvis-menu');
+        var $hidden = $('#bpe-catalog-visibility');
+
+        function close() { $wrap.removeClass('is-open'); $trigger.attr('aria-expanded', 'false'); }
+        function open()  { $wrap.addClass('is-open');  $trigger.attr('aria-expanded', 'true');  }
+
+        $trigger.on('click', function (e) {
+            e.stopPropagation();
+            $wrap.hasClass('is-open') ? close() : open();
+        });
+
+        $menu.on('click', 'li[role="option"]', function () {
+            var v = $(this).data('value');
+            $hidden.val(v).trigger('change');
+            $menu.find('li[role="option"]').removeClass('is-active');
+            $(this).addClass('is-active');
+            $trigger.find('.brikpanel-pe-catvis-label').text($(this).text());
+            state.dirty = true;
+            close();
+        });
+
+        $(document).on('click', function (e) {
+            if (!$(e.target).closest('#bpe-catvis-wrap').length) close();
+        });
+        $(document).on('keydown', function (e) {
+            if (e.key === 'Escape' && $wrap.hasClass('is-open')) close();
+        });
+    }
+
     /* Toggles */
     function initToggles() {
-        bindToggle('#bpe-sale-toggle', '#bpe-sale-section');
         bindToggle('#bpe-weight-toggle', '#bpe-weight-section');
         bindToggle('#bpe-dims-toggle', '#bpe-dims-section');
         bindToggle('#bpe-seo-toggle', '#bpe-seo-section');
         bindToggle('#bpe-var-toggle', '#bpe-var-section');
+        bindToggle('#bpe-digital-toggle', '#bpe-digital-section');
+
+        // Hide the parent pricing + inventory cards whenever the variations
+        // toggle is on — each variation row already carries its own price,
+        // sale schedule, stock qty, stock status and SKU, so the top-level
+        // fields are dead inputs in that mode and must not block submit.
+        function syncVariableMode() {
+            var isVar = $('#bpe-var-toggle').is(':checked');
+            $('#bpe-pricing-card, #bpe-inventory-card').toggle(!isVar);
+        }
+        $('#bpe-var-toggle').on('change', syncVariableMode);
+        syncVariableMode();
+
+        // Product type selector (enabled via "Product type selector" setting).
+        // The dropdown is the canonical source of truth for which WC product
+        // type the editor is creating. For backward compatibility, we keep
+        // #bpe-var-toggle mirrored to the variable-or-not derived flag so the
+        // existing pricing/inventory/variations show/hide logic continues to
+        // work unchanged.
+        var $productType = $('#bpe-product-type');
+        if ($productType.length) {
+            function isVariableType(t) {
+                if (!t) return false;
+                if (t === 'variable') return true;
+                return t.indexOf('variable-') === 0 || t.indexOf('variable_') === 0;
+            }
+            function syncProductType() {
+                var t = $productType.val();
+                var shouldBeVariable = isVariableType(t);
+                var $vt = $('#bpe-var-toggle');
+                if ($vt.is(':checked') !== shouldBeVariable) {
+                    $vt.prop('checked', shouldBeVariable).trigger('change');
+                }
+            }
+            $productType.on('change', syncProductType);
+            syncProductType();
+        }
+
+        // When digital is on, hide shipping (no physical shipping)
+        $('#bpe-digital-toggle').on('change', function () {
+            var on = this.checked;
+            $('#bpe-weight-card, #bpe-dims-card').toggle(!on);
+        });
+        // Initial state
+        if ($('#bpe-digital-toggle').is(':checked')) {
+            $('#bpe-weight-card, #bpe-dims-card').hide();
+        }
+
+        // Add download file
+        $('#bpe-add-download').on('click', openFilePicker);
     }
 
     function bindToggle(cb, sec) { $(cb).on('change', function () { toggleSection($(sec), this.checked); }); }
@@ -123,6 +287,109 @@
             });
         });
         frame.open();
+    }
+
+    /* Downloadable files */
+    function openFilePicker() {
+        var frame = wp.media({
+            title: PE.i18n.select_file || 'Select downloadable file',
+            multiple: true,
+            button: { text: PE.i18n.select || 'Select' }
+        });
+        frame.on('open', enableClickToToggle);
+        frame.on('close', disableClickToToggle);
+        frame.on('select', function () {
+            frame.state().get('selection').toJSON().forEach(function (att) {
+                addDownload({
+                    id: '',
+                    name: att.title || att.filename || 'File',
+                    file: att.url
+                });
+            });
+        });
+        frame.open();
+    }
+
+    function addDownload(d) {
+        // Avoid duplicates by file URL
+        if (state.downloads.some(function (x) { return x.file === d.file; })) return;
+        state.downloads.push(d);
+        renderDownloads();
+        state.dirty = true;
+    }
+
+    function removeDownload(idx) {
+        state.downloads.splice(idx, 1);
+        renderDownloads();
+        state.dirty = true;
+    }
+
+    function renderDownloads() {
+        var $list = $('#bpe-downloads-list').empty();
+        if (!state.downloads.length) {
+            $list.append('<p class="brikpanel-pe-text-muted">' + (PE.i18n.no_files || 'No files added yet.') + '</p>');
+            return;
+        }
+        state.downloads.forEach(function (d, idx) {
+            var $row = $('<div class="brikpanel-pe-download-item" data-idx="' + idx + '">');
+            $row.append('<svg class="brikpanel-pe-download-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>');
+            var $info = $('<div class="brikpanel-pe-download-info">');
+            $info.append('<input type="text" class="brikpanel-pe-download-name" value="' + esc(d.name) + '" placeholder="' + (PE.i18n.file_name || 'File name') + '">');
+            var $urlRow = $('<div class="brikpanel-pe-download-url-row">');
+            $urlRow.append('<input type="url" class="brikpanel-pe-download-url" value="' + esc(d.file) + '" placeholder="https://…" spellcheck="false">');
+            $urlRow.append('<button type="button" class="brikpanel-pe-download-browse" title="' + (PE.i18n.choose_file || 'Choose file') + '">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
+                '</button>');
+            $info.append($urlRow);
+            $row.append($info);
+            var $rm = $('<button type="button" class="brikpanel-pe-download-remove" title="' + (PE.i18n.remove || 'Remove') + '">&times;</button>');
+            $rm.on('click', function () { removeDownload(idx); });
+            $row.append($rm);
+            $list.append($row);
+        });
+
+        // Update name on input
+        $list.find('.brikpanel-pe-download-name').on('input', function () {
+            var idx = parseInt($(this).closest('.brikpanel-pe-download-item').data('idx'), 10);
+            if (state.downloads[idx]) {
+                state.downloads[idx].name = this.value;
+                state.dirty = true;
+            }
+        });
+
+        // Update URL on input — lets users correct or replace a link in place.
+        $list.find('.brikpanel-pe-download-url').on('input', function () {
+            var idx = parseInt($(this).closest('.brikpanel-pe-download-item').data('idx'), 10);
+            if (state.downloads[idx]) {
+                state.downloads[idx].file = this.value;
+                state.dirty = true;
+            }
+        });
+
+        // Media library picker to replace the current file URL.
+        $list.find('.brikpanel-pe-download-browse').on('click', function (e) {
+            e.preventDefault();
+            var $item = $(this).closest('.brikpanel-pe-download-item');
+            var idx = parseInt($item.data('idx'), 10);
+            if (!state.downloads[idx]) return;
+            var frame = wp.media({
+                title: PE.i18n.select_file || 'Select downloadable file',
+                multiple: false,
+                button: { text: PE.i18n.select || 'Select' }
+            });
+            frame.on('open', enableClickToToggle);
+            frame.on('close', disableClickToToggle);
+            frame.on('select', function () {
+                var att = frame.state().get('selection').first().toJSON();
+                state.downloads[idx].file = att.url;
+                if (!state.downloads[idx].name) {
+                    state.downloads[idx].name = att.title || att.filename || 'File';
+                }
+                state.dirty = true;
+                renderDownloads();
+            });
+            frame.open();
+        });
     }
 
     function handleFileDrop(files) {
@@ -191,7 +458,26 @@
         });
     }
 
-    function initCharCounter() { $('#bpe-short-desc').on('input', function () { $('#bpe-short-desc-count').text(this.value.length); }); }
+    function initCharCounter() { /* char counter removed — short description now supports HTML with no length limit */ }
+
+    /* Keep editor contenteditable in sync with its HTML-source textarea. */
+    function syncEditorFromSource($field) {
+        var $editor = $field.find('.brikpanel-pe-editor');
+        var $source = $field.find('.brikpanel-pe-editor-source');
+        if ($source.is(':visible') || !$source.prop('hidden')) {
+            $editor.html($source.val());
+        }
+    }
+
+    function getEditorHtml(id) {
+        var $field = $('#' + id).closest('[data-editor-field]');
+        var $source = $field.find('.brikpanel-pe-editor-source');
+        if (!$source.prop('hidden')) {
+            // HTML source mode is active — trust the textarea value.
+            return $source.val();
+        }
+        return $('#' + id).html();
+    }
 
     function initCategorySearch() {
         $('#bpe-cat-search').on('input', function () {
@@ -207,28 +493,105 @@
     }
 
     function addCategory() {
+        var $btn = $('#bpe-add-cat-btn');
+        if ($btn.prop('disabled')) return;
+
         var name = $.trim($('#bpe-new-cat-name').val());
         var parent = parseInt($('#bpe-new-cat-parent').val(), 10) || 0;
         if (!name) return;
-        $.post(PE.ajax_url, { action: 'brikpanel_add_category', security: PE.nonce, name: name, parent: parent }, function (r) {
-            if (r.success) {
-                var d = r.data, $li = $('<li data-name="' + esc(d.name.toLowerCase()) + '">');
-                $li.append('<label><input type="checkbox" name="category_ids[]" value="' + d.term_id + '" checked> ' + esc(d.name) + '</label>');
-                if (d.parent > 0) {
-                    var $p = $('.brikpanel-pe-cat-tree li').filter(function () { return $(this).find('> label input').val() == d.parent; });
-                    if ($p.length) { var $sub = $p.find('> ul.brikpanel-pe-cat-children'); if (!$sub.length) { $sub = $('<ul class="brikpanel-pe-cat-children">'); $p.append($sub); } $sub.append($li); }
-                    else $('.brikpanel-pe-cat-tree').append($li);
-                } else $('.brikpanel-pe-cat-tree').append($li);
-                $('#bpe-new-cat-parent').append('<option value="' + d.term_id + '">' + esc(d.name) + '</option>');
-                $('#bpe-new-cat-name').val('');
-                showToast(PE.i18n.category_added || 'Category added', 'success');
-            } else showToast(r.data.message || 'Error', 'error');
+
+        // Current client-side selection — preserved across the re-render so
+        // the user doesn't lose pending checkbox changes.
+        var selected = $('input[name="category_ids[]"]:checked').map(function () {
+            return this.value;
+        }).get();
+
+        $btn.prop('disabled', true);
+        $.post(PE.ajax_url, {
+            action: 'brikpanel_add_category',
+            security: PE.nonce,
+            name: name,
+            parent: parent,
+            selected_ids: selected
+        }, function (r) {
+            $btn.prop('disabled', false);
+            if (!r.success) {
+                showToast((r.data && r.data.message) || 'Error', 'error');
+                return;
+            }
+            var d = r.data;
+
+            // Swap checklist — server-rendered HTML keeps depth classes,
+            // hierarchical order, and the newly created term pre-checked.
+            $('.brikpanel-pe-cat-list').html(d.checklist_html);
+
+            // Rebuild parent dropdown while preserving the "— No parent —"
+            // sentinel and keeping the user's previously-selected parent
+            // if it still exists.
+            var prevParent = $('#bpe-new-cat-parent').val();
+            var $select = $('#bpe-new-cat-parent');
+            $select.find('option').not('[value="0"]').remove();
+            $select.append(d.options_html);
+            if (prevParent && $select.find('option[value="' + prevParent + '"]').length) {
+                $select.val(prevParent);
+            } else {
+                $select.val('0');
+            }
+
+            $('#bpe-new-cat-name').val('').focus();
+
+            // Re-run the search filter so the fresh DOM respects the
+            // active query instead of showing every item again.
+            var $search = $('#bpe-cat-search');
+            if ($search.val()) $search.trigger('input');
+
+            showToast(PE.i18n.category_added || 'Category added', 'success');
+        }).fail(function () {
+            $btn.prop('disabled', false);
+            showToast('Error', 'error');
         });
     }
 
     function initEditor() {
         $('.brikpanel-pe-editor-toolbar button').on('click', function (e) {
-            e.preventDefault(); document.execCommand($(this).data('cmd'), false, null); $('#bpe-description').focus();
+            e.preventDefault();
+            var cmd = $(this).data('cmd');
+            var $field = $(this).closest('[data-editor-field]');
+            var $editor = $field.find('.brikpanel-pe-editor');
+            var $source = $field.find('.brikpanel-pe-editor-source');
+
+            if (cmd === 'html') {
+                var isSource = !$source.prop('hidden');
+                if (isSource) {
+                    // Switch back to visual
+                    $editor.html($source.val());
+                    $source.prop('hidden', true);
+                    $editor.prop('hidden', false);
+                    $(this).removeClass('is-active');
+                    $field.find('.brikpanel-pe-editor-toolbar button').not(this).prop('disabled', false);
+                    $editor.focus();
+                } else {
+                    // Switch to HTML source
+                    $source.val($editor.html());
+                    $editor.prop('hidden', true);
+                    $source.prop('hidden', false);
+                    $(this).addClass('is-active');
+                    $field.find('.brikpanel-pe-editor-toolbar button').not(this).prop('disabled', true);
+                    $source.focus();
+                }
+                state.dirty = true;
+                return;
+            }
+
+            // Regular formatting commands operate on visual editor only.
+            if (!$source.prop('hidden')) return;
+            document.execCommand(cmd, false, null);
+            $editor.focus();
+        });
+
+        // Keep textarea value live so autosave/submit always reads fresh HTML.
+        $(document).on('input', '.brikpanel-pe-editor-source', function () {
+            state.dirty = true;
         });
     }
 
@@ -240,8 +603,8 @@
         var $attrs = $('#bpe-var-attributes').empty();
 
         if (template === 'size-color') {
-            $attrs.append(createTagGroup('Size', ['S', 'M', 'L', 'XL', 'XXL']));
-            $attrs.append(createTagGroup('Color', []));
+            $attrs.append(createTagGroup(PE.i18n.size || 'Size', ['S', 'M', 'L', 'XL', 'XXL']));
+            $attrs.append(createTagGroup(PE.i18n.color || 'Color', []));
         } else if (template === 'custom') {
             $attrs.append(createCustomAttrUI());
         }
@@ -257,17 +620,19 @@
             var $selectWrap = $('<div class="brikpanel-pe-attr-select-wrap">');
             var $select = $('<select class="brikpanel-pe-attr-select"><option value="">' + (PE.i18n.select_attribute || 'Select existing attribute...') + '</option></select>');
             globalAttrs.forEach(function (a) {
-                $select.append('<option value="' + esc(a.name) + '" data-terms=\'' + JSON.stringify(a.terms) + '\'>' + esc(a.name) + '</option>');
+                $select.append('<option value="' + esc(a.name) + '" data-taxonomy="' + esc(a.taxonomy || '') + '" data-terms=\'' + JSON.stringify(a.terms) + '\'>' + esc(a.name) + '</option>');
             });
             $select.on('change', function () {
                 var name = this.value;
                 if (!name) return;
-                var rawTerms = $(this).find(':selected').data('terms');
+                var $opt = $(this).find(':selected');
+                var taxonomy = $opt.data('taxonomy') || '';
+                var rawTerms = $opt.data('terms');
                 var terms = Array.isArray(rawTerms) ? rawTerms : [];
                 if (typeof rawTerms === 'string') { try { terms = JSON.parse(rawTerms); } catch (e) { terms = []; } }
                 // Prevent duplicate
                 if ($('#bpe-custom-attrs-list .brikpanel-pe-tag-group[data-attr-name="' + name + '"]').length) { this.value = ''; return; }
-                $('#bpe-custom-attrs-list').append(createTagGroup(name, terms));
+                $('#bpe-custom-attrs-list').append(createTagGroup(name, terms, taxonomy));
                 this.value = '';
             });
             $selectWrap.append($select);
@@ -292,19 +657,70 @@
         return $wrap;
     }
 
-    function createTagGroup(name, defaults) {
-        var $group = $('<div class="brikpanel-pe-tag-group" data-attr-name="' + esc(name) + '">');
+    function createTagGroup(name, defaults, taxonomy) {
+        var taxAttr = taxonomy ? ' data-attr-taxonomy="' + esc(taxonomy) + '"' : '';
+        var $group = $('<div class="brikpanel-pe-tag-group" data-attr-name="' + esc(name) + '"' + taxAttr + '>');
         $group.append('<label>' + esc(name) + '</label>');
+        var $inputWrap = $('<div class="brikpanel-pe-attr-input-container">');
         var $wrap = $('<div class="brikpanel-pe-tag-input-wrap">');
-        var $input = $('<input type="text" placeholder="' + (PE.i18n.type_enter || 'Type and press Enter...') + '">');
+        var $input = $('<input type="text" placeholder="' + (PE.i18n.type_enter_value || 'Press Enter to add...') + '" autocomplete="off">');
         defaults.forEach(function (v) { $wrap.append(createTag(v)); });
-        $input.on('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); var v = $.trim(this.value); if (v && !tagExists($wrap, v)) { $input.before(createTag(v)); this.value = ''; } }
-            if (e.key === 'Backspace' && !this.value) $wrap.find('.brikpanel-pe-tag:last').remove();
+
+        // Find available terms for this attribute from global attributes
+        var globalAttrs = productData.global_attributes || [];
+        var availableTerms = [];
+        globalAttrs.forEach(function (a) {
+            if (a.name === name || a.taxonomy === name || a.slug === name) { availableTerms = (a.terms || []).slice(); }
         });
+
+        var $suggestions = $('<div class="brikpanel-pe-tag-suggestions brikpanel-pe-attr-term-suggestions">');
+
+        function getExistingTags() {
+            var tags = [];
+            $wrap.find('.brikpanel-pe-tag').each(function () {
+                tags.push($(this).clone().children().remove().end().text().trim().toLowerCase());
+            });
+            return tags;
+        }
+
+        function showTermSuggestions(filter) {
+            if (!availableTerms.length) { $suggestions.hide(); return; }
+            var existing = getExistingTags();
+            var q = (filter || '').toLowerCase();
+            var matches = availableTerms.filter(function (t) {
+                return existing.indexOf(t.toLowerCase()) === -1 && (!q || t.toLowerCase().indexOf(q) !== -1);
+            }).slice(0, 10);
+            if (!matches.length) { $suggestions.hide(); return; }
+            var html = '';
+            matches.forEach(function (t) {
+                html += '<div class="brikpanel-pe-tag-suggestion" data-value="' + esc(t) + '">' + esc(t) + '</div>';
+            });
+            $suggestions.html(html).show();
+        }
+
+        $input.on('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); var v = $.trim(this.value); if (v && !tagExists($wrap, v)) { $input.before(createTag(v)); this.value = ''; showTermSuggestions(''); } }
+            if (e.key === 'Backspace' && !this.value) { $wrap.find('.brikpanel-pe-tag:last').remove(); showTermSuggestions(''); }
+        });
+
+        $input.on('input', function () { showTermSuggestions($.trim(this.value)); });
+        $input.on('focus', function () { showTermSuggestions($.trim(this.value)); });
+        $input.on('blur', function () { setTimeout(function () { $suggestions.hide(); }, 150); });
+
+        $suggestions.on('mousedown', '.brikpanel-pe-tag-suggestion', function (e) {
+            e.preventDefault();
+            var v = $(this).data('value');
+            if (v && !tagExists($wrap, v)) {
+                $input.before(createTag(v));
+                $input.val('');
+                showTermSuggestions('');
+            }
+        });
+
         $wrap.append($input);
         $wrap.on('click', function () { $input.focus(); });
-        $group.append($wrap);
+        $inputWrap.append($wrap, $suggestions);
+        $group.append($inputWrap);
         return $group;
     }
 
@@ -325,11 +741,19 @@
     function showVarStep(s) { $('.brikpanel-pe-var-step').hide(); $('.brikpanel-pe-var-step[data-step="' + s + '"]').show(); }
 
     function collectAttributes() {
-        var a = [];
-        $('.brikpanel-pe-tag-group').each(function () {
-            var name = $(this).data('attr-name'), vals = [];
-            $(this).find('.brikpanel-pe-tag').each(function () { vals.push($(this).clone().children().remove().end().text().trim()); });
-            if (name && vals.length) a.push({ name: name, values: vals });
+        var a = [], seen = {};
+        // Scope to the variations container so unrelated tag-groups (if any
+        // ever appear elsewhere) can't interleave with attribute order, and
+        // de-dupe by name in case the same attribute was inserted twice.
+        $('#bpe-var-attributes .brikpanel-pe-tag-group').each(function () {
+            var $g = $(this);
+            var name = $g.attr('data-attr-name'), vals = [];
+            $g.find('.brikpanel-pe-tag').each(function () { vals.push($(this).clone().children().remove().end().text().trim()); });
+            if (!name || !vals.length) return;
+            var key = String(name).toLowerCase();
+            if (seen[key]) return;
+            seen[key] = true;
+            a.push({ name: name, values: vals, taxonomy: $g.attr('data-attr-taxonomy') || '' });
         });
         return a;
     }
@@ -344,6 +768,9 @@
             return { id: ex ? ex.id : 0, attributes: combo, name: np.join(' - '),
                 regular_price: ex ? ex.regular_price : '', sale_price: ex ? ex.sale_price : '',
                 stock_quantity: ex ? (ex.stock_quantity !== null ? ex.stock_quantity : '') : '',
+                stock_status: ex ? (ex.stock_status || 'instock') : 'instock',
+                sale_from: ex ? (ex.sale_from || '') : '',
+                sale_to:   ex ? (ex.sale_to   || '') : '',
                 sku: ex ? ex.sku : sp.filter(Boolean).join('-').toUpperCase(),
                 images: ex && ex.images ? ex.images : [] };
         });
@@ -353,7 +780,9 @@
 
     function genCombinations(attrs) {
         return attrs.reduce(function (combos, attr) {
-            var slug = slugify(attr.name);
+            // Taxonomy attributes must key on their taxonomy slug (e.g. `pa_renk`)
+            // so the variation's attribute keys match WC's internal lookup.
+            var slug = attr.taxonomy ? attr.taxonomy : slugify(attr.name);
             if (!combos.length) return attr.values.map(function (v) { var o = {}; o[slug] = v; return o; });
             var r = [];
             combos.forEach(function (c) { attr.values.forEach(function (v) { var n = $.extend({}, c); n[slug] = v; r.push(n); }); });
@@ -370,21 +799,62 @@
 
     function renderVarTable() {
         var $tb = $('#bpe-var-table-body').empty(), sep = PE.decimal_sep || ',';
+        var hasCogs = productData.cogs_enabled || false;
+        var extras = productData.variation_extras || {};
+        // colspan for the extras row — main row has 9 base cols + optional cogs + image
+        var baseCols = 9 + (hasCogs ? 1 : 0) + 1; // +1 expander toggle cell
         state.variations.forEach(function (v, idx) {
             var pv = v.regular_price ? ('' + v.regular_price).replace('.', sep) : '';
             var sv = v.sale_price ? ('' + v.sale_price).replace('.', sep) : '';
             var stk = v.stock_quantity !== '' && v.stock_quantity !== null ? v.stock_quantity : '';
-            var imgCount = v.images ? v.images.length : 0;
+            var cogsv = hasCogs && v.cogs_value ? ('' + v.cogs_value).replace('.', sep) : '';
+            var varStatus = v.stock_status || 'instock';
             var imgCellHtml = buildVarImageCell(v.images, idx);
-            $tb.append('<tr data-idx="' + idx + '">' +
+            var cogsTd = hasCogs ? '<td><input type="text" class="var-cogs" value="' + esc(cogsv) + '" data-price="1" placeholder="0' + sep + '00"></td>' : '';
+            var statusTd = '<td><select class="var-stock-status">' +
+                '<option value="instock"' + (varStatus === 'instock' ? ' selected' : '') + '>' + (PE.i18n.in_stock || 'In stock') + '</option>' +
+                '<option value="outofstock"' + (varStatus === 'outofstock' ? ' selected' : '') + '>' + (PE.i18n.out_of_stock || 'Out of stock') + '</option>' +
+                '<option value="onbackorder"' + (varStatus === 'onbackorder' ? ' selected' : '') + '>' + (PE.i18n.on_backorder || 'On backorder') + '</option>' +
+                '</select></td>';
+            var hasExtra = v.id && extras[v.id];
+            var expanderTd = hasExtra
+                ? '<td class="var-expand-cell"><button type="button" class="var-expand-btn" data-idx="' + idx + '" aria-label="' + esc(PE.i18n.more_fields || 'More fields') + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button></td>'
+                : '<td class="var-expand-cell"></td>';
+            $tb.append('<tr data-idx="' + idx + '" class="var-main-row' + (hasExtra ? ' has-extra' : '') + '">' +
+                expanderTd +
                 '<td class="var-name">' + esc(v.name) + '</td>' +
                 '<td><input type="text" class="var-price" value="' + esc(pv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
                 '<td><input type="text" class="var-sale-price" value="' + esc(sv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
+                '<td><input type="text" class="var-sale-from" value="' + esc(v.sale_from || '') + '" placeholder="YYYY-MM-DD" autocomplete="off"></td>' +
+                '<td><input type="text" class="var-sale-to"   value="' + esc(v.sale_to   || '') + '" placeholder="YYYY-MM-DD" autocomplete="off"></td>' +
                 '<td><input type="number" class="var-stock" value="' + esc('' + stk) + '" min="0" placeholder="0"></td>' +
+                statusTd +
+                cogsTd +
                 '<td><input type="text" class="var-sku" value="' + esc(v.sku) + '"></td>' +
                 '<td>' + imgCellHtml + '</td></tr>');
+            if (hasExtra) {
+                $tb.append('<tr class="var-extras-row" data-idx="' + idx + '" data-variation-id="' + v.id + '" hidden>' +
+                    '<td colspan="' + baseCols + '" class="var-extras-cell">' +
+                    '<div class="brikpanel-pe-var-extras">' + extras[v.id] + '</div>' +
+                    '</td></tr>');
+            }
         });
         $tb.find('.var-image-btn').on('click', function () { openVarImagePicker($(this).data('idx')); });
+        $tb.find('.var-expand-btn').on('click', function () {
+            var idx = $(this).data('idx');
+            var $row = $tb.find('.var-extras-row[data-idx="' + idx + '"]');
+            var open = $row.is('[hidden]');
+            if (open) { $row.removeAttr('hidden'); $(this).addClass('open'); }
+            else      { $row.attr('hidden', 'hidden'); $(this).removeClass('open'); }
+        });
+
+        // Flatpickr on every per-variation sale date input
+        if (typeof flatpickr === 'function') {
+            $tb.find('.var-sale-from, .var-sale-to').each(function () {
+                if (this._flatpickr) return;
+                flatpickr(this, { dateFormat: 'Y-m-d', allowInput: false });
+            });
+        }
     }
 
     function buildVarImageCell(images, idx) {
@@ -408,9 +878,14 @@
         frame.on('open', enableClickToToggle);
         frame.on('close', disableClickToToggle);
 
-        // Pre-select existing images
+        // Pre-select ONLY the variation's own images. The media frame would
+        // otherwise inherit the current post context and auto-highlight the
+        // parent product's featured image, which users reported as
+        // unexpected. `selection.reset()` clears any pre-populated items
+        // (including that inherited featured image) before we add ours.
         frame.on('open', function () {
             var selection = frame.state().get('selection');
+            selection.reset();
             var imgs = state.variations[idx].images || [];
             imgs.forEach(function (img) {
                 var attachment = wp.media.attachment(img.id);
@@ -442,18 +917,28 @@
 
     function applyBulk() {
         var price = $.trim($('#bpe-bulk-price').val());
+        var salePrice = $.trim($('#bpe-bulk-sale-price').val());
         var stock = $.trim($('#bpe-bulk-stock').val());
         if (price) $('#bpe-var-table-body .var-price').val(price);
+        if (salePrice) $('#bpe-var-table-body .var-sale-price').val(salePrice);
         if (stock !== '') $('#bpe-var-table-body .var-stock').val(stock);
     }
 
-    /* Validation */
+    /* Validation — only enforces required fields that are actually visible.
+       A hidden required field (e.g. the top-level price input while the
+       variations toggle is on) must not block publishing. */
     function validateField($i) {
-        var v = $.trim($i.val()), $e = $i.closest('.brikpanel-pe-field').find('.brikpanel-pe-field-error');
+        var $e = $i.closest('.brikpanel-pe-field').find('.brikpanel-pe-field-error');
+        if (!$i.is(':visible')) { $i.removeClass('has-error'); $e.text(''); return true; }
+        var v = $.trim($i.val());
         if ($i.data('required') && !v) { $i.addClass('has-error'); $e.text(PE.i18n.field_required || 'This field is required'); return false; }
         $i.removeClass('has-error'); $e.text(''); return true;
     }
-    function validateAll() { var ok = true; $('[data-required]').each(function () { if (!validateField($(this))) ok = false; }); return ok; }
+    function validateAll() {
+        var ok = true;
+        $('[data-required]:visible').each(function () { if (!validateField($(this))) ok = false; });
+        return ok;
+    }
 
     /* Save */
     function saveProduct(status, silent) {
@@ -463,21 +948,45 @@
         if (!name) { if (!silent) { showToast(PE.i18n.fill_name || 'Please fill in the product name', 'error'); validateField($('#bpe-name')); } return; }
 
         state.saving = true;
-        var $pub = $('#bpe-publish'), $draft = $('#bpe-save-draft'), op = $pub.text(), od = $draft.text();
-        $pub.prop('disabled', true).text(PE.i18n.saving || 'Saving...'); $draft.prop('disabled', true);
+        var $pub = $('#bpe-publish'), op = $pub.text();
+        $pub.prop('disabled', true).text(PE.i18n.saving || 'Saving...');
 
         var isVar = $('#bpe-var-toggle').is(':checked') && state.variations.length > 0;
         var sep = PE.decimal_sep || ',';
         var data = { action: 'brikpanel_save_product', security: PE.nonce,
             product_id: $('#bpe-product-id').val() || 0, status: status, name: name,
-            short_description: $('#bpe-short-desc').val(), description: $('#bpe-description').html(),
+            short_description: getEditorHtml('bpe-short-desc'), description: getEditorHtml('bpe-description'),
             sku: $('#bpe-sku').val(), is_variable: isVar ? 1 : 0 };
+
+        // Product type — only when the selector is enabled. Server falls
+        // back to the is_variable flag when missing. We send the selected
+        // type verbatim even if zero variations exist; the user may be
+        // setting up the parent first and adding variations later.
+        var $ptSel = $('#bpe-product-type');
+        if ($ptSel.length) {
+            var ptVal = $ptSel.val();
+            if (ptVal) {
+                data.product_type = ptVal;
+            }
+        }
+
+        // Password protected
+        data.post_password = status === 'password' ? ($('#bpe-post-password').val() || '') : '';
+
+        // Catalog visibility
+        data.catalog_visibility = $('#bpe-catalog-visibility').val() || 'visible';
 
         if (!isVar) {
             data.regular_price = parsePrice($('#bpe-price').val(), sep);
-            data.sale_price = $('#bpe-sale-toggle').is(':checked') ? parsePrice($('#bpe-sale-price').val(), sep) : '';
+            // Sale fields are always visible now — the server treats empty
+            // sale price as "no sale" and clears the scheduled dates.
+            data.sale_price = parsePrice($('#bpe-sale-price').val(), sep);
+            data.sale_from  = $('#bpe-sale-from').val() || '';
+            data.sale_to    = $('#bpe-sale-to').val()   || '';
         }
         data.stock_quantity = $('#bpe-stock').val();
+        data.stock_status = $('#bpe-stock-status').val() || 'instock';
+        data.cogs_value = parsePrice($('#bpe-cogs').val() || '', sep);
         data.weight = $('#bpe-weight-toggle').is(':checked') ? parsePrice($('#bpe-weight').val(), sep) : '';
 
         // Dimensions
@@ -489,7 +998,18 @@
 
         // SEO
         data.seo_title = $('#bpe-seo-title').val() || '';
+        data.seo_focus_kw = $('#bpe-seo-focus-kw').val() || '';
+        data.seo_canonical = $('#bpe-seo-canonical').val() || '';
+        data.seo_noindex = $('#bpe-seo-noindex').is(':checked') ? 1 : 0;
         data.seo_description = $('#bpe-seo-desc').val() || '';
+
+        // Digital / downloads
+        data.is_downloadable = $('#bpe-digital-toggle').is(':checked') ? 1 : 0;
+        if (data.is_downloadable) {
+            data.downloads = JSON.stringify(state.downloads);
+        } else {
+            data.downloads = '[]';
+        }
 
         if (state.images.length) { data.image_id = state.images[0].id; data.gallery_ids = state.images.slice(1).map(function (i) { return i.id; }).join(','); }
         else { data.image_id = 0; data.gallery_ids = ''; }
@@ -497,22 +1017,194 @@
         var cats = []; $('input[name="category_ids[]"]:checked').each(function () { cats.push($(this).val()); });
         data.category_ids = cats.join(',');
 
+        // Tags
+        data.tag_names = state.tags.join(',');
+
+        // Third-party metabox + WC Product Data custom fields.
+        // Array-style names (`tax_input[orderable_product_label][]`, groups of
+        // checkboxes, etc.) must accumulate into a JS array — otherwise each
+        // repeated name overwrites the previous one and only the last checked
+        // term makes it to the server. We strip the trailing `[]` so jQuery's
+        // default serializer re-emits it for every array element.
+        //
+        // .brikpanel-pe-var-extras inputs are per-variation 3rd-party fields
+        // whose names look like `field_name[<loop_idx>]`. Posting them at the
+        // top level lets PHP assemble `$_POST['field_name'][<loop_idx>]`
+        // natively — exactly what `woocommerce_save_product_variation` handlers
+        // expect to read from.
+        $('.brikpanel-pe-metaboxes-wrap :input[name], .brikpanel-pe-wc-fields :input[name], .brikpanel-pe-var-extras :input[name]').each(function () {
+            var $el = $(this), name = $el.attr('name');
+            if (!name) return;
+            if (($el.is(':checkbox') || $el.is(':radio')) && !$el.is(':checked')) return;
+            var val = $el.val();
+            // Extract bracket groups: name="a[b][c]" → key="a", suffixes=["b","c"].
+            var m = /^([^\[]+)((?:\[[^\]]*\])*)$/.exec(name);
+            if (!m) return;
+            var key = m[1];
+            var suffix = m[2] || '';
+            if (suffix === '') {
+                if (!data.hasOwnProperty(key)) data[key] = val;
+                return;
+            }
+            // Walk bracket chain into data[key] as a nested array/object.
+            if (!data.hasOwnProperty(key) || (typeof data[key] !== 'object' || data[key] === null)) {
+                data[key] = {};
+            }
+            var parts = [];
+            suffix.replace(/\[([^\]]*)\]/g, function (_, p) { parts.push(p); return ''; });
+            var cursor = data[key];
+            for (var i = 0; i < parts.length - 1; i++) {
+                var p = parts[i];
+                if (p === '') p = (Array.isArray(cursor) ? cursor.length : Object.keys(cursor).length).toString();
+                if (typeof cursor[p] !== 'object' || cursor[p] === null) cursor[p] = {};
+                cursor = cursor[p];
+            }
+            var last = parts[parts.length - 1];
+            if (last === '') {
+                if (!Array.isArray(cursor.__arr)) cursor.__arr = [];
+                cursor.__arr.push(val);
+            } else {
+                cursor[last] = val;
+            }
+        });
+        // Flatten nested containers back to URL-encoded bracket notation so
+        // URLSearchParams serialises them correctly. `{a: {0: 'x', 1: 'y'}}`
+        // becomes `a[0]=x&a[1]=y` — which is what PHP unpacks into
+        // `$_POST['a'] = ['x','y']`.
+        function flattenPost(target, prefix, val) {
+            if (val === null || val === undefined) return;
+            if (typeof val !== 'object') { target.push([prefix, val]); return; }
+            if (Array.isArray(val)) {
+                val.forEach(function (v, i) { flattenPost(target, prefix + '[' + i + ']', v); });
+                return;
+            }
+            // {__arr: [...]} is the collector's internal marker for inputs
+            // whose names end in `[]` (e.g. `tax_input[tax][]` for hierarchical
+            // taxonomy checkboxes). Emit the array values under the original
+            // prefix so the `__arr` key never leaks into the POST payload.
+            if (Array.isArray(val.__arr)) {
+                val.__arr.forEach(function (v, i) { flattenPost(target, prefix + '[' + i + ']', v); });
+                Object.keys(val).forEach(function (k) {
+                    if (k === '__arr') return;
+                    flattenPost(target, prefix + '[' + k + ']', val[k]);
+                });
+                return;
+            }
+            Object.keys(val).forEach(function (k) {
+                flattenPost(target, prefix + '[' + k + ']', val[k]);
+            });
+        }
+        // Rank Math — drains its Redux store into the POST payload. Rank
+        // Math's React metabox keeps the user's edits in a wp.data store and
+        // only persists them via a REST call wired to the classic-editor
+        // form submit event. Our BrikPanel Update button isn't a form
+        // submit, so without this hand-off the user's SEO edits are
+        // abandoned when they leave the page.
+        try {
+            var rmSel = window.wp && window.wp.data && window.wp.data.select && window.wp.data.select('rank-math');
+            if (rmSel && typeof rmSel.getTitle === 'function') {
+                var _rmPick = function (getter, key) {
+                    try { var v = rmSel[getter] && rmSel[getter](); if (v !== undefined && v !== null) data[key] = v; } catch (e) {}
+                };
+                _rmPick('getTitle',           'bpe_rm_title');
+                _rmPick('getDescription',     'bpe_rm_description');
+                _rmPick('getCanonicalUrl',    'bpe_rm_canonical_url');
+                _rmPick('getBreadcrumbTitle', 'bpe_rm_breadcrumb_title');
+                _rmPick('getPillarContent',   'bpe_rm_pillar_content');
+                _rmPick('getFacebookTitle',       'bpe_rm_facebook_title');
+                _rmPick('getFacebookDescription', 'bpe_rm_facebook_description');
+                _rmPick('getFacebookImage',       'bpe_rm_facebook_image');
+                _rmPick('getFacebookImageID',     'bpe_rm_facebook_image_id');
+                _rmPick('getTwitterTitle',        'bpe_rm_twitter_title');
+                _rmPick('getTwitterDescription',  'bpe_rm_twitter_description');
+                _rmPick('getTwitterImage',        'bpe_rm_twitter_image');
+                _rmPick('getTwitterImageID',      'bpe_rm_twitter_image_id');
+                _rmPick('getTwitterUseFacebook',  'bpe_rm_twitter_use_facebook');
+                _rmPick('getTwitterCardType',     'bpe_rm_twitter_card_type');
+                // Keywords: Rank Math stores them as a comma-separated string.
+                try { var kw = rmSel.getKeywords && rmSel.getKeywords(); if (typeof kw === 'string') data.bpe_rm_focus_keyword = kw; } catch (e) {}
+                // Robots array (noindex, nofollow, etc.) — JSON-encode so PHP
+                // receives an intact list regardless of jQuery's serializer.
+                try {
+                    var robots = rmSel.getRobots && rmSel.getRobots();
+                    if (Array.isArray(robots)) data.bpe_rm_robots = JSON.stringify(robots);
+                } catch (e) {}
+                try {
+                    var adv = rmSel.getAdvancedRobots && rmSel.getAdvancedRobots();
+                    if (adv && typeof adv === 'object') data.bpe_rm_advanced_robots = JSON.stringify(adv);
+                } catch (e) {}
+                data.bpe_rm_active = 1;
+            }
+        } catch (e) { /* Rank Math not active — skip */ }
+
+        // AIOSEO — mirrors the Rank Math approach. AIOSEO's Vue app stores
+        // the user's edits in a hidden `#aioseo-post-settings` input as a
+        // JSON blob; capture the current value so it round-trips through
+        // our save endpoint (AIOSEO's own save_post hook reads it from the
+        // same hidden input on submit).
+        try {
+            var aioHidden = document.getElementById('aioseo-post-settings');
+            if (aioHidden && aioHidden.value) {
+                data.aioseo_post_settings = aioHidden.value;
+            }
+        } catch (e) {}
+
+        // Unwrap anything we nested into plain data keys and emit bracketed pairs.
+        var flattened = [];
+        Object.keys(data).forEach(function (k) {
+            var v = data[k];
+            if (v && typeof v === 'object' && !Array.isArray(v)) {
+                flattenPost(flattened, k, v);
+                delete data[k];
+            }
+        });
+        data.__flat_extra_pairs = flattened;
+
         if (isVar) {
             data.attributes = JSON.stringify(state.varAttributes);
             var tv = [];
-            $('#bpe-var-table-body tr').each(function (idx) {
+            // Iterate only the main rows — extras rows sit between them and
+            // would otherwise shift the idx → state.variations mapping.
+            $('#bpe-var-table-body tr.var-main-row').each(function (idx) {
                 var v = state.variations[idx]; if (!v) return;
-                tv.push({ id: v.id || 0, attributes: v.attributes,
+                var varObj = { id: v.id || 0, attributes: v.attributes,
                     regular_price: parsePrice($(this).find('.var-price').val(), sep),
                     sale_price: parsePrice($(this).find('.var-sale-price').val(), sep),
-                    stock_quantity: $(this).find('.var-stock').val(), sku: $(this).find('.var-sku').val(),
-                    image_ids: (v.images || []).map(function(img) { return img.id; }) });
+                    sale_from: $(this).find('.var-sale-from').val() || '',
+                    sale_to:   $(this).find('.var-sale-to').val()   || '',
+                    stock_quantity: $(this).find('.var-stock').val(),
+                    stock_status: $(this).find('.var-stock-status').val() || 'instock',
+                    sku: $(this).find('.var-sku').val(),
+                    image_ids: (v.images || []).map(function(img) { return img.id; }) };
+                var $cogsInput = $(this).find('.var-cogs');
+                if ($cogsInput.length) varObj.cogs_value = parsePrice($cogsInput.val(), sep);
+                tv.push(varObj);
             });
             data.variations = JSON.stringify(tv);
         }
 
-        $.post(PE.ajax_url, data, function (r) {
-            state.saving = false; $pub.prop('disabled', false).text(op); $draft.prop('disabled', false).text(od);
+        // Build FormData so bracketed repeat keys (`field[0]`, `field[1]`…)
+        // from third-party variation fields stay intact. $.post uses jQuery's
+        // param serializer which can't emit the same key twice or our nested
+        // flattened pairs reliably.
+        var fd = new FormData();
+        var _extraPairs = data.__flat_extra_pairs || [];
+        delete data.__flat_extra_pairs;
+        Object.keys(data).forEach(function (k) {
+            var v = data[k];
+            if (Array.isArray(v)) {
+                v.forEach(function (item) { fd.append(k + '[]', item); });
+            } else if (v === undefined || v === null) {
+                fd.append(k, '');
+            } else {
+                fd.append(k, v);
+            }
+        });
+        _extraPairs.forEach(function (pair) { fd.append(pair[0], pair[1]); });
+
+        $.ajax({ url: PE.ajax_url, type: 'POST', data: fd, processData: false, contentType: false, dataType: 'json' })
+        .done(function (r) {
+            state.saving = false; $pub.prop('disabled', false).text(op);
             if (r.success) {
                 state.dirty = false;
                 showToast(r.data.message + ' \u2713', 'success');
@@ -520,13 +1212,28 @@
                     $('#bpe-product-id').val(r.data.product_id);
                     var newUrl = PE.admin_url + 'admin.php?page=brikpanel-product-editor&product_id=' + r.data.product_id;
                     window.history.replaceState(null, '', newUrl);
-                    if (status === 'publish') {
+                    // Status dropdown lives in the header and is the anchor
+                    // new buttons get inserted before.
+                    var $statusAnchor = $('.brikpanel-pe-status-wrap');
+                    // Duplicate is available as soon as the product has an ID
+                    // (draft, publish, private — all valid).
+                    if (!$('#bpe-duplicate').length && $statusAnchor.length) {
+                        $('<button type="button" class="brikpanel-pe-btn secondary" id="bpe-duplicate" data-id="' + r.data.product_id + '">' + (PE.i18n.duplicate || 'Duplicate') + '</button>').insertBefore($statusAnchor);
+                    } else {
+                        $('#bpe-duplicate').attr('data-id', r.data.product_id);
+                    }
+                    if (status === 'publish' || status === 'private' || status === 'password') {
                         $pub.text(PE.i18n.update || 'Update');
-                        // Show View Product button if not already visible
-                        if (!$('#bpe-view-product').length) {
-                            var viewUrl = r.data.permalink || '';
-                            if (!viewUrl) viewUrl = '/?p=' + r.data.product_id;
-                            $('<a href="' + viewUrl + '" class="brikpanel-pe-btn secondary" id="bpe-view-product" target="_blank">' + (PE.i18n.view_product || 'View product') + '</a>').insertBefore($draft);
+                        // View product
+                        if (!$('#bpe-view-product').length && $statusAnchor.length) {
+                            var viewUrl = r.data.permalink || (PE.admin_url.replace(/wp-admin\/?$/, '') + '?p=' + r.data.product_id);
+                            $('<a href="' + viewUrl + '" class="brikpanel-pe-btn secondary" id="bpe-view-product" target="_blank">' + (PE.i18n.view_product || 'View product') + '</a>').insertBefore($('#bpe-duplicate'));
+                        } else if ($('#bpe-view-product').length && r.data.permalink) {
+                            $('#bpe-view-product').attr('href', r.data.permalink);
+                        }
+                        // Add new
+                        if (!$('#bpe-add-new').length && $statusAnchor.length) {
+                            $('<a href="' + PE.admin_url + 'admin.php?page=brikpanel-product-editor" class="brikpanel-pe-btn secondary" id="bpe-add-new"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ' + (PE.i18n.add_new || 'Add new') + '</a>').insertBefore($statusAnchor);
                         }
                     }
                 }
@@ -537,11 +1244,108 @@
         });
     }
 
+    /* ====== Product Tags ====== */
+    function initTags() {
+        var $wrap = $('#bpe-tags-wrap');
+        var $input = $('#bpe-tag-input');
+        var $suggestions = $('#bpe-tag-suggestions');
+        if (!$input.length) return;
+
+        var allTags = (productData.all_tags || []).slice();
+
+        $input.on('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                var v = $.trim(this.value.replace(/,/g, ''));
+                if (v && !hasTag(v)) {
+                    addProductTag(v);
+                    this.value = '';
+                    $suggestions.hide();
+                }
+            }
+            if (e.key === 'Backspace' && !this.value && state.tags.length) {
+                state.tags.pop();
+                renderProductTags();
+                state.dirty = true;
+            }
+        });
+
+        $input.on('input', function () {
+            var q = $.trim(this.value).toLowerCase();
+            if (!q) { $suggestions.hide(); return; }
+            var matches = allTags.filter(function (t) {
+                return t.toLowerCase().indexOf(q) !== -1 && !hasTag(t);
+            }).slice(0, 8);
+            if (!matches.length) { $suggestions.hide(); return; }
+            var html = '';
+            matches.forEach(function (t) {
+                html += '<div class="brikpanel-pe-tag-suggestion" data-value="' + esc(t) + '">' + esc(t) + '</div>';
+            });
+            $suggestions.html(html).show();
+        });
+
+        $suggestions.on('mousedown', '.brikpanel-pe-tag-suggestion', function (e) {
+            e.preventDefault();
+            var v = $(this).data('value');
+            if (v && !hasTag(v)) {
+                addProductTag(v);
+                $input.val('');
+                $suggestions.hide();
+            }
+        });
+
+        $input.on('blur', function () {
+            setTimeout(function () { $suggestions.hide(); }, 150);
+        });
+
+        $wrap.on('click', function () { $input.focus(); });
+    }
+
+    function hasTag(name) {
+        return state.tags.some(function (t) { return t.toLowerCase() === name.toLowerCase(); });
+    }
+
+    function addProductTag(name) {
+        state.tags.push(name);
+        renderProductTags();
+        state.dirty = true;
+    }
+
+    function removeProductTag(idx) {
+        state.tags.splice(idx, 1);
+        renderProductTags();
+        state.dirty = true;
+    }
+
+    function renderProductTags() {
+        var $wrap = $('#bpe-tags-wrap');
+        $wrap.find('.brikpanel-pe-tag').remove();
+        var $input = $wrap.find('input');
+        state.tags.forEach(function (t, idx) {
+            var $tag = $('<span class="brikpanel-pe-tag">' + esc(t) + '</span>');
+            var $rm = $('<button type="button" class="brikpanel-pe-tag-remove">&times;</button>');
+            $rm.on('click', function () { removeProductTag(idx); });
+            $tag.append($rm);
+            $input.before($tag);
+        });
+    }
+
     function loadExistingData() {
         if (!productData || !productData.id) return;
         if (productData.gallery && productData.gallery.length) {
             productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url }); });
             renderGallery();
+        }
+        if (productData.downloads && productData.downloads.length) {
+            state.downloads = productData.downloads.slice();
+            renderDownloads();
+        }
+        if (productData.tags && productData.tags.length) {
+            state.tags = productData.tags.slice();
+            renderProductTags();
+        }
+        if (productData.is_downloadable) {
+            $('#bpe-weight-card, #bpe-dims-card').hide();
         }
         if (productData.is_variable && productData.attributes && productData.attributes.length) {
             state.varAttributes = productData.attributes;
@@ -551,18 +1355,19 @@
                 v.name = p.join(' - ');
             });
             var $a = $('#bpe-var-attributes').empty();
-            productData.attributes.forEach(function (attr) { $a.append(createTagGroup(attr.name, attr.values)); });
+            productData.attributes.forEach(function (attr) { $a.append(createTagGroup(attr.name, attr.values, attr.taxonomy || '')); });
             if (state.variations.length) { renderVarTable(); showVarStep(3); }
         }
     }
 
-    /* Auto-save draft every 60s */
+    /* Auto-save every 60s using the current visibility (no silent downgrade). */
     function initAutoSave() {
         // Only auto-save if on the editor page
         if (!$('#bpe-product-id').length) return;
         setInterval(function () {
             if (state.dirty && !state.saving && $.trim($('#bpe-name').val())) {
-                saveProduct('draft', true); // silent = true
+                var status = $('#bpe-status').val() || 'draft';
+                saveProduct(status, true); // silent = true
             }
         }, 60000);
     }
@@ -592,7 +1397,7 @@
             $('#bpe-seo-title-count').text(this.value.length);
         });
         $('#bpe-seo-desc').on('input', function () {
-            var val = this.value || $('#bpe-short-desc').val() || '';
+            var val = this.value || ($('#bpe-short-desc').text() || '').trim();
             $('#bpe-seo-preview-desc').text(val);
             $('#bpe-seo-desc-count').text(this.value.length);
         });

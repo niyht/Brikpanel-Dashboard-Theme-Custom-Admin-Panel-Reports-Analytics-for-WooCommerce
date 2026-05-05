@@ -2,7 +2,7 @@
  * BrikPanel — Feature Showcase Popup
  *
  * @package BrikPanel
- * @since   2.0.1
+ * @since   2.0.4
  */
 (function () {
     'use strict';

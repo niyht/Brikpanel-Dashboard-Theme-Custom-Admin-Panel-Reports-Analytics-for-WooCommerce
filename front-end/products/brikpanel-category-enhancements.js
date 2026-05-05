@@ -26,6 +26,55 @@
 
         // Move search box into the table card header
         repositionSearch();
+
+        // Set data-description for hover tooltip
+        setupDescriptionTooltips();
+
+        // Wrap row-actions children so the grid 0fr -> 1fr hover expansion
+        // animates to natural content height without clipping wrapped actions.
+        wrapRowActions();
+    }
+
+    // =========================================================================
+    // ROW ACTIONS WRAPPER
+    // =========================================================================
+
+    function wrapRowActions() {
+        $('#the-list .row-actions').each(function () {
+            var $ra = $(this);
+            if ($ra.children('.brikpanel-row-actions-inner').length) return;
+            $ra.contents().wrapAll('<span class="brikpanel-row-actions-inner"></span>');
+        });
+    }
+
+    // =========================================================================
+    // DESCRIPTION TOOLTIP
+    // =========================================================================
+
+    function setupDescriptionTooltips() {
+        $('#the-list td.column-description').each(function () {
+            var $td = $(this);
+            // WP renders empty descriptions as: <span aria-hidden="true">—</span><span class="screen-reader-text">No description</span>
+            // If any such placeholder exists, treat the cell as empty.
+            var hasPlaceholder = $td.find('.screen-reader-text').length > 0 || $td.find('[aria-hidden="true"]').length > 0;
+            var text = hasPlaceholder ? '' : $.trim($td.text());
+            // Safety: also treat bare em-dash/dash as empty
+            if (text === '\u2014' || text === '—' || text === '-') text = '';
+
+            if (text) {
+                // Wrap in a span so td stays overflow:visible (for tooltip) while text truncates
+                $td.empty().append(
+                    $('<span class="brikpanel-desc-text"></span>').text(text)
+                );
+                $td.attr('data-description', text);
+                $td.attr('title', text);
+            } else {
+                // Show a muted dash, no tooltip
+                $td.html('<span class="brikpanel-desc-empty">—</span>');
+                $td.attr('data-description', '');
+                $td.removeAttr('title');
+            }
+        });
     }
 
     // =========================================================================
@@ -42,10 +91,10 @@
         $heading.wrap($header);
         $header = $heading.parent();
 
-        // Move search into header
-        var $searchBox = $searchForm.find('.search-box');
-        $searchBox.appendTo($header);
-        $searchForm.remove();
+        // Move the whole <form> into the header. Moving only `.search-box`
+        // strands the input+submit outside any form, so clicking the button
+        // or pressing Enter no longer triggers a GET to edit-tags.php.
+        $searchForm.appendTo($header);
 
         // Style adjustments via class
         $header.addClass('brikpanel-cat-header');

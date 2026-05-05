@@ -9,6 +9,32 @@ if ( ! defined( 'BRIKPANEL_VISITOR_TIMEOUT' ) ) {
     define( 'BRIKPANEL_VISITOR_TIMEOUT', 75 );
 }
 
+// Hard cap on the number of visitors stored in the transient. Prevents the
+// option row from ballooning under bot traffic on weak hosts. The dashboard
+// only renders the active subset anyway.
+if ( ! defined( 'BRIKPANEL_VISITOR_MAX' ) ) {
+    define( 'BRIKPANEL_VISITOR_MAX', 500 );
+}
+
+// Minimum seconds between accepted pings from the same visitor. Drops
+// duplicate / spammy pings cheaply before we touch the transient.
+if ( ! defined( 'BRIKPANEL_VISITOR_PING_INTERVAL' ) ) {
+    define( 'BRIKPANEL_VISITOR_PING_INTERVAL', 10 );
+}
+
+/**
+ * Skip live tracking for obvious bots. Light user-agent sniff — not a
+ * security boundary, just a load-shedding heuristic so search crawlers
+ * don't fill the transient.
+ */
+function _brikpanel_is_bot_ua() {
+    $ua = isset( $_SERVER['HTTP_USER_AGENT'] ) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
+    if ( $ua === '' ) {
+        return true;
+    }
+    return (bool) preg_match( '/(bot|crawler|spider|crawling|facebookexternalhit|slurp|mediapartners|ahrefs|semrush|petalbot|bingpreview|yandex|baidu|duckduckbot|applebot)/i', $ua );
+}
+
 /* ----------------------------------------------------------
  * 1) Ziyaretçi ID (Cookie)
  * ---------------------------------------------------------- */
@@ -31,12 +57,34 @@ function _brikpanel_get_visitor_id() {
  * 2) AJAX: Ziyaretçiyi Kaydet VEYA Sil (Frontend)
  * ---------------------------------------------------------- */
 function brikpanel_track_live_visitor() {
-    // Güvenlik: Nonce kontrolü (POST içinde gelmeli, GET değil)
-    // sendBeacon POST gönderir ancak headerları farklıdır, yine de $_POST doldurulur.
-    
+    // No nonce: this is a public endpoint reachable from any frontend visitor.
+    // We defend against abuse with three cheap checks instead — bot UA filter,
+    // per-visitor rate limit, and a hard cap on the transient size — so a
+    // single host can't fill memory or hammer admin-ajax.
+
+    if ( _brikpanel_is_bot_ua() ) {
+        wp_send_json_success( 'Skipped' );
+    }
+
     $visitor_id = _brikpanel_get_visitor_id();
     if ( ! $visitor_id ) {
         wp_send_json_success( 'Skipped' );
+    }
+
+    // Per-visitor rate limit. Use the object cache when available (in-memory,
+    // O(1)). On hosts without one, wp_cache_* is per-request only — fall back
+    // to a transient so the limit actually persists between requests.
+    $rl_key = 'bp_lv_' . md5( $visitor_id );
+    if ( function_exists( 'brikpanel_has_object_cache' ) && brikpanel_has_object_cache() ) {
+        if ( wp_cache_get( $rl_key, 'brikpanel_live' ) ) {
+            wp_send_json_success( 'Throttled' );
+        }
+        wp_cache_set( $rl_key, 1, 'brikpanel_live', BRIKPANEL_VISITOR_PING_INTERVAL );
+    } else {
+        if ( get_transient( $rl_key ) ) {
+            wp_send_json_success( 'Throttled' );
+        }
+        set_transient( $rl_key, 1, BRIKPANEL_VISITOR_PING_INTERVAL );
     }
 
     $page_url = isset( $_POST['page_url'] ) ? esc_url_raw( wp_unslash( $_POST['page_url'] ) ) : '';
@@ -106,19 +154,24 @@ function brikpanel_track_live_visitor() {
         ];
     }
 
-    // TEMİZLİK: 
-    // Önceki kodda 120 saniyeydi. 
-    // Şimdi 25 saniye yapıyoruz (Ping her 10 sn geliyor, 2.5 katı tolerans yeterli).
-    // Böylece sekme kapanmasa bile internet kopsa 25sn sonra silinir.
-    $limit_time = time() - BRIKPANEL_VISITOR_TIMEOUT; 
-    
+    // Cleanup: drop stale entries first so the cap below preserves recent
+    // visitors. If the transient still exceeds the cap (bot flood), keep only
+    // the most-recently-active entries — bounded memory beats completeness.
+    $limit_time = time() - BRIKPANEL_VISITOR_TIMEOUT;
     foreach ( $visitors as $vid => $data ) {
-        if ( isset($data['last_active']) && $data['last_active'] < $limit_time ) {
+        if ( ! isset( $data['last_active'] ) || $data['last_active'] < $limit_time ) {
             unset( $visitors[ $vid ] );
         }
     }
 
-    set_transient( 'brikpanel_live_visitors', $visitors, 120 ); // Transient süresi 2dk kalsın ama iç mantık 25sn.
+    if ( count( $visitors ) > BRIKPANEL_VISITOR_MAX ) {
+        uasort( $visitors, static function ( $a, $b ) {
+            return ( $b['last_active'] ?? 0 ) <=> ( $a['last_active'] ?? 0 );
+        } );
+        $visitors = array_slice( $visitors, 0, BRIKPANEL_VISITOR_MAX, true );
+    }
+
+    set_transient( 'brikpanel_live_visitors', $visitors, 120 );
 
     wp_send_json_success( $is_exit ? 'Removed' : 'Tracked' );
 }
@@ -159,6 +212,10 @@ add_action( 'wp_ajax_brikpanel_get_live_data', 'brikpanel_get_live_data' );
  * ---------------------------------------------------------- */
 function brikpanel_live_visitor_tracker_js() {
     if ( is_admin() ) return;
+    // Skip the tracker for logged-in admins (matches _brikpanel_get_visitor_id)
+    // and for obvious bots — saves the network round-trip entirely.
+    if ( is_user_logged_in() && current_user_can( 'manage_options' ) ) return;
+    if ( _brikpanel_is_bot_ua() ) return;
     ?>
     <script>
         document.addEventListener("DOMContentLoaded", function() {

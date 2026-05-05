@@ -18,7 +18,8 @@
         coupons: [],
         loading: false,
         total: 0,
-        pages: 0
+        pages: 0,
+        extraColumns: {}
     };
 
     var searchTimer = null;
@@ -229,12 +230,43 @@
     // FETCH COUPONS
     // =========================================================================
 
+    function totalColumnCount() {
+        // 9 native cols (check, code, type, amount, desc, usage, revenue, expiry,
+        // status) + 1 actions col + N extras.
+        var extras = state.extraColumns ? Object.keys(state.extraColumns).length : 0;
+        return 10 + extras;
+    }
+
+    function syncAseHeaders() {
+        var $headerRow = $('#bpc-table thead tr');
+        if (!$headerRow.length) return;
+
+        $headerRow.find('th.brikpanel-cp-th-ase').remove();
+
+        var cols = state.extraColumns || {};
+        var ids  = Object.keys(cols);
+        if (!ids.length) return;
+
+        var $actionsTh = $headerRow.find('th.brikpanel-cp-th-actions');
+        for (var i = 0; i < ids.length; i++) {
+            var colId = ids[i];
+            var label = cols[colId];
+            var $th = $('<th class="brikpanel-cp-th-ase column-' + escAttr(colId) + '" data-ase-col="' + escAttr(colId) + '"></th>')
+                .text(label);
+            if ($actionsTh.length) {
+                $actionsTh.before($th);
+            } else {
+                $headerRow.append($th);
+            }
+        }
+    }
+
     function fetchCoupons() {
         if (state.loading) return;
         state.loading = true;
 
         var $body = $('#bpc-table-body');
-        $body.html('<tr class="brikpanel-cp-loading-row"><td colspan="9"><div class="brikpanel-cp-spinner"></div></td></tr>');
+        $body.html('<tr class="brikpanel-cp-loading-row"><td colspan="' + totalColumnCount() + '"><div class="brikpanel-cp-spinner"></div></td></tr>');
 
         $.ajax({
             url: CP.ajax_url,
@@ -251,15 +283,17 @@
             success: function (res) {
                 state.loading = false;
                 if (!res.success) {
-                    $body.html('<tr><td colspan="9" class="brikpanel-cp-empty">' + escHtml(res.data.message || CP.i18n.error) + '</td></tr>');
+                    $body.html('<tr><td colspan="' + totalColumnCount() + '" class="brikpanel-cp-empty">' + escHtml(res.data.message || CP.i18n.error) + '</td></tr>');
                     return;
                 }
 
                 state.coupons = res.data.coupons;
                 state.total = res.data.total;
                 state.pages = res.data.pages;
+                state.extraColumns = res.data.extra_columns || {};
 
                 updateCounts(res.data.counts);
+                syncAseHeaders();
                 renderCoupons();
                 renderPagination();
                 updateBulkBar();
@@ -269,7 +303,7 @@
             },
             error: function () {
                 state.loading = false;
-                $body.html('<tr><td colspan="9" class="brikpanel-cp-empty">' + escHtml(CP.i18n.error) + '</td></tr>');
+                $body.html('<tr><td colspan="' + totalColumnCount() + '" class="brikpanel-cp-empty">' + escHtml(CP.i18n.error) + '</td></tr>');
             }
         });
     }
@@ -282,7 +316,7 @@
         var $body = $('#bpc-table-body');
 
         if (!state.coupons.length) {
-            $body.html('<tr><td colspan="9" class="brikpanel-cp-empty">' +
+            $body.html('<tr><td colspan="' + totalColumnCount() + '" class="brikpanel-cp-empty">' +
                 '<div class="brikpanel-cp-empty-state">' +
                 '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="1.5"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg>' +
                 '<p>' + escHtml(CP.i18n.no_coupons) + '</p>' +
@@ -325,6 +359,11 @@
             usageHtml += ' / &infin;';
         }
 
+        // Revenue
+        var revenueHtml = c.revenue_formatted
+            ? '<span class="brikpanel-cp-revenue-cell">' + c.revenue_formatted + '</span>'
+            : '<span class="brikpanel-cp-text-muted">&mdash;</span>';
+
         // Expiry
         var expiryHtml = '';
         if (c.expiry_date) {
@@ -365,15 +404,41 @@
                 '</div>';
         }
 
+        // Cells contributed by third-party plugins (ASE etc.) via the
+        // manage_{post_type}_posts_custom_column action. HTML already
+        // sanitised server-side via wp_kses_post.
+        var aseCellsHtml = '';
+        var extraCols    = state.extraColumns || {};
+        var extraIds     = Object.keys(extraCols);
+        if (extraIds.length && c.extra_cells) {
+            for (var ci = 0; ci < extraIds.length; ci++) {
+                var aseColId = extraIds[ci];
+                var aseHtml  = (typeof c.extra_cells[aseColId] !== 'undefined') ? c.extra_cells[aseColId] : '';
+                aseCellsHtml += '<td class="brikpanel-cp-cell-ase column-' + escAttr(aseColId) + '" data-ase-col="' + escAttr(aseColId) + '">' + aseHtml + '</td>';
+            }
+        }
+
+        // Row actions injected via post_row_actions filter.
+        var aseActionsHtml = '';
+        if (c.extra_actions && c.extra_actions.length) {
+            var parts = [];
+            for (var ai = 0; ai < c.extra_actions.length; ai++) {
+                parts.push('<span class="brikpanel-cp-row-action brikpanel-cp-row-action-' + escAttr(c.extra_actions[ai].id || '') + '">' + (c.extra_actions[ai].html || '') + '</span>');
+            }
+            aseActionsHtml = '<div class="brikpanel-cp-row-actions">' + parts.join('') + '</div>';
+        }
+
         return '<tr class="brikpanel-cp-row" data-id="' + c.id + '">' +
             '<td class="brikpanel-cp-cell-check"><input type="checkbox" class="brikpanel-cp-row-check brikpanel-cp-checkbox" value="' + c.id + '"' + checked + '></td>' +
-            '<td class="brikpanel-cp-cell-code"><span class="brikpanel-cp-code-text">' + escHtml(c.code) + '</span></td>' +
+            '<td class="brikpanel-cp-cell-code"><span class="brikpanel-cp-code-text">' + escHtml(c.code) + '</span>' + aseActionsHtml + '</td>' +
             '<td class="brikpanel-cp-cell-type"><span class="brikpanel-cp-type-badge">' + escHtml(typeLabel) + '</span></td>' +
             '<td class="brikpanel-cp-cell-amount"><span class="brikpanel-cp-editable brikpanel-cp-amount-cell" data-field="amount" data-value="' + escAttr(c.amount) + '">' + amountDisplay + '</span></td>' +
             '<td class="brikpanel-cp-cell-desc"><span class="brikpanel-cp-desc-cell">' + descHtml + '</span></td>' +
             '<td class="brikpanel-cp-cell-usage"><span class="brikpanel-cp-usage-cell">' + usageHtml + '</span></td>' +
+            '<td class="brikpanel-cp-cell-revenue">' + revenueHtml + '</td>' +
             '<td class="brikpanel-cp-cell-expiry"><span class="brikpanel-cp-expiry-cell">' + expiryHtml + '</span></td>' +
             '<td class="brikpanel-cp-cell-status"><span class="brikpanel-cp-status-badge ' + statusClass + '" title="' + escAttr(CP.i18n.click_to_toggle) + '">' + escHtml(statusLabel) + '</span></td>' +
+            aseCellsHtml +
             '<td class="brikpanel-cp-actions-cell">' + actionsHtml + '</td>' +
             '</tr>';
     }

@@ -1,0 +1,664 @@
+/**
+ * BrikPanel — Customer Analytics page styles.
+ *
+ * Follows the BrikPanel UI system:
+ *  - Monochrome palette (#303030 primary, #f1f1f1 page bg, #e3e3e3 borders)
+ *  - White cards with 0.75rem radius and subtle 0 1px 3px shadow
+ *  - System font, 13px labels, 18px h1
+ *  - 820px max-width centered (we widen to 1100px here for the table)
+ */
+
+.bp-ca {
+	max-width: 1100px;
+	margin: 1.25rem auto;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	color: #303030;
+	line-height: 1.5;
+}
+
+.bp-ca *,
+.bp-ca *::before,
+.bp-ca *::after {
+	box-sizing: border-box;
+}
+
+/* =============================================================================
+   HEADER
+   ============================================================================= */
+
+.bp-ca-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-end;
+	gap: 1rem;
+	margin-bottom: 1rem;
+	flex-wrap: wrap;
+}
+
+.bp-ca-header-left h1 {
+	margin: 0 0 0.25rem 0;
+	font-size: 1.125rem;
+	font-weight: 600;
+	color: #303030;
+}
+
+.bp-ca-meta {
+	font-size: 0.8125rem;
+	color: #8a8a8a;
+}
+
+.bp-ca-header-right {
+	display: flex;
+	gap: 0.5rem;
+}
+
+/* =============================================================================
+   BUTTONS
+   ============================================================================= */
+
+.bp-ca-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	padding: 0.5rem 1rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	border-radius: 0.5rem;
+	cursor: pointer;
+	border: none;
+	font-family: inherit;
+	line-height: 1.2;
+	transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bp-ca-btn-primary {
+	background: #303030;
+	color: #fff;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.bp-ca-btn-primary:hover { background: #1a1a1a; }
+.bp-ca-btn-primary:disabled { background: #8a8a8a; cursor: not-allowed; }
+
+.bp-ca-btn-secondary {
+	background: #fff;
+	color: #303030;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+.bp-ca-btn-secondary:hover { background: #f7f7f7; }
+.bp-ca-btn-secondary:disabled { color: #8a8a8a; cursor: not-allowed; }
+
+/* =============================================================================
+   TABS
+   ============================================================================= */
+
+.bp-ca-tabs {
+	display: flex;
+	gap: 0.25rem;
+	border-bottom: 1px solid #e3e3e3;
+	margin-bottom: 1rem;
+}
+
+.bp-ca-tab {
+	background: transparent;
+	border: none;
+	padding: 0.75rem 1rem;
+	margin-bottom: -1px;
+	font-size: 0.875rem;
+	font-weight: 550;
+	color: #616161;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-family: inherit;
+	transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.bp-ca-tab:hover:not(.is-disabled) {
+	color: #303030;
+}
+
+.bp-ca-tab.is-active {
+	color: #303030;
+	border-bottom-color: #303030;
+}
+
+.bp-ca-tab.is-disabled {
+	color: #8a8a8a;
+	cursor: not-allowed;
+}
+
+.bp-ca-tab-soon {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	background: #f1f1f1;
+	color: #8a8a8a;
+	padding: 0.125rem 0.4rem;
+	border-radius: 999px;
+	letter-spacing: 0.01em;
+}
+
+/* =============================================================================
+   STATS GRID (4 KPI cards)
+   ============================================================================= */
+
+.bp-ca-stats {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 1rem;
+	margin-bottom: 1rem;
+}
+
+@media (max-width: 900px) {
+	.bp-ca-stats { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+	.bp-ca-stats { grid-template-columns: 1fr; }
+}
+
+.bp-ca-stat {
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	padding: 1rem 1.25rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.bp-ca-stat-label {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: #8a8a8a;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 0.5rem;
+}
+
+.bp-ca-stat-value {
+	font-size: 1.375rem;
+	font-weight: 600;
+	color: #303030;
+	line-height: 1.2;
+}
+
+.bp-ca-stat-sub {
+	margin-top: 0.5rem;
+	font-size: 0.75rem;
+	color: #616161;
+	display: flex;
+	gap: 0.375rem;
+	flex-wrap: wrap;
+}
+
+/* =============================================================================
+   CARDS
+   ============================================================================= */
+
+.bp-ca-card {
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	padding: 1.25rem 1.5rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	margin-bottom: 1rem;
+}
+
+.bp-ca-card-header {
+	margin-bottom: 1rem;
+}
+
+.bp-ca-card-header h2 {
+	margin: 0 0 0.25rem 0;
+	font-size: 0.9375rem;
+	font-weight: 600;
+	color: #303030;
+}
+
+.bp-ca-card-sub {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: #8a8a8a;
+}
+
+.bp-ca-chart-wrap {
+	position: relative;
+	width: 100%;
+}
+
+/* =============================================================================
+   TABLE
+   ============================================================================= */
+
+.bp-ca-table-wrap {
+	overflow-x: auto;
+	margin: 0 -0.5rem;
+}
+
+.bp-ca-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.875rem;
+}
+
+.bp-ca-table thead th {
+	text-align: left;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: #8a8a8a;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	border-bottom: 1px solid #e3e3e3;
+	padding: 0.625rem 0.75rem;
+}
+
+.bp-ca-table thead th.num {
+	text-align: right;
+}
+
+.bp-ca-table tbody td {
+	padding: 0.75rem;
+	border-bottom: 1px solid #f1f1f1;
+	color: #303030;
+	vertical-align: middle;
+}
+
+.bp-ca-table tbody td.num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.bp-ca-table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+.bp-ca-table tbody tr:hover td {
+	background: #fafafa;
+}
+
+.bp-ca-customer-cell {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+}
+
+.bp-ca-customer-name {
+	font-weight: 600;
+	color: #303030;
+}
+
+.bp-ca-customer-email {
+	font-size: 0.75rem;
+	color: #8a8a8a;
+}
+
+.bp-ca-guest-pill {
+	display: inline-block;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	background: #f1f1f1;
+	color: #616161;
+	padding: 0.125rem 0.4rem;
+	border-radius: 999px;
+	margin-left: 0.5rem;
+	vertical-align: middle;
+}
+
+.bp-ca-empty {
+	text-align: center;
+	padding: 2rem 1rem;
+	color: #8a8a8a;
+	font-size: 0.875rem;
+}
+
+/* =============================================================================
+   PAGINATION
+   ============================================================================= */
+
+.bp-ca-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.75rem;
+	margin-top: 1rem;
+}
+
+.bp-ca-page-info {
+	font-size: 0.8125rem;
+	color: #616161;
+	font-variant-numeric: tabular-nums;
+}
+
+/* =============================================================================
+   RFM TAB
+   ============================================================================= */
+
+.bp-ca-rfm-layout {
+	display: grid;
+	grid-template-columns: 1fr 280px;
+	gap: 1.5rem;
+	align-items: start;
+}
+
+@media (max-width: 900px) {
+	.bp-ca-rfm-layout { grid-template-columns: 1fr; }
+	.bp-ca-rfm-chart { max-width: 320px; margin: 0 auto; }
+}
+
+.bp-ca-rfm-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 0.625rem;
+}
+
+@media (max-width: 600px) {
+	.bp-ca-rfm-grid { grid-template-columns: 1fr; }
+}
+
+.bp-ca-rfm-card {
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	padding: 0.75rem 0.875rem;
+	cursor: pointer;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	font-family: inherit;
+	text-align: left;
+}
+
+.bp-ca-rfm-card:hover {
+	border-color: #303030;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.bp-ca-rfm-card.is-active {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030, 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.bp-ca-rfm-card.is-empty {
+	opacity: 0.55;
+	cursor: default;
+}
+
+.bp-ca-rfm-card.is-empty:hover {
+	border-color: #e3e3e3;
+	box-shadow: none;
+}
+
+.bp-ca-rfm-card-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.bp-ca-rfm-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+
+.bp-ca-rfm-card-name {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: #303030;
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.bp-ca-rfm-card-count {
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: #303030;
+	font-variant-numeric: tabular-nums;
+}
+
+.bp-ca-rfm-card-share {
+	font-size: 0.6875rem;
+	color: #8a8a8a;
+	margin-left: 0.25rem;
+}
+
+.bp-ca-rfm-card-meta {
+	display: flex;
+	gap: 0.875rem;
+	font-size: 0.6875rem;
+	color: #616161;
+	font-variant-numeric: tabular-nums;
+}
+
+.bp-ca-rfm-card-meta strong {
+	color: #303030;
+	font-weight: 600;
+}
+
+.bp-ca-rfm-card-desc {
+	display: none;
+	font-size: 0.75rem;
+	color: #8a8a8a;
+	line-height: 1.4;
+	margin-top: 0.25rem;
+}
+
+.bp-ca-rfm-card.is-active .bp-ca-rfm-card-desc {
+	display: block;
+}
+
+.bp-ca-rfm-chart {
+	background: #fafafa;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	padding: 1rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.bp-ca-rfm-actions {
+	display: flex;
+	gap: 0.5rem;
+	margin-bottom: 0.75rem;
+	flex-wrap: wrap;
+}
+
+/* RFM score pills (R/F/M numbers in the customer table) */
+.bp-ca-rfm-pills {
+	display: inline-flex;
+	gap: 0.25rem;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.bp-ca-rfm-pill {
+	background: #f1f1f1;
+	color: #616161;
+	padding: 0.125rem 0.4rem;
+	border-radius: 999px;
+	min-width: 1.5rem;
+	text-align: center;
+}
+
+.bp-ca-rfm-pill.is-high { background: #e4f5e1; color: #1a6b15; }
+.bp-ca-rfm-pill.is-low  { background: #fce4e4; color: #c62828; }
+
+/* =============================================================================
+   COHORT TAB (heatmap)
+   ============================================================================= */
+
+.bp-ca-cohort-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	flex-wrap: wrap;
+}
+
+.bp-ca-cohort-controls {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.8125rem;
+	color: #616161;
+	font-weight: 600;
+}
+
+.bp-ca-cohort-controls select {
+	padding: 0.375rem 0.625rem;
+	border: 1px solid #8a8a8a;
+	border-radius: 0.5rem;
+	background: #fff;
+	color: #303030;
+	font-size: 0.8125rem;
+	font-weight: 400;
+	font-family: inherit;
+	cursor: pointer;
+	outline: none;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bp-ca-cohort-controls select:focus {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+}
+
+.bp-ca-cohort-heatmap-wrap {
+	overflow-x: auto;
+	margin: 0 -0.5rem;
+}
+
+.bp-ca-cohort-heatmap {
+	display: inline-block;
+	min-width: 100%;
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.bp-ca-cohort-row {
+	display: flex;
+	gap: 2px;
+	margin-bottom: 2px;
+}
+
+.bp-ca-cohort-row.bp-ca-cohort-header-row {
+	margin-bottom: 6px;
+	padding-bottom: 6px;
+	border-bottom: 1px solid #e3e3e3;
+	color: #8a8a8a;
+	font-weight: 600;
+	font-size: 0.6875rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.bp-ca-cohort-cell {
+	flex-shrink: 0;
+	width: 56px;
+	height: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 4px;
+	color: #303030;
+	font-weight: 600;
+	background: #f7f7f7;
+	transition: transform 0.1s ease;
+}
+
+.bp-ca-cohort-cell-empty {
+	background: transparent;
+	color: #c0c0c0;
+}
+
+.bp-ca-cohort-cell-month {
+	width: 88px;
+	background: transparent;
+	color: #303030;
+	font-weight: 600;
+	justify-content: flex-start;
+	padding-left: 0.25rem;
+}
+
+.bp-ca-cohort-cell-size {
+	width: 64px;
+	background: #fafafa;
+	color: #616161;
+	border: 1px solid #e3e3e3;
+	font-weight: 550;
+}
+
+.bp-ca-cohort-cell-data {
+	cursor: default;
+}
+
+.bp-ca-cohort-cell-data:hover {
+	transform: scale(1.05);
+	box-shadow: 0 0 0 1px #303030;
+	z-index: 2;
+	position: relative;
+}
+
+/* =============================================================================
+   "COMING SOON" PLACEHOLDER (RFM / Cohort tabs in Phase 1)
+   ============================================================================= */
+
+.bp-ca-soon-card {
+	background: #fff;
+	border: 1px dashed #e3e3e3;
+	border-radius: 0.75rem;
+	padding: 3rem 2rem;
+	text-align: center;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.bp-ca-soon-card h2 {
+	margin: 0 0 0.5rem 0;
+	font-size: 1rem;
+	font-weight: 600;
+	color: #303030;
+}
+
+.bp-ca-soon-card p {
+	margin: 0 auto;
+	max-width: 480px;
+	font-size: 0.875rem;
+	color: #616161;
+	line-height: 1.6;
+}
+
+/* =============================================================================
+   TOAST NOTIFICATION
+   ============================================================================= */
+
+.bp-ca-toast {
+	position: fixed;
+	top: 44px;
+	right: 20px;
+	background: #e4f5e1;
+	color: #1a6b15;
+	border: 1px solid #b7e1b0;
+	padding: 0.75rem 1rem;
+	border-radius: 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	transform: translateX(110%);
+	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	z-index: 100000;
+}
+
+.bp-ca-toast.is-visible {
+	transform: translateX(0);
+}
+
+.bp-ca-toast.is-error {
+	background: #fce4e4;
+	color: #c62828;
+	border-color: #f1b0b0;
+}

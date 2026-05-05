@@ -21,6 +21,75 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         return;
     }
 
+    // Embedded WP dashboard widget dependencies — only enqueued if the user
+    // has selected any widgets, so we don't pay the cost on every load.
+    // WP core dashboard.js + site-health.js target widgets by id selector
+    // (e.g. `#dashboard_primary div.inside`) and use the JS global `pagenow`
+    // for AJAX refresh calls. On our custom admin page `pagenow` resolves to
+    // `admin_page_brikpanel-dashboard`, which server-side ajax handlers
+    // reject. We override it to the string `dashboard` **before** dashboard.js
+    // runs so ajaxPopulateWidgets() / quickPressLoad() / site-health init all
+    // work unchanged.
+    $embedded_widgets = (array) get_option('brikpanel_dashboard_wp_widgets', []);
+    if (!empty($embedded_widgets)) {
+        wp_enqueue_style('dashboard');
+        wp_enqueue_style('site-health');
+        wp_enqueue_script('common');
+        wp_enqueue_script('postbox');
+        wp_enqueue_script('dashboard');
+        wp_enqueue_script('site-health');
+        wp_enqueue_script('wp-a11y');
+
+        // Override pagenow before dashboard.js init fires. dashboard.js reads
+        // the global at jQuery(function($){...}) time, so we set it in a
+        // `before` inline script attached to the `dashboard` handle.
+        wp_add_inline_script(
+            'dashboard',
+            'window.pagenow = "dashboard"; window.adminpage = "index-php";',
+            'before'
+        );
+
+        // WP_Site_Health::enqueue_scripts() short-circuits when the current
+        // screen is not `dashboard` / `site-health`, so the `SiteHealth` JS
+        // global is never localized on our custom page. Replicate the minimal
+        // localization so site-health.js can read cached issue counts from
+        // the transient and update the progress ring.
+        $site_status_counts = array(
+            'good'        => 0,
+            'recommended' => 0,
+            'critical'    => 0,
+        );
+        $cached_counts = get_transient('health-check-site-status-result');
+        if (false !== $cached_counts) {
+            $decoded = json_decode($cached_counts, true);
+            if (is_array($decoded)) {
+                $site_status_counts = array_merge($site_status_counts, $decoded);
+            }
+        }
+        wp_localize_script('site-health', 'SiteHealth', array(
+            'screen' => 'dashboard',
+            'nonce'  => array(
+                'site_status'        => wp_create_nonce('health-check-site-status'),
+                'site_status_result' => wp_create_nonce('health-check-site-status-result'),
+            ),
+            'site_status' => array(
+                'direct' => array(),
+                'async'  => array(),
+                'issues' => $site_status_counts,
+            ),
+        ));
+
+        // wp_localize_community_events() is only hooked to
+        // `admin_print_scripts-index.php`, so on our custom admin page the
+        // `communityEventsData` JS global (with the community_events nonce)
+        // is never set. Without it, dashboard.js hits the REST endpoint with
+        // no nonce → 403. Call the helper directly; it no-ops unless the
+        // `dashboard` script is enqueued, which we just did above.
+        if (function_exists('wp_localize_community_events')) {
+            wp_localize_community_events();
+        }
+    }
+
     // Flatpickr
     wp_enqueue_style(
         'brikpanel_flatpickr_styles',
@@ -60,7 +129,7 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         'brikpanel_dashboard_styles',
         BRIKPANEL_URL . 'front-end/dashboard/brikpanel-dashboard.css',
         [],
-        BRIKPANEL_VERSION
+        BRIKPANEL_VERSION . '.d8'
     );
 
     // Dashboard scripts
@@ -68,7 +137,7 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         'brikpanel_dashboard_scripts',
         BRIKPANEL_URL . 'front-end/dashboard/brikpanel-dashboard.js',
         [ 'flatpickr-js', 'chart-js', 'cobe-globe' ],
-        BRIKPANEL_VERSION,
+        BRIKPANEL_VERSION . '.d8',
         true
     );
 
@@ -133,7 +202,7 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'checkout'      => __('Checkout', 'brikpanel'),
             'successful'    => __('Successful', 'brikpanel'),
             'failed'        => __('Failed', 'brikpanel'),
-            'refunded'      => __('Refunded', 'brikpanel'),
+            'refunded'      => __('Returns & Refunds', 'brikpanel'),
             'cancelled'     => __('Cancelled', 'brikpanel'),
             'no_orders'     => __('No orders', 'brikpanel'),
             'no_data'       => __('No data for this period', 'brikpanel'),
@@ -154,19 +223,214 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'browsing'       => __('Browsing', 'brikpanel'),
             'added_to_cart'  => __('Added to Cart', 'brikpanel'),
             'order_received' => __('Order Received', 'brikpanel'),
+            'aov'            => __('AOV', 'brikpanel'),
+            'category'       => __('Category', 'brikpanel'),
+            'share'          => __('Share', 'brikpanel'),
+            'vs_prev'        => __('vs. prev.', 'brikpanel'),
+            'mp_of_total'    => __('of', 'brikpanel'),
+            'mp_combined'    => __('combined revenue', 'brikpanel'),
+            'mp_no_categories' => __('No category data — marketplace items must be linked to your WooCommerce catalog (by product or SKU) for category breakdown to appear.', 'brikpanel'),
+            'device_desktop'   => __('Desktop', 'brikpanel'),
+            'device_mobile'    => __('Mobile', 'brikpanel'),
+            'device_tablet'    => __('Tablet', 'brikpanel'),
+            'device_title_visitors' => __('Visitors by Device', 'brikpanel'),
+            'device_title_orders'   => __('Orders by Device', 'brikpanel'),
+            'ctype_new'        => __('New customers', 'brikpanel'),
+            'ctype_repeat'     => __('Repeat customers', 'brikpanel'),
+            'all_stocked'      => __('All products are sufficiently stocked', 'brikpanel'),
+            'return_rate'      => __('return & refund rate', 'brikpanel'),
+            'returns_refunds'  => __('Returns & refunds', 'brikpanel'),
+            'total_orders'     => __('Total orders', 'brikpanel'),
+            'average_ltv'      => __('Average customer LTV', 'brikpanel'),
+            'total_customers'  => __('Total customers', 'brikpanel'),
+            'repeat_customers' => __('Repeat customers', 'brikpanel'),
+            'total_lifetime_value' => __('Total lifetime value', 'brikpanel'),
+            'top_customer_ltv' => __('Top customer LTV', 'brikpanel'),
+            'ltv_empty'        => __('Customer metrics will appear after the nightly recompute.', 'brikpanel'),
+            'sku'                  => __('SKU', 'brikpanel'),
+            'stock'                => __('Remaining', 'brikpanel'),
+            'total_subscriptions'  => __('total subscriptions', 'brikpanel'),
+            'loc_orders'           => __('Orders', 'brikpanel'),
+            'loc_customers'        => __('Customers', 'brikpanel'),
+            'loc_order_locations'  => __('Order Locations', 'brikpanel'),
+            'loc_cust_locations'   => __('Customer Locations', 'brikpanel'),
+            'loc_top_countries_orders'    => __('Top Countries by Orders', 'brikpanel'),
+            'loc_top_countries_customers' => __('Top Countries by Customers', 'brikpanel'),
+            'loc_top_cities_orders'       => __('Top Cities by Orders', 'brikpanel'),
+            'loc_top_cities_customers'    => __('Top Cities by Customers', 'brikpanel'),
+            'customers'            => __('customers', 'brikpanel'),
+            'summary_button'        => __('Copy everything', 'brikpanel'),
+            'summary_collecting'    => __('Collecting data…', 'brikpanel'),
+            'summary_copied'        => __('Copied to clipboard!', 'brikpanel'),
+            'summary_failed'        => __('Failed — try again', 'brikpanel'),
         ],
     ]);
 }
 add_action('admin_enqueue_scripts', 'brikpanel_enqueue_custom_dashboard_assets');
 
 // =============================================================================
+// SEGMENTS PAGE ASSETS
+// =============================================================================
+function brikpanel_enqueue_segments_assets($hook) {
+    // WP registers submenu pages of WooCommerce under the hook
+    // "woocommerce_page_<slug>".
+    if ($hook !== 'toplevel_page_brikpanel-segments') {
+        return;
+    }
+
+    wp_enqueue_style(
+        'brikpanel_segments_styles',
+        BRIKPANEL_URL . 'front-end/segments/brikpanel-segments.css',
+        [],
+        BRIKPANEL_VERSION
+    );
+
+    wp_enqueue_script(
+        'brikpanel_segments_scripts',
+        BRIKPANEL_URL . 'front-end/segments/brikpanel-segments.js',
+        [],
+        BRIKPANEL_VERSION,
+        true
+    );
+
+    wp_localize_script('brikpanel_segments_scripts', 'brikpanelSegments', [
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce'    => wp_create_nonce('brikpanel_segments_nonce'),
+        'currency' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '$',
+        'i18n'     => [
+            'error'              => __('Something went wrong.', 'brikpanel'),
+            'no_results'         => __('No orders match these filters.', 'brikpanel'),
+            'no_customers'       => __('No customers match these filters.', 'brikpanel'),
+            'no_products'        => __('No products found.', 'brikpanel'),
+            'guest'              => __('Guest', 'brikpanel'),
+            'total_revenue'      => __('Total revenue', 'brikpanel'),
+            'total_spent'        => __('Total spent', 'brikpanel'),
+            'col_order'          => __('Order', 'brikpanel'),
+            'col_date'           => __('Date', 'brikpanel'),
+            'col_status'         => __('Status', 'brikpanel'),
+            'col_customer'       => __('Customer', 'brikpanel'),
+            'col_email'          => __('Email', 'brikpanel'),
+            'col_location'       => __('Location', 'brikpanel'),
+            'col_payment'        => __('Payment', 'brikpanel'),
+            'col_total'          => __('Total', 'brikpanel'),
+            'col_registered'     => __('Registered', 'brikpanel'),
+            'col_orders'         => __('Orders', 'brikpanel'),
+            'col_spent'          => __('Total spent', 'brikpanel'),
+            'col_aov'            => __('AOV', 'brikpanel'),
+            'col_last_order'     => __('Last order', 'brikpanel'),
+            'preset_all'           => __('All', 'brikpanel'),
+            'preset_today'         => __('Today', 'brikpanel'),
+            'preset_last7'         => __('Last 7 days', 'brikpanel'),
+            'preset_last30'        => __('Last 30 days', 'brikpanel'),
+            'preset_last90'        => __('Last 90 days', 'brikpanel'),
+            'preset_completed'     => __('Completed', 'brikpanel'),
+            'preset_processing'    => __('Processing', 'brikpanel'),
+            'preset_pending'       => __('Pending payment', 'brikpanel'),
+            'preset_on_hold'       => __('On hold', 'brikpanel'),
+            'preset_refunded'      => __('Refunded', 'brikpanel'),
+            'preset_cancelled'     => __('Cancelled', 'brikpanel'),
+            'preset_returns'       => __('Returns', 'brikpanel'),
+            'preset_free_shipping' => __('Free shipping', 'brikpanel'),
+            'preset_paid_shipping' => __('Paid shipping', 'brikpanel'),
+            'preset_high_value'    => __('High value', 'brikpanel'),
+            'preset_vip'           => __('VIP (5+ orders)', 'brikpanel'),
+            'preset_new_customers' => __('New (30 days)', 'brikpanel'),
+            'preset_one_time'      => __('One-time buyers', 'brikpanel'),
+            'preset_dormant'       => __('Dormant (90+ days)', 'brikpanel'),
+            'preset_repeat'        => __('Repeat buyers', 'brikpanel'),
+        ],
+    ]);
+}
+add_action('admin_enqueue_scripts', 'brikpanel_enqueue_segments_assets');
+
+// =============================================================================
+// CUSTOMER ANALYTICS PAGE ASSETS
+// =============================================================================
+function brikpanel_enqueue_customer_analytics_assets($hook) {
+    if ($hook !== 'toplevel_page_brikpanel-customer-analytics') {
+        return;
+    }
+
+    // Chart.js — register with the same handle the dashboard uses so a
+    // user navigating between Dashboard ↔ Customer Analytics doesn't fetch
+    // the bundle twice.
+    wp_enqueue_script(
+        'chart-js',
+        BRIKPANEL_URL . 'assets/js/chart.js',
+        [],
+        BRIKPANEL_VERSION,
+        true
+    );
+
+    wp_enqueue_style(
+        'brikpanel_customer_analytics_styles',
+        BRIKPANEL_URL . 'front-end/customer-analytics/brikpanel-customer-analytics.css',
+        [],
+        BRIKPANEL_VERSION
+    );
+
+    wp_enqueue_script(
+        'brikpanel_customer_analytics_scripts',
+        BRIKPANEL_URL . 'front-end/customer-analytics/brikpanel-customer-analytics.js',
+        [ 'chart-js' ],
+        BRIKPANEL_VERSION,
+        true
+    );
+
+    $nonce = wp_create_nonce('brikpanel_customer_analytics_nonce');
+    wp_localize_script('brikpanel_customer_analytics_scripts', 'brikpanelCA', [
+        'ajax_url'       => admin_url('admin-ajax.php'),
+        'nonce'          => $nonce,
+        'export_url'     => add_query_arg([
+            'action'   => 'brikpanel_ca_ltv_export',
+            '_wpnonce' => $nonce,
+        ], admin_url('admin-ajax.php')),
+        'rfm_export_url' => add_query_arg([
+            'action'   => 'brikpanel_ca_rfm_export',
+            '_wpnonce' => $nonce,
+        ], admin_url('admin-ajax.php')),
+        'cohort_export_url' => add_query_arg([
+            'action'   => 'brikpanel_ca_cohort_export',
+            '_wpnonce' => $nonce,
+        ], admin_url('admin-ajax.php')),
+        'currency'       => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '$',
+        'i18n'           => [
+            'loading'           => __('Loading…', 'brikpanel'),
+            'error'             => __('Something went wrong.', 'brikpanel'),
+            'empty'             => __('No customers yet.', 'brikpanel'),
+            'guest'             => __('Guest', 'brikpanel'),
+            'customers'         => __('Customers', 'brikpanel'),
+            'repeat_customers'  => __('repeat', 'brikpanel'),
+            'today'             => __('Today', 'brikpanel'),
+            'yesterday'         => __('1 day', 'brikpanel'),
+            'days_ago'          => _x('d', 'short for days', 'brikpanel'),
+            'refreshing'        => __('Refreshing…', 'brikpanel'),
+            'recomputed'        => __('Customer metrics recomputed', 'brikpanel'),
+            'rows'              => __('rows', 'brikpanel'),
+            'avg_ltv_short'     => __('LTV', 'brikpanel'),
+            'avg_orders_short'  => __('Orders', 'brikpanel'),
+            'cohort_month'      => __('Cohort', 'brikpanel'),
+            'cohort_size'       => __('Size', 'brikpanel'),
+            'cohort_empty'      => __('Not enough order history to build cohorts yet.', 'brikpanel'),
+            'avg_retention'     => __('Avg retention', 'brikpanel'),
+        ],
+    ]);
+}
+add_action('admin_enqueue_scripts', 'brikpanel_enqueue_customer_analytics_assets');
+
+// =============================================================================
 // GLOBAL ADMIN STYLES & SCRIPTS
 // =============================================================================
 function brikpanel_enqueue_global_assets() {
-    
-    // -----------------------------------------
-    // FREE - always load
-    // -----------------------------------------
+    // The admin-bar search and the BrikPanel navigation are only useful to
+    // users who can actually manage WooCommerce. Skipping the enqueue for
+    // shop managers / authors / subscribers saves a JS+CSS round-trip on
+    // every admin page load — meaningful on weak hosts where every avoided
+    // 304 still costs a PHP boot.
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        return;
+    }
+
     wp_enqueue_script(
         'brikpanel_search_scripts',
         BRIKPANEL_URL . 'front-end/search/brikpanel-search.js',
@@ -263,6 +527,8 @@ function brikpanel_enqueue_woo_assets($hook) {
             $all_statuses   = wc_get_order_statuses();
             $status_label   = $order ? ( $all_statuses[ 'wc-' . $current_status ] ?? $current_status ) : '';
 
+            $item_downloads = $order ? brikpanel_collect_order_item_downloads( $order ) : [];
+
             wp_localize_script( 'brikpanel_order_edit', 'brikpanelOrderEdit', [
                 'ajax_url'       => admin_url( 'admin-ajax.php' ),
                 'nonce'          => wp_create_nonce( 'brikpanel_order_status_nonce' ),
@@ -272,15 +538,24 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'order_date'     => ($order && $order->get_date_created()) ? $order->get_date_created()->date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) : '',
                 'statuses'       => $all_statuses,
                 'orders_url'     => admin_url( 'admin.php?page=wc-orders' ),
+                'item_downloads' => (object) $item_downloads,
                 'i18n'           => [
-                    'orders'         => __( 'Orders', 'brikpanel' ),
-                    'save'           => __( 'Save', 'brikpanel' ),
-                    'copy'           => __( 'Copy', 'brikpanel' ),
-                    'copied'         => __( 'Copied!', 'brikpanel' ),
-                    'address_copied' => __( 'Address copied to clipboard', 'brikpanel' ),
-                    'status_changed' => __( 'Status changed to %s', 'brikpanel' ),
-                    'note_added'     => __( 'Note added', 'brikpanel' ),
-                    'error'          => __( 'An error occurred. Please try again.', 'brikpanel' ),
+                    'orders'              => __( 'Orders', 'brikpanel' ),
+                    'save'                => __( 'Save', 'brikpanel' ),
+                    'copy'                => __( 'Copy', 'brikpanel' ),
+                    'copied'              => __( 'Copied!', 'brikpanel' ),
+                    'address_copied'      => __( 'Address copied to clipboard', 'brikpanel' ),
+                    'status_changed'      => __( 'Status changed to %s', 'brikpanel' ),
+                    'note_added'          => __( 'Note added', 'brikpanel' ),
+                    'error'               => __( 'An error occurred. Please try again.', 'brikpanel' ),
+                    'downloads'           => __( 'Downloads', 'brikpanel' ),
+                    'download_one'        => __( '%d download', 'brikpanel' ),
+                    'download_many'       => __( '%d downloads', 'brikpanel' ),
+                    'remaining'           => __( '%s left', 'brikpanel' ),
+                    'unlimited'           => __( 'Unlimited', 'brikpanel' ),
+                    'expires'             => __( 'Expires %s', 'brikpanel' ),
+                    'never_expires'       => __( 'Never expires', 'brikpanel' ),
+                    'never_downloaded'    => __( 'Never downloaded', 'brikpanel' ),
                 ],
             ] );
         }
@@ -343,7 +618,7 @@ function brikpanel_enqueue_woo_assets($hook) {
             'brikpanel_taxonomy_styles',
             BRIKPANEL_URL . 'front-end/products/brikpanel-taxonomy.css',
             [],
-            BRIKPANEL_VERSION . '.2'
+            BRIKPANEL_VERSION . '.6'
         );
     }
 
@@ -354,7 +629,7 @@ function brikpanel_enqueue_woo_assets($hook) {
             'brikpanel_category_enhancements',
             BRIKPANEL_URL . 'front-end/products/brikpanel-category-enhancements.js',
             ['jquery'],
-            BRIKPANEL_VERSION . '.1',
+            BRIKPANEL_VERSION . '.5',
             true
         );
 
@@ -373,29 +648,35 @@ function brikpanel_enqueue_woo_assets($hook) {
 
     // Products List (AJAX)
     if ('admin_page_brikpanel-products' === $hook && get_option('brikpanel_modern_products_list', 'yes') === 'yes') {
+        // Quick-edit drawer's "Digital product" section uses the WP media
+        // library to attach downloadable files, same as the product editor.
+        wp_enqueue_media();
+
         wp_enqueue_style(
             'brikpanel_products_list_styles',
             BRIKPANEL_URL . 'front-end/products/brikpanel-products-list.css',
             [],
-            BRIKPANEL_VERSION
+            BRIKPANEL_VERSION . '.5'
         );
 
         wp_enqueue_script(
             'brikpanel_products_list_scripts',
             BRIKPANEL_URL . 'front-end/products/brikpanel-products-list.js',
-            ['jquery'],
-            BRIKPANEL_VERSION,
+            ['jquery', 'jquery-ui-sortable'],
+            BRIKPANEL_VERSION . '.5',
             true
         );
 
         $per_page = get_option('brikpanel_products_per_page', 20);
 
         wp_localize_script('brikpanel_products_list_scripts', 'brikpanelPL', [
-            'ajax_url'  => admin_url('admin-ajax.php'),
-            'nonce'     => wp_create_nonce('brikpanel_products_list_nonce'),
-            'nonce_pe'  => wp_create_nonce('brikpanel_product_editor_nonce'),
-            'currency'  => get_woocommerce_currency_symbol(),
-            'per_page'  => (int) $per_page,
+            'ajax_url'      => admin_url('admin-ajax.php'),
+            'nonce'         => wp_create_nonce('brikpanel_products_list_nonce'),
+            'nonce_pe'      => wp_create_nonce('brikpanel_product_editor_nonce'),
+            'export_url'    => wp_nonce_url(admin_url('admin-post.php?action=brikpanel_export_selected_products'), 'brikpanel_export_selected'),
+            'currency'      => get_woocommerce_currency_symbol(),
+            'per_page'      => (int) $per_page,
+            'open_in_new_tab' => get_option('brikpanel_open_edit_in_new_tab', 'yes') !== 'no',
             'i18n'     => [
                 'no_products'         => __('No products found.', 'brikpanel'),
                 'error'               => __('An error occurred. Please try again.', 'brikpanel'),
@@ -404,6 +685,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'save_changes'        => __('Save changes', 'brikpanel'),
                 'published'           => __('Published', 'brikpanel'),
                 'draft'               => __('Draft', 'brikpanel'),
+                'private_status'      => __('Private', 'brikpanel'),
                 'trashed'             => __('Trash', 'brikpanel'),
                 'trashed_tab'         => __('Trash', 'brikpanel'),
                 'variable'            => __('Variable', 'brikpanel'),
@@ -420,11 +702,14 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'confirm_permanent_delete' => __('Are you sure? This cannot be undone.', 'brikpanel'),
                 'confirm_bulk'        => __('Are you sure you want to update %d products?', 'brikpanel'),
                 'confirm_bulk_trash'  => __('Are you sure you want to trash %d products?', 'brikpanel'),
+                'confirm_bulk_delete_perm' => __('Are you sure you want to permanently delete %d products? This cannot be undone.', 'brikpanel'),
+                'confirm_bulk_delete_perm_2' => __('FINAL WARNING: This will permanently delete the selected products. Are you absolutely sure?', 'brikpanel'),
                 'click_to_toggle'     => __('Click to toggle status', 'brikpanel'),
                 'showing'             => __('Showing %1$d of %2$d products', 'brikpanel'),
                 'showing_range'       => __('Showing %1$d–%2$d of %3$d products', 'brikpanel'),
                 'bulk_confirm'        => __('Apply this action to the selected products? This cannot be undone.', 'brikpanel'),
                 'bulk_cat_confirm'    => __('Apply this action to all products in the selected category? This cannot be undone.', 'brikpanel'),
+                'bulk_all_confirm'    => __('Apply this action to ALL products in the store? This cannot be undone.', 'brikpanel'),
                 'bulk_select_cat'     => __('Please select a category.', 'brikpanel'),
                 'bulk_no_selection'   => __('No products selected. Select products from the table first.', 'brikpanel'),
                 'bulk_selected_count' => __('%d products selected', 'brikpanel'),
@@ -438,6 +723,10 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'price_label'         => __('Price', 'brikpanel'),
                 'sale_label'          => __('Sale', 'brikpanel'),
                 'stock_label'         => __('Stock', 'brikpanel'),
+                'stock_status_label'  => __('Availability', 'brikpanel'),
+                'in_stock'            => __('In stock', 'brikpanel'),
+                'out_of_stock'        => __('Out of stock', 'brikpanel'),
+                'on_backorder'        => __('On backorder', 'brikpanel'),
                 'price_placeholder'   => __('0', 'brikpanel'),
                 'sale_placeholder'    => __('Sale', 'brikpanel'),
                 'no_variations'       => __('No variations found.', 'brikpanel'),
@@ -446,14 +735,337 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'delete_confirm_1'    => __('Are you sure you want to delete these products?', 'brikpanel'),
                 'delete_confirm_all'  => __('Are you sure you want to delete ALL products in the store? This is extremely dangerous!', 'brikpanel'),
                 'delete_confirm_2'    => __('PERMANENT DELETE — This cannot be undone. Are you absolutely sure?', 'brikpanel'),
+                'bulk_preparing'      => __('Preparing...', 'brikpanel'),
+                'bulk_progress'       => __('%1$d / %2$d processed', 'brikpanel'),
+                'bulk_title_update'   => __('Bulk update in progress', 'brikpanel'),
+                'bulk_title_delete'   => __('Bulk delete in progress', 'brikpanel'),
+                'bulk_complete_update' => __('Update complete: %d items.', 'brikpanel'),
+                'bulk_complete_delete' => __('Delete complete: %d items.', 'brikpanel'),
+                'bulk_cancelled'      => __('Cancelled.', 'brikpanel'),
+                'bulk_cancel_btn'     => __('Cancel', 'brikpanel'),
+                'bulk_done_btn'       => __('Done', 'brikpanel'),
+                'bulk_errors_count'   => __('%d errors occurred.', 'brikpanel'),
+                'bulk_retrying'       => __('Network error, retrying...', 'brikpanel'),
+                'bulk_failed'         => __('Bulk job failed.', 'brikpanel'),
+                'bulk_confirm_cancel' => __('Cancel the running bulk job? Items processed so far will remain changed.', 'brikpanel'),
+                'fast_delete_confirm' => __('FAST DELETE — This bypasses all plugin hooks and is IRREVERSIBLE. Image files will remain on disk. SEO/search/cache plugins will show stale data until re-indexed. Continue?', 'brikpanel'),
+                'tax_only_confirm'    => __('Wipe the selected taxonomies (categories/tags/attributes/brands)? This cannot be undone.', 'brikpanel'),
+                'export_starting'     => __('Preparing export...', 'brikpanel'),
+                'export_no_selection' => __('No products selected for export.', 'brikpanel'),
+                'more_categories'     => __('%d more categories', 'brikpanel'),
+                'plugin_columns'      => __('Plugin columns', 'brikpanel'),
+                // Digital product (downloadable) — quick edit drawer
+                'select_file'         => __('Select downloadable file', 'brikpanel'),
+                'select'              => __('Select', 'brikpanel'),
+                'no_files'            => __('No files added yet.', 'brikpanel'),
+                'file_name'           => __('File name', 'brikpanel'),
+                'choose_file'         => __('Choose file', 'brikpanel'),
+                'remove'              => __('Remove', 'brikpanel'),
+                // Sortable mode — drag-to-reorder products by menu_order
+                'sort_btn'            => __('Sort', 'brikpanel'),
+                'sort_done'           => __('Done sorting', 'brikpanel'),
+                'sort_saving'         => __('Saving order...', 'brikpanel'),
+                'sort_saved'          => __('Order saved', 'brikpanel'),
+                'sort_save_failed'    => __('Could not save order. Please try again.', 'brikpanel'),
+                'sort_drag_handle'    => __('Drag to reorder', 'brikpanel'),
+                'sort_active_label'   => __('Custom order', 'brikpanel'),
             ],
         ]);
     }
 
     // Simplified Product Editor
     if ('admin_page_brikpanel-product-editor' === $hook && get_option('brikpanel_simple_product_editor', 'yes') === 'yes') {
+        // Run the screen-spoof + asset bootstrap whenever EITHER:
+        //   - the admin picked at least one 3rd-party metabox in settings, OR
+        //   - a supported SEO plugin (Yoast, Rank Math, AIOSEO, SEOPress) is
+        //     active — the BrikPanel SEO card renders its native metabox and
+        //     relies on the plugin's own JS/CSS bundles to drive it.
+        $selected_metaboxes = (array) get_option('brikpanel_pe_selected_metaboxes', []);
+        $auto_seo = class_exists('Brikpanel_Product_Editor')
+            ? Brikpanel_Product_Editor::get_active_seo_plugin()
+            : null;
+        $visible_sections = get_option('brikpanel_pe_visible_sections');
+        if (!is_array($visible_sections)) {
+            $visible_sections = ['images', 'pricing', 'inventory', 'category', 'tags', 'short_desc', 'description', 'digital', 'weight', 'dimensions', 'seo', 'variations'];
+        }
+        $seo_auto_rendered = $auto_seo && in_array('seo', $visible_sections, true);
+        if ($seo_auto_rendered) {
+            // Merge the auto-rendered SEO plugin's metabox IDs into the list
+            // the bootstrap walks, so ACF / taxonomy helpers below still
+            // behave correctly and SEO plugin assets (Yoast analysis JS,
+            // Rank Math editor bundle, etc.) get enqueued.
+            $selected_metaboxes = array_values(array_unique(array_merge(
+                $selected_metaboxes,
+                (array) $auto_seo['metabox_ids']
+            )));
+        }
+        if (!empty($selected_metaboxes)) {
+            // Spoof screen + post globals as if we were on /wp-admin/post.php
+            // so SEO plugins (Yoast, Rank Math, AIOSEO, SEOPress) register
+            // their metabox + enqueue scripts the way they do natively.
+            global $current_screen, $post, $post_type, $typenow, $pagenow;
+            $saved_screen    = $current_screen;
+            $saved_post      = $post;
+            $saved_post_type = $post_type;
+            $saved_typenow   = $typenow;
+            $saved_pagenow   = $pagenow;
+            set_current_screen('product');
+            $spoof_product_id = isset($_GET['product_id']) ? absint($_GET['product_id']) : 0;
+            if ($spoof_product_id) {
+                $spoof_post = get_post($spoof_product_id);
+                if ($spoof_post && $spoof_post->post_type === 'product') {
+                    $post      = $spoof_post;
+                    $post_type = 'product';
+                    $typenow   = 'product';
+                    $pagenow   = 'post.php';
+                    $GLOBALS['post']      = $spoof_post;
+                    $GLOBALS['post_type'] = 'product';
+                    $GLOBALS['typenow']   = 'product';
+                    $GLOBALS['pagenow']   = 'post.php';
+                }
+            }
+
+            // Force-instantiate SEO metabox classes that gate on pagenow so
+            // their admin_enqueue_scripts hooks register before we re-fire.
+            if (class_exists('WPSEO_Metabox') && empty($GLOBALS['wpseo_metabox'])) {
+                $GLOBALS['wpseo_metabox'] = new WPSEO_Metabox();
+            }
+            // Rank Math — Metabox::hooks() short-circuits unless its Screen
+            // class resolved a loader, which it does only when $pagenow is
+            // post.php / post-new.php (we've spoofed that above). Instantiate
+            // and call hooks() so add_meta_boxes + rank_math/admin/enqueue_scripts
+            // listeners attach before we fire those actions.
+            $rm_metabox = null;
+            if (class_exists('\\RankMath\\Admin\\Metabox\\Metabox')) {
+                try {
+                    $rm_metabox = $GLOBALS['brikpanel_rm_metabox_instance'] ?? null;
+                    if (!$rm_metabox) {
+                        $rm_metabox = new \RankMath\Admin\Metabox\Metabox();
+                        if (method_exists($rm_metabox, 'hooks')) {
+                            $rm_metabox->hooks();
+                        }
+                        $GLOBALS['brikpanel_rm_metabox_instance'] = $rm_metabox;
+                    }
+                } catch (\Throwable $e) { /* skip */ }
+            }
+
+            // Re-fire admin_enqueue_scripts with the post.php hook suffix so
+            // listeners that guard on hook/screen will now register their
+            // assets. wp_enqueue_script dedupes, so double-fires are safe
+            // for plugins that use core's enqueue API. A handful of plugins
+            // (e.g. Google Listings & Ads) ship their own asset registry
+            // that throws InvalidAsset on duplicate handles — temporarily
+            // detach those callbacks before re-firing so they don't fatal
+            // the page. Their assets were already registered by the natural
+            // admin_enqueue_scripts fire, so skipping the re-fire is safe.
+            global $wp_filter;
+            $brikpanel_detached_aes = [];
+            $brikpanel_unsafe_namespaces = [
+                'GoogleListingsAndAds',
+            ];
+            if (isset($wp_filter['admin_enqueue_scripts']) && is_object($wp_filter['admin_enqueue_scripts']) && !empty($wp_filter['admin_enqueue_scripts']->callbacks)) {
+                $aes_hook = $wp_filter['admin_enqueue_scripts'];
+                foreach ($aes_hook->callbacks as $aes_priority => $aes_callbacks) {
+                    if (!is_array($aes_callbacks)) {
+                        continue;
+                    }
+                    foreach ($aes_callbacks as $aes_key => $aes_cb) {
+                        if (empty($aes_cb['function']) || !($aes_cb['function'] instanceof Closure)) {
+                            continue;
+                        }
+                        try {
+                            $aes_ref = new ReflectionFunction($aes_cb['function']);
+                            $aes_scope = $aes_ref->getClosureScopeClass();
+                            if (!$aes_scope) {
+                                continue;
+                            }
+                            $aes_class = $aes_scope->getName();
+                            foreach ($brikpanel_unsafe_namespaces as $aes_ns) {
+                                if (strpos($aes_class, $aes_ns) !== false) {
+                                    $brikpanel_detached_aes[] = [$aes_priority, $aes_key, $aes_cb];
+                                    unset($aes_hook->callbacks[$aes_priority][$aes_key]);
+                                    break;
+                                }
+                            }
+                        } catch (\Throwable $aes_e) {
+                            // Reflection failed — leave callback in place.
+                        }
+                    }
+                    if (isset($aes_hook->callbacks[$aes_priority]) && empty($aes_hook->callbacks[$aes_priority])) {
+                        unset($aes_hook->callbacks[$aes_priority]);
+                    }
+                }
+            }
+
+            try {
+                do_action('admin_enqueue_scripts', 'post.php');
+            } catch (\Throwable $aes_fire_e) {
+                error_log('[BrikPanel] admin_enqueue_scripts re-fire halted: ' . $aes_fire_e->getMessage());
+            }
+
+            // Restore detached callbacks so any later do_action consumers
+            // (rare on the same request, but possible) still see the full set.
+            if (!empty($brikpanel_detached_aes) && isset($aes_hook)) {
+                foreach ($brikpanel_detached_aes as $aes_detached) {
+                    list($aes_priority, $aes_key, $aes_cb) = $aes_detached;
+                    if (!isset($aes_hook->callbacks[$aes_priority]) || !is_array($aes_hook->callbacks[$aes_priority])) {
+                        $aes_hook->callbacks[$aes_priority] = [];
+                    }
+                    $aes_hook->callbacks[$aes_priority][$aes_key] = $aes_cb;
+                }
+                ksort($aes_hook->callbacks);
+            }
+
+            // Rank Math — the natural + re-fired admin_enqueue_scripts above
+            // may still miss enqueueing the metabox assets because the Assets
+            // class checks `get_admin_screen_ids()` and the Metabox enqueue()
+            // has further Gutenberg/Elementor guards. Drive the enqueue
+            // pipeline directly so the editor bundle ships.
+            if (function_exists('rank_math') && !empty($rm_metabox) && method_exists($rm_metabox, 'enqueue')) {
+                try {
+                    // Rank Math's full Admin_Init (and thus its Assets runner)
+                    // only bootstraps when the site has completed its Rank Math
+                    // "connect account" registration OR the admin dismissed it
+                    // (rank_math_registration_skip). When invalid, admin_assets
+                    // is null — the metabox bundle's dependencies (rank-math-common,
+                    // rank-math-app) never get registered, so `wp_enqueue_script`
+                    // emits the enqueue-with-missing-deps notice and ships nothing.
+                    // If we're rendering the metabox, we've already committed to
+                    // surfacing Rank Math's UI, so instantiate Assets directly
+                    // when the plugin hasn't.
+                    if (empty(rank_math()->admin_assets) && class_exists('\\RankMath\\Admin\\Assets')) {
+                        rank_math()->admin_assets = new \RankMath\Admin\Assets();
+                    }
+                    $aa = rank_math()->admin_assets;
+                    if ($aa) {
+                        if (method_exists($aa, 'register')) {
+                            $aa->register();
+                        }
+                        if (method_exists($aa, 'enqueue')) {
+                            $aa->enqueue();
+                        }
+                    }
+                    // Rank Math's Metabox::enqueue() calls rank_math()->variables->setup().
+                    // On some admin pages (including our custom page) the
+                    // plugin skips registering the Replace_Variables Manager,
+                    // so variables resolves to null and enqueue() fatals.
+                    // Re-create it via the plugin's __set magic (which stores
+                    // the value into its private container array).
+                    if (empty(rank_math()->variables) && class_exists('\\RankMath\\Replace_Variables\\Manager')) {
+                        rank_math()->variables = new \RankMath\Replace_Variables\Manager();
+                    }
+                    $rm_metabox->enqueue();
+                } catch (\Throwable $e) {
+                    error_log('[BrikPanel] Rank Math metabox enqueue failed: ' . $e->getMessage());
+                }
+            }
+
+            // ACF — if any `acf-*` metabox is picked, enqueue ACF's input +
+            // uploader assets so file/image/gallery/repeater fields actually
+            // function inside the BrikPanel editor. ACF's own enqueue runs at
+            // priority 20 which has already fired by the time this block runs
+            // at priority 99; brikpanel_bootstrap_acf_assets() therefore calls
+            // the assets instance synchronously.
+            $has_acf_selected = false;
+            foreach ($selected_metaboxes as $sid) {
+                if (is_string($sid) && strpos($sid, 'acf-') === 0) {
+                    $has_acf_selected = true;
+                    break;
+                }
+            }
+            if ($has_acf_selected && function_exists('brikpanel_bootstrap_acf_assets')) {
+                brikpanel_bootstrap_acf_assets();
+            }
+
+            // Restore real page context so the rest of our own enqueues and
+            // the normal page lifecycle are not affected.
+            $current_screen = $saved_screen;
+            $post           = $saved_post;
+            $post_type      = $saved_post_type;
+            $typenow        = $saved_typenow;
+            $pagenow        = $saved_pagenow;
+            $GLOBALS['post']      = $saved_post;
+            $GLOBALS['post_type'] = $saved_post_type;
+            $GLOBALS['typenow']   = $saved_typenow;
+            $GLOBALS['pagenow']   = $saved_pagenow;
+        }
+
         wp_enqueue_media();
         wp_enqueue_script('jquery-ui-sortable');
+
+        // Product taxonomy metaboxes picked by the admin use WP core's
+        // `post_tags_meta_box` (non-hierarchical) or `post_categories_meta_box`
+        // (hierarchical) as their render callback. That markup is inert on
+        // our custom admin page because the core JS bundles that drive it
+        // (`tags-box.js`, `suggest.js`, `wp-lists`) are only auto-loaded on
+        // `post.php` / `post-new.php`. Detect the two id patterns WP uses
+        // for these boxes and enqueue what each one needs.
+        $has_flat_tax_box = false;
+        $has_hier_tax_box = false;
+        foreach ($selected_metaboxes as $sid) {
+            if (!is_string($sid)) continue;
+            if (strpos($sid, 'tagsdiv-') === 0) {
+                $has_flat_tax_box = true;
+            } elseif (substr($sid, -3) === 'div'
+                && $sid !== 'product_catdiv'
+                && $sid !== 'tagsdiv-product_tag') {
+                // Hierarchical taxonomy metaboxes WP registers with the id
+                // pattern `{taxonomy}div`. Built-in product_cat / product_tag
+                // are filtered out elsewhere; everything else is a plugin
+                // taxonomy we need to wire up.
+                $has_hier_tax_box = true;
+            }
+        }
+        if ($has_flat_tax_box) {
+            wp_enqueue_script('tags-box');
+            wp_enqueue_script('suggest');
+            // tags-box.js ships its own `jQuery(function(){ tagBox.init(); })`
+            // bootstrap, but on our custom admin page that internal ready
+            // callback fires without binding — the click / keypress handlers
+            // never attach to the taxonomy metabox. Re-fire init after DOM
+            // ready, guarded so the script's own bootstrap (if it also runs)
+            // doesn't cause double-bound handlers and double-added tags.
+            wp_add_inline_script(
+                'tags-box',
+                'jQuery(function(){ if (!window.tagBox || window.__bpeTagBoxInited) return; window.__bpeTagBoxInited = true; window.tagBox.init(); });'
+            );
+        }
+        if ($has_hier_tax_box) {
+            // post_categories_meta_box is driven on core post.php by
+            // wp-admin/js/post.js (tab switching, "+ Add New" toggle, wpList-
+            // backed AJAX submission to `add-{taxonomy}`). We don't enqueue
+            // post.js because it also binds to #post / #submitdiv / #visibility
+            // which would collide with BrikPanel's own status + visibility UI.
+            // Ship a self-contained shim that only drives `.categorydiv` markup
+            // and parses the WP_Ajax_Response XML via DOMParser (no wp-lists
+            // dependency). Scoped to `.brikpanel-pe-metaboxes-wrap` so it
+            // never interferes with other screens.
+            wp_enqueue_script(
+                'brikpanel_pe_hier_tax_shim',
+                BRIKPANEL_URL . 'front-end/products/brikpanel-pe-hier-tax.js',
+                ['jquery'],
+                BRIKPANEL_VERSION,
+                true
+            );
+            wp_localize_script('brikpanel_pe_hier_tax_shim', 'brikpanelPEHierTax', [
+                'ajax_url' => admin_url('admin-ajax.php'),
+            ]);
+        }
+
+        wp_enqueue_style(
+            'brikpanel_flatpickr_styles',
+            BRIKPANEL_URL . 'assets/css/flatpickr.min.css',
+            [],
+            BRIKPANEL_VERSION
+        );
+
+        wp_enqueue_script(
+            'flatpickr-js',
+            BRIKPANEL_URL . 'assets/js/flatpickr.js',
+            [],
+            BRIKPANEL_VERSION,
+            true
+        );
 
         wp_enqueue_style(
             'brikpanel_product_editor_styles',
@@ -465,7 +1077,7 @@ function brikpanel_enqueue_woo_assets($hook) {
         wp_enqueue_script(
             'brikpanel_product_editor_scripts',
             BRIKPANEL_URL . 'front-end/products/brikpanel-product-editor.js',
-            ['jquery', 'jquery-ui-sortable'],
+            ['jquery', 'jquery-ui-sortable', 'flatpickr-js'],
             BRIKPANEL_VERSION,
             true
         );
@@ -488,6 +1100,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'select'         => __('Select', 'brikpanel'),
                 'select_image'   => __('Select image', 'brikpanel'),
                 'type_enter'     => __('Type and press Enter...', 'brikpanel'),
+                'type_enter_value' => __('Press Enter to add...', 'brikpanel'),
                 'attribute_name' => __('Attribute name (e.g.: Material)', 'brikpanel'),
                 'add_attribute'  => __('Add', 'brikpanel'),
                 'category_added'   => __('Category added', 'brikpanel'),
@@ -501,6 +1114,23 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'product_title'    => __('Product title', 'brikpanel'),
                 'select_images'    => __('Select images', 'brikpanel'),
                 'auto_saved'       => __('Auto-saved', 'brikpanel'),
+                'select_file'      => __('Select downloadable file', 'brikpanel'),
+                'no_files'         => __('No files added yet.', 'brikpanel'),
+                'file_name'        => __('File name', 'brikpanel'),
+                'choose_file'      => __('Choose from media library', 'brikpanel'),
+                'remove'           => __('Remove', 'brikpanel'),
+                'tag_placeholder'  => __('Type and press Enter to add a tag...', 'brikpanel'),
+                'in_stock'         => __('In stock', 'brikpanel'),
+                'out_of_stock'     => __('Out of stock', 'brikpanel'),
+                'on_backorder'     => __('On backorder', 'brikpanel'),
+                'cost_of_goods'    => __('Cost of goods', 'brikpanel'),
+                'cogs'             => __('COGS', 'brikpanel'),
+                'add_new'          => __('Add new', 'brikpanel'),
+                'schedule_start'   => __('Schedule start', 'brikpanel'),
+                'schedule_end'     => __('Schedule end', 'brikpanel'),
+                'schedule_hint'    => __('Optional — leave empty to keep the sale active indefinitely.', 'brikpanel'),
+                'size'             => __('Size', 'brikpanel'),
+                'color'            => __('Color', 'brikpanel'),
             ],
         ]);
     }
@@ -511,14 +1141,14 @@ function brikpanel_enqueue_woo_assets($hook) {
             'brikpanel_coupons_styles',
             BRIKPANEL_URL . 'front-end/coupons/brikpanel-coupons.css',
             [],
-            BRIKPANEL_VERSION
+            BRIKPANEL_VERSION . '.1'
         );
 
         wp_enqueue_script(
             'brikpanel_coupons_scripts',
             BRIKPANEL_URL . 'front-end/coupons/brikpanel-coupons.js',
             ['jquery'],
-            BRIKPANEL_VERSION,
+            BRIKPANEL_VERSION . '.1',
             true
         );
 
@@ -582,6 +1212,88 @@ function brikpanel_admin_body_class( $classes ) {
         $classes .= ' brikpanel-modern-edit';
     }
 
+    if ( get_option( 'brikpanel_modern_navigation', 'yes' ) === 'no' ) {
+        $classes .= ' brikpanel-classic-nav';
+    }
+
     return $classes;
 }
 add_filter( 'admin_body_class', 'brikpanel_admin_body_class' );
+
+// =============================================================================
+// EXPENSES PAGE ASSETS
+// =============================================================================
+function brikpanel_enqueue_expenses_assets( $hook ) {
+    if ( $hook !== 'woocommerce_page_brikpanel-expenses' ) {
+        return;
+    }
+
+    wp_enqueue_style(
+        'brikpanel_expenses_styles',
+        BRIKPANEL_URL . 'front-end/expenses/brikpanel-expenses.css',
+        [],
+        BRIKPANEL_VERSION
+    );
+
+    wp_enqueue_script(
+        'brikpanel_expenses_scripts',
+        BRIKPANEL_URL . 'front-end/expenses/brikpanel-expenses.js',
+        [],
+        BRIKPANEL_VERSION,
+        true
+    );
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_enqueue_expenses_assets' );
+
+// =============================================================================
+// SCHEDULED TASKS (CRON) PAGE ASSETS
+// =============================================================================
+function brikpanel_enqueue_cron_assets( $hook ) {
+    if ( $hook !== 'woocommerce_page_brikpanel-cron' ) {
+        return;
+    }
+
+    wp_enqueue_style(
+        'brikpanel_cron_styles',
+        BRIKPANEL_URL . 'includes/cron/brikpanel-cron-page.css',
+        [],
+        BRIKPANEL_VERSION
+    );
+
+    wp_enqueue_script(
+        'brikpanel_cron_scripts',
+        BRIKPANEL_URL . 'includes/cron/brikpanel-cron-page.js',
+        [],
+        BRIKPANEL_VERSION,
+        true
+    );
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_enqueue_cron_assets' );
+
+// =============================================================================
+// RTL OVERRIDES — single stylesheet that flips directional rules on RTL sites
+// =============================================================================
+/**
+ * Loads `assets/css/brikpanel-rtl.css` only when WordPress reports an RTL
+ * locale (Arabic, Hebrew, Persian, Urdu …). All BrikPanel CSS handles use
+ * the prefix `brikpanel_` so the override file is enqueued at priority 999
+ * to guarantee it cascades after every page-specific stylesheet.
+ *
+ * Restricted to `manage_woocommerce` to avoid an extra HTTP request for
+ * roles that never see the BrikPanel UI.
+ */
+function brikpanel_enqueue_rtl_overrides() {
+    if ( ! is_rtl() ) {
+        return;
+    }
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        return;
+    }
+    wp_enqueue_style(
+        'brikpanel_rtl_overrides',
+        BRIKPANEL_URL . 'assets/css/brikpanel-rtl.css',
+        [],
+        BRIKPANEL_VERSION . '.r2'
+    );
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_enqueue_rtl_overrides', 999 );

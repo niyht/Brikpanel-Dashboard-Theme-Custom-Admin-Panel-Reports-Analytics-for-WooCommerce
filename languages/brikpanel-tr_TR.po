@@ -1,169 +1,154 @@
-# Copyright (C) 2026 Brksoft
-# This file is distributed under the GPL-2.0+.
 msgid ""
 msgstr ""
-"Project-Id-Version: BrikPanel: WooCommerce Admin Dashboard Theme 2.0.1\n"
-"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/brikpanel-admin-"
-"panel-dashboard-for-woocommerce\n"
-"POT-Creation-Date: 2026-04-07T06:15:43+00:00\n"
-"PO-Revision-Date: 2026-04-07 09:00+0300\n"
+"Project-Id-Version: BrikPanel: WooCommerce Admin Dashboard Theme 2.0.6\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/brikpanel-admin-panel-dashboard-for-woocommerce\n"
 "Last-Translator: BrikPanel TR\n"
 "Language-Team: Turkish\n"
-"Language: tr_TR\n"
-"Plural-Forms: nplurals=2; plural=n != 1;\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-04-07T06:15:43+00:00\n"
+"PO-Revision-Date: 2026-04-25 22:00+0300\n"
+"Language: tr_TR\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: brikpanel\n"
 
 #. translators: %1$s: category name, %2$s: parent name
-#: front-end/products/brikpanel-category-enhancements.php:77
+#: front-end/products/brikpanel-category-enhancements.php:78
 #, php-format
 msgid "\"%1$s\" moved under \"%2$s\""
 msgstr "\"%1$s\", \"%2$s\" altına taşındı"
 
-#: front-end/products/brikpanel-products-list.php:1166
-#, php-format
-msgid "%d products moved to trash."
-msgstr "%d ürün çöpe taşındı."
-
-#: front-end/products/brikpanel-products-list.php:1165
-#, php-format
-msgid "%d products permanently deleted."
-msgstr "%d ürün kalıcı olarak silindi."
-
-#: includes/brikpanel-enqueue.php:381
+#: includes/brikpanel-enqueue.php:694
 #, php-format
 msgid "%d products selected"
 msgstr "%d ürün seçildi"
 
-#. translators: %d: number of products/variations updated
-#: front-end/products/brikpanel-products-list.php:945
-#, php-format
-msgid "%d products updated successfully."
-msgstr "%d ürün başarıyla güncellendi."
-
 #. translators: %d: number of products affected
-#: front-end/products/brikpanel-products-list.php:775
+#: front-end/products/brikpanel-products-list.php:1194
 #, php-format
 msgid "%d products updated."
 msgstr "%d ürün güncellendi."
 
 #. translators: %s: site name
-#: front-end/login/brikpanel-login.php:87
+#: front-end/login/brikpanel-login.php:173
 #, php-format
 msgid "%s — Powered by WordPress"
 msgstr "%s — WordPress ile çalışır"
 
-#: front-end/products/brikpanel-product-editor.php:282
+#: front-end/products/brikpanel-product-editor.php:571
 msgid "+ Add new category"
 msgstr "+ Yeni kategori ekle"
 
-#: includes/brikpanel-enqueue.php:392
+#: includes/brikpanel-enqueue.php:709
 msgid "0"
 msgstr "0"
 
 #: front-end/welcome/brikpanel-welcome.php:179
-msgid ""
-"A beautiful, Shopify-style overview of your store performance with "
-"interactive charts and real-time data."
-msgstr ""
-"Mağaza performansınızı etkileşimli grafikler ve gerçek zamanlı verilerle "
-"gösteren güzel, Shopify tarzı bir genel bakış."
+msgid "A beautiful, Shopify-style overview of your store performance with interactive charts and real-time data."
+msgstr "Mağaza performansınızı etkileşimli grafikler ve gerçek zamanlı verilerle gösteren güzel, Shopify tarzı bir genel bakış."
 
-#: front-end/coupons/brikpanel-coupons.php:466
+#: front-end/coupons/brikpanel-coupons.php:559
 msgid "A coupon with this code already exists."
 msgstr "Bu kodla bir kupon zaten mevcut."
 
 #: front-end/welcome/brikpanel-welcome.php:121
-msgid ""
-"A modern, Shopify-inspired admin experience for WooCommerce. Here is what "
-"you get:"
-msgstr ""
-"WooCommerce için modern, Shopify'dan ilham alan bir yönetim deneyimi. İşte "
-"ne elde edersiniz:"
+msgid "A modern, Shopify-inspired admin experience for WooCommerce. Here is what you get:"
+msgstr "WooCommerce için modern, Shopify'dan ilham alan bir yönetim deneyimi. İşte ne elde edersiniz:"
 
-#: front-end/products/brikpanel-products-list.php:316
-#: front-end/products/brikpanel-products-list.php:360
+#: front-end/products/brikpanel-products-list.php:556
+#: front-end/products/brikpanel-products-list.php:600
+#: includes/brikpanel-hooks-api.php:233
 msgid "Action"
 msgstr "Eylem"
 
-#: front-end/products/brikpanel-product-editor.php:291
-#: includes/brikpanel-enqueue.php:443
+#: front-end/products/brikpanel-product-editor.php:580
+#: includes/brikpanel-enqueue.php:1006
 msgid "Add"
 msgstr "Ekle"
 
 #: front-end/coupons/brikpanel-coupons.php:109
-#: includes/brikpanel-enqueue.php:508
+#: includes/brikpanel-enqueue.php:1088
 msgid "Add coupon"
 msgstr "Kupon ekle"
 
-#: front-end/products/brikpanel-product-editor.php:220
-#: includes/brikpanel-enqueue.php:438
+#: front-end/products/brikpanel-product-editor.php:467
+#: includes/brikpanel-enqueue.php:1000
 msgid "Add images"
 msgstr "Resim ekle"
 
-#: front-end/products/brikpanel-product-editor.php:137
-#: front-end/products/brikpanel-products-list.php:117
+#: front-end/products/brikpanel-product-editor.php:198
+#: front-end/products/brikpanel-products-list.php:285
 msgid "Add product"
 msgstr "Ürün ekle"
 
-#: includes/brikpanel-enqueue.php:84
+#: includes/brikpanel-enqueue.php:149
+#: includes/brikpanel-enqueue.php:201
 msgid "Add to Cart"
 msgstr "Sepete Ekle"
 
-#: includes/brikpanel-enqueue.php:107
+#: includes/brikpanel-enqueue.php:224
 msgid "Added to Cart"
 msgstr "Sepete Eklendi"
 
-#: includes/brikpanel-enqueue.php:231
+#: includes/brikpanel-enqueue.php:530
 msgid "Address copied to clipboard"
 msgstr "Adres panoya kopyalandı"
 
-#: front-end/dashboard/brikpanel-dashboard.php:894
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:168
+#: front-end/dashboard/brikpanel-dashboard.php:1926
 msgid "Admin"
 msgstr "Yönetici"
 
 #: front-end/coupons/brikpanel-coupons.php:118
-#: front-end/products/brikpanel-products-list.php:126
+#: front-end/products/brikpanel-products-list.php:294
+#: includes/brikpanel-enqueue.php:309
 msgid "All"
 msgstr "Tümü"
 
-#: front-end/products/brikpanel-products-list.php:146
+#: front-end/expenses/brikpanel-expenses.php:106
+#: front-end/products/brikpanel-products-list.php:320
 msgid "All categories"
 msgstr "Tüm kategoriler"
 
-#: front-end/products/brikpanel-products-list.php:343
-#: includes/brikpanel-enqueue.php:385
+#: front-end/products/brikpanel-products-list.php:583
+#: includes/brikpanel-enqueue.php:698
 msgid "All products / variations"
 msgstr "Tüm ürünler / varyasyonlar"
 
-#: front-end/products/brikpanel-products-list.php:392
+#: front-end/products/brikpanel-products-list.php:541
+#: front-end/products/brikpanel-products-list.php:632
 msgid "All products in a category"
 msgstr "Bir kategorideki tüm ürünler"
 
-#: front-end/products/brikpanel-products-list.php:393
+#: front-end/products/brikpanel-products-list.php:542
+#: front-end/products/brikpanel-products-list.php:633
 msgid "All products in the store"
 msgstr "Mağazadaki tüm ürünler"
 
-#: front-end/products/brikpanel-products-list.php:152
+#: front-end/products/brikpanel-products-list.php:326
 msgid "All stock"
 msgstr "Tüm stok"
 
-#: front-end/products/brikpanel-products-list.php:414
+#: front-end/products/brikpanel-products-list.php:654
 msgid "Also delete product images"
 msgstr "Ürün resimlerini de sil"
 
 #: front-end/coupons/brikpanel-coupons.php:171
-#: front-end/coupons/brikpanel-coupons.php:237
+#: front-end/coupons/brikpanel-coupons.php:238
+#: front-end/expenses/brikpanel-expenses.php:133
+#: front-end/expenses/brikpanel-expenses.php:165
 msgid "Amount"
 msgstr "Miktar"
 
-#: front-end/login/brikpanel-login.php:45 includes/brikpanel-enqueue.php:188
-#: includes/brikpanel-enqueue.php:234 includes/brikpanel-enqueue.php:320
-#: includes/brikpanel-enqueue.php:352 includes/brikpanel-enqueue.php:436
-#: includes/brikpanel-enqueue.php:483
+#: front-end/login/brikpanel-login.php:130
+#: includes/brikpanel-enqueue.php:486
+#: includes/brikpanel-enqueue.php:533
+#: includes/brikpanel-enqueue.php:627
+#: includes/brikpanel-enqueue.php:661
+#: includes/brikpanel-enqueue.php:998
+#: includes/brikpanel-enqueue.php:1063
 msgid "An error occurred. Please try again."
 msgstr "Bir hata oluştu. Lütfen tekrar deneyin."
 
@@ -176,74 +161,70 @@ msgstr "Analitik"
 msgid "Analytics Dashboard"
 msgstr "Analitik Panosu"
 
-#: front-end/products/brikpanel-products-list.php:1018
+#: front-end/products/brikpanel-products-list.php:1992
 msgid "Any"
 msgstr "Tümü"
 
-#: front-end/products/brikpanel-products-list.php:408
-#: front-end/products/brikpanel-products-list.php:423
-#: includes/brikpanel-enqueue.php:383
+#: front-end/expenses/brikpanel-expenses.php:114
+#: front-end/products/brikpanel-product-editor.php:890
+#: front-end/products/brikpanel-products-list.php:704
+#: includes/brikpanel-enqueue.php:696
+#: includes/cron/class-brikpanel-cron-page.php:139
 msgid "Apply"
 msgstr "Uygula"
 
-#: includes/brikpanel-enqueue.php:378
-msgid ""
-"Apply this action to all products in the selected category? This cannot be "
-"undone."
-msgstr ""
-"Bu eylemi seçili kategorideki tüm ürünlere uygulamak istiyor musunuz? Bu "
-"geri alınamaz."
+#: includes/brikpanel-enqueue.php:690
+msgid "Apply this action to all products in the selected category? This cannot be undone."
+msgstr "Bu eylemi seçili kategorideki tüm ürünlere uygulamak istiyor musunuz? Bu geri alınamaz."
 
-#: includes/brikpanel-enqueue.php:377
+#: includes/brikpanel-enqueue.php:689
 msgid "Apply this action to the selected products? This cannot be undone."
 msgstr "Bu eylemi seçili ürünlere uygulamak istiyor musunuz? Bu geri alınamaz."
 
-#: includes/brikpanel-enqueue.php:382
+#: includes/brikpanel-enqueue.php:695
 msgid "Applying..."
 msgstr "Uygulanıyor..."
 
-#: includes/brikpanel-enqueue.php:398
-msgid ""
-"Are you sure you want to delete ALL products in the store? This is extremely "
-"dangerous!"
-msgstr ""
-"Mağazadaki TÜM ürünleri silmek istediğinizden emin misiniz? Bu son derece "
-"tehlikelidir!"
+#: includes/brikpanel-enqueue.php:715
+msgid "Are you sure you want to delete ALL products in the store? This is extremely dangerous!"
+msgstr "Mağazadaki TÜM ürünleri silmek istediğinizden emin misiniz? Bu son derece tehlikelidir!"
 
-#: includes/brikpanel-enqueue.php:397
+#: includes/brikpanel-enqueue.php:714
 msgid "Are you sure you want to delete these products?"
 msgstr "Bu ürünleri silmek istediğinizden emin misiniz?"
 
-#: includes/brikpanel-enqueue.php:370 includes/brikpanel-enqueue.php:499
+#: includes/brikpanel-enqueue.php:680
+#: includes/brikpanel-enqueue.php:1079
 #, php-format
 msgid "Are you sure you want to trash \"%s\"?"
 msgstr "\"%s\" öğesini çöpe taşımak istediğinizden emin misiniz?"
 
-#: includes/brikpanel-enqueue.php:502
+#: includes/brikpanel-enqueue.php:1082
 #, php-format
 msgid "Are you sure you want to trash %d coupons?"
 msgstr "%d kuponu çöpe taşımak istediğinizden emin misiniz?"
 
-#: includes/brikpanel-enqueue.php:373
+#: includes/brikpanel-enqueue.php:683
 #, php-format
 msgid "Are you sure you want to trash %d products?"
 msgstr "%d ürünü çöpe taşımak istediğinizden emin misiniz?"
 
-#: includes/brikpanel-enqueue.php:501
+#: includes/brikpanel-enqueue.php:1081
 #, php-format
 msgid "Are you sure you want to update %d coupons?"
 msgstr "%d kuponu güncellemek istediğinizden emin misiniz?"
 
-#: includes/brikpanel-enqueue.php:372
+#: includes/brikpanel-enqueue.php:682
 #, php-format
 msgid "Are you sure you want to update %d products?"
 msgstr "%d ürünü güncellemek istediğinizden emin misiniz?"
 
-#: includes/brikpanel-enqueue.php:371 includes/brikpanel-enqueue.php:500
+#: includes/brikpanel-enqueue.php:681
+#: includes/brikpanel-enqueue.php:1080
 msgid "Are you sure? This cannot be undone."
 msgstr "Emin misiniz? Bu geri alınamaz."
 
-#: includes/brikpanel-enqueue.php:442
+#: includes/brikpanel-enqueue.php:1005
 msgid "Attribute name (e.g.: Material)"
 msgstr "Özellik adı (ör.: Malzeme)"
 
@@ -251,7 +232,7 @@ msgstr "Özellik adı (ör.: Malzeme)"
 msgid "Auto-save and one-click product duplication"
 msgstr "Otomatik kaydetme ve tek tıkla ürün kopyalama"
 
-#: includes/brikpanel-enqueue.php:454
+#: includes/brikpanel-enqueue.php:1017
 msgid "Auto-saved"
 msgstr "Otomatik kaydedildi"
 
@@ -259,32 +240,30 @@ msgstr "Otomatik kaydedildi"
 msgid "Available on every admin page"
 msgstr "Her yönetici sayfasında kullanılabilir"
 
-#: front-end/dashboard/brikpanel-dashboard.php:123
+#: front-end/dashboard/brikpanel-dashboard.php:229
 msgid "Avg. Order Value"
 msgstr "Ort. Sipariş Değeri"
 
-#: front-end/products/brikpanel-product-editor.php:449
-#: front-end/products/brikpanel-product-editor.php:462
+#: front-end/products/brikpanel-product-editor.php:854
+#: front-end/products/brikpanel-product-editor.php:867
 msgid "Back"
 msgstr "Geri"
 
 #. Description of the plugin
 #: brikpanel.php
-msgid ""
-"Beautiful and modern admin panel dashboard for WooCommerce plugin premium "
-"version."
-msgstr ""
-"WooCommerce için güzel ve modern yönetim paneli — premium sürüm."
+msgid "Beautiful and modern admin panel dashboard for WooCommerce plugin premium version."
+msgstr "WooCommerce için güzel ve modern yönetim paneli — premium sürüm."
 
-#: front-end/products/brikpanel-product-editor.php:311
+#: front-end/products/brikpanel-product-editor.php:604
+#: front-end/products/brikpanel-product-editor.php:625
 msgid "Bold"
 msgstr "Kalın"
 
-#: front-end/products/brikpanel-product-editor.php:403
+#: front-end/products/brikpanel-product-editor.php:779
 msgid "Brief description for search engines..."
 msgstr "Arama motorları için kısa açıklama..."
 
-#: front-end/products/brikpanel-product-editor.php:301
+#: front-end/products/brikpanel-product-editor.php:613
 msgid "Brief product summary..."
 msgstr "Kısa ürün özeti..."
 
@@ -302,43 +281,50 @@ msgstr "BrikPanel: WooCommerce Yönetici Paneli Teması"
 msgid "Brksoft"
 msgstr "Brksoft"
 
-#: includes/brikpanel-enqueue.php:106
+#: includes/brikpanel-enqueue.php:223
 msgid "Browsing"
 msgstr "Geziniyor"
 
-#: front-end/products/brikpanel-products-list.php:300
+#: front-end/products/brikpanel-products-list.php:533
 msgid "Bulk delete"
 msgstr "Toplu sil"
 
-#: front-end/products/brikpanel-products-list.php:113
-#: front-end/products/brikpanel-products-list.php:290
+#: front-end/products/brikpanel-products-list.php:281
+#: front-end/products/brikpanel-products-list.php:523
 msgid "Bulk update"
 msgstr "Toplu güncelle"
 
-#: front-end/products/brikpanel-product-editor.php:313
+#: front-end/products/brikpanel-product-editor.php:606
+#: front-end/products/brikpanel-product-editor.php:627
 msgid "Bullet list"
 msgstr "Madde işaretli liste"
 
-#: front-end/products/brikpanel-products-list.php:298
-msgid "By category"
-msgstr "Kategoriye göre"
-
-#: front-end/dashboard/brikpanel-dashboard.php:886
+#: front-end/dashboard/brikpanel-dashboard.php:1918
 msgid "Campaign"
 msgstr "Kampanya"
 
-#: front-end/coupons/brikpanel-coupons.php:327
-#: front-end/products/brikpanel-products-list.php:281
-#: front-end/products/brikpanel-products-list.php:422
-#: includes/brikpanel-enqueue.php:396
+#: front-end/coupons/brikpanel-coupons.php:328
+#: front-end/expenses/brikpanel-expenses.php:197
+#: front-end/products/brikpanel-products-list.php:514
+#: front-end/products/brikpanel-products-list.php:703
+#: front-end/products/brikpanel-products-list.php:726
+#: includes/brikpanel-enqueue.php:713
+#: includes/brikpanel-enqueue.php:724
+#: includes/cron/class-brikpanel-cron-page.php:200
 msgid "Cancel"
 msgstr "İptal"
 
-#: includes/brikpanel-enqueue.php:89 includes/brikpanel-enqueue.php:264
+#: front-end/dashboard/brikpanel-dashboard.php:724
+#: includes/brikpanel-enqueue.php:165
+#: includes/brikpanel-enqueue.php:206
+#: includes/brikpanel-enqueue.php:319
+#: includes/brikpanel-enqueue.php:571
+#: includes/cron/class-brikpanel-cron-page.php:123
+#: includes/cron/class-brikpanel-cron.php:549
 msgid "Cancelled"
 msgstr "İptal Edildi"
 
-#: front-end/coupons/brikpanel-coupons.php:290
+#: front-end/coupons/brikpanel-coupons.php:291
 msgid "Cannot be used with other coupons"
 msgstr "Diğer kuponlarla kullanılamaz"
 
@@ -346,36 +332,41 @@ msgstr "Diğer kuponlarla kullanılamaz"
 msgid "Cannot set a child category as parent."
 msgstr "Alt kategori, üst kategori olarak ayarlanamaz."
 
-#: includes/brikpanel-enqueue.php:105
+#: includes/brikpanel-enqueue.php:222
 msgid "Cart"
 msgstr "Sepet"
 
-#: includes/brikpanel-enqueue.php:104
+#: includes/brikpanel-enqueue.php:221
 msgid "Cart Adds"
 msgstr "Sepete Ekleme"
 
-#: front-end/orders/brikpanel-orders.php:81
+#: front-end/orders/brikpanel-orders.php:484
 msgid "Categories per page"
 msgstr "Sayfa başına kategori"
 
-#: front-end/products/brikpanel-product-editor.php:275
-#: front-end/products/brikpanel-product-editor.php:1113
-#: front-end/products/brikpanel-products-list.php:196
-#: front-end/products/brikpanel-products-list.php:270
-#: front-end/products/brikpanel-products-list.php:306
-#: front-end/products/brikpanel-products-list.php:397
+#: front-end/expenses/brikpanel-expenses.php:104
+#: front-end/expenses/brikpanel-expenses.php:130
+#: front-end/expenses/brikpanel-expenses.php:172
+#: front-end/orders/brikpanel-orders.php:401
+#: front-end/products/brikpanel-product-editor.php:564
+#: front-end/products/brikpanel-product-editor.php:3056
+#: front-end/products/brikpanel-products-list.php:63
+#: front-end/products/brikpanel-products-list.php:398
+#: front-end/products/brikpanel-products-list.php:546
+#: front-end/products/brikpanel-products-list.php:637
+#: includes/brikpanel-enqueue.php:227
 msgid "Category"
 msgstr "Kategori"
 
-#: includes/brikpanel-enqueue.php:444
+#: includes/brikpanel-enqueue.php:1007
 msgid "Category added"
 msgstr "Kategori eklendi"
 
-#: front-end/products/brikpanel-product-editor.php:286
+#: front-end/products/brikpanel-product-editor.php:575
 msgid "Category name"
 msgstr "Kategori adı"
 
-#: front-end/products/brikpanel-product-editor.php:961
+#: front-end/products/brikpanel-product-editor.php:2878
 msgid "Category name is required."
 msgstr "Kategori adı gereklidir."
 
@@ -383,47 +374,51 @@ msgstr "Kategori adı gereklidir."
 msgid "Category not found."
 msgstr "Kategori bulunamadı."
 
-#: brikpanel.php:57 brikpanel.php:72
+#: brikpanel.php:113
+#: brikpanel.php:128
 msgctxt "Order status"
 msgid "Change"
 msgstr "Değişiklik"
 
-#: brikpanel.php:62
+#: brikpanel.php:118
 #, php-format
 msgid "Change <span class=\"count\">(%s)</span>"
 msgid_plural "Change <span class=\"count\">(%s)</span>"
 msgstr[0] "Değişiklik <span class=\"count\">(%s)</span>"
 msgstr[1] "Değişiklik <span class=\"count\">(%s)</span>"
 
-#: includes/brikpanel-enqueue.php:187
+#: includes/brikpanel-enqueue.php:485
 msgid "Change status"
 msgstr "Durum değiştir"
 
-#: includes/brikpanel-enqueue.php:85
+#: includes/brikpanel-enqueue.php:150
+#: includes/brikpanel-enqueue.php:202
 msgid "Checkout"
 msgstr "Ödeme"
 
-#: front-end/products/brikpanel-product-editor.php:425
+#: front-end/products/brikpanel-product-editor.php:830
 msgid "Choose variation type"
 msgstr "Varyasyon türü seçin"
 
-#: includes/brikpanel-enqueue.php:101
+#: front-end/segments/brikpanel-segments.php:1008
+#: front-end/segments/views/page.php:78
+#: includes/brikpanel-enqueue.php:218
 msgid "City"
 msgstr "Şehir"
 
-#: front-end/orders/brikpanel-orders.php:41
-msgid ""
-"Clean up the order edit page — hide unnecessary metaboxes and apply modern "
-"styling"
-msgstr ""
-"Sipariş düzenleme sayfasını temizle — gereksiz bölümleri gizle ve "
-"modern stil uygula"
+#: front-end/orders/brikpanel-orders.php:363
+msgid "Clean up the order edit page — hide unnecessary metaboxes and apply modern styling"
+msgstr "Sipariş düzenleme sayfasını temizle — gereksiz bölümleri gizle ve modern stil uygula"
 
-#: includes/brikpanel-enqueue.php:374 includes/brikpanel-enqueue.php:505
+#: includes/brikpanel-enqueue.php:686
+#: includes/brikpanel-enqueue.php:1085
 msgid "Click to toggle status"
 msgstr "Durumu değiştirmek için tıklayın"
 
+#: front-end/expenses/brikpanel-expenses.php:154
 #: front-end/welcome/brikpanel-welcome.php:107
+#: includes/brikpanel-hooks-api.php:221
+#: includes/cron/class-brikpanel-cron-page.php:176
 msgid "Close"
 msgstr "Kapat"
 
@@ -439,15 +434,17 @@ msgstr "Kod A-Z"
 msgid "Code Z-A"
 msgstr "Kod Z-A"
 
-#: includes/brikpanel-enqueue.php:262
+#: includes/brikpanel-enqueue.php:314
+#: includes/brikpanel-enqueue.php:569
 msgid "Completed"
 msgstr "Tamamlandı"
 
-#: front-end/dashboard/brikpanel-dashboard.php:161
+#: front-end/dashboard/brikpanel-dashboard.php:346
 msgid "Conversion Funnel"
 msgstr "Dönüşüm Hunisi"
 
-#: front-end/dashboard/brikpanel-dashboard.php:133
+#: front-end/dashboard/brikpanel-dashboard.php:239
+#: includes/brikpanel-enqueue.php:155
 msgid "Conversion Rate"
 msgstr "Dönüşüm Oranı"
 
@@ -455,16 +452,19 @@ msgstr "Dönüşüm Oranı"
 msgid "Conversion funnel visualization"
 msgstr "Dönüşüm hunisi görselleştirmesi"
 
-#: includes/brikpanel-enqueue.php:230
+#: includes/brikpanel-enqueue.php:529
+#: includes/brikpanel-hooks-api.php:630
 msgid "Copied!"
 msgstr "Kopyalandı!"
 
-#: front-end/products/brikpanel-product-editor.php:1027
-#: includes/brikpanel-enqueue.php:229
+#: front-end/products/brikpanel-product-editor.php:2970
+#: includes/brikpanel-enqueue.php:528
 msgid "Copy"
 msgstr "Kopyala"
 
-#: includes/brikpanel-enqueue.php:100
+#: front-end/segments/brikpanel-segments.php:1007
+#: front-end/segments/views/page.php:73
+#: includes/brikpanel-enqueue.php:217
 msgid "Country"
 msgstr "Ülke"
 
@@ -473,145 +473,150 @@ msgstr "Ülke"
 msgid "Coupon Manager"
 msgstr "Kupon Yöneticisi"
 
-#: front-end/coupons/brikpanel-coupons.php:212
+#: front-end/coupons/brikpanel-coupons.php:213
+#: front-end/segments/views/page.php:147
 msgid "Coupon code"
 msgstr "Kupon kodu"
 
-#: front-end/coupons/brikpanel-coupons.php:453
-#: includes/brikpanel-enqueue.php:510
+#: front-end/coupons/brikpanel-coupons.php:546
+#: includes/brikpanel-enqueue.php:1090
 msgid "Coupon code is required."
 msgstr "Kupon kodu gereklidir."
 
-#: front-end/coupons/brikpanel-coupons.php:520
+#: front-end/coupons/brikpanel-coupons.php:613
 msgid "Coupon created!"
 msgstr "Kupon oluşturuldu!"
 
-#: front-end/coupons/brikpanel-coupons.php:646
-#: includes/brikpanel-enqueue.php:494
+#: front-end/coupons/brikpanel-coupons.php:739
+#: includes/brikpanel-enqueue.php:1074
 msgid "Coupon duplicated!"
 msgstr "Kupon kopyalandı!"
 
-#: front-end/coupons/brikpanel-coupons.php:553
+#: front-end/coupons/brikpanel-coupons.php:646
 msgid "Coupon moved to trash."
 msgstr "Kupon çöpe taşındı."
 
-#: front-end/coupons/brikpanel-coupons.php:545
-#: front-end/coupons/brikpanel-coupons.php:575
-#: front-end/coupons/brikpanel-coupons.php:615
+#: front-end/coupons/brikpanel-coupons.php:638
+#: front-end/coupons/brikpanel-coupons.php:668
+#: front-end/coupons/brikpanel-coupons.php:708
 msgid "Coupon not found."
 msgstr "Kupon bulunamadı."
 
-#: front-end/coupons/brikpanel-coupons.php:550
+#: front-end/coupons/brikpanel-coupons.php:643
 msgid "Coupon permanently deleted."
 msgstr "Kupon kalıcı olarak silindi."
 
-#: includes/brikpanel-enqueue.php:497
+#: includes/brikpanel-enqueue.php:1077
 msgid "Coupon restored!"
 msgstr "Kupon geri yüklendi!"
 
 #. translators: %s: status label
-#: front-end/coupons/brikpanel-coupons.php:591
+#: front-end/coupons/brikpanel-coupons.php:684
 #, php-format
 msgid "Coupon status changed to %s."
 msgstr "Kupon durumu %s olarak değiştirildi."
 
-#: front-end/coupons/brikpanel-coupons.php:520
+#: front-end/coupons/brikpanel-coupons.php:613
 msgid "Coupon updated!"
 msgstr "Kupon güncellendi!"
 
 #: front-end/coupons/brikpanel-coupons.php:41
 #: front-end/coupons/brikpanel-coupons.php:51
 #: front-end/coupons/brikpanel-coupons.php:99
-#: front-end/orders/brikpanel-orders.php:114
+#: front-end/orders/brikpanel-orders.php:546
 msgid "Coupons"
 msgstr "Kuponlar"
 
-#: includes/brikpanel-enqueue.php:504
+#: includes/brikpanel-enqueue.php:1084
 msgid "Coupons moved to trash!"
 msgstr "Kuponlar çöpe taşındı!"
 
-#: includes/brikpanel-enqueue.php:503
+#: includes/brikpanel-enqueue.php:1083
 msgid "Coupons updated!"
 msgstr "Kuponlar güncellendi!"
 
 #: front-end/welcome/brikpanel-welcome.php:243
-msgid ""
-"Create and edit products with a clean, distraction-free interface designed "
-"for speed."
-msgstr ""
-"Hız için tasarlanmış temiz, dikkat dağıtmayan bir arayüzle ürün oluşturun "
-"ve düzenleyin."
+msgid "Create and edit products with a clean, distraction-free interface designed for speed."
+msgstr "Hız için tasarlanmış temiz, dikkat dağıtmayan bir arayüzle ürün oluşturun ve düzenleyin."
 
 #: front-end/welcome/brikpanel-welcome.php:275
-msgid ""
-"Create and manage coupons without leaving the page, using a fast side-drawer "
-"editor."
-msgstr ""
-"Hızlı yan çekmece düzenleyicisini kullanarak sayfadan çıkmadan kupon "
-"oluşturun ve yönetin."
+msgid "Create and manage coupons without leaving the page, using a fast side-drawer editor."
+msgstr "Hızlı yan çekmece düzenleyicisini kullanarak sayfadan çıkmadan kupon oluşturun ve yönetin."
 
-#: includes/brikpanel-enqueue.php:487
+#: includes/brikpanel-enqueue.php:1067
 msgid "Create coupon"
 msgstr "Kupon oluştur"
 
-#: front-end/dashboard/brikpanel-dashboard.php:102
-#: front-end/products/brikpanel-product-editor.php:438
+#: front-end/dashboard/brikpanel-dashboard.php:190
+#: front-end/products/brikpanel-product-editor.php:843
 msgid "Custom"
 msgstr "Özel"
 
-#: includes/brikpanel-enqueue.php:96
+#: front-end/customer-analytics/views/page.php:107
+#: front-end/customer-analytics/views/page.php:165
+#: front-end/segments/brikpanel-segments.php:1005
+#: includes/brikpanel-enqueue.php:213
+#: includes/brikpanel-enqueue.php:299
 msgid "Customer"
 msgstr "Müşteri"
 
 #: front-end/dashboard/brikpanel-dashboard.php:52
 #: front-end/dashboard/brikpanel-dashboard.php:62
-#: front-end/dashboard/brikpanel-dashboard.php:95
-#: front-end/orders/brikpanel-orders.php:98
+#: front-end/dashboard/brikpanel-dashboard.php:179
+#: front-end/orders/brikpanel-orders.php:501
 msgid "Dashboard"
 msgstr "Kontrol Paneli"
 
-#: front-end/products/brikpanel-products-list.php:323
-#: front-end/products/brikpanel-products-list.php:367
+#: front-end/products/brikpanel-products-list.php:563
+#: front-end/products/brikpanel-products-list.php:607
 msgid "Decrease prices by %"
 msgstr "Fiyatları % azalt"
 
-#: front-end/products/brikpanel-products-list.php:389
+#: front-end/products/brikpanel-products-list.php:629
 msgid "Delete mode"
 msgstr "Silme modu"
 
-#: includes/brikpanel-enqueue.php:368 includes/brikpanel-enqueue.php:498
+#: front-end/products/brikpanel-products-list.php:378
+#: includes/brikpanel-enqueue.php:678
+#: includes/brikpanel-enqueue.php:1078
 msgid "Delete permanently"
 msgstr "Kalıcı olarak sil"
 
 #: front-end/coupons/brikpanel-coupons.php:172
-#: front-end/coupons/brikpanel-coupons.php:223
+#: front-end/coupons/brikpanel-coupons.php:224
+#: front-end/expenses/brikpanel-expenses.php:131
+#: front-end/expenses/brikpanel-expenses.php:190
 msgid "Description"
 msgstr "Açıklama"
 
 #: front-end/coupons/brikpanel-coupons.php:151
-#: front-end/products/brikpanel-products-list.php:173
+#: front-end/products/brikpanel-products-list.php:366
 msgid "Deselect all"
 msgstr "Tüm seçimi kaldır"
 
-#: front-end/dashboard/brikpanel-dashboard.php:890
+#: front-end/dashboard/brikpanel-dashboard.php:1922
 msgid "Direct"
 msgstr "Doğrudan"
 
-#: front-end/coupons/brikpanel-coupons.php:229
+#: front-end/coupons/brikpanel-coupons.php:230
 msgid "Discount type"
 msgstr "İndirim türü"
 
-#: front-end/products/brikpanel-product-editor.php:413
+#: front-end/products/brikpanel-product-editor.php:818
 msgid "Does this product have sizes/colors?"
 msgstr "Bu ürünün bedenleri/renkleri var mı?"
 
 #: front-end/coupons/brikpanel-coupons.php:126
-#: front-end/coupons/brikpanel-coupons.php:585
-#: front-end/products/brikpanel-product-editor.php:1121
-#: front-end/products/brikpanel-products-list.php:134
-#: front-end/products/brikpanel-products-list.php:266
-#: front-end/products/brikpanel-products-list.php:826
-#: includes/brikpanel-enqueue.php:357 includes/brikpanel-enqueue.php:489
+#: front-end/coupons/brikpanel-coupons.php:678
+#: front-end/products/brikpanel-product-editor.php:350
+#: front-end/products/brikpanel-product-editor.php:354
+#: front-end/products/brikpanel-product-editor.php:371
+#: front-end/products/brikpanel-product-editor.php:3064
+#: front-end/products/brikpanel-products-list.php:302
+#: front-end/products/brikpanel-products-list.php:482
+#: front-end/products/brikpanel-products-list.php:1245
+#: includes/brikpanel-enqueue.php:666
+#: includes/brikpanel-enqueue.php:1069
 msgid "Draft"
 msgstr "Taslak"
 
@@ -619,72 +624,73 @@ msgstr "Taslak"
 msgid "Drag & drop image gallery with reordering"
 msgstr "Yeniden sıralama ile sürükle & bırak resim galerisi"
 
-#: front-end/products/brikpanel-product-editor.php:219
+#: front-end/products/brikpanel-product-editor.php:466
 msgid "Drag & drop images here"
 msgstr "Resimleri buraya sürükleyip bırakın"
 
-#: includes/brikpanel-enqueue.php:317
+#: includes/brikpanel-enqueue.php:624
 msgid "Drag onto another category to make it a sub-category"
 msgstr "Alt kategori yapmak için başka bir kategorinin üzerine sürükleyin"
 
-#: front-end/products/brikpanel-product-editor.php:192
-#: includes/brikpanel-enqueue.php:362 includes/brikpanel-enqueue.php:450
-#: includes/brikpanel-enqueue.php:492
+#: front-end/products/brikpanel-product-editor.php:325
+#: includes/brikpanel-enqueue.php:672
+#: includes/brikpanel-enqueue.php:1013
+#: includes/brikpanel-enqueue.php:1072
 msgid "Duplicate"
 msgstr "Kopyala"
 
-#: includes/brikpanel-enqueue.php:363 includes/brikpanel-enqueue.php:451
-#: includes/brikpanel-enqueue.php:493
+#: includes/brikpanel-enqueue.php:673
+#: includes/brikpanel-enqueue.php:1014
+#: includes/brikpanel-enqueue.php:1073
 msgid "Duplicating..."
 msgstr "Kopyalanıyor..."
 
-#: front-end/products/brikpanel-product-editor.php:208
+#: front-end/products/brikpanel-product-editor.php:433
 msgid "E.g.: Cotton White T-Shirt - M Size"
 msgstr "Örn.: Pamuklu Beyaz T-Shirt - M Beden"
 
-#: includes/brikpanel-enqueue.php:491
+#: includes/brikpanel-enqueue.php:1071
 msgid "Edit"
 msgstr "Düzenle"
 
-#: front-end/coupons/brikpanel-coupons.php:199
-#: includes/brikpanel-enqueue.php:509
+#: front-end/coupons/brikpanel-coupons.php:200
+#: includes/brikpanel-enqueue.php:1089
 msgid "Edit coupon"
 msgstr "Kuponu düzenle"
 
-#: front-end/products/brikpanel-product-editor.php:137
+#: front-end/products/brikpanel-product-editor.php:198
 msgid "Edit product"
 msgstr "Ürünü düzenle"
 
-#: front-end/orders/brikpanel-orders.php:25
-msgid ""
-"Enhance the orders list page with modern search, filters, overview section, "
-"and styling"
-msgstr ""
-"Sipariş listesi sayfasını modern arama, filtreler, genel bakış bölümü ve "
-"stillerle geliştir"
+#: front-end/orders/brikpanel-orders.php:347
+msgid "Enhance the orders list page with modern search, filters, overview section, and styling"
+msgstr "Sipariş listesi sayfasını modern arama, filtreler, genel bakış bölümü ve stillerle geliştir"
 
-#: front-end/orders/brikpanel-orders.php:22
+#: front-end/orders/brikpanel-orders.php:344
 msgid "Enhanced orders page"
 msgstr "Geliştirilmiş siparişler sayfası"
 
-#: front-end/products/brikpanel-product-editor.php:451
+#: front-end/products/brikpanel-product-editor.php:856
 msgid "Enter values"
 msgstr "Değerleri girin"
 
-#: front-end/coupons/brikpanel-coupons.php:295
+#: front-end/coupons/brikpanel-coupons.php:296
 msgid "Exclude sale items"
 msgstr "İndirimdeki ürünleri hariç tut"
 
-#: front-end/coupons/brikpanel-coupons.php:174
-#: front-end/coupons/brikpanel-coupons.php:256
+#: front-end/coupons/brikpanel-coupons.php:175
+#: front-end/coupons/brikpanel-coupons.php:257
 msgid "Expiry date"
 msgstr "Son kullanma tarihi"
 
-#: includes/brikpanel-enqueue.php:87
+#: includes/brikpanel-enqueue.php:163
+#: includes/brikpanel-enqueue.php:204
+#: includes/cron/class-brikpanel-cron-page.php:122
+#: includes/cron/class-brikpanel-cron.php:545
 msgid "Failed"
 msgstr "Başarısız"
 
-#: includes/brikpanel-enqueue.php:437
+#: includes/brikpanel-enqueue.php:999
 msgid "Featured"
 msgstr "Öne Çıkan"
 
@@ -692,35 +698,37 @@ msgstr "Öne Çıkan"
 msgid "Find anything fast"
 msgstr "Her şeyi hızla bulun"
 
-#: includes/brikpanel-enqueue.php:512
+#: includes/brikpanel-enqueue.php:1092
 msgid "Fixed cart"
 msgstr "Sabit sepet"
 
-#: front-end/coupons/brikpanel-coupons.php:232
+#: front-end/coupons/brikpanel-coupons.php:233
 msgid "Fixed cart discount"
 msgstr "Sabit sepet indirimi"
 
-#: includes/brikpanel-enqueue.php:513
+#: includes/brikpanel-enqueue.php:1093
 msgid "Fixed product"
 msgstr "Sabit ürün"
 
-#: front-end/coupons/brikpanel-coupons.php:233
+#: front-end/coupons/brikpanel-coupons.php:234
 msgid "Fixed product discount"
 msgstr "Sabit ürün indirimi"
 
-#: front-end/coupons/brikpanel-coupons.php:247
+#: front-end/coupons/brikpanel-coupons.php:248
+#: includes/brikpanel-enqueue.php:321
 msgid "Free shipping"
 msgstr "Ücretsiz kargo"
 
-#: front-end/coupons/brikpanel-coupons.php:209
+#: front-end/coupons/brikpanel-coupons.php:210
+#: front-end/products/brikpanel-product-editor.php:1551
 msgid "General"
 msgstr "Genel"
 
-#: front-end/coupons/brikpanel-coupons.php:217
+#: front-end/coupons/brikpanel-coupons.php:218
 msgid "Generate"
 msgstr "Oluştur"
 
-#: front-end/products/brikpanel-product-editor.php:454
+#: front-end/products/brikpanel-product-editor.php:859
 msgid "Generate variations"
 msgstr "Varyasyonları oluştur"
 
@@ -733,50 +741,50 @@ msgstr "Başlayın"
 msgid "Global Search"
 msgstr "Genel Arama"
 
-#: front-end/dashboard/brikpanel-dashboard.php:804
+#: front-end/dashboard/brikpanel-dashboard.php:1836
+#: front-end/segments/brikpanel-segments.php:939
+#: includes/brikpanel-enqueue.php:293
+#: includes/brikpanel-enqueue.php:389
 msgid "Guest"
 msgstr "Misafir"
 
 #: front-end/welcome/brikpanel-welcome.php:211
-msgid ""
-"Handle orders faster with inline actions, a modern edit page, and quick "
-"status updates."
-msgstr ""
-"Satır içi eylemler, modern düzenleme sayfası ve hızlı durum güncellemeleri "
-"ile siparişleri daha hızlı işleyin."
+msgid "Handle orders faster with inline actions, a modern edit page, and quick status updates."
+msgstr "Satır içi eylemler, modern düzenleme sayfası ve hızlı durum güncellemeleri ile siparişleri daha hızlı işleyin."
 
-#: front-end/products/brikpanel-product-editor.php:369
+#: front-end/products/brikpanel-product-editor.php:714
 msgid "Height"
 msgstr "Yükseklik"
 
-#: front-end/products/brikpanel-product-editor.php:489
-#: front-end/products/brikpanel-product-editor.php:1108
+#: front-end/products/brikpanel-product-editor.php:906
+#: front-end/products/brikpanel-product-editor.php:3051
+#: front-end/products/brikpanel-products-list.php:58
 msgid "Image"
 msgstr "Resim"
 
-#: front-end/products/brikpanel-product-editor.php:266
-msgid ""
-"Important for marketplace synchronization. Should match your Trendyol/"
-"Hepsiburada product code."
-msgstr ""
-"Pazar yeri senkronizasyonu için önemli. Trendyol/Hepsiburada ürün kodunuzla "
-"eşleşmelidir."
+#: front-end/products/brikpanel-product-editor.php:553
+msgid "Important for marketplace synchronization. Should match your Trendyol/Hepsiburada product code."
+msgstr "Pazar yeri senkronizasyonu için önemli. Trendyol/Hepsiburada ürün kodunuzla eşleşmelidir."
 
-#: front-end/products/brikpanel-products-list.php:153
+#: front-end/products/brikpanel-product-editor.php:545
+#: front-end/products/brikpanel-products-list.php:327
+#: front-end/products/brikpanel-products-list.php:464
+#: includes/brikpanel-enqueue.php:706
+#: includes/brikpanel-enqueue.php:1024
 msgid "In stock"
 msgstr "Stokta var"
 
-#: front-end/products/brikpanel-products-list.php:322
-#: front-end/products/brikpanel-products-list.php:366
+#: front-end/products/brikpanel-products-list.php:562
+#: front-end/products/brikpanel-products-list.php:606
 msgid "Increase prices by %"
 msgstr "Fiyatları % artır"
 
-#: front-end/products/brikpanel-products-list.php:328
-#: front-end/products/brikpanel-products-list.php:372
+#: front-end/products/brikpanel-products-list.php:568
+#: front-end/products/brikpanel-products-list.php:612
 msgid "Increase stock by"
 msgstr "Stoku artır"
 
-#: front-end/coupons/brikpanel-coupons.php:284
+#: front-end/coupons/brikpanel-coupons.php:285
 msgid "Individual use only"
 msgstr "Yalnızca bireysel kullanım"
 
@@ -804,59 +812,61 @@ msgstr "Müşteri konumlarını gösteren etkileşimli küre"
 msgid "Interactive sales chart with date range filtering"
 msgstr "Tarih aralığı filtrelemeli etkileşimli satış grafiği"
 
-#: front-end/products/brikpanel-products-list.php:857
+#: front-end/products/brikpanel-products-list.php:1359
 msgid "Invalid action."
 msgstr "Geçersiz işlem."
 
-#: front-end/coupons/brikpanel-coupons.php:540
-#: front-end/coupons/brikpanel-coupons.php:570
-#: front-end/coupons/brikpanel-coupons.php:610
+#: front-end/coupons/brikpanel-coupons.php:633
+#: front-end/coupons/brikpanel-coupons.php:663
+#: front-end/coupons/brikpanel-coupons.php:703
 msgid "Invalid coupon ID."
 msgstr "Geçersiz kupon kimliği."
 
-#: front-end/products/brikpanel-product-editor.php:1094
+#: front-end/products/brikpanel-product-editor.php:3037
 msgid "Invalid field."
 msgstr "Geçersiz alan."
 
-#: front-end/orders/brikpanel-orders.php:203
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:300
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:510
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:672
+#: front-end/orders/brikpanel-orders.php:740
 #: front-end/products/brikpanel-category-enhancements.php:44
-#: front-end/products/brikpanel-products-list.php:739
+#: front-end/products/brikpanel-products-list.php:1158
+#: front-end/segments/brikpanel-segments.php:980
 msgid "Invalid request."
 msgstr "Geçersiz istek."
 
-#: front-end/orders/brikpanel-orders.php:214
+#: front-end/orders/brikpanel-orders.php:751
 msgid "Invalid status."
 msgstr "Geçersiz durum."
 
-#: front-end/login/brikpanel-login.php:128
-msgid "Invalid username or password."
-msgstr "Geçersiz kullanıcı adı veya şifre."
-
-#: front-end/products/brikpanel-product-editor.php:312
+#: front-end/products/brikpanel-product-editor.php:605
+#: front-end/products/brikpanel-product-editor.php:626
 msgid "Italic"
 msgstr "İtalik"
 
-#: front-end/orders/brikpanel-orders.php:158
+#: front-end/orders/brikpanel-orders.php:695
 msgid "Items"
 msgstr "Öğeler"
 
-#: front-end/dashboard/brikpanel-dashboard.php:101
+#: front-end/dashboard/brikpanel-dashboard.php:189
 msgid "Last 30 Days"
 msgstr "Son 30 Gün"
 
-#: includes/brikpanel-enqueue.php:260
+#: includes/brikpanel-enqueue.php:312
+#: includes/brikpanel-enqueue.php:567
 msgid "Last 30 days"
 msgstr "Son 30 gün"
 
-#: front-end/dashboard/brikpanel-dashboard.php:100
+#: front-end/dashboard/brikpanel-dashboard.php:188
 msgid "Last 7 Days"
 msgstr "Son 7 Gün"
 
-#: front-end/products/brikpanel-product-editor.php:398
+#: front-end/products/brikpanel-product-editor.php:774
 msgid "Leave empty to use product name"
 msgstr "Ürün adını kullanmak için boş bırakın"
 
-#: front-end/products/brikpanel-product-editor.php:355
+#: front-end/products/brikpanel-product-editor.php:700
 msgid "Length"
 msgstr "Uzunluk"
 
@@ -868,68 +878,77 @@ msgstr "Canlı Takip"
 msgid "Live Visitor Tracking"
 msgstr "Canlı Ziyaretçi Takibi"
 
-#: front-end/dashboard/brikpanel-dashboard.php:149
+#: front-end/dashboard/brikpanel-dashboard.php:330
 msgid "Live Visitors"
 msgstr "Canlı Ziyaretçiler"
 
-#: includes/brikpanel-enqueue.php:384
+#: includes/brikpanel-enqueue.php:697
 msgid "Loading attributes..."
 msgstr "Özellikler yükleniyor..."
 
-#: front-end/dashboard/brikpanel-dashboard.php:190
-#: front-end/dashboard/brikpanel-dashboard.php:194
-#: front-end/dashboard/brikpanel-dashboard.php:204
-#: front-end/dashboard/brikpanel-dashboard.php:210
-#: front-end/dashboard/brikpanel-dashboard.php:220
-#: front-end/dashboard/brikpanel-dashboard.php:226
+#: front-end/dashboard/brikpanel-dashboard.php:288
+#: front-end/dashboard/brikpanel-dashboard.php:304
+#: front-end/dashboard/brikpanel-dashboard.php:310
+#: front-end/dashboard/brikpanel-dashboard.php:389
+#: front-end/dashboard/brikpanel-dashboard.php:393
+#: front-end/dashboard/brikpanel-dashboard.php:407
+#: front-end/dashboard/brikpanel-dashboard.php:413
+#: front-end/dashboard/brikpanel-dashboard.php:427
+#: front-end/dashboard/brikpanel-dashboard.php:433
+#: front-end/dashboard/brikpanel-dashboard.php:446
+#: front-end/dashboard/brikpanel-dashboard.php:452
+#: front-end/dashboard/brikpanel-dashboard.php:470
+#: front-end/dashboard/brikpanel-dashboard.php:543
+#: front-end/dashboard/brikpanel-dashboard.php:549
+#: front-end/dashboard/brikpanel-dashboard.php:705
 msgid "Loading..."
 msgstr "Yükleniyor..."
 
-#: front-end/login/brikpanel-login.php:44
+#: front-end/login/brikpanel-login.php:129
 msgid "Log In"
 msgstr "Giriş Yap"
 
-#: front-end/login/brikpanel-login.php:43
+#: front-end/login/brikpanel-login.php:128
 msgid "Logging in..."
 msgstr "Giriş yapılıyor..."
 
-#: front-end/login/brikpanel-login.php:152
+#: front-end/login/brikpanel-login.php:259
 msgid "Login successful! Redirecting..."
 msgstr "Giriş başarılı! Yönlendiriliyor..."
 
-#: front-end/products/brikpanel-products-list.php:155
+#: front-end/products/brikpanel-products-list.php:329
 msgid "Low stock"
 msgstr "Düşük stok"
 
-#: includes/brikpanel-enqueue.php:319
+#: includes/brikpanel-enqueue.php:626
 msgid "Make top level"
 msgstr "Üst düzey yap"
 
-#: includes/brikpanel-enqueue.php:266
+#: includes/brikpanel-enqueue.php:573
 msgid "Marketplaces"
 msgstr "Pazaryerleri"
 
-#: front-end/coupons/brikpanel-coupons.php:274
+#: front-end/coupons/brikpanel-coupons.php:275
 msgid "Maximum spend"
 msgstr "Maksimum harcama"
 
-#: front-end/products/brikpanel-product-editor.php:402
+#: front-end/products/brikpanel-product-editor.php:778
 msgid "Meta description"
 msgstr "Meta açıklama"
 
-#: front-end/coupons/brikpanel-coupons.php:267
+#: front-end/coupons/brikpanel-coupons.php:268
 msgid "Minimum spend"
 msgstr "Minimum harcama"
 
-#: front-end/orders/brikpanel-orders.php:119
+#: front-end/orders/brikpanel-orders.php:551
 msgid "Modern coupons page"
 msgstr "Modern kuponlar sayfası"
 
-#: front-end/orders/brikpanel-orders.php:103
+#: front-end/orders/brikpanel-orders.php:506
 msgid "Modern dashboard"
 msgstr "Modern kontrol paneli"
 
-#: front-end/orders/brikpanel-orders.php:38
+#: front-end/orders/brikpanel-orders.php:360
 msgid "Modern order edit"
 msgstr "Modern sipariş düzenleme"
 
@@ -937,129 +956,132 @@ msgstr "Modern sipariş düzenleme"
 msgid "Modern order edit page with sticky header"
 msgstr "Yapışkan başlıklı modern sipariş düzenleme sayfası"
 
-#: front-end/orders/brikpanel-orders.php:61
+#: front-end/orders/brikpanel-orders.php:457
 msgid "Modern products list"
 msgstr "Modern ürünler listesi"
 
 #: front-end/welcome/brikpanel-welcome.php:340
-msgid ""
-"Monitor your store visitors in real time and see their activity as it "
-"happens."
-msgstr ""
-"Mağaza ziyaretçilerinizi gerçek zamanlı olarak izleyin ve aktivitelerini "
-"anlık görün."
+msgid "Monitor your store visitors in real time and see their activity as it happens."
+msgstr "Mağaza ziyaretçilerinizi gerçek zamanlı olarak izleyin ve aktivitelerini anlık görün."
 
 #: front-end/navigation/brikpanel-navigation.php:130
 #: front-end/navigation/brikpanel-navigation.php:133
 msgid "More"
 msgstr "Daha Fazla"
 
-#: front-end/dashboard/brikpanel-dashboard.php:224
+#: front-end/dashboard/brikpanel-dashboard.php:431
 msgid "Most Added to Cart"
 msgstr "En Çok Sepete Eklenen"
 
-#: front-end/dashboard/brikpanel-dashboard.php:218
+#: front-end/dashboard/brikpanel-dashboard.php:425
 msgid "Most Viewed Pages"
 msgstr "En Çok Görüntülenen Sayfalar"
 
-#: includes/brikpanel-enqueue.php:318
+#: includes/brikpanel-enqueue.php:625
 #, php-format
 msgid "Move \"%1$s\" as a sub-category of \"%2$s\"?"
 msgstr "\"%1$s\" öğesini \"%2$s\" öğesinin alt kategorisi olarak taşı?"
 
 #: front-end/coupons/brikpanel-coupons.php:156
-#: front-end/products/brikpanel-products-list.php:178
-#: includes/brikpanel-enqueue.php:365 includes/brikpanel-enqueue.php:495
+#: front-end/products/brikpanel-products-list.php:375
+#: includes/brikpanel-enqueue.php:675
+#: includes/brikpanel-enqueue.php:1075
 msgid "Move to trash"
 msgstr "Çöpe taşı"
 
-#: front-end/products/brikpanel-products-list.php:160
+#: front-end/products/brikpanel-products-list.php:334
 msgid "Name A-Z"
 msgstr "Ad A-Z"
 
-#: front-end/products/brikpanel-products-list.php:161
+#: front-end/products/brikpanel-products-list.php:335
 msgid "Name Z-A"
 msgstr "Ad Z-A"
 
 #: front-end/coupons/brikpanel-coupons.php:138
-#: front-end/products/brikpanel-products-list.php:158
+#: front-end/products/brikpanel-products-list.php:332
 msgid "Newest first"
 msgstr "En yeni önce"
 
+#: front-end/customer-analytics/views/page.php:123
+#: front-end/customer-analytics/views/page.php:182
+#: front-end/expenses/brikpanel-expenses.php:145
+#: front-end/segments/views/page.php:195
 #: front-end/welcome/brikpanel-welcome.php:67
 #: front-end/welcome/brikpanel-welcome.php:402
+#: includes/cron/class-brikpanel-cron-page.php:167
 msgid "Next"
 msgstr "İleri"
 
-#: front-end/dashboard/brikpanel-dashboard.php:153
-#: includes/brikpanel-enqueue.php:92
+#: front-end/dashboard/brikpanel-dashboard.php:334
+#: includes/brikpanel-enqueue.php:209
 msgid "No active visitors"
 msgstr "Aktif ziyaretçi yok"
 
-#: includes/brikpanel-enqueue.php:482
+#: includes/brikpanel-enqueue.php:1062
 msgid "No coupons found."
 msgstr "Kupon bulunamadı."
 
-#: includes/brikpanel-enqueue.php:91
+#: includes/brikpanel-enqueue.php:208
 msgid "No data for this period"
 msgstr "Bu dönem için veri yok"
 
-#: front-end/products/brikpanel-product-editor.php:989
+#: front-end/products/brikpanel-product-editor.php:2932
 msgid "No file uploaded."
 msgstr "Dosya yüklenmedi."
 
-#: front-end/coupons/brikpanel-coupons.php:277
+#: front-end/coupons/brikpanel-coupons.php:278
 msgid "No maximum"
 msgstr "Maksimum yok"
 
-#: front-end/coupons/brikpanel-coupons.php:270
+#: front-end/coupons/brikpanel-coupons.php:271
 msgid "No minimum"
 msgstr "Minimum yok"
 
-#: includes/brikpanel-enqueue.php:90
+#: includes/brikpanel-enqueue.php:207
 msgid "No orders"
 msgstr "Sipariş yok"
 
-#: front-end/products/brikpanel-products-list.php:882
-#: front-end/products/brikpanel-products-list.php:1120
-#: includes/brikpanel-enqueue.php:351
+#: front-end/products/brikpanel-products-list.php:1351
+#: includes/brikpanel-enqueue.php:292
+#: includes/brikpanel-enqueue.php:660
 msgid "No products found."
 msgstr "Ürün bulunamadı."
 
-#: front-end/products/brikpanel-products-list.php:866
+#: front-end/products/brikpanel-products-list.php:1305
+#: front-end/products/brikpanel-products-list.php:1522
 msgid "No products selected."
 msgstr "Ürün seçilmedi."
 
-#: includes/brikpanel-enqueue.php:380
+#: includes/brikpanel-enqueue.php:693
 msgid "No products selected. Select products from the table first."
 msgstr "Ürün seçilmedi. Önce tablodan ürün seçin."
 
-#: includes/brikpanel-enqueue.php:394
+#: includes/brikpanel-enqueue.php:711
 msgid "No variations found."
 msgstr "Varyasyon bulunamadı."
 
-#: front-end/products/brikpanel-category-enhancements.php:72
+#: front-end/products/brikpanel-category-enhancements.php:73
 msgid "None (top level)"
 msgstr "Hiçbiri (üst düzey)"
 
-#: front-end/products/brikpanel-products-list.php:1007
+#: front-end/products/brikpanel-products-list.php:1981
 msgid "Not a variable product."
 msgstr "Değişken ürün değil."
 
-#: includes/brikpanel-enqueue.php:233
+#: includes/brikpanel-enqueue.php:532
 msgid "Note added"
 msgstr "Not eklendi"
 
-#: front-end/orders/brikpanel-orders.php:84
+#: front-end/orders/brikpanel-orders.php:487
 msgid "Number of categories to display per page"
 msgstr "Sayfa başına görüntülenecek kategori sayısı"
 
-#: front-end/orders/brikpanel-orders.php:71
+#: front-end/orders/brikpanel-orders.php:474
 msgid "Number of products to display per page in the products list"
 msgstr "Ürünler listesinde sayfa başına görüntülenecek ürün sayısı"
 
 #: front-end/coupons/brikpanel-coupons.php:139
-#: front-end/products/brikpanel-products-list.php:159
+#: front-end/products/brikpanel-products-list.php:333
 msgid "Oldest first"
 msgstr "En eski önce"
 
@@ -1071,19 +1093,22 @@ msgstr "Tek tıkla adres kopyalama"
 msgid "Open with keyboard shortcut"
 msgstr "Klavye kısayoluyla açın"
 
-#: front-end/coupons/brikpanel-coupons.php:224
+#: front-end/coupons/brikpanel-coupons.php:225
 msgid "Optional description for internal use"
 msgstr "Dahili kullanım için isteğe bağlı açıklama"
 
-#: includes/brikpanel-enqueue.php:95
+#: includes/brikpanel-enqueue.php:151
+#: includes/brikpanel-enqueue.php:212
+#: includes/brikpanel-enqueue.php:296
 msgid "Order"
 msgstr "Sipariş"
 
-#: front-end/orders/brikpanel-orders.php:33
+#: front-end/orders/brikpanel-orders.php:355
 msgid "Order Edit Page"
 msgstr "Sipariş Düzenleme Sayfası"
 
-#: front-end/dashboard/brikpanel-dashboard.php:178
+#: front-end/dashboard/brikpanel-dashboard.php:368
+#: includes/brikpanel-enqueue.php:247
 msgid "Order Locations"
 msgstr "Sipariş Konumları"
 
@@ -1092,15 +1117,15 @@ msgstr "Sipariş Konumları"
 msgid "Order Management"
 msgstr "Sipariş Yönetimi"
 
-#: front-end/dashboard/brikpanel-dashboard.php:167
+#: front-end/dashboard/brikpanel-dashboard.php:352
 msgid "Order Rates"
 msgstr "Sipariş Oranları"
 
-#: includes/brikpanel-enqueue.php:108
+#: includes/brikpanel-enqueue.php:225
 msgid "Order Received"
 msgstr "Sipariş Alındı"
 
-#: front-end/orders/brikpanel-orders.php:208
+#: front-end/orders/brikpanel-orders.php:745
 msgid "Order not found."
 msgstr "Sipariş bulunamadı."
 
@@ -1109,29 +1134,44 @@ msgid "Order overview stats for the last 30 days"
 msgstr "Son 30 günün sipariş genel bakış istatistikleri"
 
 #: front-end/brikpanel-site-submenu.php:16
-#: front-end/dashboard/brikpanel-dashboard.php:118
-#: front-end/search/brikpanel-search.php:63 includes/brikpanel-enqueue.php:81
-#: includes/brikpanel-enqueue.php:227 includes/brikpanel-enqueue.php:261
+#: front-end/customer-analytics/views/page.php:108
+#: front-end/customer-analytics/views/page.php:167
+#: front-end/dashboard/brikpanel-dashboard.php:224
+#: front-end/dashboard/brikpanel-dashboard.php:371
+#: front-end/search/brikpanel-search.php:63
+#: front-end/segments/brikpanel-segments.php:1032
+#: front-end/segments/views/page.php:35
+#: includes/brikpanel-enqueue.php:198
+#: includes/brikpanel-enqueue.php:245
+#: includes/brikpanel-enqueue.php:305
+#: includes/brikpanel-enqueue.php:399
+#: includes/brikpanel-enqueue.php:526
+#: includes/brikpanel-enqueue.php:568
 msgid "Orders"
 msgstr "Siparişler"
 
-#: front-end/orders/brikpanel-orders.php:17
+#: front-end/orders/brikpanel-orders.php:339
 msgid "Orders List"
 msgstr "Sipariş Listesi"
 
-#: front-end/dashboard/brikpanel-dashboard.php:878
+#: front-end/dashboard/brikpanel-dashboard.php:1910
 msgid "Organic"
 msgstr "Organik"
 
-#: front-end/products/brikpanel-products-list.php:154
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:238
+#: front-end/products/brikpanel-product-editor.php:546
+#: front-end/products/brikpanel-products-list.php:328
+#: front-end/products/brikpanel-products-list.php:467
+#: includes/brikpanel-enqueue.php:707
+#: includes/brikpanel-enqueue.php:1025
 msgid "Out of stock"
 msgstr "Stokta yok"
 
-#: includes/brikpanel-enqueue.php:399
+#: includes/brikpanel-enqueue.php:716
 msgid "PERMANENT DELETE — This cannot be undone. Are you absolutely sure?"
 msgstr "KALICI SİL — Bu geri alınamaz. Kesinlikle emin misiniz?"
 
-#: includes/brikpanel-enqueue.php:102
+#: includes/brikpanel-enqueue.php:219
 msgid "Page"
 msgstr "Sayfa"
 
@@ -1139,15 +1179,15 @@ msgstr "Sayfa"
 msgid "Parent category not found."
 msgstr "Üst kategori bulunamadı."
 
-#: front-end/orders/brikpanel-orders.php:157
+#: front-end/orders/brikpanel-orders.php:694
 msgid "Payment Method"
 msgstr "Ödeme Yöntemi"
 
-#: includes/brikpanel-enqueue.php:511
+#: includes/brikpanel-enqueue.php:1091
 msgid "Percentage"
 msgstr "Yüzde"
 
-#: front-end/coupons/brikpanel-coupons.php:231
+#: front-end/coupons/brikpanel-coupons.php:232
 msgid "Percentage discount"
 msgstr "Yüzde indirimi"
 
@@ -1155,196 +1195,220 @@ msgstr "Yüzde indirimi"
 msgid "Percentage, fixed cart, and fixed product discounts"
 msgstr "Yüzde, sabit sepet ve sabit ürün indirimleri"
 
-#: front-end/products/brikpanel-products-list.php:408
+#: front-end/products/brikpanel-products-list.php:648
 msgid "Permanently delete (skip trash)"
 msgstr "Kalıcı olarak sil (çöpü atla)"
 
-#: front-end/coupons/brikpanel-coupons.php:348
-#: front-end/coupons/brikpanel-coupons.php:446
-#: front-end/coupons/brikpanel-coupons.php:533
-#: front-end/coupons/brikpanel-coupons.php:565
-#: front-end/coupons/brikpanel-coupons.php:605
-#: front-end/orders/brikpanel-orders.php:196
+#: front-end/coupons/brikpanel-coupons.php:349
+#: front-end/coupons/brikpanel-coupons.php:539
+#: front-end/coupons/brikpanel-coupons.php:626
+#: front-end/coupons/brikpanel-coupons.php:658
+#: front-end/coupons/brikpanel-coupons.php:698
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:79
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:303
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:513
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:675
+#: front-end/expenses/brikpanel-expenses.php:52
+#: front-end/orders/brikpanel-orders.php:733
 #: front-end/products/brikpanel-category-enhancements.php:36
-#: front-end/products/brikpanel-product-editor.php:710
-#: front-end/products/brikpanel-product-editor.php:954
-#: front-end/products/brikpanel-product-editor.php:985
-#: front-end/products/brikpanel-product-editor.php:1016
-#: front-end/products/brikpanel-product-editor.php:1072
-#: front-end/products/brikpanel-products-list.php:444
-#: front-end/products/brikpanel-products-list.php:627
-#: front-end/products/brikpanel-products-list.php:732
-#: front-end/products/brikpanel-products-list.php:792
-#: front-end/products/brikpanel-products-list.php:818
-#: front-end/products/brikpanel-products-list.php:845
-#: front-end/products/brikpanel-products-list.php:1000
-#: front-end/products/brikpanel-products-list.php:1050
-#: front-end/products/brikpanel-products-list.php:1087
-#: front-end/products/brikpanel-products-list.php:1181
+#: front-end/products/brikpanel-product-editor.php:2048
+#: front-end/products/brikpanel-product-editor.php:2871
+#: front-end/products/brikpanel-product-editor.php:2928
+#: front-end/products/brikpanel-product-editor.php:2959
+#: front-end/products/brikpanel-product-editor.php:3015
+#: front-end/products/brikpanel-products-list.php:95
+#: front-end/products/brikpanel-products-list.php:748
+#: front-end/products/brikpanel-products-list.php:952
+#: front-end/products/brikpanel-products-list.php:1151
+#: front-end/products/brikpanel-products-list.php:1211
+#: front-end/products/brikpanel-products-list.php:1237
+#: front-end/products/brikpanel-products-list.php:1285
+#: front-end/products/brikpanel-products-list.php:1423
+#: front-end/products/brikpanel-products-list.php:1429
+#: front-end/products/brikpanel-products-list.php:1515
+#: front-end/products/brikpanel-products-list.php:1974
+#: front-end/products/brikpanel-products-list.php:2027
+#: front-end/products/brikpanel-products-list.php:2114
+#: front-end/segments/brikpanel-segments.php:93
+#: front-end/segments/brikpanel-segments.php:983
+#: includes/cron/class-brikpanel-cron-page.php:56
 msgid "Permission denied."
 msgstr "İzin reddedildi."
 
-#: front-end/login/brikpanel-login.php:135
+#: front-end/login/brikpanel-login.php:227
 msgid "Please enter a username or email address."
 msgstr "Lütfen bir kullanıcı adı veya e-posta adresi girin."
 
-#: front-end/login/brikpanel-login.php:114
+#: front-end/login/brikpanel-login.php:202
 msgid "Please enter both username and password."
 msgstr "Lütfen hem kullanıcı adını hem de şifreyi girin."
 
-#: front-end/login/brikpanel-login.php:137
+#: front-end/login/brikpanel-login.php:229
 msgid "Please enter your password."
 msgstr "Lütfen şifrenizi girin."
 
-#: includes/brikpanel-enqueue.php:434
+#: includes/brikpanel-enqueue.php:996
 msgid "Please fill in the price field"
 msgstr "Lütfen fiyat alanını doldurun"
 
-#: includes/brikpanel-enqueue.php:433
+#: includes/brikpanel-enqueue.php:995
 msgid "Please fill in the product name"
 msgstr "Lütfen ürün adını doldurun"
 
-#: includes/brikpanel-enqueue.php:432
+#: includes/brikpanel-enqueue.php:994
 msgid "Please fill in the required fields"
 msgstr "Lütfen gerekli alanları doldurun"
 
-#: front-end/products/brikpanel-products-list.php:870
-#: front-end/products/brikpanel-products-list.php:1101
-#: includes/brikpanel-enqueue.php:379
+#: front-end/products/brikpanel-products-list.php:1311
+#: includes/brikpanel-enqueue.php:692
 msgid "Please select a category."
 msgstr "Lütfen bir kategori seçin."
 
+#: front-end/customer-analytics/views/page.php:121
+#: front-end/customer-analytics/views/page.php:180
+#: front-end/expenses/brikpanel-expenses.php:143
+#: front-end/segments/views/page.php:193
 #: front-end/welcome/brikpanel-welcome.php:68
 #: front-end/welcome/brikpanel-welcome.php:399
+#: includes/cron/class-brikpanel-cron-page.php:165
 msgid "Previous"
 msgstr "Önceki"
 
-#: front-end/products/brikpanel-product-editor.php:229
-#: front-end/products/brikpanel-product-editor.php:485
-#: front-end/products/brikpanel-product-editor.php:1111
-#: front-end/products/brikpanel-products-list.php:194
-#: front-end/products/brikpanel-products-list.php:234
-#: front-end/products/brikpanel-products-list.php:318
-#: front-end/products/brikpanel-products-list.php:362
-#: includes/brikpanel-enqueue.php:389
+#: front-end/products/brikpanel-product-editor.php:480
+#: front-end/products/brikpanel-product-editor.php:898
+#: front-end/products/brikpanel-product-editor.php:3054
+#: front-end/products/brikpanel-products-list.php:61
+#: front-end/products/brikpanel-products-list.php:396
+#: front-end/products/brikpanel-products-list.php:436
+#: front-end/products/brikpanel-products-list.php:558
+#: front-end/products/brikpanel-products-list.php:602
+#: includes/brikpanel-enqueue.php:702
 msgid "Price"
 msgstr "Fiyat"
 
-#: includes/brikpanel-enqueue.php:388
+#: includes/brikpanel-enqueue.php:701
 msgid "Price by variation"
 msgstr "Varyasyona göre fiyat"
 
-#: front-end/products/brikpanel-products-list.php:163
+#: front-end/products/brikpanel-products-list.php:337
 msgid "Price high-low"
 msgstr "Fiyat azalan"
 
-#: front-end/products/brikpanel-products-list.php:162
+#: front-end/products/brikpanel-products-list.php:336
 msgid "Price low-high"
 msgstr "Fiyat artan"
 
-#: front-end/products/brikpanel-product-editor.php:1109
-#: front-end/products/brikpanel-products-list.php:192
-#: includes/brikpanel-enqueue.php:93
+#: front-end/products/brikpanel-product-editor.php:3052
+#: front-end/products/brikpanel-products-list.php:59
+#: front-end/products/brikpanel-products-list.php:394
+#: includes/brikpanel-enqueue.php:148
+#: includes/brikpanel-enqueue.php:210
 msgid "Product"
 msgstr "Ürün"
 
-#: front-end/products/brikpanel-product-editor.php:50
-#: front-end/products/brikpanel-product-editor.php:61
+#: front-end/products/brikpanel-product-editor.php:71
+#: front-end/products/brikpanel-product-editor.php:82
 #: front-end/welcome/brikpanel-welcome.php:141
 msgid "Product Editor"
 msgstr "Ürün Düzenleyici"
 
-#: includes/brikpanel-enqueue.php:83
+#: includes/brikpanel-enqueue.php:200
 msgid "Product Views"
 msgstr "Ürün Görüntülemeleri"
 
-#: front-end/products/brikpanel-product-editor.php:309
+#: front-end/orders/brikpanel-orders.php:404
+#: front-end/products/brikpanel-product-editor.php:623
 msgid "Product description"
 msgstr "Ürün açıklaması"
 
-#: front-end/products/brikpanel-product-editor.php:1060
-#: includes/brikpanel-enqueue.php:364
+#: front-end/products/brikpanel-product-editor.php:3003
+#: includes/brikpanel-enqueue.php:674
 msgid "Product duplicated!"
 msgstr "Ürün kopyalandı!"
 
-#: front-end/products/brikpanel-product-editor.php:215
+#: front-end/orders/brikpanel-orders.php:397
+#: front-end/products/brikpanel-product-editor.php:462
 msgid "Product images"
 msgstr "Ürün resimleri"
 
-#: front-end/products/brikpanel-products-list.php:802
+#: front-end/products/brikpanel-products-list.php:1221
 msgid "Product moved to trash."
 msgstr "Ürün çöpe taşındı."
 
-#: front-end/products/brikpanel-product-editor.php:207
-#: front-end/products/brikpanel-products-list.php:227
+#: front-end/products/brikpanel-product-editor.php:432
+#: front-end/products/brikpanel-products-list.php:429
 msgid "Product name"
 msgstr "Ürün adı"
 
-#: front-end/products/brikpanel-product-editor.php:747
+#: front-end/products/brikpanel-product-editor.php:2154
 msgid "Product name is required."
 msgstr "Ürün adı gereklidir."
 
-#: front-end/products/brikpanel-product-editor.php:122
-#: front-end/products/brikpanel-product-editor.php:725
-#: front-end/products/brikpanel-product-editor.php:1022
-#: front-end/products/brikpanel-product-editor.php:1081
-#: front-end/products/brikpanel-products-list.php:634
+#: front-end/products/brikpanel-product-editor.php:178
+#: front-end/products/brikpanel-product-editor.php:2114
+#: front-end/products/brikpanel-product-editor.php:2965
+#: front-end/products/brikpanel-product-editor.php:3024
+#: front-end/products/brikpanel-products-list.php:959
 msgid "Product not found."
 msgstr "Ürün bulunamadı."
 
-#: front-end/products/brikpanel-products-list.php:799
-#: includes/brikpanel-enqueue.php:369
+#: front-end/products/brikpanel-products-list.php:1218
+#: includes/brikpanel-enqueue.php:679
 msgid "Product permanently deleted."
 msgstr "Ürün kalıcı olarak silindi."
 
-#: includes/brikpanel-enqueue.php:367
+#: includes/brikpanel-enqueue.php:677
 msgid "Product restored!"
 msgstr "Ürün geri yüklendi!"
 
-#: front-end/products/brikpanel-product-editor.php:826
-#: includes/brikpanel-enqueue.php:431
+#: front-end/products/brikpanel-product-editor.php:2618
+#: includes/brikpanel-enqueue.php:993
 msgid "Product saved!"
 msgstr "Ürün kaydedildi!"
 
-#: front-end/products/brikpanel-product-editor.php:392
-#: includes/brikpanel-enqueue.php:452
+#: front-end/products/brikpanel-product-editor.php:753
+#: front-end/products/brikpanel-product-editor.php:768
+#: includes/brikpanel-enqueue.php:1015
 msgid "Product title"
 msgstr "Ürün başlığı"
 
-#: front-end/products/brikpanel-products-list.php:703
+#: front-end/products/brikpanel-products-list.php:1119
 msgid "Product updated!"
 msgstr "Ürün güncellendi!"
 
 #: front-end/brikpanel-site-submenu.php:24
-#: front-end/orders/brikpanel-orders.php:49
-#: front-end/products/brikpanel-product-editor.php:183
-#: front-end/products/brikpanel-products-list.php:46
-#: front-end/products/brikpanel-products-list.php:56
-#: front-end/products/brikpanel-products-list.php:103
+#: front-end/orders/brikpanel-orders.php:371
+#: front-end/products/brikpanel-product-editor.php:315
+#: front-end/products/brikpanel-products-list.php:121
+#: front-end/products/brikpanel-products-list.php:131
+#: front-end/products/brikpanel-products-list.php:263
+#: front-end/segments/views/page.php:152
 msgid "Products"
 msgstr "Ürünler"
 
-#: front-end/orders/brikpanel-orders.php:68
+#: front-end/orders/brikpanel-orders.php:471
 msgid "Products per page"
 msgstr "Sayfa başına ürün"
 
 #: front-end/coupons/brikpanel-coupons.php:154
-#: front-end/products/brikpanel-product-editor.php:196
-#: front-end/products/brikpanel-products-list.php:176
+#: front-end/products/brikpanel-products-list.php:373
 msgid "Publish"
 msgstr "Yayınla"
 
 #: front-end/coupons/brikpanel-coupons.php:122
-#: front-end/coupons/brikpanel-coupons.php:585
-#: front-end/products/brikpanel-product-editor.php:1121
-#: front-end/products/brikpanel-products-list.php:130
-#: front-end/products/brikpanel-products-list.php:265
-#: front-end/products/brikpanel-products-list.php:826
-#: includes/brikpanel-enqueue.php:356 includes/brikpanel-enqueue.php:488
+#: front-end/coupons/brikpanel-coupons.php:678
+#: front-end/products/brikpanel-product-editor.php:349
+#: front-end/products/brikpanel-product-editor.php:364
+#: front-end/products/brikpanel-product-editor.php:3064
+#: front-end/products/brikpanel-products-list.php:298
+#: front-end/products/brikpanel-products-list.php:481
+#: front-end/products/brikpanel-products-list.php:1245
+#: includes/brikpanel-enqueue.php:665
+#: includes/brikpanel-enqueue.php:1068
 msgid "Published"
 msgstr "Yayınlandı"
 
-#: includes/brikpanel-enqueue.php:94
+#: includes/brikpanel-enqueue.php:211
 msgid "Qty Sold"
 msgstr "Satılan Miktar"
 
@@ -1352,8 +1416,8 @@ msgstr "Satılan Miktar"
 msgid "Quick drawer editor"
 msgstr "Hızlı çekmece düzenleyici"
 
-#: front-end/products/brikpanel-products-list.php:219
-#: includes/brikpanel-enqueue.php:361
+#: front-end/products/brikpanel-products-list.php:421
+#: includes/brikpanel-enqueue.php:671
 msgid "Quick edit"
 msgstr "Hızlı düzenle"
 
@@ -1365,7 +1429,7 @@ msgstr "Kontrol panelinde gerçek zamanlı aktif ziyaretçi sayısı"
 msgid "Real-time insights"
 msgstr "Gerçek zamanlı analizler"
 
-#: front-end/dashboard/brikpanel-dashboard.php:208
+#: front-end/dashboard/brikpanel-dashboard.php:411
 msgid "Recent Orders"
 msgstr "Son Siparişler"
 
@@ -1373,102 +1437,100 @@ msgstr "Son Siparişler"
 msgid "Recent orders"
 msgstr "Son siparişler"
 
-#: front-end/dashboard/brikpanel-dashboard.php:882
+#: front-end/dashboard/brikpanel-dashboard.php:1914
 msgid "Referral"
 msgstr "Referans"
 
-#: includes/brikpanel-enqueue.php:88 includes/brikpanel-enqueue.php:263
+#: includes/brikpanel-enqueue.php:164
+#: includes/brikpanel-enqueue.php:205
+#: includes/brikpanel-enqueue.php:318
+#: includes/brikpanel-enqueue.php:570
 msgid "Refunded"
 msgstr "Geri Ödendi"
 
-#: front-end/products/brikpanel-products-list.php:324
-#: front-end/products/brikpanel-products-list.php:368
+#: front-end/products/brikpanel-products-list.php:564
+#: front-end/products/brikpanel-products-list.php:608
 msgid "Remove sale price"
 msgstr "İndirim fiyatını kaldır"
 
-#: front-end/orders/brikpanel-orders.php:57
-msgid ""
-"Replace the default WooCommerce product editor with a simplified, easy-to-"
-"use interface"
-msgstr ""
-"Varsayılan WooCommerce ürün düzenleyicisini basitleştirilmiş, kullanımı "
-"kolay bir arayüzle değiştir"
+#: front-end/orders/brikpanel-orders.php:379
+msgid "Replace the default WooCommerce product editor with a simplified, easy-to-use interface"
+msgstr "Varsayılan WooCommerce ürün düzenleyicisini basitleştirilmiş, kullanımı kolay bir arayüzle değiştir"
 
-#: front-end/orders/brikpanel-orders.php:106
-msgid ""
-"Replace the default WordPress dashboard with a modern, Shopify-inspired "
-"analytics dashboard"
-msgstr ""
-"Varsayılan WordPress panosunu modern, Shopify'dan ilham alan bir analitik "
-"panosuyla değiştir"
+#: front-end/orders/brikpanel-orders.php:509
+msgid "Replace the default WordPress dashboard with a modern, Shopify-inspired analytics dashboard"
+msgstr "Varsayılan WordPress panosunu modern, Shopify'dan ilham alan bir analitik panosuyla değiştir"
 
-#: front-end/orders/brikpanel-orders.php:122
+#: front-end/orders/brikpanel-orders.php:554
 msgid "Replace the default coupons list with a modern, AJAX-powered interface"
 msgstr "Varsayılan kuponlar listesini modern, AJAX destekli bir arayüzle değiştir"
 
-#: front-end/orders/brikpanel-orders.php:64
-msgid ""
-"Replace the default products list with a modern, AJAX-powered interface with "
-"inline editing"
-msgstr ""
-"Varsayılan ürünler listesini satır içi düzenlemeyle modern, AJAX destekli "
-"bir arayüzle değiştir"
+#: front-end/orders/brikpanel-orders.php:460
+msgid "Replace the default products list with a modern, AJAX-powered interface with inline editing"
+msgstr "Varsayılan ürünler listesini satır içi düzenlemeyle modern, AJAX destekli bir arayüzle değiştir"
 
-#: includes/brikpanel-enqueue.php:366 includes/brikpanel-enqueue.php:496
+#: includes/brikpanel-enqueue.php:676
+#: includes/brikpanel-enqueue.php:1076
 msgid "Restore"
 msgstr "Geri yükle"
 
-#: brikpanel.php:44 brikpanel.php:71
+#: brikpanel.php:100
+#: brikpanel.php:127
 msgctxt "Order status"
 msgid "Return Draft"
 msgstr "İade Taslağı"
 
-#: brikpanel.php:49
+#: brikpanel.php:105
 #, php-format
 msgid "Return Draft <span class=\"count\">(%s)</span>"
 msgid_plural "Return Draft <span class=\"count\">(%s)</span>"
 msgstr[0] "İade Taslağı <span class=\"count\">(%s)</span>"
 msgstr[1] "İade Taslağı <span class=\"count\">(%s)</span>"
 
-#: includes/brikpanel-enqueue.php:80 includes/brikpanel-enqueue.php:265
+#: front-end/coupons/brikpanel-coupons.php:174
+#: includes/brikpanel-enqueue.php:197
+#: includes/brikpanel-enqueue.php:572
 msgid "Revenue"
 msgstr "Gelir"
 
-#: front-end/products/brikpanel-product-editor.php:383
+#: front-end/orders/brikpanel-orders.php:408
 msgid "SEO settings"
 msgstr "SEO ayarları"
 
-#: front-end/products/brikpanel-product-editor.php:397
+#: front-end/products/brikpanel-product-editor.php:773
 msgid "SEO title"
 msgstr "SEO başlığı"
 
-#: front-end/products/brikpanel-product-editor.php:265
-#: front-end/products/brikpanel-product-editor.php:488
-#: front-end/products/brikpanel-product-editor.php:1110
-#: front-end/products/brikpanel-products-list.php:193
-#: front-end/products/brikpanel-products-list.php:254
+#: front-end/products/brikpanel-product-editor.php:552
+#: front-end/products/brikpanel-product-editor.php:905
+#: front-end/products/brikpanel-product-editor.php:3053
+#: front-end/products/brikpanel-products-list.php:60
+#: front-end/products/brikpanel-products-list.php:395
+#: front-end/products/brikpanel-products-list.php:456
+#: includes/brikpanel-enqueue.php:242
 msgid "SKU"
 msgstr "SKU"
 
-#: includes/brikpanel-enqueue.php:390 includes/brikpanel-enqueue.php:393
+#: includes/brikpanel-enqueue.php:703
+#: includes/brikpanel-enqueue.php:710
 msgid "Sale"
 msgstr "İndirim"
 
-#: front-end/products/brikpanel-product-editor.php:486
+#: front-end/products/brikpanel-product-editor.php:899
 msgid "Sale Price"
 msgstr "İndirim Fiyatı"
 
-#: front-end/products/brikpanel-products-list.php:321
-#: front-end/products/brikpanel-products-list.php:365
+#: front-end/products/brikpanel-products-list.php:561
+#: front-end/products/brikpanel-products-list.php:605
 msgid "Sale from regular price %"
 msgstr "Normal fiyattan % indirim"
 
-#: front-end/products/brikpanel-product-editor.php:238
-#: front-end/products/brikpanel-products-list.php:241
+#: front-end/products/brikpanel-product-editor.php:488
+#: front-end/products/brikpanel-products-list.php:443
 msgid "Sale price"
 msgstr "İndirim fiyatı"
 
-#: front-end/dashboard/brikpanel-dashboard.php:142
+#: front-end/dashboard/brikpanel-dashboard.php:323
 msgid "Sales Over Time"
 msgstr "Zaman İçinde Satışlar"
 
@@ -1476,41 +1538,40 @@ msgstr "Zaman İçinde Satışlar"
 msgid "Sales, orders, and conversion rate cards"
 msgstr "Satış, sipariş ve dönüşüm oranı kartları"
 
-#: includes/brikpanel-enqueue.php:228
+#: front-end/expenses/brikpanel-expenses.php:200
+#: front-end/products/brikpanel-product-editor.php:421
+#: includes/brikpanel-enqueue.php:527
 msgid "Save"
 msgstr "Kaydet"
 
-#: front-end/coupons/brikpanel-coupons.php:328
-#: front-end/products/brikpanel-products-list.php:282
-#: includes/brikpanel-enqueue.php:355 includes/brikpanel-enqueue.php:486
+#: front-end/coupons/brikpanel-coupons.php:329
+#: front-end/products/brikpanel-products-list.php:515
+#: includes/brikpanel-enqueue.php:664
+#: includes/brikpanel-enqueue.php:1066
 msgid "Save changes"
 msgstr "Değişiklikleri kaydet"
 
-#: front-end/products/brikpanel-product-editor.php:194
-msgid "Save draft"
-msgstr "Taslak kaydet"
-
-#: includes/brikpanel-enqueue.php:353 includes/brikpanel-enqueue.php:484
+#: includes/brikpanel-enqueue.php:662
+#: includes/brikpanel-enqueue.php:1064
 msgid "Saved!"
 msgstr "Kaydedildi!"
 
-#: includes/brikpanel-enqueue.php:354 includes/brikpanel-enqueue.php:435
-#: includes/brikpanel-enqueue.php:485
+#: includes/brikpanel-enqueue.php:663
+#: includes/brikpanel-enqueue.php:997
+#: includes/brikpanel-enqueue.php:1065
 msgid "Saving..."
 msgstr "Kaydediliyor..."
 
 #: front-end/welcome/brikpanel-welcome.php:307
-msgid ""
-"Search across orders, products, and customers from anywhere in the admin "
-"panel."
-msgstr ""
-"Yönetici panelinde her yerden sipariş, ürün ve müşterilerde arama yapın."
+msgid "Search across orders, products, and customers from anywhere in the admin panel."
+msgstr "Yönetici panelinde her yerden sipariş, ürün ve müşterilerde arama yapın."
 
 #: front-end/welcome/brikpanel-welcome.php:316
 msgid "Search by name, email, phone, order ID, or SKU"
 msgstr "Ad, e-posta, telefon, sipariş kimliği veya SKU ile arama"
 
-#: front-end/products/brikpanel-product-editor.php:277
+#: front-end/products/brikpanel-product-editor.php:566
+#: front-end/products/brikpanel-products-list.php:489
 msgid "Search categories..."
 msgstr "Kategorilerde ara..."
 
@@ -1518,17 +1579,18 @@ msgstr "Kategorilerde ara..."
 msgid "Search coupons..."
 msgstr "Kupon ara..."
 
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:183
 #: front-end/search/brikpanel-search.php:42
 #: front-end/search/brikpanel-search.php:50
 #: front-end/search/brikpanel-search.php:59
 msgid "Search orders"
 msgstr "Sipariş ara"
 
-#: front-end/products/brikpanel-products-list.php:109
+#: front-end/products/brikpanel-products-list.php:269
 msgid "Search products..."
 msgstr "Ürün ara..."
 
-#: front-end/login/brikpanel-login.php:104
+#: front-end/login/brikpanel-login.php:192
 msgid "Security check failed. Please refresh the page."
 msgstr "Güvenlik kontrolü başarısız. Lütfen sayfayı yenileyin."
 
@@ -1536,108 +1598,111 @@ msgstr "Güvenlik kontrolü başarısız. Lütfen sayfayı yenileyin."
 msgid "See which pages visitors are browsing"
 msgstr "Ziyaretçilerin hangi sayfaları gezdiğini görün"
 
-#: includes/brikpanel-enqueue.php:439
+#: includes/brikpanel-enqueue.php:1001
 msgid "Select"
 msgstr "Seç"
 
 #: front-end/coupons/brikpanel-coupons.php:150
-#: front-end/products/brikpanel-products-list.php:172
+#: front-end/products/brikpanel-products-list.php:365
 msgid "Select all"
 msgstr "Tümünü seç"
 
-#: front-end/products/brikpanel-products-list.php:348
-#: includes/brikpanel-enqueue.php:386
+#: front-end/products/brikpanel-products-list.php:588
+#: includes/brikpanel-enqueue.php:699
 msgid "Select attribute first"
 msgstr "Önce özellik seçin"
 
-#: front-end/dashboard/brikpanel-dashboard.php:105
+#: front-end/dashboard/brikpanel-dashboard.php:193
 msgid "Select dates"
 msgstr "Tarih seçin"
 
-#: includes/brikpanel-enqueue.php:448
+#: includes/brikpanel-enqueue.php:1011
 msgid "Select existing attribute..."
 msgstr "Mevcut özelliği seçin..."
 
-#: includes/brikpanel-enqueue.php:440
+#: includes/brikpanel-enqueue.php:1002
 msgid "Select image"
 msgstr "Resim seç"
 
-#: includes/brikpanel-enqueue.php:453
+#: includes/brikpanel-enqueue.php:1016
 msgid "Select images"
 msgstr "Resimleri seç"
 
-#: front-end/products/brikpanel-products-list.php:299
+#: front-end/products/brikpanel-products-list.php:532
 msgid "Selected products"
 msgstr "Seçili ürünler"
 
-#: front-end/products/brikpanel-products-list.php:391
+#: front-end/products/brikpanel-products-list.php:631
 msgid "Selected products only"
 msgstr "Yalnızca seçili ürünler"
 
-#: front-end/products/brikpanel-product-editor.php:468
+#: front-end/products/brikpanel-product-editor.php:873
 msgid "Set all prices:"
 msgstr "Tüm fiyatları ayarla:"
 
-#: front-end/products/brikpanel-product-editor.php:475
+#: front-end/products/brikpanel-product-editor.php:887
 msgid "Set all stocks:"
 msgstr "Tüm stokları ayarla:"
 
 #: front-end/coupons/brikpanel-coupons.php:155
-#: front-end/products/brikpanel-products-list.php:177
+#: front-end/products/brikpanel-products-list.php:374
 msgid "Set as draft"
 msgstr "Taslak olarak ayarla"
 
-#: front-end/products/brikpanel-products-list.php:319
-#: front-end/products/brikpanel-products-list.php:363
+#: front-end/products/brikpanel-products-list.php:559
+#: front-end/products/brikpanel-products-list.php:603
 msgid "Set regular price"
 msgstr "Normal fiyat ayarla"
 
-#: front-end/products/brikpanel-products-list.php:320
-#: front-end/products/brikpanel-products-list.php:364
+#: front-end/products/brikpanel-products-list.php:560
+#: front-end/products/brikpanel-products-list.php:604
 msgid "Set sale price"
 msgstr "İndirim fiyatı ayarla"
 
-#: front-end/products/brikpanel-products-list.php:327
-#: front-end/products/brikpanel-products-list.php:371
+#: front-end/products/brikpanel-products-list.php:567
+#: front-end/products/brikpanel-products-list.php:611
 msgid "Set stock quantity"
 msgstr "Stok miktarını ayarla"
 
-#: front-end/products/brikpanel-product-editor.php:345
+#: front-end/orders/brikpanel-orders.php:407
+#: front-end/products/brikpanel-product-editor.php:690
 msgid "Shipping dimensions"
 msgstr "Kargo boyutları"
 
-#: front-end/products/brikpanel-product-editor.php:324
+#: front-end/orders/brikpanel-orders.php:406
+#: front-end/products/brikpanel-product-editor.php:667
 msgid "Shipping weight"
 msgstr "Kargo ağırlığı"
 
-#: front-end/products/brikpanel-product-editor.php:300
+#: front-end/orders/brikpanel-orders.php:403
+#: front-end/products/brikpanel-product-editor.php:602
 msgid "Short description"
 msgstr "Kısa açıklama"
 
-#: includes/brikpanel-enqueue.php:269
+#: includes/brikpanel-enqueue.php:576
 msgid "Show all"
 msgstr "Tümünü göster"
 
-#: includes/brikpanel-enqueue.php:270
+#: includes/brikpanel-enqueue.php:577
 msgid "Show less"
 msgstr "Daha azını göster"
 
-#: includes/brikpanel-enqueue.php:506
+#: includes/brikpanel-enqueue.php:1086
 #, php-format
 msgid "Showing %1$d of %2$d coupons"
 msgstr "%2$d kupondan %1$d tanesi gösteriliyor"
 
-#: includes/brikpanel-enqueue.php:375
+#: includes/brikpanel-enqueue.php:687
 #, php-format
 msgid "Showing %1$d of %2$d products"
 msgstr "%2$d üründen %1$d tanesi gösteriliyor"
 
-#: includes/brikpanel-enqueue.php:507
+#: includes/brikpanel-enqueue.php:1087
 #, php-format
 msgid "Showing %1$d-%2$d of %3$d coupons"
 msgstr "%3$d kupondan %1$d-%2$d arası gösteriliyor"
 
-#: includes/brikpanel-enqueue.php:376
+#: includes/brikpanel-enqueue.php:688
 #, php-format
 msgid "Showing %1$d–%2$d of %3$d products"
 msgstr "%3$d üründen %1$d–%2$d arası gösteriliyor"
@@ -1654,19 +1719,28 @@ msgstr "Basitleştirilmiş Ürün Düzenleyici"
 msgid "Simplified editing"
 msgstr "Basitleştirilmiş düzenleme"
 
-#: front-end/orders/brikpanel-orders.php:54
+#: front-end/orders/brikpanel-orders.php:376
 msgid "Simplified product editor"
 msgstr "Basitleştirilmiş ürün düzenleyici"
 
-#: front-end/navigation/brikpanel-navigation.php:345
+#: front-end/navigation/brikpanel-navigation.php:359
 msgid "Site management"
 msgstr "Site yönetimi"
 
-#: front-end/products/brikpanel-product-editor.php:431
+#: includes/brikpanel-enqueue.php:401
+#: includes/brikpanel-enqueue.php:1033
+msgid "Size"
+msgstr "Beden"
+
+#: includes/brikpanel-enqueue.php:1034
+msgid "Color"
+msgstr "Renk"
+
+#: front-end/products/brikpanel-product-editor.php:836
 msgid "Size + Color"
 msgstr "Beden + Renk"
 
-#: front-end/products/brikpanel-product-editor.php:432
+#: front-end/products/brikpanel-product-editor.php:837
 msgid "Size and color combinations"
 msgstr "Beden ve renk kombinasyonları"
 
@@ -1680,44 +1754,51 @@ msgstr "Turu atla"
 msgid "Slide %d"
 msgstr "%d. Slayt"
 
-#: includes/brikpanel-enqueue.php:97
+#: includes/brikpanel-enqueue.php:214
 msgid "Source"
 msgstr "Kaynak"
 
-#: front-end/coupons/brikpanel-coupons.php:175
-#: front-end/products/brikpanel-product-editor.php:1114
-#: front-end/products/brikpanel-products-list.php:197
-#: front-end/products/brikpanel-products-list.php:263
-#: includes/brikpanel-enqueue.php:98
+#: front-end/coupons/brikpanel-coupons.php:176
+#: front-end/products/brikpanel-product-editor.php:903
+#: front-end/products/brikpanel-product-editor.php:3057
+#: front-end/products/brikpanel-products-list.php:64
+#: front-end/products/brikpanel-products-list.php:399
+#: front-end/products/brikpanel-products-list.php:479
+#: front-end/segments/brikpanel-segments.php:1004
+#: includes/brikpanel-enqueue.php:215
+#: includes/brikpanel-enqueue.php:298
+#: includes/cron/class-brikpanel-cron-page.php:116
+#: includes/cron/class-brikpanel-cron-page.php:152
 msgid "Status"
 msgstr "Durum"
 
-#: includes/brikpanel-enqueue.php:232
+#: includes/brikpanel-enqueue.php:531
 #, php-format
 msgid "Status changed to %s"
 msgstr "Durum %s olarak değiştirildi"
 
 #. translators: %s: new status label
-#: front-end/products/brikpanel-products-list.php:831
+#: front-end/products/brikpanel-products-list.php:1250
 #, php-format
 msgid "Status changed to %s."
 msgstr "Durum %s olarak değiştirildi."
 
-#: front-end/products/brikpanel-product-editor.php:487
-#: front-end/products/brikpanel-product-editor.php:1112
-#: front-end/products/brikpanel-products-list.php:195
-#: front-end/products/brikpanel-products-list.php:250
-#: front-end/products/brikpanel-products-list.php:326
-#: front-end/products/brikpanel-products-list.php:370
-#: includes/brikpanel-enqueue.php:391
+#: front-end/products/brikpanel-product-editor.php:902
+#: front-end/products/brikpanel-product-editor.php:3055
+#: front-end/products/brikpanel-products-list.php:62
+#: front-end/products/brikpanel-products-list.php:397
+#: front-end/products/brikpanel-products-list.php:566
+#: front-end/products/brikpanel-products-list.php:610
+#: includes/brikpanel-enqueue.php:704
 msgid "Stock"
 msgstr "Stok"
 
-#: includes/brikpanel-enqueue.php:387
+#: includes/brikpanel-enqueue.php:700
 msgid "Stock by variation"
 msgstr "Varyasyona göre stok"
 
-#: front-end/products/brikpanel-product-editor.php:260
+#: front-end/products/brikpanel-product-editor.php:539
+#: front-end/products/brikpanel-products-list.php:452
 msgid "Stock quantity"
 msgstr "Stok miktarı"
 
@@ -1725,43 +1806,46 @@ msgstr "Stok miktarı"
 msgid "Streamlined workflow"
 msgstr "Verimli iş akışı"
 
-#: includes/brikpanel-enqueue.php:86
+#: includes/brikpanel-enqueue.php:162
+#: includes/brikpanel-enqueue.php:203
 msgid "Successful"
 msgstr "Başarılı"
 
-#: front-end/orders/brikpanel-orders.php:159
+#: front-end/orders/brikpanel-orders.php:696
 msgid "Tax Total"
 msgstr "Vergi Toplamı"
 
-#: front-end/login/brikpanel-login.php:133
+#: front-end/login/brikpanel-login.php:225
 msgid "The password you entered is incorrect."
 msgstr "Girdiğiniz şifre yanlış."
 
-#: front-end/products/brikpanel-products-list.php:386
+#: front-end/products/brikpanel-products-list.php:626
 msgid "This action cannot be undone when permanent delete is enabled."
 msgstr "Kalıcı silme etkinleştirildiğinde bu işlem geri alınamaz."
 
-#: includes/brikpanel-enqueue.php:445
+#: includes/brikpanel-enqueue.php:1008
 msgid "This field is required"
 msgstr "Bu alan gereklidir"
 
-#: front-end/dashboard/brikpanel-dashboard.php:98
+#: front-end/dashboard/brikpanel-dashboard.php:186
+#: includes/brikpanel-enqueue.php:310
+#: includes/brikpanel-enqueue.php:392
 msgid "Today"
 msgstr "Bugün"
 
-#: front-end/dashboard/brikpanel-dashboard.php:179
+#: front-end/dashboard/brikpanel-dashboard.php:378
 msgid "Toggle theme"
 msgstr "Temayı değiştir"
 
-#: front-end/dashboard/brikpanel-dashboard.php:192
+#: front-end/dashboard/brikpanel-dashboard.php:391
 msgid "Top Cities"
 msgstr "En Çok Sipariş Gelen Şehirler"
 
-#: front-end/dashboard/brikpanel-dashboard.php:188
+#: front-end/dashboard/brikpanel-dashboard.php:387
 msgid "Top Countries"
 msgstr "En Çok Sipariş Gelen Ülkeler"
 
-#: front-end/dashboard/brikpanel-dashboard.php:202
+#: front-end/dashboard/brikpanel-dashboard.php:405
 msgid "Top Products"
 msgstr "En Çok Satan Ürünler"
 
@@ -1769,11 +1853,13 @@ msgstr "En Çok Satan Ürünler"
 msgid "Top products and customers overview"
 msgstr "En iyi ürünler ve müşterilere genel bakış"
 
-#: includes/brikpanel-enqueue.php:99
+#: front-end/segments/brikpanel-segments.php:1010
+#: includes/brikpanel-enqueue.php:216
+#: includes/brikpanel-enqueue.php:303
 msgid "Total"
 msgstr "Toplam"
 
-#: front-end/dashboard/brikpanel-dashboard.php:113
+#: front-end/dashboard/brikpanel-dashboard.php:219
 msgid "Total Sales"
 msgstr "Toplam Satışlar"
 
@@ -1782,9 +1868,10 @@ msgid "Track cart and checkout activity live"
 msgstr "Sepet ve ödeme aktivitelerini canlı takip edin"
 
 #: front-end/coupons/brikpanel-coupons.php:131
-#: front-end/products/brikpanel-products-list.php:139
-#: includes/brikpanel-enqueue.php:358 includes/brikpanel-enqueue.php:359
-#: includes/brikpanel-enqueue.php:490
+#: front-end/products/brikpanel-products-list.php:313
+#: includes/brikpanel-enqueue.php:668
+#: includes/brikpanel-enqueue.php:669
+#: includes/brikpanel-enqueue.php:1070
 msgid "Trash"
 msgstr "Çöp Kutusu"
 
@@ -1792,25 +1879,26 @@ msgstr "Çöp Kutusu"
 msgid "Type"
 msgstr "Tür"
 
-#: includes/brikpanel-enqueue.php:441
+#: includes/brikpanel-enqueue.php:1003
 msgid "Type and press Enter..."
 msgstr "Yazın ve Enter'a basın..."
 
-#: front-end/login/brikpanel-login.php:131
+#: front-end/login/brikpanel-login.php:223
 msgid "Unknown username or email address."
 msgstr "Bilinmeyen kullanıcı adı veya e-posta adresi."
 
-#: front-end/coupons/brikpanel-coupons.php:311
-#: front-end/coupons/brikpanel-coupons.php:315
+#: front-end/coupons/brikpanel-coupons.php:312
+#: front-end/coupons/brikpanel-coupons.php:316
+#: includes/brikpanel-enqueue.php:538
 msgid "Unlimited"
 msgstr "Sınırsız"
 
-#: front-end/products/brikpanel-product-editor.php:196
-#: includes/brikpanel-enqueue.php:446
+#: front-end/products/brikpanel-product-editor.php:421
+#: includes/brikpanel-enqueue.php:1009
 msgid "Update"
 msgstr "Güncelle"
 
-#: front-end/products/brikpanel-product-editor.php:1098
+#: front-end/products/brikpanel-product-editor.php:3041
 msgid "Updated"
 msgstr "Güncellendi"
 
@@ -1818,19 +1906,19 @@ msgstr "Güncellendi"
 msgid "Usage / Limit"
 msgstr "Kullanım / Sınır"
 
-#: front-end/coupons/brikpanel-coupons.php:320
+#: front-end/coupons/brikpanel-coupons.php:321
 msgid "Usage count"
 msgstr "Kullanım sayısı"
 
-#: front-end/coupons/brikpanel-coupons.php:310
+#: front-end/coupons/brikpanel-coupons.php:311
 msgid "Usage limit per coupon"
 msgstr "Kupon başına kullanım sınırı"
 
-#: front-end/coupons/brikpanel-coupons.php:314
+#: front-end/coupons/brikpanel-coupons.php:315
 msgid "Usage limit per user"
 msgstr "Kullanıcı başına kullanım sınırı"
 
-#: front-end/coupons/brikpanel-coupons.php:306
+#: front-end/coupons/brikpanel-coupons.php:307
 msgid "Usage limits"
 msgstr "Kullanım sınırları"
 
@@ -1838,44 +1926,40 @@ msgstr "Kullanım sınırları"
 msgid "Usage limits, expiry dates, and spend restrictions"
 msgstr "Kullanım sınırları, son kullanma tarihleri ve harcama kısıtlamaları"
 
-#: front-end/coupons/brikpanel-coupons.php:263
+#: front-end/coupons/brikpanel-coupons.php:264
 msgid "Usage restrictions"
 msgstr "Kullanım kısıtlamaları"
 
-#: front-end/products/brikpanel-product-editor.php:439
+#: front-end/products/brikpanel-product-editor.php:844
 msgid "Use existing or create new attributes"
 msgstr "Mevcut özellikleri kullanın veya yeni oluşturun"
 
-#: front-end/products/brikpanel-products-list.php:352
-msgid ""
-"Use the variation filter to update only specific variations, e.g. only "
-"\"Size: XL\"."
-msgstr ""
-"Yalnızca belirli varyasyonları güncellemek için varyasyon filtresini "
-"kullanın, ör. yalnızca \"Beden: XL\"."
+#: front-end/products/brikpanel-products-list.php:592
+msgid "Use the variation filter to update only specific variations, e.g. only \"Size: XL\"."
+msgstr "Yalnızca belirli varyasyonları güncellemek için varyasyon filtresini kullanın, ör. yalnızca \"Beden: XL\"."
 
-#: front-end/products/brikpanel-products-list.php:333
-#: front-end/products/brikpanel-products-list.php:377
+#: front-end/products/brikpanel-products-list.php:573
+#: front-end/products/brikpanel-products-list.php:617
 msgid "Value"
 msgstr "Değer"
 
-#: includes/brikpanel-enqueue.php:360
+#: includes/brikpanel-enqueue.php:670
 msgid "Variable"
 msgstr "Değişken"
 
-#: front-end/products/brikpanel-product-editor.php:484
+#: front-end/products/brikpanel-product-editor.php:897
 msgid "Variation"
 msgstr "Varyasyon"
 
-#: front-end/products/brikpanel-products-list.php:339
+#: front-end/products/brikpanel-products-list.php:579
 msgid "Variation filter (optional)"
 msgstr "Varyasyon filtresi (isteğe bağlı)"
 
-#: front-end/products/brikpanel-products-list.php:1057
+#: front-end/products/brikpanel-products-list.php:2034
 msgid "Variation not found."
 msgstr "Varyasyon bulunamadı."
 
-#: front-end/products/brikpanel-products-list.php:1076
+#: front-end/products/brikpanel-products-list.php:2093
 msgid "Variation updated!"
 msgstr "Varyasyon güncellendi!"
 
@@ -1883,20 +1967,20 @@ msgstr "Varyasyon güncellendi!"
 msgid "Variation wizard with ready-made templates"
 msgstr "Hazır şablonlarla varyasyon sihirbazı"
 
-#: front-end/products/brikpanel-product-editor.php:464
+#: front-end/products/brikpanel-product-editor.php:869
 msgid "Variations"
 msgstr "Varyasyonlar"
 
-#: includes/brikpanel-enqueue.php:395
+#: includes/brikpanel-enqueue.php:712
 msgid "View"
 msgstr "Görüntüle"
 
-#: front-end/products/brikpanel-product-editor.php:189
-#: includes/brikpanel-enqueue.php:447
+#: front-end/products/brikpanel-product-editor.php:322
+#: includes/brikpanel-enqueue.php:1010
 msgid "View product"
 msgstr "Ürünü görüntüle"
 
-#: includes/brikpanel-enqueue.php:103
+#: includes/brikpanel-enqueue.php:220
 msgid "Views"
 msgstr "Görüntülemeler"
 
@@ -1904,8 +1988,8 @@ msgstr "Görüntülemeler"
 msgid "Visitor monitoring"
 msgstr "Ziyaretçi takibi"
 
-#: front-end/dashboard/brikpanel-dashboard.php:128
-#: includes/brikpanel-enqueue.php:82
+#: front-end/dashboard/brikpanel-dashboard.php:234
+#: includes/brikpanel-enqueue.php:199
 msgid "Visitors"
 msgstr "Ziyaretçiler"
 
@@ -1913,27 +1997,24 @@ msgstr "Ziyaretçiler"
 msgid "Welcome to BrikPanel"
 msgstr "BrikPanel'e Hoş Geldiniz"
 
-#: front-end/products/brikpanel-product-editor.php:362
+#: front-end/products/brikpanel-product-editor.php:707
 msgid "Width"
 msgstr "Genişlik"
 
-#: front-end/dashboard/brikpanel-dashboard.php:99
+#: front-end/dashboard/brikpanel-dashboard.php:187
 msgid "Yesterday"
 msgstr "Dün"
 
 #: front-end/search/brikpanel-search.php:66
-msgid ""
-"You can search orders by customer name, email, phone, order ID, or product "
-"SKUs within an order."
-msgstr ""
-"Siparişleri müşteri adı, e-posta, telefon, sipariş kimliği veya sipariş "
-"içindeki ürün SKU'larına göre arayabilirsiniz."
+#: includes/brikpanel-enqueue.php:428
+msgid "You can search orders by customer name, email, phone, order ID, or product SKUs within an order."
+msgstr "Siparişleri müşteri adı, e-posta, telefon, sipariş kimliği veya sipariş içindeki ürün SKU'larına göre arayabilirsiniz."
 
-#: front-end/coupons/brikpanel-coupons.php:214
+#: front-end/coupons/brikpanel-coupons.php:215
 msgid "e.g. SUMMER2024"
 msgstr "ör. YAZ2024"
 
-#: front-end/products/brikpanel-product-editor.php:268
+#: front-end/products/brikpanel-product-editor.php:555
 msgid "e.g.: TSH-001"
 msgstr "ör.: TSH-001"
 
@@ -1942,33 +2023,29 @@ msgstr "ör.: TSH-001"
 msgid "https://brksoft.com/"
 msgstr "https://brksoft.com/"
 
-#: includes/brikpanel-enqueue.php:449
+#: includes/brikpanel-enqueue.php:1012
 msgid "or create new"
 msgstr "veya yeni oluştur"
 
-#: includes/brikpanel-enqueue.php:268
+#: includes/brikpanel-enqueue.php:575
 msgid "orders"
 msgstr "sipariş"
 
-#: includes/brikpanel-enqueue.php:267
+#: includes/brikpanel-enqueue.php:574
 msgid "products"
 msgstr "ürün"
 
 #: front-end/coupons/brikpanel-coupons.php:149
-#: front-end/products/brikpanel-products-list.php:171
+#: front-end/products/brikpanel-products-list.php:364
 msgid "selected"
 msgstr "seçildi"
 
-#: front-end/products/brikpanel-product-editor.php:288
+#: front-end/products/brikpanel-product-editor.php:577
 msgid "— No parent —"
 msgstr "— Üst yok —"
 
-#: front-end/products/brikpanel-products-list.php:272
-msgid "— None —"
-msgstr "— Hiçbiri —"
-
-#: front-end/products/brikpanel-products-list.php:308
-#: front-end/products/brikpanel-products-list.php:399
+#: front-end/products/brikpanel-products-list.php:548
+#: front-end/products/brikpanel-products-list.php:639
 msgid "— Select category —"
 msgstr "— Kategori seçin —"
 
@@ -1976,3 +2053,2008 @@ msgstr "— Kategori seçin —"
 #, php-format
 msgid "🎉 Congratulations, you have a new order of %s."
 msgstr "🎉 Tebrikler, %s tutarında yeni bir siparişiniz var."
+
+#: includes/brikpanel-enqueue.php:167
+msgid "% of total orders"
+msgstr "toplam siparişlerin %'si"
+
+#: includes/brikpanel-enqueue.php:173
+msgid "Add To Cart Count"
+msgstr "Sepete Ekleme Sayısı"
+
+#: front-end/products/brikpanel-product-editor.php:656
+msgid "Add downloadable file"
+msgstr "İndirilebilir dosya ekle"
+
+#: includes/brikpanel-enqueue.php:153
+msgid "Calculating..."
+msgstr "Hesaplanıyor..."
+
+#: front-end/dashboard/brikpanel-dashboard.php:374
+#: front-end/segments/views/page.php:38
+#: includes/brikpanel-enqueue.php:152
+#: includes/brikpanel-enqueue.php:246
+#: includes/brikpanel-enqueue.php:390
+msgid "Customers"
+msgstr "Müşteriler"
+
+#: front-end/products/brikpanel-product-editor.php:652
+msgid "Customers will receive a download link after purchase. No physical shipping needed."
+msgstr "Müşteriler satın alma sonrası indirme bağlantısı alacaktır. Fiziksel kargo gerekmez."
+
+#: front-end/orders/brikpanel-orders.php:405
+#: front-end/products/brikpanel-product-editor.php:644
+msgid "Digital product (downloadable)"
+msgstr "Dijital ürün (indirilebilir)"
+
+#: includes/brikpanel-review-notices.php:151
+msgid "Dismiss"
+msgstr "Kapat"
+
+#: includes/brikpanel-review-notices.php:114
+msgid "Enjoying BrikPanel so far?"
+msgstr "BrikPanel'i beğeniyor musunuz?"
+
+#: includes/brikpanel-enqueue.php:154
+msgid "Error"
+msgstr "Hata"
+
+#: front-end/products/brikpanel-products-list.php:277
+msgid "Export"
+msgstr "Dışa Aktar"
+
+#: includes/brikpanel-enqueue.php:1020
+msgid "File name"
+msgstr "Dosya adı"
+
+#: includes/brikpanel-review-notices.php:139
+msgid "I already did"
+msgstr "Zaten yaptım"
+
+#: front-end/products/brikpanel-products-list.php:273
+msgid "Import"
+msgstr "İçe Aktar"
+
+#: includes/brikpanel-review-notices.php:112
+msgid "It looks like BrikPanel is helping you run your store. Would you take 30 seconds to leave a 5-star review? It would mean the world to our small team and helps other store owners discover the plugin."
+msgstr "BrikPanel mağazanızı yönetmenize yardımcı görünüyor. Bize 30 saniyenizi ayırıp 5 yıldızlı bir yorum bırakır mısınız? Bu, küçük ekibimiz için çok önemli ve diğer mağaza sahiplerinin eklentiyi keşfetmesine yardımcı olur."
+
+#: includes/brikpanel-review-notices.php:134
+msgid "Leave a 5-star review"
+msgstr "5 yıldızlı yorum bırak"
+
+#: front-end/orders/brikpanel-orders.php:562
+msgid "Login Page"
+msgstr "Giriş Sayfası"
+
+#: includes/brikpanel-review-notices.php:144
+msgid "Maybe later"
+msgstr "Belki sonra"
+
+#: front-end/orders/brikpanel-orders.php:567
+msgid "Modern login page"
+msgstr "Modern giriş sayfası"
+
+#: includes/brikpanel-enqueue.php:1019
+msgid "No files added yet."
+msgstr "Henüz dosya eklenmedi."
+
+#: includes/brikpanel-enqueue.php:166
+msgid "Order Statuses"
+msgstr "Sipariş Durumları"
+
+#: includes/brikpanel-enqueue.php:156
+msgid "Please select a valid custom date range."
+msgstr "Lütfen geçerli bir özel tarih aralığı seçin."
+
+#: includes/brikpanel-enqueue.php:174
+#: includes/brikpanel-enqueue.php:181
+#: includes/brikpanel-enqueue.php:188
+msgid "Please select a valid date range."
+msgstr "Lütfen geçerli bir tarih aralığı seçin."
+
+#: includes/brikpanel-enqueue.php:1022
+msgid "Remove"
+msgstr "Kaldır"
+
+#: front-end/orders/brikpanel-orders.php:570
+msgid "Replace the default WordPress login page with a clean, modern design and AJAX-powered authentication"
+msgstr "Varsayılan WordPress giriş sayfasını temiz, modern tasarım ve AJAX destekli kimlik doğrulamayla değiştir"
+
+#: includes/brikpanel-enqueue.php:1018
+msgid "Select downloadable file"
+msgstr "İndirilebilir dosya seç"
+
+#: includes/brikpanel-enqueue.php:180
+msgid "Total Sales Count"
+msgstr "Toplam Satış Sayısı"
+
+#: includes/brikpanel-enqueue.php:187
+msgid "View Count"
+msgstr "Görüntülenme Sayısı"
+
+#: includes/brikpanel-enqueue.php:147
+msgid "Visitor"
+msgstr "Ziyaretçi"
+
+#: includes/brikpanel-review-notices.php:115
+msgid "You've been using BrikPanel for a couple of weeks. If it has saved you time, would you mind leaving a quick 5-star review? It only takes 30 seconds and helps us a lot."
+msgstr "BrikPanel'i birkaç haftadır kullanıyorsunuz. Zaman kazandırdıysa, hızlı bir 5 yıldızlı yorum bırakmayı düşünür müsünüz? Yalnızca 30 saniye alıyor ve bize çok yardımcı oluyor."
+
+#. translators: %d: number of completed orders
+#: includes/brikpanel-review-notices.php:109
+#, php-format
+msgid "You've completed %d orders with BrikPanel — congrats!"
+msgstr "BrikPanel ile %d siparişi tamamladınız — tebrikler!"
+
+#: brikpanel.php:487
+msgid "Settings"
+msgstr "Ayarlar"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:50
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:51
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:62
+#: front-end/customer-analytics/views/page.php:20
+msgid "Customer Analytics"
+msgstr "Müşteri Analitiği"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:318
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:539
+#: front-end/segments/brikpanel-segments.php:1028
+msgid "User ID"
+msgstr "Kullanıcı ID"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:319
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:540
+#: front-end/segments/brikpanel-segments.php:1029
+msgid "Name"
+msgstr "Ad"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:320
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:541
+#: front-end/segments/brikpanel-segments.php:1006
+#: front-end/segments/brikpanel-segments.php:1030
+#: includes/brikpanel-enqueue.php:300
+msgid "Email"
+msgstr "E-posta"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:321
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:546
+#: front-end/segments/views/page.php:111
+msgid "Order count"
+msgstr "Sipariş sayısı"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:322
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:547
+msgid "Total spent (LTV)"
+msgstr "Toplam harcama (LTV)"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:323
+#: front-end/segments/brikpanel-segments.php:1034
+#: front-end/segments/views/page.php:177
+msgid "Average order value"
+msgstr "Ortalama sipariş değeri"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:324
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:548
+msgid "Recency (days)"
+msgstr "Yakınlık (gün)"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:325
+#: front-end/segments/brikpanel-segments.php:1035
+msgid "First order"
+msgstr "İlk sipariş"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:326
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:549
+#: front-end/customer-analytics/views/page.php:111
+#: front-end/customer-analytics/views/page.php:170
+#: front-end/segments/brikpanel-segments.php:1036
+#: includes/brikpanel-enqueue.php:308
+msgid "Last order"
+msgstr "Son sipariş"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:442
+msgid "Invalid segment."
+msgstr "Geçersiz segment."
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:542
+msgid "Segment"
+msgstr "Segment"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:543
+msgid "R"
+msgstr "R"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:544
+msgid "F"
+msgstr "F"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:545
+msgid "M"
+msgstr "M"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:689
+msgid "Cohort month"
+msgstr "Kohort ayı"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:690
+msgid "Period offset (months)"
+msgstr "Dönem farkı (ay)"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:691
+msgid "Cohort size"
+msgstr "Kohort boyutu"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:692
+msgid "Retained customers"
+msgstr "Elde tutulan müşteriler"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:693
+msgid "Retention rate (%)"
+msgstr "Elde tutma oranı (%)"
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:717
+msgid "Action Scheduler is not available."
+msgstr "Action Scheduler kullanılamıyor."
+
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:726
+msgid "Customer metrics recomputed."
+msgstr "Müşteri metrikleri yeniden hesaplandı."
+
+#. translators: %s: timestamp
+#: front-end/customer-analytics/views/page.php:25
+#, php-format
+msgid "Last refreshed: %s"
+msgstr "Son güncelleme: %s"
+
+#: front-end/customer-analytics/views/page.php:27
+msgid "Not computed yet — running first sync…"
+msgstr "Henüz hesaplanmadı — ilk senkronizasyon çalıştırılıyor…"
+
+#: front-end/customer-analytics/views/page.php:34
+msgid "Recompute now"
+msgstr "Şimdi yeniden hesapla"
+
+#: front-end/customer-analytics/views/page.php:37
+#: front-end/expenses/brikpanel-expenses.php:117
+#: front-end/segments/views/page.php:28
+msgid "Export CSV"
+msgstr "CSV olarak dışa aktar"
+
+#: front-end/customer-analytics/views/page.php:44
+msgid "Lifetime Value"
+msgstr "Yaşam Boyu Değer"
+
+#: front-end/customer-analytics/views/page.php:47
+msgid "RFM Segments"
+msgstr "RFM Segmentleri"
+
+#: front-end/customer-analytics/views/page.php:50
+msgid "Cohort Retention"
+msgstr "Kohort Elde Tutma"
+
+#: front-end/customer-analytics/views/page.php:61
+msgid "Total customers"
+msgstr "Toplam müşteriler"
+
+#: front-end/customer-analytics/views/page.php:66
+#: front-end/dashboard/brikpanel-dashboard.php:244
+msgid "Average LTV"
+msgstr "Ortalama LTV"
+
+#: front-end/customer-analytics/views/page.php:69
+msgid "Median:"
+msgstr "Medyan:"
+
+#: front-end/customer-analytics/views/page.php:74
+msgid "Total LTV"
+msgstr "Toplam LTV"
+
+#: front-end/customer-analytics/views/page.php:77
+msgid "AOV:"
+msgstr "OSD:"
+
+#: front-end/customer-analytics/views/page.php:82
+msgid "Top customer"
+msgstr "En iyi müşteri"
+
+#: front-end/customer-analytics/views/page.php:84
+msgid "highest lifetime spend"
+msgstr "en yüksek yaşam boyu harcama"
+
+#: front-end/customer-analytics/views/page.php:90
+msgid "LTV distribution"
+msgstr "LTV dağılımı"
+
+#: front-end/customer-analytics/views/page.php:91
+msgid "How many customers fall into each lifetime-spend bracket."
+msgstr "Her yaşam boyu harcama aralığına kaç müşteri düşüyor."
+
+#: front-end/customer-analytics/views/page.php:100
+msgid "Top customers by LTV"
+msgstr "LTV'ye göre en iyi müşteriler"
+
+#: front-end/customer-analytics/views/page.php:101
+msgid "Sorted by lifetime spend, descending. Click a row to open the customer profile."
+msgstr "Yaşam boyu harcamaya göre azalan sırada. Müşteri profilini açmak için bir satıra tıklayın."
+
+#: front-end/customer-analytics/views/page.php:109
+#: front-end/customer-analytics/views/page.php:168
+#: includes/brikpanel-enqueue.php:226
+#: includes/brikpanel-enqueue.php:307
+msgid "AOV"
+msgstr "OSD"
+
+#: front-end/customer-analytics/views/page.php:110
+#: front-end/customer-analytics/views/page.php:169
+#: includes/brikpanel-enqueue.php:398
+msgid "LTV"
+msgstr "LTV"
+
+#: front-end/customer-analytics/views/page.php:112
+#: front-end/customer-analytics/views/page.php:171
+msgid "Recency"
+msgstr "Yakınlık"
+
+#: front-end/customer-analytics/views/page.php:116
+#: front-end/customer-analytics/views/page.php:140
+#: front-end/customer-analytics/views/page.php:211
+#: front-end/expenses/brikpanel-expenses.php:138
+#: front-end/segments/views/page.php:187
+#: includes/brikpanel-enqueue.php:386
+#: includes/cron/class-brikpanel-cron-page.php:160
+#: includes/cron/class-brikpanel-cron-page.php:179
+msgid "Loading…"
+msgstr "Yükleniyor…"
+
+#: front-end/customer-analytics/views/page.php:135
+msgid "Customer segments"
+msgstr "Müşteri segmentleri"
+
+#: front-end/customer-analytics/views/page.php:136
+msgid "Each customer is scored 1–5 on Recency, Frequency, and Monetary value, then placed into one of the RFM segments below. Click a card to drill into its customers."
+msgstr "Her müşteri Yakınlık, Sıklık ve Parasal değer üzerinden 1-5 arasında puanlanır ve aşağıdaki RFM segmentlerinden birine yerleştirilir. Müşterilerine bakmak için bir karta tıklayın."
+
+#: front-end/customer-analytics/views/page.php:150
+msgid "Segment customers"
+msgstr "Segment müşterileri"
+
+#: front-end/customer-analytics/views/page.php:155
+msgid "Export this segment (CSV)"
+msgstr "Bu segmenti dışa aktar (CSV)"
+
+#: front-end/customer-analytics/views/page.php:158
+msgid "Clear selection"
+msgstr "Seçimi temizle"
+
+#: front-end/customer-analytics/views/page.php:166
+msgid "RFM"
+msgstr "RFM"
+
+#: front-end/customer-analytics/views/page.php:175
+msgid "Click a segment above to load its customers."
+msgstr "Müşterilerini yüklemek için yukarıdan bir segment seçin."
+
+#: front-end/customer-analytics/views/page.php:195
+msgid "Cohort retention"
+msgstr "Kohort elde tutma"
+
+#: front-end/customer-analytics/views/page.php:197
+msgid "Each row is a monthly cohort of customers acquired that month. Each cell shows the % of that cohort who placed at least one order N months later."
+msgstr "Her satır o ay kazanılan müşterilerin aylık bir kohortudur. Her hücre, o kohortun N ay sonra en az bir sipariş verenlerinin %'sini gösterir."
+
+#: front-end/customer-analytics/views/page.php:201
+msgid "Window:"
+msgstr "Pencere:"
+
+#: front-end/customer-analytics/views/page.php:203
+msgid "Last 6 months"
+msgstr "Son 6 ay"
+
+#: front-end/customer-analytics/views/page.php:204
+msgid "Last 12 months"
+msgstr "Son 12 ay"
+
+#: front-end/customer-analytics/views/page.php:205
+msgid "Last 24 months"
+msgstr "Son 24 ay"
+
+#: front-end/customer-analytics/views/page.php:218
+msgid "Average retention by month offset"
+msgstr "Ay farkına göre ortalama elde tutma"
+
+#: front-end/customer-analytics/views/page.php:219
+msgid "Across all cohorts in the selected window — useful for spotting where the typical drop-off happens."
+msgstr "Seçilen penceredeki tüm kohortlarda — tipik düşüşün nerede gerçekleştiğini tespit etmek için kullanışlı."
+
+#: front-end/customer-analytics/views/page.php:226
+msgid "Export matrix (CSV)"
+msgstr "Matrisi dışa aktar (CSV)"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:158
+msgid "Toggle navigation"
+msgstr "Navigasyonu aç/kapat"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:162
+msgid "BrikPanel dashboard"
+msgstr "BrikPanel kontrol paneli"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:172
+msgid "Live visitors right now"
+msgstr "Şu an anlık ziyaretçiler"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:175
+msgid "live"
+msgstr "canlı"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:185
+msgid "Search"
+msgstr "Ara"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:193
+msgid "Create"
+msgstr "Oluştur"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:198
+msgid "New product"
+msgstr "Yeni ürün"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:202
+msgid "New order"
+msgstr "Yeni sipariş"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:206
+msgid "New coupon"
+msgstr "Yeni kupon"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:210
+msgid "New post"
+msgstr "Yeni yazı"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:217
+msgid "Order notifications"
+msgstr "Sipariş bildirimleri"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:223
+msgid "Needs attention"
+msgstr "Dikkat gerektiriyor"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:226
+msgid "Processing orders"
+msgstr "İşlemdeki siparişler"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:230
+#: front-end/dashboard/brikpanel-dashboard.php:726
+#: includes/brikpanel-enqueue.php:316
+msgid "Pending payment"
+msgstr "Ödeme bekliyor"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:234
+#: front-end/dashboard/brikpanel-dashboard.php:723
+#: includes/brikpanel-enqueue.php:317
+msgid "On hold"
+msgstr "Beklemede"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:242
+msgid "New customers today"
+msgstr "Bugün yeni müşteriler"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:249
+msgid "View store"
+msgstr "Mağazayı görüntüle"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:270
+msgid "Your profile"
+msgstr "Profiliniz"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:274
+msgid "BrikPanel settings"
+msgstr "BrikPanel ayarları"
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:279
+msgid "Log out"
+msgstr "Çıkış yap"
+
+#: front-end/dashboard/brikpanel-dashboard.php:181
+msgid "— With Marketplace"
+msgstr "— Pazar Yeri ile"
+
+#: front-end/dashboard/brikpanel-dashboard.php:246
+msgid "All-time"
+msgstr "Tüm zamanlar"
+
+#: front-end/dashboard/brikpanel-dashboard.php:262
+msgid "Marketplace Sales"
+msgstr "Pazar Yeri Satışları"
+
+#: front-end/dashboard/brikpanel-dashboard.php:267
+msgid "Marketplace Orders"
+msgstr "Pazar Yeri Siparişleri"
+
+#: front-end/dashboard/brikpanel-dashboard.php:272
+msgid "Avg. Marketplace Order"
+msgstr "Ort. Pazar Yeri Siparişi"
+
+#: front-end/dashboard/brikpanel-dashboard.php:277
+msgid "Share of Total Revenue"
+msgstr "Toplam Gelirin Payı"
+
+#: front-end/dashboard/brikpanel-dashboard.php:286
+msgid "Revenue by Marketplace"
+msgstr "Pazar Yerine Göre Gelir"
+
+#: front-end/dashboard/brikpanel-dashboard.php:292
+msgid "Marketplace Share"
+msgstr "Pazar Yeri Payı"
+
+#: front-end/dashboard/brikpanel-dashboard.php:302
+msgid "Top Categories from Marketplaces"
+msgstr "Pazar Yerlerinden En İyi Kategoriler"
+
+#: front-end/dashboard/brikpanel-dashboard.php:308
+msgid "Top Marketplace Products"
+msgstr "En İyi Pazar Yeri Ürünleri"
+
+#: front-end/dashboard/brikpanel-dashboard.php:369
+msgid "View mode"
+msgstr "Görünüm modu"
+
+#: front-end/dashboard/brikpanel-dashboard.php:444
+msgid "Visitors by Device"
+msgstr "Cihaza Göre Ziyaretçiler"
+
+#: front-end/dashboard/brikpanel-dashboard.php:450
+msgid "Customer Types"
+msgstr "Müşteri Türleri"
+
+#: front-end/dashboard/brikpanel-dashboard.php:464
+msgid "Customer Segments (RFM)"
+msgstr "Müşteri Segmentleri (RFM)"
+
+#: front-end/dashboard/brikpanel-dashboard.php:466
+msgid "View details →"
+msgstr "Ayrıntıları görüntüle →"
+
+#: front-end/dashboard/brikpanel-dashboard.php:541
+msgid "Low Stock"
+msgstr "Düşük Stok"
+
+#: front-end/dashboard/brikpanel-dashboard.php:547
+msgid "Returns & Refunds"
+msgstr "İadeler ve Geri Ödemeler"
+
+#: front-end/dashboard/brikpanel-dashboard.php:652
+msgid "WordPress widgets"
+msgstr "WordPress widget'ları"
+
+#: front-end/dashboard/brikpanel-dashboard.php:673
+msgid "Widget failed to load."
+msgstr "Widget yüklenemedi."
+
+#: front-end/dashboard/brikpanel-dashboard.php:703
+msgid "Subscriptions"
+msgstr "Abonelikler"
+
+#: front-end/dashboard/brikpanel-dashboard.php:722
+msgid "Active"
+msgstr "Aktif"
+
+#: front-end/dashboard/brikpanel-dashboard.php:725
+msgid "Expired"
+msgstr "Süresi dolmuş"
+
+#: front-end/dashboard/brikpanel-dashboard.php:727
+msgid "Pending cancellation"
+msgstr "İptal bekliyor"
+
+#: front-end/expenses/brikpanel-expenses.php:37
+#: front-end/expenses/brikpanel-expenses.php:38
+msgid "Expenses"
+msgstr "Giderler"
+
+#: front-end/expenses/brikpanel-expenses.php:70
+msgid "Operational Expenses"
+msgstr "Operasyonel Giderler"
+
+#: front-end/expenses/brikpanel-expenses.php:71
+msgid "Track your operational costs to calculate net profit accurately."
+msgstr "Net karı doğru hesaplamak için operasyonel maliyetlerinizi takip edin."
+
+#: front-end/expenses/brikpanel-expenses.php:75
+#: front-end/expenses/brikpanel-expenses.php:153
+#: front-end/expenses/brikpanel-expenses.php:218
+msgid "Add expense"
+msgstr "Gider ekle"
+
+#: front-end/expenses/brikpanel-expenses.php:83
+msgid "Total (filtered)"
+msgstr "Toplam (filtrelenmiş)"
+
+#: front-end/expenses/brikpanel-expenses.php:87
+msgid "Entries"
+msgstr "Kayıtlar"
+
+#: front-end/expenses/brikpanel-expenses.php:96
+msgid "From"
+msgstr "Başlangıç"
+
+#: front-end/expenses/brikpanel-expenses.php:100
+msgid "To"
+msgstr "Bitiş"
+
+#: front-end/expenses/brikpanel-expenses.php:129
+#: front-end/expenses/brikpanel-expenses.php:161
+#: front-end/segments/brikpanel-segments.php:1003
+#: includes/brikpanel-enqueue.php:297
+msgid "Date"
+msgstr "Tarih"
+
+#: front-end/expenses/brikpanel-expenses.php:132
+#: front-end/expenses/brikpanel-expenses.php:181
+#: includes/cron/class-brikpanel-cron-page.php:154
+msgid "Recurring"
+msgstr "Tekrarlayan"
+
+#: front-end/expenses/brikpanel-expenses.php:173
+msgid "e.g. Rent, Salary, Software"
+msgstr "örn. Kira, Maaş, Yazılım"
+
+#: front-end/expenses/brikpanel-expenses.php:183
+#: front-end/expenses/brikpanel-expenses.php:219
+msgid "One-time"
+msgstr "Tek seferlik"
+
+#: front-end/expenses/brikpanel-expenses.php:184
+#: front-end/expenses/brikpanel-expenses.php:220
+msgid "Monthly"
+msgstr "Aylık"
+
+#: front-end/expenses/brikpanel-expenses.php:185
+#: front-end/expenses/brikpanel-expenses.php:221
+msgid "Weekly"
+msgstr "Haftalık"
+
+#: front-end/expenses/brikpanel-expenses.php:186
+#: front-end/expenses/brikpanel-expenses.php:222
+msgid "Yearly"
+msgstr "Yıllık"
+
+#: front-end/expenses/brikpanel-expenses.php:191
+msgid "Optional notes…"
+msgstr "İsteğe bağlı notlar…"
+
+#: front-end/expenses/brikpanel-expenses.php:214
+msgid "Delete this expense?"
+msgstr "Bu gideri sil?"
+
+#: front-end/expenses/brikpanel-expenses.php:215
+#: includes/brikpanel-enqueue.php:289
+#: includes/brikpanel-enqueue.php:387
+#: includes/cron/class-brikpanel-cron-page.php:195
+msgid "Something went wrong."
+msgstr "Bir şeyler ters gitti."
+
+#: front-end/expenses/brikpanel-expenses.php:216
+msgid "No expenses found."
+msgstr "Gider bulunamadı."
+
+#: front-end/expenses/brikpanel-expenses.php:217
+msgid "Edit expense"
+msgstr "Gideri düzenle"
+
+#: front-end/expenses/brikpanel-expenses.php:314
+msgid "Required fields missing."
+msgstr "Zorunlu alanlar eksik."
+
+#: front-end/expenses/brikpanel-expenses.php:319
+msgid "Amount must be a positive number."
+msgstr "Tutar pozitif bir sayı olmalıdır."
+
+#: front-end/expenses/brikpanel-expenses.php:345
+msgid "Database error."
+msgstr "Veritabanı hatası."
+
+#: front-end/expenses/brikpanel-expenses.php:361
+msgid "Invalid ID."
+msgstr "Geçersiz ID."
+
+#: front-end/login/brikpanel-login.php:239
+msgid "Login failed. Please try again."
+msgstr "Giriş başarısız. Lütfen tekrar deneyin."
+
+#: front-end/orders/brikpanel-orders.php:323
+msgid "Navigation"
+msgstr "Navigasyon"
+
+#: front-end/orders/brikpanel-orders.php:328
+msgid "Modern navigation"
+msgstr "Modern navigasyon"
+
+#: front-end/orders/brikpanel-orders.php:331
+msgid "Replace the default WordPress admin menu with a modern, clean sidebar navigation"
+msgstr "Varsayılan WordPress yönetici menüsünü modern, temiz bir kenar çubuğu navigasyonuyla değiştirin"
+
+#: front-end/orders/brikpanel-orders.php:383
+msgid "Product type selector"
+msgstr "Ürün türü seçici"
+
+#: front-end/orders/brikpanel-orders.php:386
+msgid "Show a product type dropdown in the simplified editor so you can create subscription, variable subscription, bundle and other types registered by third-party plugins. When off, only simple and variable products can be created. Auto-enabled if a subscription/bookings/bundles plugin is active."
+msgstr "Abonelik, değişken abonelik, paket ve üçüncü taraf eklentilerin kaydettirdiği diğer türleri oluşturabilmeniz için basitleştirilmiş düzenleyicide ürün türü açılır listesi gösterin. Kapalıysa yalnızca basit ve değişken ürünler oluşturulabilir. Abonelik/rezervasyon/paket eklentisi aktifse otomatik etkinleşir."
+
+#: front-end/orders/brikpanel-orders.php:390
+msgid "Visible editor sections"
+msgstr "Görünür düzenleyici bölümleri"
+
+#: front-end/orders/brikpanel-orders.php:394
+msgid "Choose which BrikPanel sections appear in the simplified product editor."
+msgstr "Basitleştirilmiş ürün düzenleyicisinde hangi BrikPanel bölümlerinin görüneceğini seçin."
+
+#: front-end/orders/brikpanel-orders.php:398
+#: front-end/products/brikpanel-product-editor.php:1458
+msgid "Pricing"
+msgstr "Fiyatlandırma"
+
+#: front-end/orders/brikpanel-orders.php:399
+msgid "Cost of goods (COGS)"
+msgstr "Mal maliyeti (COGS)"
+
+#: front-end/orders/brikpanel-orders.php:400
+msgid "Inventory (stock & SKU)"
+msgstr "Envanter (stok ve SKU)"
+
+#: front-end/orders/brikpanel-orders.php:402
+#: front-end/products/brikpanel-product-editor.php:590
+#: front-end/products/brikpanel-products-list.php:496
+#: front-end/products/brikpanel-products-list.php:666
+msgid "Tags"
+msgstr "Etiketler"
+
+#: front-end/orders/brikpanel-orders.php:409
+msgid "Variations (sizes/colors)"
+msgstr "Varyasyonlar (bedenler/renkler)"
+
+#: front-end/orders/brikpanel-orders.php:414
+msgid "Third-party plugin metaboxes"
+msgstr "Üçüncü taraf eklenti meta kutuları"
+
+#: front-end/orders/brikpanel-orders.php:418
+msgid "Pick individual metaboxes registered by other plugins (Yoast SEO, Rank Math, All in One SEO, SEOPress, ACF, custom post types, etc.) to bring into the BrikPanel product editor. Only the ones selected here will render. Leave empty to hide all third-party metaboxes."
+msgstr "Diğer eklentilerin kaydettiği meta kutuları (Yoast SEO, Rank Math, All in One SEO, SEOPress, ACF, özel yazı türleri vb.) BrikPanel ürün düzenleyicisine getirmek için seçin. Yalnızca burada seçilenler görüntülenecektir. Tüm üçüncü taraf meta kutularını gizlemek için boş bırakın."
+
+#: front-end/orders/brikpanel-orders.php:424
+msgid "Additional product data sections"
+msgstr "Ek ürün veri bölümleri"
+
+#: front-end/orders/brikpanel-orders.php:428
+msgid "Pick which sections from WooCommerce's native \"Product data\" tabs (General, Inventory, Shipping, and custom tabs added by Subscriptions, Memberships, Bookings, swatches, SEO plugins…) should appear as \"Additional product data\" inside the BrikPanel editor. Leave empty to hide all — hidden by default."
+msgstr "WooCommerce'in yerel \"Ürün verisi\" sekmelerinden (Genel, Envanter, Kargo ve Abonelikler, Üyelikler, Rezervasyonlar, renk örnekleri, SEO eklentileri tarafından eklenen özel sekmeler…) hangilerinin BrikPanel düzenleyicisinde \"Ek ürün verisi\" olarak görüneceğini seçin. Tümünü gizlemek için boş bırakın — varsayılan olarak gizlidir."
+
+#: front-end/orders/brikpanel-orders.php:434
+msgid "Additional product data position"
+msgstr "Ek ürün verisi konumu"
+
+#: front-end/orders/brikpanel-orders.php:437
+msgid "Where the \"Additional product data\" card appears inside the BrikPanel product editor."
+msgstr "\"Ek ürün verisi\" kartının BrikPanel ürün düzenleyicisi içinde nerede görüneceği."
+
+#: front-end/orders/brikpanel-orders.php:440
+msgid "Top — right under the product name"
+msgstr "Üst — ürün adının hemen altında"
+
+#: front-end/orders/brikpanel-orders.php:441
+msgid "Middle — between pricing and inventory"
+msgstr "Orta — fiyatlandırma ve envanter arasında"
+
+#: front-end/orders/brikpanel-orders.php:442
+msgid "Bottom — end of the editor"
+msgstr "Alt — düzenleyicinin sonunda"
+
+#: front-end/orders/brikpanel-orders.php:447
+msgid "Additional variation data sections"
+msgstr "Ek varyasyon veri bölümleri"
+
+#: front-end/orders/brikpanel-orders.php:451
+msgid "Pick which per-variation fields added by third-party plugins (pricing extensions, subscriptions, inventory add-ons…) should appear inside each variation row. Leave empty to hide all — hidden by default."
+msgstr "Üçüncü taraf eklentilerin eklediği varyasyon başına alanlardan (fiyatlandırma uzantıları, abonelikler, envanter eklentileri…) hangilerinin her varyasyon satırında görüneceğini seçin. Tümünü gizlemek için boş bırakın — varsayılan olarak gizlidir."
+
+#: front-end/orders/brikpanel-orders.php:464
+msgid "Open product in new tab"
+msgstr "Ürünü yeni sekmede aç"
+
+#: front-end/orders/brikpanel-orders.php:467
+msgid "When enabled, clicking a product name in the products list opens the edit page in a new browser tab."
+msgstr "Etkinleştirildiğinde, ürünler listesindeki bir ürün adına tıklamak düzenleme sayfasını yeni bir tarayıcı sekmesinde açar."
+
+#: front-end/orders/brikpanel-orders.php:513
+msgid "Dashboard top bar"
+msgstr "Kontrol paneli üst çubuğu"
+
+#: front-end/orders/brikpanel-orders.php:516
+msgid "Hide the WordPress admin bar on the BrikPanel dashboard and replace it with a BrikPanel-styled e-commerce top bar featuring live revenue, live visitors, global search, quick-create actions, and order notifications."
+msgstr "BrikPanel kontrol panelindeki WordPress yönetici çubuğunu gizleyin ve yerine anlık gelir, anlık ziyaretçiler, genel arama, hızlı oluşturma eylemleri ve sipariş bildirimlerini içeren BrikPanel stilinde bir e-ticaret üst çubuğuyla değiştirin."
+
+#: front-end/orders/brikpanel-orders.php:520
+msgid "Include WordPress dashboard widgets"
+msgstr "WordPress kontrol paneli widget'larını dahil et"
+
+#: front-end/orders/brikpanel-orders.php:524
+msgid "Pick which WordPress dashboard widgets (e.g. At a Glance, Activity, Fail2Ban log) should also appear inside the BrikPanel dashboard, styled to match. Widgets are arranged in a responsive 3-column grid."
+msgstr "Hangi WordPress kontrol paneli widget'larının (örn. Bir Bakışta, Etkinlik, Fail2Ban günlüğü) BrikPanel kontrol panelinde eşleşen tasarımla görüneceğini seçin. Widget'lar duyarlı 3 sütunlu bir ızgarada düzenlenir."
+
+#: front-end/orders/brikpanel-orders.php:530
+msgid "WordPress widgets position"
+msgstr "WordPress widget konumu"
+
+#: front-end/orders/brikpanel-orders.php:533
+msgid "Where the WordPress widgets block appears relative to BrikPanel analytics. Choose \"Top\" if the selected widgets include frequently-used shortcuts that should be visible without scrolling."
+msgstr "WordPress widget bloğunun BrikPanel analitiğine göre nerede görüneceği. Sık kullanılan ve kaydırmadan görünmesi gereken kısayollar içeren widget'lar seçildiyse \"Üst\"ü seçin."
+
+#: front-end/orders/brikpanel-orders.php:536
+msgid "Bottom (below analytics)"
+msgstr "Alt (analitiğin altında)"
+
+#: front-end/orders/brikpanel-orders.php:537
+msgid "Top (above analytics)"
+msgstr "Üst (analitiğin üstünde)"
+
+#: front-end/orders/brikpanel-orders.php:574
+msgid "Hide \"Powered by WordPress\" credit"
+msgstr "\"WordPress ile çalışır\" kredisini gizle"
+
+#: front-end/orders/brikpanel-orders.php:577
+msgid "Remove the \"— Powered by WordPress\" text below the login card"
+msgstr "Giriş kartının altındaki \"— WordPress ile çalışır\" metnini kaldırın"
+
+#: front-end/orders/brikpanel-orders.php:581
+msgid "Force native login submission"
+msgstr "Yerel giriş gönderimini zorla"
+
+#: front-end/orders/brikpanel-orders.php:584
+msgid "Recommended. Submits the login form to wp-login.php natively while keeping the modern design, so any 2FA, SSO, or custom authentication plugin (Wordfence Login Security, Two Factor, WP 2FA, miniOrange, Solid Security, Duo, Rublon, etc.) works as expected. Disable only if you rely on the AJAX login endpoint and are certain no authentication plugin alters the login flow."
+msgstr "Önerilir. Giriş formunu modern tasarımı koruyarak doğal şekilde wp-login.php'ye gönderir; böylece 2FA, SSO veya özel kimlik doğrulama eklentileri (Wordfence Login Security, Two Factor, WP 2FA, miniOrange, Solid Security, Duo, Rublon vb.) beklendiği gibi çalışır. Yalnızca AJAX giriş uç noktasına güveniyorsanız ve hiçbir kimlik doğrulama eklentisinin giriş akışını değiştirmediğinden eminseniz devre dışı bırakın."
+
+#: front-end/orders/brikpanel-orders.php:592
+msgid "Admin notices"
+msgstr "Yönetici bildirimleri"
+
+#: front-end/orders/brikpanel-orders.php:597
+msgid "Hide third-party admin notices"
+msgstr "Üçüncü taraf yönetici bildirimlerini gizle"
+
+#: front-end/orders/brikpanel-orders.php:600
+msgid "Suppress admin notices from other plugins and themes. BrikPanel's own notices always remain visible. Turn this off to restore the default WordPress behaviour."
+msgstr "Diğer eklenti ve temalardan gelen yönetici bildirimlerini bastırın. BrikPanel'in kendi bildirimleri her zaman görünür kalır. Varsayılan WordPress davranışını geri yüklemek için bunu kapatın."
+
+#: front-end/orders/brikpanel-orders.php:608
+msgid "Developers"
+msgstr "Geliştiriciler"
+
+#: front-end/orders/brikpanel-orders.php:611
+msgid "Build on top of BrikPanel with public hooks and filters. The docs below are generated from the plugin source."
+msgstr "Genel hook'lar ve filtreler kullanarak BrikPanel üzerine inşa edin. Aşağıdaki belgeler eklenti kaynağından oluşturulmuştur."
+
+#: front-end/orders/brikpanel-orders.php:675
+msgid "BrikPanel settings saved."
+msgstr "BrikPanel ayarları kaydedildi."
+
+#: front-end/products/brikpanel-product-editor.php:300
+msgid "Additional product data"
+msgstr "Ek ürün verisi"
+
+#: front-end/products/brikpanel-product-editor.php:330
+#: includes/brikpanel-enqueue.php:1029
+msgid "Add new"
+msgstr "Yeni ekle"
+
+#: front-end/products/brikpanel-product-editor.php:351
+#: front-end/products/brikpanel-product-editor.php:378
+#: front-end/products/brikpanel-products-list.php:307
+#: front-end/products/brikpanel-products-list.php:483
+#: includes/brikpanel-enqueue.php:667
+msgid "Private"
+msgstr "Özel"
+
+#: front-end/products/brikpanel-product-editor.php:352
+#: front-end/products/brikpanel-product-editor.php:385
+msgid "Password protected"
+msgstr "Şifre korumalı"
+
+#: front-end/products/brikpanel-product-editor.php:365
+msgid "Visible to everyone on the storefront"
+msgstr "Mağaza ön yüzünde herkese görünür"
+
+#: front-end/products/brikpanel-product-editor.php:372
+msgid "Not visible on the storefront"
+msgstr "Mağaza ön yüzünde görünmez"
+
+#: front-end/products/brikpanel-product-editor.php:379
+msgid "Visible only to admins and editors"
+msgstr "Yalnızca yöneticiler ve editörler tarafından görünür"
+
+#: front-end/products/brikpanel-product-editor.php:386
+msgid "Visitors must enter a password to view"
+msgstr "Görüntülemek için ziyaretçiler şifre girmelidir"
+
+#: front-end/products/brikpanel-product-editor.php:392
+msgid "Password..."
+msgstr "Şifre..."
+
+#: front-end/products/brikpanel-product-editor.php:397
+msgid "Shop & search"
+msgstr "Mağaza ve arama"
+
+#: front-end/products/brikpanel-product-editor.php:398
+msgid "Shop only"
+msgstr "Yalnızca mağaza"
+
+#: front-end/products/brikpanel-product-editor.php:399
+msgid "Search only"
+msgstr "Yalnızca arama"
+
+#: front-end/products/brikpanel-product-editor.php:400
+msgid "Hidden"
+msgstr "Gizli"
+
+#: front-end/products/brikpanel-product-editor.php:412
+msgid "Catalog visibility"
+msgstr "Katalog görünürlüğü"
+
+#: front-end/products/brikpanel-product-editor.php:438
+msgid "Product type"
+msgstr "Ürün türü"
+
+#: front-end/products/brikpanel-product-editor.php:444
+msgid "Pick how this product is sold. Third-party plugins (subscriptions, bookings, bundles) register their own types here."
+msgstr "Bu ürünün nasıl satıldığını seçin. Üçüncü taraf eklentiler (abonelikler, rezervasyonlar, paketler) kendi türlerini buraya kaydeder."
+
+#: front-end/products/brikpanel-product-editor.php:498
+msgid "Sale start date"
+msgstr "İndirim başlangıç tarihi"
+
+#: front-end/products/brikpanel-product-editor.php:499
+#: front-end/products/brikpanel-product-editor.php:503
+msgid "YYYY-MM-DD — optional"
+msgstr "YYYY-AA-GG — isteğe bağlı"
+
+#: front-end/products/brikpanel-product-editor.php:502
+msgid "Sale end date"
+msgstr "İndirim bitiş tarihi"
+
+#: front-end/products/brikpanel-product-editor.php:506
+msgid "Schedule your sale in advance — leave the dates empty to start it immediately or keep it running indefinitely."
+msgstr "İndiriminizi önceden planlayın — hemen başlatmak veya süresiz sürdürmek için tarihleri boş bırakın."
+
+#: front-end/products/brikpanel-product-editor.php:514
+#: includes/brikpanel-enqueue.php:1027
+msgid "Cost of goods"
+msgstr "Mal maliyeti"
+
+#: front-end/products/brikpanel-product-editor.php:519
+msgid "The cost you pay for this product. Used to calculate profit margins."
+msgstr "Bu ürün için ödediğiniz maliyet. Kar marjlarını hesaplamak için kullanılır."
+
+#: front-end/products/brikpanel-product-editor.php:543
+msgid "Stock status"
+msgstr "Stok durumu"
+
+#: front-end/products/brikpanel-product-editor.php:547
+#: front-end/products/brikpanel-products-list.php:470
+#: includes/brikpanel-enqueue.php:708
+#: includes/brikpanel-enqueue.php:1026
+msgid "On backorder"
+msgstr "Ön siparişte"
+
+#: front-end/products/brikpanel-product-editor.php:592
+#: includes/brikpanel-enqueue.php:1023
+msgid "Type and press Enter to add a tag..."
+msgstr "Etiket eklemek için yazın ve Enter'a basın..."
+
+#: front-end/products/brikpanel-product-editor.php:609
+#: front-end/products/brikpanel-product-editor.php:630
+msgid "HTML source"
+msgstr "HTML kaynağı"
+
+#: front-end/products/brikpanel-product-editor.php:749
+#: front-end/products/brikpanel-product-editor.php:766
+msgid "SEO"
+msgstr "SEO"
+
+#: front-end/products/brikpanel-product-editor.php:784
+msgid "Focus keyword"
+msgstr "Odak anahtar kelime"
+
+#: front-end/products/brikpanel-product-editor.php:785
+msgid "e.g. cotton t-shirt"
+msgstr "örn. pamuklu tişört"
+
+#: front-end/products/brikpanel-product-editor.php:788
+msgid "Canonical URL"
+msgstr "Kanonik URL"
+
+#: front-end/products/brikpanel-product-editor.php:789
+msgid "Defaults to product permalink"
+msgstr "Varsayılan olarak ürün kalıcı bağlantısı"
+
+#: front-end/products/brikpanel-product-editor.php:794
+msgid "Hide from search engines"
+msgstr "Arama motorlarından gizle"
+
+#: front-end/products/brikpanel-product-editor.php:795
+msgid "Adds noindex — the product stays accessible but search engines will not list it."
+msgstr "noindex ekler — ürün erişilebilir kalır ancak arama motorları listelemez."
+
+#: front-end/products/brikpanel-product-editor.php:802
+msgid "These fields are saved to Yoast SEO, Rank Math, All in One SEO and SEOPress simultaneously, so switching SEO plugins never loses your work."
+msgstr "Bu alanlar Yoast SEO, Rank Math, All in One SEO ve SEOPress'e eş zamanlı olarak kaydedilir; böylece SEO eklentisi değiştirmek çalışmanızı kaybettirmez."
+
+#: front-end/products/brikpanel-product-editor.php:880
+msgid "Set all sale prices:"
+msgstr "Tüm indirim fiyatlarını ayarla:"
+
+#: front-end/products/brikpanel-product-editor.php:900
+msgid "Sale start"
+msgstr "İndirim başlangıcı"
+
+#: front-end/products/brikpanel-product-editor.php:901
+msgid "Sale end"
+msgstr "İndirim bitişi"
+
+#: front-end/products/brikpanel-product-editor.php:904
+#: includes/brikpanel-enqueue.php:1028
+msgid "COGS"
+msgstr "COGS"
+
+#: front-end/products/brikpanel-product-editor.php:1084
+msgid "Metabox failed to load."
+msgstr "Meta kutu yüklenemedi."
+
+#: front-end/products/brikpanel-product-editor.php:1106
+msgid "Additional fields"
+msgstr "Ek alanlar"
+
+#: front-end/products/brikpanel-product-editor.php:1150
+msgid "Yoast SEO"
+msgstr "Yoast SEO"
+
+#: front-end/products/brikpanel-product-editor.php:1156
+msgid "Rank Math SEO"
+msgstr "Rank Math SEO"
+
+#: front-end/products/brikpanel-product-editor.php:1162
+msgid "All in One SEO"
+msgstr "All in One SEO"
+
+#: front-end/products/brikpanel-product-editor.php:1168
+msgid "SEOPress"
+msgstr "SEOPress"
+
+#: front-end/products/brikpanel-product-editor.php:1277
+msgid "SEO metabox failed to load."
+msgstr "SEO meta kutu yüklenemedi."
+
+#. translators: %s: SEO plugin name
+#: front-end/products/brikpanel-product-editor.php:1306
+#, php-format
+msgid "%s is installed but did not register its SEO fields for products. Enable SEO for the Product post type in the plugin settings."
+msgstr "%s yüklü ancak ürünler için SEO alanlarını kaydetmedi. Eklenti ayarlarında Ürün yazı türü için SEO'yu etkinleştirin."
+
+#: front-end/products/brikpanel-product-editor.php:1457
+msgid "Variation options"
+msgstr "Varyasyon seçenekleri"
+
+#: front-end/products/brikpanel-product-editor.php:1459
+#: front-end/products/brikpanel-product-editor.php:1556
+msgid "Inventory"
+msgstr "Envanter"
+
+#: front-end/products/brikpanel-product-editor.php:1460
+msgid "Shipping & dimensions"
+msgstr "Kargo ve boyutlar"
+
+#: front-end/products/brikpanel-product-editor.php:1461
+msgid "Downloadable"
+msgstr "İndirilebilir"
+
+#: front-end/products/brikpanel-product-editor.php:1462
+msgid "Tax"
+msgstr "Vergi"
+
+#: front-end/products/brikpanel-product-editor.php:1463
+msgid "After attributes"
+msgstr "Özelliklerden sonra"
+
+#: front-end/products/brikpanel-product-editor.php:1557
+msgid "Shipping"
+msgstr "Kargo"
+
+#: front-end/products/brikpanel-product-editor.php:1558
+msgid "Linked Products"
+msgstr "Bağlantılı Ürünler"
+
+#: front-end/products/brikpanel-product-editor.php:1562
+#: front-end/products/brikpanel-products-list.php:670
+msgid "Attributes"
+msgstr "Özellikler"
+
+#: front-end/products/brikpanel-product-editor.php:1563
+msgid "Advanced"
+msgstr "Gelişmiş"
+
+#: front-end/products/brikpanel-products-list.php:209
+msgid "No categories found."
+msgstr "Kategori bulunamadı."
+
+#: front-end/products/brikpanel-products-list.php:342
+msgid "Columns"
+msgstr "Sütunlar"
+
+#: front-end/products/brikpanel-products-list.php:371
+msgid "Export selected"
+msgstr "Seçilenleri dışa aktar"
+
+#: front-end/products/brikpanel-products-list.php:461
+#: includes/brikpanel-enqueue.php:705
+msgid "Availability"
+msgstr "Kullanılabilirlik"
+
+#: front-end/products/brikpanel-products-list.php:487
+#: front-end/products/brikpanel-products-list.php:662
+#: front-end/segments/views/page.php:161
+msgid "Categories"
+msgstr "Kategoriler"
+
+#: front-end/products/brikpanel-products-list.php:498
+msgid "Search tags..."
+msgstr "Etiket ara..."
+
+#: front-end/products/brikpanel-products-list.php:501
+msgid "No tags found."
+msgstr "Etiket bulunamadı."
+
+#: front-end/products/brikpanel-products-list.php:531
+msgid "By scope"
+msgstr "Kapsama göre"
+
+#: front-end/products/brikpanel-products-list.php:539
+msgid "Scope"
+msgstr "Kapsam"
+
+#: front-end/products/brikpanel-products-list.php:658
+msgid "Also wipe taxonomies (optional)"
+msgstr "Taksonomileri de sil (isteğe bağlı)"
+
+#: front-end/products/brikpanel-products-list.php:674
+msgid "Brands"
+msgstr "Markalar"
+
+#: front-end/products/brikpanel-products-list.php:677
+msgid "When checked, ALL terms in the selected taxonomies are removed after products are deleted — not only those linked to the deleted products."
+msgstr "İşaretlendiğinde, ürünler silindikten sonra seçili taksonomilerdeki TÜM terimler kaldırılır — yalnızca silinen ürünlere bağlı olanlar değil."
+
+#: front-end/products/brikpanel-products-list.php:682
+msgid "⚡ Fast delete (advanced)"
+msgstr "⚡ Hızlı sil (gelişmiş)"
+
+#: front-end/products/brikpanel-products-list.php:684
+msgid "Deletes products directly from the database in seconds. Use for very large stores (5k+ products)."
+msgstr "Ürünleri doğrudan veritabanından saniyeler içinde siler. Çok büyük mağazalar için kullanın (5000+ ürün)."
+
+#: front-end/products/brikpanel-products-list.php:689
+msgid "Fast mode bypasses plugin hooks:"
+msgstr "Hızlı mod eklenti hook'larını atlar:"
+
+#: front-end/products/brikpanel-products-list.php:691
+msgid "Always permanent — no trash, no undo."
+msgstr "Her zaman kalıcıdır — çöp kutusu yok, geri alma yok."
+
+#: front-end/products/brikpanel-products-list.php:692
+msgid "Image files stay in uploads/ as orphans (media library entries are removed but the files on disk are not)."
+msgstr "Görsel dosyalar uploads/ klasöründe sahipsiz olarak kalır (medya kitaplığı girişleri kaldırılır ancak diskteki dosyalar kaldırılmaz)."
+
+#: front-end/products/brikpanel-products-list.php:693
+msgid "SEO, search index, cache and analytics plugins will not be notified and may show stale data until re-indexed."
+msgstr "SEO, arama dizini, önbellek ve analitik eklentileri bilgilendirilmez ve yeniden dizinlenene kadar eski veriler gösterebilir."
+
+#: front-end/products/brikpanel-products-list.php:694
+msgid "Third-party custom tables tied to products will not be cleaned."
+msgstr "Ürünlere bağlı üçüncü taraf özel tablolar temizlenmez."
+
+#: front-end/products/brikpanel-products-list.php:713
+msgid "Processing..."
+msgstr "İşleniyor..."
+
+#: front-end/products/brikpanel-products-list.php:727
+#: includes/brikpanel-enqueue.php:725
+#: includes/cron/class-brikpanel-cron-page.php:121
+#: includes/cron/class-brikpanel-cron.php:542
+msgid "Done"
+msgstr "Tamamlandı"
+
+#: front-end/products/brikpanel-products-list.php:1280
+msgid "Invalid job type."
+msgstr "Geçersiz iş türü."
+
+#: front-end/products/brikpanel-products-list.php:1347
+msgid "Invalid mode."
+msgstr "Geçersiz mod."
+
+#: front-end/products/brikpanel-products-list.php:1414
+#: front-end/products/brikpanel-products-list.php:1490
+msgid "Invalid job id."
+msgstr "Geçersiz iş ID."
+
+#: front-end/products/brikpanel-products-list.php:1419
+msgid "Job not found or expired."
+msgstr "İş bulunamadı veya süresi doldu."
+
+#: front-end/products/brikpanel-products-list.php:1511
+msgid "Invalid security token."
+msgstr "Geçersiz güvenlik belirteci."
+
+#: front-end/segments/brikpanel-segments.php:60
+#: front-end/segments/brikpanel-segments.php:61
+#: front-end/segments/brikpanel-segments.php:72
+#: front-end/segments/views/page.php:20
+msgid "Segments"
+msgstr "Segmentler"
+
+#: front-end/segments/brikpanel-segments.php:1002
+msgid "Order ID"
+msgstr "Sipariş ID"
+
+#: front-end/segments/brikpanel-segments.php:1009
+#: includes/brikpanel-enqueue.php:302
+msgid "Payment"
+msgstr "Ödeme"
+
+#: front-end/segments/brikpanel-segments.php:1031
+#: includes/brikpanel-enqueue.php:304
+msgid "Registered"
+msgstr "Kayıtlı"
+
+#: front-end/segments/brikpanel-segments.php:1033
+#: front-end/segments/views/page.php:97
+#: includes/brikpanel-enqueue.php:295
+#: includes/brikpanel-enqueue.php:306
+msgid "Total spent"
+msgstr "Toplam harcama"
+
+#: front-end/segments/views/page.php:25
+msgid "Reset filters"
+msgstr "Filtreleri sıfırla"
+
+#: front-end/segments/views/page.php:47
+msgid "Search by name, email, order ID…"
+msgstr "Ad, e-posta, sipariş ID ile ara…"
+
+#: front-end/segments/views/page.php:49
+msgid "More filters"
+msgstr "Daha fazla filtre"
+
+#: front-end/segments/views/page.php:59
+msgid "Date from"
+msgstr "Başlangıç tarihi"
+
+#: front-end/segments/views/page.php:63
+msgid "Date to"
+msgstr "Bitiş tarihi"
+
+#: front-end/segments/views/page.php:68
+msgid "Order status"
+msgstr "Sipariş durumu"
+
+#: front-end/segments/views/page.php:79
+msgid "Any city"
+msgstr "Herhangi bir şehir"
+
+#: front-end/segments/views/page.php:83
+msgid "Order total"
+msgstr "Sipariş toplamı"
+
+#: front-end/segments/views/page.php:87
+#: front-end/segments/views/page.php:101
+#: front-end/segments/views/page.php:113
+msgid "Min"
+msgstr "Min"
+
+#: front-end/segments/views/page.php:91
+#: front-end/segments/views/page.php:105
+#: front-end/segments/views/page.php:114
+msgid "Max"
+msgstr "Maks"
+
+#: front-end/segments/views/page.php:119
+msgid "Last order from"
+msgstr "Son sipariş başlangıcı"
+
+#: front-end/segments/views/page.php:123
+msgid "Last order to"
+msgstr "Son sipariş bitişi"
+
+#: front-end/segments/views/page.php:128
+msgid "RFM segment"
+msgstr "RFM segmenti"
+
+#: front-end/segments/views/page.php:133
+msgid "Registered from"
+msgstr "Kayıt başlangıcı"
+
+#: front-end/segments/views/page.php:137
+msgid "Registered to"
+msgstr "Kayıt bitişi"
+
+#: front-end/segments/views/page.php:142
+msgid "Payment method"
+msgstr "Ödeme yöntemi"
+
+#: front-end/segments/views/page.php:148
+msgid "Exact coupon"
+msgstr "Tam kupon"
+
+#: front-end/segments/views/page.php:154
+msgid "Type to search products…"
+msgstr "Ürün aramak için yazın…"
+
+#: front-end/segments/views/page.php:169
+msgid "Results"
+msgstr "Sonuçlar"
+
+#: front-end/segments/views/page.php:173
+#: includes/brikpanel-enqueue.php:294
+msgid "Total revenue"
+msgstr "Toplam gelir"
+
+#: includes/brikpanel-enqueue.php:228
+msgid "Share"
+msgstr "Oran"
+
+#: includes/brikpanel-enqueue.php:229
+msgid "vs. prev."
+msgstr "öncekine göre"
+
+#: includes/brikpanel-enqueue.php:230
+msgid "of"
+msgstr "/"
+
+#: includes/brikpanel-enqueue.php:231
+msgid "combined revenue"
+msgstr "birleşik gelir"
+
+#: includes/brikpanel-enqueue.php:232
+msgid "No category data — marketplace items must be linked to your WooCommerce catalog (by product or SKU) for category breakdown to appear."
+msgstr "Kategori verisi yok — kategori dökümünün görünmesi için pazar yeri öğeleri WooCommerce kataloğunuza (ürün veya SKU ile) bağlanmalıdır."
+
+#: includes/brikpanel-enqueue.php:233
+msgid "Desktop"
+msgstr "Masaüstü"
+
+#: includes/brikpanel-enqueue.php:234
+msgid "Mobile"
+msgstr "Mobil"
+
+#: includes/brikpanel-enqueue.php:235
+msgid "Tablet"
+msgstr "Tablet"
+
+#: includes/brikpanel-enqueue.php:236
+msgid "New customers"
+msgstr "Yeni müşteriler"
+
+#: includes/brikpanel-enqueue.php:237
+msgid "Repeat customers"
+msgstr "Tekrarlayan müşteriler"
+
+#: includes/brikpanel-enqueue.php:238
+msgid "All products are sufficiently stocked"
+msgstr "Tüm ürünlerin stoğu yeterli"
+
+#: includes/brikpanel-enqueue.php:239
+msgid "return & refund rate"
+msgstr "iade ve geri ödeme oranı"
+
+#: includes/brikpanel-enqueue.php:240
+msgid "Returns & refunds"
+msgstr "İadeler ve geri ödemeler"
+
+#: includes/brikpanel-enqueue.php:241
+msgid "Total orders"
+msgstr "Toplam siparişler"
+
+#: includes/brikpanel-enqueue.php:243
+msgid "Remaining"
+msgstr "Kalan"
+
+#: includes/brikpanel-enqueue.php:244
+msgid "total subscriptions"
+msgstr "toplam abonelikler"
+
+#: includes/brikpanel-enqueue.php:248
+msgid "Customer Locations"
+msgstr "Müşteri Konumları"
+
+#: includes/brikpanel-enqueue.php:249
+msgid "Top Countries by Orders"
+msgstr "Siparişe Göre En İyi Ülkeler"
+
+#: includes/brikpanel-enqueue.php:250
+msgid "Top Countries by Customers"
+msgstr "Müşterilere Göre En İyi Ülkeler"
+
+#: includes/brikpanel-enqueue.php:251
+msgid "Top Cities by Orders"
+msgstr "Siparişe Göre En İyi Şehirler"
+
+#: includes/brikpanel-enqueue.php:252
+msgid "Top Cities by Customers"
+msgstr "Müşterilere Göre En İyi Şehirler"
+
+#: includes/brikpanel-enqueue.php:253
+msgid "customers"
+msgstr "müşteriler"
+
+#: includes/brikpanel-enqueue.php:290
+msgid "No orders match these filters."
+msgstr "Bu filtrelere uyan sipariş yok."
+
+#: includes/brikpanel-enqueue.php:291
+msgid "No customers match these filters."
+msgstr "Bu filtrelere uyan müşteri yok."
+
+#: includes/brikpanel-enqueue.php:301
+msgid "Location"
+msgstr "Konum"
+
+#: includes/brikpanel-enqueue.php:311
+msgid "Last 7 days"
+msgstr "Son 7 gün"
+
+#: includes/brikpanel-enqueue.php:313
+msgid "Last 90 days"
+msgstr "Son 90 gün"
+
+#: includes/brikpanel-enqueue.php:315
+msgid "Processing"
+msgstr "İşleniyor"
+
+#: includes/brikpanel-enqueue.php:320
+msgid "Returns"
+msgstr "İadeler"
+
+#: includes/brikpanel-enqueue.php:322
+msgid "Paid shipping"
+msgstr "Ücretli kargo"
+
+#: includes/brikpanel-enqueue.php:323
+msgid "High value"
+msgstr "Yüksek değer"
+
+#: includes/brikpanel-enqueue.php:324
+msgid "VIP (5+ orders)"
+msgstr "VIP (5+ sipariş)"
+
+#: includes/brikpanel-enqueue.php:325
+msgid "New (30 days)"
+msgstr "Yeni (30 gün)"
+
+#: includes/brikpanel-enqueue.php:326
+msgid "One-time buyers"
+msgstr "Tek seferlik alıcılar"
+
+#: includes/brikpanel-enqueue.php:327
+msgid "Dormant (90+ days)"
+msgstr "Pasif (90+ gün)"
+
+#: includes/brikpanel-enqueue.php:328
+msgid "Repeat buyers"
+msgstr "Tekrarlayan alıcılar"
+
+#: includes/brikpanel-enqueue.php:388
+msgid "No customers yet."
+msgstr "Henüz müşteri yok."
+
+#: includes/brikpanel-enqueue.php:391
+msgid "repeat"
+msgstr "tekrar"
+
+#: includes/brikpanel-enqueue.php:393
+msgid "1 day"
+msgstr "1 gün"
+
+#: includes/brikpanel-enqueue.php:394
+msgctxt "short for days"
+msgid "d"
+msgstr "g"
+
+#: includes/brikpanel-enqueue.php:395
+msgid "Refreshing…"
+msgstr "Yenileniyor…"
+
+#: includes/brikpanel-enqueue.php:396
+msgid "Customer metrics recomputed"
+msgstr "Müşteri metrikleri yeniden hesaplandı"
+
+#: includes/brikpanel-enqueue.php:397
+msgid "rows"
+msgstr "satır"
+
+#: includes/brikpanel-enqueue.php:400
+msgid "Cohort"
+msgstr "Kohort"
+
+#: includes/brikpanel-enqueue.php:402
+msgid "Not enough order history to build cohorts yet."
+msgstr "Henüz kohort oluşturmak için yeterli sipariş geçmişi yok."
+
+#: includes/brikpanel-enqueue.php:403
+msgid "Avg retention"
+msgstr "Ort. elde tutma"
+
+#: includes/brikpanel-enqueue.php:534
+msgid "Downloads"
+msgstr "İndirmeler"
+
+#: includes/brikpanel-enqueue.php:535
+#, php-format
+msgid "%d download"
+msgstr "%d indirme"
+
+#: includes/brikpanel-enqueue.php:536
+#, php-format
+msgid "%d downloads"
+msgstr "%d indirme"
+
+#: includes/brikpanel-enqueue.php:537
+#, php-format
+msgid "%s left"
+msgstr "%s kaldı"
+
+#: includes/brikpanel-enqueue.php:539
+#, php-format
+msgid "Expires %s"
+msgstr "%s tarihinde sona erer"
+
+#: includes/brikpanel-enqueue.php:540
+msgid "Never expires"
+msgstr "Hiç sona ermez"
+
+#: includes/brikpanel-enqueue.php:541
+msgid "Never downloaded"
+msgstr "Hiç indirilmedi"
+
+#: includes/brikpanel-enqueue.php:684
+#, php-format
+msgid "Are you sure you want to permanently delete %d products? This cannot be undone."
+msgstr "%d ürünü kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz."
+
+#: includes/brikpanel-enqueue.php:685
+msgid "FINAL WARNING: This will permanently delete the selected products. Are you absolutely sure?"
+msgstr "SON UYARI: Bu seçilen ürünleri kalıcı olarak silecektir. Kesinlikle emin misiniz?"
+
+#: includes/brikpanel-enqueue.php:691
+msgid "Apply this action to ALL products in the store? This cannot be undone."
+msgstr "Bu eylemi mağazadaki TÜM ürünlere uygulamak istiyor musunuz? Bu işlem geri alınamaz."
+
+#: includes/brikpanel-enqueue.php:717
+msgid "Preparing..."
+msgstr "Hazırlanıyor..."
+
+#: includes/brikpanel-enqueue.php:718
+#, php-format
+msgid "%1$d / %2$d processed"
+msgstr "%1$d / %2$d işlendi"
+
+#: includes/brikpanel-enqueue.php:719
+msgid "Bulk update in progress"
+msgstr "Toplu güncelleme devam ediyor"
+
+#: includes/brikpanel-enqueue.php:720
+msgid "Bulk delete in progress"
+msgstr "Toplu silme devam ediyor"
+
+#: includes/brikpanel-enqueue.php:721
+#, php-format
+msgid "Update complete: %d items."
+msgstr "Güncelleme tamamlandı: %d öğe."
+
+#: includes/brikpanel-enqueue.php:722
+#, php-format
+msgid "Delete complete: %d items."
+msgstr "Silme tamamlandı: %d öğe."
+
+#: includes/brikpanel-enqueue.php:723
+#: includes/cron/class-brikpanel-cron.php:467
+msgid "Cancelled."
+msgstr "İptal edildi."
+
+#: includes/brikpanel-enqueue.php:726
+#, php-format
+msgid "%d errors occurred."
+msgstr "%d hata oluştu."
+
+#: includes/brikpanel-enqueue.php:727
+msgid "Network error, retrying..."
+msgstr "Ağ hatası, yeniden deneniyor..."
+
+#: includes/brikpanel-enqueue.php:728
+msgid "Bulk job failed."
+msgstr "Toplu iş başarısız oldu."
+
+#: includes/brikpanel-enqueue.php:729
+msgid "Cancel the running bulk job? Items processed so far will remain changed."
+msgstr "Çalışan toplu işi iptal et? Şimdiye kadar işlenen öğeler değiştirilmiş kalacaktır."
+
+#: includes/brikpanel-enqueue.php:730
+msgid "FAST DELETE — This bypasses all plugin hooks and is IRREVERSIBLE. Image files will remain on disk. SEO/search/cache plugins will show stale data until re-indexed. Continue?"
+msgstr "HIZLI SİLME — Bu tüm eklenti hook'larını atlar ve GERİ ALINAMAZ. Görsel dosyalar diskte kalacaktır. SEO/arama/önbellek eklentileri yeniden dizinlenene kadar eski verileri gösterecektir. Devam edilsin mi?"
+
+#: includes/brikpanel-enqueue.php:731
+msgid "Wipe the selected taxonomies (categories/tags/attributes/brands)? This cannot be undone."
+msgstr "Seçilen taksonomileri (kategoriler/etiketler/özellikler/markalar) silmek istiyor musunuz? Bu işlem geri alınamaz."
+
+#: includes/brikpanel-enqueue.php:732
+msgid "Preparing export..."
+msgstr "Dışa aktarma hazırlanıyor..."
+
+#: includes/brikpanel-enqueue.php:733
+msgid "No products selected for export."
+msgstr "Dışa aktarma için ürün seçilmedi."
+
+#: includes/brikpanel-enqueue.php:734
+#, php-format
+msgid "%d more categories"
+msgstr "%d kategori daha"
+
+#: includes/brikpanel-enqueue.php:1004
+msgid "Press Enter to add..."
+msgstr "Eklemek için Enter'a basın..."
+
+#: includes/brikpanel-enqueue.php:1021
+msgid "Choose from media library"
+msgstr "Medya kitaplığından seç"
+
+#: includes/brikpanel-enqueue.php:1030
+msgid "Schedule start"
+msgstr "Zamanlama başlangıcı"
+
+#: includes/brikpanel-enqueue.php:1031
+msgid "Schedule end"
+msgstr "Zamanlama bitişi"
+
+#: includes/brikpanel-enqueue.php:1032
+msgid "Optional — leave empty to keep the sale active indefinitely."
+msgstr "İsteğe bağlı — indirimi süresiz aktif tutmak için boş bırakın."
+
+#: includes/brikpanel-helpers.php:438
+#: includes/brikpanel-helpers.php:447
+msgid "Simple product"
+msgstr "Basit ürün"
+
+#: includes/brikpanel-helpers.php:439
+#: includes/brikpanel-helpers.php:450
+msgid "Variable product"
+msgstr "Değişken ürün"
+
+#: includes/brikpanel-hooks-api.php:94
+msgid "Fires right before the BrikPanel simplified editor persists a product. Use it to validate or pre-process submitted data. Runs for both simple and variable products."
+msgstr "BrikPanel basitleştirilmiş düzenleyicisi bir ürünü kaydetmeden hemen önce tetiklenir. Gönderilen verileri doğrulamak veya ön işlemek için kullanın. Hem basit hem de değişken ürünler için çalışır."
+
+#: includes/brikpanel-hooks-api.php:101
+msgid "Fires after a product has been fully saved through the BrikPanel editor, including variations. Ideal for syncing to external systems, audit logs, or cache invalidation."
+msgstr "Varyasyonlar dahil bir ürün BrikPanel düzenleyicisi aracılığıyla tam olarak kaydedildikten sonra tetiklenir. Harici sistemlerle senkronizasyon, denetim günlükleri veya önbellek geçersiz kılma için idealdir."
+
+#: includes/brikpanel-hooks-api.php:108
+msgid "Register custom cards inside the BrikPanel product editor. Each box renders as a native BrikPanel card at the chosen position (top, middle, bottom) and is sorted by priority."
+msgstr "BrikPanel ürün düzenleyicisine özel kartlar ekleyin. Her kutu seçilen konumda (üst, orta, alt) yerel bir BrikPanel kartı olarak görüntülenir ve önceliğe göre sıralanır."
+
+#: includes/brikpanel-hooks-api.php:115
+msgid "Filter which built-in BrikPanel editor sections are rendered. Useful for hiding sections programmatically (e.g. for specific user roles or product types)."
+msgstr "Hangi yerleşik BrikPanel düzenleyici bölümlerinin oluşturulacağını filtreleyin. Bölümleri programlı olarak gizlemek için kullanışlıdır (örn. belirli kullanıcı rolleri veya ürün türleri için)."
+
+#: includes/brikpanel-hooks-api.php:122
+msgid "Filter the full list of BrikPanel settings fields rendered on the WooCommerce → Settings → BrikPanel tab. Lets you append your own WC settings fields (sections, checkboxes, selects…) to the tab."
+msgstr "WooCommerce → Ayarlar → BrikPanel sekmesinde oluşturulan BrikPanel ayar alanlarının tam listesini filtreleyin. Sekmeye kendi WC ayar alanlarınızı (bölümler, onay kutuları, seçimler…) eklemenizi sağlar."
+
+#: includes/brikpanel-hooks-api.php:129
+msgid "Register additional columns in the BrikPanel modern products list. Each column definition accepts an id, label, width and optional render callback."
+msgstr "BrikPanel modern ürünler listesine ek sütunlar ekleyin. Her sütun tanımı id, etiket, genişlik ve isteğe bağlı render geri çağrısını kabul eder."
+
+#: includes/brikpanel-hooks-api.php:136
+msgid "Tune how many products BrikPanel processes per batch during bulk operations. Lower for shared hosting, higher on beefy servers."
+msgstr "Toplu işlemler sırasında BrikPanel'in toplu işlem başına kaç ürün işleyeceğini ayarlayın. Paylaşımlı hosting için düşük, güçlü sunucular için yüksek tutun."
+
+#: includes/brikpanel-hooks-api.php:143
+msgid "Override which SEO plugin BrikPanel surfaces inside the product editor. Return an array with keys slug, label, metabox_ids, or null to disable integration."
+msgstr "BrikPanel'in ürün düzenleyicisinde hangi SEO eklentisini göstereceğini geçersiz kılın. Entegrasyonu devre dışı bırakmak için slug, label, metabox_ids anahtarlarını içeren bir dizi veya null döndürün."
+
+#: includes/brikpanel-hooks-api.php:163
+msgid "Developer documentation"
+msgstr "Geliştirici belgeleri"
+
+#: includes/brikpanel-hooks-api.php:167
+msgid "BrikPanel exposes hooks and filters so you can extend the product editor, settings and save flow without modifying the plugin."
+msgstr "BrikPanel, eklentiyi değiştirmeden ürün düzenleyicisini, ayarları ve kaydetme akışını genişletebilmeniz için hook'lar ve filtreler sunar."
+
+#: includes/brikpanel-hooks-api.php:171
+msgid "Open developer docs"
+msgstr "Geliştirici belgelerini aç"
+
+#: includes/brikpanel-hooks-api.php:218
+msgid "BrikPanel developer hooks"
+msgstr "BrikPanel geliştirici hook'ları"
+
+#: includes/brikpanel-hooks-api.php:219
+msgid "Actions and filters you can use from a plugin or your theme's functions.php."
+msgstr "Bir eklentiden veya temanızın functions.php dosyasından kullanabileceğiniz eylemler ve filtreler."
+
+#: includes/brikpanel-hooks-api.php:227
+msgid "Search hooks…"
+msgstr "Hook ara…"
+
+#: includes/brikpanel-hooks-api.php:234
+msgid "Filter"
+msgstr "Filtre"
+
+#: includes/brikpanel-hooks-api.php:244
+msgid "Copy name"
+msgstr "Adı kopyala"
+
+#: includes/brikpanel-hooks-api.php:253
+msgid "Example"
+msgstr "Örnek"
+
+#: includes/brikpanel-hooks-api.php:256
+msgid "Copy code"
+msgstr "Kodu kopyala"
+
+#: includes/brikpanel-hooks-api.php:264
+msgid "No hooks match your search."
+msgstr "Aramanızla eşleşen hook yok."
+
+#: includes/cron/class-brikpanel-cron-page.php:41
+#: includes/cron/class-brikpanel-cron-page.php:42
+#: includes/cron/class-brikpanel-cron-page.php:73
+msgid "Scheduled Tasks"
+msgstr "Zamanlanmış Görevler"
+
+#: includes/cron/class-brikpanel-cron-page.php:75
+msgid "Background jobs and recurring tasks running through Action Scheduler."
+msgstr "Action Scheduler üzerinden çalışan arka plan işleri ve tekrarlayan görevler."
+
+#: includes/cron/class-brikpanel-cron-page.php:80
+msgid "Refresh"
+msgstr "Yenile"
+
+#: includes/cron/class-brikpanel-cron-page.php:87
+msgid "Action Scheduler not loaded."
+msgstr "Action Scheduler yüklenmedi."
+
+#: includes/cron/class-brikpanel-cron-page.php:88
+msgid "Make sure WooCommerce is active. Background tasks are paused until Action Scheduler is available."
+msgstr "WooCommerce'in aktif olduğundan emin olun. Action Scheduler kullanılabilir olana kadar arka plan görevleri duraklatılır."
+
+#: includes/cron/class-brikpanel-cron-page.php:95
+#: includes/cron/class-brikpanel-cron-page.php:119
+#: includes/cron/class-brikpanel-cron.php:536
+msgid "Pending"
+msgstr "Bekliyor"
+
+#: includes/cron/class-brikpanel-cron-page.php:99
+#: includes/cron/class-brikpanel-cron-page.php:120
+#: includes/cron/class-brikpanel-cron.php:539
+msgid "Running"
+msgstr "Çalışıyor"
+
+#: includes/cron/class-brikpanel-cron-page.php:103
+msgid "Failed (24h)"
+msgstr "Başarısız (24s)"
+
+#: includes/cron/class-brikpanel-cron-page.php:107
+msgid "Done (24h)"
+msgstr "Tamamlandı (24s)"
+
+#: includes/cron/class-brikpanel-cron-page.php:118
+msgid "All statuses"
+msgstr "Tüm durumlar"
+
+#: includes/cron/class-brikpanel-cron-page.php:127
+#: includes/cron/class-brikpanel-cron-page.php:151
+msgid "Job type"
+msgstr "İş türü"
+
+#: includes/cron/class-brikpanel-cron-page.php:129
+msgid "All job types"
+msgstr "Tüm iş türleri"
+
+#: includes/cron/class-brikpanel-cron-page.php:153
+msgid "Scheduled"
+msgstr "Zamanlanmış"
+
+#: includes/cron/class-brikpanel-cron-page.php:155
+msgid "Args"
+msgstr "Argümanlar"
+
+#: includes/cron/class-brikpanel-cron-page.php:175
+msgid "Action log"
+msgstr "Eylem günlüğü"
+
+#: includes/cron/class-brikpanel-cron-page.php:193
+msgid "Cancel this scheduled job?"
+msgstr "Bu zamanlanmış işi iptal et?"
+
+#: includes/cron/class-brikpanel-cron-page.php:194
+msgid "Run this job now?"
+msgstr "Bu işi şimdi çalıştır?"
+
+#: includes/cron/class-brikpanel-cron-page.php:196
+msgid "No scheduled jobs match these filters."
+msgstr "Bu filtrelere uyan zamanlanmış iş yok."
+
+#: includes/cron/class-brikpanel-cron-page.php:197
+msgid "No log entries for this action."
+msgstr "Bu eylem için günlük girişi yok."
+
+#: includes/cron/class-brikpanel-cron-page.php:198
+msgid "Run now"
+msgstr "Şimdi çalıştır"
+
+#: includes/cron/class-brikpanel-cron-page.php:199
+msgid "Retry"
+msgstr "Tekrar dene"
+
+#: includes/cron/class-brikpanel-cron-page.php:201
+msgid "Logs"
+msgstr "Günlükler"
+
+#: includes/cron/class-brikpanel-cron-page.php:202
+msgid "Yes"
+msgstr "Evet"
+
+#: includes/cron/class-brikpanel-cron-page.php:203
+msgid "No"
+msgstr "Hayır"
+
+#: includes/cron/class-brikpanel-cron-page.php:204
+msgid "Job executed."
+msgstr "İş yürütüldü."
+
+#: includes/cron/class-brikpanel-cron-page.php:205
+msgid "Job re-queued."
+msgstr "İş yeniden kuyruğa alındı."
+
+#: includes/cron/class-brikpanel-cron-page.php:206
+msgid "Job cancelled."
+msgstr "İş iptal edildi."
+
+#: includes/cron/class-brikpanel-cron-page.php:427
+#: includes/cron/class-brikpanel-cron.php:366
+msgid "Invalid action ID."
+msgstr "Geçersiz eylem ID."
+
+#: includes/cron/class-brikpanel-cron-page.php:436
+#: includes/cron/class-brikpanel-cron.php:372
+#: includes/cron/class-brikpanel-cron.php:430
+#: includes/cron/class-brikpanel-cron.php:460
+msgid "Action not found."
+msgstr "Eylem bulunamadı."
+
+#: includes/cron/class-brikpanel-cron.php:362
+#: includes/cron/class-brikpanel-cron.php:424
+#: includes/cron/class-brikpanel-cron.php:454
+msgid "Action Scheduler is not loaded."
+msgstr "Action Scheduler yüklenmedi."
+
+#: includes/cron/class-brikpanel-cron.php:377
+#: includes/cron/class-brikpanel-cron.php:434
+#: includes/cron/class-brikpanel-cron.php:464
+msgid "Action does not belong to BrikPanel."
+msgstr "Eylem BrikPanel'e ait değil."
+
+#: includes/cron/class-brikpanel-cron.php:389
+msgid "Action failed."
+msgstr "Eylem başarısız oldu."
+
+#: includes/cron/class-brikpanel-cron.php:392
+msgid "Action executed."
+msgstr "Eylem yürütüldü."
+
+#: includes/cron/class-brikpanel-cron.php:440
+msgid "Re-queued."
+msgstr "Yeniden kuyruğa alındı."
+
+#: includes/cron/customer-analytics-jobs.php:290
+msgid "Champions"
+msgstr "Şampiyonlar"
+
+#: includes/cron/customer-analytics-jobs.php:291
+msgid "Bought recently, often, and spend the most. Reward them."
+msgstr "Yakın zamanda, sık sık satın aldılar ve en çok harcıyorlar. Onları ödüllendirin."
+
+#: includes/cron/customer-analytics-jobs.php:295
+msgid "Loyal Customers"
+msgstr "Sadık Müşteriler"
+
+#: includes/cron/customer-analytics-jobs.php:296
+msgid "Spend often and well. Upsell higher-value products."
+msgstr "Sık ve yüksek harcıyorlar. Daha yüksek değerli ürünlere yönlendirin."
+
+#: includes/cron/customer-analytics-jobs.php:300
+msgid "Potential Loyalist"
+msgstr "Potansiyel Sadık"
+
+#: includes/cron/customer-analytics-jobs.php:301
+msgid "Recent buyers with moderate frequency. Nurture them."
+msgstr "Orta sıklıkta yakın zamanlı alıcılar. Onları geliştirin."
+
+#: includes/cron/customer-analytics-jobs.php:305
+msgid "New Customers"
+msgstr "Yeni Müşteriler"
+
+#: includes/cron/customer-analytics-jobs.php:306
+msgid "Bought recently for the first time. Onboard them."
+msgstr "Yakın zamanda ilk kez satın aldılar. Onları karşılayın."
+
+#: includes/cron/customer-analytics-jobs.php:310
+msgid "Can't Lose Them"
+msgstr "Kaybetmemeli"
+
+#: includes/cron/customer-analytics-jobs.php:311
+msgid "High-value customers who haven't bought in a while. Win them back."
+msgstr "Uzun süredir satın almayan yüksek değerli müşteriler. Onları geri kazanın."
+
+#: includes/cron/customer-analytics-jobs.php:315
+msgid "At Risk"
+msgstr "Risk Altında"
+
+#: includes/cron/customer-analytics-jobs.php:316
+msgid "Used to buy frequently but lapsed. Re-engage now."
+msgstr "Sık sık satın alıyorlardı ancak duraksadılar. Şimdi yeniden ilgilenin."
+
+#: includes/cron/customer-analytics-jobs.php:320
+msgid "About to Sleep"
+msgstr "Uykuya Dalmak Üzere"
+
+#: includes/cron/customer-analytics-jobs.php:321
+msgid "Below-average recency, frequency, and value. Recover them."
+msgstr "Ortalamanın altında yakınlık, sıklık ve değer. Onları geri kazanın."
+
+#: includes/cron/customer-analytics-jobs.php:325
+msgid "Hibernating"
+msgstr "Kış Uykusunda"
+
+#: includes/cron/customer-analytics-jobs.php:326
+msgid "Low engagement across the board. Test cheap re-activation."
+msgstr "Genel olarak düşük etkileşim. Ucuz yeniden aktivasyon deneyin."
+
+#: includes/cron/customer-analytics-jobs.php:330
+msgid "Lost"
+msgstr "Kaybedilmiş"
+
+#: includes/cron/customer-analytics-jobs.php:331
+msgid "Lowest scores everywhere. Likely gone for good."
+msgstr "Her yerde en düşük puanlar. Muhtemelen kalıcı olarak gitti."
+
+#: includes/cron/customer-analytics-jobs.php:335
+msgid "Others"
+msgstr "Diğerleri"
+
+#: includes/cron/customer-analytics-jobs.php:336
+msgid "Customers who don't fit the standard segments yet."
+msgstr "Henüz standart segmentlere uymayan müşteriler."
+
+#: includes/cron/customer-analytics-jobs.php:535
+msgid "Recompute Customer Metrics (LTV + RFM)"
+msgstr "Müşteri Metriklerini Yeniden Hesapla (LTV + RFM)"
+
+#: includes/cron/customer-analytics-jobs.php:536
+msgid "Aggregates per-customer LTV totals from order history."
+msgstr "Sipariş geçmişinden müşteri başına LTV toplamlarını toplar."
+
+#: includes/cron/customer-analytics-jobs.php:544
+msgid "Recompute Cohort Retention"
+msgstr "Kohort Elde Tutmayı Yeniden Hesapla"
+
+#: includes/cron/customer-analytics-jobs.php:545
+msgid "Builds the monthly cohort × period retention matrix."
+msgstr "Aylık kohort × dönem elde tutma matrisini oluşturur."

@@ -1,0 +1,813 @@
+/* =============================================================================
+   BrikPanel Global Topbar — e-commerce focused top bar that replaces the
+   WordPress admin bar across the entire admin area. Mirrors the BrikPanel
+   design system (monochrome, rounded, subtle shadows).
+   ============================================================================= */
+
+:root {
+    --bp-topbar-height: 52px;
+    --bp-topbar-bg: #ffffff;
+    --bp-topbar-text: #303030;
+    --bp-topbar-text-2: #616161;
+    --bp-topbar-text-3: #8a8a8a;
+    --bp-topbar-border: #e3e3e3;
+    --bp-topbar-primary: #303030;
+    --bp-topbar-primary-hover: #1a1a1a;
+    --bp-topbar-success: #1a8917;
+    --bp-topbar-error: #d72c0d;
+}
+
+/* ---- Push core admin layout below our fixed topbar ---- */
+html.brikpanel-has-topbar.wp-toolbar,
+html.brikpanel-has-topbar {
+    padding-top: var(--bp-topbar-height) !important;
+}
+body.brikpanel-has-topbar #wpadminbar {
+    display: none !important;
+}
+/* Reset WP's own admin bar offset on responsive breakpoints. */
+@media screen and (max-width: 782px) {
+    html.brikpanel-has-topbar.wp-toolbar,
+    html.brikpanel-has-topbar {
+        padding-top: var(--bp-topbar-height) !important;
+    }
+}
+
+/* ---- Make the BrikPanel sidebar pinned and always visible while scrolling.
+       WP's #adminmenuwrap is position: relative and scrolls off-screen on
+       long pages; we pin it to the viewport so the main nav stays reachable. */
+body.brikpanel-has-topbar #adminmenuback,
+body.brikpanel-has-topbar #adminmenuwrap {
+    position: fixed;
+    top: var(--bp-topbar-height);
+    bottom: 0;
+    left: 0;
+    height: auto;
+    z-index: 9990;
+}
+/* Let the inner BrikPanel nav handle scrolling — wrapping #adminmenuwrap
+   must NOT also scroll, otherwise two scrollbars show up side by side. */
+body.brikpanel-has-topbar #adminmenuwrap {
+    overflow: hidden;
+}
+/* Constrain the inner nav to the viewport-minus-topbar height, so it owns
+   the only scrollbar inside the sidebar. */
+body.brikpanel-has-topbar #brikpanel-navigation {
+    height: calc(100vh - var(--bp-topbar-height)) !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+body.brikpanel-has-topbar #brikpanel-navigation::-webkit-scrollbar { width: 6px; }
+body.brikpanel-has-topbar #brikpanel-navigation::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 3px;
+}
+/* Push the main content column down so the (now fixed) topbar doesn't overlap. */
+body.brikpanel-has-topbar #wpbody { padding-top: 0 !important; }
+
+/* The modern Order Edit page renders its own fixed sub-header positioned for
+   the native WP admin bar (`top: 32px`). Push it below the BrikPanel topbar
+   so it doesn't slide under our bar. */
+body.brikpanel-has-topbar .brikpanel-order-header {
+    top: var(--bp-topbar-height) !important;
+}
+
+/* On mobile WP collapses the sidebar; keep our offsets sensible. */
+@media screen and (max-width: 960px) {
+    body.brikpanel-has-topbar.auto-fold #adminmenuwrap,
+    body.brikpanel-has-topbar.auto-fold #adminmenuback {
+        top: var(--bp-topbar-height);
+    }
+}
+
+/* ============================ The topbar itself ========================= */
+
+.brikpanel-topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 99999;
+    height: var(--bp-topbar-height);
+    background: var(--bp-topbar-bg);
+    border-bottom: 1px solid var(--bp-topbar-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--bp-topbar-text);
+}
+
+.brikpanel-topbar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0 1rem;
+    height: 100%;
+}
+
+/* ---------- Left ---------- */
+
+.brikpanel-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.brikpanel-topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    color: var(--bp-topbar-text);
+    text-decoration: none;
+    padding: 0.25rem 0.375rem;
+    border-radius: 0.5rem;
+    transition: background 0.15s ease;
+}
+
+.brikpanel-topbar-brand:hover,
+.brikpanel-topbar-brand:focus {
+    background: #f7f7f7;
+    color: var(--bp-topbar-text);
+    outline: none;
+    box-shadow: none;
+}
+
+.brikpanel-topbar-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.brikpanel-topbar-brand-mark img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.brikpanel-topbar-brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+    min-width: 0;
+}
+
+.brikpanel-topbar-brand-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--bp-topbar-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+.brikpanel-topbar-brand-sub {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--bp-topbar-text-3);
+}
+
+.brikpanel-topbar-live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 999px;
+    background: #f0faf0;
+    border: 1px solid #d5ecd4;
+    color: var(--bp-topbar-success);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: default;
+    white-space: nowrap;
+}
+
+.brikpanel-topbar-live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--bp-topbar-success);
+    box-shadow: 0 0 0 0 rgba(26, 137, 23, 0.5);
+    animation: brikpanel-topbar-pulse 2s ease-out infinite;
+}
+
+@keyframes brikpanel-topbar-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(26, 137, 23, 0.45); }
+    70%  { box-shadow: 0 0 0 6px rgba(26, 137, 23, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(26, 137, 23, 0); }
+}
+
+.brikpanel-topbar-live-label { opacity: 0.8; }
+
+.brikpanel-topbar-live-pill.is-empty {
+    background: #f7f7f7;
+    border-color: var(--bp-topbar-border);
+    color: var(--bp-topbar-text-3);
+}
+.brikpanel-topbar-live-pill.is-empty .brikpanel-topbar-live-dot {
+    background: var(--bp-topbar-text-3);
+    animation: none;
+    box-shadow: none;
+}
+
+/* ---------- Right ---------- */
+
+.brikpanel-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.brikpanel-topbar-search-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4375rem 0.625rem;
+    border: 1px solid var(--bp-topbar-border);
+    background: #fafafa;
+    border-radius: 0.5rem;
+    color: var(--bp-topbar-text-2);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    min-width: 200px;
+}
+
+.brikpanel-topbar-search-btn:hover {
+    background: #f1f1f1;
+    color: var(--bp-topbar-text);
+}
+
+.brikpanel-topbar-search-text {
+    flex: 1;
+    text-align: left;
+}
+
+.brikpanel-topbar-kbd {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    font-size: 0.6875rem;
+    color: var(--bp-topbar-text-3);
+}
+
+.brikpanel-topbar-kbd-key {
+    background: #fff;
+    border: 1px solid var(--bp-topbar-border);
+    border-radius: 0.25rem;
+    padding: 1px 4px;
+    font-weight: 600;
+    color: var(--bp-topbar-text-2);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+    line-height: 1;
+}
+
+.brikpanel-topbar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.brikpanel-topbar-btn-primary {
+    background: var(--bp-topbar-primary);
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-topbar-btn-primary:hover {
+    background: var(--bp-topbar-primary-hover);
+    color: #fff;
+}
+
+/* Icon buttons (bell, external) — larger now for visibility. */
+.brikpanel-topbar-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--bp-topbar-border);
+    background: #ffffff;
+    color: var(--bp-topbar-text);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.brikpanel-topbar-icon-btn:hover {
+    background: #f1f1f1;
+    color: var(--bp-topbar-text);
+    border-color: #cfcfcf;
+}
+
+.brikpanel-topbar-icon-btn svg { width: 20px; height: 20px; }
+
+.brikpanel-topbar-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: var(--bp-topbar-error);
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--bp-topbar-bg);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* ---------- Dropdowns ---------- */
+
+.brikpanel-topbar-menu { position: relative; }
+
+.brikpanel-topbar-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 220px;
+    background: var(--bp-topbar-bg);
+    border: 1px solid var(--bp-topbar-border);
+    border-radius: 0.625rem;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.05);
+    padding: 0.375rem;
+    z-index: 100000;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.brikpanel-topbar-menu.is-open .brikpanel-topbar-dropdown {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.brikpanel-topbar-dropdown-wide { min-width: 280px; }
+.brikpanel-topbar-dropdown-user { min-width: 240px; }
+
+.brikpanel-topbar-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.375rem;
+    color: var(--bp-topbar-text);
+    text-decoration: none;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: background 0.1s ease;
+    cursor: pointer;
+}
+
+.brikpanel-topbar-dropdown-item:hover,
+.brikpanel-topbar-dropdown-item:focus {
+    background: #f7f7f7;
+    color: var(--bp-topbar-text);
+    outline: none;
+    box-shadow: none;
+}
+
+.brikpanel-topbar-dropdown-item svg {
+    color: var(--bp-topbar-text-2);
+    flex-shrink: 0;
+}
+
+.brikpanel-topbar-dropdown-item-danger { color: var(--bp-topbar-error); }
+.brikpanel-topbar-dropdown-item-danger svg { color: var(--bp-topbar-error); }
+.brikpanel-topbar-dropdown-item-danger:hover {
+    background: #fdecea;
+    color: var(--bp-topbar-error);
+}
+
+.brikpanel-topbar-dropdown-header {
+    padding: 0.5rem 0.625rem 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--bp-topbar-text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.brikpanel-topbar-dropdown-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.375rem;
+    color: var(--bp-topbar-text);
+    text-decoration: none;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: background 0.1s ease;
+}
+
+.brikpanel-topbar-dropdown-row:hover {
+    background: #f7f7f7;
+    color: var(--bp-topbar-text);
+}
+
+.brikpanel-topbar-dropdown-row-count {
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #f1f1f1;
+    color: var(--bp-topbar-text-2);
+    font-size: 0.6875rem;
+    font-weight: 650;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.brikpanel-topbar-dropdown-row[data-has-count="true"] .brikpanel-topbar-dropdown-row-count {
+    background: var(--bp-topbar-primary);
+    color: #fff;
+}
+
+.brikpanel-topbar-dropdown-sep {
+    height: 1px;
+    background: var(--bp-topbar-border);
+    margin: 0.25rem 0;
+}
+
+/* ---------- User button ---------- */
+
+.brikpanel-topbar-user-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem 0.25rem 0.25rem;
+    border: 1px solid var(--bp-topbar-border);
+    background: #fff;
+    border-radius: 999px;
+    cursor: pointer;
+    color: var(--bp-topbar-text);
+    font-size: 0.8125rem;
+    font-weight: 550;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.brikpanel-topbar-user-btn:hover {
+    background: #f1f1f1;
+    border-color: #cfcfcf;
+}
+
+.brikpanel-topbar-user-btn img {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+.brikpanel-topbar-user-name {
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.brikpanel-topbar-user-caret {
+    color: var(--bp-topbar-text-3);
+    transition: transform 0.15s ease;
+}
+
+.brikpanel-topbar-menu-user.is-open .brikpanel-topbar-user-caret {
+    transform: rotate(180deg);
+}
+
+.brikpanel-topbar-user-card {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.625rem 0.625rem 0.5rem;
+    border-bottom: 1px solid var(--bp-topbar-border);
+    margin-bottom: 0.25rem;
+}
+.brikpanel-topbar-user-card img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.brikpanel-topbar-user-card-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    min-width: 0;
+}
+.brikpanel-topbar-user-card-text strong {
+    font-size: 0.8125rem;
+    font-weight: 650;
+    color: var(--bp-topbar-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.brikpanel-topbar-user-card-text span {
+    font-size: 0.75rem;
+    color: var(--bp-topbar-text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---------- Cache-clear button ---------- */
+
+/* The cache-clear icon button reuses .brikpanel-topbar-icon-btn but adds a
+   spinner overlay that takes over while a purge is in flight. */
+.brikpanel-topbar-cache-btn { position: relative; }
+
+.brikpanel-topbar-cache-btn svg {
+    transition: opacity 0.15s ease;
+}
+
+.brikpanel-topbar-cache-spinner {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.brikpanel-topbar-cache-spinner::after {
+    content: "";
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--bp-topbar-border);
+    border-top-color: var(--bp-topbar-primary);
+    animation: brikpanel-topbar-cache-spin 0.7s linear infinite;
+}
+
+.brikpanel-topbar-cache-btn.is-loading {
+    pointer-events: none;
+    opacity: 0.95;
+}
+
+.brikpanel-topbar-cache-btn.is-loading svg {
+    opacity: 0;
+}
+
+.brikpanel-topbar-cache-btn.is-loading .brikpanel-topbar-cache-spinner {
+    display: flex;
+}
+
+@keyframes brikpanel-topbar-cache-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Cache dropdown — slightly wider than the default to fit plugin names. */
+.brikpanel-topbar-dropdown-cache { min-width: 240px; }
+
+/* The shared broom SVG markup is sized via CSS so the same source can be
+   reused as both the topbar icon (20×20 via .brikpanel-topbar-icon-btn) and
+   as the per-item icon inside this dropdown (16×16). */
+.brikpanel-topbar-dropdown-cache svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--bp-topbar-text-2);
+}
+
+/* Dropdown items inside the cache dropdown are <button> elements (not <a>),
+   so reset native button styling so they look identical to the existing
+   .brikpanel-topbar-dropdown-item rows. */
+.brikpanel-topbar-cache-item {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.brikpanel-topbar-cache-item:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(48, 48, 48, 0.18);
+}
+
+/* ---------- Topbar toast ---------- */
+
+.brikpanel-topbar-toast-container {
+    position: fixed;
+    top: calc(var(--bp-topbar-height) + 12px);
+    right: 16px;
+    z-index: 100002;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+    max-width: calc(100vw - 32px);
+}
+
+.brikpanel-topbar-toast {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 240px;
+    max-width: 360px;
+    padding: 0.625rem 0.75rem 0.625rem 0.875rem;
+    border-radius: 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    line-height: 1.4;
+    background: #ffffff;
+    border: 1px solid var(--bp-topbar-border);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.05);
+    transform: translateX(110%);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(.4, 0, .2, 1), opacity 0.2s ease;
+    pointer-events: auto;
+    color: var(--bp-topbar-text);
+}
+
+.brikpanel-topbar-toast.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.brikpanel-topbar-toast-success {
+    background: #e4f5e1;
+    border-color: #b7e1b0;
+    color: #1a6b15;
+}
+
+.brikpanel-topbar-toast-error {
+    background: #fce4e4;
+    border-color: #f1b0b0;
+    color: #c62828;
+}
+
+.brikpanel-topbar-toast-text {
+    flex: 1;
+    word-break: break-word;
+}
+
+.brikpanel-topbar-toast-close {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    opacity: 0.6;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 0.375rem;
+    padding: 0;
+    transition: background 0.15s ease, opacity 0.15s ease;
+}
+.brikpanel-topbar-toast-close:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.06);
+}
+
+/* The search overlay is relocated to <body> by the topbar JS so it can still
+   be opened when the WP admin bar is hidden. Make sure the modal sits above
+   the fixed topbar. */
+body.brikpanel-has-topbar .brikpanel-search-overlay {
+    z-index: 100001;
+}
+
+/* ---------- Mobile hamburger (replaces missing WP admin-bar menu toggle) ---------- */
+.brikpanel-topbar-menu-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--bp-topbar-border);
+    background: #ffffff;
+    color: var(--bp-topbar-text);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+}
+.brikpanel-topbar-menu-btn:hover { background: #f1f1f1; }
+
+/* Backdrop that appears behind the off-canvas sidebar on mobile. */
+.brikpanel-topbar-mobile-backdrop {
+    position: fixed;
+    top: var(--bp-topbar-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 9989;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* ---------- Responsive ---------- */
+
+/* Tablet — hide search label & shortcut hint to save space. */
+@media (max-width: 1240px) {
+    .brikpanel-topbar-search-btn { min-width: 0; padding: 0.5rem; }
+    .brikpanel-topbar-search-text { display: none; }
+    .brikpanel-topbar-kbd { display: none; }
+}
+
+@media (max-width: 960px) {
+    .brikpanel-topbar-live-pill { display: none; }
+}
+
+/* ===== Mobile (matches WP's auto-fold breakpoint) ===== */
+@media (max-width: 782px) {
+    /* Hide WP's "Screen Options" and "Help" toggles on small screens — they
+       open desktop-sized panels that don't fit a phone, and the icons just
+       eat horizontal space below the topbar. */
+    body.brikpanel-has-topbar #screen-meta-links,
+    body.brikpanel-has-topbar #screen-meta {
+        display: none !important;
+    }
+
+    /* Show the hamburger; hide non-essential brand text. */
+    .brikpanel-topbar-menu-btn { display: inline-flex; }
+    .brikpanel-topbar-brand-sub { display: none; }
+    .brikpanel-topbar-brand-name { max-width: 130px; }
+    .brikpanel-topbar-user-name { display: none; }
+    .brikpanel-topbar-btn-label { display: none; }
+    .brikpanel-topbar-btn { padding: 0.5rem 0.625rem; }
+
+    /* Hide the create button entirely on phones — quick-create lives in the
+       user menu / hamburger flow instead, freeing space for icon buttons. */
+    .brikpanel-topbar-menu[data-topbar-menu="create"] { display: none; }
+
+    /* Tighter inner padding to fit the icon-row. */
+    .brikpanel-topbar-inner { padding: 0 0.5rem; gap: 0.5rem; }
+    .brikpanel-topbar-right { gap: 0.25rem; }
+
+    /* Pin the sidebar off-canvas; reveal on `body.brikpanel-mobile-nav-open`. */
+    body.brikpanel-has-topbar #adminmenuback,
+    body.brikpanel-has-topbar #adminmenuwrap {
+        display: block !important;
+        transform: translateX(-100%);
+        transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+        will-change: transform;
+        z-index: 9990;
+        width: 240px;
+    }
+    body.brikpanel-mobile-nav-open #adminmenuback,
+    body.brikpanel-mobile-nav-open #adminmenuwrap {
+        transform: translateX(0);
+    }
+    /* Content area gets full width on mobile (sidebar floats over it). */
+    body.brikpanel-has-topbar #wpcontent { margin-left: 0 !important; }
+    body.brikpanel-has-topbar #wpfooter { margin-left: 0 !important; }
+
+    /* Dropdowns become full-width sheets anchored under the topbar. */
+    .brikpanel-topbar-dropdown,
+    .brikpanel-topbar-dropdown-wide,
+    .brikpanel-topbar-dropdown-user {
+        position: fixed;
+        top: calc(var(--bp-topbar-height) + 6px);
+        left: 8px;
+        right: 8px;
+        min-width: 0;
+        max-width: none;
+        max-height: calc(100vh - var(--bp-topbar-height) - 16px);
+        overflow-y: auto;
+    }
+}
+
+/* Very small phones: shrink icon buttons a touch so everything still fits. */
+@media (max-width: 380px) {
+    .brikpanel-topbar-icon-btn,
+    .brikpanel-topbar-menu-btn { width: 36px; height: 36px; }
+    .brikpanel-topbar-icon-btn svg { width: 18px; height: 18px; }
+    .brikpanel-topbar-brand-mark { width: 28px; height: 28px; }
+    .brikpanel-topbar-brand-text { display: none; }
+}

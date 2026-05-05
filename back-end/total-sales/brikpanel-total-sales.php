@@ -7,8 +7,8 @@ if( ! defined( 'ABSPATH' ) ) {
  * ANA YARDIMCI FONKSİYON
  * GÜNCELLENDİ: Sadece 'wc-processing' ve 'wc-completed' durumlarını toplar.
  */
-function brikpanel_get_total_revenue( $start_date_gmt = null, $end_date_gmt = null ) {
-    $cache_key = 'brikpanel_rev_' . md5( $start_date_gmt . $end_date_gmt );
+function brikpanel_get_total_revenue( $start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false ) {
+    $cache_key = 'bp_rev_' . brikpanel_data_cache_ver() . '_' . md5( $start_date_gmt . $end_date_gmt . ( $exclude_marketplace ? '|nomp' : '' ) );
     $cached    = get_transient( $cache_key );
     if ( false !== $cached ) {
         return (float) $cached;
@@ -54,6 +54,13 @@ function brikpanel_get_total_revenue( $start_date_gmt = null, $end_date_gmt = nu
     $query_sql .= $exclusion['sql'];
     $query_args = array_merge( $query_args, $exclusion['args'] );
 
+    // Optionally exclude marketplace-imported orders (BrikMarket)
+    if ( $exclude_marketplace ) {
+        $mp_exclusion = brikpanel_marketplace_order_exclusion_sql( $is_hpos, $is_hpos ? 'id' : 'p.ID' );
+        $query_sql   .= $mp_exclusion['sql'];
+        $query_args   = array_merge( $query_args, $mp_exclusion['args'] );
+    }
+
     // Başlangıç tarihi filtresi
     if ( $start_date_gmt ) {
         $query_sql .= " AND {$date_column_name} >= %s";
@@ -67,7 +74,7 @@ function brikpanel_get_total_revenue( $start_date_gmt = null, $end_date_gmt = nu
 
     $total_revenue = $wpdb->get_var($wpdb->prepare($query_sql, $query_args));
     $result = is_null($total_revenue) ? 0.0 : (float) $total_revenue;
-    set_transient( $cache_key, $result, 60 );
+    set_transient( $cache_key, $result, brikpanel_cache_ttl( 60 ) );
     return $result;
 }
 

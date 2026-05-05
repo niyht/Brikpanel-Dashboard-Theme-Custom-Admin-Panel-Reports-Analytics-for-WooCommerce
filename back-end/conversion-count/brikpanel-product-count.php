@@ -3,14 +3,15 @@ if( ! defined( 'ABSPATH' ) ) exit;
 
 // Ürün sayfası ziyaretini veritabanına kaydeden AJAX fonksiyonu
 function brikpanel_product_view() {
-    // Skip tracking for admin users.
     if ( brikpanel_is_admin_user() ) {
         wp_send_json_success();
     }
+    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
+        wp_send_json_success();
+    }
 
-    // Nonce kontrolü
-    if ( ! isset($_POST['security']) || ! wp_verify_nonce( sanitize_key( $_POST['security'] ), 'brikpanel_nonce_action' ) ) {
-        wp_send_json_error(['message' => 'Invalid nonce.']);
+    if ( ! isset( $_POST['security'] ) || ! wp_verify_nonce( sanitize_key( $_POST['security'] ), 'brikpanel_nonce_action' ) ) {
+        wp_send_json_error( [ 'message' => 'Invalid nonce.' ] );
     }
 
     if ( empty( $_POST['is_product'] ) || $_POST['is_product'] !== '1' ) {
@@ -19,27 +20,14 @@ function brikpanel_product_view() {
 
     global $wpdb;
     $table = $wpdb->prefix . 'brikpanel_visitors';
-
-    // --- DÜZELTME: gmdate() yerine wp_date() kullanıyoruz ---
-    // Bu, sitenin saat dilimine göre doğru günü kaydeder.
     $today = wp_date( 'Y-m-d' );
 
-    // Mevcut sayıyı al
-    $count = $wpdb->get_var(
-        $wpdb->prepare( "SELECT product_count FROM {$table} WHERE date_column = %s", $today )
-    );
+    $updated = $wpdb->query( $wpdb->prepare(
+        "UPDATE {$table} SET product_count = product_count + 1 WHERE date_column = %s",
+        $today
+    ) );
 
-    if ( $count !== null ) {
-        // Gün için kayıt varsa, sayacı 1 artır
-        $wpdb->update(
-            $table,
-            [ 'product_count' => $count + 1 ],
-            [ 'date_column'   => $today ],
-            [ '%d' ],
-            [ '%s' ]
-        );
-    } else {
-        // Gün için kayıt yoksa, yeni bir satır ekle
+    if ( ! $updated ) {
         $wpdb->insert(
             $table,
             [ 'date_column' => $today, 'product_count' => 1 ],
@@ -56,6 +44,9 @@ add_action( 'wp_ajax_brikpanel_product_view', 'brikpanel_product_view' );
 // Ürün sayfasına JS kodunu ekleyen fonksiyon
 function brikpanel_product_view_script() {
     if ( ! is_singular( 'product' ) || brikpanel_is_admin_user() ) {
+        return;
+    }
+    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
         return;
     }
 
