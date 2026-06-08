@@ -1,4 +1,9 @@
-/* Menu item at the top of the WordPress dashboard */
+/* =========================================================================
+   BrikPanel command palette
+   Monochrome, Shopify-inspired. Smooth + modern.
+   ========================================================================= */
+
+/* Admin-bar menu item ----------------------------------------------------- */
 
 .brikpanel-search-menu-item-mobile:hover {
 	cursor: pointer;
@@ -54,9 +59,18 @@
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
-/* The popup */
+/* Overlay + entrance animation ------------------------------------------- */
 
 .brikpanel-search-overlay {
+	--bp-bg: #ffffff;
+	--bp-text: #303030;
+	--bp-text-2: #616161;
+	--bp-muted: #8a8a8a;
+	--bp-border: #e3e3e3;
+	--bp-hover: #f6f6f7;
+	--bp-active: #eef0f2;
+	--bp-accent: #303030;
+
 	position: fixed !important;
 	top: 0;
 	left: 0;
@@ -64,26 +78,63 @@
 	display: flex;
 	height: 100vh !important;
 	width: 100vw !important;
-	background-color: #0003;
+	background-color: rgba(20, 20, 20, 0.32);
 	margin-left: -10px !important;
 	overflow: auto;
+	/* Entrance plays whenever the overlay goes from display:none to shown,
+	   so it works no matter who opens it (Ctrl+K, the admin-bar item, or
+	   the top bar button which only toggles .hidden). No JS class gating —
+	   that previously left the modal invisible for the top bar opener. No
+	   backdrop-filter: blurring the whole admin page caused heavy jank. */
+	animation: bp-overlay-in 0.16s ease both;
+}
+
+.brikpanel-search-overlay.is-closing {
+	animation: bp-overlay-out 0.16s ease both;
 }
 
 .brikpanel-search-modal {
 	margin: 0 auto !important;
-	margin-top: 4rem !important;
+	margin-top: 7rem !important;
 	margin-bottom: 4rem !important;
-	padding: 1rem !important;
+	padding: 0.5rem !important;
 	width: 100% !important;
 	height: fit-content !important;
-	max-width: 40rem;
+	max-width: 38rem;
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
-	border-radius: 1rem !important;
-	box-shadow: 0 10px 15px -3px #0000001a,0 4px 6px -4px #0000001a !important;
-	background: #fff;
-	color: #444 !important;
+	border-radius: 0.875rem !important;
+	border: 1px solid var(--bp-border);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -8px rgba(0, 0, 0, 0.22) !important;
+	background: var(--bp-bg);
+	color: var(--bp-text) !important;
+	animation: bp-modal-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+	will-change: transform, opacity;
+}
+
+.brikpanel-search-overlay.is-closing .brikpanel-search-modal {
+	animation: bp-modal-out 0.16s ease both;
+}
+
+@keyframes bp-overlay-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@keyframes bp-overlay-out {
+	from { opacity: 1; }
+	to { opacity: 0; }
+}
+
+@keyframes bp-modal-in {
+	from { opacity: 0; transform: translateY(-10px) scale(0.985); }
+	to { opacity: 1; transform: none; }
+}
+
+@keyframes bp-modal-out {
+	from { opacity: 1; transform: none; }
+	to { opacity: 0; transform: translateY(-6px) scale(0.99); }
 }
 
 .brikpanel-search-modal * {
@@ -91,47 +142,114 @@
 	font-size: 0.9rem !important;
 }
 
+/* Input ------------------------------------------------------------------- */
+
 .brikpanel-search-modal .input-container {
-	border-radius: 0.75rem !important;
-	outline: 1px solid #a8a8a8;
+	border-radius: 0.625rem !important;
+	border: 1px solid transparent;
+	background: transparent;
 	display: flex;
+	align-items: center;
+	padding: 0.15rem 0.35rem;
+	margin-bottom: 0.15rem;
+	border-bottom: 1px solid var(--bp-border);
+	border-bottom-left-radius: 0 !important;
+	border-bottom-right-radius: 0 !important;
+	transition: border-color 0.15s ease;
 }
 
 .brikpanel-search-modal .focus {
-	outline: 2px solid #333;
+	border-color: transparent;
+	border-bottom-color: var(--bp-accent);
 }
 
 .brikpanel-search-modal .input-container .icon {
-	width: 1rem !important;
+	width: 1.05rem !important;
 	margin-right: 0.5rem !important;
-	margin-left: 0.5rem !important;
+	margin-left: 0.45rem !important;
 	flex-shrink: 0;
+	opacity: 0.55;
 }
 
 .brikpanel-search-modal input {
 	border: none;
-	border-radius: 0.75rem !important;
+	background: transparent;
+	border-radius: 0 !important;
 	flex-grow: 1;
-	line-height: 2.4 !important;
-	font-size: 1rem !important;
+	line-height: 2.6 !important;
+	font-size: 1.05rem !important;
+	color: var(--bp-text);
 }
 
 .brikpanel-search-modal input:focus {
 	outline: none;
+	box-shadow: none;
 }
 
 .brikpanel-search-modal input::placeholder {
-	color: #616161;
+	color: var(--bp-muted);
 }
 
+/* Section heading + source icon ------------------------------------------ */
+
 .brikpanel-search-modal .heading {
-	color: #6c6c6c;
-	font-weight: bold !important;
-	font-size: 0.95rem !important;
-	line-height: 1 !important;
-	margin-top: 1.6rem !important;
-	margin-bottom: 0.5rem !important;
-	margin-left: 0.65rem !important;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	color: var(--bp-muted);
+	margin: 1.1rem 0 0.3rem 0.65rem !important;
+}
+
+.brikpanel-search-modal .bp-sec-label {
+	font-size: 0.7rem !important;
+	font-weight: 600 !important;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.brikpanel-search-modal .bp-sec-ic {
+	display: inline-block;
+	width: 0.85rem;
+	height: 0.85rem;
+	flex-shrink: 0;
+	background-color: currentColor;
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+	-webkit-mask-position: center;
+	mask-position: center;
+	-webkit-mask-size: contain;
+	mask-size: contain;
+}
+
+.brikpanel-search-modal .bp-sec-ic--orders {
+	-webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 3h14v18l-3-2-2 2-2-2-2 2-3-2z'/><path d='M9 8h6'/><path d='M9 12h6'/></svg>");
+	mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 3h14v18l-3-2-2 2-2-2-2 2-3-2z'/><path d='M9 8h6'/><path d='M9 12h6'/></svg>");
+}
+
+.brikpanel-search-modal .bp-sec-ic--products {
+	-webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20.59 13.41l-7.17 7.18a2 2 0 0 1-2.83 0L3 13V3h10l7.59 7.59a2 2 0 0 1 0 2.82z'/><circle cx='7.5' cy='7.5' r='1.5'/></svg>");
+	mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20.59 13.41l-7.17 7.18a2 2 0 0 1-2.83 0L3 13V3h10l7.59 7.59a2 2 0 0 1 0 2.82z'/><circle cx='7.5' cy='7.5' r='1.5'/></svg>");
+}
+
+.brikpanel-search-modal .bp-sec-ic--customers {
+	-webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21a8 8 0 0 0-16 0'/><circle cx='12' cy='7' r='4'/></svg>");
+	mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21a8 8 0 0 0-16 0'/><circle cx='12' cy='7' r='4'/></svg>");
+}
+
+.brikpanel-search-modal .bp-sec-ic--navigation {
+	-webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><polygon points='16.5 7.5 11 11 7.5 16.5 13 13'/></svg>");
+	mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><polygon points='16.5 7.5 11 11 7.5 16.5 13 13'/></svg>");
+}
+
+.brikpanel-search-modal .bp-sec-ic--default {
+	-webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='8'/><circle cx='12' cy='12' r='2.5'/></svg>");
+	mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='8'/><circle cx='12' cy='12' r='2.5'/></svg>");
+}
+
+/* Result rows ------------------------------------------------------------- */
+
+.result-list {
+	overflow-y: auto;
 }
 
 .brikpanel-search-modal ul {
@@ -140,64 +258,197 @@
 }
 
 .brikpanel-search-modal li {
+	position: relative;
 	line-height: 1 !important;
-	padding: 0.65rem !important;
-	border-radius: 1rem !important;
+	padding: 0.6rem 2rem 0.6rem 0.65rem !important;
+	border-radius: 0.625rem !important;
+	transition: background-color 0.12s ease;
 }
 
 .brikpanel-search-modal li a {
 	display: flex !important;
 	flex-direction: column;
-	gap: 0.5rem;
+	gap: 0.4rem;
 	color: initial;
 	height: initial !important;
 	padding: initial !important;
+	box-shadow: none !important;
 }
 
-.brikpanel-search-modal li:hover {
-	background-color: #f7f7f7 !important;
+.brikpanel-search-modal li:hover,
+.brikpanel-search-modal li.is-active {
+	background-color: var(--bp-hover) !important;
 	cursor: pointer;
 }
 
+.brikpanel-search-modal li.is-active {
+	background-color: var(--bp-active) !important;
+}
+
+/* Hover/active chevron affordance */
+.brikpanel-search-modal li::after {
+	content: "";
+	position: absolute;
+	right: 0.75rem;
+	top: 50%;
+	width: 0.8rem;
+	height: 0.8rem;
+	transform: translateY(-50%) translateX(-2px);
+	background-color: var(--bp-muted);
+	opacity: 0;
+	transition: opacity 0.12s ease, transform 0.12s ease;
+	-webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='9 6 15 12 9 18'/></svg>") no-repeat center / contain;
+	mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='9 6 15 12 9 18'/></svg>") no-repeat center / contain;
+}
+
+.brikpanel-search-modal li:hover::after,
+.brikpanel-search-modal li.is-active::after {
+	opacity: 1;
+	transform: translateY(-50%) translateX(0);
+}
+
+.brikpanel-search-modal .result-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.brikpanel-search-modal .result-title {
+	font-weight: 600 !important;
+	color: var(--bp-text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .brikpanel-search-modal .status-badge {
-	border-radius: 0.5rem !important;
+	border-radius: 0.4rem !important;
 	margin-left: 0.25rem !important;
-	padding: 0.125rem 0.5rem !important;
+	padding: 0.15rem 0.5rem !important;
+	font-size: 0.72rem !important;
+	font-weight: 600 !important;
 }
 
 .brikpanel-search-modal .order-info {
-	color: #727272;
+	color: var(--bp-text-2);
 }
 
 .brikpanel-search-modal .matching-order-product {
 	margin-top: 0.25rem !important;
+	color: var(--bp-muted);
 }
 
 .brikpanel-search-modal .hint-text {
-	color: #727272;
-	line-height: 1.3 !important;
-	margin-left: 0.65rem !important;
-	margin-right: 0.65rem !important;
-	margin-top: 0.85rem !important;
-	/* Prevent scrollbar from showing at smallest height. */
-	margin-bottom: 0.1rem !important;
-}
-
-.result-list {
-	overflow-y: auto;
+	color: var(--bp-text-2);
+	line-height: 1.45 !important;
+	margin: 0.85rem 0.65rem 0.1rem !important;
 }
 
 .brikpanel-search-modal .section-divider {
-	margin-top: 1.6rem !important;
+	border: 0;
+	border-top: 1px solid var(--bp-border);
+	margin: 1.1rem 0.4rem 0 !important;
+	opacity: 0.7;
 }
 
-/* Because of the padding for the hover highlight for each of the search results,
-they need less margin above the section dividing line. */
 section:has(.result-list ul) + .section-divider {
-	margin-top: 0.95rem !important;
+	margin-top: 0.7rem !important;
 }
 
-/* Utility classes */
+/* Loading skeleton -------------------------------------------------------- */
+
+.bp-skel {
+	padding: 0.6rem 0.65rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.bp-skel-row {
+	height: 0.7rem;
+	border-radius: 0.4rem;
+	background: linear-gradient(90deg, #efefef 25%, #f7f7f7 37%, #efefef 63%);
+	background-size: 400% 100%;
+	animation: bp-shimmer 1.2s ease-in-out infinite;
+}
+
+.bp-skel-row.sm {
+	width: 38%;
+	height: 0.6rem;
+	opacity: 0.7;
+}
+
+.bp-skel-row.lg {
+	width: 72%;
+}
+
+@keyframes bp-shimmer {
+	0% { background-position: 100% 0; }
+	100% { background-position: 0 0; }
+}
+
+/* Empty state ------------------------------------------------------------- */
+
+.bp-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.55rem;
+	color: var(--bp-muted);
+	padding: 2rem 1rem 1.75rem;
+	text-align: center;
+}
+
+.bp-empty-ic {
+	width: 1.6rem;
+	height: 1.6rem;
+	background-color: currentColor;
+	opacity: 0.6;
+	-webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='M21 21l-4.3-4.3'/></svg>") no-repeat center / contain;
+	mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='M21 21l-4.3-4.3'/></svg>") no-repeat center / contain;
+}
+
+.bp-empty p {
+	margin: 0;
+	color: var(--bp-text-2);
+}
+
+/* Footer hint ------------------------------------------------------------- */
+
+.bp-modal-footer {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 0.6rem 0.7rem 0.35rem;
+	margin-top: 0.35rem;
+	border-top: 1px solid var(--bp-border);
+	color: var(--bp-muted);
+}
+
+.bp-modal-footer span {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.72rem !important;
+}
+
+.bp-modal-footer kbd {
+	display: inline-block;
+	min-width: 1.05rem;
+	padding: 0.1rem 0.3rem;
+	border: 1px solid var(--bp-border);
+	border-bottom-width: 2px;
+	border-radius: 0.3rem;
+	background: #fafafa;
+	color: var(--bp-text-2);
+	font-size: 0.68rem !important;
+	font-family: inherit;
+	text-align: center;
+	line-height: 1.2 !important;
+}
+
+/* Utility ----------------------------------------------------------------- */
 
 .hidden {
 	display: none;
@@ -207,7 +458,23 @@ section:has(.result-list ul) + .section-divider {
 	font-size: 0.8rem !important;
 }
 
-/* Small screens */
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-search-overlay,
+	.brikpanel-search-overlay.is-closing,
+	.brikpanel-search-modal,
+	.brikpanel-search-overlay.is-closing .brikpanel-search-modal {
+		animation: none !important;
+	}
+	.brikpanel-search-modal li,
+	.brikpanel-search-modal li::after {
+		transition: none !important;
+	}
+	.bp-skel-row {
+		animation: none !important;
+	}
+}
+
+/* Small screens ----------------------------------------------------------- */
 
 @media screen and (max-width: 782px) {
 	#wp-admin-bar-brikpanel-search .ab-item:hover {
@@ -217,7 +484,8 @@ section:has(.result-list ul) + .section-divider {
 		display: initial !important;
 	}
 	.brikpanel-search-modal {
-		max-width: 80%;
+		max-width: 92%;
+		margin-top: 4.5rem !important;
 	}
 	.results li {
 		display: flex !important;
@@ -227,5 +495,8 @@ section:has(.result-list ul) + .section-divider {
 	}
 	.brikpanel-search-menu-item-mobile {
 		display: block;
+	}
+	.bp-modal-footer {
+		display: none;
 	}
 }

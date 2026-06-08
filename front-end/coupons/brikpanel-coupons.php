@@ -29,6 +29,27 @@ class Brikpanel_Coupons {
         add_action('wp_ajax_brikpanel_delete_coupon', [$this, 'ajax_delete_coupon']);
         add_action('wp_ajax_brikpanel_toggle_coupon_status', [$this, 'ajax_toggle_coupon_status']);
         add_action('wp_ajax_brikpanel_duplicate_coupon', [$this, 'ajax_duplicate_coupon']);
+        add_action('wp_ajax_brikpanel_coupons_search_products', [$this, 'ajax_search_products']);
+        add_action('wp_ajax_brikpanel_coupons_search_categories', [$this, 'ajax_search_categories']);
+    }
+
+    /**
+     * Returns which optional usage-restriction fields the store owner has
+     * enabled from BrikPanel → Settings → Coupons. Used to render the drawer
+     * conditionally and to gate the corresponding save-paths so a disabled
+     * field cannot be tampered with via the AJAX endpoint.
+     *
+     * @return array<string,bool>
+     */
+    public static function enabled_fields() {
+        return [
+            'products'           => get_option('brikpanel_coupons_show_products', 'no') === 'yes',
+            'exclude_products'   => get_option('brikpanel_coupons_show_exclude_products', 'no') === 'yes',
+            'categories'         => get_option('brikpanel_coupons_show_categories', 'no') === 'yes',
+            'exclude_categories' => get_option('brikpanel_coupons_show_exclude_categories', 'no') === 'yes',
+            'emails'             => get_option('brikpanel_coupons_show_emails', 'no') === 'yes',
+            'limit_items'        => get_option('brikpanel_coupons_show_limit_items', 'no') === 'yes',
+        ];
     }
 
     // =========================================================================
@@ -82,6 +103,7 @@ class Brikpanel_Coupons {
 
     public function render_page() {
         $currency = get_woocommerce_currency_symbol();
+        $fields   = self::enabled_fields();
 
         // Count coupons by status
         $counts  = wp_count_posts('shop_coupon');
@@ -300,6 +322,70 @@ class Brikpanel_Coupons {
                                 </span>
                             </label>
                         </div>
+
+                        <?php if ($fields['products']) : ?>
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-products-search"><?php esc_html_e('Products', 'brikpanel'); ?></label>
+                            <div class="brikpanel-cp-token-field" data-token-target="products">
+                                <div class="brikpanel-cp-tokens" id="bpc-products-tokens"></div>
+                                <div class="brikpanel-cp-token-input-wrap">
+                                    <input type="text" id="bpc-products-search" class="brikpanel-cp-token-input" autocomplete="off" placeholder="<?php esc_attr_e('Search products by name or SKU…', 'brikpanel'); ?>">
+                                    <div class="brikpanel-cp-token-suggestions" id="bpc-products-suggestions" hidden></div>
+                                </div>
+                            </div>
+                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Limit the coupon to these products. Leave empty to allow all products.', 'brikpanel'); ?></span>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($fields['exclude_products']) : ?>
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-exclude-products-search"><?php esc_html_e('Exclude products', 'brikpanel'); ?></label>
+                            <div class="brikpanel-cp-token-field" data-token-target="exclude_products">
+                                <div class="brikpanel-cp-tokens" id="bpc-exclude-products-tokens"></div>
+                                <div class="brikpanel-cp-token-input-wrap">
+                                    <input type="text" id="bpc-exclude-products-search" class="brikpanel-cp-token-input" autocomplete="off" placeholder="<?php esc_attr_e('Search products to exclude…', 'brikpanel'); ?>">
+                                    <div class="brikpanel-cp-token-suggestions" id="bpc-exclude-products-suggestions" hidden></div>
+                                </div>
+                            </div>
+                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Coupon will not apply when the cart contains these products.', 'brikpanel'); ?></span>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($fields['categories']) : ?>
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-categories-search"><?php esc_html_e('Product categories', 'brikpanel'); ?></label>
+                            <div class="brikpanel-cp-token-field" data-token-target="categories">
+                                <div class="brikpanel-cp-tokens" id="bpc-categories-tokens"></div>
+                                <div class="brikpanel-cp-token-input-wrap">
+                                    <input type="text" id="bpc-categories-search" class="brikpanel-cp-token-input" autocomplete="off" placeholder="<?php esc_attr_e('Search categories…', 'brikpanel'); ?>">
+                                    <div class="brikpanel-cp-token-suggestions" id="bpc-categories-suggestions" hidden></div>
+                                </div>
+                            </div>
+                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Coupon applies only to products in these categories. Leave empty to allow all categories.', 'brikpanel'); ?></span>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($fields['exclude_categories']) : ?>
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-exclude-categories-search"><?php esc_html_e('Exclude categories', 'brikpanel'); ?></label>
+                            <div class="brikpanel-cp-token-field" data-token-target="exclude_categories">
+                                <div class="brikpanel-cp-tokens" id="bpc-exclude-categories-tokens"></div>
+                                <div class="brikpanel-cp-token-input-wrap">
+                                    <input type="text" id="bpc-exclude-categories-search" class="brikpanel-cp-token-input" autocomplete="off" placeholder="<?php esc_attr_e('Search categories to exclude…', 'brikpanel'); ?>">
+                                    <div class="brikpanel-cp-token-suggestions" id="bpc-exclude-categories-suggestions" hidden></div>
+                                </div>
+                            </div>
+                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Coupon will not apply to products in these categories.', 'brikpanel'); ?></span>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($fields['emails']) : ?>
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-allowed-emails"><?php esc_html_e('Allowed emails', 'brikpanel'); ?></label>
+                            <textarea id="bpc-allowed-emails" rows="2" placeholder="<?php esc_attr_e('e.g. jane@example.com, *@team.com', 'brikpanel'); ?>"></textarea>
+                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Comma- or newline-separated. Wildcards like *@example.com are supported.', 'brikpanel'); ?></span>
+                        </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Usage Limits Section -->
@@ -316,6 +402,14 @@ class Brikpanel_Coupons {
                                 <input type="number" id="bpc-usage-limit-user" min="0" placeholder="<?php esc_attr_e('Unlimited', 'brikpanel'); ?>">
                             </div>
                         </div>
+
+                        <?php if ($fields['limit_items']) : ?>
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-limit-items"><?php esc_html_e('Limit usage to X items', 'brikpanel'); ?></label>
+                            <input type="number" id="bpc-limit-items" min="0" placeholder="<?php esc_attr_e('All matching items', 'brikpanel'); ?>">
+                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Caps the number of matching items the discount applies to per cart. Only used with product or category restrictions.', 'brikpanel'); ?></span>
+                        </div>
+                        <?php endif; ?>
 
                         <div class="brikpanel-cp-qe-field" id="bpc-usage-count-field" style="display:none;">
                             <label><?php esc_html_e('Usage count', 'brikpanel'); ?></label>
@@ -431,26 +525,43 @@ class Brikpanel_Coupons {
                 ? Brikpanel_ASE_Bridge::get_row_actions($post)
                 : [];
 
+            $product_ids          = array_map('intval', (array) $coupon->get_product_ids());
+            $excluded_product_ids = array_map('intval', (array) $coupon->get_excluded_product_ids());
+            $category_ids         = array_map('intval', (array) $coupon->get_product_categories());
+            $excluded_category_ids = array_map('intval', (array) $coupon->get_excluded_product_categories());
+            $email_restrictions   = (array) $coupon->get_email_restrictions();
+            $limit_items          = $coupon->get_limit_usage_to_x_items();
+
             $coupons[] = [
-                'id'                   => $post->ID,
-                'code'                 => $coupon->get_code() ?? '',
-                'description'          => $coupon->get_description() ?? '',
-                'discount_type'        => $coupon->get_discount_type(),
-                'amount'               => $coupon->get_amount(),
-                'free_shipping'        => $coupon->get_free_shipping() ? 'yes' : 'no',
-                'expiry_date'          => $expiry_date,
-                'minimum_amount'       => $coupon->get_minimum_amount(),
-                'maximum_amount'       => $coupon->get_maximum_amount(),
-                'individual_use'       => $coupon->get_individual_use() ? 'yes' : 'no',
-                'exclude_sale_items'   => $coupon->get_exclude_sale_items() ? 'yes' : 'no',
-                'usage_limit'          => $usage_limit ? $usage_limit : '',
-                'usage_limit_per_user' => $coupon->get_usage_limit_per_user() ? $coupon->get_usage_limit_per_user() : '',
-                'usage_count'          => $usage_count,
-                'revenue'              => $coupon_revenue,
-                'revenue_formatted'    => $coupon_revenue > 0 ? wc_price($coupon_revenue) : '',
-                'status'               => $post->post_status,
-                'extra_cells'          => (object) $extra_cells,
-                'extra_actions'        => $extra_actions,
+                'id'                       => $post->ID,
+                'code'                     => $coupon->get_code() ?? '',
+                'description'              => $coupon->get_description() ?? '',
+                'discount_type'            => $coupon->get_discount_type(),
+                'amount'                   => $coupon->get_amount(),
+                'free_shipping'            => $coupon->get_free_shipping() ? 'yes' : 'no',
+                'expiry_date'              => $expiry_date,
+                'minimum_amount'           => $coupon->get_minimum_amount(),
+                'maximum_amount'           => $coupon->get_maximum_amount(),
+                'individual_use'           => $coupon->get_individual_use() ? 'yes' : 'no',
+                'exclude_sale_items'       => $coupon->get_exclude_sale_items() ? 'yes' : 'no',
+                'usage_limit'              => $usage_limit ? $usage_limit : '',
+                'usage_limit_per_user'     => $coupon->get_usage_limit_per_user() ? $coupon->get_usage_limit_per_user() : '',
+                'usage_count'              => $usage_count,
+                'revenue'                  => $coupon_revenue,
+                'revenue_formatted'        => $coupon_revenue > 0 ? wc_price($coupon_revenue) : '',
+                'status'                   => $post->post_status,
+                'product_ids'              => $product_ids,
+                'product_labels'           => $this->build_product_labels($product_ids),
+                'excluded_product_ids'     => $excluded_product_ids,
+                'excluded_product_labels'  => $this->build_product_labels($excluded_product_ids),
+                'category_ids'             => $category_ids,
+                'category_labels'          => $this->build_category_labels($category_ids),
+                'excluded_category_ids'    => $excluded_category_ids,
+                'excluded_category_labels' => $this->build_category_labels($excluded_category_ids),
+                'email_restrictions'       => implode(', ', $email_restrictions),
+                'limit_usage_to_x_items'   => $limit_items ? (int) $limit_items : '',
+                'extra_cells'              => (object) $extra_cells,
+                'extra_actions'            => $extra_actions,
             ];
         }
 
@@ -602,6 +713,35 @@ class Brikpanel_Coupons {
         $usage_limit_user = sanitize_text_field($_POST['usage_limit_per_user'] ?? '');
         $coupon->set_usage_limit_per_user($usage_limit_user !== '' ? intval($usage_limit_user) : 0);
 
+        // Optional advanced restriction fields. We only touch each field when:
+        //   1) the matching setting is enabled (a disabled field cannot be
+        //      tampered with via a forged POST), AND
+        //   2) the key is explicitly present in the payload (so inline edits
+        //      from the table — which only send "amount" — do not wipe out
+        //      the rest of the restriction config).
+        $enabled = self::enabled_fields();
+
+        if ($enabled['products'] && array_key_exists('product_ids', $_POST)) {
+            $coupon->set_product_ids($this->sanitize_id_list($_POST['product_ids']));
+        }
+        if ($enabled['exclude_products'] && array_key_exists('excluded_product_ids', $_POST)) {
+            $coupon->set_excluded_product_ids($this->sanitize_id_list($_POST['excluded_product_ids']));
+        }
+        if ($enabled['categories'] && array_key_exists('category_ids', $_POST)) {
+            $coupon->set_product_categories($this->sanitize_id_list($_POST['category_ids']));
+        }
+        if ($enabled['exclude_categories'] && array_key_exists('excluded_category_ids', $_POST)) {
+            $coupon->set_excluded_product_categories($this->sanitize_id_list($_POST['excluded_category_ids']));
+        }
+        if ($enabled['emails'] && array_key_exists('email_restrictions', $_POST)) {
+            $raw_emails = wp_unslash($_POST['email_restrictions']);
+            $coupon->set_email_restrictions($this->sanitize_email_list($raw_emails));
+        }
+        if ($enabled['limit_items'] && array_key_exists('limit_usage_to_x_items', $_POST)) {
+            $limit_items = sanitize_text_field($_POST['limit_usage_to_x_items']);
+            $coupon->set_limit_usage_to_x_items($limit_items !== '' ? intval($limit_items) : '');
+        }
+
         // Set status - default publish for new coupons
         if ($coupon_id === 0) {
             $coupon->set_status('publish');
@@ -731,6 +871,12 @@ class Brikpanel_Coupons {
         $new_coupon->set_exclude_sale_items($original->get_exclude_sale_items());
         $new_coupon->set_usage_limit($original->get_usage_limit());
         $new_coupon->set_usage_limit_per_user($original->get_usage_limit_per_user());
+        $new_coupon->set_product_ids($original->get_product_ids());
+        $new_coupon->set_excluded_product_ids($original->get_excluded_product_ids());
+        $new_coupon->set_product_categories($original->get_product_categories());
+        $new_coupon->set_excluded_product_categories($original->get_excluded_product_categories());
+        $new_coupon->set_email_restrictions($original->get_email_restrictions());
+        $new_coupon->set_limit_usage_to_x_items($original->get_limit_usage_to_x_items());
         $new_coupon->set_status('draft');
 
         $new_coupon->save();
@@ -739,6 +885,201 @@ class Brikpanel_Coupons {
             'message'   => __('Coupon duplicated!', 'brikpanel'),
             'coupon_id' => $new_coupon->get_id(),
         ]);
+    }
+
+    // =========================================================================
+    // AJAX: SEARCH PRODUCTS (for advanced restriction fields)
+    // =========================================================================
+
+    public function ajax_search_products() {
+        check_ajax_referer('brikpanel_coupons_nonce', 'security');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $term = isset($_POST['q']) ? sanitize_text_field(wp_unslash($_POST['q'])) : '';
+        if (strlen($term) < 2) {
+            wp_send_json_success(['items' => []]);
+        }
+
+        // Use WooCommerce's data store search when available so SKU lookups
+        // work like the native product search; fall back to WP_Query.
+        $ids = [];
+        if (function_exists('wc_get_container')) {
+            $data_store = WC_Data_Store::load('product');
+            if (method_exists($data_store, 'search_products')) {
+                $ids = $data_store->search_products($term, '', false, false, 20);
+                $ids = array_filter(array_map('intval', $ids));
+            }
+        }
+
+        if (empty($ids)) {
+            $query = new WP_Query([
+                'post_type'      => ['product'],
+                'post_status'    => 'publish',
+                's'              => $term,
+                'posts_per_page' => 20,
+                'fields'         => 'ids',
+                'no_found_rows'  => true,
+            ]);
+            $ids = $query->posts;
+        }
+
+        $items = [];
+        foreach ($ids as $pid) {
+            $product = wc_get_product($pid);
+            if (!$product) {
+                continue;
+            }
+            $items[] = [
+                'value' => (int) $pid,
+                'label' => $this->format_product_label($product),
+            ];
+        }
+
+        wp_send_json_success(['items' => $items]);
+    }
+
+    // =========================================================================
+    // AJAX: SEARCH CATEGORIES
+    // =========================================================================
+
+    public function ajax_search_categories() {
+        check_ajax_referer('brikpanel_coupons_nonce', 'security');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $term = isset($_POST['q']) ? sanitize_text_field(wp_unslash($_POST['q'])) : '';
+        if (strlen($term) < 1) {
+            wp_send_json_success(['items' => []]);
+        }
+
+        $terms = get_terms([
+            'taxonomy'   => 'product_cat',
+            'hide_empty' => false,
+            'name__like' => $term,
+            'number'     => 30,
+        ]);
+
+        if (is_wp_error($terms)) {
+            wp_send_json_success(['items' => []]);
+        }
+
+        $items = [];
+        foreach ($terms as $t) {
+            $items[] = [
+                'value' => (int) $t->term_id,
+                'label' => $t->name,
+            ];
+        }
+
+        wp_send_json_success(['items' => $items]);
+    }
+
+    // =========================================================================
+    // HELPERS
+    // =========================================================================
+
+    private function sanitize_id_list($raw) {
+        if (is_string($raw)) {
+            $raw = explode(',', $raw);
+        }
+        if (!is_array($raw)) {
+            return [];
+        }
+        $ids = [];
+        foreach ($raw as $v) {
+            $v = (int) $v;
+            if ($v > 0) {
+                $ids[] = $v;
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    private function sanitize_email_list($raw) {
+        if (!is_string($raw)) {
+            return [];
+        }
+        $parts = preg_split('/[\s,]+/', $raw);
+        $emails = [];
+        foreach ($parts as $email) {
+            $email = trim(strtolower($email));
+            if ($email === '') {
+                continue;
+            }
+            // Allow wildcard emails like *@example.com (WooCommerce supports them).
+            if (strpos($email, '*') !== false) {
+                if (preg_match('/^[a-z0-9._%+\-\*]+@[a-z0-9.\-\*]+\.[a-z*]{2,}$/i', $email)) {
+                    $emails[] = $email;
+                }
+                continue;
+            }
+            if (is_email($email)) {
+                $emails[] = sanitize_email($email);
+            }
+        }
+        return array_values(array_unique(array_filter($emails)));
+    }
+
+    private function build_product_labels(array $ids) {
+        if (empty($ids)) {
+            return [];
+        }
+        $labels = [];
+        foreach ($ids as $pid) {
+            $product = wc_get_product($pid);
+            if (!$product) {
+                // Product was deleted — still expose the ID so it can be removed
+                // from the coupon without losing the rest of the selection.
+                $labels[] = [
+                    'value' => (int) $pid,
+                    /* translators: %d: product ID */
+                    'label' => sprintf(__('(deleted product #%d)', 'brikpanel'), (int) $pid),
+                ];
+                continue;
+            }
+            $labels[] = [
+                'value' => (int) $pid,
+                'label' => $this->format_product_label($product),
+            ];
+        }
+        return $labels;
+    }
+
+    private function build_category_labels(array $ids) {
+        if (empty($ids)) {
+            return [];
+        }
+        $labels = [];
+        foreach ($ids as $tid) {
+            $term = get_term((int) $tid, 'product_cat');
+            if (!$term || is_wp_error($term)) {
+                $labels[] = [
+                    'value' => (int) $tid,
+                    /* translators: %d: category ID */
+                    'label' => sprintf(__('(deleted category #%d)', 'brikpanel'), (int) $tid),
+                ];
+                continue;
+            }
+            $labels[] = [
+                'value' => (int) $tid,
+                'label' => $term->name,
+            ];
+        }
+        return $labels;
+    }
+
+    private function format_product_label($product) {
+        $name = $product->get_name();
+        $sku  = $product->get_sku();
+        if ($sku) {
+            return $name . ' (' . $sku . ')';
+        }
+        return $name . ' (#' . $product->get_id() . ')';
     }
 }
 

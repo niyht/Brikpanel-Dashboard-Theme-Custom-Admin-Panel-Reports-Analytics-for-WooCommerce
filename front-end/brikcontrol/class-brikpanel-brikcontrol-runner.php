@@ -16,7 +16,7 @@
  * is called with unique=true so duplicate scans coalesce automatically.
  *
  * @package BrikPanel
- * @since   3.1.0
+ * @since   3.1.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

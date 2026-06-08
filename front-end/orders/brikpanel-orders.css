@@ -76,6 +76,18 @@ body {
 	background-color: #f1f1f1;
 }
 
+/* WooCommerce sets `body { overflow-x: hidden }`, but a stray off-canvas
+   element (a hidden screen-reader span / sort marker in the wide orders
+   table) still extends the *document* (<html>) scroll width past the
+   viewport. <html> has overflow-x:visible, so the whole page becomes
+   horizontally scrollable and lands shifted right with the left edge cut
+   off on phones. Clip it at the document level. `clip` (not `hidden`) keeps
+   sticky table columns and the fixed bulk-action bar working; the line-items
+   table keeps its own horizontal scroll via .wp-list-table-container. */
+html {
+	overflow-x: clip;
+}
+
 #wpbody-content {
 	display: flex;
 	flex-direction: column;
@@ -365,6 +377,11 @@ body {
 	color: #303030;
 	gap: 8px;
 	cursor: pointer !important;
+	/* Keep each chip at its natural width — without this the flex children
+	   shrink on narrow viewports and the label ("Filter by order tag")
+	   wraps into a squashed, cut-off chip. */
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 .brikpanel-filters [class*="-filter"]:has(.brikpanel-filter-remove),
@@ -388,6 +405,10 @@ body {
 	flex-direction: row-reverse;
 	align-items: center;
 	gap: 8px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 60vw;
 }
 
 .brikpanel-filters .select2-selection__rendered:hover {
@@ -1195,6 +1216,25 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	html #wpadminbar {
 		min-width: unset !important;
 	}
+
+	/* Expanded search/filter bar — let the filter chips wrap onto multiple
+	   rows instead of overflowing off-screen (where the customer filter and
+	   "Clear filters" button were getting cut off on phones/tablets). */
+	.brikpanel-orders-table-header-1:has(.expanded) + .brikpanel-filters {
+		flex-wrap: wrap;
+		row-gap: .375rem;
+		align-items: flex-start;
+	}
+
+	/* The customer select2 chip is the widest — let it take the full row so
+	   long customer names never push the row past the viewport edge. */
+	.brikpanel-filters .select2-container {
+		max-width: 100%;
+	}
+
+	.brikpanel-filters .select2-selection__rendered {
+		max-width: 78vw;
+	}
 }
 
 @media screen and (max-width: 520px) {
@@ -1457,14 +1497,47 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 		flex-direction: column;
 	}
 
+	/* The 5 summary stats used to wrap into an uneven 3 + 2 grid with stray
+	   right-border dividers. Lay them out as a tidy grid instead: the four
+	   counts share a row, and revenue gets its own full-width row so the long
+	   currency value is never cramped. */
 	.brikpanel-overview-stats {
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: .65rem .25rem;
+		align-items: start;
+	}
+
+	.brikpanel-stat {
+		padding: 0 .25rem;
+	}
+
+	.brikpanel-stat:first-child {
+		padding-left: .25rem;
+	}
+
+	.brikpanel-stat:not(:last-child) {
+		border-right: none;
+	}
+
+	.brikpanel-stat.revenue {
+		grid-column: 1 / -1;
+		border-top: 1px solid #ebebeb;
+		padding-top: .6rem;
+		margin-top: .1rem;
 	}
 
 	.brikpanel-mp-row {
 		flex-direction: column;
 		align-items: flex-start;
 		gap: .25rem;
+	}
+}
+
+/* Very narrow phones — two counts per row keeps the labels readable. */
+@media screen and (max-width: 400px) {
+	.brikpanel-overview-stats {
+		grid-template-columns: repeat(2, 1fr);
 	}
 }
 

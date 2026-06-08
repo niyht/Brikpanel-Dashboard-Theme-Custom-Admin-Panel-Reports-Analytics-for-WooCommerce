@@ -17,6 +17,14 @@
     --bp-topbar-error: #d72c0d;
 }
 
+/* Re-publish the topbar height on a higher-specificity selector than :root so
+   a sibling plugin that defines --bp-topbar-height on its own :root (same
+   specificity, cascade decides by load order) can never clobber it and squish
+   the topbar. html.brikpanel-has-topbar (0,1,1) always beats :root (0,1,0). */
+html.brikpanel-has-topbar {
+    --bp-topbar-height: 52px;
+}
+
 /* ---- Push core admin layout below our fixed topbar ---- */
 html.brikpanel-has-topbar.wp-toolbar,
 html.brikpanel-has-topbar {

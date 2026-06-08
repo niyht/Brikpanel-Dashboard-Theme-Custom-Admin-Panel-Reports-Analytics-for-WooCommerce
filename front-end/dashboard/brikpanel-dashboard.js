@@ -54,6 +54,9 @@
         initLocTabs();
         initDeviceTabs();
         initCopySummary();
+        initExportButton();
+        initRowLinks();
+        initProfitBreakdownToggle();
         fetchDashboardData();
         startLivePolling();
 
@@ -92,6 +95,9 @@
                 }
 
                 customRange.style.display = 'none';
+                if (datepickerInstance) {
+                    datepickerInstance.close();
+                }
                 currentRange = range;
                 fetchDashboardData();
             });
@@ -158,12 +164,23 @@
             if (!res.success) return;
             var d = res.data;
 
+            // Date-range subtitle — always states which dates / how long.
+            renderPeriod(d.period);
+
+            // Broadcast the payload so dashboard add-ons (Ad Platforms, etc.)
+            // can fill their own cards without each having to make a separate
+            // AJAX round-trip. Subscribers listen on document for
+            // `brikpanel:dashboardData` and read e.detail.
+            try {
+                document.dispatchEvent(new CustomEvent('brikpanel:dashboardData', { detail: d }));
+            } catch (err) { /* IE / old WebView fallback: ignored */ }
+
             // Summary cards
             updateCard('card-total-sales', d.total_sales);
-            updateCard('card-orders', formatNumber(d.order_count));
+            updateCard('card-orders', d.order_count_display != null ? d.order_count_display : formatNumber(d.order_count));
             updateCard('card-aov', d.aov);
-            updateCard('card-visitors', formatNumber(d.visitor_count));
-            updateCard('card-conversion', d.conversion_rate + '%');
+            updateCard('card-visitors', d.visitor_count_display != null ? d.visitor_count_display : formatNumber(d.visitor_count));
+            updateCard('card-conversion', (d.conversion_rate_display != null ? d.conversion_rate_display : d.conversion_rate) + '%');
 
             // Deltas
             updateDelta('delta-total-sales', d.deltas.sales);
@@ -171,6 +188,9 @@
             updateDelta('delta-aov', d.deltas.aov);
             updateDelta('delta-visitors', d.deltas.visitors);
             updateDelta('delta-conversion', d.deltas.conversion);
+
+            // Profit (Revenue − Cost of goods − Expenses)
+            renderProfit(d.profit);
 
             // Charts
             renderSalesChart(d.sales_over_time);
@@ -228,15 +248,37 @@
         var el = document.getElementById(id);
         if (!el) return;
 
-        if (value === 0 || value === null) {
+        // No baseline (previous period was zero): server sends null. Label it
+        // rather than inventing a "+100%" that reads like ordinary growth.
+        if (value === null || value === undefined) {
+            el.textContent = i18n.delta_new || 'New';
+            el.className = 'brikpanel-dash-card-delta is-new';
+            return;
+        }
+
+        // Genuinely flat / no movement.
+        if (value === 0) {
             el.textContent = '--';
             el.className = 'brikpanel-dash-card-delta neutral';
             return;
         }
 
         var arrow = value > 0 ? '\u2191' : '\u2193';
-        el.textContent = arrow + ' ' + Math.abs(value) + '%';
+        el.textContent = arrow + ' ' + formatDeltaPct(Math.abs(value));
         el.className = 'brikpanel-dash-card-delta ' + (value > 0 ? 'positive' : 'negative');
+    }
+
+    // A raw "+3704%" is technically right but unreadable. Past ~10\u00d7 growth,
+    // show the multiplier ("38\u00d7") which people parse instantly; mid-range
+    // drops the noisy decimal; small moves keep one decimal of precision.
+    function formatDeltaPct(abs) {
+        if (abs >= 1000) {
+            return (Math.round((abs / 100 + 1) * 10) / 10) + '\u00d7';
+        }
+        if (abs >= 100) {
+            return Math.round(abs) + '%';
+        }
+        return abs + '%';
     }
 
     function setLoadingState(loading) {
@@ -253,6 +295,257 @@
     function formatNumber(n) {
         if (n === null || n === undefined) return '0';
         return Number(n).toLocaleString();
+    }
+
+    // =========================================================================
+    // PROFIT (Revenue − Cost of goods − Expenses)
+    // =========================================================================
+
+    function renderProfit(p) {
+        if (!p) return;
+
+        var ofRev = i18n.profit_of_revenue || 'of revenue';
+
+        updateCard('card-profit-revenue', p.revenue);
+        updateCard('card-profit-cogs', p.cogs);
+        updateCard('card-profit-expenses', p.expenses);
+        updateCard('card-profit-net', p.net);
+
+        // Revenue here is the SAME figure as the "Total Sales" KPI card and
+        // is just the top line of the P&L — repeating its trend arrow makes
+        // users think they're two different numbers. Label the relationship
+        // instead of duplicating the delta.
+        var revDelta = document.getElementById('delta-profit-revenue');
+        if (revDelta) {
+            revDelta.textContent = i18n.profit_revenue_note || 'Same as Total Sales';
+            revDelta.className = 'brikpanel-dash-card-delta brikpanel-dash-card-delta-static';
+        }
+        updateDelta('delta-profit-net', p.delta_net);
+
+        // Cost of Goods: share of revenue. Two failure modes are called out
+        // because both silently overstate Net profit: (a) no product has a
+        // cost at all, (b) some sold products have no cost on file. When the
+        // server returned the per-product list of offenders, the warning gets
+        // a hover "!" that names them — so the merchant can jump straight to
+        // the products that matter instead of guessing.
+        var cogsDelta = document.getElementById('delta-profit-cogs');
+        if (cogsDelta) {
+            var cogsWarn = false;
+            var cogsList = null;
+            if (!p.has_cogs) {
+                cogsDelta.textContent = i18n.profit_cogs_hint || 'Set “Cost of goods” on products';
+                cogsWarn = true;
+            } else if (p.cogs_incomplete) {
+                var tpl = i18n.profit_cogs_partial || 'cost missing on %d items — profit overstated';
+                cogsDelta.textContent = tpl.replace('%d', p.cogs_missing_lines);
+                cogsWarn = true;
+                if (Array.isArray(p.cogs_missing_products) && p.cogs_missing_products.length) {
+                    cogsList = p.cogs_missing_products;
+                }
+            } else {
+                cogsDelta.textContent = p.cogs_pct + '% ' + ofRev;
+            }
+            cogsDelta.className = 'brikpanel-dash-card-delta brikpanel-dash-card-delta-static'
+                + (cogsWarn ? ' warn' : '');
+            // Anchor the "!" to the card LABEL, not this delta line. The delta
+            // text ("cost missing on N items — profit overstated") already fills
+            // its line at common card widths, so an inline "!" there wraps onto
+            // its own row and grows only this card — breaking the four-card row
+            // alignment. The short "Cost of Goods" label always has room for it,
+            // mirroring the Net Profit card's estimate "!".
+            var cogsCard = cogsDelta.closest('.brikpanel-dash-card');
+            var cogsLabel = cogsCard ? cogsCard.querySelector('.brikpanel-dash-card-label') : null;
+            setMissingCogsListFlag(cogsLabel, cogsList);
+        }
+
+        // Expenses: share of revenue under the card; the composition itself
+        // lives in a full-width ribbon below so the four hero cards stay
+        // perfectly uniform in height.
+        var expDelta = document.getElementById('delta-profit-expenses');
+        if (expDelta) {
+            expDelta.textContent = p.expenses_pct + '% ' + ofRev;
+        }
+        renderExpenseBreakdown(p);
+
+        // Net profit: colour green/red and show the margin %.
+        var netCard = document.querySelector('.brikpanel-dash-card[data-metric="profit_net"]');
+        if (netCard) {
+            netCard.classList.toggle('is-loss', p.net_raw < 0);
+            netCard.classList.toggle('is-profit', p.net_raw > 0);
+            // Missing costs make this optimistic, not exact. Instead of a
+            // loud border, mark it with a quiet "!" that explains — on
+            // hover/focus — exactly what to do to make it accurate.
+            var estTip = (i18n.profit_estimate_tip
+                || '%d sold items have no cost set. Add their “Cost of goods” so Net profit is accurate.')
+                .replace('%d', p.cogs_missing_lines);
+            setEstimateFlag(netCard, !!p.cogs_incomplete, estTip);
+        }
+        var netDelta = document.getElementById('delta-profit-net');
+        if (netDelta && (p.margin || p.margin === 0)) {
+            var marginTxt = (p.net_raw < 0 ? (i18n.profit_loss || 'Loss') + ' · ' : '')
+                + p.margin + '% ' + ofRev;
+            var base = netDelta.textContent && netDelta.textContent !== '--'
+                ? netDelta.textContent + ' · ' : '';
+            netDelta.textContent = base + marginTxt;
+        }
+    }
+
+    // Add/remove a small "!" marker (with a hover/focus tooltip telling the
+    // user what to fix) next to a card's label. Idempotent — safe to call
+    // on every render. Keyboard-reachable via tabindex; the styled tooltip
+    // is the only visible one (no native `title` so it doesn't double up).
+    function setEstimateFlag(card, show, msg) {
+        if (!card) return;
+        var label = card.querySelector('.brikpanel-dash-card-label');
+        if (!label) return;
+        var flag = label.querySelector('.brikpanel-dash-flag');
+
+        if (!show) {
+            if (flag) flag.parentNode.removeChild(flag);
+            return;
+        }
+        if (!flag) {
+            flag = document.createElement('span');
+            flag.className = 'brikpanel-dash-flag';
+            flag.setAttribute('tabindex', '0');
+            flag.setAttribute('role', 'note');
+            flag.innerHTML =
+                '<span class="brikpanel-dash-flag-mark" aria-hidden="true">!</span>'
+                + '<span class="brikpanel-dash-flag-tip"></span>';
+            label.appendChild(flag);
+        }
+        flag.setAttribute('aria-label', msg);
+        flag.querySelector('.brikpanel-dash-flag-tip').textContent = msg;
+    }
+
+    // Append a "!" next to the COGS card label whose tooltip lists the
+    // offending product names + their lost-cost revenue. `host` is the card
+    // label (kept short so the icon never wraps and grows the card).
+    // Idempotent: any prior flag on the same host is replaced before
+    // re-rendering, so range toggles cannot double up the icon. Product names
+    // use textContent (untrusted user input); the per-row amount is the
+    // server's already-formatted wc_price() HTML so the currency symbol/decimal
+    // style matches the rest of the UI.
+    function setMissingCogsListFlag(host, products) {
+        if (!host) return;
+        var existing = host.querySelector('.brikpanel-dash-flag');
+        if (existing) existing.parentNode.removeChild(existing);
+        if (!Array.isArray(products) || !products.length) return;
+
+        var flag = document.createElement('span');
+        flag.className = 'brikpanel-dash-flag brikpanel-dash-flag-list';
+        flag.setAttribute('tabindex', '0');
+        flag.setAttribute('role', 'note');
+
+        var mark = document.createElement('span');
+        mark.className = 'brikpanel-dash-flag-mark';
+        mark.setAttribute('aria-hidden', 'true');
+        mark.textContent = '!';
+
+        var tip = document.createElement('span');
+        tip.className = 'brikpanel-dash-flag-tip brikpanel-dash-flag-tip-list';
+
+        var title = document.createElement('strong');
+        title.className = 'brikpanel-dash-flag-tip-title';
+        title.textContent = i18n.profit_cogs_missing_title || 'Products without a cost';
+        tip.appendChild(title);
+
+        var list = document.createElement('ul');
+        list.className = 'brikpanel-dash-flag-tip-items';
+        var unlinkedLbl = i18n.profit_cogs_missing_unlinked || 'no longer in catalog';
+        products.forEach(function (it) {
+            var li = document.createElement('li');
+            li.className = 'brikpanel-dash-flag-tip-item';
+
+            var name = document.createElement('span');
+            name.className = 'brikpanel-dash-flag-tip-item-name';
+            name.textContent = it.name;
+            if (it.unlinked) {
+                // Quiet sibling note so the merchant knows this row has no
+                // editable product behind it — they can't fix it from the
+                // dashboard the way they would for a linked product.
+                var tag = document.createElement('em');
+                tag.className = 'brikpanel-dash-flag-tip-item-unlinked';
+                tag.textContent = ' (' + unlinkedLbl + ')';
+                name.appendChild(tag);
+            }
+            li.appendChild(name);
+
+            var meta = document.createElement('span');
+            meta.className = 'brikpanel-dash-flag-tip-item-meta';
+            meta.innerHTML = it.missing_revenue_html;
+            li.appendChild(meta);
+
+            list.appendChild(li);
+        });
+        tip.appendChild(list);
+
+        var ariaTpl = i18n.profit_cogs_missing_aria || '%d products are missing a cost';
+        flag.setAttribute('aria-label', ariaTpl.replace('%d', products.length));
+
+        flag.appendChild(mark);
+        flag.appendChild(tip);
+        host.appendChild(flag);
+    }
+
+    // Fill the (collapsed-by-default) breakdown list inside the Expenses
+    // card. The list itself is hidden behind a toggle so all four hero
+    // cards stay the same compact height until the user opts to expand it.
+    function renderExpenseBreakdown(p) {
+        var box    = document.getElementById('profit-expenses-breakdown');
+        var toggle = document.getElementById('profit-bd-toggle');
+        if (!box) return;
+
+        var items = (p && p.breakdown) ? p.breakdown : [];
+        var total = 0;
+        items.forEach(function (b) { total += Number(b.raw) || 0; });
+
+        box.innerHTML = '';
+
+        // No expenses at all → no toggle, card stays minimal.
+        if (!items.length || total <= 0) {
+            if (toggle) {
+                toggle.hidden = true;
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+            var cardEmpty = document.getElementById('profit-expenses-card');
+            if (cardEmpty) cardEmpty.classList.remove('is-bd-open');
+            return;
+        }
+        if (toggle) toggle.hidden = false;
+
+        items.forEach(function (b) {
+            var pct = Math.round((b.raw / total) * 100);
+
+            var row = document.createElement('div');
+            row.className = 'brikpanel-dash-bd-row';
+
+            var k = document.createElement('span');
+            k.className = 'brikpanel-dash-bd-k';
+            k.textContent = b.label;
+
+            var v = document.createElement('span');
+            v.className = 'brikpanel-dash-bd-v';
+            v.innerHTML = b.amount + ' <span class="brikpanel-dash-bd-pct">' + pct + '%</span>';
+
+            row.appendChild(k);
+            row.appendChild(v);
+            box.appendChild(row);
+        });
+    }
+
+    // Wire the Expenses "Breakdown ⌄" toggle once. Open/closed state is kept
+    // across data refreshes so a refresh never collapses what the user opened.
+    function initProfitBreakdownToggle() {
+        var toggle = document.getElementById('profit-bd-toggle');
+        var card   = document.getElementById('profit-expenses-card');
+        if (!toggle || !card) return;
+
+        toggle.addEventListener('click', function () {
+            var open = !card.classList.contains('is-bd-open');
+            card.classList.toggle('is-bd-open', open);
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
     }
 
     // =========================================================================
@@ -510,7 +803,10 @@
             '</tr></thead><tbody>';
 
         products.forEach(function (p, i) {
-            html += '<tr>' +
+            var rowAttr = p.url
+                ? ' class="brikpanel-dash-row-link" data-href="' + escapeHtml(p.url) + '" tabindex="0" role="link"'
+                : '';
+            html += '<tr' + rowAttr + '>' +
                 '<td class="rank">' + (i + 1) + '</td>' +
                 '<td>' + escapeHtml(p.name) + '</td>' +
                 '<td>' + formatNumber(p.qty) + '</td>' +
@@ -519,6 +815,41 @@
 
         html += '</tbody></table>';
         wrap.innerHTML = html;
+    }
+
+    function initRowLinks() {
+        // Delegated handler for any clickable row inside the dashboard.
+        // Always opens the target in a new tab.
+        document.addEventListener('click', function (e) {
+            var row = e.target.closest && e.target.closest('.brikpanel-dash-row-link');
+            if (!row) return;
+            var href = row.getAttribute('data-href');
+            if (!href) return;
+            // Don't intercept clicks on actual links/buttons inside the row.
+            if (e.target.closest('a, button')) return;
+            e.preventDefault();
+            window.open(href, '_blank', 'noopener');
+        });
+
+        document.addEventListener('auxclick', function (e) {
+            if (e.button !== 1) return;
+            var row = e.target.closest && e.target.closest('.brikpanel-dash-row-link');
+            if (!row) return;
+            var href = row.getAttribute('data-href');
+            if (!href) return;
+            e.preventDefault();
+            window.open(href, '_blank', 'noopener');
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            var row = e.target.closest && e.target.closest('.brikpanel-dash-row-link');
+            if (!row || row !== document.activeElement) return;
+            var href = row.getAttribute('data-href');
+            if (!href) return;
+            e.preventDefault();
+            window.open(href, '_blank', 'noopener');
+        });
     }
 
     function renderRecentOrders(orders) {
@@ -544,7 +875,11 @@
                 sourceHtml = '<span class="brikpanel-dash-source" style="background:' + escapeHtml(o.source.color) + ';">' + escapeHtml(o.source.label) + '</span>';
             }
 
-            html += '<tr>' +
+            var rowAttr = o.edit_url
+                ? ' class="brikpanel-dash-row-link" data-href="' + escapeHtml(o.edit_url) + '" tabindex="0" role="link"'
+                : '';
+
+            html += '<tr' + rowAttr + '>' +
                 '<td>#' + o.id + '</td>' +
                 '<td>' + escapeHtml(o.customer) + '</td>' +
                 '<td>' + sourceHtml + '</td>' +
@@ -573,7 +908,10 @@
             '</tr></thead><tbody>';
 
         pages.forEach(function (p, i) {
-            html += '<tr>' +
+            var rowAttr = p.url
+                ? ' class="brikpanel-dash-row-link" data-href="' + escapeHtml(p.url) + '" tabindex="0" role="link"'
+                : '';
+            html += '<tr' + rowAttr + '>' +
                 '<td class="rank">' + (i + 1) + '</td>' +
                 '<td>' + escapeHtml(p.title) + '</td>' +
                 '<td>' + formatNumber(p.views) + '</td>' +
@@ -600,7 +938,10 @@
             '</tr></thead><tbody>';
 
         products.forEach(function (p, i) {
-            html += '<tr>' +
+            var rowAttr = p.url
+                ? ' class="brikpanel-dash-row-link" data-href="' + escapeHtml(p.url) + '" tabindex="0" role="link"'
+                : '';
+            html += '<tr' + rowAttr + '>' +
                 '<td class="rank">' + (i + 1) + '</td>' +
                 '<td>' + escapeHtml(p.name) + '</td>' +
                 '<td>' + formatNumber(p.count) + '</td>' +
@@ -1181,7 +1522,7 @@
 
         var img = document.createElement('img');
         img.src = dataURL;
-        img.alt = 'Order Locations Globe';
+        img.alt = i18n.globe_alt || 'Order Locations Globe';
         img.className = 'brikpanel-globe-static';
         img.style.cssText = 'width:100%;height:100%;';
 
@@ -1723,6 +2064,71 @@
     }
 
     // =========================================================================
+    // PERIOD SUBTITLE (which dates / how long)
+    // =========================================================================
+
+    function renderPeriod(period) {
+        var box = document.getElementById('brikpanel-dash-period');
+        if (!box) return;
+        var textEl = box.querySelector('.brikpanel-dash-period-text');
+        if (!textEl) return;
+        if (period && period.text) {
+            textEl.textContent = period.text;
+        } else {
+            textEl.textContent = (i18n.period_loading || 'Loading…');
+        }
+    }
+
+    // =========================================================================
+    // EXPORT EXCEL (current date-range report)
+    // =========================================================================
+
+    function initExportButton() {
+        var btn = document.getElementById('brikpanel-export-xlsx');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            if (!CFG.export_url || !CFG.export_nonce) return;
+
+            // Custom range needs both dates resolved before we can export.
+            if (currentRange === 'custom' && (!customStartDate || !customEndDate)) {
+                window.alert(i18n.export_select_dates || 'Pick a custom date range first.');
+                return;
+            }
+
+            var labelEl = btn.querySelector('.brikpanel-dash-export-label');
+            var original = labelEl ? labelEl.textContent : '';
+            if (labelEl) labelEl.textContent = (i18n.export_preparing || 'Preparing…');
+            btn.disabled = true;
+
+            var params = new URLSearchParams();
+            params.set('action', 'brikpanel_dashboard_export');
+            params.set('brikpanel_export_nonce', CFG.export_nonce);
+            params.set('range', currentRange);
+            if (currentRange === 'custom') {
+                params.set('start_date', customStartDate);
+                params.set('end_date', customEndDate);
+            }
+
+            // Canonical single-request download: a transient <a download>.
+            // The server replies with Content-Disposition: attachment, so the
+            // browser streams the file without navigating away — the dashboard
+            // stays put and the (expensive) export query runs exactly once.
+            var a = document.createElement('a');
+            a.href = CFG.export_url + '?' + params.toString();
+            a.download = '';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            setTimeout(function () {
+                if (labelEl) labelEl.textContent = original || (i18n.export_button || 'Export Excel');
+                btn.disabled = false;
+            }, 2500);
+        });
+    }
+
+    // =========================================================================
     // COPY EVERYTHING (store summary)
     // =========================================================================
 
@@ -1822,7 +2228,7 @@
                 ta.select();
                 var ok = document.execCommand('copy');
                 document.body.removeChild(ta);
-                ok ? resolve() : reject(new Error('execCommand failed'));
+                ok ? resolve() : reject(new Error('execCommand failed')); // i18n-ignore: internal Error thrown into devtools/promise chain, not user-facing
             } catch (e) { reject(e); }
         });
     }

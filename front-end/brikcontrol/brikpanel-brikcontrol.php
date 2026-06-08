@@ -8,7 +8,7 @@
  * Required from `brikpanel.php` inside `brikpanel_init_admin()`.
  *
  * @package BrikPanel
- * @since   3.1.0
+ * @since   3.1.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

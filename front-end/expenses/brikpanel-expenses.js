@@ -135,10 +135,10 @@
             html += '<td><span class="brikpanel-ex-rec-badge brikpanel-ex-rec-' + escHtml(item.recurring) + '">' + escHtml(recurringLabel(item.recurring)) + '</span></td>';
             html += '<td class="brikpanel-ex-num">' + escHtml(item.amount_fmt) + '</td>';
             html += '<td class="brikpanel-ex-actions-cell">';
-            html += '<button class="brikpanel-ex-icon-btn brikpanel-ex-edit-btn" data-id="' + item.id + '" title="Edit" aria-label="Edit">';
+            html += '<button class="brikpanel-ex-icon-btn brikpanel-ex-edit-btn" data-id="' + item.id + '" title="' + escHtml(i18n.edit || 'Edit') + '" aria-label="' + escHtml(i18n.edit || 'Edit') + '">';
             html += '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             html += '</button>';
-            html += '<button class="brikpanel-ex-icon-btn brikpanel-ex-delete-btn" data-id="' + item.id + '" title="Delete" aria-label="Delete">';
+            html += '<button class="brikpanel-ex-icon-btn brikpanel-ex-delete-btn" data-id="' + item.id + '" title="' + escHtml(i18n.delete || 'Delete') + '" aria-label="' + escHtml(i18n.delete || 'Delete') + '">';
             html += '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
             html += '</button>';
             html += '</td>';
@@ -214,7 +214,7 @@
         }, function (err, res) {
             if ($submitBtn) {
                 $submitBtn.disabled = false;
-                $submitBtn.textContent = 'Save';
+                $submitBtn.textContent = i18n.save || 'Save';
             }
             if (err || !res || !res.success) {
                 var msg = (res && res.data && res.data.message) ? res.data.message : (i18n.error || 'Something went wrong.');
@@ -270,7 +270,13 @@
                 showToast(i18n.no_expenses || 'No expenses found.', 'error');
                 return;
             }
-            var rows = [['Date', 'Category', 'Description', 'Recurring', 'Amount']];
+            var rows = [[
+                i18n.csv_date        || 'Date',
+                i18n.csv_category    || 'Category',
+                i18n.csv_description || 'Description',
+                i18n.csv_recurring   || 'Recurring',
+                i18n.csv_amount      || 'Amount',
+            ]];
             items.forEach(function (item) {
                 rows.push([
                     item.date,

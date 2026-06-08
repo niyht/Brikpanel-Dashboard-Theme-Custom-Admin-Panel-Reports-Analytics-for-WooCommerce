@@ -7,7 +7,7 @@
  * lives in the sibling classes — this file is wiring + view glue.
  *
  * @package BrikPanel
- * @since   3.1.0
+ * @since   3.1.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -39,6 +39,27 @@ class Brikpanel_BrikControl {
         add_action( 'wp_ajax_brikpanel_brikcontrol_rescan',   [ $this, 'ajax_rescan' ] );
         add_action( 'wp_ajax_brikpanel_brikcontrol_progress', [ $this, 'ajax_progress' ] );
         add_action( 'wp_ajax_brikpanel_brikcontrol_dismiss',  [ $this, 'ajax_dismiss' ] );
+
+        // Plugin activation / deactivation invalidates the cached health
+        // verdict because the active optimizer set is what gates how we
+        // score sidecar .webp files. Both hooks fire on the *next* request
+        // after the change, so we trigger an async rescan instead of running
+        // it inline (the AS worker picks it up within the same minute).
+        add_action( 'activated_plugin',   [ $this, 'on_plugin_change' ], 10, 0 );
+        add_action( 'deactivated_plugin', [ $this, 'on_plugin_change' ], 10, 0 );
+    }
+
+    /**
+     * Invalidates the topbar transient so the next pageview reflects the
+     * "stale until rescan" state, then queues a fresh background scan.
+     */
+    public function on_plugin_change() {
+        if ( class_exists( 'Brikpanel_BrikControl_Storage' ) ) {
+            delete_transient( Brikpanel_BrikControl_Storage::TRANSIENT_TOPBAR );
+        }
+        if ( class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
+            Brikpanel_BrikControl_Runner::trigger_manual_scan();
+        }
     }
 
     // =========================================================================
@@ -87,12 +108,13 @@ class Brikpanel_BrikControl {
             'nonce'    => wp_create_nonce( self::NONCE_ACTION ),
             'page_url' => admin_url( 'admin.php?page=' . self::PAGE_SLUG ),
             'i18n'     => [
-                'rescan'           => __( 'Rescan now', 'brikpanel' ),
-                'rescanning'       => __( 'Scan queued — refreshing…', 'brikpanel' ),
-                'rescan_failed'    => __( 'Could not start scan.', 'brikpanel' ),
-                'never_scanned'    => __( 'Not scanned yet', 'brikpanel' ),
-                'scan_in_progress' => __( 'Scanning in background…', 'brikpanel' ),
-                'just_now'         => __( 'just now', 'brikpanel' ),
+                'rescan'             => __( 'Rescan now', 'brikpanel' ),
+                'rescanning'         => __( 'Scan queued — refreshing…', 'brikpanel' ),
+                'rescan_failed'      => __( 'Could not start scan.', 'brikpanel' ),
+                'never_scanned'      => __( 'Not scanned yet', 'brikpanel' ),
+                'scan_in_progress'   => __( 'Scanning in background…', 'brikpanel' ),
+                'just_now'           => __( 'just now', 'brikpanel' ),
+                'scanning_progress'  => __( 'Scanning {cursor} / {total} products…', 'brikpanel' ),
             ],
         ] );
     }
@@ -101,11 +123,8 @@ class Brikpanel_BrikControl {
     // TOPBAR ASSET ENQUEUE (every admin page where topbar renders)
     // =========================================================================
 
-    public function enqueue_topbar_assets() {
+    public function enqueue_topbar_assets( $hook = '' ) {
         if ( ! class_exists( 'Brikpanel_Dashboard_Topbar' ) ) {
-            return;
-        }
-        if ( ! Brikpanel_Dashboard_Topbar::is_enabled() ) {
             return;
         }
         if ( ! current_user_can( 'manage_woocommerce' ) ) {
@@ -115,12 +134,28 @@ class Brikpanel_BrikControl {
             return;
         }
 
+        $topbar_enabled = Brikpanel_Dashboard_Topbar::is_enabled();
+        $on_dashboard   = ( $hook === 'admin_page_brikpanel-dashboard' );
+
+        // The CSS file is shared by the topbar AND the dashboard banner. The
+        // banner can render on the BrikPanel dashboard even when the topbar
+        // is disabled, so we must load the CSS in that case too — otherwise
+        // the unstyled SVG falls back to the 300×150 browser default.
+        if ( ! $topbar_enabled && ! $on_dashboard ) {
+            return;
+        }
+
         wp_enqueue_style(
             self::TOPBAR_HANDLE,
             BRIKPANEL_URL . 'front-end/brikcontrol/assets/brikpanel-brikcontrol.css',
             [],
             BRIKPANEL_VERSION
         );
+
+        // Topbar JS is the topbar's own concern; the banner doesn't need it.
+        if ( ! $topbar_enabled ) {
+            return;
+        }
 
         wp_enqueue_script(
             self::TOPBAR_HANDLE,
@@ -309,9 +344,15 @@ class Brikpanel_BrikControl {
      * Render a dismissable banner at the top of the BrikPanel dashboard if —
      * and only if — there is at least one critical health check the current
      * user has not already dismissed within the last 7 days.
+     *
+     * Administrators only: shop_manager (and other roles granted
+     * manage_woocommerce) can reach the dashboard, but the banner phrasing
+     * is alarming and shop staff usually cannot action the underlying fix
+     * (plugin installs, server config, etc.), so we restrict it to users
+     * who hold manage_options.
      */
     public function render_dashboard_banner() {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
         $bundle   = Brikpanel_BrikControl_Storage::get_results();
@@ -327,7 +368,7 @@ class Brikpanel_BrikControl {
         ?>
         <div class="brikpanel-bc-banner" data-bc-banner role="alert">
             <div class="brikpanel-bc-banner-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             </div>
             <div class="brikpanel-bc-banner-text">
                 <strong>

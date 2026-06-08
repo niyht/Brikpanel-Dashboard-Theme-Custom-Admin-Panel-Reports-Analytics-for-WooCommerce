@@ -609,10 +609,19 @@
 .brikpanel-segments[data-tab="orders"] .bp-seg-customers-only { display: none; }
 
 /* ===== Small screens ===== */
+/* On tablet/phone (≤782, where the admin menu collapses) WordPress gives
+   #wpcontent a 10px-left padding and .wrap a ~12px right margin, which leave
+   the panel a few px off-centre. Zero both and let .brikpanel-segments' own
+   1rem padding be the single symmetric gutter. */
+@media (max-width: 782px) {
+	body.toplevel_page_brikpanel-segments #wpcontent { padding-left: 0 !important; }
+	body.toplevel_page_brikpanel-segments .wrap { margin: 0 !important; }
+}
+
 @media (max-width: 720px) {
 	.bp-seg-header { flex-direction: column; align-items: flex-start; }
 	.bp-seg-filter-bar { flex-direction: column; align-items: stretch; }
-	.bp-seg-quick-search { max-width: none; justify-content: flex-start; }
+	.bp-seg-quick-search { max-width: none; min-width: 0; justify-content: flex-start; }
 	.bp-seg-grid { grid-template-columns: 1fr; }
 	.bp-seg-header-right { width: 100%; justify-content: flex-end; }
 

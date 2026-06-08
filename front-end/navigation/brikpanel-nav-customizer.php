@@ -1114,6 +1114,8 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 			'confirmDelete' => __( 'Remove this custom link?', 'brikpanel' ),
 			'invalidUrl'    => __( 'Please enter a valid URL (starting with http:// or https://) or an admin path.', 'brikpanel' ),
 			'invalidLabel'  => __( 'Please enter a label.', 'brikpanel' ),
+			'edit'          => __( 'Edit', 'brikpanel' ),
+			'delete'        => __( 'Delete', 'brikpanel' ),
 		],
 	] );
 } );

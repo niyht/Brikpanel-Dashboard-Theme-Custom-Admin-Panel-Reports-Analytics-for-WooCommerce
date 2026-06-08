@@ -19,10 +19,32 @@
         loading: false,
         total: 0,
         pages: 0,
-        extraColumns: {}
+        extraColumns: {},
+        // Token-picker selections keyed by target ('products', 'exclude_products',
+        // 'categories', 'exclude_categories'). Each value is an array of
+        // {value, label} objects.
+        tokens: {
+            products: [],
+            exclude_products: [],
+            categories: [],
+            exclude_categories: []
+        }
     };
 
     var searchTimer = null;
+    var tokenSearchTimers = {};
+
+    // Map of token-target -> config (which AJAX action to call and which DOM ids to use).
+    var TOKEN_TARGETS = {
+        products:           { action: 'brikpanel_coupons_search_products',   tokensId: 'bpc-products-tokens',           inputId: 'bpc-products-search',           sugId: 'bpc-products-suggestions' },
+        exclude_products:   { action: 'brikpanel_coupons_search_products',   tokensId: 'bpc-exclude-products-tokens',   inputId: 'bpc-exclude-products-search',   sugId: 'bpc-exclude-products-suggestions' },
+        categories:         { action: 'brikpanel_coupons_search_categories', tokensId: 'bpc-categories-tokens',         inputId: 'bpc-categories-search',         sugId: 'bpc-categories-suggestions' },
+        exclude_categories: { action: 'brikpanel_coupons_search_categories', tokensId: 'bpc-exclude-categories-tokens', inputId: 'bpc-exclude-categories-search', sugId: 'bpc-exclude-categories-suggestions' }
+    };
+
+    function isFieldEnabled(name) {
+        return !!(CP.enabled_fields && CP.enabled_fields[name]);
+    }
 
     // =========================================================================
     // INIT
@@ -224,6 +246,159 @@
         $('#bpc-discount-type').on('change', function () {
             updateAmountPrefix();
         });
+
+        // Token pickers (products / exclude products / categories / exclude categories)
+        bindTokenPickers();
+    }
+
+    // =========================================================================
+    // TOKEN PICKERS
+    // =========================================================================
+
+    function bindTokenPickers() {
+        Object.keys(TOKEN_TARGETS).forEach(function (target) {
+            var cfg = TOKEN_TARGETS[target];
+            var $input = $('#' + cfg.inputId);
+            if (!$input.length) return; // field not rendered (setting disabled)
+
+            // Typing -> debounced search.
+            $input.on('input', function () {
+                var term = $(this).val();
+                clearTimeout(tokenSearchTimers[target]);
+                if (term.length < 2) {
+                    $('#' + cfg.sugId).attr('hidden', true).empty();
+                    return;
+                }
+                tokenSearchTimers[target] = setTimeout(function () {
+                    runTokenSearch(target, term);
+                }, 250);
+            });
+
+            // Keyboard: Escape closes suggestions.
+            $input.on('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    $('#' + cfg.sugId).attr('hidden', true);
+                }
+            });
+
+            // Hide suggestions when focus leaves the wrap (small delay so a click registers).
+            $input.on('blur', function () {
+                setTimeout(function () { $('#' + cfg.sugId).attr('hidden', true); }, 150);
+            });
+        });
+
+        // Suggestion clicks (event delegation).
+        $(document).on('mousedown', '.brikpanel-cp-token-suggestion', function (e) {
+            e.preventDefault();
+            var $sug = $(this).closest('.brikpanel-cp-token-suggestions');
+            var $field = $sug.closest('.brikpanel-cp-token-field');
+            var target = $field.data('token-target');
+            if (!target) return;
+            addToken(target, {
+                value: $(this).data('value'),
+                label: $(this).data('label')
+            });
+            $field.find('.brikpanel-cp-token-input').val('').focus();
+            $sug.attr('hidden', true);
+        });
+
+        // Token remove (event delegation).
+        $(document).on('click', '.brikpanel-cp-token-remove', function (e) {
+            e.preventDefault();
+            var $token = $(this).closest('.brikpanel-cp-token');
+            var $field = $token.closest('.brikpanel-cp-token-field');
+            var target = $field.data('token-target');
+            if (!target) return;
+            removeToken(target, $token.data('value'));
+        });
+    }
+
+    function runTokenSearch(target, term) {
+        var cfg = TOKEN_TARGETS[target];
+        var $sug = $('#' + cfg.sugId);
+
+        $.ajax({
+            url: CP.ajax_url,
+            type: 'POST',
+            data: {
+                action: cfg.action,
+                security: CP.nonce,
+                q: term
+            },
+            success: function (res) {
+                if (!res || !res.success) return;
+                var items = (res.data && res.data.items) || [];
+                if (!items.length) {
+                    $sug.html('<div class="brikpanel-cp-token-empty">' + escHtml(CP.i18n.no_results) + '</div>');
+                    $sug.removeAttr('hidden');
+                    return;
+                }
+                // Filter out anything already selected for this target.
+                var selectedValues = (state.tokens[target] || []).map(function (t) { return String(t.value); });
+                var html = '';
+                for (var i = 0; i < items.length; i++) {
+                    if (selectedValues.indexOf(String(items[i].value)) !== -1) continue;
+                    html += '<div class="brikpanel-cp-token-suggestion" data-value="' + escAttr(items[i].value) + '" data-label="' + escAttr(items[i].label) + '">' + escHtml(items[i].label) + '</div>';
+                }
+                if (!html) {
+                    $sug.html('<div class="brikpanel-cp-token-empty">' + escHtml(CP.i18n.no_results) + '</div>');
+                } else {
+                    $sug.html(html);
+                }
+                $sug.removeAttr('hidden');
+            }
+        });
+    }
+
+    function addToken(target, item) {
+        if (!item || !item.value) return;
+        var list = state.tokens[target] || (state.tokens[target] = []);
+        var sv = String(item.value);
+        for (var i = 0; i < list.length; i++) {
+            if (String(list[i].value) === sv) return; // already in
+        }
+        list.push({ value: parseInt(item.value, 10), label: String(item.label || item.value) });
+        renderTokens(target);
+    }
+
+    function removeToken(target, value) {
+        var list = state.tokens[target] || [];
+        var sv = String(value);
+        state.tokens[target] = list.filter(function (t) { return String(t.value) !== sv; });
+        renderTokens(target);
+    }
+
+    function setTokens(target, items) {
+        state.tokens[target] = (items || []).map(function (i) {
+            return { value: parseInt(i.value, 10), label: String(i.label || i.value) };
+        });
+        renderTokens(target);
+    }
+
+    function renderTokens(target) {
+        var cfg = TOKEN_TARGETS[target];
+        if (!cfg) return;
+        var $host = $('#' + cfg.tokensId);
+        if (!$host.length) return;
+
+        var list = state.tokens[target] || [];
+        if (!list.length) {
+            $host.empty();
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < list.length; i++) {
+            html += '<span class="brikpanel-cp-token" data-value="' + escAttr(list[i].value) + '">' +
+                '<span class="brikpanel-cp-token-label">' + escHtml(list[i].label) + '</span>' +
+                '<button type="button" class="brikpanel-cp-token-remove" aria-label="' + escAttr(CP.i18n.remove) + '">&times;</button>' +
+                '</span>';
+        }
+        $host.html(html);
+    }
+
+    function tokenValues(target) {
+        var list = state.tokens[target] || [];
+        return list.map(function (t) { return parseInt(t.value, 10); }).filter(function (v) { return v > 0; });
     }
 
     // =========================================================================
@@ -356,7 +531,7 @@
         if (c.usage_limit) {
             usageHtml += ' / ' + c.usage_limit;
         } else {
-            usageHtml += ' / &infin;';
+            usageHtml += ' / &infin;'; // i18n-ignore: HTML entity for infinity symbol, language-neutral typographic separator
         }
 
         // Revenue
@@ -568,6 +743,19 @@
         $('#bpc-usage-limit').val(isNew ? '' : coupon.usage_limit);
         $('#bpc-usage-limit-user').val(isNew ? '' : coupon.usage_limit_per_user);
 
+        // Advanced restriction fields (rendered only when the matching setting is enabled).
+        setTokens('products',           isNew ? [] : (coupon.product_labels || []));
+        setTokens('exclude_products',   isNew ? [] : (coupon.excluded_product_labels || []));
+        setTokens('categories',         isNew ? [] : (coupon.category_labels || []));
+        setTokens('exclude_categories', isNew ? [] : (coupon.excluded_category_labels || []));
+
+        $('#bpc-allowed-emails').val(isNew ? '' : (coupon.email_restrictions || ''));
+        $('#bpc-limit-items').val(isNew ? '' : (coupon.limit_usage_to_x_items || ''));
+
+        // Clear any leftover search input / suggestions in token pickers.
+        $('.brikpanel-cp-token-input').val('');
+        $('.brikpanel-cp-token-suggestions').attr('hidden', true).empty();
+
         // Usage count
         if (!isNew && coupon.usage_count > 0) {
             $('#bpc-usage-count-display').text(coupon.usage_count);
@@ -629,10 +817,36 @@
             usage_limit_per_user: $('#bpc-usage-limit-user').val()
         };
 
+        // Advanced restriction fields - only sent if the corresponding setting is on
+        // (the server also gates this, so a forged payload still cannot write).
+        // Arrays are joined into comma-separated strings so that an "empty
+        // selection" still transmits the key — jQuery drops empty array
+        // values from the POST body, which would otherwise prevent the user
+        // from clearing out a previously-selected list.
+        if (isFieldEnabled('products')) {
+            data.product_ids = tokenValues('products').join(',');
+        }
+        if (isFieldEnabled('exclude_products')) {
+            data.excluded_product_ids = tokenValues('exclude_products').join(',');
+        }
+        if (isFieldEnabled('categories')) {
+            data.category_ids = tokenValues('categories').join(',');
+        }
+        if (isFieldEnabled('exclude_categories')) {
+            data.excluded_category_ids = tokenValues('exclude_categories').join(',');
+        }
+        if (isFieldEnabled('emails')) {
+            data.email_restrictions = $('#bpc-allowed-emails').val();
+        }
+        if (isFieldEnabled('limit_items')) {
+            data.limit_usage_to_x_items = $('#bpc-limit-items').val();
+        }
+
         $.ajax({
             url: CP.ajax_url,
             type: 'POST',
             data: data,
+            traditional: true,
             success: function (res) {
                 $btn.prop('disabled', false).text(couponId > 0 ? CP.i18n.save_changes : CP.i18n.create);
                 if (res.success) {
@@ -655,7 +869,7 @@
     // =========================================================================
 
     function toggleStatus(id) {
-        var $badge = $('#bpc-table-body tr[data-id="' + id + '"] .brikpanel-cp-status-badge');
+        var $badge = $('#bpc-table-body tr[data-id="' + id + '"] .brikpanel-cp-status-badge'); // i18n-ignore: selector fragment
         $badge.addClass('brikpanel-cp-status-saving');
 
         $.ajax({

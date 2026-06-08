@@ -1,5 +1,8 @@
 /**
- * BrikPanel — Feature Showcase Popup
+ * BrikPanel — Welcome / Feature Tour Popup
+ *
+ * Drives the two-pane tour: section rail, slide transitions, progress bar,
+ * keyboard navigation, and dismissal.
  *
  * @package BrikPanel
  * @since   2.0.4
@@ -8,18 +11,22 @@
     'use strict';
 
     /* ── Refs ──────────────────────────────────────────────────────────────── */
-    const overlay    = document.getElementById('brikpanel-welcome-overlay');
+    const overlay = document.getElementById('brikpanel-welcome-overlay');
     if (!overlay) return;
 
-    const modal      = overlay.querySelector('.brikpanel-welcome-modal');
-    const slides     = Array.from(overlay.querySelectorAll('.brikpanel-welcome-slide'));
-    const dots       = Array.from(overlay.querySelectorAll('.brikpanel-welcome-dot'));
-    const btnPrev    = overlay.querySelector('[data-bw-prev]');
-    const btnNext    = overlay.querySelector('[data-bw-next]');
-    const btnClose   = overlay.querySelector('.brikpanel-welcome-close');
-    const skipBtn    = overlay.querySelector('.brikpanel-welcome-skip');
+    const slides   = Array.from(overlay.querySelectorAll('.brikpanel-welcome-slide'));
+    const rail     = Array.from(overlay.querySelectorAll('.brikpanel-welcome-railitem'));
+    const progress = overlay.querySelector('.brikpanel-welcome-progress-fill');
+    const btnPrev  = overlay.querySelector('[data-bw-prev]');
+    const btnNext  = overlay.querySelector('[data-bw-next]');
+    const btnClose = overlay.querySelector('.brikpanel-welcome-close');
+    const skipBtn  = overlay.querySelector('.brikpanel-welcome-skip');
+
+    const i18n = (typeof brikpanelWelcome !== 'undefined' && brikpanelWelcome.i18n) ? brikpanelWelcome.i18n : {};
+    const arrow = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4l6 6-6 6"/></svg>';
 
     let current = 0;
+    let maxSeen = 0;
     const total = slides.length;
 
     /* ── Show ──────────────────────────────────────────────────────────────── */
@@ -48,7 +55,12 @@
         var fd = new FormData();
         fd.append('action', 'brikpanel_dismiss_welcome');
         fd.append('_wpnonce', brikpanelWelcome.nonce);
-        fetch(brikpanelWelcome.ajax_url, { method: 'POST', body: fd, credentials: 'same-origin' });
+        fetch(brikpanelWelcome.ajax_url, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            keepalive: true
+        });
     }
 
     /* ── Navigate ──────────────────────────────────────────────────────────── */
@@ -57,6 +69,7 @@
 
         var prev = current;
         current = idx;
+        if (idx > maxSeen) maxSeen = idx;
 
         slides.forEach(function (s, i) {
             s.classList.remove('is-active', 'is-exiting-left');
@@ -64,29 +77,36 @@
                 s.classList.add('is-exiting-left');
             }
         });
-
         requestAnimationFrame(function () {
             slides[current].classList.add('is-active');
         });
 
-        dots.forEach(function (d, i) {
-            d.classList.toggle('is-active', i === current);
+        rail.forEach(function (r, i) {
+            r.classList.toggle('is-active', i === current);
+            r.classList.toggle('is-visited', i < maxSeen && i !== current);
         });
+
+        /* progress bar */
+        if (progress) progress.style.width = ((current + 1) / total * 100) + '%';
+
+        /* keep active rail item in view (matters on mobile horizontal rail) */
+        if (rail[current] && rail[current].scrollIntoView) {
+            rail[current].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
 
         /* button states */
         if (btnPrev) btnPrev.style.visibility = current === 0 ? 'hidden' : 'visible';
+        if (skipBtn) skipBtn.style.visibility = current === total - 1 ? 'hidden' : 'visible';
         if (btnNext) {
             var isLast = current === total - 1;
-            btnNext.innerHTML = isLast
-                ? (brikpanelWelcome && brikpanelWelcome.i18n ? brikpanelWelcome.i18n.get_started : 'Get Started') + ' <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4l6 6-6 6"/></svg>'
-                : (brikpanelWelcome && brikpanelWelcome.i18n ? brikpanelWelcome.i18n.next : 'Next') + ' <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4l6 6-6 6"/></svg>';
+            var label  = isLast ? (i18n.get_started || 'Get Started') : (i18n.next || 'Next');
+            btnNext.innerHTML = label + ' ' + arrow;
         }
-        if (skipBtn) skipBtn.style.display = current === total - 1 ? 'none' : '';
     }
 
     /* ── Keyboard ──────────────────────────────────────────────────────────── */
     function onKey(e) {
-        if (e.key === 'Escape') close();
+        if (e.key === 'Escape')     close();
         if (e.key === 'ArrowRight') goTo(current + 1);
         if (e.key === 'ArrowLeft')  goTo(current - 1);
     }
@@ -104,15 +124,16 @@
         if (e.target === overlay) close();
     });
 
-    dots.forEach(function (d, i) {
-        d.addEventListener('click', function () { goTo(i); });
-    });
-
-    /* Feature mini-cards on intro slide → jump to feature */
+    /* Rail items + intro feature cards → jump to section */
     overlay.querySelectorAll('[data-bw-goto]').forEach(function (el) {
         el.addEventListener('click', function () {
             goTo(parseInt(this.getAttribute('data-bw-goto'), 10));
         });
+    });
+
+    /* CTA links (final slide) → mark dismissed before navigating away */
+    overlay.querySelectorAll('[data-bw-cta]').forEach(function (el) {
+        el.addEventListener('click', function () { dismiss(); });
     });
 
     /* ── Init ──────────────────────────────────────────────────────────────── */

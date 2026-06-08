@@ -1,3 +1,5 @@
+var _ordersI18n = (window.brikpanelOrdersOverview && window.brikpanelOrdersOverview.i18n) || {};
+
 function makeElement(tagName, attributes = {}, properties = {}, listeners = []) {
 	const $element = document.createElement(tagName);
 	Object.entries(attributes).forEach(([key, value]) => {
@@ -21,14 +23,14 @@ function brikpanelOrderTableFilters() {
 	brikpanelFilterCustomDropdown('date', 'date', '#filter-by-date', '[selected="selected"]:not([value="0"])');
 
 	// Order Tags by 99w
-	brikpanelFilterCustomDropdown('order-tags-99w', 'order tag', 'select[name="wcot_order_tags_filter"]', '[selected=""]:not([value=""])');
+	brikpanelFilterCustomDropdown('order-tags-99w', (_ordersI18n.filter_order_tag || 'order tag'), 'select[name="wcot_order_tags_filter"]', '[selected=""]:not([value=""])');
 
 	// Customer filter
 	brikpanelFilterSelect2SubmitEvent('.wc-customer-search');
 
-	// Position custom dropdowns correctly
-	brikpanelAdjustCustomDropdownPosition('date');
-	brikpanelAdjustCustomDropdownPosition('order-tags-99w');
+	// Custom dropdowns are positioned under their chip on open
+	// (see brikpanelAdjustCustomDropdownPosition), so the layout stays
+	// correct after the filter row wraps on mobile/tablet.
 
 	// Clear filters button
 	brikpanelClearFilters(['#filter-by-date', 'select[name="wcot_order_tags_filter"]', '.wc-customer-search', '#dropdown_shop_order_subtype']);
@@ -268,10 +270,10 @@ function brikpanelOrderSearch() {
 		const setSearchFilter = (val) => {
 			let searchMessage = '';
 			if (val === 'all') {
-				searchMessage = 'Search';
+				searchMessage = _ordersI18n.search || 'Search';
 			} else {
 				const prettySearchFilter = document.querySelector(`#order-search-filter option[value="${val}"]`).innerHTML;
-				searchMessage = `Searching by ${prettySearchFilter}`;
+				searchMessage = (_ordersI18n.searching_by || 'Searching by') + ' ' + prettySearchFilter;
 			}
 			document.querySelector('#orders-search-input-search-input').setAttribute('placeholder', searchMessage);
 		};
@@ -281,7 +283,7 @@ function brikpanelOrderSearch() {
 		});
 	} else {
 		// Search bar placeholder if there's no search filter dropdown
-		(document.querySelector('#post-search-input') ?? document.querySelector('#orders-search-input-search-input'))?.setAttribute('placeholder', 'Search');
+		(document.querySelector('#post-search-input') ?? document.querySelector('#orders-search-input-search-input'))?.setAttribute('placeholder', _ordersI18n.search || 'Search');
 	}
 
 	// Remove search submit button
@@ -298,7 +300,7 @@ function brikpanelOrderSearch() {
 		$searchContainer.insertAdjacentElement('afterbegin', $searchAndFilterIcons);
 
 		// Add tooltip to search button
-		let $tooltip = makeElement('div', { class: 'brikpanel-tooltip top' }, { innerHTML: 'Search and filter (F)' });
+		let $tooltip = makeElement('div', { class: 'brikpanel-tooltip top' }, { innerHTML: _ordersI18n.search_and_filter || 'Search and filter (F)' });
 		$searchContainer.append($tooltip);
 
 		// Adjust tooltip width
@@ -308,7 +310,7 @@ function brikpanelOrderSearch() {
 		$tooltip.style.width = `${halfWidth * 2}px`;
 
 		// Cancel search button
-		const $cancel = makeElement('div', { class: 'brikpanel-search-cancel' }, { innerHTML: 'Cancel' }, [{
+		const $cancel = makeElement('div', { class: 'brikpanel-search-cancel' }, { innerHTML: _ordersI18n.cancel || 'Cancel' }, [{
 			event: 'click',
 			handler: (event) => {
 				event.stopPropagation();
@@ -360,29 +362,42 @@ function brikpanelClearSearch() {
 }
 
 function brikpanelAdjustCustomDropdownPosition(key) {
-	waitForElement('.brikpanel-filters').then(() => {
-		const $filterButton = document.querySelector(`.brikpanel-${key}-filter`);
-		let $previousElement = $filterButton.previousElementSibling;
-		let shift = 0;
-		while ($previousElement) {
-			shift += $previousElement.clientWidth + 4;
-			$previousElement = $previousElement.previousElementSibling;
-		}
-		document.querySelector(`.brikpanel-${key}-dropdown`).setAttribute(
-			'style',
-			`transform: translateX(${shift + 2}px);`
-		);
-	});
+	const $filterButton = document.querySelector(`.brikpanel-${key}-filter`);
+	const $dropdown = document.querySelector(`.brikpanel-${key}-dropdown`);
+	if (!$filterButton || !$dropdown) {
+		return;
+	}
+	// The dropdown is absolutely positioned inside the filter form (its
+	// offset parent). Anchor it directly under its own chip using live
+	// layout offsets so it stays correct whether the filter row sits on a
+	// single line (desktop) or wraps onto several lines (mobile/tablet).
+	const $form = $filterButton.closest('#posts-filter, #wc-orders-filter');
+	if (!$form) {
+		return;
+	}
+	const top = $filterButton.offsetTop + $filterButton.offsetHeight + 4;
+	let left = $filterButton.offsetLeft;
+	// Keep the panel fully inside the form on narrow viewports.
+	const maxLeft = $form.clientWidth - $dropdown.offsetWidth - 8;
+	if (left > maxLeft) {
+		left = Math.max(4, maxLeft);
+	}
+	$dropdown.style.transform = 'none';
+	$dropdown.style.left = `${left}px`;
+	$dropdown.style.top = `${top}px`;
 }
 
 function brikpanelFilterCustomDropdown(key, prettyText, selectSelector, selectedOptionSelector) {
 	// Filter button
-	const $filterButton = makeElement('div', { class: `brikpanel-${key}-filter` }, { innerHTML: `Filter by ${prettyText}` }, [{
+	const $filterButton = makeElement('div', { class: `brikpanel-${key}-filter` }, { innerHTML: (_ordersI18n.filter_by || 'Filter by') + ' ' + prettyText }, [{
 		event: 'click',
 		handler: () => {
 			const $dropdown = document.querySelector(`.brikpanel-${key}-dropdown`);
 			$dropdown.classList.toggle('expanded');
 			if ($dropdown.classList.contains('expanded')) {
+				// Re-anchor under the chip every time it opens — the row may
+				// have re-wrapped since init (resize, orientation change).
+				brikpanelAdjustCustomDropdownPosition(key);
 				const closeDropdownListener = (event) => {
 					if (!event.target.closest(`.brikpanel-${key}-dropdown`) && !event.target.closest(`.brikpanel-${key}-filter`)) {
 						document.querySelector(`.brikpanel-${key}-dropdown`).classList.remove('expanded');
@@ -491,7 +506,7 @@ function brikpanelFilterSelect2SubmitEvent(selectSelector) {
 }
 
 function brikpanelClearFilters(selectSelectors) {
-	const $clearFilters = makeElement('button', { class: 'brikpanel-clear-filter' }, { innerHTML: 'Clear filters' }, [{
+	const $clearFilters = makeElement('button', { class: 'brikpanel-clear-filter' }, { innerHTML: _ordersI18n.clear_filters || 'Clear filters' }, [{
 		event: 'click',
 		handler: () => {
 			selectSelectors.forEach(selector => {

@@ -2,14 +2,17 @@
 if (!defined('ABSPATH')) { exit; }
 
 /**
- * ANA YARDIMCI FONKSİYON
- * GÜNCELLENDİ: Sadece 'wc-processing' ve 'wc-completed' durumlarını hesaplar.
+ * Main helper for the Average Order Value KPI.
+ *
+ * Computes AOV across orders in the statuses returned by
+ * brikpanel_kpi_revenue_statuses() (default: processing + completed;
+ * extensible via the brikpanel_kpi_statuses filter, e.g. to include
+ * wc-on-hold for offline-payment-heavy merchants).
  */
 function brikpanel_get_average_order_value( $start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false ) {
     global $wpdb;
 
-    // 1. DEĞİŞİKLİK: Sadece dahil edilecek durumlar
-    $include_statuses = array('wc-processing', 'wc-completed');
+    $include_statuses = brikpanel_kpi_revenue_statuses();
     $status_placeholders = implode( ', ', array_fill( 0, count( $include_statuses ), '%s' ) );
 
     $query_args = $include_statuses;

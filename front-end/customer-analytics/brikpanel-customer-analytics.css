@@ -662,3 +662,253 @@
 	color: #c62828;
 	border-color: #f1b0b0;
 }
+
+/* =============================================================================
+   EXCLUDE-CUSTOMERS MODAL
+   ============================================================================= */
+
+/* Count badge on the header button. */
+.bp-ca-excl-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 1.05rem;
+	height: 1.05rem;
+	padding: 0 0.3rem;
+	margin-left: 0.1rem;
+	border-radius: 999px;
+	background: #303030;
+	color: #fff;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	line-height: 1;
+}
+.bp-ca-excl-badge[hidden] { display: none; }
+
+body.bp-ca-modal-open {
+	overflow: hidden;
+}
+
+.bp-ca-modal-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100001;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 6vh 1rem 1rem;
+	background: rgba(0, 0, 0, 0.35);
+	overflow-y: auto;
+}
+
+/* A class with `display` beats the UA [hidden] rule, so restore it explicitly. */
+.bp-ca-modal-overlay[hidden] { display: none; }
+
+.bp-ca-modal {
+	width: 100%;
+	max-width: 540px;
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+	display: flex;
+	flex-direction: column;
+	max-height: 86vh;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	color: #303030;
+}
+
+.bp-ca-modal-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 1rem 1.25rem;
+	border-bottom: 1px solid #e3e3e3;
+}
+
+.bp-ca-modal-head h2 {
+	margin: 0;
+	font-size: 1.0625rem;
+	font-weight: 600;
+}
+
+.bp-ca-modal-close {
+	border: none;
+	background: none;
+	font-size: 1.5rem;
+	line-height: 1;
+	color: #8a8a8a;
+	cursor: pointer;
+	padding: 0 0.25rem;
+}
+.bp-ca-modal-close:hover { color: #303030; }
+
+.bp-ca-modal-body {
+	padding: 1.25rem;
+	overflow-y: auto;
+}
+
+.bp-ca-modal-intro {
+	margin: 0 0 1.25rem 0;
+	font-size: 0.8125rem;
+	color: #616161;
+	line-height: 1.55;
+}
+
+.bp-ca-excl-section { margin-bottom: 1.5rem; }
+.bp-ca-excl-section:last-child { margin-bottom: 0; }
+
+.bp-ca-excl-section h3 {
+	margin: 0 0 0.5rem 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+}
+
+.bp-ca-excl-hint {
+	margin: 0 0 0.625rem 0;
+	font-size: 0.75rem;
+	color: #8a8a8a;
+}
+
+.bp-ca-excl-search-wrap { position: relative; }
+
+.bp-ca-excl-search {
+	width: 100%;
+	padding: 0.625rem 0.75rem;
+	font-size: 0.875rem;
+	font-family: inherit;
+	border: 1px solid #8a8a8a;
+	border-radius: 0.5rem;
+	color: #303030;
+}
+.bp-ca-excl-search::placeholder { color: #8a8a8a; }
+.bp-ca-excl-search:focus {
+	outline: none;
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+}
+
+.bp-ca-excl-results {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(100% + 0.25rem);
+	z-index: 5;
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+	max-height: 240px;
+	overflow-y: auto;
+}
+
+.bp-ca-excl-result {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	width: 100%;
+	text-align: left;
+	padding: 0.5rem 0.75rem;
+	border: none;
+	background: none;
+	cursor: pointer;
+	font-family: inherit;
+	border-bottom: 1px solid #f1f1f1;
+}
+.bp-ca-excl-result:last-child { border-bottom: none; }
+.bp-ca-excl-result:hover { background: #f7f7f7; }
+.bp-ca-excl-result.is-empty {
+	color: #8a8a8a;
+	font-size: 0.8125rem;
+	cursor: default;
+}
+
+.bp-ca-excl-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+}
+
+.bp-ca-excl-empty {
+	font-size: 0.8125rem;
+	color: #8a8a8a;
+}
+
+.bp-ca-chip {
+	display: inline-flex;
+	flex-direction: column;
+	position: relative;
+	padding: 0.4rem 1.75rem 0.4rem 0.625rem;
+	background: #f7f7f7;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	max-width: 100%;
+}
+
+.bp-ca-chip-main {
+	font-size: 0.8125rem;
+	font-weight: 550;
+	color: #303030;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.bp-ca-chip-sub {
+	font-size: 0.6875rem;
+	color: #8a8a8a;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.bp-ca-chip-x {
+	position: absolute;
+	top: 50%;
+	right: 0.4rem;
+	transform: translateY(-50%);
+	border: none;
+	background: none;
+	font-size: 1.05rem;
+	line-height: 1;
+	color: #8a8a8a;
+	cursor: pointer;
+	padding: 0 0.15rem;
+}
+.bp-ca-chip-x:hover { color: #d72c0d; }
+
+.bp-ca-excl-roles {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+}
+
+.bp-ca-role-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.4rem 0.25rem;
+	cursor: pointer;
+	border-radius: 0.375rem;
+}
+.bp-ca-role-row:hover { background: #f7f7f7; }
+
+.bp-ca-role-label {
+	font-size: 0.8125rem;
+	color: #303030;
+}
+
+.bp-ca-role-count {
+	color: #8a8a8a;
+	font-size: 0.6875rem;
+	margin-left: 0.25rem;
+}
+
+.bp-ca-modal-foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	padding: 1rem 1.25rem;
+	border-top: 1px solid #e3e3e3;
+}

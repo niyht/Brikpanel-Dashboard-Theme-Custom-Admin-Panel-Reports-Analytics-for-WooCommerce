@@ -13,6 +13,25 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+if ( ! function_exists( 'brikpanel_dash_format_count' ) ) {
+    /**
+     * Format an integer count using WooCommerce's configured thousand
+     * separator (no decimals) so KPI counts line up visually with the
+     * currency cards on the same dashboard row, independent of WP locale.
+     *
+     * @param int|float $value
+     * @return string
+     */
+    function brikpanel_dash_format_count( $value ) {
+        return number_format(
+            (float) $value,
+            0,
+            wc_get_price_decimal_separator(),
+            wc_get_price_thousand_separator()
+        );
+    }
+}
+
 class Brikpanel_Dashboard {
 
     private $is_hpos = null;
@@ -35,6 +54,8 @@ class Brikpanel_Dashboard {
         add_action( 'wp_ajax_brikpanel_dashboard_data', [ $this, 'ajax_dashboard_data' ] );
         // Live visitors endpoint (separate for polling)
         add_action( 'wp_ajax_brikpanel_dashboard_live', [ $this, 'ajax_dashboard_live' ] );
+        // CSV export of the current date-range report (streamed download).
+        add_action( 'admin_post_brikpanel_dashboard_export', [ $this, 'handle_export' ] );
     }
 
     /**
@@ -89,6 +110,14 @@ class Brikpanel_Dashboard {
         if ( wp_doing_ajax() ) {
             return;
         }
+        // On multisite, /wp-admin/network/index.php and /wp-admin/user/index.php
+        // also resolve to $pagenow === 'index.php'. Hijacking those would yank
+        // super admins out of Network Admin and User Admin into a subsite
+        // dashboard, breaking core navigation. Only hijack the per-site
+        // Dashboard.
+        if ( is_network_admin() || is_user_admin() ) {
+            return;
+        }
         // Only hijack a bare Dashboard visit. If any query args are present
         // (e.g. ?page=foo submenu pages, ?oauth2callback=1 / ?gatoscallback=1
         // from Google Site Kit, or any other plugin hooking into index.php),
@@ -115,6 +144,7 @@ class Brikpanel_Dashboard {
      */
     private function get_sections() {
         $sections = [
+            'profit'          => [ $this, 'render_section_profit' ],
             'kpis'            => [ $this, 'render_section_kpis' ],
             'sales_live'      => [ $this, 'render_section_sales_live' ],
             'funnel_rates'    => [ $this, 'render_section_funnel_rates' ],
@@ -152,6 +182,7 @@ class Brikpanel_Dashboard {
      */
     public static function get_section_labels() {
         $labels = [
+            'profit'            => __( 'Profit (Revenue, Cost of goods, Net profit)', 'brikpanel' ),
             'kpis'              => __( 'KPI cards (Sales, Orders, AOV, Visitors, Conversion)', 'brikpanel' ),
             'sales_live'        => __( 'Sales over time + Live visitors', 'brikpanel' ),
             'funnel_rates'      => __( 'Conversion funnel + Order rates', 'brikpanel' ),
@@ -196,6 +227,32 @@ class Brikpanel_Dashboard {
             if ( empty( $visible ) ) {
                 $visible = $default;
             }
+
+            // Newly introduced sections must default to VISIBLE — otherwise a
+            // flagship feature shipped in an update (e.g. Profit) would stay
+            // hidden forever on every install that ever touched these
+            // settings, because it can't appear in a list saved before it
+            // existed. The persisted section-order option records every
+            // section key known at the last save (the save handler appends
+            // all known keys), so any current key missing from it is brand
+            // new — show it. Keys that ARE in the order list but absent from
+            // the visible list were deliberately hidden and stay hidden.
+            $order_raw = get_option( 'brikpanel_dashboard_section_order', '' );
+            $known_at_save = [];
+            if ( is_string( $order_raw ) && '' !== $order_raw ) {
+                $decoded = json_decode( $order_raw, true );
+                if ( is_array( $decoded ) ) {
+                    $known_at_save = array_values( array_filter( $decoded, 'is_string' ) );
+                }
+            }
+            if ( ! empty( $known_at_save ) ) {
+                foreach ( $default as $slug ) {
+                    if ( ! in_array( $slug, $known_at_save, true )
+                        && ! in_array( $slug, $visible, true ) ) {
+                        $visible[] = $slug;
+                    }
+                }
+            }
         }
 
         /**
@@ -217,15 +274,14 @@ class Brikpanel_Dashboard {
     private function resolve_section_order( array $sections ) {
         $default = array_keys( $sections );
 
-        // Simple UI toggle: "WordPress widgets position" (top|bottom). When
-        // `top`, move the wp_widgets key in front of kpis so shop managers
-        // see their shortcut widgets without scrolling past analytics.
-        $wp_pos = get_option( 'brikpanel_dashboard_wp_widgets_position', 'bottom' );
-        $order  = $default;
-        if ( $wp_pos === 'top' ) {
-            $order = array_values( array_filter( $order, function ( $k ) { return $k !== 'wp_widgets'; } ) );
-            array_unshift( $order, 'wp_widgets' );
-        }
+        // Order comes from the Settings UI's reorderable picker (see
+        // brikpanel-dashboard-section-order.php). When nothing is persisted
+        // yet, that helper falls back to the legacy
+        // `brikpanel_dashboard_wp_widgets_position` toggle so installs
+        // upgrading from pre-reorder versions don't see wp_widgets jump.
+        $order = function_exists( 'brikpanel_dashboard_get_section_order' )
+            ? brikpanel_dashboard_get_section_order()
+            : $default;
 
         $order = apply_filters( 'brikpanel_dashboard_section_order', $order, $sections );
         if ( ! is_array( $order ) ) {
@@ -273,25 +329,76 @@ class Brikpanel_Dashboard {
                     <?php endif; ?>
                 </h1>
                 <div class="brikpanel-dash-filters">
-                    <button type="button" class="brikpanel-dash-copy-summary" id="brikpanel-copy-summary"
-                            title="<?php esc_attr_e( 'Generate a comprehensive Markdown summary of your store and copy it to the clipboard. Paste into ChatGPT/Claude/etc. for analysis.', 'brikpanel' ); ?>">
-                        <span class="brikpanel-dash-copy-icon" aria-hidden="true">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <div class="brikpanel-dash-copy-wrap">
+                        <button type="button" class="brikpanel-dash-copy-summary" id="brikpanel-copy-summary">
+                            <span class="brikpanel-dash-copy-icon" aria-hidden="true">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </span>
+                            <span class="brikpanel-dash-copy-label"><?php esc_html_e( 'Copy everything', 'brikpanel' ); ?></span>
+                            <span class="brikpanel-dash-copy-progress" aria-hidden="true"><span></span></span>
+                        </button>
+                        <span class="brikpanel-dash-copy-help" tabindex="0" role="button"
+                              aria-label="<?php esc_attr_e( 'What does “Copy everything” do?', 'brikpanel' ); ?>">
+                            <svg class="brikpanel-dash-copy-help-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                            </svg>
+                            <span class="brikpanel-dash-copy-help-tip" role="tooltip">
+                                <span class="brikpanel-dash-copy-help-title"><?php esc_html_e( 'Copy everything', 'brikpanel' ); ?></span>
+                                <span class="brikpanel-dash-copy-help-body"><?php esc_html_e( 'Bundles your store’s key data — KPIs, top products, recent orders, customers and settings — into a single Markdown report and copies it to your clipboard. Paste it into ChatGPT, Claude or any AI tool to get instant analysis, insights and recommendations about your store.', 'brikpanel' ); ?></span>
+                            </span>
                         </span>
-                        <span class="brikpanel-dash-copy-label"><?php esc_html_e( 'Copy everything', 'brikpanel' ); ?></span>
-                        <span class="brikpanel-dash-copy-progress" aria-hidden="true"><span></span></span>
-                    </button>
-                    <div class="brikpanel-dash-presets">
-                        <button class="brikpanel-dash-preset active" data-range="today"><?php esc_html_e( 'Today', 'brikpanel' ); ?></button>
-                        <button class="brikpanel-dash-preset" data-range="yesterday"><?php esc_html_e( 'Yesterday', 'brikpanel' ); ?></button>
-                        <button class="brikpanel-dash-preset" data-range="7days"><?php esc_html_e( 'Last 7 Days', 'brikpanel' ); ?></button>
-                        <button class="brikpanel-dash-preset" data-range="30days"><?php esc_html_e( 'Last 30 Days', 'brikpanel' ); ?></button>
-                        <button class="brikpanel-dash-preset" data-range="custom"><?php esc_html_e( 'Custom', 'brikpanel' ); ?></button>
+                        <?php
+                        // Ad Platforms quick-access CTA. Self-gates: only renders
+                        // when the module is enabled. Label adapts to whether any
+                        // platform is already connected.
+                        if ( class_exists( 'Brikpanel_Ads_Tokens' )
+                            && function_exists( 'brikpanel_ads_module_is_enabled' )
+                            && brikpanel_ads_module_is_enabled() ) :
+                            $bp_ads_connected = Brikpanel_Ads_Tokens::is_connected( 'google_ads' )
+                                || Brikpanel_Ads_Tokens::is_connected( 'meta_ads' );
+                            ?>
+                            <a class="brikpanel-dash-ads-cta" href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-ad-platforms' ) ); ?>">
+                                <span class="brikpanel-dash-ads-cta-icon" aria-hidden="true">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>
+                                </span>
+                                <span class="brikpanel-dash-ads-cta-label">
+                                    <?php echo $bp_ads_connected
+                                        ? esc_html__( 'Ad spend settings', 'brikpanel' )
+                                        : esc_html__( 'Connect ad accounts', 'brikpanel' ); ?>
+                                </span>
+                                <span class="brikpanel-beta-badge"><?php esc_html_e( 'Beta', 'brikpanel' ); ?></span>
+                            </a>
+                        <?php endif; ?>
                     </div>
-                    <div class="brikpanel-dash-custom-range" style="display:none;">
-                        <input type="text" id="brikpanel-dash-datepicker" placeholder="<?php esc_attr_e( 'Select dates', 'brikpanel' ); ?>" readonly>
+                    <button type="button" class="brikpanel-dash-export" id="brikpanel-export-xlsx"
+                            title="<?php esc_attr_e( 'Download the selected period as an Excel workbook (opens in Excel / Google Sheets)', 'brikpanel' ); ?>">
+                        <span class="brikpanel-dash-export-icon" aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        </span>
+                        <span class="brikpanel-dash-export-label"><?php esc_html_e( 'Export Excel', 'brikpanel' ); ?></span>
+                    </button>
+                    <div class="brikpanel-dash-range-wrap">
+                        <div class="brikpanel-dash-presets">
+                            <button class="brikpanel-dash-preset active" data-range="today"><?php esc_html_e( 'Today', 'brikpanel' ); ?></button>
+                            <button class="brikpanel-dash-preset" data-range="yesterday"><?php esc_html_e( 'Yesterday', 'brikpanel' ); ?></button>
+                            <button class="brikpanel-dash-preset" data-range="7days"><?php esc_html_e( 'Last 7 Days', 'brikpanel' ); ?></button>
+                            <button class="brikpanel-dash-preset" data-range="30days"><?php esc_html_e( 'Last 30 Days', 'brikpanel' ); ?></button>
+                            <button class="brikpanel-dash-preset" data-range="custom"><?php esc_html_e( 'Custom', 'brikpanel' ); ?></button>
+                        </div>
+                        <div class="brikpanel-dash-custom-range" style="display:none;">
+                            <input type="text" id="brikpanel-dash-datepicker" placeholder="<?php esc_attr_e( 'Select dates', 'brikpanel' ); ?>" readonly>
+                        </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="brikpanel-dash-period" id="brikpanel-dash-period" aria-live="polite">
+                <span class="brikpanel-dash-period-icon" aria-hidden="true">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                </span>
+                <span class="brikpanel-dash-period-text"><?php esc_html_e( 'Loading…', 'brikpanel' ); ?></span>
             </div>
 
             <?php
@@ -341,6 +448,64 @@ class Brikpanel_Dashboard {
                     <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Conversion Rate', 'brikpanel' ); ?></span>
                     <span class="brikpanel-dash-card-value" id="card-conversion">--</span>
                     <span class="brikpanel-dash-card-delta" id="delta-conversion"></span>
+                </div>
+            </div>
+            <?php
+            /**
+             * Fires immediately after the headline KPI cards render. Used by
+             * the Ad Platforms module to inject its Ad Spend / ROAS / Net
+             * Profit cards in-place when at least one platform is connected.
+             *
+             * @since 3.0.0
+             */
+            do_action( 'brikpanel_dashboard_after_kpis' );
+            ?>
+        <?php
+    }
+
+    /**
+     * Profit section — Revenue, Cost of goods, Expenses and Net profit for the
+     * selected date range. Standalone: it does NOT require any ad platform to
+     * be connected. Values fill in from the shared AJAX payload (data.profit).
+     */
+    public function render_section_profit() {
+        ?>
+            <!-- Profit -->
+            <div class="brikpanel-dash-profit" id="brikpanel-profit-section">
+                <div class="brikpanel-dash-cards brikpanel-dash-cards-profit" id="brikpanel-profit-cards">
+                    <div class="brikpanel-dash-card" data-metric="profit_revenue">
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Revenue', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-card-value" id="card-profit-revenue">--</span>
+                        <span class="brikpanel-dash-card-delta" id="delta-profit-revenue"></span>
+                    </div>
+                    <div class="brikpanel-dash-card" data-metric="profit_cogs">
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Cost of Goods', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-card-value" id="card-profit-cogs">--</span>
+                        <span class="brikpanel-dash-card-delta brikpanel-dash-card-delta-static" id="delta-profit-cogs"></span>
+                    </div>
+                    <div class="brikpanel-dash-card" data-metric="profit_expenses" id="profit-expenses-card">
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Expenses', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-card-value" id="card-profit-expenses">--</span>
+                        <span class="brikpanel-dash-card-delta brikpanel-dash-card-delta-static" id="delta-profit-expenses"></span>
+                        <button type="button" class="brikpanel-dash-bd-toggle" id="profit-bd-toggle"
+                                aria-expanded="false" aria-controls="profit-bd-collapse" hidden
+                                title="<?php esc_attr_e( 'Show expense breakdown', 'brikpanel' ); ?>"
+                                aria-label="<?php esc_attr_e( 'Show expense breakdown', 'brikpanel' ); ?>">
+                            <svg class="brikpanel-dash-bd-chevron" width="14" height="14" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                        <div class="brikpanel-dash-bd-collapse" id="profit-bd-collapse">
+                            <div class="brikpanel-dash-bd-inner">
+                                <div class="brikpanel-dash-bd-list" id="profit-expenses-breakdown"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="brikpanel-dash-card" data-metric="profit_net">
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Net Profit', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-card-value" id="card-profit-net">--</span>
+                        <span class="brikpanel-dash-card-delta" id="delta-profit-net"></span>
+                    </div>
                 </div>
             </div>
         <?php
@@ -942,6 +1107,63 @@ class Brikpanel_Dashboard {
         return $result;
     }
 
+    /**
+     * Build the Profit payload block for a single period from the shared
+     * profit helper (the same code the Google Sheets snapshot uses, so the
+     * two never disagree). Revenue is passed in so it always matches the
+     * headline Total Sales KPI exactly — the customer never sees two
+     * different "revenue" numbers on the same screen.
+     *
+     * Expenses is the composite of ad spend + tax + manual operating
+     * expenses (which already includes vendor/inventory PO auto-expenses);
+     * the breakdown lets the card explain what it's made of.
+     *
+     * @return array
+     */
+    private function build_profit_block( $revenue, $start_gmt, $end_gmt, $start_local, $end_local ) {
+        $s = brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local );
+
+        $labels = [
+            'google_ads' => __( 'Google Ads', 'brikpanel' ),
+            'meta_ads'   => __( 'Meta Ads', 'brikpanel' ),
+            'tax'        => __( 'Tax', 'brikpanel' ),
+            'inventory'  => __( 'Supplier / stock', 'brikpanel' ),
+            'other'      => __( 'Other', 'brikpanel' ),
+        ];
+        $breakdown = [];
+        foreach ( $s['breakdown'] as $key => $amount ) {
+            if ( (float) $amount <= 0 || ! isset( $labels[ $key ] ) ) {
+                continue; // hide empty / unlabelled components to keep the card clean
+            }
+            $breakdown[] = [
+                'key'    => $key,
+                'label'  => $labels[ $key ],
+                'amount' => wc_price( (float) $amount ),
+                'raw'    => (float) $amount,
+            ];
+        }
+
+        return [
+            'revenue'       => wc_price( $s['revenue_raw'] ),
+            'revenue_raw'   => $s['revenue_raw'],
+            'cogs'          => wc_price( $s['cogs_raw'] ),
+            'cogs_raw'      => $s['cogs_raw'],
+            'cogs_pct'      => $s['cogs_pct'],
+            'has_cogs'      => $s['has_cogs'],
+            'cogs_incomplete'    => $s['cogs_incomplete'],
+            'cogs_missing_lines' => $s['cogs_missing_lines'],
+            'cogs_coverage_pct'  => $s['cogs_coverage_pct'],
+            'cogs_missing_products' => $s['cogs_missing_products'] ?? [],
+            'expenses'      => wc_price( $s['expenses_total_raw'] ),
+            'expenses_raw'  => $s['expenses_total_raw'],
+            'expenses_pct'  => $s['expenses_pct'],
+            'breakdown'     => $breakdown,
+            'net'           => wc_price( $s['net_raw'] ),
+            'net_raw'       => $s['net_raw'],
+            'margin'        => $s['margin'],
+        ];
+    }
+
     // =========================================================================
     // AJAX: BATCH DASHBOARD DATA
     // =========================================================================
@@ -973,8 +1195,34 @@ class Brikpanel_Dashboard {
             wp_send_json_success( $cached );
         }
 
+        $payload = $this->build_dashboard_payload( $range );
+
+        $ttl = function_exists( 'brikpanel_cache_ttl' )
+            ? brikpanel_cache_ttl( self::CACHE_TTL )
+            : self::CACHE_TTL;
+        set_transient( $cache_key, $payload, $ttl );
+
+        wp_send_json_success( $payload );
+    }
+
+    /**
+     * Build the full dashboard data payload for a date range.
+     *
+     * The single source of truth for *everything* the dashboard shows —
+     * KPIs, funnel, profit, order rates, products, locations, devices,
+     * customer segments, LTV, RFM, subscriptions, low stock, the lot.
+     * Both the AJAX endpoint (cached) and the Excel export consume this so
+     * the report can never drift from the screen, and anything added here
+     * flows into the export automatically.
+     *
+     * @param string      $range        today|yesterday|7days|30days|custom
+     * @param string|null $custom_start Y-m-d (custom range only)
+     * @param string|null $custom_end   Y-m-d (custom range only)
+     * @return array The filtered payload (same shape AJAX returns).
+     */
+    private function build_dashboard_payload( $range, $custom_start = null, $custom_end = null ) {
         // Calculate date ranges (local + GMT)
-        $dates     = $this->calculate_dates( $range );
+        $dates     = $this->calculate_dates( $range, $custom_start, $custom_end );
         $start_gmt = $dates['start_gmt'];
         $end_gmt   = $dates['end_gmt'];
         $start_local = $dates['start_local'];
@@ -1109,6 +1357,14 @@ class Brikpanel_Dashboard {
         $prev_visitor_count = brikpanel_get_visitor_count( $prev_start_local, $prev_end_local );
         $prev_conversion    = $prev_visitor_count > 0 ? round( ( $prev_order_count / $prev_visitor_count ) * 100, 2 ) : 0;
 
+        // Profit: Revenue − Cost of goods − Expenses, for the current and the
+        // previous comparison period. Standalone — never depends on any ad
+        // platform being connected.
+        $profit_curr = $this->build_profit_block( $total_sales, $start_gmt, $end_gmt, $start_local, $end_local );
+        $profit_prev = $this->build_profit_block( $prev_total_sales, $prev_start_gmt, $prev_end_gmt, $prev_start_local, $prev_end_local );
+        $profit_curr['delta_revenue'] = $this->calc_delta( $profit_curr['revenue_raw'], $profit_prev['revenue_raw'] );
+        $profit_curr['delta_net']     = $this->calc_delta( $profit_curr['net_raw'], $profit_prev['net_raw'] );
+
         $deltas = [
             'sales'      => $this->calc_delta( $total_sales, $prev_total_sales ),
             'orders'     => $this->calc_delta( $order_count, $prev_order_count ),
@@ -1121,10 +1377,24 @@ class Brikpanel_Dashboard {
             'total_sales'      => wc_price( $total_sales ),
             'total_sales_raw'  => $total_sales,
             'order_count'      => $order_count,
+            // Display strings formatted with WooCommerce's OWN separators so
+            // the whole KPI row matches the currency cards (e.g. "10.001" /
+            // "0,62") regardless of the WP locale — under this store WC uses
+            // "." thousands and "," decimals while the site locale is en_US,
+            // so number_format_i18n() alone would still mismatch. Raw values
+            // are kept untouched for charts/add-ons.
+            'order_count_display'     => brikpanel_dash_format_count( $order_count ),
             'aov'              => wc_price( $aov ),
             'aov_raw'          => $aov,
             'visitor_count'    => $visitor_count,
+            'visitor_count_display'   => brikpanel_dash_format_count( $visitor_count ),
             'conversion_rate'  => $conversion,
+            'conversion_rate_display' => number_format(
+                (float) $conversion,
+                2,
+                wc_get_price_decimal_separator(),
+                wc_get_price_thousand_separator()
+            ),
             'funnel'           => [
                 'visitors' => $visitor_count,
                 'products' => $product_views,
@@ -1146,17 +1416,36 @@ class Brikpanel_Dashboard {
             'low_stock'          => $low_stock,
             'returns'          => $returns_data,
             'deltas'           => $deltas,
+            'profit'           => $profit_curr,
             'marketplace'      => $marketplace_analytics,
             'ltv_panel'        => $ltv_panel,
             'rfm_distribution' => $rfm_distribution,
+            'period'           => $dates['period'],
         ];
 
-        $ttl = function_exists( 'brikpanel_cache_ttl' )
-            ? brikpanel_cache_ttl( self::CACHE_TTL )
-            : self::CACHE_TTL;
-        set_transient( $cache_key, $payload, $ttl );
+        /**
+         * Filter the dashboard data payload before it's cached + returned.
+         *
+         * Used by the Ad Platforms module to attach ad_spend / roas / net_profit
+         * figures alongside the headline KPIs. Receives the date-range bounds
+         * so subscribers can run their own queries against the same window.
+         *
+         * @since 3.0.0
+         *
+         * @param array  $payload          The full response payload.
+         * @param array  $date_window      [start_local => Y-m-d H:i:s, end_local => Y-m-d H:i:s]
+         * @param string $range            today | this_week | last_7_days | ...
+         * @param float  $total_sales      The KPI Total Sales value already computed for $range.
+         */
+        $payload = apply_filters(
+            'brikpanel_dashboard_data',
+            $payload,
+            [ 'start_local' => $start_local, 'end_local' => $end_local ],
+            $range,
+            (float) $total_sales
+        );
 
-        wp_send_json_success( $payload );
+        return $payload;
     }
 
     // =========================================================================
@@ -1193,7 +1482,7 @@ class Brikpanel_Dashboard {
     // DATE CALCULATION
     // =========================================================================
 
-    private function calculate_dates( $range ) {
+    private function calculate_dates( $range, $custom_start = null, $custom_end = null ) {
         $now_ts = wp_date( 'U' );
 
         switch ( $range ) {
@@ -1216,8 +1505,18 @@ class Brikpanel_Dashboard {
                 break;
 
             case 'custom':
-                $start_str   = isset( $_POST['start_date'] ) ? sanitize_text_field( wp_unslash( $_POST['start_date'] ) ) : wp_date( 'Y-m-d' );
-                $end_str     = isset( $_POST['end_date'] ) ? sanitize_text_field( wp_unslash( $_POST['end_date'] ) ) : wp_date( 'Y-m-d' );
+                // Explicit args win (export passes them via GET); otherwise
+                // fall back to the AJAX POST body the dashboard JS sends.
+                $start_str   = $custom_start !== null
+                    ? sanitize_text_field( $custom_start )
+                    : ( isset( $_POST['start_date'] ) ? sanitize_text_field( wp_unslash( $_POST['start_date'] ) ) : wp_date( 'Y-m-d' ) );
+                $end_str     = $custom_end !== null
+                    ? sanitize_text_field( $custom_end )
+                    : ( isset( $_POST['end_date'] ) ? sanitize_text_field( wp_unslash( $_POST['end_date'] ) ) : wp_date( 'Y-m-d' ) );
+                // Guard against an inverted range (end before start).
+                if ( strtotime( $end_str ) < strtotime( $start_str ) ) {
+                    $tmp = $start_str; $start_str = $end_str; $end_str = $tmp;
+                }
                 $start_local = $start_str . ' 00:00:00';
                 $end_local   = $end_str . ' 23:59:59';
                 $days_span   = max( 1, (int) ( ( strtotime( $end_str ) - strtotime( $start_str ) ) / DAY_IN_SECONDS ) + 1 );
@@ -1252,12 +1551,67 @@ class Brikpanel_Dashboard {
             'end_gmt'     => $end_gmt,
             'start_local' => $start_local_date,
             'end_local'   => $end_local_date,
+            // Period metadata — drives the on-screen "Showing …" subtitle and
+            // the CSV export header so both always state the exact window.
+            'period'      => $this->build_period_meta( $range, $start_local_date, $end_local_date, $days_span ),
             'prev'        => [
                 'start_gmt'   => $prev_start_gmt,
                 'end_gmt'     => $prev_end_gmt,
                 'start_local' => $prev_start_local_date,
                 'end_local'   => $prev_end_local_date,
             ],
+        ];
+    }
+
+    /**
+     * Human-readable description of the active date window.
+     *
+     * Returns the preset label, the localised From/To dates (using the
+     * store's own date_format) and the duration in days. Consumed by the
+     * dashboard JS (subtitle under the range presets) and the CSV export
+     * header so the customer always sees *which* dates a report covers and
+     * *how long* a span it is — e.g. "Last 30 Days · May 18 – Jun 17, 2026
+     * · 30 days".
+     *
+     * @param string $range      today|yesterday|7days|30days|custom
+     * @param string $start_date Y-m-d (local)
+     * @param string $end_date   Y-m-d (local)
+     * @param int    $days       Duration in days (inclusive)
+     * @return array{range:string,label:string,from:string,to:string,from_iso:string,to_iso:string,days:int,text:string}
+     */
+    private function build_period_meta( $range, $start_date, $end_date, $days ) {
+        $labels = [
+            'today'     => __( 'Today', 'brikpanel' ),
+            'yesterday' => __( 'Yesterday', 'brikpanel' ),
+            '7days'     => __( 'Last 7 Days', 'brikpanel' ),
+            '30days'    => __( 'Last 30 Days', 'brikpanel' ),
+            'custom'    => __( 'Custom range', 'brikpanel' ),
+        ];
+        $label   = $labels[ $range ] ?? $labels['custom'];
+        $fmt     = get_option( 'date_format' ) ?: 'M j, Y';
+        $from    = wp_date( $fmt, strtotime( $start_date . ' 00:00:00' ) );
+        $to      = wp_date( $fmt, strtotime( $end_date . ' 00:00:00' ) );
+        $days    = max( 1, (int) $days );
+
+        if ( $from === $to ) {
+            $range_str = $from;
+        } else {
+            $range_str = $from . ' – ' . $to;
+        }
+        /* translators: %d: number of days. */
+        $days_str = sprintf( _n( '%d day', '%d days', $days, 'brikpanel' ), $days );
+
+        return [
+            'range'    => $range,
+            'label'    => $label,
+            'from'     => $from,
+            'to'       => $to,
+            'from_iso' => $start_date,
+            'to_iso'   => $end_date,
+            'days'     => $days,
+            // Pre-composed one-liner so the JS doesn't re-implement locale
+            // formatting: "Last 30 Days · May 18 – Jun 17, 2026 · 30 days".
+            'text'     => $label . ' · ' . $range_str . ' · ' . $days_str,
         ];
     }
 
@@ -1270,7 +1624,10 @@ class Brikpanel_Dashboard {
             return 0;
         }
         if ( $previous == 0 ) {
-            return 100;
+            // No baseline to grow from. A flat "+100%" reads like real
+            // growth and understates a jump from 0 to anything; null lets
+            // the UI label it "New" instead of inventing a percentage.
+            return null;
         }
         return round( ( ( $current - $previous ) / $previous ) * 100, 1 );
     }
@@ -1380,10 +1737,12 @@ class Brikpanel_Dashboard {
         foreach ( $results as $row ) {
             $product = isset( $products_map[ $row->product_id ] ) ? $products_map[ $row->product_id ] : null;
             if ( $product ) {
+                $permalink = $product->get_permalink();
                 $data[] = [
                     'name' => $product->get_name(),
                     'qty'  => (int) $row->total_sold,
                     'id'   => (int) $row->product_id,
+                    'url'  => $permalink ? $permalink : '',
                 ];
             }
         }
@@ -1422,10 +1781,12 @@ class Brikpanel_Dashboard {
         foreach ( $results as $row ) {
             $title = get_the_title( $row->page_id );
             if ( $title ) {
+                $permalink = get_permalink( $row->page_id );
                 $data[] = [
                     'title' => $title,
                     'views' => (int) $row->total_views,
                     'id'    => (int) $row->page_id,
+                    'url'   => $permalink ? $permalink : '',
                 ];
             }
         }
@@ -1468,10 +1829,12 @@ class Brikpanel_Dashboard {
         foreach ( $results as $row ) {
             $product = isset( $products_map[ $row->product_id ] ) ? $products_map[ $row->product_id ] : null;
             if ( $product ) {
+                $permalink = $product->get_permalink();
                 $data[] = [
                     'name'  => $product->get_name(),
                     'count' => (int) $row->total_count,
                     'id'    => (int) $row->product_id,
+                    'url'   => $permalink ? $permalink : '',
                 ];
             }
         }
@@ -2122,6 +2485,7 @@ class Brikpanel_Dashboard {
                 'total'    => wc_price( $order->get_total() ),
                 'date'     => wp_date( get_option( 'date_format' ), $order->get_date_created()->getTimestamp() ),
                 'source'   => $source,
+                'edit_url' => $order->get_edit_order_url(),
             ];
         }
         return $data;
@@ -2218,6 +2582,398 @@ class Brikpanel_Dashboard {
 
         // No source detected
         return null;
+    }
+
+    // =========================================================================
+    // EXCEL EXPORT  (admin-post.php?action=brikpanel_dashboard_export)
+    // =========================================================================
+
+    /**
+     * Stream the current date-range report as a multi-tab .xlsx workbook.
+     *
+     * Built from the exact same payload the dashboard renders, so the file
+     * carries *everything* on screen — one clean tab per section: Summary
+     * (KPIs + profit + returns + LTV), Funnel, Order Status, Devices,
+     * Customer Segments, Top Products, Most Viewed, Most Added to Cart,
+     * Sales Over Time, Countries, Cities, Low Stock, Subscriptions (when
+     * any), and Orders (every order in the window — the full record set).
+     * A real workbook, not one stacked CSV, so each table is tidy, numbers
+     * stay numeric, and it opens correctly in Excel / Google Sheets under
+     * any locale.
+     *
+     * Security: requires `manage_woocommerce` + a valid nonce. Orders are
+     * fetched in batches so large stores never exhaust memory.
+     */
+    public function handle_export() {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_die( esc_html__( 'You do not have permission to export dashboard data.', 'brikpanel' ), '', [ 'response' => 403 ] );
+        }
+        check_admin_referer( 'brikpanel_dashboard_export', 'brikpanel_export_nonce' );
+
+        $allowed = [ 'today', 'yesterday', '7days', '30days', 'custom' ];
+        $range   = isset( $_GET['range'] ) ? sanitize_key( wp_unslash( $_GET['range'] ) ) : 'today';
+        if ( ! in_array( $range, $allowed, true ) ) {
+            $range = 'today';
+        }
+        $custom_start = isset( $_GET['start_date'] ) ? sanitize_text_field( wp_unslash( $_GET['start_date'] ) ) : null;
+        $custom_end   = isset( $_GET['end_date'] ) ? sanitize_text_field( wp_unslash( $_GET['end_date'] ) ) : null;
+        // Reject anything that isn't a plain Y-m-d date so it can't reach the
+        // date math as garbage.
+        $valid_date = static function ( $d ) {
+            return is_string( $d ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $d );
+        };
+        if ( $range === 'custom' && ( ! $valid_date( $custom_start ) || ! $valid_date( $custom_end ) ) ) {
+            $range        = 'today';
+            $custom_start = null;
+            $custom_end   = null;
+        }
+
+        // Single source of truth — the exact payload the dashboard renders,
+        // so the workbook can never drift from the screen and every section
+        // (devices, funnel, locations, LTV, RFM, segments, subscriptions,
+        // low stock …) is included automatically.
+        $d      = $this->build_dashboard_payload( $range, $custom_start, $custom_end );
+        $period = $d['period'];
+
+        require_once BRIKPANEL_PATH . 'includes/brikpanel-xlsx-writer.php';
+        if ( ! class_exists( 'Brikpanel_XLSX_Writer' ) ) {
+            wp_die( esc_html__( 'Export engine unavailable on this server.', 'brikpanel' ) );
+        }
+
+        $decimals = wc_get_price_decimals();
+        // Real numbers (not strings) so the spreadsheet can sum/sort and the
+        // viewer formats them per its own locale — no delimiter/decimal mess.
+        $money = static function ( $v ) use ( $decimals ) {
+            return round( (float) $v, $decimals );
+        };
+        // payload deltas are already %-vs-previous (number, 0, or null=New).
+        $delta = static function ( $v ) {
+            if ( $v === null ) {
+                return __( 'New', 'brikpanel' );
+            }
+            return ( $v >= 0 ? '+' : '' ) . $v . '%';
+        };
+        // wc_price() values in the payload are HTML — flatten to plain text
+        // ("$1,234.00") for a clean cell.
+        $plain = static function ( $v ) {
+            return trim( html_entity_decode( wp_strip_all_tags( (string) $v ), ENT_QUOTES, 'UTF-8' ) );
+        };
+
+        $B = Brikpanel_XLSX_Writer::S_BOLD;
+        $H = Brikpanel_XLSX_Writer::S_HEADER;
+        $T = Brikpanel_XLSX_Writer::S_TITLE;
+
+        $currency = get_woocommerce_currency();
+        // WooCommerce returns symbols as HTML entities (&#36;, &euro;,
+        // &#8378; …). Decode to the real glyph ($, €, ₺) so the cell shows
+        // the symbol, not the entity code.
+        $cur_symbol = html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' );
+        $cur_lbl    = sprintf( '%s (%s)', $currency, $cur_symbol );
+
+        $profit  = $d['profit'];
+        $funnel  = $d['funnel'];
+        $rates   = $d['order_rates'];
+        $returns = $d['returns'];
+        $ltv     = $d['ltv_panel'];
+        $fv      = (int) ( $funnel['visitors'] ?? 0 );
+        $fpct    = static function ( $n ) use ( $fv ) {
+            return $fv > 0 ? round( $n / $fv * 100, 1 ) . '%' : '—';
+        };
+
+        // ---------- Sheet 1: Summary (overview — mirrors the top of the dashboard) ----------
+        $summary = [
+            [ [ get_bloginfo( 'name' ) . ' — ' . __( 'BrikPanel Report', 'brikpanel' ), $T ] ],
+            [ [ __( 'Website', 'brikpanel' ), $B ], home_url() ],
+            [ [ __( 'Report period', 'brikpanel' ), $B ], $period['label'] ],
+            [ [ __( 'From', 'brikpanel' ), $B ], $period['from'] ],
+            [ [ __( 'To', 'brikpanel' ), $B ], $period['to'] ],
+            /* translators: %d: number of days. */
+            [ [ __( 'Duration', 'brikpanel' ), $B ], sprintf( _n( '%d day', '%d days', $period['days'], 'brikpanel' ), $period['days'] ) ],
+            [ [ __( 'Generated', 'brikpanel' ), $B ], wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) ],
+            [ [ __( 'Currency', 'brikpanel' ), $B ], $cur_lbl ],
+            [],
+            [ [ __( 'Key Metrics', 'brikpanel' ), $T ] ],
+            [
+                [ __( 'Metric', 'brikpanel' ), $H ],
+                [ __( 'Value', 'brikpanel' ), $H ],
+                [ __( 'Change vs previous period', 'brikpanel' ), $H ],
+            ],
+            [ __( 'Total Sales', 'brikpanel' ), $money( $d['total_sales_raw'] ), $delta( $d['deltas']['sales'] ) ],
+            [ __( 'Orders', 'brikpanel' ), (int) $d['order_count'], $delta( $d['deltas']['orders'] ) ],
+            [ __( 'Avg. Order Value', 'brikpanel' ), $money( $d['aov_raw'] ), $delta( $d['deltas']['aov'] ) ],
+            [ __( 'Visitors', 'brikpanel' ), (int) $d['visitor_count'], $delta( $d['deltas']['visitors'] ) ],
+            [ __( 'Conversion Rate (%)', 'brikpanel' ), (float) $d['conversion_rate'], $delta( $d['deltas']['conversion'] ) ],
+            [],
+            [ [ __( 'Profit', 'brikpanel' ), $T ] ],
+            [ [ __( 'Metric', 'brikpanel' ), $H ], [ sprintf( __( 'Amount (%s)', 'brikpanel' ), $currency ), $H ], [ __( 'Context', 'brikpanel' ), $H ] ],
+            [ __( 'Revenue', 'brikpanel' ), $money( $profit['revenue_raw'] ), __( 'Same as Total Sales', 'brikpanel' ) ],
+            /* translators: %s: percentage of revenue. */
+            [ __( 'Cost of Goods', 'brikpanel' ), $money( $profit['cogs_raw'] ), sprintf( __( '%s%% of revenue', 'brikpanel' ), $profit['cogs_pct'] ) ],
+            /* translators: %s: percentage of revenue. */
+            [ __( 'Expenses', 'brikpanel' ), $money( $profit['expenses_raw'] ), sprintf( __( '%s%% of revenue', 'brikpanel' ), $profit['expenses_pct'] ) ],
+            /* translators: %s: profit margin percentage. */
+            [ __( 'Net Profit', 'brikpanel' ), $money( $profit['net_raw'] ), sprintf( __( '%s%% margin', 'brikpanel' ), $profit['margin'] ) ],
+            [],
+            [ [ __( 'Returns & Refunds', 'brikpanel' ), $T ] ],
+            [ [ __( 'Returned / refunded orders', 'brikpanel' ), $B ], (int) $returns['count'] ],
+            [ [ __( 'Total orders', 'brikpanel' ), $B ], (int) $returns['total'] ],
+            [ [ __( 'Return & refund rate (%)', 'brikpanel' ), $B ], (float) $returns['rate'] ],
+            [],
+            [ [ __( 'Customer Lifetime Value (all-time)', 'brikpanel' ), $T ] ],
+            [ [ __( 'Total customers', 'brikpanel' ), $B ], (int) $ltv['total_customers'] ],
+            [ [ __( 'Average LTV', 'brikpanel' ), $B ], $plain( $ltv['avg_ltv'] ) ],
+            [ [ __( 'Total LTV', 'brikpanel' ), $B ], $plain( $ltv['total_ltv'] ) ],
+            [ [ __( 'Top customer LTV', 'brikpanel' ), $B ], $plain( $ltv['max_ltv'] ) ],
+            [ [ __( 'Repeat customers', 'brikpanel' ), $B ], (int) $ltv['repeat_customers'] ],
+            [ [ __( 'Repeat rate (%)', 'brikpanel' ), $B ], (float) $ltv['repeat_rate'] ],
+            [],
+            [ [ __( 'Note: the Orders tab lists every order placed in this period (all statuses). The “Orders” metric above counts paid orders only (processing + completed).', 'brikpanel' ), $B ] ],
+        ];
+
+        // ---------- Sheet 2: Conversion Funnel ----------
+        $funnel_sheet = [
+            [ [ __( 'Stage', 'brikpanel' ), $H ], [ __( 'Count', 'brikpanel' ), $H ], [ __( '% of visitors', 'brikpanel' ), $H ] ],
+            [ __( 'Visitors', 'brikpanel' ), (int) $funnel['visitors'], $fpct( $funnel['visitors'] ) ],
+            [ __( 'Product views', 'brikpanel' ), (int) $funnel['products'], $fpct( $funnel['products'] ) ],
+            [ __( 'Add to cart', 'brikpanel' ), (int) $funnel['cart'], $fpct( $funnel['cart'] ) ],
+            [ __( 'Checkout', 'brikpanel' ), (int) $funnel['checkout'], $fpct( $funnel['checkout'] ) ],
+            [ __( 'Orders', 'brikpanel' ), (int) $funnel['orders'], $fpct( $funnel['orders'] ) ],
+        ];
+
+        // ---------- Sheet 3: Order Status ----------
+        $status = [
+            [ [ __( 'Status', 'brikpanel' ), $H ], [ __( 'Share (%)', 'brikpanel' ), $H ] ],
+            [ __( 'Successful', 'brikpanel' ), (float) $rates['successful'] ],
+            [ __( 'Failed', 'brikpanel' ), (float) $rates['failed'] ],
+            [ __( 'Returns & Refunds', 'brikpanel' ), (float) $rates['refunded'] ],
+            [ __( 'Cancelled', 'brikpanel' ), (float) $rates['cancelled'] ],
+            [],
+            [ [ __( 'Total orders', 'brikpanel' ), $B ], (int) $rates['total'] ],
+        ];
+
+        // ---------- Sheet 4: Devices (visitors vs orders) ----------
+        $dev  = $d['devices'];
+        $odev = $d['order_devices'];
+        $devices_sheet = [
+            [ [ __( 'Device', 'brikpanel' ), $H ], [ __( 'Visitors', 'brikpanel' ), $H ], [ __( 'Orders', 'brikpanel' ), $H ] ],
+            [ __( 'Desktop', 'brikpanel' ), (int) $dev['desktop'], (int) $odev['desktop'] ],
+            [ __( 'Mobile', 'brikpanel' ), (int) $dev['mobile'], (int) $odev['mobile'] ],
+            [ __( 'Tablet', 'brikpanel' ), (int) $dev['tablet'], (int) $odev['tablet'] ],
+            [ [ __( 'Total', 'brikpanel' ), $B ],
+              (int) ( $dev['desktop'] + $dev['mobile'] + $dev['tablet'] ),
+              (int) ( $odev['desktop'] + $odev['mobile'] + $odev['tablet'] ) ],
+        ];
+
+        // ---------- Sheet 5: Customer Segments (new vs repeat + RFM) ----------
+        $ct = $d['customer_types'];
+        $segments_sheet = [
+            [ [ __( 'New vs Repeat (this period)', 'brikpanel' ), $T ] ],
+            [ [ __( 'Type', 'brikpanel' ), $H ], [ __( 'Customers', 'brikpanel' ), $H ] ],
+            [ __( 'New customers', 'brikpanel' ), (int) $ct['new'] ],
+            [ __( 'Repeat customers', 'brikpanel' ), (int) $ct['repeat'] ],
+            [],
+            [ [ __( 'RFM Segments (all-time)', 'brikpanel' ), $T ] ],
+            [ [ __( 'Segment', 'brikpanel' ), $H ], [ __( 'Customers', 'brikpanel' ), $H ], [ __( 'Share (%)', 'brikpanel' ), $H ] ],
+        ];
+        if ( empty( $d['rfm_distribution'] ) ) {
+            $segments_sheet[] = [ __( 'Customer metrics will appear after the nightly recompute.', 'brikpanel' ), '', '' ];
+        } else {
+            foreach ( $d['rfm_distribution'] as $seg ) {
+                $segments_sheet[] = [ $seg['label'], (int) $seg['customers'], (float) $seg['share'] ];
+            }
+        }
+
+        // ---------- Sheet 6: Top Products ----------
+        $products = [ [ [ __( 'Product', 'brikpanel' ), $H ], [ __( 'Qty Sold', 'brikpanel' ), $H ] ] ];
+        if ( empty( $d['top_products'] ) ) {
+            $products[] = [ __( 'No data for this period', 'brikpanel' ), '' ];
+        } else {
+            foreach ( $d['top_products'] as $tp ) {
+                $products[] = [ $tp['name'], (int) $tp['qty'] ];
+            }
+        }
+
+        // ---------- Sheet 7: Most Viewed ----------
+        $viewed = [ [ [ __( 'Product', 'brikpanel' ), $H ], [ __( 'Views', 'brikpanel' ), $H ] ] ];
+        if ( empty( $d['most_viewed'] ) ) {
+            $viewed[] = [ __( 'No data for this period', 'brikpanel' ), '' ];
+        } else {
+            foreach ( $d['most_viewed'] as $mv ) {
+                $viewed[] = [ $mv['title'], (int) $mv['views'] ];
+            }
+        }
+
+        // ---------- Sheet 8: Most Added to Cart ----------
+        $carted = [ [ [ __( 'Product', 'brikpanel' ), $H ], [ __( 'Cart Adds', 'brikpanel' ), $H ] ] ];
+        if ( empty( $d['most_cart'] ) ) {
+            $carted[] = [ __( 'No data for this period', 'brikpanel' ), '' ];
+        } else {
+            foreach ( $d['most_cart'] as $mc ) {
+                $carted[] = [ $mc['name'], (int) $mc['count'] ];
+            }
+        }
+
+        // ---------- Sheet 9: Sales Over Time (daily series) ----------
+        $sot = [ [ [ __( 'Date', 'brikpanel' ), $H ], [ sprintf( __( 'Revenue (%s)', 'brikpanel' ), $currency ), $H ], [ __( 'Orders', 'brikpanel' ), $H ] ] ];
+        if ( empty( $d['sales_over_time'] ) ) {
+            $sot[] = [ __( 'No data for this period', 'brikpanel' ), '', '' ];
+        } else {
+            foreach ( $d['sales_over_time'] as $pt ) {
+                $sot[] = [ $pt['date'], $money( $pt['revenue'] ), (int) $pt['orders'] ];
+            }
+        }
+
+        // ---------- Sheet 10: Countries ----------
+        $locs    = $d['order_locations'];
+        $countries = [ [ [ __( 'Country', 'brikpanel' ), $H ], [ __( 'Orders', 'brikpanel' ), $H ], [ __( 'Customers', 'brikpanel' ), $H ], [ sprintf( __( 'Revenue (%s)', 'brikpanel' ), $currency ), $H ] ] ];
+        if ( empty( $locs['countries'] ) ) {
+            $countries[] = [ __( 'No data for this period', 'brikpanel' ), '', '', '' ];
+        } else {
+            foreach ( $locs['countries'] as $co ) {
+                $countries[] = [ $co['name'], (int) $co['count'], (int) $co['customers'], $plain( $co['total'] ) ];
+            }
+        }
+
+        // ---------- Sheet 11: Cities ----------
+        $cities = [ [ [ __( 'City', 'brikpanel' ), $H ], [ __( 'Country', 'brikpanel' ), $H ], [ __( 'Orders', 'brikpanel' ), $H ], [ __( 'Customers', 'brikpanel' ), $H ], [ __( 'Items', 'brikpanel' ), $H ] ] ];
+        if ( empty( $locs['cities'] ) ) {
+            $cities[] = [ __( 'No data for this period', 'brikpanel' ), '', '', '', '' ];
+        } else {
+            foreach ( $locs['cities'] as $ci ) {
+                $cities[] = [ $ci['name'], $ci['country'], (int) $ci['count'], (int) $ci['customers'], (int) $ci['quantity'] ];
+            }
+        }
+
+        // ---------- Sheet 12: Low Stock ----------
+        $lowstock = [ [ [ __( 'Product', 'brikpanel' ), $H ], [ __( 'SKU', 'brikpanel' ), $H ], [ __( 'Remaining', 'brikpanel' ), $H ] ] ];
+        if ( empty( $d['low_stock'] ) ) {
+            $lowstock[] = [ __( 'All products are sufficiently stocked', 'brikpanel' ), '', '' ];
+        } else {
+            foreach ( $d['low_stock'] as $ls ) {
+                $lowstock[] = [ $ls['name'], (string) $ls['sku'], (int) $ls['stock'] ];
+            }
+        }
+
+        // ---------- Sheet 13: Subscriptions (only when present) ----------
+        $subs_sheet = null;
+        if ( ! empty( $d['subscription_stats'] ) ) {
+            $subs_sheet = [ [ [ __( 'Status', 'brikpanel' ), $H ], [ __( 'Count', 'brikpanel' ), $H ] ] ];
+            foreach ( $d['subscription_stats'] as $ss ) {
+                $subs_sheet[] = [ $ss['label'], (int) $ss['count'] ];
+            }
+        }
+
+        // ---------- Final sheet: Orders (the full record set) ----------
+        $start_local = $d['period']['from_iso'];
+        $end_local   = $d['period']['to_iso'];
+        $orders_rows = [ [
+            [ __( 'Order #', 'brikpanel' ), $H ],
+            [ __( 'Date', 'brikpanel' ), $H ],
+            [ __( 'Customer', 'brikpanel' ), $H ],
+            [ __( 'Email', 'brikpanel' ), $H ],
+            [ __( 'Status', 'brikpanel' ), $H ],
+            [ __( 'Items', 'brikpanel' ), $H ],
+            [ sprintf( __( 'Total (%s)', 'brikpanel' ), $currency ), $H ],
+            [ __( 'Source', 'brikpanel' ), $H ],
+        ] ];
+
+        $admin_ids   = brikpanel_get_admin_user_ids();
+        $date_filter = $start_local . '...' . $end_local;
+        $paged       = 1;
+        $per_page    = 200;
+        $date_fmt    = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+
+        do {
+            $args = [
+                'limit'        => $per_page,
+                'paged'        => $paged,
+                'orderby'      => 'date',
+                'order'        => 'DESC',
+                'type'         => 'shop_order',
+                'date_created' => $date_filter,
+                'return'       => 'objects',
+            ];
+            if ( ! empty( $admin_ids ) ) {
+                $args['customer__not_in'] = array_map( 'intval', $admin_ids );
+            }
+            $orders = wc_get_orders( $args );
+            if ( empty( $orders ) ) {
+                break;
+            }
+            foreach ( $orders as $order ) {
+                $name = trim( ( $order->get_billing_first_name() ?? '' ) . ' ' . ( $order->get_billing_last_name() ?? '' ) );
+                if ( $name === '' ) {
+                    $name = __( 'Guest', 'brikpanel' );
+                }
+                $src = $this->detect_order_source( $order );
+                $orders_rows[] = [
+                    // Order # stays text — numbers may carry a store prefix.
+                    (string) $order->get_order_number(),
+                    wp_date( $date_fmt, $order->get_date_created() ? $order->get_date_created()->getTimestamp() : null ),
+                    $name,
+                    $order->get_billing_email(),
+                    wc_get_order_status_name( $order->get_status() ),
+                    (int) $order->get_item_count(),
+                    $money( $order->get_total() ),
+                    $src ? $src['label'] : __( 'Direct', 'brikpanel' ),
+                ];
+            }
+            $paged++;
+        } while ( count( $orders ) === $per_page );
+
+        $order_total = count( $orders_rows ) - 1; // minus header row
+        if ( $order_total === 0 ) {
+            $orders_rows[] = [ __( 'No orders in this period', 'brikpanel' ) ];
+        }
+
+        $writer = new Brikpanel_XLSX_Writer();
+        $writer->add_sheet( __( 'Summary', 'brikpanel' ), $summary, [ 1 => 30, 2 => 22, 3 => 24 ] );
+        $writer->add_sheet( __( 'Funnel', 'brikpanel' ), $funnel_sheet, [ 1 => 18, 2 => 14, 3 => 16 ] );
+        $writer->add_sheet( __( 'Order Status', 'brikpanel' ), $status, [ 1 => 22, 2 => 12 ] );
+        $writer->add_sheet( __( 'Devices', 'brikpanel' ), $devices_sheet, [ 1 => 16, 2 => 14, 3 => 14 ] );
+        $writer->add_sheet( __( 'Customer Segments', 'brikpanel' ), $segments_sheet, [ 1 => 28, 2 => 14, 3 => 14 ] );
+        $writer->add_sheet( __( 'Top Products', 'brikpanel' ), $products, [ 1 => 40, 2 => 12 ] );
+        $writer->add_sheet( __( 'Most Viewed', 'brikpanel' ), $viewed, [ 1 => 40, 2 => 12 ] );
+        $writer->add_sheet( __( 'Most Added to Cart', 'brikpanel' ), $carted, [ 1 => 40, 2 => 12 ] );
+        $writer->add_sheet( __( 'Sales Over Time', 'brikpanel' ), $sot, [ 1 => 16, 2 => 16, 3 => 12 ], true );
+        $writer->add_sheet( __( 'Countries', 'brikpanel' ), $countries, [ 1 => 24, 2 => 12, 3 => 14, 4 => 16 ] );
+        $writer->add_sheet( __( 'Cities', 'brikpanel' ), $cities, [ 1 => 22, 2 => 16, 3 => 12, 4 => 14, 5 => 10 ] );
+        $writer->add_sheet( __( 'Low Stock', 'brikpanel' ), $lowstock, [ 1 => 40, 2 => 18, 3 => 12 ] );
+        if ( $subs_sheet !== null ) {
+            $writer->add_sheet( __( 'Subscriptions', 'brikpanel' ), $subs_sheet, [ 1 => 24, 2 => 12 ] );
+        }
+        $writer->add_sheet(
+            /* translators: %d: number of orders. */
+            sprintf( __( 'Orders (%d)', 'brikpanel' ), max( 0, $order_total ) ),
+            $orders_rows,
+            [ 1 => 14, 2 => 22, 3 => 26, 4 => 30, 5 => 16, 6 => 9, 7 => 14, 8 => 18 ],
+            true // freeze the header row for the long list
+        );
+
+        $xlsx = $writer->build();
+        if ( $xlsx === false ) {
+            wp_die( esc_html__( 'Could not generate the Excel file. Please try again.', 'brikpanel' ) );
+        }
+
+        // Clean any buffered admin output so the download stream is pristine.
+        while ( ob_get_level() > 0 ) {
+            ob_end_clean();
+        }
+
+        $site_host = wp_parse_url( home_url(), PHP_URL_HOST );
+        $filename  = sprintf(
+            'brikpanel-report_%s_%s_to_%s.xlsx',
+            sanitize_file_name( $site_host ?: 'store' ),
+            $period['from_iso'],
+            $period['to_iso']
+        );
+
+        nocache_headers();
+        header( 'Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+        header( 'Content-Length: ' . strlen( $xlsx ) );
+        echo $xlsx; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — binary xlsx, not HTML.
+        exit;
     }
 }
 

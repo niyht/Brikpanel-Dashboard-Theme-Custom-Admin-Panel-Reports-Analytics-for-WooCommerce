@@ -1,0 +1,476 @@
+/**
+ * BrikPanel — Stock Orders page (list + editor).
+ * Matches the vendor / expenses design language so admins move between the
+ * three pages without visual jumps.
+ */
+
+:root {
+    --so-bg:             #f1f1f1;
+    --so-card:           #ffffff;
+    --so-text:           #303030;
+    --so-text-secondary: #616161;
+    --so-text-muted:     #8a8a8a;
+    --so-border:         #e3e3e3;
+    --so-input-border:   #8a8a8a;
+    --so-input-focus:    #303030;
+    --so-primary:        #303030;
+    --so-primary-hover:  #1a1a1a;
+    --so-success:        #1a8917;
+    --so-warn:           #b35900;
+    --so-error:          #d72c0d;
+    --so-radius:         0.5rem;
+    --so-radius-card:    0.75rem;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.brikpanel-so-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 0 2rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--so-text);
+    box-sizing: border-box;
+}
+.brikpanel-so-wrap *,
+.brikpanel-so-wrap *::before,
+.brikpanel-so-wrap *::after { box-sizing: border-box; }
+.brikpanel-so-editor-wrap { max-width: 1100px; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.brikpanel-so-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 1.5rem 0 1rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.brikpanel-so-header h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--so-text);
+}
+.brikpanel-so-subtitle {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--so-text-secondary);
+    line-height: 1.5;
+}
+.brikpanel-so-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8125rem;
+    color: var(--so-text-secondary);
+    text-decoration: none;
+    margin-bottom: 0.25rem;
+}
+.brikpanel-so-back:hover { color: var(--so-text); }
+.brikpanel-so-header-right { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* ── Status pill (header) ───────────────────────────────────────────────── */
+.brikpanel-so-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}
+.brikpanel-so-status--draft     { background: #f1f1f1; color: var(--so-text-secondary); }
+.brikpanel-so-status--ordered   { background: #fef3e0; color: var(--so-warn); }
+.brikpanel-so-status--partially_received { background: #e6f1fb; color: #0a4d8c; }
+.brikpanel-so-status--received  { background: #e4f5e1; color: var(--so-success); }
+.brikpanel-so-status--cancelled { background: #fce4e4; color: var(--so-error); }
+
+/* ── Summary bar ────────────────────────────────────────────────────────── */
+.brikpanel-so-summary {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+.brikpanel-so-summary-card {
+    background: var(--so-card);
+    border: 1px solid var(--so-border);
+    border-radius: var(--so-radius-card);
+    padding: 1rem 1.25rem;
+    min-width: 180px;
+    flex: 1 1 180px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.brikpanel-so-summary-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--so-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.375rem;
+}
+.brikpanel-so-summary-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--so-text);
+    line-height: 1.2;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+.brikpanel-so-card {
+    background: var(--so-card);
+    border: 1px solid var(--so-border);
+    border-radius: var(--so-radius-card);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 1rem;
+    overflow: hidden;
+}
+.brikpanel-so-card__header {
+    padding: 1.125rem 1.25rem 0.875rem;
+    border-bottom: 1px solid var(--so-border);
+}
+.brikpanel-so-card__header h2 {
+    margin: 0 0 0.25rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--so-text);
+}
+.brikpanel-so-card__desc {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--so-text-secondary);
+    line-height: 1.5;
+}
+.brikpanel-so-card__body { padding: 1.125rem 1.25rem; }
+
+/* ── Filters ────────────────────────────────────────────────────────────── */
+.brikpanel-so-filters { padding: 1.125rem 1.25rem; }
+.brikpanel-so-filter-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+/* ── Fields shared with editor ──────────────────────────────────────────── */
+.brikpanel-so-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 0;
+}
+.brikpanel-so-field-grow { flex: 1 1 280px; }
+.brikpanel-so-field-full { grid-column: 1 / -1; }
+.brikpanel-so-field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--so-text);
+    line-height: 1;
+}
+.brikpanel-so-req { color: var(--so-error); }
+.brikpanel-so-field input[type="date"],
+.brikpanel-so-field input[type="text"],
+.brikpanel-so-field input[type="search"],
+.brikpanel-so-field input[type="number"],
+.brikpanel-so-field select,
+.brikpanel-so-field textarea {
+    border: 1px solid var(--so-input-border);
+    border-radius: var(--so-radius);
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--so-text);
+    background: #fff;
+    line-height: 1.4;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+    font-family: inherit;
+}
+.brikpanel-so-field input:focus,
+.brikpanel-so-field select:focus,
+.brikpanel-so-field textarea:focus {
+    outline: none;
+    border-color: var(--so-input-focus);
+    box-shadow: 0 0 0 1px var(--so-input-focus);
+}
+.brikpanel-so-field input::placeholder,
+.brikpanel-so-field textarea::placeholder { color: var(--so-text-muted); }
+.brikpanel-so-field textarea { resize: vertical; }
+
+/* ── Input group ────────────────────────────────────────────────────────── */
+.brikpanel-so-input-group {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--so-input-border);
+    border-radius: var(--so-radius);
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.brikpanel-so-input-group:focus-within {
+    border-color: var(--so-input-focus);
+    box-shadow: 0 0 0 1px var(--so-input-focus);
+}
+.brikpanel-so-prefix {
+    display: flex;
+    align-items: center;
+    padding: 0 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--so-text-secondary);
+    background: #f7f7f7;
+    border-right: 1px solid var(--so-border);
+    flex-shrink: 0;
+}
+.brikpanel-so-input-group input { border: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.brikpanel-so-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    border-radius: var(--so-radius);
+    cursor: pointer;
+    border: 0;
+    line-height: 1.3;
+    text-decoration: none;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+.brikpanel-so-btn-primary {
+    background: var(--so-primary);
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.brikpanel-so-btn-primary:hover { background: var(--so-primary-hover); color: #fff; }
+.brikpanel-so-btn-secondary {
+    background: #fff;
+    color: var(--so-text);
+    box-shadow: inset 0 0 0 1px var(--so-border), 0 1px 0 rgba(0,0,0,0.05);
+}
+.brikpanel-so-btn-secondary:hover { background: #f7f7f7; color: var(--so-text); }
+.brikpanel-so-btn-danger {
+    background: #fff;
+    color: var(--so-error);
+    box-shadow: inset 0 0 0 1px var(--so-border);
+}
+.brikpanel-so-btn-danger:hover { background: #fef0ee; }
+.brikpanel-so-btn-icon {
+    background: transparent;
+    color: var(--so-text-secondary);
+    padding: 0.25rem 0.5rem;
+}
+.brikpanel-so-btn-icon:hover { color: var(--so-text); }
+
+/* ── Editor grid ────────────────────────────────────────────────────────── */
+.brikpanel-so-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+}
+.brikpanel-so-grid .brikpanel-so-field-full { grid-column: 1 / -1; }
+
+@media (max-width: 900px) { .brikpanel-so-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .brikpanel-so-grid { grid-template-columns: 1fr; } }
+
+/* ── Product picker (editor) ────────────────────────────────────────────── */
+.brikpanel-so-product-picker {
+    position: relative;
+    margin-bottom: 1rem;
+}
+.brikpanel-so-product-picker input[type="text"] {
+    border: 1px solid var(--so-input-border);
+    border-radius: var(--so-radius);
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    width: 100%;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.brikpanel-so-product-picker input[type="text"]:focus {
+    outline: none;
+    border-color: var(--so-input-focus);
+    box-shadow: 0 0 0 1px var(--so-input-focus);
+}
+.brikpanel-so-suggestions {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: #fff;
+    border: 1px solid var(--so-border);
+    border-radius: var(--so-radius);
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+}
+.brikpanel-so-suggestion {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    border-bottom: 1px solid var(--so-border);
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.brikpanel-so-suggestion:last-child { border-bottom: 0; }
+.brikpanel-so-suggestion:hover,
+.brikpanel-so-suggestion.is-active { background: #fafafa; }
+.brikpanel-so-suggestion-meta {
+    color: var(--so-text-muted);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+.brikpanel-so-suggestion-empty {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--so-text-muted);
+    font-style: italic;
+}
+
+/* ── Items table ────────────────────────────────────────────────────────── */
+.brikpanel-so-items-wrap { overflow-x: auto; }
+.brikpanel-so-items {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+.brikpanel-so-items thead th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--so-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--so-border);
+    background: #fafafa;
+    white-space: nowrap;
+}
+.brikpanel-so-items tbody td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--so-border);
+    vertical-align: middle;
+}
+.brikpanel-so-items tbody tr:last-child td { border-bottom: 0; }
+.brikpanel-so-items tbody td input[type="number"] {
+    width: 90px;
+    text-align: right;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--so-input-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.brikpanel-so-items tbody td input:focus {
+    outline: none;
+    border-color: var(--so-input-focus);
+    box-shadow: 0 0 0 1px var(--so-input-focus);
+}
+.brikpanel-so-items-empty td {
+    text-align: center;
+    color: var(--so-text-muted);
+    padding: 1.5rem 1rem !important;
+    font-style: italic;
+}
+.brikpanel-so-items .brikpanel-so-num { text-align: right; }
+.brikpanel-so-item-title { font-weight: 600; color: var(--so-text); }
+.brikpanel-so-item-meta {
+    font-size: 0.75rem;
+    color: var(--so-text-muted);
+    margin-top: 2px;
+}
+.brikpanel-so-num { text-align: right; }
+.brikpanel-so-actions-th { width: 60px; text-align: right; }
+
+/* ── Totals ─────────────────────────────────────────────────────────────── */
+.brikpanel-so-totals {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--so-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+.brikpanel-so-totals > div {
+    display: flex;
+    justify-content: space-between;
+    width: 240px;
+    font-size: 0.875rem;
+    color: var(--so-text-secondary);
+}
+.brikpanel-so-totals > div strong { color: var(--so-text); font-weight: 600; }
+.brikpanel-so-totals-grand {
+    border-top: 1px solid var(--so-border);
+    padding-top: 0.5rem;
+    font-size: 1rem !important;
+    font-weight: 700;
+    color: var(--so-text) !important;
+}
+
+/* ── List table ─────────────────────────────────────────────────────────── */
+.brikpanel-so-table-wrap { overflow-x: auto; }
+.brikpanel-so-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+.brikpanel-so-table thead th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--so-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--so-border);
+    background: #fafafa;
+    white-space: nowrap;
+}
+.brikpanel-so-table tbody td {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid var(--so-border);
+    vertical-align: middle;
+}
+.brikpanel-so-table tbody tr:last-child td { border-bottom: 0; }
+.brikpanel-so-table tbody tr:hover { background: #fafafa; }
+.brikpanel-so-empty {
+    text-align: center;
+    padding: 2.5rem 1rem !important;
+    color: var(--so-text-muted);
+    font-style: italic;
+}
+.brikpanel-so-row-actions {
+    display: inline-flex;
+    gap: 0.25rem;
+    justify-content: flex-end;
+    width: 100%;
+}
+.brikpanel-so-ref-link {
+    font-weight: 600;
+    color: var(--so-text);
+    text-decoration: none;
+}
+.brikpanel-so-ref-link:hover { text-decoration: underline; }
+
+/* ── Pagination ─────────────────────────────────────────────────────────── */
+.brikpanel-so-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-top: 1px solid var(--so-border);
+}
+.brikpanel-so-page-info { font-size: 0.8125rem; color: var(--so-text-secondary); }
+
+/* ── Hidden attribute respect ───────────────────────────────────────────── */
+.brikpanel-so-pagination[hidden] { display: none !important; }
+.brikpanel-so-suggestions[hidden] { display: none !important; }

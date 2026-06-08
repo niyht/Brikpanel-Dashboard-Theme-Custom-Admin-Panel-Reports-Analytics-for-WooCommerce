@@ -401,9 +401,9 @@
 				return '';
 			};
 			var pills = '<span class="bp-ca-rfm-pills">'
-				+ '<span class="bp-ca-rfm-pill' + pillClass( c.r_score ) + '" title="Recency">' + c.r_score + '</span>'
-				+ '<span class="bp-ca-rfm-pill' + pillClass( c.f_score ) + '" title="Frequency">' + c.f_score + '</span>'
-				+ '<span class="bp-ca-rfm-pill' + pillClass( c.m_score ) + '" title="Monetary">' + c.m_score + '</span>'
+				+ '<span class="bp-ca-rfm-pill' + pillClass( c.r_score ) + '" title="' + escapeHtml( i18n.rfm_recency || 'Recency' ) + '">' + c.r_score + '</span>'
+				+ '<span class="bp-ca-rfm-pill' + pillClass( c.f_score ) + '" title="' + escapeHtml( i18n.rfm_frequency || 'Frequency' ) + '">' + c.f_score + '</span>'
+				+ '<span class="bp-ca-rfm-pill' + pillClass( c.m_score ) + '" title="' + escapeHtml( i18n.rfm_monetary || 'Monetary' ) + '">' + c.m_score + '</span>'
 				+ '</span>';
 
 			var customerCell = '<div class="bp-ca-customer-cell">'
@@ -663,10 +663,209 @@
 	}
 
 	// =========================================================================
+	// Exclude-customers modal
+	// =========================================================================
+
+	var excl = {
+		users: [],          // [{id,name,email,roles}]
+		roles: [],          // selected role slugs
+		availableRoles: [], // [{slug,label,count}]
+		searchTimer: null,
+		loaded: false
+	};
+
+	function updateExclBadge( count ) {
+		var badge = el( 'bp-ca-excl-badge' );
+		if ( ! badge ) { return; }
+		count = parseInt( count, 10 ) || 0;
+		if ( count > 0 ) {
+			badge.textContent = count;
+			badge.hidden = false;
+		} else {
+			badge.hidden = true;
+		}
+	}
+
+	function renderExclChips() {
+		var box = el( 'bp-ca-excl-chips' );
+		if ( ! box ) { return; }
+		if ( ! excl.users.length ) {
+			box.innerHTML = '<div class="bp-ca-excl-empty">' + escapeHtml( i18n.excl_none_people || 'No people excluded yet.' ) + '</div>';
+			return;
+		}
+		box.innerHTML = excl.users.map( function ( u ) {
+			var sub = u.email || u.roles || '';
+			return '<span class="bp-ca-chip" data-id="' + u.id + '">' +
+				'<span class="bp-ca-chip-main">' + escapeHtml( u.name ) + '</span>' +
+				( sub ? '<span class="bp-ca-chip-sub">' + escapeHtml( sub ) + '</span>' : '' ) +
+				'<button type="button" class="bp-ca-chip-x" data-id="' + u.id + '" aria-label="' + escapeHtml( i18n.excl_remove || 'Remove' ) + '">&times;</button>' +
+				'</span>';
+		} ).join( '' );
+		box.querySelectorAll( '.bp-ca-chip-x' ).forEach( function ( btn ) {
+			btn.addEventListener( 'click', function () {
+				var id = parseInt( btn.getAttribute( 'data-id' ), 10 );
+				excl.users = excl.users.filter( function ( u ) { return u.id !== id; } );
+				renderExclChips();
+			} );
+		} );
+	}
+
+	function renderExclRoles() {
+		var box = el( 'bp-ca-excl-roles' );
+		if ( ! box ) { return; }
+		box.innerHTML = excl.availableRoles.map( function ( r ) {
+			var checked = excl.roles.indexOf( r.slug ) !== -1 ? ' checked' : '';
+			var count = r.count ? ' <span class="bp-ca-role-count">' + r.count + ' ' + escapeHtml( i18n.members || 'members' ) + '</span>' : '';
+			return '<label class="bp-ca-role-row">' +
+				'<input type="checkbox" value="' + escapeHtml( r.slug ) + '"' + checked + '>' +
+				'<span class="bp-ca-role-label">' + escapeHtml( r.label ) + count + '</span>' +
+				'</label>';
+		} ).join( '' );
+		box.querySelectorAll( 'input[type=checkbox]' ).forEach( function ( cb ) {
+			cb.addEventListener( 'change', function () {
+				if ( cb.checked ) {
+					if ( excl.roles.indexOf( cb.value ) === -1 ) { excl.roles.push( cb.value ); }
+				} else {
+					excl.roles = excl.roles.filter( function ( s ) { return s !== cb.value; } );
+				}
+			} );
+		} );
+	}
+
+	function renderExclResults( users ) {
+		var box = el( 'bp-ca-excl-results' );
+		if ( ! box ) { return; }
+		var existing = excl.users.map( function ( u ) { return u.id; } );
+		var list = users.filter( function ( u ) { return existing.indexOf( u.id ) === -1; } );
+		if ( ! list.length ) {
+			box.innerHTML = '<div class="bp-ca-excl-result is-empty">' + escapeHtml( i18n.excl_no_results || 'No matching users.' ) + '</div>';
+			box.hidden = false;
+			return;
+		}
+		box.innerHTML = list.map( function ( u ) {
+			return '<button type="button" class="bp-ca-excl-result" data-id="' + u.id + '">' +
+				'<span class="bp-ca-chip-main">' + escapeHtml( u.name ) + '</span>' +
+				( u.email ? '<span class="bp-ca-chip-sub">' + escapeHtml( u.email ) + '</span>' : '' ) +
+				'</button>';
+		} ).join( '' );
+		box.hidden = false;
+		box.querySelectorAll( '.bp-ca-excl-result' ).forEach( function ( btn ) {
+			btn.addEventListener( 'click', function () {
+				var id = parseInt( btn.getAttribute( 'data-id' ), 10 );
+				var picked = list.filter( function ( u ) { return u.id === id; } )[ 0 ];
+				if ( picked ) {
+					excl.users.push( picked );
+					renderExclChips();
+				}
+				el( 'bp-ca-excl-search' ).value = '';
+				box.hidden = true;
+			} );
+		} );
+	}
+
+	function searchExclUsers() {
+		var term = el( 'bp-ca-excl-search' ).value.trim();
+		if ( term.length < 2 ) {
+			el( 'bp-ca-excl-results' ).hidden = true;
+			return;
+		}
+		fetchJSON( 'brikpanel_ca_search_users', { q: term } ).then( function ( res ) {
+			if ( res && res.success ) {
+				renderExclResults( res.data.users || [] );
+			}
+		} ).catch( function () {} );
+	}
+
+	function openExclModal() {
+		el( 'bp-ca-excl-overlay' ).hidden = false;
+		document.body.classList.add( 'bp-ca-modal-open' );
+		fetchJSON( 'brikpanel_ca_get_exclusions' ).then( function ( res ) {
+			if ( res && res.success ) {
+				excl.users = res.data.users || [];
+				excl.roles = res.data.roles || [];
+				excl.availableRoles = res.data.available_roles || [];
+				excl.loaded = true;
+				renderExclChips();
+				renderExclRoles();
+				updateExclBadge( res.data.resolved_count );
+			}
+		} ).catch( function () {} );
+	}
+
+	function closeExclModal() {
+		el( 'bp-ca-excl-overlay' ).hidden = true;
+		document.body.classList.remove( 'bp-ca-modal-open' );
+		el( 'bp-ca-excl-results' ).hidden = true;
+	}
+
+	function saveExclusions() {
+		var btn = el( 'bp-ca-excl-save' );
+		var original = btn.textContent;
+		btn.disabled = true;
+		btn.textContent = i18n.excl_saving || 'Saving…';
+
+		// fetchJSON appends each key verbatim, so use indexed keys for arrays.
+		var params = {};
+		excl.users.forEach( function ( u, idx ) { params[ 'user_ids[' + idx + ']' ] = u.id; } );
+		excl.roles.forEach( function ( r, idx ) { params[ 'roles[' + idx + ']' ] = r; } );
+
+		fetchJSON( 'brikpanel_ca_save_exclusions', params ).then( function ( res ) {
+			btn.disabled = false;
+			btn.textContent = original;
+			if ( res && res.success ) {
+				updateExclBadge( res.data.resolved_count );
+				showToast( i18n.excl_saved || 'Exclusions saved' );
+				closeExclModal();
+				// Reflect the new metrics everywhere on the page.
+				loadSummary();
+				loadTopCustomers();
+				loadHistogram();
+				if ( state.rfmLoaded ) {
+					loadRfmSummary();
+					if ( state.rfmActiveSegment ) { loadRfmCustomers(); }
+				}
+				if ( state.cohortLoaded ) { loadCohort(); }
+			} else {
+				showToast( ( res && res.data && res.data.message ) || ( i18n.error || 'Something went wrong.' ), true );
+			}
+		} ).catch( function () {
+			btn.disabled = false;
+			btn.textContent = original;
+			showToast( i18n.error || 'Something went wrong.', true );
+		} );
+	}
+
+	function bindExclModal() {
+		var openBtn = el( 'bp-ca-exclude' );
+		if ( ! openBtn ) { return; }
+		openBtn.addEventListener( 'click', openExclModal );
+		el( 'bp-ca-excl-close' ).addEventListener( 'click', closeExclModal );
+		el( 'bp-ca-excl-cancel' ).addEventListener( 'click', closeExclModal );
+		el( 'bp-ca-excl-save' ).addEventListener( 'click', saveExclusions );
+		el( 'bp-ca-excl-overlay' ).addEventListener( 'click', function ( e ) {
+			if ( e.target === el( 'bp-ca-excl-overlay' ) ) { closeExclModal(); }
+		} );
+		document.addEventListener( 'keydown', function ( e ) {
+			if ( e.key === 'Escape' && ! el( 'bp-ca-excl-overlay' ).hidden ) { closeExclModal(); }
+		} );
+		var search = el( 'bp-ca-excl-search' );
+		search.addEventListener( 'input', function () {
+			clearTimeout( excl.searchTimer );
+			excl.searchTimer = setTimeout( searchExclUsers, 250 );
+		} );
+
+		// Populate the header badge once, without opening the modal.
+		fetchJSON( 'brikpanel_ca_get_exclusions' ).then( function ( res ) {
+			if ( res && res.success ) { updateExclBadge( res.data.resolved_count ); }
+		} ).catch( function () {} );
+	}
+
+	// =========================================================================
 	// Init
 	// =========================================================================
 
 	function init() {
+		bindExclModal();
 		bindTabs();
 		loadSummary();
 		loadTopCustomers();

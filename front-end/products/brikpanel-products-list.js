@@ -15,6 +15,8 @@
         status: 'any',
         category: '',
         stock_filter: '',
+        product_type: '',
+        featured: '',
         sort: 'date-desc',
         selected: [],
         products: [],
@@ -41,6 +43,12 @@
     };
 
     var searchTimer = null;
+    // In-flight fetchProducts() request. Tracked so a rapid filter/sort change
+    // (e.g. picking a category, then immediately switching the sort dropdown
+    // before the first request returns) aborts the now-stale request instead
+    // of being silently dropped — without this the dropdown shows the new
+    // value while the table renders the old query's results.
+    var currentFetchXhr = null;
 
     // =========================================================================
     // PROGRESS BAR
@@ -67,6 +75,96 @@
             });
             hideProgress();
         }
+    }
+
+    // =========================================================================
+    // FILTER STATE <-> URL
+    // =========================================================================
+    // Persist the active search/filter/sort/page in the page URL so the view
+    // survives a reload and, crucially, can be returned to from the product
+    // editor's "Back to products" link. Each product link carries the current
+    // list URL as `bpl_return`; the editor rebuilds its back button from it.
+    // Values are re-sanitized server side in ajax_list(), so here they are just
+    // plain strings — and they only ever reach the DOM through jQuery .val()
+    // (not innerHTML), so there is no injection surface.
+    var URL_PARAM_MAP = {
+        search:       'bpl_s',
+        status:       'bpl_status',
+        category:     'bpl_cat',
+        stock_filter: 'bpl_stock',
+        product_type: 'bpl_type',
+        featured:     'bpl_featured',
+        sort:         'bpl_sort'
+    };
+    var URL_DEFAULTS = {
+        search: '', status: 'any', category: '', stock_filter: '',
+        product_type: '', featured: '', sort: 'date-desc'
+    };
+
+    function hasActiveFilters() {
+        var keyed = Object.keys(URL_PARAM_MAP).some(function (key) {
+            return state[key] !== URL_DEFAULTS[key] && state[key] !== '';
+        });
+        return keyed || state.page > 1;
+    }
+
+    // Read filter params from the current URL into state and reflect them in
+    // the filter controls. Runs once on boot, before the first fetch.
+    function readStateFromUrl() {
+        var params;
+        try { params = new URLSearchParams(window.location.search); }
+        catch (e) { return; }
+
+        Object.keys(URL_PARAM_MAP).forEach(function (key) {
+            var val = params.get(URL_PARAM_MAP[key]);
+            if (val !== null) { state[key] = val; }
+        });
+
+        var paged = parseInt(params.get('bpl_paged'), 10);
+        if (paged > 0) { state.page = paged; }
+
+        $('#bpl-search').val(state.search);
+        $('#bpl-cat-filter').val(state.category);
+        $('#bpl-stock-filter').val(state.stock_filter);
+        $('#bpl-type-filter').val(state.product_type);
+        $('#bpl-featured-filter').val(state.featured);
+        $('#bpl-sort').val(state.sort);
+
+        $('.brikpanel-pl-tab').removeClass('active');
+        var $tab = $('.brikpanel-pl-tab[data-status="' + state.status + '"]');
+        ($tab.length ? $tab : $('.brikpanel-pl-tab[data-status="any"]')).addClass('active');
+    }
+
+    // Mirror the active (non-default) filters into the URL via replaceState so
+    // a reload or the editor's back link reproduces this exact view. Non-bpl
+    // params (e.g. page=brikpanel-products) are preserved untouched.
+    function syncStateToUrl() {
+        var params;
+        try { params = new URLSearchParams(window.location.search); }
+        catch (e) { return; }
+
+        Object.keys(URL_PARAM_MAP).forEach(function (key) {
+            var param = URL_PARAM_MAP[key];
+            if (state[key] !== URL_DEFAULTS[key] && state[key] !== '' && state[key] != null) {
+                params.set(param, state[key]);
+            } else {
+                params.delete(param);
+            }
+        });
+
+        if (state.page > 1) { params.set('bpl_paged', state.page); }
+        else { params.delete('bpl_paged'); }
+
+        var qs = params.toString();
+        var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+        try { window.history.replaceState(null, '', newUrl); } catch (e) {}
+    }
+
+    // The list URL to hand the editor as a return target — only when a filter
+    // is actually active, so unfiltered views keep clean editor URLs and fall
+    // back to the plain product list.
+    function currentReturnUrl() {
+        return hasActiveFilters() ? window.location.href : '';
     }
 
     // =========================================================================
@@ -103,6 +201,18 @@
 
         $('#bpl-stock-filter').on('change', function () {
             state.stock_filter = $(this).val();
+            state.page = 1;
+            fetchProducts();
+        });
+
+        $('#bpl-type-filter').on('change', function () {
+            state.product_type = $(this).val();
+            state.page = 1;
+            fetchProducts();
+        });
+
+        $('#bpl-featured-filter').on('change', function () {
+            state.featured = $(this).val();
             state.page = 1;
             fetchProducts();
         });
@@ -326,6 +436,13 @@
         $('#bpl-qe-tag-search').on('input', function () {
             filterTermList($('#bpl-qe-tag-list'), $(this).val());
         });
+        // Custom taxonomy search inputs (Brands etc.). Delegated so it works
+        // even when the drawer is rendered before this binding runs.
+        $(document).on('input', '.bpl-qe-tax-search', function () {
+            var tax = $(this).data('taxonomy');
+            if (!tax) return;
+            filterTermList($('#bpl-qe-tax-list-' + tax), $(this).val());
+        });
 
         // Quick-edit stock status toggle
         $(document).on('click', '#bpl-qe-stock-status-toggle .brikpanel-pl-toggle-opt', function () {
@@ -336,9 +453,13 @@
             $('#bpl-qe-stock-status').val(v);
         });
 
-        // Quick-edit digital product toggle — collapses/expands the file list.
+        // Quick-edit Virtual / Digital toggles. Digital implies Virtual on
+        // the wire (a downloadable product has no shipping), so we lock the
+        // Virtual switch on when Digital is enabled and free it again when
+        // Digital flips off. Mirrors the full product editor's behavior.
         $('#bpl-qe-digital-toggle').on('change', function () {
             $('#bpl-qe-digital-section').toggleClass('open', this.checked);
+            syncQeVirtualLock();
         });
 
         // Quick-edit "Add downloadable file" — opens WP media library.
@@ -436,12 +557,22 @@
             toggleStatus(id);
         });
 
-        // Click row to go to edit page (excluding clicks on the product name link,
-        // which is a real <a> and handles its own navigation / new-tab behavior).
-        $(document).on('click', '.brikpanel-pl-row', function (e) {
-            if ($(e.target).closest('input, button, a, .brikpanel-pl-editable, .brikpanel-pl-actions-cell, .brikpanel-pl-status-badge, .brikpanel-pl-stock-badge, .brikpanel-pl-product-name-link, .brikpanel-pl-cat-more').length) return;
-            var url = $(this).data('edit-url');
-            if (url) window.location.href = url;
+        // Toggle featured (inline star in the name cell). Optimistic UI:
+        // flip immediately, AJAX in the background, revert on error.
+        $(document).on('click', '.brikpanel-pl-featured-star', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleFeatured($(this));
+        });
+
+        // Quick-edit drawer featured star. Same backend and optimistic
+        // contract as the row star — flips locally, calls the shared
+        // toggle endpoint, and reverts on failure. Both stars (row +
+        // drawer) read from state.products.is_featured, so a successful
+        // toggle from either surface propagates to the other on next render.
+        $(document).on('click', '#bpl-qe-featured-star', function (e) {
+            e.preventDefault();
+            toggleQeFeatured($(this));
         });
 
         // Keyboard shortcut: Escape to close drawer
@@ -510,13 +641,13 @@
      * Used for full-width loading / empty rows.
      */
     function totalColumnCount() {
-        // 1 sort handle (hidden unless sortMode) + 8 native BrikPanel cols
-        // (check, image, name, sku, price, stock, cat, status) + 1 actions
-        // col + N ASE extras. The handle <th>/<td> is always present in
-        // the DOM so colspan calculations stay stable; CSS hides it when
+        // 1 sort handle (hidden unless sortMode) + 9 native BrikPanel cols
+        // (check, image, name, sku, gtin, price, stock, cat, status) + 1
+        // actions col + N ASE extras. The handle <th>/<td> is always present
+        // in the DOM so colspan calculations stay stable; CSS hides it when
         // sortMode is off, but it still counts as a real column.
         var extras = state.extraColumns ? Object.keys(state.extraColumns).length : 0;
-        return 10 + extras;
+        return 11 + extras;
     }
 
     /**
@@ -615,15 +746,32 @@
         }
     }
 
-    function fetchProducts() {
-        if (state.loading) return;
+    function fetchProducts(silent) {
+        // Abort any in-flight request — its response would render stale data
+        // for the previous filter/sort and overwrite whatever we're about to
+        // load. The aborted request's error handler short-circuits on
+        // textStatus === 'abort' so we don't flash an error toast.
+        if (currentFetchXhr) {
+            try { currentFetchXhr.abort(); } catch (e) {}
+            currentFetchXhr = null;
+        }
+
+        // Keep the URL in step with what we are about to render, so a reload
+        // or the editor back link reproduces this exact view.
+        syncStateToUrl();
+
         state.loading = true;
         showProgress();
 
         var $body = $('#bpl-table-body');
-        $body.html('<tr class="brikpanel-pl-loading-row"><td colspan="' + totalColumnCount() + '"><div class="brikpanel-pl-spinner"></div></td></tr>');
+        // `silent` mode: skip the spinner row so an optimistic local update
+        // (e.g. just-removed rows after a bulk action) stays visible while
+        // the background fetch syncs counts and pagination.
+        if (!silent) {
+            $body.html('<tr class="brikpanel-pl-loading-row"><td colspan="' + totalColumnCount() + '"><div class="brikpanel-pl-spinner"></div></td></tr>');
+        }
 
-        $.ajax({
+        currentFetchXhr = $.ajax({
             url: PL.ajax_url,
             type: 'POST',
             data: {
@@ -635,9 +783,12 @@
                 status: state.status,
                 category: state.category,
                 stock_filter: state.stock_filter,
+                product_type: state.product_type,
+                featured: state.featured,
                 sort: state.sort
             },
             success: function (res) {
+                currentFetchXhr = null;
                 state.loading = false;
                 hideProgress();
                 if (!res.success) {
@@ -670,7 +821,11 @@
                 // Reset check-all
                 $('#bpl-check-all').prop('checked', false);
             },
-            error: function () {
+            error: function (xhr, textStatus) {
+                // Aborted by a follow-up fetchProducts() — the new request
+                // owns the loading state and UI, so leave them alone.
+                if (textStatus === 'abort') return;
+                currentFetchXhr = null;
                 state.loading = false;
                 hideProgress();
                 $body.html('<tr><td colspan="' + totalColumnCount() + '" class="brikpanel-pl-empty">' + escHtml(PL.i18n.error) + '</td></tr>');
@@ -862,6 +1017,27 @@
         });
     }
 
+    // Cost-of-goods cell. The server sends a pre-formatted price HTML string
+    // (so the currency symbol/format matches wc_price() everywhere else) plus
+    // a `partial` flag for variable products where some variations lack a
+    // cost — flagged with a small "!" so it doesn't pretend the range is
+    // complete. When the column is off for the current user the payload is
+    // null and the cell renders an em-dash so it stays a valid <td> if a
+    // different admin had the column on in the same page.
+    function renderCogsCell(cogs) {
+        if (!cogs) {
+            return '<span class="brikpanel-pl-text-muted">&mdash;</span>';
+        }
+        var inner = cogs.html || '<span class="brikpanel-pl-text-muted">&mdash;</span>';
+        if (cogs.partial && cogs.missing > 0) {
+            var tpl   = PL.i18n.cogs_partial || '%d variations have no cost';
+            var label = tpl.replace('%d', cogs.missing);
+            inner += ' <span class="brikpanel-pl-cogs-flag" tabindex="0" role="note" aria-label="'
+                + escAttr(label) + '" title="' + escAttr(label) + '">!</span>';
+        }
+        return inner;
+    }
+
     function renderProductRow(p) {
         var checked = state.selected.indexOf(p.id) > -1 ? ' checked' : '';
         var statusClass, statusLabel;
@@ -972,6 +1148,35 @@
             aseActionsHtml = '<div class="brikpanel-pl-row-actions">' + parts.join('') + '</div>';
         }
 
+        // Featured-product star — opt-in via the BrikPanel setting. Renders
+        // inline at the start of the product name cell. The click handler
+        // calls brikpanel_toggle_featured and flips the UI optimistically.
+        var featuredStarHtml = '';
+        if (PL.show_featured_star) {
+            var isFeatured = !!p.is_featured;
+            var starTitle  = isFeatured
+                ? (PL.i18n.unmark_featured || 'Featured — click to remove')
+                : (PL.i18n.mark_featured || 'Mark as featured');
+            featuredStarHtml =
+                '<button type="button" class="brikpanel-pl-featured-star' + (isFeatured ? ' is-on' : '') +
+                    '" data-id="' + p.id + '" aria-pressed="' + (isFeatured ? 'true' : 'false') + '" title="' + escAttr(starTitle) + '">' +
+                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="' + (isFeatured ? 'currentColor' : 'none') +
+                        '" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                        '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>' +
+                    '</svg>' +
+                '</button>';
+        }
+
+        // Global Unique ID (GTIN/UPC/EAN/ISBN) cell. Hidden by default; the
+        // value object is built server-side and already accounts for variable
+        // products (single shared value vs. an "N GTINs" multi badge).
+        var gid = p.global_unique_id || { value: '', tooltip: '', multi: false };
+        var gidInner = gid.value
+            ? (gid.multi
+                ? '<span class="brikpanel-pl-gid-multi" title="' + escAttr(gid.tooltip) + '">' + escHtml(gid.value) + '</span>'
+                : escHtml(gid.value))
+            : '<span class="brikpanel-pl-text-muted">—</span>';
+
         var handleTitle = PL.i18n.sort_drag_handle || 'Drag to reorder';
         // Span instead of <button> on purpose: jQuery UI Sortable's default
         // `cancel` selector includes `button`, which blocks the drag from
@@ -986,13 +1191,22 @@
                 '</span>' +
             '</td>';
 
-        return '<tr class="brikpanel-pl-row" data-id="' + p.id + '" data-edit-url="' + escAttr(p.edit_url) + '">' +
+        // Carry the active filtered list URL into the editor so its "Back to
+        // products" link returns to this exact view instead of the full list.
+        var ret = currentReturnUrl();
+        var editHref = ret
+            ? p.edit_url + (p.edit_url.indexOf('?') > -1 ? '&' : '?') + 'bpl_return=' + encodeURIComponent(ret)
+            : p.edit_url;
+
+        return '<tr class="brikpanel-pl-row" data-id="' + p.id + '" data-edit-url="' + escAttr(editHref) + '">' +
             handleCell +
             '<td class="brikpanel-pl-cell-check"><input type="checkbox" class="brikpanel-pl-row-check brikpanel-pl-checkbox" value="' + p.id + '"' + checked + '></td>' +
             '<td class="brikpanel-pl-cell-image brikpanel-pl-col brikpanel-pl-col-image"><img src="' + escAttr(p.image) + '" alt="" class="brikpanel-pl-thumb" loading="lazy"></td>' +
-            '<td class="brikpanel-pl-cell-name brikpanel-pl-col brikpanel-pl-col-name"><a href="' + escAttr(p.edit_url) + '" class="brikpanel-pl-product-name-link"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text">' + escHtml(p.name) + '</span></a>' + typeLabel + aseActionsHtml + '</td>' +
+            '<td class="brikpanel-pl-cell-name brikpanel-pl-col brikpanel-pl-col-name"><span class="brikpanel-pl-name-id" title="' + escAttr(PL.i18n.product_id || '') + '">#' + p.id + '</span>' + featuredStarHtml + '<a href="' + escAttr(editHref) + '" class="brikpanel-pl-product-name-link"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text">' + escHtml(p.name) + '</span></a>' + typeLabel + aseActionsHtml + '</td>' +
             '<td class="brikpanel-pl-cell-sku brikpanel-pl-col brikpanel-pl-col-sku"><span class="brikpanel-pl-editable brikpanel-pl-sku-cell" data-field="sku" data-value="' + escAttr(p.sku || '') + '">' + (p.sku ? escHtml(p.sku) : '<span class="brikpanel-pl-text-muted">—</span>') + '</span></td>' +
+            '<td class="brikpanel-pl-cell-guid brikpanel-pl-col brikpanel-pl-col-global_unique_id">' + gidInner + '</td>' +
             '<td class="brikpanel-pl-cell-price brikpanel-pl-col brikpanel-pl-col-price">' + priceEditable + '</td>' +
+            '<td class="brikpanel-pl-cell-cogs brikpanel-pl-col brikpanel-pl-col-cogs">' + renderCogsCell(p.cogs) + '</td>' +
             '<td class="brikpanel-pl-cell-stock brikpanel-pl-col brikpanel-pl-col-stock" data-id="' + p.id + '">' + stockCellHtml + '</td>' +
             '<td class="brikpanel-pl-cell-cat brikpanel-pl-col brikpanel-pl-col-category">' + catText + '</td>' +
             '<td class="brikpanel-pl-cell-status brikpanel-pl-col brikpanel-pl-col-status"><span class="brikpanel-pl-status-badge ' + statusClass + '" title="' + escAttr(PL.i18n.click_to_toggle) + '">' + escHtml(statusLabel) + '</span></td>' +
@@ -1274,6 +1488,16 @@
     // Opens the WP media library to attach one or more downloadable files
     // to the product currently being quick-edited. Mirrors the editor flow,
     // de-duped by file URL so the same asset cannot be added twice.
+    function syncQeVirtualLock() {
+        var digitalOn = $('#bpl-qe-digital-toggle').is(':checked');
+        var $virtual = $('#bpl-qe-virtual-toggle');
+        if (digitalOn) {
+            $virtual.prop('checked', true).prop('disabled', true);
+        } else {
+            $virtual.prop('disabled', false);
+        }
+    }
+
     function openQeFilePicker() {
         if (typeof wp === 'undefined' || !wp.media) {
             showToast(PL.i18n.error, 'error');
@@ -1415,6 +1639,14 @@
         $('#bpl-qe-sku').val(product.sku || '');
         $('#bpl-qe-status').val(product.status);
 
+        // Featured star — gated by the same opt-in setting as the row star;
+        // when the option is off the button isn't rendered at all.
+        var $qeStar = $('#bpl-qe-featured-star');
+        if ($qeStar.length) {
+            $qeStar.data('id', product.id).attr('data-id', product.id);
+            applyQeFeaturedState($qeStar, !!product.is_featured);
+        }
+
         // Sync category / tag checkboxes with current selection
         var catIdSet = {};
         (product.category_ids || []).forEach(function (cid) { catIdSet[String(cid)] = true; });
@@ -1428,20 +1660,42 @@
             this.checked = !!tagIdSet[String(this.value)];
         });
 
-        // Reset term search fields so filters don't carry over between edits
-        $('#bpl-qe-cat-search, #bpl-qe-tag-search').val('').trigger('input');
+        // Custom taxonomies (Brands etc.). Clear every rendered taxonomy list
+        // first so a product that has no terms in a taxonomy ends up with all
+        // checkboxes unchecked, then re-check the assigned ones.
+        $('.bpl-qe-tax-list .bpl-qe-tax-cb').prop('checked', false);
+        var customTaxes = product.custom_taxonomies || {};
+        Object.keys(customTaxes).forEach(function (tax) {
+            var idSet = {};
+            (customTaxes[tax] || []).forEach(function (tid) { idSet[String(tid)] = true; });
+            $('#bpl-qe-tax-list-' + tax + ' .bpl-qe-tax-cb').each(function () {
+                this.checked = !!idSet[String(this.value)];
+            });
+        });
 
-        // Variable vs Simple product handling
+        // Reset term search fields so filters don't carry over between edits
+        $('#bpl-qe-cat-search, #bpl-qe-tag-search, .bpl-qe-tax-search').val('').trigger('input');
+
+        // Variable vs Simple product handling. Simple-only fields are tagged
+        // with `.brikpanel-pl-qe-simple-only` so they can be reordered freely
+        // alongside the always-visible fields and still toggle as a group
+        // when the user opens a variable product.
         if (product.type === 'variable') {
-            $('#bpl-qe-simple-fields').hide();
+            $('.brikpanel-pl-qe-simple-only').hide();
             $('#bpl-qe-variations').show();
             loadDrawerVariations(product.id);
         } else {
-            $('#bpl-qe-simple-fields').show();
+            $('.brikpanel-pl-qe-simple-only').show();
             $('#bpl-qe-variations').hide().empty();
             $('#bpl-qe-price').val(product.regular_price || '');
             $('#bpl-qe-sale-price').val(product.sale_price || '');
             $('#bpl-qe-stock').val(product.stock !== null ? product.stock : '');
+            // COGS — only writes when the field is rendered (slug visible).
+            // Avoid `|| ''` here: a legit zero cost arrives as either the
+            // string "0" or the JS number 0 depending on whether WC's native
+            // COGS returns a float — both are falsy under `||` and would
+            // silently blank the input, making "0" look unsaved on reopen.
+            $('#bpl-qe-cogs').val((product.cogs_value === '' || product.cogs_value == null) ? '' : String(product.cogs_value));
             var st = product.stock_status || 'instock';
             $('#bpl-qe-stock-status').val(st);
             var $grp = $('#bpl-qe-stock-status-toggle');
@@ -1450,10 +1704,13 @@
                 $(this).toggleClass('is-active', active).attr('aria-checked', active ? 'true' : 'false');
             });
 
-            // Digital / downloadable fields
+            // Virtual / Digital / downloadable fields
             var isDownloadable = !!product.is_downloadable;
+            var isVirtual      = !!product.is_virtual || isDownloadable;
+            $('#bpl-qe-virtual-toggle').prop('checked', isVirtual);
             $('#bpl-qe-digital-toggle').prop('checked', isDownloadable);
             $('#bpl-qe-digital-section').toggleClass('open', isDownloadable);
+            syncQeVirtualLock();
             state.qeDownloads = (product.downloads || []).map(function (d) {
                 return { id: d.id || '', name: d.name || '', file: d.file || '' };
             });
@@ -1482,39 +1739,89 @@
 
         $btn.prop('disabled', true).text(PL.i18n.saving);
 
-        // Save main product fields (name, sku, status, categories, tags)
-        var selectedCats = $('#bpl-qe-cat-list .bpl-qe-cat-cb:checked').map(function () {
-            return parseInt(this.value, 10);
-        }).get();
-        var selectedTags = $('#bpl-qe-tag-list .bpl-qe-tag-cb:checked').map(function () {
-            return parseInt(this.value, 10);
-        }).get();
-
+        // Save main product fields. Each block runs only when its drawer
+        // field is actually rendered — fields hidden via the QE field-order
+        // panel are absent from the DOM and must not be sent (an empty CSV
+        // would wipe category/tag assignments; an unchecked toggle would
+        // clear is_virtual / is_downloadable; etc.).
         var mainData = {
             action: 'brikpanel_quick_edit_product',
             security: PL.nonce,
-            product_id: id,
-            name: $('#bpl-qe-name').val(),
-            sku: $('#bpl-qe-sku').val(),
-            status: $('#bpl-qe-status').val(),
-            // CSV strings (rather than array[]=) so an empty selection still
-            // round-trips to the server and clears the taxonomy.
-            category_ids_csv: selectedCats.join(','),
-            tag_ids_csv: selectedTags.join(',')
+            product_id: id
         };
 
-        if (!isVariable) {
-            mainData.regular_price = $('#bpl-qe-price').val();
-            mainData.sale_price = $('#bpl-qe-sale-price').val();
-            mainData.stock = $('#bpl-qe-stock').val();
-            mainData.stock_status = $('#bpl-qe-stock-status').val();
+        var $nameField = $('#bpl-qe-name');
+        if ($nameField.length) {
+            mainData.name = $nameField.val();
+        }
+        var $skuField = $('#bpl-qe-sku');
+        if ($skuField.length) {
+            mainData.sku = $skuField.val();
+        }
+        var $statusField = $('#bpl-qe-status');
+        if ($statusField.length) {
+            mainData.status = $statusField.val();
+        }
 
-            // Digital / downloadable. Only send fields when toggle is rendered
-            // (drawer state — variable products don't render this section).
-            mainData.is_downloadable = $('#bpl-qe-digital-toggle').is(':checked') ? 1 : 0;
-            mainData.downloads = mainData.is_downloadable
-                ? JSON.stringify(state.qeDownloads)
-                : '[]';
+        var $catList = $('#bpl-qe-cat-list');
+        if ($catList.length) {
+            var selectedCats = $catList.find('.bpl-qe-cat-cb:checked').map(function () {
+                return parseInt(this.value, 10);
+            }).get();
+            // CSV strings (rather than array[]=) so an empty selection still
+            // round-trips to the server and clears the taxonomy.
+            mainData.category_ids_csv = selectedCats.join(',');
+        }
+
+        var $tagList = $('#bpl-qe-tag-list');
+        if ($tagList.length) {
+            var selectedTags = $tagList.find('.bpl-qe-tag-cb:checked').map(function () {
+                return parseInt(this.value, 10);
+            }).get();
+            mainData.tag_ids_csv = selectedTags.join(',');
+        }
+
+        // Custom taxonomies (Brands etc.). Encoded as custom_tax_ids[<slug>]=
+        // so empty selections still arrive at the server and the assignment
+        // is cleared. When the custom_taxonomies field is hidden no lists
+        // are present in the DOM, so this loop is a no-op and nothing is
+        // sent — preserving the existing assignments untouched.
+        $('.bpl-qe-tax-list').each(function () {
+            var $list = $(this);
+            var tax = $list.data('taxonomy');
+            if (!tax) return;
+            var ids = $list.find('.bpl-qe-tax-cb:checked').map(function () {
+                return parseInt(this.value, 10);
+            }).get();
+            mainData['custom_tax_ids[' + tax + ']'] = ids.join(',');
+        });
+
+        if (!isVariable) {
+            if ($('#bpl-qe-price').length) {
+                mainData.regular_price = $('#bpl-qe-price').val();
+                mainData.sale_price = $('#bpl-qe-sale-price').val();
+            }
+            if ($('#bpl-qe-stock').length) {
+                mainData.stock = $('#bpl-qe-stock').val();
+            }
+            if ($('#bpl-qe-stock-status').length) {
+                mainData.stock_status = $('#bpl-qe-stock-status').val();
+            }
+            if ($('#bpl-qe-cogs').length) {
+                mainData.cogs_value = $('#bpl-qe-cogs').val();
+            }
+
+            // Virtual / Digital / downloadable. Only sent for non-variable
+            // products (the drawer hides the toggle group for variable types
+            // and routes them through the full editor where per-variation
+            // propagation runs).
+            if ($('#bpl-qe-digital-toggle').length) {
+                mainData.is_virtual      = $('#bpl-qe-virtual-toggle').is(':checked') ? 1 : 0;
+                mainData.is_downloadable = $('#bpl-qe-digital-toggle').is(':checked') ? 1 : 0;
+                mainData.downloads = mainData.is_downloadable
+                    ? JSON.stringify(state.qeDownloads)
+                    : '[]';
+            }
         }
 
         // Save main product
@@ -1603,6 +1910,30 @@
 
         setBulkLoading(true, $btn);
 
+        // Optimistic UI update *before* the AJAX. The success callback can be
+        // skipped if a plugin contaminates the response (PHP notice / DB error
+        // printed before the JSON breaks jQuery's parser → error handler runs
+        // even though the server actually deleted the rows). Doing the local
+        // mutation up front guarantees the UI reflects the user's action; the
+        // background fetch reconciles authoritative state.
+        var inTrashView = (state.status === 'trash');
+        var removesRows =
+            action === 'delete' ||
+            (action === 'trash' && !inTrashView) ||
+            (action === 'restore' && inTrashView);
+        var targetIds = state.selected.slice();
+        if (removesRows) {
+            var idSet = {};
+            targetIds.forEach(function (id) { idSet[id] = true; });
+            var beforeLen = (state.products || []).length;
+            state.products = (state.products || []).filter(function (p) { return !idSet[p.id]; });
+            var actuallyRemoved = beforeLen - state.products.length;
+            state.total = Math.max(0, (state.total || 0) - actuallyRemoved);
+            renderProducts();
+        }
+        state.selected = [];
+        updateBulkBar();
+
         $.ajax({
             url: PL.ajax_url,
             type: 'POST',
@@ -1610,22 +1941,36 @@
                 action: 'brikpanel_bulk_action_products',
                 security: PL.nonce,
                 bulk_action: action,
-                product_ids: state.selected
+                product_ids: targetIds
+            },
+            // Tolerate responses contaminated by upstream PHP output (notices,
+            // DB errors, debug echoes printed before wp_send_json). We strip
+            // anything before the first `{` so jQuery can still parse the JSON
+            // tail instead of bouncing into the error handler.
+            dataType: 'json',
+            dataFilter: function (raw) {
+                if (typeof raw !== 'string') return raw;
+                var i = raw.indexOf('{');
+                return i > 0 ? raw.slice(i) : raw;
             },
             success: function (res) {
                 setBulkLoading(false);
-                if (res.success) {
-                    showToast(res.data.message, 'success');
-                    state.selected = [];
-                    updateBulkBar();
-                    fetchProducts();
+                if (res && res.success) {
+                    showToast(res.data && res.data.message ? res.data.message : '', 'success');
                 } else {
-                    showToast(res.data.message || PL.i18n.error, 'error');
+                    showToast(res && res.data && res.data.message ? res.data.message : PL.i18n.error, 'error');
                 }
+                // Always reconcile with the server — confirms the optimistic
+                // update on success, restores correct rows if the action
+                // partially failed.
+                fetchProducts(true);
             },
             error: function () {
                 setBulkLoading(false);
-                showToast(PL.i18n.error, 'error');
+                // Couldn't even parse a JSON tail. The server may still have
+                // applied the change (the optimistic update is likely correct);
+                // a silent re-fetch is the source of truth either way.
+                fetchProducts(true);
             }
         });
     }
@@ -1648,6 +1993,13 @@
         var $row = $('#bpl-table-body tr[data-id="' + id + '"]');
         $row.addClass('brikpanel-pl-row-deleting');
 
+        // Optimistic local removal — see bulkAction() for why this lives
+        // outside the success callback. We always reconcile via fetchProducts
+        // afterwards so the UI matches the server.
+        state.products = (state.products || []).filter(function (p) { return p.id !== id; });
+        state.total = Math.max(0, (state.total || 0) - 1);
+        $row.fadeOut(300, function () { $(this).remove(); });
+
         $.ajax({
             url: PL.ajax_url,
             type: 'POST',
@@ -1656,21 +2008,22 @@
                 security: PL.nonce,
                 product_id: id
             },
+            dataType: 'json',
+            dataFilter: function (raw) {
+                if (typeof raw !== 'string') return raw;
+                var i = raw.indexOf('{');
+                return i > 0 ? raw.slice(i) : raw;
+            },
             success: function (res) {
-                if (res.success) {
-                    $row.fadeOut(300, function () {
-                        $(this).remove();
-                        showToast(res.data.message, 'success');
-                        fetchProducts();
-                    });
+                if (res && res.success) {
+                    showToast(res.data && res.data.message ? res.data.message : '', 'success');
                 } else {
-                    $row.removeClass('brikpanel-pl-row-deleting');
-                    showToast(res.data.message || PL.i18n.error, 'error');
+                    showToast(res && res.data && res.data.message ? res.data.message : PL.i18n.error, 'error');
                 }
+                fetchProducts(true);
             },
             error: function () {
-                $row.removeClass('brikpanel-pl-row-deleting');
-                showToast(PL.i18n.error, 'error');
+                fetchProducts(true);
             }
         });
     }
@@ -1701,7 +2054,7 @@
     }
 
     function toggleStatus(id) {
-        var $badge = $('#bpl-table-body tr[data-id="' + id + '"] .brikpanel-pl-status-badge');
+        var $badge = $('#bpl-table-body tr[data-id="' + id + '"] .brikpanel-pl-status-badge'); // i18n-ignore: selector fragment
         $badge.addClass('brikpanel-pl-status-saving');
 
         $.ajax({
@@ -1737,6 +2090,133 @@
                 showToast(PL.i18n.error, 'error');
             }
         });
+    }
+
+    /**
+     * Flip a product's featured flag from the row star. Updates the button
+     * UI optimistically; on failure we restore the previous state so the row
+     * never lies about server state. Single source of truth lives in WC's
+     * `product_visibility` taxonomy, written via WC_Product::set_featured()
+     * in the AJAX handler.
+     */
+    function toggleFeatured($btn) {
+        if ($btn.prop('disabled')) return;
+        var id = parseInt($btn.data('id'), 10);
+        if (!id) return;
+
+        var wasOn = $btn.hasClass('is-on');
+        var willBe = !wasOn;
+
+        $btn.prop('disabled', true);
+        applyFeaturedStarState($btn, willBe);
+
+        $.ajax({
+            url: PL.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'brikpanel_toggle_featured',
+                security: PL.nonce,
+                product_id: id
+            },
+            success: function (res) {
+                $btn.prop('disabled', false);
+                if (res.success) {
+                    applyFeaturedStarState($btn, !!res.data.is_featured);
+                    for (var i = 0; i < state.products.length; i++) {
+                        if (state.products[i].id === id) {
+                            state.products[i].is_featured = !!res.data.is_featured;
+                            break;
+                        }
+                    }
+                    showToast(res.data.message, 'success');
+                } else {
+                    applyFeaturedStarState($btn, wasOn);
+                    showToast((res.data && res.data.message) || PL.i18n.error, 'error');
+                }
+            },
+            error: function () {
+                $btn.prop('disabled', false);
+                applyFeaturedStarState($btn, wasOn);
+                showToast(PL.i18n.error, 'error');
+            }
+        });
+    }
+
+    function applyFeaturedStarState($btn, on) {
+        $btn.toggleClass('is-on', !!on);
+        $btn.attr('aria-pressed', on ? 'true' : 'false');
+        var label = on
+            ? (PL.i18n.unmark_featured || 'Featured — click to remove')
+            : (PL.i18n.mark_featured || 'Mark as featured');
+        $btn.attr('title', label);
+        $btn.find('svg').attr('fill', on ? 'currentColor' : 'none');
+    }
+
+    /**
+     * Quick-edit drawer counterpart of toggleFeatured. Hits the same
+     * brikpanel_toggle_featured endpoint, then mirrors the result onto the
+     * matching row's star (if rendered) and into state.products so the next
+     * fetchProducts/refreshRow keeps both surfaces consistent.
+     */
+    function toggleQeFeatured($btn) {
+        if ($btn.prop('disabled')) return;
+        var id = parseInt($btn.data('id') || $btn.attr('data-id'), 10);
+        if (!id) return;
+
+        var wasOn = $btn.hasClass('is-on');
+        var willBe = !wasOn;
+
+        $btn.prop('disabled', true);
+        applyQeFeaturedState($btn, willBe);
+
+        $.ajax({
+            url: PL.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'brikpanel_toggle_featured',
+                security: PL.nonce,
+                product_id: id
+            },
+            success: function (res) {
+                $btn.prop('disabled', false);
+                if (res.success) {
+                    var nowOn = !!res.data.is_featured;
+                    applyQeFeaturedState($btn, nowOn);
+                    for (var i = 0; i < state.products.length; i++) {
+                        if (state.products[i].id === id) {
+                            state.products[i].is_featured = nowOn;
+                            break;
+                        }
+                    }
+                    // Mirror the change onto the row star so both surfaces
+                    // stay in lockstep without waiting for a refetch.
+                    var $rowStar = $('.brikpanel-pl-featured-star[data-id="' + id + '"]');
+                    if ($rowStar.length) {
+                        applyFeaturedStarState($rowStar, nowOn);
+                    }
+                    showToast(res.data.message, 'success');
+                } else {
+                    applyQeFeaturedState($btn, wasOn);
+                    showToast((res.data && res.data.message) || PL.i18n.error, 'error');
+                }
+            },
+            error: function () {
+                $btn.prop('disabled', false);
+                applyQeFeaturedState($btn, wasOn);
+                showToast(PL.i18n.error, 'error');
+            }
+        });
+    }
+
+    function applyQeFeaturedState($btn, on) {
+        $btn.toggleClass('is-on', !!on);
+        $btn.attr('aria-pressed', on ? 'true' : 'false');
+        var label = on
+            ? (PL.i18n.unmark_featured || 'Featured — click to remove')
+            : (PL.i18n.mark_featured || 'Mark as featured');
+        $btn.attr('title', label);
+        $btn.find('svg').attr('fill', on ? 'currentColor' : 'none');
+        $btn.find('.screen-reader-text').text(label);
     }
 
     // =========================================================================
@@ -1832,7 +2312,11 @@
             $('[data-status="private"]').remove();
         }
 
-        // Show/hide trash tab
+        // Show/hide trash tab. The badge has to track 0 too — otherwise a
+        // bulk permanent-delete from trash leaves a stale "Trash N" count
+        // even though the rows are gone. We keep the tab visible (with "0")
+        // while the user is actively on the trash view so they don't lose
+        // their place; we drop it only after they've navigated away.
         if (counts.trash > 0) {
             if (!$('[data-count="trash"]').length) {
                 $('.brikpanel-pl-tabs').append(
@@ -1842,6 +2326,10 @@
             } else {
                 $('[data-count="trash"]').text(counts.trash);
             }
+        } else if (state.status === 'trash') {
+            $('[data-count="trash"]').text(0);
+        } else {
+            $('[data-status="trash"]').remove();
         }
     }
 
@@ -1895,10 +2383,25 @@
     // RESTORE & PERMANENT DELETE (trash view)
     // =========================================================================
 
+    // Lenient JSON parser shared by the per-row trash actions — strips any
+    // PHP-printed garbage (notices, deprecations, DB errors) that comes
+    // before the JSON body so we don't lose the success path.
+    var lenientJsonFilter = function (raw) {
+        if (typeof raw !== 'string') return raw;
+        var i = raw.indexOf('{');
+        return i > 0 ? raw.slice(i) : raw;
+    };
+
     $(document).on('click', '.brikpanel-pl-action-restore', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        var id = parseInt($(this).closest('tr').data('id'));
+        var $row = $(this).closest('tr');
+        var id = parseInt($row.data('id'));
+        // Optimistic: drop the row and decrement total before the round-trip
+        // so a contaminated response can't strand the user on stale UI.
+        state.products = (state.products || []).filter(function (p) { return p.id !== id; });
+        state.total = Math.max(0, (state.total || 0) - 1);
+        $row.fadeOut(200, function () { $(this).remove(); });
         $.ajax({
             url: PL.ajax_url,
             type: 'POST',
@@ -1908,11 +2411,16 @@
                 bulk_action: 'restore',
                 product_ids: [id]
             },
+            dataType: 'json',
+            dataFilter: lenientJsonFilter,
             success: function (res) {
-                if (res.success) {
+                if (res && res.success) {
                     showToast(PL.i18n.restored, 'success');
-                    fetchProducts();
                 }
+                fetchProducts(true);
+            },
+            error: function () {
+                fetchProducts(true);
             }
         });
     });
@@ -1920,8 +2428,13 @@
     $(document).on('click', '.brikpanel-pl-action-delete-perm', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        var id = parseInt($(this).closest('tr').data('id'));
+        var $row = $(this).closest('tr');
+        var id = parseInt($row.data('id'));
         if (!confirm(PL.i18n.confirm_permanent_delete)) return;
+        // Optimistic UI update before the AJAX — see bulkAction() for why.
+        state.products = (state.products || []).filter(function (p) { return p.id !== id; });
+        state.total = Math.max(0, (state.total || 0) - 1);
+        $row.fadeOut(200, function () { $(this).remove(); });
         $.ajax({
             url: PL.ajax_url,
             type: 'POST',
@@ -1931,11 +2444,16 @@
                 bulk_action: 'delete',
                 product_ids: [id]
             },
+            dataType: 'json',
+            dataFilter: lenientJsonFilter,
             success: function (res) {
-                if (res.success) {
+                if (res && res.success) {
                     showToast(PL.i18n.deleted_permanently, 'success');
-                    fetchProducts();
                 }
+                fetchProducts(true);
+            },
+            error: function () {
+                fetchProducts(true);
             }
         });
     });
@@ -1984,7 +2502,7 @@
         var title = field === 'stock' ? PL.i18n.stock_by_variation : PL.i18n.price_by_variation;
         var html = '<div class="brikpanel-pl-var-popup-header">' +
             '<span class="brikpanel-pl-var-popup-title">' + escHtml(title) + '</span>' +
-            '<button class="brikpanel-pl-var-popup-close" aria-label="Close">&times;</button></div>';
+            '<button class="brikpanel-pl-var-popup-close" aria-label="' + escHtml(PL.i18n.popup_close || 'Close') + '">&times;</button></div>';
 
         html += '<div class="brikpanel-pl-var-popup-body">';
         for (var i = 0; i < variations.length; i++) {
@@ -2089,7 +2607,7 @@
         $container.show();
 
         // Hide simple product fields
-        $('#bpl-qe-simple-fields').hide();
+        $('.brikpanel-pl-qe-simple-only').hide();
 
         $.ajax({
             url: PL.ajax_url,
@@ -2107,6 +2625,7 @@
 
     function renderDrawerVariations($container, variations, productId) {
         var html = '<div class="brikpanel-pl-qe-var-list">';
+        var cogsVisible = !!PL.qe_cogs_visible;
         for (var i = 0; i < variations.length; i++) {
             var v = variations[i];
             var stockVal = v.stock !== null ? v.stock : '';
@@ -2116,6 +2635,14 @@
             html += '<div class="brikpanel-pl-qe-var-fields">';
             html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.price_label || 'Price') + '</label><input type="text" class="brikpanel-pl-qe-var-input" data-field="regular_price" value="' + escAttr(v.regular_price || '') + '"></div>';
             html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.sale_label || 'Sale') + '</label><input type="text" class="brikpanel-pl-qe-var-input" data-field="sale_price" value="' + escAttr(v.sale_price || '') + '"></div>';
+            if (cogsVisible) {
+                // Same falsy guard as the simple-product field: a saved "0"
+                // cost arrives as either string "0" or number 0 (WC native
+                // get_cogs_value() returns a float for non-null costs).
+                // `|| ''` would treat both as empty and erase the value.
+                var vCogs = (v.cogs_value === '' || v.cogs_value == null) ? '' : String(v.cogs_value);
+                html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.cogs_label || 'Cost') + '</label><input type="text" class="brikpanel-pl-qe-var-input" data-field="cogs_value" value="' + escAttr(vCogs) + '" inputmode="decimal"></div>';
+            }
             html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.stock_label || 'Stock') + '</label><input type="number" class="brikpanel-pl-qe-var-input" data-field="stock" value="' + escAttr(stockVal) + '" min="0"></div>';
             html += '</div>';
             html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.stock_status_label || 'Availability') + '</label>';
@@ -2164,6 +2691,15 @@
             $(this).addClass('active');
             $('.brikpanel-pl-modal-tab-content').removeClass('active');
             $('#' + tab).addClass('active');
+            refreshBulkValueUI();
+        });
+
+        // Action change → swap the value control (numeric / shipping unit / term picker)
+        $('#bpl-bulk-action-cat, #bpl-bulk-action-sel').on('change', refreshBulkValueUI);
+
+        // Term picker search (categories / tags / brands), delegated.
+        $(document).on('input', '.bpl-bulk-term-search', function () {
+            filterTermList($(this).siblings('.bpl-bulk-term-list'), $(this).val());
         });
 
         // Scope toggle (all / category)
@@ -2263,6 +2799,14 @@
         // Reset scope selector to category (default)
         $('#bpl-bulk-scope').val('category').trigger('change');
 
+        // Reset taxonomy term pickers so stale selections never carry over.
+        $('.bpl-bulk-term-cb').prop('checked', false);
+        $('.bpl-bulk-term-search').val('');
+        $('.bpl-bulk-term-list').find('li, .brikpanel-pl-qe-term-item').show();
+
+        // Sync the value control to the currently selected action.
+        refreshBulkValueUI();
+
         // Reset delete tab
         $('#bpl-del-mode').val('selected').trigger('change');
 
@@ -2318,42 +2862,94 @@
         });
     }
 
+    // Reads the active update tab, swaps the value control to match the chosen
+    // action (numeric input, shipping unit suffix, or taxonomy term picker) and
+    // hides the variation filter where it does not apply.
+    function refreshBulkValueUI() {
+        var activeTab = $('.brikpanel-pl-modal-tab.active').data('tab');
+        if (activeTab !== 'bpl-bulk-tab-cat' && activeTab !== 'bpl-bulk-tab-sel') {
+            $('#bpl-bulk-term-region').hide();
+            return;
+        }
+
+        var which   = activeTab === 'bpl-bulk-tab-sel' ? 'sel' : 'cat';
+        var $action = $('#bpl-bulk-action-' + which);
+        var action  = $action.val() || '';
+        var $opt    = $action.find('option:selected');
+        var $valWrap = $('#bpl-bulk-value-' + which + '-wrap');
+
+        var isTax = action.indexOf('tax_set__') === 0 || action.indexOf('tax_add__') === 0;
+        var isShipping = action === 'set_weight' || action === 'set_length' ||
+                         action === 'set_width' || action === 'set_height';
+
+        // The variation filter only applies to per-variation price/stock edits.
+        if (which === 'cat') {
+            $('#bpl-bulk-varfilter-cat').toggle(!isTax && !isShipping);
+        }
+
+        if (isTax) {
+            $valWrap.hide();
+            var taxonomy = action.split('__')[1];
+            var $region = $('#bpl-bulk-term-region').show();
+            $region.find('.bpl-bulk-term-picker').hide();
+            $region.find('.bpl-bulk-term-picker[data-taxonomy="' + taxonomy + '"]').show();
+            $('#bpl-bulk-term-label').text($opt.text().replace(/\s+/g, ' ').trim());
+        } else {
+            $('#bpl-bulk-term-region').hide();
+            $valWrap.show();
+            var $unit = $valWrap.find('.bpl-bulk-unit');
+            if (isShipping) {
+                var unit = $opt.data('unit') || '';
+                $unit.text(unit).toggle(!!unit);
+            } else {
+                $unit.text('').hide();
+            }
+        }
+    }
+
     function applyBulkUpdate() {
         var activeTab = $('.brikpanel-pl-modal-tab.active').data('tab');
-        var params;
+        var which   = activeTab === 'bpl-bulk-tab-sel' ? 'sel' : 'cat';
+        var action  = $('#bpl-bulk-action-' + which).val() || '';
+        var isTax   = action.indexOf('tax_set__') === 0 || action.indexOf('tax_add__') === 0;
 
+        // Collect taxonomy term IDs from the visible picker when a tax action runs.
+        var termIds = '';
+        if (isTax) {
+            var taxonomy = action.split('__')[1];
+            var termSel = '#bpl-bulk-term-region .bpl-bulk-term-picker[data-taxonomy="' + taxonomy + '"] .bpl-bulk-term-cb:checked'; // i18n-ignore: CSS selector
+            var ids = $(termSel).map(function () { return parseInt(this.value, 10); }).get();
+            if (action.indexOf('tax_add__') === 0 && !ids.length) {
+                showToast(PL.i18n.bulk_select_terms, 'error');
+                return;
+            }
+            termIds = ids.join(',');
+        }
+
+        var params;
         if (activeTab === 'bpl-bulk-tab-cat') {
             var scope = $('#bpl-bulk-scope').val();
-            if (scope === 'all') {
-                if (!confirm(PL.i18n.bulk_all_confirm)) return;
-                params = {
-                    mode: 'all',
-                    bulk_action: $('#bpl-bulk-action-cat').val(),
-                    value: $('#bpl-bulk-value-cat').val(),
-                    attr_key: $('#bpl-bulk-attr-key').val() || '',
-                    attr_val: $('#bpl-bulk-attr-val').val() || ''
-                };
-            } else {
-                var catId = $('#bpl-bulk-cat').val();
-                if (!catId) { showToast(PL.i18n.bulk_select_cat, 'error'); return; }
-                if (!confirm(PL.i18n.bulk_cat_confirm)) return;
-                params = {
-                    mode: 'category',
-                    category: catId,
-                    bulk_action: $('#bpl-bulk-action-cat').val(),
-                    value: $('#bpl-bulk-value-cat').val(),
-                    attr_key: $('#bpl-bulk-attr-key').val() || '',
-                    attr_val: $('#bpl-bulk-attr-val').val() || ''
-                };
-            }
+            var catId = $('#bpl-bulk-cat').val();
+            if (scope === 'category' && !catId) { showToast(PL.i18n.bulk_select_cat, 'error'); return; }
+            if (!confirm(scope === 'all' ? PL.i18n.bulk_all_confirm : PL.i18n.bulk_cat_confirm)) return;
+            params = {
+                mode: scope === 'all' ? 'all' : 'category',
+                category: scope === 'all' ? '' : catId,
+                bulk_action: action,
+                value: $('#bpl-bulk-value-cat').val(),
+                term_ids: termIds,
+                attr_key: isTax ? '' : ($('#bpl-bulk-attr-key').val() || ''),
+                attr_val: isTax ? '' : ($('#bpl-bulk-attr-val').val() || '')
+            };
         } else {
             if (!state.selected.length) { showToast(PL.i18n.bulk_no_selection, 'error'); return; }
             if (!confirm(PL.i18n.bulk_confirm)) return;
             params = {
                 mode: 'selected',
                 selected_ids: state.selected.join(','),
-                bulk_action: $('#bpl-bulk-action-sel').val(),
-                value: $('#bpl-bulk-value-sel').val()
+                bulk_action: action,
+                value: $('#bpl-bulk-value-sel').val(),
+                term_ids: termIds
             };
         }
 
@@ -2609,6 +3205,7 @@
     function init() {
         bindEvents();
         initBulkModal();
+        readStateFromUrl();
         fetchProducts();
     }
 

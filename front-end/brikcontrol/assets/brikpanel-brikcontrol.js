@@ -46,7 +46,8 @@
         if (progressBar) progressBar.style.width = pct + '%';
         if (progressPct) progressPct.textContent = pct + '%';
         if (progressLabel && progress.total > 0) {
-            progressLabel.textContent = 'Scanning ' + progress.cursor + ' / ' + progress.total + ' products…';
+            var tpl = (cfg.i18n && cfg.i18n.scanning_progress) || 'Scanning {cursor} / {total} products…';
+            progressLabel.textContent = tpl.replace('{cursor}', progress.cursor).replace('{total}', progress.total);
         }
     }
 

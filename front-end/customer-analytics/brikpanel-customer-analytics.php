@@ -73,6 +73,9 @@ class Brikpanel_Customer_Analytics {
 		add_action( 'wp_ajax_brikpanel_ca_cohort_matrix',     [ $this, 'ajax_cohort_matrix' ] );
 		add_action( 'wp_ajax_brikpanel_ca_cohort_export',     [ $this, 'ajax_cohort_export' ] );
 		add_action( 'wp_ajax_brikpanel_ca_recompute_now',     [ $this, 'ajax_recompute_now' ] );
+		add_action( 'wp_ajax_brikpanel_ca_get_exclusions',    [ $this, 'ajax_get_exclusions' ] );
+		add_action( 'wp_ajax_brikpanel_ca_save_exclusions',   [ $this, 'ajax_save_exclusions' ] );
+		add_action( 'wp_ajax_brikpanel_ca_search_users',      [ $this, 'ajax_search_users' ] );
 	}
 
 	// =========================================================================
@@ -771,6 +774,147 @@ class Brikpanel_Customer_Analytics {
 		} catch ( \Throwable $e ) {
 			wp_send_json_error( [ 'message' => $e->getMessage() ], 500 );
 		}
+	}
+
+	// =========================================================================
+	// AJAX: excluded-customers settings (read / save / user search)
+	// =========================================================================
+
+	/**
+	 * Decorate a list of user IDs with display name + email for the chips UI.
+	 *
+	 * @param int[] $ids
+	 * @return array<int, array{id:int,name:string,email:string,roles:string}>
+	 */
+	private function describe_users( array $ids ) {
+		$out = [];
+		foreach ( array_filter( array_map( 'absint', $ids ) ) as $id ) {
+			$u = get_userdata( $id );
+			if ( ! $u ) {
+				// Keep the raw ID so a deleted user can still be removed from the list.
+				$out[] = [ 'id' => $id, 'name' => sprintf( __( 'User #%d', 'brikpanel' ), $id ), 'email' => '', 'roles' => '' ];
+				continue;
+			}
+			$role_names = array_map( function ( $r ) {
+				return brikpanel_role_display_name( $r );
+			}, (array) $u->roles );
+			$out[] = [
+				'id'    => $id,
+				'name'  => $u->display_name ?: $u->user_login,
+				'email' => $u->user_email,
+				'roles' => implode( ', ', array_filter( $role_names ) ),
+			];
+		}
+		return $out;
+	}
+
+	/**
+	 * Return the current exclusion config plus the list of available roles
+	 * (with member counts) so the modal can render the role checkboxes.
+	 */
+	public function ajax_get_exclusions() {
+		$this->check_auth();
+
+		$role_counts = count_users();
+		$avail_roles = [];
+		if ( function_exists( 'get_editable_roles' ) ) {
+			$editable = get_editable_roles();
+		} else {
+			$editable = wp_roles()->roles;
+		}
+		foreach ( $editable as $slug => $info ) {
+			$avail_roles[] = [
+				'slug'  => $slug,
+				'label' => brikpanel_role_display_name( $slug ),
+				'count' => (int) ( $role_counts['avail_roles'][ $slug ] ?? 0 ),
+			];
+		}
+
+		wp_send_json_success( [
+			'users'           => $this->describe_users( brikpanel_excluded_user_ids_raw() ),
+			'roles'           => brikpanel_excluded_roles(),
+			'available_roles' => $avail_roles,
+			'resolved_count'  => count( brikpanel_excluded_customer_ids() ),
+		] );
+	}
+
+	/**
+	 * Persist the exclusion config, then recompute metrics synchronously so
+	 * the page reflects the change immediately (the row for any newly
+	 * excluded customer is pruned on this pass).
+	 */
+	public function ajax_save_exclusions() {
+		$this->check_auth();
+
+		$user_ids = isset( $_POST['user_ids'] ) ? (array) wp_unslash( $_POST['user_ids'] ) : [];
+		$roles    = isset( $_POST['roles'] ) ? (array) wp_unslash( $_POST['roles'] ) : [];
+
+		$user_ids = array_values( array_unique( array_filter( array_map( 'absint', $user_ids ) ) ) );
+		$valid_roles = array_keys( function_exists( 'get_editable_roles' ) ? get_editable_roles() : wp_roles()->roles );
+		$roles = array_values( array_unique( array_filter( array_map( 'sanitize_key', $roles ), function ( $r ) use ( $valid_roles ) {
+			return in_array( $r, $valid_roles, true );
+		} ) ) );
+
+		update_option( BRIKPANEL_EXCLUDED_USERS_OPTION, $user_ids, false );
+		update_option( BRIKPANEL_EXCLUDED_ROLES_OPTION, $roles, false );
+
+		// Recompute so the change is visible right away. Mirror ajax_recompute_now.
+		$recomputed = false;
+		if ( class_exists( 'Brikpanel_Cron' ) && Brikpanel_Cron::is_available()
+			&& function_exists( 'brikpanel_recompute_customer_metrics_handler' ) ) {
+			try {
+				brikpanel_recompute_customer_metrics_handler();
+				brikpanel_recompute_cohort_retention_handler();
+				$recomputed = true;
+			} catch ( \Throwable $e ) {
+				// Saved successfully; the nightly cron will reconcile metrics.
+				$recomputed = false;
+			}
+		}
+		self::bust_cache();
+		if ( method_exists( 'Brikpanel_Dashboard', 'bust_dashboard_cache' ) ) {
+			Brikpanel_Dashboard::bust_dashboard_cache();
+		}
+
+		wp_send_json_success( [
+			'message'        => __( 'Exclusions saved.', 'brikpanel' ),
+			'recomputed'     => $recomputed,
+			'resolved_count' => count( brikpanel_excluded_customer_ids() ),
+			'users'          => $this->describe_users( $user_ids ),
+			'roles'          => $roles,
+		] );
+	}
+
+	/**
+	 * Autocomplete for the "add a person" field. Searches users by login,
+	 * display name, and email. Only registered users can be excluded (guest
+	 * orders have no user ID), so this is a plain user search.
+	 */
+	public function ajax_search_users() {
+		$this->check_auth();
+
+		$term = isset( $_POST['q'] ) ? sanitize_text_field( wp_unslash( $_POST['q'] ) ) : '';
+		if ( strlen( $term ) < 2 ) {
+			wp_send_json_success( [ 'users' => [] ] );
+		}
+
+		$query = new WP_User_Query( [
+			'search'         => '*' . esc_attr( $term ) . '*',
+			'search_columns' => [ 'user_login', 'user_nicename', 'user_email', 'display_name' ],
+			'number'         => 20,
+			'fields'         => [ 'ID' ],
+			// blog_id=0 lifts the current-blog membership restriction so
+			// customers who placed orders but hold no role on this site
+			// (common on multisite networks) are still searchable. Harmless
+			// on single-site installs.
+			'blog_id'        => 0,
+		] );
+
+		$ids = array_map( function ( $r ) {
+			return (int) ( is_object( $r ) ? $r->ID : $r );
+		}, (array) $query->get_results() );
+
+		wp_send_json_success( [ 'users' => $this->describe_users( $ids ) ] );
 	}
 }
 

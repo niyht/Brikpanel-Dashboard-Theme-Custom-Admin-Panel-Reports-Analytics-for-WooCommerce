@@ -446,7 +446,7 @@
 	function renderSelectedProducts() {
 		const host = el('bp-seg-selected-products');
 		host.innerHTML = state.selectedProducts.map(function (p) {
-			return '<span class="bp-seg-selected-chip">' + escape(p.label) + ' <button type="button" data-remove="' + escape(p.value) + '" aria-label="Remove">&times;</button></span>';
+			return '<span class="bp-seg-selected-chip">' + escape(p.label) + ' <button type="button" data-remove="' + escape(p.value) + '" aria-label="' + escape(I18N.remove || 'Remove') + '">&times;</button></span>';
 		}).join('');
 		host.querySelectorAll('button[data-remove]').forEach(function (btn) {
 			btn.addEventListener('click', function () { removeProduct(btn.dataset.remove); });

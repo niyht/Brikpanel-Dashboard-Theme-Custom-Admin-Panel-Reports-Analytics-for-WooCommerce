@@ -12,7 +12,7 @@
  * that contract explicit.
  *
  * @package BrikPanel
- * @since   3.1.0
+ * @since   3.1.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

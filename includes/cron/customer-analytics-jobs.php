@@ -59,12 +59,25 @@ function brikpanel_recompute_customer_metrics_handler() {
 	global $wpdb;
 
 	$start_ts   = microtime( true );
-	$started_at = current_time( 'mysql', true );
 	$metrics_tb = $wpdb->prefix . 'brikpanel_customer_metrics';
+	// Source the run marker from MySQL's own clock, not PHP. The computed_at
+	// column defaults to CURRENT_TIMESTAMP (the DB session timezone), so the
+	// stale-row prune below must compare against the same clock. Using PHP's
+	// UTC time here breaks pruning on servers whose MySQL session timezone is
+	// not UTC: stale rows newer than the offset survive — which would leave
+	// freshly excluded customers (and genuinely deleted ones) in the table.
+	$started_at = $wpdb->get_var( 'SELECT CURRENT_TIMESTAMP' ); // phpcs:ignore
 	$counted    = brikpanel_ca_counted_statuses();
 	$status_in  = "'" . implode( "','", array_map( 'esc_sql', $counted ) ) . "'";
 
 	$hpos = brikpanel_ca_is_hpos();
+
+	// Drop point-of-sale / staff accounts the merchant flagged so their bulk
+	// orders don't distort per-customer LTV/RFM. Guests (customer_id 0) are
+	// never matched. Shop-wide revenue totals read orders directly and are
+	// unaffected.
+	$excl_hpos   = function_exists( 'brikpanel_excluded_customer_sql' ) ? brikpanel_excluded_customer_sql( 'o.customer_id' ) : '';
+	$excl_legacy = function_exists( 'brikpanel_excluded_customer_sql' ) ? brikpanel_excluded_customer_sql( 'IFNULL(cu_meta.meta_value+0, 0)' ) : '';
 
 	// Aggregation runs entirely inside MySQL via INSERT...SELECT...ON DUPLICATE
 	// KEY UPDATE. This avoids loading every customer row into PHP, which on a
@@ -89,6 +102,7 @@ function brikpanel_recompute_customer_metrics_handler() {
 			WHERE o.type = 'shop_order'
 			  AND o.status IN ({$status_in})
 			  AND (o.customer_id > 0 OR (o.billing_email IS NOT NULL AND o.billing_email <> ''))
+			  {$excl_hpos}
 			GROUP BY customer_key
 		";
 	} else {
@@ -113,6 +127,7 @@ function brikpanel_recompute_customer_metrics_handler() {
 			WHERE o.post_type = 'shop_order'
 			  AND o.post_status IN ({$status_in})
 			  AND (cu_meta.meta_value+0 > 0 OR em_meta.meta_value <> '')
+			  {$excl_legacy}
 			GROUP BY customer_key
 		";
 	}
@@ -368,6 +383,11 @@ function brikpanel_recompute_cohort_retention_handler() {
 
 	$hpos = brikpanel_ca_is_hpos();
 
+	// Same exclusion as the LTV recompute so a POS/staff account doesn't
+	// inflate cohort sizes or retention percentages.
+	$excl_hpos   = function_exists( 'brikpanel_excluded_customer_sql' ) ? brikpanel_excluded_customer_sql( 'o.customer_id' ) : '';
+	$excl_legacy = function_exists( 'brikpanel_excluded_customer_sql' ) ? brikpanel_excluded_customer_sql( 'IFNULL(cu_meta.meta_value+0, 0)' ) : '';
+
 	// Build the source query: every counted order with a customer key + date.
 	if ( $hpos ) {
 		$source_sql = "
@@ -381,6 +401,7 @@ function brikpanel_recompute_cohort_retention_handler() {
 			WHERE o.type = 'shop_order'
 			  AND o.status IN ({$status_in})
 			  AND (o.customer_id > 0 OR o.billing_email <> '')
+			  {$excl_hpos}
 		";
 	} else {
 		$source_sql = "
@@ -396,6 +417,7 @@ function brikpanel_recompute_cohort_retention_handler() {
 			WHERE o.post_type = 'shop_order'
 			  AND o.post_status IN ({$status_in})
 			  AND (cu_meta.meta_value+0 > 0 OR em_meta.meta_value <> '')
+			  {$excl_legacy}
 		";
 	}
 

@@ -21,7 +21,10 @@ class Brikpanel_Expenses {
 	const TABLE       = 'brikpanel_expenses';
 
 	public function __construct() {
-		add_action( 'admin_menu', [ $this, 'register_page' ] );
+		// Priority 11 so this hook runs after Brikpanel_Vendors (10) when the
+		// master toggle is on — guarantees the parent slug exists by the time
+		// we register the submenu, even though WP doesn't strictly require it.
+		add_action( 'admin_menu', [ $this, 'register_page' ], 11 );
 		add_action( 'wp_ajax_brikpanel_expenses_list',   [ $this, 'ajax_list' ] );
 		add_action( 'wp_ajax_brikpanel_expenses_save',   [ $this, 'ajax_save' ] );
 		add_action( 'wp_ajax_brikpanel_expenses_delete', [ $this, 'ajax_delete' ] );
@@ -32,10 +35,21 @@ class Brikpanel_Expenses {
 	// =========================================================================
 
 	public function register_page() {
+		// Operational Expenses is fully scoped to the Vendors module — it
+		// lives as a submenu of the Vendors top-level menu and disappears
+		// entirely when the vendor master toggle is off. AJAX handlers stay
+		// registered so previously-saved data isn't orphaned, but there's no
+		// surface to reach the page from until the user re-enables vendors.
+		if (
+			! class_exists( 'Brikpanel_Vendors' )
+			|| 'yes' !== get_option( 'brikpanel_vendors_enabled', 'no' )
+		) {
+			return;
+		}
 		add_submenu_page(
-			'woocommerce',
-			__( 'Expenses', 'brikpanel' ),
-			__( 'Expenses', 'brikpanel' ),
+			Brikpanel_Vendors::PAGE_SLUG,
+			__( 'Operational Expenses', 'brikpanel' ),
+			__( 'Operational Expenses', 'brikpanel' ),
 			'manage_woocommerce',
 			self::PAGE_SLUG,
 			[ $this, 'render_page' ]
@@ -216,10 +230,18 @@ class Brikpanel_Expenses {
 				no_expenses:    <?php echo wp_json_encode( __( 'No expenses found.', 'brikpanel' ) ); ?>,
 				edit_title:     <?php echo wp_json_encode( __( 'Edit expense', 'brikpanel' ) ); ?>,
 				add_title:      <?php echo wp_json_encode( __( 'Add expense', 'brikpanel' ) ); ?>,
+				save:           <?php echo wp_json_encode( __( 'Save', 'brikpanel' ) ); ?>,
 				recurring_none:    <?php echo wp_json_encode( __( 'One-time', 'brikpanel' ) ); ?>,
 				recurring_monthly: <?php echo wp_json_encode( __( 'Monthly', 'brikpanel' ) ); ?>,
 				recurring_weekly:  <?php echo wp_json_encode( __( 'Weekly', 'brikpanel' ) ); ?>,
 				recurring_yearly:  <?php echo wp_json_encode( __( 'Yearly', 'brikpanel' ) ); ?>,
+				edit:              <?php echo wp_json_encode( __( 'Edit', 'brikpanel' ) ); ?>,
+				delete:            <?php echo wp_json_encode( __( 'Delete', 'brikpanel' ) ); ?>,
+				csv_date:          <?php echo wp_json_encode( __( 'Date', 'brikpanel' ) ); ?>,
+				csv_category:      <?php echo wp_json_encode( __( 'Category', 'brikpanel' ) ); ?>,
+				csv_description:   <?php echo wp_json_encode( __( 'Description', 'brikpanel' ) ); ?>,
+				csv_recurring:     <?php echo wp_json_encode( __( 'Recurring', 'brikpanel' ) ); ?>,
+				csv_amount:        <?php echo wp_json_encode( __( 'Amount', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>

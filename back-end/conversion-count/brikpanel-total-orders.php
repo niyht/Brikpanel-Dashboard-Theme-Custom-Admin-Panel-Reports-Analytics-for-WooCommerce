@@ -2,7 +2,10 @@
 if( ! defined( 'ABSPATH' ) ) exit;
 
 /**
- * Returns the count of successful orders (processing + completed) within a given date range.
+ * Returns the count of orders that count as realised sales within a given
+ * date range. Statuses come from brikpanel_kpi_revenue_statuses() — default
+ * processing + completed, extensible via the brikpanel_kpi_statuses filter
+ * (e.g. to include wc-on-hold for offline-payment-heavy merchants).
  *
  * @param string|null $start_date_gmt Start date in GMT (Y-m-d H:i:s format).
  * @param string|null $end_date_gmt   End date in GMT (Y-m-d H:i:s format).
@@ -11,7 +14,7 @@ if( ! defined( 'ABSPATH' ) ) exit;
 function brikpanel_get_order_count( $start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false ) {
     global $wpdb;
 
-    $include_statuses = array('wc-processing', 'wc-completed');
+    $include_statuses = brikpanel_kpi_revenue_statuses();
 
     $status_placeholders = implode( ', ', array_fill( 0, count( $include_statuses ), '%s' ) );
     $query_args = $include_statuses;

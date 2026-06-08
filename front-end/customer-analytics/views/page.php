@@ -30,6 +30,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 				</span>
 			</div>
 			<div class="bp-ca-header-right">
+				<button type="button" class="bp-ca-btn bp-ca-btn-secondary" id="bp-ca-exclude">
+					<?php esc_html_e( 'Exclude customers', 'brikpanel' ); ?>
+					<span class="bp-ca-excl-badge" id="bp-ca-excl-badge" hidden></span>
+				</button>
 				<button type="button" class="bp-ca-btn bp-ca-btn-secondary" id="bp-ca-refresh">
 					<?php esc_html_e( 'Recompute now', 'brikpanel' ); ?>
 				</button>
@@ -229,5 +233,39 @@ if ( ! defined( 'ABSPATH' ) ) {
 			</div>
 		</div>
 
+	</div>
+
+	<!-- ============================================================== -->
+	<!-- EXCLUDE-CUSTOMERS MODAL                                          -->
+	<!-- ============================================================== -->
+	<div class="bp-ca-modal-overlay" id="bp-ca-excl-overlay" hidden>
+		<div class="bp-ca-modal" role="dialog" aria-modal="true" aria-labelledby="bp-ca-excl-heading">
+			<div class="bp-ca-modal-head">
+				<h2 id="bp-ca-excl-heading"><?php esc_html_e( 'Exclude customers from analytics', 'brikpanel' ); ?></h2>
+				<button type="button" class="bp-ca-modal-close" id="bp-ca-excl-close" aria-label="<?php esc_attr_e( 'Close', 'brikpanel' ); ?>">&times;</button>
+			</div>
+			<div class="bp-ca-modal-body">
+				<p class="bp-ca-modal-intro"><?php esc_html_e( 'Pick the accounts you do not want counted as customers, for example a point-of-sale or staff login that places many orders. Their orders still count toward your shop revenue and order totals, but they are left out of customer averages, segments, and retention so the numbers reflect your real customers.', 'brikpanel' ); ?></p>
+
+				<div class="bp-ca-excl-section">
+					<h3><?php esc_html_e( 'People', 'brikpanel' ); ?></h3>
+					<div class="bp-ca-excl-search-wrap">
+						<input type="text" id="bp-ca-excl-search" class="bp-ca-excl-search" autocomplete="off" placeholder="<?php esc_attr_e( 'Search by name or email…', 'brikpanel' ); ?>">
+						<div class="bp-ca-excl-results" id="bp-ca-excl-results" hidden></div>
+					</div>
+					<div class="bp-ca-excl-chips" id="bp-ca-excl-chips"></div>
+				</div>
+
+				<div class="bp-ca-excl-section">
+					<h3><?php esc_html_e( 'Roles', 'brikpanel' ); ?></h3>
+					<p class="bp-ca-excl-hint"><?php esc_html_e( 'Everyone with a checked role is excluded too.', 'brikpanel' ); ?></p>
+					<div class="bp-ca-excl-roles" id="bp-ca-excl-roles"></div>
+				</div>
+			</div>
+			<div class="bp-ca-modal-foot">
+				<button type="button" class="bp-ca-btn bp-ca-btn-secondary" id="bp-ca-excl-cancel"><?php esc_html_e( 'Cancel', 'brikpanel' ); ?></button>
+				<button type="button" class="bp-ca-btn bp-ca-btn-primary" id="bp-ca-excl-save"><?php esc_html_e( 'Save changes', 'brikpanel' ); ?></button>
+			</div>
+		</div>
 	</div>
 </div>

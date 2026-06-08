@@ -89,7 +89,7 @@
 
 	function updateKpi(key, value) {
 		if (!$kpisContainer) return;
-		var card = $kpisContainer.querySelector('[data-kpi="' + key + '"] .brikpanel-cron-kpi-value');
+		var card = $kpisContainer.querySelector('[data-kpi="' + key + '"] .brikpanel-cron-kpi-value'); // i18n-ignore: selector fragment
 		if (card) card.textContent = (value === undefined || value === null) ? '0' : String(value);
 	}
 

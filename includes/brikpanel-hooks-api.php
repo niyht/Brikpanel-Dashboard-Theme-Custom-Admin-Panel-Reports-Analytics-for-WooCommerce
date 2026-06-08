@@ -61,6 +61,14 @@ function brikpanel_render_editor_boxes( $position, $product_id, $product ) {
         return $a['priority'] <=> $b['priority'];
     } );
 
+    // When ACF is active, make sure its hidden form-data block (nonce,
+    // post_id, …) is on the page exactly once. Developers commonly render
+    // ACF fields inside their box via acf_render_fields(); without this block
+    // ACF's save_post handler can't verify its nonce and silently drops the
+    // whole $_POST['acf'] payload. The JS save collector forwards both the
+    // ACF inputs and this block to the BrikPanel save endpoint.
+    brikpanel_pe_emit_acf_form_data( $product_id );
+
     foreach ( $filtered as $box ) {
         echo '<div class="brikpanel-pe-card brikpanel-pe-ext-card" id="' . esc_attr( $box['id'] ) . '" data-bpe-position="' . esc_attr( $position ) . '">';
         if ( $box['title'] !== '' ) {
@@ -76,6 +84,34 @@ function brikpanel_render_editor_boxes( $position, $product_id, $product ) {
         }
         echo '</div></div>';
     }
+}
+
+/**
+ * Emit ACF's hidden form-data block (`#acf-form-data`: _acf_nonce, _acf_post_id,
+ * _acf_screen, …) at most once per request, only when ACF is active.
+ *
+ * ACF's native `save_post` handler bails unless `acf_verify_nonce('post')`
+ * passes, which needs the `_acf_nonce` produced here. The BrikPanel editor
+ * fires `save_post` / `save_post_product` on save, and the JS payload forwards
+ * this block alongside the developer box inputs, so ACF fields rendered inside
+ * a `brikpanel_product_editor_boxes` card persist with no extra glue code.
+ *
+ * Guarded with a static so it is never printed twice (which would create
+ * duplicate hidden-input ids), regardless of how many editor boxes render or
+ * whether the native metaboxes card also requests it.
+ *
+ * @param int $product_id Product being edited (0 for new).
+ */
+function brikpanel_pe_emit_acf_form_data( $product_id ) {
+    static $done = false;
+    if ( $done || ! function_exists( 'acf_form_data' ) ) {
+        return;
+    }
+    $done = true;
+    acf_form_data( [
+        'screen'  => 'post',
+        'post_id' => (int) $product_id,
+    ] );
 }
 
 /**

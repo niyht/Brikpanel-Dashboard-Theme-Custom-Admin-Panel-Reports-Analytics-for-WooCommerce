@@ -500,3 +500,23 @@ p.search-box {
     margin: 11px 0;
     margin-top: -20px;
 }
+
+/* Global Unique ID (GTIN) column — hidden by default, opt-in via Screen Options */
+.wp-list-table .column-bpe_global_unique_id {
+    width: 11ch;
+    white-space: nowrap;
+}
+.brikpanel-pe-gid-empty {
+    color: #8a8a8a;
+}
+.brikpanel-pe-gid-multi {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 10px;
+    background: #f1f1f1;
+    color: #616161;
+    font-size: 0.75rem;
+    font-weight: 550;
+    line-height: 1.5;
+    cursor: default;
+}

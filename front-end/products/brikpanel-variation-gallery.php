@@ -17,6 +17,10 @@ if (get_option('brikpanel_simple_product_editor', 'yes') !== 'yes') {
     return;
 }
 
+if (get_option('brikpanel_variation_gallery_enabled', 'yes') !== 'yes') {
+    return;
+}
+
 /**
  * Add variation gallery image data to the variation JSON sent to the frontend.
  */

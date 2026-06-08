@@ -204,7 +204,7 @@
         var close = document.createElement('button');
         close.type = 'button';
         close.className = 'brikpanel-topbar-toast-close';
-        close.setAttribute('aria-label', 'Close');
+        close.setAttribute('aria-label', (window.brikpanelTopbar && window.brikpanelTopbar.i18n && window.brikpanelTopbar.i18n.close) || 'Close');
         close.innerHTML = '&times;';
         close.addEventListener('click', function () { dismiss(); });
         toast.appendChild(close);

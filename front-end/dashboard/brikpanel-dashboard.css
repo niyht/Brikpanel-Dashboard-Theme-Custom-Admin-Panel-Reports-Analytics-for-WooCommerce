@@ -50,6 +50,10 @@
     flex-wrap: wrap;
 }
 
+.brikpanel-dash-range-wrap {
+    position: relative;
+}
+
 .brikpanel-dash-presets {
     display: flex;
     gap: 0;
@@ -86,6 +90,13 @@
     color: #fff;
 }
 
+.brikpanel-dash-custom-range {
+    position: absolute;
+    top: calc(100% + 0.375rem);
+    right: 0;
+    z-index: 100;
+}
+
 .brikpanel-dash-custom-range input {
     padding: 0.4375rem 0.75rem;
     font-size: 0.8125rem;
@@ -94,6 +105,7 @@
     color: var(--bp-text);
     background: var(--bp-card);
     min-width: 220px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .brikpanel-dash-custom-range input:focus {
@@ -160,6 +172,356 @@
 
 .brikpanel-dash-card-delta.neutral {
     color: var(--bp-text-muted);
+}
+
+/* No-baseline period ("New"): distinct from a flat "--" but not styled as
+   growth, since there's nothing to compare against. */
+.brikpanel-dash-card-delta.is-new {
+    color: var(--bp-text-secondary);
+    font-weight: 600;
+}
+
+/* Data-quality caution on the Cost of Goods card — missing costs make the
+   Net profit optimistic, so flag it in the error tone (the only accent the
+   monochrome palette allows) without an arrow. */
+.brikpanel-dash-card-delta.warn {
+    color: var(--bp-error);
+    font-weight: 600;
+}
+
+/* Net profit shown while some sold items have no cost on file: a quiet,
+   monochrome "!" next to the label instead of a loud card border. It
+   reveals what to fix on hover/focus. */
+.brikpanel-dash-flag {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    margin-left: 0.375rem;
+    border-radius: 50%;
+    border: 1px solid var(--bp-text-muted);
+    color: var(--bp-text-secondary);
+    cursor: help;
+    vertical-align: middle;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.brikpanel-dash-flag:hover,
+.brikpanel-dash-flag:focus-visible {
+    border-color: var(--bp-text);
+    color: var(--bp-text);
+    outline: none;
+}
+
+.brikpanel-dash-flag-mark {
+    font-size: 0.625rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.brikpanel-dash-flag-tip {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    width: max-content;
+    max-width: 220px;
+    padding: 0.5rem 0.625rem;
+    background: var(--bp-card);
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+    border: 1px solid var(--bp-border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 20;
+}
+
+/* Small arrow above the tooltip pointing up at the "!" */
+.brikpanel-dash-flag-tip::after {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-bottom-color: var(--bp-border);
+}
+
+.brikpanel-dash-flag:hover .brikpanel-dash-flag-tip,
+.brikpanel-dash-flag:focus-visible .brikpanel-dash-flag-tip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* "Cost missing on N items" tooltip — same anchor as the simple one but
+   wider, with a heading + scrollable list of product names so the merchant
+   can see exactly which products to fix without leaving the dashboard.
+   Width covers typical product names (incl. variant suffixes and the
+   "no longer in catalog" tag) without forcing the merchant to read an
+   ellipsis. Caps at viewport-32 so it never overflows on narrow screens. */
+.brikpanel-dash-flag-tip-list {
+    width: 340px;
+    max-width: min(420px, calc(100vw - 32px));
+    padding: 0.625rem 0.75rem;
+    /* The simple tooltip is read-only, but this one has a scrollable product
+       list, so the cursor must be able to enter it and spin the wheel. */
+    pointer-events: auto;
+}
+
+/* Invisible bridge spanning the 8px gap between the "!" and the tooltip. The
+   bridge is a descendant of the flag, so while the cursor travels down across
+   it the flag stays `:hover` and the tooltip never closes mid-trip — without
+   it the merchant loses hover in the gap and can't reach the list to scroll.
+   Only shown while the tooltip is, since the hidden tooltip has no pointer
+   events (visibility: hidden), keeping the bridge inert when not needed. */
+.brikpanel-dash-flag-tip-list::before {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 10px;
+}
+
+.brikpanel-dash-flag-tip-title {
+    display: block;
+    margin-bottom: 0.375rem;
+    color: var(--bp-text);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.brikpanel-dash-flag-tip-items {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.brikpanel-dash-flag-tip-item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border-top: 1px solid var(--bp-border);
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: var(--bp-text-secondary);
+}
+
+.brikpanel-dash-flag-tip-items > .brikpanel-dash-flag-tip-item:first-child {
+    border-top: 0;
+}
+
+.brikpanel-dash-flag-tip-item-name {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--bp-text);
+    font-weight: 500;
+}
+
+.brikpanel-dash-flag-tip-item-meta {
+    flex-shrink: 0;
+    color: var(--bp-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.brikpanel-dash-flag-tip-item-meta .woocommerce-Price-amount,
+.brikpanel-dash-flag-tip-item-meta bdi {
+    color: inherit;
+    font-size: inherit;
+}
+
+.brikpanel-dash-flag-tip-item-unlinked {
+    color: var(--bp-text-muted);
+    font-style: normal;
+    font-weight: 400;
+    font-size: 0.6875rem;
+}
+
+/* ===== Profit section ===== */
+.brikpanel-dash-profit {
+    margin-bottom: 1.25rem;
+}
+
+/* Higher specificity (.brikpanel-dash-profit .…) so this always wins over the
+   shared `.brikpanel-dash-cards` responsive rules regardless of source order.
+   align-items:start so expanding the Expenses breakdown grows only that card
+   downward — the other three stay compact and top-aligned. */
+.brikpanel-dash-profit .brikpanel-dash-cards-profit {
+    grid-template-columns: repeat(4, 1fr);
+    margin-bottom: 0;
+    align-items: start;
+}
+
+.brikpanel-dash-cards-profit .brikpanel-dash-card-delta-static {
+    color: var(--bp-text-muted);
+    font-weight: 500;
+}
+
+/* Keep every profit sub-label to a single line. Long deltas — the COGS
+   warning ("cost missing on N items — profit overstated") and the Net profit
+   trend ("↑ 507% · 64.4% of revenue") — otherwise wrap to two lines in the
+   4-column range (≤1500px), growing only that one card and breaking the row's
+   top alignment (the row uses align-items:start so the Expenses breakdown can
+   expand alone, so cards do NOT auto-equalize). Clamping to one line keeps all
+   four cards the same height at any width; the COGS detail still lives in the
+   "!" tooltip next to its label. */
+.brikpanel-dash-cards-profit .brikpanel-dash-card-delta {
+    display: block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Expenses breakdown: collapsible list inside the Expenses card ---- */
+.brikpanel-dash-card[data-metric="profit_expenses"] {
+    position: relative;
+}
+
+/* Icon-only affordance in the card's top-right corner. Absolutely
+   positioned so it adds NO flow height — all four cards stay identical
+   when collapsed; only expanding grows the Expenses card. */
+.brikpanel-dash-bd-toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: 0;
+    padding: 0.2rem;
+    position: absolute;
+    top: 0.7rem;
+    right: 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--bp-text-muted);
+    line-height: 0;
+    border-radius: 0.375rem;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.brikpanel-dash-bd-toggle:hover {
+    color: var(--bp-text);
+    background: var(--bp-bg);
+}
+
+.brikpanel-dash-bd-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--bp-text);
+}
+
+.brikpanel-dash-bd-toggle[hidden] {
+    display: none;
+}
+
+.brikpanel-dash-bd-chevron {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brikpanel-dash-card.is-bd-open .brikpanel-dash-bd-chevron {
+    transform: rotate(180deg);
+}
+
+/* Grid-rows 0fr → 1fr collapse (BrikPanel design-system technique) */
+.brikpanel-dash-bd-collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    /* Cancel the parent card's flex `gap` while collapsed so the Expenses
+       card stays pixel-identical to the other three. */
+    margin-top: -0.25rem;
+    transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brikpanel-dash-card.is-bd-open .brikpanel-dash-bd-collapse {
+    margin-top: 0;
+}
+
+.brikpanel-dash-card.is-bd-open .brikpanel-dash-bd-collapse {
+    grid-template-rows: 1fr;
+    opacity: 1;
+}
+
+.brikpanel-dash-bd-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
+.brikpanel-dash-bd-list {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--bp-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.brikpanel-dash-bd-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.brikpanel-dash-bd-k {
+    color: var(--bp-text-secondary);
+    font-weight: 550;
+}
+
+.brikpanel-dash-bd-v {
+    color: var(--bp-text);
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.brikpanel-dash-bd-v .woocommerce-Price-amount {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+.brikpanel-dash-bd-pct {
+    color: var(--bp-text-muted);
+    font-weight: 550;
+    margin-left: 0.25rem;
+}
+
+.brikpanel-dash-card[data-metric="profit_net"].is-profit .brikpanel-dash-card-value {
+    color: var(--bp-success);
+}
+
+.brikpanel-dash-card[data-metric="profit_net"].is-loss .brikpanel-dash-card-value {
+    color: var(--bp-error);
+}
+
+@media (max-width: 960px) {
+    .brikpanel-dash-profit .brikpanel-dash-cards-profit {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .brikpanel-dash-profit .brikpanel-dash-cards-profit {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 /* ===== Panels / Rows ===== */
@@ -372,6 +734,25 @@
 
 .brikpanel-dash-table tr:last-child td {
     border-bottom: none;
+}
+
+.brikpanel-dash-table tr.brikpanel-dash-row-link {
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+
+.brikpanel-dash-table tr.brikpanel-dash-row-link:hover td,
+.brikpanel-dash-table tr.brikpanel-dash-row-link:focus-visible td {
+    background-color: #f7f7f7;
+}
+
+.brikpanel-dash-table tr.brikpanel-dash-row-link:focus {
+    outline: none;
+}
+
+.brikpanel-dash-table tr.brikpanel-dash-row-link:focus-visible {
+    outline: 2px solid var(--bp-input-focus);
+    outline-offset: -2px;
 }
 
 .brikpanel-dash-table .rank {
@@ -787,6 +1168,54 @@
     .brikpanel-dash-cards {
         grid-template-columns: repeat(2, 1fr);
     }
+
+    /* Drop the filter bar onto its own full-width row beneath the title so the
+       controls have room to breathe instead of fighting the heading for space. */
+    .brikpanel-dash-filters {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    .brikpanel-dash-range-wrap {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    /* The joined segmented control turns ragged the moment it wraps (stray
+       internal dividers, a chopped border-radius). Below tablet width, recast
+       the presets as individual rounded pills that wrap cleanly and stretch to
+       fill each row. */
+    .brikpanel-dash-presets {
+        flex-wrap: wrap;
+        gap: 0.375rem;
+        border: 0;
+        background: transparent;
+        border-radius: 0;
+        overflow: visible;
+    }
+
+    .brikpanel-dash-preset {
+        flex: 1 1 auto;
+        justify-content: center;
+        text-align: center;
+        border: 1px solid var(--bp-border);
+        border-radius: 0.5rem;
+        background: var(--bp-card);
+    }
+
+    .brikpanel-dash-preset.active {
+        border-color: var(--bp-primary);
+    }
+}
+
+/* WordPress' mobile #wpcontent padding is 10px-left / 0-right (it kicks in
+   at 782px, where the admin menu collapses), which shoves the whole dashboard
+   off-centre on BOTH tablet and phone. Zero it and let the wrapper's own
+   symmetric padding be the gutter. */
+@media (max-width: 782px) {
+    body.admin_page_brikpanel-dashboard #wpcontent {
+        padding-left: 0 !important;
+    }
 }
 
 @media (max-width: 600px) {
@@ -796,16 +1225,58 @@
 
     .brikpanel-dash-header {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
+        gap: 0.75rem;
     }
 
-    .brikpanel-dash-cards {
-        grid-template-columns: 1fr;
+    /* Stack the action buttons full-width so each is a comfortable tap target
+       instead of three controls crammed onto one squeezed row. */
+    .brikpanel-dash-filters {
+        gap: 0.5rem;
     }
 
-    .brikpanel-dash-presets {
+    .brikpanel-dash-copy-wrap {
         flex-wrap: wrap;
-        border-radius: 0.5rem;
+        gap: 0.5rem;
+    }
+
+    .brikpanel-dash-copy-summary {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+
+    .brikpanel-dash-ads-cta {
+        flex: 1 1 auto;
+        margin-left: 0;
+        justify-content: center;
+    }
+
+    /* Keep KPI cards two-up on phones — a single column wastes half the
+       screen and turns ~10 metrics into an endless scroll. min-width:0 lets
+       each card shrink to its grid track instead of overflowing on long
+       values/sub-labels. */
+    .brikpanel-dash-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.625rem;
+    }
+
+    .brikpanel-dash-cards .brikpanel-dash-card {
+        min-width: 0;
+        overflow: hidden;
+        padding: 0.875rem 1rem;
+    }
+
+    /* Long currency totals (e.g. "$436,392.61") overflow a half-width card at
+       the desktop value size, so step it down a touch on phones. */
+    .brikpanel-dash-card-value {
+        font-size: 1.25rem;
+    }
+
+    .brikpanel-dash-card-value,
+    .brikpanel-dash-card-sub,
+    .brikpanel-dash-card-label {
+        overflow-wrap: anywhere;
+        white-space: normal;
     }
 
     /* Hide Source column in Recent Orders on mobile */
@@ -1348,6 +1819,13 @@
 /* =========================================================================
    COPY EVERYTHING BUTTON (store summary)
    ========================================================================= */
+.brikpanel-dash-copy-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
 .brikpanel-dash-copy-summary {
     position: relative;
     display: inline-flex;
@@ -1368,6 +1846,114 @@
     white-space: nowrap;
     -webkit-appearance: none;
     appearance: none;
+}
+
+/* Help icon — sits next to the Copy everything button */
+.brikpanel-dash-copy-help {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    color: var(--bp-text-muted, #8a8a8a);
+    border-radius: 50%;
+    cursor: help;
+    transition: color 0.15s ease, background 0.15s ease;
+    outline: none;
+}
+
+.brikpanel-dash-copy-help:hover,
+.brikpanel-dash-copy-help:focus-visible {
+    color: var(--bp-text, #303030);
+    background: rgba(48,48,48,0.08);
+}
+
+.brikpanel-dash-copy-help:focus-visible {
+    box-shadow: 0 0 0 2px var(--bp-primary, #303030);
+}
+
+.brikpanel-dash-copy-help-icon {
+    display: block;
+    pointer-events: none;
+}
+
+.brikpanel-dash-copy-help-tip {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    z-index: 100;
+    display: block;
+    width: max-content;
+    max-width: 280px;
+    padding: 0.625rem 0.75rem;
+    background: #303030;
+    color: #fff;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12);
+    font-size: 0.75rem;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+
+/* Arrow */
+.brikpanel-dash-copy-help-tip::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 8px;
+    height: 8px;
+    background: #303030;
+    border-radius: 1px;
+}
+
+.brikpanel-dash-copy-help:hover .brikpanel-dash-copy-help-tip,
+.brikpanel-dash-copy-help:focus-visible .brikpanel-dash-copy-help-tip,
+.brikpanel-dash-copy-help:focus-within .brikpanel-dash-copy-help-tip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+.brikpanel-dash-copy-help-title {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 0.1875rem;
+    color: #fff;
+}
+
+.brikpanel-dash-copy-help-body {
+    display: block;
+    color: rgba(255,255,255,0.85);
+}
+
+/* When the wrapper is near the right edge of the viewport on smaller screens,
+   anchor the tooltip to the right so it doesn't get clipped. */
+@media (max-width: 900px) {
+    .brikpanel-dash-copy-help-tip {
+        left: auto;
+        right: -4px;
+        transform: translateY(-4px);
+    }
+    .brikpanel-dash-copy-help-tip::before {
+        left: auto;
+        right: 8px;
+        transform: rotate(45deg);
+    }
+    .brikpanel-dash-copy-help:hover .brikpanel-dash-copy-help-tip,
+    .brikpanel-dash-copy-help:focus-visible .brikpanel-dash-copy-help-tip,
+    .brikpanel-dash-copy-help:focus-within .brikpanel-dash-copy-help-tip {
+        transform: translateY(0);
+    }
 }
 
 .brikpanel-dash-copy-summary:hover:not(:disabled) {
@@ -1488,9 +2074,86 @@
 }
 
 @media (max-width: 600px) {
-    .brikpanel-dash-copy-summary {
+    .brikpanel-dash-copy-wrap {
         order: -1;
         flex: 1 1 100%;
+        justify-content: center;
+    }
+    .brikpanel-dash-copy-summary {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+}
+
+/* =========================================================================
+   EXPORT CSV BUTTON  (secondary style — mirrors the design system)
+   ========================================================================= */
+.brikpanel-dash-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    line-height: 1;
+    color: var(--bp-text, #303030);
+    background: var(--bp-card, #fff);
+    border: 0;
+    border-radius: 0.5rem;
+    box-shadow: inset 0 0 0 1px var(--bp-border, #e3e3e3), 0 1px 0 rgba(0,0,0,0.05);
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+    white-space: nowrap;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.brikpanel-dash-export:hover:not(:disabled) {
+    background: #f7f7f7;
+}
+
+.brikpanel-dash-export:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.brikpanel-dash-export:focus-visible {
+    outline: 2px solid var(--bp-primary, #303030);
+    outline-offset: 1px;
+}
+
+.brikpanel-dash-export:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.brikpanel-dash-export-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--bp-text-secondary, #616161);
+}
+
+/* =========================================================================
+   PERIOD SUBTITLE  (which dates / how long the report covers)
+   ========================================================================= */
+.brikpanel-dash-period {
+    display: flex;
+    align-items: center;
+    gap: 0.4375rem;
+    margin: -0.5rem 0 1.25rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--bp-text-secondary, #616161);
+}
+
+.brikpanel-dash-period-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--bp-text-muted, #8a8a8a);
+}
+
+@media (max-width: 600px) {
+    .brikpanel-dash-export {
+        flex: 1 1 auto;
         justify-content: center;
     }
 }

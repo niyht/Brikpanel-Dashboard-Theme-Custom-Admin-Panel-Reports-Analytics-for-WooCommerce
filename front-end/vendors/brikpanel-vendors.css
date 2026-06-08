@@ -1,0 +1,744 @@
+/**
+ * BrikPanel — Vendors page.
+ * Shopify-inspired, monochrome design system. Mirrors brikpanel-expenses.css
+ * so admins move between Vendors / Expenses / Stock Orders without visual
+ * jumps.
+ */
+
+:root {
+    --ven-bg:             #f1f1f1;
+    --ven-card:           #ffffff;
+    --ven-text:           #303030;
+    --ven-text-secondary: #616161;
+    --ven-text-muted:     #8a8a8a;
+    --ven-border:         #e3e3e3;
+    --ven-input-border:   #8a8a8a;
+    --ven-input-focus:    #303030;
+    --ven-primary:        #303030;
+    --ven-primary-hover:  #1a1a1a;
+    --ven-success:        #1a8917;
+    --ven-error:          #d72c0d;
+    --ven-radius:         0.5rem;
+    --ven-radius-card:    0.75rem;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.brikpanel-ven-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 0 2rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--ven-text);
+    box-sizing: border-box;
+}
+.brikpanel-ven-wrap *,
+.brikpanel-ven-wrap *::before,
+.brikpanel-ven-wrap *::after { box-sizing: border-box; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.brikpanel-ven-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 1.5rem 0 1rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.brikpanel-ven-header h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--ven-text);
+}
+.brikpanel-ven-subtitle {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--ven-text-secondary);
+    line-height: 1.5;
+}
+
+/* ── Summary bar ────────────────────────────────────────────────────────── */
+.brikpanel-ven-summary {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+.brikpanel-ven-summary-card {
+    background: var(--ven-card);
+    border: 1px solid var(--ven-border);
+    border-radius: var(--ven-radius-card);
+    padding: 1rem 1.25rem;
+    min-width: 160px;
+    flex: 1 1 160px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.brikpanel-ven-summary-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ven-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.375rem;
+}
+.brikpanel-ven-summary-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--ven-text);
+    line-height: 1.2;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+.brikpanel-ven-card {
+    background: var(--ven-card);
+    border: 1px solid var(--ven-border);
+    border-radius: var(--ven-radius-card);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 1rem;
+}
+
+/* ── Filters ────────────────────────────────────────────────────────────── */
+.brikpanel-ven-filters { padding: 1.125rem 1.25rem; }
+.brikpanel-ven-filter-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.brikpanel-ven-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 0;
+}
+.brikpanel-ven-field-grow { flex: 1 1 280px; }
+.brikpanel-ven-field-full { grid-column: 1 / -1; }
+.brikpanel-ven-field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ven-text);
+    line-height: 1;
+}
+.brikpanel-ven-req { color: var(--ven-error); }
+.brikpanel-ven-field input[type="date"],
+.brikpanel-ven-field input[type="text"],
+.brikpanel-ven-field input[type="search"],
+.brikpanel-ven-field input[type="email"],
+.brikpanel-ven-field input[type="url"],
+.brikpanel-ven-field input[type="number"],
+.brikpanel-ven-field select,
+.brikpanel-ven-field textarea {
+    border: 1px solid var(--ven-input-border);
+    border-radius: var(--ven-radius);
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--ven-text);
+    background: #fff;
+    line-height: 1.4;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+    font-family: inherit;
+}
+.brikpanel-ven-field input:focus,
+.brikpanel-ven-field select:focus,
+.brikpanel-ven-field textarea:focus {
+    outline: none;
+    border-color: var(--ven-input-focus);
+    box-shadow: 0 0 0 1px var(--ven-input-focus);
+}
+.brikpanel-ven-field input::placeholder,
+.brikpanel-ven-field textarea::placeholder { color: var(--ven-text-muted); }
+.brikpanel-ven-field textarea { resize: vertical; }
+
+/* ── Input group (prefix) ───────────────────────────────────────────────── */
+.brikpanel-ven-input-group {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--ven-input-border);
+    border-radius: var(--ven-radius);
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.brikpanel-ven-input-group:focus-within {
+    border-color: var(--ven-input-focus);
+    box-shadow: 0 0 0 1px var(--ven-input-focus);
+}
+.brikpanel-ven-prefix {
+    display: flex;
+    align-items: center;
+    padding: 0 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--ven-text-secondary);
+    background: #f7f7f7;
+    border-right: 1px solid var(--ven-border);
+    flex-shrink: 0;
+}
+.brikpanel-ven-input-group input { border: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+
+/* ── Checkbox label ─────────────────────────────────────────────────────── */
+.brikpanel-ven-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--ven-text);
+}
+.brikpanel-ven-checkbox-label input { width: 16px; height: 16px; margin: 0; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.brikpanel-ven-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    border-radius: var(--ven-radius);
+    cursor: pointer;
+    border: 0;
+    line-height: 1.3;
+    text-decoration: none;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+.brikpanel-ven-btn-primary {
+    background: var(--ven-primary);
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.brikpanel-ven-btn-primary:hover { background: var(--ven-primary-hover); color: #fff; }
+.brikpanel-ven-btn-secondary {
+    background: #fff;
+    color: var(--ven-text);
+    box-shadow: inset 0 0 0 1px var(--ven-border), 0 1px 0 rgba(0,0,0,0.05);
+}
+.brikpanel-ven-btn-secondary:hover { background: #f7f7f7; color: var(--ven-text); }
+.brikpanel-ven-btn-icon {
+    background: transparent;
+    color: var(--ven-text-secondary);
+    padding: 0.25rem 0.5rem;
+}
+.brikpanel-ven-btn-icon:hover { color: var(--ven-text); }
+.brikpanel-ven-btn-danger {
+    background: #fff;
+    color: var(--ven-error);
+    box-shadow: inset 0 0 0 1px var(--ven-border);
+}
+.brikpanel-ven-btn-danger:hover { background: #fef0ee; }
+
+/* ── Table ──────────────────────────────────────────────────────────────── */
+.brikpanel-ven-table-wrap { overflow-x: auto; }
+.brikpanel-ven-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+.brikpanel-ven-table thead th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ven-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--ven-border);
+    background: #fafafa;
+    white-space: nowrap;
+}
+.brikpanel-ven-table tbody td {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid var(--ven-border);
+    vertical-align: middle;
+}
+.brikpanel-ven-table tbody tr:last-child td { border-bottom: 0; }
+.brikpanel-ven-table tbody tr:hover { background: #fafafa; }
+.brikpanel-ven-num { text-align: right; }
+.brikpanel-ven-actions-th { width: 90px; text-align: right; }
+.brikpanel-ven-empty {
+    text-align: center;
+    padding: 2.5rem 1rem !important;
+    color: var(--ven-text-muted);
+    font-style: italic;
+}
+.brikpanel-ven-vendor-name {
+    font-weight: 600;
+    color: var(--ven-text);
+}
+.brikpanel-ven-vendor-meta {
+    font-size: 0.75rem;
+    color: var(--ven-text-muted);
+    margin-top: 2px;
+}
+.brikpanel-ven-archived-pill {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: #f1f1f1;
+    color: var(--ven-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.brikpanel-ven-row-actions {
+    display: inline-flex;
+    gap: 0.25rem;
+    justify-content: flex-end;
+    width: 100%;
+}
+
+/* ── Pagination ─────────────────────────────────────────────────────────── */
+.brikpanel-ven-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-top: 1px solid var(--ven-border);
+}
+.brikpanel-ven-page-info {
+    font-size: 0.8125rem;
+    color: var(--ven-text-secondary);
+}
+
+/* ── Modal ──────────────────────────────────────────────────────────────── */
+.brikpanel-ven-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    animation: brikpanel-ven-fade 0.15s ease-out;
+}
+.brikpanel-ven-overlay[hidden] { display: none !important; }
+.brikpanel-ven-pagination[hidden] { display: none !important; }
+.brikpanel-ven-suggestions[hidden] { display: none !important; }
+@keyframes brikpanel-ven-fade { from { opacity: 0; } to { opacity: 1; } }
+.brikpanel-ven-modal {
+    background: var(--ven-card);
+    border-radius: var(--ven-radius-card);
+    width: 100%;
+    max-width: 720px;
+    max-height: calc(100vh - 4rem);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    animation: brikpanel-ven-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* The form is a flex child that itself contains the scrollable body and the
+ * sticky footer. Without flex layout here the body's overflow:auto would never
+ * activate and the Save button would clip below the viewport. min-height:0 lets
+ * the body actually shrink past its intrinsic content height. */
+.brikpanel-ven-modal > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+}
+@keyframes brikpanel-ven-pop {
+    from { transform: translateY(8px) scale(0.98); opacity: 0; }
+    to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+.brikpanel-ven-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--ven-border);
+    flex-shrink: 0;
+}
+.brikpanel-ven-modal-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ven-text);
+}
+.brikpanel-ven-modal-close {
+    background: transparent;
+    border: 0;
+    color: var(--ven-text-secondary);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+}
+.brikpanel-ven-modal-close:hover { color: var(--ven-text); }
+.brikpanel-ven-modal-body {
+    padding: 1.25rem 1.5rem;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.brikpanel-ven-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+}
+.brikpanel-ven-modal-grid .brikpanel-ven-field-full { grid-column: 1 / -1; }
+.brikpanel-ven-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--ven-border);
+    background: #fafafa;
+    flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+    .brikpanel-ven-modal-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Vendor link + muted helper ─────────────────────────────────────────── */
+.brikpanel-ven-vendor-link {
+    color: var(--ven-text);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s, color 0.15s;
+}
+.brikpanel-ven-vendor-link:hover {
+    color: var(--ven-text);
+    border-bottom-color: var(--ven-text);
+}
+.brikpanel-ven-muted { color: var(--ven-text-muted); }
+
+/* ── Lead time delta pill (used in list + detail) ──────────────────────── */
+.brikpanel-ven-delta {
+    display: inline-block;
+    margin-left: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ven-text-secondary);
+}
+.brikpanel-ven-delta.is-slow { color: var(--ven-error); }
+.brikpanel-ven-delta.is-fast { color: var(--ven-success); }
+
+/* ── Summary card sub-line (detail stats) ──────────────────────────────── */
+.brikpanel-ven-summary-sub {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--ven-text-muted);
+    line-height: 1.3;
+    min-height: 1em;
+}
+.brikpanel-ven-summary-sub:empty { display: none; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * DETAIL PAGE
+ * ────────────────────────────────────────────────────────────────────── */
+
+.brikpanel-ven-detail-wrap { max-width: 1100px; }
+
+.brikpanel-ven-detail-topbar {
+    padding: 1rem 0 0;
+}
+.brikpanel-ven-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--ven-text-secondary);
+    text-decoration: none;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    padding: 0.375rem 0.5rem;
+    border-radius: var(--ven-radius);
+    transition: background 0.15s, color 0.15s;
+}
+.brikpanel-ven-back:hover {
+    color: var(--ven-text);
+    background: #ececec;
+}
+
+.brikpanel-ven-detail-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 0.75rem 0 1rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.brikpanel-ven-detail-header h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.375rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.brikpanel-ven-detail-header-right {
+    display: inline-flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-ven-detail-stats {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+.brikpanel-ven-detail-stats .brikpanel-ven-summary-card {
+    min-width: 0;
+    flex: none;
+}
+@media (max-width: 1024px) { .brikpanel-ven-detail-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .brikpanel-ven-detail-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.brikpanel-ven-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+@media (max-width: 880px) {
+    .brikpanel-ven-detail-grid { grid-template-columns: 1fr; }
+}
+.brikpanel-ven-detail-grid > .brikpanel-ven-card { margin-bottom: 0; }
+
+/* Card sub-headers */
+.brikpanel-ven-card__header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid var(--ven-border);
+}
+.brikpanel-ven-card__header h2 {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--ven-text);
+}
+.brikpanel-ven-card__desc {
+    margin: 0.25rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--ven-text-secondary);
+    line-height: 1.45;
+}
+.brikpanel-ven-card__header--row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.brikpanel-ven-card__link {
+    font-size: 0.8125rem;
+    font-weight: 550;
+    color: var(--ven-text-secondary);
+    text-decoration: none;
+}
+.brikpanel-ven-card__link:hover { color: var(--ven-text); }
+
+.brikpanel-ven-card__body {
+    padding: 1rem 1.25rem 1.25rem;
+}
+
+/* Definition list — vendor info */
+.brikpanel-ven-info-list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.5rem 1rem;
+    margin: 0;
+    font-size: 0.8125rem;
+}
+.brikpanel-ven-info-list dt {
+    color: var(--ven-text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.75rem;
+    padding-top: 0.125rem;
+}
+.brikpanel-ven-info-list dd {
+    margin: 0;
+    color: var(--ven-text);
+    word-break: break-word;
+}
+.brikpanel-ven-info-list dd a {
+    color: var(--ven-text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ven-border);
+}
+.brikpanel-ven-info-list dd a:hover { border-bottom-color: var(--ven-text); }
+.brikpanel-ven-info-notes {
+    color: var(--ven-text-secondary);
+    line-height: 1.5;
+}
+
+/* SVG bar chart */
+.brikpanel-ven-chart {
+    width: 100%;
+    height: 160px;
+}
+.brikpanel-ven-chart svg { display: block; }
+.brikpanel-ven-chart-empty {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--ven-text-muted);
+    font-size: 0.8125rem;
+    font-style: italic;
+}
+
+/* PO status pills (mirrors stock-orders) */
+.brikpanel-ven-status {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: #f1f1f1;
+    color: var(--ven-text-secondary);
+    border: 1px solid var(--ven-border);
+    line-height: 1.5;
+}
+.brikpanel-ven-status--draft              { background: #f1f1f1; color: var(--ven-text-secondary); }
+.brikpanel-ven-status--ordered            { background: #eef3fa; color: #1f4f8a; border-color: #d4e1f1; }
+.brikpanel-ven-status--partially_received { background: #fff4e0; color: #8a5b00; border-color: #f5dfae; }
+.brikpanel-ven-status--received           { background: #e4f5e1; color: #1a6b15; border-color: #b7e1b0; }
+.brikpanel-ven-status--cancelled          { background: #fce4e4; color: #c62828; border-color: #f1b0b0; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * SETTINGS PAGE
+ * ────────────────────────────────────────────────────────────────────── */
+
+.brikpanel-ven-settings-wrap { max-width: 820px; }
+
+.brikpanel-ven-callout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 0.5rem;
+    padding: 0.875rem 1rem;
+    border-radius: var(--ven-radius-card);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    margin-bottom: 1rem;
+    border: 1px solid var(--ven-border);
+    background: #fafafa;
+    color: var(--ven-text);
+}
+.brikpanel-ven-callout strong { color: var(--ven-text); font-weight: 600; }
+
+.brikpanel-ven-settings-form .brikpanel-ven-card { margin-bottom: 1rem; }
+
+.brikpanel-ven-setting-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 0.875rem 0;
+    border-bottom: 1px solid var(--ven-border);
+}
+.brikpanel-ven-setting-row:first-child { padding-top: 0; }
+.brikpanel-ven-setting-row:last-child  { padding-bottom: 0; border-bottom: 0; }
+
+.brikpanel-ven-setting-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.brikpanel-ven-setting-label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ven-text);
+    line-height: 1.3;
+    cursor: pointer;
+}
+.brikpanel-ven-setting-desc {
+    margin: 0.25rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--ven-text-secondary);
+    line-height: 1.45;
+}
+
+.brikpanel-ven-setting-control {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    min-height: 22px;
+}
+.brikpanel-ven-setting-input {
+    border: 1px solid var(--ven-input-border);
+    border-radius: var(--ven-radius);
+    padding: 0.5rem 0.625rem;
+    font-size: 0.875rem;
+    color: var(--ven-text);
+    background: #fff;
+    line-height: 1.4;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    min-width: 200px;
+    max-width: 260px;
+    font-family: inherit;
+}
+.brikpanel-ven-setting-input:focus {
+    outline: none;
+    border-color: var(--ven-input-focus);
+    box-shadow: 0 0 0 1px var(--ven-input-focus);
+}
+
+/* Toggle switch — design system: 40x22, primary on, grey off */
+.brikpanel-ven-switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.brikpanel-ven-switch input {
+    position: absolute;
+    width: 0; height: 0;
+    opacity: 0;
+    margin: 0;
+    pointer-events: none;
+}
+.brikpanel-ven-switch-slider {
+    position: absolute;
+    inset: 0;
+    background: #ccc;
+    border-radius: 22px;
+    transition: background 0.15s ease;
+}
+.brikpanel-ven-switch-slider::before {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: transform 0.15s ease;
+}
+.brikpanel-ven-switch input:checked + .brikpanel-ven-switch-slider {
+    background: var(--ven-primary);
+}
+.brikpanel-ven-switch input:checked + .brikpanel-ven-switch-slider::before {
+    transform: translateX(18px);
+}
+.brikpanel-ven-switch input:focus-visible + .brikpanel-ven-switch-slider {
+    box-shadow: 0 0 0 2px rgba(48,48,48,0.2);
+}
+
+.brikpanel-ven-settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+@media (max-width: 600px) {
+    .brikpanel-ven-setting-row {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .brikpanel-ven-setting-input { min-width: 100%; max-width: 100%; }
+}

@@ -13,7 +13,7 @@
  * break the "topbar adds zero overhead" guarantee.
  *
  * @package BrikPanel
- * @since   3.1.0
+ * @since   3.1.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -29,10 +29,17 @@ class Brikpanel_BrikControl_Image_Plugins {
 
     /**
      * Static catalogue of supported optimisers. Each entry:
-     *  - label  : Display name (translatable).
-     *  - slug   : wp.org plugin directory slug (used for the install link).
-     *  - search : Fallback search term for plugin-install.php?s=...
-     *  - detect : Cheap predicate returning true when active.
+     *  - label    : Display name (translatable).
+     *  - slug     : wp.org plugin directory slug (used for the install link).
+     *  - basename : `dir/file.php` path that wp_get_active_and_valid_plugins
+     *               stores — used as the authoritative active-plugin signal
+     *               via is_plugin_active(), independent of constants/classes
+     *               that may live in obfuscated/prefixed namespaces.
+     *  - search   : Fallback search term for plugin-install.php?s=...
+     *  - detect   : Cheap predicate. We OR `is_plugin_active($basename)` on
+     *               top so a plugin counts as detected even when its bootstrap
+     *               classes use namespaces we didn't list (e.g. Converter for
+     *               Media moved from WebpConverter\Plugin → WebpConverter\WebpConverter).
      *
      * @return array
      */
@@ -41,22 +48,34 @@ class Brikpanel_BrikControl_Image_Plugins {
             return self::$catalog_cache;
         }
 
+        // Lazy-include the activate_plugins helpers so is_plugin_active() is callable
+        // even when this catalogue is hit from a CLI / cron context where wp-admin
+        // hasn't loaded plugin.php yet.
+        if ( ! function_exists( 'is_plugin_active' ) ) {
+            $plugin_helper = ABSPATH . 'wp-admin/includes/plugin.php';
+            if ( file_exists( $plugin_helper ) ) {
+                require_once $plugin_helper;
+            }
+        }
+
         self::$catalog_cache = [
 
             'wp-smushit' => [
-                'label'  => 'Smush',
-                'slug'   => 'wp-smushit',
-                'search' => 'smush',
-                'detect' => static function () {
+                'label'    => 'Smush',
+                'slug'     => 'wp-smushit',
+                'basename' => 'wp-smushit/wp-smush.php',
+                'search'   => 'smush',
+                'detect'   => static function () {
                     return defined( 'WP_SMUSH_VERSION' ) || class_exists( 'WP_Smush' );
                 },
             ],
 
             'shortpixel-image-optimiser' => [
-                'label'  => 'ShortPixel',
-                'slug'   => 'shortpixel-image-optimiser',
-                'search' => 'shortpixel',
-                'detect' => static function () {
+                'label'    => 'ShortPixel',
+                'slug'     => 'shortpixel-image-optimiser',
+                'basename' => 'shortpixel-image-optimiser/wp-shortpixel.php',
+                'search'   => 'shortpixel',
+                'detect'   => static function () {
                     return defined( 'SHORTPIXEL_IMAGE_OPTIMISER_VERSION' )
                         || class_exists( 'ShortPixelPlugin' )
                         || function_exists( 'shortpixel_init' );
@@ -64,59 +83,68 @@ class Brikpanel_BrikControl_Image_Plugins {
             ],
 
             'ewww-image-optimizer' => [
-                'label'  => 'EWWW Image Optimizer',
-                'slug'   => 'ewww-image-optimizer',
-                'search' => 'ewww image optimizer',
-                'detect' => static function () {
+                'label'    => 'EWWW Image Optimizer',
+                'slug'     => 'ewww-image-optimizer',
+                'basename' => 'ewww-image-optimizer/ewww-image-optimizer.php',
+                'search'   => 'ewww image optimizer',
+                'detect'   => static function () {
                     return defined( 'EWWW_IMAGE_OPTIMIZER_VERSION' )
                         || function_exists( 'ewww_image_optimizer_init' );
                 },
             ],
 
             'imagify' => [
-                'label'  => 'Imagify',
-                'slug'   => 'imagify',
-                'search' => 'imagify',
-                'detect' => static function () {
+                'label'    => 'Imagify',
+                'slug'     => 'imagify',
+                'basename' => 'imagify/imagify.php',
+                'search'   => 'imagify',
+                'detect'   => static function () {
                     return defined( 'IMAGIFY_VERSION' )
                         || class_exists( 'Imagify' );
                 },
             ],
 
             'litespeed-cache' => [
-                'label'  => 'LiteSpeed Cache (Image Optimization)',
-                'slug'   => 'litespeed-cache',
-                'search' => 'litespeed cache',
-                'detect' => static function () {
+                'label'    => 'LiteSpeed Cache (Image Optimization)',
+                'slug'     => 'litespeed-cache',
+                'basename' => 'litespeed-cache/litespeed-cache.php',
+                'search'   => 'litespeed cache',
+                'detect'   => static function () {
                     return defined( 'LSCWP_V' ) || class_exists( 'LiteSpeed\\Core' );
                 },
             ],
 
             'optimole-wp' => [
-                'label'  => 'Optimole',
-                'slug'   => 'optimole-wp',
-                'search' => 'optimole',
-                'detect' => static function () {
+                'label'    => 'Optimole',
+                'slug'     => 'optimole-wp',
+                'basename' => 'optimole-wp/optimole-wp.php',
+                'search'   => 'optimole',
+                'detect'   => static function () {
                     return defined( 'OPTIMOLE_VERSION' )
                         || class_exists( 'Optml_Main' );
                 },
             ],
 
             'webp-converter-for-media' => [
-                'label'  => 'Converter for Media',
-                'slug'   => 'webp-converter-for-media',
-                'search' => 'webp converter for media',
-                'detect' => static function () {
-                    return class_exists( 'WebpConverter\\Plugin' )
+                'label'    => 'Converter for Media',
+                'slug'     => 'webp-converter-for-media',
+                'basename' => 'webp-converter-for-media/webp-converter-for-media.php',
+                'search'   => 'webp converter for media',
+                'detect'   => static function () {
+                    // Covers Pro variant + the historical class name.
+                    return class_exists( 'WebpConverter\\WebpConverter' )
+                        || class_exists( 'WebpConverter\\Plugin' )
+                        || class_exists( 'WebpConverter\\PluginInfo' )
                         || defined( 'WEBPC_VERSION' );
                 },
             ],
 
             'tinypng-image-compression' => [
-                'label'  => 'TinyPNG / TinyJPG',
-                'slug'   => 'tiny-compress-images',
-                'search' => 'tinypng',
-                'detect' => static function () {
+                'label'    => 'TinyPNG / TinyJPG',
+                'slug'     => 'tiny-compress-images',
+                'basename' => 'tiny-compress-images/tiny-compress-images.php',
+                'search'   => 'tinypng',
+                'detect'   => static function () {
                     return defined( 'TINY_PLUGIN_VERSION' )
                         || class_exists( 'Tiny_Plugin' );
                 },
@@ -127,12 +155,31 @@ class Brikpanel_BrikControl_Image_Plugins {
     }
 
     /**
+     * Whether a single catalogue entry is active. Tries the cheap predicate
+     * first, falls back to is_plugin_active() against the recorded basename
+     * so plugins that use prefixed/obfuscated class namespaces (or change
+     * them between releases) still count.
+     *
+     * @param array $entry
+     * @return bool
+     */
+    private static function is_entry_active( array $entry ) {
+        if ( ! empty( $entry['detect'] ) && call_user_func( $entry['detect'] ) ) {
+            return true;
+        }
+        if ( ! empty( $entry['basename'] ) && function_exists( 'is_plugin_active' ) ) {
+            return (bool) is_plugin_active( $entry['basename'] );
+        }
+        return false;
+    }
+
+    /**
      * @return array<string, string> slug => label
      */
     public static function get_active() {
         $active  = [];
         foreach ( self::catalog() as $slug => $entry ) {
-            if ( call_user_func( $entry['detect'] ) ) {
+            if ( self::is_entry_active( $entry ) ) {
                 $active[ $slug ] = $entry['label'];
             }
         }
@@ -144,7 +191,7 @@ class Brikpanel_BrikControl_Image_Plugins {
      */
     public static function any_active() {
         foreach ( self::catalog() as $entry ) {
-            if ( call_user_func( $entry['detect'] ) ) {
+            if ( self::is_entry_active( $entry ) ) {
                 return true;
             }
         }

@@ -392,34 +392,23 @@ function brikpanel_settings_fields() {
         ],
         [
             'name'     => __('Visible editor sections', 'brikpanel'),
-            'id'       => 'brikpanel_pe_visible_sections',
-            'type'     => 'multiselect',
-            'class'    => 'wc-enhanced-select',
-            'desc'     => __('Choose which BrikPanel sections appear in the simplified product editor.', 'brikpanel'),
-            'desc_tip' => true,
-            'options'  => [
-                'images'      => __('Product images', 'brikpanel'),
-                'pricing'     => __('Pricing', 'brikpanel'),
-                'cogs'        => __('Cost of goods (COGS)', 'brikpanel'),
-                'inventory'   => __('Inventory (stock & SKU)', 'brikpanel'),
-                'category'    => __('Category', 'brikpanel'),
-                'tags'        => __('Tags', 'brikpanel'),
-                'short_desc'  => __('Short description', 'brikpanel'),
-                'description' => __('Product description', 'brikpanel'),
-                'digital'     => __('Digital product (downloadable)', 'brikpanel'),
-                'weight'      => __('Shipping weight', 'brikpanel'),
-                'dimensions'  => __('Shipping dimensions', 'brikpanel'),
-                'seo'         => __('SEO settings', 'brikpanel'),
-                'variations'  => __('Variations (sizes/colors)', 'brikpanel'),
-            ],
-            'default'  => ['images', 'pricing', 'inventory', 'category', 'tags', 'short_desc', 'description', 'digital', 'weight', 'dimensions', 'seo', 'variations'],
+            'id'       => 'brikpanel_pe_visible_sections_field',
+            'type'     => 'brikpanel_section_order',
+            'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder — the product editor renders sections in the order shown here.', 'brikpanel'),
+        ],
+        [
+            'name'    => __('Auto-include ACF field groups', 'brikpanel'),
+            'id'      => 'brikpanel_pe_acf_auto',
+            'type'    => 'checkbox',
+            'desc'    => __('Automatically render Advanced Custom Fields field groups whose Location Rules target products. When off, ACF field groups only appear if added below.', 'brikpanel'),
+            'default' => 'yes',
         ],
         [
             'name'     => __('Third-party plugin metaboxes', 'brikpanel'),
             'id'       => 'brikpanel_pe_selected_metaboxes',
             'type'     => 'multiselect',
             'class'    => 'wc-enhanced-select',
-            'desc'     => __('Pick individual metaboxes registered by other plugins (Yoast SEO, Rank Math, All in One SEO, SEOPress, ACF, custom post types, etc.) to bring into the BrikPanel product editor. Only the ones selected here will render. Leave empty to hide all third-party metaboxes.', 'brikpanel'),
+            'desc'     => __('Pick individual metaboxes registered by other plugins (Yoast SEO, Rank Math, All in One SEO, SEOPress, custom post types, etc.) to bring into the BrikPanel product editor. Only the ones selected here will render. ACF field groups are handled automatically by the setting above and do not need to be picked here.', 'brikpanel'),
             'desc_tip' => true,
             'options'  => $product_metabox_options,
             'default'  => [],
@@ -465,6 +454,12 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'    => __('Quick Edit drawer fields', 'brikpanel'),
+            'id'      => 'brikpanel_qe_field_order',
+            'type'    => 'brikpanel_qe_field_order',
+            'desc'    => __('Pick which fields appear in the Quick Edit drawer and the order they render in. Toggle a field to show or hide it; use the arrows to reorder. "Simple only" fields are skipped automatically when editing variable products. The featured-product star toggle also controls the matching icons in the products list and the product editor header.', 'brikpanel'),
+        ],
+        [
             'name'    => __('Open product in new tab', 'brikpanel'),
             'id'      => 'brikpanel_open_edit_in_new_tab',
             'type'    => 'checkbox',
@@ -496,6 +491,20 @@ function brikpanel_settings_fields() {
                 'max'  => '200',
                 'step' => '1',
             ],
+        ],
+        [
+            'name'    => __('Backorder notification option', 'brikpanel'),
+            'id'      => 'brikpanel_pe_backorder_notify',
+            'type'    => 'checkbox',
+            'desc'    => __('Reveal a "Notify customer" choice under the stock status when "On backorder" is selected. Lets you allow backorders silently or with an order-note alert. Applies to simple products and variations.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
+            'name'    => __('Multiple images per variation', 'brikpanel'),
+            'id'      => 'brikpanel_variation_gallery_enabled',
+            'type'    => 'checkbox',
+            'desc'    => __('Allow each variation to have its own image gallery (multiple images), and swap the product gallery on the storefront when a variation is selected. When off, each variation is limited to a single image — the WooCommerce default. Existing extra variation images are kept in the database and will reappear if you re-enable this option.', 'brikpanel'),
+            'default' => 'yes',
         ],
         [
             'type' => 'sectionend',
@@ -531,26 +540,10 @@ function brikpanel_settings_fields() {
             'default'  => [],
         ],
         [
-            'name'     => __('WordPress widgets position', 'brikpanel'),
-            'id'       => 'brikpanel_dashboard_wp_widgets_position',
-            'type'     => 'select',
-            'desc'     => __('Where the WordPress widgets block appears relative to BrikPanel analytics. Choose "Top" if the selected widgets include frequently-used shortcuts that should be visible without scrolling.', 'brikpanel'),
-            'desc_tip' => true,
-            'options'  => [
-                'bottom' => __('Bottom (below analytics)', 'brikpanel'),
-                'top'    => __('Top (above analytics)', 'brikpanel'),
-            ],
-            'default'  => 'bottom',
-        ],
-        [
-            'name'     => __('Visible dashboard sections', 'brikpanel'),
-            'id'       => 'brikpanel_dashboard_visible_sections',
-            'type'     => 'multiselect',
-            'class'    => 'wc-enhanced-select',
-            'desc'     => __('Pick which sections appear on the BrikPanel dashboard. Leave empty to show every section. Hidden sections skip rendering entirely, so their data is not fetched.', 'brikpanel'),
-            'desc_tip' => true,
-            'options'  => class_exists('Brikpanel_Dashboard') ? Brikpanel_Dashboard::get_section_labels() : [],
-            'default'  => [],
+            'name'     => __('Dashboard sections', 'brikpanel'),
+            'id'       => 'brikpanel_dashboard_sections',
+            'type'     => 'brikpanel_dashboard_section_order',
+            'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder — the dashboard renders sections in the order shown here. Hidden sections skip rendering entirely, so their data is not fetched.', 'brikpanel'),
         ],
         [
             'type' => 'sectionend',
@@ -560,6 +553,7 @@ function brikpanel_settings_fields() {
             'name' => __('Coupons', 'brikpanel'),
             'type' => 'title',
             'id'   => 'brk_coupons_title',
+            'desc' => __('Modern coupons page settings, plus optional usage restriction fields for power users migrating from the default WooCommerce editor.', 'brikpanel'),
         ],
         [
             'name'    => __('Modern coupons page', 'brikpanel'),
@@ -567,6 +561,48 @@ function brikpanel_settings_fields() {
             'type'    => 'checkbox',
             'desc'    => __('Replace the default coupons list with a modern, AJAX-powered interface', 'brikpanel'),
             'default' => 'yes',
+        ],
+        [
+            'name'    => __('Restrict to specific products', 'brikpanel'),
+            'id'      => 'brikpanel_coupons_show_products',
+            'type'    => 'checkbox',
+            'desc'    => __('Show a "Products" picker so you can limit the coupon to a hand-picked product list.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
+            'name'    => __('Exclude specific products', 'brikpanel'),
+            'id'      => 'brikpanel_coupons_show_exclude_products',
+            'type'    => 'checkbox',
+            'desc'    => __('Show an "Exclude products" picker so you can disallow specific products even when the rest of the cart qualifies.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
+            'name'    => __('Restrict to product categories', 'brikpanel'),
+            'id'      => 'brikpanel_coupons_show_categories',
+            'type'    => 'checkbox',
+            'desc'    => __('Show a "Product categories" picker so the coupon only applies to items in the selected categories.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
+            'name'    => __('Exclude product categories', 'brikpanel'),
+            'id'      => 'brikpanel_coupons_show_exclude_categories',
+            'type'    => 'checkbox',
+            'desc'    => __('Show an "Exclude categories" picker so the coupon never applies to items in the selected categories.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
+            'name'    => __('Allowed email addresses', 'brikpanel'),
+            'id'      => 'brikpanel_coupons_show_emails',
+            'type'    => 'checkbox',
+            'desc'    => __('Show an "Allowed emails" field that whitelists which billing email addresses can use the coupon.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
+            'name'    => __('Limit usage to X items', 'brikpanel'),
+            'id'      => 'brikpanel_coupons_show_limit_items',
+            'type'    => 'checkbox',
+            'desc'    => __('Show a "Limit usage to X items" field that caps how many matching items the discount applies to per cart.', 'brikpanel'),
+            'default' => 'no',
         ],
         [
             'type' => 'sectionend',
@@ -719,6 +755,7 @@ function brikpanel_settings_get_sections() {
         'coupons'       => __( 'Coupons', 'brikpanel' ),
         'login'         => __( 'Login page', 'brikpanel' ),
         'notifications' => __( 'Notifications', 'brikpanel' ),
+        'import-export' => __( 'Import / Export', 'brikpanel' ),
         'developers'    => __( 'Developers', 'brikpanel' ),
     ] );
 }
@@ -814,6 +851,15 @@ add_action( 'woocommerce_settings_tabs_brikpanel', function () {
     brikpanel_settings_render_section_nav( $current );
     echo '<div class="brikpanel-settings-section-body" data-section="' . esc_attr( $current ) . '">';
 
+    // The Import/Export section is non-standard — it does not save to options
+    // via the usual form-table flow. Hand off rendering to its own module so
+    // it can use whatever markup it needs without fighting WC field types.
+    if ( $current === 'import-export' && function_exists( 'brikpanel_import_export_render_section' ) ) {
+        brikpanel_import_export_render_section();
+        echo '</div>';
+        return;
+    }
+
     // Capture the standard WC field output so each title + description +
     // form-table block can be wrapped into a single visual card. The
     // alternative — emitting cards manually field-by-field — would force us
@@ -880,19 +926,37 @@ add_action( 'admin_head', function () {
     /* ------------------------------------------------------------------
      * Canvas
      * ------------------------------------------------------------------ */
+    /* Guard against any stray element (a WC tab-bar overflow, a sort marker)
+       giving <html> a few px of horizontal scroll — clip it so the panel can
+       never shift sideways on phones. */
+    html { overflow-x: clip; }
     #wpbody-content .wrap {
         margin: 18px 22px 40px 22px;
         padding-left: 0;
     }
-    /* WC's admin.css adds `body.woocommerce_page_wc-settings #mainform
-       { padding-left: 30px }` to push the settings panel away from the
-       horizontal tab bar's bottom border. We rebuild the layout with
-       cards and our own pill subnav, so we want the form flush with
-       `.wrap` and let the cards do the breathing. */
+    /* WC's admin.css adds a 30px inline padding to #mainform to push the
+       settings panel away from the horizontal tab bar's bottom border
+       (it lands on padding-right in current WC, left in RTL). We rebuild
+       the layout with cards and our own pill subnav, so we zero BOTH sides
+       — otherwise the panel is shoved off-centre (a 30px gap on one side)
+       which reads as asymmetric on narrow screens. */
     #wpbody-content .wrap form#mainform {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         color: #303030;
         padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    /* WooCommerce's top settings tab bar (General | Products | … | BrikPanel)
+       is content-width and overflows the viewport on phones. Cap it to the
+       container and let the tabs scroll horizontally instead of pushing the
+       whole page sideways. */
+    #wpbody-content .wrap .nav-tab-wrapper {
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        white-space: nowrap;
     }
 
     /* ------------------------------------------------------------------
@@ -1389,6 +1453,24 @@ add_action( 'admin_head', function () {
         color: #ffffff !important;
         box-shadow: inset 0 -1px 0 rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.1), 0 0 0 2px rgba(48,48,48,.2) !important;
     }
+    /* Disabled state — without this, WC's `disabled` attribute leaves the
+       button visually identical to the active one, so users see what looks
+       like a working button and click it expecting it to save. */
+    #wpbody-content .wrap form#mainform p.submit .button-primary:disabled,
+    #wpbody-content .wrap form#mainform p.submit button.is-primary:disabled,
+    #wpbody-content .wrap form#mainform p.submit input[type="submit"].button-primary:disabled,
+    #wpbody-content .wrap form#mainform p.submit .woocommerce-save-button:disabled,
+    #wpbody-content .wrap form#mainform p.submit .button-primary[disabled],
+    #wpbody-content .wrap form#mainform p.submit button.is-primary[disabled],
+    #wpbody-content .wrap form#mainform p.submit .woocommerce-save-button[disabled] {
+        background: #b5b5b5 !important;
+        background-color: #b5b5b5 !important;
+        border-color: #b5b5b5 !important;
+        color: #ffffff !important;
+        cursor: not-allowed !important;
+        box-shadow: none !important;
+        opacity: 1 !important;
+    }
 
     /* ------------------------------------------------------------------
      * Branded save toast
@@ -1424,6 +1506,26 @@ add_action( 'admin_head', function () {
         }
     }
     </style>
+    <script>
+    /* Always allow saving on the BrikPanel tab. WC 10+ ships the submit
+       button with `disabled` and only flips it on after the form goes dirty,
+       which is confusing on a settings screen — users expect a save button
+       to always be clickable. Re-saving with no changes is a no-op for
+       update_option(), so this has no side effects. */
+    (function () {
+        function enableSaveBtn() {
+            document.querySelectorAll('.woocommerce-save-button').forEach(function (btn) {
+                btn.removeAttribute('disabled');
+                btn.disabled = false;
+            });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', enableSaveBtn);
+        } else {
+            enableSaveBtn();
+        }
+    })();
+    </script>
     <?php
 }, 20 );
 

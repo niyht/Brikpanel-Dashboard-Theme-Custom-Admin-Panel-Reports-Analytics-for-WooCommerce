@@ -72,6 +72,73 @@ add_action( 'woocommerce_order_status_changed', 'brikpanel_bust_data_caches' );
 add_action( 'woocommerce_order_refunded',       'brikpanel_bust_data_caches' );
 
 /**
+ * Bust the shared data cache when a product's cost of goods changes so the
+ * dashboard Profit section reflects new costs immediately instead of after
+ * the cache TTL. Fires for every write path (BrikPanel editor, import,
+ * programmatic update) since it hooks the meta change itself.
+ *
+ * @param int    $meta_id    Unused.
+ * @param int    $object_id  Unused.
+ * @param string $meta_key   Meta key that changed.
+ */
+function brikpanel_bust_data_caches_on_cogs_meta( $meta_id, $object_id, $meta_key ) {
+    if ( '_brikpanel_cogs' === $meta_key ) {
+        brikpanel_bust_data_caches();
+    }
+}
+add_action( 'added_post_meta',   'brikpanel_bust_data_caches_on_cogs_meta', 10, 3 );
+add_action( 'updated_post_meta', 'brikpanel_bust_data_caches_on_cogs_meta', 10, 3 );
+add_action( 'deleted_post_meta', 'brikpanel_bust_data_caches_on_cogs_meta', 10, 3 );
+
+/**
+ * Statuses that count as realised revenue for the three headline KPI cards
+ * (Total Sales, Orders, AOV). Defaults to processing + completed; merchants
+ * who take a lot of offline payments (cash, cheque, bank transfer) can add
+ * wc-on-hold via the brikpanel_kpi_statuses filter so those orders show up
+ * in the headline figures.
+ *
+ * The output is validated: must be a non-empty list of strings, each
+ * normalised to the wc- prefix WooCommerce uses internally. Invalid
+ * filter returns fall back to the default pair.
+ *
+ * @return string[]
+ */
+function brikpanel_kpi_revenue_statuses() {
+    $default = [ 'wc-processing', 'wc-completed' ];
+
+    /**
+     * Filter the order statuses included in the headline KPI cards
+     * (Total Sales, Orders, AOV).
+     *
+     * @param string[] $statuses Default ['wc-processing','wc-completed'].
+     */
+    $filtered = apply_filters( 'brikpanel_kpi_statuses', $default );
+
+    if ( ! is_array( $filtered ) || empty( $filtered ) ) {
+        return $default;
+    }
+
+    $normalised = [];
+    foreach ( $filtered as $status ) {
+        if ( ! is_string( $status ) ) {
+            continue;
+        }
+        $status = trim( $status );
+        if ( '' === $status ) {
+            continue;
+        }
+        if ( 0 !== strpos( $status, 'wc-' ) ) {
+            $status = 'wc-' . $status;
+        }
+        $normalised[] = $status;
+    }
+
+    $normalised = array_values( array_unique( $normalised ) );
+
+    return empty( $normalised ) ? $default : $normalised;
+}
+
+/**
  * Get all administrator user IDs (users with manage_options capability).
  * Cached in object cache for 5 minutes to avoid repeated DB queries.
  *
@@ -271,6 +338,63 @@ function brikpanel_bootstrap_acf_post_metaboxes( $post, $post_type = 'product' )
     } catch ( \Throwable $e ) {
         // Swallow — ACF misconfiguration should not break the editor page.
     }
+}
+
+/**
+ * Resolve the ACF field group metabox IDs whose Location Rules match the
+ * given product (or the generic `product` post type when no product id is
+ * available, e.g. on the Add New screen). ACF field groups encode their
+ * own target context via Location Rules, so once an admin has configured
+ * a group for products their intent is unambiguous — the user shouldn't
+ * also have to add it manually to the BrikPanel metabox multiselect.
+ * This helper returns the matching IDs so the editor + enqueue paths can
+ * fold them into the rendered + asset list automatically.
+ *
+ * ACF's own metabox id pattern is `acf-{group_key}` (see
+ * ACF_Form_Post::add_meta_boxes()). The helper returns the same pattern
+ * so callers can merge it directly into $selected_metaboxes.
+ *
+ * Site owners can disable auto-inclusion via the
+ * `brikpanel_pe_acf_auto` option (set to 'no') or via the
+ * `brikpanel_pe_auto_include_acf` filter (return false).
+ *
+ * @param int    $product_id The product id, or 0 for new products.
+ * @param string $post_type  The post type whose ACF groups should resolve. Default 'product'.
+ * @return string[] Array of metabox IDs (e.g. ['acf-group_my_specs']) or empty array.
+ */
+function brikpanel_resolve_auto_acf_metabox_ids( $product_id = 0, $post_type = 'product' ) {
+    if ( ! function_exists( 'acf_get_field_groups' ) ) {
+        return array();
+    }
+    if ( 'yes' !== get_option( 'brikpanel_pe_acf_auto', 'yes' ) ) {
+        return array();
+    }
+    if ( ! apply_filters( 'brikpanel_pe_auto_include_acf', true, (int) $product_id, $post_type ) ) {
+        return array();
+    }
+
+    try {
+        $args = array( 'post_type' => $post_type );
+        if ( $product_id ) {
+            $args['post_id'] = (int) $product_id;
+        }
+        $groups = acf_get_field_groups( $args );
+    } catch ( \Throwable $e ) {
+        return array();
+    }
+
+    if ( empty( $groups ) || ! is_array( $groups ) ) {
+        return array();
+    }
+
+    $ids = array();
+    foreach ( $groups as $group ) {
+        if ( empty( $group['key'] ) ) {
+            continue;
+        }
+        $ids[] = 'acf-' . $group['key'];
+    }
+    return $ids;
 }
 
 /**
@@ -539,4 +663,119 @@ function brikpanel_is_variable_product_type( $type ) {
         return true;
     }
     return strpos( $type, 'variable-' ) === 0 || strpos( $type, 'variable_' ) === 0;
+}
+
+/**
+ * Option keys for the customer-analytics exclusion list. A store owner who
+ * also rings up in-person sales through one or two staff/POS accounts can
+ * exclude those accounts so their hundreds of orders don't distort
+ * per-customer analytics (LTV averages, RFM segments, cohort retention,
+ * the Segments "Customers" tab). Shop-wide revenue and order-count totals
+ * are NOT affected — those still read every order.
+ */
+const BRIKPANEL_EXCLUDED_USERS_OPTION = 'brikpanel_excluded_user_ids';
+const BRIKPANEL_EXCLUDED_ROLES_OPTION = 'brikpanel_excluded_roles';
+
+/**
+ * Translated display label for a role slug (e.g. 'shop_manager' →
+ * "Shop manager"). Falls back to a humanised slug if the role is unknown.
+ *
+ * @param string $slug
+ * @return string
+ */
+function brikpanel_role_display_name( $slug ) {
+    $slug  = (string) $slug;
+    $roles = wp_roles()->roles;
+    if ( isset( $roles[ $slug ]['name'] ) ) {
+        return translate_user_role( $roles[ $slug ]['name'] );
+    }
+    return ucwords( str_replace( [ '_', '-' ], ' ', $slug ) );
+}
+
+/**
+ * Role slugs explicitly chosen for exclusion from customer-level analytics.
+ *
+ * @return string[]
+ */
+function brikpanel_excluded_roles() {
+    $roles = get_option( BRIKPANEL_EXCLUDED_ROLES_OPTION, [] );
+    if ( ! is_array( $roles ) ) {
+        return [];
+    }
+    return array_values( array_unique( array_filter( array_map( 'sanitize_key', $roles ) ) ) );
+}
+
+/**
+ * User IDs explicitly chosen for exclusion (independent of any role).
+ *
+ * @return int[]
+ */
+function brikpanel_excluded_user_ids_raw() {
+    $ids = get_option( BRIKPANEL_EXCLUDED_USERS_OPTION, [] );
+    if ( ! is_array( $ids ) ) {
+        return [];
+    }
+    return array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+}
+
+/**
+ * Resolved set of user IDs to exclude from customer-level analytics:
+ * the explicitly chosen IDs plus every user holding an excluded role.
+ *
+ * Memoised per request. Role resolution is the only potentially expensive
+ * part, so it's skipped entirely when no roles are selected.
+ *
+ * @return int[] Sorted, unique, positive user IDs.
+ */
+function brikpanel_excluded_customer_ids() {
+    static $resolved = null;
+    if ( $resolved !== null ) {
+        return $resolved;
+    }
+
+    $ids   = brikpanel_excluded_user_ids_raw();
+    $roles = brikpanel_excluded_roles();
+
+    if ( ! empty( $roles ) ) {
+        $role_user_ids = get_users( [
+            'role__in' => $roles,
+            'fields'   => 'ID',
+            'number'   => -1,
+        ] );
+        $ids = array_merge( $ids, array_map( 'absint', (array) $role_user_ids ) );
+    }
+
+    $ids = array_values( array_unique( array_filter( $ids ) ) );
+    sort( $ids, SORT_NUMERIC );
+
+    /**
+     * Filter the final list of user IDs excluded from customer-level analytics.
+     *
+     * @param int[] $ids Resolved excluded user IDs.
+     */
+    $resolved = array_map( 'absint', (array) apply_filters( 'brikpanel_excluded_customer_ids', $ids ) );
+    return $resolved;
+}
+
+/**
+ * Build a SQL fragment that removes excluded customers from an order-level
+ * query. Returns '' when nothing is excluded, so call sites can append it
+ * unconditionally.
+ *
+ * The list is a vetted set of integers (absint'd), so direct interpolation
+ * is safe and avoids dragging an ever-growing placeholder list through
+ * every $wpdb->prepare() call site.
+ *
+ * @param string $customer_id_expr SQL expression evaluating to the order's
+ *                                  customer user ID (0 for guests), e.g.
+ *                                  'o.customer_id' on HPOS.
+ * @return string Leading-space ' AND (<expr>) NOT IN (1,2,3)' or ''.
+ */
+function brikpanel_excluded_customer_sql( $customer_id_expr ) {
+    $ids = brikpanel_excluded_customer_ids();
+    if ( empty( $ids ) ) {
+        return '';
+    }
+    $list = implode( ',', array_map( 'absint', $ids ) );
+    return " AND ( {$customer_id_expr} ) NOT IN ({$list})";
 }

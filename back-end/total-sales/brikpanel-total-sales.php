@@ -4,11 +4,21 @@ if( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * ANA YARDIMCI FONKSİYON
- * GÜNCELLENDİ: Sadece 'wc-processing' ve 'wc-completed' durumlarını toplar.
+ * Main helper for the Total Sales KPI.
+ *
+ * Sums totals from orders in the statuses returned by
+ * brikpanel_kpi_revenue_statuses() (default: processing + completed; can be
+ * extended via the brikpanel_kpi_statuses filter to include wc-on-hold for
+ * merchants who take a lot of offline payments).
  */
 function brikpanel_get_total_revenue( $start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false ) {
-    $cache_key = 'bp_rev_' . brikpanel_data_cache_ver() . '_' . md5( $start_date_gmt . $end_date_gmt . ( $exclude_marketplace ? '|nomp' : '' ) );
+    // Sadece bu durumları dahil et
+    $include_statuses = brikpanel_kpi_revenue_statuses();
+
+    // Status set is part of the cache key: when a site adds wc-on-hold via
+    // the brikpanel_kpi_statuses filter, the cached default-set value must
+    // not be served back.
+    $cache_key = 'bp_rev_' . brikpanel_data_cache_ver() . '_' . md5( $start_date_gmt . $end_date_gmt . ( $exclude_marketplace ? '|nomp' : '' ) . '|' . implode( ',', $include_statuses ) );
     $cached    = get_transient( $cache_key );
     if ( false !== $cached ) {
         return (float) $cached;
@@ -16,9 +26,7 @@ function brikpanel_get_total_revenue( $start_date_gmt = null, $end_date_gmt = nu
 
     global $wpdb;
 
-    // Sadece bu durumları dahil et
-    $include_statuses = array( 'wc-processing', 'wc-completed' );
-    
+
     // SQL için yer tutucuları hazırla (%s, %s)
     $status_placeholders = implode( ', ', array_fill( 0, count( $include_statuses ), '%s' ) );
     

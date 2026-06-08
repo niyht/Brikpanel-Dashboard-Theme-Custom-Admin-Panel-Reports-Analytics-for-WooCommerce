@@ -725,6 +725,22 @@ class Brikpanel_Segments {
 			$order_where[] = "o.post_status IN ('wc-completed','wc-processing','wc-on-hold','wc-pending','wc-refunded')";
 		}
 
+		// Exclude POS/staff accounts the merchant flagged so this customer
+		// list matches the Customer Analytics page. Mirrors the customer-key
+		// expression: HPOS reads o.customer_id directly; legacy reads the
+		// order's _customer_user meta. The Orders tab is intentionally left
+		// untouched — it lists every order (shop numbers).
+		if ( function_exists( 'brikpanel_excluded_customer_sql' ) ) {
+			$excl_expr = $hpos
+				? 'o.customer_id'
+				: "IFNULL((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user' LIMIT 1)+0, 0)";
+			$excl_sql = brikpanel_excluded_customer_sql( $excl_expr );
+			if ( $excl_sql !== '' ) {
+				// Strip the leading " AND " — order_where entries are joined with AND.
+				$order_where[] = ltrim( substr( $excl_sql, 5 ) );
+			}
+		}
+
 		// Country filter at order level (applies only to aggregated orders)
 		if ( ! empty( $f['countries'] ) ) {
 			$placeholders = implode( ',', array_fill( 0, count( $f['countries'] ), '%s' ) );

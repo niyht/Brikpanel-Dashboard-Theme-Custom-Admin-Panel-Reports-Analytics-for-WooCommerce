@@ -72,6 +72,20 @@ class Brikpanel_Dashboard_Topbar {
         if ( wp_doing_ajax() ) {
             return false;
         }
+        // Under the Desktop Mode shell, the window title bar + shell admin
+        // bar already provide what our top bar offers; rendering it would
+        // duplicate chrome inside every window and offset the layout. Stand
+        // down (see includes/brikpanel-desktop-mode-compat.php).
+        if ( function_exists( 'brikpanel_is_desktop_mode' ) && brikpanel_is_desktop_mode() ) {
+            return false;
+        }
+        // Network Admin and User Admin are not per-site contexts — the topbar
+        // would show the main blog's site name, link to a subsite-scoped
+        // dashboard, and overlay the super-admin chrome. Stay out of those
+        // contexts entirely.
+        if ( is_network_admin() || is_user_admin() ) {
+            return false;
+        }
         if ( ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'manage_options' ) ) {
             return false;
         }
@@ -150,6 +164,7 @@ class Brikpanel_Dashboard_Topbar {
             'i18n'            => [
                 'cache_clearing' => __( 'Clearing cache…', 'brikpanel' ),
                 'cache_failed'   => __( 'Cache could not be cleared.', 'brikpanel' ),
+                'close'          => __( 'Close', 'brikpanel' ),
             ],
         ] );
     }
@@ -171,7 +186,13 @@ class Brikpanel_Dashboard_Topbar {
         $profile_url  = admin_url( 'profile.php' );
         $logout_url   = wp_logout_url( admin_url() );
 
-        $icon_url = BRIKPANEL_URL . 'assets/icon.png';
+        // Custom brand logo overrides the default BrikPanel mark when the
+        // store owner has uploaded one and flipped the Appearance toggle. Helper
+        // lives in front-end/appearance/brikpanel-appearance.php (always loaded).
+        $brand_logo_url = function_exists( 'brikpanel_brand_logo_get_url' ) ? brikpanel_brand_logo_get_url() : '';
+        $has_brand_logo = $brand_logo_url !== '';
+        $icon_url       = $has_brand_logo ? $brand_logo_url : BRIKPANEL_URL . 'assets/icon.png';
+        $mark_class     = $has_brand_logo ? 'brikpanel-topbar-brand-mark has-custom-logo' : 'brikpanel-topbar-brand-mark';
 
         ?>
         <header class="brikpanel-topbar" id="brikpanel-topbar" role="banner">
@@ -187,7 +208,7 @@ class Brikpanel_Dashboard_Topbar {
                     </button>
 
                     <a class="brikpanel-topbar-brand" href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-dashboard' ) ); ?>" aria-label="<?php esc_attr_e( 'BrikPanel dashboard', 'brikpanel' ); ?>">
-                        <span class="brikpanel-topbar-brand-mark" aria-hidden="true">
+                        <span class="<?php echo esc_attr( $mark_class ); ?>" aria-hidden="true">
                             <img src="<?php echo esc_url( $icon_url ); ?>" alt="" width="32" height="32">
                         </span>
                         <span class="brikpanel-topbar-brand-text">
@@ -275,6 +296,15 @@ class Brikpanel_Dashboard_Topbar {
                     <?php
                     if ( class_exists( 'Brikpanel_BrikControl' ) ) {
                         Brikpanel_BrikControl::instance()->render_topbar_button();
+                    }
+                    ?>
+
+                    <?php
+                    // Master on/off switch (administrators only). Lets an admin
+                    // hand the whole store the classic WordPress admin in one
+                    // click while BrikPanel is still being tuned.
+                    if ( class_exists( 'Brikpanel_Master_Switch' ) ) {
+                        Brikpanel_Master_Switch::instance()->render_topbar_switch();
                     }
                     ?>
 

@@ -3,12 +3,36 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// Hide WordPress admin footer
-add_filter('admin_footer_text', '__return_empty_string');
-add_filter('update_footer', '__return_empty_string', 11);
+/**
+ * The custom navigation rebuilds the admin sidebar based on each subsite's own
+ * $menu / $submenu globals — those globals don't exist (and the link targets
+ * don't apply) on the Network Admin or User Admin chrome. Skip the entire
+ * navigation override there so super admins see the unmodified core layout.
+ */
+function brikpanel_navigation_skip_super_admin_chrome() {
+	// Also stand down under the Desktop Mode shell: the dock is built from
+	// the admin menu and replaces this sidebar, and the #wpcontent left
+	// margin this nav relies on would orphan inside a chromeless window
+	// (see includes/brikpanel-desktop-mode-compat.php).
+	if ( function_exists( 'brikpanel_is_desktop_mode' ) && brikpanel_is_desktop_mode() ) {
+		return true;
+	}
+	return is_network_admin() || is_user_admin();
+}
+
+// Hide WordPress admin footer (only on per-site admin)
+add_filter('admin_footer_text', function ( $text ) {
+	return brikpanel_navigation_skip_super_admin_chrome() ? $text : '';
+});
+add_filter('update_footer', function ( $text ) {
+	return brikpanel_navigation_skip_super_admin_chrome() ? $text : '';
+}, 11);
 
 // If HPOS (High-Performance Order Storage) is not active, add CSS to customize WooCommerce menu
 add_action('admin_head', function() {
+    if ( brikpanel_navigation_skip_super_admin_chrome() ) {
+        return;
+    }
     // If HPOS is not active, hide main WooCommerce title and icon
     if (get_option('woocommerce_custom_orders_table_enabled') !== 'yes') { ?>
         <style>
@@ -30,13 +54,16 @@ add_filter( 'custom_menu_order', '__return_true' );
  * Move "Dashboard" (index.php) menu to the top.
  */
 function brikpanel_move_dashboard_to_top( $menu_order ) {
+    if ( brikpanel_navigation_skip_super_admin_chrome() ) {
+        return $menu_order;
+    }
     $dashboard_index = array_search( 'index.php', $menu_order );
 
     if ( $dashboard_index !== false ) {
         unset( $menu_order[ $dashboard_index ] );
         array_unshift( $menu_order, 'index.php' );
     }
-	
+
 
     return $menu_order;
 }
@@ -46,6 +73,9 @@ add_filter( 'menu_order', 'brikpanel_move_dashboard_to_top', 999 );
  * Function to render custom menu structure in admin panel.
  */
 function brikpanel_render_navigation() {
+    if ( brikpanel_navigation_skip_super_admin_chrome() ) {
+        return;
+    }
     $items = brikpanel_get_navigation_items();
     echo '<nav id="brikpanel-navigation">';
     echo '<ul>' . wp_kses_post($items) . '</ul>';
@@ -208,6 +238,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				// sit directly under Products in the sidebar.
 				$menu = brikpanel_move_item_after( $menu, 'brikpanel-segments', 'edit.php?post_type=product' );
 				$menu = brikpanel_move_item_after( $menu, 'brikpanel-customer-analytics', 'brikpanel-segments' );
+				$menu = brikpanel_move_item_after( $menu, 'brikpanel-google-sheets', 'brikpanel-customer-analytics' );
 			}
 
 			// Apply user-defined sidebar customization (reorder / hide / inject
@@ -221,6 +252,14 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			if ( function_exists( 'brikpanel_nav_customizer_apply' ) ) {
 				list( $brikpanel_sitemgmt_anchor, $brikpanel_custom_icons ) = brikpanel_nav_customizer_apply( $menu, $submenu );
 			}
+
+			// Pin the Vendors top-level menu right below Products in the store
+			// section. Done AFTER the customizer so it survives any saved nav
+			// config — newly-registered top-level items would otherwise get
+			// auto-appended below the Site management heading. When the master
+			// toggle is off, the slug isn't in $menu and the call is a no-op
+			// (the entire Vendors group is hidden from the sidebar).
+			$menu = brikpanel_move_item_after( $menu, 'brikpanel-vendors', 'edit.php?post_type=product' );
 
 			$first = true;
 
@@ -407,6 +446,8 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			'edit.php?post_type=product' => 'products',
 			'brikpanel-segments' => 'payments',
 			'brikpanel-customer-analytics' => 'credit-card',
+			'brikpanel-google-sheets' => 'google-sheets',
+			'brikpanel-vendors' => 'invoice',
 			'wf_woocommerce_packing_list' => 'invoice',
 			'admin.php?page=wc-settings&tab=checkout' => 'payments',
 			'wc-admin&path=/wc-pay-welcome-page' => 'payments',

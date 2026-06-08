@@ -21,40 +21,66 @@
 }
 
 /* ---------- Page Layout ---------- */
-body.taxonomy-product_cat #wpbody-content,
-body.taxonomy-product_tag #wpbody-content,
-body.product_page_product_attributes #wpbody-content {
+body.brikpanel-tax #wpbody-content,
+body.brikpanel-tax #wpbody-content,
+body.brikpanel-tax #wpbody-content {
     max-width: 1200px;
     margin: 0 auto;
     padding: 0 1rem 2rem;
+    /* Without border-box the 1rem side padding is added on top of the full
+       content width, pushing the page ~32px past the viewport on phones. */
+    box-sizing: border-box;
 }
 
 /* ---------- Hide defaults ---------- */
-body.taxonomy-product_cat #screen-meta-links,
-body.taxonomy-product_cat #screen-meta,
-body.taxonomy-product_cat .screen-meta-links,
-body.taxonomy-product_tag #screen-meta-links,
-body.taxonomy-product_tag #screen-meta,
-body.taxonomy-product_tag .screen-meta-links,
-body.product_page_product_attributes #screen-meta-links,
-body.product_page_product_attributes #screen-meta,
-body.product_page_product_attributes .screen-meta-links,
-body.taxonomy-product_cat #wpfooter,
-body.taxonomy-product_tag #wpfooter,
-body.product_page_product_attributes #wpfooter {
+body.brikpanel-tax #wpfooter {
     display: none !important;
 }
 
+/* ---------- Screen Options / Help tabs ---------- */
+/* Keep WP's Screen Options + Help available, restyled to fit the
+   centered modern layout. Sits at the top-right of the 1200px column. */
+body.brikpanel-tax #screen-meta-links {
+    max-width: 1200px;
+    margin: 0 auto !important;
+    padding: 0 1rem;
+    box-sizing: border-box;
+}
+
+body.brikpanel-tax #screen-meta {
+    max-width: 1200px;
+    margin: 0 auto !important;
+    border-color: var(--bpl-border) !important;
+    border-radius: 0 0 0.75rem 0.75rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+body.brikpanel-tax .screen-meta-toggle .button {
+    border: 1px solid var(--bpl-border) !important;
+    border-top: none !important;
+    color: var(--bpl-text-secondary) !important;
+    background: var(--bpl-card) !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    font-size: 0.8125rem;
+    font-weight: 550;
+}
+
+body.brikpanel-tax .screen-meta-toggle .button:hover,
+body.brikpanel-tax .screen-meta-toggle .button[aria-expanded="true"] {
+    background: var(--bpl-hover-bg) !important;
+    color: var(--bpl-text) !important;
+}
+
 /* Hide WP inline notice */
-body.taxonomy-product_cat .notice:not(.brikpanel-notice),
-body.taxonomy-product_tag .notice:not(.brikpanel-notice) {
+body.brikpanel-tax .notice:not(.brikpanel-notice),
+body.brikpanel-tax .notice:not(.brikpanel-notice) {
     display: none;
 }
 
 /* ---------- Page Title ---------- */
-body.taxonomy-product_cat .wrap > h1,
-body.taxonomy-product_tag .wrap > h1,
-body.product_page_product_attributes .wrap > h1 {
+body.brikpanel-tax .wrap > h1,
+body.brikpanel-tax .wrap > h1,
+body.brikpanel-tax .wrap > h1 {
     font-size: 1.25rem !important;
     font-weight: 600 !important;
     color: var(--bpl-text);
@@ -64,24 +90,24 @@ body.product_page_product_attributes .wrap > h1 {
 }
 
 /* ---------- Two-Column Layout ---------- */
-body.taxonomy-product_cat #col-container,
-body.taxonomy-product_tag #col-container {
+body.brikpanel-tax #col-container,
+body.brikpanel-tax #col-container {
     display: grid !important;
     grid-template-columns: 340px 1fr;
     gap: 1.5rem;
     align-items: start;
 }
 
-body.taxonomy-product_cat #col-left,
-body.taxonomy-product_tag #col-left {
+body.brikpanel-tax #col-left,
+body.brikpanel-tax #col-left {
     width: 100% !important;
     float: none !important;
     grid-column: 1;
     grid-row: 1;
 }
 
-body.taxonomy-product_cat #col-right,
-body.taxonomy-product_tag #col-right {
+body.brikpanel-tax #col-right,
+body.brikpanel-tax #col-right {
     width: 100% !important;
     float: none !important;
     grid-column: 2;
@@ -89,8 +115,8 @@ body.taxonomy-product_tag #col-right {
 }
 
 /* ---------- Add Form Card ---------- */
-body.taxonomy-product_cat #col-left .col-wrap,
-body.taxonomy-product_tag #col-left .col-wrap {
+body.brikpanel-tax #col-left .col-wrap,
+body.brikpanel-tax #col-left .col-wrap {
     background: var(--bpl-card);
     border: 1px solid var(--bpl-border);
     border-radius: 0.75rem;
@@ -98,32 +124,32 @@ body.taxonomy-product_tag #col-left .col-wrap {
     padding: 1.25rem 1.5rem;
 }
 
-body.taxonomy-product_cat #col-left .col-wrap > p:first-of-type,
-body.taxonomy-product_tag #col-left .col-wrap > p:first-of-type {
+body.brikpanel-tax #col-left .col-wrap > p:first-of-type,
+body.brikpanel-tax #col-left .col-wrap > p:first-of-type {
     display: none;
 }
 
-body.taxonomy-product_cat .form-field label,
-body.taxonomy-product_tag .form-field label {
+body.brikpanel-tax .form-field label,
+body.brikpanel-tax .form-field label {
     font-size: 0.8125rem !important;
     font-weight: 600 !important;
     color: var(--bpl-text) !important;
     margin-bottom: 0.25rem;
 }
 
-body.taxonomy-product_cat .form-field p,
-body.taxonomy-product_tag .form-field p {
+body.brikpanel-tax .form-field p,
+body.brikpanel-tax .form-field p {
     font-size: 0.75rem;
     color: var(--bpl-text-muted);
     margin-top: 0.25rem;
 }
 
-body.taxonomy-product_cat .form-field input[type="text"],
-body.taxonomy-product_cat .form-field textarea,
-body.taxonomy-product_cat .form-field select,
-body.taxonomy-product_tag .form-field input[type="text"],
-body.taxonomy-product_tag .form-field textarea,
-body.taxonomy-product_tag .form-field select {
+body.brikpanel-tax .form-field input[type="text"],
+body.brikpanel-tax .form-field textarea,
+body.brikpanel-tax .form-field select,
+body.brikpanel-tax .form-field input[type="text"],
+body.brikpanel-tax .form-field textarea,
+body.brikpanel-tax .form-field select {
     width: 100% !important;
     padding: 8px 12px !important;
     border: 1px solid var(--bpl-input-border) !important;
@@ -138,25 +164,25 @@ body.taxonomy-product_tag .form-field select {
     line-height: 1.5 !important;
 }
 
-body.taxonomy-product_cat .form-field input[type="text"]:focus,
-body.taxonomy-product_cat .form-field textarea:focus,
-body.taxonomy-product_cat .form-field select:focus,
-body.taxonomy-product_tag .form-field input[type="text"]:focus,
-body.taxonomy-product_tag .form-field textarea:focus,
-body.taxonomy-product_tag .form-field select:focus {
+body.brikpanel-tax .form-field input[type="text"]:focus,
+body.brikpanel-tax .form-field textarea:focus,
+body.brikpanel-tax .form-field select:focus,
+body.brikpanel-tax .form-field input[type="text"]:focus,
+body.brikpanel-tax .form-field textarea:focus,
+body.brikpanel-tax .form-field select:focus {
     border-color: var(--bpl-input-focus) !important;
     box-shadow: 0 0 0 1px var(--bpl-input-focus) !important;
 }
 
-body.taxonomy-product_cat .form-field textarea,
-body.taxonomy-product_tag .form-field textarea {
+body.brikpanel-tax .form-field textarea,
+body.brikpanel-tax .form-field textarea {
     min-height: 80px;
     resize: vertical;
 }
 
 /* Add form title */
-body.taxonomy-product_cat #col-left h2,
-body.taxonomy-product_tag #col-left h2 {
+body.brikpanel-tax #col-left h2,
+body.brikpanel-tax #col-left h2 {
     font-size: 1rem !important;
     font-weight: 600 !important;
     color: var(--bpl-text);
@@ -165,11 +191,11 @@ body.taxonomy-product_tag #col-left h2 {
 }
 
 /* Submit button */
-body.taxonomy-product_cat #submit,
-body.taxonomy-product_cat .button-primary,
-body.taxonomy-product_tag #submit,
-body.taxonomy-product_tag .button-primary,
-body.product_page_product_attributes .button-primary {
+body.brikpanel-tax #submit,
+body.brikpanel-tax .button-primary,
+body.brikpanel-tax #submit,
+body.brikpanel-tax .button-primary,
+body.brikpanel-tax .button-primary {
     background: var(--bpl-primary) !important;
     color: #fff !important;
     border: none !important;
@@ -184,17 +210,17 @@ body.product_page_product_attributes .button-primary {
     line-height: 1.4 !important;
 }
 
-body.taxonomy-product_cat #submit:hover,
-body.taxonomy-product_cat .button-primary:hover,
-body.taxonomy-product_tag #submit:hover,
-body.taxonomy-product_tag .button-primary:hover,
-body.product_page_product_attributes .button-primary:hover {
+body.brikpanel-tax #submit:hover,
+body.brikpanel-tax .button-primary:hover,
+body.brikpanel-tax #submit:hover,
+body.brikpanel-tax .button-primary:hover,
+body.brikpanel-tax .button-primary:hover {
     background: var(--bpl-primary-hover) !important;
 }
 
 /* ---------- Right Column: Table Card ---------- */
-body.taxonomy-product_cat #col-right .col-wrap,
-body.taxonomy-product_tag #col-right .col-wrap {
+body.brikpanel-tax #col-right .col-wrap,
+body.brikpanel-tax #col-right .col-wrap {
     background: var(--bpl-card);
     border: 1px solid var(--bpl-border);
     border-radius: 0.75rem;
@@ -203,13 +229,13 @@ body.taxonomy-product_tag #col-right .col-wrap {
 }
 
 /* Search box */
-body.taxonomy-product_cat .search-form,
-body.taxonomy-product_tag .search-form {
+body.brikpanel-tax .search-form,
+body.brikpanel-tax .search-form {
     padding: 1rem 1.25rem 0;
 }
 
-body.taxonomy-product_cat .search-form .search-box,
-body.taxonomy-product_tag .search-form .search-box {
+body.brikpanel-tax .search-form .search-box,
+body.brikpanel-tax .search-form .search-box {
     display: flex;
     gap: 0.5rem;
     align-items: center;
@@ -217,8 +243,8 @@ body.taxonomy-product_tag .search-form .search-box {
     margin: 0 !important;
 }
 
-body.taxonomy-product_cat #tag-search-input,
-body.taxonomy-product_tag #tag-search-input {
+body.brikpanel-tax #tag-search-input,
+body.brikpanel-tax #tag-search-input {
     padding: 6px 12px !important;
     border: 1px solid var(--bpl-border) !important;
     border-radius: 0.5rem !important;
@@ -228,15 +254,15 @@ body.taxonomy-product_tag #tag-search-input {
     width: 200px !important;
 }
 
-body.taxonomy-product_cat #tag-search-input:focus,
-body.taxonomy-product_tag #tag-search-input:focus {
+body.brikpanel-tax #tag-search-input:focus,
+body.brikpanel-tax #tag-search-input:focus {
     border-color: var(--bpl-input-focus) !important;
     box-shadow: 0 0 0 1px var(--bpl-input-focus) !important;
     outline: none !important;
 }
 
-body.taxonomy-product_cat #search-submit,
-body.taxonomy-product_tag #search-submit {
+body.brikpanel-tax #search-submit,
+body.brikpanel-tax #search-submit {
     background: var(--bpl-card) !important;
     color: var(--bpl-text) !important;
     border: 1px solid var(--bpl-border) !important;
@@ -250,35 +276,35 @@ body.taxonomy-product_tag #search-submit {
     box-shadow: none !important;
 }
 
-body.taxonomy-product_cat #search-submit:hover,
-body.taxonomy-product_tag #search-submit:hover {
+body.brikpanel-tax #search-submit:hover,
+body.brikpanel-tax #search-submit:hover {
     background: var(--bpl-hover-bg) !important;
 }
 
 /* ---------- Table ---------- */
-body.taxonomy-product_cat .wp-list-table,
-body.taxonomy-product_tag .wp-list-table,
-body.product_page_product_attributes .widefat {
+body.brikpanel-tax .wp-list-table,
+body.brikpanel-tax .wp-list-table,
+body.brikpanel-tax .widefat {
     border: none !important;
     margin-top: 0 !important;
 }
 
-body.taxonomy-product_cat .wp-list-table thead,
-body.taxonomy-product_cat .wp-list-table tfoot,
-body.taxonomy-product_tag .wp-list-table thead,
-body.taxonomy-product_tag .wp-list-table tfoot,
-body.product_page_product_attributes .widefat thead,
-body.product_page_product_attributes .widefat tfoot {
+body.brikpanel-tax .wp-list-table thead,
+body.brikpanel-tax .wp-list-table tfoot,
+body.brikpanel-tax .wp-list-table thead,
+body.brikpanel-tax .wp-list-table tfoot,
+body.brikpanel-tax .widefat thead,
+body.brikpanel-tax .widefat tfoot {
     background: var(--bpl-hover-bg) !important;
 }
 
-body.taxonomy-product_cat .wp-list-table thead th,
-body.taxonomy-product_cat .wp-list-table tfoot th,
-body.taxonomy-product_tag .wp-list-table thead th,
-body.taxonomy-product_tag .wp-list-table tfoot th,
-body.product_page_product_attributes .widefat thead th,
-body.product_page_product_attributes .widefat thead td,
-body.product_page_product_attributes .widefat tfoot th {
+body.brikpanel-tax .wp-list-table thead th,
+body.brikpanel-tax .wp-list-table tfoot th,
+body.brikpanel-tax .wp-list-table thead th,
+body.brikpanel-tax .wp-list-table tfoot th,
+body.brikpanel-tax .widefat thead th,
+body.brikpanel-tax .widefat thead td,
+body.brikpanel-tax .widefat tfoot th {
     padding: 0.75rem 1rem !important;
     font-size: 0.75rem !important;
     font-weight: 600 !important;
@@ -289,18 +315,18 @@ body.product_page_product_attributes .widefat tfoot th {
     border-top: none !important;
 }
 
-body.taxonomy-product_cat .wp-list-table thead th a,
-body.taxonomy-product_tag .wp-list-table thead th a,
-body.product_page_product_attributes .widefat thead th a {
+body.brikpanel-tax .wp-list-table thead th a,
+body.brikpanel-tax .wp-list-table thead th a,
+body.brikpanel-tax .widefat thead th a {
     color: var(--bpl-text-secondary) !important;
     font-weight: 600 !important;
     font-size: 0.75rem !important;
 }
 
-body.taxonomy-product_cat .wp-list-table tbody td,
-body.taxonomy-product_tag .wp-list-table tbody td,
-body.product_page_product_attributes .widefat tbody td,
-body.product_page_product_attributes .widefat tbody th {
+body.brikpanel-tax .wp-list-table tbody td,
+body.brikpanel-tax .wp-list-table tbody td,
+body.brikpanel-tax .widefat tbody td,
+body.brikpanel-tax .widefat tbody th {
     padding: 0.375rem 1rem !important;
     font-size: 0.8125rem !important;
     color: var(--bpl-text) !important;
@@ -310,29 +336,29 @@ body.product_page_product_attributes .widefat tbody th {
     line-height: 1.4 !important;
 }
 
-body.taxonomy-product_cat .wp-list-table tbody tr:hover,
-body.taxonomy-product_tag .wp-list-table tbody tr:hover,
-body.product_page_product_attributes .widefat tbody tr:hover {
+body.brikpanel-tax .wp-list-table tbody tr:hover,
+body.brikpanel-tax .wp-list-table tbody tr:hover,
+body.brikpanel-tax .widefat tbody tr:hover {
     background: var(--bpl-hover-bg) !important;
 }
 
-body.taxonomy-product_cat .wp-list-table .column-name a,
-body.taxonomy-product_tag .wp-list-table .column-name a {
+body.brikpanel-tax .wp-list-table .column-name a,
+body.brikpanel-tax .wp-list-table .column-name a {
     font-weight: 550;
     color: var(--bpl-text);
     text-decoration: none;
 }
 
-body.taxonomy-product_cat .wp-list-table .column-name a:hover,
-body.taxonomy-product_tag .wp-list-table .column-name a:hover {
+body.brikpanel-tax .wp-list-table .column-name a:hover,
+body.brikpanel-tax .wp-list-table .column-name a:hover {
     color: var(--bpl-primary);
 }
 
 /* Row actions - collapsed by default, expand to natural content height on hover.
    Uses grid-template-rows 0fr -> 1fr so any number of wrapped action lines fit. */
-body.taxonomy-product_cat .row-actions,
-body.taxonomy-product_tag .row-actions,
-body.product_page_product_attributes .row-actions {
+body.brikpanel-tax .row-actions,
+body.brikpanel-tax .row-actions,
+body.brikpanel-tax .row-actions {
     display: grid;
     grid-template-rows: 0fr;
     opacity: 0;
@@ -343,48 +369,48 @@ body.product_page_product_attributes .row-actions {
                 padding 0.2s;
 }
 
-body.taxonomy-product_cat .row-actions > .brikpanel-row-actions-inner,
-body.taxonomy-product_tag .row-actions > .brikpanel-row-actions-inner,
-body.product_page_product_attributes .row-actions > .brikpanel-row-actions-inner {
+body.brikpanel-tax .row-actions > .brikpanel-row-actions-inner,
+body.brikpanel-tax .row-actions > .brikpanel-row-actions-inner,
+body.brikpanel-tax .row-actions > .brikpanel-row-actions-inner {
     overflow: hidden;
     min-height: 0;
 }
 
-body.taxonomy-product_cat tr:hover .row-actions,
-body.taxonomy-product_tag tr:hover .row-actions,
-body.product_page_product_attributes tr:hover .row-actions {
+body.brikpanel-tax tr:hover .row-actions,
+body.brikpanel-tax tr:hover .row-actions,
+body.brikpanel-tax tr:hover .row-actions {
     grid-template-rows: 1fr;
     opacity: 1;
     padding-top: 0.25rem !important;
 }
 
-body.taxonomy-product_cat .row-actions a,
-body.taxonomy-product_tag .row-actions a,
-body.product_page_product_attributes .row-actions a {
+body.brikpanel-tax .row-actions a,
+body.brikpanel-tax .row-actions a,
+body.brikpanel-tax .row-actions a {
     font-size: 0.8125rem;
     color: var(--bpl-text-secondary);
 }
 
-body.taxonomy-product_cat .row-actions .delete a,
-body.taxonomy-product_tag .row-actions .delete a,
-body.product_page_product_attributes .row-actions .delete a {
+body.brikpanel-tax .row-actions .delete a,
+body.brikpanel-tax .row-actions .delete a,
+body.brikpanel-tax .row-actions .delete a {
     color: var(--bpl-error);
 }
 
 /* Count badge */
-body.taxonomy-product_cat .wp-list-table .column-posts,
-body.taxonomy-product_tag .wp-list-table .column-posts {
+body.brikpanel-tax .wp-list-table .column-posts,
+body.brikpanel-tax .wp-list-table .column-posts {
     text-align: center;
 }
 
 /* Count column */
-body.taxonomy-product_cat .wp-list-table td.column-posts,
-body.taxonomy-product_tag .wp-list-table td.column-posts {
+body.brikpanel-tax .wp-list-table td.column-posts,
+body.brikpanel-tax .wp-list-table td.column-posts {
     text-align: center;
 }
 
-body.taxonomy-product_cat .wp-list-table .column-posts a,
-body.taxonomy-product_tag .wp-list-table .column-posts a {
+body.brikpanel-tax .wp-list-table .column-posts a,
+body.brikpanel-tax .wp-list-table .column-posts a {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -399,28 +425,28 @@ body.taxonomy-product_tag .wp-list-table .column-posts a {
     transition: all 0.15s;
 }
 
-body.taxonomy-product_cat .wp-list-table .column-posts a:hover,
-body.taxonomy-product_tag .wp-list-table .column-posts a:hover {
+body.brikpanel-tax .wp-list-table .column-posts a:hover,
+body.brikpanel-tax .wp-list-table .column-posts a:hover {
     background: var(--bpl-primary);
     color: #fff;
 }
 
 /* Checkbox */
-body.taxonomy-product_cat .wp-list-table .check-column input,
-body.taxonomy-product_tag .wp-list-table .check-column input,
-body.product_page_product_attributes .widefat .check-column input {
+body.brikpanel-tax .wp-list-table .check-column input,
+body.brikpanel-tax .wp-list-table .check-column input,
+body.brikpanel-tax .widefat .check-column input {
     border-radius: 4px;
     accent-color: var(--bpl-primary);
 }
 
 /* Category image column */
-body.taxonomy-product_cat .wp-list-table .column-thumb,
-body.taxonomy-product_tag .wp-list-table .column-thumb {
+body.brikpanel-tax .wp-list-table .column-thumb,
+body.brikpanel-tax .wp-list-table .column-thumb {
     width: 40px;
 }
 
-body.taxonomy-product_cat .wp-list-table .column-thumb img,
-body.taxonomy-product_tag .wp-list-table .column-thumb img {
+body.brikpanel-tax .wp-list-table .column-thumb img,
+body.brikpanel-tax .wp-list-table .column-thumb .bpl-tax-thumb {
     width: 28px;
     height: 28px;
     border-radius: 0.25rem;
@@ -429,72 +455,51 @@ body.taxonomy-product_tag .wp-list-table .column-thumb img {
     display: block;
 }
 
-/* Column widths: give description room, keep slug/count compact */
-body.taxonomy-product_cat .wp-list-table .column-name,
-body.taxonomy-product_tag .wp-list-table .column-name {
-    width: 22%;
+/* Neutral placeholder shown when a term has no usable image. Replaces
+   WooCommerce's broken/missing global placeholder so empty rows stay
+   clean and on-brand instead of showing a torn-image icon. */
+body.brikpanel-tax .wp-list-table .column-thumb .bpl-tax-noimg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 0.25rem;
+    border: 1px solid var(--bpl-border);
+    background: var(--bpl-bg);
+    color: var(--bpl-text-muted);
 }
 
-body.taxonomy-product_cat .wp-list-table .column-description,
-body.taxonomy-product_tag .wp-list-table .column-description {
-    width: auto;
+body.brikpanel-tax .wp-list-table .column-thumb .bpl-tax-noimg svg {
+    width: 16px;
+    height: 16px;
+    display: block;
 }
 
-body.taxonomy-product_cat .wp-list-table .column-slug,
-body.taxonomy-product_tag .wp-list-table .column-slug {
-    width: 18%;
+/* Table sizing. Every product taxonomy term screen (Categories, Tags,
+   Brands, attribute terms) uses natural auto layout so the table stays
+   readable no matter which columns are present. This is deliberately
+   resilient to third-party plugins (e.g. Yoast SEO) that inject extra
+   columns — a fixed layout tuned for one column set collapses the name
+   column the moment another plugin adds its own. */
+body.brikpanel-tax .wp-list-table {
+    width: 100% !important;
+    table-layout: auto !important;
 }
 
-body.taxonomy-product_cat .wp-list-table .column-posts,
-body.taxonomy-product_tag .wp-list-table .column-posts {
-    width: 80px;
-}
-
-/* Description column: truncate inner span with ellipsis, show full on td hover */
-body.taxonomy-product_cat .wp-list-table td.column-description,
-body.taxonomy-product_tag .wp-list-table td.column-description {
-    max-width: 0;
+/* Keep the description from dominating the row while staying fully
+   readable: cap its width and let the text wrap. The category/tag
+   enhancement script also sets a native title attribute for the full
+   text on hover. */
+body.brikpanel-tax .wp-list-table td.column-description {
+    max-width: 360px;
     color: var(--bpl-text-secondary);
-    position: relative;
-    overflow: visible;
 }
 
 .brikpanel-desc-text {
     display: block;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-}
-
-body.taxonomy-product_cat .wp-list-table td.column-description:hover::after,
-body.taxonomy-product_tag .wp-list-table td.column-description:hover::after {
-    content: attr(data-description);
-    position: absolute;
-    top: calc(100% - 4px);
-    left: 1rem;
-    z-index: 20;
-    background: var(--bpl-card);
-    color: var(--bpl-text);
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--bpl-border);
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
     white-space: normal;
-    font-size: 0.8125rem;
-    line-height: 1.5;
-    max-width: 360px;
-    min-width: 200px;
-    width: max-content;
-    pointer-events: none;
-}
-
-/* Hide tooltip when there is no description */
-body.taxonomy-product_cat .wp-list-table td.column-description[data-description=""]:hover::after,
-body.taxonomy-product_tag .wp-list-table td.column-description[data-description=""]:hover::after,
-body.taxonomy-product_cat .wp-list-table td.column-description:not([data-description]):hover::after,
-body.taxonomy-product_tag .wp-list-table td.column-description:not([data-description]):hover::after {
-    display: none;
+    overflow-wrap: anywhere;
 }
 
 .brikpanel-desc-empty {
@@ -502,16 +507,16 @@ body.taxonomy-product_tag .wp-list-table td.column-description:not([data-descrip
 }
 
 /* ---------- Tablenav (Bulk + Pagination) ---------- */
-body.taxonomy-product_cat .tablenav,
-body.taxonomy-product_tag .tablenav,
-body.product_page_product_attributes .tablenav {
+body.brikpanel-tax .tablenav,
+body.brikpanel-tax .tablenav,
+body.brikpanel-tax .tablenav {
     padding: 0.75rem 1rem !important;
     margin: 0 !important;
     height: auto !important;
 }
 
-body.taxonomy-product_cat .tablenav .bulkactions select,
-body.taxonomy-product_tag .tablenav .bulkactions select {
+body.brikpanel-tax .tablenav .bulkactions select,
+body.brikpanel-tax .tablenav .bulkactions select {
     padding: 4px 28px 4px 8px !important;
     border: 1px solid var(--bpl-border) !important;
     border-radius: 0.5rem !important;
@@ -522,9 +527,9 @@ body.taxonomy-product_tag .tablenav .bulkactions select {
     color: var(--bpl-text) !important;
 }
 
-body.taxonomy-product_cat .tablenav .button,
-body.taxonomy-product_tag .tablenav .button,
-body.product_page_product_attributes .tablenav .button {
+body.brikpanel-tax .tablenav .button,
+body.brikpanel-tax .tablenav .button,
+body.brikpanel-tax .tablenav .button {
     background: var(--bpl-card) !important;
     color: var(--bpl-text) !important;
     border: 1px solid var(--bpl-border) !important;
@@ -537,22 +542,22 @@ body.product_page_product_attributes .tablenav .button {
     box-shadow: none !important;
 }
 
-body.taxonomy-product_cat .tablenav .button:hover,
-body.taxonomy-product_tag .tablenav .button:hover,
-body.product_page_product_attributes .tablenav .button:hover {
+body.brikpanel-tax .tablenav .button:hover,
+body.brikpanel-tax .tablenav .button:hover,
+body.brikpanel-tax .tablenav .button:hover {
     background: var(--bpl-hover-bg) !important;
 }
 
 /* Pagination */
-body.taxonomy-product_cat .tablenav-pages,
-body.taxonomy-product_tag .tablenav-pages {
+body.brikpanel-tax .tablenav-pages,
+body.brikpanel-tax .tablenav-pages {
     display: flex;
     align-items: center;
     gap: 0.25rem;
 }
 
-body.taxonomy-product_cat .tablenav-pages .page-numbers,
-body.taxonomy-product_tag .tablenav-pages .page-numbers {
+body.brikpanel-tax .tablenav-pages .page-numbers,
+body.brikpanel-tax .tablenav-pages .page-numbers {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -567,47 +572,47 @@ body.taxonomy-product_tag .tablenav-pages .page-numbers {
     text-decoration: none;
 }
 
-body.taxonomy-product_cat .tablenav-pages .current,
-body.taxonomy-product_tag .tablenav-pages .current {
+body.brikpanel-tax .tablenav-pages .current,
+body.brikpanel-tax .tablenav-pages .current {
     background: var(--bpl-primary) !important;
     color: #fff !important;
     border-color: var(--bpl-primary) !important;
 }
 
-body.taxonomy-product_cat .tablenav-pages .displaying-num,
-body.taxonomy-product_tag .tablenav-pages .displaying-num {
+body.brikpanel-tax .tablenav-pages .displaying-num,
+body.brikpanel-tax .tablenav-pages .displaying-num {
     font-size: 0.8125rem;
     color: var(--bpl-text-secondary);
     margin-right: 0.5rem;
 }
 
 /* ---------- Attributes Page Specific ---------- */
-body.product_page_product_attributes .wrap {
+body.brikpanel-tax .wrap {
     max-width: 1200px;
 }
 
-body.product_page_product_attributes #col-container {
+body.brikpanel-tax #col-container {
     display: grid !important;
     grid-template-columns: 340px 1fr;
     gap: 1.5rem;
     align-items: start;
 }
 
-body.product_page_product_attributes #col-left {
+body.brikpanel-tax #col-left {
     width: 100% !important;
     float: none !important;
     grid-column: 1;
     grid-row: 1;
 }
 
-body.product_page_product_attributes #col-right {
+body.brikpanel-tax #col-right {
     width: 100% !important;
     float: none !important;
     grid-column: 2;
     grid-row: 1;
 }
 
-body.product_page_product_attributes #col-left .col-wrap {
+body.brikpanel-tax #col-left .col-wrap {
     background: var(--bpl-card);
     border: 1px solid var(--bpl-border);
     border-radius: 0.75rem;
@@ -615,11 +620,11 @@ body.product_page_product_attributes #col-left .col-wrap {
     padding: 1.25rem 1.5rem;
 }
 
-body.product_page_product_attributes #col-left .col-wrap > p:first-of-type {
+body.brikpanel-tax #col-left .col-wrap > p:first-of-type {
     display: none;
 }
 
-body.product_page_product_attributes #col-left h2 {
+body.brikpanel-tax #col-left h2 {
     font-size: 1rem !important;
     font-weight: 600 !important;
     color: var(--bpl-text);
@@ -627,21 +632,21 @@ body.product_page_product_attributes #col-left h2 {
     padding: 0 !important;
 }
 
-body.product_page_product_attributes .form-field label {
+body.brikpanel-tax .form-field label {
     font-size: 0.8125rem !important;
     font-weight: 600 !important;
     color: var(--bpl-text) !important;
 }
 
-body.product_page_product_attributes .form-field p {
+body.brikpanel-tax .form-field p {
     font-size: 0.75rem;
     color: var(--bpl-text-muted);
     margin-top: 0.25rem;
 }
 
-body.product_page_product_attributes .form-field input[type="text"],
-body.product_page_product_attributes .form-field select,
-body.product_page_product_attributes .form-field textarea {
+body.brikpanel-tax .form-field input[type="text"],
+body.brikpanel-tax .form-field select,
+body.brikpanel-tax .form-field textarea {
     width: 100% !important;
     padding: 8px 12px !important;
     border: 1px solid var(--bpl-input-border) !important;
@@ -655,14 +660,14 @@ body.product_page_product_attributes .form-field textarea {
     line-height: 1.5 !important;
 }
 
-body.product_page_product_attributes .form-field input[type="text"]:focus,
-body.product_page_product_attributes .form-field select:focus {
+body.brikpanel-tax .form-field input[type="text"]:focus,
+body.brikpanel-tax .form-field select:focus {
     border-color: var(--bpl-input-focus) !important;
     box-shadow: 0 0 0 1px var(--bpl-input-focus) !important;
 }
 
 /* Attributes table card */
-body.product_page_product_attributes #col-right .col-wrap {
+body.brikpanel-tax #col-right .col-wrap {
     background: var(--bpl-card);
     border: 1px solid var(--bpl-border);
     border-radius: 0.75rem;
@@ -670,21 +675,21 @@ body.product_page_product_attributes #col-right .col-wrap {
     overflow: hidden;
 }
 
-body.product_page_product_attributes .widefat {
+body.brikpanel-tax .widefat {
     border-collapse: collapse;
 }
 
-body.product_page_product_attributes .widefat .column-name a {
+body.brikpanel-tax .widefat .column-name a {
     font-weight: 550;
     color: var(--bpl-text);
 }
 
-body.product_page_product_attributes .widefat .column-name a:hover {
+body.brikpanel-tax .widefat .column-name a:hover {
     color: var(--bpl-primary);
 }
 
 /* Terms cell - truncate long lists */
-body.product_page_product_attributes .widefat td.column-terms {
+body.brikpanel-tax .widefat td.column-terms {
     max-width: 350px;
     max-height: 5.5em;
     overflow: hidden;
@@ -694,7 +699,7 @@ body.product_page_product_attributes .widefat td.column-terms {
     position: relative;
 }
 
-body.product_page_product_attributes .widefat td.column-terms::after {
+body.brikpanel-tax .widefat td.column-terms::after {
     content: '';
     position: absolute;
     bottom: 0;
@@ -706,7 +711,7 @@ body.product_page_product_attributes .widefat td.column-terms::after {
 }
 
 /* Configure terms link */
-body.product_page_product_attributes .widefat .column-terms a[href*="edit-tags"] {
+body.brikpanel-tax .widefat .column-terms a[href*="edit-tags"] {
     display: inline-flex;
     margin-top: 0.25rem;
     font-size: 0.75rem;
@@ -715,33 +720,33 @@ body.product_page_product_attributes .widefat .column-terms a[href*="edit-tags"]
     text-decoration: none;
 }
 
-body.product_page_product_attributes .widefat .column-terms a[href*="edit-tags"]:hover {
+body.brikpanel-tax .widefat .column-terms a[href*="edit-tags"]:hover {
     text-decoration: underline;
 }
 
 /* ---------- Alternate row colors ---------- */
-body.taxonomy-product_cat .wp-list-table .alternate,
-body.taxonomy-product_tag .wp-list-table .alternate,
-body.product_page_product_attributes .widefat .alternate {
+body.brikpanel-tax .wp-list-table .alternate,
+body.brikpanel-tax .wp-list-table .alternate,
+body.brikpanel-tax .widefat .alternate {
     background: transparent !important;
 }
 
 /* ---------- Note at bottom ---------- */
-body.taxonomy-product_cat .form-wrap > p,
-body.taxonomy-product_tag .form-wrap > p {
+body.brikpanel-tax .form-wrap > p,
+body.brikpanel-tax .form-wrap > p {
     font-size: 0.75rem;
     color: var(--bpl-text-muted);
     padding: 0.75rem 1rem;
 }
 
 /* ---------- Inline Quick Edit ---------- */
-body.taxonomy-product_cat .inline-edit-row,
-body.taxonomy-product_tag .inline-edit-row {
+body.brikpanel-tax .inline-edit-row,
+body.brikpanel-tax .inline-edit-row {
     background: var(--bpl-card) !important;
 }
 
-body.taxonomy-product_cat .inline-edit-row input[type="text"],
-body.taxonomy-product_tag .inline-edit-row input[type="text"] {
+body.brikpanel-tax .inline-edit-row input[type="text"],
+body.brikpanel-tax .inline-edit-row input[type="text"] {
     padding: 6px 10px !important;
     border: 1px solid var(--bpl-input-border) !important;
     border-radius: 0.5rem !important;
@@ -750,39 +755,256 @@ body.taxonomy-product_tag .inline-edit-row input[type="text"] {
     line-height: 1.4 !important;
 }
 
-body.taxonomy-product_cat .inline-edit-row .button,
-body.taxonomy-product_tag .inline-edit-row .button {
+body.brikpanel-tax .inline-edit-row .button,
+body.brikpanel-tax .inline-edit-row .button {
     border-radius: 0.5rem !important;
 }
 
-/* ---------- Responsive ---------- */
+/* ==========================================================================
+   Responsive – Tablet & Mobile (<= 960px, single column)
+   --------------------------------------------------------------------------
+   Below 960px the layout is already single-column, so we take full control of
+   the term table instead of leaving a cramped, horizontally-squeezed grid.
+   WordPress ships an excellent expandable-card collapse for list tables, but
+   only activates it at <=782px. We mirror that exact behaviour up to 960px so
+   tablets get the same clean, finger-friendly card view as phones — one
+   consistent experience across every small screen. The rules below are kept
+   deliberately resilient to third-party columns (Yoast, etc.): they key off
+   WP's own .column-primary / data-colname contract, never a fixed column set.
+   ========================================================================== */
 @media screen and (max-width: 960px) {
-    body.taxonomy-product_cat #col-container,
-    body.taxonomy-product_tag #col-container,
-    body.product_page_product_attributes #col-container {
-        grid-template-columns: 1fr !important;
+    /* Stack the add-form and the term table. We switch off grid entirely
+       (display:block) rather than relying on grid-template-columns:1fr —
+       the container inherits grid-auto-flow that otherwise drops the two
+       panels into side-by-side implicit columns that overflow on phones. */
+    body.brikpanel-tax #col-container {
+        display: block !important;
+    }
+    body.brikpanel-tax #col-left,
+    body.brikpanel-tax #col-right {
+        width: 100% !important;
+        max-width: 100% !important;
+        float: none !important;
+        margin: 0 0 1.25rem 0 !important;
+    }
+    body.brikpanel-tax #col-right {
+        margin-bottom: 0 !important;
+    }
+
+    /* ---------- Page padding: tighter on small screens ---------- */
+    body.brikpanel-tax #wpbody-content {
+        padding: 0 0.75rem 2rem;
+    }
+
+    /* ---------- Header: stack title + full-width search ---------- */
+    .brikpanel-cat-header {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 0.625rem;
+    }
+    /* WP renders the heading as inline-block, so it never fills the column —
+       force it block + left so it lines up with the cards below. */
+    .brikpanel-cat-header h1.wp-heading-inline {
+        display: block;
+        width: 100%;
+        text-align: left;
+    }
+    .brikpanel-cat-header form.search-form {
+        width: 100% !important;
+    }
+    .brikpanel-cat-header .search-box {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        gap: 0.5rem;
+        width: 100% !important;
+    }
+    .brikpanel-cat-header #tag-search-input {
+        flex: 1 1 auto;
+        width: auto !important;
+        min-width: 0;
+    }
+    .brikpanel-cat-header #search-submit {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    /* ---------- Term table -> expandable cards ---------- */
+    /* The card body must grow with the stacked rows (desktop sets it hidden). */
+    body.brikpanel-tax #col-right .col-wrap {
+        overflow: visible;
+    }
+
+    /* Empty top tablenav (bulk actions move to the foot on small screens) just
+       leaves a blank band under the card head — drop it. Bulk actions and
+       pagination remain available in the bottom tablenav. */
+    body.brikpanel-tax .tablenav.top {
+        display: none !important;
+    }
+
+    /* Header row: keep only the primary (Name) column, full width. */
+    body.brikpanel-tax .wp-list-table thead th.column-primary,
+    body.brikpanel-tax .wp-list-table tfoot th.column-primary {
+        width: 100% !important;
+    }
+    body.brikpanel-tax .wp-list-table thead th:not(.column-primary):not(.check-column),
+    body.brikpanel-tax .wp-list-table tfoot th:not(.column-primary):not(.check-column) {
+        display: none !important;
+    }
+
+    /* Keep the select-all checkbox visible. */
+    body.brikpanel-tax .wp-list-table tr th.check-column {
+        display: table-cell !important;
+        width: 2.5em !important;
+    }
+
+    /* Collapse every non-primary body cell until the row is expanded. */
+    body.brikpanel-tax .wp-list-table tr:not(.inline-edit-row):not(.no-items) td.column-primary ~ td:not(.check-column) {
+        display: none;
+    }
+
+    /* The image column sits before the name and carries little value on a
+       phone — hide it so the card head stays a single clean line. */
+    body.brikpanel-tax .wp-list-table .column-thumb {
+        display: none !important;
+    }
+
+    /* Reveal the expand/collapse toggle WP renders into the primary cell. */
+    body.brikpanel-tax .wp-list-table .column-primary .toggle-row {
+        display: block;
+    }
+
+    /* Stack the visible cells as full-width blocks. */
+    body.brikpanel-tax .wp-list-table tr:not(.inline-edit-row):not(.no-items) td:not(.check-column) {
+        position: relative;
+        clear: both;
+        width: auto !important;
+        float: none !important;
+    }
+    body.brikpanel-tax .wp-list-table td.column-primary {
+        padding: 0.625rem 50px 0.625rem 0.75rem !important;
+        font-size: 0.9375rem !important;
+    }
+
+    /* Expanded detail cells: muted label in a left gutter, value to its right. */
+    body.brikpanel-tax .wp-list-table tr:not(.inline-edit-row):not(.no-items) td.column-primary ~ td:not(.check-column) {
+        padding: 0.5rem 0.75rem 0.5rem 38% !important;
+        text-align: left !important;
+        border-top: 1px solid var(--bpl-border) !important;
+        min-height: 0;
+    }
+    body.brikpanel-tax .wp-list-table tr:not(.inline-edit-row):not(.no-items) td:not(.column-primary):not(.check-column)::before {
+        position: absolute;
+        left: 0.75rem;
+        top: 0.5rem;
+        display: block;
+        overflow: hidden;
+        width: 32%;
+        content: attr(data-colname);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        color: var(--bpl-text-secondary);
+        line-height: 1.5;
+    }
+    body.brikpanel-tax .wp-list-table .is-expanded td:not(.hidden) {
+        display: block !important;
+        overflow: hidden;
+    }
+    /* Keep the image column hidden even when the row is expanded — the
+       .is-expanded reveal rule above out-specifies the plain .column-thumb
+       hide, so it must be excluded explicitly. */
+    body.brikpanel-tax .wp-list-table .is-expanded td.column-thumb {
+        display: none !important;
+    }
+
+    /* Count pill reads better left-aligned beside its label when stacked. */
+    body.brikpanel-tax .wp-list-table td.column-posts {
+        text-align: left !important;
+    }
+
+    /* The drag-to-nest handle needs a mouse; hide it on touch/tablet so the
+       category name owns the full card head. (Re-parenting is still available
+       via the Parent field in Quick Edit / the add form.) */
+    body.brikpanel-tax .brikpanel-cat-drag-handle {
+        display: none !important;
+    }
+
+    /* Finger-friendly expand toggle. */
+    body.brikpanel-tax .wp-list-table .toggle-row {
+        height: 40px;
+        width: 40px;
+    }
+    body.brikpanel-tax .wp-list-table .toggle-row::before {
+        width: 40px;
+        height: 40px;
+        line-height: 40px;
+        font-size: 22px;
+    }
+
+    /* Bottom tablenav: let bulk actions + pagination breathe and wrap. */
+    body.brikpanel-tax .tablenav.bottom {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    body.brikpanel-tax .tablenav.bottom .bulkactions {
+        display: flex;
+        gap: 0.5rem;
+        flex: 1 1 auto;
+    }
+    body.brikpanel-tax .tablenav.bottom .bulkactions select {
+        flex: 1 1 auto;
+        max-width: 220px;
+    }
+    body.brikpanel-tax .tablenav-pages {
+        flex: 1 1 100%;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+    body.brikpanel-tax .tablenav-pages .page-numbers {
+        min-width: 2.25rem;
+        height: 2.25rem;
+    }
+}
+
+/* ---------- Phone tightening (<= 600px) ---------- */
+@media screen and (max-width: 600px) {
+    /* Give the add-form card a touch more horizontal room on narrow phones. */
+    body.brikpanel-tax #col-left .col-wrap {
+        padding: 1.25rem 1rem;
+    }
+    /* Widen the detail label gutter ratio so values don't get crushed. */
+    body.brikpanel-tax .wp-list-table tr:not(.inline-edit-row):not(.no-items) td.column-primary ~ td:not(.check-column) {
+        padding-left: 42% !important;
+    }
+    body.brikpanel-tax .wp-list-table tr:not(.inline-edit-row):not(.no-items) td:not(.column-primary):not(.check-column)::before {
+        width: 36%;
     }
 }
 
 /* ---------- Sorting indicators ---------- */
-body.taxonomy-product_cat .wp-list-table .sortable .sorting-indicators,
-body.taxonomy-product_tag .wp-list-table .sortable .sorting-indicators {
+body.brikpanel-tax .wp-list-table .sortable .sorting-indicators,
+body.brikpanel-tax .wp-list-table .sortable .sorting-indicators {
     opacity: 0;
     transition: opacity 0.15s;
 }
 
-body.taxonomy-product_cat .wp-list-table .sortable:hover .sorting-indicators,
-body.taxonomy-product_tag .wp-list-table .sortable:hover .sorting-indicators {
+body.brikpanel-tax .wp-list-table .sortable:hover .sorting-indicators,
+body.brikpanel-tax .wp-list-table .sortable:hover .sorting-indicators {
     opacity: 1;
 }
 
 /* ---------- WooCommerce category image upload ---------- */
-body.taxonomy-product_cat .form-field img {
+body.brikpanel-tax .form-field img {
     border-radius: 0.5rem;
     border: 1px solid var(--bpl-border);
 }
 
-body.taxonomy-product_cat .form-field .button:not(.button-primary) {
+body.brikpanel-tax .form-field .button:not(.button-primary) {
     background: var(--bpl-card) !important;
     color: var(--bpl-text) !important;
     border: 1px solid var(--bpl-border) !important;
@@ -795,7 +1017,7 @@ body.taxonomy-product_cat .form-field .button:not(.button-primary) {
     box-shadow: none !important;
 }
 
-body.taxonomy-product_cat .form-field .button:not(.button-primary):hover {
+body.brikpanel-tax .form-field .button:not(.button-primary):hover {
     background: var(--bpl-hover-bg) !important;
 }
 
@@ -868,8 +1090,8 @@ body.taxonomy-product_cat .form-field .button:not(.button-primary):hover {
 }
 
 /* Hide original search form (JS moves content out) */
-body.taxonomy-product_cat form.search-form:empty,
-body.taxonomy-product_tag form.search-form:empty {
+body.brikpanel-tax form.search-form:empty,
+body.brikpanel-tax form.search-form:empty {
     display: none;
 }
 

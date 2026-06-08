@@ -296,8 +296,8 @@
             number: 'TEST',
             total: '$99.00',
             itemCount: 2,
-            customer: 'Jane Doe',
-            payment: 'Credit card',
+            customer: 'Jane Doe', // i18n-ignore: demo/preview test data for sound notification QA function
+            payment: 'Credit card', // i18n-ignore: demo/preview test data for sound notification QA function
             editUrl: '#',
         }]);
     };

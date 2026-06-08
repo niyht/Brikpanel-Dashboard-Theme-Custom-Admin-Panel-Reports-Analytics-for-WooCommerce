@@ -31,7 +31,7 @@
  *   - Variation thumbnails (variable ürünler için)
  *
  * @package BrikPanel
- * @since   3.1.0
+ * @since   3.1.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -89,7 +89,15 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
         // Resume partial state when continuing a multi-batch scan.
         $partial = $cursor === 0 ? $this->fresh_partial() : $this->load_partial();
         if ( $cursor === 0 ) {
-            $partial['total_products'] = $this->count_products();
+            $partial['total_products']   = $this->count_products();
+            // Snapshot at scan start so every batch in this run uses the same
+            // optimizer-active flag — a plugin deactivation mid-scan won't
+            // make some attachments count as "modern via sidecar" and others
+            // not. The flag is what gates sidecar credit (see
+            // score_attachment): without an active optimizer, sidecar files
+            // sitting on disk no longer translate into served WebP because
+            // the plugin's .htaccess / <picture> rewrite is gone.
+            $partial['optimizer_active'] = Brikpanel_BrikControl_Image_Plugins::any_active();
             $this->save_partial( $partial );
         }
 
@@ -143,7 +151,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
 
         $result = $this->make_result_skeleton();
         $result['status']      = 'unknown';
-        $result['summary']     = sprintf(
+        $result['summary']     = $this->safe_sprintf(
             /* translators: 1: scanned products, 2: total products */
             __( 'Scanning… %1$s / %2$s products', 'brikpanel' ),
             number_format_i18n( $partial['products_scanned'] ),
@@ -228,12 +236,31 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
     private function score_attachment( $att_id, $product_id, $threshold, array &$partial ) {
         $partial['totals']['attachments']++;
 
-        $size = $this->resolve_filesize( $att_id );
+        $path = get_attached_file( $att_id, true );
+        $size = $this->resolve_filesize( $att_id, $path );
         $mime = (string) get_post_mime_type( $att_id );
 
-        // MIME bucket
-        if ( $mime === 'image/webp' || $mime === 'image/avif' ) {
+        // Modernity bucket. We treat an attachment as "modern" when EITHER:
+        //   1. its own MIME is image/webp or image/avif, or
+        //   2. an optimizer plugin is active AND has written a sibling .webp
+        //      file (Converter for Media, ShortPixel, EWWW, Smush, Imagify all
+        //      keep the JPG/PNG in place and serve .webp via .htaccess /
+        //      <picture> rewrites — those rewrites disappear the moment the
+        //      plugin is deactivated, so the sidecar files stop reaching the
+        //      browser even though they're still on disk).
+        // The optimizer_active gate is the key correctness rule: without it
+        // we'd keep reporting "ok" forever after the user disables the only
+        // plugin actually serving the modern format.
+        $is_native_modern  = ( $mime === 'image/webp' || $mime === 'image/avif' );
+        $has_modern_sidecar = ! $is_native_modern
+            && ! empty( $partial['optimizer_active'] )
+            && $this->has_webp_sidecar( $path );
+
+        if ( $is_native_modern || $has_modern_sidecar ) {
             $partial['totals']['webp_avif']++;
+            if ( $has_modern_sidecar ) {
+                $partial['totals']['webp_via_sidecar']++;
+            }
         } elseif ( $mime !== '' && strpos( $mime, 'image/' ) === 0 ) {
             $partial['totals']['legacy']++;
         }
@@ -250,17 +277,143 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
     }
 
     /**
+     * Whether the optimizer has produced a `.webp` (or `.avif`) variant for
+     * this attachment. Optimizers don't agree on a single layout, so we check
+     * the four real-world conventions:
+     *
+     *   1. Same dir, extension replaced  : foo.jpg → foo.webp
+     *   2. Same dir, extension appended  : foo.jpg → foo.jpg.webp
+     *   3. Mirror dir, ext appended      : wp-content/uploads-webpc/uploads/.../foo.jpg.webp
+     *      (Converter for Media default — it mirrors the entire uploads tree
+     *      under `uploads-webpc/` and tags every variant with `.webp` on top
+     *      of the original extension.)
+     *   4. Mirror dir, ext replaced      : same as (3) but with extension
+     *      replaced — covers a few less common configs.
+     *
+     * Returns false when the source file isn't local (CDN offload) — those
+     * attachments fall back to MIME scoring only.
+     *
+     * @param string|false $path
+     * @return bool
+     */
+    private function has_webp_sidecar( $path ) {
+        if ( empty( $path ) || ! @file_exists( $path ) ) {
+            return false;
+        }
+
+        // 1 + 2: same-directory variants.
+        $replaced_same = preg_replace( '/\.(jpe?g|png|gif|bmp|tiff?)$/i', '.webp', $path );
+        if ( is_string( $replaced_same ) && $replaced_same !== $path && @file_exists( $replaced_same ) ) {
+            return true;
+        }
+        if ( @file_exists( $path . '.webp' ) ) {
+            return true;
+        }
+        if ( @file_exists( $path . '.avif' ) ) {
+            return true;
+        }
+
+        // 3 + 4: mirror-directory variants. We translate the absolute upload
+        // path into a path under each known mirror root and probe both the
+        // appended and replaced extensions.
+        $mirrors = self::get_webp_mirror_roots();
+        if ( empty( $mirrors ) ) {
+            return false;
+        }
+
+        $upload_dir  = wp_get_upload_dir();
+        $upload_base = isset( $upload_dir['basedir'] ) ? wp_normalize_path( (string) $upload_dir['basedir'] ) : '';
+        $norm_path   = wp_normalize_path( (string) $path );
+
+        // Only attempt the mirror probe when the file actually lives under
+        // the upload basedir — otherwise the path arithmetic is meaningless.
+        if ( $upload_base === '' || strpos( $norm_path, $upload_base ) !== 0 ) {
+            return false;
+        }
+        $rel = ltrim( substr( $norm_path, strlen( $upload_base ) ), '/' );
+
+        foreach ( $mirrors as $mirror_root ) {
+            $candidates = [
+                $mirror_root . '/' . $rel . '.webp',
+                $mirror_root . '/' . $rel . '.avif',
+                $mirror_root . '/' . preg_replace( '/\.(jpe?g|png|gif|bmp|tiff?)$/i', '.webp', $rel ),
+            ];
+            foreach ( $candidates as $candidate ) {
+                if ( $candidate && @file_exists( $candidate ) ) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Build the list of mirror roots that hold optimizer-generated webp/avif
+     * siblings of files under wp-content/uploads/. Cached per-request because
+     * we hit it once per attachment.
+     *
+     * Filterable via `brikpanel_brikcontrol_webp_mirror_roots` so other
+     * optimizers (or non-default Converter for Media setups) can opt in.
+     *
+     * @return string[] Absolute filesystem paths, no trailing slash.
+     */
+    private static function get_webp_mirror_roots() {
+        static $cached = null;
+        if ( $cached !== null ) {
+            return $cached;
+        }
+
+        $upload_dir  = wp_get_upload_dir();
+        $upload_base = isset( $upload_dir['basedir'] ) ? wp_normalize_path( (string) $upload_dir['basedir'] ) : '';
+
+        $roots = [];
+
+        // Converter for Media default: <wp-content>/uploads-webpc/uploads/<...>
+        // We point the mirror root at the parent of "/uploads/" so the
+        // relative-path probe in has_webp_sidecar() sees the same "uploads/.."
+        // prefix it strips off the source path.
+        if ( defined( 'WP_CONTENT_DIR' ) ) {
+            $cfm = wp_normalize_path( WP_CONTENT_DIR . '/uploads-webpc/uploads' );
+            if ( $cfm !== $upload_base ) {
+                $roots[] = $cfm;
+            }
+        }
+
+        // EWWW Image Optimizer's WebP cache layout (when "WebP Conversion" is
+        // on with the same-directory option off) lives under
+        // <uploads>/ewww/ — same basedir, different prefix.
+        $roots[] = $upload_base; // No-op fallback — same-directory probe
+                                 // already covers it, kept here so filters can
+                                 // append to a non-empty list.
+
+        $roots = array_values( array_unique( array_filter( apply_filters(
+            'brikpanel_brikcontrol_webp_mirror_roots',
+            $roots
+        ) ) ) );
+
+        $cached = $roots;
+        return $cached;
+    }
+
+    /**
      * Lookup order:
      *   1. Local file via get_attached_file() + filesize().
      *   2. WP-stored attachment metadata (`filesize`) — covers offload plugins
      *      that strip the file off the local FS but still record metadata.
      *   3. False — surfaced as missing_files.
      *
-     * @param int $att_id
+     * @param int          $att_id
+     * @param string|false $path Pre-resolved attached path; pass false to
+     *                           force the lookup. Avoids reading the file
+     *                           path twice when score_attachment() already
+     *                           has it.
      * @return int|false
      */
-    private function resolve_filesize( $att_id ) {
-        $path = get_attached_file( $att_id, true );
+    private function resolve_filesize( $att_id, $path = false ) {
+        if ( $path === false ) {
+            $path = get_attached_file( $att_id, true );
+        }
         if ( $path && @file_exists( $path ) ) {
             $bytes = @filesize( $path );
             if ( $bytes !== false ) {
@@ -352,13 +505,15 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
         return [
             'products_scanned' => 0,
             'total_products'   => 0,
+            'optimizer_active' => false, // Snapshotted on first batch.
             'totals'           => [
-                'products'      => 0,
-                'attachments'   => 0,
-                'oversized'     => 0,
-                'webp_avif'     => 0,
-                'legacy'        => 0,
-                'missing_files' => 0,
+                'products'         => 0,
+                'attachments'      => 0,
+                'oversized'        => 0,
+                'webp_avif'        => 0,    // counts both native + sidecar
+                'webp_via_sidecar' => 0,    // subset of webp_avif served via sidecar
+                'legacy'           => 0,
+                'missing_files'    => 0,
             ],
             'largest'          => [],
             'seen_attachments' => [], // att_id => product_id
@@ -413,7 +568,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
         if ( $attachments === 0 ) {
             $summary = __( 'No product images found yet.', 'brikpanel' );
         } else {
-            $summary = sprintf(
+            $summary = $this->safe_sprintf(
                 /* translators: 1: oversize percent, 2: oversize count, 3: total attachments, 4: modern format percent */
                 __( '%1$s%% oversized (%2$s of %3$s) · %4$s%% modern format', 'brikpanel' ),
                 number_format_i18n( $oversized_pct, 1 ),
@@ -441,7 +596,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
 
         $message = $attachments === 0
             ? __( 'Add product images to start the health check.', 'brikpanel' )
-            : sprintf(
+            : $this->safe_sprintf(
                 /* translators: 1: oversized count, 2: modern format percent, 3: missing files */
                 __( '%1$s product images are larger than 1 MB. Modern formats (WebP / AVIF) cover %2$s%% of your library. Missing files: %3$s.', 'brikpanel' ),
                 number_format_i18n( $oversized ),
@@ -457,12 +612,13 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
         $result['recommendations'] = $recommendations;
         $result['metadata']      = [
             'totals'      => [
-                'attachments'   => $attachments,
-                'oversized'     => $oversized,
-                'webp_avif'     => $modern,
-                'legacy'        => (int) $totals['legacy'],
-                'missing_files' => $missing,
-                'products'      => (int) $partial['products_scanned'],
+                'attachments'      => $attachments,
+                'oversized'        => $oversized,
+                'webp_avif'        => $modern,
+                'webp_via_sidecar' => (int) ( $totals['webp_via_sidecar'] ?? 0 ),
+                'legacy'           => (int) $totals['legacy'],
+                'missing_files'    => $missing,
+                'products'         => (int) $partial['products_scanned'],
             ],
             'percentages' => [
                 'oversized_pct' => $oversized_pct,
@@ -546,7 +702,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
             // capable viewers.
             foreach ( $recommended_plugins as $plugin ) {
                 $out[] = [
-                    'text'     => sprintf(
+                    'text'     => $this->safe_sprintf(
                         /* translators: %s: plugin name */
                         __( 'Install %s to compress images and convert to WebP/AVIF automatically.', 'brikpanel' ),
                         $plugin['label']
@@ -563,7 +719,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
 
         if ( $oversized > 0 ) {
             $out[] = [
-                'text'     => sprintf(
+                'text'     => $this->safe_sprintf(
                     /* translators: 1: count, 2: percent */
                     __( '%1$s product images (%2$s%%) are larger than 1 MB. These slow down your product pages and hurt SEO. Compress them to under 200 KB where possible.', 'brikpanel' ),
                     number_format_i18n( $oversized ),
@@ -575,7 +731,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
 
         if ( $modern_pct < 60 ) {
             $out[] = [
-                'text'     => sprintf(
+                'text'     => $this->safe_sprintf(
                     /* translators: %s: modern format percent */
                     __( 'Only %s%% of your product images use WebP / AVIF. Modern formats are 30–50%% smaller than JPEG/PNG with no visible quality loss.', 'brikpanel' ),
                     number_format_i18n( $modern_pct, 1 )
@@ -586,7 +742,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
 
         if ( $missing > 0 ) {
             $out[] = [
-                'text'     => sprintf(
+                'text'     => $this->safe_sprintf(
                     /* translators: %s: missing file count */
                     __( '%s product images point to files that no longer exist on disk. Re-upload them or detach the missing media references.', 'brikpanel' ),
                     number_format_i18n( $missing )
@@ -603,5 +759,42 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
         }
 
         return $out;
+    }
+
+    /**
+     * Translation-safe sprintf.
+     *
+     * Every recommendation / summary line runs its copy through __() before
+     * formatting. Translations ship in community-editable .po files (wp.org /
+     * GlotPress), and a translator who adds, drops, or mis-escapes a printf
+     * placeholder makes PHP 8's sprintf() throw ArgumentCountError /
+     * ValueError. Because this code runs inside an Action Scheduler scan
+     * worker, an uncaught throw aborts the entire Store Health sweep — a
+     * single localized typo would silently break the feature for every user
+     * in that locale (exactly the tr_TR "%30" → unescaped "%" bug that
+     * surfaced here). A localized mistake must degrade, never crash, so we
+     * catch the throw and fall back to a placeholder-stripped rendering of
+     * the same translated sentence.
+     *
+     * @param string $format Translated, already-localized format string.
+     * @param mixed  ...$args printf arguments.
+     * @return string
+     */
+    private function safe_sprintf( $format, ...$args ) {
+        $format = (string) $format;
+        try {
+            return vsprintf( $format, $args );
+        } catch ( \Throwable $e ) {
+            // Degrade, don't die: drop every printf conversion from the
+            // translated copy so the sentence still reads (minus the
+            // numbers) and collapse escaped %% to a literal %.
+            $stripped = preg_replace(
+                '/%(?:\d+\$)?[-+ 0#\']*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/',
+                '',
+                $format
+            );
+            $stripped = str_replace( '%%', '%', (string) $stripped );
+            return trim( (string) $stripped );
+        }
     }
 }

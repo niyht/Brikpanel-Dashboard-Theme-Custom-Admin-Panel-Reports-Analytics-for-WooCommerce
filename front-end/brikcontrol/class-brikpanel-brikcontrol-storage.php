@@ -14,7 +14,7 @@
  *   - dismissed     (user meta):           per-user banner dismissal map.
  *
  * @package BrikPanel
- * @since   3.1.0
+ * @since   3.1.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

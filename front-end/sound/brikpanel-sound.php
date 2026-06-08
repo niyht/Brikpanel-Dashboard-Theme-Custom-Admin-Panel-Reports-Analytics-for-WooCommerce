@@ -205,10 +205,19 @@ function brikpanel_order_notify_ajax_check() {
 
     // Resolve the newest processing order ID once — used both as the baseline
     // and as an early-exit when there is nothing new to report.
+    //
+    // Order by ID, NOT by date_created. The whole last-seen / baseline contract
+    // is an integer ID comparison ($baseline > $last_seen), and order IDs are
+    // assigned strictly in creation order, so the highest ID is always the
+    // genuinely newest order. date_created is NOT reliable for this: it can be
+    // backdated, imported, edited, or set out of ID order (demo/seeded stores,
+    // CSV migrations, sequential-order-number plugins), in which case the
+    // newest-by-date order is an OLD low-ID order — that desync silently
+    // suppressed real notifications and replayed stale orders as if new.
     $latest_ids = wc_get_orders( [
         'status'  => [ 'processing' ],
         'limit'   => 1,
-        'orderby' => 'date',
+        'orderby' => 'ID',
         'order'   => 'DESC',
         'return'  => 'ids',
     ] );
@@ -231,11 +240,14 @@ function brikpanel_order_notify_ajax_check() {
     }
 
     // Fetch up to 5 newest unseen processing orders. We cap so a long-idle tab
-    // returning from sleep can't trigger dozens of toasts at once.
+    // returning from sleep can't trigger dozens of toasts at once. Ordered by
+    // ID DESC for the same reason as the baseline above — the comparison that
+    // gates each toast ( $id > $last_seen ) is an ID comparison, so the
+    // candidate set must be the highest IDs, never the newest dates.
     $unseen_ids = wc_get_orders( [
         'status'  => [ 'processing' ],
         'limit'   => 5,
-        'orderby' => 'date',
+        'orderby' => 'ID',
         'order'   => 'DESC',
         'return'  => 'ids',
     ] );

@@ -65,7 +65,7 @@
 		left.innerHTML =
 			'<a href="' + ordersUrl + '" class="brikpanel-order-header__back">' +
 				'<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4l-6 6 6 6"/></svg>' +
-				cfg.i18n.orders +
+				'<span class="brk-back-label">' + escHtml(cfg.i18n.orders) + '</span>' +
 			'</a>' +
 			'<div class="brikpanel-order-header__divider"></div>' +
 			'<span class="brikpanel-order-header__title">#' + orderId + '</span>' +
@@ -126,11 +126,24 @@
 
 		wrap.insertBefore(header, wrap.firstChild);
 
-		// Position header to align with WP content area
+		// Position header to align with WP content area and reserve vertical
+		// space below the fixed header. The reserve cannot live on the
+		// header's next CSS sibling (it is the hidden original <h1>), so we
+		// measure the actual overlap and pad #poststuff. This self-adjusts
+		// across breakpoints, header heights and translated labels.
+		var poststuff = document.getElementById('poststuff');
 		function positionHeader() {
 			var wpcontent = document.getElementById('wpcontent');
 			if (wpcontent) {
 				header.style.left = wpcontent.getBoundingClientRect().left + 'px';
+			}
+			if (poststuff) {
+				poststuff.style.paddingTop = '0px';
+				var gap = 16;
+				var overlap = Math.round(
+					header.getBoundingClientRect().bottom - poststuff.getBoundingClientRect().top + gap
+				);
+				poststuff.style.paddingTop = ( overlap > 0 ? overlap : 0 ) + 'px';
 			}
 		}
 		positionHeader();
@@ -160,7 +173,7 @@
 	}
 
 	/* ============================================================
-	   AJAX STATUS CHANGE
+	   STAGE STATUS CHANGE — no AJAX, WC's own Update button persists it
 	   ============================================================ */
 	function changeStatus(slug, label) {
 		var badge = document.querySelector('.brikpanel-order-header__status-badge');
@@ -172,7 +185,7 @@
 		dropdown.classList.remove('is-open');
 		badge.setAttribute('aria-expanded', 'false');
 
-		// Optimistic UI update
+		// Visual update on the BrikPanel badge
 		badge.className = 'brikpanel-order-header__status-badge status--' + slug;
 		badge.querySelector('.brk-status-label').textContent = label;
 
@@ -181,32 +194,13 @@
 			item.classList.toggle('is-active', item.getAttribute('data-status') === slug);
 		});
 
-		// Also sync WooCommerce's own status select
+		// Sync WooCommerce's own status select so the native Update button
+		// commits this status when the user submits the form.
 		var wcSelect = document.querySelector('#order_status');
 		if (wcSelect) {
 			wcSelect.value = 'wc-' + slug;
 			wcSelect.dispatchEvent(new Event('change', { bubbles: true }));
 		}
-
-		// AJAX request
-		var fd = new FormData();
-		fd.append('action', 'brikpanel_change_order_status');
-		fd.append('order_id', cfg.order_id);
-		fd.append('new_status', slug);
-		fd.append('_ajax_nonce', cfg.nonce);
-
-		fetch(cfg.ajax_url, { method: 'POST', body: fd, credentials: 'same-origin' })
-			.then(function (r) { return r.json(); })
-			.then(function (res) {
-				if (res.success) {
-					showToast(cfg.i18n.status_changed.replace('%s', label), 'success');
-				} else {
-					showToast(res.data && res.data.message ? res.data.message : cfg.i18n.error, 'error');
-				}
-			})
-			.catch(function () {
-				showToast(cfg.i18n.error, 'error');
-			});
 	}
 
 	/* ============================================================
