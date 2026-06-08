@@ -260,6 +260,11 @@ class Brikpanel_Dashboard_Topbar {
                         </div>
                     </div>
 
+                    <!-- Dark mode toggle -->
+                    <button type="button" class="brikpanel-topbar-icon-btn" id="brikpanel-topbar-darkmode" aria-label="<?php esc_attr_e( 'Toggle dark mode', 'brikpanel' ); ?>">
+                        <svg viewBox="0 0 24 24" fill="none" class="brikpanel-moon-icon" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    </button>
+
                     <!-- Notifications -->
                     <div class="brikpanel-topbar-menu" data-topbar-menu="notifications">
                         <button type="button" class="brikpanel-topbar-icon-btn" data-topbar-toggle="notifications" aria-haspopup="menu" aria-expanded="false" aria-label="<?php esc_attr_e( 'Order notifications', 'brikpanel' ); ?>">

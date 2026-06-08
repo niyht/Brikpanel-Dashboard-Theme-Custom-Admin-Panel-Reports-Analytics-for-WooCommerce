@@ -90,6 +90,21 @@
             if (e.key === 'Escape') closeAllTopbarMenus();
         });
 
+        // Dark mode toggle.
+        var darkBtn = document.getElementById('brikpanel-topbar-darkmode');
+        if (darkBtn) {
+            darkBtn.addEventListener('click', function () {
+                var root = document.documentElement;
+                if (root.getAttribute('data-theme') === 'dark') {
+                    root.removeAttribute('data-theme');
+                    try { localStorage.removeItem('brikpanel_theme'); } catch(e) {}
+                } else {
+                    root.setAttribute('data-theme', 'dark');
+                    try { localStorage.setItem('brikpanel_theme', 'dark'); } catch(e) {}
+                }
+            });
+        }
+
         initCacheClear();
 
         fetchTopbarStats();
