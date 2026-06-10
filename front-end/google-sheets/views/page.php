@@ -321,6 +321,29 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 							<input type="text" id="bp-gs-products-tab" name="tab" class="bp-gs-input" value="<?php echo esc_attr( $config['products_tab'] ); ?>">
 						</div>
 
+						<div class="bp-gs-field">
+							<span class="bp-gs-label"><?php esc_html_e( 'Categories to sync', 'brikpanel' ); ?></span>
+							<p class="bp-gs-help"><?php esc_html_e( 'Leave every box unchecked to sync all products. Pick one or more categories to sync only those products and their variations. Sub-categories are included automatically.', 'brikpanel' ); ?></p>
+							<?php if ( empty( $config['products_categories_catalogue'] ) ) : ?>
+								<p class="bp-gs-help"><?php esc_html_e( 'No product categories found yet.', 'brikpanel' ); ?></p>
+							<?php else : ?>
+								<div class="bp-gs-cat-list">
+									<?php foreach ( $config['products_categories_catalogue'] as $term ) :
+										$cat_checked = in_array( (int) $term->term_id, $config['products_categories'], true );
+									?>
+										<label class="bp-gs-cat-item">
+											<span class="bp-gs-checkbox">
+												<input type="checkbox" name="categories[]" value="<?php echo esc_attr( $term->term_id ); ?>" <?php checked( $cat_checked ); ?>>
+												<span><?php echo esc_html( $term->name ); ?></span>
+											</span>
+											<span class="bp-gs-cat-count"><?php echo esc_html( number_format_i18n( (int) $term->count ) ); ?></span>
+										</label>
+									<?php endforeach; ?>
+								</div>
+								<p class="bp-gs-help"><?php esc_html_e( 'Changing the categories? After saving, click "Sync now" — the tab is rebuilt from scratch to match the new selection, with no empty gaps.', 'brikpanel' ); ?></p>
+							<?php endif; ?>
+						</div>
+
 						<div class="bp-gs-section-divider"></div>
 
 						<div class="bp-gs-field bp-gs-field-toggle">

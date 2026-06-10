@@ -1956,6 +1956,112 @@
     }
 }
 
+/* Generic inline help hint — a small "?" with a dark tooltip, reused next to
+   metric labels and panel headings to explain where a figure comes from. */
+.brikpanel-dash-hint {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 0.25rem;
+    vertical-align: middle;
+    color: var(--bp-text-muted, #8a8a8a);
+    border-radius: 50%;
+    cursor: help;
+    transition: color 0.15s ease, background 0.15s ease;
+    outline: none;
+}
+
+.brikpanel-dash-hint:hover,
+.brikpanel-dash-hint:focus-visible {
+    color: var(--bp-text, #303030);
+    background: rgba(48,48,48,0.08);
+}
+
+.brikpanel-dash-hint:focus-visible {
+    box-shadow: 0 0 0 2px var(--bp-primary, #303030);
+}
+
+.brikpanel-dash-hint-icon {
+    display: block;
+    pointer-events: none;
+}
+
+/* Opens rightward from the icon by default. The icon sits to the left of (or
+   centred in) almost every label, so opening right keeps the box on screen.
+   The --end modifier flips it for the right-most card (Conversion rate). */
+.brikpanel-dash-hint-tip {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: -8px;
+    right: auto;
+    transform: translateY(-4px);
+    z-index: 100;
+    display: block;
+    width: max-content;
+    max-width: 300px;
+    padding: 0.625rem 0.75rem;
+    background: #303030;
+    color: #fff;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12);
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+
+.brikpanel-dash-hint-tip::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 12px;
+    right: auto;
+    transform: rotate(45deg);
+    width: 8px;
+    height: 8px;
+    background: #303030;
+    border-radius: 1px;
+}
+
+.brikpanel-dash-hint--end .brikpanel-dash-hint-tip {
+    left: auto;
+    right: -8px;
+}
+
+.brikpanel-dash-hint--end .brikpanel-dash-hint-tip::before {
+    left: auto;
+    right: 12px;
+}
+
+.brikpanel-dash-hint:hover .brikpanel-dash-hint-tip,
+.brikpanel-dash-hint:focus-visible .brikpanel-dash-hint-tip,
+.brikpanel-dash-hint:focus-within .brikpanel-dash-hint-tip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.brikpanel-dash-hint-title {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 0.1875rem;
+    color: #fff;
+}
+
+.brikpanel-dash-hint-body {
+    display: block;
+    color: rgba(255,255,255,0.85);
+}
+
 .brikpanel-dash-copy-summary:hover:not(:disabled) {
     background: var(--bp-primary-hover, #1a1a1a);
 }

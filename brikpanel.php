@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.1.13
+ * Version: 3.1.15
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.1.13');
+define('BRIKPANEL_VERSION', '3.1.15');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -270,58 +270,91 @@ function brikpanel_suppress_foreign_notices() {
     // admin still gets save confirmation without seeing every other
     // plugin's marketing banners bleed through.
 
+    // Foreign notice markup is not discarded — it is collected here and then
+    // tucked behind a small, collapsed toggle so the admin can still reveal it
+    // on demand (hidden by default, shown on click). Shared by reference across
+    // every notices hook flush so a single toggle gathers them all.
+    $collected = '';
+    $count     = 0;
+
     $capture = function () {
         ob_start();
     };
-    $flush = function () {
+    $flush = function () use (&$collected, &$count) {
         $html = ob_get_clean();
-        if ($html === false || $html === '') {
-            return;
-        }
-        // Remove foreign notice blocks while preserving correct DOM nesting.
-        // The old .*?</div> regex broke when notices contained nested <div>
-        // elements (e.g. wp-fail2ban promotional banners) — it captured only
-        // up to the first inner </div>, leaving orphaned closing tags that
-        // collapsed parent containers (#wpbody-content, #wpbody, #wpcontent)
-        // and pushed the page .wrap out of the normal hierarchy.
-        //
-        // New approach: find each notice opening tag, then count nested
-        // <div>…</div> pairs to locate the *matching* closing tag before
-        // deciding whether to strip the entire block.
-        $opener = '#<div\b[^>]*class="[^"]*\b(?:notice|updated|error)\b[^"]*"[^>]*>#is';
-        $offset = 0;
-        $out = '';
-        while (preg_match($opener, $html, $m, PREG_OFFSET_CAPTURE, $offset)) {
-            $start = $m[0][1];
-            // Emit everything before this notice as-is.
-            $out .= substr($html, $offset, $start - $offset);
+        if (is_string($html) && $html !== '') {
+            // Separate foreign notice blocks from BrikPanel's own while
+            // preserving correct DOM nesting. The naive .*?</div> regex broke
+            // when notices contained nested <div> elements (e.g. wp-fail2ban
+            // promotional banners) — it captured only up to the first inner
+            // </div>, leaving orphaned closing tags that collapsed parent
+            // containers (#wpbody-content, #wpbody, #wpcontent) and pushed the
+            // page .wrap out of the normal hierarchy.
+            //
+            // Approach: find each notice opening tag, then count nested
+            // <div>…</div> pairs to locate the *matching* closing tag before
+            // deciding what to do with the whole block.
+            //
+            // The class match accepts every flavour WordPress core and plugins
+            // emit: notice-success/error/warning/info, the legacy `updated` /
+            // `error` containers, and the core update nag (`update-nag`, which
+            // older WP prints without a `notice` class). Both single- and
+            // double-quoted `class=` attributes are handled.
+            $opener = '#<div\b[^>]*\bclass=(["\'])[^"\']*\b(?:notice|updated|error|update-nag)\b[^"\']*\1[^>]*>#is';
+            $offset = 0;
+            $out    = '';
+            while (preg_match($opener, $html, $m, PREG_OFFSET_CAPTURE, $offset)) {
+                $start = $m[0][1];
+                // Emit everything before this notice as-is.
+                $out .= substr($html, $offset, $start - $offset);
 
-            // Walk forward from the end of the opening tag, counting nested
-            // <div> opens against </div> closes until we reach depth 0.
-            $pos   = $start + strlen($m[0][0]);
-            $depth = 1;
-            while ($depth > 0 && preg_match('#<(/?)div\b[^>]*>#i', $html, $tag, PREG_OFFSET_CAPTURE, $pos)) {
-                $pos = $tag[0][1] + strlen($tag[0][0]);
-                if ($tag[1][0] === '/') {
-                    $depth--;
-                } else {
-                    $depth++;
+                // Walk forward from the end of the opening tag, counting nested
+                // <div> opens against </div> closes until we reach depth 0.
+                $pos   = $start + strlen($m[0][0]);
+                $depth = 1;
+                while ($depth > 0 && preg_match('#<(/?)div\b[^>]*>#i', $html, $tag, PREG_OFFSET_CAPTURE, $pos)) {
+                    $pos = $tag[0][1] + strlen($tag[0][0]);
+                    if ($tag[1][0] === '/') {
+                        $depth--;
+                    } else {
+                        $depth++;
+                    }
                 }
-            }
-            // $pos is now right after the matching </div>.
-            $block = substr($html, $start, $pos - $start);
+                // $pos is now right after the matching </div>.
+                $block = substr($html, $start, $pos - $start);
 
-            // BrikPanel's own notices stay visible.
-            if (strpos($block, 'brikpanel-notice') !== false) {
-                $out .= $block;
-            }
-            // Everything else is silently dropped.
+                // BrikPanel's own notices stay inline and always visible.
+                if (strpos($block, 'brikpanel-notice') !== false) {
+                    $out .= $block;
+                } else {
+                    // Everything else is stashed behind the reveal toggle.
+                    // WordPress core's common.js hoists every `div.notice`
+                    // (except `.inline`/`.below-h2`) to just after
+                    // `.wp-header-end` on DOM ready — which would yank these
+                    // back out of our box. Tag the outer notice tag with
+                    // `inline` so core leaves it nested where we put it. The
+                    // `notice` class itself is kept intact, so dismiss buttons
+                    // and the plugin's own scripts keep working.
+                    $open_tag = $m[0][0];
+                    $marked   = preg_replace('#\bclass=(["\'])([^"\']*)\1#i', 'class=$1$2 inline$1', $open_tag, 1);
+                    $collected .= $marked . substr($block, strlen($open_tag));
+                    $count++;
+                }
 
-            $offset = $pos;
+                $offset = $pos;
+            }
+            // Append any remaining content after the last notice.
+            $out .= substr($html, $offset);
+            echo $out;
         }
-        // Append any remaining content after the last notice.
-        $out .= substr($html, $offset);
-        echo $out;
+
+        // all_admin_notices always fires last on every admin page, so it is the
+        // single, reliable point to render the collected notices once.
+        if (current_action() === 'all_admin_notices') {
+            brikpanel_render_hidden_notices_box($collected, $count);
+            $collected = '';
+            $count     = 0;
+        }
     };
 
     // On multisite Network Admin we deliberately leave notices alone — core
@@ -355,6 +388,78 @@ function brikpanel_suppress_foreign_notices() {
     }
 }
 add_action('admin_init', 'brikpanel_suppress_foreign_notices');
+
+/**
+ * Render the small "hidden notices" reveal toggle plus the suppressed
+ * third-party notice markup tucked inside it.
+ *
+ * Primary surface: the BrikPanel topbar. When the topbar is present
+ * (body.brikpanel-has-topbar), its script relocates these notices into a
+ * fixed "hidden notices" button + panel and this inline box is hidden via CSS
+ * (no flash). See front-end/topbar/brikpanel-topbar.{php,css,js}.
+ *
+ * Fallback surface: on admin screens without the topbar (block editor,
+ * customizer, etc.) this renders as a self-contained <details>/<summary>
+ * element — collapsed by default (notices hidden), expanded on click, zero
+ * JavaScript — so the suppressed notices stay reachable everywhere. The
+ * wrapper carries the `brikpanel-notice` class so the CSS fallback never hides
+ * it, and the foreign notices live nested inside it (not as direct children of
+ * #wpbody-content/.wrap) so the same fallback leaves them visible once opened.
+ *
+ * @param string $notices_html Concatenated foreign notice markup.
+ * @param int    $count        Number of foreign notices collected.
+ */
+function brikpanel_render_hidden_notices_box($notices_html, $count) {
+    static $rendered = false;
+    if ($rendered || $count < 1 || $notices_html === '') {
+        return;
+    }
+    $rendered = true;
+
+    $label = sprintf(
+        /* translators: %d: number of hidden third-party admin notices */
+        _n('%d hidden notice', '%d hidden notices', $count, 'brikpanel'),
+        $count
+    );
+    $title = esc_attr__('Other plugins and themes posted these notices. BrikPanel keeps them hidden, click to show.', 'brikpanel');
+
+    $bell = '<svg class="brikpanel-fn-bell" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+    $chevron = '<svg class="brikpanel-fn-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg>';
+
+    echo '<style>
+        /* On topbar screens the topbar owns this UI — hide the inline
+           fallback up front so it never flashes before the script relocates
+           the notices into the topbar panel. */
+        body.brikpanel-has-topbar .brikpanel-foreign-notices { display: none !important; }
+        .brikpanel-foreign-notices { margin: 10px 0 4px; }
+        .brikpanel-foreign-notices > summary {
+            display: inline-flex; align-items: center; gap: .4rem;
+            list-style: none; cursor: pointer; -webkit-user-select: none; user-select: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 0.8125rem; font-weight: 550; line-height: 1; color: #616161;
+            background: #fff; border: 1px solid #e3e3e3; border-radius: .5rem;
+            padding: .45rem .7rem; box-shadow: 0 1px 0 rgba(0,0,0,.05);
+            transition: background .15s ease, color .15s ease, border-color .15s ease;
+        }
+        .brikpanel-foreign-notices > summary::-webkit-details-marker { display: none; }
+        .brikpanel-foreign-notices > summary:hover { background: #f7f7f7; color: #303030; }
+        .brikpanel-foreign-notices > summary:focus-visible { outline: none; border-color: #303030; box-shadow: 0 0 0 1px #303030; }
+        .brikpanel-foreign-notices .brikpanel-fn-bell { flex: 0 0 auto; opacity: .8; }
+        .brikpanel-foreign-notices .brikpanel-fn-chevron { flex: 0 0 auto; opacity: .65; transition: transform .2s ease; }
+        .brikpanel-foreign-notices[open] > summary { color: #303030; }
+        .brikpanel-foreign-notices[open] > summary .brikpanel-fn-chevron { transform: rotate(180deg); }
+        .brikpanel-foreign-notices .brikpanel-fn-list { margin-top: .6rem; }
+        .brikpanel-foreign-notices .brikpanel-fn-list > .notice,
+        .brikpanel-foreign-notices .brikpanel-fn-list > .updated,
+        .brikpanel-foreign-notices .brikpanel-fn-list > .error,
+        .brikpanel-foreign-notices .brikpanel-fn-list > .update-nag { margin-left: 0; margin-right: 0; }
+    </style>';
+
+    echo '<details id="brikpanel-foreign-notices-holder" class="brikpanel-notice brikpanel-foreign-notices">';
+    echo '<summary title="' . $title . '">' . $bell . '<span>' . esc_html($label) . '</span>' . $chevron . '</summary>';
+    echo '<div class="brikpanel-fn-list">' . $notices_html . '</div>';
+    echo '</details>';
+}
 
 // =============================================================================
 // LOGIN PAGE CUSTOMIZATION
@@ -823,6 +928,7 @@ function brikpanel_maybe_upgrade_db() {
         return;
     }
     brikpanel_create_table();
+    brikpanel_backfill_native_cogs();
     update_option('brikpanel_db_version', BRIKPANEL_VERSION);
 
     // Trigger an immediate first computation of customer metrics + cohort
@@ -839,6 +945,78 @@ function brikpanel_maybe_upgrade_db() {
     }
 }
 add_action('plugins_loaded', 'brikpanel_maybe_upgrade_db', 5);
+
+/**
+ * One-time backfill: copy WooCommerce's native Cost of Goods Sold values into
+ * BrikPanel's own `_brikpanel_cogs` meta for products and variations that have
+ * a native cost on file but were never saved through BrikPanel.
+ *
+ * BrikPanel reads cost exclusively from `_brikpanel_cogs` on the dashboard,
+ * the product list and Quick Edit; the live mirror in
+ * brikpanel_mirror_wc_native_cogs() keeps future native edits in step, but
+ * costs entered before this release (or via WooCommerce's own product screen
+ * while running an older BrikPanel) need a single catch-up pass so historical
+ * data shows up immediately instead of only after the next product save.
+ *
+ * Runs once, guarded by its own option so a manual re-edit is never undone:
+ * the WHERE clause only touches rows that have NO `_brikpanel_cogs` yet, and
+ * the post_type join keeps order-level `_cogs_total_value` out of product meta.
+ */
+function brikpanel_backfill_native_cogs() {
+    if ( get_option( 'brikpanel_native_cogs_backfilled' ) === 'yes' ) {
+        return;
+    }
+
+    global $wpdb;
+
+    // Capture the rows we are about to backfill so their per-post meta cache
+    // can be invalidated afterwards (a raw INSERT bypasses WordPress's own
+    // cache busting that update_post_meta() would have triggered).
+    $target_ids = $wpdb->get_col(
+        "SELECT wc.post_id
+         FROM {$wpdb->postmeta} wc
+         INNER JOIN {$wpdb->posts} p
+                 ON p.ID = wc.post_id
+                AND p.post_type IN ('product', 'product_variation')
+         LEFT JOIN {$wpdb->postmeta} bp
+                ON bp.post_id = wc.post_id
+               AND bp.meta_key = '_brikpanel_cogs'
+         WHERE wc.meta_key = '_cogs_total_value'
+           AND wc.meta_value <> ''
+           AND bp.meta_id IS NULL"
+    );
+
+    if ( empty( $target_ids ) ) {
+        update_option( 'brikpanel_native_cogs_backfilled', 'yes', false );
+        return;
+    }
+
+    $wpdb->query(
+        "INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value)
+         SELECT wc.post_id, '_brikpanel_cogs', wc.meta_value
+         FROM {$wpdb->postmeta} wc
+         INNER JOIN {$wpdb->posts} p
+                 ON p.ID = wc.post_id
+                AND p.post_type IN ('product', 'product_variation')
+         LEFT JOIN {$wpdb->postmeta} bp
+                ON bp.post_id = wc.post_id
+               AND bp.meta_key = '_brikpanel_cogs'
+         WHERE wc.meta_key = '_cogs_total_value'
+           AND wc.meta_value <> ''
+           AND bp.meta_id IS NULL"
+    );
+
+    // Drop the stale per-post meta cache for each backfilled product and bump
+    // the shared data cache version so the dashboard recomputes COGS at once.
+    foreach ( $target_ids as $pid ) {
+        wp_cache_delete( (int) $pid, 'post_meta' );
+    }
+    if ( function_exists( 'brikpanel_bust_data_caches' ) ) {
+        brikpanel_bust_data_caches();
+    }
+
+    update_option( 'brikpanel_native_cogs_backfilled', 'yes', false );
+}
 
 
 // =============================================================================

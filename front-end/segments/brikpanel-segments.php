@@ -715,14 +715,15 @@ class Brikpanel_Segments {
 		// filters that depend on orders) are applied consistently.
 		$params = [];
 		$order_where = [];
+		$ltv_status_in = brikpanel_statuses_sql_in( brikpanel_ltv_counted_statuses() );
 		if ( $hpos ) {
 			$order_from = "{$wpdb->prefix}wc_orders o";
 			$order_where[] = "o.type = 'shop_order'";
-			$order_where[] = "o.status IN ('wc-completed','wc-processing','wc-on-hold','wc-pending','wc-refunded')";
+			$order_where[] = "o.status IN ({$ltv_status_in})";
 		} else {
 			$order_from = "{$wpdb->posts} o";
 			$order_where[] = "o.post_type = 'shop_order'";
-			$order_where[] = "o.post_status IN ('wc-completed','wc-processing','wc-on-hold','wc-pending','wc-refunded')";
+			$order_where[] = "o.post_status IN ({$ltv_status_in})";
 		}
 
 		// Exclude POS/staff accounts the merchant flagged so this customer

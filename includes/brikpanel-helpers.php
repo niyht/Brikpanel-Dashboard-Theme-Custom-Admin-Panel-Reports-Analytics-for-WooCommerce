@@ -91,35 +91,111 @@ add_action( 'updated_post_meta', 'brikpanel_bust_data_caches_on_cogs_meta', 10, 
 add_action( 'deleted_post_meta', 'brikpanel_bust_data_caches_on_cogs_meta', 10, 3 );
 
 /**
- * Statuses that count as realised revenue for the three headline KPI cards
- * (Total Sales, Orders, AOV). Defaults to processing + completed; merchants
- * who take a lot of offline payments (cash, cheque, bank transfer) can add
- * wc-on-hold via the brikpanel_kpi_statuses filter so those orders show up
- * in the headline figures.
+ * Keep BrikPanel's own cost meta in lockstep with WooCommerce's native
+ * Cost of Goods Sold field (WooCommerce 9.5+).
  *
- * The output is validated: must be a non-empty list of strings, each
- * normalised to the wc- prefix WooCommerce uses internally. Invalid
- * filter returns fall back to the default pair.
+ * BrikPanel reads product cost from its own `_brikpanel_cogs` meta on every
+ * surface: the dashboard Profit math, the product-list Cost column, Quick
+ * Edit and the Google Sheets export. The product editor already mirrors
+ * BrikPanel -> WC native on save, but a merchant can instead fill the cost
+ * from WooCommerce's own product screen, which writes only `_cogs_total_value`.
+ * Without the reverse mirror that cost stays invisible to BrikPanel, so the
+ * dashboard COGS reads as empty even though the value is clearly set on the
+ * product. This hook closes the gap live for BOTH simple products and
+ * variations: WooCommerce stores the per-object value in `_cogs_total_value`
+ * and deletes the row when a variation inherits its parent, which is exactly
+ * the present/absent semantics `_brikpanel_cogs` already uses, so a straight
+ * value copy keeps the two perfectly in step (existing data is backfilled once
+ * on upgrade by brikpanel_backfill_native_cogs()).
+ *
+ * Only products and variations are mirrored: WooCommerce also stores
+ * `_cogs_total_value` on orders, which must never bleed into product cost meta.
+ *
+ * @param int    $meta_id    Unused (an array of ids on the delete hook).
+ * @param int    $object_id  Product or variation ID whose meta changed.
+ * @param string $meta_key   Meta key that changed.
+ * @param mixed  $meta_value New value ('' on delete / clear).
+ */
+function brikpanel_mirror_wc_native_cogs( $meta_id, $object_id, $meta_key, $meta_value = '' ) {
+    if ( '_cogs_total_value' !== $meta_key ) {
+        return;
+    }
+    if ( ! in_array( get_post_type( $object_id ), array( 'product', 'product_variation' ), true ) ) {
+        return;
+    }
+
+    $native  = (string) $meta_value;
+    $current = (string) get_post_meta( $object_id, '_brikpanel_cogs', true );
+
+    // Cleared on the native side (variation now inherits its parent, or the
+    // merchant emptied the field) -> drop BrikPanel's mirrored copy so the
+    // variation->parent fallback kicks back in instead of a stale cost.
+    if ( '' === $native ) {
+        if ( '' !== $current ) {
+            delete_post_meta( $object_id, '_brikpanel_cogs' );
+        }
+        return;
+    }
+
+    // Normalise both sides through wc_format_decimal so 12.5 and 12.50 do not
+    // ping-pong, and only write on a real change (a no-op update_post_meta
+    // would not fire, but guarding also skips the cache bust for free).
+    $formatted = wc_format_decimal( $native );
+    if ( '' === $current || (float) $current !== (float) $formatted ) {
+        update_post_meta( $object_id, '_brikpanel_cogs', $formatted );
+    }
+}
+add_action( 'added_post_meta',   'brikpanel_mirror_wc_native_cogs', 10, 4 );
+add_action( 'updated_post_meta', 'brikpanel_mirror_wc_native_cogs', 10, 4 );
+add_action( 'deleted_post_meta', 'brikpanel_mirror_wc_native_cogs', 10, 4 );
+
+/**
+ * Option name storing the order statuses a merchant counts as valid,
+ * realised sales (revenue, order count, AOV, profit, lifetime value).
+ */
+const BRIKPANEL_PAID_STATUSES_OPTION = 'brikpanel_paid_statuses';
+
+/**
+ * Option name storing the order statuses a merchant treats as refunds.
+ */
+const BRIKPANEL_REFUNDED_STATUSES_OPTION = 'brikpanel_refunded_statuses';
+
+/**
+ * Factory defaults for the "valid sales" bucket. Processing + completed is
+ * what WooCommerce itself treats as paid for its native reports.
  *
  * @return string[]
  */
-function brikpanel_kpi_revenue_statuses() {
-    $default = [ 'wc-processing', 'wc-completed' ];
+function brikpanel_default_paid_statuses() {
+    return [ 'wc-processing', 'wc-completed' ];
+}
 
-    /**
-     * Filter the order statuses included in the headline KPI cards
-     * (Total Sales, Orders, AOV).
-     *
-     * @param string[] $statuses Default ['wc-processing','wc-completed'].
-     */
-    $filtered = apply_filters( 'brikpanel_kpi_statuses', $default );
+/**
+ * Factory default for the "refunded" bucket — WooCommerce's native fully
+ * refunded status.
+ *
+ * @return string[]
+ */
+function brikpanel_default_refunded_statuses() {
+    return [ 'wc-refunded' ];
+}
 
-    if ( ! is_array( $filtered ) || empty( $filtered ) ) {
+/**
+ * Validate a raw status list: keep only non-empty strings, normalise each to
+ * the wc- prefix WooCommerce uses internally, drop duplicates. Falls back to
+ * the supplied default when nothing usable remains so analytics never query
+ * an empty status set (which would zero out every revenue figure).
+ *
+ * @param mixed    $list    Raw value (option payload or filter return).
+ * @param string[] $default Fallback list.
+ * @return string[]
+ */
+function brikpanel_normalise_statuses( $list, array $default ) {
+    if ( ! is_array( $list ) ) {
         return $default;
     }
-
-    $normalised = [];
-    foreach ( $filtered as $status ) {
+    $out = [];
+    foreach ( $list as $status ) {
         if ( ! is_string( $status ) ) {
             continue;
         }
@@ -130,13 +206,137 @@ function brikpanel_kpi_revenue_statuses() {
         if ( 0 !== strpos( $status, 'wc-' ) ) {
             $status = 'wc-' . $status;
         }
-        $normalised[] = $status;
+        $out[] = $status;
     }
-
-    $normalised = array_values( array_unique( $normalised ) );
-
-    return empty( $normalised ) ? $default : $normalised;
+    $out = array_values( array_unique( $out ) );
+    return empty( $out ) ? $default : $out;
 }
+
+/**
+ * Order statuses that count as realised, valid sales across every BrikPanel
+ * analytic: the headline KPI cards (Total Sales, Orders, AOV), Profit, the
+ * store summary, marketplace breakdowns and the lifetime-value engine.
+ *
+ * Merchants pick the set in BrikPanel ▸ Settings ▸ Analytics. Stores that use
+ * a shipment-tracking plugin (custom "Partially shipped" / "Delivered"
+ * statuses) or take a lot of offline payments add those statuses there so
+ * their orders stop being silently dropped from the figures.
+ *
+ * The legacy brikpanel_kpi_statuses filter still runs last for developers who
+ * set the list in code.
+ *
+ * @return string[]
+ */
+function brikpanel_paid_order_statuses() {
+    $default = brikpanel_default_paid_statuses();
+    $stored  = get_option( BRIKPANEL_PAID_STATUSES_OPTION, null );
+    $base    = ( null === $stored ) ? $default : brikpanel_normalise_statuses( $stored, $default );
+
+    /**
+     * Filter the order statuses counted as valid sales. Back-compat hook —
+     * the same list is now editable from the Analytics settings screen.
+     *
+     * @param string[] $statuses Resolved status list.
+     */
+    $filtered = apply_filters( 'brikpanel_kpi_statuses', $base );
+
+    return brikpanel_normalise_statuses( $filtered, $base );
+}
+
+/**
+ * Order statuses a merchant treats as refunds. Used by the refund counters
+ * and folded into the lifetime-value set so refunded customers still register
+ * as having ordered.
+ *
+ * @return string[]
+ */
+function brikpanel_refunded_order_statuses() {
+    $default = brikpanel_default_refunded_statuses();
+    $stored  = get_option( BRIKPANEL_REFUNDED_STATUSES_OPTION, null );
+    $base    = ( null === $stored ) ? $default : brikpanel_normalise_statuses( $stored, $default );
+
+    /**
+     * Filter the order statuses counted as refunds.
+     *
+     * @param string[] $statuses Resolved status list.
+     */
+    $filtered = apply_filters( 'brikpanel_refunded_statuses', $base );
+
+    return brikpanel_normalise_statuses( $filtered, $base );
+}
+
+/**
+ * Statuses counted by the lifetime-value / RFM engine: every valid sale plus
+ * every refund. A refunded order still represents a customer who bought, so it
+ * belongs in the lifetime history even though its money nets out.
+ *
+ * @return string[]
+ */
+function brikpanel_ltv_counted_statuses() {
+    return array_values( array_unique( array_merge(
+        brikpanel_paid_order_statuses(),
+        brikpanel_refunded_order_statuses()
+    ) ) );
+}
+
+/**
+ * Backwards-compatible alias kept for the headline KPI callers. Delegates to
+ * the unified valid-sales set.
+ *
+ * @return string[]
+ */
+function brikpanel_kpi_revenue_statuses() {
+    return brikpanel_paid_order_statuses();
+}
+
+/**
+ * Render a status list as a SQL-safe, quoted, comma-separated fragment for an
+ * `IN (...)` clause — e.g. "'wc-processing','wc-completed'". Values originate
+ * from a fixed whitelist (registered WooCommerce statuses) and are still run
+ * through esc_sql() as defence in depth.
+ *
+ * @param string[] $statuses Status keys.
+ * @return string
+ */
+function brikpanel_statuses_sql_in( array $statuses ) {
+    $quoted = array_map(
+        static function ( $s ) {
+            return "'" . esc_sql( $s ) . "'";
+        },
+        $statuses
+    );
+    return implode( ',', $quoted );
+}
+
+/**
+ * Quoted IN-list of the valid-sales statuses, ready to interpolate into a
+ * double-quoted SQL string.
+ *
+ * @return string
+ */
+function brikpanel_paid_statuses_sql() {
+    return brikpanel_statuses_sql_in( brikpanel_paid_order_statuses() );
+}
+
+/**
+ * When the merchant changes either status bucket, invalidate every
+ * order-derived cache and queue a lifetime-value / cohort recompute so the
+ * precomputed customer table reflects the new definition without waiting for
+ * the nightly cron.
+ */
+function brikpanel_on_status_buckets_changed() {
+    brikpanel_bust_data_caches();
+    if ( ! wp_next_scheduled( 'brikpanel_recompute_customer_metrics' ) ) {
+        wp_schedule_single_event( time() + 5, 'brikpanel_recompute_customer_metrics' );
+    }
+    if ( ! wp_next_scheduled( 'brikpanel_recompute_cohort_retention' ) ) {
+        wp_schedule_single_event( time() + 10, 'brikpanel_recompute_cohort_retention' );
+    }
+}
+add_action( 'update_option_' . BRIKPANEL_PAID_STATUSES_OPTION, 'brikpanel_on_status_buckets_changed' );
+add_action( 'update_option_' . BRIKPANEL_REFUNDED_STATUSES_OPTION, 'brikpanel_on_status_buckets_changed' );
+add_action( 'add_option_' . BRIKPANEL_PAID_STATUSES_OPTION, 'brikpanel_on_status_buckets_changed' );
+add_action( 'add_option_' . BRIKPANEL_REFUNDED_STATUSES_OPTION, 'brikpanel_on_status_buckets_changed' );
 
 /**
  * Get all administrator user IDs (users with manage_options capability).

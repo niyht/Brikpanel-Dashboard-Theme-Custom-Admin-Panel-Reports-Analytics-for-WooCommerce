@@ -177,7 +177,7 @@ class Brikpanel_Ads_Dashboard {
 			return 0.0;
 		}
 		$is_hpos = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
-		$paid    = [ 'wc-processing', 'wc-completed' ];
+		$paid    = brikpanel_paid_order_statuses();
 		$placeholders = implode( ',', array_fill( 0, count( $paid ), '%s' ) );
 
 		if ( $is_hpos ) {

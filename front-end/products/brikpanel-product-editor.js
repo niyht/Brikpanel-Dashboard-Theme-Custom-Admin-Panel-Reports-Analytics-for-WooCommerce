@@ -25,6 +25,7 @@
         initEditor();
         initSeoPreview();
         initSeoAnalysisBridge();
+        initSurerankAnalyze();
         initAutoSave();
         initInlineEdit();
         initTags();
@@ -2255,6 +2256,10 @@
             if (r.success) {
                 state.dirty = false;
                 showToast(r.data.message + ' \u2713', 'success');
+                // Refresh SureRank's SEO analysis so the checks reflect the
+                // just-saved title/description/keyword/content. Deferred so it
+                // reads the product id this handler may set just below.
+                if (typeof PE._surerankAnalyze === 'function') { setTimeout(PE._surerankAnalyze, 0); }
                 if (r.data.product_id) {
                     $('#bpe-product-id').val(r.data.product_id);
                     // Keep the auto-save gate in sync: a product becomes live
@@ -2552,6 +2557,72 @@
         // idempotent (pushToNative only fires events when a value changed).
         $(window).on('YoastSEO:ready', pushToNative);
         setTimeout(pushToNative, 1200);
+    }
+
+    /* SureRank "Analyze" panel. SureRank's own analysis lives in a React popup
+       BrikPanel routes around via the unified SEO fields, so we render its
+       checks server-side inside the SEO card. The Re-analyze button and a
+       post-save refresh re-fetch the panel so results track the latest saved
+       title, description, focus keyword and content. */
+    function initSurerankAnalyze() {
+        var $panel = $('#bpe-surerank-analysis');
+        if (!$panel.length) return;
+
+        var $btn  = $('#bpe-surerank-rerun');
+        var $body = $('#bpe-surerank-body');
+        var xhr = null, timer = null;
+
+        // Send the current (possibly unsaved) field values + description so
+        // the server can analyze exactly what's on screen — no save needed.
+        function payload() {
+            return {
+                action: 'brikpanel_pe_surerank_analyze',
+                security: PE.nonce,
+                product_id: $('#bpe-product-id').val() || 0,
+                seo_title: $('#bpe-seo-title').val() || '',
+                seo_description: $('#bpe-seo-desc').val() || '',
+                seo_focus_kw: $('#bpe-seo-focus-kw').val() || '',
+                seo_canonical: $('#bpe-seo-canonical').val() || '',
+                content: (typeof getEditorHtml === 'function' ? (getEditorHtml('bpe-description') || '') : '')
+            };
+        }
+
+        function analyze(silent) {
+            var data = payload();
+            if (!data.product_id) return;
+            if (xhr) { try { xhr.abort(); } catch (e) {} }
+            if (!silent) { $btn.prop('disabled', true).text(PE.i18n.analyzing || 'Analyzing...'); }
+            $panel.addClass('is-analyzing');
+            xhr = $.post(PE.ajax_url, data).done(function (r) {
+                if (r && r.success && typeof r.data.html === 'string' && r.data.html !== '') {
+                    $body.html(r.data.html);
+                }
+            }).always(function () {
+                xhr = null;
+                $panel.removeClass('is-analyzing');
+                if (!silent) { $btn.prop('disabled', false).text(PE.i18n.analyze || 'Re-analyze'); }
+            });
+        }
+
+        function scheduleLive() {
+            clearTimeout(timer);
+            timer = setTimeout(function () { analyze(true); }, 800);
+        }
+
+        // Manual re-analyze button.
+        $btn.on('click', function () { analyze(false); });
+
+        // Live, debounced updates as the user edits the SEO fields or the
+        // product description — the checks track typing without a save.
+        $(document).on('input change',
+            '#bpe-seo-title, #bpe-seo-desc, #bpe-seo-focus-kw, #bpe-seo-canonical',
+            scheduleLive);
+        $(document).on('input change keyup paste',
+            '#bpe-description, #bpe-description-source',
+            scheduleLive);
+
+        // Expose for the save-success handler to refresh after a save.
+        PE._surerankAnalyze = function () { analyze(true); };
     }
 
     /* Inline edit on product list page */

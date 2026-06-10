@@ -58,6 +58,21 @@ body.brikpanel-has-topbar #adminmenuwrap {
 body.brikpanel-has-topbar #adminmenuwrap {
     overflow: hidden;
 }
+/* Classic (native WP) menu mode: the inner BrikPanel nav is hidden, so the
+   pinning above would trap the native #adminmenu inside a fixed, overflow:hidden
+   wrap — long admin menus get clipped and lower items become unreachable. Restore
+   WordPress's default flow positioning so the menu scrolls with the page and its
+   hover flyout submenus aren't clipped. The dark #adminmenuback stays pinned as
+   the full-height background strip. */
+body.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap {
+    position: relative;
+    float: left;
+    top: auto;
+    bottom: auto;
+    left: auto;
+    height: auto;
+    overflow: visible;
+}
 /* Constrain the inner nav to the viewport-minus-topbar height, so it owns
    the only scrollbar inside the sidebar. */
 body.brikpanel-has-topbar #brikpanel-navigation {
@@ -345,6 +360,12 @@ body.brikpanel-has-topbar .brikpanel-order-header {
     white-space: nowrap;
 }
 
+/* Hidden-notices badge: these are low-priority, suppressed notices, so use a
+   muted grey instead of the alarming red the order/alert badges use. */
+#brikpanel-topbar [data-topbar-menu="hidden-notices"] .brikpanel-topbar-badge {
+    background: #646970;
+}
+
 /* ---------- Dropdowns ---------- */
 
 .brikpanel-topbar-menu { position: relative; }
@@ -461,6 +482,82 @@ body.brikpanel-has-topbar .brikpanel-order-header {
     background: var(--bp-topbar-border);
     margin: 0.25rem 0;
 }
+
+/* ---------- Hidden third-party notices panel ---------- */
+
+.brikpanel-fn-panel {
+    width: min(720px, 94vw);
+    padding: 0;
+    max-height: min(80vh, 720px);
+    display: flex;
+    flex-direction: column;
+}
+
+.brikpanel-fn-panel-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.875rem 1.125rem;
+    border-bottom: 1px solid var(--bp-topbar-border);
+    background: var(--bp-topbar-bg);
+    border-radius: 0.625rem 0.625rem 0 0;
+    flex: 0 0 auto;
+}
+
+.brikpanel-fn-panel-header > span:first-child {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--bp-topbar-text);
+}
+
+.brikpanel-fn-panel-hint {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--bp-topbar-text-3);
+    white-space: nowrap;
+}
+
+.brikpanel-fn-panel-list {
+    padding: 0.75rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+/* Normalize the relocated WordPress admin notices so they read cleanly inside
+   the panel: no giant default margins, rounded card, but keep the coloured left
+   accent WP core gives each notice type.
+
+   The relocation script also stamps each notice with `.brikpanel-notice`, which
+   every BrikPanel declutter rule already excludes via `:not(.brikpanel-notice)`
+   — so the panel notices stay visible on custom screens without an !important
+   tug-of-war. The `#brikpanel-topbar` prefix is belt-and-suspenders against any
+   future global rule. */
+#brikpanel-topbar .brikpanel-fn-panel-list > .notice,
+#brikpanel-topbar .brikpanel-fn-panel-list > .updated,
+#brikpanel-topbar .brikpanel-fn-panel-list > .error,
+#brikpanel-topbar .brikpanel-fn-panel-list > .update-nag {
+    display: block !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0.75rem 1rem !important;
+    box-shadow: none;
+    background: #fff;
+    border: 1px solid var(--bp-topbar-border);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+#brikpanel-topbar .brikpanel-fn-panel-list .notice p,
+#brikpanel-topbar .brikpanel-fn-panel-list .updated p,
+#brikpanel-topbar .brikpanel-fn-panel-list .error p,
+#brikpanel-topbar .brikpanel-fn-panel-list .update-nag p { margin: 0.35em 0; font-size: 0.875rem; }
+
+#brikpanel-topbar .brikpanel-fn-panel-list .notice-dismiss { padding: 0.5rem; }
 
 /* ---------- User button ---------- */
 
@@ -809,6 +906,9 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
         max-height: calc(100vh - var(--bp-topbar-height) - 16px);
         overflow-y: auto;
     }
+
+    /* Let the full-width sheet rule above own the notices panel width too. */
+    .brikpanel-fn-panel { width: auto; }
 }
 
 /* Very small phones: shrink icon buttons a touch so everything still fits. */

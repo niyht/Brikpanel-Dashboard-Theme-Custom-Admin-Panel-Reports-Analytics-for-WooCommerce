@@ -42,6 +42,14 @@ const BRIKPANEL_ACCESS_OPT_ADMINS = 'brikpanel_access_disable_for_admins';
 const BRIKPANEL_ACCESS_OPT_ROLES  = 'brikpanel_access_disabled_roles';
 const BRIKPANEL_ACCESS_OPT_USERS  = 'brikpanel_access_disabled_users';
 
+// Roles for which the orders-screen analytics summary strip (the 30-day
+// revenue / order-count overview above the orders list) is hidden. A finer
+// axis than the interface gate above: a user in one of these roles keeps the
+// full BrikPanel orders list but never sees store-wide totals. The common ask
+// is multi-branch stores where branch staff process orders without seeing the
+// whole store's revenue. Empty by default, so every staff member sees it.
+const BRIKPANEL_ACCESS_OPT_OVERVIEW_ROLES = 'brikpanel_orders_overview_hidden_roles';
+
 // Settings-page admin lock. When 'yes' (the default) only administrators may
 // open and change the BrikPanel settings tab. Every other role, including shop
 // managers who hold WooCommerce's `manage_woocommerce` cap, is kept out.
@@ -160,6 +168,46 @@ function brikpanel_access_is_disabled_for_user( $user = null ) {
 	}
 
 	return $cache[ $uid ] = false;
+}
+
+/**
+ * Whether the orders-screen analytics summary strip must be hidden from a user.
+ *
+ * Independent of the interface gate above: this hides only the 30-day revenue /
+ * order-count overview that sits above the orders list, while the user keeps the
+ * full BrikPanel orders experience.
+ *
+ * Pure role match, consistent with the "Disable for roles" rule above: a user
+ * is hidden if and only if one of their roles is in the configured list. No role
+ * is special-cased, so selecting "Administrator" hides it from administrators
+ * too — what is selected is exactly what is hidden. This never locks anyone out
+ * of the BrikPanel settings page (governed separately), so the choice is always
+ * reversible.
+ *
+ * Returns false for logged-out / unresolved users so nothing outside wp-admin is
+ * ever affected.
+ *
+ * @param WP_User|null $user Optional user; defaults to the current user.
+ * @return bool
+ */
+function brikpanel_orders_overview_hidden_for_user( $user = null ) {
+	if ( ! function_exists( 'wp_get_current_user' ) ) {
+		return false;
+	}
+	if ( null === $user ) {
+		$user = wp_get_current_user();
+	}
+	if ( ! $user instanceof WP_User || ! $user->ID ) {
+		return false;
+	}
+
+	$hidden_roles = array_map( 'strval', (array) get_option( BRIKPANEL_ACCESS_OPT_OVERVIEW_ROLES, [] ) );
+	if ( ! $hidden_roles ) {
+		return false;
+	}
+
+	$roles = array_map( 'strval', (array) $user->roles );
+	return (bool) array_intersect( $roles, $hidden_roles );
 }
 
 /**
@@ -614,6 +662,16 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'desc'     => __( 'Hand-pick individual staff accounts that should always get the default admin, regardless of their role. Customers and subscribers are not listed.', 'brikpanel' ),
 			'desc_tip' => true,
 			'options'  => brikpanel_access_collect_staff_users(),
+			'default'  => [],
+		],
+		[
+			'name'     => __( 'Hide orders analytics from roles', 'brikpanel' ),
+			'id'       => BRIKPANEL_ACCESS_OPT_OVERVIEW_ROLES,
+			'type'     => 'multiselect',
+			'class'    => 'wc-enhanced-select',
+			'desc'     => __( 'Users with any of the selected roles keep the BrikPanel orders list but no longer see the analytics summary above it (the last 30 days revenue and order counts). Ideal for multi-branch stores where branch staff process orders without seeing the whole store\'s totals. What you select is exactly what is hidden, so adding Administrator hides it from administrators too; you can always reopen this page to change it back. Leave empty to show it to everyone.', 'brikpanel' ),
+			'desc_tip' => true,
+			'options'  => brikpanel_access_collect_roles(),
 			'default'  => [],
 		],
 		[

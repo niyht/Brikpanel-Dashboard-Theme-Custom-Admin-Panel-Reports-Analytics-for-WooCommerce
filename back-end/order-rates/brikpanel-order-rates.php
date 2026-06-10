@@ -5,7 +5,9 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Returns the count of successful orders (processing + completed) within a given date range.
+ * Returns the count of successful orders within a given date range. "Successful"
+ * resolves to the merchant's configured valid-sales bucket (defaults to
+ * processing + completed), so custom statuses like "Partially shipped" count.
  *
  * @param string|null $start_date_gmt Start date in GMT (Y-m-d H:i:s format).
  * @param string|null $end_date_gmt   End date in GMT (Y-m-d H:i:s format).
@@ -14,7 +16,7 @@ if (!defined('ABSPATH')) {
 function brikpanel_get_successful_order_count($start_date_gmt = null, $end_date_gmt = null, $exclude_marketplace = false) {
     global $wpdb;
 
-    $include_statuses = ['wc-processing', 'wc-completed'];
+    $include_statuses = brikpanel_paid_order_statuses();
 
     $status_placeholders = implode(', ', array_fill(0, count($include_statuses), '%s'));
     $query_args = $include_statuses;
@@ -129,17 +131,15 @@ function brikpanel_get_total_orders_count($start_date_gmt = null, $end_date_gmt 
     global $wpdb;
 
     // Must match the union of the slices computed in get_order_rates(): successful
-    // (processing + completed), failed, refunded/return-draft, cancelled. Adding any
-    // status here without a matching slice will make the rate percentages stop
-    // adding up to 100%.
-    $include_statuses = [
-        'wc-processing',
-        'wc-completed',
-        'wc-failed',
-        'wc-refunded',
-        'wc-return-draft',
-        'wc-cancelled',
-    ];
+    // (the configurable valid-sales bucket), failed, refunded (configurable +
+    // return-draft), cancelled. Built from the same helpers those slices use so
+    // the rate percentages always add up to 100% even when the merchant adds
+    // custom statuses to either bucket.
+    $include_statuses = array_values( array_unique( array_merge(
+        brikpanel_paid_order_statuses(),
+        brikpanel_refunded_order_statuses(),
+        [ 'wc-failed', 'wc-return-draft', 'wc-cancelled' ]
+    ) ) );
     $status_placeholders = implode(', ', array_fill(0, count($include_statuses), '%s'));
     $query_args = $include_statuses;
 

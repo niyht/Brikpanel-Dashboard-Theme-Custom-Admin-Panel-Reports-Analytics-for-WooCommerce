@@ -745,8 +745,10 @@ function brikpanel_enqueue_woo_assets($hook) {
             );
 
             wp_localize_script( 'brikpanel_orders_scripts', 'brikpanelOrdersOverview', [
-                'ajax_url' => admin_url( 'admin-ajax.php' ),
-                'nonce'    => wp_create_nonce( 'brikpanel_nonce_action' ),
+                'ajax_url'      => admin_url( 'admin-ajax.php' ),
+                'nonce'         => wp_create_nonce( 'brikpanel_nonce_action' ),
+                'hide_overview' => function_exists( 'brikpanel_orders_overview_hidden_for_user' )
+                    && brikpanel_orders_overview_hidden_for_user(),
                 'i18n'     => [
                     'last_30_days'      => __( 'Last 30 days', 'brikpanel' ),
                     'orders'            => __( 'Orders', 'brikpanel' ),
@@ -766,6 +768,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                     'filter_by'         => __( 'Filter by', 'brikpanel' ),
                     'clear_filters'     => __( 'Clear filters', 'brikpanel' ),
                     'filter_order_tag'  => __( 'order tag', 'brikpanel' ),
+                    'filter_shipping_method' => __( 'shipping method', 'brikpanel' ),
                 ],
             ] );
         }
@@ -1400,6 +1403,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'confirm_delete_variation' => __('Delete this variation? This change is applied when you save the product.', 'brikpanel'),
                 'chip_remove'      => __('Remove', 'brikpanel'),
                 'more_fields'      => __('More fields', 'brikpanel'),
+                'analyze'          => __('Re-analyze', 'brikpanel'),
+                'analyzing'        => __('Analyzing...', 'brikpanel'),
             ],
         ]);
     }

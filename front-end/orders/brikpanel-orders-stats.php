@@ -24,6 +24,13 @@ function brikpanel_orders_overview_handler() {
         wp_send_json_error( [ 'message' => 'Unauthorized' ] );
     }
 
+    // Defense in depth: a user whose role hides the overview must not be able to
+    // read store-wide totals by calling this endpoint directly.
+    if ( function_exists( 'brikpanel_orders_overview_hidden_for_user' )
+        && brikpanel_orders_overview_hidden_for_user() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized' ] );
+    }
+
     $data = [
         'summary'      => brikpanel_get_30day_summary(),
         'marketplaces' => brikpanel_get_marketplace_stats(),
@@ -75,8 +82,13 @@ function brikpanel_get_30day_summary() {
         'revenue'   => 0,
     ];
 
-    $countable_statuses  = [ 'wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending', 'wc-refunded', 'wc-cancelled', 'wc-failed' ];
-    $successful_statuses = [ 'wc-completed', 'wc-processing' ];
+    $successful_statuses = brikpanel_paid_order_statuses();
+    $refunded_statuses   = brikpanel_refunded_order_statuses();
+    $countable_statuses  = array_values( array_unique( array_merge(
+        $successful_statuses,
+        $refunded_statuses,
+        [ 'wc-on-hold', 'wc-pending', 'wc-cancelled', 'wc-failed' ]
+    ) ) );
 
     foreach ( $results as $row ) {
         $status = $row->status;
@@ -92,7 +104,7 @@ function brikpanel_get_30day_summary() {
             $summary['revenue']   += (float) $row->revenue;
         }
 
-        if ( 'wc-refunded' === $status ) {
+        if ( in_array( $status, $refunded_statuses, true ) ) {
             $summary['refunded'] += (int) $row->cnt;
         }
 

@@ -57,6 +57,7 @@
         initExportButton();
         initRowLinks();
         initProfitBreakdownToggle();
+        initHintTooltips();
         fetchDashboardData();
         startLivePolling();
 
@@ -70,6 +71,32 @@
             }
         });
     });
+
+    // =========================================================================
+    // HELP HINTS
+    // =========================================================================
+
+    // Flip a hint's tooltip to open leftward only when opening rightward (the
+    // default) would spill past the viewport edge. Recomputed on each hover /
+    // focus so it stays correct regardless of card wrapping or window width.
+    function initHintTooltips() {
+        function place(hint) {
+            var tip = hint.querySelector('.brikpanel-dash-hint-tip');
+            if (!tip) return;
+            hint.classList.remove('brikpanel-dash-hint--end');
+            var iconLeft = hint.getBoundingClientRect().left;
+            var tipWidth = tip.offsetWidth;
+            var margin = 12;
+            if (iconLeft - 8 + tipWidth + margin > window.innerWidth) {
+                hint.classList.add('brikpanel-dash-hint--end');
+            }
+        }
+        var hints = document.querySelectorAll('.brikpanel-dash-hint');
+        hints.forEach(function (hint) {
+            hint.addEventListener('pointerenter', function () { place(hint); });
+            hint.addEventListener('focusin', function () { place(hint); });
+        });
+    }
 
     // =========================================================================
     // DATE PRESETS

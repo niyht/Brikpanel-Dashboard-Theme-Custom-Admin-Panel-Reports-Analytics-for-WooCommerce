@@ -91,9 +91,82 @@
         });
 
         initCacheClear();
+        initHiddenNotices(topbar);
 
         fetchTopbarStats();
         startTopbarPolling();
+    }
+
+    /**
+     * Hidden third-party notices.
+     *
+     * BrikPanel suppresses other plugins'/themes' admin notices and parks them
+     * in an off-screen holder (#brikpanel-foreign-notices-holder, rendered by
+     * brikpanel_render_hidden_notices_box() in the page body). The topbar
+     * renders on `in_admin_header` — before those notices exist — so we relocate
+     * them here, once the DOM is ready: move each notice into the topbar panel,
+     * stamp the badge count, and reveal the otherwise-hidden button.
+     *
+     * If no notices were suppressed the holder is absent and the button stays
+     * hidden. On admin screens without the topbar, the holder renders as a
+     * self-contained <details> fallback instead (see brikpanel.php).
+     */
+    function initHiddenNotices(topbar) {
+        var menu = topbar.querySelector('[data-topbar-menu="hidden-notices"]');
+        if (!menu) return;
+
+        var holder = document.getElementById('brikpanel-foreign-notices-holder');
+        if (!holder) return;
+
+        // Every admin-notice flavour WordPress core / plugins emit: the modern
+        // .notice family, the legacy .updated / .error containers, and the core
+        // update nag (.update-nag, sometimes printed without a .notice class).
+        var CHILD_SEL = ':scope > .notice, :scope > .updated, :scope > .error, :scope > .update-nag';
+        var COUNT_SEL = '.notice, .updated, .error, .update-nag';
+
+        // The notices live inside the fallback box's list wrapper.
+        var source = holder.querySelector('.brikpanel-fn-list') || holder;
+        var notices = source.querySelectorAll(CHILD_SEL);
+        if (!notices.length) {
+            holder.parentNode && holder.parentNode.removeChild(holder);
+            return;
+        }
+
+        var panelList = menu.querySelector('.brikpanel-fn-panel-list');
+        if (!panelList) return;
+
+        Array.prototype.forEach.call(notices, function (n) {
+            // Mark as ours so every BrikPanel declutter rule (which all carry a
+            // `:not(.brikpanel-notice)`) leaves these visible inside the panel.
+            n.classList.add('brikpanel-notice');
+            panelList.appendChild(n);
+        });
+
+        var badge = menu.querySelector('.brikpanel-topbar-badge');
+
+        // Sync the badge with the live notice count, and retire the button once
+        // every notice has been dismissed (WP core removes each .notice node on
+        // dismiss, so a MutationObserver keeps us honest without per-button wiring).
+        var refresh = function () {
+            var n = panelList.querySelectorAll(COUNT_SEL).length;
+            if (badge) {
+                badge.hidden = n === 0;
+                badge.textContent = n > 99 ? '99+' : String(n);
+            }
+            if (n === 0) {
+                menu.classList.remove('is-open');
+                menu.style.display = 'none';
+            }
+        };
+        refresh();
+
+        // Reveal the button (it ships display:none to avoid an empty control).
+        menu.style.display = '';
+
+        new MutationObserver(refresh).observe(panelList, { childList: true });
+
+        // Drop the now-empty fallback box so it leaves no trace in the layout.
+        holder.parentNode && holder.parentNode.removeChild(holder);
     }
 
     /**

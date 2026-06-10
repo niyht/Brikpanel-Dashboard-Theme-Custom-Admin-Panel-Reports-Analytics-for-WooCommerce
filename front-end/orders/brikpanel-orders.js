@@ -25,6 +25,9 @@ function brikpanelOrderTableFilters() {
 	// Order Tags by 99w
 	brikpanelFilterCustomDropdown('order-tags-99w', (_ordersI18n.filter_order_tag || 'order tag'), 'select[name="wcot_order_tags_filter"]', '[selected=""]:not([value=""])');
 
+	// Shipping method filter
+	brikpanelFilterCustomDropdown('shipping-method', (_ordersI18n.filter_shipping_method || 'shipping method'), '#brikpanel_shipping_method', '[selected="selected"]:not([value=""])');
+
 	// Customer filter
 	brikpanelFilterSelect2SubmitEvent('.wc-customer-search');
 
@@ -33,7 +36,7 @@ function brikpanelOrderTableFilters() {
 	// correct after the filter row wraps on mobile/tablet.
 
 	// Clear filters button
-	brikpanelClearFilters(['#filter-by-date', 'select[name="wcot_order_tags_filter"]', '.wc-customer-search', '#dropdown_shop_order_subtype']);
+	brikpanelClearFilters(['#filter-by-date', 'select[name="wcot_order_tags_filter"]', '#brikpanel_shipping_method', '.wc-customer-search', '#dropdown_shop_order_subtype']);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -62,6 +65,8 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function brikpanelOrdersOverviewSection() {
 	if (typeof brikpanelOrdersOverview === 'undefined') return;
+	// Hidden for this user's role (e.g. branch staff who must not see store-wide totals).
+	if (brikpanelOrdersOverview.hide_overview) return;
 
 	const $wrapper = makeElement('div', { class: 'brikpanel-overview' });
 

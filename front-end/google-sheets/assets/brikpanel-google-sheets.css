@@ -337,6 +337,33 @@
 	margin: 0;
 }
 
+/* ----- CATEGORY FILTER LIST ----- */
+.bp-gs-cat-list {
+	margin: 0.375rem 0 0.5rem;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	background: #fafafa;
+	max-height: 240px;
+	overflow-y: auto;
+}
+.bp-gs-cat-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	border-bottom: 1px solid #efefef;
+	cursor: pointer;
+	font-size: 0.8125rem;
+}
+.bp-gs-cat-item:last-child { border-bottom: 0; }
+.bp-gs-cat-item:hover { background: #f3f3f3; }
+.bp-gs-cat-count {
+	color: #8a8a8a;
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+}
+
 /* ----- COLUMN MAPPER ----- */
 .bp-gs-column-list {
 	list-style: none;

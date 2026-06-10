@@ -31,15 +31,15 @@ function brikpanel_ca_is_hpos() {
 }
 
 /**
- * Order statuses that count toward LTV / RFM. Mirrors the Segments customer
- * aggregation (completed, processing, on-hold, pending, refunded). Cancelled
- * and failed orders are intentionally excluded — they don't represent paid
- * lifetime value.
+ * Order statuses that count toward LTV / RFM. Resolves to the merchant's
+ * configured valid-sales bucket plus their refunds bucket (see
+ * brikpanel_ltv_counted_statuses()), so custom statuses from shipment-tracking
+ * plugins flow into lifetime value the same way they flow into revenue.
  *
  * @return string[]
  */
 function brikpanel_ca_counted_statuses() {
-	return [ 'wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending', 'wc-refunded' ];
+	return brikpanel_ltv_counted_statuses();
 }
 
 /**

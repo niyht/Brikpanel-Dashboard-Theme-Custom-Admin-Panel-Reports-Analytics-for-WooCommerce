@@ -65,6 +65,83 @@ class Brikpanel_Product_Editor {
         add_action('wp_ajax_brikpanel_add_category', [$this, 'ajax_add_category']);
         add_action('wp_ajax_brikpanel_upload_image', [$this, 'ajax_upload_image']);
         add_action('wp_ajax_brikpanel_pe_search_products', [$this, 'ajax_search_products']);
+        add_action('wp_ajax_brikpanel_pe_surerank_analyze', [$this, 'ajax_surerank_analyze']);
+    }
+
+    /**
+     * Re-run SureRank's SEO analysis for a product and return the refreshed
+     * panel HTML. Fired by the "Re-analyze" button and right after a save so
+     * the checks reflect the latest saved title/description/keyword/content.
+     */
+    public function ajax_surerank_analyze() {
+        check_ajax_referer('brikpanel_product_editor_nonce', 'security');
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+        $pid = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
+        if (!$pid) {
+            wp_send_json_error(['message' => __('Invalid product.', 'brikpanel')]);
+        }
+
+        // Live preview. The client sends the current (possibly unsaved) SEO
+        // field values + description so the checks track what the user is
+        // typing without needing a save — mirroring SureRank's own live
+        // analysis. We feed them to SureRank's analyzer through its public
+        // filters (surerank_prep_post_meta for the meta fields,
+        // surerank_post_analyzer_content for the body) and tear the filters
+        // down right after. Only non-empty fields override: an empty field
+        // keeps SureRank's default/template behaviour, exactly as an empty
+        // field is saved.
+        $field_map = [
+            'seo_title'       => 'page_title',
+            'seo_description' => 'page_description',
+            'seo_focus_kw'    => 'focus_keyword',
+            'seo_canonical'   => 'canonical_url',
+        ];
+        $overrides = [];
+        foreach ($field_map as $post_key => $meta_key) {
+            if (!isset($_POST[$post_key])) {
+                continue;
+            }
+            $raw = wp_unslash($_POST[$post_key]);
+            $val = ($post_key === 'seo_canonical') ? esc_url_raw($raw) : sanitize_text_field($raw);
+            if ($val !== '') {
+                $overrides[$meta_key] = $val;
+            }
+        }
+
+        $meta_filter = null;
+        if (!empty($overrides)) {
+            $meta_filter = static function ($meta) use ($overrides) {
+                if (is_array($meta)) {
+                    foreach ($overrides as $k => $v) {
+                        $meta[$k] = $v;
+                    }
+                }
+                return $meta;
+            };
+            add_filter('surerank_prep_post_meta', $meta_filter, 99);
+        }
+
+        $content_filter = null;
+        if (isset($_POST['content'])) {
+            $content = wp_kses_post(wp_unslash($_POST['content']));
+            $content_filter = static function () use ($content) {
+                return $content;
+            };
+            add_filter('surerank_post_analyzer_content', $content_filter, 99);
+        }
+
+        $html = self::render_surerank_analysis($pid);
+
+        if ($meta_filter) {
+            remove_filter('surerank_prep_post_meta', $meta_filter, 99);
+        }
+        if ($content_filter) {
+            remove_filter('surerank_post_analyzer_content', $content_filter, 99);
+        }
+
+        wp_send_json_success(['html' => $html]);
     }
 
     /**
@@ -1353,10 +1430,17 @@ class Brikpanel_Product_Editor {
                 </div>
                     <?php else : ?>
                 <!-- SEO — unified fields that save to Yoast, Rank Math, All in
-                     One SEO and SEOPress meta keys at once. Shown when none of
-                     those plugins are active. -->
+                     One SEO, SEOPress and SureRank meta keys at once. Shown
+                     when none of the four inline-metabox plugins is active.
+                     SureRank also lands here (its React popup has no inline
+                     metabox) and, when active, reads/writes its own keys. -->
                 <div class="brikpanel-pe-card brikpanel-pe-seo-card">
-                    <label><?php esc_html_e('SEO', 'brikpanel'); ?></label>
+                    <label>
+                        <?php esc_html_e('SEO', 'brikpanel'); ?>
+                        <?php if (defined('SURERANK_VERSION')) : ?>
+                        <span class="brikpanel-pe-seo-plugin-badge"><?php esc_html_e('SureRank SEO', 'brikpanel'); ?></span>
+                        <?php endif; ?>
+                    </label>
                     <div class="brikpanel-pe-seo-preview" id="bpe-seo-preview">
                         <span class="brikpanel-pe-seo-preview-title" id="bpe-seo-preview-title"><?php echo esc_html($data['seo_title'] ?: $data['name'] ?: __('Product title', 'brikpanel')); ?></span>
                         <span class="brikpanel-pe-seo-preview-url"><?php echo esc_html($is_edit ? get_permalink($product_id) : home_url('/product/...')); ?></span>
@@ -1392,7 +1476,30 @@ class Brikpanel_Product_Editor {
                             <span class="brikpanel-pe-slider"></span>
                         </label>
                     </div>
-                    <p class="brikpanel-pe-help-text"><?php esc_html_e('These fields are saved to Yoast SEO, Rank Math, All in One SEO and SEOPress simultaneously, so switching SEO plugins never loses your work.', 'brikpanel'); ?></p>
+                    <p class="brikpanel-pe-help-text">
+                        <?php if (defined('SURERANK_VERSION')) : ?>
+                        <?php esc_html_e('These fields are saved to SureRank, plus Yoast SEO, Rank Math, All in One SEO and SEOPress, so switching SEO plugins never loses your work.', 'brikpanel'); ?>
+                        <?php else : ?>
+                        <?php esc_html_e('These fields are saved to Yoast SEO, Rank Math, All in One SEO and SEOPress simultaneously, so switching SEO plugins never loses your work.', 'brikpanel'); ?>
+                        <?php endif; ?>
+                    </p>
+                    <?php if (defined('SURERANK_VERSION')) :
+                        $sr_analysis_html = self::render_surerank_analysis((int) $product_id);
+                        if ($sr_analysis_html !== '') : ?>
+                    <div class="brikpanel-pe-sr-analysis" id="bpe-surerank-analysis">
+                        <div class="brikpanel-pe-sr-head">
+                            <span class="brikpanel-pe-sr-head-title">
+                                <?php esc_html_e('SEO analysis', 'brikpanel'); ?>
+                                <span class="brikpanel-pe-seo-plugin-badge"><?php esc_html_e('SureRank', 'brikpanel'); ?></span>
+                            </span>
+                            <button type="button" class="brikpanel-pe-btn secondary brikpanel-pe-sr-rerun" id="bpe-surerank-rerun"><?php esc_html_e('Re-analyze', 'brikpanel'); ?></button>
+                        </div>
+                        <div class="brikpanel-pe-sr-body" id="bpe-surerank-body">
+                            <?php echo $sr_analysis_html; // builder escapes every field ?>
+                        </div>
+                    </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </div>
                     <?php endif; ?>
                 <?php $section_html['seo'] = ob_get_clean(); endif; ?>
@@ -1733,6 +1840,177 @@ class Brikpanel_Product_Editor {
         }
 
         return apply_filters('brikpanel_pe_active_seo_plugin', $detected);
+    }
+
+    /**
+     * Run SureRank's SEO analysis ("Analyze" panel) for a product and return
+     * its checks grouped for display — Page checks + Keyword checks, each
+     * bucketed by status. Returns null when SureRank isn't active, exposes no
+     * analyzer, or produces nothing displayable.
+     *
+     * SureRank's editor surfaces these as an "Analyze" tab; because BrikPanel
+     * routes SureRank through its own unified SEO fields (SureRank's UI is a
+     * React popup that can't render inline), the analysis would otherwise be
+     * missing. We call SureRank's own analyzer so the results read identically
+     * to the plugin's, then render them in BrikPanel's design. The analysis
+     * reflects the *saved* product, so callers re-run after a save.
+     *
+     * @param int $pid
+     * @return array{page:array,keyword:array,summary:array}|null
+     */
+    public static function get_surerank_analysis($pid) {
+        if (!defined('SURERANK_VERSION')) {
+            return null;
+        }
+        $post = get_post($pid);
+        if (!$post) {
+            return null;
+        }
+
+        // SureRank exposes its analyzer through this filter; it returns an
+        // array of checks keyed by id (or a WP_Error). Guard with try/catch so
+        // a change there can never fatal the editor.
+        try {
+            $checks = apply_filters('surerank_run_post_seo_checks', $pid, $post);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (!is_array($checks) || empty($checks)) {
+            return null;
+        }
+
+        // Consolidate the four keyword checks into one "no focus keyword"
+        // suggestion exactly as SureRank's REST layer does, so our panel reads
+        // the same as the plugin's own Analyze tab.
+        $kw_keys = ['keyword_in_title', 'keyword_in_description', 'keyword_in_url', 'keyword_in_content'];
+        $all_kw_present = true;
+        foreach ($kw_keys as $k) {
+            if (!isset($checks[$k])) { $all_kw_present = false; break; }
+        }
+        if ($all_kw_present) {
+            $all_suggestion = true;
+            foreach ($kw_keys as $k) {
+                if (($checks[$k]['status'] ?? '') !== 'suggestion') { $all_suggestion = false; break; }
+            }
+            if ($all_suggestion) {
+                foreach ($kw_keys as $k) { unset($checks[$k]); }
+                $checks['keyword_checks'] = [
+                    'status'  => 'suggestion',
+                    'message' => __('No focus keyword set. Add one to analyze the title, description, URL and content.', 'brikpanel'),
+                    'type'    => 'keyword',
+                ];
+            }
+        }
+
+        $valid_status = ['error', 'warning', 'suggestion', 'success'];
+        $groups  = ['page' => [], 'keyword' => []];
+        $summary = ['error' => 0, 'warning' => 0, 'suggestion' => 0, 'success' => 0];
+
+        foreach ($checks as $id => $c) {
+            if (!is_array($c)) {
+                continue;
+            }
+            $status = isset($c['status']) ? (string) $c['status'] : '';
+            $type   = isset($c['type'])   ? (string) $c['type']   : '';
+            // Skip data-only entries (e.g. all_links, an empty image_alt_text)
+            // that carry no status/type — SureRank's UI doesn't list them.
+            if (!in_array($status, $valid_status, true) || !isset($groups[$type])) {
+                continue;
+            }
+            $message = isset($c['message']) ? trim((string) $c['message']) : '';
+            if ($message === '') {
+                continue;
+            }
+            $groups[$type][] = [
+                'id'      => (string) $id,
+                'status'  => $status,
+                'message' => $message,
+            ];
+            $summary[$status]++;
+        }
+
+        if (empty($groups['page']) && empty($groups['keyword'])) {
+            return null;
+        }
+
+        // Order each group: errors, then warnings, suggestions, passed.
+        $order  = array_flip($valid_status);
+        $sorter = static function ($a, $b) use ($order) {
+            return ($order[$a['status']] ?? 9) <=> ($order[$b['status']] ?? 9);
+        };
+        usort($groups['page'], $sorter);
+        usort($groups['keyword'], $sorter);
+
+        return ['page' => $groups['page'], 'keyword' => $groups['keyword'], 'summary' => $summary];
+    }
+
+    /**
+     * Build the HTML for the SureRank analysis panel shown inside the SEO
+     * card. Returns '' when there's nothing to show. Rendered server-side so
+     * markup + i18n live in one place; the "Re-analyze" button re-fetches this
+     * same HTML over AJAX (see ajax_surerank_analyze()).
+     *
+     * @param int $pid
+     * @return string
+     */
+    public static function render_surerank_analysis($pid) {
+        $analysis = self::get_surerank_analysis($pid);
+        if ($analysis === null) {
+            return '';
+        }
+
+        $status_meta = [
+            'error'      => ['label' => __('Critical', 'brikpanel'),   'cls' => 'error'],
+            'warning'    => ['label' => __('Warning', 'brikpanel'),    'cls' => 'warning'],
+            'suggestion' => ['label' => __('Suggestion', 'brikpanel'), 'cls' => 'suggestion'],
+            'success'    => ['label' => __('Passed', 'brikpanel'),     'cls' => 'success'],
+        ];
+
+        $render_group = static function ($title, $items) use ($status_meta) {
+            if (empty($items)) {
+                return '';
+            }
+            $html  = '<div class="brikpanel-pe-sr-group">';
+            $html .= '<div class="brikpanel-pe-sr-group-title">' . esc_html($title) . '</div>';
+            foreach ($items as $item) {
+                $meta = $status_meta[$item['status']];
+                $html .= '<div class="brikpanel-pe-sr-check brikpanel-pe-sr-check--' . esc_attr($meta['cls']) . '">';
+                $html .= '<span class="brikpanel-pe-sr-dot" aria-hidden="true"></span>';
+                $html .= '<span class="brikpanel-pe-sr-msg">' . esc_html($item['message']) . '</span>';
+                $html .= '<span class="brikpanel-pe-sr-tag">' . esc_html($meta['label']) . '</span>';
+                $html .= '</div>';
+            }
+            $html .= '</div>';
+            return $html;
+        };
+
+        $s = $analysis['summary'];
+        ob_start();
+        ?>
+        <div class="brikpanel-pe-sr-summary">
+            <?php if ($s['error'] > 0) : ?>
+                <span class="brikpanel-pe-sr-pill error"><?php
+                    /* translators: %d: number of critical SEO issues */
+                    echo esc_html(sprintf(_n('%d critical', '%d critical', $s['error'], 'brikpanel'), $s['error'])); ?></span>
+            <?php endif; ?>
+            <?php if ($s['warning'] > 0) : ?>
+                <span class="brikpanel-pe-sr-pill warning"><?php
+                    /* translators: %d: number of SEO warnings */
+                    echo esc_html(sprintf(_n('%d warning', '%d warnings', $s['warning'], 'brikpanel'), $s['warning'])); ?></span>
+            <?php endif; ?>
+            <?php if ($s['suggestion'] > 0) : ?>
+                <span class="brikpanel-pe-sr-pill suggestion"><?php
+                    /* translators: %d: number of SEO suggestions */
+                    echo esc_html(sprintf(_n('%d suggestion', '%d suggestions', $s['suggestion'], 'brikpanel'), $s['suggestion'])); ?></span>
+            <?php endif; ?>
+            <span class="brikpanel-pe-sr-pill success"><?php
+                /* translators: %d: number of passed SEO checks */
+                echo esc_html(sprintf(_n('%d passed', '%d passed', $s['success'], 'brikpanel'), $s['success'])); ?></span>
+        </div>
+        <?php
+        echo $render_group(__('Page checks', 'brikpanel'), $analysis['page']);
+        echo $render_group(__('Keyword checks', 'brikpanel'), $analysis['keyword']);
+        return ob_get_clean();
     }
 
     /**
@@ -2105,7 +2383,20 @@ class Brikpanel_Product_Editor {
             $section = '';
             foreach ($hooks as $hook) {
                 if (!has_action($hook)) continue;
-                ob_start(); do_action($hook); $section .= trim(ob_get_clean());
+                ob_start();
+                try {
+                    do_action($hook);
+                } catch (\Throwable $e) {
+                    // A 3rd-party plugin hooked here may assume a fully-saved
+                    // product context that does not exist during enumeration —
+                    // e.g. on a brand-new shop with zero products WooCommerce
+                    // Germanized calls $product->get_manufacturer() on a false
+                    // product and fatals. Its fields are non-essential for the
+                    // selector, so swallow the error and skip this fragment.
+                    ob_end_clean();
+                    continue;
+                }
+                $section .= trim(ob_get_clean());
             }
             if ($section !== '') {
                 $out['core:' . sanitize_key($label)] = $label;
@@ -2122,8 +2413,16 @@ class Brikpanel_Product_Editor {
                     $target_to_label[$target] = isset($tab['label']) ? (string) $tab['label'] : ucfirst((string) $key);
                 }
             }
-            ob_start(); do_action('woocommerce_product_data_panels');
-            $panels_html = trim(ob_get_clean());
+            ob_start();
+            try {
+                do_action('woocommerce_product_data_panels');
+                $panels_html = trim(ob_get_clean());
+            } catch (\Throwable $e) {
+                // Same safeguard as the core sub-hooks above: a custom panel
+                // assuming a saved product must not take down the settings page.
+                ob_end_clean();
+                $panels_html = '';
+            }
 
             if ($panels_html !== '') {
                 $core_targets = self::core_panel_targets();
@@ -2332,7 +2631,14 @@ class Brikpanel_Product_Editor {
             foreach ($hooks as $hook) {
                 if (!has_action($hook)) continue;
                 ob_start();
-                do_action($hook);
+                try {
+                    do_action($hook);
+                } catch (\Throwable $e) {
+                    // Never let a misbehaving 3rd-party field render abort the
+                    // whole product editor; skip just that fragment.
+                    ob_end_clean();
+                    continue;
+                }
                 $html = trim(ob_get_clean());
                 if ($html !== '') $section .= $html;
             }
@@ -2345,13 +2651,29 @@ class Brikpanel_Product_Editor {
         }
 
         // Custom 3rd-party panels — keyed `tab:<panel_id>`.
+        //
+        // Apply the tabs filter FIRST, before checking/firing the panels hook.
+        // Some plugins (e.g. Product Catalog Feed Pro / WPWOOF) register their
+        // `woocommerce_product_data_panels` callback lazily from inside the
+        // `woocommerce_product_data_tabs` filter — so the panel action does not
+        // exist until that filter has run. Firing the filter here makes those
+        // lazy panels available before has_action()/do_action() below, matching
+        // the order WooCommerce core uses when it renders the product data box.
+        // (collect_wc_product_data_sections() already applies the filter before
+        // its own do_action, which is why the selector listed the tab while the
+        // render path used to come up empty.)
+        $tabs_meta = apply_filters('woocommerce_product_data_tabs', []);
         if (has_action('woocommerce_product_data_panels')) {
             ob_start();
-            do_action('woocommerce_product_data_panels');
-            $panels_html = trim(ob_get_clean());
+            try {
+                do_action('woocommerce_product_data_panels');
+                $panels_html = trim(ob_get_clean());
+            } catch (\Throwable $e) {
+                ob_end_clean();
+                $panels_html = '';
+            }
 
             if ($panels_html !== '') {
-                $tabs_meta = apply_filters('woocommerce_product_data_tabs', []);
                 $target_to_label = [];
                 $target_to_key   = [];
                 if (is_array($tabs_meta)) {
@@ -2754,7 +3076,32 @@ class Brikpanel_Product_Editor {
                 'noindex_value' => 'yes',
             ],
         ];
-        foreach ($seo_sources as $src) {
+
+        // SureRank stores its per-post SEO across two meta keys: page title,
+        // meta description, canonical URL and focus keyword are sub-keys of a
+        // single serialized array `surerank_settings_general`, while the
+        // noindex flag is the separate scalar `surerank_settings_post_no_index`
+        // ('yes' = noindex). Its editor is a React popup with no inline-
+        // renderable metabox, so BrikPanel surfaces these through its own
+        // unified SEO fields instead. When SureRank is active it is the source
+        // of truth: read it exclusively (skip the loop below) so stale meta a
+        // previously used plugin left behind can't shadow it, and so empty
+        // values stay empty — SureRank falls back to its site-wide template
+        // for empty sub-keys, which matches the "leave empty to use default"
+        // field hint.
+        $surerank_active = defined('SURERANK_VERSION');
+        if ($surerank_active) {
+            $sr_general = get_post_meta($pid, 'surerank_settings_general', true);
+            if (is_array($sr_general)) {
+                $seo_title     = (string) ($sr_general['page_title'] ?? '');
+                $seo_desc      = (string) ($sr_general['page_description'] ?? '');
+                $seo_focus_kw  = (string) ($sr_general['focus_keyword'] ?? '');
+                $seo_canonical = (string) ($sr_general['canonical_url'] ?? '');
+            }
+            $seo_noindex = ((string) get_post_meta($pid, 'surerank_settings_post_no_index', true) === 'yes');
+        }
+
+        if (!$surerank_active) foreach ($seo_sources as $src) {
             if ($seo_title === '')     $seo_title     = (string) get_post_meta($pid, $src['title'], true);
             if ($seo_desc === '')      $seo_desc      = (string) get_post_meta($pid, $src['desc'], true);
             if ($seo_focus_kw === '')  $seo_focus_kw  = (string) get_post_meta($pid, $src['focus_kw'], true);
@@ -2770,7 +3117,7 @@ class Brikpanel_Product_Editor {
         }
 
         // AIOSEO stores data in its own custom table, not post meta.
-        if (function_exists('aioseo') && class_exists('\\AIOSEO\\Plugin\\Common\\Models\\Post')) {
+        if (!$surerank_active && function_exists('aioseo') && class_exists('\\AIOSEO\\Plugin\\Common\\Models\\Post')) {
             try {
                 $aio_post = \AIOSEO\Plugin\Common\Models\Post::getPost($pid);
                 if ($aio_post && !empty($aio_post->id)) {
@@ -3423,6 +3770,24 @@ class Brikpanel_Product_Editor {
             update_post_meta($saved_id, '_seopress_analysis_target_kw', $seo_focus_kw);
             update_post_meta($saved_id, '_seopress_robots_canonical', $seo_canonical);
             update_post_meta($saved_id, '_seopress_robots_index', $seo_noindex ? 'yes' : '');
+
+            // SureRank — title/description/canonical/focus keyword are sub-keys
+            // of the serialized `surerank_settings_general` array; merge into
+            // any existing array so SureRank's other sub-keys (separator,
+            // auto-description, OG image, etc.) survive. Empty values are
+            // written through as '' — SureRank falls back to its site-wide
+            // template for empty sub-keys. The noindex flag is a separate
+            // scalar: 'yes' = noindex, 'no' = force index (its per-post default).
+            $sr_general = get_post_meta($saved_id, 'surerank_settings_general', true);
+            if (!is_array($sr_general)) {
+                $sr_general = [];
+            }
+            $sr_general['page_title']       = $seo_title;
+            $sr_general['page_description'] = $seo_desc;
+            $sr_general['canonical_url']    = $seo_canonical;
+            $sr_general['focus_keyword']    = $seo_focus_kw;
+            update_post_meta($saved_id, 'surerank_settings_general', $sr_general);
+            update_post_meta($saved_id, 'surerank_settings_post_no_index', $seo_noindex ? 'yes' : 'no');
         }
 
         // Tags

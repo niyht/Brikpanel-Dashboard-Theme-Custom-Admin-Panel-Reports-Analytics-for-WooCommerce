@@ -399,6 +399,7 @@ class Brikpanel_Dashboard {
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                 </span>
                 <span class="brikpanel-dash-period-text"><?php esc_html_e( 'Loading…', 'brikpanel' ); ?></span>
+                <?php $this->render_scope_hint(); ?>
             </div>
 
             <?php
@@ -414,6 +415,112 @@ class Brikpanel_Dashboard {
 
         </div>
         <?php
+    }
+
+    // =========================================================================
+    // HELP HINTS
+    // =========================================================================
+
+    /**
+     * Human-readable date the plugin first started collecting data. Empty
+     * string when the activation timestamp was never recorded (very old
+     * installs that predate the option).
+     *
+     * @return string
+     */
+    private function activation_label() {
+        static $label = null;
+        if ( null !== $label ) {
+            return $label;
+        }
+        $ts    = (int) get_option( 'brikpanel_activated_at', 0 );
+        $label = $ts ? date_i18n( get_option( 'date_format' ) ?: 'M j, Y', $ts ) : '';
+        return $label;
+    }
+
+    /**
+     * Render a small "?" help icon with an on-hover / on-focus tooltip,
+     * reusing the shared dashboard hint styling.
+     *
+     * @param string $title Short bold heading (plain text).
+     * @param string $body  Explanation. Allows <br> and <strong> only.
+     * @param string $align 'start' (tooltip opens rightward, default) or 'end'
+     *                      (opens leftward, for right-most elements).
+     */
+    private function render_hint( $title, $body, $align = 'start' ) {
+        $modifier = ( 'end' === $align ) ? ' brikpanel-dash-hint--end' : '';
+        ?>
+        <span class="brikpanel-dash-hint<?php echo esc_attr( $modifier ); ?>" tabindex="0" role="button" aria-label="<?php echo esc_attr( $title ); ?>">
+            <svg class="brikpanel-dash-hint-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <span class="brikpanel-dash-hint-tip" role="tooltip">
+                <span class="brikpanel-dash-hint-title"><?php echo esc_html( $title ); ?></span>
+                <span class="brikpanel-dash-hint-body"><?php echo wp_kses( $body, [ 'br' => [], 'strong' => [] ] ); ?></span>
+            </span>
+        </span>
+        <?php
+    }
+
+    /**
+     * Tooltip shown next to BrikPanel-tracked metrics (Visitors, Conversion
+     * rate, the funnel). These start collecting only once the plugin is active,
+     * so a fresh install reads low or empty here even though the store has
+     * order history. Spells that out so the figures are not mistaken for a bug.
+     */
+    private function render_tracking_hint( $align = 'start' ) {
+        $date  = $this->activation_label();
+        $title = __( 'Where this data comes from', 'brikpanel' );
+        if ( '' !== $date ) {
+            $body = sprintf(
+                /* translators: %s: date BrikPanel was activated. */
+                __( 'BrikPanel started measuring visitors and conversions on %s, the day it was activated. There is no visitor history before that date, so a recent install can read low or empty here. Your sales and orders are not affected. Those use your full WooCommerce history.', 'brikpanel' ),
+                '<strong>' . esc_html( $date ) . '</strong>'
+            );
+        } else {
+            $body = __( 'BrikPanel measures visitors and conversions from the day it was activated. There is no visitor history before that, so a recent install can read low or empty here. Your sales and orders are not affected. Those use your full WooCommerce history.', 'brikpanel' );
+        }
+        $this->render_hint( $title, $body, $align );
+    }
+
+    /**
+     * Master "about these numbers" tooltip shown under the header. Explains the
+     * two data sources (full order history vs tracking-from-activation) and the
+     * deliberate exclusion of admin-placed orders, so store owners understand
+     * why a test order of their own does not move the totals.
+     */
+    private function render_scope_hint() {
+        $date  = $this->activation_label();
+        $title = __( 'About these numbers', 'brikpanel' );
+
+        $lines   = [];
+        $lines[] = __( 'Sales, orders, profit and customer figures use your full WooCommerce order history.', 'brikpanel' );
+        if ( '' !== $date ) {
+            $lines[] = sprintf(
+                /* translators: %s: date BrikPanel was activated. */
+                __( 'Visitors, conversion rate and the funnel are measured by BrikPanel from %s, the day it was activated, so they have no earlier history.', 'brikpanel' ),
+                '<strong>' . esc_html( $date ) . '</strong>'
+            );
+        } else {
+            $lines[] = __( 'Visitors, conversion rate and the funnel are measured by BrikPanel from the day it was activated, so they have no earlier history.', 'brikpanel' );
+        }
+        $lines[] = __( 'Orders placed by store administrators are left out of every figure, so your own test orders do not change the totals.', 'brikpanel' );
+
+        $this->render_hint( $title, implode( '<br><br>', $lines ) );
+    }
+
+    /**
+     * Tooltip explaining that orders placed by store administrators are
+     * excluded from the figure it sits next to (revenue / total sales). Stops
+     * owners thinking a test order of their own has gone missing.
+     */
+    private function render_admin_excluded_hint() {
+        $this->render_hint(
+            __( 'Why this can look low', 'brikpanel' ),
+            __( 'Orders placed by store administrators are not counted here, so test orders you place on your own admin account do not change this figure. Real customer orders are always included.', 'brikpanel' )
+        );
     }
 
     // =========================================================================
@@ -440,12 +547,12 @@ class Brikpanel_Dashboard {
                     <span class="brikpanel-dash-card-delta" id="delta-aov"></span>
                 </div>
                 <div class="brikpanel-dash-card" data-metric="visitors">
-                    <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Visitors', 'brikpanel' ); ?></span>
+                    <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Visitors', 'brikpanel' ); ?><?php $this->render_tracking_hint(); ?></span>
                     <span class="brikpanel-dash-card-value" id="card-visitors">--</span>
                     <span class="brikpanel-dash-card-delta" id="delta-visitors"></span>
                 </div>
                 <div class="brikpanel-dash-card" data-metric="conversion">
-                    <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Conversion Rate', 'brikpanel' ); ?></span>
+                    <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Conversion Rate', 'brikpanel' ); ?><?php $this->render_tracking_hint( 'end' ); ?></span>
                     <span class="brikpanel-dash-card-value" id="card-conversion">--</span>
                     <span class="brikpanel-dash-card-delta" id="delta-conversion"></span>
                 </div>
@@ -474,7 +581,7 @@ class Brikpanel_Dashboard {
             <div class="brikpanel-dash-profit" id="brikpanel-profit-section">
                 <div class="brikpanel-dash-cards brikpanel-dash-cards-profit" id="brikpanel-profit-cards">
                     <div class="brikpanel-dash-card" data-metric="profit_revenue">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Revenue', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Revenue', 'brikpanel' ); ?><?php $this->render_admin_excluded_hint(); ?></span>
                         <span class="brikpanel-dash-card-value" id="card-profit-revenue">--</span>
                         <span class="brikpanel-dash-card-delta" id="delta-profit-revenue"></span>
                     </div>
@@ -605,7 +712,7 @@ class Brikpanel_Dashboard {
             <!-- Row: Conversion Funnel + Order Rates -->
             <div class="brikpanel-dash-row brikpanel-dash-row-1-1">
                 <div class="brikpanel-dash-panel">
-                    <h2><?php esc_html_e( 'Conversion Funnel', 'brikpanel' ); ?></h2>
+                    <h2><?php esc_html_e( 'Conversion Funnel', 'brikpanel' ); ?><?php $this->render_tracking_hint(); ?></h2>
                     <div class="brikpanel-dash-chart-wrap brikpanel-dash-chart-short">
                         <canvas id="brikpanel-funnel-chart"></canvas>
                     </div>
@@ -768,7 +875,7 @@ class Brikpanel_Dashboard {
                 COALESCE(SUM(CASE WHEN returning_customer = 1 THEN 1 ELSE 0 END), 0) AS repeat_count
             FROM {$table}
             WHERE date_created_gmt BETWEEN %s AND %s
-            AND status IN ('wc-processing', 'wc-completed')",
+            AND status IN (" . brikpanel_paid_statuses_sql() . ")",
             $start_gmt,
             $end_gmt
         ) );
@@ -830,7 +937,7 @@ class Brikpanel_Dashboard {
             ? brikpanel_marketplace_order_exclusion_sql( $is_hpos, $is_hpos ? 'id' : 'p.ID' )
             : [ 'sql' => '', 'args' => [] ];
 
-        $statuses = [ 'wc-processing', 'wc-completed' ];
+        $statuses = brikpanel_paid_order_statuses();
         $status_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 
         if ( $is_hpos ) {
@@ -1291,7 +1398,7 @@ class Brikpanel_Dashboard {
         $low_stock = $this->get_low_stock_products();
 
         // Returns & refunds (date-dependent)
-        $return_count = brikpanel_get_order_count_by_status( [ 'wc-return-draft', 'wc-refunded' ], $start_gmt, $end_gmt, $exclude_mp );
+        $return_count = brikpanel_get_order_count_by_status( array_values( array_unique( array_merge( brikpanel_refunded_order_statuses(), [ 'wc-return-draft' ] ) ) ), $start_gmt, $end_gmt, $exclude_mp );
         $total_orders = brikpanel_get_total_orders_count( $start_gmt, $end_gmt, $exclude_mp );
         $return_rate  = $total_orders > 0 ? round( ( $return_count / $total_orders ) * 100, 1 ) : 0;
         $returns_data = [
@@ -1651,10 +1758,11 @@ class Brikpanel_Dashboard {
 
         $successful = brikpanel_get_successful_order_count( $start_gmt, $end_gmt, $exclude_marketplace );
         $failed     = brikpanel_get_order_count_by_status( [ 'wc-failed' ], $start_gmt, $end_gmt, $exclude_marketplace );
-        // Returns + refunds combined — covers the BrikPanel custom 'wc-return-draft'
-        // status alongside WooCommerce's native 'wc-refunded'. Mirrors the figure
-        // that used to be surfaced in the dedicated Returns & Refunds panel.
-        $refunded   = brikpanel_get_order_count_by_status( [ 'wc-refunded', 'wc-return-draft' ], $start_gmt, $end_gmt, $exclude_marketplace );
+        // Returns + refunds combined — the merchant's configured refund bucket
+        // (defaults to WooCommerce's native 'wc-refunded') plus the BrikPanel
+        // custom 'wc-return-draft' status. Mirrors the figure that used to be
+        // surfaced in the dedicated Returns & Refunds panel.
+        $refunded   = brikpanel_get_order_count_by_status( array_values( array_unique( array_merge( brikpanel_refunded_order_statuses(), [ 'wc-return-draft' ] ) ) ), $start_gmt, $end_gmt, $exclude_marketplace );
         $cancelled  = brikpanel_get_order_count_by_status( [ 'wc-cancelled' ], $start_gmt, $end_gmt, $exclude_marketplace );
 
         return [
@@ -1673,7 +1781,7 @@ class Brikpanel_Dashboard {
     private function get_top_products( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
         global $wpdb;
 
-        $include_statuses    = [ 'wc-processing', 'wc-completed' ];
+        $include_statuses    = brikpanel_paid_order_statuses();
         $status_placeholders = implode( ', ', array_fill( 0, count( $include_statuses ), '%s' ) );
         $query_args          = $include_statuses;
 
@@ -1848,7 +1956,7 @@ class Brikpanel_Dashboard {
     private function get_sales_over_time( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
         global $wpdb;
 
-        $include_statuses    = [ 'wc-processing', 'wc-completed' ];
+        $include_statuses    = brikpanel_paid_order_statuses();
         $status_placeholders = implode( ', ', array_fill( 0, count( $include_statuses ), '%s' ) );
 
         $is_hpos   = $this->is_hpos();
@@ -1909,7 +2017,7 @@ class Brikpanel_Dashboard {
     private function get_order_locations( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
         global $wpdb;
 
-        $include_statuses    = [ 'wc-processing', 'wc-completed' ];
+        $include_statuses    = brikpanel_paid_order_statuses();
         $status_placeholders = implode( ', ', array_fill( 0, count( $include_statuses ), '%s' ) );
 
         $is_hpos   = $this->is_hpos();
@@ -2080,7 +2188,7 @@ class Brikpanel_Dashboard {
         global $wpdb;
 
         $is_hpos             = $this->is_hpos();
-        $include_statuses    = [ 'wc-processing', 'wc-completed' ];
+        $include_statuses    = brikpanel_paid_order_statuses();
         $status_placeholders = implode( ', ', array_fill( 0, count( $include_statuses ), '%s' ) );
         $meta_key            = brikpanel_marketplace_meta_key();
 

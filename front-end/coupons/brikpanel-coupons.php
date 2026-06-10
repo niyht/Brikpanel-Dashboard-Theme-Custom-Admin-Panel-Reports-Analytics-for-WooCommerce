@@ -612,7 +612,7 @@ class Brikpanel_Coupons {
                  INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = oi.order_id
                  WHERE oi.order_item_type = 'coupon'
                  AND LOWER(oi.order_item_name) IN ($placeholders)
-                 AND o.status IN ('wc-processing', 'wc-completed')
+                 AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
                  GROUP BY LOWER(oi.order_item_name)",
                 ...$lower_codes
             ) );
@@ -625,7 +625,7 @@ class Brikpanel_Coupons {
                  INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = oi.order_id AND pm.meta_key = '_order_total'
                  WHERE oi.order_item_type = 'coupon'
                  AND LOWER(oi.order_item_name) IN ($placeholders)
-                 AND p.post_status IN ('wc-processing', 'wc-completed')
+                 AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
                  GROUP BY LOWER(oi.order_item_name)",
                 ...$lower_codes
             ) );

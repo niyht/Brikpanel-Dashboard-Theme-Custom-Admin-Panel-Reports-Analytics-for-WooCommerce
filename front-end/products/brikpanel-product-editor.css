@@ -327,11 +327,11 @@
    checkbox that matches the BrikPanel radio. Selectors carry `label` so
    they tie the reset rule's specificity and win by source order; the
    label-less variants cover checkboxes rendered outside a <label>. */
-.brikpanel-pe-metabox-content input[type="checkbox"],.brikpanel-pe-metabox-content label input[type="checkbox"],.brikpanel-pe-wc-fields-content input[type="checkbox"],.brikpanel-pe-wc-fields-content label input[type="checkbox"]{appearance:none!important;-webkit-appearance:none!important;width:16px!important;min-width:16px!important;height:16px!important;min-height:16px!important;flex:0 0 16px!important;margin:0 .4rem 0 0!important;padding:0!important;border:1px solid var(--pe-input-border)!important;border-radius:4px!important;background:#fff!important;box-shadow:none!important;cursor:pointer;position:relative;box-sizing:border-box!important;vertical-align:middle;transition:border-color .15s ease,background .15s ease}
-.brikpanel-pe-metabox-content input[type="checkbox"]:hover,.brikpanel-pe-metabox-content label input[type="checkbox"]:hover,.brikpanel-pe-wc-fields-content input[type="checkbox"]:hover,.brikpanel-pe-wc-fields-content label input[type="checkbox"]:hover{border-color:var(--pe-text-secondary)!important}
-.brikpanel-pe-metabox-content input[type="checkbox"]:checked,.brikpanel-pe-metabox-content label input[type="checkbox"]:checked,.brikpanel-pe-wc-fields-content input[type="checkbox"]:checked,.brikpanel-pe-wc-fields-content label input[type="checkbox"]:checked{background:var(--pe-primary)!important;border-color:var(--pe-primary)!important}
-.brikpanel-pe-metabox-content input[type="checkbox"]:checked::after,.brikpanel-pe-metabox-content label input[type="checkbox"]:checked::after,.brikpanel-pe-wc-fields-content input[type="checkbox"]:checked::after,.brikpanel-pe-wc-fields-content label input[type="checkbox"]:checked::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);box-sizing:border-box}
-.brikpanel-pe-metabox-content input[type="checkbox"]:focus,.brikpanel-pe-metabox-content label input[type="checkbox"]:focus,.brikpanel-pe-wc-fields-content input[type="checkbox"]:focus,.brikpanel-pe-wc-fields-content label input[type="checkbox"]:focus{outline:none;border-color:var(--pe-primary)!important;box-shadow:0 0 0 1px var(--pe-primary)!important}
+.brikpanel-pe-metabox-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]),.brikpanel-pe-metabox-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]),.brikpanel-pe-wc-fields-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]),.brikpanel-pe-wc-fields-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]){appearance:none!important;-webkit-appearance:none!important;width:16px!important;min-width:16px!important;height:16px!important;min-height:16px!important;flex:0 0 16px!important;margin:0 .4rem 0 0!important;padding:0!important;border:1px solid var(--pe-input-border)!important;border-radius:4px!important;background:#fff!important;box-shadow:none!important;cursor:pointer;position:relative;box-sizing:border-box!important;vertical-align:middle;transition:border-color .15s ease,background .15s ease}
+.brikpanel-pe-metabox-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):hover,.brikpanel-pe-metabox-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):hover,.brikpanel-pe-wc-fields-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):hover,.brikpanel-pe-wc-fields-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):hover{border-color:var(--pe-text-secondary)!important}
+.brikpanel-pe-metabox-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):checked,.brikpanel-pe-metabox-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):checked,.brikpanel-pe-wc-fields-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):checked,.brikpanel-pe-wc-fields-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):checked{background:var(--pe-primary)!important;border-color:var(--pe-primary)!important}
+.brikpanel-pe-metabox-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):checked::after,.brikpanel-pe-metabox-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):checked::after,.brikpanel-pe-wc-fields-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):checked::after,.brikpanel-pe-wc-fields-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):checked::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);box-sizing:border-box}
+.brikpanel-pe-metabox-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):focus,.brikpanel-pe-metabox-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):focus,.brikpanel-pe-wc-fields-content input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):focus,.brikpanel-pe-wc-fields-content label input[type="checkbox"]:not([class*="switch"]):not([class*="toggle"]):focus{outline:none;border-color:var(--pe-primary)!important;box-shadow:0 0 0 1px var(--pe-primary)!important}
 
 /* Headings inside metaboxes */
 .brikpanel-pe-metabox-content h1,.brikpanel-pe-metabox-content h2,.brikpanel-pe-metabox-content h3,.brikpanel-pe-metabox-content h4,.brikpanel-pe-wc-fields-content h1,.brikpanel-pe-wc-fields-content h2,.brikpanel-pe-wc-fields-content h3,.brikpanel-pe-wc-fields-content h4{font-size:.875rem!important;font-weight:600!important;color:var(--pe-text)!important;margin:0 0 .5rem!important;padding:0!important;border:none!important;background:none!important}
@@ -525,10 +525,10 @@
 .brikpanel-pe-metabox-content *,
 .brikpanel-pe-wc-fields-content,
 .brikpanel-pe-wc-fields-content *{pointer-events:auto}
-.brikpanel-pe-metabox-content input:not([type="hidden"]):not([disabled]):not([readonly]),
+.brikpanel-pe-metabox-content input:not([type="hidden"]):not([disabled]):not([readonly]):not([class*="switch"]):not([class*="toggle"]),
 .brikpanel-pe-metabox-content textarea:not([disabled]):not([readonly]),
 .brikpanel-pe-metabox-content select:not([disabled]),
-.brikpanel-pe-wc-fields-content input:not([type="hidden"]):not([disabled]):not([readonly]),
+.brikpanel-pe-wc-fields-content input:not([type="hidden"]):not([disabled]):not([readonly]):not([class*="switch"]):not([class*="toggle"]),
 .brikpanel-pe-wc-fields-content textarea:not([disabled]):not([readonly]),
 .brikpanel-pe-wc-fields-content select:not([disabled]){pointer-events:auto!important;user-select:text!important;position:relative;z-index:1}
 
@@ -698,6 +698,32 @@
 .brikpanel-pe-seo-preview-title{display:block;font-size:.875rem;font-weight:400;color:#1a0dab;line-height:1.3;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .brikpanel-pe-seo-preview-url{display:block;font-size:.6875rem;color:#006621;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .brikpanel-pe-seo-preview-desc{display:block;font-size:.75rem;color:#545454;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* SureRank "Analyze" panel — SEO checks rendered inside the SEO card */
+.brikpanel-pe-sr-analysis{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--pe-border)}
+.brikpanel-pe-sr-body{transition:opacity .15s ease}
+.brikpanel-pe-sr-analysis.is-analyzing .brikpanel-pe-sr-body{opacity:.5}
+.brikpanel-pe-sr-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.75rem}
+.brikpanel-pe-sr-head-title{display:inline-flex;align-items:center;gap:.5rem;font-size:.8125rem;font-weight:600;color:var(--pe-text)}
+.brikpanel-pe-sr-rerun{padding:.375rem .75rem;font-size:.75rem}
+.brikpanel-pe-sr-summary{display:flex;flex-wrap:wrap;gap:.375rem;margin-bottom:.875rem}
+.brikpanel-pe-sr-pill{display:inline-flex;align-items:center;padding:.1875rem .5rem;border-radius:999px;font-size:.6875rem;font-weight:600;line-height:1.2}
+.brikpanel-pe-sr-pill.error{background:#fce4e4;color:#c62828}
+.brikpanel-pe-sr-pill.warning{background:#fff3cd;color:#856404}
+.brikpanel-pe-sr-pill.suggestion{background:#e7f0fd;color:#1d4ed8}
+.brikpanel-pe-sr-pill.success{background:#e4f5e1;color:#1a6b15}
+.brikpanel-pe-sr-group{margin-top:.875rem}
+.brikpanel-pe-sr-group:first-of-type{margin-top:0}
+.brikpanel-pe-sr-group-title{font-size:.75rem;font-weight:600;color:var(--pe-text-secondary);text-transform:uppercase;letter-spacing:.02em;margin-bottom:.5rem}
+.brikpanel-pe-sr-check{display:flex;align-items:flex-start;gap:.5rem;padding:.5rem .625rem;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);margin-bottom:.375rem;background:#fafafa}
+.brikpanel-pe-sr-check:last-child{margin-bottom:0}
+.brikpanel-pe-sr-dot{flex-shrink:0;width:.5rem;height:.5rem;border-radius:50%;margin-top:.375rem}
+.brikpanel-pe-sr-check--error .brikpanel-pe-sr-dot{background:#d72c0d}
+.brikpanel-pe-sr-check--warning .brikpanel-pe-sr-dot{background:#e0a106}
+.brikpanel-pe-sr-check--suggestion .brikpanel-pe-sr-dot{background:#1d4ed8}
+.brikpanel-pe-sr-check--success .brikpanel-pe-sr-dot{background:#1a8917}
+.brikpanel-pe-sr-msg{flex:1;font-size:.8125rem;color:var(--pe-text);line-height:1.4}
+.brikpanel-pe-sr-tag{flex-shrink:0;font-size:.6875rem;font-weight:600;color:var(--pe-text-muted)}
 
 /* Low stock badges */
 .brikpanel-pe-stock-badge{display:inline-block;padding:.125rem .5rem;border-radius:10px;font-size:.75rem;font-weight:550;line-height:1.5;cursor:pointer;transition:background .15s ease}
@@ -963,3 +989,28 @@ ul.ui-autocomplete.wp-tags-autocomplete .ui-menu-item-wrapper:hover{background:#
 .brikpanel-pe-var-backorder{padding:.625rem 1.25rem;display:flex;align-items:center;gap:1.25rem;font-size:.8125rem;color:var(--pe-text)}
 .brikpanel-pe-var-backorder .brikpanel-pe-var-backorder-label{font-weight:600;color:var(--pe-text-secondary);font-size:.75rem;text-transform:uppercase;letter-spacing:.03em}
 .brikpanel-pe-var-backorder .brikpanel-pe-radio-group{flex-direction:row;gap:1rem}
+
+/* ---- Product Catalog Feed Pro (WPWOOF) panel polish ----------------------
+   The plugin's product-data panel ships WooCommerce-native float layouts plus
+   per-channel "FB | G | P | T | R" help badges (Facebook / Google / Pinterest
+   / TikTok / Reddit). Lifted into BrikPanel's stacked editor those badges fall
+   out as raw black text and the switch row's 162px float padding overlaps its
+   label. Scope everything to the plugin's own class names so only its panel is
+   touched. */
+/* "Exclude this product from feeds" switch row -> clean inline row. */
+.brikpanel-pe-wc-fields-content .trigger_div{display:flex!important;align-items:center;gap:.625rem;padding:0!important;margin:0 0 1rem!important}
+.brikpanel-pe-wc-fields-content .trigger_div .ios-switch,
+.brikpanel-pe-wc-fields-content .trigger_div .switch{float:none!important;margin:0!important;flex:0 0 auto}
+.brikpanel-pe-wc-fields-content .trigger_div label.woof-switcher-title{float:none!important;margin:0!important;font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text)!important;cursor:pointer}
+/* Channel badges -> small muted uppercase caption under the field. */
+.brikpanel-pe-wc-fields-content .extra-link-2-wrapper{display:inline-block;margin:.25rem 0 0!important;font-size:.6875rem;font-weight:600;letter-spacing:.04em;line-height:1.4;color:var(--pe-text-muted);text-transform:uppercase}
+.brikpanel-pe-wc-fields-content .extra-link-2-wrapper a{color:var(--pe-text-secondary);text-decoration:none}
+.brikpanel-pe-wc-fields-content .extra-link-2-wrapper a:hover{text-decoration:underline}
+/* Field rows -> consistent vertical rhythm (covers form-row too). */
+.brikpanel-pe-wc-fields-content #woof_add_extra_fields p.form-field,
+.brikpanel-pe-wc-fields-content #woof_add_extra_fields p.form-row{display:flex!important;flex-direction:column!important;margin:0 0 1rem!important;padding:0!important}
+.brikpanel-pe-wc-fields-content #woof_add_extra_fields p.form-field > .wrap,
+.brikpanel-pe-wc-fields-content #woof_add_extra_fields p.form-row > .wrap{display:block;width:100%}
+/* Media previews (carousel / single-product ad) -> capped so a large or broken
+   image can't blow the panel height open. */
+.brikpanel-pe-wc-fields-content .image-preview img{max-width:120px!important;max-height:120px!important;width:auto!important;height:auto!important;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);object-fit:cover}

@@ -41,7 +41,7 @@ function brikpanel_profit_cogs( $start_gmt, $end_gmt ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
-	$statuses = [ 'wc-processing', 'wc-completed' ];
+	$statuses = brikpanel_paid_order_statuses();
 	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 
 	$joins = "
@@ -112,7 +112,7 @@ function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
-	$statuses = [ 'wc-processing', 'wc-completed' ];
+	$statuses = brikpanel_paid_order_statuses();
 	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 
 	$joins = "
@@ -226,7 +226,7 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
-	$statuses = [ 'wc-processing', 'wc-completed' ];
+	$statuses = brikpanel_paid_order_statuses();
 	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 	$limit    = max( 1, min( 50, (int) $limit ) );
 
@@ -339,7 +339,7 @@ function brikpanel_profit_tax( $start_gmt, $end_gmt ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
-	$statuses = [ 'wc-processing', 'wc-completed' ];
+	$statuses = brikpanel_paid_order_statuses();
 	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 
 	if ( $is_hpos ) {

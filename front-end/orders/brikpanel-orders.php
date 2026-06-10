@@ -311,6 +311,13 @@ function brikpanel_settings_fields() {
     }
 
     $product_metabox_options = brikpanel_collect_product_metaboxes();
+
+    // Every registered order status (core + custom statuses added by
+    // shipment-tracking / returns plugins), keyed exactly as WooCommerce
+    // stores them ('wc-…'), so the merchant can map them into the
+    // valid-sales and refund buckets the analytics read.
+    $order_status_options = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_statuses() : [];
+
     $wc_product_data_sections = class_exists('Brikpanel_Product_Editor')
         ? Brikpanel_Product_Editor::collect_wc_product_data_sections()
         : [];
@@ -550,6 +557,36 @@ function brikpanel_settings_fields() {
             'id'   => 'brk_dashboard_title',
         ],
         [
+            'name' => __('Analytics', 'brikpanel'),
+            'type' => 'title',
+            'id'   => 'brk_analytics_title',
+            'desc' => __('Decide which order statuses your analytics count. This drives every figure: Revenue, Orders, Average Order Value, Profit, Customer Lifetime Value and the order-rate breakdown. If you use a shipment-tracking or returns plugin that adds custom statuses (for example "Partially shipped", "Delivered" or "Partially refunded"), add them here so those orders stop being left out of your numbers.', 'brikpanel'),
+        ],
+        [
+            'name'     => __('Statuses counted as valid sales', 'brikpanel'),
+            'id'       => 'brikpanel_paid_statuses',
+            'type'     => 'multiselect',
+            'class'    => 'wc-enhanced-select',
+            'desc'     => __('Orders in these statuses are counted as real, completed sales across Revenue, Orders, AOV, Profit and Customer Lifetime Value. Defaults to Processing and Completed, which is what WooCommerce itself treats as paid. Leave empty to keep the default.', 'brikpanel'),
+            'desc_tip' => true,
+            'options'  => $order_status_options,
+            'default'  => brikpanel_default_paid_statuses(),
+        ],
+        [
+            'name'     => __('Statuses counted as refunds', 'brikpanel'),
+            'id'       => 'brikpanel_refunded_statuses',
+            'type'     => 'multiselect',
+            'class'    => 'wc-enhanced-select',
+            'desc'     => __('Orders in these statuses are treated as refunds in the returns and refund-rate figures, and still count toward Customer Lifetime Value (the customer did buy). Defaults to the WooCommerce Refunded status. Leave empty to keep the default.', 'brikpanel'),
+            'desc_tip' => true,
+            'options'  => $order_status_options,
+            'default'  => brikpanel_default_refunded_statuses(),
+        ],
+        [
+            'type' => 'sectionend',
+            'id'   => 'brk_analytics_title',
+        ],
+        [
             'name' => __('Coupons', 'brikpanel'),
             'type' => 'title',
             'id'   => 'brk_coupons_title',
@@ -750,6 +787,7 @@ function brikpanel_settings_get_sections() {
         ''              => __( 'General', 'brikpanel' ),
         'navigation'    => __( 'Navigation', 'brikpanel' ),
         'dashboard'     => __( 'Dashboard', 'brikpanel' ),
+        'analytics'     => __( 'Analytics', 'brikpanel' ),
         'products'      => __( 'Products', 'brikpanel' ),
         'orders'        => __( 'Orders', 'brikpanel' ),
         'coupons'       => __( 'Coupons', 'brikpanel' ),
@@ -785,6 +823,7 @@ function brikpanel_settings_section_for_title( $title_id ) {
         'brk_order_edit_title'   => 'orders',
         'brk_products_title'     => 'products',
         'brk_dashboard_title'    => 'dashboard',
+        'brk_analytics_title'    => 'analytics',
         'brk_coupons_title'      => 'coupons',
         'brk_login_title'        => 'login',
         'brk_notices_title'      => '',
@@ -1612,6 +1651,264 @@ function brikpanel_fill_order_column_content($column, $order) {
             echo wp_kses_post( wc_price( $order->get_total_tax() ) );
             break;
     }
+}
+
+// ── Filter orders by shipping method ──────────────────────────────────
+// WooCommerce ships no built-in way to filter the orders list by the
+// shipping method a customer chose. We add a dropdown (works on both the
+// HPOS orders screen and the legacy posts-based screen) that narrows the
+// list to orders containing a matching shipping line.
+//
+// Shipping data lives in the order items tables, not in order meta, so the
+// filter resolves matching order IDs from `woocommerce_order_items` and
+// constrains the query with `post__in` — a single arg understood by both
+// the HPOS query and WP_Query. We match on the shipping line *name*
+// (order_item_name) because it is always populated and human readable,
+// unlike `method_id` which can be empty on imported/legacy orders.
+if (get_option('brikpanel_orders_enhancements', 'yes') !== 'no') {
+
+    if (get_option('woocommerce_custom_orders_table_enabled') === 'yes') {
+        // HPOS orders screen.
+        add_action('woocommerce_order_list_table_restrict_manage_orders', 'brikpanel_render_shipping_method_filter', 20, 2);
+        add_filter('woocommerce_order_list_table_prepare_items_query_args', 'brikpanel_apply_shipping_method_filter_hpos');
+        add_filter('woocommerce_shop_order_list_table_order_count', 'brikpanel_shipping_filter_order_count', 10, 2);
+    } else {
+        // Legacy posts-based orders screen.
+        add_action('restrict_manage_posts', 'brikpanel_render_shipping_method_filter_legacy');
+        add_action('pre_get_posts', 'brikpanel_apply_shipping_method_filter_legacy');
+    }
+
+    // Keep the cached method list fresh when orders change.
+    add_action('woocommerce_checkout_order_processed', 'brikpanel_flush_shipping_method_names_cache');
+    add_action('woocommerce_process_shop_order_meta', 'brikpanel_flush_shipping_method_names_cache');
+}
+
+/**
+ * Distinct shipping line names found across all orders.
+ *
+ * Cached in a transient because the underlying DISTINCT scan over the order
+ * items table is not free on large stores; the list rarely changes.
+ *
+ * @return string[]
+ */
+function brikpanel_get_shipping_method_names() {
+    $cached = get_transient('brikpanel_shipping_method_names');
+    if (is_array($cached)) {
+        return $cached;
+    }
+
+    global $wpdb;
+    $names = $wpdb->get_col(
+        "SELECT DISTINCT order_item_name
+         FROM {$wpdb->prefix}woocommerce_order_items
+         WHERE order_item_type = 'shipping' AND order_item_name <> ''
+         ORDER BY order_item_name ASC
+         LIMIT 200"
+    );
+    $names = is_array($names) ? array_map('strval', $names) : array();
+
+    set_transient('brikpanel_shipping_method_names', $names, 6 * HOUR_IN_SECONDS);
+    return $names;
+}
+
+/**
+ * Clear the cached shipping method name list.
+ */
+function brikpanel_flush_shipping_method_names_cache() {
+    delete_transient('brikpanel_shipping_method_names');
+}
+
+/**
+ * Order IDs that contain a shipping line with the given name.
+ *
+ * @param string $name Shipping line name to match.
+ * @return int[]
+ */
+function brikpanel_get_order_ids_by_shipping_method($name) {
+    static $memo = array();
+    if (isset($memo[$name])) {
+        return $memo[$name];
+    }
+
+    global $wpdb;
+    $ids = $wpdb->get_col($wpdb->prepare(
+        "SELECT DISTINCT order_id
+         FROM {$wpdb->prefix}woocommerce_order_items
+         WHERE order_item_type = 'shipping' AND order_item_name = %s",
+        $name
+    ));
+    $memo[$name] = array_map('absint', (array) $ids);
+    return $memo[$name];
+}
+
+/**
+ * Read and sanitize the selected shipping method from the request.
+ *
+ * Read-only listing filter submitted over GET (like WooCommerce's own date
+ * and customer filters), so no nonce is required; the value is sanitized and
+ * always bound via $wpdb->prepare downstream.
+ *
+ * @return string Empty string when no method is selected.
+ */
+function brikpanel_get_selected_shipping_method() {
+    if (empty($_GET['brikpanel_shipping_method'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        return '';
+    }
+    return wc_clean(wp_unslash($_GET['brikpanel_shipping_method'])); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+}
+
+/**
+ * Render the shipping method dropdown markup.
+ *
+ * @param string $selected Currently selected method name.
+ */
+function brikpanel_render_shipping_method_filter_select($selected) {
+    $names = brikpanel_get_shipping_method_names();
+
+    // Nothing to choose between with fewer than two methods.
+    if (count($names) < 2) {
+        return;
+    }
+
+    echo '<select name="brikpanel_shipping_method" id="brikpanel_shipping_method" class="brikpanel-shipping-method-select">';
+    echo '<option value="">' . esc_html__('All shipping methods', 'brikpanel') . '</option>';
+    foreach ($names as $name) {
+        printf(
+            '<option value="%1$s"%2$s>%3$s</option>',
+            esc_attr($name),
+            selected($selected, $name, false),
+            esc_html($name)
+        );
+    }
+    echo '</select>';
+}
+
+/**
+ * Render the dropdown on the HPOS orders screen.
+ *
+ * @param string $order_type Order type being listed.
+ * @param string $which      Table nav location ('top'|'bottom').
+ */
+function brikpanel_render_shipping_method_filter($order_type = '', $which = '') {
+    if ('shop_order' !== $order_type || 'bottom' === $which) {
+        return;
+    }
+    brikpanel_render_shipping_method_filter_select(brikpanel_get_selected_shipping_method());
+}
+
+/**
+ * Render the dropdown on the legacy posts-based orders screen.
+ *
+ * @param string $post_type Current post type.
+ */
+function brikpanel_render_shipping_method_filter_legacy($post_type = '') {
+    if ('shop_order' !== $post_type) {
+        return;
+    }
+    brikpanel_render_shipping_method_filter_select(brikpanel_get_selected_shipping_method());
+}
+
+/**
+ * Constrain the HPOS orders query to the selected shipping method.
+ *
+ * @param array $args wc_get_orders() arguments.
+ * @return array
+ */
+function brikpanel_apply_shipping_method_filter_hpos($args) {
+    $name = brikpanel_get_selected_shipping_method();
+    if ('' === $name) {
+        return $args;
+    }
+
+    $ids = brikpanel_get_order_ids_by_shipping_method($name);
+    if (empty($ids)) {
+        $ids = array(0); // No matches: force an empty result set.
+    }
+
+    // Respect any IDs an earlier filter (e.g. search) already constrained to.
+    if (!empty($args['post__in'])) {
+        $ids = array_values(array_intersect(array_map('absint', (array) $args['post__in']), $ids));
+        if (empty($ids)) {
+            $ids = array(0);
+        }
+    }
+
+    $args['post__in'] = $ids;
+    return $args;
+}
+
+/**
+ * Correct the HPOS list table order counts while the shipping filter is active.
+ *
+ * The HPOS list table derives its total, pagination and status tab counts from
+ * cached per-status totals (OrderUtil::get_count_for_type) rather than from the
+ * filtered query. Our shipping filter is injected as `post__in`, which those
+ * cached totals ignore. Hooking the count filter recomputes each requested
+ * status bucket against the matching orders so the total, the page count and
+ * every status tab reflect the selected shipping method.
+ *
+ * @param int             $count  Cached order count for $status.
+ * @param string|string[] $status Status slug(s) being counted.
+ * @return int
+ */
+function brikpanel_shipping_filter_order_count($count, $status) {
+    if (empty($_GET['brikpanel_shipping_method'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        return $count;
+    }
+
+    $name = brikpanel_get_selected_shipping_method();
+    if ('' === $name) {
+        return $count;
+    }
+
+    $ids = brikpanel_get_order_ids_by_shipping_method($name);
+    if (empty($ids)) {
+        return 0;
+    }
+
+    $matched = wc_get_orders(array(
+        'type'     => 'shop_order',
+        'status'   => array_map('strval', (array) $status),
+        'post__in' => $ids,
+        'limit'    => -1,
+        'return'   => 'ids',
+    ));
+
+    return count($matched);
+}
+
+/**
+ * Constrain the legacy posts-based orders query to the selected shipping method.
+ *
+ * @param WP_Query $query Main admin query.
+ */
+function brikpanel_apply_shipping_method_filter_legacy($query) {
+    if (!is_admin() || !$query->is_main_query()) {
+        return;
+    }
+    if ('shop_order' !== $query->get('post_type')) {
+        return;
+    }
+
+    $name = brikpanel_get_selected_shipping_method();
+    if ('' === $name) {
+        return;
+    }
+
+    $ids = brikpanel_get_order_ids_by_shipping_method($name);
+    if (empty($ids)) {
+        $ids = array(0);
+    }
+
+    $existing = $query->get('post__in');
+    if (!empty($existing)) {
+        $ids = array_values(array_intersect(array_map('absint', (array) $existing), $ids));
+        if (empty($ids)) {
+            $ids = array(0);
+        }
+    }
+
+    $query->set('post__in', $ids);
 }
 
 // ── AJAX: Inline Order Status Change ──────────────────────────────────

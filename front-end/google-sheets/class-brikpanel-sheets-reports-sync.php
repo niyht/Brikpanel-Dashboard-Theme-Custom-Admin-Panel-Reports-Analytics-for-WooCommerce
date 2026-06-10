@@ -291,7 +291,7 @@ class Brikpanel_Sheets_Reports_Sync {
 		// Match the dashboard's revenue definition (Total Sales / Order Value /
 		// Orders count all use processing+completed). Anything else would make
 		// the Sheets snapshot disagree with what the user sees in BrikPanel.
-		$statuses = [ 'wc-processing', 'wc-completed' ];
+		$statuses = brikpanel_paid_order_statuses();
 		$status_in = "'" . implode( "','", array_map( 'esc_sql', $statuses ) ) . "'";
 
 		for ( $i = $days - 1; $i >= 0; $i-- ) {
@@ -348,7 +348,7 @@ class Brikpanel_Sheets_Reports_Sync {
 		$since_gmt = gmdate( 'Y-m-d H:i:s', time() - ( $days * DAY_IN_SECONDS ) );
 		// Keep status filter aligned with the dashboard (processing+completed
 		// only) so Top Products units/revenue match what BrikPanel displays.
-		$statuses = [ 'wc-processing', 'wc-completed' ];
+		$statuses = brikpanel_paid_order_statuses();
 		$status_in = "'" . implode( "','", array_map( 'esc_sql', $statuses ) ) . "'";
 
 		if ( $is_hpos ) {

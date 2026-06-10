@@ -173,6 +173,8 @@ class Brikpanel_Sheets_Settings {
 			'products_pull_interval'=> (string) get_option( Brikpanel_Sheets_Products_Sync::OPT_PULL_INTERVAL, '5' ),
 			'products_last_push'    => (array) get_option( Brikpanel_Sheets_Products_Sync::OPT_LAST_PUSH, [] ),
 			'products_last_pull'    => (array) get_option( Brikpanel_Sheets_Products_Sync::OPT_LAST_PULL, [] ),
+			'products_categories'   => Brikpanel_Sheets_Products_Sync::category_filter_ids(),
+			'products_categories_catalogue' => self::product_categories_catalogue(),
 
 			'reports_enabled'  => get_option( Brikpanel_Sheets_Reports_Sync::OPT_ENABLED, 'no' ),
 			'reports_interval' => (string) get_option( Brikpanel_Sheets_Reports_Sync::OPT_INTERVAL, 'every_6h' ),
@@ -690,6 +692,20 @@ class Brikpanel_Sheets_Settings {
 					$pull_int = '5';
 				}
 				update_option( Brikpanel_Sheets_Products_Sync::OPT_PULL_INTERVAL, $pull_int, false );
+
+				// Category filter: empty (no boxes checked) means "sync every
+				// product". Keep only IDs that are real product_cat terms so a
+				// stale/spoofed ID can never widen or break the query later.
+				$cats = isset( $_POST['categories'] ) ? (array) wp_unslash( $_POST['categories'] ) : [];
+				$cats = array_values( array_unique( array_filter( array_map( 'absint', $cats ) ) ) );
+				$valid_cats = [];
+				foreach ( $cats as $cid ) {
+					if ( term_exists( $cid, 'product_cat' ) ) {
+						$valid_cats[] = $cid;
+					}
+				}
+				update_option( Brikpanel_Sheets_Products_Sync::OPT_CATEGORIES, $valid_cats, false );
+
 				do_action( 'brikpanel_cron_register' );
 				break;
 
@@ -717,6 +733,23 @@ class Brikpanel_Sheets_Settings {
 
 	private function yes_no( $val ) {
 		return ( $val === 'yes' || $val === '1' || $val === true ) ? 'yes' : 'no';
+	}
+
+	/**
+	 * Product categories offered in the product-sync filter UI. All categories
+	 * (including empty ones) sorted by name. Returns an empty array if the
+	 * taxonomy query fails so the template can degrade gracefully.
+	 *
+	 * @return WP_Term[]
+	 */
+	private static function product_categories_catalogue() {
+		$terms = get_terms( [
+			'taxonomy'   => 'product_cat',
+			'hide_empty' => false,
+			'orderby'    => 'name',
+			'order'      => 'ASC',
+		] );
+		return ( is_array( $terms ) ) ? $terms : [];
 	}
 
 	// =========================================================================

@@ -290,7 +290,7 @@ class Brikpanel_Store_Summary {
 			return (int) $wpdb->get_var( $wpdb->prepare(
 				"SELECT COUNT(DISTINCT IFNULL(NULLIF(billing_email,''), CAST(customer_id AS CHAR)))
 				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order' AND status IN ('wc-processing','wc-completed')
+				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s AND date_created_gmt <= %s",
 				$start_gmt, $end_gmt
 			) ); // phpcs:ignore
@@ -300,7 +300,7 @@ class Brikpanel_Store_Summary {
 			 FROM {$wpdb->posts} p
 			 LEFT JOIN {$wpdb->postmeta} pm_email ON pm_email.post_id=p.ID AND pm_email.meta_key='_billing_email'
 			 LEFT JOIN {$wpdb->postmeta} pm_uid   ON pm_uid.post_id=p.ID   AND pm_uid.meta_key='_customer_user'
-			 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+			 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 			   AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s",
 			$start_gmt, $end_gmt
 		) ); // phpcs:ignore
@@ -342,14 +342,14 @@ class Brikpanel_Store_Summary {
 		global $wpdb;
 		if ( $this->is_hpos() ) {
 			$sql = "SELECT DISTINCT currency FROM {$wpdb->prefix}wc_orders
-			        WHERE type='shop_order' AND status IN ('wc-processing','wc-completed') AND currency <> ''";
+			        WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ") AND currency <> ''";
 			$args = [];
 			if ( $start_gmt ) { $sql .= ' AND date_created_gmt >= %s'; $args[] = $start_gmt; }
 			if ( $end_gmt )   { $sql .= ' AND date_created_gmt <= %s'; $args[] = $end_gmt; }
 		} else {
 			$sql = "SELECT DISTINCT pm.meta_value AS currency FROM {$wpdb->posts} p
 			        LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_currency'
-			        WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+			        WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 			          AND pm.meta_value IS NOT NULL AND pm.meta_value <> ''";
 			$args = [];
 			if ( $start_gmt ) { $sql .= ' AND p.post_date_gmt >= %s'; $args[] = $start_gmt; }
@@ -373,7 +373,7 @@ class Brikpanel_Store_Summary {
 		if ( $this->is_hpos() ) {
 			$sql = "SELECT currency, COALESCE(SUM(total_amount),0) AS revenue, COUNT(*) AS orders
 			        FROM {$wpdb->prefix}wc_orders
-			        WHERE type='shop_order' AND status IN ('wc-processing','wc-completed') AND currency <> ''";
+			        WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ") AND currency <> ''";
 			$args = [];
 			if ( $start_gmt ) { $sql .= ' AND date_created_gmt >= %s'; $args[] = $start_gmt; }
 			if ( $end_gmt )   { $sql .= ' AND date_created_gmt <= %s'; $args[] = $end_gmt; }
@@ -385,7 +385,7 @@ class Brikpanel_Store_Summary {
 			        FROM {$wpdb->posts} p
 			        LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
 			        LEFT JOIN {$wpdb->postmeta} pm_c ON pm_c.post_id=p.ID AND pm_c.meta_key='_order_currency'
-			        WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')";
+			        WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")";
 			$args = [];
 			if ( $start_gmt ) { $sql .= ' AND p.post_date_gmt >= %s'; $args[] = $start_gmt; }
 			if ( $end_gmt )   { $sql .= ' AND p.post_date_gmt <= %s'; $args[] = $end_gmt; }
@@ -700,13 +700,13 @@ class Brikpanel_Store_Summary {
 					MIN(date_created_gmt) AS first_dt,
 					MAX(date_created_gmt) AS last_dt
 				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type = 'shop_order' AND status IN ('wc-processing','wc-completed')"
+				 WHERE type = 'shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ")"
 			); // phpcs:ignore
 		} else {
 			$row = $wpdb->get_row(
 				"SELECT MIN(post_date_gmt) AS first_dt, MAX(post_date_gmt) AS last_dt
 				 FROM {$wpdb->posts}
-				 WHERE post_type = 'shop_order' AND post_status IN ('wc-processing','wc-completed')"
+				 WHERE post_type = 'shop_order' AND post_status IN (" . brikpanel_paid_statuses_sql() . ")"
 			); // phpcs:ignore
 		}
 		if ( ! $row || empty( $row->first_dt ) ) {
@@ -830,7 +830,7 @@ class Brikpanel_Store_Summary {
 				        COUNT(*) AS orders
 				 FROM {$wpdb->prefix}wc_orders
 				 WHERE type='shop_order'
-				   AND status IN ('wc-processing','wc-completed')
+				   AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s
 				 GROUP BY y ORDER BY y ASC",
 				$start_dt
@@ -843,7 +843,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
 				 WHERE p.post_type='shop_order'
-				   AND p.post_status IN ('wc-processing','wc-completed')
+				   AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY y ORDER BY y ASC",
 				$start_dt
@@ -913,7 +913,7 @@ class Brikpanel_Store_Summary {
 				        COUNT(*) AS orders
 				 FROM {$wpdb->prefix}wc_orders
 				 WHERE type='shop_order'
-				   AND status IN ('wc-processing','wc-completed')
+				   AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s
 				 GROUP BY ym ORDER BY ym ASC",
 				$start_dt
@@ -926,7 +926,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
 				 WHERE p.post_type='shop_order'
-				   AND p.post_status IN ('wc-processing','wc-completed')
+				   AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY ym ORDER BY ym ASC",
 				$start_dt
@@ -1084,9 +1084,9 @@ class Brikpanel_Store_Summary {
 
 		if ( $this->is_hpos() ) {
 			$orders_tbl = $wpdb->prefix . 'wc_orders';
-			$join_status = "INNER JOIN {$orders_tbl} o ON o.id = oi.order_id AND o.type='shop_order' AND o.status IN ('wc-processing','wc-completed') AND o.date_created_gmt >= %s";
+			$join_status = "INNER JOIN {$orders_tbl} o ON o.id = oi.order_id AND o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ") AND o.date_created_gmt >= %s";
 		} else {
-			$join_status = "INNER JOIN {$wpdb->posts} o ON o.ID = oi.order_id AND o.post_type='shop_order' AND o.post_status IN ('wc-processing','wc-completed') AND o.post_date_gmt >= %s";
+			$join_status = "INNER JOIN {$wpdb->posts} o ON o.ID = oi.order_id AND o.post_type='shop_order' AND o.post_status IN (" . brikpanel_paid_statuses_sql() . ") AND o.post_date_gmt >= %s";
 		}
 
 		$sql = "SELECT
@@ -1706,7 +1706,7 @@ class Brikpanel_Store_Summary {
 				        COUNT(*) AS orders
 				 FROM {$wpdb->prefix}wc_orders o
 				 INNER JOIN {$wpdb->prefix}wc_order_operational_data od ON od.order_id = o.id
-				 WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
@@ -1717,7 +1717,7 @@ class Brikpanel_Store_Summary {
 				        COUNT(DISTINCT p.ID) AS orders
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_shipping'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
@@ -1735,7 +1735,7 @@ class Brikpanel_Store_Summary {
 				 INNER JOIN {$wpdb->prefix}wc_orders o ON o.id=oi.order_id
 				 LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta im ON im.order_item_id=oi.order_item_id AND im.meta_key='cost'
 				 WHERE oi.order_item_type='shipping'
-				   AND o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				   AND o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s
 				 GROUP BY oi.order_item_name
 				 ORDER BY uses DESC LIMIT 10",
@@ -1749,7 +1749,7 @@ class Brikpanel_Store_Summary {
 				 INNER JOIN {$wpdb->posts} p ON p.ID=oi.order_id
 				 LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta im ON im.order_item_id=oi.order_item_id AND im.meta_key='cost'
 				 WHERE oi.order_item_type='shipping'
-				   AND p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				   AND p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY oi.order_item_name
 				 ORDER BY uses DESC LIMIT 10",
@@ -1763,7 +1763,7 @@ class Brikpanel_Store_Summary {
 				"SELECT oa.country, COUNT(*) AS orders, COALESCE(SUM(o.total_amount),0) AS revenue
 				 FROM {$wpdb->prefix}wc_orders o
 				 INNER JOIN {$wpdb->prefix}wc_order_addresses oa ON oa.order_id=o.id AND oa.address_type='shipping'
-				 WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s
 				   AND oa.country IS NOT NULL AND oa.country <> ''
 				 GROUP BY oa.country
@@ -1777,7 +1777,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm_country ON pm_country.post_id=p.ID AND pm_country.meta_key='_shipping_country'
 				 LEFT JOIN {$wpdb->postmeta} pm_total   ON pm_total.post_id=p.ID   AND pm_total.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				   AND pm_country.meta_value IS NOT NULL AND pm_country.meta_value <> ''
 				 GROUP BY pm_country.meta_value
@@ -1875,7 +1875,7 @@ class Brikpanel_Store_Summary {
 				        SUM(total_amount) AS revenue
 				 FROM {$wpdb->prefix}wc_orders
 				 WHERE type='shop_order'
-				   AND status IN ('wc-processing','wc-completed')
+				   AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s
 				 GROUP BY ym",
 				$start_dt
@@ -1898,7 +1898,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->prefix}wc_orders o
 				 INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON oi.order_id=o.id AND oi.order_item_type='line_item'
 				 INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta im ON im.order_item_id=oi.order_item_id AND im.meta_key='_cogs_value'
-				 WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s
 				 GROUP BY ym",
 				$start_dt
@@ -1910,7 +1910,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
 				 WHERE p.post_type='shop_order'
-				   AND p.post_status IN ('wc-processing','wc-completed')
+				   AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY ym",
 				$start_dt
@@ -1933,7 +1933,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->posts} p
 				 INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON oi.order_id=p.ID AND oi.order_item_type='line_item'
 				 INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta im ON im.order_item_id=oi.order_item_id AND im.meta_key='_cogs_value'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY ym",
 				$start_dt
@@ -2078,7 +2078,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->prefix}wc_orders o
 				 INNER JOIN {$tbl_metrics} m
 				   ON ( ( o.customer_id > 0 AND m.user_id = o.customer_id ) OR ( o.customer_id = 0 AND m.customer_email = o.billing_email ) )
-				 WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s
 				 GROUP BY ym
 				 ORDER BY ym ASC",
@@ -2099,7 +2099,7 @@ class Brikpanel_Store_Summary {
 				 INNER JOIN {$tbl_metrics} m
 				   ON ( ( CAST(pm_c.meta_value AS UNSIGNED) > 0 AND m.user_id = CAST(pm_c.meta_value AS UNSIGNED) )
 				        OR ( CAST(IFNULL(pm_c.meta_value,'0') AS UNSIGNED) = 0 AND m.customer_email = pm_e.meta_value ) )
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY ym
 				 ORDER BY ym ASC",
@@ -2155,7 +2155,7 @@ class Brikpanel_Store_Summary {
 			$dow_rows = $wpdb->get_results( $wpdb->prepare(
 				"SELECT DAYOFWEEK(date_created_gmt) AS dow, COUNT(*) AS orders, COALESCE(SUM(total_amount),0) AS revenue
 				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order' AND status IN ('wc-processing','wc-completed')
+				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s
 				 GROUP BY dow",
 				$start_dt
@@ -2163,7 +2163,7 @@ class Brikpanel_Store_Summary {
 			$hr_rows = $wpdb->get_results( $wpdb->prepare(
 				"SELECT HOUR(date_created_gmt) AS hr, COUNT(*) AS orders, COALESCE(SUM(total_amount),0) AS revenue
 				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order' AND status IN ('wc-processing','wc-completed')
+				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s
 				 GROUP BY hr",
 				$start_dt
@@ -2173,7 +2173,7 @@ class Brikpanel_Store_Summary {
 				"SELECT DAYOFWEEK(post_date_gmt) AS dow, COUNT(*) AS orders, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS revenue
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY dow",
 				$start_dt
@@ -2182,7 +2182,7 @@ class Brikpanel_Store_Summary {
 				"SELECT HOUR(post_date_gmt) AS hr, COUNT(*) AS orders, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS revenue
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY hr",
 				$start_dt
@@ -2357,12 +2357,12 @@ class Brikpanel_Store_Summary {
 			) ); // phpcs:ignore
 			$total_orders = (int) $wpdb->get_var( $wpdb->prepare(
 				"SELECT COUNT(*) FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order' AND status IN ('wc-processing','wc-completed') AND date_created_gmt >= %s",
+				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ") AND date_created_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
 			$total_revenue = (float) $wpdb->get_var( $wpdb->prepare(
 				"SELECT COALESCE(SUM(total_amount),0) FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order' AND status IN ('wc-processing','wc-completed') AND date_created_gmt >= %s",
+				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ") AND date_created_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
 		} else {
@@ -2384,13 +2384,13 @@ class Brikpanel_Store_Summary {
 			) ); // phpcs:ignore
 			$total_orders = (int) $wpdb->get_var( $wpdb->prepare(
 				"SELECT COUNT(*) FROM {$wpdb->posts}
-				 WHERE post_type='shop_order' AND post_status IN ('wc-processing','wc-completed') AND post_date_gmt >= %s",
+				 WHERE post_type='shop_order' AND post_status IN (" . brikpanel_paid_statuses_sql() . ") AND post_date_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
 			$total_revenue = (float) $wpdb->get_var( $wpdb->prepare(
 				"SELECT COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed') AND p.post_date_gmt >= %s",
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ") AND p.post_date_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
 		}
@@ -2479,7 +2479,7 @@ class Brikpanel_Store_Summary {
 				"SELECT IFNULL(NULLIF(billing_email,''), CAST(customer_id AS CHAR)) AS ck,
 				        SUM(total_amount) AS rev
 				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order' AND status IN ('wc-processing','wc-completed')
+				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s
 				 GROUP BY ck
 				 ORDER BY rev DESC",
@@ -2493,7 +2493,7 @@ class Brikpanel_Store_Summary {
 				 LEFT JOIN {$wpdb->postmeta} pm_e ON pm_e.post_id=p.ID AND pm_e.meta_key='_billing_email'
 				 LEFT JOIN {$wpdb->postmeta} pm_u ON pm_u.post_id=p.ID AND pm_u.meta_key='_customer_user'
 				 LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY ck
 				 ORDER BY rev DESC",
@@ -2619,7 +2619,7 @@ class Brikpanel_Store_Summary {
 				 INNER JOIN {$wpdb->prefix}wc_orders o ON o.id=oi.order_id
 				 LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta im ON im.order_item_id=oi.order_item_id AND im.meta_key='discount_amount'
 				 WHERE oi.order_item_type='coupon'
-				   AND o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				   AND o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s
 				 GROUP BY code
 				 ORDER BY uses DESC LIMIT 10",
@@ -2629,14 +2629,14 @@ class Brikpanel_Store_Summary {
 				"SELECT COUNT(DISTINCT o.id) AS cnt, COALESCE(SUM(o.total_amount),0) AS rev
 				 FROM {$wpdb->prefix}wc_orders o
 				 INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON oi.order_id=o.id AND oi.order_item_type='coupon'
-				 WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
 			$all = $wpdb->get_row( $wpdb->prepare(
 				"SELECT COUNT(*) AS cnt, COALESCE(SUM(total_amount),0) AS rev
 				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order' AND status IN ('wc-processing','wc-completed')
+				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
@@ -2649,7 +2649,7 @@ class Brikpanel_Store_Summary {
 				 INNER JOIN {$wpdb->posts} p ON p.ID=oi.order_id
 				 LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta im ON im.order_item_id=oi.order_item_id AND im.meta_key='discount_amount'
 				 WHERE oi.order_item_type='coupon'
-				   AND p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				   AND p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY code
 				 ORDER BY uses DESC LIMIT 10",
@@ -2660,7 +2660,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->posts} p
 				 INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON oi.order_id=p.ID AND oi.order_item_type='coupon'
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
@@ -2668,7 +2668,7 @@ class Brikpanel_Store_Summary {
 				"SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS rev
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
@@ -2749,7 +2749,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->prefix}wc_orders o
 				 LEFT JOIN {$wpdb->prefix}wc_order_addresses s ON s.order_id=o.id AND s.address_type='shipping'
 				 LEFT JOIN {$wpdb->prefix}wc_order_addresses b ON b.order_id=o.id AND b.address_type='billing'
-				 WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s
 				   AND COALESCE(NULLIF(s.city,''), b.city) IS NOT NULL
 				   AND COALESCE(NULLIF(s.city,''), b.city) <> ''
@@ -2773,7 +2773,7 @@ class Brikpanel_Store_Summary {
 				 LEFT JOIN {$wpdb->postmeta} pm_bc  ON pm_bc.post_id=p.ID  AND pm_bc.meta_key='_billing_country'
 				 LEFT JOIN {$wpdb->postmeta} pm_bs  ON pm_bs.post_id=p.ID  AND pm_bs.meta_key='_billing_state'
 				 LEFT JOIN {$wpdb->postmeta} pm_total ON pm_total.post_id=p.ID AND pm_total.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				   AND COALESCE(NULLIF(pm_sci.meta_value,''), pm_bci.meta_value) IS NOT NULL
 				   AND COALESCE(NULLIF(pm_sci.meta_value,''), pm_bci.meta_value) <> ''
@@ -2820,7 +2820,7 @@ class Brikpanel_Store_Summary {
 				"SELECT od.created_via AS source, COUNT(*) AS orders, COALESCE(SUM(o.total_amount),0) AS revenue
 				 FROM {$wpdb->prefix}wc_orders o
 				 INNER JOIN {$wpdb->prefix}wc_order_operational_data od ON od.order_id=o.id
-				 WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND o.date_created_gmt >= %s
 				 GROUP BY od.created_via
 				 ORDER BY orders DESC",
@@ -2833,7 +2833,7 @@ class Brikpanel_Store_Summary {
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm   ON pm.post_id=p.ID   AND pm.meta_key='_created_via'
 				 LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
-				 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY pm.meta_value
 				 ORDER BY orders DESC",
@@ -2871,7 +2871,7 @@ class Brikpanel_Store_Summary {
 						(SELECT meta_value FROM {$wpdb->prefix}wc_orders_meta WHERE order_id=o.id AND meta_key='_wc_order_attribution_utm_medium'  LIMIT 1) AS utm_medium,
 						o.total_amount AS revenue
 					 FROM {$wpdb->prefix}wc_orders o
-					 WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+					 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 					   AND o.date_created_gmt >= %s",
 					$start_dt
 				) ); // phpcs:ignore
@@ -2883,7 +2883,7 @@ class Brikpanel_Store_Summary {
 						(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_wc_order_attribution_utm_medium'  LIMIT 1) AS utm_medium,
 						CAST(IFNULL((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_order_total' LIMIT 1),'0') AS DECIMAL(20,4)) AS revenue
 					 FROM {$wpdb->posts} p
-					 WHERE p.post_type='shop_order' AND p.post_status IN ('wc-processing','wc-completed')
+					 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 					   AND p.post_date_gmt >= %s",
 					$start_dt
 				) ); // phpcs:ignore
@@ -3061,7 +3061,7 @@ class Brikpanel_Store_Summary {
 			LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta im_pid ON im_pid.order_item_id=oi.order_item_id AND im_pid.meta_key='_product_id'
 			LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta im_total ON im_total.order_item_id=oi.order_item_id AND im_total.meta_key='_line_total'
 			INNER JOIN {$wpdb->posts} p ON p.ID = CAST(im_pid.meta_value AS UNSIGNED)
-			WHERE o.type='shop_order' AND o.status IN ('wc-processing','wc-completed')
+			WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
 			  AND o.date_created_gmt >= %s
 			  AND ({$period_case}) IS NOT NULL
 		";

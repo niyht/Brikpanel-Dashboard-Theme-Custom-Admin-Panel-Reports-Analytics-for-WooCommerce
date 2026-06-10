@@ -47,6 +47,7 @@ class Brikpanel_Sheets_Products_Sync {
 	const OPT_LAST_PUSH     = 'brikpanel_gs_products_last_push';
 	const OPT_LAST_PULL     = 'brikpanel_gs_products_last_pull';
 	const OPT_PUSH_QUEUE    = 'brikpanel_gs_products_push_queue';   // {product_id => 1} pending push
+	const OPT_CATEGORIES    = 'brikpanel_gs_products_categories';   // int[] product_cat term IDs; [] = sync everything
 
 	const BATCH_SIZE        = 250;
 	const PUSH_DEBOUNCE_SEC = 5;
@@ -89,6 +90,72 @@ class Brikpanel_Sheets_Products_Sync {
 			case '5':
 			default:   return 5 * MINUTE_IN_SECONDS;
 		}
+	}
+
+	/**
+	 * Product-category term IDs the merchant chose to sync. An empty array is
+	 * the historical default and means "no filter" — every product is eligible.
+	 * Stored as term IDs (stable across category renames).
+	 *
+	 * @return int[]
+	 */
+	public static function category_filter_ids() {
+		$ids = get_option( self::OPT_CATEGORIES, [] );
+		if ( ! is_array( $ids ) ) {
+			return [];
+		}
+		return array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+	}
+
+	/**
+	 * The selected categories expanded to include every descendant category, so
+	 * picking a parent category also pulls in products filed under its
+	 * sub-categories. This mirrors the include_children behaviour of the
+	 * tax_query the bulk product query runs, keeping the event-driven push and
+	 * the "Sync now" bulk push in agreement about what belongs in the sheet.
+	 *
+	 * @return int[]
+	 */
+	private function category_filter_match_ids() {
+		$base = self::category_filter_ids();
+		if ( empty( $base ) ) {
+			return [];
+		}
+		$all = $base;
+		foreach ( $base as $cat_id ) {
+			$children = get_term_children( $cat_id, 'product_cat' );
+			if ( ! is_wp_error( $children ) && ! empty( $children ) ) {
+				foreach ( $children as $child_id ) {
+					$all[] = (int) $child_id;
+				}
+			}
+		}
+		return array_values( array_unique( $all ) );
+	}
+
+	/**
+	 * Whether a product should be synced under the active category filter.
+	 * Variations carry no category terms of their own, so we test the parent's
+	 * categories for them. With no filter set, every product matches.
+	 *
+	 * @param WC_Product $product
+	 * @return bool
+	 */
+	private function product_matches_category( $product ) {
+		$match_ids = $this->category_filter_match_ids();
+		if ( empty( $match_ids ) ) {
+			return true;
+		}
+		$parent_id = (int) $product->get_parent_id();
+		$check_id  = $parent_id > 0 ? $parent_id : (int) $product->get_id();
+		if ( $check_id <= 0 ) {
+			return false;
+		}
+		$terms = wc_get_product_term_ids( $check_id, 'product_cat' );
+		if ( empty( $terms ) ) {
+			return false;
+		}
+		return (bool) array_intersect( $match_ids, array_map( 'intval', $terms ) );
 	}
 
 	public static function resolve_active_target() {
@@ -254,10 +321,17 @@ class Brikpanel_Sheets_Products_Sync {
 		}
 
 		$force_all = ! empty( $args['force_all'] );
+		// A rebuild ("Sync now") re-appends every product into a freshly cleared
+		// tab so the result is contiguous and matches the current filter exactly.
+		// We page through the catalogue by offset and always append (never reuse
+		// a product's old absolute row), which is what prevents the sparse "rows
+		// 1-59 empty, 60-68 filled" layout left behind by a narrowed filter.
+		$rebuild = ! empty( $args['rebuild'] );
+		$offset  = isset( $args['offset'] ) ? max( 0, (int) $args['offset'] ) : 0;
 
 		$ids = [];
 		if ( $force_all ) {
-			$ids = $this->all_syncable_product_ids( self::BATCH_SIZE );
+			$ids = $this->all_syncable_product_ids( self::BATCH_SIZE, $offset );
 		} else {
 			$queue = (array) get_option( self::OPT_PUSH_QUEUE, [] );
 			$ids   = array_map( 'intval', array_keys( $queue ) );
@@ -276,7 +350,10 @@ class Brikpanel_Sheets_Products_Sync {
 
 		foreach ( $products as $product ) {
 			$row     = $this->build_row( $product, $columns );
-			$existing_row = (int) $this->get_product_meta( $product, self::META_ROW );
+			// On a rebuild the tab was just cleared, so any stored row number is
+			// stale — force an append and let the product pick up a fresh,
+			// contiguous row below.
+			$existing_row = $rebuild ? 0 : (int) $this->get_product_meta( $product, self::META_ROW );
 			if ( $existing_row > 0 ) {
 				$to_update[ $existing_row ] = [ 'pid' => $product->get_id(), 'row' => $row ];
 			} else {
@@ -358,6 +435,17 @@ class Brikpanel_Sheets_Products_Sync {
 			$more = ! empty( $queue );
 		} else {
 			$more = count( $ids ) >= self::BATCH_SIZE;
+			// Chain the next slice ourselves so a catalogue larger than one batch
+			// keeps draining instead of stalling after the first page. The offset
+			// advances by a full batch; the rebuild flag rides along so every
+			// page stays append-only and contiguous.
+			if ( $more && class_exists( 'Brikpanel_Cron' ) ) {
+				Brikpanel_Cron::enqueue_async(
+					self::HOOK_PUSH_FLUSH,
+					[ 'force_all' => true, 'rebuild' => $rebuild, 'offset' => $offset + self::BATCH_SIZE ],
+					[ 'unique' => true ]
+				);
+			}
 		}
 
 		update_option( self::OPT_LAST_PUSH, [
@@ -429,11 +517,24 @@ class Brikpanel_Sheets_Products_Sync {
 	public function handle_push_bulk( $args = [] ) {
 		$args = (array) $args;
 		$args['force_all'] = true;
-		$result = $this->handle_push( $args );
-		if ( ! empty( $result['more'] ) ) {
-			Brikpanel_Cron::enqueue_async( self::HOOK_PUSH_FLUSH, [ 'force_all' => true ], [ 'unique' => true ] );
+
+		// "Sync now" is a full rebuild. Wipe the target tab and forget every
+		// stored row number first, so the push re-appends each product into a
+		// clean, contiguous sheet that reflects the current category filter and
+		// column choice exactly. Without this, products keep the absolute rows
+		// they were given on an earlier (wider) sync, leaving large empty gaps
+		// once the synced set shrinks. Guarded so we never wipe a tab we are not
+		// actually going to repopulate.
+		if ( self::is_enabled() && Brikpanel_Sheets_Tokens::is_connected() && self::resolve_active_target() ) {
+			Brikpanel_Sheets_Settings::clear_products_target_tab();
+			self::clear_row_tracking_meta();
+			delete_option( self::OPT_PUSH_QUEUE );
+			$args['rebuild'] = true;
+			$args['offset']  = 0;
 		}
-		return $result;
+
+		// handle_push() chains its own continuation batches via Action Scheduler.
+		return $this->handle_push( $args );
 	}
 
 	// =========================================================================
@@ -705,17 +806,40 @@ class Brikpanel_Sheets_Products_Sync {
 	 * eligible; draft/trash products are skipped.
 	 *
 	 * @param int $limit
+	 * @param int $offset Skip this many products — drives batch pagination on a
+	 *                    full rebuild so each pass takes the next slice instead
+	 *                    of repeating the first one.
 	 * @return int[]
 	 */
-	private function all_syncable_product_ids( $limit ) {
-		$ids = wc_get_products( [
+	private function all_syncable_product_ids( $limit, $offset = 0 ) {
+		$args = [
 			'limit'   => (int) $limit,
+			'offset'  => max( 0, (int) $offset ),
 			'status'  => [ 'publish', 'private' ],
 			'type'    => [ 'simple', 'variable', 'grouped', 'external' ],
 			'orderby' => 'ID',
 			'order'   => 'ASC',
 			'return'  => 'ids',
-		] );
+		];
+
+		// Restrict to the chosen categories (and their sub-categories) when the
+		// merchant set a filter. wc_get_products takes category slugs; resolve
+		// the stored term IDs to slugs and drop any that no longer exist.
+		$cat_ids = self::category_filter_ids();
+		if ( ! empty( $cat_ids ) ) {
+			$slugs = [];
+			foreach ( $cat_ids as $cid ) {
+				$term = get_term( $cid, 'product_cat' );
+				if ( $term && ! is_wp_error( $term ) ) {
+					$slugs[] = $term->slug;
+				}
+			}
+			if ( ! empty( $slugs ) ) {
+				$args['category'] = $slugs;
+			}
+		}
+
+		$ids = wc_get_products( $args );
 		return array_map( 'intval', (array) $ids );
 	}
 
@@ -735,6 +859,13 @@ class Brikpanel_Sheets_Products_Sync {
 			if ( $id <= 0 ) { continue; }
 			$product = wc_get_product( $id );
 			if ( ! $product ) { continue; }
+
+			// Honour the category filter on the event-driven path too. A stock
+			// edit on a product outside the chosen categories gets dropped from
+			// the queue (see handle_push) and never reaches the sheet. Variable
+			// parents are tested here; their variations inherit the parent's
+			// verdict below, so they are not re-checked.
+			if ( ! $this->product_matches_category( $product ) ) { continue; }
 
 			if ( $product->is_type( 'variable' ) ) {
 				// Push the parent itself too — gives the merchant a summary
@@ -865,6 +996,24 @@ class Brikpanel_Sheets_Products_Sync {
 		delete_transient( self::PUSH_LOCK );
 		delete_transient( self::PULL_LOCK );
 		Brikpanel_Sheets_Logger::log( 'products', 'Product sync state reset.' );
+	}
+
+	/**
+	 * Drop only the per-product row-tracking meta (row number, snapshot hash,
+	 * synced-at), without touching cron schedules, the pull cursor, or options.
+	 * Used at the start of a "Sync now" rebuild so every product is treated as
+	 * brand new and re-appended contiguously. A direct bulk delete keeps this
+	 * cheap on large catalogues; the rebuild that follows always appends and
+	 * overwrites the row meta, so a stale per-object cache cannot misplace a row.
+	 */
+	private static function clear_row_tracking_meta() {
+		global $wpdb;
+		$keys = [ self::META_ROW, self::META_SYNCED_AT, self::META_SNAPSHOT_HASH ];
+		$placeholders = implode( ',', array_fill( 0, count( $keys ), '%s' ) );
+		$wpdb->query( $wpdb->prepare(
+			"DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ($placeholders)",
+			$keys
+		) );
 	}
 
 	// =========================================================================

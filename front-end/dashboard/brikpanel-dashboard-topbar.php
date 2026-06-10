@@ -293,6 +293,23 @@ class Brikpanel_Dashboard_Topbar {
                         </div>
                     </div>
 
+                    <!-- Hidden third-party notices. Starts display:none and is
+                         revealed by the script only when suppressed notices are
+                         found on the page and relocated into this panel. -->
+                    <div class="brikpanel-topbar-menu brikpanel-fn-menu" data-topbar-menu="hidden-notices" style="display:none">
+                        <button type="button" class="brikpanel-topbar-icon-btn" data-topbar-toggle="hidden-notices" aria-haspopup="menu" aria-expanded="false" aria-label="<?php esc_attr_e( 'Hidden notices from other plugins', 'brikpanel' ); ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            <span class="brikpanel-topbar-badge" id="brikpanel-topbar-fn-badge" hidden>0</span>
+                        </button>
+                        <div class="brikpanel-topbar-dropdown brikpanel-fn-panel" role="menu">
+                            <div class="brikpanel-fn-panel-header">
+                                <span><?php esc_html_e( 'Hidden notices', 'brikpanel' ); ?></span>
+                                <span class="brikpanel-fn-panel-hint"><?php esc_html_e( 'From other plugins &amp; themes', 'brikpanel' ); ?></span>
+                            </div>
+                            <div class="brikpanel-fn-panel-list"></div>
+                        </div>
+                    </div>
+
                     <?php
                     if ( class_exists( 'Brikpanel_BrikControl' ) ) {
                         Brikpanel_BrikControl::instance()->render_topbar_button();
