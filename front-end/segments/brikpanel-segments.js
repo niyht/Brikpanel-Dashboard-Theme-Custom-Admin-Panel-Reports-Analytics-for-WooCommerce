@@ -204,13 +204,14 @@
 			+ '<th>' + escape(I18N.col_date || 'Date') + '</th>'
 			+ '<th>' + escape(I18N.col_status || 'Status') + '</th>'
 			+ '<th>' + escape(I18N.col_customer || 'Customer') + '</th>'
+			+ '<th>' + escape(I18N.col_phone || 'Phone') + '</th>'
 			+ '<th>' + escape(I18N.col_location || 'Location') + '</th>'
 			+ '<th>' + escape(I18N.col_payment || 'Payment') + '</th>'
 			+ '<th class="bp-seg-num">' + escape(I18N.col_total || 'Total') + '</th>'
 			+ '</tr>';
 
 		if (!data.items.length) {
-			el('bp-seg-tbody').innerHTML = '<tr><td class="bp-seg-empty" colspan="7">' + escape(I18N.no_results || 'No orders match these filters.') + '</td></tr>';
+			el('bp-seg-tbody').innerHTML = '<tr><td class="bp-seg-empty" colspan="8">' + escape(I18N.no_results || 'No orders match these filters.') + '</td></tr>';
 			return;
 		}
 
@@ -221,6 +222,7 @@
 				+ '<td>' + escape(o.date) + '</td>'
 				+ '<td><span class="bp-seg-status is-' + escape(o.status) + '">' + escape(o.status_label) + '</span></td>'
 				+ '<td class="bp-seg-customer">' + (o.name ? escape(o.name) : '<span class="bp-seg-subtle">' + escape(I18N.guest || 'Guest') + '</span>') + (o.email ? '<div class="bp-seg-subtle">' + escape(o.email) + '</div>' : '') + '</td>'
+				+ '<td>' + escape(o.phone || '—') + '</td>'
 				+ '<td>' + escape(location || '—') + '</td>'
 				+ '<td>' + escape(o.payment || '—') + '</td>'
 				+ '<td class="bp-seg-num">' + o.total_display + '</td>'
@@ -233,6 +235,7 @@
 			'<tr>'
 			+ '<th>' + escape(I18N.col_customer || 'Customer') + '</th>'
 			+ '<th>' + escape(I18N.col_email || 'Email') + '</th>'
+			+ '<th>' + escape(I18N.col_phone || 'Phone') + '</th>'
 			+ '<th>' + escape(I18N.col_registered || 'Registered') + '</th>'
 			+ '<th class="bp-seg-num">' + escape(I18N.col_orders || 'Orders') + '</th>'
 			+ '<th class="bp-seg-num">' + escape(I18N.col_spent || 'Total spent') + '</th>'
@@ -241,7 +244,7 @@
 			+ '</tr>';
 
 		if (!data.items.length) {
-			el('bp-seg-tbody').innerHTML = '<tr><td class="bp-seg-empty" colspan="7">' + escape(I18N.no_customers || 'No customers match these filters.') + '</td></tr>';
+			el('bp-seg-tbody').innerHTML = '<tr><td class="bp-seg-empty" colspan="8">' + escape(I18N.no_customers || 'No customers match these filters.') + '</td></tr>';
 			return;
 		}
 
@@ -252,6 +255,7 @@
 			return '<tr>'
 				+ '<td class="bp-seg-customer">' + nameCell + '</td>'
 				+ '<td class="bp-seg-customer">' + escape(c.email || '—') + '</td>'
+				+ '<td>' + escape(c.phone || '—') + '</td>'
 				+ '<td>' + escape(c.registered || '—') + '</td>'
 				+ '<td class="bp-seg-num">' + escape(c.order_count) + '</td>'
 				+ '<td class="bp-seg-num">' + c.total_spent_display + '</td>'

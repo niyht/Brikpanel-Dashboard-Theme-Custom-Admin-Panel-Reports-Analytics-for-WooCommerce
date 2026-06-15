@@ -239,6 +239,54 @@
     box-shadow: 0 0 0 1px var(--input-focus);
 }
 
+/* ---------- Active Filter Chips ---------- */
+.brikpanel-pl-filter-chips {
+    flex-basis: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.brikpanel-pl-filter-chips[hidden] {
+    display: none;
+}
+
+.brikpanel-pl-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.375rem 0.25rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--card);
+    font-size: 0.75rem;
+    font-weight: 550;
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.brikpanel-pl-filter-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.brikpanel-pl-filter-chip-remove:hover {
+    background: rgba(0,0,0,0.08);
+    color: var(--text);
+}
+
 /* ---------- Bulk Bar ---------- */
 .brikpanel-pl-bulk-bar {
     display: flex;
@@ -1492,9 +1540,8 @@ html:has(body.admin_page_brikpanel-products) {
    and zero out the 10px .wrap margin WP leaves as a notice slot — together
    this removes any visible gap above the page header. */
 body.admin_page_brikpanel-products .screen-meta-links,
-body.admin_page_brikpanel-products .notice:not(.brikpanel-notice),
+body.admin_page_brikpanel-products .notice:not(.brikpanel-notice):not(.notice-error),
 body.admin_page_brikpanel-products .updated:not(.brikpanel-notice),
-body.admin_page_brikpanel-products .error:not(.brikpanel-notice),
 body.admin_page_brikpanel-products .update-nag,
 body.admin_page_brikpanel-products #screen-meta {
     display: none !important;
@@ -2466,6 +2513,9 @@ body.brikpanel-pl-drawer-open {
 .brikpanel-pl-table[data-hide-cogs] .brikpanel-pl-col-cogs,
 .brikpanel-pl-table[data-hide-stock] .brikpanel-pl-col-stock,
 .brikpanel-pl-table[data-hide-category] .brikpanel-pl-col-category,
+.brikpanel-pl-table[data-hide-shipping_class] .brikpanel-pl-col-shipping_class,
+.brikpanel-pl-table[data-hide-author] .brikpanel-pl-col-author,
+.brikpanel-pl-table[data-hide-menu_order] .brikpanel-pl-col-menu_order,
 .brikpanel-pl-table[data-hide-status] .brikpanel-pl-col-status {
     display: none;
 }

@@ -207,6 +207,66 @@ class Brikpanel_Master_Switch {
 	}
 
 	// =========================================================================
+	// OFF-LANDING RESOLUTION
+	// =========================================================================
+
+	/**
+	 * Where to send the admin after switching BrikPanel off, computed from the
+	 * screen they are on right now (server-side, so $_GET is authoritative).
+	 *
+	 * BrikPanel-only screens (admin.php?page=brikpanel-*) cease to exist once the
+	 * panel is off, so reloading the current URL would 404 / bounce. Instead we
+	 * land on the closest native WordPress / WooCommerce equivalent — the products
+	 * list for the products screen, the WP post editor for the product editor, and
+	 * so on — so the admin stays in roughly the same place instead of always being
+	 * dumped on the dashboard. Screens with no native counterpart fall back to the
+	 * stock dashboard.
+	 *
+	 * Returns an empty string for non-BrikPanel screens (native screens BrikPanel
+	 * merely skins) — those still exist when off, so the caller reloads in place.
+	 *
+	 * @return string Absolute admin URL, or '' to reload the current screen.
+	 */
+	private function off_landing_url() {
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen detection.
+		if ( '' === $page || 0 !== strpos( $page, 'brikpanel' ) ) {
+			// Native (skinned) screen — it survives the switch, so reload in place.
+			return '';
+		}
+
+		// The product editor maps onto a specific product when one is loaded.
+		if ( 'brikpanel-product-editor' === $page ) {
+			$product_id = isset( $_GET['product_id'] ) ? absint( wp_unslash( $_GET['product_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen detection.
+			$native     = $product_id
+				? 'post.php?post=' . $product_id . '&action=edit'
+				: 'edit.php?post_type=product';
+			return admin_url( $native );
+		}
+
+		// Static slug -> native screen map. Anything not listed falls back to the
+		// stock dashboard below.
+		$map = array(
+			'brikpanel-products'          => 'edit.php?post_type=product',
+			'brikpanel-coupons'           => 'edit.php?post_type=shop_coupon',
+			'brikpanel-customer-analytics' => 'admin.php?page=wc-admin&path=/customers',
+		);
+
+		/**
+		 * Filter the BrikPanel-screen -> native-screen landing map used when the
+		 * master switch is turned off. Keys are BrikPanel page slugs; values are
+		 * admin-relative URLs (passed through admin_url()). Slugs absent from the
+		 * map land on the stock WordPress dashboard.
+		 *
+		 * @param array  $map  Slug => admin-relative URL.
+		 * @param string $page Current BrikPanel page slug.
+		 */
+		$map = (array) apply_filters( 'brikpanel_master_off_landing_map', $map, $page );
+
+		$native = isset( $map[ $page ] ) ? $map[ $page ] : 'index.php';
+		return admin_url( $native );
+	}
+
+	// =========================================================================
 	// INLINE STYLES + BEHAVIOUR
 	// =========================================================================
 
@@ -225,11 +285,13 @@ class Brikpanel_Master_Switch {
 			'action'       => self::AJAX_ACTION,
 			'nonce'        => wp_create_nonce( self::NONCE_ACTION ),
 			'enabled'      => brikpanel_master_enabled(),
-			// Fallback landing page when switching off from a BrikPanel-only
-			// screen (page=brikpanel-*): that screen ceases to exist once the
-			// panel is off, so we send the admin to the stock WP dashboard
-			// instead of reloading a now-inaccessible URL.
-			'dashboardUrl' => admin_url( 'index.php' ),
+			// Where to land after switching off. Empty on native (skinned)
+			// screens — those survive the switch, so the JS reloads in place. On
+			// a BrikPanel-only screen (page=brikpanel-*) the screen ceases to
+			// exist once off, so this holds the closest native equivalent (e.g.
+			// the products list for the BrikPanel products screen) and only the
+			// stock dashboard when no equivalent exists.
+			'offLandingUrl' => $this->off_landing_url(),
 			'i18n'         => [
 				'error' => __( 'Could not change the BrikPanel switch. Please try again.', 'brikpanel' ),
 			],
@@ -307,14 +369,12 @@ class Brikpanel_Master_Switch {
 			body:body
 		}).then(function(r){return r.json();}).then(function(res){
 			if(res&&res.success){
-				// When switching off from a BrikPanel-only screen, that page is
-				// gone afterwards — land on the stock WP dashboard instead of
-				// reloading a now-inaccessible URL. Otherwise reload in place.
-				var target='';
-				if(cfg.enabled){
-					var pg=new URLSearchParams(window.location.search).get('page')||'';
-					if(pg.indexOf('brikpanel')===0){target=cfg.dashboardUrl;}
-				}
+				// When switching off, the server already worked out the right
+				// landing screen for the page we are on: empty for native
+				// (skinned) screens that survive the switch (reload in place), or
+				// the closest native equivalent for a BrikPanel-only screen that
+				// is gone afterwards. Switching on always reloads in place.
+				var target=(cfg.enabled&&cfg.offLandingUrl)?cfg.offLandingUrl:'';
 				if(target){window.location.href=target;}else{window.location.reload();}
 			}else{
 				setBusy(false);

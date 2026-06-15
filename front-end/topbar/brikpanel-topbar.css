@@ -62,9 +62,11 @@ body.brikpanel-has-topbar #adminmenuwrap {
    pinning above would trap the native #adminmenu inside a fixed, overflow:hidden
    wrap — long admin menus get clipped and lower items become unreachable. Restore
    WordPress's default flow positioning so the menu scrolls with the page and its
-   hover flyout submenus aren't clipped. The dark #adminmenuback stays pinned as
-   the full-height background strip. */
-body.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap {
+   hover flyout submenus aren't clipped. #adminmenuback stays pinned as the
+   full-height background strip (now BrikPanel light, re-skinned in
+   brikpanel-navigation.css). */
+body.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap,
+body.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap {
     position: relative;
     float: left;
     top: auto;
@@ -93,6 +95,18 @@ body.brikpanel-has-topbar #wpbody { padding-top: 0 !important; }
    so it doesn't slide under our bar. */
 body.brikpanel-has-topbar .brikpanel-order-header {
     top: var(--bp-topbar-height) !important;
+}
+
+/* On embedded wc-admin screens (orders/products/coupons list tables, settings)
+   WooCommerce injects a `.woocommerce-layout` notice-list wrapper before the
+   page `.wrap`. Its core 10px top padding leaves a visible gap between our
+   topbar and the Screen Options/Help row. Custom BrikPanel screens (e.g. the
+   product editor) have no such wrapper, hence no gap there. Collapse the
+   padding only on these embedded screens so the row sits flush under the bar.
+   Scoped to .woocommerce-embed-page so full wc-admin SPA pages (Analytics,
+   Home), where `.woocommerce-layout` is the app root, are untouched. */
+body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
+    padding-top: 0 !important;
 }
 
 /* On mobile WP collapses the sidebar; keep our offsets sensible. */
@@ -316,13 +330,15 @@ body.brikpanel-has-topbar .brikpanel-order-header {
     color: #fff;
 }
 
-/* Icon buttons (bell, external) — larger now for visibility. */
+/* Icon buttons (bell, external) — sized to match the Create button height so
+   every item in the right cluster shares one consistent height. */
 .brikpanel-topbar-icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
+    box-sizing: border-box;
     border: 1px solid var(--bp-topbar-border);
     background: #ffffff;
     color: var(--bp-topbar-text);
@@ -342,20 +358,20 @@ body.brikpanel-has-topbar .brikpanel-order-header {
 
 .brikpanel-topbar-badge {
     position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
+    top: -5px;
+    right: -5px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
     background: var(--bp-topbar-error);
     color: #fff;
-    font-size: 0.6875rem;
+    font-size: 0.5625rem;
     font-weight: 700;
     border-radius: 999px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid var(--bp-topbar-bg);
+    border: 1.5px solid var(--bp-topbar-bg);
     line-height: 1;
     white-space: nowrap;
 }
@@ -565,10 +581,12 @@ body.brikpanel-has-topbar .brikpanel-order-header {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.25rem 0.5rem 0.25rem 0.25rem;
+    height: 34px;
+    box-sizing: border-box;
+    padding: 0 0.5rem 0 0.25rem;
     border: 1px solid var(--bp-topbar-border);
     background: #fff;
-    border-radius: 999px;
+    border-radius: 0.5rem;
     cursor: pointer;
     color: var(--bp-topbar-text);
     font-size: 0.8125rem;
@@ -582,8 +600,8 @@ body.brikpanel-has-topbar .brikpanel-order-header {
 }
 
 .brikpanel-topbar-user-btn img {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     object-fit: cover;
     display: block;
@@ -911,9 +929,9 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
     .brikpanel-fn-panel { width: auto; }
 }
 
-/* Very small phones: shrink icon buttons a touch so everything still fits. */
+/* Very small phones: keep the hamburger a comfortable tap target; the icon
+   buttons already match the compact 32px desktop size. */
 @media (max-width: 380px) {
-    .brikpanel-topbar-icon-btn,
     .brikpanel-topbar-menu-btn { width: 36px; height: 36px; }
     .brikpanel-topbar-icon-btn svg { width: 18px; height: 18px; }
     .brikpanel-topbar-brand-mark { width: 28px; height: 28px; }

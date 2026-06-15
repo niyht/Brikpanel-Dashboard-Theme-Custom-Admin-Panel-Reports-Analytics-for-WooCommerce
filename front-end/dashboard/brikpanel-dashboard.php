@@ -385,6 +385,7 @@ class Brikpanel_Dashboard {
                             <button class="brikpanel-dash-preset" data-range="yesterday"><?php esc_html_e( 'Yesterday', 'brikpanel' ); ?></button>
                             <button class="brikpanel-dash-preset" data-range="7days"><?php esc_html_e( 'Last 7 Days', 'brikpanel' ); ?></button>
                             <button class="brikpanel-dash-preset" data-range="30days"><?php esc_html_e( 'Last 30 Days', 'brikpanel' ); ?></button>
+                            <button class="brikpanel-dash-preset" data-range="90days"><?php esc_html_e( 'Last 90 Days', 'brikpanel' ); ?></button>
                             <button class="brikpanel-dash-preset" data-range="custom"><?php esc_html_e( 'Custom', 'brikpanel' ); ?></button>
                         </div>
                         <div class="brikpanel-dash-custom-range" style="display:none;">
@@ -411,6 +412,14 @@ class Brikpanel_Dashboard {
                     call_user_func( $sections[ $section_key ] );
                 }
             }
+
+            /**
+             * Fires after all dashboard sections, at the bottom of the dashboard
+             * content. Used to render the dismissible BrikMentor early-access card.
+             *
+             * @since 3.1.28
+             */
+            do_action( 'brikpanel_dashboard_after_sections' );
             ?>
 
         </div>
@@ -1287,6 +1296,18 @@ class Brikpanel_Dashboard {
 
         $range = isset( $_POST['range'] ) ? sanitize_key( $_POST['range'] ) : 'today';
 
+        // A custom range is identified by its start/end dates, not just the
+        // literal "custom". Validate them up front so they can both seed the
+        // cache key and be passed explicitly to the payload builder.
+        $custom_start = null;
+        $custom_end   = null;
+        if ( 'custom' === $range ) {
+            $cs = isset( $_POST['start_date'] ) ? sanitize_text_field( wp_unslash( $_POST['start_date'] ) ) : '';
+            $ce = isset( $_POST['end_date'] )   ? sanitize_text_field( wp_unslash( $_POST['end_date'] ) )   : '';
+            $custom_start = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $cs ) ? $cs : null;
+            $custom_end   = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $ce ) ? $ce : null;
+        }
+
         // Whole-response cache. The dashboard runs ~28 SQL queries per render
         // (KPIs + funnel + 4 chart sections + LTV + RFM + locations + …), so on
         // weak hosts the cold render can take 5-15s. With caching, only the
@@ -1296,13 +1317,20 @@ class Brikpanel_Dashboard {
         // in __construct), so freshly-placed orders show up immediately.
         $cache_ver = brikpanel_data_cache_ver();
         $exclude_mp_for_key = ( function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active() ) ? 1 : 0;
-        $cache_key = 'bp_dash_' . $cache_ver . '_' . $range . '_mp' . $exclude_mp_for_key;
+        // The custom dates MUST be part of the cache identity. Without them every
+        // custom range collides on a single transient, so a second selection
+        // (e.g. a narrow range picked right after a wide one) serves the first
+        // selection's cached payload and the dashboard appears stuck.
+        $range_key = ( 'custom' === $range )
+            ? 'custom_' . (string) $custom_start . '_' . (string) $custom_end
+            : $range;
+        $cache_key = 'bp_dash_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key;
         $cached    = get_transient( $cache_key );
         if ( false !== $cached ) {
             wp_send_json_success( $cached );
         }
 
-        $payload = $this->build_dashboard_payload( $range );
+        $payload = $this->build_dashboard_payload( $range, $custom_start, $custom_end );
 
         $ttl = function_exists( 'brikpanel_cache_ttl' )
             ? brikpanel_cache_ttl( self::CACHE_TTL )
@@ -1611,6 +1639,12 @@ class Brikpanel_Dashboard {
                 $days_span   = 30;
                 break;
 
+            case '90days':
+                $start_local = wp_date( 'Y-m-d 00:00:00', strtotime( '-90 days', $now_ts ) );
+                $end_local   = wp_date( 'Y-m-d 23:59:59' );
+                $days_span   = 90;
+                break;
+
             case 'custom':
                 // Explicit args win (export passes them via GET); otherwise
                 // fall back to the AJAX POST body the dashboard JS sends.
@@ -1692,6 +1726,7 @@ class Brikpanel_Dashboard {
             'yesterday' => __( 'Yesterday', 'brikpanel' ),
             '7days'     => __( 'Last 7 Days', 'brikpanel' ),
             '30days'    => __( 'Last 30 Days', 'brikpanel' ),
+            '90days'    => __( 'Last 90 Days', 'brikpanel' ),
             'custom'    => __( 'Custom range', 'brikpanel' ),
         ];
         $label   = $labels[ $range ] ?? $labels['custom'];
@@ -1967,12 +2002,13 @@ class Brikpanel_Dashboard {
 
         if ( $is_hpos ) {
             $admin_sql  = $exclusion['sql'];
+            $fx         = brikpanel_base_total_sql( true, "{$wpdb->prefix}wc_orders.id", 'total_amount' );
             $query_args = array_merge( $include_statuses, $exclusion['args'], $mp_excl['args'], [ $start_gmt, $end_gmt ] );
             $query = $wpdb->prepare(
                 "SELECT DATE(date_created_gmt) AS order_date,
-                        SUM(total_amount) AS revenue,
-                        COUNT(id) AS orders
-                 FROM {$wpdb->prefix}wc_orders
+                        SUM({$fx['expr']}) AS revenue,
+                        COUNT({$wpdb->prefix}wc_orders.id) AS orders
+                 FROM {$wpdb->prefix}wc_orders{$fx['join']}
                  WHERE type = 'shop_order'
                  AND status IN ({$status_placeholders}){$admin_sql}{$mp_excl['sql']}
                  AND date_created_gmt >= %s AND date_created_gmt <= %s
@@ -1981,13 +2017,14 @@ class Brikpanel_Dashboard {
                 $query_args
             );
         } else {
+            $fx         = brikpanel_base_total_sql( false, 'p.ID', 'pm.meta_value' );
             $query_args = array_merge( $include_statuses, $exclusion['args'], $mp_excl['args'], [ $start_gmt, $end_gmt ] );
             $query = $wpdb->prepare(
                 "SELECT DATE(p.post_date_gmt) AS order_date,
-                        SUM(pm.meta_value) AS revenue,
+                        SUM({$fx['expr']}) AS revenue,
                         COUNT(p.ID) AS orders
                  FROM {$wpdb->posts} AS p
-                 LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id
+                 LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id{$fx['join']}
                  WHERE p.post_type = 'shop_order'
                  AND pm.meta_key = '_order_total'
                  AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}{$mp_excl['sql']}
@@ -2042,13 +2079,14 @@ class Brikpanel_Dashboard {
                         CONCAT('o-', o.id))))";
 
             // Countries: small dataset — fetch all, sort/slice on client per active metric.
+            $fx_loc = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount', 'bpfxloc' );
             $country_query = $wpdb->prepare(
                 "SELECT ba.country AS code,
                         COUNT(DISTINCT o.id) AS order_count,
                         {$customer_count_expr} AS customer_count,
-                        COALESCE(SUM(o.total_amount), 0) AS total_sales
+                        COALESCE(SUM({$fx_loc['expr']}), 0) AS total_sales
                  FROM {$wpdb->prefix}wc_orders o
-                 LEFT JOIN {$wpdb->prefix}wc_order_addresses ba ON o.id = ba.order_id AND ba.address_type = 'billing'
+                 LEFT JOIN {$wpdb->prefix}wc_order_addresses ba ON o.id = ba.order_id AND ba.address_type = 'billing'{$fx_loc['join']}
                  WHERE o.type = 'shop_order'
                  AND o.status IN ({$status_placeholders}){$admin_sql}{$mp_excl['sql']}
                  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s
@@ -2586,14 +2624,29 @@ class Brikpanel_Dashboard {
 
             $source = $this->detect_order_source( $order );
 
+            // Show each order in the currency it was actually placed in, not
+            // the store base currency. When the order is in a foreign currency
+            // and we can resolve a base-currency value, expose it as a small
+            // secondary figure (~ base) so the merchant can still compare.
+            $order_currency = $order->get_currency();
+            $base_currency  = brikpanel_base_currency();
+            $total_base     = null;
+            if ( strtoupper( (string) $order_currency ) !== strtoupper( (string) $base_currency ) ) {
+                $resolved = brikpanel_resolve_order_base_total( $order );
+                if ( null !== $resolved['base_total'] ) {
+                    $total_base = wc_price( $resolved['base_total'] );
+                }
+            }
+
             $data[] = [
-                'id'       => $order->get_id(),
-                'customer' => $customer,
-                'status'   => $order->get_status(),
-                'total'    => wc_price( $order->get_total() ),
-                'date'     => wp_date( get_option( 'date_format' ), $order->get_date_created()->getTimestamp() ),
-                'source'   => $source,
-                'edit_url' => $order->get_edit_order_url(),
+                'id'         => $order->get_id(),
+                'customer'   => $customer,
+                'status'     => $order->get_status(),
+                'total'      => wc_price( $order->get_total(), [ 'currency' => $order_currency ] ),
+                'total_base' => $total_base,
+                'date'       => wp_date( get_option( 'date_format' ), $order->get_date_created()->getTimestamp() ),
+                'source'     => $source,
+                'edit_url'   => $order->get_edit_order_url(),
             ];
         }
         return $data;
@@ -2718,7 +2771,7 @@ class Brikpanel_Dashboard {
         }
         check_admin_referer( 'brikpanel_dashboard_export', 'brikpanel_export_nonce' );
 
-        $allowed = [ 'today', 'yesterday', '7days', '30days', 'custom' ];
+        $allowed = [ 'today', 'yesterday', '7days', '30days', '90days', 'custom' ];
         $range   = isset( $_GET['range'] ) ? sanitize_key( wp_unslash( $_GET['range'] ) ) : 'today';
         if ( ! in_array( $range, $allowed, true ) ) {
             $range = 'today';

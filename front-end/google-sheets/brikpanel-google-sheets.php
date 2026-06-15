@@ -97,6 +97,31 @@ function brikpanel_gs_register_module_setting( $fields ) {
 }
 
 /**
+ * Surface Google Sheets on the shared "Integrations" sub-nav section rather
+ * than the catch-all General page. The Ad Platforms module registers the same
+ * section id (idempotent), so both beta integrations share one page.
+ */
+add_filter( 'woocommerce_get_sections_brikpanel', 'brikpanel_gs_register_settings_section' );
+function brikpanel_gs_register_settings_section( $sections ) {
+	if ( ! isset( $sections['integrations'] ) ) {
+		$sections['integrations'] = __( 'Integrations', 'brikpanel' );
+	}
+	return $sections;
+}
+add_filter( 'brikpanel_settings_title_section_map', 'brikpanel_gs_map_settings_title' );
+function brikpanel_gs_map_settings_title( $map ) {
+	$map['brk_google_sheets_title'] = 'integrations';
+	return $map;
+}
+add_filter( 'brikpanel_settings_nav_badges', 'brikpanel_gs_register_nav_badge' );
+function brikpanel_gs_register_nav_badge( $badges ) {
+	if ( ! isset( $badges['integrations'] ) ) {
+		$badges['integrations'] = __( 'Beta', 'brikpanel' );
+	}
+	return $badges;
+}
+
+/**
  * After WC renders the section title, inject a Beta badge next to the <h2>
  * heading. Plain JS append because WC esc_html()'s the title — we can't put
  * markup in the `name` field itself.
@@ -106,7 +131,11 @@ function brikpanel_gs_inject_beta_badge_in_settings() {
 	$label = esc_js( __( 'Beta', 'brikpanel' ) );
 	echo "<script>(function(){"
 		. "var d=document.getElementById('brk_google_sheets_title-description');"
-		. "var h=d?d.previousElementSibling:document.querySelector('h2');"
+		// BrikPanel wraps the title + description into a `.bp-settings-card`, so
+		// the <h2> is no longer the description's previousElementSibling. Prefer
+		// the card's heading, then fall back to the legacy DOM shape.
+		. "var c=d?d.closest('.bp-settings-card'):null;"
+		. "var h=c?c.querySelector('h2'):(d?d.previousElementSibling:document.querySelector('h2'));"
 		. "if(!h||h.tagName.toLowerCase()!=='h2'||h.querySelector('.brikpanel-beta-badge'))return;"
 		. "var s=document.createElement('span');"
 		. "s.className='brikpanel-beta-badge';"

@@ -201,15 +201,17 @@ class Brikpanel_Customer_Analytics {
 		$total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$tbl}" ); // phpcs:ignore
 
 		$rows = $wpdb->get_results( $wpdb->prepare(
-			"SELECT m.customer_key, m.user_id, m.customer_email, m.first_order_date, m.last_order_date,
+			"SELECT m.customer_key, m.user_id, m.customer_email, m.customer_phone, m.first_order_date, m.last_order_date,
 				m.order_count, m.total_spent, m.aov, m.recency_days,
 				u.display_name,
 				bm_fn.meta_value AS billing_first_name,
-				bm_ln.meta_value AS billing_last_name
+				bm_ln.meta_value AS billing_last_name,
+				bm_ph.meta_value AS billing_phone
 			FROM {$tbl} m
 			LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
 			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
 			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
+			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
 			ORDER BY m.total_spent DESC
 			LIMIT %d OFFSET %d",
 			$per_page,
@@ -231,6 +233,7 @@ class Brikpanel_Customer_Analytics {
 				'user_id'             => $user_id,
 				'name'                => $name,
 				'email'               => (string) $r->customer_email,
+				'phone'               => (string) ( $r->customer_phone ?: $r->billing_phone ),
 				'order_count'         => (int) $r->order_count,
 				'total_spent'         => (float) $r->total_spent,
 				'total_spent_display' => $this->price( (float) $r->total_spent ),
@@ -330,6 +333,24 @@ class Brikpanel_Customer_Analytics {
 		return html_entity_decode( wp_strip_all_tags( wc_price( (float) $amount ) ), ENT_QUOTES, 'UTF-8' );
 	}
 
+	/**
+	 * Neutralise CSV formula injection. Spreadsheet apps treat a cell that
+	 * starts with =, +, -, @ (or a control char) as a formula. Phone numbers
+	 * legitimately start with "+", so prefix such values with an apostrophe —
+	 * the standard, non-destructive guard recommended by OWASP. Static so it
+	 * can be passed as a callable from the export methods.
+	 *
+	 * @param string $value Raw cell value.
+	 * @return string Safe cell value.
+	 */
+	public static function csv_safe_cell( $value ) {
+		$value = (string) $value;
+		if ( $value !== '' && in_array( $value[0], [ '=', '+', '-', '@', "\t", "\r" ], true ) ) {
+			return "'" . $value;
+		}
+		return $value;
+	}
+
 	// =========================================================================
 	// AJAX: CSV export (top customers by LTV)
 	// =========================================================================
@@ -358,6 +379,7 @@ class Brikpanel_Customer_Analytics {
 			__( 'User ID', 'brikpanel' ),
 			__( 'Name', 'brikpanel' ),
 			__( 'Email', 'brikpanel' ),
+			__( 'Phone', 'brikpanel' ),
 			__( 'Order count', 'brikpanel' ),
 			__( 'Total spent (LTV)', 'brikpanel' ),
 			__( 'Average order value', 'brikpanel' ),
@@ -366,18 +388,21 @@ class Brikpanel_Customer_Analytics {
 			__( 'Last order', 'brikpanel' ),
 		] );
 
+		$csv_safe = [ $this, 'csv_safe_cell' ];
+
 		$batch_size = 1000;
 		$offset = 0;
 		do {
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT m.user_id, m.customer_email, m.order_count, m.total_spent, m.aov, m.recency_days,
+				"SELECT m.user_id, m.customer_email, m.customer_phone, m.order_count, m.total_spent, m.aov, m.recency_days,
 					m.first_order_date, m.last_order_date,
 					u.display_name,
-					bm_fn.meta_value AS bf, bm_ln.meta_value AS bl
+					bm_fn.meta_value AS bf, bm_ln.meta_value AS bl, bm_ph.meta_value AS billing_phone
 				FROM {$tbl} m
 				LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
 				LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
 				LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
+				LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
 				ORDER BY m.total_spent DESC
 				LIMIT %d OFFSET %d",
 				$batch_size,
@@ -393,6 +418,7 @@ class Brikpanel_Customer_Analytics {
 					(int) $r->user_id,
 					$name,
 					(string) $r->customer_email,
+					$csv_safe( (string) ( $r->customer_phone ?: $r->billing_phone ) ),
 					(int) $r->order_count,
 					number_format( (float) $r->total_spent, 2, '.', '' ),
 					number_format( (float) $r->aov, 2, '.', '' ),
@@ -487,16 +513,18 @@ class Brikpanel_Customer_Analytics {
 		$total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$tbl} WHERE rfm_segment = %s", $segment ) ); // phpcs:ignore
 
 		$rows = $wpdb->get_results( $wpdb->prepare(
-			"SELECT m.customer_key, m.user_id, m.customer_email, m.first_order_date, m.last_order_date,
+			"SELECT m.customer_key, m.user_id, m.customer_email, m.customer_phone, m.first_order_date, m.last_order_date,
 				m.order_count, m.total_spent, m.aov, m.recency_days,
 				m.r_score, m.f_score, m.m_score,
 				u.display_name,
 				bm_fn.meta_value AS billing_first_name,
-				bm_ln.meta_value AS billing_last_name
+				bm_ln.meta_value AS billing_last_name,
+				bm_ph.meta_value AS billing_phone
 			FROM {$tbl} m
 			LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
 			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
 			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
+			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
 			WHERE m.rfm_segment = %s
 			ORDER BY m.total_spent DESC
 			LIMIT %d OFFSET %d",
@@ -519,6 +547,7 @@ class Brikpanel_Customer_Analytics {
 				'user_id'             => $user_id,
 				'name'                => $name,
 				'email'               => (string) $r->customer_email,
+				'phone'               => (string) ( $r->customer_phone ?: $r->billing_phone ),
 				'order_count'         => (int) $r->order_count,
 				'total_spent'         => (float) $r->total_spent,
 				'total_spent_display' => $this->price( (float) $r->total_spent ),
@@ -581,6 +610,7 @@ class Brikpanel_Customer_Analytics {
 			__( 'User ID', 'brikpanel' ),
 			__( 'Name', 'brikpanel' ),
 			__( 'Email', 'brikpanel' ),
+			__( 'Phone', 'brikpanel' ),
 			__( 'Segment', 'brikpanel' ),
 			__( 'R', 'brikpanel' ),
 			__( 'F', 'brikpanel' ),
@@ -591,20 +621,23 @@ class Brikpanel_Customer_Analytics {
 			__( 'Last order', 'brikpanel' ),
 		] );
 
+		$csv_safe = [ $this, 'csv_safe_cell' ];
+
 		$labels = brikpanel_ca_rfm_segment_labels();
 		$batch_size = 1000;
 		$offset = 0;
 		do {
 			$page_params = array_merge( $params, [ $batch_size, $offset ] );
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT m.user_id, m.customer_email, m.rfm_segment, m.r_score, m.f_score, m.m_score,
+				"SELECT m.user_id, m.customer_email, m.customer_phone, m.rfm_segment, m.r_score, m.f_score, m.m_score,
 					m.order_count, m.total_spent, m.recency_days, m.last_order_date,
 					u.display_name,
-					bm_fn.meta_value AS bf, bm_ln.meta_value AS bl
+					bm_fn.meta_value AS bf, bm_ln.meta_value AS bl, bm_ph.meta_value AS billing_phone
 				FROM {$tbl} m
 				LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
 				LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
 				LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
+				LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
 				{$where}
 				ORDER BY m.total_spent DESC
 				LIMIT %d OFFSET %d",
@@ -621,6 +654,7 @@ class Brikpanel_Customer_Analytics {
 					(int) $r->user_id,
 					$name,
 					(string) $r->customer_email,
+					$csv_safe( (string) ( $r->customer_phone ?: $r->billing_phone ) ),
 					$seg_label,
 					(int) $r->r_score,
 					(int) $r->f_score,

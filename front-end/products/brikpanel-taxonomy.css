@@ -71,9 +71,8 @@ body.brikpanel-tax .screen-meta-toggle .button[aria-expanded="true"] {
     color: var(--bpl-text) !important;
 }
 
-/* Hide WP inline notice */
-body.brikpanel-tax .notice:not(.brikpanel-notice),
-body.brikpanel-tax .notice:not(.brikpanel-notice) {
+/* Hide WP inline notice (but keep red error notices visible) */
+body.brikpanel-tax .notice:not(.brikpanel-notice):not(.notice-error) {
     display: none;
 }
 

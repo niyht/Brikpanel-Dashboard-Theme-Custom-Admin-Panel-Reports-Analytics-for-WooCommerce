@@ -246,6 +246,30 @@ function brikpanel_ads_register_module_setting( $fields ) {
 }
 
 /**
+ * Place Ad Platforms on the shared "Integrations" sub-nav section (same id the
+ * Google Sheets module registers — idempotent) instead of the General page.
+ */
+add_filter( 'woocommerce_get_sections_brikpanel', 'brikpanel_ads_register_settings_section' );
+function brikpanel_ads_register_settings_section( $sections ) {
+	if ( ! isset( $sections['integrations'] ) ) {
+		$sections['integrations'] = __( 'Integrations', 'brikpanel' );
+	}
+	return $sections;
+}
+add_filter( 'brikpanel_settings_title_section_map', 'brikpanel_ads_map_settings_title' );
+function brikpanel_ads_map_settings_title( $map ) {
+	$map['brk_ad_platforms_title'] = 'integrations';
+	return $map;
+}
+add_filter( 'brikpanel_settings_nav_badges', 'brikpanel_ads_register_nav_badge' );
+function brikpanel_ads_register_nav_badge( $badges ) {
+	if ( ! isset( $badges['integrations'] ) ) {
+		$badges['integrations'] = __( 'Beta', 'brikpanel' );
+	}
+	return $badges;
+}
+
+/**
  * Add a Beta badge next to the section <h2> in WC settings, matching the
  * Google Sheets section treatment.
  */
@@ -254,7 +278,11 @@ function brikpanel_ads_inject_beta_badge_in_settings() {
 	$label = esc_js( __( 'Beta', 'brikpanel' ) );
 	echo "<script>(function(){"
 		. "var d=document.getElementById('brk_ad_platforms_title-description');"
-		. "var h=d?d.previousElementSibling:document.querySelector('h2');"
+		// BrikPanel wraps the title + description into a `.bp-settings-card`, so
+		// the <h2> is no longer the description's previousElementSibling. Prefer
+		// the card's heading, then fall back to the legacy DOM shape.
+		. "var c=d?d.closest('.bp-settings-card'):null;"
+		. "var h=c?c.querySelector('h2'):(d?d.previousElementSibling:document.querySelector('h2'));"
 		. "if(!h||h.tagName.toLowerCase()!=='h2'||h.querySelector('.brikpanel-beta-badge'))return;"
 		. "var s=document.createElement('span');"
 		. "s.className='brikpanel-beta-badge';"
@@ -265,8 +293,25 @@ function brikpanel_ads_inject_beta_badge_in_settings() {
 
 // =============================================================================
 // Hard short-circuit when the integration is disabled.
+//
+// Before bailing, make sure no ad-sync job is left running in the Action
+// Scheduler queue. Disabling the module skips the loader below — including the
+// Sync class that owns the recurring schedule — so any job that was previously
+// queued (by an older build that scheduled unconditionally, or while the module
+// was enabled) would keep firing daily with the module off. The pending-check
+// keeps this a no-op on every request once the queue is clean.
 // =============================================================================
 if ( ! brikpanel_ads_module_is_enabled() ) {
+	add_action( 'admin_init', function () {
+		if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
+			return;
+		}
+		foreach ( [ 'brikpanel_ads_daily_sync', 'brikpanel_ads_backfill_chunk' ] as $hook ) {
+			if ( Brikpanel_Cron::is_scheduled( $hook ) ) {
+				Brikpanel_Cron::cancel( $hook );
+			}
+		}
+	}, 20 );
 	return;
 }
 

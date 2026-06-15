@@ -61,6 +61,130 @@ function brikpanel_nav_config_get() {
 	return $decoded;
 }
 
+// =============================================================================
+// PER-AUDIENCE VISIBILITY (role / admin gating)
+// =============================================================================
+//
+// Each item and submenu carries an optional audience rule on top of the binary
+// "hidden" flag:
+//   - hidden:true          → hidden from everyone (the original behaviour).
+//   - audience 'all'        → visible to everyone (default).
+//   - audience 'admins'     → visible to administrators only (hidden from every
+//                             non-administrator).
+//   - audience 'roles'      → hidden from any user holding one of `hide_roles`.
+//
+// Resolution is per current user, evaluated at sidebar render time. The settings
+// page itself stays administrator-gated, so an administrator can always reach it
+// to change a rule back even after hiding an item from their own role.
+
+/**
+ * Whether the current user counts as an administrator for audience rules.
+ * Uses `manage_options`, which also covers multisite super admins.
+ *
+ * @return bool
+ */
+function brikpanel_nav_current_user_is_admin() {
+	return current_user_can( 'manage_options' );
+}
+
+/**
+ * Current user's role slugs (lower-cased strings). Empty for logged-out.
+ *
+ * @return string[]
+ */
+function brikpanel_nav_current_user_roles() {
+	if ( ! function_exists( 'wp_get_current_user' ) ) {
+		return [];
+	}
+	$user = wp_get_current_user();
+	return ( $user instanceof WP_User ) ? array_map( 'strval', (array) $user->roles ) : [];
+}
+
+/**
+ * Validate a list of role slugs against the registered roles. Caps the list and
+ * drops duplicates / unknown slugs.
+ *
+ * @param mixed $roles Raw role list.
+ * @return string[]
+ */
+function brikpanel_nav_sanitize_roles( $roles ) {
+	if ( ! is_array( $roles ) ) {
+		return [];
+	}
+	$valid = function_exists( 'wp_roles' ) ? array_keys( wp_roles()->roles ) : [];
+	$out   = [];
+	foreach ( $roles as $role ) {
+		$role = sanitize_key( (string) $role );
+		if ( $role !== '' && in_array( $role, $valid, true ) && ! in_array( $role, $out, true ) ) {
+			$out[] = $role;
+		}
+		if ( count( $out ) >= 30 ) {
+			break;
+		}
+	}
+	return $out;
+}
+
+/**
+ * Whether a config entry (item or submenu) must be hidden from the current
+ * user, taking both the binary `hidden` flag and the audience rule into account.
+ *
+ * @param array $cfg Item/submenu config row.
+ * @return bool
+ */
+function brikpanel_nav_cfg_hidden_for_current_user( $cfg ) {
+	if ( ! empty( $cfg['hidden'] ) ) {
+		return true;
+	}
+	$audience = isset( $cfg['audience'] ) ? (string) $cfg['audience'] : 'all';
+
+	if ( $audience === 'admins' ) {
+		// Visible to administrators only.
+		return ! brikpanel_nav_current_user_is_admin();
+	}
+
+	if ( $audience === 'roles' ) {
+		$hide_roles = isset( $cfg['hide_roles'] ) && is_array( $cfg['hide_roles'] )
+			? array_map( 'strval', $cfg['hide_roles'] )
+			: [];
+		if ( empty( $hide_roles ) ) {
+			return false;
+		}
+		return (bool) array_intersect( brikpanel_nav_current_user_roles(), $hide_roles );
+	}
+
+	return false;
+}
+
+/**
+ * Normalize the audience fields of a raw config row into a clean target array.
+ * Writes `audience` (+ `hide_roles` when applicable) onto $row only when the
+ * rule is non-default, keeping saved configs small and backward compatible.
+ *
+ * @param array $raw Raw decoded item/submenu.
+ * @param array $row Target row to enrich (passed by reference).
+ */
+function brikpanel_nav_apply_audience_to_row( $raw, &$row ) {
+	$audience = isset( $raw['audience'] ) ? sanitize_key( (string) $raw['audience'] ) : 'all';
+	if ( ! in_array( $audience, [ 'all', 'admins', 'roles' ], true ) ) {
+		$audience = 'all';
+	}
+	if ( $audience === 'all' ) {
+		return;
+	}
+	if ( $audience === 'roles' ) {
+		$roles = brikpanel_nav_sanitize_roles( isset( $raw['hide_roles'] ) ? $raw['hide_roles'] : [] );
+		if ( empty( $roles ) ) {
+			// "Specific roles" with no roles chosen is a no-op — drop it.
+			return;
+		}
+		$row['audience']   = 'roles';
+		$row['hide_roles'] = $roles;
+		return;
+	}
+	$row['audience'] = 'admins';
+}
+
 /**
  * Sanitize and persist the navigation config.
  *
@@ -107,11 +231,35 @@ function brikpanel_nav_config_save( $config ) {
 				'hidden'  => $hidden,
 			];
 
+			// Optional audience rule (visible to admins only / hidden from roles).
+			brikpanel_nav_apply_audience_to_row( $item, $row );
+
 			// Optional icon override — must be one of the picker's known slugs.
 			if ( isset( $item['icon_override'] ) ) {
 				$icon_override = sanitize_key( (string) $item['icon_override'] );
 				if ( $icon_override !== '' && isset( $icon_options[ $icon_override ] ) ) {
 					$row['icon_override'] = $icon_override;
+				}
+			}
+
+			// Optional custom SVG icon — wins over the built-in icon_override
+			// when present. Sanitised down to a safe base64 data URI.
+			if ( isset( $item['icon_svg'] ) ) {
+				$icon_svg = brikpanel_nav_sanitize_icon_svg( $item['icon_svg'] );
+				if ( $icon_svg !== '' ) {
+					$row['icon_svg'] = $icon_svg;
+				}
+			}
+
+			// Optional label override — renames a system item in the sidebar
+			// without disturbing its slug or icon.
+			if ( isset( $item['label_override'] ) ) {
+				$label_override = wp_strip_all_tags( wp_unslash( (string) $item['label_override'] ) );
+				$label_override = trim( preg_replace( '/\s+/', ' ', $label_override ) );
+				if ( $label_override !== '' ) {
+					$row['label_override'] = function_exists( 'mb_substr' )
+						? mb_substr( $label_override, 0, 120 )
+						: substr( $label_override, 0, 120 );
 				}
 			}
 
@@ -129,10 +277,12 @@ function brikpanel_nav_config_save( $config ) {
 					if ( $sub_slug === '' ) {
 						continue;
 					}
-					$subs[] = [
+					$sub_row = [
 						'slug'   => $sub_slug,
 						'hidden' => ! empty( $sub['hidden'] ),
 					];
+					brikpanel_nav_apply_audience_to_row( $sub, $sub_row );
+					$subs[] = $sub_row;
 					$count++;
 				}
 				if ( ! empty( $subs ) ) {
@@ -157,7 +307,7 @@ function brikpanel_nav_config_save( $config ) {
 			if ( $label === '' || $url === '' ) {
 				continue;
 			}
-			$cleaned[] = [
+			$custom_row = [
 				'type'    => 'custom',
 				'id'      => $id,
 				'label'   => $label,
@@ -167,6 +317,15 @@ function brikpanel_nav_config_save( $config ) {
 				'hidden'  => $hidden,
 				'new_tab' => $new_tab,
 			];
+			// Optional custom SVG icon — wins over the built-in `icon` slug.
+			if ( isset( $item['icon_svg'] ) ) {
+				$icon_svg = brikpanel_nav_sanitize_icon_svg( $item['icon_svg'] );
+				if ( $icon_svg !== '' ) {
+					$custom_row['icon_svg'] = $icon_svg;
+				}
+			}
+			brikpanel_nav_apply_audience_to_row( $item, $custom_row );
+			$cleaned[] = $custom_row;
 			continue;
 		}
 	}
@@ -217,6 +376,93 @@ function brikpanel_nav_customizer_icon_options() {
 	];
 }
 
+/**
+ * Sanitize a user-supplied custom icon into a safe
+ * `data:image/svg+xml;base64,…` URI, or return '' when it can't be made safe.
+ *
+ * Accepts three input shapes so users can paste whatever Icons8 / SVG Repo /
+ * similar sites hand them:
+ *   - Raw SVG markup ("<svg …>…</svg>").
+ *   - A base64 data URI ("data:image/svg+xml;base64,….").
+ *   - A URL-encoded data URI ("data:image/svg+xml,%3Csvg…").
+ *
+ * The SVG is stripped of scripts, event handlers, external references and other
+ * active content before being re-encoded. Final rendering always happens inside
+ * an <img> tag, where browsers never execute SVG scripts — the sanitising here
+ * is defence in depth and keeps the stored option clean.
+ *
+ * @param mixed $raw Raw user input.
+ * @return string Base64 data URI, or '' when invalid.
+ */
+function brikpanel_nav_sanitize_icon_svg( $raw ) {
+	if ( ! is_string( $raw ) ) {
+		return '';
+	}
+	$raw = trim( wp_unslash( $raw ) );
+	if ( $raw === '' ) {
+		return '';
+	}
+	// Hard cap on raw input size to avoid pathological option bloat.
+	if ( strlen( $raw ) > 100000 ) {
+		return '';
+	}
+
+	// Decode the three accepted input shapes down to raw SVG markup.
+	$svg = '';
+	if ( stripos( $raw, 'data:image/svg+xml' ) === 0 ) {
+		$comma = strpos( $raw, ',' );
+		if ( $comma === false ) {
+			return '';
+		}
+		$meta    = substr( $raw, 0, $comma );
+		$payload = substr( $raw, $comma + 1 );
+		if ( stripos( $meta, ';base64' ) !== false ) {
+			$decoded = base64_decode( $payload, true );
+			$svg     = is_string( $decoded ) ? $decoded : '';
+		} else {
+			$svg = rawurldecode( $payload );
+		}
+	} elseif ( stripos( $raw, '<svg' ) !== false ) {
+		$svg = $raw;
+	} else {
+		return '';
+	}
+
+	$svg = trim( $svg );
+	if ( $svg === '' || stripos( $svg, '<svg' ) === false || stripos( $svg, '</svg>' ) === false ) {
+		return '';
+	}
+
+	// Keep only the <svg> root onward — drops XML prolog / doctype / comments.
+	$start = stripos( $svg, '<svg' );
+	$svg   = substr( $svg, $start );
+	$end   = strripos( $svg, '</svg>' );
+	if ( $end === false ) {
+		return '';
+	}
+	$svg = substr( $svg, 0, $end + 6 );
+
+	// Strip active content: scripts, foreignObject, CDATA, event handlers and
+	// javascript: references.
+	$svg = preg_replace( '#<script\b[^>]*>.*?</script>#is', '', $svg );
+	$svg = preg_replace( '#<foreignObject\b[^>]*>.*?</foreignObject>#is', '', $svg );
+	$svg = preg_replace( '#<!\[CDATA\[.*?\]\]>#is', '', $svg );
+	$svg = preg_replace( '#\son\w+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)#i', '', $svg );
+	$svg = preg_replace( '#(href|xlink:href)\s*=\s*("\s*javascript:[^"]*"|\'\s*javascript:[^\']*\')#i', '', $svg );
+
+	// Reject anything that still smells executable.
+	if ( preg_match( '#javascript:|<script|<iframe|<embed|<object#i', $svg ) ) {
+		return '';
+	}
+
+	// Cap final cleaned size.
+	if ( strlen( $svg ) > 50000 ) {
+		return '';
+	}
+
+	return 'data:image/svg+xml;base64,' . base64_encode( $svg );
+}
+
 // =============================================================================
 // AVAILABLE MENU ITEMS (collected from $menu at settings page render time)
 // =============================================================================
@@ -248,23 +494,19 @@ function brikpanel_nav_customizer_collect_menu_items() {
 	// renderer applies its own promotion/reordering later in the request).
 	$menu_snapshot    = $menu;
 	$submenu_snapshot = is_array( $submenu ) ? $submenu : [];
-	brikpanel_nav_customizer_apply_wc_promotion( $menu_snapshot, $submenu_snapshot );
-	brikpanel_nav_customizer_apply_default_reorder( $menu_snapshot );
 
-	// Slugs the renderer moves OUT of the WooCommerce submenu tree (either
-	// promoted to top-level or pushed under "More"). Filter them from the
-	// per-item submenu list so users don't see them duplicated under
-	// WooCommerce in the customizer.
-	$wc_promoted_or_skipped = [
-		'wc-settings',
-		'wc-reports',
-		'wc-status',
-		'wc-admin&path=/extensions',
-		'wc-orders',
-		'edit.php?post_type=shop_order',
-		'wc-orders--shop_subscription',
-		'wc-admin&path=/customers',
-	];
+	// Mirror the live sidebar's WooCommerce relocation on the snapshot copies via
+	// the SAME shared function the renderer uses, so the customizer lists every
+	// item exactly where the sidebar renders it (WooCommerce keeps Orders /
+	// Customers, everything else lands under "More"). The renderer skips this when
+	// Admin Menu Editor owns the menu or the modern navigation is switched off, so
+	// honour the same conditions here.
+	$relocate = ! ( function_exists( 'is_plugin_active' ) && is_plugin_active( 'admin-menu-editor/menu-editor.php' ) )
+		&& get_option( 'brikpanel_modern_navigation', 'yes' ) !== 'no';
+	if ( $relocate && function_exists( 'brikpanel_nav_relocate_wc_submenus' ) ) {
+		brikpanel_nav_relocate_wc_submenus( $menu_snapshot, $submenu_snapshot );
+	}
+	brikpanel_nav_customizer_apply_default_reorder( $menu_snapshot );
 
 	$normalize_title = static function ( $raw ) {
 		$raw = (string) $raw;
@@ -291,16 +533,12 @@ function brikpanel_nav_customizer_collect_menu_items() {
 
 		$submenus = [];
 		if ( isset( $submenu_snapshot[ $slug ] ) && is_array( $submenu_snapshot[ $slug ] ) ) {
-			$is_woocommerce_parent = ( $slug === 'woocommerce' );
 			foreach ( $submenu_snapshot[ $slug ] as $sub ) {
 				if ( ! is_array( $sub ) || ! isset( $sub[2] ) ) {
 					continue;
 				}
 				$sub_slug = (string) $sub[2];
 				if ( $sub_slug === '' ) {
-					continue;
-				}
-				if ( $is_woocommerce_parent && in_array( $sub_slug, $wc_promoted_or_skipped, true ) ) {
 					continue;
 				}
 				// Cap submenus at 50 per parent (matches the sanitize cap).
@@ -322,75 +560,6 @@ function brikpanel_nav_customizer_collect_menu_items() {
 		];
 	}
 	return $items;
-}
-
-/**
- * Mirror the WC submenu → top-level promotion that brikpanel_get_navigation_items()
- * does at render time. Adds `woocommerce-more` as a top-level entry and promotes
- * `wc-settings` (and similar moved submenus) up to top-level so the customizer
- * lists them. Skipped when AME is active or when the global "modern navigation"
- * toggle is off — both cases bypass this promotion in the renderer too.
- *
- * @param array $menu     Top-level menu (mutated).
- * @param array $submenu  Submenu tree (mutated — keeps customizer's view consistent).
- */
-function brikpanel_nav_customizer_apply_wc_promotion( &$menu, &$submenu ) {
-	if ( ! is_array( $menu ) ) {
-		return;
-	}
-	if ( function_exists( 'is_plugin_active' ) && is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
-		return;
-	}
-	if ( get_option( 'brikpanel_modern_navigation', 'yes' ) === 'no' ) {
-		return;
-	}
-
-	// 1) Synthesize the "More" top-level entry.
-	$has_more = false;
-	foreach ( $menu as $row ) {
-		if ( isset( $row[2] ) && $row[2] === 'woocommerce-more' ) { $has_more = true; break; }
-	}
-	if ( ! $has_more ) {
-		$menu[] = array(
-			__( 'More', 'brikpanel' ),
-			'manage_woocommerce',
-			'woocommerce-more',
-			__( 'More', 'brikpanel' ),
-		);
-	}
-
-	// 2) Walk the WooCommerce submenu and promote wc-settings to top-level.
-	foreach ( $menu as $key => $item ) {
-		if ( ! isset( $item[2] ) || $item[2] !== 'woocommerce' ) {
-			continue;
-		}
-		$wc_subs = ! empty( $submenu['woocommerce'] ) ? $submenu['woocommerce'] : [];
-		$to_move = [ 'wc-settings', 'wc-reports', 'wc-status', 'wc-admin&path=/extensions' ];
-		foreach ( $wc_subs as $sub_key => $sub_item ) {
-			if ( ! isset( $sub_item[2] ) ) {
-				continue;
-			}
-			$slug = (string) $sub_item[2];
-			if ( ! in_array( $slug, $to_move, true ) ) {
-				continue;
-			}
-			$promoted_slug = 'admin.php?page=' . $slug;
-			if ( $promoted_slug === 'admin.php?page=wc-settings' ) {
-				// Push as top-level entry mirroring the renderer.
-				$promoted = $sub_item;
-				$promoted[2] = $promoted_slug;
-				// Avoid duplicates if user has visited the page already this request.
-				$dup = false;
-				foreach ( $menu as $existing ) {
-					if ( isset( $existing[2] ) && $existing[2] === $promoted_slug ) { $dup = true; break; }
-				}
-				if ( ! $dup ) {
-					$menu[] = $promoted;
-				}
-			}
-		}
-		break;
-	}
 }
 
 /**
@@ -520,8 +689,8 @@ function brikpanel_nav_customizer_is_store_slug( $slug ) {
  *   so newly-installed plugins still appear.
  * - Returns the slug of the first "site_management" item — used as the anchor
  *   the renderer attaches the "Site management" heading to. Also returns an
- *   icon override map keyed by item slug (covers both custom links and
- *   user-overridden system items).
+ *   icon override map keyed by system item slug. Each value is an array
+ *   `[ 'type' => 'builtin'|'svg', 'value' => slug|data-uri ]`.
  *
  * Custom items are encoded as $menu rows where:
  *   $item[2] = unique slug 'brikpanel_custom__<id>'
@@ -576,20 +745,24 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 				continue;
 			}
 			$consumed[ $slug ] = true;
-			if ( ! empty( $cfg['hidden'] ) ) {
+			if ( brikpanel_nav_cfg_hidden_for_current_user( $cfg ) ) {
 				continue;
 			}
 
-			// Track icon override — applied by the renderer when emitting the icon.
-			if ( ! empty( $cfg['icon_override'] ) ) {
-				$icon_map[ $slug ] = (string) $cfg['icon_override'];
+			// Track icon override — applied by the renderer when emitting the
+			// icon. A custom SVG (stored as a data URI) wins over a built-in
+			// slug. The value is an array so the renderer can tell them apart.
+			if ( ! empty( $cfg['icon_svg'] ) ) {
+				$icon_map[ $slug ] = [ 'type' => 'svg', 'value' => (string) $cfg['icon_svg'] ];
+			} elseif ( ! empty( $cfg['icon_override'] ) ) {
+				$icon_map[ $slug ] = [ 'type' => 'builtin', 'value' => (string) $cfg['icon_override'] ];
 			}
 
 			// Track per-submenu hidden flags — applied to $submenu later.
 			if ( ! empty( $cfg['submenus'] ) && is_array( $cfg['submenus'] ) ) {
 				$hide_list = [];
 				foreach ( $cfg['submenus'] as $sub_cfg ) {
-					if ( ! is_array( $sub_cfg ) || empty( $sub_cfg['hidden'] ) ) {
+					if ( ! is_array( $sub_cfg ) || ! brikpanel_nav_cfg_hidden_for_current_user( $sub_cfg ) ) {
 						continue;
 					}
 					$sub_slug = isset( $sub_cfg['slug'] ) ? (string) $sub_cfg['slug'] : '';
@@ -605,6 +778,9 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 			if ( $section === 'more' ) {
 				$row = $by_slug[ $slug ];
 				$title = isset( $row[0] ) ? (string) $row[0] : $slug;
+				if ( ! empty( $cfg['label_override'] ) ) {
+					$title = (string) $cfg['label_override'];
+				}
 				$cap   = isset( $row[1] ) ? (string) $row[1] : 'read';
 				// WP submenu row shape: [ title, cap, file, page_title, classes ].
 				// Use admin.php?page= prefix unless the slug already looks like a URL/file.
@@ -616,7 +792,14 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 				continue;
 			}
 
-			$new_menu[] = $by_slug[ $slug ];
+			// Apply the optional label override without touching the slug, so
+			// the built-in slug→icon map (and thus the original icon) survives.
+			$row = $by_slug[ $slug ];
+			if ( ! empty( $cfg['label_override'] ) ) {
+				$row[0] = (string) $cfg['label_override'];
+				$row[3] = (string) $cfg['label_override'];
+			}
+			$new_menu[] = $row;
 			if ( $section === 'site_management' && $first_sitemgmt === '' ) {
 				$first_sitemgmt = $slug;
 			}
@@ -624,13 +807,14 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 		}
 
 		if ( $cfg['type'] === 'custom' ) {
-			if ( ! empty( $cfg['hidden'] ) ) {
+			if ( brikpanel_nav_cfg_hidden_for_current_user( $cfg ) ) {
 				continue;
 			}
 			$id      = isset( $cfg['id'] ) ? (string) $cfg['id'] : '';
 			$label   = isset( $cfg['label'] ) ? (string) $cfg['label'] : '';
 			$url     = isset( $cfg['url'] ) ? (string) $cfg['url'] : '';
 			$icon    = isset( $cfg['icon'] ) ? (string) $cfg['icon'] : 'default';
+			$icon_svg = isset( $cfg['icon_svg'] ) ? (string) $cfg['icon_svg'] : '';
 			$new_tab = ! empty( $cfg['new_tab'] );
 			if ( $id === '' || $label === '' || $url === '' ) {
 				continue;
@@ -652,6 +836,7 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 						'is_custom' => true,
 						'url'       => $url,
 						'icon'      => $icon,
+						'icon_svg'  => $icon_svg,
 						'new_tab'   => $new_tab,
 					],
 				];
@@ -673,10 +858,12 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 					'is_custom' => true,
 					'url'       => $url,
 					'icon'      => $icon,
+					'icon_svg'  => $icon_svg,
 					'new_tab'   => $new_tab,
 				],
 			];
-			$icon_map[ $slug ] = $icon;
+			// Custom links render through their embedded meta (index 7), not the
+			// slug→icon map, so no $icon_map entry is needed here.
 			if ( $section === 'site_management' && $first_sitemgmt === '' ) {
 				$first_sitemgmt = $slug;
 			}
@@ -786,15 +973,18 @@ function brikpanel_render_nav_customizer_field( $value ) {
 				if ( ! is_array( $row ) || empty( $row['slug'] ) ) {
 					continue;
 				}
-				$saved_lookup[ (string) $row['slug'] ] = ! empty( $row['hidden'] );
+				$saved_lookup[ (string) $row['slug'] ] = $row;
 			}
 		}
 		$out = [];
 		foreach ( $live_subs as $sub ) {
+			$saved = isset( $saved_lookup[ $sub['slug'] ] ) ? $saved_lookup[ $sub['slug'] ] : [];
 			$out[] = [
-				'slug'   => $sub['slug'],
-				'title'  => $sub['title'],
-				'hidden' => isset( $saved_lookup[ $sub['slug'] ] ) ? $saved_lookup[ $sub['slug'] ] : false,
+				'slug'       => $sub['slug'],
+				'title'      => $sub['title'],
+				'hidden'     => ! empty( $saved['hidden'] ),
+				'audience'   => isset( $saved['audience'] ) ? (string) $saved['audience'] : 'all',
+				'hide_roles' => isset( $saved['hide_roles'] ) && is_array( $saved['hide_roles'] ) ? array_map( 'strval', $saved['hide_roles'] ) : [],
 			];
 		}
 		return $out;
@@ -821,25 +1011,32 @@ function brikpanel_render_nav_customizer_field( $value ) {
 			$live_subs = $live && isset( $live['submenus'] ) && is_array( $live['submenus'] ) ? $live['submenus'] : [];
 			$saved_subs = isset( $cfg['submenus'] ) && is_array( $cfg['submenus'] ) ? $cfg['submenus'] : [];
 			$rows[] = [
-				'type'          => 'system',
-				'slug'          => $slug,
-				'title'         => $title,
-				'section'       => isset( $cfg['section'] ) ? $cfg['section'] : 'store',
-				'hidden'        => ! empty( $cfg['hidden'] ),
-				'icon_override' => ! empty( $cfg['icon_override'] ) ? (string) $cfg['icon_override'] : '',
-				'submenus'      => $merge_submenus( $live_subs, $saved_subs ),
-				'available'     => $live !== null,
+				'type'           => 'system',
+				'slug'           => $slug,
+				'title'          => $title,
+				'label_override' => ! empty( $cfg['label_override'] ) ? (string) $cfg['label_override'] : '',
+				'section'        => isset( $cfg['section'] ) ? $cfg['section'] : 'store',
+				'hidden'         => ! empty( $cfg['hidden'] ),
+				'audience'       => isset( $cfg['audience'] ) ? (string) $cfg['audience'] : 'all',
+				'hide_roles'     => isset( $cfg['hide_roles'] ) && is_array( $cfg['hide_roles'] ) ? array_map( 'strval', $cfg['hide_roles'] ) : [],
+				'icon_override'  => ! empty( $cfg['icon_override'] ) ? (string) $cfg['icon_override'] : '',
+				'icon_svg'       => ! empty( $cfg['icon_svg'] ) ? (string) $cfg['icon_svg'] : '',
+				'submenus'       => $merge_submenus( $live_subs, $saved_subs ),
+				'available'      => $live !== null,
 			];
 		} elseif ( $cfg['type'] === 'custom' ) {
 			$rows[] = [
-				'type'    => 'custom',
-				'id'      => isset( $cfg['id'] ) ? (string) $cfg['id'] : '',
-				'label'   => isset( $cfg['label'] ) ? (string) $cfg['label'] : '',
-				'url'     => isset( $cfg['url'] ) ? (string) $cfg['url'] : '',
-				'icon'    => isset( $cfg['icon'] ) ? (string) $cfg['icon'] : 'default',
-				'section' => isset( $cfg['section'] ) ? $cfg['section'] : 'store',
-				'hidden'  => ! empty( $cfg['hidden'] ),
-				'new_tab' => ! empty( $cfg['new_tab'] ),
+				'type'       => 'custom',
+				'id'         => isset( $cfg['id'] ) ? (string) $cfg['id'] : '',
+				'label'      => isset( $cfg['label'] ) ? (string) $cfg['label'] : '',
+				'url'        => isset( $cfg['url'] ) ? (string) $cfg['url'] : '',
+				'icon'       => isset( $cfg['icon'] ) ? (string) $cfg['icon'] : 'default',
+				'icon_svg'   => ! empty( $cfg['icon_svg'] ) ? (string) $cfg['icon_svg'] : '',
+				'section'    => isset( $cfg['section'] ) ? $cfg['section'] : 'store',
+				'hidden'     => ! empty( $cfg['hidden'] ),
+				'audience'   => isset( $cfg['audience'] ) ? (string) $cfg['audience'] : 'all',
+				'hide_roles' => isset( $cfg['hide_roles'] ) && is_array( $cfg['hide_roles'] ) ? array_map( 'strval', $cfg['hide_roles'] ) : [],
+				'new_tab'    => ! empty( $cfg['new_tab'] ),
 			];
 		}
 	}
@@ -849,14 +1046,18 @@ function brikpanel_render_nav_customizer_field( $value ) {
 			continue;
 		}
 		$rows[] = [
-			'type'          => 'system',
-			'slug'          => $ci['slug'],
-			'title'         => $ci['title'],
-			'section'       => brikpanel_nav_customizer_is_store_slug( $ci['slug'] ) ? 'store' : 'site_management',
-			'hidden'        => false,
-			'icon_override' => '',
-			'submenus'      => $merge_submenus( isset( $ci['submenus'] ) ? $ci['submenus'] : [], [] ),
-			'available'     => true,
+			'type'           => 'system',
+			'slug'           => $ci['slug'],
+			'title'          => $ci['title'],
+			'label_override' => '',
+			'section'        => brikpanel_nav_customizer_is_store_slug( $ci['slug'] ) ? 'store' : 'site_management',
+			'hidden'         => false,
+			'audience'       => 'all',
+			'hide_roles'     => [],
+			'icon_override'  => '',
+			'icon_svg'       => '',
+			'submenus'       => $merge_submenus( isset( $ci['submenus'] ) ? $ci['submenus'] : [], [] ),
+			'available'      => true,
 		];
 	}
 
@@ -897,7 +1098,43 @@ function brikpanel_render_nav_customizer_field( $value ) {
 					</div>
 
 					<?php
-					$render_section = function( $section_key, $heading_text, $hint_text, $items ) use ( $icons_url_base, $icon_options ) {
+					$roles_list = brikpanel_access_collect_roles();
+
+					// Audience selector ("Everyone / Admins only / Specific roles")
+					// rendered inline inside a row.
+					$render_audience_select = function ( $audience ) {
+						$audience = in_array( $audience, [ 'all', 'admins', 'roles' ], true ) ? $audience : 'all';
+						?>
+						<select class="brikpanel-navc-audience" data-navc-audience aria-label="<?php esc_attr_e( 'Who can see this item', 'brikpanel' ); ?>">
+							<option value="all" <?php selected( $audience, 'all' ); ?>><?php esc_html_e( 'Everyone', 'brikpanel' ); ?></option>
+							<option value="admins" <?php selected( $audience, 'admins' ); ?>><?php esc_html_e( 'Admins only', 'brikpanel' ); ?></option>
+							<option value="roles" <?php selected( $audience, 'roles' ); ?>><?php esc_html_e( 'Specific roles', 'brikpanel' ); ?></option>
+						</select>
+						<?php
+					};
+
+					// Role checklist block, rendered as a full-width strip right
+					// after the row it belongs to. Revealed only when the matching
+					// selector is set to "Specific roles".
+					$render_audience_roles = function ( $audience, $hide_roles ) use ( $roles_list ) {
+						$audience   = in_array( $audience, [ 'all', 'admins', 'roles' ], true ) ? $audience : 'all';
+						$hide_roles = is_array( $hide_roles ) ? array_map( 'strval', $hide_roles ) : [];
+						?>
+						<div class="brikpanel-navc-roles" data-navc-roles <?php echo $audience === 'roles' ? '' : 'hidden'; ?>>
+							<span class="brikpanel-navc-roles-title"><?php esc_html_e( 'Hide from these roles', 'brikpanel' ); ?></span>
+							<div class="brikpanel-navc-roles-grid">
+								<?php foreach ( $roles_list as $role_slug => $role_name ) : ?>
+									<label class="brikpanel-navc-role">
+										<input type="checkbox" data-navc-role value="<?php echo esc_attr( $role_slug ); ?>" <?php checked( in_array( (string) $role_slug, $hide_roles, true ) ); ?>>
+										<span><?php echo esc_html( $role_name ); ?></span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+						</div>
+						<?php
+					};
+
+					$render_section = function( $section_key, $heading_text, $hint_text, $items ) use ( $icons_url_base, $icon_options, $render_audience_select, $render_audience_roles ) {
 						?>
 						<div class="brikpanel-navc-section" data-section="<?php echo esc_attr( $section_key ); ?>">
 							<div class="brikpanel-navc-section-header">
@@ -911,11 +1148,15 @@ function brikpanel_render_nav_customizer_field( $value ) {
 									$icon_slug      = $is_custom ? ( $row['icon'] ?: 'default' ) : '';
 									$icon_url       = $is_custom ? $icons_url_base . $icon_slug . '.svg' : '';
 									$icon_override  = $is_custom ? '' : ( isset( $row['icon_override'] ) ? (string) $row['icon_override'] : '' );
+									$icon_svg       = isset( $row['icon_svg'] ) ? (string) $row['icon_svg'] : '';
 									$has_submenus   = ! $is_custom && ! empty( $row['submenus'] );
 									$override_url   = $icon_override !== '' ? $icons_url_base . $icon_override . '.svg' : '';
+									$label_override = $is_custom ? '' : ( isset( $row['label_override'] ) ? (string) $row['label_override'] : '' );
+									$display_label  = $is_custom ? $row['label'] : ( $label_override !== '' ? $label_override : $row['title'] );
 									?>
 									<li class="brikpanel-navc-item <?php echo $is_custom ? 'is-custom' : 'is-system'; ?> <?php echo ! empty( $row['hidden'] ) ? 'is-hidden' : ''; ?>"
 									    data-type="<?php echo esc_attr( $row['type'] ); ?>"
+									    data-icon-svg="<?php echo esc_attr( $icon_svg ); ?>"
 									    <?php if ( $is_custom ) : ?>
 									    data-id="<?php echo esc_attr( $row['id'] ); ?>"
 									    data-label="<?php echo esc_attr( $row['label'] ); ?>"
@@ -924,6 +1165,8 @@ function brikpanel_render_nav_customizer_field( $value ) {
 									    data-new-tab="<?php echo ! empty( $row['new_tab'] ) ? '1' : '0'; ?>"
 									    <?php else : ?>
 									    data-slug="<?php echo esc_attr( $row['slug'] ); ?>"
+									    data-orig-title="<?php echo esc_attr( $row['title'] ); ?>"
+									    data-label-override="<?php echo esc_attr( $label_override ); ?>"
 									    data-icon-override="<?php echo esc_attr( $icon_override ); ?>"
 									    <?php endif; ?>>
 										<div class="brikpanel-navc-row">
@@ -931,7 +1174,9 @@ function brikpanel_render_nav_customizer_field( $value ) {
 												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>
 											</span>
 											<span class="brikpanel-navc-icon">
-												<?php if ( $is_custom ) : ?>
+												<?php if ( $icon_svg !== '' ) : ?>
+													<img src="<?php echo esc_url( $icon_svg, [ 'data', 'http', 'https' ] ); ?>" alt="" width="14" height="14">
+												<?php elseif ( $is_custom ) : ?>
 													<img src="<?php echo esc_url( $icon_url ); ?>" alt="" width="14" height="14">
 												<?php elseif ( $icon_override !== '' ) : ?>
 													<img src="<?php echo esc_url( $override_url ); ?>" alt="" width="14" height="14">
@@ -940,7 +1185,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 												<?php endif; ?>
 											</span>
 											<span class="brikpanel-navc-label">
-												<span class="brikpanel-navc-label-text"><?php echo esc_html( $is_custom ? $row['label'] : $row['title'] ); ?></span>
+												<span class="brikpanel-navc-label-text"><?php echo esc_html( $display_label ); ?></span>
 												<?php if ( $is_custom ) : ?>
 													<span class="brikpanel-navc-label-meta"><?php echo esc_html( $row['url'] ); ?></span>
 												<?php endif; ?>
@@ -951,6 +1196,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 													<span class="brikpanel-navc-toggle-thumb"></span>
 												</span>
 											</label>
+											<?php $render_audience_select( isset( $row['audience'] ) ? $row['audience'] : 'all' ); ?>
 											<?php if ( $is_custom ) : ?>
 												<button type="button" class="brikpanel-navc-iconbtn" data-navc-action="edit" title="<?php esc_attr_e( 'Edit link', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Edit link', 'brikpanel' ); ?>">
 													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -959,8 +1205,8 @@ function brikpanel_render_nav_customizer_field( $value ) {
 													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
 												</button>
 											<?php else : ?>
-												<button type="button" class="brikpanel-navc-iconbtn" data-navc-action="change-icon" title="<?php esc_attr_e( 'Change icon', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Change icon', 'brikpanel' ); ?>">
-													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/></svg>
+												<button type="button" class="brikpanel-navc-iconbtn" data-navc-action="edit-system" title="<?php esc_attr_e( 'Rename or change icon', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Rename or change icon', 'brikpanel' ); ?>">
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
 												</button>
 												<?php if ( $has_submenus ) : ?>
 													<button type="button" class="brikpanel-navc-iconbtn brikpanel-navc-submenu-chevron" data-navc-action="toggle-submenus" title="<?php esc_attr_e( 'Manage submenu items', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Manage submenu items', 'brikpanel' ); ?>" aria-expanded="false">
@@ -969,6 +1215,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 												<?php endif; ?>
 											<?php endif; ?>
 										</div>
+										<?php $render_audience_roles( isset( $row['audience'] ) ? $row['audience'] : 'all', isset( $row['hide_roles'] ) ? $row['hide_roles'] : [] ); ?>
 										<?php if ( $has_submenus ) : ?>
 											<div class="brikpanel-navc-submenus" hidden>
 												<div class="brikpanel-navc-submenus-inner">
@@ -983,6 +1230,8 @@ function brikpanel_render_nav_customizer_field( $value ) {
 																		<span class="brikpanel-navc-toggle-thumb"></span>
 																	</span>
 																</label>
+																<?php $render_audience_select( isset( $sub['audience'] ) ? $sub['audience'] : 'all' ); ?>
+																<?php $render_audience_roles( isset( $sub['audience'] ) ? $sub['audience'] : 'all', isset( $sub['hide_roles'] ) ? $sub['hide_roles'] : [] ); ?>
 															</li>
 														<?php endforeach; ?>
 													</ul>
@@ -1032,6 +1281,14 @@ function brikpanel_render_nav_customizer_field( $value ) {
 									<?php endforeach; ?>
 								</select>
 							</label>
+							<div class="brikpanel-navc-field brikpanel-navc-svg-field">
+								<span><?php esc_html_e( 'Or paste a custom SVG icon', 'brikpanel' ); ?></span>
+								<div class="brikpanel-navc-svg-row">
+									<span class="brikpanel-navc-svg-preview" aria-hidden="true"></span>
+									<textarea data-navc-field="icon_svg" rows="3" placeholder="<?php esc_attr_e( 'Paste SVG code or a data:image/svg+xml;base64,… URI', 'brikpanel' ); ?>"></textarea>
+								</div>
+								<span class="brikpanel-navc-svg-hint"><?php esc_html_e( 'Paste an SVG from Icons8, SVG Repo or anywhere — it overrides the icon chosen above. Leave empty to use the icon above.', 'brikpanel' ); ?></span>
+							</div>
 							<label class="brikpanel-navc-field brikpanel-navc-field-checkbox">
 								<input type="checkbox" data-navc-field="new_tab">
 								<span><?php esc_html_e( 'Open in a new tab', 'brikpanel' ); ?></span>
@@ -1106,16 +1363,24 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 	wp_localize_script( 'brikpanel-nav-customizer', 'brikpanelNavCustomizer', [
 		'iconOptions' => brikpanel_nav_customizer_icon_options(),
 		'iconsBase'   => plugins_url( 'icons/', __FILE__ ),
+		'roles'       => brikpanel_access_collect_roles(),
 		'i18n'        => [
 			'editLink'      => __( 'Edit custom link', 'brikpanel' ),
 			'addLink'       => __( 'Add custom link', 'brikpanel' ),
 			'changeIcon'    => __( 'Change icon', 'brikpanel' ),
+			'editItem'      => __( 'Edit menu item', 'brikpanel' ),
+			'invalidSvg'    => __( 'That SVG could not be read. Paste valid SVG code or a data:image/svg+xml URI.', 'brikpanel' ),
 			'confirmReset'  => __( 'Reset sidebar navigation to its defaults? This clears all customizations and removes custom links.', 'brikpanel' ),
 			'confirmDelete' => __( 'Remove this custom link?', 'brikpanel' ),
 			'invalidUrl'    => __( 'Please enter a valid URL (starting with http:// or https://) or an admin path.', 'brikpanel' ),
 			'invalidLabel'  => __( 'Please enter a label.', 'brikpanel' ),
 			'edit'          => __( 'Edit', 'brikpanel' ),
 			'delete'        => __( 'Delete', 'brikpanel' ),
+			'audienceLabel' => __( 'Who can see this item', 'brikpanel' ),
+			'audienceAll'   => __( 'Everyone', 'brikpanel' ),
+			'audienceAdmins'=> __( 'Admins only', 'brikpanel' ),
+			'audienceRoles' => __( 'Specific roles', 'brikpanel' ),
+			'hideFromRoles' => __( 'Hide from these roles', 'brikpanel' ),
 		],
 	] );
 } );

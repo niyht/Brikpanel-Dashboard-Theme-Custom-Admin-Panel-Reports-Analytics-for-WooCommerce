@@ -64,6 +64,17 @@ const BRIKPANEL_ACCESS_OPT_SETTINGS_ADMINS_ONLY = 'brikpanel_settings_admins_onl
 // store-wide setting only administrators can change. On ('yes') by default.
 const BRIKPANEL_MASTER_OPT = 'brikpanel_master_enabled';
 
+// "Screen Options" tab control. Two independent axes, both off by default:
+//   - …_SCREEN_OPTIONS_ALL  hides the Screen Options tab from every back-office
+//     user (administrators included).
+//   - …_SCREEN_OPTIONS_NONADMIN hides it only from non-administrators, so the
+//     store owner keeps it while staff / clients do not.
+// This replaces the equivalent White Label CMS behaviour. The tab is purely a
+// per-screen preference panel, so hiding it never blocks any action and the
+// choice is always reversible from this settings page.
+const BRIKPANEL_ACCESS_OPT_SCREEN_OPTIONS_ALL      = 'brikpanel_hide_screen_options';
+const BRIKPANEL_ACCESS_OPT_SCREEN_OPTIONS_NONADMIN = 'brikpanel_hide_screen_options_non_admins';
+
 /**
  * Whether the BrikPanel interface master switch is currently on.
  *
@@ -97,6 +108,7 @@ function brikpanel_master_enabled() {
 function brikpanel_access_gated_options() {
 	return (array) apply_filters( 'brikpanel_access_gated_options', [
 		'brikpanel_modern_navigation',
+		'brikpanel_native_menu_styled',
 		'brikpanel_modern_dashboard',
 		'brikpanel_dashboard_topbar',
 		'brikpanel_orders_enhancements',
@@ -373,6 +385,43 @@ add_action( 'woocommerce_update_options_brikpanel', static function () {
 }, 3 );
 
 // =============================================================================
+// SCREEN OPTIONS TAB
+// =============================================================================
+//
+// Independent of the BrikPanel interface gate and master switch: this hides the
+// WordPress "Screen Options" tab regardless of whether the user is on BrikPanel
+// or the native admin, because it is an admin-chrome preference in its own right
+// (the common White Label CMS ask). Administrators are spared unless the
+// "from everyone" axis is on.
+
+/**
+ * Whether the Screen Options tab must be hidden for the current request/user.
+ *
+ * @return bool
+ */
+function brikpanel_should_hide_screen_options() {
+	if ( ! is_admin() ) {
+		return false;
+	}
+	if ( get_option( BRIKPANEL_ACCESS_OPT_SCREEN_OPTIONS_ALL, 'no' ) === 'yes' ) {
+		return true;
+	}
+	if ( get_option( BRIKPANEL_ACCESS_OPT_SCREEN_OPTIONS_NONADMIN, 'no' ) === 'yes'
+		&& ! current_user_can( 'manage_options' ) ) {
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Hide the Screen Options tab by short-circuiting WordPress' own
+ * `screen_options_show_screen` gate.
+ */
+add_filter( 'screen_options_show_screen', static function ( $show ) {
+	return brikpanel_should_hide_screen_options() ? false : $show;
+}, PHP_INT_MAX );
+
+// =============================================================================
 // LAYER 1 — OPTION NEUTRALIZATION
 // =============================================================================
 /**
@@ -601,7 +650,8 @@ add_filter( 'woocommerce_get_sections_brikpanel', function ( $sections ) {
  */
 add_filter( 'brikpanel_settings_title_section_map', function ( $map ) {
 	if ( is_array( $map ) ) {
-		$map['brk_access_title'] = 'access';
+		$map['brk_access_title']         = 'access';
+		$map['brk_screen_options_title'] = 'access';
 	}
 	return $map;
 } );
@@ -677,6 +727,30 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 		[
 			'type' => 'sectionend',
 			'id'   => 'brk_access_title',
+		],
+		[
+			'name' => __( 'Screen Options', 'brikpanel' ),
+			'type' => 'title',
+			'id'   => 'brk_screen_options_title',
+			'desc' => __( 'Control the WordPress "Screen Options" tab that appears at the top-right of admin screens. Hiding it keeps staff from changing column layouts and per-screen settings. This is a display preference only, never a permission, so it is always safe and reversible from here.', 'brikpanel' ),
+		],
+		[
+			'name'    => __( 'Hide Screen Options from everyone', 'brikpanel' ),
+			'id'      => BRIKPANEL_ACCESS_OPT_SCREEN_OPTIONS_ALL,
+			'type'    => 'checkbox',
+			'desc'    => __( 'Remove the Screen Options tab for every back-office user, administrators included. Off by default.', 'brikpanel' ),
+			'default' => 'no',
+		],
+		[
+			'name'    => __( 'Hide Screen Options from non-administrators', 'brikpanel' ),
+			'id'      => BRIKPANEL_ACCESS_OPT_SCREEN_OPTIONS_NONADMIN,
+			'type'    => 'checkbox',
+			'desc'    => __( 'Keep the Screen Options tab for administrators but remove it for every other role (shop managers, editors, clients). Off by default.', 'brikpanel' ),
+			'default' => 'no',
+		],
+		[
+			'type' => 'sectionend',
+			'id'   => 'brk_screen_options_title',
 		],
 	];
 

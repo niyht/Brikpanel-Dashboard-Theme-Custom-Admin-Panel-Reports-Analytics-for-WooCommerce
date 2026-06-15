@@ -61,78 +61,232 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Orders overview section: 30-day summary + marketplace stats (if BrikMarket active).
+ * Build an SVG area-sparkline (smooth curve + gradient fill + dotted baseline)
+ * from a numeric series. The viewBox stretches to the host element.
+ *
+ * @param {number[]} values Series values (counts or revenue), oldest first.
+ * @param {string}   uid    Unique id fragment for the gradient.
+ * @returns {string} SVG markup.
+ */
+function brikpanelSparklineSvg(values, uid) {
+	const W = 100, H = 34, padTop = 5, padBottom = 3;
+	let pts = Array.isArray(values) ? values.slice() : [];
+	if (pts.length === 0) pts = [0, 0];
+	if (pts.length === 1) pts = [pts[0], pts[0]];
+
+	const max = Math.max.apply(null, pts.concat([0]));
+	const span = max > 0 ? max : 1;
+	const innerH = H - padTop - padBottom;
+	const n = pts.length;
+
+	const coords = pts.map((v, i) => ({
+		x: n === 1 ? W / 2 : (i / (n - 1)) * W,
+		y: padTop + (innerH - (v / span) * innerH),
+	}));
+
+	// Catmull-Rom -> cubic bezier for a smooth line.
+	let line = `M ${coords[0].x.toFixed(2)} ${coords[0].y.toFixed(2)}`;
+	for (let i = 0; i < coords.length - 1; i++) {
+		const p0 = coords[i - 1] || coords[i];
+		const p1 = coords[i];
+		const p2 = coords[i + 1];
+		const p3 = coords[i + 2] || p2;
+		const c1x = p1.x + (p2.x - p0.x) / 6;
+		const c1y = p1.y + (p2.y - p0.y) / 6;
+		const c2x = p2.x - (p3.x - p1.x) / 6;
+		const c2y = p2.y - (p3.y - p1.y) / 6;
+		line += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+	}
+
+	const area = `${line} L ${W} ${H} L 0 ${H} Z`;
+	const baseY = (H - padBottom).toFixed(2);
+	const gid = `bpspark-${uid}`;
+
+	return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="brikpanel-spark-svg" aria-hidden="true" focusable="false">`
+		+ `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">`
+		+ `<stop offset="0%" stop-color="#3AA3FF" stop-opacity="0.28"/>`
+		+ `<stop offset="100%" stop-color="#3AA3FF" stop-opacity="0"/>`
+		+ `</linearGradient></defs>`
+		+ `<line x1="0" y1="${baseY}" x2="${W}" y2="${baseY}" class="brikpanel-spark-base"/>`
+		+ `<path d="${area}" fill="url(#${gid})" stroke="none"/>`
+		+ `<path d="${line}" fill="none" class="brikpanel-spark-line"/>`
+		+ `</svg>`;
+}
+
+/**
+ * Orders overview section: selectable-range summary cards with sparklines
+ * (Total orders, Completed, Refunded, Revenue) + marketplace stats.
  */
 function brikpanelOrdersOverviewSection() {
 	if (typeof brikpanelOrdersOverview === 'undefined') return;
 	// Hidden for this user's role (e.g. branch staff who must not see store-wide totals).
 	if (brikpanelOrdersOverview.hide_overview) return;
 
-	const $wrapper = makeElement('div', { class: 'brikpanel-overview' });
+	const i18n = brikpanelOrdersOverview.i18n || {};
+	const RANGES = [
+		{ key: 'today', label: i18n.today || '' },
+		{ key: '24h', label: i18n.last_24_hours || '' },
+		{ key: '7d', label: i18n.last_7_days || '' },
+		{ key: '30d', label: i18n.last_30_days || '' },
+	];
+	const METRICS = [
+		{ key: 'total', label: i18n.total_orders || '', revenue: false },
+		{ key: 'completed', label: i18n.completed || '', revenue: false },
+		{ key: 'refunded', label: i18n.refunded || '', revenue: false },
+		{ key: 'revenue', label: i18n.revenue || '', revenue: true },
+	];
 
-	// Skeleton / loading state
-	const $summaryCard = makeElement('div', { class: 'brikpanel-overview-summary' });
-	$summaryCard.innerHTML = `
-		<div class="brikpanel-overview-title">
-			<span class="brikpanel-overview-dot"></span>
-			<span class="brikpanel-overview-title-text"></span>
-		</div>
-		<div class="brikpanel-overview-stats">
-			<div class="brikpanel-stat skeleton"><span class="brikpanel-stat-value">—</span><span class="brikpanel-stat-label">&nbsp;</span></div>
-			<div class="brikpanel-stat skeleton"><span class="brikpanel-stat-value">—</span><span class="brikpanel-stat-label">&nbsp;</span></div>
-			<div class="brikpanel-stat skeleton"><span class="brikpanel-stat-value">—</span><span class="brikpanel-stat-label">&nbsp;</span></div>
-			<div class="brikpanel-stat skeleton"><span class="brikpanel-stat-value">—</span><span class="brikpanel-stat-label">&nbsp;</span></div>
-			<div class="brikpanel-stat skeleton"><span class="brikpanel-stat-value">—</span><span class="brikpanel-stat-label">&nbsp;</span></div>
-		</div>
-	`;
+	const STORAGE_KEY = 'brikpanelOrdersOverviewRange';
+	let currentRange = 'today';
+	try {
+		const saved = window.localStorage.getItem(STORAGE_KEY);
+		if (saved && RANGES.some(r => r.key === saved)) currentRange = saved;
+	} catch (e) { /* storage may be unavailable */ }
+
+	// Default to the "solo" (centered) layout; it switches to the left-aligned
+	// side-by-side layout only once a marketplace card is actually rendered.
+	const $wrapper = makeElement('div', { class: 'brikpanel-overview brikpanel-overview--solo' });
+	const $summaryCard = makeElement('div', { class: 'brikpanel-overview-summary is-loading' });
+
+	// Date-range picker (calendar pill + dropdown).
+	const $range = makeElement('div', { class: 'brikpanel-range' });
+	const calIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
+	const chevIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="brikpanel-range-chevron"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+	const $rangeBtn = makeElement('button', {
+		class: 'brikpanel-range-btn',
+		type: 'button',
+		'aria-haspopup': 'true',
+		'aria-expanded': 'false',
+		'aria-label': i18n.date_range || '',
+	});
+	$rangeBtn.innerHTML = `<span class="brikpanel-range-ico">${calIcon}</span><span class="brikpanel-range-label"></span>${chevIcon}`;
+	const $rangeLabel = $rangeBtn.querySelector('.brikpanel-range-label');
+
+	const $rangeMenu = makeElement('div', { class: 'brikpanel-range-menu', role: 'menu', hidden: 'hidden' });
+	RANGES.forEach(r => {
+		const $opt = makeElement('button', {
+			class: 'brikpanel-range-opt',
+			type: 'button',
+			role: 'menuitemradio',
+			'data-range': r.key,
+			'aria-checked': r.key === currentRange ? 'true' : 'false',
+		}, { textContent: r.label });
+		$opt.insertAdjacentHTML('afterbegin', '<span class="brikpanel-range-radio" aria-hidden="true"></span>');
+		$rangeMenu.append($opt);
+	});
+
+	$range.append($rangeBtn, $rangeMenu);
+
+	// Metric cards.
+	const $metrics = makeElement('div', { class: 'brikpanel-metrics' });
+	const metricEls = {};
+	METRICS.forEach((m, idx) => {
+		const $m = makeElement('div', { class: `brikpanel-metric brikpanel-metric--${m.key}` });
+		$m.innerHTML = `<span class="brikpanel-metric-label">${m.label}</span>`
+			+ `<div class="brikpanel-metric-body">`
+			+ `<span class="brikpanel-metric-value">—</span>`
+			+ `<span class="brikpanel-metric-spark">${brikpanelSparklineSvg([0, 0], m.key + idx)}</span>`
+			+ `</div>`;
+		metricEls[m.key] = {
+			value: $m.querySelector('.brikpanel-metric-value'),
+			spark: $m.querySelector('.brikpanel-metric-spark'),
+		};
+		$metrics.append($m);
+	});
+
+	$summaryCard.append($range, $metrics);
 	$wrapper.append($summaryCard);
 
-	// Insert after page header
+	// Insert after page header.
 	const $pageTop = document.querySelector('.brikpanel-page-top');
 	if ($pageTop) {
 		$pageTop.insertAdjacentElement('afterend', $wrapper);
 	}
 
-	// Fetch data
-	const body = new FormData();
-	body.append('action', 'brikpanel_orders_overview');
-	body.append('_ajax_nonce', brikpanelOrdersOverview.nonce);
+	function setRangeLabel(key) {
+		const r = RANGES.find(x => x.key === key);
+		$rangeLabel.textContent = r ? r.label : '';
+		$rangeMenu.querySelectorAll('.brikpanel-range-opt').forEach($o => {
+			$o.setAttribute('aria-checked', $o.getAttribute('data-range') === key ? 'true' : 'false');
+		});
+	}
 
-	fetch(brikpanelOrdersOverview.ajax_url, { method: 'POST', body })
-		.then(r => r.json())
-		.then(response => {
-			if (!response.success) return;
-			const { summary, marketplaces } = response.data;
+	function closeMenu() {
+		$rangeMenu.setAttribute('hidden', 'hidden');
+		$rangeBtn.setAttribute('aria-expanded', 'false');
+		$range.classList.remove('open');
+		document.removeEventListener('click', onOutside, true);
+	}
 
-			// Populate 30-day summary
-			const i18n = brikpanelOrdersOverview.i18n;
-			$summaryCard.innerHTML = '';
+	function onOutside(e) {
+		if (!$range.contains(e.target)) closeMenu();
+	}
 
-			const $title = makeElement('div', { class: 'brikpanel-overview-title' });
-			$title.innerHTML = `<span class="brikpanel-overview-dot"></span><span class="brikpanel-overview-title-text">${i18n.last_30_days}</span>`;
-			$summaryCard.append($title);
+	$rangeBtn.addEventListener('click', (e) => {
+		e.stopPropagation();
+		const isOpen = !$rangeMenu.hasAttribute('hidden');
+		if (isOpen) { closeMenu(); return; }
+		$rangeMenu.removeAttribute('hidden');
+		$rangeBtn.setAttribute('aria-expanded', 'true');
+		$range.classList.add('open');
+		document.addEventListener('click', onOutside, true);
+	});
 
-			const $stats = makeElement('div', { class: 'brikpanel-overview-stats' });
+	$rangeMenu.addEventListener('click', (e) => {
+		const $opt = e.target.closest('.brikpanel-range-opt');
+		if (!$opt) return;
+		const key = $opt.getAttribute('data-range');
+		closeMenu();
+		if (key === currentRange) return;
+		currentRange = key;
+		try { window.localStorage.setItem(STORAGE_KEY, key); } catch (err) { /* ignore */ }
+		setRangeLabel(key);
+		loadOverview(key);
+	});
 
-			const stats = [
-				{ value: summary.total, label: i18n.orders, cls: '' },
-				{ value: summary.completed, label: i18n.completed, cls: 'completed' },
-				{ value: summary.refunded, label: i18n.refunded, cls: 'refunded' },
-				{ value: summary.cancelled, label: i18n.cancelled, cls: 'cancelled' },
-				{ value: summary.revenue_formatted, label: i18n.revenue, cls: 'revenue' },
-			];
+	function renderSummary(summary) {
+		const series = summary.series || {};
+		METRICS.forEach((m, idx) => {
+			const el = metricEls[m.key];
+			if (!el) return;
+			el.value.textContent = m.revenue
+				? summary.revenue_formatted
+				: Number(summary[m.key] || 0).toLocaleString();
+			el.spark.innerHTML = brikpanelSparklineSvg(series[m.key] || [0, 0], m.key + idx);
+		});
+	}
 
-			stats.forEach(s => {
-				const $stat = makeElement('div', { class: `brikpanel-stat ${s.cls}` });
-				$stat.innerHTML = `<span class="brikpanel-stat-value">${s.value}</span><span class="brikpanel-stat-label">${s.label}</span>`;
-				$stats.append($stat);
-			});
+	function loadOverview(range) {
+		$summaryCard.classList.add('is-loading');
+		const body = new FormData();
+		body.append('action', 'brikpanel_orders_overview');
+		body.append('_ajax_nonce', brikpanelOrdersOverview.nonce);
+		body.append('range', range);
 
-			$summaryCard.append($stats);
+		fetch(brikpanelOrdersOverview.ajax_url, { method: 'POST', body })
+			.then(r => r.json())
+			.then(response => {
+				if (!response.success) { $summaryCard.classList.remove('is-loading'); return; }
+				// A newer request may have superseded this one.
+				if (response.data.range && response.data.range !== currentRange) return;
+				$summaryCard.classList.remove('is-loading');
+				renderSummary(response.data.summary);
+				renderMarketplaces(response.data.marketplaces);
+			})
+			.catch(() => { $summaryCard.classList.remove('is-loading'); });
+	}
 
+	let $mpCard = null;
+	function renderMarketplaces(marketplaces) {
+			if ($mpCard) { $mpCard.remove(); $mpCard = null; }
+			const hasMarketplaces = !!(marketplaces && marketplaces.length > 0);
+			// With a marketplace card alongside it the summary is left-aligned;
+			// on its own it is centered in the row.
+			$wrapper.classList.toggle('brikpanel-overview--solo', !hasMarketplaces);
 			// Marketplace section (only if data exists)
-			if (marketplaces && marketplaces.length > 0) {
-				const $mpCard = makeElement('div', { class: 'brikpanel-overview-marketplaces' });
+			if (hasMarketplaces) {
+				$mpCard = makeElement('div', { class: 'brikpanel-overview-marketplaces' });
 
 				const $mpTitle = makeElement('div', { class: 'brikpanel-overview-title' });
 				$mpTitle.innerHTML = `<span class="brikpanel-overview-dot marketplace"></span><span class="brikpanel-overview-title-text">${i18n.marketplaces}</span>`;
@@ -181,11 +335,11 @@ function brikpanelOrdersOverviewSection() {
 
 				$wrapper.append($mpCard);
 			}
-		})
-		.catch(() => {
-			// Remove skeleton on error
-			$wrapper.remove();
-		});
+	}
+
+	// Initial render.
+	setRangeLabel(currentRange);
+	loadOverview(currentRange);
 }
 
 /**
@@ -694,11 +848,24 @@ function brikpanelOrderNumberNamePreview() {
 		$preview.closest('.order_number').querySelector('.order-view')?.insertAdjacentElement('afterend', $preview);
 	});
 
-	// Rearrange order number table cell
+	// Lay out the order number cell. Only the order link and the preview button
+	// go into the flex row (link on the left, preview on the right). Any other
+	// content in the cell — e.g. meta that other plugins add to the order column
+	// such as an invoice number or a "Chat on WhatsApp" link — is left in normal
+	// flow below the row, so it stacks inside the column instead of being spread
+	// out by the row's space-between and mistaken for separate columns.
 	document.querySelectorAll('.wp-list-table tbody .column-order_number').forEach($cell => {
-		const $cellItems = makeElement('div', { class: 'brikpanel-order-number' }, { innerHTML: $cell.innerHTML });
-		$cell.innerHTML = '';
-		$cell.append($cellItems);
+		if ($cell.querySelector('.brikpanel-order-number')) return; // already laid out
+
+		const $view = $cell.querySelector('.order-view');
+		if (!$view) return;
+
+		const $row = makeElement('div', { class: 'brikpanel-order-number' });
+		$view.before($row);
+		$row.append($view);
+
+		const $preview = $cell.querySelector('.order-preview');
+		if ($preview) $row.append($preview);
 	});
 }
 

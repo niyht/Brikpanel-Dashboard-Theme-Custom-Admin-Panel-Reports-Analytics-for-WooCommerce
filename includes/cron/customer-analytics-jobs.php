@@ -92,6 +92,7 @@ function brikpanel_recompute_customer_metrics_handler() {
 				END AS customer_key,
 				MAX(o.customer_id) AS user_id,
 				MAX(LOWER(o.billing_email)) AS customer_email,
+				MAX((SELECT oa.phone FROM {$wpdb->prefix}wc_order_addresses oa WHERE oa.order_id = o.id AND oa.address_type = 'billing' LIMIT 1)) AS customer_phone,
 				MIN(o.date_created_gmt) AS first_order_date,
 				MAX(o.date_created_gmt) AS last_order_date,
 				COUNT(*) AS order_count,
@@ -114,6 +115,7 @@ function brikpanel_recompute_customer_metrics_handler() {
 				END AS customer_key,
 				MAX(CAST(cu_meta.meta_value AS UNSIGNED)) AS user_id,
 				MAX(LOWER(em_meta.meta_value)) AS customer_email,
+				MAX(ph_meta.meta_value) AS customer_phone,
 				MIN(o.post_date_gmt) AS first_order_date,
 				MAX(o.post_date_gmt) AS last_order_date,
 				COUNT(*) AS order_count,
@@ -123,6 +125,7 @@ function brikpanel_recompute_customer_metrics_handler() {
 			FROM {$wpdb->posts} o
 			LEFT JOIN {$wpdb->postmeta} cu_meta  ON cu_meta.post_id  = o.ID AND cu_meta.meta_key  = '_customer_user'
 			LEFT JOIN {$wpdb->postmeta} em_meta  ON em_meta.post_id  = o.ID AND em_meta.meta_key  = '_billing_email'
+			LEFT JOIN {$wpdb->postmeta} ph_meta  ON ph_meta.post_id  = o.ID AND ph_meta.meta_key  = '_billing_phone'
 			LEFT JOIN {$wpdb->postmeta} tot_meta ON tot_meta.post_id = o.ID AND tot_meta.meta_key = '_order_total'
 			WHERE o.post_type = 'shop_order'
 			  AND o.post_status IN ({$status_in})
@@ -133,11 +136,12 @@ function brikpanel_recompute_customer_metrics_handler() {
 	}
 
 	$upsert_sql = "INSERT INTO {$metrics_tb}
-		(customer_key, user_id, customer_email, first_order_date, last_order_date, order_count, total_spent, aov, recency_days)
+		(customer_key, user_id, customer_email, customer_phone, first_order_date, last_order_date, order_count, total_spent, aov, recency_days)
 		SELECT
 			agg.customer_key,
 			IFNULL(agg.user_id, 0),
 			IFNULL(agg.customer_email, ''),
+			IFNULL(agg.customer_phone, ''),
 			agg.first_order_date,
 			agg.last_order_date,
 			agg.order_count,
@@ -149,6 +153,7 @@ function brikpanel_recompute_customer_metrics_handler() {
 		ON DUPLICATE KEY UPDATE
 			user_id          = VALUES(user_id),
 			customer_email   = VALUES(customer_email),
+			customer_phone   = VALUES(customer_phone),
 			first_order_date = VALUES(first_order_date),
 			last_order_date  = VALUES(last_order_date),
 			order_count      = VALUES(order_count),

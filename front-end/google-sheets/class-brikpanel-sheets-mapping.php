@@ -25,13 +25,24 @@ class Brikpanel_Sheets_Mapping {
 	const OPT_CUSTOMERS = 'brikpanel_gs_columns_customers';
 	const OPT_PRODUCTS  = 'brikpanel_gs_columns_products';
 
+	// Trailing glyph appended to writable column headers in the sheet so a
+	// merchant can tell two-way (Sheets -> Woo) columns from display-only ones.
+	// Cosmetic: matching/writeback always key off column keys, not header text.
+	const WRITABLE_GLYPH = '⇅';
+
+	// Discovered custom order/checkout fields the merchant can opt into. Stored
+	// as a list of { syn, label, keys[] } so the catalogue can offer them as
+	// selectable columns and the row builder can resolve their value from order
+	// meta. See refresh_order_custom_fields() for how it is populated.
+	const OPT_ORDER_CUSTOM_FIELDS = 'brikpanel_gs_orders_custom_fields';
+
 	/**
 	 * Catalogue of available columns + their human label, keyed by flow.
 	 *
 	 * @return array<string, array<string, array{label:string, mandatory?:bool, default?:bool, group?:string}>>
 	 */
 	public static function catalogue() {
-		return [
+		$cat = [
 			'orders' => [
 				// Order-level
 				'order_id'             => [ 'label' => __( 'Order ID',             'brikpanel' ), 'mandatory' => true,  'default' => true,  'group' => 'order' ],
@@ -50,6 +61,8 @@ class Brikpanel_Sheets_Mapping {
 				'coupon_codes'         => [ 'label' => __( 'Coupon codes',         'brikpanel' ), 'group' => 'order' ],
 				'customer_note'        => [ 'label' => __( 'Customer note',        'brikpanel' ), 'group' => 'order' ],
 				'customer_id'          => [ 'label' => __( 'Customer user ID',     'brikpanel' ), 'group' => 'order' ],
+				'shipping_method'      => [ 'label' => __( 'Shipping method',      'brikpanel' ), 'group' => 'order' ],
+				'order_cogs_total'     => [ 'label' => __( 'Order COGS total',     'brikpanel' ), 'group' => 'order' ],
 
 				// Billing
 				'billing_first_name'   => [ 'label' => __( 'Billing first name',   'brikpanel' ), 'default' => true,  'group' => 'billing' ],
@@ -85,6 +98,7 @@ class Brikpanel_Sheets_Mapping {
 				'line_subtotal'        => [ 'label' => __( 'Line subtotal',        'brikpanel' ), 'group' => 'item' ],
 				'line_tax'             => [ 'label' => __( 'Line tax',             'brikpanel' ), 'group' => 'item' ],
 				'line_total'           => [ 'label' => __( 'Line total',           'brikpanel' ), 'default' => true, 'group' => 'item' ],
+				'line_cogs'            => [ 'label' => __( 'Line COGS (cost × qty)', 'brikpanel' ), 'group' => 'item' ],
 			],
 
 			'products' => [
@@ -96,15 +110,21 @@ class Brikpanel_Sheets_Mapping {
 				'sku'           => [ 'label' => __( 'SKU',            'brikpanel' ), 'default' => true ],
 				'name'          => [ 'label' => __( 'Name',           'brikpanel' ), 'default' => true ],
 				'variation_attributes' => [ 'label' => __( 'Variation attributes', 'brikpanel' ), 'default' => true ],
+				'short_description' => [ 'label' => __( 'Short description', 'brikpanel' ) ],
+				'description'       => [ 'label' => __( 'Description',       'brikpanel' ) ],
+				// 'price' is the derived active price (read-only); merchants edit
+				// regular/sale instead, which are writable back to Woo.
 				'price'         => [ 'label' => __( 'Price',          'brikpanel' ), 'default' => true ],
-				'regular_price' => [ 'label' => __( 'Regular price',  'brikpanel' ), 'default' => true ],
-				'sale_price'    => [ 'label' => __( 'Sale price',     'brikpanel' ), 'default' => true ],
-				// Stock is the only writable column on the reverse direction.
-				// Header is marked with a trailing arrow in headers_for() so the
-				// merchant sees at a glance which column edits flow back to Woo.
+				'regular_price' => [ 'label' => __( 'Regular price',  'brikpanel' ), 'default' => true, 'writable' => true ],
+				'sale_price'    => [ 'label' => __( 'Sale price',     'brikpanel' ), 'default' => true, 'writable' => true ],
+				'cogs'          => [ 'label' => __( 'Cost (COGS)',    'brikpanel' ), 'writable' => true ],
+				// Writable columns flow Sheets -> Woo on the reverse pull. They are
+				// marked with a trailing two-way glyph in headers_for() and badged
+				// in the settings column picker so the merchant sees at a glance
+				// which edits reach the store. Everything else is display-only.
 				'stock'         => [ 'label' => __( 'Stock',          'brikpanel' ), 'default' => true, 'writable' => true ],
 				'stock_status'  => [ 'label' => __( 'Stock status',   'brikpanel' ), 'default' => true, 'writable' => true ],
-				'status'        => [ 'label' => __( 'Status',         'brikpanel' ), 'default' => true ],
+				'status'        => [ 'label' => __( 'Status',         'brikpanel' ), 'default' => true, 'writable' => true ],
 				'permalink'     => [ 'label' => __( 'Permalink',      'brikpanel' ) ],
 			],
 
@@ -125,6 +145,15 @@ class Brikpanel_Sheets_Mapping {
 				'rfm_segment'    => [ 'label' => __( 'RFM segment',           'brikpanel' ), 'default' => true ],
 			],
 		];
+
+		// Append any custom checkout / order fields the merchant has, discovered
+		// via refresh_order_custom_fields(). Never default-selected: they live
+		// under "Show more columns" until the merchant opts in.
+		foreach ( self::order_custom_field_catalogue() as $syn => $meta ) {
+			$cat['orders'][ $syn ] = $meta;
+		}
+
+		return $cat;
 	}
 
 	/**
@@ -249,7 +278,15 @@ class Brikpanel_Sheets_Mapping {
 		$cat = self::available_columns_for( $flow );
 		$out = [];
 		foreach ( $columns as $key ) {
-			$out[] = isset( $cat[ $key ]['label'] ) ? (string) $cat[ $key ]['label'] : (string) $key;
+			$label = isset( $cat[ $key ]['label'] ) ? (string) $cat[ $key ]['label'] : (string) $key;
+			// Writable columns sync Sheets -> Woo; flag them in the header so the
+			// merchant can tell editable columns from display-only ones right in
+			// the sheet. The glyph is cosmetic only: row matching and writeback
+			// key off the saved column keys, never the header text.
+			if ( ! empty( $cat[ $key ]['writable'] ) ) {
+				$label .= ' ' . self::WRITABLE_GLYPH;
+			}
+			$out[] = $label;
 		}
 		return $out;
 	}
@@ -291,5 +328,319 @@ class Brikpanel_Sheets_Mapping {
 	public static function is_writable( $flow, $column_key ) {
 		$cat = self::available_columns_for( $flow );
 		return ! empty( $cat[ $column_key ]['writable'] );
+	}
+
+	// =========================================================================
+	// Custom order / checkout field discovery
+	// =========================================================================
+
+	/**
+	 * The stored list of discovered custom order fields.
+	 *
+	 * @return array<int, array{syn:string, label:string, keys:string[]}>
+	 */
+	private static function order_custom_fields_raw() {
+		$stored = get_option( self::OPT_ORDER_CUSTOM_FIELDS, [] );
+		if ( ! is_array( $stored ) ) {
+			return [];
+		}
+		$out = [];
+		foreach ( $stored as $entry ) {
+			if ( ! is_array( $entry ) || empty( $entry['syn'] ) || empty( $entry['keys'] ) ) {
+				continue;
+			}
+			$keys = array_values( array_filter( array_map( 'strval', (array) $entry['keys'] ) ) );
+			if ( empty( $keys ) ) {
+				continue;
+			}
+			$out[] = [
+				'syn'   => (string) $entry['syn'],
+				'label' => isset( $entry['label'] ) ? (string) $entry['label'] : $keys[0],
+				'keys'  => $keys,
+			];
+		}
+		return $out;
+	}
+
+	/**
+	 * Catalogue entries (keyed by synthetic column key) for the discovered
+	 * custom order fields. Merged into the orders flow by catalogue().
+	 *
+	 * @return array<string, array{label:string, group:string}>
+	 */
+	public static function order_custom_field_catalogue() {
+		$out = [];
+		foreach ( self::order_custom_fields_raw() as $entry ) {
+			$out[ $entry['syn'] ] = [
+				'label' => $entry['label'],
+				'group' => 'custom',
+			];
+		}
+		return $out;
+	}
+
+	/**
+	 * The order-meta key candidates for a synthetic custom-field column key.
+	 * The row builder tries each in turn and uses the first non-empty value,
+	 * which absorbs the two storage conventions checkout plugins use (the bare
+	 * field key vs an underscore-prefixed copy).
+	 *
+	 * @param string $syn
+	 * @return string[]
+	 */
+	public static function order_custom_field_keys( $syn ) {
+		foreach ( self::order_custom_fields_raw() as $entry ) {
+			if ( $entry['syn'] === $syn ) {
+				return $entry['keys'];
+			}
+		}
+		return [];
+	}
+
+	/**
+	 * Stable, sanitize_key-safe synthetic column key for a custom field. Keyed
+	 * off the primary meta key so the same field always resolves to the same
+	 * column (a merchant's saved selection survives a re-scan).
+	 *
+	 * @param string $primary_key
+	 * @return string
+	 */
+	private static function custom_field_syn( $primary_key ) {
+		return 'cf_' . substr( md5( (string) $primary_key ), 0, 12 );
+	}
+
+	/**
+	 * Discover custom checkout / order fields and persist them so they appear in
+	 * the column picker. Two sources, merged and de-duplicated by meta key:
+	 *
+	 *   1. WooCommerce's checkout field registry (classic checkout + the block
+	 *      "Additional fields" API) minus the core fields BrikPanel already maps
+	 *      as first-class columns. This is the authoritative source for "fields
+	 *      added in WooCommerce settings".
+	 *   2. A scan of the order-meta keys actually present on this store, with the
+	 *      known WooCommerce/WordPress/BrikPanel internals filtered out. This
+	 *      catches values written by plugins that register their field only on
+	 *      the front-end checkout (so step 1 would miss them in admin).
+	 *
+	 * Previously-discovered fields are kept even if a later scan no longer sees
+	 * them, so a column the merchant selected never silently disappears.
+	 *
+	 * Safe to call on every settings-page render; it is a couple of cheap
+	 * queries and a single option write only when the set actually changed.
+	 *
+	 * @return void
+	 */
+	public static function refresh_order_custom_fields() {
+		$by_primary = [];
+
+		// Seed with previously-discovered fields the merchant has actually
+		// SELECTED, so their column choice never disappears on a re-scan. Fields
+		// that were discovered before but never selected are intentionally not
+		// carried forward: the fresh scan below re-adds them only if they still
+		// qualify, which is what prunes entries a tightened denylist now rejects.
+		$selected = (array) get_option( self::OPT_ORDERS, [] );
+		foreach ( self::order_custom_fields_raw() as $entry ) {
+			if ( in_array( $entry['syn'], $selected, true ) ) {
+				$by_primary[ $entry['keys'][0] ] = $entry;
+			}
+		}
+
+		// --- Source 1: WooCommerce checkout field registry ---
+		$core_field_keys = self::core_checkout_field_keys();
+		if ( function_exists( 'WC' ) && WC() && method_exists( WC(), 'checkout' ) ) {
+			try {
+				$groups = WC()->checkout()->get_checkout_fields();
+				foreach ( (array) $groups as $group_fields ) {
+					foreach ( (array) $group_fields as $field_key => $def ) {
+						$field_key = (string) $field_key;
+						if ( $field_key === '' || in_array( $field_key, $core_field_keys, true ) ) {
+							continue;
+						}
+						$label = is_array( $def ) && ! empty( $def['label'] ) ? (string) $def['label'] : self::humanize_meta_key( $field_key );
+						// Field value may be stored bare or underscore-prefixed.
+						$keys  = array_values( array_unique( [ $field_key, '_' . ltrim( $field_key, '_' ) ] ) );
+						self::merge_custom_field( $by_primary, $field_key, $label, $keys );
+					}
+				}
+			} catch ( \Throwable $e ) {
+				// Non-fatal — fall through to the meta scan.
+			}
+		}
+
+		// --- Source 2: order-meta key scan ---
+		foreach ( self::scan_order_meta_keys() as $meta_key ) {
+			if ( self::is_internal_order_meta_key( $meta_key ) ) {
+				continue;
+			}
+			self::merge_custom_field( $by_primary, $meta_key, self::humanize_meta_key( $meta_key ), [ $meta_key ] );
+		}
+
+		// Sort by label for a stable, readable picker order.
+		$list = array_values( $by_primary );
+		usort( $list, function ( $a, $b ) {
+			return strcasecmp( $a['label'], $b['label'] );
+		} );
+
+		/**
+		 * Final say over the discovered custom-order-field list. Lets a site add
+		 * a field its plugin only registers on the front-end checkout, or drop
+		 * ones it does not want offered.
+		 *
+		 * @param array $list [{syn,label,keys[]}]
+		 */
+		$list = apply_filters( 'brikpanel_gs_order_custom_fields', $list );
+
+		update_option( self::OPT_ORDER_CUSTOM_FIELDS, is_array( $list ) ? $list : [], false );
+	}
+
+	/**
+	 * Merge one discovered field into the working set keyed by primary meta key.
+	 * If a field with the same primary key already exists, its key-candidate
+	 * list is extended (so both storage conventions stay covered) but its
+	 * synthetic key and existing label are preserved.
+	 */
+	private static function merge_custom_field( array &$by_primary, $primary_key, $label, array $keys ) {
+		$primary_key = (string) $primary_key;
+		if ( $primary_key === '' ) {
+			return;
+		}
+		if ( isset( $by_primary[ $primary_key ] ) ) {
+			$merged = array_values( array_unique( array_merge( $by_primary[ $primary_key ]['keys'], $keys ) ) );
+			$by_primary[ $primary_key ]['keys'] = $merged;
+			return;
+		}
+		$by_primary[ $primary_key ] = [
+			'syn'   => self::custom_field_syn( $primary_key ),
+			'label' => (string) $label,
+			'keys'  => array_values( array_unique( $keys ) ),
+		];
+	}
+
+	/**
+	 * Core checkout field keys that are already exposed as first-class order
+	 * columns (billing/shipping name, address, email, phone, order notes). These
+	 * are excluded from the custom-field picker so it only surfaces extras.
+	 *
+	 * @return string[]
+	 */
+	private static function core_checkout_field_keys() {
+		return [
+			'billing_first_name', 'billing_last_name', 'billing_company', 'billing_country',
+			'billing_address_1', 'billing_address_2', 'billing_city', 'billing_state',
+			'billing_postcode', 'billing_phone', 'billing_email',
+			'shipping_first_name', 'shipping_last_name', 'shipping_company', 'shipping_country',
+			'shipping_address_1', 'shipping_address_2', 'shipping_city', 'shipping_state',
+			'shipping_postcode', 'shipping_phone',
+			'account_password', 'account_username', 'order_comments',
+		];
+	}
+
+	/**
+	 * Distinct order-meta keys present on this store (HPOS-aware, capped to keep
+	 * the query cheap). Returns [] on any failure.
+	 *
+	 * @return string[]
+	 */
+	private static function scan_order_meta_keys() {
+		global $wpdb;
+		$is_hpos = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+		if ( $is_hpos && ! empty( $wpdb->prefix ) ) {
+			$table = $wpdb->prefix . 'wc_orders_meta';
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$keys = $wpdb->get_col( "SELECT DISTINCT meta_key FROM {$table} ORDER BY meta_key LIMIT 500" );
+			if ( is_array( $keys ) && ! empty( $keys ) ) {
+				return array_map( 'strval', $keys );
+			}
+			// HPOS on but meta table empty/missing — fall through to postmeta.
+		}
+		$keys = $wpdb->get_col( $wpdb->prepare(
+			"SELECT DISTINCT pm.meta_key
+			 FROM {$wpdb->postmeta} pm
+			 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+			 WHERE p.post_type = %s
+			 ORDER BY pm.meta_key
+			 LIMIT 500",
+			'shop_order'
+		) );
+		return is_array( $keys ) ? array_map( 'strval', $keys ) : [];
+	}
+
+	/**
+	 * Whether an order-meta key is a WooCommerce / WordPress / BrikPanel
+	 * internal that should never be offered as an exportable custom field.
+	 *
+	 * @param string $key
+	 * @return bool
+	 */
+	private static function is_internal_order_meta_key( $key ) {
+		$key = (string) $key;
+		if ( $key === '' ) {
+			return true;
+		}
+
+		// Prefixes that are unambiguously internal/derived: our own + WooCommerce
+		// /WordPress internals + the metadata families that well-known
+		// integrations (marketplaces, analytics, shipping/tax plugins) write to
+		// every order. These are machine fields, never something a merchant would
+		// hand-add at checkout, so they only clutter the picker.
+		$prefixes = [
+			// BrikPanel / brksoft own meta + demo data.
+			'_brikpanel', '_brksoft', '_bp_dyn',
+			// WooCommerce / WordPress core + derived.
+			'_wc_order_attribution', '_wp_', '_edit_',
+			'_order_', '_billing_address_index', '_shipping_address_index',
+			'_cogs_', '_recorded_', '_refund', '_refunded',
+			// Marketplace / channel import metadata.
+			'_amz', '_n11', '_ozon', '_trendyol', '_dokan',
+			'_shopee', '_lazada', '_etsy', '_ebay', '_hepsiburada',
+			// Analytics / pixel plugins (PixelYourSite, etc.).
+			'pys_', '_pys', '_pixel',
+			// Misc plugin internals seen in the wild.
+			'_gzd', '_deleted_from', '_awcfe', '_kargo', '_additional_costs',
+			'paytr', '_paytr', '_stripe', '_ppcp', '_paypal',
+		];
+		$prefixes = apply_filters( 'brikpanel_gs_order_custom_field_denylist', $prefixes );
+		foreach ( (array) $prefixes as $p ) {
+			if ( $p !== '' && strpos( $key, (string) $p ) === 0 ) {
+				return true;
+			}
+		}
+
+		// Exact WooCommerce core order-meta keys (legacy CPT storage + internals).
+		static $exact = null;
+		if ( $exact === null ) {
+			$exact = array_flip( [
+				'_order_key', '_customer_user', '_order_currency', '_prices_include_tax',
+				'_order_version', '_cart_hash', '_created_via', '_date_paid', '_date_completed',
+				'_paid_date', '_completed_date', '_order_stock_reduced', '_download_permissions_granted',
+				'_new_order_email_sent', '_payment_method', '_payment_method_title', '_transaction_id',
+				'_customer_ip_address', '_customer_user_agent', '_order_total', '_order_tax',
+				'_order_shipping', '_order_shipping_tax', '_cart_discount', '_cart_discount_tax',
+				'is_vat_exempt',
+				'shipping_fee_recipient', 'tax_fee_recipient', 'shipping_tax_fee_recipient',
+			] );
+		}
+		return isset( $exact[ $key ] );
+	}
+
+	/**
+	 * Turn a raw meta/field key into a readable column label:
+	 * "_delivery_date" → "Delivery date", "wc/gift_message" → "Gift message".
+	 *
+	 * @param string $key
+	 * @return string
+	 */
+	private static function humanize_meta_key( $key ) {
+		$key = (string) $key;
+		$key = ltrim( $key, '_' );
+		$key = str_replace( [ '/', '-', '.' ], ' ', $key );
+		$key = str_replace( '_', ' ', $key );
+		$key = trim( preg_replace( '/\s+/', ' ', $key ) );
+		if ( $key === '' ) {
+			return __( 'Custom field', 'brikpanel' );
+		}
+		return function_exists( 'mb_convert_case' )
+			? mb_convert_case( $key, MB_CASE_TITLE, 'UTF-8' )
+			: ucwords( $key );
 	}
 }

@@ -86,6 +86,24 @@ class Brikpanel_Ads_Sync {
 		if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
 			return;
 		}
+
+		// Passive until connected: the daily sync only has something to do once
+		// at least one ad platform is connected. With no connection we make sure
+		// no recurring job is sitting in the queue — this both avoids a pointless
+		// daily tick and cleans up a job left over from an older build that
+		// scheduled unconditionally on install. The schedule is (re)created the
+		// moment a platform is connected, since connecting hits an admin request
+		// and this runs on `init`.
+		$connected = Brikpanel_Ads_Tokens::is_connected( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE )
+			|| Brikpanel_Ads_Tokens::is_connected( Brikpanel_Ads_Tokens::PLATFORM_META );
+
+		if ( ! $connected ) {
+			if ( Brikpanel_Cron::is_scheduled( self::HOOK_DAILY ) ) {
+				Brikpanel_Cron::cancel( self::HOOK_DAILY );
+			}
+			return;
+		}
+
 		Brikpanel_Cron::schedule_recurring( self::HOOK_DAILY, self::DAILY_INTERVAL_SECONDS, [], HOUR_IN_SECONDS );
 	}
 

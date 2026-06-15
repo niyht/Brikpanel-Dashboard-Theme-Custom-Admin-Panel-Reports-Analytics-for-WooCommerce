@@ -211,6 +211,9 @@
         $('#bpe-add-cat-toggle').on('click', function (e) { e.preventDefault(); toggleSection($('#bpe-new-cat-section')); });
         $('#bpe-add-cat-btn').on('click', addCategory);
 
+        $('#bpe-add-brand-toggle').on('click', function (e) { e.preventDefault(); toggleSection($('#bpe-new-brand-section')); });
+        $('#bpe-add-brand-btn').on('click', addBrand);
+
         $('.brikpanel-pe-var-template').on('click', function () { selectTemplate($(this).data('template')); });
         $('#bpe-var-back').on('click', function () { showVarStep(1); });
         $('#bpe-var-back-2').on('click', function () { captureVarTableInputs(); showVarStep(2); });
@@ -435,12 +438,23 @@
         // toggle is on — each variation row already carries its own price,
         // sale schedule, stock qty, stock status and SKU, so the top-level
         // fields are dead inputs in that mode and must not block submit.
-        // Also hide the Product attributes (specs) card so users don't get
-        // confused between variation attributes and spec attributes — the
-        // variations wizard handles attribute editing in that mode.
+        // The Product attributes (specs) card stays visible for variable
+        // products too: a variable product commonly needs descriptive/tag
+        // attributes (e.g. "Occasion", "Material") that are NOT used for
+        // variations, alongside the variation attributes (Size, Color) the
+        // variations wizard manages. The two are independent (is_variation
+        // false vs true) and are merged on save.
         function syncVariableMode() {
             var isVar = $('#bpe-var-toggle').is(':checked');
-            $('#bpe-pricing-card, #bpe-inventory-card, #bpe-gtin-card, #bpe-attr-card').toggle(!isVar);
+            $('#bpe-pricing-card, #bpe-inventory-card, #bpe-gtin-card').toggle(!isVar);
+            // When the product-type dropdown is the source of truth, the inline
+            // "does this product have sizes/colors?" toggle row inside the
+            // variations card is hidden. For a simple product that would leave
+            // the whole card visually empty, so hide it unless variable mode is
+            // active. When the inline toggle row is visible (selector disabled)
+            // the card must always stay shown — it holds that toggle.
+            var toggleRowHidden = $('#bpe-var-toggle-row').css('display') === 'none';
+            $('#bpe-var-card').toggle(isVar || !toggleRowHidden);
         }
         $('#bpe-var-toggle').on('change', syncVariableMode);
         syncVariableMode();
@@ -737,9 +751,13 @@
     }
 
     function initCategorySearch() {
-        $('#bpe-cat-search').on('input', function () {
+        // Scope each search box to its own wrapper so the Category search and
+        // the Brand search (which share .brikpanel-pe-cat-* classes) never
+        // filter each other's lists.
+        $('#bpe-cat-search, #bpe-brand-search').on('input', function () {
             var q = this.value.toLowerCase();
-            $('.brikpanel-pe-cat-tree li').each(function () {
+            var $wrap = $(this).closest('.brikpanel-pe-cat-wrap');
+            $wrap.find('.brikpanel-pe-cat-tree li').each(function () {
                 var name = $(this).data('name') || '';
                 var match = name.indexOf(q) !== -1 || q === '';
                 $(this).toggle(match);
@@ -806,6 +824,63 @@
         }).fail(function () {
             $btn.prop('disabled', false);
             showToast('Error', 'error');
+        });
+    }
+
+    function addBrand() {
+        var $btn = $('#bpe-add-brand-btn');
+        if ($btn.prop('disabled')) return;
+
+        var name = $.trim($('#bpe-new-brand-name').val());
+        // The parent select only exists for hierarchical brand taxonomies.
+        var parent = parseInt($('#bpe-new-brand-parent').val(), 10) || 0;
+        if (!name) return;
+
+        // Preserve the current client-side selection across the re-render.
+        var selected = $('input[name="brand_ids[]"]:checked').map(function () {
+            return this.value;
+        }).get();
+
+        $btn.prop('disabled', true);
+        $.post(PE.ajax_url, {
+            action: 'brikpanel_add_brand',
+            security: PE.nonce,
+            name: name,
+            parent: parent,
+            selected_ids: selected
+        }, function (r) {
+            $btn.prop('disabled', false);
+            if (!r.success) {
+                showToast((r.data && r.data.message) || (PE.i18n.error || 'Error'), 'error');
+                return;
+            }
+            var d = r.data;
+
+            $('#bpe-brand-list').html(d.checklist_html);
+
+            // Rebuild parent dropdown (hierarchical taxonomies only) while
+            // keeping the "— No parent —" sentinel and prior selection.
+            var $select = $('#bpe-new-brand-parent');
+            if ($select.length && d.options_html) {
+                var prevParent = $select.val();
+                $select.find('option').not('[value="0"]').remove();
+                $select.append(d.options_html);
+                if (prevParent && $select.find('option[value="' + prevParent + '"]').length) {
+                    $select.val(prevParent);
+                } else {
+                    $select.val('0');
+                }
+            }
+
+            $('#bpe-new-brand-name').val('').focus();
+
+            var $search = $('#bpe-brand-search');
+            if ($search.val()) $search.trigger('input');
+
+            showToast(PE.i18n.brand_added || 'Brand added', 'success');
+        }).fail(function () {
+            $btn.prop('disabled', false);
+            showToast(PE.i18n.error || 'Error', 'error');
         });
     }
 
@@ -1245,19 +1320,18 @@
             var $selectWrap = $('<div class="brikpanel-pe-attr-select-wrap">');
             var $select = $('<select class="brikpanel-pe-attr-select"><option value="">' + (PE.i18n.select_attribute || 'Select existing attribute...') + '</option></select>');
             globalAttrs.forEach(function (a) {
-                $select.append('<option value="' + esc(a.name) + '" data-taxonomy="' + esc(a.taxonomy || '') + '" data-terms=\'' + JSON.stringify(a.terms) + '\'>' + esc(a.name) + '</option>');
+                $select.append('<option value="' + esc(a.name) + '" data-taxonomy="' + esc(a.taxonomy || '') + '">' + esc(a.name) + '</option>');
             });
             $select.on('change', function () {
                 var name = this.value;
                 if (!name) return;
                 var $opt = $(this).find(':selected');
                 var taxonomy = $opt.data('taxonomy') || '';
-                var rawTerms = $opt.data('terms');
-                var terms = Array.isArray(rawTerms) ? rawTerms : [];
-                if (typeof rawTerms === 'string') { try { terms = JSON.parse(rawTerms); } catch (e) { terms = []; } }
                 // Prevent duplicate
                 if ($('#bpe-custom-attrs-list .brikpanel-pe-tag-group[data-attr-name="' + name + '"]').length) { this.value = ''; return; }
-                $('#bpe-custom-attrs-list').append(createTagGroup(name, terms, taxonomy));
+                // Empty value list — terms are added via the tag-input typeahead,
+                // not pre-populated (large taxonomies would otherwise hang the UI).
+                $('#bpe-custom-attrs-list').append(createTagGroup(name, [], taxonomy));
                 this.value = '';
             });
             $selectWrap.append($select);
@@ -1377,11 +1451,12 @@
             if (!name) return;
             var $opt = $(this).find(':selected');
             var taxonomy = $opt.attr('data-taxonomy') || '';
-            var rawTerms = $opt.attr('data-terms');
-            var terms = [];
-            if (rawTerms) { try { terms = JSON.parse(rawTerms) || []; } catch (e) { terms = []; } }
             if (attributeExistsInList(name)) { this.value = ''; return; }
-            $list.append(createAttributeRow(name, terms, taxonomy));
+            // Start with an empty value list: the typeahead inside the tag input
+            // lets the user pick the terms they actually want. Pre-populating
+            // every available term locks up the browser on large taxonomies
+            // (e.g. a 6k-term `author` attribute).
+            $list.append(createAttributeRow(name, [], taxonomy));
             this.value = '';
             state.dirty = true;
         });
@@ -1540,6 +1615,30 @@
         });
         renderVarTable();
         showVarStep(3);
+        fetchVariationPreviews();
+    }
+
+    /* Pull the 3rd-party per-variation field structure for not-yet-saved rows
+       so the "More fields" expander shows before the first save. No-op when no
+       provider plugin is registered (server returns an empty map) or when every
+       row already has a real ID. Re-renders once the HTML arrives. */
+    function fetchVariationPreviews() {
+        var newCount = 0;
+        state.variations.forEach(function (v) { if (!v.id) newCount++; });
+        if (!newCount) return;
+        var pid = $('#bpe-product-id').val() || 0;
+        if (!pid) return; // the auto-draft id is needed to parent the stub variation
+        $.post(PE.ajax_url, {
+            action: 'brikpanel_pe_preview_variation_fields',
+            security: PE.nonce,
+            product_id: pid,
+            count: state.variations.length
+        }).done(function (r) {
+            if (r && r.success && r.data && r.data.extras && !$.isEmptyObject(r.data.extras)) {
+                state.previewExtras = r.data.extras;
+                renderVarTable();
+            }
+        });
     }
 
     function genCombinations(attrs) {
@@ -1574,6 +1673,29 @@
         return null;
     }
 
+    /* After a successful save the server's variation list is authoritative:
+       it is exactly what was just persisted, with real IDs, attributes and the
+       per-variation 3rd-party field map. Adopt it wholesale so brand-new
+       variations pick up their IDs — and therefore their "More fields"
+       expander — without a page reload. Matching by attribute signature is
+       deliberately avoided: a "custom" attribute may resolve to an existing
+       taxonomy on save (e.g. a "Size" label saved under pa_beden), so the
+       client key and server key differ and any signature match would miss. */
+    function adoptSavedVariations(savedVars, extras, silent) {
+        if (!Array.isArray(savedVars)) return;
+        productData.variation_extras = extras || {};
+        productData.variations = savedVars;
+        // Background auto-save runs behind the user's back — never disturb the
+        // live table/state mid-edit. The fresh productData is enough for the
+        // next manual render to be correct.
+        if (silent) return;
+        state.variations = savedVars.map(function (v) { return $.extend(true, {}, v); });
+        var $tableStep = $('.brikpanel-pe-var-step[data-step="3"]');
+        if ($tableStep.length && $tableStep.is(':visible') && state.variations.length) {
+            renderVarTable();
+        }
+    }
+
     function renderVarTable() {
         var $tb = $('#bpe-var-table-body').empty(), sep = PE.decimal_sep || ',';
         var hasCogs   = productData.cogs_enabled || false;
@@ -1591,6 +1713,7 @@
             if (vendorOpts[pi].id === parentVendorId) { parentVendorName = vendorOpts[pi].name; break; }
         }
         var extras = productData.variation_extras || {};
+        var previewExtras = state.previewExtras || {};
         // colspan for the extras row — main row has 9 base cols + optional gtin + optional tax class + optional cogs + optional vendor + expander + delete
         var baseCols = 10 + (hasGtin ? 1 : 0) + (hasTax ? 1 : 0) + (hasShipping ? 1 : 0) + (hasCogs ? 1 : 0) + (hasVendor ? 1 : 0) + 2; // 10 base (incl. Track) +1 expander toggle, +1 delete cell
         state.variations.forEach(function (v, idx) {
@@ -1662,7 +1785,14 @@
                     '<label class="brikpanel-pe-radio"><input type="radio" name="var-backorders-' + idx + '" value="notify"' + (varBackVal === 'notify' ? ' checked' : '') + '><span>' + esc(PE.i18n.backorder_notify || 'Allow and notify customer') + '</span></label>' +
                     '</div></div></td></tr>';
             }
-            var hasExtra = v.id && extras[v.id];
+            // Saved variations read their real per-variation 3rd-party fields
+            // (keyed by variation ID). Variations not yet persisted fall back to
+            // the preview HTML (keyed by row index) so the expander works before
+            // the first save; the loop index matches the save-time mapping.
+            var extraHtml = (v.id && extras[v.id]) ? extras[v.id]
+                : (!v.id && previewExtras[idx]) ? previewExtras[idx]
+                : '';
+            var hasExtra = !!extraHtml;
             var expanderTd = hasExtra
                 ? '<td class="var-expand-cell"><button type="button" class="var-expand-btn" data-idx="' + idx + '" aria-label="' + esc(PE.i18n.more_fields || 'More fields') + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button></td>'
                 : '<td class="var-expand-cell"></td>';
@@ -1694,7 +1824,7 @@
             if (hasExtra) {
                 $tb.append('<tr class="var-extras-row" data-idx="' + idx + '" data-variation-id="' + v.id + '" hidden>' +
                     '<td colspan="' + baseCols + '" class="var-extras-cell">' +
-                    '<div class="brikpanel-pe-var-extras">' + extras[v.id] + '</div>' +
+                    '<div class="brikpanel-pe-var-extras">' + extraHtml + '</div>' +
                     '</td></tr>');
             }
         });
@@ -2018,6 +2148,14 @@
         var cats = []; $('input[name="category_ids[]"]:checked').each(function () { cats.push($(this).val()); });
         data.category_ids = cats.join(',');
 
+        // Brand IDs — only sent when the brand section is rendered. Omitting
+        // the field tells the server to leave existing brand assignments
+        // untouched rather than clearing them.
+        if ($('#bpe-brand-list').length) {
+            var brands = []; $('input[name="brand_ids[]"]:checked').each(function () { brands.push($(this).val()); });
+            data.brand_ids = brands.join(',');
+        }
+
         // Tags
         data.tag_names = state.tags.join(',');
 
@@ -2171,12 +2309,13 @@
         });
         data.__flat_extra_pairs = flattened;
 
-        // Send the non-variation (spec) attributes only when the section is
-        // visible. We hide it when the variations toggle is on (specs are
-        // managed elsewhere in that mode), so omitting the key tells the
-        // server "section not posted — leave existing attributes alone" and
-        // toggling variations on/off does not wipe spec data.
-        if ($('#bpe-attr-card').length && !$('#bpe-var-toggle').is(':checked')) {
+        // Send the non-variation (spec) attributes whenever the card is on the
+        // page. It is shown for both simple and variable products now, so its
+        // contents (descriptive/tag attributes like "Occasion") are always
+        // posted; the server merges them with any variation attributes. If the
+        // card markup is absent entirely we omit the key, which tells the
+        // server "section not posted — leave existing attributes alone".
+        if ($('#bpe-attr-card').length) {
             data.non_variation_attributes = JSON.stringify(collectNonVariationAttributes());
         }
 
@@ -2260,6 +2399,11 @@
                 // just-saved title/description/keyword/content. Deferred so it
                 // reads the product id this handler may set just below.
                 if (typeof PE._surerankAnalyze === 'function') { setTimeout(PE._surerankAnalyze, 0); }
+                // Adopt the freshly-saved variation IDs + per-variation 3rd-party
+                // fields so the "More fields" expander appears for variations that
+                // were just created (new product, or rows added this session)
+                // without forcing a full page reload.
+                if (r.data.variations) { adoptSavedVariations(r.data.variations, r.data.variation_extras || {}, silent); }
                 if (r.data.product_id) {
                     $('#bpe-product-id').val(r.data.product_id);
                     // Keep the auto-save gate in sync: a product becomes live

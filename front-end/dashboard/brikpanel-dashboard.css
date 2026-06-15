@@ -771,6 +771,13 @@
     text-transform: capitalize;
 }
 
+.brikpanel-dash-total-base {
+    margin-top: 0.125rem;
+    font-size: 0.6875rem;
+    color: #8a8a8a;
+    white-space: nowrap;
+}
+
 .brikpanel-dash-status.completed,
 .brikpanel-dash-status.processing {
     background: #e4f5e1;

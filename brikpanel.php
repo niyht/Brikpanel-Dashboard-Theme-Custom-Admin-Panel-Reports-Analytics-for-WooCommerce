@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.1.15
+ * Version: 3.1.28
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.1.15');
+define('BRIKPANEL_VERSION', '3.1.28');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -184,6 +184,14 @@ add_filter('wc_order_statuses', function ($statuses) {
 });
 
 // =============================================================================
+// USER-DEFINED CUSTOM ORDER STATUSES (settings UI + global registration)
+//
+// Loaded outside brikpanel_init_admin() so the statuses register on the front
+// end too (checkout/programmatic orders), not only inside wp-admin.
+// =============================================================================
+require_once BRIKPANEL_PATH . 'front-end/order-statuses/brikpanel-order-statuses.php';
+
+// =============================================================================
 // LOAD TEXT DOMAIN
 // =============================================================================
 function brikpanel_load_textdomain() {
@@ -209,6 +217,7 @@ function brikpanel_init_admin() {
     require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard.php';
     require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-section-order.php';
     require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-topbar.php';
+    require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-topbar-items.php';
     require_once BRIKPANEL_PATH . 'front-end/master-switch/brikpanel-master-switch.php';
     if ( get_option( 'brikpanel_modern_navigation', 'yes' ) !== 'no' ) {
         require_once BRIKPANEL_PATH . 'front-end/navigation/brikpanel-navigation.php';
@@ -220,6 +229,8 @@ function brikpanel_init_admin() {
     require_once BRIKPANEL_PATH . 'front-end/search/brikpanel-search.php';
     require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-orders.php';
     require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-orders-stats.php';
+    require_once BRIKPANEL_PATH . 'front-end/currency/brikpanel-currency-settings.php';
+    require_once BRIKPANEL_PATH . 'front-end/order/brikpanel-order-fields.php';
     require_once BRIKPANEL_PATH . 'front-end/import-export/brikpanel-import-export.php';
     require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-section-order.php';
     require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-qe-order.php';
@@ -264,6 +275,12 @@ function brikpanel_suppress_foreign_notices() {
     if (get_option('brikpanel_hide_foreign_notices', 'yes') !== 'yes') {
         return;
     }
+
+    // Opt-in: also pull red error notices into the bell. Off by default — error
+    // notices usually mean something is broken, so they stay on screen unless
+    // the store owner deliberately turns this on.
+    $hide_errors = get_option('brikpanel_hide_error_notices', 'no') === 'yes';
+
     // Notices *are* suppressed on our own WC settings tab too. The tab
     // replaces WooCommerce's generic "Your settings have been saved" with
     // a branded `.brikpanel-notice` variant (registered below) so the
@@ -280,7 +297,7 @@ function brikpanel_suppress_foreign_notices() {
     $capture = function () {
         ob_start();
     };
-    $flush = function () use (&$collected, &$count) {
+    $flush = function () use (&$collected, &$count, $hide_errors) {
         $html = ob_get_clean();
         if (is_string($html) && $html !== '') {
             // Separate foreign notice blocks from BrikPanel's own while
@@ -321,10 +338,52 @@ function brikpanel_suppress_foreign_notices() {
                     }
                 }
                 // $pos is now right after the matching </div>.
-                $block = substr($html, $start, $pos - $start);
+                $block    = substr($html, $start, $pos - $start);
+                $open_tag = $m[0][0];
 
-                // BrikPanel's own notices stay inline and always visible.
-                if (strpos($block, 'brikpanel-notice') !== false) {
+                // WordPress prints JS-controlled "control" notices on the
+                // admin_notices hook that are not real messages: the
+                // autosave/heartbeat "Connection lost. Saving has been
+                // disabled…" banner (#lost-connection-notice) and the
+                // local-storage warning (#local-storage-notice). They ship
+                // hidden and core JS shows or re-hides them exactly when
+                // relevant. Any notice still carrying the `hidden` class is in
+                // the same boat. Leave them untouched and in place — collecting
+                // or restyling them would either bury a genuine "saving is
+                // disabled" warning or surface it when nothing is wrong.
+                $is_control_notice =
+                    preg_match('#\bid=(["\'])(?:lost-connection-notice|local-storage-notice)\1#i', $open_tag)
+                    || preg_match('#\bclass=(["\'])[^"\']*\bhidden\b[^"\']*\1#i', $open_tag);
+
+                // Error notices (the red ones) flag something genuinely broken,
+                // so they stay on screen instead of being tucked behind the
+                // bell. Matched on the exact `notice-error` (modern) or legacy
+                // `error` class token, not a loose substring.
+                $is_error_notice = false;
+                if (!$hide_errors && preg_match('#\bclass=(["\'])([^"\']*)\1#i', $open_tag, $cm)) {
+                    $classes = preg_split('#\s+#', trim($cm[2]));
+                    $is_error_notice = in_array('notice-error', $classes, true)
+                        || in_array('error', $classes, true);
+                }
+
+                // Empty notice shells (no text and no media/controls) carry
+                // nothing to show — collecting them would render a blank row in
+                // the bell or the non-topbar reveal box. WordPress adds the
+                // dismiss button client-side, so server markup is genuinely
+                // empty here. Leave them in place for whatever script may fill
+                // them, exactly like control notices.
+                $is_empty_notice = false;
+                if (!$is_control_notice && !$is_error_notice
+                    && function_exists('wp_strip_all_tags')) {
+                    $is_empty_notice = trim(wp_strip_all_tags($block)) === ''
+                        && !preg_match('#<(?:img|svg|input|select|textarea|button)\b#i', $block)
+                        && !preg_match('#<a\b[^>]*\shref=#i', $block);
+                }
+
+                if ($is_control_notice || $is_error_notice || $is_empty_notice
+                    || strpos($block, 'brikpanel-notice') !== false) {
+                    // Error/control/empty notices and BrikPanel's own notices
+                    // stay inline and exactly where WordPress put them.
                     $out .= $block;
                 } else {
                     // Everything else is stashed behind the reveal toggle.
@@ -335,7 +394,6 @@ function brikpanel_suppress_foreign_notices() {
                     // `inline` so core leaves it nested where we put it. The
                     // `notice` class itself is kept intact, so dismiss buttons
                     // and the plugin's own scripts keep working.
-                    $open_tag = $m[0][0];
                     $marked   = preg_replace('#\bclass=(["\'])([^"\']*)\1#i', 'class=$1$2 inline$1', $open_tag, 1);
                     $collected .= $marked . substr($block, strlen($open_tag));
                     $count++;
@@ -373,14 +431,29 @@ function brikpanel_suppress_foreign_notices() {
     // buffer (e.g. printed inside .wrap after the hook) is hidden via CSS.
     // Skip on Network Admin so core super-admin alerts stay visible.
     if ( ! is_network_admin() ) {
-        add_action('admin_head', function () {
+        add_action('admin_head', function () use ($hide_errors) {
+            // Guards on this blanket hide:
+            //  - `:not(.hidden)` / `:not(#lost-connection-notice)` /
+            //    `:not(#local-storage-notice)` keep WordPress's JS-controlled
+            //    control notices visible when core reveals them (e.g. the
+            //    autosave/heartbeat "Connection lost" warning).
+            //  - error notices (the red ones) are NOT hidden by default — the
+            //    `.error` selectors are gone and `.notice` carries
+            //    `:not(.notice-error)` — so urgent "something is broken" messages
+            //    stay on screen, mirroring the server-side skip. When the store
+            //    owner opts in ($hide_errors), those guards are dropped and the
+            //    legacy `.error` direct-child selectors are added back so error
+            //    notices are hidden too (the matching `lost-connection-notice`
+            //    control banner is still spared).
+            $err_guard = $hide_errors ? '' : ':not(.notice-error)';
+            $err_lines = $hide_errors ? '
+                .wp-admin #wpbody-content > .error:not(.brikpanel-notice):not(.hidden):not(#lost-connection-notice),
+                .wp-admin .wrap > .error:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden):not(#lost-connection-notice),' : '';
             echo '<style>
-                .wp-admin #wpbody-content > .notice:not(.brikpanel-notice),
-                .wp-admin #wpbody-content > .updated:not(.brikpanel-notice),
-                .wp-admin #wpbody-content > .error:not(.brikpanel-notice),
-                .wp-admin .wrap > .notice:not(.brikpanel-notice):not(.inline):not(.below-h2),
-                .wp-admin .wrap > .updated:not(.brikpanel-notice):not(.inline):not(.below-h2),
-                .wp-admin .wrap > .error:not(.brikpanel-notice):not(.inline):not(.below-h2) {
+                .wp-admin #wpbody-content > .notice:not(.brikpanel-notice):not(.hidden)' . $err_guard . ':not(#lost-connection-notice):not(#local-storage-notice),
+                .wp-admin #wpbody-content > .updated:not(.brikpanel-notice):not(.hidden),' . $err_lines . '
+                .wp-admin .wrap > .notice:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden)' . $err_guard . ':not(#lost-connection-notice):not(#local-storage-notice),
+                .wp-admin .wrap > .updated:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden) {
                     display: none !important;
                 }
             </style>';
@@ -504,6 +577,7 @@ require_once BRIKPANEL_PATH . 'front-end/welcome/brikpanel-welcome.php';
 // HELPER FUNCTIONS
 // =============================================================================
 require_once BRIKPANEL_PATH . 'includes/brikpanel-helpers.php';
+require_once BRIKPANEL_PATH . 'includes/brikpanel-currency.php';
 require_once BRIKPANEL_PATH . 'includes/brikpanel-profit.php';
 
 // =============================================================================
@@ -531,9 +605,14 @@ require_once BRIKPANEL_PATH . 'includes/brikpanel-enqueue.php';
 require_once BRIKPANEL_PATH . 'includes/brikpanel-hooks-api.php';
 
 // =============================================================================
-// REVIEW REQUEST NOTICES (14 days / 50 completed orders)
+// REVIEW REQUEST NOTICES (50 completed orders)
 // =============================================================================
 require_once BRIKPANEL_PATH . 'includes/brikpanel-review-notices.php';
+
+// =============================================================================
+// BRIKMENTOR EARLY-ACCESS CAPTURE (100 / 200 completed orders)
+// =============================================================================
+require_once BRIKPANEL_PATH . 'includes/brikpanel-early-access.php';
 
 // =============================================================================
 // CRON / BACKGROUND JOBS (Action Scheduler wrapper + admin page)
@@ -658,6 +737,7 @@ function brikpanel_create_table() {
         customer_key VARCHAR(191) NOT NULL,
         user_id BIGINT(20) UNSIGNED DEFAULT 0,
         customer_email VARCHAR(190) NOT NULL DEFAULT '',
+        customer_phone VARCHAR(40) NOT NULL DEFAULT '',
         first_order_date DATETIME NULL DEFAULT NULL,
         last_order_date DATETIME NULL DEFAULT NULL,
         order_count INT UNSIGNED NOT NULL DEFAULT 0,

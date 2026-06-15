@@ -245,6 +245,25 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 							</div>
 						<?php endif; ?>
 
+						<?php
+						$shipping_methods_cat = Brikpanel_Sheets_Settings::shipping_methods_catalogue();
+						if ( ! empty( $shipping_methods_cat ) ) : ?>
+							<div class="bp-gs-field">
+								<span class="bp-gs-label"><?php esc_html_e( 'Shipping methods to export', 'brikpanel' ); ?></span>
+								<p class="bp-gs-help"><?php esc_html_e( 'Leave every box unchecked to export orders regardless of shipping method. Pick one or more to export only orders that used those methods.', 'brikpanel' ); ?></p>
+								<div class="bp-gs-checkbox-row">
+									<?php foreach ( $shipping_methods_cat as $method_id => $method_title ) :
+										$ship_checked = in_array( (string) $method_id, $config['orders_shipping_methods'], true );
+									?>
+										<label class="bp-gs-checkbox">
+											<input type="checkbox" name="shipping_methods[]" value="<?php echo esc_attr( $method_id ); ?>" <?php checked( $ship_checked ); ?>>
+											<span><?php echo esc_html( $method_title ); ?></span>
+										</label>
+									<?php endforeach; ?>
+								</div>
+							</div>
+						<?php endif; ?>
+
 						<div class="bp-gs-section-divider"></div>
 
 						<div class="bp-gs-field bp-gs-field-toggle">

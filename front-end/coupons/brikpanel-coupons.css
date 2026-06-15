@@ -1256,7 +1256,7 @@
 
 /* ---------- Hide WP Admin defaults ---------- */
 body.admin_page_brikpanel-coupons .screen-meta-links,
-body.admin_page_brikpanel-coupons .notice:not(.brikpanel-notice),
+body.admin_page_brikpanel-coupons .notice:not(.brikpanel-notice):not(.notice-error),
 body.admin_page_brikpanel-coupons #screen-meta {
     display: none;
 }

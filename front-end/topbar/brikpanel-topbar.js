@@ -115,32 +115,30 @@
         var menu = topbar.querySelector('[data-topbar-menu="hidden-notices"]');
         if (!menu) return;
 
-        var holder = document.getElementById('brikpanel-foreign-notices-holder');
-        if (!holder) return;
-
-        // Every admin-notice flavour WordPress core / plugins emit: the modern
-        // .notice family, the legacy .updated / .error containers, and the core
-        // update nag (.update-nag, sometimes printed without a .notice class).
-        var CHILD_SEL = ':scope > .notice, :scope > .updated, :scope > .error, :scope > .update-nag';
-        var COUNT_SEL = '.notice, .updated, .error, .update-nag';
-
-        // The notices live inside the fallback box's list wrapper.
-        var source = holder.querySelector('.brikpanel-fn-list') || holder;
-        var notices = source.querySelectorAll(CHILD_SEL);
-        if (!notices.length) {
-            holder.parentNode && holder.parentNode.removeChild(holder);
-            return;
-        }
-
         var panelList = menu.querySelector('.brikpanel-fn-panel-list');
         if (!panelList) return;
 
-        Array.prototype.forEach.call(notices, function (n) {
-            // Mark as ours so every BrikPanel declutter rule (which all carry a
-            // `:not(.brikpanel-notice)`) leaves these visible inside the panel.
-            n.classList.add('brikpanel-notice');
-            panelList.appendChild(n);
-        });
+        // Count flavour: the modern .notice family, the legacy .updated/.error
+        // containers, and the core update nag (.update-nag, sometimes printed
+        // without a .notice class).
+        var COUNT_SEL = '.notice, .updated, .error, .update-nag';
+        var CHILD_SEL = ':scope > .notice, :scope > .updated, :scope > .error, :scope > .update-nag';
+
+        // 1) Notices BrikPanel collected server-side wait in an off-screen
+        //    holder rendered into the page body. Move them into the panel and
+        //    mark them ours so the declutter rules (all `:not(.brikpanel-notice)`)
+        //    keep them visible here.
+        var holder = document.getElementById('brikpanel-foreign-notices-holder');
+        if (holder) {
+            var source = holder.querySelector('.brikpanel-fn-list') || holder;
+            Array.prototype.forEach.call(source.querySelectorAll(CHILD_SEL), function (n) {
+                if (isErrorNotice(n)) return;     // red/error notices stay on screen
+                if (!noticeHasContent(n)) return; // skip empty placeholder wrappers
+                n.classList.add('brikpanel-notice');
+                panelList.appendChild(n);
+            });
+            holder.parentNode && holder.parentNode.removeChild(holder);
+        }
 
         var badge = menu.querySelector('.brikpanel-topbar-badge');
 
@@ -153,20 +151,78 @@
                 badge.hidden = n === 0;
                 badge.textContent = n > 99 ? '99+' : String(n);
             }
-            if (n === 0) {
-                menu.classList.remove('is-open');
-                menu.style.display = 'none';
-            }
+            menu.style.display = n === 0 ? 'none' : '';
+            if (n === 0) menu.classList.remove('is-open');
         };
+
+        // 2) Sweep up any foreign notices the server-side buffer could not
+        //    reach — ones a page template printed inline, or that a plugin
+        //    injected after the notices hook. These are exactly the notices
+        //    BrikPanel's CSS fallback would otherwise hide with no trace, so
+        //    surfacing them here keeps the panel complete: nothing the store
+        //    needs to see silently disappears. Runs once now and again shortly
+        //    after, to catch notices added late by other plugins' scripts.
+        sweepForeignNotices(panelList);
         refresh();
-
-        // Reveal the button (it ships display:none to avoid an empty control).
-        menu.style.display = '';
-
         new MutationObserver(refresh).observe(panelList, { childList: true });
+        // Re-sweep a couple of times so notices other plugins' scripts inject or
+        // fill in late are caught once they actually have content.
+        setTimeout(function () { sweepForeignNotices(panelList); }, 800);
+        setTimeout(function () { sweepForeignNotices(panelList); }, 2500);
+    }
 
-        // Drop the now-empty fallback box so it leaves no trace in the layout.
-        holder.parentNode && holder.parentNode.removeChild(holder);
+    /**
+     * Relocate stray third-party notices into the hidden-notices panel.
+     *
+     * Targets the same surfaces BrikPanel's CSS fallback hides (top-of-page
+     * notices in `.wrap` / `#wpbody-content`), but deliberately skips:
+     *  - BrikPanel's own panel (already relocated) and `.brikpanel-notice`,
+     *  - inline / below-title form notices that belong next to a field,
+     *  - WordPress's JS-controlled control notices (connection-lost,
+     *    local-storage, anything still `hidden`) which must stay where they are.
+     */
+    function sweepForeignNotices(panelList) {
+        var SWEEP_SEL = [
+            '#wpbody-content > .notice', '#wpbody-content > .updated', '#wpbody-content > .error',
+            '.wrap > .notice', '.wrap > .updated', '.wrap > .error', '.wrap > .update-nag'
+        ].join(', ');
+
+        Array.prototype.forEach.call(document.querySelectorAll(SWEEP_SEL), function (n) {
+            if (n.closest('#brikpanel-topbar')) return;            // already in our panel
+            if (n.classList.contains('brikpanel-notice')) return;  // ours
+            if (n.classList.contains('inline') || n.classList.contains('below-h2')) return;
+            if (n.classList.contains('hidden')) return;            // JS-controlled, leave it
+            if (n.id === 'lost-connection-notice' || n.id === 'local-storage-notice') return;
+            if (isErrorNotice(n)) return;                          // red/error notices stay on screen
+            if (!noticeHasContent(n)) return;                      // empty placeholder, leave in place
+            n.classList.add('brikpanel-notice');
+            panelList.appendChild(n);
+        });
+    }
+
+    /**
+     * Red "error" notices (modern `.notice-error` or the legacy `.error`
+     * container) flag something genuinely broken, so by default they are left on
+     * screen rather than tucked behind the bell. The store owner can opt in
+     * (Settings → "Also hide error notices") to collect them like any other
+     * notice, in which case this stops treating them specially.
+     */
+    function isErrorNotice(n) {
+        if (window.brikpanelTopbar && window.brikpanelTopbar.hide_errors) return false;
+        return n.classList.contains('notice-error') || n.classList.contains('error');
+    }
+
+    /**
+     * Whether a notice actually has something worth showing. Many plugins (and
+     * WordPress itself) print empty `<div class="notice">` shells that their own
+     * scripts fill in later, or leave behind after content is removed — pulling
+     * those into the panel produces blank rows. We treat a notice as meaningful
+     * only if it has visible text, or real content like an image/icon/link/
+     * control (the dismiss "x" every dismissible notice carries does not count).
+     */
+    function noticeHasContent(n) {
+        if ((n.textContent || '').trim() !== '') return true;
+        return !!n.querySelector('img, svg, a[href], input, select, textarea, button:not(.notice-dismiss), .button');
     }
 
     /**

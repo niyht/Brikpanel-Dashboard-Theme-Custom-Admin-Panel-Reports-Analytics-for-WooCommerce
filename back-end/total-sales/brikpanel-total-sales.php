@@ -42,16 +42,23 @@ function brikpanel_get_total_revenue( $start_date_gmt = null, $end_date_gmt = nu
         $table_name = $wpdb->prefix . 'wc_orders';
         $date_column_name = 'date_created_gmt';
 
+        // Convert each order to the store base currency before summing
+        // (multi-currency safe). COALESCE falls back to the raw total for
+        // single-currency orders, so single-currency stores are unaffected.
+        $fx = brikpanel_base_total_sql( true, "{$table_name}.id", 'total_amount' );
+
         // 'IN' operatörü kullanılıyor
-        $query_sql = "SELECT SUM(total_amount) FROM {$table_name} WHERE type = 'shop_order' AND status IN ({$status_placeholders})";
+        $query_sql = "SELECT SUM({$fx['expr']}) FROM {$table_name}{$fx['join']} WHERE type = 'shop_order' AND status IN ({$status_placeholders})";
     } else {
         // HPOS AKTİF DEĞİL (Eski post tablosu)
         $table_name = $wpdb->posts;
         $date_column_name = 'p.post_date_gmt';
 
+        $fx = brikpanel_base_total_sql( false, 'p.ID', 'pm.meta_value' );
+
         // 'IN' operatörü kullanılıyor
-        $query_sql = "SELECT SUM(pm.meta_value) FROM {$table_name} AS p
-                      LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id
+        $query_sql = "SELECT SUM({$fx['expr']}) FROM {$table_name} AS p
+                      LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id{$fx['join']}
                       WHERE p.post_type = 'shop_order'
                       AND pm.meta_key = '_order_total'
                       AND p.post_status IN ({$status_placeholders})";

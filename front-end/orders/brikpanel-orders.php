@@ -52,6 +52,7 @@ function brikpanel_collect_dashboard_widgets() {
     }
 
     $original_screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+
     set_current_screen( 'dashboard' );
 
     global $wp_meta_boxes;
@@ -131,6 +132,11 @@ function brikpanel_register_product_taxonomy_metaboxes($post) {
             continue;
         }
         if (in_array($tax_name, ['product_cat', 'product_tag'], true)) {
+            continue;
+        }
+        // Brand has its own first-class editor section; skip its auto-metabox
+        // so the admin never sees a duplicate "Brands" box in the picker.
+        if (function_exists('brikpanel_pe_brand_taxonomy') && $tax_name === brikpanel_pe_brand_taxonomy() && brikpanel_pe_brand_taxonomy() !== '') {
             continue;
         }
         $label = isset($taxonomy->labels->name) ? $taxonomy->labels->name : $tax_name;
@@ -339,6 +345,13 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'    => __('Style the default menu', 'brikpanel'),
+            'id'      => 'brikpanel_native_menu_styled',
+            'type'    => 'checkbox',
+            'desc'    => __('When Modern navigation is off, give the standard WordPress admin menu the BrikPanel look. Turn this off to keep the original WordPress menu unchanged.', 'brikpanel'),
+            'default' => 'yes',
+        ],
+        [
             'type' => 'brikpanel_nav_customizer',
             'id'   => 'brikpanel_nav_customizer_field',
         ],
@@ -537,6 +550,12 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name' => __('Top bar items', 'brikpanel'),
+            'id'   => 'brikpanel_topbar_items_field',
+            'type' => 'brikpanel_topbar_items',
+            'desc' => __('Choose which controls appear in the BrikPanel top bar. Turn a control off to hide it from the bar.', 'brikpanel'),
+        ],
+        [
             'name'     => __('Include WordPress dashboard widgets', 'brikpanel'),
             'id'       => 'brikpanel_dashboard_wp_widgets',
             'type'     => 'multiselect',
@@ -688,6 +707,13 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'    => __('Also hide error notices', 'brikpanel'),
+            'id'      => 'brikpanel_hide_error_notices',
+            'type'    => 'checkbox',
+            'desc'    => __('By default red error notices stay on screen, since they usually mean something is broken. Enable this to tuck them into the notifications bell too. Only applies while "Hide third-party admin notices" is on.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
             'type' => 'sectionend',
             'id'   => 'brk_notices_title',
         ],
@@ -828,10 +854,51 @@ function brikpanel_settings_section_for_title( $title_id ) {
         'brk_login_title'        => 'login',
         'brk_notices_title'      => '',
         'brk_order_notify_title' => 'notifications',
-        'brk_appearance_title'   => '',
         'brk_developers_title'   => 'developers',
+        // Note: brk_appearance_title is mapped to the dedicated 'appearance'
+        // section by the Appearance module; the Google Sheets / Ad Platforms
+        // modules map their titles to the shared 'integrations' section. They
+        // intentionally no longer fall back to General.
     ] );
     return isset( $map[ $title_id ] ) ? (string) $map[ $title_id ] : '';
+}
+
+/**
+ * Group the flat section list into labelled buckets for the vertical
+ * sub-nav. Each group is `id => [ 'label' => string, 'sections' => string[] ]`
+ * where `sections` lists section ids (see `brikpanel_settings_get_sections()`)
+ * in display order. A group whose label is an empty string renders its links
+ * without a heading (used for the top-level "General" landing).
+ *
+ * Sections that exist but are not claimed by any group (e.g. a brand-new
+ * third-party section) are collected into a trailing "More" group by the
+ * renderer, so nothing can silently disappear from the nav.
+ *
+ * @return array<string,array{label:string,sections:string[]}>
+ */
+function brikpanel_settings_get_section_groups() {
+    return apply_filters( 'brikpanel_settings_section_groups', [
+        'general'      => [
+            'label'    => '',
+            'sections' => [ '' ],
+        ],
+        'interface'    => [
+            'label'    => __( 'Interface', 'brikpanel' ),
+            'sections' => [ 'navigation', 'dashboard', 'appearance', 'login' ],
+        ],
+        'store'        => [
+            'label'    => __( 'Store', 'brikpanel' ),
+            'sections' => [ 'products', 'orders', 'coupons', 'analytics', 'notifications', 'search', 'vendors', 'store-health' ],
+        ],
+        'integrations' => [
+            'label'    => __( 'Integrations', 'brikpanel' ),
+            'sections' => [ 'integrations' ],
+        ],
+        'system'       => [
+            'label'    => __( 'System', 'brikpanel' ),
+            'sections' => [ 'access', 'import-export', 'developers' ],
+        ],
+    ] );
 }
 
 /**
@@ -862,24 +929,189 @@ function brikpanel_settings_fields_for_section( $section ) {
 }
 
 /**
- * Render the section sub-nav as the standard WP `subsubsub` list, mirroring
- * the markup WC uses for `WC_Settings_Page` subclasses so third-party CSS
- * (and our own brand overrides) can hook the same selectors.
+ * Inline SVG icon for a settings section (16px, stroke = currentColor so it
+ * follows the nav link's text color). Unknown ids — e.g. a brand-new
+ * third-party section in the "More" group — get a neutral dot so every row
+ * stays aligned. Filterable so modules can register their own glyph.
+ *
+ * @param string $id Section id ('' for General).
+ * @return string SVG markup (static, build-time trusted strings only).
+ */
+function brikpanel_settings_section_icon( $id ) {
+    $paths = apply_filters( 'brikpanel_settings_section_icons', [
+        ''              => '<line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/>',
+        'navigation'    => '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>',
+        'dashboard'     => '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+        'appearance'    => '<path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.07"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
+        'login'         => '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>',
+        'products'      => '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+        'orders'        => '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+        'coupons'       => '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="m15 9-6 6"/><path d="M9 9h.01"/><path d="M15 15h.01"/>',
+        'analytics'     => '<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>',
+        'notifications' => '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+        'search'        => '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+        'vendors'       => '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+        'store-health'  => '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+        'integrations'  => '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+        'access'        => '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+        'import-export' => '<path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/>',
+        'developers'    => '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+    ] );
+    $inner = isset( $paths[ $id ] ) ? $paths[ $id ] : '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1"/>';
+    return '<svg class="bp-nav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . $inner . '</svg>';
+}
+
+/**
+ * Build the flat search index the sidebar search box filters client-side.
+ * One entry per section (so "import" finds the Import / Export page) plus
+ * one entry per individual settings field, with the field's option id as the
+ * jump anchor and a lowercased slice of its description for keyword recall.
+ *
+ * @return array<int,array{label:string,section:string,sectionLabel:string,anchor:string,k:string}>
+ */
+function brikpanel_settings_build_search_index() {
+    $sections = brikpanel_settings_get_sections();
+    $index    = [];
+    foreach ( $sections as $id => $label ) {
+        $index[] = [
+            'label'        => $label,
+            'section'      => (string) $id,
+            'sectionLabel' => '',
+            'anchor'       => '',
+            'k'            => '',
+        ];
+    }
+    $current = null;
+    foreach ( brikpanel_settings_fields() as $field ) {
+        if ( isset( $field['type'] ) && $field['type'] === 'title' && ! empty( $field['id'] ) ) {
+            $current = brikpanel_settings_section_for_title( $field['id'] );
+        }
+        if ( isset( $field['type'] ) && $field['type'] === 'sectionend' ) {
+            $current = null;
+            continue;
+        }
+        if ( $current === null || ! isset( $field['type'] ) || $field['type'] === 'title' ) {
+            continue;
+        }
+        $name  = isset( $field['name'] ) ? $field['name'] : ( isset( $field['title'] ) ? $field['title'] : '' );
+        $label = wp_strip_all_tags( (string) $name );
+        if ( $label === '' || empty( $field['id'] ) ) {
+            continue;
+        }
+        $desc = isset( $field['desc'] ) ? wp_strip_all_tags( (string) $field['desc'] ) : '';
+        $desc = function_exists( 'mb_strtolower' ) ? mb_strtolower( mb_substr( $desc, 0, 160 ) ) : strtolower( substr( $desc, 0, 160 ) );
+
+        $index[] = [
+            'label'        => $label,
+            'section'      => (string) $current,
+            'sectionLabel' => isset( $sections[ $current ] ) ? $sections[ $current ] : '',
+            'anchor'       => (string) $field['id'],
+            'k'            => $desc,
+        ];
+    }
+    return apply_filters( 'brikpanel_settings_search_index', $index );
+}
+
+/**
+ * Render a single sub-nav link for one section: icon + label + optional
+ * badge (modules register badges via the `brikpanel_settings_nav_badges`
+ * filter, e.g. "Beta" on Integrations).
+ */
+function brikpanel_settings_render_section_link( $id, $label, $current_section, $badges = [] ) {
+    $url     = admin_url( 'admin.php?page=wc-settings&tab=brikpanel' . ( $id !== '' ? '&section=' . sanitize_title( $id ) : '' ) );
+    $current = ( (string) $current_section === (string) $id );
+    $badge   = isset( $badges[ $id ] ) ? '<span class="bp-nav-badge">' . esc_html( $badges[ $id ] ) . '</span>' : '';
+    printf(
+        '<li><a href="%s" class="bp-nav-link%s"%s>%s<span class="bp-nav-text">%s</span>%s</a></li>',
+        esc_url( $url ),
+        $current ? ' current' : '',
+        $current ? ' aria-current="page"' : '',
+        brikpanel_settings_section_icon( $id ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — static inline SVG built above.
+        esc_html( $label ),
+        $badge // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — label escaped above.
+    );
+}
+
+/**
+ * Render the section sub-nav as a grouped vertical sidebar (Shopify-style)
+ * with a search box on top. Sections are bucketed by
+ * `brikpanel_settings_get_section_groups()`; any registered section not
+ * claimed by a group falls into a trailing "More" group so third-party
+ * sections never vanish from the nav. While the user types in the search
+ * box, the group list is swapped for a flat result list (see the inline JS
+ * on this screen).
  */
 function brikpanel_settings_render_section_nav( $current_section ) {
     $sections = brikpanel_settings_get_sections();
     if ( empty( $sections ) ) {
         return;
     }
-    $keys = array_keys( $sections );
-    echo '<ul class="subsubsub brikpanel-settings-sections">';
-    foreach ( $sections as $id => $label ) {
-        $url   = admin_url( 'admin.php?page=wc-settings&tab=brikpanel' . ( $id !== '' ? '&section=' . sanitize_title( $id ) : '' ) );
-        $class = ( (string) $current_section === (string) $id ) ? 'current' : '';
-        $sep   = ( end( $keys ) === $id ) ? '' : '|';
-        echo '<li><a href="' . esc_url( $url ) . '" class="' . esc_attr( $class ) . '">' . esc_html( $label ) . '</a> ' . esc_html( $sep ) . ' </li>';
+    $groups  = brikpanel_settings_get_section_groups();
+    $badges  = apply_filters( 'brikpanel_settings_nav_badges', [] );
+    $claimed = [];
+
+    echo '<nav class="brikpanel-settings-sidebar brikpanel-settings-sections" aria-label="' . esc_attr__( 'BrikPanel settings sections', 'brikpanel' ) . '">';
+
+    // Search box. No `name` attribute: the input lives inside WC's #mainform
+    // and must never be serialized into the settings POST. The
+    // `wc-settings-prevent-change-event` class is WC's official opt-out from
+    // its dirty-form tracking — without it, typing a query arms the
+    // "changes you made will be lost" beforeunload guard.
+    echo '<div class="bp-nav-search wc-settings-prevent-change-event">';
+    echo brikpanel_settings_section_icon( 'search' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — static inline SVG.
+    echo '<input type="search" id="brikpanel-settings-search" placeholder="' . esc_attr__( 'Search settings', 'brikpanel' ) . '"'
+        . ' autocomplete="off" spellcheck="false"'
+        . ' data-base="' . esc_url( admin_url( 'admin.php?page=wc-settings&tab=brikpanel' ) ) . '"'
+        . ' aria-label="' . esc_attr__( 'Search settings', 'brikpanel' ) . '" />';
+    echo '</div>';
+    echo '<ul class="bp-nav-results" id="brikpanel-settings-search-results" hidden></ul>';
+    echo '<p class="bp-nav-results-empty" id="brikpanel-settings-search-empty" hidden>' . esc_html__( 'No settings found.', 'brikpanel' ) . '</p>';
+
+    echo '<div class="bp-nav-groups" id="brikpanel-settings-nav-groups">';
+    foreach ( $groups as $group ) {
+        // Keep only the group's sections that actually exist this request.
+        $ids = array_values( array_filter(
+            isset( $group['sections'] ) ? (array) $group['sections'] : [],
+            static function ( $id ) use ( $sections ) {
+                return array_key_exists( $id, $sections );
+            }
+        ) );
+        if ( empty( $ids ) ) {
+            continue;
+        }
+        echo '<div class="bp-nav-group">';
+        if ( ! empty( $group['label'] ) ) {
+            echo '<div class="bp-nav-group__label">' . esc_html( $group['label'] ) . '</div>';
+        }
+        echo '<ul class="bp-nav-list">';
+        foreach ( $ids as $id ) {
+            brikpanel_settings_render_section_link( $id, $sections[ $id ], $current_section, $badges );
+            $claimed[ $id ] = true;
+        }
+        echo '</ul></div>';
     }
-    echo '</ul><br class="clear" />';
+
+    // Any registered section a group did not claim (e.g. a brand-new
+    // third-party section) is surfaced under a "More" heading.
+    $leftover = array_diff_key( $sections, $claimed );
+    if ( ! empty( $leftover ) ) {
+        echo '<div class="bp-nav-group">';
+        echo '<div class="bp-nav-group__label">' . esc_html__( 'More', 'brikpanel' ) . '</div>';
+        echo '<ul class="bp-nav-list">';
+        foreach ( $leftover as $id => $label ) {
+            brikpanel_settings_render_section_link( $id, $label, $current_section, $badges );
+        }
+        echo '</ul></div>';
+    }
+    echo '</div>'; // .bp-nav-groups
+
+    echo '</nav>';
+
+    // Search index for the sidebar box — JSON, parsed by the inline JS.
+    // wp_json_encode escapes forward slashes, so "</script>" can't occur.
+    echo '<script type="application/json" id="brikpanel-settings-search-index">'
+        . wp_json_encode( brikpanel_settings_build_search_index() )
+        . '</script>';
 }
 
 // Tab content — section nav + only the current section's fields. The full
@@ -887,6 +1119,7 @@ function brikpanel_settings_render_section_nav( $current_section ) {
 // honour 3rd-party fields injected via the public filter.
 add_action( 'woocommerce_settings_tabs_brikpanel', function () {
     $current = brikpanel_settings_get_current_section();
+    echo '<div class="brikpanel-settings-layout">';
     brikpanel_settings_render_section_nav( $current );
     echo '<div class="brikpanel-settings-section-body" data-section="' . esc_attr( $current ) . '">';
 
@@ -895,7 +1128,7 @@ add_action( 'woocommerce_settings_tabs_brikpanel', function () {
     // it can use whatever markup it needs without fighting WC field types.
     if ( $current === 'import-export' && function_exists( 'brikpanel_import_export_render_section' ) ) {
         brikpanel_import_export_render_section();
-        echo '</div>';
+        echo '</div></div>';
         return;
     }
 
@@ -932,7 +1165,7 @@ add_action( 'woocommerce_settings_tabs_brikpanel', function () {
     );
 
     echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — content was produced by woocommerce_admin_fields, which already escapes.
-    echo '</div>';
+    echo '</div></div>';
 } );
 
 // Update tab settings — only the current section's fields are persisted, so
@@ -969,6 +1202,13 @@ add_action( 'admin_head', function () {
        giving <html> a few px of horizontal scroll — clip it so the panel can
        never shift sideways on phones. */
     html { overflow-x: clip; }
+    /* WooCommerce's admin.css paints `body.woocommerce_page_wc-settings
+       #wpbody-content { background:#fff }`, flooding the whole content area
+       white. Our canvas is the grey body and our .wrap lives inside an
+       18/22/40px margin frame, so that white leaks through as a strip around
+       the panel (most visibly above the settings tab bar). Drop it back to
+       transparent so the grey canvas reads uniformly. */
+    body.woocommerce_page_wc-settings #wpbody-content { background: transparent; }
     #wpbody-content .wrap {
         margin: 18px 22px 40px 22px;
         padding-left: 0;
@@ -999,68 +1239,216 @@ add_action( 'admin_head', function () {
     }
 
     /* ------------------------------------------------------------------
-     * Sub-tab navigation (Shopify-style pill bar)
+     * Two-column layout — grouped vertical sub-nav + card stack
      * ------------------------------------------------------------------ */
-    #mainform .brikpanel-settings-sections {
-        display: inline-flex;
-        flex-wrap: wrap;
-        gap: 2px;
-        margin: .25rem 0 1rem !important;
-        padding: 4px;
-        background: #ffffff;
-        border: 1px solid #e3e3e3;
-        border-radius: .65rem;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    #mainform .brikpanel-settings-layout {
+        display: flex;
+        align-items: flex-start;
+        gap: 28px;
+        margin-top: .5rem;
     }
-    #mainform .brikpanel-settings-sections li {
+
+    /* ------------------------------------------------------------------
+     * Grouped vertical sidebar (Shopify-style sections nav)
+     * ------------------------------------------------------------------ */
+    #mainform .brikpanel-settings-sidebar {
+        flex: 0 0 232px;
+        width: 232px;
+        align-self: flex-start;
+        position: sticky;
+        top: 50px; /* WP admin bar (32px) + breathing room */
+        max-height: calc(100vh - 70px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #d6d6d6 transparent;
+        padding: 0;
+        /* WooCommerce core ships `#mainform nav { margin: 0 -30px 24px }` for
+           its own section nav; our sidebar is a <nav> too, so override the
+           bleed explicitly (its selector outranks ours without !important). */
         margin: 0 !important;
-        padding: 0 !important;
-        color: transparent !important;
-        font-size: 0;
-        line-height: 1;
     }
-    #mainform .brikpanel-settings-sections li a {
-        display: inline-flex !important;
+    #mainform .bp-nav-group { margin: 0 0 1.1rem; }
+    #mainform .bp-nav-group:last-child { margin-bottom: 0; }
+    #mainform .bp-nav-group__label {
+        font-size: .6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: #8a8a8a;
+        padding: 0 .65rem;
+        margin: 0 0 .35rem;
+    }
+    #mainform .bp-nav-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+    #mainform .bp-nav-list li { margin: 0; padding: 0; }
+    #mainform .bp-nav-list li a.bp-nav-link {
+        display: flex;
         align-items: center;
-        padding: .5rem .9rem !important;
+        gap: .55rem;
+        padding: .4rem .65rem;
         border-radius: .45rem;
         font-size: .8125rem;
-        font-weight: 550;
-        color: #616161;
+        font-weight: 500;
+        color: #4a4a4a;
         text-decoration: none;
-        line-height: 1.2;
-        background: transparent;
+        line-height: 1.4;
         border: 1px solid transparent;
-        margin: 0 !important;
-        transition: background-color .15s ease, color .15s ease;
+        transition: background-color .12s ease, color .12s ease;
     }
-    #mainform .brikpanel-settings-sections li a:hover,
-    #mainform .brikpanel-settings-sections li a:focus {
-        background: #f4f4f4 !important;
+    #mainform .bp-nav-link svg.bp-nav-ico {
+        flex: 0 0 16px;
+        color: #8a8a8a;
+        transition: color .12s ease;
+    }
+    #mainform .bp-nav-link:hover svg.bp-nav-ico,
+    #mainform .bp-nav-link:focus svg.bp-nav-ico { color: #303030; }
+    #mainform .bp-nav-link.current svg.bp-nav-ico { color: #ffffff; }
+    #mainform .bp-nav-text {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    #mainform .bp-nav-badge {
+        flex: 0 0 auto;
+        font-size: .5625rem;
+        font-weight: 600;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+        line-height: 1.5;
+        padding: 0 .35rem;
+        border-radius: 999px;
+        background: #f1f1f1;
+        color: #616161;
+        border: 1px solid #e3e3e3;
+    }
+    #mainform .bp-nav-link.current .bp-nav-badge {
+        background: rgba(255,255,255,.14);
+        color: #ffffff;
+        border-color: rgba(255,255,255,.25);
+    }
+
+    /* Sidebar search box */
+    #mainform .bp-nav-search { position: relative; margin: 0 0 .9rem; }
+    #mainform .bp-nav-search > svg.bp-nav-ico {
+        position: absolute;
+        left: .6rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #8a8a8a;
+        pointer-events: none;
+    }
+    #mainform .bp-nav-search input[type="search"] {
+        width: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding: .45rem .6rem .45rem 2rem;
+        background: #ffffff;
+        border: 1px solid #d6d6d6;
+        border-radius: .5rem;
+        font-size: .8125rem;
+        color: #303030;
+        line-height: 1.4;
+        min-height: 34px;
+        box-shadow: 0 1px 2px rgba(0,0,0,.03);
+        transition: border-color .12s ease, box-shadow .12s ease;
+    }
+    #mainform .bp-nav-search input[type="search"]::placeholder { color: #8a8a8a; }
+    #mainform .bp-nav-search input[type="search"]:focus {
+        border-color: #303030;
+        box-shadow: 0 0 0 1px #303030;
+        outline: none;
+    }
+
+    /* Search result list (replaces the group list while typing) */
+    #mainform .bp-nav-results {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+    #mainform .bp-nav-results li { margin: 0; padding: 0; }
+    #mainform .bp-nav-result {
+        display: block;
+        padding: .45rem .65rem;
+        border-radius: .45rem;
+        text-decoration: none;
+        transition: background-color .12s ease;
+    }
+    #mainform .bp-nav-result:hover,
+    #mainform .bp-nav-result:focus {
+        background: #ececec;
+        box-shadow: none;
+        outline: none;
+    }
+    #mainform .bp-nav-result__label {
+        display: block;
+        font-size: .8125rem;
+        font-weight: 500;
+        color: #303030;
+        line-height: 1.35;
+    }
+    #mainform .bp-nav-result__section {
+        display: block;
+        font-size: .6875rem;
+        color: #8a8a8a;
+        margin-top: 1px;
+    }
+    #mainform .bp-nav-results-empty {
+        font-size: .8125rem;
+        color: #8a8a8a;
+        padding: .45rem .65rem;
+        margin: 0;
+    }
+
+    /* Flash highlight on the row a search result jumped to */
+    @keyframes bpJumpFlash {
+        0%, 55% { background-color: #e7e7e7; }
+        100%    { background-color: transparent; }
+    }
+    .bp-settings-card tr.bp-jump-flash > th,
+    .bp-settings-card tr.bp-jump-flash > td {
+        animation: bpJumpFlash 2.4s ease;
+    }
+    .bp-settings-card.bp-jump-flash { animation: bpJumpFlash 2.4s ease; }
+    #mainform .bp-nav-list li a.bp-nav-link:hover,
+    #mainform .bp-nav-list li a.bp-nav-link:focus {
+        background: #ececec !important;
         color: #303030 !important;
         box-shadow: none;
         outline: none;
     }
-    #mainform .brikpanel-settings-sections li a.current {
+    #mainform .bp-nav-list li a.bp-nav-link.current {
         background: #303030 !important;
         color: #ffffff !important;
-        border-color: #303030;
+        font-weight: 550;
         box-shadow: inset 0 -1px 0 rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.1);
     }
-    #mainform .brikpanel-settings-sections li a.current:hover,
-    #mainform .brikpanel-settings-sections li a.current:focus {
+    #mainform .bp-nav-list li a.bp-nav-link.current:hover,
+    #mainform .bp-nav-list li a.bp-nav-link.current:focus {
         background: #1a1a1a !important;
         color: #ffffff !important;
     }
 
     /* ------------------------------------------------------------------
-     * Section body — vertical stack of cards
+     * Section body — vertical stack of cards (right column)
      * ------------------------------------------------------------------ */
     .brikpanel-settings-section-body {
+        flex: 1 1 auto;
+        min-width: 0;
         display: flex;
         flex-direction: column;
         gap: .75rem;
-        max-width: 980px;
+        max-width: 760px;
     }
 
     /* ------------------------------------------------------------------
@@ -1456,9 +1844,18 @@ add_action( 'admin_head', function () {
     /* ------------------------------------------------------------------
      * Save button
      * ------------------------------------------------------------------ */
+    /* Sticky save bar, aligned under the card column (sidebar 232px + 28px
+       gap = 260px offset). The gradient covers content scrolling underneath
+       while fading into the page background at the top. The left offset is
+       reset on narrow screens where the layout stacks. */
     #wpbody-content .wrap form#mainform p.submit {
-        margin: 1.25rem 0 0 !important;
-        padding: 0 !important;
+        position: sticky;
+        bottom: 0;
+        z-index: 60;
+        margin: .75rem 0 0 260px !important;
+        padding: .8rem 0 .9rem !important;
+        max-width: 760px;
+        background: linear-gradient(to top, #f1f1f1 70%, rgba(241,241,241,0));
     }
     #wpbody-content .wrap form#mainform p.submit .button-primary,
     #wpbody-content .wrap form#mainform p.submit button.is-primary,
@@ -1525,6 +1922,30 @@ add_action( 'admin_head', function () {
      * Responsive
      * ------------------------------------------------------------------ */
     @media (max-width: 880px) {
+        /* Stack the two-column layout: nav becomes wrapped pill rows above
+           the cards, and the save bar drops its desktop left offset. */
+        #mainform .brikpanel-settings-layout {
+            flex-direction: column;
+            gap: 1rem;
+        }
+        #mainform .brikpanel-settings-sidebar {
+            position: static;
+            flex-basis: auto;
+            width: auto;
+            max-width: 100%;
+            max-height: none;
+            overflow: visible;
+        }
+        #mainform .bp-nav-group { margin-bottom: .65rem; }
+        #mainform .bp-nav-list {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        #mainform .bp-nav-search { max-width: 480px; }
+        #wpbody-content .wrap form#mainform p.submit {
+            margin-left: 0 !important;
+        }
         .bp-settings-card__header {
             padding: .9rem 1.1rem .65rem;
         }
@@ -1562,6 +1983,114 @@ add_action( 'admin_head', function () {
             document.addEventListener('DOMContentLoaded', enableSaveBtn);
         } else {
             enableSaveBtn();
+        }
+    })();
+
+    /* Sidebar settings search. Filters the PHP-built JSON index client-side;
+       while a query is active the group nav is swapped for a flat result
+       list. Result links carry a `#bp-jump=<option id>` fragment — on arrival
+       the target row is scrolled into view and flashed. All user-facing text
+       is rendered by PHP (placeholder + empty state); this script only moves
+       existing DOM around. */
+    (function () {
+        /* This block runs from admin_head, before the sidebar exists in the
+           body — defer the actual wiring until the DOM is parsed. */
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initSettingsSearch);
+        } else {
+            initSettingsSearch();
+        }
+
+        function initSettingsSearch() {
+        var input   = document.getElementById('brikpanel-settings-search');
+        var groups  = document.getElementById('brikpanel-settings-nav-groups');
+        var results = document.getElementById('brikpanel-settings-search-results');
+        var empty   = document.getElementById('brikpanel-settings-search-empty');
+        var idxEl   = document.getElementById('brikpanel-settings-search-index');
+        if (!input || !groups || !results || !empty || !idxEl) { return; }
+        var index = [];
+        try { index = JSON.parse(idxEl.textContent) || []; } catch (e) { return; }
+        var base = input.getAttribute('data-base') || '';
+
+        /* WC's dirty-form tracking is opted out via the
+           `wc-settings-prevent-change-event` class on the search wrapper —
+           WC binds change/input handlers directly to every input at ready,
+           so stopping event propagation here would not be enough. */
+
+        function urlFor(item) {
+            var url = base + (item.section ? '&section=' + encodeURIComponent(item.section) : '');
+            if (item.anchor) { url += '#bp-jump=' + encodeURIComponent(item.anchor); }
+            return url;
+        }
+
+        function render() {
+            var q = input.value.trim().toLowerCase();
+            results.textContent = '';
+            if (!q) {
+                results.hidden = true;
+                empty.hidden = true;
+                groups.hidden = false;
+                return;
+            }
+            var matches = index.filter(function (it) {
+                return it.label.toLowerCase().indexOf(q) !== -1
+                    || (it.k && it.k.indexOf(q) !== -1)
+                    || (it.sectionLabel && it.sectionLabel.toLowerCase().indexOf(q) !== -1);
+            }).slice(0, 30);
+            matches.forEach(function (it) {
+                var li = document.createElement('li');
+                var a = document.createElement('a');
+                a.className = 'bp-nav-result';
+                a.href = urlFor(it);
+                var label = document.createElement('span');
+                label.className = 'bp-nav-result__label';
+                label.textContent = it.label;
+                a.appendChild(label);
+                if (it.anchor && it.sectionLabel) {
+                    var sec = document.createElement('span');
+                    sec.className = 'bp-nav-result__section';
+                    sec.textContent = it.sectionLabel;
+                    a.appendChild(sec);
+                }
+                li.appendChild(a);
+                results.appendChild(li);
+            });
+            groups.hidden = true;
+            results.hidden = matches.length === 0;
+            empty.hidden = matches.length !== 0;
+        }
+
+        input.addEventListener('input', render);
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                /* Inside #mainform — Enter must never submit the settings form. */
+                e.preventDefault();
+                var first = results.querySelector('a');
+                if (first && !results.hidden) { window.location.href = first.href; }
+            } else if (e.key === 'Escape' && input.value) {
+                e.stopPropagation();
+                input.value = '';
+                render();
+            }
+        });
+
+        function jumpToHashTarget() {
+            var m = window.location.hash.match(/^#bp-jump=(.+)$/);
+            if (!m) { return; }
+            var el = document.getElementById(decodeURIComponent(m[1]));
+            if (!el) { return; }
+            var row = el.closest('tr') || el.closest('.bp-settings-card') || el;
+            /* Same-section jumps arrive via hashchange: restore the nav. */
+            if (input.value) { input.value = ''; render(); }
+            window.setTimeout(function () {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                row.classList.remove('bp-jump-flash');
+                void row.offsetWidth; /* restart the animation on repeat jumps */
+                row.classList.add('bp-jump-flash');
+            }, 120);
+        }
+        window.addEventListener('hashchange', jumpToHashTarget);
+        jumpToHashTarget();
         }
     })();
     </script>

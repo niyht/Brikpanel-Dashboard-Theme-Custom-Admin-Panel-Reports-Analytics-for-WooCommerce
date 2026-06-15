@@ -76,9 +76,30 @@ class Brikpanel_ASE_Bridge {
 
         // Specific filter (ASE registers featured image / excerpt / last
         // modified per post type here).
-        $columns = apply_filters( "manage_{$post_type}_posts_columns", $columns );
-        // Generic filter (ASE registers ID column here).
-        $columns = apply_filters( 'manage_posts_columns', $columns );
+        //
+        // Third-party column callbacks run here on a screen they were not
+        // written for (the BrikPanel list / admin-ajax, not edit.php). A
+        // callback that assumes the native edit-screen baseline — or whose
+        // plugin throws on a non-edit screen (e.g. SmartCrawl Pro's analysis
+        // module) — would otherwise bubble a fatal up through the products
+        // list AJAX and surface to the merchant as a blank "couldn't load"
+        // grid. Isolate the filter pass so a single faulty plugin degrades to
+        // "no extra columns" instead of taking the whole screen down. The
+        // result is still memoised below, so we never re-run a callback that
+        // already blew up this request.
+        try {
+            $filtered = apply_filters( "manage_{$post_type}_posts_columns", $columns );
+            if ( is_array( $filtered ) ) {
+                $columns = $filtered;
+            }
+            // Generic filter (ASE registers ID column here).
+            $filtered = apply_filters( 'manage_posts_columns', $columns );
+            if ( is_array( $filtered ) ) {
+                $columns = $filtered;
+            }
+        } catch ( \Throwable $e ) {
+            // Fall back to the baseline + taxonomy columns gathered so far.
+        }
 
         $extra = [];
         foreach ( $columns as $key => $label ) {
@@ -157,9 +178,19 @@ class Brikpanel_ASE_Bridge {
         }
 
         ob_start();
-        // Fire specific action first (this is the order WP core uses).
-        do_action( "manage_{$post_type}_posts_custom_column", $column_id, $post_id );
-        do_action( 'manage_posts_custom_column', $column_id, $post_id );
+        try {
+            // Fire specific action first (this is the order WP core uses).
+            do_action( "manage_{$post_type}_posts_custom_column", $column_id, $post_id );
+            do_action( 'manage_posts_custom_column', $column_id, $post_id );
+        } catch ( \Throwable $e ) {
+            // A third-party cell renderer threw on our (non-edit) screen.
+            // Discard whatever partial output it buffered and render the cell
+            // empty rather than corrupting the JSON the products list AJAX is
+            // streaming back — a corrupted body is what shows the merchant a
+            // "page couldn't load" grid.
+            ob_end_clean();
+            return '';
+        }
         $html = ob_get_clean();
 
         if ( '' === trim( $html ) ) {
@@ -229,7 +260,13 @@ class Brikpanel_ASE_Bridge {
             return [];
         }
 
-        $actions = apply_filters( 'post_row_actions', [], $post );
+        try {
+            $actions = apply_filters( 'post_row_actions', [], $post );
+        } catch ( \Throwable $e ) {
+            // A third-party row-actions callback threw on our non-edit screen;
+            // degrade to no extra actions rather than failing the list row.
+            return [];
+        }
         if ( empty( $actions ) || ! is_array( $actions ) ) {
             return [];
         }
@@ -259,8 +296,15 @@ class Brikpanel_ASE_Bridge {
         $GLOBALS['typenow'] = $post_type;
 
         ob_start();
-        do_action( 'restrict_manage_posts', $post_type, '' );
-        $html = ob_get_clean();
+        try {
+            do_action( 'restrict_manage_posts', $post_type, '' );
+            $html = ob_get_clean();
+        } catch ( \Throwable $e ) {
+            // A filter-bar handler threw; discard partial markup and render
+            // no extra filters rather than breaking the toolbar.
+            ob_end_clean();
+            $html = '';
+        }
 
         if ( null === $previous ) {
             unset( $_GET['post_type'] );

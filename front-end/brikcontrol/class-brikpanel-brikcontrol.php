@@ -20,6 +20,7 @@ class Brikpanel_BrikControl {
     const NONCE_ACTION  = 'brikpanel_brikcontrol_nonce';
     const SCRIPT_HANDLE = 'brikpanel-brikcontrol';
     const TOPBAR_HANDLE = 'brikpanel-brikcontrol-topbar';
+    const BANNER_HANDLE = 'brikpanel-bc-banner';
 
     private static $instance = null;
 
@@ -154,6 +155,23 @@ class Brikpanel_BrikControl {
 
         // Topbar JS is the topbar's own concern; the banner doesn't need it.
         if ( ! $topbar_enabled ) {
+            // …but the dashboard banner's dismiss "X" lives in the topbar JS.
+            // With the topbar off, the banner still renders on the dashboard,
+            // so without a handler the X would do nothing. Load a tiny
+            // standalone dismiss script there to keep it working.
+            if ( $on_dashboard ) {
+                wp_enqueue_script(
+                    self::BANNER_HANDLE,
+                    BRIKPANEL_URL . 'front-end/brikcontrol/assets/brikpanel-bc-banner.js',
+                    [],
+                    BRIKPANEL_VERSION,
+                    true
+                );
+                wp_localize_script( self::BANNER_HANDLE, 'brikpanelBcBanner', [
+                    'ajax_url' => admin_url( 'admin-ajax.php' ),
+                    'nonce'    => wp_create_nonce( self::NONCE_ACTION ),
+                ] );
+            }
             return;
         }
 

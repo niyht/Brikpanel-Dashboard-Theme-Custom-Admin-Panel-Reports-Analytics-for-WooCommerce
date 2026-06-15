@@ -71,6 +71,9 @@ class Brikpanel_Products_List {
             'cogs'     => ['label' => __('Cost', 'brikpanel'),     'default' => false],
             'stock'    => ['label' => __('Stock', 'brikpanel'),    'default' => true],
             'category' => ['label' => __('Category', 'brikpanel'), 'default' => true],
+            'shipping_class' => ['label' => __('Shipping class', 'brikpanel'), 'default' => false],
+            'author'   => ['label' => __('Author', 'brikpanel'),   'default' => false],
+            'menu_order' => ['label' => __('Sort order', 'brikpanel'), 'default' => false],
             'status'   => ['label' => __('Status', 'brikpanel'),   'default' => true],
         ];
 
@@ -177,6 +180,64 @@ class Brikpanel_Products_List {
         }
     }
 
+    /**
+     * Collect active product-taxonomy filters from a request array.
+     *
+     * The native taxonomy admin screens (Brands, Tags and any custom product
+     * taxonomy) link their "product count" column to
+     * `edit.php?<query_var>=<term_slug>&post_type=product`. Because the modern
+     * list lives on a different screen, that filter is otherwise lost. Here we
+     * detect those query vars and translate them into a normalized map keyed by
+     * taxonomy slug, so both the redirect and the AJAX query can honour them.
+     *
+     * Internal/never-user-facing taxonomies (`product_type`,
+     * `product_visibility`) are skipped — those have their own dedicated
+     * filters. Only terms that actually exist are returned, so a hand-crafted
+     * URL can't smuggle in an arbitrary clause.
+     *
+     * @param array|null $source Request array (defaults to $_GET).
+     * @return array<string,string> taxonomy slug => term slug
+     */
+    public static function get_request_tax_filters($source = null) {
+        if ($source === null) {
+            $source = $_GET; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        }
+        if (!is_array($source)) {
+            return [];
+        }
+
+        $skip       = ['product_type', 'product_visibility'];
+        $filters    = [];
+        $taxonomies = get_object_taxonomies('product', 'objects');
+
+        foreach ($taxonomies as $slug => $tax) {
+            if (in_array($slug, $skip, true)) {
+                continue;
+            }
+
+            // A taxonomy is reachable either via its registered query_var or by
+            // its raw slug, depending on how it was registered. Check both.
+            $keys = [];
+            if (is_object($tax) && !empty($tax->query_var) && is_string($tax->query_var)) {
+                $keys[] = $tax->query_var;
+            }
+            $keys[] = $slug;
+
+            foreach (array_unique($keys) as $key) {
+                if (empty($source[$key]) || !is_string($source[$key])) {
+                    continue;
+                }
+                $term_slug = sanitize_title(wp_unslash($source[$key]));
+                if ($term_slug !== '' && get_term_by('slug', $term_slug, $slug)) {
+                    $filters[$slug] = $term_slug;
+                }
+                break;
+            }
+        }
+
+        return $filters;
+    }
+
     public function redirect_default_list() {
         global $pagenow;
 
@@ -189,7 +250,18 @@ class Brikpanel_Products_List {
             if (!empty($_GET['action']) || !empty($_GET['action2']) || !empty($_GET['page']) || !empty($_GET['taxonomy'])) {
                 return;
             }
-            wp_safe_redirect(admin_url('admin.php?page=brikpanel-products'));
+
+            $target = admin_url('admin.php?page=brikpanel-products');
+
+            // Carry over any taxonomy filter (Brand/Tag/custom) from the count
+            // link so the modern list opens already filtered instead of showing
+            // every product. Keyed by taxonomy slug for a stable, JS-friendly URL.
+            $tax_filters = self::get_request_tax_filters();
+            if (!empty($tax_filters)) {
+                $target = add_query_arg($tax_filters, $target);
+            }
+
+            wp_safe_redirect($target);
             exit;
         }
     }
@@ -864,6 +936,29 @@ class Brikpanel_Products_List {
             $custom_taxonomy_terms[$tax_slug] = is_wp_error($terms) ? [] : $terms;
         }
 
+        // Active taxonomy filter carried in from a Brand/Tag/custom taxonomy
+        // "product count" link. Each becomes a removable chip and a tax_query
+        // clause; the data is mirrored to JS via a container data attribute.
+        $active_tax_filters = self::get_request_tax_filters();
+        $tax_filter_chips   = [];
+        foreach ($active_tax_filters as $tax_slug => $term_slug) {
+            $term = get_term_by('slug', $term_slug, $tax_slug);
+            if (!$term || is_wp_error($term)) {
+                unset($active_tax_filters[$tax_slug]);
+                continue;
+            }
+            $tax_obj   = get_taxonomy($tax_slug);
+            $tax_label = ($tax_obj && isset($tax_obj->labels->singular_name))
+                ? $tax_obj->labels->singular_name
+                : $tax_slug;
+            $tax_filter_chips[] = [
+                'taxonomy'   => $tax_slug,
+                'term'       => $term_slug,
+                'tax_label'  => $tax_label,
+                'term_label' => $term->name,
+            ];
+        }
+
         $currency     = get_woocommerce_currency_symbol();
         $column_defs  = self::get_column_defs();
         $column_state = self::get_user_columns();
@@ -889,7 +984,7 @@ class Brikpanel_Products_List {
         $all_count = $total + $draft + $private_c;
         ?>
         <div class="wrap">
-        <div class="brikpanel-pl" id="brikpanel-products-list">
+        <div class="brikpanel-pl" id="brikpanel-products-list" data-tax-filters="<?php echo esc_attr(wp_json_encode((object) $active_tax_filters)); ?>">
 
             <!-- Header -->
             <div class="brikpanel-pl-header">
@@ -1031,6 +1126,21 @@ class Brikpanel_Products_List {
                         </div>
                     </div>
                 </div>
+                <!-- Active taxonomy filter chips (Brand/Tag/custom). Rendered
+                     server-side from the URL; JS removes them on click. -->
+                <div class="brikpanel-pl-filter-chips" id="bpl-filter-chips"<?php echo empty($tax_filter_chips) ? ' hidden' : ''; ?>>
+                    <?php foreach ($tax_filter_chips as $chip) : ?>
+                        <span class="brikpanel-pl-filter-chip" data-taxonomy="<?php echo esc_attr($chip['taxonomy']); ?>">
+                            <span class="brikpanel-pl-filter-chip-label"><?php
+                                /* translators: 1: taxonomy label (e.g. Brand), 2: term name (e.g. Aurora) */
+                                echo esc_html(sprintf(__('%1$s: %2$s', 'brikpanel'), $chip['tax_label'], $chip['term_label']));
+                            ?></span>
+                            <button type="button" class="brikpanel-pl-filter-chip-remove" aria-label="<?php esc_attr_e('Remove filter', 'brikpanel'); ?>">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </span>
+                    <?php endforeach; ?>
+                </div>
             </div>
 
             <!-- Bulk Actions Bar (hidden by default) -->
@@ -1079,13 +1189,16 @@ class Brikpanel_Products_List {
                                 <th class="brikpanel-pl-th-cogs brikpanel-pl-col brikpanel-pl-col-cogs"><?php esc_html_e('Cost', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-stock brikpanel-pl-col brikpanel-pl-col-stock"><?php esc_html_e('Stock', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-cat brikpanel-pl-col brikpanel-pl-col-category"><?php esc_html_e('Category', 'brikpanel'); ?></th>
+                                <th class="brikpanel-pl-th-shipclass brikpanel-pl-col brikpanel-pl-col-shipping_class"><?php esc_html_e('Shipping class', 'brikpanel'); ?></th>
+                                <th class="brikpanel-pl-th-author brikpanel-pl-col brikpanel-pl-col-author"><?php esc_html_e('Author', 'brikpanel'); ?></th>
+                                <th class="brikpanel-pl-th-menu_order brikpanel-pl-col brikpanel-pl-col-menu_order" title="<?php esc_attr_e('Position on the storefront when Custom ordering is active. Click a value to edit.', 'brikpanel'); ?>"><?php esc_html_e('Sort order', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-status brikpanel-pl-col brikpanel-pl-col-status"><?php esc_html_e('Status', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-actions"></th>
                             </tr>
                         </thead>
                         <tbody id="bpl-table-body">
                             <tr class="brikpanel-pl-loading-row">
-                                <td colspan="12">
+                                <td colspan="14">
                                     <div class="brikpanel-pl-spinner"></div>
                                 </td>
                             </tr>
@@ -1539,6 +1652,37 @@ class Brikpanel_Products_List {
             ];
         }
 
+        // Generic product-taxonomy filters (Brand/Tag/custom) carried in from a
+        // taxonomy "product count" link. Each is validated against the product's
+        // registered taxonomies and matched by term slug, then ANDed in.
+        $raw_tax_filters = isset($_POST['tax_filters']) && is_array($_POST['tax_filters'])
+            ? wp_unslash($_POST['tax_filters'])
+            : [];
+        if (!empty($raw_tax_filters)) {
+            $allowed_taxonomies = get_object_taxonomies('product');
+            foreach ($raw_tax_filters as $tax_slug => $term_slug) {
+                $tax_slug  = sanitize_key($tax_slug);
+                $term_slug = sanitize_title($term_slug);
+                if ($tax_slug === '' || $term_slug === '') {
+                    continue;
+                }
+                if (in_array($tax_slug, ['product_type', 'product_visibility'], true)) {
+                    continue;
+                }
+                if (!in_array($tax_slug, $allowed_taxonomies, true)) {
+                    continue;
+                }
+                if (!get_term_by('slug', $term_slug, $tax_slug)) {
+                    continue;
+                }
+                $tax_query[] = [
+                    'taxonomy' => $tax_slug,
+                    'field'    => 'slug',
+                    'terms'    => [$term_slug],
+                ];
+            }
+        }
+
         if (!empty($tax_query)) {
             $args['tax_query'] = $tax_query;
         }
@@ -1610,21 +1754,26 @@ class Brikpanel_Products_List {
             $stock_info = self::compute_stock_info($product);
             $stock_qty  = $stock_info['qty'];
 
-            $cats = wp_get_post_terms($post->ID, 'product_cat', ['fields' => 'all']);
+            // get_the_terms() reads the object-term cache primed once by the
+            // WP_Query above (update_post_term_cache), so the per-product term
+            // lookups below resolve from cache instead of issuing a fresh
+            // WP_Term_Query (one DB hit per taxonomy per product). On a 20-row
+            // page that turns ~140 term queries into a handful.
+            $cats = get_the_terms($post->ID, 'product_cat');
             $cat_names = [];
             $cat_ids   = [];
-            if (!is_wp_error($cats)) {
+            if (is_array($cats)) {
                 foreach ($cats as $cat) {
                     // $cat->name is already HTML-encoded by WP's sanitize_term_field()
                     // (display context). Decode here so JS escHtml() doesn't double-encode it.
                     $cat_names[] = html_entity_decode($cat->name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                    $cat_ids[]   = $cat->term_id;
+                    $cat_ids[]   = (int) $cat->term_id;
                 }
             }
 
-            $tag_terms = wp_get_post_terms($post->ID, 'product_tag', ['fields' => 'all']);
+            $tag_terms = get_the_terms($post->ID, 'product_tag');
             $tag_ids   = [];
-            if (!is_wp_error($tag_terms)) {
+            if (is_array($tag_terms)) {
                 foreach ($tag_terms as $tg) {
                     $tag_ids[] = (int) $tg->term_id;
                 }
@@ -1636,10 +1785,10 @@ class Brikpanel_Products_List {
             $custom_taxonomy_ids = [];
             if (!empty($qe_custom_taxonomies)) {
                 foreach ($qe_custom_taxonomies as $tax_slug) {
-                    $tax_term_ids = wp_get_post_terms($post->ID, $tax_slug, ['fields' => 'ids']);
-                    $custom_taxonomy_ids[$tax_slug] = is_wp_error($tax_term_ids)
-                        ? []
-                        : array_map('intval', $tax_term_ids);
+                    $tax_terms = get_the_terms($post->ID, $tax_slug);
+                    $custom_taxonomy_ids[$tax_slug] = is_array($tax_terms)
+                        ? array_values(array_map(static function ($t) { return (int) $t->term_id; }, $tax_terms))
+                        : [];
                 }
             }
 
@@ -1660,6 +1809,41 @@ class Brikpanel_Products_List {
             // toggling the column on instantly populated without a refetch.
             $cogs_payload = self::compute_cogs_display($product);
 
+            // Shipping class (taxonomy term name) and product author. Both are
+            // opt-in columns (default off) but always resolved so toggling them
+            // on populates instantly without a refetch. Author doubles as the
+            // marketplace vendor column under Dokan-style setups where the
+            // product author is the seller.
+            $ship_class_id   = $product->get_shipping_class_id();
+            $ship_class_name = '';
+            if ($ship_class_id) {
+                $ship_term = get_term($ship_class_id, 'product_shipping_class');
+                if ($ship_term && !is_wp_error($ship_term)) {
+                    $ship_class_name = html_entity_decode($ship_term->name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+            }
+            $author_id   = (int) $post->post_author;
+            $author_name = $author_id ? get_the_author_meta('display_name', $author_id) : '';
+
+            // Robust sale-price display. WooCommerce's get_price_html() can be
+            // overridden by 3rd-party `woocommerce_get_price_html` filters that
+            // on some stores collapse the struck regular + sale price into a
+            // single figure, hiding the current (sale) price from the list.
+            // For simple products we therefore build the sale display ourselves
+            // from the raw regular/active price so an active WooCommerce sale is
+            // always visible. Tax handling mirrors WooCommerce via
+            // wc_get_price_to_display(); variable/grouped products keep
+            // get_price_html() because their display is a min–max range.
+            $sale_display_html = '';
+            if ($product->is_type('simple') && $product->is_on_sale()) {
+                $regular_raw = $product->get_regular_price();
+                if ($regular_raw !== '' && $regular_raw !== null) {
+                    $reg_disp  = wc_price(wc_get_price_to_display($product, ['price' => $regular_raw]));
+                    $sale_disp = wc_price(wc_get_price_to_display($product, ['price' => $product->get_price()]));
+                    $sale_display_html = '<del aria-hidden="true">' . $reg_disp . '</del> <ins>' . $sale_disp . '</ins>';
+                }
+            }
+
             $products[] = [
                 'id'             => $post->ID,
                 'name'           => $product->get_name() ?? '',
@@ -1668,6 +1852,7 @@ class Brikpanel_Products_List {
                 'regular_price'  => $product->get_regular_price(),
                 'sale_price'     => $product->get_sale_price(),
                 'price_html'     => $product->get_price_html(),
+                'sale_display'   => $sale_display_html,
                 'cogs'           => $cogs_payload,
                 'cogs_value'     => (string) get_post_meta($post->ID, '_brikpanel_cogs', true),
                 'stock'          => $stock_qty,
@@ -1678,6 +1863,9 @@ class Brikpanel_Products_List {
                 'image'          => $image_url,
                 'categories'     => $cat_names,
                 'category_ids'   => $cat_ids,
+                'shipping_class' => $ship_class_name,
+                'author'         => $author_name,
+                'menu_order'     => (int) $post->menu_order,
                 'tag_ids'        => $tag_ids,
                 'custom_taxonomies' => (object) $custom_taxonomy_ids,
                 'type'           => $product->get_type(),
@@ -1892,10 +2080,24 @@ class Brikpanel_Products_List {
             }
         }
 
+        // Sort order (menu_order) — controls the product's position on the
+        // storefront when "Custom ordering" sort is active. Works for both
+        // simple and variable products (it is a parent-post property).
+        if (isset($_POST['menu_order']) && $_POST['menu_order'] !== '') {
+            $product->set_menu_order(intval($_POST['menu_order']));
+        }
+
         if (isset($_POST['status'])) {
             $status = sanitize_key($_POST['status']);
             if (in_array($status, ['publish', 'draft', 'private'], true)) {
-                wp_update_post(['ID' => $product_id, 'post_status' => $status]);
+                // Set the status on the product object so the single
+                // $product->save() below persists it. A standalone
+                // wp_update_post() here would be silently clobbered: when any
+                // other post field also changed (name, slug, …) WC's save()
+                // rewrites the whole post row and pulls post_status from the
+                // in-memory product, which still holds the pre-edit status —
+                // reverting e.g. a just-published duplicate back to draft.
+                $product->set_status($status);
             }
         }
 
@@ -2112,6 +2314,7 @@ class Brikpanel_Products_List {
                 'category_ids'    => $cat_ids,
                 'tag_ids'         => $tag_ids_qe,
                 'custom_taxonomies' => (object) $custom_taxonomy_ids_qe,
+                'menu_order'      => (int) $product->get_menu_order(),
                 'type'            => $product->get_type(),
                 'is_downloadable' => $product->is_downloadable(),
                 'is_virtual'      => $product->is_virtual(),

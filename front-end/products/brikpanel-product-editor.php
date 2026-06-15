@@ -63,17 +63,36 @@ class Brikpanel_Product_Editor {
         // AJAX
         add_action('wp_ajax_brikpanel_save_product', [$this, 'ajax_save_product']);
         add_action('wp_ajax_brikpanel_add_category', [$this, 'ajax_add_category']);
+        add_action('wp_ajax_brikpanel_add_brand', [$this, 'ajax_add_brand']);
         add_action('wp_ajax_brikpanel_upload_image', [$this, 'ajax_upload_image']);
         add_action('wp_ajax_brikpanel_pe_search_products', [$this, 'ajax_search_products']);
-        add_action('wp_ajax_brikpanel_pe_surerank_analyze', [$this, 'ajax_surerank_analyze']);
+        // Renders the per-variation 3rd-party field structure for variations
+        // that do not exist in the DB yet, so the "More fields" expander works
+        // BEFORE the product's first save (empty values; they persist on save
+        // via the row-index loop mapping).
+        add_action('wp_ajax_brikpanel_pe_preview_variation_fields', [$this, 'ajax_preview_variation_fields']);
+        // SEO analysis re-run. The legacy `…_surerank_analyze` action name is
+        // kept for back-compat (the client still posts it); the handler now
+        // renders whichever unified analyzer is active (SureRank or SmartCrawl).
+        add_action('wp_ajax_brikpanel_pe_surerank_analyze', [$this, 'ajax_seo_analyze']);
+        add_action('wp_ajax_brikpanel_pe_seo_analyze', [$this, 'ajax_seo_analyze']);
     }
 
     /**
-     * Re-run SureRank's SEO analysis for a product and return the refreshed
-     * panel HTML. Fired by the "Re-analyze" button and right after a save so
-     * the checks reflect the latest saved title/description/keyword/content.
+     * Re-run the active unified SEO analyzer (SureRank or SmartCrawl) for a
+     * product and return the refreshed panel HTML. Fired by the "Re-analyze"
+     * button and right after a save so the checks reflect the latest
+     * title/description/keyword/content.
+     *
+     * The client always sends the current (possibly unsaved) SEO field values
+     * + description so the checks track what the user is typing without a save:
+     *  - SureRank reads them through its own filters (surerank_prep_post_meta /
+     *    surerank_post_analyzer_content), wired up here and torn down right
+     *    after the render.
+     *  - SmartCrawl receives them as an $overrides array that
+     *    render_smartcrawl_analysis() applies through its own filters.
      */
-    public function ajax_surerank_analyze() {
+    public function ajax_seo_analyze() {
         check_ajax_referer('brikpanel_product_editor_nonce', 'security');
         if (!current_user_can('edit_products')) {
             wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
@@ -83,29 +102,40 @@ class Brikpanel_Product_Editor {
             wp_send_json_error(['message' => __('Invalid product.', 'brikpanel')]);
         }
 
-        // Live preview. The client sends the current (possibly unsaved) SEO
-        // field values + description so the checks track what the user is
-        // typing without needing a save — mirroring SureRank's own live
-        // analysis. We feed them to SureRank's analyzer through its public
-        // filters (surerank_prep_post_meta for the meta fields,
-        // surerank_post_analyzer_content for the body) and tear the filters
-        // down right after. Only non-empty fields override: an empty field
-        // keeps SureRank's default/template behaviour, exactly as an empty
-        // field is saved.
-        $field_map = [
-            'seo_title'       => 'page_title',
-            'seo_description' => 'page_description',
-            'seo_focus_kw'    => 'focus_keyword',
-            'seo_canonical'   => 'canonical_url',
+        $analyzer = self::get_unified_seo_analyzer();
+        if ($analyzer === null) {
+            wp_send_json_success(['html' => '']);
+        }
+
+        // Sanitize the shared field values once.
+        $seo_title    = isset($_POST['seo_title'])       ? sanitize_text_field(wp_unslash($_POST['seo_title']))       : null;
+        $seo_desc     = isset($_POST['seo_description'])  ? sanitize_textarea_field(wp_unslash($_POST['seo_description'])) : null;
+        $seo_focus_kw = isset($_POST['seo_focus_kw'])     ? sanitize_text_field(wp_unslash($_POST['seo_focus_kw']))     : null;
+        $seo_canon    = isset($_POST['seo_canonical'])    ? esc_url_raw(wp_unslash($_POST['seo_canonical']))           : null;
+        $content      = isset($_POST['content'])          ? wp_kses_post(wp_unslash($_POST['content']))               : null;
+
+        if ($analyzer['slug'] === 'smartcrawl') {
+            $overrides = [];
+            if ($seo_title !== null)    { $overrides['title']         = $seo_title; }
+            if ($seo_desc !== null)     { $overrides['description']   = $seo_desc; }
+            if ($seo_canon !== null)    { $overrides['canonical']     = $seo_canon; }
+            if ($seo_focus_kw !== null) { $overrides['focus_keyword'] = $seo_focus_kw; }
+            if ($content !== null)      { $overrides['content']       = $content; }
+            wp_send_json_success(['html' => self::render_smartcrawl_analysis($pid, $overrides)]);
+        }
+
+        // SureRank: feed live values through its public filters. Only non-empty
+        // fields override; an empty field keeps SureRank's default/template
+        // behaviour, exactly as an empty field is saved.
+        $sr_map = [
+            'page_title'      => $seo_title,
+            'page_description' => $seo_desc,
+            'focus_keyword'   => $seo_focus_kw,
+            'canonical_url'   => $seo_canon,
         ];
         $overrides = [];
-        foreach ($field_map as $post_key => $meta_key) {
-            if (!isset($_POST[$post_key])) {
-                continue;
-            }
-            $raw = wp_unslash($_POST[$post_key]);
-            $val = ($post_key === 'seo_canonical') ? esc_url_raw($raw) : sanitize_text_field($raw);
-            if ($val !== '') {
+        foreach ($sr_map as $meta_key => $val) {
+            if ($val !== null && $val !== '') {
                 $overrides[$meta_key] = $val;
             }
         }
@@ -124,8 +154,7 @@ class Brikpanel_Product_Editor {
         }
 
         $content_filter = null;
-        if (isset($_POST['content'])) {
-            $content = wp_kses_post(wp_unslash($_POST['content']));
+        if ($content !== null) {
             $content_filter = static function () use ($content) {
                 return $content;
             };
@@ -434,6 +463,20 @@ class Brikpanel_Product_Editor {
         $categories  = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false]);
         if (is_wp_error($categories)) {
             $categories = [];
+        }
+
+        // Brand taxonomy — native WC `product_brand` (9.6+) or a third-party
+        // brand plugin. Resolved once here and reused by the brand card render
+        // + the "add new brand" inline form. Empty string when the install has
+        // no brand taxonomy, in which case the brand section never renders.
+        $brand_taxonomy   = brikpanel_pe_brand_taxonomy();
+        $brand_hierarchical = $brand_taxonomy !== '' && is_taxonomy_hierarchical($brand_taxonomy);
+        $brands = [];
+        if ($brand_taxonomy !== '') {
+            $brands = get_terms(['taxonomy' => $brand_taxonomy, 'hide_empty' => false]);
+            if (is_wp_error($brands)) {
+                $brands = [];
+            }
         }
 
         // Treat auto-drafts as "new" in the UI — WP creates the row on first
@@ -819,7 +862,7 @@ class Brikpanel_Product_Editor {
 
                 <?php if (in_array('variations', $visible, true)) : ob_start(); ?>
                 <!-- Variations -->
-                <div class="brikpanel-pe-card" id="bpe-var-card">
+                <div class="brikpanel-pe-card" id="bpe-var-card"<?php echo ($product_type_selector_enabled && !$data['is_variable']) ? ' style="display:none"' : ''; ?>>
                     <div class="brikpanel-pe-toggle-row" id="bpe-var-toggle-row"<?php echo $product_type_selector_enabled ? ' style="display:none"' : ''; ?>>
                         <span><?php esc_html_e('Does this product have sizes/colors?', 'brikpanel'); ?></span>
                         <label class="brikpanel-pe-switch">
@@ -1245,6 +1288,36 @@ class Brikpanel_Product_Editor {
                 </div>
                 <?php $section_html['category'] = ob_get_clean(); endif; ?>
 
+                <?php if ($brand_taxonomy !== '' && in_array('brand', $visible, true)) : ob_start(); ?>
+                <!-- Brand -->
+                <div class="brikpanel-pe-card">
+                    <label><?php esc_html_e('Brand', 'brikpanel'); ?></label>
+                    <div class="brikpanel-pe-cat-wrap">
+                        <input type="text" class="brikpanel-pe-cat-search" id="bpe-brand-search" placeholder="<?php esc_attr_e('Search brands...', 'brikpanel'); ?>">
+                        <div class="brikpanel-pe-cat-list" id="bpe-brand-list">
+                            <?php $this->render_category_checklist($brands, $data['brand_ids'], 0, 0, 'brand_ids[]'); ?>
+                        </div>
+                    </div>
+                    <?php if (current_user_can('manage_product_terms')) : ?>
+                    <a href="#" id="bpe-add-brand-toggle" class="brikpanel-pe-link"><?php esc_html_e('+ Add new brand', 'brikpanel'); ?></a>
+                    <div class="brikpanel-pe-collapse" id="bpe-new-brand-section">
+                        <div>
+                            <div class="brikpanel-pe-inline-form">
+                                <input type="text" id="bpe-new-brand-name" placeholder="<?php esc_attr_e('Brand name', 'brikpanel'); ?>">
+                                <?php if ($brand_hierarchical) : ?>
+                                <select id="bpe-new-brand-parent">
+                                    <option value="0"><?php esc_html_e('— No parent —', 'brikpanel'); ?></option>
+                                    <?php $this->render_category_parent_options($brands); ?>
+                                </select>
+                                <?php endif; ?>
+                                <button type="button" class="brikpanel-pe-btn secondary small" id="bpe-add-brand-btn"><?php esc_html_e('Add', 'brikpanel'); ?></button>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php $section_html['brand'] = ob_get_clean(); endif; ?>
+
                 <?php if (in_array('tags', $visible, true)) : ob_start(); ?>
                 <!-- Tags -->
                 <div class="brikpanel-pe-card">
@@ -1430,15 +1503,17 @@ class Brikpanel_Product_Editor {
                 </div>
                     <?php else : ?>
                 <!-- SEO — unified fields that save to Yoast, Rank Math, All in
-                     One SEO, SEOPress and SureRank meta keys at once. Shown
-                     when none of the four inline-metabox plugins is active.
-                     SureRank also lands here (its React popup has no inline
-                     metabox) and, when active, reads/writes its own keys. -->
+                     One SEO, SEOPress, SureRank and SmartCrawl meta keys at
+                     once. Shown when none of the four inline-metabox plugins is
+                     active. SureRank and SmartCrawl also land here (their
+                     editors are React popups with no inline metabox) and, when
+                     active, drive the read path + the live analysis panel. -->
+                <?php $unified_analyzer = self::get_unified_seo_analyzer(); ?>
                 <div class="brikpanel-pe-card brikpanel-pe-seo-card">
                     <label>
                         <?php esc_html_e('SEO', 'brikpanel'); ?>
-                        <?php if (defined('SURERANK_VERSION')) : ?>
-                        <span class="brikpanel-pe-seo-plugin-badge"><?php esc_html_e('SureRank SEO', 'brikpanel'); ?></span>
+                        <?php if ($unified_analyzer !== null) : ?>
+                        <span class="brikpanel-pe-seo-plugin-badge"><?php echo esc_html($unified_analyzer['label']); ?></span>
                         <?php endif; ?>
                     </label>
                     <div class="brikpanel-pe-seo-preview" id="bpe-seo-preview">
@@ -1477,20 +1552,21 @@ class Brikpanel_Product_Editor {
                         </label>
                     </div>
                     <p class="brikpanel-pe-help-text">
-                        <?php if (defined('SURERANK_VERSION')) : ?>
-                        <?php esc_html_e('These fields are saved to SureRank, plus Yoast SEO, Rank Math, All in One SEO and SEOPress, so switching SEO plugins never loses your work.', 'brikpanel'); ?>
-                        <?php else : ?>
+                        <?php if ($unified_analyzer !== null) :
+                            /* translators: %s: active SEO plugin name (SureRank or SmartCrawl) */
+                            printf(esc_html__('These fields are saved to %s, plus Yoast SEO, Rank Math, All in One SEO and SEOPress, so switching SEO plugins never loses your work.', 'brikpanel'), esc_html($unified_analyzer['label']));
+                        else : ?>
                         <?php esc_html_e('These fields are saved to Yoast SEO, Rank Math, All in One SEO and SEOPress simultaneously, so switching SEO plugins never loses your work.', 'brikpanel'); ?>
                         <?php endif; ?>
                     </p>
-                    <?php if (defined('SURERANK_VERSION')) :
-                        $sr_analysis_html = self::render_surerank_analysis((int) $product_id);
+                    <?php if ($unified_analyzer !== null) :
+                        $sr_analysis_html = self::render_unified_seo_analysis((int) $product_id);
                         if ($sr_analysis_html !== '') : ?>
                     <div class="brikpanel-pe-sr-analysis" id="bpe-surerank-analysis">
                         <div class="brikpanel-pe-sr-head">
                             <span class="brikpanel-pe-sr-head-title">
                                 <?php esc_html_e('SEO analysis', 'brikpanel'); ?>
-                                <span class="brikpanel-pe-seo-plugin-badge"><?php esc_html_e('SureRank', 'brikpanel'); ?></span>
+                                <span class="brikpanel-pe-seo-plugin-badge"><?php echo esc_html($unified_analyzer['label']); ?></span>
                             </span>
                             <button type="button" class="brikpanel-pe-btn secondary brikpanel-pe-sr-rerun" id="bpe-surerank-rerun"><?php esc_html_e('Re-analyze', 'brikpanel'); ?></button>
                         </div>
@@ -1519,7 +1595,7 @@ class Brikpanel_Product_Editor {
                         <select class="brikpanel-pe-attr-select" id="bpe-attr-select">
                             <option value=""><?php esc_html_e('Select existing attribute…', 'brikpanel'); ?></option>
                             <?php foreach ($global_attributes as $ga) : ?>
-                                <option value="<?php echo esc_attr($ga['name']); ?>" data-taxonomy="<?php echo esc_attr($ga['taxonomy']); ?>" data-terms="<?php echo esc_attr(wp_json_encode($ga['terms'])); ?>"><?php echo esc_html($ga['name']); ?></option>
+                                <option value="<?php echo esc_attr($ga['name']); ?>" data-taxonomy="<?php echo esc_attr($ga['taxonomy']); ?>"><?php echo esc_html($ga['name']); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -1843,6 +1919,52 @@ class Brikpanel_Product_Editor {
     }
 
     /**
+     * Detect a SEO plugin whose editor UI cannot be rendered inline (it lives
+     * in a React popup / JS-mounted container), so BrikPanel routes it through
+     * its own unified SEO fields and renders a native-equivalent analysis
+     * panel instead. Currently SureRank and SmartCrawl (WPMU DEV SEO).
+     *
+     * Only meaningful when get_active_seo_plugin() returned null — if one of
+     * the four inline-metabox plugins is active it owns the SEO card and these
+     * are not consulted. When both are somehow active, SureRank wins (it is
+     * the stricter source of truth for the unified fields' read path).
+     *
+     * @return array{slug:string,label:string}|null
+     */
+    public static function get_unified_seo_analyzer() {
+        $detected = null;
+        if (defined('SURERANK_VERSION')) {
+            $detected = ['slug' => 'surerank', 'label' => __('SureRank', 'brikpanel')];
+        } elseif (defined('SMARTCRAWL_VERSION')) {
+            $detected = ['slug' => 'smartcrawl', 'label' => __('SmartCrawl', 'brikpanel')];
+        }
+        return apply_filters('brikpanel_pe_unified_seo_analyzer', $detected);
+    }
+
+    /**
+     * Render whichever unified-analyzer panel is active (SureRank or
+     * SmartCrawl) for the given product, in BrikPanel's design. Returns '' when
+     * none is active or there's nothing to show. Single entry point shared by
+     * the initial SEO-card render and the AJAX re-analyze handler.
+     *
+     * @param int   $pid
+     * @param array $overrides Live field values (see the per-analyzer methods).
+     * @return string
+     */
+    public static function render_unified_seo_analysis($pid, array $overrides = []) {
+        $analyzer = self::get_unified_seo_analyzer();
+        if ($analyzer === null) {
+            return '';
+        }
+        if ($analyzer['slug'] === 'smartcrawl') {
+            return self::render_smartcrawl_analysis($pid, $overrides);
+        }
+        // SureRank: its analyzer reads live values through its own filters,
+        // wired up in ajax_seo_analyze(); the initial render needs no overrides.
+        return self::render_surerank_analysis($pid);
+    }
+
+    /**
      * Run SureRank's SEO analysis ("Analyze" panel) for a product and return
      * its checks grouped for display — Page checks + Keyword checks, each
      * bucketed by status. Returns null when SureRank isn't active, exposes no
@@ -1948,7 +2070,7 @@ class Brikpanel_Product_Editor {
      * Build the HTML for the SureRank analysis panel shown inside the SEO
      * card. Returns '' when there's nothing to show. Rendered server-side so
      * markup + i18n live in one place; the "Re-analyze" button re-fetches this
-     * same HTML over AJAX (see ajax_surerank_analyze()).
+     * same HTML over AJAX (see ajax_seo_analyze()).
      *
      * @param int $pid
      * @return string
@@ -2010,6 +2132,318 @@ class Brikpanel_Product_Editor {
         <?php
         echo $render_group(__('Page checks', 'brikpanel'), $analysis['page']);
         echo $render_group(__('Keyword checks', 'brikpanel'), $analysis['keyword']);
+        return ob_get_clean();
+    }
+
+    /**
+     * Human-readable label + grouping for each SmartCrawl (WPMU DEV SEO) post
+     * check id. Keys are SmartCrawl's internal check ids (see
+     * SmartCrawl\Checks::$checks); `kw` flags a check that only makes sense
+     * once a focus keyword is set, so those collapse into a single
+     * "add a focus keyword" suggestion when none is present — mirroring how
+     * SmartCrawl's own analyzer reads. Unknown/extra check ids fall back to a
+     * generic label so a future SmartCrawl release never renders blank rows.
+     *
+     * @return array<string,array{group:string,label:string,kw:bool}>
+     */
+    private static function smartcrawl_check_map() {
+        return [
+            // Title / meta-description / slug — derived from the post + meta.
+            'title_length'             => ['group' => 'page', 'label' => __('SEO title length is within the recommended range', 'brikpanel'), 'kw' => false],
+            'metadesc_length'          => ['group' => 'page', 'label' => __('Meta description length is within the recommended range', 'brikpanel'), 'kw' => false],
+            'metadesc_handcraft'       => ['group' => 'page', 'label' => __('Meta description is hand-written, not auto-generated', 'brikpanel'), 'kw' => false],
+            'slug_underscores'         => ['group' => 'page', 'label' => __('URL slug uses hyphens instead of underscores', 'brikpanel'), 'kw' => false],
+            'title_keywords'           => ['group' => 'page', 'label' => __('Focus keyword appears in the SEO title', 'brikpanel'), 'kw' => true],
+            'metadesc_keywords'        => ['group' => 'page', 'label' => __('Focus keyword appears in the meta description', 'brikpanel'), 'kw' => true],
+            'slug_keywords'            => ['group' => 'page', 'label' => __('Focus keyword appears in the URL slug', 'brikpanel'), 'kw' => true],
+            'focus_stopwords'          => ['group' => 'page', 'label' => __('Focus keyword does not consist only of stop words', 'brikpanel'), 'kw' => true],
+            'keywords_used'            => ['group' => 'page', 'label' => __('Focus keyword has not been used on another product', 'brikpanel'), 'kw' => true],
+            'title_secondary_keywords' => ['group' => 'page', 'label' => __('Secondary keyword appears in the SEO title', 'brikpanel'), 'kw' => true],
+            // Rendered-content checks.
+            'content_length'           => ['group' => 'content', 'label' => __('Content is long enough', 'brikpanel'), 'kw' => false],
+            'links_count'              => ['group' => 'content', 'label' => __('Content contains at least one link', 'brikpanel'), 'kw' => false],
+            'nofollow_links'           => ['group' => 'content', 'label' => __('Outbound links are followed where appropriate', 'brikpanel'), 'kw' => false],
+            'keyword_density'          => ['group' => 'content', 'label' => __('Focus keyword density is within the recommended range', 'brikpanel'), 'kw' => true],
+            'para_keywords'            => ['group' => 'content', 'label' => __('Focus keyword appears in the first paragraph', 'brikpanel'), 'kw' => true],
+            'subheadings_keywords'     => ['group' => 'content', 'label' => __('Focus keyword appears in a subheading', 'brikpanel'), 'kw' => true],
+            'imgalts_keywords'         => ['group' => 'content', 'label' => __('Focus keyword appears in an image alt text', 'brikpanel'), 'kw' => true],
+            'bolded_keyword'           => ['group' => 'content', 'label' => __('Focus keyword is emphasized somewhere in the content', 'brikpanel'), 'kw' => true],
+        ];
+    }
+
+    /**
+     * Run SmartCrawl's (WPMU DEV SEO) own SEO analyzer for a product and
+     * return its checks grouped for display plus the percentage score
+     * SmartCrawl itself shows. Returns null when SmartCrawl isn't active or
+     * the analyzer is unavailable.
+     *
+     * SmartCrawl's editor metabox is a React app mounted into an empty
+     * container (#wds-metabox-container) and its scripts only load on the
+     * native post-edit screen, so it can't be rendered inline inside the
+     * BrikPanel editor. Instead BrikPanel surfaces SmartCrawl through its own
+     * unified SEO fields and calls SmartCrawl's analyzer
+     * (\SmartCrawl\Checks::apply) directly so the merchant still gets the same
+     * dynamic score and check list, rendered in BrikPanel's design.
+     *
+     * For live analysis (the merchant is typing, nothing saved yet) the caller
+     * passes the current field values + content as $overrides; we feed the
+     * content through SmartCrawl's `wds-checks-subject-endpoint` filter (which
+     * also avoids an HTTP self-request to render the post) and the meta fields
+     * through a scoped `get_post_metadata` read-filter. Everything is torn
+     * down before returning so nothing leaks to other requests.
+     *
+     * @param int   $pid
+     * @param array $overrides Optional: focus_keyword, title, description,
+     *                         canonical, content (rendered HTML).
+     * @return array{score:int,page:array,content:array,summary:array}|null
+     */
+    public static function get_smartcrawl_analysis($pid, array $overrides = []) {
+        if (!defined('SMARTCRAWL_VERSION') || !class_exists('\\SmartCrawl\\Checks')) {
+            return null;
+        }
+        $post = get_post($pid);
+        if (!$post) {
+            return null;
+        }
+
+        // Focus keyword: live value if supplied, otherwise the saved primary
+        // keyword (SmartCrawl stores focus keywords comma-separated; the first
+        // is primary).
+        if (array_key_exists('focus_keyword', $overrides)) {
+            $keyword = trim((string) $overrides['focus_keyword']);
+        } else {
+            $saved_kw = (string) get_post_meta($pid, '_wds_focus-keywords', true);
+            $parts    = array_filter(array_map('trim', explode(',', $saved_kw)));
+            $keyword  = $parts ? reset($parts) : '';
+        }
+        $has_kw = ($keyword !== '');
+
+        // Content for the rendered-content checks. Always inject it through
+        // SmartCrawl's endpoint-subject filter so the analyzer never fires an
+        // HTTP request back to the site (slow, and unavailable for unsaved
+        // edits). When the caller did not supply live content, fall back to
+        // the saved product description run through the_content so the initial
+        // page-load analysis still reflects what will be published.
+        if (array_key_exists('content', $overrides)) {
+            $content = (string) $overrides['content'];
+        } else {
+            $content = apply_filters('the_content', (string) $post->post_content);
+        }
+
+        // Scoped meta read-filter for the live title / description / canonical
+        // overrides. Returns a single-element array because get_post_metadata
+        // expects the pre-filtered meta shape ($single is applied downstream).
+        $meta_overrides = [];
+        if (array_key_exists('title', $overrides) && $overrides['title'] !== '') {
+            $meta_overrides['_wds_title'] = (string) $overrides['title'];
+        }
+        if (array_key_exists('description', $overrides) && $overrides['description'] !== '') {
+            $meta_overrides['_wds_metadesc'] = (string) $overrides['description'];
+        }
+        if (array_key_exists('canonical', $overrides) && $overrides['canonical'] !== '') {
+            $meta_overrides['_wds_canonical'] = (string) $overrides['canonical'];
+        }
+        if ($has_kw) {
+            // Keep the entity's primary-keyword lookups consistent with the
+            // keyword we hand to apply().
+            $meta_overrides['_wds_focus-keywords'] = $keyword;
+        }
+
+        $content_filter = static function () use ($content) {
+            return $content;
+        };
+        add_filter('wds-checks-subject-endpoint', $content_filter, 99);
+
+        $meta_filter = null;
+        if (!empty($meta_overrides)) {
+            $meta_filter = static function ($value, $object_id, $meta_key) use ($pid, $meta_overrides) {
+                if ((int) $object_id === (int) $pid && isset($meta_overrides[$meta_key])) {
+                    return [$meta_overrides[$meta_key]];
+                }
+                return $value;
+            };
+            add_filter('get_post_metadata', $meta_filter, 99, 3);
+        }
+
+        // SmartCrawl caches resolved post entities; clear so our overrides are
+        // picked up rather than a stale entity from earlier this request.
+        if (class_exists('\\SmartCrawl\\Cache\\Post_Cache') && method_exists('\\SmartCrawl\\Cache\\Post_Cache', 'get')) {
+            try {
+                $cache = \SmartCrawl\Cache\Post_Cache::get();
+                if (method_exists($cache, 'purge')) {
+                    $cache->purge();
+                }
+            } catch (\Throwable $e) { /* non-fatal */ }
+        }
+
+        $score   = 0;
+        $applied = [];
+        try {
+            $checks  = \SmartCrawl\Checks::apply($pid, false, $keyword, true);
+            $score   = (int) $checks->get_percentage();
+            $applied = (array) $checks->get_applied_checks();
+        } catch (\Throwable $e) {
+            $applied = [];
+        }
+
+        remove_filter('wds-checks-subject-endpoint', $content_filter, 99);
+        if ($meta_filter) {
+            remove_filter('get_post_metadata', $meta_filter, 99);
+        }
+
+        if (empty($applied)) {
+            return null;
+        }
+
+        $map     = self::smartcrawl_check_map();
+        $groups  = ['page' => [], 'content' => []];
+        $summary = ['warning' => 0, 'suggestion' => 0, 'success' => 0];
+
+        foreach ($applied as $id => $info) {
+            // 'focus' is SmartCrawl's "is a focus keyword set" check — it is
+            // redundant with BrikPanel's own focus-keyword field and the
+            // "no focus keyword" suggestion below, so never list it.
+            if ($id === 'focus') {
+                continue;
+            }
+            if (!isset($map[$id])) {
+                // Unknown check id from a newer SmartCrawl build: show it with
+                // a generic label so the panel never silently drops results.
+                $map[$id] = ['group' => 'content', 'label' => ucwords(str_replace('_', ' ', (string) $id)), 'kw' => false];
+            }
+            $def = $map[$id];
+            if (!empty($info['ignored'])) {
+                continue; // Respect checks the merchant ignored in SmartCrawl.
+            }
+            // Collapse every keyword-dependent check into one suggestion when
+            // no focus keyword is set — they would all "fail" for the same
+            // reason and just add noise otherwise.
+            if (!$has_kw && $def['kw']) {
+                continue;
+            }
+            $passed = !empty($info['status']);
+            $status = $passed ? 'success' : 'warning';
+            $groups[$def['group']][] = [
+                'status'  => $status,
+                'message' => $def['label'],
+            ];
+            $summary[$status]++;
+        }
+
+        if (!$has_kw) {
+            $groups['page'][] = [
+                'status'  => 'suggestion',
+                'message' => __('No focus keyword set. Add one to check the title, description, URL and content against it.', 'brikpanel'),
+            ];
+            $summary['suggestion']++;
+        }
+
+        if (empty($groups['page']) && empty($groups['content'])) {
+            return null;
+        }
+
+        // Fail/suggest first within each group, passed last.
+        $order  = ['warning' => 0, 'suggestion' => 1, 'success' => 2];
+        $sorter = static function ($a, $b) use ($order) {
+            return ($order[$a['status']] ?? 9) <=> ($order[$b['status']] ?? 9);
+        };
+        usort($groups['page'], $sorter);
+        usort($groups['content'], $sorter);
+
+        return [
+            'score'   => max(0, min(100, $score)),
+            'page'    => $groups['page'],
+            'content' => $groups['content'],
+            'summary' => $summary,
+        ];
+    }
+
+    /**
+     * Build the HTML for the SmartCrawl analysis panel shown inside the SEO
+     * card: a circular score gauge plus the grouped check list, all in
+     * BrikPanel's design. Returns '' when there's nothing to show. The
+     * "Re-analyze" button and post-save refresh re-fetch this same markup over
+     * AJAX (see ajax_seo_analyze()).
+     *
+     * @param int   $pid
+     * @param array $overrides See get_smartcrawl_analysis().
+     * @return string
+     */
+    public static function render_smartcrawl_analysis($pid, array $overrides = []) {
+        $analysis = self::get_smartcrawl_analysis($pid, $overrides);
+        if ($analysis === null) {
+            return '';
+        }
+
+        $status_meta = [
+            'warning'    => ['label' => __('Needs work', 'brikpanel'),  'cls' => 'warning'],
+            'suggestion' => ['label' => __('Suggestion', 'brikpanel'),  'cls' => 'suggestion'],
+            'success'    => ['label' => __('Passed', 'brikpanel'),      'cls' => 'success'],
+        ];
+
+        $render_group = static function ($title, $items) use ($status_meta) {
+            if (empty($items)) {
+                return '';
+            }
+            $html  = '<div class="brikpanel-pe-sr-group">';
+            $html .= '<div class="brikpanel-pe-sr-group-title">' . esc_html($title) . '</div>';
+            foreach ($items as $item) {
+                $meta = $status_meta[$item['status']] ?? $status_meta['suggestion'];
+                $html .= '<div class="brikpanel-pe-sr-check brikpanel-pe-sr-check--' . esc_attr($meta['cls']) . '">';
+                $html .= '<span class="brikpanel-pe-sr-dot" aria-hidden="true"></span>';
+                $html .= '<span class="brikpanel-pe-sr-msg">' . esc_html($item['message']) . '</span>';
+                $html .= '<span class="brikpanel-pe-sr-tag">' . esc_html($meta['label']) . '</span>';
+                $html .= '</div>';
+            }
+            $html .= '</div>';
+            return $html;
+        };
+
+        $score = (int) $analysis['score'];
+        // Gauge colour band — red < 50, amber < 80, green otherwise. Uses the
+        // monochrome-plus-status palette (no bright accents).
+        if ($score < 50) {
+            $score_cls = 'low';
+        } elseif ($score < 80) {
+            $score_cls = 'mid';
+        } else {
+            $score_cls = 'high';
+        }
+        $s = $analysis['summary'];
+
+        ob_start();
+        ?>
+        <div class="brikpanel-pe-sr-score brikpanel-pe-sr-score--<?php echo esc_attr($score_cls); ?>" style="--bpe-score: <?php echo esc_attr($score); ?>;">
+            <div class="brikpanel-pe-sr-score-ring" role="img" aria-label="<?php
+                /* translators: %d: SEO score out of 100 */
+                echo esc_attr(sprintf(__('SEO score: %d out of 100', 'brikpanel'), $score)); ?>">
+                <span class="brikpanel-pe-sr-score-num"><?php echo esc_html($score); ?></span>
+            </div>
+            <div class="brikpanel-pe-sr-score-text">
+                <strong><?php esc_html_e('SEO score', 'brikpanel'); ?></strong>
+                <span><?php
+                    /* translators: %d: number of passed SEO checks */
+                    echo esc_html(sprintf(_n('%d check passed', '%d checks passed', $s['success'], 'brikpanel'), $s['success'])); ?></span>
+            </div>
+        </div>
+        <div class="brikpanel-pe-sr-summary">
+            <?php if ($s['warning'] > 0) : ?>
+                <span class="brikpanel-pe-sr-pill warning"><?php
+                    /* translators: %d: number of SEO checks that need work */
+                    echo esc_html(sprintf(_n('%d to improve', '%d to improve', $s['warning'], 'brikpanel'), $s['warning'])); ?></span>
+            <?php endif; ?>
+            <?php if ($s['suggestion'] > 0) : ?>
+                <span class="brikpanel-pe-sr-pill suggestion"><?php
+                    /* translators: %d: number of SEO suggestions */
+                    echo esc_html(sprintf(_n('%d suggestion', '%d suggestions', $s['suggestion'], 'brikpanel'), $s['suggestion'])); ?></span>
+            <?php endif; ?>
+            <span class="brikpanel-pe-sr-pill success"><?php
+                /* translators: %d: number of passed SEO checks */
+                echo esc_html(sprintf(_n('%d passed', '%d passed', $s['success'], 'brikpanel'), $s['success'])); ?></span>
+        </div>
+        <?php
+        echo $render_group(__('Page checks', 'brikpanel'), $analysis['page']);
+        echo $render_group(__('Content checks', 'brikpanel'), $analysis['content']);
         return ob_get_clean();
     }
 
@@ -2404,15 +2838,12 @@ class Brikpanel_Product_Editor {
         }
 
         // Custom panels registered on woocommerce_product_data_panels.
+        // Apply the tabs filter (inside collect_custom_tab_meta) FIRST so any
+        // plugin that lazily registers its panel action from within the tabs
+        // filter is wired up before the has_action() check below.
+        $tab_meta = self::collect_custom_tab_meta();
+        $target_to_label = $tab_meta['labels'];
         if (has_action('woocommerce_product_data_panels')) {
-            $tabs_meta = apply_filters('woocommerce_product_data_tabs', []);
-            $target_to_label = [];
-            if (is_array($tabs_meta)) {
-                foreach ($tabs_meta as $key => $tab) {
-                    $target = isset($tab['target']) ? (string) $tab['target'] : (string) $key;
-                    $target_to_label[$target] = isset($tab['label']) ? (string) $tab['label'] : ucfirst((string) $key);
-                }
-            }
             ob_start();
             try {
                 do_action('woocommerce_product_data_panels');
@@ -2477,6 +2908,65 @@ class Brikpanel_Product_Editor {
     }
 
     /**
+     * Harvest custom product-data tab metadata from BOTH tab-registration APIs.
+     *
+     * Modern plugins (Subscriptions, Bookings, swatches…) register their tab
+     * through the `woocommerce_product_data_tabs` filter, which carries an
+     * array with `label`/`target` we can read directly. Older plugins — e.g.
+     * "Estimated Delivery Date Per Product For WooCommerce" — still use the
+     * legacy `woocommerce_product_write_panel_tabs` ACTION, echoing raw
+     * `<li><a href="#panel_id">Label</a></li>` markup with no array metadata.
+     * Their panels were still detected (we scan the rendered panel HTML), but
+     * with no label source the section fell back to an ugly id-derived name
+     * ("Rpesp product data"). Parse that legacy markup too so the section
+     * reads with the plugin's real tab title ("Product Est Date").
+     *
+     * Must be called inside the product-context spoof (so plugins evaluate
+     * their tab hooks) and AFTER the tabs filter is needed — it applies the
+     * filter itself. The modern filter wins; legacy only fills gaps.
+     *
+     * @return array{labels: array<string,string>, keys: array<string,string>}
+     */
+    private static function collect_custom_tab_meta() {
+        $labels = [];
+        $keys   = [];
+
+        $tabs_meta = apply_filters('woocommerce_product_data_tabs', []);
+        if (is_array($tabs_meta)) {
+            foreach ($tabs_meta as $key => $tab) {
+                $target = isset($tab['target']) ? (string) $tab['target'] : (string) $key;
+                $labels[$target] = isset($tab['label']) ? (string) $tab['label'] : ucfirst((string) $key);
+                $keys[$target]   = (string) $key;
+            }
+        }
+
+        if (has_action('woocommerce_product_write_panel_tabs')) {
+            ob_start();
+            try {
+                do_action('woocommerce_product_write_panel_tabs');
+                $tabs_html = trim(ob_get_clean());
+            } catch (\Throwable $e) {
+                // A legacy tab callback that assumes a fully-saved product must
+                // not break enumeration — skip it, the panel scan still works.
+                ob_end_clean();
+                $tabs_html = '';
+            }
+            if ($tabs_html !== '' && preg_match_all('/<a\b[^>]*href\s*=\s*["\']#([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $tabs_html, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $hit) {
+                    $target = trim($hit[1]);
+                    if ($target === '' || isset($labels[$target])) continue;
+                    $label = trim(html_entity_decode(wp_strip_all_tags($hit[2]), ENT_QUOTES));
+                    if ($label === '') continue;
+                    $labels[$target] = $label;
+                    $keys[$target]   = $target;
+                }
+            }
+        }
+
+        return ['labels' => $labels, 'keys' => $keys];
+    }
+
+    /**
      * WC-emitted hooks that render per-variation 3rd-party fields.
      * Each action receives ($loop_index, $variation_data, $variation_post).
      */
@@ -2490,6 +2980,52 @@ class Brikpanel_Product_Editor {
             'woocommerce_variation_options_tax'               => __('Tax', 'brikpanel'),
             'woocommerce_product_after_variable_attributes'   => __('After attributes', 'brikpanel'),
         ];
+    }
+
+    /**
+     * Auto-surface a multi-currency plugin's per-currency price fields in the
+     * editor when that plugin is in "fixed price" mode, even if the merchant
+     * has not ticked the Pricing section manually. Those fields are rendered
+     * by the plugin on WooCommerce's native price hooks, which BrikPanel's
+     * field-capture only fires for explicitly-selected sections — so without
+     * this a CURCY (fixed-price) user would see no place to enter per-currency
+     * prices. Purely additive: it never removes the merchant's own selections,
+     * and only acts when the plugin is active AND in fixed-price mode.
+     *
+     * @param string[] $selected Section keys already chosen in settings.
+     * @param string   $context  'variation' or 'product'.
+     * @return string[] Possibly-augmented section keys.
+     */
+    private static function augment_sections_for_multicurrency( array $selected, $context ) {
+        if ( ! class_exists( 'WOOMULTI_CURRENCY_Data' ) ) {
+            return $selected;
+        }
+        $data = WOOMULTI_CURRENCY_Data::get_ins();
+        if ( ! is_object( $data ) || ! method_exists( $data, 'check_fixed_price' ) || ! $data->check_fixed_price() ) {
+            return $selected;
+        }
+        /**
+         * Allow disabling the automatic surfacing of multi-currency per-currency
+         * price fields in the product editor.
+         *
+         * @param bool $enabled Default true.
+         */
+        if ( ! apply_filters( 'brikpanel_pe_auto_multicurrency_pricing', true ) ) {
+            return $selected;
+        }
+
+        if ( 'variation' === $context ) {
+            // Surgical: exactly the per-variation pricing hook CURCY uses.
+            $key = 'varhook:woocommerce_variation_options_pricing';
+        } else {
+            // Simple products: CURCY's per-currency price inputs render inside
+            // the native "General" product-data group (woocommerce_product_options_pricing).
+            $key = 'core:' . sanitize_key( __( 'General', 'brikpanel' ) );
+        }
+        if ( ! in_array( $key, $selected, true ) ) {
+            $selected[] = $key;
+        }
+        return $selected;
     }
 
     /**
@@ -2525,6 +3061,7 @@ class Brikpanel_Product_Editor {
      */
     private function capture_wc_variation_fields($product, $variations) {
         $selected = (array) get_option('brikpanel_pe_wc_variation_sections', []);
+        $selected = self::augment_sections_for_multicurrency($selected, 'variation');
         if (empty($selected) || empty($variations)) return [];
 
         if (!function_exists('woocommerce_wp_text_input')) {
@@ -2573,6 +3110,152 @@ class Brikpanel_Product_Editor {
         return $out;
     }
 
+    /**
+     * Render the per-variation 3rd-party field structure for variations that
+     * have NOT been persisted yet (a brand-new product, or rows just generated
+     * in the wizard). Returns `[ loop_index => html ]`.
+     *
+     * No database row exists for these variations, so we render against ONE
+     * real but temporary variation parented to the product, then delete it.
+     * A real (empty) variation is required because many plugins load the
+     * variation by ID and call methods on it — e.g. WooCommerce Multi Currency
+     * does `wc_get_product($variation->ID)->get_meta(...)`, which would fatal on
+     * a fake ID 0. Its meta is empty, so the fields render empty — exactly what
+     * a brand-new variation should show. Field names depend only on $loop, and
+     * $loop equals the variation's row position, which is the same index the
+     * save handler ($loop_index in save_variations) feeds to
+     * `woocommerce_save_product_variation`; so whatever the user types persists
+     * to the matching variation once the product is saved.
+     *
+     * Each hook fires inside try/catch (same guard the metabox enumeration
+     * uses) so one misbehaving plugin can never fatal the request — it just
+     * contributes no preview for that hook.
+     *
+     * @param WC_Product $product Parent variable product (the auto-draft).
+     * @param int[]      $loops   Zero-based row indices to render.
+     * @return array<int, string>
+     */
+    private function preview_wc_variation_fields($product, array $loops) {
+        $selected = (array) get_option('brikpanel_pe_wc_variation_sections', []);
+        $selected = self::augment_sections_for_multicurrency($selected, 'variation');
+        if (empty($selected) || empty($loops)) return [];
+
+        if (!function_exists('woocommerce_wp_text_input')) {
+            include_once WC_ABSPATH . 'includes/admin/wc-meta-box-functions.php';
+        }
+
+        $selected_hooks = [];
+        foreach (self::variation_field_hooks() as $hook => $_) {
+            if (in_array('varhook:' . $hook, $selected, true) && has_action($hook)) {
+                $selected_hooks[] = $hook;
+            }
+        }
+        if (empty($selected_hooks)) return [];
+
+        // Spin up a throwaway variation so plugin callbacks have a real object
+        // to load. Deleted in the finally block no matter what.
+        // Belt-and-suspenders: sweep any scratch variation a previous request
+        // may have left behind if a hard fatal (OOM/timeout) ever bypassed the
+        // finally-block below. The `_brikpanel_preview_temp` marker guarantees
+        // we only ever touch our own throwaway rows, never a real variation.
+        $this->purge_preview_temp_variations($product->get_id());
+
+        $temp = new WC_Product_Variation();
+        $temp->set_parent_id($product->get_id());
+        $temp->set_status('private');
+        $temp->add_meta_data('_brikpanel_preview_temp', 1, true);
+        $temp_id = $temp->save();
+        if (!$temp_id) return [];
+        $temp_post = get_post($temp_id);
+
+        global $post, $thepostid, $product_object;
+        $orig = [$post, $thepostid ?? null, $product_object ?? null];
+
+        $out = [];
+        try {
+            foreach ($loops as $loop) {
+                $loop = (int) $loop;
+                $post           = $temp_post;
+                $thepostid      = $temp_id;
+                $product_object = wc_get_product($temp_id);
+
+                $html = '';
+                foreach ($selected_hooks as $hook) {
+                    ob_start();
+                    try {
+                        do_action($hook, $loop, [], $temp_post);
+                    } catch (\Throwable $e) {
+                        // Swallow — a plugin that can't render against a fresh
+                        // variation just yields no preview for this hook.
+                    }
+                    $html .= trim(ob_get_clean());
+                }
+                if ($html !== '') {
+                    $out[$loop] = $html;
+                }
+            }
+        } finally {
+            $post = $orig[0]; $thepostid = $orig[1]; $product_object = $orig[2];
+            wp_delete_post($temp_id, true);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Force-delete any leftover preview scratch variations under a product.
+     * Only rows carrying our `_brikpanel_preview_temp` marker are removed, so a
+     * real variation can never be caught by this sweep.
+     *
+     * @param int $parent_id Parent product ID.
+     */
+    private function purge_preview_temp_variations($parent_id) {
+        $stale = get_posts([
+            'post_type'        => 'product_variation',
+            'post_parent'      => (int) $parent_id,
+            'post_status'      => 'any',
+            'numberposts'      => 50,
+            'fields'           => 'ids',
+            'meta_key'         => '_brikpanel_preview_temp', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+            'no_found_rows'    => true,
+            'suppress_filters' => true,
+        ]);
+        foreach ($stale as $sid) {
+            wp_delete_post($sid, true);
+        }
+    }
+
+    /**
+     * AJAX: return preview 3rd-party variation-field HTML keyed by row index
+     * for not-yet-saved variations. Lets the editor show the "More fields"
+     * expander before the first save.
+     */
+    public function ajax_preview_variation_fields() {
+        check_ajax_referer('brikpanel_product_editor_nonce', 'security');
+
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $product_id = absint($_POST['product_id'] ?? 0);
+        $count      = (int) ($_POST['count'] ?? 0);
+        // Guard against pathological payloads — variation grids never run this
+        // large, and unbounded rendering would be a soft DoS vector.
+        $count = max(0, min(200, $count));
+
+        if (!$product_id || $count < 1) {
+            wp_send_json_success(['extras' => []]);
+        }
+
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            wp_send_json_success(['extras' => []]);
+        }
+
+        $extras = $this->preview_wc_variation_fields($product, range(0, $count - 1));
+        wp_send_json_success(['extras' => $extras]);
+    }
+
     /** Core sub-hooks grouped by native tab label — 3rd parties inject into these. */
     private static function core_product_data_sub_hooks() {
         return [
@@ -2603,6 +3286,7 @@ class Brikpanel_Product_Editor {
      */
     private function capture_wc_product_data_fields($product_id, $product) {
         $selected = (array) get_option('brikpanel_pe_wc_tabs_selected', []);
+        $selected = self::augment_sections_for_multicurrency($selected, 'product');
         if (empty($selected)) return '';
 
         if (!function_exists('woocommerce_wp_text_input')) {
@@ -2662,7 +3346,7 @@ class Brikpanel_Product_Editor {
         // (collect_wc_product_data_sections() already applies the filter before
         // its own do_action, which is why the selector listed the tab while the
         // render path used to come up empty.)
-        $tabs_meta = apply_filters('woocommerce_product_data_tabs', []);
+        $tab_meta = self::collect_custom_tab_meta();
         if (has_action('woocommerce_product_data_panels')) {
             ob_start();
             try {
@@ -2674,15 +3358,8 @@ class Brikpanel_Product_Editor {
             }
 
             if ($panels_html !== '') {
-                $target_to_label = [];
-                $target_to_key   = [];
-                if (is_array($tabs_meta)) {
-                    foreach ($tabs_meta as $key => $tab) {
-                        $target = isset($tab['target']) ? (string) $tab['target'] : (string) $key;
-                        $target_to_label[$target] = isset($tab['label']) ? (string) $tab['label'] : ucfirst((string) $key);
-                        $target_to_key[$target]   = (string) $key;
-                    }
-                }
+                $target_to_label = $tab_meta['labels'];
+                $target_to_key   = $tab_meta['keys'];
 
                 // Shield <script> blocks (inline init + JS templates) so libxml
                 // does not corrupt or drop them; restored on the output below.
@@ -2792,6 +3469,7 @@ class Brikpanel_Product_Editor {
             'width'             => '',
             'height'            => '',
             'category_ids'      => [],
+            'brand_ids'         => [],
             'status'            => 'publish',
             'is_variable'       => false,
             'product_type'      => 'simple',
@@ -3101,7 +3779,28 @@ class Brikpanel_Product_Editor {
             $seo_noindex = ((string) get_post_meta($pid, 'surerank_settings_post_no_index', true) === 'yes');
         }
 
-        if (!$surerank_active) foreach ($seo_sources as $src) {
+        // SmartCrawl (WPMU DEV SEO) stores its per-post SEO in `_wds_*` meta
+        // keys. Like SureRank its editor is a React popup with no inline
+        // metabox, so BrikPanel surfaces it through the unified fields. When
+        // SmartCrawl is the active analyzer (and SureRank is not) it is the
+        // source of truth: read it exclusively so stale meta a previously used
+        // plugin left behind can't shadow it. Focus keywords are stored
+        // comma-separated; show the primary (first) one. (See the matching
+        // precedence in get_unified_seo_analyzer().)
+        $smartcrawl_active = !$surerank_active && defined('SMARTCRAWL_VERSION');
+        if ($smartcrawl_active) {
+            $seo_title     = (string) get_post_meta($pid, '_wds_title', true);
+            $seo_desc      = (string) get_post_meta($pid, '_wds_metadesc', true);
+            $seo_canonical = (string) get_post_meta($pid, '_wds_canonical', true);
+            $raw_kw        = (string) get_post_meta($pid, '_wds_focus-keywords', true);
+            $kw_parts      = array_filter(array_map('trim', explode(',', $raw_kw)));
+            $seo_focus_kw  = $kw_parts ? (string) reset($kw_parts) : '';
+            $seo_noindex   = (bool) get_post_meta($pid, '_wds_meta-robots-noindex', true);
+        }
+
+        $unified_owns_seo = $surerank_active || $smartcrawl_active;
+
+        if (!$unified_owns_seo) foreach ($seo_sources as $src) {
             if ($seo_title === '')     $seo_title     = (string) get_post_meta($pid, $src['title'], true);
             if ($seo_desc === '')      $seo_desc      = (string) get_post_meta($pid, $src['desc'], true);
             if ($seo_focus_kw === '')  $seo_focus_kw  = (string) get_post_meta($pid, $src['focus_kw'], true);
@@ -3117,7 +3816,7 @@ class Brikpanel_Product_Editor {
         }
 
         // AIOSEO stores data in its own custom table, not post meta.
-        if (!$surerank_active && function_exists('aioseo') && class_exists('\\AIOSEO\\Plugin\\Common\\Models\\Post')) {
+        if (!$unified_owns_seo && function_exists('aioseo') && class_exists('\\AIOSEO\\Plugin\\Common\\Models\\Post')) {
             try {
                 $aio_post = \AIOSEO\Plugin\Common\Models\Post::getPost($pid);
                 if ($aio_post && !empty($aio_post->id)) {
@@ -3174,6 +3873,7 @@ class Brikpanel_Product_Editor {
             'width'             => $product->get_width() ?? '',
             'height'            => $product->get_height() ?? '',
             'category_ids'      => $product->get_category_ids(),
+            'brand_ids'         => $this->get_product_brand_ids($product),
             // Auto-drafts are an internal transition state — surface them as
             // "publish" so the dropdown defaults to Published for brand-new
             // products. The hidden input still submits a real WP status that
@@ -3249,7 +3949,59 @@ class Brikpanel_Product_Editor {
         return true;
     }
 
-    private function render_category_checklist($categories, $selected_ids, $parent = 0, $depth = 0) {
+    /**
+     * Resolve the brand term IDs assigned to a product, across whichever brand
+     * taxonomy this install uses. Returns an empty array when no brand
+     * taxonomy is registered or the product has no brand assigned.
+     *
+     * @param WC_Product $product
+     * @return int[]
+     */
+    private function get_product_brand_ids($product) {
+        $brand_taxonomy = brikpanel_pe_brand_taxonomy();
+        if ($brand_taxonomy === '' || !$product) {
+            return [];
+        }
+        $ids = wp_get_object_terms($product->get_id(), $brand_taxonomy, ['fields' => 'ids']);
+        if (is_wp_error($ids)) {
+            return [];
+        }
+        return array_map('intval', $ids);
+    }
+
+    /**
+     * Copy custom taxonomy term relationships (brand, manufacturer, and any
+     * third-party product taxonomy) from one product to another.
+     *
+     * WC_Product::save() already restores the taxonomies it stores on the
+     * object itself — product_cat, product_tag, product_shipping_class, and
+     * attribute (pa_*) taxonomies — so a PHP `clone` + save() carries those.
+     * It does NOT carry raw term relationships like product_brand, which live
+     * only as object-term links on the post. Without this, duplicating a
+     * product silently drops its brand. We skip the WC-managed set to avoid
+     * redundant writes and copy everything else verbatim.
+     *
+     * @param int $from_id Source product ID.
+     * @param int $to_id   Destination product ID.
+     */
+    private function copy_product_taxonomies($from_id, $to_id) {
+        $managed = ['product_cat', 'product_tag', 'product_shipping_class'];
+        if (function_exists('wc_get_attribute_taxonomy_names')) {
+            $managed = array_merge($managed, wc_get_attribute_taxonomy_names());
+        }
+        foreach (get_object_taxonomies('product') as $taxonomy) {
+            if (in_array($taxonomy, $managed, true)) {
+                continue;
+            }
+            $terms = wp_get_object_terms($from_id, $taxonomy, ['fields' => 'ids']);
+            if (is_wp_error($terms) || empty($terms)) {
+                continue;
+            }
+            wp_set_object_terms($to_id, array_map('intval', $terms), $taxonomy);
+        }
+    }
+
+    private function render_category_checklist($categories, $selected_ids, $parent = 0, $depth = 0, $input_name = 'category_ids[]') {
         $children = [];
         foreach ($categories as $cat) {
             if ($cat->parent === $parent) {
@@ -3265,8 +4017,8 @@ class Brikpanel_Product_Editor {
         foreach ($children as $cat) {
             $checked = in_array($cat->term_id, $selected_ids, true) ? ' checked' : '';
             echo '<li data-name="' . esc_attr(mb_strtolower($cat->name)) . '" class="brikpanel-pe-cat-depth-' . esc_attr($depth) . '">';
-            echo '<label><input type="checkbox" name="category_ids[]" value="' . esc_attr($cat->term_id) . '"' . $checked . '> ' . esc_html($cat->name) . '</label>';
-            $this->render_category_checklist($categories, $selected_ids, $cat->term_id, $depth + 1);
+            echo '<label><input type="checkbox" name="' . esc_attr($input_name) . '" value="' . esc_attr($cat->term_id) . '"' . $checked . '> ' . esc_html($cat->name) . '</label>';
+            $this->render_category_checklist($categories, $selected_ids, $cat->term_id, $depth + 1, $input_name);
             echo '</li>';
         }
 
@@ -3576,6 +4328,21 @@ class Brikpanel_Product_Editor {
         $cat_ids = $cat_ids_raw ? array_map('intval', explode(',', $cat_ids_raw)) : [];
         $product->set_category_ids($cat_ids);
 
+        // Brand — assigned after WC_Product::save() further down, since
+        // wp_set_object_terms() needs the (possibly newly-created) product ID.
+        // We only stage the parsed IDs here; the actual write happens alongside
+        // the tag assignment below. The `brand_ids` field is only posted when
+        // the brand section is visible, so an omitted field means "leave brand
+        // untouched" rather than "clear all brands".
+        $brand_taxonomy = brikpanel_pe_brand_taxonomy();
+        $brand_ids      = null;
+        if ($brand_taxonomy !== '' && isset($_POST['brand_ids'])) {
+            $brand_ids_raw = sanitize_text_field(wp_unslash($_POST['brand_ids']));
+            $brand_ids = $brand_ids_raw
+                ? array_values(array_unique(array_filter(array_map('intval', explode(',', $brand_ids_raw)))))
+                : [];
+        }
+
         // Product type flags — Virtual and Downloadable are independent.
         // A downloadable physical product (book + bonus PDF) needs Digital=on, Virtual=off.
         // A service/yoga session needs Virtual=on, Digital=off.
@@ -3788,6 +4555,22 @@ class Brikpanel_Product_Editor {
             $sr_general['focus_keyword']    = $seo_focus_kw;
             update_post_meta($saved_id, 'surerank_settings_general', $sr_general);
             update_post_meta($saved_id, 'surerank_settings_post_no_index', $seo_noindex ? 'yes' : 'no');
+
+            // SmartCrawl (WPMU DEV SEO) — flat `_wds_*` meta keys. Focus
+            // keywords are stored comma-separated; we write the single primary
+            // keyword. The noindex flag is a scalar '1' = noindex (the key is
+            // simply absent/empty when the product should be indexed, matching
+            // SmartCrawl's own save). An empty title/description is written
+            // through so SmartCrawl falls back to its site-wide template.
+            update_post_meta($saved_id, '_wds_title', $seo_title);
+            update_post_meta($saved_id, '_wds_metadesc', $seo_desc);
+            update_post_meta($saved_id, '_wds_canonical', $seo_canonical);
+            update_post_meta($saved_id, '_wds_focus-keywords', $seo_focus_kw);
+            if ($seo_noindex) {
+                update_post_meta($saved_id, '_wds_meta-robots-noindex', '1');
+            } else {
+                delete_post_meta($saved_id, '_wds_meta-robots-noindex');
+            }
         }
 
         // Tags
@@ -3799,6 +4582,18 @@ class Brikpanel_Product_Editor {
             wp_set_object_terms($saved_id, [], 'product_tag');
         }
 
+        // Brand assignment (staged above). Capability-checked against the brand
+        // taxonomy's own assign_terms cap so we never write terms the user is
+        // not allowed to. Works identically for simple and variable products —
+        // brand lives on the parent post for both.
+        if ($brand_taxonomy !== '' && $brand_ids !== null) {
+            $brand_tax_obj = get_taxonomy($brand_taxonomy);
+            $brand_cap     = $brand_tax_obj ? ($brand_tax_obj->cap->assign_terms ?? 'edit_products') : 'edit_products';
+            if (current_user_can($brand_cap)) {
+                wp_set_object_terms($saved_id, $brand_ids, $brand_taxonomy);
+            }
+        }
+
         // Process custom-taxonomy assignments posted from third-party metaboxes
         // (e.g. Orderable's Product Labels). WP core normally handles this in
         // edit_post() / wp_insert_post() based on $_POST['tax_input'], but
@@ -3806,9 +4601,10 @@ class Brikpanel_Product_Editor {
         if (!empty($_POST['tax_input']) && is_array($_POST['tax_input'])) {
             foreach ($_POST['tax_input'] as $raw_tax => $raw_terms) {
                 $tax = sanitize_key($raw_tax);
-                if ($tax === '' || in_array($tax, ['product_cat', 'product_tag'], true)) {
-                    // product_cat + product_tag are saved explicitly above;
-                    // skip to avoid double-writes.
+                if ($tax === '' || in_array($tax, ['product_cat', 'product_tag'], true) || ($brand_taxonomy !== '' && $tax === $brand_taxonomy)) {
+                    // product_cat + product_tag + brand are saved explicitly
+                    // above; skip to avoid double-writes (a third-party brand
+                    // metabox could otherwise re-post the same taxonomy).
                     continue;
                 }
                 $taxonomy_obj = get_taxonomy($tax);
@@ -4023,11 +4819,31 @@ class Brikpanel_Product_Editor {
             do_action('brikpanel_after_product_save', $saved_id, $final_product, $_POST);
         }
 
-        $this->send_clean_json(true, [
+        $response = [
             'product_id' => $saved_id,
             'permalink'  => get_permalink($saved_id),
             'message'    => __('Product saved!', 'brikpanel'),
-        ]);
+        ];
+
+        // Variable products: hand back the freshly-persisted variation list and
+        // any per-variation 3rd-party fields so the JS can adopt the new
+        // variation IDs and surface the "More fields" expander without a full
+        // page reload. Without this, variations created during the save (a brand
+        // new product, or rows added to an existing one) keep id=0 client-side
+        // and their expander never appears until the page is reloaded.
+        if ($final_product && $final_product->is_type('variable')) {
+            $fresh = $this->get_product_data($final_product);
+            $variations = isset($fresh['variations']) ? $fresh['variations'] : [];
+            $variation_ids = array_map(static function ($v) {
+                return isset($v['id']) ? (int) $v['id'] : 0;
+            }, $variations);
+            $response['variations']       = $variations;
+            $response['variation_extras'] = $variation_ids
+                ? $this->capture_wc_variation_fields($final_product, $variation_ids)
+                : [];
+        }
+
+        $this->send_clean_json(true, $response);
     }
 
     /**
@@ -4704,6 +5520,71 @@ class Brikpanel_Product_Editor {
     }
 
     // =========================================================================
+    // AJAX: ADD BRAND
+    // =========================================================================
+
+    public function ajax_add_brand() {
+        check_ajax_referer('brikpanel_product_editor_nonce', 'security');
+
+        $brand_taxonomy = brikpanel_pe_brand_taxonomy();
+        if ($brand_taxonomy === '') {
+            wp_send_json_error(['message' => __('Brands are not available on this site.', 'brikpanel')]);
+        }
+
+        $tax_obj    = get_taxonomy($brand_taxonomy);
+        $manage_cap = $tax_obj ? ($tax_obj->cap->manage_terms ?? 'manage_product_terms') : 'manage_product_terms';
+        if (!current_user_can($manage_cap)) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $name   = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
+        $parent = is_taxonomy_hierarchical($brand_taxonomy) ? intval($_POST['parent'] ?? 0) : 0;
+
+        if (empty($name)) {
+            wp_send_json_error(['message' => __('Brand name is required.', 'brikpanel')]);
+        }
+
+        $result = wp_insert_term($name, $brand_taxonomy, ['parent' => $parent]);
+
+        if (is_wp_error($result)) {
+            wp_send_json_error(['message' => $result->get_error_message()]);
+        }
+
+        $term_id = intval($result['term_id']);
+
+        // Re-render the full checklist + parent dropdown so the client DOM
+        // mirrors the server render exactly. The new term is auto-checked and
+        // the client's current selection is preserved across the swap.
+        $selected_ids_raw = isset($_POST['selected_ids']) ? (array) $_POST['selected_ids'] : [];
+        $selected_ids = array_values(array_unique(array_filter(array_map('intval', $selected_ids_raw))));
+        $selected_ids[] = $term_id;
+
+        $brands = get_terms(['taxonomy' => $brand_taxonomy, 'hide_empty' => false]);
+        if (is_wp_error($brands)) {
+            $brands = [];
+        }
+
+        ob_start();
+        $this->render_category_checklist($brands, $selected_ids, 0, 0, 'brand_ids[]');
+        $checklist_html = ob_get_clean();
+
+        $options_html = '';
+        if (is_taxonomy_hierarchical($brand_taxonomy)) {
+            ob_start();
+            $this->render_category_parent_options($brands);
+            $options_html = ob_get_clean();
+        }
+
+        wp_send_json_success([
+            'term_id'        => $term_id,
+            'name'           => $name,
+            'parent'         => $parent,
+            'checklist_html' => $checklist_html,
+            'options_html'   => $options_html,
+        ]);
+    }
+
+    // =========================================================================
     // AJAX: UPLOAD IMAGE
     // =========================================================================
 
@@ -4760,6 +5641,10 @@ class Brikpanel_Product_Editor {
             $duplicate->set_sku('');
         } catch (\Exception $e) {}
         $duplicate->save();
+
+        // Carry over brand + any other custom taxonomy term relationships that
+        // the WC_Product object does not store (and therefore clone+save drops).
+        $this->copy_product_taxonomies($product_id, $duplicate->get_id());
 
         // Copy SEO meta
         foreach (['_yoast_wpseo_title', '_yoast_wpseo_metadesc', 'rank_math_title', 'rank_math_description'] as $key) {

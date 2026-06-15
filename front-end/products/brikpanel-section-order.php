@@ -27,13 +27,46 @@ if (!defined('BRIKPANEL_PE_SECTION_ORDER_OPTION')) {
 }
 
 /**
+ * Resolve the brand taxonomy registered on this install, if any.
+ *
+ * WooCommerce 9.6+ ships a native `product_brand` taxonomy; older sites may
+ * instead use a third-party brand plugin (Perfect Brands, YITH, etc.). We
+ * prefer the native one, then fall back to well-known third-party slugs, then
+ * to any product taxonomy whose slug contains "brand". Returns '' when no
+ * brand taxonomy exists so callers can hide the brand UI entirely.
+ *
+ * The result is memoised per request — taxonomies are registered once on
+ * `init`, so a single resolve is enough.
+ *
+ * @return string Brand taxonomy slug, or '' when none is registered.
+ */
+function brikpanel_pe_brand_taxonomy() {
+    static $resolved = null;
+    if ($resolved !== null) {
+        return $resolved;
+    }
+    $candidates = ['product_brand', 'pwb-brand', 'product_brands', 'yith_product_brand', 'berocket_brand'];
+    foreach ($candidates as $tax) {
+        if (taxonomy_exists($tax)) {
+            return $resolved = $tax;
+        }
+    }
+    foreach (get_object_taxonomies('product') as $tax) {
+        if (stripos($tax, 'brand') !== false && taxonomy_exists($tax)) {
+            return $resolved = $tax;
+        }
+    }
+    return $resolved = '';
+}
+
+/**
  * Canonical slug → label map for every section the simplified editor knows
  * how to render. The order of keys here is the factory-default display order.
  *
  * @return array<string,string>
  */
 function brikpanel_pe_section_options() {
-    return [
+    $options = [
         'images'      => __('Product images', 'brikpanel'),
         'variations'  => __('Variations (sizes/colors)', 'brikpanel'),
         'pricing'     => __('Pricing', 'brikpanel'),
@@ -45,6 +78,11 @@ function brikpanel_pe_section_options() {
         'linked'      => __('Linked products (upsells & cross-sells)', 'brikpanel'),
         'advanced'    => __('Advanced (purchase note, reviews, menu order)', 'brikpanel'),
         'category'    => __('Category', 'brikpanel'),
+        // Brand only exists as a section when a brand taxonomy is registered
+        // (WC 9.6+ native product_brand, or a third-party brand plugin). On
+        // sites without one we omit the slug so it never becomes a dead toggle
+        // in the picker or a phantom entry in the saved order.
+        'brand'       => __('Brand', 'brikpanel'),
         'tags'        => __('Tags', 'brikpanel'),
         'short_desc'  => __('Short description', 'brikpanel'),
         'description' => __('Product description', 'brikpanel'),
@@ -55,6 +93,14 @@ function brikpanel_pe_section_options() {
         'seo'         => __('SEO settings', 'brikpanel'),
         'attributes'  => __('Product attributes (specs)', 'brikpanel'),
     ];
+
+    // Drop the brand slug entirely on installs with no brand taxonomy so it
+    // never surfaces as an empty section or an un-toggleable picker row.
+    if (brikpanel_pe_brand_taxonomy() === '') {
+        unset($options['brand']);
+    }
+
+    return $options;
 }
 
 /**
@@ -503,7 +549,8 @@ add_action('admin_init', function () {
         return;
     }
     $backfills = [
-        'cogs' => 'pricing',
+        'cogs'  => 'pricing',
+        'brand' => 'category',
     ];
     $known = array_keys(brikpanel_pe_section_options());
     foreach ($backfills as $slug => $anchor) {

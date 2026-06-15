@@ -2,12 +2,11 @@
 /**
  * BrikPanel — Review Request Admin Notices
  *
- * Shows two contextual review-request notices:
- *   1. After 14 days since plugin activation.
- *   2. After 50 completed WooCommerce orders since plugin activation.
+ * Shows a contextual review-request notice after 50 completed WooCommerce
+ * orders since plugin activation.
  *
- * Notices are dismissable, snoozable, and respect a single permanent
- * "already reviewed" state shared by both triggers.
+ * The notice is dismissable, snoozable, and respects a permanent
+ * "already reviewed" state.
  *
  * @package BrikPanel
  * @since   2.1.0
@@ -18,9 +17,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /* ── Configuration ──────────────────────────────────────────────────────────── */
-if ( ! defined( 'BRIKPANEL_REVIEW_DAYS_THRESHOLD' ) ) {
-    define( 'BRIKPANEL_REVIEW_DAYS_THRESHOLD', 14 );
-}
 if ( ! defined( 'BRIKPANEL_REVIEW_ORDERS_THRESHOLD' ) ) {
     define( 'BRIKPANEL_REVIEW_ORDERS_THRESHOLD', 50 );
 }
@@ -75,15 +71,10 @@ function brikpanel_review_get_active_notice() {
         return false;
     }
 
-    // Orders trigger takes priority — it's a stronger signal of value.
+    // Review is requested after 50 completed orders, a strong signal of value.
     $orders = (int) get_option( 'brikpanel_completed_orders_count', 0 );
     if ( $orders >= BRIKPANEL_REVIEW_ORDERS_THRESHOLD ) {
         return 'orders';
-    }
-
-    $activated_at = (int) get_option( 'brikpanel_activated_at', 0 );
-    if ( $activated_at && ( time() - $activated_at ) >= ( BRIKPANEL_REVIEW_DAYS_THRESHOLD * DAY_IN_SECONDS ) ) {
-        return 'days';
     }
 
     return false;
@@ -103,17 +94,12 @@ function brikpanel_review_render_notice() {
 
     $nonce = wp_create_nonce( 'brikpanel_review_nonce' );
 
-    if ( 'orders' === $type ) {
-        $title = sprintf(
-            /* translators: %d: number of completed orders */
-            __( "You've completed %d orders with BrikPanel — congrats!", 'brikpanel' ),
-            BRIKPANEL_REVIEW_ORDERS_THRESHOLD
-        );
-        $body = __( 'It looks like BrikPanel is helping you run your store. Would you take 30 seconds to leave a 5-star review? It would mean the world to our small team and helps other store owners discover the plugin.', 'brikpanel' );
-    } else {
-        $title = __( 'Enjoying BrikPanel so far?', 'brikpanel' );
-        $body  = __( "You've been using BrikPanel for a couple of weeks. If it has saved you time, would you mind leaving a quick 5-star review? It only takes 30 seconds and helps us a lot.", 'brikpanel' );
-    }
+    $title = sprintf(
+        /* translators: %d: number of completed orders */
+        __( "You've completed %d orders with BrikPanel, congrats!", 'brikpanel' ),
+        BRIKPANEL_REVIEW_ORDERS_THRESHOLD
+    );
+    $body = __( 'It looks like BrikPanel is helping you run your store. If it has earned a place in your daily routine, would you take 30 seconds to share your experience in a review? Your honest words mean the world to our small team and help other store owners discover the plugin.', 'brikpanel' );
     ?>
     <div class="notice brikpanel-notice brikpanel-review-notice" data-nonce="<?php echo esc_attr( $nonce ); ?>" data-trigger="<?php echo esc_attr( $type ); ?>">
         <div class="brikpanel-review-notice__inner">
@@ -131,7 +117,7 @@ function brikpanel_review_render_notice() {
                        rel="noopener noreferrer"
                        class="brikpanel-review-notice__btn brikpanel-review-notice__btn--primary"
                        data-action="reviewed">
-                        <?php esc_html_e( 'Leave a 5-star review', 'brikpanel' ); ?>
+                        <?php esc_html_e( 'Write a review', 'brikpanel' ); ?>
                     </a>
                     <button type="button"
                             class="brikpanel-review-notice__btn brikpanel-review-notice__btn--secondary"

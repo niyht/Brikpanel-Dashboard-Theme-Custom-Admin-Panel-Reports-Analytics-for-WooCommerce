@@ -1029,7 +1029,9 @@ standard WooCommerce ones. */
 	border-radius: 0.5rem;
 	border: 1px solid var(--brk-input-border);
 	font-size: 0.8125rem;
-	padding: 0.625rem 0.75rem;
+	line-height: 1.2;
+	min-height: 0;
+	padding: 0.5rem 0.75rem;
 	background: var(--brk-card);
 	width: 100%;
 	transition: border-color 0.15s, box-shadow 0.15s;
@@ -1040,6 +1042,108 @@ standard WooCommerce ones. */
 	border-color: var(--brk-input-focus);
 	outline: none;
 	box-shadow: 0 0 0 1px var(--brk-input-focus);
+}
+
+/* Layout: strip WC core list chrome */
+.brikpanel-modern-edit #woocommerce-order-actions ul.order_actions {
+	margin: 0;
+	overflow: visible;
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions ul.order_actions li {
+	margin: 0;
+	padding: 0;
+	border: none;
+	float: none;
+	width: auto;
+}
+
+/* Row 1: select + apply button side by side */
+.brikpanel-modern-edit #woocommerce-order-actions li#actions {
+	display: flex;
+	gap: 0.5rem;
+	align-items: stretch;
+	position: static;
+	padding: 0 !important;
+	margin: 0 !important;
+	border: none;
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions li#actions select {
+	flex: 1;
+	width: auto;
+	min-width: 0;
+	margin: 0;
+	float: none;
+}
+
+/* Apply ("›") button — square secondary, same height as the select */
+.brikpanel-modern-edit #woocommerce-order-actions li#actions .button.wc-reload {
+	flex: 0 0 auto;
+	position: relative !important;
+	width: 2.0625rem !important;
+	height: auto !important;
+	min-height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	background: var(--brk-card) !important;
+	color: var(--brk-text) !important;
+	border: none !important;
+	border-radius: 0.5rem !important;
+	box-shadow: inset 0 0 0 1px var(--brk-border), 0 1px 0 rgba(0,0,0,0.05) !important;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1 !important;
+	text-indent: 0 !important;
+	overflow: hidden;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions li#actions .button.wc-reload:hover {
+	background: var(--brk-bg-hover, #f7f7f7) !important;
+	color: var(--brk-text) !important;
+}
+
+/* Visually hide the "Apply" text, keep it for screen readers */
+.brikpanel-modern-edit #woocommerce-order-actions li#actions .button.wc-reload span {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions li#actions .button.wc-reload::after {
+	font-family: Dashicons; /* i18n-ignore: dashicons glyph, not user text */
+	content: "\f345";
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 0 !important;
+	line-height: 1 !important;
+	font-size: 1rem;
+	text-indent: 0;
+}
+
+/* Row 2: trash link left, Update right */
+.brikpanel-modern-edit #woocommerce-order-actions ul.order_actions li.wide:not(#actions) {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	margin-top: 0.875rem;
+	padding-top: 0.875rem;
+	border-top: 1px solid var(--brk-border);
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions #delete-action {
+	float: none;
+	line-height: 1.2;
 }
 
 
@@ -1430,7 +1534,9 @@ standard WooCommerce ones. */
 	border-radius: 0.375rem !important;
 	font-size: 0.75rem !important;
 	font-weight: 550 !important;
-	padding: 0.375rem 0.75rem !important;
+	line-height: 1.2 !important;
+	min-height: 0 !important;
+	padding: 0.5rem 0.875rem !important;
 	box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1) !important;
 	transition: all 0.15s !important;
 	cursor: pointer;

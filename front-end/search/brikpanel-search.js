@@ -1,17 +1,31 @@
 document.addEventListener('DOMContentLoaded', () => {
 	brikpanelSearch.addShortcutKey();
 
+	// The palette markup is rendered by the BrikPanel top bar. If that markup
+	// is absent on this screen (top bar disabled, removed by another plugin,
+	// or the DOM mangled by an aggressive JS-optimization plugin), bail out
+	// quietly instead of throwing on a null element — a hard throw here would
+	// abort the rest of this handler and surface as a console error on every
+	// admin page, even though search is simply not available.
+	const modal = document.querySelector('.brikpanel-search-modal');
+	if (!modal) {
+		return;
+	}
+
 	// Cache the initial palette body (hint + recent orders) so we can
 	// restore it instantly when the query is cleared, without a round trip.
-	const results = document.querySelector('.brikpanel-search-modal .results');
+	const results = modal.querySelector('.results');
 	if (results) {
 		brikpanelSearch.initialHTML = results.innerHTML;
 	}
 
 	// Opening and closing the modal through clicking
-	document.querySelector('.brikpanel-search-menu-item').addEventListener('click', brikpanelSearch.openModal);
-	document.querySelector('.brikpanel-search-menu-item-mobile').addEventListener('click', brikpanelSearch.openModal);
-	document.querySelector('.brikpanel-search-overlay').addEventListener('click', brikpanelSearch.handleOverlayClick);
+	const trigger = document.querySelector('.brikpanel-search-menu-item');
+	const triggerMobile = document.querySelector('.brikpanel-search-menu-item-mobile');
+	const overlay = document.querySelector('.brikpanel-search-overlay');
+	if (trigger) { trigger.addEventListener('click', brikpanelSearch.openModal); }
+	if (triggerMobile) { triggerMobile.addEventListener('click', brikpanelSearch.openModal); }
+	if (overlay) { overlay.addEventListener('click', brikpanelSearch.handleOverlayClick); }
 
 	// Opening and closing the modal with keyboard.
 	// Ctrl/Cmd+K is registered in the capture phase so we run before any
@@ -28,10 +42,12 @@ document.addEventListener('DOMContentLoaded', () => {
 	// other capture-phase listener can swallow the arrow keys first.
 	document.addEventListener('keydown', brikpanelSearch.handleListNavigation, true);
 
-	const input = document.querySelector('.brikpanel-search-modal input');
-	input.addEventListener('focus', brikpanelSearch.handleModalInputFocus);
-	input.addEventListener('blur', brikpanelSearch.handleModalInputBlur);
-	input.addEventListener('keyup', brikpanelSearch.debounce(brikpanelSearch.search, 220));
+	const input = modal.querySelector('input');
+	if (input) {
+		input.addEventListener('focus', brikpanelSearch.handleModalInputFocus);
+		input.addEventListener('blur', brikpanelSearch.handleModalInputBlur);
+		input.addEventListener('keyup', brikpanelSearch.debounce(brikpanelSearch.search, 220));
+	}
 });
 
 const brikpanelSearch = {
@@ -48,6 +64,9 @@ const brikpanelSearch = {
 
 	addShortcutKey: function () {
 		const shortcutKey = document.getElementById('shortcut-key');
+		if (!shortcutKey) {
+			return;
+		}
 
 		function isMacOS() {
 			if (navigator.userAgentData) {

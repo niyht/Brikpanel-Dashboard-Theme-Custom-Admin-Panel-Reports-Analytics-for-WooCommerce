@@ -1,0 +1,196 @@
+/**
+ * Custom order statuses — settings repeater card.
+ * Follows the BrikPanel design system (monochrome, soft cards, system font).
+ */
+
+.bp-cos-card {
+	background: #ffffff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.08 );
+	padding: 1.25rem 1.5rem;
+	margin: 1rem 0 0;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	color: #303030;
+}
+
+.bp-cos-card__head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 1rem;
+}
+
+.bp-cos-card__title {
+	font-size: 1rem;
+	font-weight: 600;
+	margin: 0 0 0.15rem;
+	color: #303030;
+}
+
+.bp-cos-card__sub {
+	font-size: 0.8125rem;
+	color: #616161;
+	margin: 0;
+	line-height: 1.5;
+}
+
+/* Add button — secondary BrikPanel button */
+.bp-cos-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	flex: 0 0 auto;
+	background: #fff;
+	color: #303030;
+	border: 0;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba( 0, 0, 0, 0.05 );
+	border-radius: 0.5rem;
+	padding: 0.5rem 0.85rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	cursor: pointer;
+	transition: background-color 0.12s ease;
+}
+
+.bp-cos-add:hover {
+	background: #f7f7f7;
+}
+
+.bp-cos-add svg {
+	flex: 0 0 14px;
+}
+
+/* List */
+.bp-cos-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.625rem;
+}
+
+.bp-cos-empty {
+	font-size: 0.8125rem;
+	color: #8a8a8a;
+	margin: 0.25rem 0 0;
+	padding: 1rem 0;
+	text-align: center;
+}
+
+/* Row */
+.bp-cos-row {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+	padding: 0.5rem 0.625rem;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	background: #fafafa;
+}
+
+.bp-cos-dot {
+	flex: 0 0 12px;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgba( 0, 0, 0, 0.08 ) inset;
+}
+
+.bp-cos-label {
+	flex: 1 1 auto;
+	min-width: 0;
+	border: 1px solid #8a8a8a;
+	border-radius: 0.5rem;
+	padding: 0.45rem 0.625rem;
+	font-size: 0.875rem;
+	color: #303030;
+	background: #fff;
+	line-height: 1.4;
+}
+
+.bp-cos-label:focus {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+	outline: none;
+}
+
+.bp-cos-label::placeholder {
+	color: #8a8a8a;
+}
+
+/* Colour swatch — hide the native control chrome, keep the colour */
+.bp-cos-color {
+	flex: 0 0 auto;
+	display: inline-flex;
+	width: 32px;
+	height: 32px;
+	border-radius: 0.5rem;
+	overflow: hidden;
+	box-shadow: inset 0 0 0 1px #e3e3e3;
+	cursor: pointer;
+}
+
+.bp-cos-color input[type="color"] {
+	width: 150%;
+	height: 150%;
+	margin: -25%;
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: pointer;
+}
+
+.bp-cos-slug {
+	flex: 0 0 auto;
+	font-size: 0.75rem;
+	color: #616161;
+	background: #f1f1f1;
+	border-radius: 0.35rem;
+	padding: 0.2rem 0.45rem;
+	max-width: 130px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bp-cos-slug.is-pending {
+	color: #8a8a8a;
+	font-style: italic;
+}
+
+.bp-cos-remove {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border: 0;
+	background: transparent;
+	color: #8a8a8a;
+	border-radius: 0.5rem;
+	cursor: pointer;
+	transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.bp-cos-remove:hover {
+	background: #fce4e4;
+	color: #d72c0d;
+}
+
+.bp-cos-hint {
+	font-size: 0.75rem;
+	color: #8a8a8a;
+	line-height: 1.5;
+	margin: 0.875rem 0 0;
+}
+
+@media ( max-width: 600px ) {
+	.bp-cos-card__head {
+		flex-direction: column;
+	}
+
+	.bp-cos-slug {
+		display: none;
+	}
+}

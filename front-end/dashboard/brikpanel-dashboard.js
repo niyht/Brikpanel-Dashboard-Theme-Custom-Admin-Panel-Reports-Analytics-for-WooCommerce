@@ -36,6 +36,8 @@
     var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let datepickerInstance = null;
     let isLoading = false;
+    let currentFetchController = null; // aborts an in-flight request when a newer one starts
+    let fetchSeq = 0;                  // sequence token so stale responses can't overwrite newer ones
 
     // Chart.js defaults
     if (typeof Chart !== 'undefined') {
@@ -139,21 +141,32 @@
             mode: 'range',
             dateFormat: 'Y-m-d',
             maxDate: 'today',
-            onClose: function (selectedDates) {
-                if (selectedDates.length === 2) {
-                    var y1 = selectedDates[0].getFullYear();
-                    var m1 = String(selectedDates[0].getMonth() + 1).padStart(2, '0');
-                    var d1 = String(selectedDates[0].getDate()).padStart(2, '0');
-                    customStartDate = y1 + '-' + m1 + '-' + d1;
-
-                    var y2 = selectedDates[1].getFullYear();
-                    var m2 = String(selectedDates[1].getMonth() + 1).padStart(2, '0');
-                    var d2 = String(selectedDates[1].getDate()).padStart(2, '0');
-                    customEndDate = y2 + '-' + m2 + '-' + d2;
-
-                    currentRange = 'custom';
-                    fetchDashboardData();
+            onOpen: function (selectedDates, dateStr, instance) {
+                // Start every reopen fresh — whether the picker was opened via the
+                // "Custom" preset button or by clicking the date field directly.
+                // Otherwise a previous range stays highlighted and anchored to its
+                // (possibly year-old) month, and the first click only resets the
+                // selection to a single date, which is confusing to pick a new range from.
+                if (instance.selectedDates.length) {
+                    instance.clear();
                 }
+            },
+            onClose: function (selectedDates) {
+                if (!selectedDates.length) return;
+
+                var fmt = function (dt) {
+                    return dt.getFullYear() + '-' +
+                        String(dt.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(dt.getDate()).padStart(2, '0');
+                };
+
+                // A single picked day is treated as a one-day range (start = end),
+                // so selecting one date works instead of being silently ignored.
+                customStartDate = fmt(selectedDates[0]);
+                customEndDate = fmt(selectedDates[selectedDates.length - 1]);
+
+                currentRange = 'custom';
+                fetchDashboardData();
             }
         });
     }
@@ -163,9 +176,20 @@
     // =========================================================================
 
     function fetchDashboardData() {
-        if (isLoading) return;
-        isLoading = true;
+        // A new selection must always supersede an in-flight request rather than
+        // being silently dropped. The old `if (isLoading) return;` guard meant
+        // that picking a fresh range while a slow (e.g. year-wide) query was
+        // still loading left the dashboard stuck on the previous range's data.
+        // Abort the previous request and tag this one so a stale, late-arriving
+        // response can never overwrite the most recent selection.
+        if (currentFetchController) {
+            currentFetchController.abort();
+        }
+        var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        currentFetchController = controller;
+        var seq = ++fetchSeq;
 
+        isLoading = true;
         setLoadingState(true);
 
         var fd = new FormData();
@@ -181,11 +205,16 @@
         fetch(CFG.ajax_url, {
             method: 'POST',
             body: fd,
-            credentials: 'same-origin'
+            credentials: 'same-origin',
+            signal: controller ? controller.signal : undefined
         })
         .then(function (r) { return r.json(); })
         .then(function (res) {
+            // Ignore a response that a newer request has already superseded.
+            if (seq !== fetchSeq) return;
+
             isLoading = false;
+            currentFetchController = null;
             setLoadingState(false);
 
             if (!res.success) return;
@@ -256,8 +285,13 @@
             // Marketplace analytics (BrikMarket-only).
             renderMarketplaceAnalytics(d.marketplace);
         })
-        .catch(function () {
+        .catch(function (err) {
+            // An aborted request is expected (a newer selection took over); it
+            // must not clear the loading state belonging to the newer request.
+            if (err && err.name === 'AbortError') return;
+            if (seq !== fetchSeq) return;
             isLoading = false;
+            currentFetchController = null;
             setLoadingState(false);
         });
     }
@@ -911,7 +945,7 @@
                 '<td>' + escapeHtml(o.customer) + '</td>' +
                 '<td>' + sourceHtml + '</td>' +
                 '<td><span class="brikpanel-dash-status ' + escapeHtml(o.status) + '">' + escapeHtml(o.status) + '</span></td>' +
-                '<td>' + o.total + '</td>' +
+                '<td>' + o.total + (o.total_base ? '<div class="brikpanel-dash-total-base">≈ ' + o.total_base + '</div>' : '') + '</td>' +
                 '</tr>';
         });
 

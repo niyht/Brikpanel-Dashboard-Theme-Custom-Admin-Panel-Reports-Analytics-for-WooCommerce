@@ -20,13 +20,37 @@ function brikpanel_navigation_skip_super_admin_chrome() {
 	return is_network_admin() || is_user_admin();
 }
 
-// Hide WordPress admin footer (only on per-site admin)
+// Clear only WordPress's *own* default admin footer for a cleaner look. We run
+// late (priority 999) and leave the text untouched the moment anyone else has
+// customised it — white-label / branding plugins such as MainWP Child set their
+// own footer copyright here, and eating it would clobber their branding.
+//
+// WordPress wraps its default "Thank you for creating with WordPress" text in a
+// `<span id="footer-thankyou">` marker. Any plugin that customises the footer
+// replaces that string (dropping the marker), so its presence is a reliable,
+// locale-proof signal that the footer is still the untouched core default.
 add_filter('admin_footer_text', function ( $text ) {
-	return brikpanel_navigation_skip_super_admin_chrome() ? $text : '';
-});
+	if ( brikpanel_navigation_skip_super_admin_chrome() ) {
+		return $text;
+	}
+	if ( is_string( $text ) && strpos( $text, 'footer-thankyou' ) !== false ) {
+		return '';
+	}
+	return $text;
+}, 999);
 add_filter('update_footer', function ( $text ) {
-	return brikpanel_navigation_skip_super_admin_chrome() ? $text : '';
-}, 11);
+	if ( brikpanel_navigation_skip_super_admin_chrome() ) {
+		return $text;
+	}
+	// The right-side string is the core version display by default. Only blank
+	// it while it still shows the WordPress version number; if a branding
+	// plugin replaced it with custom text, leave that alone.
+	$version = function_exists( 'get_bloginfo' ) ? get_bloginfo( 'version' ) : '';
+	if ( $version !== '' && is_string( $text ) && strpos( $text, $version ) !== false ) {
+		return '';
+	}
+	return $text;
+}, 999);
 
 // If HPOS (High-Performance Order Storage) is not active, add CSS to customize WooCommerce menu
 add_action('admin_head', function() {
@@ -70,6 +94,109 @@ function brikpanel_move_dashboard_to_top( $menu_order ) {
 add_filter( 'menu_order', 'brikpanel_move_dashboard_to_top', 999 );
 
 /**
+ * Relocate WooCommerce's crowded submenu into a synthetic "More" top-level
+ * item, promote "Settings" to its own top-level entry, and keep Orders /
+ * Customers directly under the WooCommerce item.
+ *
+ * This is the SINGLE source of truth for that relocation. Both the live sidebar
+ * renderer (brikpanel_get_navigation_items) and the settings-page customizer
+ * snapshot (brikpanel_nav_customizer_collect_menu_items) call it, so the editor
+ * always shows items exactly where the sidebar renders them. They used to carry
+ * two independent copies of this logic that had drifted apart — the editor
+ * showed WooCommerce children nested under "WooCommerce" while the sidebar moved
+ * them into "More", and per-submenu hide flags never matched.
+ *
+ * Moved submenu slugs are rewritten to the `admin.php?page=<slug>` form (the
+ * shape the renderer links them with); Orders / Customers / Subscriptions stay
+ * under WooCommerce with their original slugs.
+ *
+ * @param array $menu    The $menu global / snapshot, by reference (mutated).
+ * @param array $submenu The $submenu global / snapshot, by reference (mutated).
+ */
+function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
+	if ( ! is_array( $menu ) ) {
+		return;
+	}
+	if ( ! is_array( $submenu ) ) {
+		$submenu = array();
+	}
+
+	// Add the synthetic "More" top-level entry once.
+	$has_more = false;
+	foreach ( $menu as $row ) {
+		if ( isset( $row[2] ) && $row[2] === 'woocommerce-more' ) {
+			$has_more = true;
+			break;
+		}
+	}
+	if ( ! $has_more ) {
+		$menu[] = array(
+			__( 'More', 'brikpanel' ),
+			'manage_woocommerce',
+			'woocommerce-more',
+			__( 'More', 'brikpanel' ),
+		);
+	}
+
+	foreach ( $menu as $key => $item ) {
+		if ( ! isset( $item[2] ) || $item[2] !== 'woocommerce' ) {
+			continue;
+		}
+
+		$submenu_items = ! empty( $submenu['woocommerce'] ) ? $submenu['woocommerce'] : array();
+
+		// Promoted to top-level (wc-settings) or pushed under "More".
+		$to_move = array(
+			'wc-settings',
+			'wc-reports',
+			'wc-status',
+			'wc-admin&path=/extensions',
+		);
+
+		// Kept directly under WooCommerce (surfaced for quick access).
+		$skip_slugs = array(
+			'wc-orders',
+			'edit.php?post_type=shop_order',
+			'wc-orders--shop_subscription',
+			'wc-admin&path=/customers',
+		);
+
+		foreach ( $submenu_items as $sub_key => $sub_item ) {
+			if ( ! isset( $sub_item[2] ) ) {
+				continue;
+			}
+			$slug = $sub_item[2];
+			$temp = $submenu_items[ $sub_key ];
+
+			// Keep under WooCommerce — leave slug untouched.
+			if ( in_array( $slug, $skip_slugs, true ) ) {
+				continue;
+			}
+
+			// Rewrite to the URL form the renderer links moved items with.
+			$temp[2] = 'admin.php?page=' . $temp[2];
+
+			if ( in_array( $slug, $to_move, true ) ) {
+				if ( $temp[2] === 'admin.php?page=wc-settings' ) {
+					$menu[] = $temp;
+				} else {
+					$submenu['woocommerce-more'][] = $temp;
+				}
+				unset( $submenu_items[ $sub_key ] );
+				continue;
+			}
+
+			// Any other WooCommerce submenu (incl. third-party additions) → More.
+			$submenu['woocommerce-more'][] = $temp;
+			unset( $submenu_items[ $sub_key ] );
+		}
+
+		$submenu['woocommerce'] = $submenu_items;
+		break;
+	}
+}
+
+/**
  * Function to render custom menu structure in admin panel.
  */
 function brikpanel_render_navigation() {
@@ -78,7 +205,15 @@ function brikpanel_render_navigation() {
     }
     $items = brikpanel_get_navigation_items();
     echo '<nav id="brikpanel-navigation">';
-    echo '<ul>' . wp_kses_post($items) . '</ul>';
+    // Allow the `data:` protocol so user-supplied custom SVG icons (stored as
+    // sanitised base64 data URIs and rendered inside <img> tags, where SVG
+    // scripts never execute) survive sanitisation. Everything else stays at the
+    // standard post allowlist.
+    $brikpanel_nav_protocols = wp_allowed_protocols();
+    if ( ! in_array( 'data', $brikpanel_nav_protocols, true ) ) {
+        $brikpanel_nav_protocols[] = 'data';
+    }
+    echo '<ul>' . wp_kses( $items, wp_kses_allowed_html( 'post' ), $brikpanel_nav_protocols ) . '</ul>';
     echo '</nav>';
     
     // --- GÜNCELLENMİŞ JAVASCRIPT ---
@@ -154,81 +289,12 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 	$html = '';
 
-	// If Admin Menu Editor is not active, add a fake "More" menu item (WooCommerce submenus can be moved there).
+	// If Admin Menu Editor is not active, fold WooCommerce's crowded submenu into
+	// a synthetic "More" item (shared with the settings-page customizer so both
+	// stay in lockstep), then apply the default top-level reordering.
 	if ( ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
-		$menu[] = array(
-			__('More', 'brikpanel'),
-			'manage_woocommerce',
-			'woocommerce-more',
-			__('More', 'brikpanel'),
-		);		
+		brikpanel_nav_relocate_wc_submenus( $menu, $submenu );
 
-		foreach ( $menu as $key => $item ) {
-			if ( $item[2] !== 'woocommerce' ) {
-				continue;
-			}
-
-		// This part is inside the “$menu as $key => $item” loop, after finding the WooCommerce menu.
-		$submenu_items = ! empty( $submenu[ $item[2] ] ) ? $submenu[ $item[2] ] : array();
-
-		// Items to move
-		$to_move = array(
-			'wc-settings',
-			'wc-reports',
-			'wc-status',
-			'wc-admin&path=/extensions',
-		);
-
-		// Slugs you don't want
-		$skip_slugs = array(
-			'wc-orders',
-			'edit.php?post_type=shop_order',
-			'wc-orders--shop_subscription',
-			'wc-admin&path=/customers',
-		);
-
-		foreach ( $submenu_items as $sub_key => $sub_item ) {
-			$slug = $sub_item[2];
-			// Temporarily hold submenu item
-			$temp = $submenu_items[ $sub_key ];
-
-			// 1) If skip slug
-			if ( in_array( $slug, $skip_slugs ) ) {
-				// Remove from original menu
-				// Do not add under "More"
-				continue;
-			}
-
-			// Convert submenu slug to "admin.php?page=" format:
-			// For example "wc-settings" -> "admin.php?page=wc-settings"
-			$temp[2] = 'admin.php?page=' . $temp[2];
-
-			// If slug is in $to_move list (wc-settings, wc-reports etc.)
-			if ( in_array( $slug, $to_move ) ) {
-
-				if ( $temp[2] === 'admin.php?page=wc-settings' ) {
-					array_push( $menu, $temp );
-				} else {
-					// Add under "More"
-					$submenu['woocommerce-more'][] = $temp;
-				}
-				// Remove from original menu
-				unset( $submenu_items[ $sub_key ] );
-				continue;
-			}
-
-			// 3) New Woo submenu (not skip, not to_move)
-			// -> automatically add under “More”
-			$submenu['woocommerce-more'][] = $temp;
-
-			// Remove from original menu
-			unset( $submenu_items[ $sub_key ] );
-		}
-
-			// After loop, update original Woo submenu
-			$submenu['woocommerce'] = $submenu_items;
-
-			}
 				$menu = brikpanel_move_item_after( $menu, 'woocommerce-more', 'woocommerce-marketing' );
 				$menu = brikpanel_move_item_after( $menu, 'admin.php?page=wc-settings', 'woocommerce-marketing' );
 				$menu = brikpanel_move_item_after( $menu, 'admin.php?page=wc-settings&tab=checkout', 'edit.php?post_type=product' );
@@ -387,10 +453,18 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 			if ( 'none' === $item[6] || 'div' === $item[6] ) {
 				$img = '<br />';
-			} elseif ( str_starts_with( $item[6], 'data:image/svg+xml;base64,' ) ) {
-				$img = '<br />';
-				$img_style = ' style="background-image:url(\'' . esc_attr( $item[6] ) . '\')"';
-				$img_class = ' svg';
+			} elseif ( str_starts_with( $item[6], 'data:image/' ) ) {
+				// Third-party plugins commonly register their menu icon as an
+				// inline data URI (base64 or URL-encoded SVG, or a PNG). Render
+				// it as an <img> rather than an inline background-image: the
+				// whole navigation is passed through wp_kses() in
+				// brikpanel_render_navigation(), and safecss_filter_attr() treats
+				// the ";" in "image/svg+xml;base64" as a CSS declaration
+				// separator, silently dropping the background-image and leaving
+				// the icon blank. The data: protocol is allowlisted for src
+				// there, so an <img> survives sanitisation intact.
+				$img       = '<img src="' . esc_url( $item[6], array( 'data', 'http', 'https' ) ) . '" alt="" />';
+				$img_class = str_contains( $item[6], 'svg' ) ? ' svg' : '';
 			} elseif ( str_starts_with( $item[6], 'dashicons-' ) ) {
 				$img       = '<br />';
 				$img_class = ' dashicons-before ' . sanitize_html_class( $item[6] );
@@ -427,8 +501,13 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		if ( $brikpanel_custom_meta ) {
 			$custom_url    = isset( $brikpanel_custom_meta['url'] ) ? (string) $brikpanel_custom_meta['url'] : '#';
 			$custom_icon   = isset( $brikpanel_custom_meta['icon'] ) ? (string) $brikpanel_custom_meta['icon'] : 'default';
+			$custom_svg    = isset( $brikpanel_custom_meta['icon_svg'] ) ? (string) $brikpanel_custom_meta['icon_svg'] : '';
 			$custom_target = ! empty( $brikpanel_custom_meta['new_tab'] ) ? ' target="_blank" rel="noopener"' : '';
-			$icon_html     = '<img src="' . esc_url( plugins_url( 'icons/' . $custom_icon . '.svg', __FILE__ ) ) . '" width="15" height="18">';
+			if ( $custom_svg !== '' ) {
+				$icon_html = '<img src="' . esc_url( $custom_svg, array( 'data', 'http', 'https' ) ) . '" width="15" height="18">';
+			} else {
+				$icon_html = '<img src="' . esc_url( plugins_url( 'icons/' . $custom_icon . '.svg', __FILE__ ) ) . '" width="15" height="18">';
+			}
 			$html .= "
 				<div class='brikpanel-menu-icon-title-container $toplevel_page_class'>
 					$icon_html
@@ -475,10 +554,17 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 		$icon = '';
 		// User-defined icon override (from the customizer) takes precedence
-		// over the built-in slug→icon map.
+		// over the built-in slug→icon map. The map value is an array:
+		// [ 'type' => 'builtin'|'svg', 'value' => slug|data-uri ].
 		if ( isset( $brikpanel_custom_icons[ $item_slug ] ) ) {
-			$override_slug = $brikpanel_custom_icons[ $item_slug ];
-			$icon = '<img src="' . esc_url( plugins_url( 'icons/' . $override_slug . '.svg', __FILE__ ) ) . '" width="15" height="18">';
+			$override = $brikpanel_custom_icons[ $item_slug ];
+			if ( is_array( $override ) && isset( $override['type'], $override['value'] ) ) {
+				if ( $override['type'] === 'svg' ) {
+					$icon = '<img src="' . esc_url( (string) $override['value'], array( 'data', 'http', 'https' ) ) . '" width="15" height="18">';
+				} else {
+					$icon = '<img src="' . esc_url( plugins_url( 'icons/' . $override['value'] . '.svg', __FILE__ ) ) . '" width="15" height="18">';
+				}
+			}
 		}
 		if ( $icon === '' ) {
 			foreach ( $has_custom_icon as $slug => $icon_file ) {
@@ -516,6 +602,11 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				)
 			) {
 				$admin_is_parent = true;
+				// WooCommerce keeps Orders / Customers surfaced directly beneath it
+				// with no parent label or chevron — BrikPanel deliberately hides the
+				// "WooCommerce" branding so the sidebar reads as clean Shopify-style
+				// items. Everything else that used to live under WooCommerce has been
+				// relocated to the "More" item by brikpanel_nav_relocate_wc_submenus().
 				if ( $item_slug !== 'woocommerce' || is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
 					$style = $item_slug === 'meowapps-main-menu' ? 'style="padding-left: 24px;"' : '';
 					$html .= "
@@ -618,9 +709,14 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				if ( $brikpanel_sub_custom ) {
 					$sub_url    = isset( $brikpanel_sub_custom['url'] ) ? (string) $brikpanel_sub_custom['url'] : '#';
 					$sub_icon   = isset( $brikpanel_sub_custom['icon'] ) ? (string) $brikpanel_sub_custom['icon'] : 'default';
+					$sub_svg    = isset( $brikpanel_sub_custom['icon_svg'] ) ? (string) $brikpanel_sub_custom['icon_svg'] : '';
 					$sub_target = ! empty( $brikpanel_sub_custom['new_tab'] ) ? ' target="_blank" rel="noopener"' : '';
 					$sub_title  = wptexturize( $sub_item[0] ?? '' );
-					$sub_icon_html = '<img src="' . esc_url( plugins_url( 'icons/' . $sub_icon . '.svg', __FILE__ ) ) . '" width="12">';
+					if ( $sub_svg !== '' ) {
+						$sub_icon_html = '<img src="' . esc_url( $sub_svg, array( 'data', 'http', 'https' ) ) . '" width="12">';
+					} else {
+						$sub_icon_html = '<img src="' . esc_url( plugins_url( 'icons/' . $sub_icon . '.svg', __FILE__ ) ) . '" width="12">';
+					}
 					$html .= "
 						<li class='brikpanel-more-custom-item'>
 							<div class='brikpanel-menu-icon-title-container'>

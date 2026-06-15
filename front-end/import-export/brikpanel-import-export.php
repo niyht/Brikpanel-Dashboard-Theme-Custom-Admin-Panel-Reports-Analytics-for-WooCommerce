@@ -56,12 +56,13 @@ function brikpanel_import_export_get_option_map() {
 				continue;
 			}
 			$type = (string) $field['type'];
-			if ( in_array( $type, [ 'title', 'sectionend', 'brikpanel_dev_docs', 'brikpanel_nav_customizer', 'brikpanel_section_order' ], true ) ) {
+			if ( in_array( $type, [ 'title', 'sectionend', 'brikpanel_dev_docs', 'brikpanel_nav_customizer', 'brikpanel_section_order', 'brikpanel_early_access' ], true ) ) {
 				continue;
 			}
 			// Brand logo references an attachment id that does not transfer
 			// across sites — exporting it would point at a missing media item
-			// on the target. Skip the picker.
+			// on the target. Skip the picker. (The companion external URL is
+			// portable and is exported via the extras map below.)
 			if ( $field['id'] === 'brikpanel_brand_logo_id' || $type === 'brikpanel_brand_logo_picker' ) {
 				continue;
 			}
@@ -79,6 +80,15 @@ function brikpanel_import_export_get_option_map() {
 		'brikpanel_pe_section_order'     => [ 'type' => 'json_string' ],
 		'brikpanel_pe_visible_sections'  => [ 'type' => 'multiselect' ],
 		'brikpanel_dashboard_section_order' => [ 'type' => 'json_string' ],
+		// External brand logo URL (e.g. a CDN-hosted logo). Unlike the
+		// attachment-id picker this value is portable across sites.
+		'brikpanel_brand_logo_url'       => [ 'type' => 'url' ],
+		// Quick-edit drawer field visibility. The companion order option
+		// (brikpanel_qe_field_order) already travels as a WC settings field,
+		// but without this list the target site can't tell which drawer
+		// fields the source admin enabled, so the drawer config arrives half
+		// applied. Stored as a flat array of visible slugs → multiselect.
+		'brikpanel_qe_visible_fields'    => [ 'type' => 'multiselect' ],
 	];
 	foreach ( $extras as $key => $meta ) {
 		if ( ! isset( $map[ $key ] ) ) {
@@ -175,6 +185,11 @@ function brikpanel_import_export_sanitize_value( $value, $type ) {
 		case 'text':
 		case 'radio':
 			return is_scalar( $value ) ? sanitize_text_field( (string) $value ) : '';
+
+		case 'url':
+			// Restricted to http(s) so an imported file can never inject a
+			// javascript:/data: payload that later renders in admin CSS.
+			return is_scalar( $value ) ? esc_url_raw( (string) $value, [ 'http', 'https' ] ) : '';
 
 		case 'textarea':
 			return is_scalar( $value ) ? sanitize_textarea_field( (string) $value ) : '';

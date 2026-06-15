@@ -731,6 +731,15 @@ html {
 	padding-right: 2rem !important;
 }
 
+/* Meta that other plugins append to the order column (invoice number, a
+   "Chat on WhatsApp" link, etc.) sits below the order link row and stacks
+   vertically inside the column instead of spreading across it. */
+.wp-list-table tbody .column-order_number > .brikpanel-order-number ~ *:not(.toggle-row):not(.small-screen-only) {
+	display: block;
+	margin-top: .25rem;
+	max-width: 40vw;
+}
+
 .wp-list-table .order-preview {
 	display: flex;
 	flex-shrink: 0;
@@ -1266,30 +1275,249 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	gap: .75rem;
 	margin-top: 1rem;
 	flex-wrap: wrap;
+	align-items: flex-start;
 }
 
-.brikpanel-overview-summary,
+/* No marketplace card: center the summary card in the row instead of pinning
+   it to the left. */
+.brikpanel-overview--solo {
+	justify-content: center;
+}
+
 .brikpanel-overview-marketplaces {
 	display: flex;
 	flex-direction: column;
-	gap: .375rem;
-	padding: .75rem 1rem;
+	gap: .2rem;
+	padding: .4rem .9rem .3rem;
 	background-color: white;
+	border-radius: .75rem;
+	box-shadow: var(--outline);
+	flex-shrink: 0;
+}
+
+/* Summary card: date-range pill + metric cards in a single row. The card hugs
+   its content and stays left-aligned (flex: 0 1 auto) instead of stretching to
+   fill the row; align-items: flex-start on the wrapper keeps it at its natural
+   height rather than matching a taller marketplace card. */
+.brikpanel-overview-summary {
+	flex: 0 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: .75rem;
+	padding: 1rem .85rem;
+	background-color: #fff;
 	border-radius: .75rem;
 	box-shadow: var(--outline);
 }
 
-.brikpanel-overview-marketplaces {
-	padding-bottom: .5rem;
+/* Date-range picker */
+.brikpanel-range {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
 }
 
-.brikpanel-overview-summary {
+.brikpanel-range-btn {
+	display: flex;
+	align-items: center;
+	gap: .4rem;
+	padding: .4rem .6rem;
+	background-color: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: .5rem;
+	font-size: .8125rem;
+	font-weight: 600;
+	color: #303030;
+	line-height: 1.2;
+	cursor: pointer;
+	box-shadow: 0 1px 0 rgba(0, 0, 0, .03);
+	transition: background-color .15s ease, border-color .15s ease;
+}
+
+.brikpanel-range-btn:hover {
+	background-color: #f7f7f7;
+}
+
+.brikpanel-range-btn:focus-visible {
+	outline: none;
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+}
+
+.brikpanel-range-ico {
+	display: inline-flex;
+	color: #616161;
+}
+
+.brikpanel-range-ico svg {
+	width: 16px;
+	height: 16px;
+}
+
+.brikpanel-range-chevron {
+	width: 14px;
+	height: 14px;
+	color: #8a8a8a;
+	transition: transform .2s ease;
+}
+
+.brikpanel-range.open .brikpanel-range-chevron {
+	transform: rotate(180deg);
+}
+
+.brikpanel-range-menu {
+	position: absolute;
+	top: calc(100% + .375rem);
+	left: 0;
+	min-width: 190px;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: .375rem;
+	background-color: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: .625rem;
+	box-shadow: 0 6px 22px rgba(0, 0, 0, .13);
+	z-index: 60;
+}
+
+.brikpanel-range-menu[hidden] {
+	display: none;
+}
+
+.brikpanel-range-opt {
+	display: flex;
+	align-items: center;
+	gap: .625rem;
+	width: 100%;
+	padding: .5rem .625rem;
+	background-color: transparent;
+	border: none;
+	border-radius: .375rem;
+	font-size: .8125rem;
+	font-weight: 500;
+	color: #303030;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color .12s ease;
+}
+
+.brikpanel-range-opt:hover {
+	background-color: #f5f5f5;
+}
+
+.brikpanel-range-radio {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	border: 1.5px solid #c4c4c4;
+	flex-shrink: 0;
+	position: relative;
+	transition: border-color .12s ease;
+}
+
+.brikpanel-range-opt[aria-checked="true"] .brikpanel-range-radio {
+	border-color: #303030;
+}
+
+.brikpanel-range-opt[aria-checked="true"] .brikpanel-range-radio::after {
+	content: "";
+	position: absolute;
+	inset: 3px;
+	border-radius: 50%;
+	background-color: #303030;
+}
+
+/* Metric cards */
+.brikpanel-metrics {
 	flex: 1;
 	min-width: 0;
+	display: flex;
+	align-items: stretch;
 }
 
-.brikpanel-overview-marketplaces {
-	flex-shrink: 0;
+.brikpanel-metric {
+	flex: 0 0 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: .3rem;
+	padding: 0 .9rem;
+	border-left: 1px solid #ededed;
+}
+
+.brikpanel-metric-label {
+	font-size: .6875rem;
+	font-weight: 550;
+	color: #8a8a8a;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.brikpanel-metric-body {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: .5rem;
+}
+
+.brikpanel-metric-value {
+	font-size: 1.1rem;
+	font-weight: 680;
+	color: #303030;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.brikpanel-metric--revenue .brikpanel-metric-value {
+	font-size: .9375rem;
+	color: #16a34a;
+}
+
+.brikpanel-metric-spark {
+	flex: 0 0 64px;
+	width: 64px;
+	height: 26px;
+	align-self: flex-end;
+}
+
+.brikpanel-spark-svg {
+	display: block;
+	width: 100%;
+	height: 26px;
+	overflow: visible;
+}
+
+.brikpanel-spark-line {
+	stroke: #3AA3FF;
+	stroke-width: 1.6;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	vector-effect: non-scaling-stroke;
+}
+
+.brikpanel-spark-base {
+	stroke: #d8dde3;
+	stroke-width: 1;
+	stroke-dasharray: 2 3;
+	vector-effect: non-scaling-stroke;
+}
+
+/* Loading state */
+.brikpanel-overview-summary.is-loading .brikpanel-metric-value {
+	color: transparent;
+	background-color: #f0f0f0;
+	border-radius: .25rem;
+	min-width: 2.5rem;
+	animation: brikpanel-skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.brikpanel-overview-summary.is-loading .brikpanel-metric-spark {
+	opacity: .3;
 }
 
 .brikpanel-overview-title {
@@ -1315,62 +1543,6 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	background-color: #f59e0b;
 }
 
-.brikpanel-overview-stats {
-	display: flex;
-	gap: 0;
-}
-
-.brikpanel-stat {
-	display: flex;
-	flex-direction: column;
-	gap: .125rem;
-	padding: .25rem 1rem;
-	min-width: 0;
-}
-
-.brikpanel-stat:not(:last-child) {
-	border-right: 1px solid #ebebeb;
-}
-
-.brikpanel-stat:first-child {
-	padding-left: 0;
-}
-
-.brikpanel-stat-value {
-	font-size: .9375rem;
-	font-weight: 650;
-	color: #303030;
-	white-space: nowrap;
-}
-
-.brikpanel-stat.revenue .brikpanel-stat-value {
-	color: #16a34a;
-}
-
-.brikpanel-stat.refunded .brikpanel-stat-value {
-	color: #9e9e9e;
-}
-
-.brikpanel-stat.cancelled .brikpanel-stat-value {
-	color: #9e9e9e;
-}
-
-.brikpanel-stat-label {
-	font-size: .6875rem;
-	color: #8a8a8a;
-	font-weight: 500;
-}
-
-/* Skeleton loading */
-.brikpanel-stat.skeleton .brikpanel-stat-value,
-.brikpanel-stat.skeleton .brikpanel-stat-label {
-	background-color: #f0f0f0;
-	border-radius: .25rem;
-	color: transparent;
-	min-width: 2.5rem;
-	animation: brikpanel-skeleton-pulse 1.5s ease-in-out infinite;
-}
-
 @keyframes brikpanel-skeleton-pulse {
 	0%, 100% { opacity: 1; }
 	50% { opacity: .5; }
@@ -1388,7 +1560,7 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	align-items: center;
 	justify-content: space-between;
 	gap: 1rem;
-	padding: .3125rem .5rem;
+	padding: .25rem .5rem;
 	border-radius: .5rem;
 	background-color: #fafafa;
 }
@@ -1497,34 +1669,40 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 		flex-direction: column;
 	}
 
-	/* The 5 summary stats used to wrap into an uneven 3 + 2 grid with stray
-	   right-border dividers. Lay them out as a tidy grid instead: the four
-	   counts share a row, and revenue gets its own full-width row so the long
-	   currency value is never cramped. */
-	.brikpanel-overview-stats {
+	/* Stack the date pill above the metrics, then lay the four metric cards out
+	   as a 2x2 grid so the values and sparklines stay readable on narrow
+	   screens. */
+	.brikpanel-overview-summary {
+		flex-direction: column;
+		gap: .85rem;
+	}
+
+	.brikpanel-range {
+		width: 100%;
+	}
+
+	.brikpanel-range-btn {
+		width: 100%;
+		justify-content: space-between;
+	}
+
+	.brikpanel-range-menu {
+		left: 0;
+		right: 0;
+	}
+
+	.brikpanel-metrics {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: .65rem .25rem;
-		align-items: start;
+		grid-template-columns: repeat(2, 1fr);
+		gap: .75rem;
 	}
 
-	.brikpanel-stat {
-		padding: 0 .25rem;
-	}
-
-	.brikpanel-stat:first-child {
-		padding-left: .25rem;
-	}
-
-	.brikpanel-stat:not(:last-child) {
-		border-right: none;
-	}
-
-	.brikpanel-stat.revenue {
-		grid-column: 1 / -1;
-		border-top: 1px solid #ebebeb;
-		padding-top: .6rem;
-		margin-top: .1rem;
+	.brikpanel-metric {
+		border-left: none;
+		border: 1px solid #ededed;
+		border-radius: .5rem;
+		padding: .65rem .8rem;
+		gap: .4rem;
 	}
 
 	.brikpanel-mp-row {
@@ -1534,10 +1712,10 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	}
 }
 
-/* Very narrow phones — two counts per row keeps the labels readable. */
+/* Very narrow phones — one metric per row keeps the labels readable. */
 @media screen and (max-width: 400px) {
-	.brikpanel-overview-stats {
-		grid-template-columns: repeat(2, 1fr);
+	.brikpanel-metrics {
+		grid-template-columns: 1fr;
 	}
 }
 

@@ -135,6 +135,7 @@
 				+ ( c.is_guest ? '<span class="bp-ca-guest-pill">' + escapeHtml( i18n.guest || 'Guest' ) + '</span>' : '' )
 				+ '</div>'
 				+ '<div class="bp-ca-customer-email">' + escapeHtml( c.email ) + '</div>'
+				+ ( c.phone ? '<div class="bp-ca-customer-phone">' + escapeHtml( c.phone ) + '</div>' : '' )
 				+ '</div>';
 
 			if ( c.edit_url ) {
@@ -411,6 +412,7 @@
 				+ ( c.is_guest ? '<span class="bp-ca-guest-pill">' + escapeHtml( i18n.guest || 'Guest' ) + '</span>' : '' )
 				+ '</div>'
 				+ '<div class="bp-ca-customer-email">' + escapeHtml( c.email ) + '</div>'
+				+ ( c.phone ? '<div class="bp-ca-customer-phone">' + escapeHtml( c.phone ) + '</div>' : '' )
 				+ '</div>';
 			if ( c.edit_url ) {
 				customerCell = '<a href="' + escapeHtml( c.edit_url ) + '" style="color: inherit; text-decoration: none;">' + customerCell + '</a>';

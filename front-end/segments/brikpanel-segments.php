@@ -607,11 +607,18 @@ class Brikpanel_Segments {
 		$count_sql_raw = "SELECT COUNT(*) FROM {$from} WHERE {$where_sql}";
 		$total         = (int) $wpdb->get_var( $params ? $wpdb->prepare( $count_sql_raw, $params ) : $count_sql_raw ); // phpcs:ignore
 
-		// Aggregates (revenue, aov)
+		// Aggregates (revenue, aov) — converted to the store base currency so a
+		// multi-currency store's Total Revenue and AOV are never a raw mix of
+		// currencies. Each order uses its stored base-total snapshot (CURCY
+		// day-of-sale rate, or the manual fallback); COALESCE falls back to the
+		// raw total for base-currency orders. Per-order rows below still show
+		// their own currency.
 		if ( $hpos ) {
-			$agg_sql_raw = "SELECT COALESCE(SUM(o.total_amount),0) AS revenue FROM {$from} WHERE {$where_sql}";
+			$fx_agg      = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount', 'bpfxseg' );
+			$agg_sql_raw = "SELECT COALESCE(SUM({$fx_agg['expr']}),0) AS revenue FROM {$from}{$fx_agg['join']} WHERE {$where_sql}";
 		} else {
-			$agg_sql_raw = "SELECT COALESCE(SUM(CAST(pm_agg.meta_value AS DECIMAL(20,4))),0) AS revenue FROM {$from} LEFT JOIN {$wpdb->postmeta} pm_agg ON pm_agg.post_id = o.ID AND pm_agg.meta_key = '_order_total' WHERE {$where_sql}";
+			$fx_agg      = brikpanel_base_total_sql( false, 'o.ID', 'CAST(pm_agg.meta_value AS DECIMAL(20,4))', 'bpfxseg' );
+			$agg_sql_raw = "SELECT COALESCE(SUM({$fx_agg['expr']}),0) AS revenue FROM {$from} LEFT JOIN {$wpdb->postmeta} pm_agg ON pm_agg.post_id = o.ID AND pm_agg.meta_key = '_order_total'{$fx_agg['join']} WHERE {$where_sql}";
 		}
 		$revenue = (float) $wpdb->get_var( $params ? $wpdb->prepare( $agg_sql_raw, $params ) : $agg_sql_raw ); // phpcs:ignore
 
@@ -621,6 +628,7 @@ class Brikpanel_Segments {
 		if ( $hpos ) {
 			$select = "SELECT o.id AS order_id, o.date_created_gmt, o.status, o.total_amount, o.currency, o.customer_id,
 				o.billing_email, o.payment_method_title, o.payment_method,
+				(SELECT oas.phone FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' LIMIT 1) AS billing_phone,
 				(SELECT CONCAT_WS(' ', oas.first_name, oas.last_name) FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' LIMIT 1) AS billing_name,
 				(SELECT oas.country FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' LIMIT 1) AS billing_country,
 				(SELECT oas.city FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' LIMIT 1) AS billing_city
@@ -634,6 +642,7 @@ class Brikpanel_Segments {
 				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_currency' LIMIT 1) AS currency,
 				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user' LIMIT 1) AS customer_id,
 				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email' LIMIT 1) AS billing_email,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_phone' LIMIT 1) AS billing_phone,
 				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_payment_method_title' LIMIT 1) AS payment_method_title,
 				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_payment_method' LIMIT 1) AS payment_method,
 				(SELECT CONCAT_WS(' ', (SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_first_name' LIMIT 1), (SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_last_name' LIMIT 1))) AS billing_name,
@@ -662,6 +671,7 @@ class Brikpanel_Segments {
 				'customer_id'   => (int) $r->customer_id,
 				'name'          => trim( (string) $r->billing_name ),
 				'email'         => (string) $r->billing_email,
+				'phone'         => (string) $r->billing_phone,
 				'country'       => (string) $r->billing_country,
 				'city'          => (string) $r->billing_city,
 				'payment'       => (string) ( $r->payment_method_title ?: $r->payment_method ),
@@ -798,17 +808,27 @@ class Brikpanel_Segments {
 			$customer_key   = "IF(o.customer_id > 0, CONCAT('u:', o.customer_id), CONCAT('e:', LOWER(o.billing_email)))";
 			$user_id_expr   = 'MAX(o.customer_id)';
 			$email_expr     = "MAX(o.billing_email)";
-			$total_expr     = 'COALESCE(SUM(o.total_amount), 0)';
+			$phone_expr     = "MAX((SELECT oas.phone FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' LIMIT 1))";
+			// Convert each order to the store base currency before summing the
+			// customer's spend (multi-currency safe). The join is added to
+			// $order_from below.
+			$fx_cust        = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount', 'bpfxcust' );
+			$total_expr     = "COALESCE(SUM({$fx_cust['expr']}), 0)";
 			$last_expr      = 'MAX(o.date_created_gmt)';
 			$first_expr     = 'MIN(o.date_created_gmt)';
 		} else {
 			$customer_key   = "IFNULL((SELECT CASE WHEN pm_u.meta_value IS NOT NULL AND pm_u.meta_value+0 > 0 THEN CONCAT('u:', pm_u.meta_value) ELSE CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email' LIMIT 1))) END FROM {$wpdb->postmeta} pm_u WHERE pm_u.post_id=o.ID AND pm_u.meta_key='_customer_user' LIMIT 1), CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email' LIMIT 1))))";
 			$user_id_expr   = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user' LIMIT 1))";
 			$email_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email' LIMIT 1))";
-			$total_expr     = "COALESCE(SUM((SELECT CAST(meta_value AS DECIMAL(20,4)) FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_total' LIMIT 1)), 0)";
+			$phone_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_phone' LIMIT 1))";
+			$raw_total_sub  = "(SELECT CAST(meta_value AS DECIMAL(20,4)) FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_total' LIMIT 1)";
+			$fx_cust        = brikpanel_base_total_sql( false, 'o.ID', $raw_total_sub, 'bpfxcust' );
+			$total_expr     = "COALESCE(SUM({$fx_cust['expr']}), 0)";
 			$last_expr      = 'MAX(o.post_date_gmt)';
 			$first_expr     = 'MIN(o.post_date_gmt)';
 		}
+		// Add the base-total snapshot join to the per-customer aggregate source.
+		$order_from .= $fx_cust['join'];
 
 		// HAVING clauses for post-aggregation filters (spent, count, last order, registered)
 		$having = [];
@@ -845,6 +865,7 @@ class Brikpanel_Segments {
 				{$customer_key} AS customer_key,
 				{$user_id_expr} AS user_id,
 				{$email_expr} AS email,
+				{$phone_expr} AS phone,
 				COUNT(*) AS order_count,
 				{$total_expr} AS total_spent,
 				{$last_expr} AS last_order_date,
@@ -926,12 +947,14 @@ class Brikpanel_Segments {
 				u.user_email AS registered_email,
 				u.user_registered,
 				bm_fn.meta_value AS billing_first_name,
-				bm_ln.meta_value AS billing_last_name
+				bm_ln.meta_value AS billing_last_name,
+				bm_ph.meta_value AS billing_phone_meta
 			FROM ({$inner_sql}) agg
 			{$rfm_join}
 			LEFT JOIN {$wpdb->users} u ON CAST(agg.user_id AS UNSIGNED) = u.ID
 			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
 			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
+			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
 			{$outer_where_sql}
 			ORDER BY {$sort_col} {$direction}
 			LIMIT %d OFFSET %d";
@@ -953,6 +976,7 @@ class Brikpanel_Segments {
 				'user_id'              => $user_id,
 				'name'                 => $name,
 				'email'                => (string) ( $r->registered_email ?: $r->email ),
+				'phone'                => (string) ( $r->phone ?: $r->billing_phone_meta ),
 				'registered'           => $r->user_registered ? mysql2date( get_option( 'date_format' ), $r->user_registered ) : ( $user_id ? '' : __( 'Guest', 'brikpanel' ) ),
 				'registered_iso'       => (string) $r->user_registered,
 				'order_count'          => (int) $r->order_count,
@@ -1013,6 +1037,17 @@ class Brikpanel_Segments {
 		// UTF-8 BOM so Excel opens non-ASCII characters cleanly.
 		fwrite( $out, "\xEF\xBB\xBF" );
 
+		// Neutralise CSV formula injection. Phone numbers legitimately start
+		// with "+", which spreadsheet apps treat as a formula; prefix such
+		// values with an apostrophe (OWASP-recommended, non-destructive guard).
+		$csv_safe = static function ( $value ) {
+			$value = (string) $value;
+			if ( $value !== '' && in_array( $value[0], [ '=', '+', '-', '@', "\t", "\r" ], true ) ) {
+				return "'" . $value;
+			}
+			return $value;
+		};
+
 		if ( $tab === 'orders' ) {
 			$result = $this->query_orders( $filters );
 			fputcsv( $out, [
@@ -1021,6 +1056,7 @@ class Brikpanel_Segments {
 				__( 'Status', 'brikpanel' ),
 				__( 'Customer', 'brikpanel' ),
 				__( 'Email', 'brikpanel' ),
+				__( 'Phone', 'brikpanel' ),
 				__( 'Country', 'brikpanel' ),
 				__( 'City', 'brikpanel' ),
 				__( 'Payment', 'brikpanel' ),
@@ -1033,6 +1069,7 @@ class Brikpanel_Segments {
 					$item['status_label'],
 					$item['name'],
 					$item['email'],
+					$csv_safe( $item['phone'] ),
 					$item['country'],
 					$item['city'],
 					$item['payment'],
@@ -1045,6 +1082,7 @@ class Brikpanel_Segments {
 				__( 'User ID', 'brikpanel' ),
 				__( 'Name', 'brikpanel' ),
 				__( 'Email', 'brikpanel' ),
+				__( 'Phone', 'brikpanel' ),
 				__( 'Registered', 'brikpanel' ),
 				__( 'Orders', 'brikpanel' ),
 				__( 'Total spent', 'brikpanel' ),
@@ -1057,6 +1095,7 @@ class Brikpanel_Segments {
 					$item['user_id'] ?: '',
 					$item['name'],
 					$item['email'],
+					$csv_safe( $item['phone'] ),
 					$item['registered_iso'],
 					$item['order_count'],
 					$item['total_spent'],

@@ -19,6 +19,77 @@
 	const i18n = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.i18n) || {};
 	const iconOptions = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.iconOptions) || {};
 	const iconsBase = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.iconsBase) || '';
+	const roles = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.roles) || {};
+
+	/**
+	 * HTML-attribute escaper. Defined at the IIFE scope (not inside the
+	 * DOMContentLoaded callback) so the markup builders below — audienceSelectHTML
+	 * / audienceRolesHTML, which also run from inside the callback — can reach it.
+	 * Keeping it nested previously threw "escapeAttr is not defined" the moment a
+	 * custom link was added, silently aborting createCustomRow.
+	 */
+	function escapeAttr(s) {
+		return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
+
+	/**
+	 * Read the audience rule from a row owner. For a top-level item the owner is
+	 * the <li.brikpanel-navc-item>; for a submenu row it is the
+	 * <li.brikpanel-navc-submenu-item>. The audience <select> lives in the row
+	 * and the role checklist is a sibling `.brikpanel-navc-roles` block. Returns
+	 * an object to merge into the serialized entry:
+	 *   {} (everyone) | { audience:'admins' } | { audience:'roles', hide_roles:[…] }
+	 */
+	function readAudience(owner, isSub) {
+		if (!owner) return {};
+		const sel = isSub
+			? owner.querySelector('[data-navc-audience]')
+			: owner.querySelector(':scope > .brikpanel-navc-row [data-navc-audience]'); // i18n-ignore: CSS selector
+		if (!sel) return {};
+		const audience = sel.value || 'all';
+		if (audience === 'admins') return { audience: 'admins' };
+		if (audience === 'roles') {
+			const panel = owner.querySelector(':scope > .brikpanel-navc-roles'); // i18n-ignore: CSS selector
+			const hideRoles = [];
+			if (panel) {
+				panel.querySelectorAll('[data-navc-role]').forEach(function (cb) {
+					if (cb.checked) hideRoles.push(cb.value);
+				});
+			}
+			if (hideRoles.length) return { audience: 'roles', hide_roles: hideRoles };
+			return {};
+		}
+		return {};
+	}
+
+	/** Inline audience <select> markup for client-created rows. */
+	function audienceSelectHTML() {
+		return (
+			'<select class="brikpanel-navc-audience" data-navc-audience aria-label="' + escapeAttr(i18n.audienceLabel || 'Who can see this item') + '">' +
+				'<option value="all">' + escapeAttr(i18n.audienceAll || 'Everyone') + '</option>' +
+				'<option value="admins">' + escapeAttr(i18n.audienceAdmins || 'Admins only') + '</option>' +
+				'<option value="roles">' + escapeAttr(i18n.audienceRoles || 'Specific roles') + '</option>' +
+			'</select>'
+		);
+	}
+
+	/** Role checklist block markup for client-created rows (hidden by default). */
+	function audienceRolesHTML() {
+		let rolesHtml = '';
+		Object.keys(roles).forEach(function (slug) {
+			rolesHtml +=
+				'<label class="brikpanel-navc-role">' +
+					'<input type="checkbox" data-navc-role value="' + escapeAttr(slug) + '">' +
+					'<span>' + escapeAttr(roles[slug]) + '</span>' +
+				'</label>';
+		});
+		return (
+			'<div class="brikpanel-navc-roles" data-navc-roles hidden>' +
+				'<span class="brikpanel-navc-roles-title">' + escapeAttr(i18n.hideFromRoles || 'Hide from these roles') + '</span>' +
+				'<div class="brikpanel-navc-roles-grid">' + rolesHtml + '</div>' +
+			'</div>'
+		);
+	}
 
 	function ready(fn) {
 		if (document.readyState !== 'loading') { fn(); return; }
@@ -36,8 +107,10 @@
 			label: root.querySelector('[data-navc-field="label"]'),
 			url: root.querySelector('[data-navc-field="url"]'),
 			icon: root.querySelector('[data-navc-field="icon"]'),
+			icon_svg: root.querySelector('[data-navc-field="icon_svg"]'),
 			new_tab: root.querySelector('[data-navc-field="new_tab"]'),
 		};
+		const svgPreview = root.querySelector('.brikpanel-navc-svg-preview');
 		const dialogElement = root.querySelector('.brikpanel-navc-dialog');
 		const dialogSaveBtn = root.querySelector('[data-navc-action="dialog-save"]');
 		// dialogContext.mode: 'add' | 'edit' | 'change-icon'
@@ -60,6 +133,15 @@
 							section: section,
 							hidden: hidden,
 						};
+						Object.assign(entry, readAudience(li, false));
+						const labelOverride = li.getAttribute('data-label-override') || '';
+						if (labelOverride) {
+							entry.label_override = labelOverride;
+						}
+						const iconSvg = li.getAttribute('data-icon-svg') || '';
+						if (iconSvg) {
+							entry.icon_svg = iconSvg;
+						}
 						const iconOverride = li.getAttribute('data-icon-override') || '';
 						if (iconOverride) {
 							entry.icon_override = iconOverride;
@@ -70,16 +152,18 @@
 							submenuItems.forEach(function (subLi) {
 								const subSlug = subLi.getAttribute('data-sub-slug') || '';
 								if (!subSlug) return;
-								subs.push({
+								const sub = {
 									slug: subSlug,
 									hidden: subLi.classList.contains('is-hidden'),
-								});
+								};
+								Object.assign(sub, readAudience(subLi, true));
+								subs.push(sub);
 							});
 							if (subs.length) entry.submenus = subs;
 						}
 						items.push(entry);
 					} else if (type === 'custom') {
-						items.push({
+						const entry = {
 							type: 'custom',
 							id: li.getAttribute('data-id') || '',
 							label: li.getAttribute('data-label') || '',
@@ -88,7 +172,13 @@
 							new_tab: li.getAttribute('data-new-tab') === '1',
 							section: section,
 							hidden: hidden,
-						});
+						};
+						const customSvg = li.getAttribute('data-icon-svg') || '';
+						if (customSvg) {
+							entry.icon_svg = customSvg;
+						}
+						Object.assign(entry, readAudience(li, false));
+						items.push(entry);
 					}
 				});
 			});
@@ -117,6 +207,26 @@
 		// Top-level visibility toggle (system + custom row main switch).
 		// ---------------------------------------------------------------------
 		root.addEventListener('change', function (e) {
+			const audienceSel = e.target.closest('[data-navc-audience]');
+			if (audienceSel) {
+				const owner = audienceSel.closest('.brikpanel-navc-submenu-item')
+					|| audienceSel.closest('.brikpanel-navc-item');
+				const panel = owner ? owner.querySelector(':scope > .brikpanel-navc-roles') : null; // i18n-ignore: CSS selector
+				if (panel) {
+					if (audienceSel.value === 'roles') {
+						panel.removeAttribute('hidden');
+					} else {
+						panel.setAttribute('hidden', '');
+					}
+				}
+				serialize();
+				return;
+			}
+			const roleCb = e.target.closest('[data-navc-role]');
+			if (roleCb) {
+				serialize();
+				return;
+			}
 			const subToggle = e.target.closest('[data-navc-sub-toggle]');
 			if (subToggle) {
 				const subLi = subToggle.closest('.brikpanel-navc-submenu-item');
@@ -172,10 +282,10 @@
 				}
 				return;
 			}
-			if (action === 'change-icon') {
+			if (action === 'edit-system' || action === 'change-icon') {
 				e.preventDefault();
 				const li = actionEl.closest('.brikpanel-navc-item');
-				openDialog({ mode: 'change-icon', element: li });
+				openDialog({ mode: 'edit-system', element: li });
 				return;
 			}
 			if (action === 'toggle-submenus') {
@@ -208,8 +318,9 @@
 			}
 			if (action === 'dialog-clear-icon') {
 				e.preventDefault();
-				if (!dialogContext || dialogContext.mode !== 'change-icon' || !dialogContext.element) return;
+				if (!dialogContext || dialogContext.mode !== 'edit-system' || !dialogContext.element) return;
 				dialogContext.element.setAttribute('data-icon-override', '');
+				dialogContext.element.setAttribute('data-icon-svg', '');
 				updateSystemRowIcon(dialogContext.element);
 				serialize();
 				closeDialog();
@@ -233,12 +344,25 @@
 					});
 					ul.querySelectorAll('.brikpanel-navc-item.is-system').forEach(function (li) {
 						li.setAttribute('data-icon-override', '');
+						li.setAttribute('data-icon-svg', '');
+						li.setAttribute('data-label-override', '');
 						updateSystemRowIcon(li);
+						updateSystemRowLabel(li);
 					});
 					ul.querySelectorAll('.brikpanel-navc-submenu-item.is-hidden').forEach(function (subLi) {
 						subLi.classList.remove('is-hidden');
 						const cb = subLi.querySelector('[data-navc-sub-toggle]');
 						if (cb) cb.checked = true;
+					});
+					// Reset every audience rule back to "Everyone".
+					ul.querySelectorAll('[data-navc-audience]').forEach(function (sel) {
+						sel.value = 'all';
+					});
+					ul.querySelectorAll('[data-navc-role]').forEach(function (cb) {
+						cb.checked = false;
+					});
+					ul.querySelectorAll('[data-navc-roles]').forEach(function (panel) {
+						panel.setAttribute('hidden', '');
 					});
 				});
 				return;
@@ -249,13 +373,67 @@
 			if (!li) return;
 			const iconWrap = li.querySelector(':scope > .brikpanel-navc-row > .brikpanel-navc-icon');
 			if (!iconWrap) return;
+			const svg = li.getAttribute('data-icon-svg') || '';
 			const override = li.getAttribute('data-icon-override') || '';
-			if (override) {
+			if (svg) {
+				iconWrap.innerHTML = '<img src="' + escapeAttr(svg) + '" alt="" width="14" height="14">';
+			} else if (override) {
 				iconWrap.innerHTML = '<img src="' + escapeAttr(iconsBase + override + '.svg') + '" alt="" width="14" height="14">';
 			} else {
 				// Reset to neutral placeholder (matches the PHP-render fallback).
 				iconWrap.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>';
 			}
+		}
+
+		// Reflect a system item's label override (or its original title when the
+		// override is cleared) into the visible row label.
+		function updateSystemRowLabel(li) {
+			if (!li) return;
+			const textEl = li.querySelector(':scope > .brikpanel-navc-row .brikpanel-navc-label-text');
+			if (!textEl) return;
+			const override = li.getAttribute('data-label-override') || '';
+			textEl.textContent = override || (li.getAttribute('data-orig-title') || '');
+		}
+
+		// Normalize pasted icon input (raw SVG markup or a data URI) into a
+		// data:image/svg+xml;base64 URI usable as an <img> src. Returns '' when
+		// the input doesn't look like an SVG. The server re-sanitizes on save.
+		function normalizeSvgInput(value) {
+			value = (value || '').trim();
+			if (!value) return '';
+			if (/^data:image\/svg\+xml/i.test(value)) return value;
+			if (/<svg[\s\S]*<\/svg>/i.test(value)) {
+				try {
+					return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(value)));
+				} catch (err) {
+					return '';
+				}
+			}
+			return '';
+		}
+
+		// Live preview of the SVG textarea contents inside the dialog.
+		function updateSvgPreview() {
+			if (!svgPreview) return;
+			const uri = normalizeSvgInput(dialogFields.icon_svg ? dialogFields.icon_svg.value : '');
+			svgPreview.innerHTML = uri ? '<img src="' + escapeAttr(uri) + '" alt="" width="20" height="20">' : '';
+		}
+
+		// Picking a built-in icon from the dropdown clears any pasted SVG, so the
+		// chosen icon takes effect (last action wins). Pasting an SVG afterwards
+		// overrides the dropdown again.
+		function clearSvgOnIconPick() {
+			if (dialogFields.icon_svg) dialogFields.icon_svg.value = '';
+			if (svgPreview) svgPreview.innerHTML = '';
+		}
+
+		// Set the icon dropdown + SVG textarea from a stored icon slug and svg
+		// data URI. The SVG textarea is always visible; a non-empty value wins
+		// over the dropdown at save time.
+		function loadIconFields(iconSlug, iconSvg) {
+			dialogFields.icon.value = iconSlug || 'default';
+			if (dialogFields.icon_svg) dialogFields.icon_svg.value = iconSvg || '';
+			updateSvgPreview();
 		}
 
 		function openDialog(ctx) {
@@ -266,13 +444,16 @@
 			const newTabField = dialogFields.new_tab && dialogFields.new_tab.closest('.brikpanel-navc-field');
 			const clearBtn   = root.querySelector('[data-navc-action="dialog-clear-icon"]');
 
-			if (ctx.mode === 'change-icon' && ctx.element) {
-				dialogTitle.textContent = i18n.changeIcon || 'Change icon';
-				if (labelField) labelField.hidden = true;
+			if (ctx.mode === 'edit-system' && ctx.element) {
+				// Rename + icon for a built-in system item. URL / new-tab don't apply.
+				dialogTitle.textContent = i18n.editItem || 'Edit menu item';
+				if (labelField) labelField.hidden = false;
 				if (urlField) urlField.hidden = true;
 				if (newTabField) newTabField.hidden = true;
 				if (clearBtn) clearBtn.hidden = false;
-				dialogFields.icon.value = ctx.element.getAttribute('data-icon-override') || 'default';
+				const override = ctx.element.getAttribute('data-label-override') || '';
+				dialogFields.label.value = override || (ctx.element.getAttribute('data-orig-title') || '');
+				loadIconFields(ctx.element.getAttribute('data-icon-override') || 'default', ctx.element.getAttribute('data-icon-svg') || '');
 			} else if (ctx.mode === 'edit' && ctx.element) {
 				dialogTitle.textContent = i18n.editLink || 'Edit custom link';
 				if (labelField) labelField.hidden = false;
@@ -281,8 +462,8 @@
 				if (clearBtn) clearBtn.hidden = true;
 				dialogFields.label.value = ctx.element.getAttribute('data-label') || '';
 				dialogFields.url.value = ctx.element.getAttribute('data-url') || '';
-				dialogFields.icon.value = ctx.element.getAttribute('data-icon') || 'default';
 				dialogFields.new_tab.checked = ctx.element.getAttribute('data-new-tab') === '1';
+				loadIconFields(ctx.element.getAttribute('data-icon') || 'default', ctx.element.getAttribute('data-icon-svg') || '');
 			} else {
 				dialogTitle.textContent = i18n.addLink || 'Add custom link';
 				if (labelField) labelField.hidden = false;
@@ -291,16 +472,12 @@
 				if (clearBtn) clearBtn.hidden = true;
 				dialogFields.label.value = '';
 				dialogFields.url.value = '';
-				dialogFields.icon.value = 'default';
 				dialogFields.new_tab.checked = false;
+				loadIconFields('default', '');
 			}
 			dialogBackdrop.hidden = false;
 			setTimeout(function () {
-				if (ctx.mode === 'change-icon') {
-					dialogFields.icon.focus();
-				} else {
-					dialogFields.label.focus();
-				}
+				dialogFields.label.focus();
 			}, 30);
 		}
 
@@ -309,11 +486,46 @@
 			dialogContext = null;
 		}
 
+		// Resolve the icon picker into { icon, iconSvg }. Returns null (after
+		// alerting) when "Custom SVG…" is chosen but the input isn't a valid SVG.
+		function resolveDialogIcon() {
+			const rawSvg = dialogFields.icon_svg ? dialogFields.icon_svg.value.trim() : '';
+			const sel = dialogFields.icon.value || 'default';
+			// A non-empty SVG textarea always wins over the dropdown.
+			if (rawSvg !== '') {
+				const svg = normalizeSvgInput(rawSvg);
+				if (!svg) {
+					alert(i18n.invalidSvg || 'That SVG could not be read.');
+					if (dialogFields.icon_svg) dialogFields.icon_svg.focus();
+					return null;
+				}
+				return { icon: 'default', iconSvg: svg };
+			}
+			return { icon: sel, iconSvg: '' };
+		}
+
 		function saveDialog() {
-			if (dialogContext && dialogContext.mode === 'change-icon' && dialogContext.element) {
-				const icon = dialogFields.icon.value || '';
-				dialogContext.element.setAttribute('data-icon-override', icon);
-				updateSystemRowIcon(dialogContext.element);
+			// Rename / re-icon a built-in system item.
+			if (dialogContext && dialogContext.mode === 'edit-system' && dialogContext.element) {
+				const li = dialogContext.element;
+				const label = (dialogFields.label.value || '').trim();
+				if (!label) { alert(i18n.invalidLabel || 'Please enter a label.'); dialogFields.label.focus(); return; }
+				const resolved = resolveDialogIcon();
+				if (!resolved) return;
+				const origTitle = li.getAttribute('data-orig-title') || '';
+				// Store an override only when the label actually differs from the
+				// original — keeps the saved config minimal.
+				li.setAttribute('data-label-override', label === origTitle ? '' : label);
+				// A custom SVG wins; otherwise treat "Default link" as "use original".
+				if (resolved.iconSvg) {
+					li.setAttribute('data-icon-svg', resolved.iconSvg);
+					li.setAttribute('data-icon-override', '');
+				} else {
+					li.setAttribute('data-icon-svg', '');
+					li.setAttribute('data-icon-override', resolved.icon === 'default' ? '' : resolved.icon);
+				}
+				updateSystemRowLabel(li);
+				updateSystemRowIcon(li);
 				serialize();
 				closeDialog();
 				return;
@@ -321,24 +533,28 @@
 
 			const label = (dialogFields.label.value || '').trim();
 			const url = (dialogFields.url.value || '').trim();
-			const icon = dialogFields.icon.value || 'default';
 			const newTab = !!dialogFields.new_tab.checked;
 
 			if (!label) { alert(i18n.invalidLabel || 'Please enter a label.'); dialogFields.label.focus(); return; }
 			if (!url || !isValidUrl(url)) { alert(i18n.invalidUrl || 'Please enter a valid URL.'); dialogFields.url.focus(); return; }
+			const resolved = resolveDialogIcon();
+			if (!resolved) return;
+			const icon = resolved.icon;
+			const iconSvg = resolved.iconSvg;
 
 			if (dialogContext.mode === 'edit' && dialogContext.element) {
 				const li = dialogContext.element;
 				li.setAttribute('data-label', label);
 				li.setAttribute('data-url', url);
 				li.setAttribute('data-icon', icon);
+				li.setAttribute('data-icon-svg', iconSvg);
 				li.setAttribute('data-new-tab', newTab ? '1' : '0');
 				const labelText = li.querySelector('.brikpanel-navc-label-text');
 				if (labelText) labelText.textContent = label;
 				const labelMeta = li.querySelector('.brikpanel-navc-label-meta');
 				if (labelMeta) labelMeta.textContent = url;
 				const iconImg = li.querySelector('.brikpanel-navc-icon img');
-				if (iconImg) iconImg.src = iconsBase + icon + '.svg';
+				if (iconImg) iconImg.src = iconSvg ? iconSvg : iconsBase + icon + '.svg';
 			} else {
 				// Add a new custom row to the matching section.
 				const section = dialogContext.section || 'store';
@@ -350,6 +566,7 @@
 					label: label,
 					url: url,
 					icon: icon,
+					icon_svg: iconSvg,
 					new_tab: newTab,
 					hidden: false,
 				});
@@ -367,14 +584,16 @@
 			li.setAttribute('data-label', data.label);
 			li.setAttribute('data-url', data.url);
 			li.setAttribute('data-icon', data.icon || 'default');
+			li.setAttribute('data-icon-svg', data.icon_svg || '');
 			li.setAttribute('data-new-tab', data.new_tab ? '1' : '0');
+			const iconSrc = data.icon_svg ? data.icon_svg : iconsBase + (data.icon || 'default') + '.svg';
 			li.innerHTML =
 				'<div class="brikpanel-navc-row">' +
 					'<span class="brikpanel-navc-drag" aria-hidden="true">' +
 						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>' +
 					'</span>' +
 					'<span class="brikpanel-navc-icon">' +
-						'<img src="' + escapeAttr(iconsBase + (data.icon || 'default') + '.svg') + '" alt="" width="14" height="14">' +
+						'<img src="' + escapeAttr(iconSrc) + '" alt="" width="14" height="14">' +
 					'</span>' +
 					'<span class="brikpanel-navc-label">' +
 						'<span class="brikpanel-navc-label-text"></span>' +
@@ -384,13 +603,15 @@
 						'<input type="checkbox" data-navc-toggle' + (data.hidden ? '' : ' checked') + '>' +
 						'<span class="brikpanel-navc-toggle-track" aria-hidden="true"><span class="brikpanel-navc-toggle-thumb"></span></span>' +
 					'</label>' +
+					audienceSelectHTML() +
 					'<button type="button" class="brikpanel-navc-iconbtn" data-navc-action="edit" aria-label="' + escapeAttr(i18n.edit || 'Edit') + '">' +
 						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
 					'</button>' +
 					'<button type="button" class="brikpanel-navc-iconbtn brikpanel-navc-iconbtn-danger" data-navc-action="delete" aria-label="' + escapeAttr(i18n.delete || 'Delete') + '">' +
 						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>' +
 					'</button>' +
-				'</div>';
+				'</div>' +
+				audienceRolesHTML();
 			li.querySelector('.brikpanel-navc-label-text').textContent = data.label;
 			li.querySelector('.brikpanel-navc-label-meta').textContent = data.url;
 			return li;
@@ -404,8 +625,13 @@
 			return false;
 		}
 
-		function escapeAttr(s) {
-			return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		// Choosing a built-in icon clears any pasted SVG so the icon wins.
+		if (dialogFields.icon) {
+			dialogFields.icon.addEventListener('change', clearSvgOnIconPick);
+		}
+		// Live-preview the pasted SVG.
+		if (dialogFields.icon_svg) {
+			dialogFields.icon_svg.addEventListener('input', updateSvgPreview);
 		}
 
 		// Close dialog on backdrop click + Escape.

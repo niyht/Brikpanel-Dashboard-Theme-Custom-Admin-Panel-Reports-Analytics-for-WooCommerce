@@ -1,0 +1,47 @@
+/**
+ * BrikPanel — Order Custom Fields panel ("Additional details" meta box).
+ * Minimal, monochrome, label-over-value rows that read cleanly inside the
+ * native WooCommerce side metabox and the modern BrikPanel order screen alike.
+ */
+#brikpanel_order_fields .inside {
+	margin: 0;
+	padding: 0;
+}
+
+.brikpanel-of-list {
+	display: flex;
+	flex-direction: column;
+}
+
+.brikpanel-of-row {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	padding: 0.625rem 0.875rem;
+	border-bottom: 1px solid #e3e3e3;
+}
+
+.brikpanel-of-row:last-child {
+	border-bottom: none;
+}
+
+.brikpanel-of-label {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #8a8a8a;
+}
+
+.brikpanel-of-value {
+	font-size: 0.8125rem;
+	color: #303030;
+	word-break: break-word;
+}
+
+.brikpanel-of-empty {
+	margin: 0;
+	padding: 0.75rem 0.875rem;
+	color: #8a8a8a;
+	font-size: 0.8125rem;
+}

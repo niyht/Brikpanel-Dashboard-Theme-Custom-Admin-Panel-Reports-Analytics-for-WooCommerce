@@ -24,19 +24,27 @@ function brikpanel_get_average_order_value( $start_date_gmt = null, $end_date_gm
         $table_name = $wpdb->prefix . 'wc_orders';
         $date_column_name = 'date_created_gmt';
 
-        // 'IN' operatörü kullanılıyor
-        $query_sql = "SELECT COUNT(id) as order_count, SUM(total_amount) as total_revenue
-                      FROM {$table_name}
+        // Multi-currency safe: convert each order to the base currency before
+        // averaging (COALESCE falls back to the raw total for base-currency orders).
+        $fx = brikpanel_base_total_sql( true, "{$table_name}.id", 'total_amount' );
+
+        // 'IN' operatörü kullanılıyor. COUNT is qualified with the orders table:
+        // the base-total meta join adds a second `id` column, so a bare COUNT(id)
+        // would be ambiguous.
+        $query_sql = "SELECT COUNT({$table_name}.id) as order_count, SUM({$fx['expr']}) as total_revenue
+                      FROM {$table_name}{$fx['join']}
                       WHERE type = 'shop_order' AND status IN ({$status_placeholders})";
     } else {
         // HPOS AKTİF DEĞİL
         $table_name = $wpdb->posts;
         $date_column_name = 'p.post_date_gmt';
 
+        $fx = brikpanel_base_total_sql( false, 'p.ID', 'pm.meta_value' );
+
         // 'IN' operatörü kullanılıyor
-        $query_sql = "SELECT COUNT(p.ID) as order_count, SUM(pm.meta_value) as total_revenue
+        $query_sql = "SELECT COUNT(p.ID) as order_count, SUM({$fx['expr']}) as total_revenue
                       FROM {$table_name} AS p
-                      LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id
+                      LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id{$fx['join']}
                       WHERE p.post_type = 'shop_order'
                       AND pm.meta_key = '_order_total'
                       AND p.post_status IN ({$status_placeholders})";

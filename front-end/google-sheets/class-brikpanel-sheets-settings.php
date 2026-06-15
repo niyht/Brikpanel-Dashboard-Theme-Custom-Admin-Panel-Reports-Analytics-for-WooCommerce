@@ -122,14 +122,7 @@ class Brikpanel_Sheets_Settings {
 	// =========================================================================
 
 	public function register_page() {
-		// Menu titles in WP core accept HTML (used by the core "update count"
-		// badge), and BrikPanel's custom sidebar renderer keeps it intact. We
-		// piggyback on that to ship a Beta badge next to "Google Sheets" in
-		// the sidebar without touching the navigation module.
-		$menu_title = __( 'Google Sheets', 'brikpanel' )
-			. ' <span class="brikpanel-beta-badge" aria-label="'
-			. esc_attr__( 'Beta feature', 'brikpanel' )
-			. '">' . esc_html__( 'Beta', 'brikpanel' ) . '</span>';
+		$menu_title = __( 'Google Sheets', 'brikpanel' );
 
 		$hook = add_menu_page(
 			__( 'Google Sheets', 'brikpanel' ),
@@ -151,6 +144,11 @@ class Brikpanel_Sheets_Settings {
 
 	public function render_page() {
 		$conn = Brikpanel_Sheets_Tokens::describe();
+
+		// Refresh the discovered custom-order-field list so the column picker
+		// reflects this store's checkout fields. Cheap; safe to run every render.
+		Brikpanel_Sheets_Mapping::refresh_order_custom_fields();
+
 		$config = [
 			'spreadsheet_id'   => (string) get_option( 'brikpanel_gs_spreadsheet_id', '' ),
 			'spreadsheet_url'  => (string) get_option( 'brikpanel_gs_spreadsheet_url', '' ),
@@ -162,6 +160,8 @@ class Brikpanel_Sheets_Settings {
 			'orders_bulk_interval' => (string) get_option( Brikpanel_Sheets_Order_Sync::OPT_BULK_INTERVAL, 'off' ),
 			'orders_bulk_since' => (string) get_option( Brikpanel_Sheets_Order_Sync::OPT_BULK_SINCE, gmdate( 'Y-m-d', strtotime( '-90 days' ) ) ),
 			'orders_bulk_statuses' => Brikpanel_Sheets_Order_Sync::bulk_statuses(),
+			'orders_shipping_methods' => Brikpanel_Sheets_Order_Sync::shipping_method_filter(),
+			'orders_shipping_methods_catalogue' => self::shipping_methods_catalogue(),
 			'orders_last_sync' => (array) get_option( Brikpanel_Sheets_Order_Sync::OPT_LAST_SYNC, [] ),
 			'orders_pull_enabled'  => get_option( Brikpanel_Sheets_Order_Sync::OPT_PULL_ENABLED, 'no' ),
 			'orders_pull_interval' => (string) get_option( Brikpanel_Sheets_Order_Sync::OPT_PULL_INTERVAL, '5' ),
@@ -672,6 +672,16 @@ class Brikpanel_Sheets_Settings {
 				if ( ! empty( $statuses ) ) {
 					update_option( Brikpanel_Sheets_Order_Sync::OPT_BULK_STATUSES, $statuses, false );
 				}
+
+				// Shipping-method filter. Empty (no boxes checked) = export every
+				// order regardless of method. Keep only ids that are real
+				// registered shipping methods so a stale value can't break the
+				// query later.
+				$ship = isset( $_POST['shipping_methods'] ) ? (array) wp_unslash( $_POST['shipping_methods'] ) : [];
+				$ship = array_values( array_unique( array_filter( array_map( 'sanitize_text_field', $ship ) ) ) );
+				$valid_methods = array_keys( self::shipping_methods_catalogue() );
+				$ship = array_values( array_intersect( $ship, $valid_methods ) );
+				update_option( Brikpanel_Sheets_Order_Sync::OPT_SHIPPING_METHODS, $ship, false );
 				update_option( Brikpanel_Sheets_Order_Sync::OPT_PULL_ENABLED, $this->yes_no( $_POST['pull_enabled'] ?? '' ), false );
 				$pull_int = sanitize_key( $_POST['pull_interval'] ?? '5' );
 				if ( ! in_array( $pull_int, [ '2', '5', '15' ], true ) ) {
@@ -750,6 +760,30 @@ class Brikpanel_Sheets_Settings {
 			'order'      => 'ASC',
 		] );
 		return ( is_array( $terms ) ) ? $terms : [];
+	}
+
+	/**
+	 * Registered WooCommerce shipping methods offered in the order-sync shipping
+	 * filter UI, as [ method_id => title ]. These base method ids (flat_rate,
+	 * local_pickup, …) are what each order's shipping line reports, so they match
+	 * cleanly against stored orders. Returns [] if WooCommerce shipping is
+	 * unavailable so the template can degrade gracefully.
+	 *
+	 * @return array<string, string>
+	 */
+	public static function shipping_methods_catalogue() {
+		if ( ! function_exists( 'WC' ) || ! WC()->shipping() ) {
+			return [];
+		}
+		$out = [];
+		foreach ( WC()->shipping()->get_shipping_methods() as $id => $method ) {
+			$title = method_exists( $method, 'get_method_title' ) ? $method->get_method_title() : '';
+			if ( $title === '' ) {
+				$title = isset( $method->method_title ) ? $method->method_title : (string) $id;
+			}
+			$out[ (string) $id ] = (string) $title;
+		}
+		return $out;
 	}
 
 	// =========================================================================
@@ -965,8 +999,8 @@ class Brikpanel_Sheets_Settings {
 					$sync   = new Brikpanel_Sheets_Products_Sync();
 					$result = $sync->handle_pull();
 					$message = sprintf(
-						/* translators: 1: rows checked, 2: stock changes applied, 3: conflicts */
-						__( 'Checked %1$d product rows. Applied %2$d stock changes from Sheets, %3$d conflicts skipped.', 'brikpanel' ),
+						/* translators: 1: rows checked, 2: changes applied, 3: conflicts */
+						__( 'Checked %1$d product rows. Applied %2$d changes from Sheets, %3$d conflicts skipped.', 'brikpanel' ),
 						(int) ( $result['checked'] ?? 0 ),
 						(int) ( $result['applied'] ?? 0 ),
 						(int) ( $result['conflicts'] ?? 0 )
@@ -1076,6 +1110,36 @@ class Brikpanel_Sheets_Settings {
 		$rendered = [];
 		?>
 		<div class="bp-gs-column-mapper" data-flow="<?php echo esc_attr( $flow ); ?>">
+			<?php
+			// Two-way notice: list exactly which columns sync Sheets -> Woo so a
+			// merchant never assumes an edit to a display-only column (name,
+			// description, price, ...) will reach the store. Only the products
+			// flow has writable columns, so this renders there and nowhere else.
+			$writable_labels = [];
+			foreach ( $catalogue as $ck => $cmeta ) {
+				if ( ! empty( $cmeta['writable'] ) && isset( $cmeta['label'] ) ) {
+					$writable_labels[] = (string) $cmeta['label'];
+				}
+			}
+			if ( $writable_labels ) :
+			?>
+				<div class="bp-gs-twoway-note">
+					<span class="bp-gs-twoway-note-title">
+						<span class="bp-gs-col-badge"><?php echo esc_html( Brikpanel_Sheets_Mapping::WRITABLE_GLYPH ); ?></span>
+						<?php esc_html_e( 'Two-way columns', 'brikpanel' ); ?>
+					</span>
+					<p>
+						<?php
+						printf(
+							/* translators: %s: comma-separated list of column names that sync back to the store. */
+							esc_html__( 'Edits you make in the sheet are written back to your store for these columns only: %s.', 'brikpanel' ),
+							'<strong>' . esc_html( implode( ', ', $writable_labels ) ) . '</strong>'
+						);
+						?>
+					</p>
+					<p><?php esc_html_e( 'Every other column is one-way (store to sheet). Anything you type into those cells is display-only and will be overwritten on the next sync. Columns that sync back are marked with this glyph in the sheet header.', 'brikpanel' ); ?></p>
+				</div>
+			<?php endif; ?>
 			<ul class="bp-gs-column-list" data-role="selected">
 				<?php foreach ( $selected as $key ) :
 					if ( ! isset( $catalogue[ $key ] ) ) {
@@ -1090,6 +1154,9 @@ class Brikpanel_Sheets_Settings {
 							<input type="checkbox" checked <?php disabled( $mandatory ); ?>>
 							<span><?php echo esc_html( $meta['label'] ); ?></span>
 						</label>
+						<?php if ( Brikpanel_Sheets_Mapping::is_writable( $flow, $key ) ) : ?>
+							<span class="bp-gs-col-badge" title="<?php esc_attr_e( 'Edits to this column sync back to your store', 'brikpanel' ); ?>"><?php echo esc_html( Brikpanel_Sheets_Mapping::WRITABLE_GLYPH ); ?> <?php esc_html_e( 'two-way', 'brikpanel' ); ?></span>
+						<?php endif; ?>
 						<span class="bp-gs-column-actions">
 							<button type="button" class="bp-gs-icon-btn" data-act="up" aria-label="<?php esc_attr_e( 'Move up', 'brikpanel' ); ?>">↑</button>
 							<button type="button" class="bp-gs-icon-btn" data-act="down" aria-label="<?php esc_attr_e( 'Move down', 'brikpanel' ); ?>">↓</button>
@@ -1100,16 +1167,28 @@ class Brikpanel_Sheets_Settings {
 			<details class="bp-gs-column-extras">
 				<summary><?php esc_html_e( 'Show more columns', 'brikpanel' ); ?></summary>
 				<ul class="bp-gs-column-list" data-role="available">
-					<?php foreach ( $catalogue as $key => $meta ) :
+					<?php
+					$custom_heading_done = false;
+					foreach ( $catalogue as $key => $meta ) :
 						if ( isset( $rendered[ $key ] ) ) {
 							continue;
 						}
-					?>
+						// Set off the auto-discovered custom checkout/order fields
+						// from the built-in columns with a single heading so the
+						// list reads as intentional, not a data dump.
+						if ( ! $custom_heading_done && isset( $meta['group'] ) && $meta['group'] === 'custom' ) :
+							$custom_heading_done = true;
+						?>
+							<li class="bp-gs-column-grouplabel" aria-hidden="true"><?php esc_html_e( 'Custom checkout / order fields', 'brikpanel' ); ?></li>
+						<?php endif; ?>
 						<li class="bp-gs-column-item" data-key="<?php echo esc_attr( $key ); ?>">
 							<label class="bp-gs-checkbox">
 								<input type="checkbox">
 								<span><?php echo esc_html( $meta['label'] ); ?></span>
 							</label>
+							<?php if ( Brikpanel_Sheets_Mapping::is_writable( $flow, $key ) ) : ?>
+								<span class="bp-gs-col-badge" title="<?php esc_attr_e( 'Edits to this column sync back to your store', 'brikpanel' ); ?>"><?php echo esc_html( Brikpanel_Sheets_Mapping::WRITABLE_GLYPH ); ?> <?php esc_html_e( 'two-way', 'brikpanel' ); ?></span>
+							<?php endif; ?>
 						</li>
 					<?php endforeach; ?>
 				</ul>

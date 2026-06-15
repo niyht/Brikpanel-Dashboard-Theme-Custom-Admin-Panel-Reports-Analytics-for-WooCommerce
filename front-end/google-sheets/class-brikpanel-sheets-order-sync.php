@@ -53,6 +53,7 @@ class Brikpanel_Sheets_Order_Sync {
 	const OPT_BULK_INTERVAL   = 'brikpanel_gs_orders_bulk_interval'; // off|hourly|every_4h|daily
 	const OPT_BULK_SINCE      = 'brikpanel_gs_orders_bulk_since';
 	const OPT_BULK_STATUSES   = 'brikpanel_gs_orders_bulk_statuses';
+	const OPT_SHIPPING_METHODS = 'brikpanel_gs_orders_shipping_methods'; // string[] method ids; [] = no filter
 	const OPT_LAST_SYNC       = 'brikpanel_gs_orders_last_sync';
 
 	// Two-way pull (Sheets → Woo). Only status is writable. See class docblock
@@ -115,6 +116,53 @@ class Brikpanel_Sheets_Order_Sync {
 			$opt = [ 'wc-processing', 'wc-completed' ];
 		}
 		return array_values( array_unique( array_map( 'sanitize_key', $opt ) ) );
+	}
+
+	/**
+	 * Shipping-method ids the merchant chose to restrict the export to. Empty
+	 * array (the default) means "export orders regardless of shipping method".
+	 * Stored as the base WooCommerce method ids (e.g. flat_rate, local_pickup),
+	 * which is what each shipping line item reports via get_method_id().
+	 *
+	 * @return string[]
+	 */
+	public static function shipping_method_filter() {
+		$ids = get_option( self::OPT_SHIPPING_METHODS, [] );
+		if ( ! is_array( $ids ) ) {
+			return [];
+		}
+		return array_values( array_unique( array_filter( array_map( 'sanitize_text_field', $ids ) ) ) );
+	}
+
+	/**
+	 * Order ids that used one of the given shipping methods. One direct query on
+	 * the order-items tables (shared by HPOS and legacy storage) keyed on the
+	 * shipping line's `method_id` meta. Returns [] when nothing matches so the
+	 * caller can short-circuit instead of querying with an empty post__in (which
+	 * WooCommerce treats as "no restriction" and would export everything).
+	 *
+	 * @param string[] $method_ids
+	 * @return int[]
+	 */
+	private static function order_ids_for_shipping_methods( array $method_ids ) {
+		$method_ids = array_values( array_filter( array_map( 'strval', $method_ids ) ) );
+		if ( empty( $method_ids ) ) {
+			return [];
+		}
+		global $wpdb;
+		$ph = implode( ',', array_fill( 0, count( $method_ids ), '%s' ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$sql = $wpdb->prepare(
+			"SELECT DISTINCT oi.order_id
+			 FROM {$wpdb->prefix}woocommerce_order_items oi
+			 INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta im
+			   ON im.order_item_id = oi.order_item_id AND im.meta_key = 'method_id'
+			 WHERE oi.order_item_type = 'shipping'
+			   AND im.meta_value IN ($ph)",
+			$method_ids
+		);
+		$ids = $wpdb->get_col( $sql );
+		return is_array( $ids ) ? array_values( array_filter( array_map( 'intval', $ids ) ) ) : [];
 	}
 
 	public static function pull_enabled() {
@@ -623,6 +671,21 @@ class Brikpanel_Sheets_Order_Sync {
 			$wc_query['date_created'] = '>=' . $query_args['date_after'];
 		}
 
+		// Shipping-method filter: restrict to the orders that used one of the
+		// chosen methods. We resolve matching order ids up front and pass them as
+		// post__in so the existing unsynced-meta / status / date / paging logic
+		// keeps working unchanged. If the filter is set but nothing matches we
+		// bail early — an empty post__in would be ignored by WooCommerce and
+		// export every order instead.
+		$ship_methods = self::shipping_method_filter();
+		if ( ! empty( $ship_methods ) ) {
+			$match_ids = self::order_ids_for_shipping_methods( $ship_methods );
+			if ( empty( $match_ids ) ) {
+				return $empty;
+			}
+			$wc_query['post__in'] = $match_ids;
+		}
+
 		$orders = wc_get_orders( $wc_query );
 		if ( empty( $orders ) ) {
 			return $empty;
@@ -777,6 +840,8 @@ class Brikpanel_Sheets_Order_Sync {
 			case 'coupon_codes':         return implode( ', ', $order->get_coupon_codes() );
 			case 'customer_note':        return (string) $order->get_customer_note();
 			case 'customer_id':          return (int) $order->get_customer_id();
+			case 'shipping_method':      return (string) $order->get_shipping_method(); // comma-joined titles
+			case 'order_cogs_total':     return round( $this->order_cogs_total( $order ), 2 );
 
 			// Billing
 			case 'billing_first_name':   return (string) $order->get_billing_first_name();
@@ -850,8 +915,77 @@ class Brikpanel_Sheets_Order_Sync {
 			case 'line_subtotal':        return $item ? (float) $item->get_subtotal() : 0;
 			case 'line_tax':             return $item ? (float) $item->get_total_tax() : 0;
 			case 'line_total':           return $item ? (float) $item->get_total() : 0;
+			case 'line_cogs':
+				if ( ! $item ) { return 0; }
+				$unit = self::unit_cost( (int) $item->get_product_id(), (int) $item->get_variation_id() );
+				return round( $unit * (float) $item->get_quantity(), 2 );
+		}
+
+		// Custom checkout / order fields (synthetic "cf_*" columns) resolve to
+		// order meta. Try each stored key candidate and use the first non-empty.
+		if ( strpos( (string) $col, 'cf_' ) === 0 ) {
+			foreach ( Brikpanel_Sheets_Mapping::order_custom_field_keys( $col ) as $meta_key ) {
+				$value = $order->get_meta( $meta_key, true );
+				if ( $value === '' || $value === null ) {
+					continue;
+				}
+				if ( is_array( $value ) ) {
+					$flat = array_filter( $value, 'is_scalar' );
+					return $flat ? implode( ', ', array_map( 'strval', $flat ) ) : '';
+				}
+				return is_scalar( $value ) ? wp_strip_all_tags( (string) $value ) : '';
+			}
+			return '';
 		}
 		return '';
+	}
+
+	/**
+	 * Total cost of goods for an order: sum of (unit cost × quantity) across its
+	 * line items. Memoised per order id so emitting one row per line item does
+	 * not recompute the sum on every row. Reads the same `_brikpanel_cogs`
+	 * per-unit cost (variation → parent fallback) the profit reports use.
+	 *
+	 * @param WC_Order $order
+	 * @return float
+	 */
+	private function order_cogs_total( $order ) {
+		$oid = (int) $order->get_id();
+		if ( isset( $this->cogs_total_cache[ $oid ] ) ) {
+			return $this->cogs_total_cache[ $oid ];
+		}
+		$total = 0.0;
+		foreach ( $order->get_items( 'line_item' ) as $item ) {
+			$unit   = self::unit_cost( (int) $item->get_product_id(), (int) $item->get_variation_id() );
+			$total += $unit * (float) $item->get_quantity();
+		}
+		$this->cogs_total_cache[ $oid ] = $total;
+		return $total;
+	}
+
+	/** @var array<int,float> Per-order COGS-total memo for the current request. */
+	private $cogs_total_cache = [];
+
+	/**
+	 * Per-unit cost of goods for a product/variation. Mirrors the profit
+	 * report's COALESCE(variation cogs, parent cogs, 0) logic: a variation's own
+	 * `_brikpanel_cogs` wins, otherwise the parent's, otherwise 0. WooCommerce
+	 * native Cost of Goods values are mirrored into this same meta key, so this
+	 * one read covers both.
+	 *
+	 * @param int $product_id
+	 * @param int $variation_id
+	 * @return float
+	 */
+	private static function unit_cost( $product_id, $variation_id = 0 ) {
+		$cost = '';
+		if ( $variation_id > 0 ) {
+			$cost = get_post_meta( $variation_id, '_brikpanel_cogs', true );
+		}
+		if ( $cost === '' || $cost === null ) {
+			$cost = get_post_meta( $product_id, '_brikpanel_cogs', true );
+		}
+		return ( $cost === '' || $cost === null ) ? 0.0 : (float) $cost;
 	}
 
 	// =========================================================================

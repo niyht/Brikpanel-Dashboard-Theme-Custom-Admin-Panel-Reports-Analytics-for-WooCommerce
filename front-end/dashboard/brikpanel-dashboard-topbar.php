@@ -161,6 +161,9 @@ class Brikpanel_Dashboard_Topbar {
             'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
             'cache_nonce'     => class_exists( 'Brikpanel_Cache_Clear' ) ? wp_create_nonce( Brikpanel_Cache_Clear::NONCE_ACTION ) : '',
             'cache_action'    => class_exists( 'Brikpanel_Cache_Clear' ) ? Brikpanel_Cache_Clear::AJAX_ACTION : '',
+            // When on, red error notices are collected into the bell too instead
+            // of staying on screen (off by default).
+            'hide_errors'     => get_option( 'brikpanel_hide_error_notices', 'no' ) === 'yes',
             'i18n'            => [
                 'cache_clearing' => __( 'Clearing cache…', 'brikpanel' ),
                 'cache_failed'   => __( 'Cache could not be cleared.', 'brikpanel' ),
@@ -207,6 +210,7 @@ class Brikpanel_Dashboard_Topbar {
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                     </button>
 
+                    <?php if ( brikpanel_topbar_item_is_visible( 'brand' ) ) : ?>
                     <a class="brikpanel-topbar-brand" href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-dashboard' ) ); ?>" aria-label="<?php esc_attr_e( 'BrikPanel dashboard', 'brikpanel' ); ?>">
                         <span class="<?php echo esc_attr( $mark_class ); ?>" aria-hidden="true">
                             <img src="<?php echo esc_url( $icon_url ); ?>" alt="" width="32" height="32">
@@ -216,25 +220,31 @@ class Brikpanel_Dashboard_Topbar {
                             <span class="brikpanel-topbar-brand-sub"><?php esc_html_e( 'Admin', 'brikpanel' ); ?></span>
                         </span>
                     </a>
+                    <?php endif; ?>
 
+                    <?php if ( brikpanel_topbar_item_is_visible( 'live' ) ) : ?>
                     <span class="brikpanel-topbar-live-pill is-empty" id="brikpanel-topbar-live" title="<?php esc_attr_e( 'Live visitors right now', 'brikpanel' ); ?>">
                         <span class="brikpanel-topbar-live-dot"></span>
                         <span class="brikpanel-topbar-live-count" id="brikpanel-topbar-live-count">0</span>
                         <span class="brikpanel-topbar-live-label"><?php esc_html_e( 'live', 'brikpanel' ); ?></span>
                     </span>
+                    <?php endif; ?>
                 </div>
 
                 <!-- ========== RIGHT ========== -->
                 <div class="brikpanel-topbar-right">
 
                     <!-- Search trigger (opens the existing brikpanel-search overlay) -->
+                    <?php if ( brikpanel_topbar_item_is_visible( 'search' ) ) : ?>
                     <button type="button" class="brikpanel-topbar-search-btn" id="brikpanel-topbar-search" aria-label="<?php esc_attr_e( 'Search orders', 'brikpanel' ); ?>">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         <span class="brikpanel-topbar-search-text"><?php esc_html_e( 'Search', 'brikpanel' ); ?></span>
                         <span class="brikpanel-topbar-kbd"><span class="brikpanel-topbar-kbd-key" id="brikpanel-topbar-kbd-mod">Ctrl</span><span>+</span><span class="brikpanel-topbar-kbd-key">K</span></span>
                     </button>
+                    <?php endif; ?>
 
                     <!-- Quick create -->
+                    <?php if ( brikpanel_topbar_item_is_visible( 'create' ) ) : ?>
                     <div class="brikpanel-topbar-menu" data-topbar-menu="create">
                         <button type="button" class="brikpanel-topbar-btn brikpanel-topbar-btn-primary" data-topbar-toggle="create" aria-haspopup="menu" aria-expanded="false">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -259,8 +269,10 @@ class Brikpanel_Dashboard_Topbar {
                             </a>
                         </div>
                     </div>
+                    <?php endif; ?>
 
                     <!-- Notifications -->
+                    <?php if ( brikpanel_topbar_item_is_visible( 'notifications' ) ) : ?>
                     <div class="brikpanel-topbar-menu" data-topbar-menu="notifications">
                         <button type="button" class="brikpanel-topbar-icon-btn" data-topbar-toggle="notifications" aria-haspopup="menu" aria-expanded="false" aria-label="<?php esc_attr_e( 'Order notifications', 'brikpanel' ); ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
@@ -292,6 +304,7 @@ class Brikpanel_Dashboard_Topbar {
                             </a>
                         </div>
                     </div>
+                    <?php endif; ?>
 
                     <!-- Hidden third-party notices. Starts display:none and is
                          revealed by the script only when suppressed notices are
@@ -328,11 +341,14 @@ class Brikpanel_Dashboard_Topbar {
                     <?php $this->render_cache_clear_button(); ?>
 
                     <!-- View site -->
+                    <?php if ( brikpanel_topbar_item_is_visible( 'view_site' ) ) : ?>
                     <a class="brikpanel-topbar-icon-btn" href="<?php echo esc_url( $site_url ); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e( 'View store', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'View store', 'brikpanel' ); ?>">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     </a>
+                    <?php endif; ?>
 
                     <!-- User menu -->
+                    <?php if ( brikpanel_topbar_item_is_visible( 'user' ) ) : ?>
                     <div class="brikpanel-topbar-menu brikpanel-topbar-menu-user" data-topbar-menu="user">
                         <button type="button" class="brikpanel-topbar-user-btn" data-topbar-toggle="user" aria-haspopup="menu" aria-expanded="false">
                             <img src="<?php echo esc_url( $avatar_url ); ?>" alt="" width="28" height="28" loading="lazy">
@@ -362,6 +378,7 @@ class Brikpanel_Dashboard_Topbar {
                             </a>
                         </div>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </header>

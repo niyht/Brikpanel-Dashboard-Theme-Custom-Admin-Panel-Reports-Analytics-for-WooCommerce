@@ -291,6 +291,11 @@
 	color: #8a8a8a;
 }
 
+.bp-ca-customer-phone {
+	font-size: 0.75rem;
+	color: #8a8a8a;
+}
+
 .bp-ca-guest-pill {
 	display: inline-block;
 	font-size: 0.6875rem;

@@ -205,7 +205,7 @@ class Brikpanel_Sheets_Products_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK_PULL,
 			[ $this, 'handle_pull' ],
-			[ 'label' => __( 'Sheets — pull product stock changes from Google Sheets', 'brikpanel' ) ]
+			[ 'label' => __( 'Sheets — pull product changes from Google Sheets', 'brikpanel' ) ]
 		);
 
 		// Schedule the pull only when both the flow AND the pull half are on.
@@ -492,22 +492,35 @@ class Brikpanel_Sheets_Products_Sync {
 	 */
 	public static function build_dropdown_validations( array $columns ) {
 		$col_map = Brikpanel_Sheets_Mapping::column_index_map( $columns );
-		if ( ! isset( $col_map['stock_status'] ) ) {
-			return [];
-		}
-		// wc_get_product_stock_status_options() returns the canonical
-		// instock/outofstock/onbackorder keys keyed by their labels. Newer WC
-		// versions may add a fourth key; pulling dynamically keeps us in sync.
-		$keys = function_exists( 'wc_get_product_stock_status_options' )
-			? array_keys( wc_get_product_stock_status_options() )
-			: [ 'instock', 'outofstock', 'onbackorder' ];
-		return [
-			[
+		$out     = [];
+
+		if ( isset( $col_map['stock_status'] ) ) {
+			// wc_get_product_stock_status_options() returns the canonical
+			// instock/outofstock/onbackorder keys keyed by their labels. Newer WC
+			// versions may add a fourth key; pulling dynamically keeps us in sync.
+			$keys = function_exists( 'wc_get_product_stock_status_options' )
+				? array_keys( wc_get_product_stock_status_options() )
+				: [ 'instock', 'outofstock', 'onbackorder' ];
+			$out[] = [
 				'column_index' => (int) $col_map['stock_status'],
 				'values'       => $keys,
 				'strict'       => true,
-			],
-		];
+			];
+		}
+
+		if ( isset( $col_map['status'] ) ) {
+			// Helper dropdown for the publish state. Non-strict: a store may run
+			// custom post statuses (subscriptions, 3rd-party workflows) that we
+			// still push faithfully, so the sheet must accept values outside the
+			// list rather than reject them. The reverse pull validates anyway.
+			$out[] = [
+				'column_index' => (int) $col_map['status'],
+				'values'       => [ 'publish', 'draft', 'pending', 'private' ],
+				'strict'       => false,
+			];
+		}
+
+		return $out;
 	}
 
 	/**
@@ -625,8 +638,21 @@ class Brikpanel_Sheets_Products_Sync {
 			// Snapshot check first — if nothing in the row differs from what
 			// we last pushed, there's nothing to do; bail out before paying
 			// for the conflict-detection meta reads.
+			//
+			// Pad the pulled row back to the full column count before hashing:
+			// the Sheets API omits trailing empty cells, so a row whose last
+			// column(s) are blank (e.g. a product with no COGS, when COGS is the
+			// rightmost column) comes back shorter than the snapshot we hashed at
+			// push time. Without this, every such row hashes differently on every
+			// pull and gets needlessly re-queued for push — constant churn on a
+			// catalogue with many blank trailing cells.
 			$snapshot_hash = (string) $this->get_product_meta( $product, self::META_SNAPSHOT_HASH );
-			$row_hash      = self::hash_row( array_values( $row ) );
+			$row_values    = array_values( $row );
+			$col_count     = count( $columns );
+			if ( count( $row_values ) < $col_count ) {
+				$row_values = array_pad( $row_values, $col_count, '' );
+			}
+			$row_hash      = self::hash_row( $row_values );
 			if ( $snapshot_hash !== '' && $snapshot_hash === $row_hash ) {
 				continue;
 			}
@@ -763,6 +789,87 @@ class Brikpanel_Sheets_Products_Sync {
 						}
 					}
 				}
+			}
+
+			// ---- Price / cost / status writeback ----
+			// Plain scalar setters batched into a single save(). Each guards on
+			// "cell present, valid, and actually different" so an untouched or
+			// blank cell is left alone (blank = "do not change", same convention
+			// as stock — a price cannot be *cleared* from the sheet). Works for
+			// simple products and variations alike; variations carry their own
+			// price/cost/status independent of the parent.
+			$setter_dirty = false;
+
+			// Variable parents derive their price from their variations and do
+			// not store a usable regular/sale price of their own — WC discards a
+			// value set on the parent, which would otherwise look "changed" on
+			// every pull and churn. Skip price writeback for them; the merchant
+			// edits each variation row instead.
+			$is_variable_parent = $product->is_type( 'variable' );
+
+			if ( isset( $col_map['regular_price'] ) && ! $is_variable_parent ) {
+				$raw = $row[ (int) $col_map['regular_price'] ] ?? '';
+				if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
+					$new = wc_format_decimal( $raw );
+					if ( self::decimal_changed( $new, $product->get_regular_price( 'edit' ) ) ) {
+						$product->set_regular_price( $new );
+						$setter_dirty = true;
+					}
+				}
+			}
+
+			if ( isset( $col_map['sale_price'] ) && ! $is_variable_parent ) {
+				$raw = $row[ (int) $col_map['sale_price'] ] ?? '';
+				if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
+					$new = wc_format_decimal( $raw );
+					if ( self::decimal_changed( $new, $product->get_sale_price( 'edit' ) ) ) {
+						$product->set_sale_price( $new );
+						$setter_dirty = true;
+					}
+				}
+			}
+
+			if ( isset( $col_map['cogs'] ) ) {
+				$raw = $row[ (int) $col_map['cogs'] ] ?? '';
+				if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
+					$new = wc_format_decimal( $raw );
+					$cur = $product->get_meta( '_brikpanel_cogs', true );
+					if ( self::decimal_changed( $new, $cur ) ) {
+						// Mirror both stores BrikPanel writes everywhere else:
+						// WC-native COGS (when present) and the _brikpanel_cogs meta.
+						if ( method_exists( $product, 'set_cogs_value' ) ) {
+							$product->set_cogs_value( $new !== '' ? $new : null );
+						}
+						$product->update_meta_data( '_brikpanel_cogs', $new );
+						$setter_dirty = true;
+					}
+				}
+			}
+
+			if ( isset( $col_map['status'] ) ) {
+				$raw = trim( (string) ( $row[ (int) $col_map['status'] ] ?? '' ) );
+				if ( $raw !== '' ) {
+					// Whitelist guards against trash/auto-draft and typos.
+					// Variations only meaningfully support enabled (publish) /
+					// disabled (private).
+					$allowed = $product->is_type( 'variation' )
+						? [ 'publish', 'private' ]
+						: [ 'publish', 'draft', 'pending', 'private' ];
+					if ( in_array( $raw, $allowed, true ) && $raw !== (string) $product->get_status() ) {
+						$product->set_status( $raw );
+						$setter_dirty = true;
+					}
+				}
+			}
+
+			if ( $setter_dirty ) {
+				$product->save();
+				$row_changed = true;
+				// Regular/sale edits move the derived 'price' column too, so push
+				// the freshly-built row back to the sheet to keep every dependent
+				// cell in step with Woo.
+				$needs_sheet_refresh = true;
+				$product = wc_get_product( $product_id );
 			}
 
 			if ( $row_changed ) {
@@ -929,9 +1036,37 @@ class Brikpanel_Sheets_Products_Sync {
 					return implode( '; ', $attrs );
 				}
 				return '';
+			case 'short_description':
+			case 'description':
+				// Descriptions hold HTML; flatten to plain text so the cell stays
+				// readable. Variations rarely carry their own copy, so fall back
+				// to the parent's text (same pattern as COGS) to keep variation
+				// rows informative rather than blank.
+				$getter = ( $col === 'short_description' ) ? 'get_short_description' : 'get_description';
+				$text   = $product->$getter( 'view' );
+				if ( ( $text === '' || $text === null ) && $product->is_type( 'variation' ) ) {
+					$parent = wc_get_product( (int) $product->get_parent_id() );
+					if ( $parent ) {
+						$text = $parent->$getter( 'view' );
+					}
+				}
+				$text = wp_strip_all_tags( (string) $text, true );
+				// Decode entities (&amp; &nbsp; …) so the cell shows the real text
+				// instead of escaped markup, then collapse runs of whitespace.
+				$text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+				return trim( preg_replace( '/\s+/u', ' ', $text ) );
 			case 'price':         return $product->get_price() === '' ? '' : (float) $product->get_price();
 			case 'regular_price': return $product->get_regular_price() === '' ? '' : (float) $product->get_regular_price();
 			case 'sale_price':    return $product->get_sale_price() === '' ? '' : (float) $product->get_sale_price();
+			case 'cogs':
+				// Per-unit cost. Variations fall back to the parent's cost when
+				// they have none of their own; an unset cost shows as blank so
+				// the merchant can tell "no cost configured" from "free / cost 0".
+				$cogs = $product->get_meta( '_brikpanel_cogs', true );
+				if ( ( $cogs === '' || $cogs === null ) && $product->is_type( 'variation' ) ) {
+					$cogs = get_post_meta( (int) $product->get_parent_id(), '_brikpanel_cogs', true );
+				}
+				return ( $cogs === '' || $cogs === null ) ? '' : (float) $cogs;
 			case 'stock':
 				if ( ! $product->get_manage_stock() ) { return ''; }
 				$q = $product->get_stock_quantity();
@@ -1044,6 +1179,17 @@ class Brikpanel_Sheets_Products_Sync {
 			$n = (int) ( $n / 26 );
 		}
 		return $s;
+	}
+
+	/**
+	 * Whether a sheet-supplied decimal differs from the current stored value.
+	 * Compared on a zero-trimmed canonical form so "159" == "159.00" (no
+	 * needless re-write or pull/push ping-pong) while "0" != "" — an explicit
+	 * zero (free product / zero cost) still applies over a previously blank
+	 * field, which a plain (float) compare would swallow.
+	 */
+	private static function decimal_changed( $new, $current ) {
+		return wc_format_decimal( $new, false, true ) !== wc_format_decimal( (string) $current, false, true );
 	}
 
 	/**

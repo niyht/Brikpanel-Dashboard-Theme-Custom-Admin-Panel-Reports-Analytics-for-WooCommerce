@@ -13,6 +13,25 @@ if (!defined('ABSPATH')) {
 }
 
 
+/**
+ * Inline CSS that realigns the flatpickr calendar header (month dropdown +
+ * year input). WordPress admin applies global box-model rules to every
+ * <input>/<select> (min-height, line-height, padding, box-shadow), which pushes
+ * flatpickr's year number below the month label. We center both controls and
+ * neutralize that interference. Attached wherever flatpickr styles are enqueued.
+ *
+ * @return string
+ */
+function brikpanel_flatpickr_header_align_css() {
+    return <<<CSS
+.flatpickr-calendar .flatpickr-current-month{display:flex;align-items:center;justify-content:center;gap:.25ch;padding-top:0;height:34px;}
+.flatpickr-calendar .flatpickr-current-month .flatpickr-monthDropdown-months,
+.flatpickr-calendar .flatpickr-current-month .numInputWrapper,
+.flatpickr-calendar .flatpickr-current-month input.cur-year{min-height:0;height:auto;line-height:1;margin:0;padding-top:0;padding-bottom:0;box-shadow:none;vertical-align:middle;}
+.flatpickr-calendar .flatpickr-current-month .numInputWrapper{display:inline-flex;align-items:center;}
+CSS;
+}
+
 // =============================================================================
 // CUSTOM DASHBOARD PAGE ASSETS
 // =============================================================================
@@ -97,6 +116,7 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         [],
         BRIKPANEL_VERSION
     );
+    wp_add_inline_style( 'brikpanel_flatpickr_styles', brikpanel_flatpickr_header_align_css() );
 
     wp_enqueue_script(
         'flatpickr-js',
@@ -333,6 +353,7 @@ function brikpanel_enqueue_segments_assets($hook) {
             'col_status'         => __('Status', 'brikpanel'),
             'col_customer'       => __('Customer', 'brikpanel'),
             'col_email'          => __('Email', 'brikpanel'),
+            'col_phone'          => __('Phone', 'brikpanel'),
             'col_location'       => __('Location', 'brikpanel'),
             'col_payment'        => __('Payment', 'brikpanel'),
             'col_total'          => __('Total', 'brikpanel'),
@@ -509,11 +530,14 @@ function brikpanel_enqueue_global_assets() {
         ],
     ]);
 
+    // filemtime version → CSS edits (e.g. the classic-nav re-skin) bust the
+    // browser cache immediately, matching the dashboard/segments assets above.
+    $nav_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/navigation/brikpanel-navigation.css' ) ?: BRIKPANEL_VERSION;
     wp_enqueue_style(
         'brikpanel_navigation_styles',
         BRIKPANEL_URL . 'front-end/navigation/brikpanel-navigation.css',
         [],
-        BRIKPANEL_VERSION
+        $nav_css_ver
     );
 
     wp_enqueue_style(
@@ -750,7 +774,12 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'hide_overview' => function_exists( 'brikpanel_orders_overview_hidden_for_user' )
                     && brikpanel_orders_overview_hidden_for_user(),
                 'i18n'     => [
+                    'today'             => __( 'Today', 'brikpanel' ),
+                    'last_24_hours'     => __( 'Last 24 hours', 'brikpanel' ),
+                    'last_7_days'       => __( 'Last 7 days', 'brikpanel' ),
                     'last_30_days'      => __( 'Last 30 days', 'brikpanel' ),
+                    'date_range'        => __( 'Date range', 'brikpanel' ),
+                    'total_orders'      => __( 'Total orders', 'brikpanel' ),
                     'orders'            => __( 'Orders', 'brikpanel' ),
                     'completed'         => __( 'Completed', 'brikpanel' ),
                     'refunded'          => __( 'Refunded', 'brikpanel' ),
@@ -1311,6 +1340,7 @@ function brikpanel_enqueue_woo_assets($hook) {
             [],
             BRIKPANEL_VERSION
         );
+        wp_add_inline_style( 'brikpanel_flatpickr_styles', brikpanel_flatpickr_header_align_css() );
 
         wp_enqueue_script(
             'flatpickr-js',
@@ -1365,6 +1395,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'attribute_name' => __('Attribute name (e.g.: Material)', 'brikpanel'),
                 'add_attribute'  => __('Add', 'brikpanel'),
                 'category_added'   => __('Category added', 'brikpanel'),
+                'brand_added'      => __('Brand added', 'brikpanel'),
                 'field_required'   => __('This field is required', 'brikpanel'),
                 'update'           => __('Update', 'brikpanel'),
                 'view_product'     => __('View product', 'brikpanel'),
@@ -1490,7 +1521,13 @@ function brikpanel_admin_body_class( $classes ) {
     }
 
     if ( get_option( 'brikpanel_modern_navigation', 'yes' ) === 'no' ) {
-        $classes .= ' brikpanel-classic-nav';
+        // Modern nav off: keep the native WordPress menu either re-skinned to
+        // match BrikPanel (default) or left in its original WordPress look.
+        if ( get_option( 'brikpanel_native_menu_styled', 'yes' ) === 'no' ) {
+            $classes .= ' brikpanel-native-nav';
+        } else {
+            $classes .= ' brikpanel-classic-nav';
+        }
     }
 
     // Single shared hook for every styled product taxonomy term screen

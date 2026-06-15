@@ -17,6 +17,10 @@
         stock_filter: '',
         product_type: '',
         featured: '',
+        // Map of taxonomy slug -> term slug for Brand/Tag/custom-taxonomy
+        // filters carried in from a taxonomy "product count" link. Surfaced
+        // as removable chips; sent to the server as `tax_filters`.
+        tax_filters: {},
         sort: 'date-desc',
         selected: [],
         products: [],
@@ -100,12 +104,33 @@
         search: '', status: 'any', category: '', stock_filter: '',
         product_type: '', featured: '', sort: 'date-desc'
     };
+    // Taxonomy-filter URL params (keyed by taxonomy slug) seeded from the DOM.
+    var taxParamKeys = [];
 
     function hasActiveFilters() {
         var keyed = Object.keys(URL_PARAM_MAP).some(function (key) {
             return state[key] !== URL_DEFAULTS[key] && state[key] !== '';
         });
-        return keyed || state.page > 1;
+        return keyed || state.page > 1 || Object.keys(state.tax_filters).length > 0;
+    }
+
+    // Seed taxonomy filters from the container's data attribute. PHP renders
+    // both the chips and this JSON map from the incoming URL, so the two never
+    // disagree. The chips' remove buttons are wired up in bindEvents().
+    function readTaxFiltersFromDom() {
+        var raw = $('#brikpanel-products-list').attr('data-tax-filters');
+        if (!raw) { return; }
+        try {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                state.tax_filters = parsed;
+                // Remember which URL params are taxonomy filters so syncStateToUrl
+                // can drop them once their chip is removed.
+                Object.keys(parsed).forEach(function (slug) {
+                    if (taxParamKeys.indexOf(slug) === -1) { taxParamKeys.push(slug); }
+                });
+            }
+        } catch (e) {}
     }
 
     // Read filter params from the current URL into state and reflect them in
@@ -155,6 +180,13 @@
         if (state.page > 1) { params.set('bpl_paged', state.page); }
         else { params.delete('bpl_paged'); }
 
+        // Keep taxonomy-filter params in step with state so a removed chip also
+        // disappears from the URL (and thus from a reload / editor back link).
+        taxParamKeys.forEach(function (slug) {
+            if (state.tax_filters[slug]) { params.set(slug, state.tax_filters[slug]); }
+            else { params.delete(slug); }
+        });
+
         var qs = params.toString();
         var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
         try { window.history.replaceState(null, '', newUrl); } catch (e) {}
@@ -181,6 +213,19 @@
                 state.page = 1;
                 fetchProducts();
             }, 350);
+        });
+
+        // Remove an active taxonomy-filter chip (Brand/Tag/custom).
+        $(document).on('click', '.brikpanel-pl-filter-chip-remove', function () {
+            var $chip = $(this).closest('.brikpanel-pl-filter-chip');
+            var slug = $chip.data('taxonomy');
+            if (slug) { delete state.tax_filters[slug]; }
+            $chip.remove();
+            if ($('#bpl-filter-chips .brikpanel-pl-filter-chip').length === 0) {
+                $('#bpl-filter-chips').attr('hidden', 'hidden');
+            }
+            state.page = 1;
+            fetchProducts();
         });
 
         // Status tabs
@@ -647,7 +692,7 @@
         // in the DOM so colspan calculations stay stable; CSS hides it when
         // sortMode is off, but it still counts as a real column.
         var extras = state.extraColumns ? Object.keys(state.extraColumns).length : 0;
-        return 11 + extras;
+        return 13 + extras;
     }
 
     /**
@@ -785,7 +830,22 @@
                 stock_filter: state.stock_filter,
                 product_type: state.product_type,
                 featured: state.featured,
+                tax_filters: state.tax_filters,
                 sort: state.sort
+            },
+            // Tolerate responses contaminated by upstream PHP output (notices,
+            // deprecations, DB errors or debug echoes printed before the JSON).
+            // Without this a single leading warning from a third-party plugin
+            // breaks jQuery's parser and the whole list renders as
+            // "An error occurred." even though the query succeeded. We strip
+            // anything before the first `{` so the JSON tail still parses.
+            // Multisite installs are especially prone to this (per-site
+            // install/upgrade routines fire extra notices during admin-ajax).
+            dataType: 'json',
+            dataFilter: function (raw) {
+                if (typeof raw !== 'string') return raw;
+                var i = raw.indexOf('{');
+                return i > 0 ? raw.slice(i) : raw;
             },
             success: function (res) {
                 currentFetchXhr = null;
@@ -1089,7 +1149,11 @@
         var stockCellHtml =
             '<div class="brikpanel-pl-stock-wrap">' + stockHtml + stockStatusHtml + '</div>';
 
-        var priceDisplay = p.price_html || '—';
+        // Prefer the explicit struck-regular + sale markup built server-side
+        // for on-sale simple products (immune to 3rd-party get_price_html
+        // filters that can hide the sale price); fall back to WooCommerce's
+        // price_html for everything else (variable ranges, non-sale, etc.).
+        var priceDisplay = p.sale_display ? p.sale_display : (p.price_html || '—');
         var isVariable = p.type === 'variable';
 
         var priceEditable = isVariable ?
@@ -1209,6 +1273,9 @@
             '<td class="brikpanel-pl-cell-cogs brikpanel-pl-col brikpanel-pl-col-cogs">' + renderCogsCell(p.cogs) + '</td>' +
             '<td class="brikpanel-pl-cell-stock brikpanel-pl-col brikpanel-pl-col-stock" data-id="' + p.id + '">' + stockCellHtml + '</td>' +
             '<td class="brikpanel-pl-cell-cat brikpanel-pl-col brikpanel-pl-col-category">' + catText + '</td>' +
+            '<td class="brikpanel-pl-cell-shipclass brikpanel-pl-col brikpanel-pl-col-shipping_class">' + (p.shipping_class ? escHtml(p.shipping_class) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
+            '<td class="brikpanel-pl-cell-author brikpanel-pl-col brikpanel-pl-col-author">' + (p.author ? escHtml(p.author) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
+            '<td class="brikpanel-pl-cell-menu_order brikpanel-pl-col brikpanel-pl-col-menu_order"><span class="brikpanel-pl-editable brikpanel-pl-menu-order-cell" data-field="menu_order" data-value="' + escAttr(p.menu_order != null ? p.menu_order : 0) + '">' + escHtml(String(p.menu_order != null ? p.menu_order : 0)) + '</span></td>' +
             '<td class="brikpanel-pl-cell-status brikpanel-pl-col brikpanel-pl-col-status"><span class="brikpanel-pl-status-badge ' + statusClass + '" title="' + escAttr(PL.i18n.click_to_toggle) + '">' + escHtml(statusLabel) + '</span></td>' +
             aseCellsHtml +
             '<td class="brikpanel-pl-actions-cell">' +
@@ -1432,6 +1499,8 @@
             data.stock = newValue;
         } else if (field === 'sku') {
             data.sku = newValue;
+        } else if (field === 'menu_order') {
+            data.menu_order = newValue;
         }
 
         $.ajax({
@@ -2485,6 +2554,8 @@
             url: PL.ajax_url,
             type: 'POST',
             data: { action: 'brikpanel_get_variations', security: PL.nonce, product_id: productId },
+            dataType: 'json',
+            dataFilter: lenientJsonFilter,
             success: function (res) {
                 if (!res.success || !res.data.variations.length) {
                     $popup.html('<div class="brikpanel-pl-var-popup-empty">' + escHtml(PL.i18n.no_variations) + '</div>');
@@ -2613,6 +2684,8 @@
             url: PL.ajax_url,
             type: 'POST',
             data: { action: 'brikpanel_get_variations', security: PL.nonce, product_id: productId },
+            dataType: 'json',
+            dataFilter: lenientJsonFilter,
             success: function (res) {
                 if (!res.success || !res.data.variations.length) {
                     $container.html('<p class="brikpanel-pl-text-muted" style="text-align:center;padding:1rem;">' + escHtml(PL.i18n.no_variations) + '</p>');
@@ -2845,6 +2918,8 @@
                 security: PL.nonce,
                 category: isAll ? 0 : catNum
             },
+            dataType: 'json',
+            dataFilter: lenientJsonFilter,
             success: function (res) {
                 if (res.success && res.data.length) {
                     bulkState.attributes = res.data;
@@ -3205,6 +3280,7 @@
     function init() {
         bindEvents();
         initBulkModal();
+        readTaxFiltersFromDom();
         readStateFromUrl();
         fetchProducts();
     }
