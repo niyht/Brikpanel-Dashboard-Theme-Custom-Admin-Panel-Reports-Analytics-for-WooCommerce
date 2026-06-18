@@ -217,6 +217,13 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         'export_url'   => admin_url('admin-post.php'),
         'export_nonce' => wp_create_nonce('brikpanel_dashboard_export'),
         'currency' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '$',
+        // Quick "Add expense" from the Profit > Expenses card. Posts straight to
+        // the Expenses module's own save endpoint so recurring entries are
+        // materialised identically to the full Operational Expenses page.
+        'expenses' => [
+            'action' => 'brikpanel_expenses_save',
+            'nonce'  => wp_create_nonce('brikpanel_expenses_nonce'),
+        ],
         'i18n'     => [
             'revenue'       => __('Revenue', 'brikpanel'),
             'orders'        => __('Orders', 'brikpanel'),
@@ -296,7 +303,13 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'profit_cogs_missing_unlinked' => __('no longer in catalog', 'brikpanel'),
             'profit_estimate_tip'   => __('%d sold items have no cost set. Add their “Cost of goods” so Net profit is accurate.', 'brikpanel'),
             'profit_revenue_note'   => __('Same as Total Sales', 'brikpanel'),
+            'profit_revenue_net_note' => __('Net of returns', 'brikpanel'),
+            'profit_net_revenue'    => __('Net revenue', 'brikpanel'),
             'profit_of_revenue'     => __('of revenue', 'brikpanel'),
+            'exp_saving'            => __('Saving…', 'brikpanel'),
+            'exp_saved'             => __('Expense added', 'brikpanel'),
+            'exp_error'             => __('Could not save. Please try again.', 'brikpanel'),
+            'exp_required'          => __('Enter an amount and a category.', 'brikpanel'),
             'delta_new'             => __('New', 'brikpanel'),
             'export_button'         => __('Export Excel', 'brikpanel'),
             'export_preparing'      => __('Preparing…', 'brikpanel'),
@@ -1561,18 +1574,25 @@ function brikpanel_enqueue_expenses_assets( $hook ) {
         return;
     }
 
+    // filemtime-based version so any edit to the expenses assets busts the
+    // browser cache immediately, even between releases (BRIKPANEL_VERSION alone
+    // would serve a stale copy whenever the file changes without a version
+    // bump). Matches how the dashboard / segments / search assets are versioned.
+    $exp_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/expenses/brikpanel-expenses.css' ) ?: BRIKPANEL_VERSION;
+    $exp_js_ver  = @filemtime( BRIKPANEL_PATH . 'front-end/expenses/brikpanel-expenses.js' ) ?: BRIKPANEL_VERSION;
+
     wp_enqueue_style(
         'brikpanel_expenses_styles',
         BRIKPANEL_URL . 'front-end/expenses/brikpanel-expenses.css',
         [],
-        BRIKPANEL_VERSION
+        $exp_css_ver
     );
 
     wp_enqueue_script(
         'brikpanel_expenses_scripts',
         BRIKPANEL_URL . 'front-end/expenses/brikpanel-expenses.js',
         [],
-        BRIKPANEL_VERSION,
+        $exp_js_ver,
         true
     );
 }

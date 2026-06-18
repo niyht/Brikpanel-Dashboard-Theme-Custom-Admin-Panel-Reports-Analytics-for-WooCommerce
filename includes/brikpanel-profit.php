@@ -330,6 +330,132 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 }
 
 /**
+ * Customer returns (refund amount) on paid orders inside [$start_gmt, $end_gmt].
+ *
+ * Only refunds whose PARENT order is itself a paid order in the window count,
+ * so this reconciles with the same order basis as Revenue/COGS: a partial
+ * refund on a still-processing/completed order reduces what the merchant
+ * actually kept, but a fully refunded order has already dropped out of the
+ * paid-status set (Revenue never counted it, so its refund must not be
+ * double-subtracted here). Works for BOTH simple and variable products — the
+ * refund lives on the order, not the line item, so variation structure is
+ * irrelevant. Admin orders excluded to match the revenue basis.
+ *
+ * Returned as a POSITIVE figure (the amount given back); callers subtract it.
+ *
+ * @return float
+ */
+function brikpanel_profit_returns( $start_gmt, $end_gmt ) {
+	global $wpdb;
+
+	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+	$statuses = brikpanel_paid_order_statuses();
+	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+
+	if ( $is_hpos ) {
+		$sql  = "SELECT COALESCE(SUM(ABS(r.total_amount)), 0)
+			FROM {$wpdb->prefix}wc_orders r
+			INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = r.parent_order_id
+			WHERE r.type = 'shop_order_refund'
+			  AND o.type = 'shop_order' AND o.status IN ($sp)
+			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
+		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$excl = brikpanel_admin_order_exclusion_sql( true );
+		// The helper emits a bare `customer_id`; both wc_orders rows in this
+		// join own that column, so qualify it to the parent (o) to avoid an
+		// "ambiguous column" error.
+		if ( ! empty( $excl['sql'] ) ) {
+			$excl['sql'] = str_replace( 'customer_id', 'o.customer_id', $excl['sql'] );
+		}
+	} else {
+		// Legacy: refund posts (post_parent = order) carry the given-back
+		// amount in `_refund_amount` (positive). Sum it against orders in the
+		// paid-status window.
+		$sql  = "SELECT COALESCE(SUM(CAST(IFNULL(ra.meta_value, '0') AS DECIMAL(20,4))), 0)
+			FROM {$wpdb->posts} r
+			INNER JOIN {$wpdb->posts} o ON o.ID = r.post_parent
+			LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key = '_refund_amount'
+			WHERE r.post_type = 'shop_order_refund'
+			  AND o.post_type = 'shop_order' AND o.post_status IN ($sp)
+			  AND o.post_date_gmt >= %s AND o.post_date_gmt <= %s";
+		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$excl = brikpanel_admin_order_exclusion_sql( false, 'o.ID' );
+	}
+
+	if ( ! empty( $excl['sql'] ) ) {
+		$sql .= $excl['sql'];
+		$args = array_merge( $args, $excl['args'] );
+	}
+
+	$returns = (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+
+	/**
+	 * Filter the customer-returns total that nets down Revenue in the Profit
+	 * section.
+	 *
+	 * @param float  $returns   Refund amount for the window (positive).
+	 * @param string $start_gmt Y-m-d H:i:s (UTC)
+	 * @param string $end_gmt   Y-m-d H:i:s (UTC)
+	 */
+	return (float) apply_filters( 'brikpanel_profit_returns', $returns, $start_gmt, $end_gmt );
+}
+
+/**
+ * Total coupon/cart discount applied on paid orders inside [$start_gmt, $end_gmt].
+ *
+ * Informational only: the order total already reflects the discount, so this
+ * is NOT subtracted again anywhere — it just tells the merchant how much they
+ * gave away in promotions for the period. Admin orders excluded to match the
+ * revenue basis. Works for simple and variable products alike (the discount
+ * lives on the order).
+ *
+ * @return float
+ */
+function brikpanel_profit_coupons( $start_gmt, $end_gmt ) {
+	global $wpdb;
+
+	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+	$statuses = brikpanel_paid_order_statuses();
+	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+
+	if ( $is_hpos ) {
+		// HPOS keeps the discount amount in the operational-data table, not on
+		// wc_orders itself (which has no discount column), so join it in.
+		$sql  = "SELECT COALESCE(SUM(od.discount_total_amount), 0)
+			FROM {$wpdb->prefix}wc_orders o
+			LEFT JOIN {$wpdb->prefix}wc_order_operational_data od ON od.order_id = o.id
+			WHERE o.type = 'shop_order' AND o.status IN ($sp)
+			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
+		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$excl = brikpanel_admin_order_exclusion_sql( true );
+	} else {
+		$sql  = "SELECT COALESCE(SUM(CAST(IFNULL(d.meta_value, '0') AS DECIMAL(20,4))), 0)
+			FROM {$wpdb->posts} p
+			LEFT JOIN {$wpdb->postmeta} d ON d.post_id = p.ID AND d.meta_key = '_cart_discount'
+			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
+			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
+		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$excl = brikpanel_admin_order_exclusion_sql( false, 'p.ID' );
+	}
+
+	if ( ! empty( $excl['sql'] ) ) {
+		$sql .= $excl['sql'];
+		$args = array_merge( $args, $excl['args'] );
+	}
+
+	$coupons = (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+
+	/**
+	 * Filter the coupon/discount total shown (info only) in the Profit section.
+	 *
+	 * @param float  $coupons   Discount given for the window.
+	 * @param string $start_gmt Y-m-d H:i:s (UTC)
+	 * @param string $end_gmt   Y-m-d H:i:s (UTC)
+	 */
+	return (float) apply_filters( 'brikpanel_profit_coupons', $coupons, $start_gmt, $end_gmt );
+}
+
+/**
  * Total WooCommerce tax on paid orders inside [$start_gmt, $end_gmt].
  * Admin orders excluded to match the revenue/COGS basis.
  *
@@ -403,15 +529,18 @@ function brikpanel_profit_manual_expenses( $start_local, $end_local ) {
 	$end_date   = substr( (string) $end_local, 0, 10 );
 	$inv_cat    = (string) get_option( 'brikpanel_po_expense_category', 'Inventory' );
 
+	// kind != 'percent' so percentage-based costs (e.g. card commission) are
+	// excluded here — their `amount` column holds a RATE, not money, and they
+	// are computed separately in brikpanel_profit_percent_expenses().
 	$total = (float) $wpdb->get_var( $wpdb->prepare(
-		"SELECT COALESCE(SUM(amount), 0) FROM {$table} WHERE expense_date BETWEEN %s AND %s",
+		"SELECT COALESCE(SUM(amount), 0) FROM {$table} WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent'",
 		$start_date,
 		$end_date
 	) ); // phpcs:ignore
 
 	$inventory = (float) $wpdb->get_var( $wpdb->prepare(
 		"SELECT COALESCE(SUM(amount), 0) FROM {$table}
-		 WHERE expense_date BETWEEN %s AND %s AND category = %s",
+		 WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent' AND category = %s",
 		$start_date,
 		$end_date,
 		$inv_cat
@@ -423,6 +552,114 @@ function brikpanel_profit_manual_expenses( $start_local, $end_local ) {
 	}
 
 	return [ $total, $inventory, $other ];
+}
+
+/**
+ * Manual expenses for a local date range, grouped by their own category so the
+ * dashboard breakdown can show "Salaries", "Rent", "Shipping carriers" etc. as
+ * their own lines instead of dumping everything non-inventory into a single
+ * "Other" bucket. Rows with no category collapse under an empty-string key (the
+ * caller labels that "Other"). Ordered by amount desc so the biggest costs lead.
+ *
+ * This is purely a display decomposition of the SAME total that
+ * brikpanel_profit_manual_expenses() returns — summing every value here equals
+ * that total — so Net profit and the expenses figure never change, only how the
+ * breakdown is presented. All zeros (empty array) when the module table is absent.
+ *
+ * @param string $start_local Y-m-d H:i:s
+ * @param string $end_local   Y-m-d H:i:s
+ * @return array<string,float> category => amount, highest first.
+ */
+function brikpanel_profit_manual_expenses_by_category( $start_local, $end_local ) {
+	global $wpdb;
+
+	$table = $wpdb->prefix . 'brikpanel_expenses';
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+		return [];
+	}
+
+	$start_date = substr( (string) $start_local, 0, 10 );
+	$end_date   = substr( (string) $end_local, 0, 10 );
+
+	$rows = $wpdb->get_results( $wpdb->prepare(
+		"SELECT COALESCE(category, '') AS category, SUM(amount) AS total
+		 FROM {$table}
+		 WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent'
+		 GROUP BY COALESCE(category, '')
+		 HAVING total <> 0
+		 ORDER BY total DESC",
+		$start_date,
+		$end_date
+	) ); // phpcs:ignore
+
+	$out = [];
+	foreach ( (array) $rows as $r ) {
+		$out[ (string) $r->category ] = (float) $r->total;
+	}
+	return $out;
+}
+
+/**
+ * Percentage-based expenses (e.g. Stripe / credit-card commission) for the window.
+ *
+ * Each such expense is a RATE (stored in the `amount` column) applied to the
+ * gross revenue of whatever period is being viewed — a commission is "X% of
+ * sales, always", so it simply scales with the window's revenue. It uses the
+ * same revenue basis the dashboard shows (marketplace orders excluded when
+ * BrikMarket is active) so the figure reconciles with the Revenue card. There
+ * is deliberately no per-expense date or schedule: a percentage applies every
+ * period by its nature, which is why the editor hides those fields for it.
+ *
+ * @param string $start_gmt Y-m-d H:i:s (UTC)
+ * @param string $end_gmt   Y-m-d H:i:s (UTC)
+ * @return array{total:float,items:array<int,array{title:string,rate:float,amount:float}>}
+ */
+function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt ) {
+	global $wpdb;
+	$out = [ 'total' => 0.0, 'items' => [] ];
+
+	$table = $wpdb->prefix . 'brikpanel_expenses';
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+		return $out;
+	}
+	if ( ! function_exists( 'brikpanel_get_total_revenue' ) ) {
+		return $out; // revenue source not loaded (e.g. pure front-end context)
+	}
+
+	$rows = $wpdb->get_results(
+		"SELECT category, amount FROM {$table} WHERE kind = 'percent' ORDER BY amount DESC"
+	); // phpcs:ignore
+	if ( empty( $rows ) ) {
+		return $out;
+	}
+
+	$exclude_mp = function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active();
+	$revenue    = (float) brikpanel_get_total_revenue( $start_gmt, $end_gmt, $exclude_mp );
+	if ( $revenue <= 0 ) {
+		return $out; // no sales in the window → nothing for a rate to bite into
+	}
+
+	foreach ( $rows as $r ) {
+		$rate = (float) $r->amount;
+		if ( $rate <= 0 ) {
+			continue;
+		}
+		$amount = $revenue * ( $rate / 100 );
+		if ( $amount <= 0 ) {
+			continue;
+		}
+		$title = trim( (string) $r->category );
+		if ( '' === $title ) {
+			$title = __( 'Commission', 'brikpanel' );
+		}
+		$out['items'][] = [
+			'title'  => $title,
+			'rate'   => $rate,
+			'amount' => $amount,
+		];
+		$out['total'] += $amount;
+	}
+	return $out;
 }
 
 /**
@@ -515,20 +752,38 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		? brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt )
 		: [];
 	$tax      = brikpanel_profit_tax( $start_gmt, $end_gmt );
+	$returns  = brikpanel_profit_returns( $start_gmt, $end_gmt );
+	$coupons  = brikpanel_profit_coupons( $start_gmt, $end_gmt );
 	$ads_by   = brikpanel_profit_ad_spend_by_platform( $start_local, $end_local );
 	$ads      = brikpanel_profit_ad_spend( $start_local, $end_local );
 
 	list( $exp_manual, $exp_inventory, $exp_other ) = brikpanel_profit_manual_expenses( $start_local, $end_local );
+	$exp_by_category = brikpanel_profit_manual_expenses_by_category( $start_local, $end_local );
+	$percent         = brikpanel_profit_percent_expenses( $start_gmt, $end_gmt );
 
-	$expenses_total = $tax + $ads + $exp_manual; // manual already includes inventory
-	$net            = $revenue - $cogs - $expenses_total;
+	// Net revenue = gross sales minus what was handed back to customers. This
+	// is the figure the dashboard's Revenue card shows and the basis for every
+	// margin %, so margins reflect money actually kept, not money invoiced.
+	// `revenue` (the gross, passed in) is preserved separately so surfaces that
+	// must agree with the "Total Sales" KPI (and the Sheets snapshot's Revenue
+	// column) keep showing gross.
+	$revenue_net    = $revenue - $returns;
+	// manual already includes inventory; percent (commission-style) costs scale
+	// with revenue and are computed in brikpanel_profit_percent_expenses().
+	$expenses_total = $tax + $ads + $exp_manual + $percent['total'];
+	$net            = $revenue_net - $cogs - $expenses_total;
 
-	$pct = function ( $part ) use ( $revenue ) {
-		return $revenue > 0 ? round( ( $part / $revenue ) * 100, 1 ) : 0.0;
+	// Percentages are share-of-net-revenue so they line up with the Revenue
+	// figure actually displayed. Guard the zero/negative denominator.
+	$pct = function ( $part ) use ( $revenue_net ) {
+		return $revenue_net > 0 ? round( ( $part / $revenue_net ) * 100, 1 ) : 0.0;
 	};
 
 	return [
-		'revenue_raw'        => $revenue,
+		'revenue_raw'        => $revenue,        // gross (Total Sales) — unchanged for Sheets/KPI parity
+		'revenue_net_raw'    => $revenue_net,    // gross − returns (what the Revenue card shows)
+		'returns_raw'        => $returns,
+		'coupons_raw'        => $coupons,
 		'cogs_raw'           => $cogs,
 		'tax_raw'            => $tax,
 		'ad_spend_raw'       => $ads,
@@ -561,5 +816,13 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 			'inventory'  => $exp_inventory,
 			'other'      => $exp_other,
 		],
+		// Manual expenses split by their own category (Salaries, Rent, …) so the
+		// dashboard breakdown can list each instead of one "Other" lump. Summing
+		// these equals exp_manual; the inventory + other split above is kept for
+		// the Sheets snapshot columns.
+		'expense_categories' => $exp_by_category,
+		// Percentage-based costs (card commission etc.): each item is
+		// {title, rate, amount} where amount = rate% × applicable gross revenue.
+		'percent_expenses'   => $percent['items'],
 	];
 }

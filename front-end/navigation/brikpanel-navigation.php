@@ -194,6 +194,25 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 		$submenu['woocommerce'] = $submenu_items;
 		break;
 	}
+
+	// Operational Expenses, when it stands on its own (Suppliers module off), is
+	// a low-frequency management screen — it belongs in the "More" group, not as
+	// a prominent top-level item. When the Suppliers module is on it is a
+	// submenu under Suppliers instead, so there is no top-level row to move and
+	// this is a no-op. Done here (the shared relocation truth) so the live
+	// sidebar and the nav customizer agree.
+	foreach ( $menu as $exp_key => $exp_item ) {
+		if ( isset( $exp_item[2] ) && 'brikpanel-expenses' === $exp_item[2] ) {
+			$submenu['woocommerce-more'][] = array(
+				isset( $exp_item[0] ) ? $exp_item[0] : __( 'Expenses', 'brikpanel' ),
+				'manage_woocommerce',
+				'admin.php?page=brikpanel-expenses',
+				isset( $exp_item[3] ) ? $exp_item[3] : __( 'Operational Expenses', 'brikpanel' ),
+			);
+			unset( $menu[ $exp_key ] );
+			break;
+		}
+	}
 }
 
 /**
@@ -527,6 +546,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			'brikpanel-customer-analytics' => 'credit-card',
 			'brikpanel-google-sheets' => 'google-sheets',
 			'brikpanel-vendors' => 'invoice',
+			'brikpanel-expenses' => 'payments',
 			'wf_woocommerce_packing_list' => 'invoice',
 			'admin.php?page=wc-settings&tab=checkout' => 'payments',
 			'wc-admin&path=/wc-pay-welcome-page' => 'payments',

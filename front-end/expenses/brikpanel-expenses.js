@@ -41,6 +41,26 @@
     var $recurring   = el('brikpanel-ex-recurring');
     var $description = el('brikpanel-ex-description');
     var $submitBtn   = el('brikpanel-ex-submit-btn');
+    var $kind        = el('brikpanel-ex-kind');
+    var $prefix      = el('brikpanel-ex-prefix');
+    var $suffix      = el('brikpanel-ex-suffix');
+
+    // A percentage cost is a rate of revenue, always on: show "%" instead of the
+    // currency and hide BOTH the Date and Recurring fields (a percentage has no
+    // meaningful single date and applies every period by nature).
+    function syncKind() {
+        var pct = $kind && $kind.value === 'percent';
+        if ($prefix) $prefix.hidden = pct;
+        if ($suffix) $suffix.hidden = !pct;
+        if ($amount) $amount.max = pct ? '100' : '';
+        [$recurring, $date].forEach(function (input) {
+            if (!input || !input.closest) return;
+            var field = input.closest('.brikpanel-ex-field');
+            if (field) field.hidden = pct;
+        });
+        // A hidden required date would block form submit in some browsers.
+        if ($date) $date.required = !pct;
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -128,11 +148,16 @@
         }
         var html = '';
         items.forEach(function (item) {
+            var isPct = item.kind === 'percent';
             html += '<tr data-id="' + item.id + '">';
-            html += '<td class="brikpanel-ex-date-cell">' + escHtml(item.date) + '</td>';
+            // Percentage costs are always-on, so they have no single date and no
+            // repeat schedule — show "Ongoing" and a dash instead.
+            html += '<td class="brikpanel-ex-date-cell">' + escHtml(isPct ? (i18n.ongoing || 'Ongoing') : item.date) + '</td>';
             html += '<td><span class="brikpanel-ex-cat-badge">' + escHtml(item.category) + '</span></td>';
             html += '<td class="brikpanel-ex-desc-cell">' + escHtml(item.description || '—') + '</td>';
-            html += '<td><span class="brikpanel-ex-rec-badge brikpanel-ex-rec-' + escHtml(item.recurring) + '">' + escHtml(recurringLabel(item.recurring)) + '</span></td>';
+            html += isPct
+                ? '<td>—</td>'
+                : '<td><span class="brikpanel-ex-rec-badge brikpanel-ex-rec-' + escHtml(item.recurring) + '">' + escHtml(recurringLabel(item.recurring)) + '</span></td>';
             html += '<td class="brikpanel-ex-num">' + escHtml(item.amount_fmt) + '</td>';
             html += '<td class="brikpanel-ex-actions-cell">';
             html += '<button class="brikpanel-ex-icon-btn brikpanel-ex-edit-btn" data-id="' + item.id + '" title="' + escHtml(i18n.edit || 'Edit') + '" aria-label="' + escHtml(i18n.edit || 'Edit') + '">';
@@ -172,6 +197,7 @@
             if ($category)    $category.value    = editData.category || '';
             if ($recurring)   $recurring.value   = editData.recurring || 'none';
             if ($description) $description.value = editData.description || '';
+            if ($kind)        $kind.value        = editData.kind || 'fixed';
         } else {
             if ($form) $form.reset();
             // Set today as default date
@@ -181,7 +207,9 @@
             var d = String(today.getDate()).padStart(2, '0');
             if ($date) $date.value = y + '-' + m + '-' + d;
             if ($recurring) $recurring.value = 'none';
+            if ($kind) $kind.value = 'fixed';
         }
+        syncKind();
 
         $overlay.hidden = false;
         document.body.classList.add('brikpanel-ex-modal-open');
@@ -203,13 +231,15 @@
             $submitBtn.textContent = '…';
         }
 
+        var isPct = $kind && $kind.value === 'percent';
         ajax({
             action:       'brikpanel_expenses_save',
             id:           $editId ? $editId.value : '',
+            kind:         isPct ? 'percent' : 'fixed',
             expense_date: $date        ? $date.value        : '',
             amount:       $amount      ? $amount.value      : '',
             category:     $category    ? $category.value    : '',
-            recurring:    $recurring   ? $recurring.value   : 'none',
+            recurring:    ( isPct || !$recurring ) ? 'none' : $recurring.value,
             description:  $description ? $description.value : '',
         }, function (err, res) {
             if ($submitBtn) {
@@ -272,7 +302,7 @@
             }
             var rows = [[
                 i18n.csv_date        || 'Date',
-                i18n.csv_category    || 'Category',
+                i18n.csv_category    || 'Title',
                 i18n.csv_description || 'Description',
                 i18n.csv_recurring   || 'Recurring',
                 i18n.csv_amount      || 'Amount',
@@ -316,6 +346,7 @@
 
         // Form submit (save)
         if ($form) $form.addEventListener('submit', saveExpense);
+        if ($kind) $kind.addEventListener('change', syncKind);
 
         // Close modal buttons
         var closeBtn = el('brikpanel-ex-modal-close');

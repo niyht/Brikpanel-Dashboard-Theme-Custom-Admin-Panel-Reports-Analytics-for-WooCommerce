@@ -121,6 +121,71 @@ function brikpanel_dashboard_get_section_order() {
 }
 
 // =============================================================================
+// PROFIT SECTION — PER-FIELD VISIBILITY
+// =============================================================================
+
+/**
+ * Optional fields inside the dashboard Profit section that the merchant can
+ * hide. Revenue and Net profit are always shown (they are the whole point of
+ * the section); everything here is a deduction or an informational line a
+ * store may not care about (e.g. a shop that never sets Cost of goods, or one
+ * with no taxes configured).
+ *
+ * Key → human label, label kept short for the checkbox list.
+ *
+ * @return array<string,string>
+ */
+function brikpanel_dashboard_profit_field_labels() {
+    return [
+        'cogs'     => __( 'Cost of goods', 'brikpanel' ),
+        'expenses' => __( 'Expenses (taxes, ad spend, supplier costs)', 'brikpanel' ),
+        'returns'  => __( 'Returns (refunds)', 'brikpanel' ),
+        'coupons'  => __( 'Coupons (discounts given)', 'brikpanel' ),
+    ];
+}
+
+/**
+ * Which Profit-section fields are currently enabled for display.
+ *
+ * Contract mirrors the section visibility option: a never-configured store
+ * shows everything, while an explicit empty selection hides every optional
+ * field (Revenue + Net profit still render). Hiding a field is display-only —
+ * the underlying figure is still subtracted from Net profit where it is a real
+ * cost, so the number on the card stays truthful regardless of what is shown.
+ *
+ * @return array<string,bool> Map of enabled field key => true.
+ */
+function brikpanel_dashboard_profit_fields() {
+    $all = array_keys( brikpanel_dashboard_profit_field_labels() );
+    $val = get_option( 'brikpanel_dashboard_profit_fields', false );
+
+    if ( false === $val ) {
+        return array_fill_keys( $all, true ); // never configured → show all
+    }
+    if ( ! is_array( $val ) ) {
+        $val = [];
+    }
+    $set = [];
+    foreach ( $val as $k ) {
+        if ( in_array( $k, $all, true ) ) {
+            $set[ $k ] = true;
+        }
+    }
+    return $set;
+}
+
+/**
+ * Whether a single Profit-section field is enabled for display.
+ *
+ * @param string $key One of cogs|expenses|returns|coupons.
+ * @return bool
+ */
+function brikpanel_dashboard_profit_field_enabled( $key ) {
+    $set = brikpanel_dashboard_profit_fields();
+    return ! empty( $set[ $key ] );
+}
+
+// =============================================================================
 // SETTINGS PAGE: CUSTOM FIELD TYPE
 // =============================================================================
 

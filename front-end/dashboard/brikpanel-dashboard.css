@@ -368,6 +368,19 @@
     align-items: start;
 }
 
+/* The Cost of Goods and Expenses cards are optional (Settings ▸ Dashboard ▸
+   Profit section fields), so the row can hold 2, 3 or 4 cards. Match the
+   column count to what actually renders so hidden cards never leave a gap. */
+.brikpanel-dash-profit .brikpanel-dash-cards-profit.bp-profit-cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+.brikpanel-dash-profit .brikpanel-dash-cards-profit.bp-profit-cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+.brikpanel-dash-profit .brikpanel-dash-cards-profit.bp-profit-cols-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
 .brikpanel-dash-cards-profit .brikpanel-dash-card-delta-static {
     color: var(--bp-text-muted);
     font-weight: 500;
@@ -389,8 +402,9 @@
     text-overflow: ellipsis;
 }
 
-/* ---- Expenses breakdown: collapsible list inside the Expenses card ---- */
-.brikpanel-dash-card[data-metric="profit_expenses"] {
+/* ---- Breakdown: collapsible list inside the Expenses and Revenue cards ---- */
+.brikpanel-dash-card[data-metric="profit_expenses"],
+.brikpanel-dash-card[data-metric="profit_revenue"] {
     position: relative;
 }
 
@@ -428,6 +442,37 @@
 
 .brikpanel-dash-bd-toggle[hidden] {
     display: none;
+}
+
+/* "+" quick add-expense button — sits just left of the breakdown chevron,
+   absolutely positioned so it adds no flow height (cards stay uniform). */
+.brikpanel-dash-bd-add {
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: 0;
+    padding: 0.2rem;
+    position: absolute;
+    top: 0.7rem;
+    right: 2.3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--bp-text-muted);
+    line-height: 0;
+    border-radius: 0.375rem;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.brikpanel-dash-bd-add:hover {
+    color: var(--bp-text);
+    background: var(--bp-bg);
+}
+
+.brikpanel-dash-bd-add:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--bp-text);
 }
 
 .brikpanel-dash-bd-chevron {
@@ -503,6 +548,193 @@
     font-weight: 550;
     margin-left: 0.25rem;
 }
+
+/* Revenue breakdown row variants: a deduction (Returns) reads in the error
+   tone, the Net revenue line is the bold total, and informational rows
+   (Coupons, already inside the order totals) sit quietly below a hairline. */
+.brikpanel-dash-bd-row-deduct .brikpanel-dash-bd-v {
+    color: var(--bp-error);
+}
+
+.brikpanel-dash-bd-row-total {
+    margin-top: 0.125rem;
+    padding-top: 0.375rem;
+    border-top: 1px solid var(--bp-border);
+}
+
+.brikpanel-dash-bd-row-total .brikpanel-dash-bd-k,
+.brikpanel-dash-bd-row-total .brikpanel-dash-bd-v {
+    color: var(--bp-text);
+    font-weight: 700;
+}
+
+.brikpanel-dash-bd-row-info .brikpanel-dash-bd-k,
+.brikpanel-dash-bd-row-info .brikpanel-dash-bd-v {
+    color: var(--bp-text-muted);
+    font-weight: 550;
+}
+
+/* ===== Add-expense modal ===== */
+.brikpanel-exp-modal[hidden] { display: none; }
+.brikpanel-exp-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.brikpanel-exp-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+}
+.brikpanel-exp-modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    background: var(--bp-card, #fff);
+    border: 1px solid var(--bp-border, #e3e3e3);
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    animation: brikpanel-exp-pop 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes brikpanel-exp-pop {
+    from { transform: translateY(8px) scale(0.98); opacity: 0; }
+    to   { transform: none; opacity: 1; }
+}
+.brikpanel-exp-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--bp-border, #e3e3e3);
+}
+.brikpanel-exp-modal-head h2 {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    color: var(--bp-text, #303030);
+}
+.brikpanel-exp-modal-x {
+    background: none;
+    border: 0;
+    padding: 0.25rem;
+    cursor: pointer;
+    color: var(--bp-text-muted, #8a8a8a);
+    line-height: 0;
+    border-radius: 0.375rem;
+}
+.brikpanel-exp-modal-x:hover { color: var(--bp-text, #303030); background: var(--bp-bg, #f1f1f1); }
+.brikpanel-exp-modal-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.brikpanel-exp-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+/* An explicit display on the grid/flex rows beats the UA `[hidden]{display:none}`
+   rule, so the JS `.hidden = true` (used to drop Date+Repeats for a percentage
+   cost) would otherwise leave them visible. Re-assert display:none for [hidden]. */
+.brikpanel-exp-row2[hidden], .brikpanel-exp-field[hidden] { display: none; }
+.brikpanel-exp-field { display: flex; flex-direction: column; gap: 0.375rem; }
+.brikpanel-exp-field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--bp-text, #303030);
+}
+.brikpanel-exp-field input,
+.brikpanel-exp-field select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--bp-text, #303030);
+    background: #fff;
+    border: 1px solid var(--bp-input-border, #8a8a8a);
+    border-radius: 0.5rem;
+    line-height: 1.4;
+}
+.brikpanel-exp-field input:focus,
+.brikpanel-exp-field select:focus {
+    outline: none;
+    border-color: var(--bp-input-focus, #303030);
+    box-shadow: 0 0 0 1px var(--bp-input-focus, #303030);
+}
+.brikpanel-exp-input-group {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--bp-input-border, #8a8a8a);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+.brikpanel-exp-input-group:focus-within {
+    border-color: var(--bp-input-focus, #303030);
+    box-shadow: 0 0 0 1px var(--bp-input-focus, #303030);
+}
+.brikpanel-exp-prefix,
+.brikpanel-exp-suffix {
+    display: flex;
+    align-items: center;
+    padding: 0 0.625rem;
+    background: #f7f7f7;
+    color: var(--bp-text-secondary, #616161);
+    font-size: 0.875rem;
+}
+.brikpanel-exp-prefix { border-right: 1px solid var(--bp-border, #e3e3e3); }
+.brikpanel-exp-suffix { border-left: 1px solid var(--bp-border, #e3e3e3); }
+.brikpanel-exp-prefix[hidden],
+.brikpanel-exp-suffix[hidden] { display: none; }
+.brikpanel-exp-input-group input {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    flex: 1;
+    min-width: 0;
+}
+.brikpanel-exp-recurring-hint {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--bp-text-secondary, #616161);
+}
+.brikpanel-exp-recurring-hint[hidden] { display: none; }
+.brikpanel-exp-msg {
+    font-size: 0.8125rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    line-height: 1.4;
+}
+.brikpanel-exp-msg[hidden] { display: none; }
+.brikpanel-exp-msg.is-error { background: #fce4e4; color: #c62828; border: 1px solid #f1b0b0; }
+.brikpanel-exp-msg.is-ok { background: #e4f5e1; color: #1a6b15; border: 1px solid #b7e1b0; }
+.brikpanel-exp-modal-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--bp-border, #e3e3e3);
+}
+.brikpanel-exp-btn {
+    font-size: 0.8125rem;
+    font-weight: 550;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    border: 0;
+    transition: background-color 0.15s ease;
+}
+.brikpanel-exp-btn-primary {
+    background: var(--bp-primary, #303030);
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.brikpanel-exp-btn-primary:hover { background: var(--bp-primary-hover, #1a1a1a); }
+.brikpanel-exp-btn-primary:disabled { opacity: 0.6; cursor: default; }
+.brikpanel-exp-btn-secondary {
+    background: #fff;
+    color: var(--bp-text, #303030);
+    box-shadow: inset 0 0 0 1px var(--bp-border, #e3e3e3), 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+.brikpanel-exp-btn-secondary:hover { background: #f7f7f7; }
+body.brikpanel-exp-modal-open { overflow: hidden; }
 
 .brikpanel-dash-card[data-metric="profit_net"].is-profit .brikpanel-dash-card-value {
     color: var(--bp-success);

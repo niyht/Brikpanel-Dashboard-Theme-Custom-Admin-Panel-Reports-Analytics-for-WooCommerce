@@ -39,8 +39,14 @@
 /* Content */
 .brikpanel-pe-content{max-width:820px;margin:0 auto;padding:1.5rem 2rem 3rem;display:flex;flex-direction:column;gap:1rem}
 
-/* Card */
-.brikpanel-pe-card{background:var(--pe-card);border-radius:var(--pe-radius);border:1px solid var(--pe-border);padding:1.25rem 1.5rem;box-shadow:var(--pe-shadow)}
+/* Card.
+   Literal fallbacks are intentional: a card must NEVER lose its background,
+   border or shadow even if it ends up outside the `.brikpanel-pe` cascade root
+   (e.g. a third-party metabox script reparents the postbox subtree, or another
+   plugin resets the custom properties). Without fallbacks the card's
+   var(--pe-*) values resolve to empty and the whole card renders fully
+   transparent — the "Additional fields" metabox card looked background-less. */
+.brikpanel-pe-card{background:var(--pe-card,#fff);border-radius:var(--pe-radius,.75rem);border:1px solid var(--pe-border,#e3e3e3);padding:1.25rem 1.5rem;box-shadow:var(--pe-shadow,0 1px 3px rgba(0,0,0,.08))}
 .brikpanel-pe-card>label:first-child{display:block;font-size:.8125rem;font-weight:600;color:var(--pe-text);margin-bottom:.75rem}
 
 /* Fields */

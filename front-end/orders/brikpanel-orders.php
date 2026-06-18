@@ -572,6 +572,16 @@ function brikpanel_settings_fields() {
             'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder — the dashboard renders sections in the order shown here. Hidden sections skip rendering entirely, so their data is not fetched.', 'brikpanel'),
         ],
         [
+            'name'     => __('Profit section fields', 'brikpanel'),
+            'id'       => 'brikpanel_dashboard_profit_fields',
+            'type'     => 'multiselect',
+            'class'    => 'wc-enhanced-select',
+            'desc'     => __('Choose which fields appear in the Profit section. Revenue and Net profit are always shown. Hiding a field only removes it from view — it is still factored into Net profit where it is a real cost, so the figure stays accurate.', 'brikpanel'),
+            'desc_tip' => true,
+            'options'  => function_exists('brikpanel_dashboard_profit_field_labels') ? brikpanel_dashboard_profit_field_labels() : [],
+            'default'  => function_exists('brikpanel_dashboard_profit_field_labels') ? array_keys(brikpanel_dashboard_profit_field_labels()) : [],
+        ],
+        [
             'type' => 'sectionend',
             'id'   => 'brk_dashboard_title',
         ],

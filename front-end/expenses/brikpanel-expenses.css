@@ -123,6 +123,13 @@
     min-width: 0;
 }
 
+/* The explicit display:flex above out-specifies the UA `[hidden]{display:none}`
+   rule, so toggling `.hidden` in JS (to drop the Date + Repeats fields for a
+   percentage cost) would leave them on screen. Re-assert it for [hidden]. */
+.brikpanel-ex-field[hidden] {
+    display: none;
+}
+
 .brikpanel-ex-field label {
     font-size: 0.8125rem;
     font-weight: 600;
@@ -204,6 +211,14 @@
 .brikpanel-ex-suffix {
     border-right: none;
     border-left: 1px solid var(--ex-border);
+}
+
+/* display:flex above out-specifies the UA `[hidden]{display:none}`, so the JS
+   toggle that swaps the currency prefix for a "%" suffix (fixed ↔ percentage)
+   would leave both showing. Re-assert it. */
+.brikpanel-ex-prefix[hidden],
+.brikpanel-ex-suffix[hidden] {
+    display: none;
 }
 
 .brikpanel-ex-input-group input {

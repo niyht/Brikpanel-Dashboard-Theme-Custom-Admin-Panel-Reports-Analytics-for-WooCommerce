@@ -444,16 +444,25 @@ function brikpanel_marketplace_order_exclusion_sql( $hpos, $id_column = '' ) {
     }
     global $wpdb;
     $meta_key = brikpanel_marketplace_meta_key();
+    // Correlated NOT EXISTS rather than `NOT IN (subquery)`. NOT IN is a double
+    // footgun here: (a) if the meta subquery ever yields a NULL it makes the
+    // whole predicate UNKNOWN and silently drops EVERY row (revenue → 0), and
+    // (b) when the outer query already LEFT JOINs the very same meta table
+    // (e.g. the multi-currency base-total join in brikpanel_get_total_revenue
+    // aliases wc_orders_meta), MySQL mis-resolves the un-aliased subquery and
+    // zeroes the result. NOT EXISTS with its own alias is NULL-safe, immune to
+    // that collision, and typically faster. Equivalent meaning: exclude orders
+    // that HAVE the marketplace marker meta.
     if ( $hpos ) {
         $col = $id_column ?: 'id';
         return [
-            'sql'  => " AND {$col} NOT IN (SELECT order_id FROM {$wpdb->prefix}wc_orders_meta WHERE meta_key = %s)",
+            'sql'  => " AND NOT EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_orders_meta bpmpx WHERE bpmpx.order_id = {$col} AND bpmpx.meta_key = %s)",
             'args' => [ $meta_key ],
         ];
     }
     $col = $id_column ?: 'ID';
     return [
-        'sql'  => " AND {$col} NOT IN (SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s)",
+        'sql'  => " AND NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} bpmpx WHERE bpmpx.post_id = {$col} AND bpmpx.meta_key = %s)",
         'args' => [ $meta_key ],
     ];
 }

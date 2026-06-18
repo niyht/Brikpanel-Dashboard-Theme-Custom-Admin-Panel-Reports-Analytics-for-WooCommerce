@@ -585,24 +585,70 @@ class Brikpanel_Dashboard {
      * be connected. Values fill in from the shared AJAX payload (data.profit).
      */
     public function render_section_profit() {
+        // Per-field display preferences. Cost of goods and Expenses cards can
+        // be hidden by stores that do not track them; Revenue and Net profit
+        // always render. Defensive default (show) when the helper is absent.
+        $has_pref      = function_exists( 'brikpanel_dashboard_profit_field_enabled' );
+        $show_cogs     = ! $has_pref || brikpanel_dashboard_profit_field_enabled( 'cogs' );
+        $show_expenses = ! $has_pref || brikpanel_dashboard_profit_field_enabled( 'expenses' );
+        $returns_on    = ! $has_pref || brikpanel_dashboard_profit_field_enabled( 'returns' );
+
+        // Revenue is paid orders for the period, optionally net of refunds, with
+        // tax and shipping included and admin orders excluded.
+        $rev_body = $returns_on
+            ? __( 'The total of all paid orders for the selected dates (Processing and Completed by default), with tax and shipping included and any customer refunds in the period subtracted. Orders placed by store administrators are left out so your own test orders do not change it. You can change which statuses count under Settings, then Analytics.', 'brikpanel' )
+            : __( 'The total of all paid orders for the selected dates (Processing and Completed by default), with tax and shipping included. Orders placed by store administrators are left out so your own test orders do not change it. You can change which statuses count under Settings, then Analytics.', 'brikpanel' );
         ?>
             <!-- Profit -->
+            <?php $profit_cols = 2 + ( $show_cogs ? 1 : 0 ) + ( $show_expenses ? 1 : 0 ); ?>
             <div class="brikpanel-dash-profit" id="brikpanel-profit-section">
-                <div class="brikpanel-dash-cards brikpanel-dash-cards-profit" id="brikpanel-profit-cards">
-                    <div class="brikpanel-dash-card" data-metric="profit_revenue">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Revenue', 'brikpanel' ); ?><?php $this->render_admin_excluded_hint(); ?></span>
+                <div class="brikpanel-dash-cards brikpanel-dash-cards-profit bp-profit-cols-<?php echo (int) $profit_cols; ?>" id="brikpanel-profit-cards">
+                    <div class="brikpanel-dash-card" data-metric="profit_revenue" id="profit-revenue-card">
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Revenue', 'brikpanel' ); ?><?php
+                            $this->render_hint( __( 'How Revenue is calculated', 'brikpanel' ), $rev_body ); ?></span>
                         <span class="brikpanel-dash-card-value" id="card-profit-revenue">--</span>
                         <span class="brikpanel-dash-card-delta" id="delta-profit-revenue"></span>
+                        <button type="button" class="brikpanel-dash-bd-toggle" id="profit-rev-bd-toggle"
+                                aria-expanded="false" aria-controls="profit-rev-bd-collapse" hidden
+                                title="<?php esc_attr_e( 'Show revenue breakdown', 'brikpanel' ); ?>"
+                                aria-label="<?php esc_attr_e( 'Show revenue breakdown', 'brikpanel' ); ?>">
+                            <svg class="brikpanel-dash-bd-chevron" width="14" height="14" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                        <div class="brikpanel-dash-bd-collapse" id="profit-rev-bd-collapse">
+                            <div class="brikpanel-dash-bd-inner">
+                                <div class="brikpanel-dash-bd-list" id="profit-revenue-breakdown"></div>
+                            </div>
+                        </div>
                     </div>
+                    <?php if ( $show_cogs ) : ?>
                     <div class="brikpanel-dash-card" data-metric="profit_cogs">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Cost of Goods', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Cost of Goods', 'brikpanel' ); ?><?php
+                            $this->render_hint(
+                                __( 'How Cost of Goods is calculated', 'brikpanel' ),
+                                __( 'The "Cost of goods" you set on each product, multiplied by the quantity sold in paid orders for the period. Variations use their own cost and fall back to the parent product. Any product with no cost set counts as zero, which overstates Net profit, so fill those in for an accurate margin.', 'brikpanel' )
+                            ); ?></span>
                         <span class="brikpanel-dash-card-value" id="card-profit-cogs">--</span>
                         <span class="brikpanel-dash-card-delta brikpanel-dash-card-delta-static" id="delta-profit-cogs"></span>
                     </div>
+                    <?php endif; ?>
+                    <?php if ( $show_expenses ) : ?>
                     <div class="brikpanel-dash-card" data-metric="profit_expenses" id="profit-expenses-card">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Expenses', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Expenses', 'brikpanel' ); ?><?php
+                            $this->render_hint(
+                                __( 'What Expenses includes', 'brikpanel' ),
+                                __( 'Operating costs for the period: order tax, ad spend from connected ad platforms (store currency only), supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Open the breakdown to see each part.', 'brikpanel' )
+                            ); ?></span>
                         <span class="brikpanel-dash-card-value" id="card-profit-expenses">--</span>
                         <span class="brikpanel-dash-card-delta brikpanel-dash-card-delta-static" id="delta-profit-expenses"></span>
+                        <button type="button" class="brikpanel-dash-bd-add" id="profit-exp-add"
+                                title="<?php esc_attr_e( 'Add expense', 'brikpanel' ); ?>"
+                                aria-label="<?php esc_attr_e( 'Add expense', 'brikpanel' ); ?>">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
                         <button type="button" class="brikpanel-dash-bd-toggle" id="profit-bd-toggle"
                                 aria-expanded="false" aria-controls="profit-bd-collapse" hidden
                                 title="<?php esc_attr_e( 'Show expense breakdown', 'brikpanel' ); ?>"
@@ -617,13 +663,99 @@ class Brikpanel_Dashboard {
                             </div>
                         </div>
                     </div>
+                    <?php endif; ?>
                     <div class="brikpanel-dash-card" data-metric="profit_net">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Net Profit', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Net Profit', 'brikpanel' ); ?><?php
+                            $this->render_hint(
+                                __( 'How Net Profit is calculated', 'brikpanel' ),
+                                __( 'Revenue minus Cost of goods minus Expenses. This is what is left after the cost of what you sold and your operating costs for the period. A negative figure means a loss.', 'brikpanel' )
+                            ); ?></span>
                         <span class="brikpanel-dash-card-value" id="card-profit-net">--</span>
                         <span class="brikpanel-dash-card-delta" id="delta-profit-net"></span>
                     </div>
                 </div>
+                <?php if ( $show_expenses ) { $this->render_add_expense_modal(); } ?>
             </div>
+        <?php
+    }
+
+    /**
+     * Quick "Add expense" modal shown from the Profit > Expenses card. Posts to
+     * the Expenses module's own save endpoint so a recurring entry created here
+     * is materialised across periods exactly like one added on the full
+     * Operational Expenses page. All copy is PHP-translated; the only JS-driven
+     * strings (status messages) come from the localised i18n bag.
+     */
+    private function render_add_expense_modal() {
+        $cats     = class_exists( 'Brikpanel_Expenses' ) ? Brikpanel_Expenses::categories() : [];
+        $currency = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol() : '';
+        $today    = current_time( 'Y-m-d' );
+        ?>
+        <div class="brikpanel-exp-modal" id="brikpanel-exp-modal" hidden>
+            <div class="brikpanel-exp-modal-overlay" data-exp-close></div>
+            <div class="brikpanel-exp-modal-card" role="dialog" aria-modal="true" aria-labelledby="brikpanel-exp-modal-title">
+                <div class="brikpanel-exp-modal-head">
+                    <h2 id="brikpanel-exp-modal-title"><?php esc_html_e( 'Add expense', 'brikpanel' ); ?></h2>
+                    <button type="button" class="brikpanel-exp-modal-x" data-exp-close aria-label="<?php esc_attr_e( 'Close', 'brikpanel' ); ?>">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+                <div class="brikpanel-exp-modal-body">
+                    <div class="brikpanel-exp-field">
+                        <label for="brikpanel-exp-kind"><?php esc_html_e( 'Type', 'brikpanel' ); ?></label>
+                        <select id="brikpanel-exp-kind">
+                            <option value="fixed"><?php esc_html_e( 'Fixed amount', 'brikpanel' ); ?></option>
+                            <option value="percent"><?php esc_html_e( 'Percentage of revenue', 'brikpanel' ); ?></option>
+                        </select>
+                    </div>
+                    <div class="brikpanel-exp-field">
+                        <label for="brikpanel-exp-amount" id="brikpanel-exp-amount-label"><?php esc_html_e( 'Amount', 'brikpanel' ); ?></label>
+                        <div class="brikpanel-exp-input-group">
+                            <?php if ( '' !== $currency ) : ?><span class="brikpanel-exp-prefix" id="brikpanel-exp-prefix"><?php echo esc_html( $currency ); ?></span><?php endif; ?>
+                            <input type="number" id="brikpanel-exp-amount" step="0.01" min="0" inputmode="decimal" autocomplete="off">
+                            <span class="brikpanel-exp-suffix" id="brikpanel-exp-suffix" hidden>%</span>
+                        </div>
+                    </div>
+                    <div class="brikpanel-exp-field">
+                        <label for="brikpanel-exp-category"><?php esc_html_e( 'Title', 'brikpanel' ); ?></label>
+                        <input type="text" id="brikpanel-exp-category" list="brikpanel-exp-cats" autocomplete="off"
+                               placeholder="<?php esc_attr_e( 'e.g. Rent, Salaries, Credit card commission', 'brikpanel' ); ?>">
+                        <datalist id="brikpanel-exp-cats">
+                            <?php foreach ( $cats as $c ) : ?><option value="<?php echo esc_attr( $c ); ?>"></option><?php endforeach; ?>
+                        </datalist>
+                    </div>
+                    <div class="brikpanel-exp-row2" id="brikpanel-exp-row2">
+                        <div class="brikpanel-exp-field">
+                            <label for="brikpanel-exp-date" id="brikpanel-exp-date-label"><?php esc_html_e( 'Date', 'brikpanel' ); ?></label>
+                            <input type="date" id="brikpanel-exp-date" value="<?php echo esc_attr( $today ); ?>">
+                        </div>
+                        <div class="brikpanel-exp-field" id="brikpanel-exp-recurring-field">
+                            <label for="brikpanel-exp-recurring"><?php esc_html_e( 'Repeats', 'brikpanel' ); ?></label>
+                            <select id="brikpanel-exp-recurring">
+                                <option value="none"><?php esc_html_e( 'One-time', 'brikpanel' ); ?></option>
+                                <option value="monthly"><?php esc_html_e( 'Monthly', 'brikpanel' ); ?></option>
+                                <option value="weekly"><?php esc_html_e( 'Weekly', 'brikpanel' ); ?></option>
+                                <option value="yearly"><?php esc_html_e( 'Yearly', 'brikpanel' ); ?></option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="brikpanel-exp-field">
+                        <label for="brikpanel-exp-desc"><?php esc_html_e( 'Note (optional)', 'brikpanel' ); ?></label>
+                        <input type="text" id="brikpanel-exp-desc" autocomplete="off"
+                               placeholder="<?php esc_attr_e( 'What is this for?', 'brikpanel' ); ?>">
+                    </div>
+                    <p class="brikpanel-exp-recurring-hint" id="brikpanel-exp-recurring-hint" hidden><?php
+                        esc_html_e( 'A repeating expense is counted automatically in every period from this date onward.', 'brikpanel' ); ?></p>
+                    <p class="brikpanel-exp-recurring-hint" id="brikpanel-exp-percent-hint" hidden><?php
+                        esc_html_e( 'A percentage cost is applied to your revenue in every period from this date onward (great for card or marketplace commission).', 'brikpanel' ); ?></p>
+                    <div class="brikpanel-exp-msg" id="brikpanel-exp-msg" role="alert" hidden></div>
+                </div>
+                <div class="brikpanel-exp-modal-foot">
+                    <button type="button" class="brikpanel-exp-btn brikpanel-exp-btn-secondary" data-exp-close><?php esc_html_e( 'Cancel', 'brikpanel' ); ?></button>
+                    <button type="button" class="brikpanel-exp-btn brikpanel-exp-btn-primary" id="brikpanel-exp-save"><?php esc_html_e( 'Save expense', 'brikpanel' ); ?></button>
+                </div>
+            </div>
+        </div>
         <?php
     }
 
@@ -1239,44 +1371,156 @@ class Brikpanel_Dashboard {
     private function build_profit_block( $revenue, $start_gmt, $end_gmt, $start_local, $end_local ) {
         $s = brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local );
 
-        $labels = [
+        // Expenses breakdown. External costs (ad spend, tax) keep their fixed
+        // translated labels; manual expenses are listed by their OWN category
+        // (Salaries, Rent, Shipping carriers, …) instead of a single "Other"
+        // lump, so owners see where the money actually went. The purchase-order
+        // category is relabelled to the friendly "Supplier / stock"; a blank
+        // category falls back to "Other".
+        $fixed_labels = [
             'google_ads' => __( 'Google Ads', 'brikpanel' ),
             'meta_ads'   => __( 'Meta Ads', 'brikpanel' ),
             'tax'        => __( 'Tax', 'brikpanel' ),
-            'inventory'  => __( 'Supplier / stock', 'brikpanel' ),
-            'other'      => __( 'Other', 'brikpanel' ),
         ];
         $breakdown = [];
-        foreach ( $s['breakdown'] as $key => $amount ) {
-            if ( (float) $amount <= 0 || ! isset( $labels[ $key ] ) ) {
-                continue; // hide empty / unlabelled components to keep the card clean
+        foreach ( $fixed_labels as $key => $label ) {
+            $amount = (float) ( $s['breakdown'][ $key ] ?? 0 );
+            if ( $amount <= 0 ) {
+                continue; // hide empty components to keep the card clean
             }
             $breakdown[] = [
                 'key'    => $key,
-                'label'  => $labels[ $key ],
-                'amount' => wc_price( (float) $amount ),
-                'raw'    => (float) $amount,
+                'label'  => $label,
+                'amount' => wc_price( $amount ),
+                'raw'    => $amount,
             ];
         }
 
+        $po_category = (string) get_option( 'brikpanel_po_expense_category', 'Inventory' );
+        foreach ( (array) ( $s['expense_categories'] ?? [] ) as $cat => $amount ) {
+            $amount = (float) $amount;
+            if ( $amount <= 0 ) {
+                continue;
+            }
+            if ( '' === $cat ) {
+                $label = __( 'Other', 'brikpanel' );
+            } elseif ( $cat === $po_category ) {
+                $label = __( 'Supplier / stock', 'brikpanel' );
+            } else {
+                $label = $cat; // user-defined category name, shown as stored
+            }
+            $breakdown[] = [
+                'key'    => 'cat',
+                'label'  => $label,
+                'amount' => wc_price( $amount ),
+                'raw'    => $amount,
+            ];
+        }
+
+        // Percentage-based costs (card commission etc.). The rate is shown in
+        // the label so the figure is self-explanatory; the amount is that rate
+        // applied to the period's revenue.
+        foreach ( (array) ( $s['percent_expenses'] ?? [] ) as $pe ) {
+            $amount = (float) ( $pe['amount'] ?? 0 );
+            if ( $amount <= 0 ) {
+                continue;
+            }
+            $rate_str = rtrim( rtrim( number_format( (float) ( $pe['rate'] ?? 0 ), 2, '.', '' ), '0' ), '.' );
+            $breakdown[] = [
+                'key'    => 'percent',
+                'label'  => (string) ( $pe['title'] ?? '' ) . ' (' . $rate_str . '%)',
+                'amount' => wc_price( $amount ),
+                'raw'    => $amount,
+            ];
+        }
+
+        // Per-field display preferences (BrikPanel ▸ Settings ▸ Dashboard).
+        // Returns is the only toggle that also changes the math: because it
+        // nets the Revenue top line (which must reconcile with Total Sales),
+        // hiding it would otherwise leave an unexplained gap, so turning it off
+        // means "ignore returns entirely". Cost of goods and Expenses always
+        // feed Net profit (they only affect the Net card, never the shared
+        // Revenue line); their toggle is display-only so the Net figure can
+        // never be quietly overstated by hiding a card.
+        $returns_on  = ! function_exists( 'brikpanel_dashboard_profit_field_enabled' ) || brikpanel_dashboard_profit_field_enabled( 'returns' );
+        $coupons_on  = function_exists( 'brikpanel_dashboard_profit_field_enabled' ) && brikpanel_dashboard_profit_field_enabled( 'coupons' );
+
+        $gross    = (float) $s['revenue_raw'];
+        $returns  = (float) $s['returns_raw'];
+        $coupons  = (float) $s['coupons_raw'];
+        $cogs     = (float) $s['cogs_raw'];
+        $expenses = (float) $s['expenses_total_raw'];
+
+        $rev_raw = $returns_on ? ( $gross - $returns ) : $gross; // figure shown on the Revenue card
+        $net_raw = $rev_raw - $cogs - $expenses;
+
+        $pctf       = function ( $part ) use ( $rev_raw ) {
+            return $rev_raw > 0 ? round( ( $part / $rev_raw ) * 100, 1 ) : 0.0;
+        };
+        $cogs_pct     = $pctf( $cogs );
+        $expenses_pct = $pctf( $expenses );
+        $margin       = $pctf( $net_raw );
+
+        // Revenue breakdown: Gross − Returns = the shown Revenue, with Coupons
+        // as an informational line (the discount is already inside the order
+        // totals, so it is never subtracted again). Only surfaced when there is
+        // something to show, so a clean store keeps the card minimal. `type`
+        // drives how the JS renders the sign: base / deduct / info.
+        $rev_breakdown = [];
+        if ( ( $returns_on && $returns > 0 ) || ( $coupons_on && $coupons > 0 ) ) {
+            $rev_breakdown[] = [
+                'key'    => 'gross',
+                'label'  => __( 'Gross sales', 'brikpanel' ),
+                'amount' => wc_price( $gross ),
+                'raw'    => $gross,
+                'type'   => 'base',
+            ];
+            if ( $returns_on && $returns > 0 ) {
+                $rev_breakdown[] = [
+                    'key'    => 'returns',
+                    'label'  => __( 'Returns', 'brikpanel' ),
+                    'amount' => wc_price( $returns ),
+                    'raw'    => $returns,
+                    'type'   => 'deduct',
+                ];
+            }
+            if ( $coupons_on && $coupons > 0 ) {
+                $rev_breakdown[] = [
+                    'key'    => 'coupons',
+                    'label'  => __( 'Coupons (already in totals)', 'brikpanel' ),
+                    'amount' => wc_price( $coupons ),
+                    'raw'    => $coupons,
+                    'type'   => 'info',
+                ];
+            }
+        }
+
         return [
-            'revenue'       => wc_price( $s['revenue_raw'] ),
-            'revenue_raw'   => $s['revenue_raw'],
-            'cogs'          => wc_price( $s['cogs_raw'] ),
-            'cogs_raw'      => $s['cogs_raw'],
-            'cogs_pct'      => $s['cogs_pct'],
+            'revenue'       => wc_price( $rev_raw ),
+            'revenue_raw'   => $rev_raw,
+            'gross_revenue' => wc_price( $gross ),
+            'gross_revenue_raw' => $gross,
+            'returns'       => wc_price( $returns ),
+            'returns_raw'   => $returns,
+            'returns_on'    => $returns_on,
+            'coupons'       => wc_price( $coupons ),
+            'coupons_raw'   => $coupons,
+            'revenue_breakdown' => $rev_breakdown,
+            'cogs'          => wc_price( $cogs ),
+            'cogs_raw'      => $cogs,
+            'cogs_pct'      => $cogs_pct,
             'has_cogs'      => $s['has_cogs'],
             'cogs_incomplete'    => $s['cogs_incomplete'],
             'cogs_missing_lines' => $s['cogs_missing_lines'],
             'cogs_coverage_pct'  => $s['cogs_coverage_pct'],
             'cogs_missing_products' => $s['cogs_missing_products'] ?? [],
-            'expenses'      => wc_price( $s['expenses_total_raw'] ),
-            'expenses_raw'  => $s['expenses_total_raw'],
-            'expenses_pct'  => $s['expenses_pct'],
+            'expenses'      => wc_price( $expenses ),
+            'expenses_raw'  => $expenses,
+            'expenses_pct'  => $expenses_pct,
             'breakdown'     => $breakdown,
-            'net'           => wc_price( $s['net_raw'] ),
-            'net_raw'       => $s['net_raw'],
-            'margin'        => $s['margin'],
+            'net'           => wc_price( $net_raw ),
+            'net_raw'       => $net_raw,
+            'margin'        => $margin,
         ];
     }
 
@@ -1292,6 +1536,14 @@ class Brikpanel_Dashboard {
         if ( ! current_user_can( 'manage_woocommerce' ) ) {
             wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
             wp_die();
+        }
+
+        // Roll any recurring-expense templates forward to today before the
+        // payload (and its cache) are built, so the Profit section reflects the
+        // current period's costs. Runs at most a few times a day (transient
+        // gated) and busts the dashboard cache itself when it adds rows.
+        if ( class_exists( 'Brikpanel_Expenses' ) ) {
+            Brikpanel_Expenses::materialize_due();
         }
 
         $range = isset( $_POST['range'] ) ? sanitize_key( $_POST['range'] ) : 'today';

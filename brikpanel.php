@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.1.28
+ * Version: 3.1.30
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.1.28');
+define('BRIKPANEL_VERSION', '3.1.30');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -703,6 +703,10 @@ function brikpanel_create_table() {
     ) $charset_collate;";
 
     $expenses_table = $wpdb->prefix . "brikpanel_expenses";
+    // recurring_parent links an auto-generated occurrence back to its recurring
+    // template (0 = a standalone entry or the template itself). The materialiser
+    // turns one "monthly/weekly/yearly" template into concrete dated rows so the
+    // profit aggregation (which just sums rows by date) stays unchanged.
     $sql_expenses = "CREATE TABLE $expenses_table (
         id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         expense_date DATE NOT NULL,
@@ -710,10 +714,13 @@ function brikpanel_create_table() {
         description TEXT,
         amount DECIMAL(20,4) NOT NULL DEFAULT 0,
         recurring VARCHAR(20) NOT NULL DEFAULT 'none',
+        recurring_parent BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        kind VARCHAR(10) NOT NULL DEFAULT 'fixed',
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         KEY idx_date (expense_date),
-        KEY idx_category (category)
+        KEY idx_category (category),
+        KEY idx_recurring_parent (recurring_parent)
     ) $charset_collate;";
 
     // Cohort retention — monthly cohort × period_offset matrix (populated nightly)
@@ -855,6 +862,15 @@ function brikpanel_create_table() {
     dbDelta($sql_stock_orders);
     dbDelta($sql_stock_order_items);
     dbDelta($sql_ad_spend);
+
+    // Stamp the moment the recurring-expense engine became available. Only
+    // expense templates created at or after this point are auto-materialised
+    // into per-period rows, so pre-existing "monthly"-tagged rows (which were
+    // historically just a cosmetic label and only ever counted once on their
+    // own date) keep aggregating exactly as before — no retroactive change.
+    if ( false === get_option( 'brikpanel_recurring_engine_since', false ) ) {
+        add_option( 'brikpanel_recurring_engine_since', gmdate( 'Y-m-d H:i:s' ), '', false );
+    }
 }
 
 /**

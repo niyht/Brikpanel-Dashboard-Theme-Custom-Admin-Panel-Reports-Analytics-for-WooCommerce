@@ -59,6 +59,7 @@
         initExportButton();
         initRowLinks();
         initProfitBreakdownToggle();
+        initAddExpense();
         initHintTooltips();
         fetchDashboardData();
         startLivePolling();
@@ -378,9 +379,16 @@
         // instead of duplicating the delta.
         var revDelta = document.getElementById('delta-profit-revenue');
         if (revDelta) {
-            revDelta.textContent = i18n.profit_revenue_note || 'Same as Total Sales';
+            // When refunds have been netted out, Revenue no longer equals the
+            // Total Sales KPI, so label it accordingly instead of claiming they
+            // match. The breakdown below spells out gross minus returns.
+            var netted = p.returns_on && Number(p.returns_raw) > 0;
+            revDelta.textContent = netted
+                ? (i18n.profit_revenue_net_note || 'Net of returns')
+                : (i18n.profit_revenue_note || 'Same as Total Sales');
             revDelta.className = 'brikpanel-dash-card-delta brikpanel-dash-card-delta-static';
         }
+        renderRevenueBreakdown(p);
         updateDelta('delta-profit-net', p.delta_net);
 
         // Cost of Goods: share of revenue. Two failure modes are called out
@@ -595,17 +603,232 @@
         });
     }
 
-    // Wire the Expenses "Breakdown ⌄" toggle once. Open/closed state is kept
-    // across data refreshes so a refresh never collapses what the user opened.
-    function initProfitBreakdownToggle() {
-        var toggle = document.getElementById('profit-bd-toggle');
-        var card   = document.getElementById('profit-expenses-card');
+    // Fill the (collapsed-by-default) breakdown list inside the Revenue card,
+    // mirroring the Expenses breakdown. Shows how gross sales become the net
+    // Revenue figure on the card: Gross sales − Returns = Net revenue, with
+    // coupons listed afterwards as an informational note (the discount is
+    // already inside the order totals, so it is never subtracted again). Rows
+    // are pre-labelled and pre-formatted server-side; this only arranges them
+    // and applies the right sign per row `type`.
+    function renderRevenueBreakdown(p) {
+        var box    = document.getElementById('profit-revenue-breakdown');
+        var toggle = document.getElementById('profit-rev-bd-toggle');
+        var card   = document.getElementById('profit-revenue-card');
+        if (!box) return;
+
+        var items = (p && p.revenue_breakdown) ? p.revenue_breakdown : [];
+
+        box.innerHTML = '';
+
+        // Nothing to decompose (no returns, no coupons) → hide the toggle and
+        // keep the card minimal, exactly like the Expenses card does.
+        if (!items.length) {
+            if (toggle) {
+                toggle.hidden = true;
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+            if (card) card.classList.remove('is-bd-open');
+            return;
+        }
+        if (toggle) toggle.hidden = false;
+
+        function row(label, valueHtml, extraClass) {
+            var r = document.createElement('div');
+            r.className = 'brikpanel-dash-bd-row' + (extraClass ? ' ' + extraClass : '');
+            var k = document.createElement('span');
+            k.className = 'brikpanel-dash-bd-k';
+            k.textContent = label;
+            var v = document.createElement('span');
+            v.className = 'brikpanel-dash-bd-v';
+            v.innerHTML = valueHtml;
+            r.appendChild(k);
+            r.appendChild(v);
+            box.appendChild(r);
+        }
+
+        var infoRows = [];
+        items.forEach(function (b) {
+            if (b.type === 'info') {
+                infoRows.push(b); // rendered after the Net revenue total
+                return;
+            }
+            // Deductions get a leading minus so the arithmetic reads cleanly.
+            var sign = (b.type === 'deduct') ? '− ' : '';
+            row(b.label, sign + b.amount, b.type === 'deduct' ? 'brikpanel-dash-bd-row-deduct' : '');
+        });
+
+        // Net revenue total = the value on the card itself.
+        if (p.revenue) {
+            row(i18n.profit_net_revenue || 'Net revenue', p.revenue, 'brikpanel-dash-bd-row-total');
+        }
+
+        infoRows.forEach(function (b) {
+            row(b.label, b.amount, 'brikpanel-dash-bd-row-info');
+        });
+    }
+
+    // Wire a Revenue/Expenses "Breakdown ⌄" toggle once. Open/closed state is
+    // kept across data refreshes so a refresh never collapses what the user
+    // opened.
+    function wireBreakdownToggle(toggleId, cardId) {
+        var toggle = document.getElementById(toggleId);
+        var card   = document.getElementById(cardId);
         if (!toggle || !card) return;
 
         toggle.addEventListener('click', function () {
             var open = !card.classList.contains('is-bd-open');
             card.classList.toggle('is-bd-open', open);
             toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+    }
+
+    function initProfitBreakdownToggle() {
+        wireBreakdownToggle('profit-bd-toggle', 'profit-expenses-card');
+        wireBreakdownToggle('profit-rev-bd-toggle', 'profit-revenue-card');
+    }
+
+    // =========================================================================
+    // ADD EXPENSE (quick modal on the Profit > Expenses card)
+    // =========================================================================
+
+    function initAddExpense() {
+        var openBtn = document.getElementById('profit-exp-add');
+        var modal   = document.getElementById('brikpanel-exp-modal');
+        if (!openBtn || !modal) return; // Expenses field hidden → no quick-add
+
+        var saveBtn   = document.getElementById('brikpanel-exp-save');
+        var amountEl  = document.getElementById('brikpanel-exp-amount');
+        var catEl     = document.getElementById('brikpanel-exp-category');
+        var dateEl    = document.getElementById('brikpanel-exp-date');
+        var recEl     = document.getElementById('brikpanel-exp-recurring');
+        var descEl    = document.getElementById('brikpanel-exp-desc');
+        var hintEl    = document.getElementById('brikpanel-exp-recurring-hint');
+        var msgEl     = document.getElementById('brikpanel-exp-msg');
+        var kindEl    = document.getElementById('brikpanel-exp-kind');
+        var prefixEl  = document.getElementById('brikpanel-exp-prefix');
+        var suffixEl  = document.getElementById('brikpanel-exp-suffix');
+        var recField  = document.getElementById('brikpanel-exp-recurring-field');
+        var row2El    = document.getElementById('brikpanel-exp-row2');
+        var pctHintEl = document.getElementById('brikpanel-exp-percent-hint');
+        var cfg       = (CFG.expenses || {});
+        var saving    = false;
+
+        function isPercent() { return kindEl && kindEl.value === 'percent'; }
+
+        function showMsg(text, isError) {
+            if (!msgEl) return;
+            msgEl.textContent = text;
+            msgEl.className = 'brikpanel-exp-msg' + (isError ? ' is-error' : ' is-ok');
+            msgEl.hidden = false;
+        }
+        function clearMsg() { if (msgEl) { msgEl.hidden = true; msgEl.textContent = ''; } }
+
+        function openModal() {
+            clearMsg();
+            modal.hidden = false;
+            document.body.classList.add('brikpanel-exp-modal-open');
+            // Focus the amount field for fast entry.
+            setTimeout(function () { if (amountEl) amountEl.focus(); }, 30);
+        }
+        function closeModal() {
+            modal.hidden = true;
+            document.body.classList.remove('brikpanel-exp-modal-open');
+        }
+
+        openBtn.addEventListener('click', openModal);
+
+        modal.addEventListener('click', function (e) {
+            if (e.target.closest('[data-exp-close]')) { e.preventDefault(); closeModal(); }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !modal.hidden) closeModal();
+        });
+
+        // Reveal the "counts every period" hint only for repeating expenses.
+        function syncHint() {
+            if (hintEl) hintEl.hidden = isPercent() || !recEl || recEl.value === 'none';
+        }
+        if (recEl) recEl.addEventListener('change', syncHint);
+
+        // A percentage cost is a rate of revenue, always on. Show "%" instead of
+        // the currency and drop BOTH the Date and Repeats row: a percentage has
+        // no meaningful single date and applies every period by nature. A short
+        // hint explains the behaviour. Fixed amounts get the normal money input
+        // plus the date/repeat controls.
+        function syncType() {
+            var pct = isPercent();
+            if (prefixEl) prefixEl.hidden = pct;
+            if (suffixEl) suffixEl.hidden = !pct;
+            if (row2El) row2El.hidden = pct;          // hides Date + Repeats together
+            if (recField) recField.hidden = false;    // restored for the fixed case
+            if (pctHintEl) pctHintEl.hidden = !pct;
+            if (amountEl) amountEl.max = pct ? '100' : '';
+            syncHint();
+        }
+        if (kindEl) kindEl.addEventListener('change', syncType);
+        syncType();
+
+        function save() {
+            if (saving) return;
+            var amount = amountEl ? parseFloat(amountEl.value) : NaN;
+            var category = catEl ? catEl.value.trim() : '';
+            var pct = isPercent();
+            if (!(amount >= 0) || isNaN(amount) || category === '' || (pct && amount > 100)) {
+                showMsg(i18n.exp_required || 'Enter an amount and a category.', true);
+                return;
+            }
+            saving = true;
+            saveBtn.disabled = true;
+            var original = saveBtn.textContent;
+            saveBtn.textContent = i18n.exp_saving || 'Saving…';
+            clearMsg();
+
+            var fd = new FormData();
+            fd.append('action', cfg.action || 'brikpanel_expenses_save');
+            fd.append('_ajax_nonce', cfg.nonce || '');
+            fd.append('id', '0');
+            fd.append('kind', pct ? 'percent' : 'fixed');
+            fd.append('amount', String(amount));
+            fd.append('category', category);
+            fd.append('expense_date', dateEl ? dateEl.value : '');
+            fd.append('recurring', (pct || !recEl) ? 'none' : recEl.value);
+            fd.append('description', descEl ? descEl.value : '');
+
+            fetch(CFG.ajax_url, { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    saving = false;
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = original;
+                    if (j && j.success) {
+                        closeModal();
+                        // Reset for next time.
+                        if (amountEl) amountEl.value = '';
+                        if (catEl) catEl.value = '';
+                        if (descEl) descEl.value = '';
+                        if (recEl) recEl.value = 'none';
+                        if (kindEl) kindEl.value = 'fixed';
+                        syncType();
+                        // The save busted the dashboard cache server-side, so a
+                        // refetch returns figures that already include this expense.
+                        fetchDashboardData();
+                    } else {
+                        showMsg((j && j.data && j.data.message) || i18n.exp_error || 'Could not save.', true);
+                    }
+                })
+                .catch(function () {
+                    saving = false;
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = original;
+                    showMsg(i18n.exp_error || 'Could not save.', true);
+                });
+        }
+
+        if (saveBtn) saveBtn.addEventListener('click', save);
+        // Enter in the amount/category field submits.
+        [amountEl, catEl, descEl].forEach(function (el) {
+            if (!el) return;
+            el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
         });
     }
 

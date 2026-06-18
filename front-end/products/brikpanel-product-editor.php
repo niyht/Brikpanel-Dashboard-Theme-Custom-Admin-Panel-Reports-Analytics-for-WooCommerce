@@ -1552,7 +1552,7 @@ class Brikpanel_Product_Editor {
                         </label>
                     </div>
                     <p class="brikpanel-pe-help-text">
-                        <?php if ($unified_analyzer !== null) :
+                        <?php if ($unified_analyzer !== null && $unified_analyzer['slug'] !== 'seopress') :
                             /* translators: %s: active SEO plugin name (SureRank or SmartCrawl) */
                             printf(esc_html__('These fields are saved to %s, plus Yoast SEO, Rank Math, All in One SEO and SEOPress, so switching SEO plugins never loses your work.', 'brikpanel'), esc_html($unified_analyzer['label']));
                         else : ?>
@@ -1908,26 +1908,81 @@ class Brikpanel_Product_Editor {
                 'metabox_ids' => ['aioseo-settings'],
             ];
         } elseif (defined('SEOPRESS_VERSION') || function_exists('seopress_get_service')) {
-            $detected = [
-                'slug'        => 'seopress',
-                'label'       => __('SEOPress', 'brikpanel'),
-                'metabox_ids' => ['seopress_cpt', 'seopress_content_analysis'],
-            ];
+            // SEOPress 9.9+ replaced its classic `seopress_cpt` metabox with a
+            // React "universal metabox" that only renders inside post.php via
+            // its own JS bundle and saves over REST. Inside the BrikPanel
+            // editor it registers nothing but an empty mount node
+            // (`seopress_metabox_opener`), so the inline-metabox path would
+            // show "did not register its SEO fields" with no editable inputs.
+            // In that mode route SEOPress through BrikPanel's unified SEO
+            // fields instead (see get_unified_seo_analyzer()); only the legacy
+            // classic metabox is still rendered inline.
+            if (!self::seopress_uses_universal_metabox()) {
+                $detected = [
+                    'slug'        => 'seopress',
+                    'label'       => __('SEOPress', 'brikpanel'),
+                    'metabox_ids' => ['seopress_cpt', 'seopress_content_analysis'],
+                ];
+            }
         }
 
         return apply_filters('brikpanel_pe_active_seo_plugin', $detected);
     }
 
     /**
+     * Whether SEOPress is active in its modern "universal metabox" mode — the
+     * React SEO panel introduced in 9.9 that mounts only on the native
+     * post.php editor and saves over REST. In that mode SEOPress does NOT
+     * register the legacy inline `seopress_cpt` metabox (it registers an empty
+     * `seopress_metabox_opener` mount node instead), so BrikPanel cannot render
+     * it inside its own SEO card and routes SEOPress through the unified SEO
+     * fields instead. Returns false for pre-9.9 SEOPress (classic metabox
+     * renders inline fine) and when SEOPress isn't active at all.
+     *
+     * @return bool
+     */
+    public static function seopress_uses_universal_metabox() {
+        if (!defined('SEOPRESS_VERSION') && !function_exists('seopress_get_service')) {
+            return false;
+        }
+        // The universal metabox arrived in 9.9 with this class; before that the
+        // classic metabox is the only one, and it renders inline correctly.
+        if (!class_exists('SEOPress\\Actions\\Admin\\ModuleMetabox')) {
+            return false;
+        }
+        // SEOPress only falls back to the classic `seopress_cpt` metabox when
+        // EnqueueModuleMetabox::canEnqueue() is false; otherwise it ships the
+        // React mount node we can't render inline. Mirror that exact switch.
+        try {
+            if (function_exists('seopress_get_service')) {
+                $svc = seopress_get_service('EnqueueModuleMetabox');
+                if (is_object($svc) && method_exists($svc, 'canEnqueue')) {
+                    return (bool) $svc->canEnqueue();
+                }
+            }
+        } catch (\Throwable $e) {
+            // Service unavailable — fall through to the version default below.
+        }
+        // 9.9+ is present but its state can't be probed: the universal metabox
+        // is the default, and the unified-fields path reads/writes the same
+        // `_seopress_*` meta keys, so assuming universal is always data-safe.
+        return true;
+    }
+
+    /**
      * Detect a SEO plugin whose editor UI cannot be rendered inline (it lives
      * in a React popup / JS-mounted container), so BrikPanel routes it through
-     * its own unified SEO fields and renders a native-equivalent analysis
-     * panel instead. Currently SureRank and SmartCrawl (WPMU DEV SEO).
+     * its own unified SEO fields. Currently SureRank, SEOPress (9.9+ universal
+     * metabox mode) and SmartCrawl (WPMU DEV SEO). SureRank and SmartCrawl
+     * also get a native-equivalent analysis panel; SEOPress's content analysis
+     * is a separate React/REST surface, so it shows the fields only.
      *
      * Only meaningful when get_active_seo_plugin() returned null — if one of
-     * the four inline-metabox plugins is active it owns the SEO card and these
-     * are not consulted. When both are somehow active, SureRank wins (it is
-     * the stricter source of truth for the unified fields' read path).
+     * the inline-metabox plugins is active it owns the SEO card and these are
+     * not consulted. When several are somehow active, precedence is
+     * SureRank → SEOPress → SmartCrawl (this must match the read-path order in
+     * get_product_data() so the badge, the source-of-truth meta and the help
+     * text all agree).
      *
      * @return array{slug:string,label:string}|null
      */
@@ -1935,6 +1990,8 @@ class Brikpanel_Product_Editor {
         $detected = null;
         if (defined('SURERANK_VERSION')) {
             $detected = ['slug' => 'surerank', 'label' => __('SureRank', 'brikpanel')];
+        } elseif (self::seopress_uses_universal_metabox()) {
+            $detected = ['slug' => 'seopress', 'label' => __('SEOPress', 'brikpanel')];
         } elseif (defined('SMARTCRAWL_VERSION')) {
             $detected = ['slug' => 'smartcrawl', 'label' => __('SmartCrawl', 'brikpanel')];
         }
@@ -1959,9 +2016,15 @@ class Brikpanel_Product_Editor {
         if ($analyzer['slug'] === 'smartcrawl') {
             return self::render_smartcrawl_analysis($pid, $overrides);
         }
-        // SureRank: its analyzer reads live values through its own filters,
-        // wired up in ajax_seo_analyze(); the initial render needs no overrides.
-        return self::render_surerank_analysis($pid);
+        if ($analyzer['slug'] === 'surerank') {
+            // SureRank reads live values through its own filters, wired up in
+            // ajax_seo_analyze(); the initial render needs no overrides.
+            return self::render_surerank_analysis($pid);
+        }
+        // SEOPress (universal metabox): routed through the unified fields, but
+        // its content analysis is a separate React/REST surface we can't render
+        // inline — show the fields only, no analysis panel.
+        return '';
     }
 
     /**
@@ -3787,7 +3850,23 @@ class Brikpanel_Product_Editor {
         // plugin left behind can't shadow it. Focus keywords are stored
         // comma-separated; show the primary (first) one. (See the matching
         // precedence in get_unified_seo_analyzer().)
-        $smartcrawl_active = !$surerank_active && defined('SMARTCRAWL_VERSION');
+        // SEOPress 9.9+ "universal metabox" mode: like SureRank/SmartCrawl its
+        // editor is a React surface with no inline-renderable metabox, so
+        // BrikPanel surfaces it through the unified fields and treats its
+        // `_seopress_*` meta as the source of truth — read it exclusively so
+        // stale meta a previously used plugin left behind can't shadow it.
+        // Precedence below SureRank, above SmartCrawl, matching the order in
+        // get_unified_seo_analyzer().
+        $seopress_unified_active = !$surerank_active && self::seopress_uses_universal_metabox();
+        if ($seopress_unified_active) {
+            $seo_title     = (string) get_post_meta($pid, '_seopress_titles_title', true);
+            $seo_desc      = (string) get_post_meta($pid, '_seopress_titles_desc', true);
+            $seo_focus_kw  = (string) get_post_meta($pid, '_seopress_analysis_target_kw', true);
+            $seo_canonical = (string) get_post_meta($pid, '_seopress_robots_canonical', true);
+            $seo_noindex   = ((string) get_post_meta($pid, '_seopress_robots_index', true) === 'yes');
+        }
+
+        $smartcrawl_active = !$surerank_active && !$seopress_unified_active && defined('SMARTCRAWL_VERSION');
         if ($smartcrawl_active) {
             $seo_title     = (string) get_post_meta($pid, '_wds_title', true);
             $seo_desc      = (string) get_post_meta($pid, '_wds_metadesc', true);
@@ -3798,7 +3877,7 @@ class Brikpanel_Product_Editor {
             $seo_noindex   = (bool) get_post_meta($pid, '_wds_meta-robots-noindex', true);
         }
 
-        $unified_owns_seo = $surerank_active || $smartcrawl_active;
+        $unified_owns_seo = $surerank_active || $seopress_unified_active || $smartcrawl_active;
 
         if (!$unified_owns_seo) foreach ($seo_sources as $src) {
             if ($seo_title === '')     $seo_title     = (string) get_post_meta($pid, $src['title'], true);
