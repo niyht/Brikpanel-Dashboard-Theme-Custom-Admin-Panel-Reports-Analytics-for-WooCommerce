@@ -149,6 +149,11 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     align-items: center;
     gap: 0.75rem;
     min-width: 0;
+    /* Shrink (and clip) the brand side before the icon cluster does, so the
+       brand never spills across the gap and overlaps the search button on
+       narrow screens. The icon cluster is flex-shrink:0 (see -right). */
+    flex: 0 1 auto;
+    overflow: hidden;
 }
 
 .brikpanel-topbar-brand {
@@ -260,6 +265,9 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    /* Never squeeze the action icons — they stay a fixed cluster and the brand
+       side yields instead (see -left). Keeps every icon a full tap target. */
+    flex-shrink: 0;
 }
 
 .brikpanel-topbar-search-btn {
@@ -867,31 +875,17 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
     .brikpanel-topbar-live-pill { display: none; }
 }
 
-/* ===== Mobile (matches WP's auto-fold breakpoint) ===== */
-@media (max-width: 782px) {
-    /* Hide WP's "Screen Options" and "Help" toggles on small screens — they
-       open desktop-sized panels that don't fit a phone, and the icons just
-       eat horizontal space below the topbar. */
-    body.brikpanel-has-topbar #screen-meta-links,
-    body.brikpanel-has-topbar #screen-meta {
-        display: none !important;
-    }
-
-    /* Show the hamburger; hide non-essential brand text. */
+/* ===== Sidebar access (matches WP's REAL auto-fold breakpoint, 960px) =====
+   WordPress collapses the admin sidebar at <=960px, and BrikPanel hides the
+   resulting icon-only menu (navigation.css) in favour of an off-canvas sheet.
+   That reveal — the hamburger + the sliding sidebar — must therefore cover the
+   whole <=960px range, NOT just phones. Keying it to 782px left a dead zone at
+   783–960px (tablets, small laptop windows) where the sidebar was hidden AND no
+   hamburger existed, so the menu was unreachable. The heavier phone-only topbar
+   compaction stays at <=782px below. */
+@media (max-width: 960px) {
+    /* Show the hamburger so the collapsed sidebar stays reachable. */
     .brikpanel-topbar-menu-btn { display: inline-flex; }
-    .brikpanel-topbar-brand-sub { display: none; }
-    .brikpanel-topbar-brand-name { max-width: 130px; }
-    .brikpanel-topbar-user-name { display: none; }
-    .brikpanel-topbar-btn-label { display: none; }
-    .brikpanel-topbar-btn { padding: 0.5rem 0.625rem; }
-
-    /* Hide the create button entirely on phones — quick-create lives in the
-       user menu / hamburger flow instead, freeing space for icon buttons. */
-    .brikpanel-topbar-menu[data-topbar-menu="create"] { display: none; }
-
-    /* Tighter inner padding to fit the icon-row. */
-    .brikpanel-topbar-inner { padding: 0 0.5rem; gap: 0.5rem; }
-    .brikpanel-topbar-right { gap: 0.25rem; }
 
     /* Pin the sidebar off-canvas; reveal on `body.brikpanel-mobile-nav-open`. */
     body.brikpanel-has-topbar #adminmenuback,
@@ -907,9 +901,65 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
     body.brikpanel-mobile-nav-open #adminmenuwrap {
         transform: translateX(0);
     }
-    /* Content area gets full width on mobile (sidebar floats over it). */
+    /* Content area gets full width (the sidebar floats over it). */
     body.brikpanel-has-topbar #wpcontent { margin-left: 0 !important; }
     body.brikpanel-has-topbar #wpfooter { margin-left: 0 !important; }
+
+    /* Classic / native WP menu modes: the desktop rules above force
+       #adminmenuwrap to position:relative + float:left so the native menu
+       scrolls with the page on the desktop sidebar. Inside the off-canvas
+       sheet that collapses the wrap to 0px height — its only in-flow child,
+       #adminmenu, is absolutely positioned — so the slide-in box has no body
+       and cannot scroll, and only #adminmenuback paints the light strip.
+       Restore a real sheet: a fixed, full-height, scrollable wrap. #adminmenu
+       is laid out statically to fill it in brikpanel-navigation.css. */
+    body.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap,
+    body.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap {
+        position: fixed;
+        float: none;
+        top: var(--bp-topbar-height);
+        bottom: 0;
+        left: 0;
+        height: auto;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+    body.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap::-webkit-scrollbar,
+    body.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap::-webkit-scrollbar {
+        width: 6px;
+    }
+    body.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap::-webkit-scrollbar-thumb,
+    body.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.18);
+        border-radius: 3px;
+    }
+}
+
+/* ===== Phone-only compaction ===== */
+@media (max-width: 782px) {
+    /* Hide WP's "Screen Options" and "Help" toggles on small screens — they
+       open desktop-sized panels that don't fit a phone, and the icons just
+       eat horizontal space below the topbar. */
+    body.brikpanel-has-topbar #screen-meta-links,
+    body.brikpanel-has-topbar #screen-meta {
+        display: none !important;
+    }
+
+    /* Hide non-essential brand text. */
+    .brikpanel-topbar-brand-sub { display: none; }
+    .brikpanel-topbar-brand-name { max-width: 130px; }
+    .brikpanel-topbar-user-name { display: none; }
+    .brikpanel-topbar-btn-label { display: none; }
+    .brikpanel-topbar-btn { padding: 0.5rem 0.625rem; }
+
+    /* Hide the create button entirely on phones — quick-create lives in the
+       user menu / hamburger flow instead, freeing space for icon buttons. */
+    .brikpanel-topbar-menu[data-topbar-menu="create"] { display: none; }
+
+    /* Tighter inner padding to fit the icon-row. */
+    .brikpanel-topbar-inner { padding: 0 0.5rem; gap: 0.5rem; }
+    .brikpanel-topbar-right { gap: 0.25rem; }
 
     /* Dropdowns become full-width sheets anchored under the topbar. */
     .brikpanel-topbar-dropdown,
@@ -929,11 +979,41 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
     .brikpanel-fn-panel { width: auto; }
 }
 
+/* Phones: the right-hand action cluster (search + notifications + master
+   switch + user) is a fixed ~290px and, with the hamburger and brand, no
+   longer leaves room for the store name — it spilled across the gap and the
+   logo/name overlapped the search button. Drop to a logo-only brand here; the
+   mark still links home and the name reappears on wider screens. */
+@media (max-width: 600px) {
+    .brikpanel-topbar-brand-text { display: none; }
+
+    /* Compact the action cluster so all seven controls (search, notifications,
+       notices, BrikControl, master switch, store link, user) plus the logo and
+       hamburger fit a phone without overlapping. Slightly smaller hit targets
+       and no user caret claw back ~30px, which is the difference between fitting
+       and the logo sliding under the search button. */
+    .brikpanel-topbar-icon-btn,
+    .brikpanel-topbar-user-btn,
+    .brikpanel-topbar-search-btn {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+    }
+    /* The search button is a label+shortcut row on desktop (justify-content
+       defaults to flex-start); collapsed to an icon on phones it must centre
+       like the other icon buttons, otherwise the magnifier sits flush-left and
+       looks misaligned next to the bells. Match its glyph size too (18px). */
+    .brikpanel-topbar-search-btn { justify-content: center; }
+    .brikpanel-topbar-icon-btn svg,
+    .brikpanel-topbar-search-btn svg { width: 18px; height: 18px; }
+    .brikpanel-topbar-user-btn img { width: 24px; height: 24px; }
+    .brikpanel-topbar-user-caret { display: none; }
+}
+
 /* Very small phones: keep the hamburger a comfortable tap target; the icon
    buttons already match the compact 32px desktop size. */
 @media (max-width: 380px) {
     .brikpanel-topbar-menu-btn { width: 36px; height: 36px; }
     .brikpanel-topbar-icon-btn svg { width: 18px; height: 18px; }
     .brikpanel-topbar-brand-mark { width: 28px; height: 28px; }
-    .brikpanel-topbar-brand-text { display: none; }
 }

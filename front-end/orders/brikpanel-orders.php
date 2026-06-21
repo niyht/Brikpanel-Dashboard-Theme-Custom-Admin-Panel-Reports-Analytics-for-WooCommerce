@@ -316,8 +316,6 @@ function brikpanel_settings_fields() {
         $dashboard_widget_options[ $widget_id ] = $widget['title'];
     }
 
-    $product_metabox_options = brikpanel_collect_product_metaboxes();
-
     // Every registered order status (core + custom statuses added by
     // shipment-tracking / returns plugins), keyed exactly as WooCommerce
     // stores them ('wc-…'), so the merchant can map them into the
@@ -414,24 +412,14 @@ function brikpanel_settings_fields() {
             'name'     => __('Visible editor sections', 'brikpanel'),
             'id'       => 'brikpanel_pe_visible_sections_field',
             'type'     => 'brikpanel_section_order',
-            'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder — the product editor renders sections in the order shown here.', 'brikpanel'),
+            'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder — the product editor renders sections in the order shown here. Metaboxes registered by other plugins (Yoast SEO, Rank Math, All in One SEO, SEOPress, custom post types, etc.) appear in this list automatically, tagged "Plugin" — enable and position any you want to edit right inside the BrikPanel editor.', 'brikpanel'),
         ],
         [
             'name'    => __('Auto-include ACF field groups', 'brikpanel'),
             'id'      => 'brikpanel_pe_acf_auto',
             'type'    => 'checkbox',
-            'desc'    => __('Automatically render Advanced Custom Fields field groups whose Location Rules target products. When off, ACF field groups only appear if added below.', 'brikpanel'),
+            'desc'    => __('Automatically render Advanced Custom Fields field groups whose Location Rules target products. When off, ACF field groups are hidden from the editor.', 'brikpanel'),
             'default' => 'yes',
-        ],
-        [
-            'name'     => __('Third-party plugin metaboxes', 'brikpanel'),
-            'id'       => 'brikpanel_pe_selected_metaboxes',
-            'type'     => 'multiselect',
-            'class'    => 'wc-enhanced-select',
-            'desc'     => __('Pick individual metaboxes registered by other plugins (Yoast SEO, Rank Math, All in One SEO, SEOPress, custom post types, etc.) to bring into the BrikPanel product editor. Only the ones selected here will render. ACF field groups are handled automatically by the setting above and do not need to be picked here.', 'brikpanel'),
-            'desc_tip' => true,
-            'options'  => $product_metabox_options,
-            'default'  => [],
         ],
         [
             'name'     => __('Additional product data sections', 'brikpanel'),
@@ -1936,6 +1924,11 @@ add_action( 'admin_head', function () {
            the cards, and the save bar drops its desktop left offset. */
         #mainform .brikpanel-settings-layout {
             flex-direction: column;
+            /* Stretch (not the desktop flex-start) so each stacked child fills
+               the column width. With flex-start a child sized to its own
+               content width — a wide editor (e.g. the nav customizer) then grew
+               the column past the viewport and the page scrolled sideways. */
+            align-items: stretch;
             gap: 1rem;
         }
         #mainform .brikpanel-settings-sidebar {

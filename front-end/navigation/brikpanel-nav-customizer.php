@@ -614,59 +614,22 @@ function brikpanel_nav_customizer_apply_default_reorder( &$menu ) {
 		return array_values( $arr );
 	};
 
-	// Mirrors the moves applied by brikpanel_get_navigation_items() so the
-	// customizer's snapshot reflects what users actually see in the sidebar.
+	// Mirrors — in the SAME ORDER — every move applied by
+	// brikpanel_get_navigation_items() so the customizer's snapshot reflects what
+	// users actually see in the sidebar. Any move that exists here but not there
+	// (or vice versa) makes saving an unmodified config silently re-order the
+	// sidebar, because the saved order then diverges from the live default.
+	$menu = $move_after( $menu, 'edit.php?post_type=product', 'woocommerce' );
 	$menu = $move_after( $menu, 'woocommerce-more', 'woocommerce-marketing' );
 	$menu = $move_after( $menu, 'admin.php?page=wc-settings', 'woocommerce-marketing' );
 	$menu = $move_after( $menu, 'admin.php?page=wc-settings&tab=checkout', 'edit.php?post_type=product' );
 	$menu = $move_after( $menu, 'wf_woocommerce_packing_list', 'edit.php?post_type=product' );
 	$menu = $move_after( $menu, 'brikpanel-segments', 'edit.php?post_type=product' );
 	$menu = $move_after( $menu, 'brikpanel-customer-analytics', 'brikpanel-segments' );
-}
-
-/**
- * Heuristic: classify a slug as belonging to the "store" section by default.
- * Anything WooCommerce, BrikPanel, BrikMarket, or product-related goes on top.
- *
- * @param string $slug
- * @return bool
- */
-function brikpanel_nav_customizer_is_store_slug( $slug ) {
-	$store_slugs = [
-		'index.php',
-		'woocommerce',
-		'woocommerce-more',
-		'brikmarket',
-		'edit.php?post_type=product',
-		'wc-admin&path=/analytics/overview',
-		'wc-admin&path=/payments/overview',
-		'wc-admin&path=/payments/connect',
-		'wc-admin&path=/wc-pay-welcome-page',
-		'woocommerce-marketing',
-		'admin.php?page=wc-settings',
-		'brikpanel-segments',
-		'brikpanel-customer-analytics',
-		'brikpanel-expenses',
-		'brikpanel-coupons',
-	];
-	if ( in_array( $slug, $store_slugs, true ) ) {
-		return true;
-	}
-	if ( strpos( $slug, 'brikpanel-' ) === 0 ) {
-		return true;
-	}
-	if ( strpos( $slug, 'wc-admin' ) !== false ) {
-		return true;
-	}
-	if ( strpos( $slug, 'wc-' ) === 0 ) {
-		return true;
-	}
-	// Catch promoted WC submenu entries like "admin.php?page=wc-settings&tab=*"
-	// (WC Payments promo, etc.) — they're store-related by intent.
-	if ( strpos( $slug, 'admin.php?page=wc-' ) === 0 ) {
-		return true;
-	}
-	return false;
+	$menu = $move_after( $menu, 'brikpanel-google-sheets', 'brikpanel-customer-analytics' );
+	// Vendors is pinned AFTER the customizer in the renderer; mirror it last so
+	// the snapshot order matches the rendered sidebar's final position.
+	$menu = $move_after( $menu, 'brikpanel-vendors', 'edit.php?post_type=product' );
 }
 
 // =============================================================================
@@ -1041,16 +1004,37 @@ function brikpanel_render_nav_customizer_field( $value ) {
 		}
 	}
 
-	foreach ( $current_items as $ci ) {
+	// Determine the default section for unconfigured items POSITIONALLY, exactly
+	// the way the live renderer does it: the renderer walks $menu in order and
+	// opens the "Site management" group when it reaches the anchor slug
+	// ('edit.php' when no config is saved). Everything before the anchor renders
+	// in the store section, everything from the anchor on renders in site
+	// management. Using the same positional rule here (instead of a content
+	// heuristic) makes saving an unmodified config a true no-op — otherwise
+	// boundary items like Payments (registered below edit.php but heuristically
+	// "store") or Multi Currency (registered above edit.php but heuristically
+	// "site management") would be saved into the wrong section and silently
+	// re-order the sidebar on the next save. $current_items is already in render
+	// order (relocation + default reorder applied by collect_menu_items()).
+	$anchor_pos = null;
+	foreach ( $current_items as $idx => $ci ) {
+		if ( $ci['slug'] === 'edit.php' ) {
+			$anchor_pos = $idx;
+			break;
+		}
+	}
+
+	foreach ( $current_items as $idx => $ci ) {
 		if ( isset( $consumed[ $ci['slug'] ] ) ) {
 			continue;
 		}
+		$default_section = ( $anchor_pos !== null && $idx >= $anchor_pos ) ? 'site_management' : 'store';
 		$rows[] = [
 			'type'           => 'system',
 			'slug'           => $ci['slug'],
 			'title'          => $ci['title'],
 			'label_override' => '',
-			'section'        => brikpanel_nav_customizer_is_store_slug( $ci['slug'] ) ? 'store' : 'site_management',
+			'section'        => $default_section,
 			'hidden'         => false,
 			'audience'       => 'all',
 			'hide_roles'     => [],
@@ -1347,17 +1331,22 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 	if ( $tab !== 'brikpanel' ) {
 		return;
 	}
+	// filemtime version so edits to the asset (e.g. the mobile breakpoint)
+	// bust the browser cache immediately, even between releases — a static
+	// BRIKPANEL_VERSION would serve a stale copy until the next version bump.
+	$navc_css_ver = @filemtime( __DIR__ . '/brikpanel-nav-customizer.css' ) ?: BRIKPANEL_VERSION;
+	$navc_js_ver  = @filemtime( __DIR__ . '/brikpanel-nav-customizer.js' ) ?: BRIKPANEL_VERSION;
 	wp_enqueue_style(
 		'brikpanel-nav-customizer',
 		plugins_url( 'brikpanel-nav-customizer.css', __FILE__ ),
 		[],
-		BRIKPANEL_VERSION
+		$navc_css_ver
 	);
 	wp_enqueue_script(
 		'brikpanel-nav-customizer',
 		plugins_url( 'brikpanel-nav-customizer.js', __FILE__ ),
 		[ 'jquery', 'jquery-ui-sortable' ],
-		BRIKPANEL_VERSION,
+		$navc_js_ver,
 		true
 	);
 	wp_localize_script( 'brikpanel-nav-customizer', 'brikpanelNavCustomizer', [

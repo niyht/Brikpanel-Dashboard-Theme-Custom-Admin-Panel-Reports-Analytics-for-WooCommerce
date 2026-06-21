@@ -222,6 +222,10 @@
 .brikpanel-pe-editor a{color:#2563eb;text-decoration:underline}
 .brikpanel-pe-editor blockquote{margin:.5rem 0;padding:.25rem 0 .25rem .875rem;border-left:3px solid var(--pe-border);color:var(--pe-text-secondary)}
 .brikpanel-pe-editor code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85em;background:#f1f1f1;padding:.1em .35em;border-radius:3px}
+.brikpanel-pe-editor table{border-collapse:collapse;width:100%;margin:.625rem 0;font-size:.8125rem}
+.brikpanel-pe-editor table td,.brikpanel-pe-editor table th{border:1px solid var(--pe-border);padding:.375rem .5rem;text-align:left;vertical-align:top}
+.brikpanel-pe-editor table th{background:#fafafa;font-weight:600}
+.brikpanel-pe-editor table caption{padding:.25rem 0;font-size:.75rem;color:var(--pe-text-secondary);text-align:left}
 .brikpanel-pe-editor-source{display:block;width:100%;min-height:160px;padding:.75rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8125rem;line-height:1.5;color:var(--pe-text);background:#fafafa;border:1px solid var(--pe-input-border);border-radius:0 0 var(--pe-radius-sm) var(--pe-radius-sm);outline:none;resize:vertical;box-sizing:border-box;white-space:pre-wrap;transition:border-color .15s ease,box-shadow .15s ease}
 .brikpanel-pe-editor-source:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-editor-source[hidden]{display:none!important}
@@ -412,6 +416,49 @@
 .brikpanel-pe-wc-fields-content .panel,.brikpanel-pe-wc-fields-content .woocommerce_options_panel,.brikpanel-pe-wc-fields-content .brikpanel-pe-wc-panel{display:block!important;padding:0!important}
 /* Hidden WC-shaped tab-nav used only to fire lazy-load handlers (see capture_wc_product_data_fields). */
 .brikpanel-pe-wc-tabsim{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(1px,1px,1px,1px);margin:0!important;padding:0!important;border:0!important}
+
+/* ============================================================
+   Stray inline accents from 3rd-party plugins.
+   Some plugins wrap a field block in a div carrying an inline
+   coloured border-left accent — e.g. WooCommerce Multi Currency
+   uses `border-left:5px solid #f78080` around its per-currency
+   price inputs. It clashes with the flat BrikPanel card, so any
+   inline border-left/right accent inside third-party content is
+   neutralised. Inline styles are non-!important, so a single
+   !important here always wins.
+   ============================================================ */
+.brikpanel-pe-wc-fields-content [style*="border-left"],.brikpanel-pe-metabox-content [style*="border-left"],.brikpanel-pe-var-extras [style*="border-left"]{border-left:0!important;padding-left:0!important}
+.brikpanel-pe-wc-fields-content [style*="border-right"],.brikpanel-pe-metabox-content [style*="border-right"],.brikpanel-pe-var-extras [style*="border-right"]{border-right:0!important;padding-right:0!important}
+
+/* ============================================================
+   React/component builders that ship their own brand-coloured
+   styles (AcoWebs "Custom Product Addons" = wcpa_*, and similar).
+   The component class names carry a per-build hash suffix, so we
+   match on the stable prefix. Goal: re-tint every brand colour to
+   the BrikPanel palette and flatten the nested header/list boxes
+   so the whole thing reads as one clean section, not a plugin UI
+   bolted on.
+   ============================================================ */
+/* Re-tint all builder text to the BrikPanel palette (kills the #172a68 blue). */
+.brikpanel-pe-wc-fields-content [class*="wcpa_"],.brikpanel-pe-metabox-content [class*="wcpa_"]{color:var(--pe-text)!important}
+/* Help / description lines → muted, like every other helper text. */
+.brikpanel-pe-wc-fields-content [class*="wcpa_desc"],.brikpanel-pe-metabox-content [class*="wcpa_desc"]{color:var(--pe-text-muted)!important;font-size:.75rem!important;font-weight:400!important;margin:.25rem 0 .75rem!important}
+/* Builder headings (form title, list title) → BrikPanel label size/weight. */
+.brikpanel-pe-wc-fields-content [class*="wcpa_formTitle"],.brikpanel-pe-wc-fields-content [class*="wcpa_formListTitle"]{font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text)!important;margin:0!important;letter-spacing:0!important}
+/* The outer list box → single clean card border + radius. */
+.brikpanel-pe-wc-fields-content [class*="wcpa_formListBlock"]{border:1px solid var(--pe-border)!important;border-radius:var(--pe-radius-sm)!important;background:var(--pe-card)!important;overflow:hidden!important;box-shadow:none!important}
+/* Inner wraps must not double up borders/backgrounds. */
+.brikpanel-pe-wc-fields-content [class*="wcpa_formListWrap"]{border:0!important;background:transparent!important;box-shadow:none!important}
+/* The list header row (title + search) → neutral grey strip with a divider. */
+.brikpanel-pe-wc-fields-content [class*="wcpa_formTitleWrap"]{background:#f7f7f7!important;border-bottom:1px solid var(--pe-border)!important;border-radius:0!important;padding:.625rem .75rem!important;display:flex!important;align-items:center!important;gap:.625rem!important}
+/* Search box inside the header → BrikPanel input (beat the plugin's own rule). */
+.brikpanel-pe-wc-fields-content [class*="wcpa_formSearch"]{padding:0!important;background:transparent!important;border:0!important;flex:1!important}
+.brikpanel-pe-wc-fields-content [class*="wcpa_formSearch"] input{width:100%!important;padding:.5rem .625rem!important;font-size:.8125rem!important;border:1px solid var(--pe-input-border)!important;border-radius:.375rem!important;background:#fff!important;box-shadow:none!important;margin:0!important}
+/* List rows → consistent padding + readable text, hover affordance. */
+.brikpanel-pe-wc-fields-content [class*="wcpa_formList"] li{color:var(--pe-text)!important;font-size:.8125rem!important;padding:.5rem .75rem!important;margin:0!important;border-top:1px solid #f0f0f0!important;list-style:none!important;display:flex!important;align-items:center!important;gap:.5rem!important}
+.brikpanel-pe-wc-fields-content [class*="wcpa_formList"]>li:first-child{border-top:0!important}
+/* The top toolbar row (exclude toggle + Save) → tidy spacing, no brand chrome. */
+.brikpanel-pe-wc-fields-content [class*="wcpa_topSec"]{background:transparent!important;border:0!important;padding:0!important;margin:0 0 .75rem!important}
 
 /* ============================================================
    Third-party metabox chrome reset

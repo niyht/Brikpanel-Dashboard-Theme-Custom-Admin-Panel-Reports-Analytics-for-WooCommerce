@@ -128,6 +128,32 @@ function brikpanel_pe_section_default_visible() {
 }
 
 /**
+ * Third-party plugin metaboxes are folded into the very same picker as native
+ * sections, namespaced `mb:<metabox-id>` so they coexist in the order/visibility
+ * store without colliding with a native slug. This keeps the runtime resolvers
+ * cheap: a slug is recognised as a metabox by its prefix, so they never have to
+ * call the expensive metabox collector just to validate stored values.
+ *
+ * @param mixed $slug
+ * @return bool
+ */
+function brikpanel_pe_is_metabox_slug($slug) {
+    return is_string($slug) && strpos($slug, 'mb:') === 0;
+}
+
+/**
+ * A slug may be stored in the section order/visibility options when it is either
+ * a known native section or a namespaced third-party metabox slug.
+ *
+ * @param mixed    $slug
+ * @param string[] $known Native section slugs (array_keys of section options).
+ * @return bool
+ */
+function brikpanel_pe_is_valid_section_slug($slug, array $known) {
+    return (is_string($slug) && in_array($slug, $known, true)) || brikpanel_pe_is_metabox_slug($slug);
+}
+
+/**
  * Resolve the user's full section order, including hidden ones.
  *
  * Falls back to default order seeded from any legacy multiselect value, then
@@ -145,7 +171,7 @@ function brikpanel_pe_get_section_order() {
         $decoded = json_decode($stored, true);
         if (is_array($decoded)) {
             foreach ($decoded as $slug) {
-                if (is_string($slug) && in_array($slug, $known, true) && !in_array($slug, $order, true)) {
+                if (brikpanel_pe_is_valid_section_slug($slug, $known) && !in_array($slug, $order, true)) {
                     $order[] = $slug;
                 }
             }
@@ -158,7 +184,7 @@ function brikpanel_pe_get_section_order() {
         $legacy = get_option('brikpanel_pe_visible_sections');
         if (is_array($legacy)) {
             foreach ($legacy as $slug) {
-                if (is_string($slug) && in_array($slug, $known, true) && !in_array($slug, $order, true)) {
+                if (brikpanel_pe_is_valid_section_slug($slug, $known) && !in_array($slug, $order, true)) {
                     $order[] = $slug;
                 }
             }
@@ -186,7 +212,7 @@ function brikpanel_pe_get_visible_sections_ordered() {
     }
     $visible_set = [];
     foreach ($visible_raw as $slug) {
-        if (is_string($slug) && in_array($slug, $known, true)) {
+        if (brikpanel_pe_is_valid_section_slug($slug, $known)) {
             $visible_set[$slug] = true;
         }
     }
@@ -210,10 +236,45 @@ function brikpanel_pe_get_visible_sections_ordered() {
  * @param array $field The settings field definition.
  */
 function brikpanel_render_section_order_field($field) {
-    $options     = brikpanel_pe_section_options();
-    $order       = brikpanel_pe_get_section_order();
+    $options = brikpanel_pe_section_options();
+
+    // Fold third-party plugin metaboxes into the same picker. They are
+    // namespaced `mb:<id>` so they live alongside native section slugs in the
+    // saved order/visibility. ACF field groups (`acf-…`) are intentionally
+    // omitted here — the dedicated "Auto-include ACF field groups" toggle owns
+    // them. The collector is only ever called on this settings-page render, so
+    // the expensive screen spoof never touches the editor runtime path.
+    $metaboxes     = function_exists('brikpanel_collect_product_metaboxes')
+        ? brikpanel_collect_product_metaboxes()
+        : [];
+    $metabox_slugs = [];
+    foreach ($metaboxes as $mb_id => $mb_title) {
+        if (!is_string($mb_id) || $mb_id === '' || strpos($mb_id, 'acf-') === 0) {
+            continue;
+        }
+        $slug            = 'mb:' . $mb_id;
+        $options[$slug]  = $mb_title;
+        $metabox_slugs[] = $slug;
+    }
+
+    $order = brikpanel_pe_get_section_order();
+    // Surface freshly-detected metaboxes that are not in the saved order yet,
+    // parked at the end and hidden by default (see default-hidden below) so
+    // enabling the feature never dumps every plugin box into the editor.
+    foreach ($metabox_slugs as $slug) {
+        if (!in_array($slug, $order, true)) {
+            $order[] = $slug;
+        }
+    }
+
     $visible     = brikpanel_pe_get_visible_sections_ordered();
     $visible_set = array_flip($visible);
+
+    // Default order/hidden sets drive the "Reset to default" button. They must
+    // include the detected metaboxes (all hidden) so a reset returns the editor
+    // to its clean, native-only baseline.
+    $default_order  = array_merge(array_keys(brikpanel_pe_section_options()), $metabox_slugs);
+    $default_hidden = array_merge(array_values(brikpanel_pe_section_default_hidden()), $metabox_slugs);
 
     $title    = !empty($field['name']) ? esc_html($field['name']) : '';
     $tooltip  = !empty($field['desc_tip']) && !empty($field['desc']) ? wc_help_tip($field['desc']) : '';
@@ -225,19 +286,20 @@ function brikpanel_render_section_order_field($field) {
             <?php echo $tooltip; ?>
         </th>
         <td class="forminp">
-            <div class="brikpanel-section-order" id="brikpanel-section-order" data-default-order="<?php echo esc_attr(wp_json_encode(array_keys(brikpanel_pe_section_options()))); ?>" data-default-hidden="<?php echo esc_attr(wp_json_encode(array_values(brikpanel_pe_section_default_hidden()))); ?>">
+            <div class="brikpanel-section-order" id="brikpanel-section-order" data-default-order="<?php echo esc_attr(wp_json_encode($default_order)); ?>" data-default-hidden="<?php echo esc_attr(wp_json_encode($default_hidden)); ?>">
                 <?php if ($help !== '') : ?>
                     <p class="brikpanel-section-order-help"><?php echo esc_html($help); ?></p>
                 <?php endif; ?>
                 <ul class="brikpanel-section-order-list" role="list">
                     <?php foreach ($order as $slug) :
                         if (!isset($options[$slug])) continue;
-                        $is_visible = isset($visible_set[$slug]);
+                        $is_visible  = isset($visible_set[$slug]);
+                        $is_metabox  = brikpanel_pe_is_metabox_slug($slug);
                         ?>
-                        <li class="brikpanel-section-order-row<?php echo $is_visible ? '' : ' is-hidden-section'; ?>" data-slug="<?php echo esc_attr($slug); ?>">
+                        <li class="brikpanel-section-order-row<?php echo $is_visible ? '' : ' is-hidden-section'; ?><?php echo $is_metabox ? ' is-metabox-section' : ''; ?>" data-slug="<?php echo esc_attr($slug); ?>">
                             <label class="brikpanel-section-order-toggle">
                                 <input type="checkbox" class="brikpanel-section-order-checkbox" name="brikpanel_pe_section_visibility[]" value="<?php echo esc_attr($slug); ?>" <?php checked($is_visible); ?>>
-                                <span class="brikpanel-section-order-title"><?php echo esc_html($options[$slug]); ?></span>
+                                <span class="brikpanel-section-order-title"><?php echo esc_html($options[$slug]); ?><?php if ($is_metabox) : ?><span class="brikpanel-section-order-badge"><?php esc_html_e('Plugin', 'brikpanel'); ?></span><?php endif; ?></span>
                             </label>
                             <div class="brikpanel-section-order-actions">
                                 <button type="button" class="brikpanel-section-order-btn brikpanel-section-order-up" aria-label="<?php esc_attr_e('Move up', 'brikpanel'); ?>" title="<?php esc_attr_e('Move up', 'brikpanel'); ?>">
@@ -326,6 +388,22 @@ function brikpanel_render_section_order_field($field) {
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
+            }
+            .brikpanel-section-order-badge {
+                display: inline-block;
+                margin-left: .5rem;
+                padding: .0625rem .375rem;
+                background: #f1f1f1;
+                color: #616161;
+                border: 1px solid #e3e3e3;
+                border-radius: .25rem;
+                font-size: .6875rem;
+                font-weight: 550;
+                line-height: 1.4;
+                vertical-align: middle;
+            }
+            .brikpanel-section-order-row.is-hidden-section .brikpanel-section-order-badge {
+                opacity: .6;
             }
             .brikpanel-section-order-actions {
                 display: flex;
@@ -498,7 +576,7 @@ add_action('woocommerce_update_options_brikpanel', function () {
     }
     $order = [];
     foreach ($decoded as $slug) {
-        if (is_string($slug) && in_array($slug, $known, true) && !in_array($slug, $order, true)) {
+        if (brikpanel_pe_is_valid_section_slug($slug, $known) && !in_array($slug, $order, true)) {
             $order[] = $slug;
         }
     }
@@ -514,7 +592,7 @@ add_action('woocommerce_update_options_brikpanel', function () {
         : [];
     $visible_set = [];
     foreach ($visibility_raw as $slug) {
-        if (is_string($slug) && in_array($slug, $known, true)) {
+        if (brikpanel_pe_is_valid_section_slug($slug, $known)) {
             $visible_set[$slug] = true;
         }
     }
@@ -586,4 +664,86 @@ add_action('admin_init', function () {
         }
         update_option($flag, 'yes', false);
     }
+});
+
+// =============================================================================
+// ONE-TIME MIGRATION: fold the legacy "Third-party plugin metaboxes"
+// multiselect into the unified picker
+// =============================================================================
+
+/**
+ * The standalone "Third-party plugin metaboxes" setting (option
+ * `brikpanel_pe_selected_metaboxes`) has been merged into the "Visible editor
+ * sections" picker: every picked metabox now lives there as a `mb:<id>` slug,
+ * visible and interleaved with native sections. This migration carries an
+ * upgrading user's previous selection across verbatim so nobody loses the boxes
+ * they had configured. ACF field groups are skipped — they ride the dedicated
+ * "Auto-include ACF field groups" toggle, never the manual list.
+ *
+ * Runs once, guarded by a flag. The legacy option is left untouched (read by
+ * nothing after this ships) so a downgrade still finds its data intact.
+ */
+add_action('admin_init', function () {
+    if (get_option('brikpanel_pe_metaboxes_merged') === 'yes') {
+        return;
+    }
+    if (!current_user_can('manage_woocommerce')) {
+        return;
+    }
+
+    $selected = get_option('brikpanel_pe_selected_metaboxes');
+    // Nothing to migrate on a brand-new install (option never written). Flag it
+    // done so freshly-detected metaboxes default to hidden, not auto-enabled.
+    if ($selected === false) {
+        update_option('brikpanel_pe_metaboxes_merged', 'yes', false);
+        return;
+    }
+    $selected = is_array($selected) ? $selected : [];
+
+    $mb_slugs = [];
+    foreach ($selected as $id) {
+        if (!is_string($id) || $id === '' || strpos($id, 'acf-') === 0) {
+            continue;
+        }
+        $slug = 'mb:' . $id;
+        if (!in_array($slug, $mb_slugs, true)) {
+            $mb_slugs[] = $slug;
+        }
+    }
+
+    if (!empty($mb_slugs)) {
+        // Visibility — append (as visible) any not already present.
+        $visible = get_option('brikpanel_pe_visible_sections');
+        if (!is_array($visible)) {
+            $visible = brikpanel_pe_section_default_visible();
+        }
+        foreach ($mb_slugs as $slug) {
+            if (!in_array($slug, $visible, true)) {
+                $visible[] = $slug;
+            }
+        }
+        update_option('brikpanel_pe_visible_sections', array_values($visible), false);
+
+        // Order — append after the native sections (end of the list), matching
+        // where the boxes rendered before (below every native section).
+        $order_raw = get_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, '');
+        $order     = [];
+        if (is_string($order_raw) && $order_raw !== '') {
+            $decoded = json_decode($order_raw, true);
+            if (is_array($decoded)) {
+                $order = $decoded;
+            }
+        }
+        if (empty($order)) {
+            $order = brikpanel_pe_get_section_order();
+        }
+        foreach ($mb_slugs as $slug) {
+            if (!in_array($slug, $order, true)) {
+                $order[] = $slug;
+            }
+        }
+        update_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, wp_json_encode(array_values($order)), false);
+    }
+
+    update_option('brikpanel_pe_metaboxes_merged', 'yes', false);
 });

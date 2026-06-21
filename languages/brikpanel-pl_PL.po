@@ -2700,8 +2700,8 @@ msgid "Marketplace analytics (BrikMarket)"
 msgstr "Analityka marketplace (BrikMarket)"
 
 #: front-end/dashboard/brikpanel-dashboard.php:328
-msgid "— With Marketplace"
-msgstr "— Z marketplace"
+msgid "With Marketplace"
+msgstr "Z marketplace"
 
 #: front-end/dashboard/brikpanel-dashboard.php:337
 #: front-end/dashboard/brikpanel-dashboard.php:348

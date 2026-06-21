@@ -39,7 +39,7 @@ class Brikpanel_Product_Editor {
         // the native post-edit screen. Each plugin has its own gatekeeper:
         //  - Yoast SEO:  `wpseo_always_register_metaboxes_on_admin` filter
         //  - Rank Math:  relies on `get_current_screen()->id === 'product'`,
-        //                handled by the screen spoof inside render_third_party_metaboxes()
+        //                handled by the screen spoof inside build_third_party_metabox_cards()
         //  - AIOSEO:     hooks into `add_meta_boxes_{post_type}` — works natively
         //  - SEOPress:   `seopress_metabox_seo_post_types` / screen check
         // This runs before any plugin can evaluate its own conditions because
@@ -1478,7 +1478,16 @@ class Brikpanel_Product_Editor {
                     // in the "Additional fields" settings; in that case we
                     // skip the SEO card entirely to avoid rendering twice.
                     $active_seo = self::get_active_seo_plugin();
-                    $manual_seo_ids = (array) get_option('brikpanel_pe_selected_metaboxes', []);
+                    // The metabox picker now lives inside the "Visible editor
+                    // sections" list as `mb:<id>` slugs. If the admin placed the
+                    // active SEO plugin's own metabox there explicitly, honour
+                    // that and skip the unified SEO card so it never doubles up.
+                    $manual_seo_ids = [];
+                    foreach ($visible as $vslug) {
+                        if (strpos($vslug, 'mb:') === 0) {
+                            $manual_seo_ids[] = substr($vslug, 3);
+                        }
+                    }
                     $seo_in_manual = false;
                     if ($active_seo) {
                         foreach ($active_seo['metabox_ids'] as $mid) {
@@ -1612,6 +1621,49 @@ class Brikpanel_Product_Editor {
                 <?php $section_html['attributes'] = ob_get_clean(); endif; ?>
 
                 <?php
+                // -------------------------------------------------------------
+                // Third-party plugin metaboxes.
+                // The picker stores them as `mb:<id>` slugs interleaved with
+                // native sections, so each renders inline at the exact position
+                // the admin placed it. ACF-auto + WPML boxes are folded in
+                // automatically and rendered as a trailing group. Everything is
+                // produced up-front in ONE screen-spoof pass for speed; the loop
+                // below just echoes the pre-built card at each slug's slot.
+                // Runs for brand-new products (product_id = 0) too, so users can
+                // prefill marketplace / SEO fields before the first save.
+                // -------------------------------------------------------------
+                $picked_mb_ids = [];
+                foreach ($visible as $vslug) {
+                    if (strpos($vslug, 'mb:') === 0) {
+                        $picked_mb_ids[] = substr($vslug, 3);
+                    }
+                }
+                // When the active SEO plugin's metabox is already surfaced in
+                // the SEO card above, drop its IDs from the inline picks so it
+                // never renders twice.
+                if (in_array('seo', $visible, true) && !empty($active_seo)) {
+                    $picked_mb_ids = array_values(array_diff($picked_mb_ids, $active_seo['metabox_ids']));
+                }
+
+                // Auto-included boxes that are not part of the picker order:
+                // ACF field groups whose Location Rules resolve to this product,
+                // and WPML's native "Language" box (hooked to admin_head, so the
+                // picker never lists it). These render as a trailing group.
+                $auto_mb_ids = [];
+                if (function_exists('brikpanel_resolve_auto_acf_metabox_ids')) {
+                    $auto_mb_ids = array_merge($auto_mb_ids, brikpanel_resolve_auto_acf_metabox_ids((int) $product_id, 'product'));
+                }
+                if (self::wpml_translation_box_available()) {
+                    $auto_mb_ids[] = 'icl_div';
+                }
+                $auto_mb_ids = array_values(array_diff(array_unique($auto_mb_ids), $picked_mb_ids));
+
+                $all_mb_ids = array_values(array_unique(array_merge($picked_mb_ids, $auto_mb_ids)));
+                $mb_cards   = !empty($all_mb_ids)
+                    ? $this->build_third_party_metabox_cards((int) $product_id, $all_mb_ids)
+                    : ['html' => [], 'acf' => false];
+                $mb_emitted = [];
+
                 // Emit each captured section in the admin-configured order.
                 // Two fixed anchors are still injected mid-flight:
                 //   - The "Additional product data" card with $wc_extras_position
@@ -1620,9 +1672,16 @@ class Brikpanel_Product_Editor {
                 //   - The developer middle-slot boxes render right after seo.
                 // The Cost of goods card is now a regular section (slug `cogs`)
                 // and obeys the picker's order/visibility like any other.
+                // `mb:<id>` slugs echo their pre-built third-party card inline.
                 foreach ($visible as $rendered_slug) {
                     if (isset($section_html[$rendered_slug]) && $section_html[$rendered_slug] !== '') {
                         echo $section_html[$rendered_slug];
+                    } elseif (strpos($rendered_slug, 'mb:') === 0) {
+                        $mb_id = substr($rendered_slug, 3);
+                        if (!empty($mb_cards['html'][$mb_id]) && empty($mb_emitted[$mb_id])) {
+                            echo $mb_cards['html'][$mb_id];
+                            $mb_emitted[$mb_id] = true;
+                        }
                     }
                     if ($rendered_slug === 'pricing') {
                         if ($wc_extras_position === 'middle') {
@@ -1646,30 +1705,20 @@ class Brikpanel_Product_Editor {
                     brikpanel_render_editor_boxes('middle', (int) $product_id, $product);
                 }
 
-                // Third-party metaboxes — now driven by an explicit picker
-                // instead of a catch-all "show all" toggle. Also runs for
-                // brand-new products (product_id = 0) so users can prefill
-                // marketplace / SEO fields before the first save.
-                //
-                // When an active SEO plugin's metabox is already being
-                // surfaced inside the SEO card above, strip its IDs from the
-                // hand-picked list so it does not render twice.
-                $selected_metaboxes = (array) get_option('brikpanel_pe_selected_metaboxes', []);
-                if (in_array('seo', $visible, true) && !empty($active_seo)) {
-                    $selected_metaboxes = array_values(array_diff($selected_metaboxes, $active_seo['metabox_ids']));
-                }
-                // Fold in ACF field group metaboxes whose Location Rules
-                // resolve to this product. Mirrors the native editor's
-                // behavior so admins don't have to also add them to the
-                // multiselect manually.
-                if (function_exists('brikpanel_resolve_auto_acf_metabox_ids')) {
-                    $auto_acf_ids = brikpanel_resolve_auto_acf_metabox_ids((int) $product_id, 'product');
-                    if (!empty($auto_acf_ids)) {
-                        $selected_metaboxes = array_values(array_unique(array_merge($selected_metaboxes, $auto_acf_ids)));
+                // Trailing metaboxes: auto-included ACF/WPML boxes, plus a
+                // safety net for any picked box whose slug somehow fell out of
+                // the visible order (e.g. a stale entry) so nothing vanishes.
+                foreach (array_merge($auto_mb_ids, $picked_mb_ids) as $mb_id) {
+                    if (!empty($mb_cards['html'][$mb_id]) && empty($mb_emitted[$mb_id])) {
+                        echo $mb_cards['html'][$mb_id];
+                        $mb_emitted[$mb_id] = true;
                     }
                 }
-                if (!empty($selected_metaboxes)) {
-                    $this->render_third_party_metaboxes((int) $product_id, $selected_metaboxes);
+                // ACF needs its hidden form-data block once on the page whenever
+                // any ACF metabox (inline or trailing) was rendered, so the save
+                // endpoint can forward a verifiable acf payload.
+                if (!empty($mb_cards['acf']) && function_exists('brikpanel_pe_emit_acf_form_data')) {
+                    brikpanel_pe_emit_acf_form_data((int) $product_id);
                 }
 
                 if ($wc_extras_position === 'bottom') echo $wc_extras_card;
@@ -1719,22 +1768,54 @@ class Brikpanel_Product_Editor {
     }
 
     /**
-     * Render a curated list of 3rd-party product metaboxes inside the simple
-     * editor. Only the metabox IDs passed in $selected_ids are emitted.
+     * Is WPML's native product "Language" box available to surface?
      *
-     * To satisfy SEO plugins that check `get_current_screen()->id === 'product'`
-     * (Yoast, Rank Math, AIOSEO, SEOPress) we temporarily swap `$current_screen`
-     * to the product edit screen around the callback invocation. This lets
-     * them read the expected context so their JS/data layer initialises
-     * correctly. Globals are restored immediately afterwards.
-     *
-     * @param int      $product_id    Post ID being edited.
-     * @param string[] $selected_ids  Metabox IDs the admin picked in settings.
+     * WPML registers its translation box (id `icl_div`, title "Language") on the
+     * `admin_head` hook — never on `add_meta_boxes` — so BrikPanel's metabox
+     * picker can't discover it and product translations are unreachable from the
+     * editor. When WPML is set up and `product` is a translatable type we fold
+     * the box in automatically (see render_page) and bridge its registration in
+     * build_third_party_metabox_cards(), matching the always-present Language box on
+     * WordPress' own product screen. Works for simple and variable products
+     * alike — the box keys off the product post, not its type.
      */
-    private function render_third_party_metaboxes($product_id, array $selected_ids) {
+    public static function wpml_translation_box_available() {
+        global $sitepress;
+        if (!defined('ICL_SITEPRESS_VERSION') || !is_object($sitepress)) {
+            return false;
+        }
+        if (!method_exists($sitepress, 'post_edit_language_options')) {
+            return false;
+        }
+        if (method_exists($sitepress, 'get_setting') && !$sitepress->get_setting('setup_complete', false)) {
+            return false;
+        }
+        if (method_exists($sitepress, 'is_translated_post_type') && !$sitepress->is_translated_post_type('product')) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Build standalone cards for a set of third-party product metaboxes.
+     *
+     * Returns ['html' => [id => card_html], 'acf' => bool]. Each metabox is
+     * wrapped in its own BrikPanel card so the picker can interleave it with
+     * native sections at any position — the caller echoes each card at the slot
+     * the admin placed it. A single screen + globals spoof covers the whole
+     * batch (each SEO/ACF plugin gates its registration on the product edit
+     * screen context, hence the spoof). The `acf` flag tells the caller whether
+     * to emit ACF's hidden form-data block once for the page.
+     *
+     * @param int      $product_id   Post ID being edited.
+     * @param string[] $selected_ids Metabox IDs to render, in desired order.
+     * @return array{html:array<string,string>,acf:bool}
+     */
+    private function build_third_party_metabox_cards($product_id, array $selected_ids) {
+        $result = ['html' => [], 'acf' => false];
         $post = get_post($product_id);
         if (!$post || empty($selected_ids)) {
-            return;
+            return $result;
         }
 
         // Spoof the edit-product screen + post globals so third-party plugins
@@ -1755,6 +1836,22 @@ class Brikpanel_Product_Editor {
         $GLOBALS['typenow']   = 'product';
         $GLOBALS['pagenow']   = 'post.php';
         $wp_meta_boxes['product'] = [];
+
+        // WPML registers its "Language" translation box on `admin_head`, which
+        // never fires on this custom page. Call its registrar directly inside the
+        // spoofed product context so the box lands in $wp_meta_boxes['product']
+        // next to the add_meta_boxes plugins below and can be rendered like any
+        // other selected box. Guarded so it is a no-op unless WPML is active and
+        // the box was folded into $selected_ids by render_page().
+        if (in_array('icl_div', $selected_ids, true) && self::wpml_translation_box_available()) {
+            global $sitepress;
+            try {
+                $sitepress->post_edit_language_options();
+            } catch (\Throwable $e) {
+                // The Language box is non-essential chrome; never let a WPML
+                // internal error abort the whole editor render.
+            }
+        }
 
         // Ensure Yoast has its metabox class hooked up.
         if (class_exists('WPSEO_Metabox') && empty($GLOBALS['wpseo_metabox'])) {
@@ -1820,9 +1917,15 @@ class Brikpanel_Product_Editor {
             }
         }
 
-        $boxes_html = '';
+        // Build one self-contained card per metabox so the caller can drop each
+        // at its own slot in the editor order. `.brikpanel-pe-metaboxes-wrap`
+        // keeps the save-time JS that scoops `:input[name]` values working, so
+        // every field forwards with the BrikPanel save AJAX payload — exactly as
+        // it did when these boxes shared a single grouped card.
         foreach ($ordered as $id => $box) {
+            $ob_base = ob_get_level();
             ob_start();
+            echo '<div class="brikpanel-pe-card brikpanel-pe-metaboxes-wrap brikpanel-pe-metabox-card">';
             echo '<div class="postbox brikpanel-pe-metabox" id="' . esc_attr($id) . '">';
             echo '<div class="postbox-header"><h2 class="hndle"><span>' . esc_html($box['title']) . '</span></h2></div>';
             echo '<div class="inside brikpanel-pe-metabox-content">';
@@ -1831,11 +1934,21 @@ class Brikpanel_Product_Editor {
             } catch (\Throwable $e) {
                 echo '<p class="brikpanel-pe-help-text">' . esc_html__('Metabox failed to load.', 'brikpanel') . '</p>';
             }
-            echo '</div></div>';
-            $boxes_html .= ob_get_clean();
+            // A 3rd-party metabox callback may leave an output buffer open (some
+            // wrap fields in ob_start() and close it on a hook we never fire);
+            // fold any such buffer back into ours so it can't swallow the page.
+            while (ob_get_level() > $ob_base + 1) { ob_end_flush(); }
+            while (ob_get_level() < $ob_base + 1) { ob_start(); }
+            echo '</div></div></div>';
+            $result['html'][$id] = ob_get_clean();
+            // An ACF field-group box carries the `acf-` id prefix; flag it so the
+            // caller emits ACF's hidden form-data block once for the page.
+            if (strpos($id, 'acf-') === 0) {
+                $result['acf'] = true;
+            }
         }
 
-        // Restore state before echoing output so our own page doesn't leak.
+        // Restore state so our own page doesn't leak the spoofed context.
         if ($saved['boxes'] !== null) {
             $wp_meta_boxes['product'] = $saved['boxes'];
         } else {
@@ -1849,23 +1962,7 @@ class Brikpanel_Product_Editor {
         $GLOBALS['typenow']   = $saved['typenow'];
         $GLOBALS['pagenow']   = $saved['pagenow'];
 
-        if ($boxes_html) {
-            echo '<div class="brikpanel-pe-card brikpanel-pe-metaboxes-wrap">';
-            echo '<label>' . esc_html__('Additional fields', 'brikpanel') . '</label>';
-            // Emit ACF's hidden form-data block (_acf_nonce, _acf_post_id,
-            // _acf_screen, _acf_changed) so that when the BrikPanel save
-            // endpoint forwards this subtree's inputs, ACF's save_post handler
-            // can verify the `post` nonce and run acf_save_post() against the
-            // correct target post. Without this block ACF silently drops the
-            // entire `$_POST['acf']` payload on save.
-            if (function_exists('brikpanel_pe_emit_acf_form_data')) {
-                brikpanel_pe_emit_acf_form_data((int) $product_id);
-            }
-            echo '<div id="poststuff"><div id="post-body" class="metabox-holder columns-1"><div id="postbox-container-2" class="postbox-container"><div id="normal-sortables" class="meta-box-sortables ui-sortable">';
-            echo $boxes_html;
-            echo '</div></div></div></div>';
-            echo '</div>';
-        }
+        return $result;
     }
 
     /**
@@ -2514,7 +2611,7 @@ class Brikpanel_Product_Editor {
      * Render the active SEO plugin's native metabox(es) inline inside the
      * BrikPanel SEO card.
      *
-     * Same screen + globals spoof that render_third_party_metaboxes() uses,
+     * Same screen + globals spoof that build_third_party_metabox_cards() uses,
      * but wraps each box in a lighter template (no postbox chrome, no
      * "Additional fields" grouping) so the metabox blends into the SEO
      * card. Output markup is emitted inside `.brikpanel-pe-metaboxes-wrap`
@@ -2605,6 +2702,7 @@ class Brikpanel_Product_Editor {
 
         $boxes_html = '';
         foreach ($ordered as $id => $box) {
+            $ob_base = ob_get_level();
             ob_start();
             echo '<div class="brikpanel-pe-seo-plugin-box postbox" id="' . esc_attr($id) . '">';
             echo '<div class="inside">';
@@ -2613,6 +2711,11 @@ class Brikpanel_Product_Editor {
             } catch (\Throwable $e) {
                 echo '<p class="brikpanel-pe-help-text">' . esc_html__('SEO metabox failed to load.', 'brikpanel') . '</p>';
             }
+            // Fold any output buffer the metabox callback left open back into
+            // ours so an unbalanced ob_start() can't corrupt the page (see the
+            // metabox card loop in build_third_party_metabox_cards()).
+            while (ob_get_level() > $ob_base + 1) { ob_end_flush(); }
+            while (ob_get_level() < $ob_base + 1) { ob_start(); }
             echo '</div></div>';
             $boxes_html .= ob_get_clean();
         }
@@ -2880,20 +2983,11 @@ class Brikpanel_Product_Editor {
             $section = '';
             foreach ($hooks as $hook) {
                 if (!has_action($hook)) continue;
-                ob_start();
-                try {
-                    do_action($hook);
-                } catch (\Throwable $e) {
-                    // A 3rd-party plugin hooked here may assume a fully-saved
-                    // product context that does not exist during enumeration —
-                    // e.g. on a brand-new shop with zero products WooCommerce
-                    // Germanized calls $product->get_manufacturer() on a false
-                    // product and fatals. Its fields are non-essential for the
-                    // selector, so swallow the error and skip this fragment.
-                    ob_end_clean();
-                    continue;
-                }
-                $section .= trim(ob_get_clean());
+                // Buffer-safe: a 3rd-party plugin hooked here may assume a
+                // fully-saved product (Germanized fatals on get_manufacturer on
+                // an empty shop) or leave an output buffer open (Sales Countdown
+                // Timer) — capture_isolated_hook() swallows both safely.
+                $section .= self::capture_isolated_hook($hook);
             }
             if ($section !== '') {
                 $out['core:' . sanitize_key($label)] = $label;
@@ -2907,16 +3001,10 @@ class Brikpanel_Product_Editor {
         $tab_meta = self::collect_custom_tab_meta();
         $target_to_label = $tab_meta['labels'];
         if (has_action('woocommerce_product_data_panels')) {
-            ob_start();
-            try {
-                do_action('woocommerce_product_data_panels');
-                $panels_html = trim(ob_get_clean());
-            } catch (\Throwable $e) {
-                // Same safeguard as the core sub-hooks above: a custom panel
-                // assuming a saved product must not take down the settings page.
-                ob_end_clean();
-                $panels_html = '';
-            }
+            // Buffer-safe fire (see capture_isolated_hook): a custom panel may
+            // assume a saved product OR leave an output buffer open; neither may
+            // take down the settings page.
+            $panels_html = self::capture_isolated_hook('woocommerce_product_data_panels');
 
             if ($panels_html !== '') {
                 $core_targets = self::core_panel_targets();
@@ -2943,7 +3031,16 @@ class Brikpanel_Product_Editor {
                             foreach (['input', 'select', 'textarea', 'button'] as $tag) {
                                 if ($node->getElementsByTagName($tag)->length > 0) { $has_controls = true; break; }
                             }
-                            if (!$has_controls) continue;
+                            // A panel whose id is a registered tab target (declared via
+                            // the `woocommerce_product_data_tabs` filter or the legacy
+                            // panel-tabs action) is a legitimate custom tab even when its
+                            // server-side body is empty — e.g. AcoWebs "Custom Product
+                            // Addons" (`wcpa_product-meta-tab`) renders only a React mount
+                            // point (`<div id="wcpa_product_meta">`) and hydrates it in
+                            // JS. The control scan never sees a field for those, so trust
+                            // the tab registration instead and still offer the section.
+                            $is_registered_tab = isset($target_to_label[$id]);
+                            if (!$has_controls && !$is_registered_tab) continue;
                             $label = $target_to_label[$id] ?? ucfirst(str_replace('_', ' ', $id));
                             $out['tab:' . $id] = $label;
                         }
@@ -3004,16 +3101,10 @@ class Brikpanel_Product_Editor {
         }
 
         if (has_action('woocommerce_product_write_panel_tabs')) {
-            ob_start();
-            try {
-                do_action('woocommerce_product_write_panel_tabs');
-                $tabs_html = trim(ob_get_clean());
-            } catch (\Throwable $e) {
-                // A legacy tab callback that assumes a fully-saved product must
-                // not break enumeration — skip it, the panel scan still works.
-                ob_end_clean();
-                $tabs_html = '';
-            }
+            // Buffer-safe fire — a plugin (e.g. Sales Countdown Timer) may open
+            // an output buffer on this hook and close it on a *different* later
+            // hook we never fire here; capture_isolated_hook() neutralises that.
+            $tabs_html = self::capture_isolated_hook('woocommerce_product_write_panel_tabs');
             if ($tabs_html !== '' && preg_match_all('/<a\b[^>]*href\s*=\s*["\']#([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $tabs_html, $matches, PREG_SET_ORDER)) {
                 foreach ($matches as $hit) {
                     $target = trim($hit[1]);
@@ -3027,6 +3118,61 @@ class Brikpanel_Product_Editor {
         }
 
         return ['labels' => $labels, 'keys' => $keys];
+    }
+
+    /**
+     * Fire a foreign WooCommerce product/variation hook during field
+     * enumeration and return everything it echoed, while guaranteeing the
+     * output-buffer stack is left exactly as deep as it was found.
+     *
+     * Why this exists: some third-party plugins open an output buffer on one
+     * product-data hook and close it on a *different*, later hook, relying on
+     * WooCommerce firing the whole pair during a normal product-edit render.
+     * Sales Countdown Timer (VillaTheme) is the canonical case — it calls
+     * ob_start() on `woocommerce_product_write_panel_tabs` and the matching
+     * ob_get_clean() on `woocommerce_product_options_pricing`. BrikPanel fires
+     * these hooks individually to discover which fields a plugin adds, so only
+     * one half of such a pair runs: the plugin's lone ob_start() leaks an
+     * output buffer, or its lone ob_get_clean() swallows one of ours. A single
+     * unbalanced buffer then absorbs and reorders the rest of the admin page —
+     * dropping jQuery from <head> and white-screening the WooCommerce settings
+     * tab with a "jQuery is not defined" cascade.
+     *
+     * We record the buffer depth, open our own capture buffer plus one
+     * sacrificial guard buffer (so a single stray ob_get_clean() eats the guard
+     * instead of ours), fire the hook, then unwind back to the recorded depth.
+     * This neutralises an imbalance in EITHER direction, no matter how many
+     * buffers a callback opens or closes, and never returns with the stack
+     * shallower than it started (which would corrupt the surrounding page).
+     *
+     * @param string $hook Action hook to fire.
+     * @param array  $args Positional args passed to the hook callbacks.
+     * @return string Trimmed concatenation of everything the hook echoed.
+     */
+    private static function capture_isolated_hook($hook, array $args = []) {
+        $base = ob_get_level();
+        ob_start(); // capture buffer
+        ob_start(); // sacrificial guard — absorbs a stray ob_get_clean() whose
+                    // paired opener never ran in this isolated fire
+        try {
+            do_action_ref_array($hook, $args);
+        } catch (\Throwable $e) {
+            // A callback assuming a fully-saved product context must never break
+            // enumeration; its fields are non-essential to the selector.
+        }
+        // A callback may have closed more buffers than it opened — re-pad first
+        // so we never unwind below (or return shallower than) where we started.
+        while (ob_get_level() < $base) {
+            ob_start();
+        }
+        // Unwind our buffers (and any a callback left open), innermost first.
+        // The outer buffer holds output echoed before any nested ob_start(), so
+        // prepend each layer to keep echo order intact.
+        $html = '';
+        while (ob_get_level() > $base) {
+            $html = ob_get_clean() . $html;
+        }
+        return trim($html);
     }
 
     /**
@@ -3077,18 +3223,70 @@ class Brikpanel_Product_Editor {
             return $selected;
         }
 
-        if ( 'variation' === $context ) {
-            // Surgical: exactly the per-variation pricing hook CURCY uses.
-            $key = 'varhook:woocommerce_variation_options_pricing';
-        } else {
-            // Simple products: CURCY's per-currency price inputs render inside
-            // the native "General" product-data group (woocommerce_product_options_pricing).
-            $key = 'core:' . sanitize_key( __( 'General', 'brikpanel' ) );
-        }
+        // Use a dedicated synthetic key (NOT the native section key) so the
+        // capture path renders ONLY the multi-currency plugin's own fields in
+        // isolation. Injecting the whole `core:general` / `varhook:…pricing`
+        // group here used to drag every other plugin's General-tab fields into
+        // "Additional product data" even when the merchant had every section
+        // switched off — surfacing the per-currency prices must never do that.
+        $key = ( 'variation' === $context ) ? 'curcy:variation_pricing' : 'curcy:product_pricing';
         if ( ! in_array( $key, $selected, true ) ) {
             $selected[] = $key;
         }
         return $selected;
+    }
+
+    /**
+     * Render ONLY the multi-currency plugin's own field output on a given WC
+     * product-data hook, isolating it from every other plugin that also hooks
+     * there. We snapshot the hook's callbacks, keep only those whose class is
+     * the CURCY admin class, fire the hook, then restore the originals — so
+     * auto-surfacing per-currency prices never drags in unrelated fields that
+     * other plugins attach to the same native hook.
+     *
+     * @param string $hook WC product-data action hook to fire.
+     * @param array  $args Positional args to pass (variation hooks need them).
+     * @return string Captured HTML (empty when CURCY has nothing on the hook).
+     */
+    private static function render_isolated_multicurrency_fields( $hook, array $args = array() ) {
+        global $wp_filter;
+        if ( empty( $wp_filter[ $hook ] ) || ! is_object( $wp_filter[ $hook ] ) ) {
+            return '';
+        }
+        $hook_obj = $wp_filter[ $hook ];
+        $saved    = $hook_obj->callbacks;
+
+        $kept = array();
+        foreach ( $saved as $priority => $list ) {
+            foreach ( $list as $id => $cb ) {
+                $fn  = isset( $cb['function'] ) ? $cb['function'] : null;
+                $cls = '';
+                if ( is_array( $fn ) ) {
+                    $cls = is_object( $fn[0] ) ? get_class( $fn[0] ) : ( is_string( $fn[0] ) ? $fn[0] : '' );
+                } elseif ( is_string( $fn ) && strpos( $fn, '::' ) !== false ) {
+                    $cls = substr( $fn, 0, strpos( $fn, '::' ) );
+                }
+                if ( $cls !== '' && stripos( $cls, 'WOOMULTI_CURRENCY' ) !== false ) {
+                    $kept[ $priority ][ $id ] = $cb;
+                }
+            }
+        }
+        if ( empty( $kept ) ) {
+            return '';
+        }
+
+        $hook_obj->callbacks = $kept;
+        ob_start();
+        try {
+            do_action_ref_array( $hook, $args );
+        } catch ( \Throwable $e ) {
+            // A misbehaving render must not abort the editor — just skip it.
+        }
+        $html = trim( ob_get_clean() );
+
+        // Always restore the full callback set, even if rendering threw.
+        $hook_obj->callbacks = $saved;
+        return $html;
     }
 
     /**
@@ -3135,7 +3333,12 @@ class Brikpanel_Product_Editor {
         foreach (self::variation_field_hooks() as $hook => $_) {
             if (in_array('varhook:' . $hook, $selected, true)) $selected_hooks[] = $hook;
         }
-        if (empty($selected_hooks)) return [];
+        // Multi-currency auto-surface (fixed mode): render only CURCY's own
+        // per-variation price inputs, isolated from the rest of the variation
+        // pricing hook — unless the merchant already picked that whole section.
+        $curcy_var = in_array('curcy:variation_pricing', $selected, true)
+            && !in_array('woocommerce_variation_options_pricing', $selected_hooks, true);
+        if (empty($selected_hooks) && !$curcy_var) return [];
 
         global $post, $thepostid, $product_object;
         $orig = [$post, $thepostid ?? null, $product_object ?? null];
@@ -3158,9 +3361,16 @@ class Brikpanel_Product_Editor {
             $html = '';
             foreach ($selected_hooks as $hook) {
                 if (!has_action($hook)) continue;
-                ob_start();
-                do_action($hook, $loop, $variation_data, $variation_post);
-                $html .= trim(ob_get_clean());
+                // Buffer-safe fire — variation hooks have the same unbalanced
+                // output-buffer risk as the product-level ones (Sales Countdown
+                // Timer wraps woocommerce_variation_options too).
+                $html .= self::capture_isolated_hook($hook, [$loop, $variation_data, $variation_post]);
+            }
+            if ($curcy_var) {
+                $html .= self::render_isolated_multicurrency_fields(
+                    'woocommerce_variation_options_pricing',
+                    [$loop, $variation_data, $variation_post]
+                );
             }
             if ($html !== '') {
                 $out[$variation_post->ID] = $html;
@@ -3213,7 +3423,11 @@ class Brikpanel_Product_Editor {
                 $selected_hooks[] = $hook;
             }
         }
-        if (empty($selected_hooks)) return [];
+        // Multi-currency auto-surface (fixed mode): isolated CURCY price inputs,
+        // unless the whole variation pricing section is already selected.
+        $curcy_var = in_array('curcy:variation_pricing', $selected, true)
+            && !in_array('woocommerce_variation_options_pricing', $selected_hooks, true);
+        if (empty($selected_hooks) && !$curcy_var) return [];
 
         // Spin up a throwaway variation so plugin callbacks have a real object
         // to load. Deleted in the finally block no matter what.
@@ -3244,14 +3458,15 @@ class Brikpanel_Product_Editor {
 
                 $html = '';
                 foreach ($selected_hooks as $hook) {
-                    ob_start();
-                    try {
-                        do_action($hook, $loop, [], $temp_post);
-                    } catch (\Throwable $e) {
-                        // Swallow — a plugin that can't render against a fresh
-                        // variation just yields no preview for this hook.
-                    }
-                    $html .= trim(ob_get_clean());
+                    // Buffer-safe fire (see capture_isolated_hook): swallows both
+                    // a fatal against a fresh variation and an unbalanced buffer.
+                    $html .= self::capture_isolated_hook($hook, [$loop, [], $temp_post]);
+                }
+                if ($curcy_var) {
+                    $html .= self::render_isolated_multicurrency_fields(
+                        'woocommerce_variation_options_pricing',
+                        [$loop, [], $temp_post]
+                    );
                 }
                 if ($html !== '') {
                     $out[$loop] = $html;
@@ -3369,6 +3584,20 @@ class Brikpanel_Product_Editor {
         $core_sub_hooks = self::core_product_data_sub_hooks();
         $output = '';
 
+        // Multi-currency per-currency price fields — auto-surfaced in fixed
+        // mode via the synthetic `curcy:product_pricing` key. Rendered in
+        // isolation so ONLY the CURCY inputs appear, never the rest of the
+        // General tab that other plugins also hook.
+        if (in_array('curcy:product_pricing', $selected, true)) {
+            $curcy_html = self::render_isolated_multicurrency_fields('woocommerce_product_options_pricing');
+            if ($curcy_html !== '') {
+                $output .= '<div class="brikpanel-pe-wc-tab-group" data-tab="multicurrency">'
+                    . '<h4 class="brikpanel-pe-wc-tab-title">' . esc_html__('Multi-currency prices', 'brikpanel') . '</h4>'
+                    . $curcy_html
+                    . '</div>';
+            }
+        }
+
         // Core sub-hook sections — keyed `core:<label_slug>`.
         foreach ($core_sub_hooks as $label => $hooks) {
             $key = 'core:' . sanitize_key($label);
@@ -3377,16 +3606,10 @@ class Brikpanel_Product_Editor {
             $section = '';
             foreach ($hooks as $hook) {
                 if (!has_action($hook)) continue;
-                ob_start();
-                try {
-                    do_action($hook);
-                } catch (\Throwable $e) {
-                    // Never let a misbehaving 3rd-party field render abort the
-                    // whole product editor; skip just that fragment.
-                    ob_end_clean();
-                    continue;
-                }
-                $html = trim(ob_get_clean());
+                // Buffer-safe fire (see capture_isolated_hook): never let a
+                // misbehaving 3rd-party field render abort the editor or leak an
+                // output buffer that corrupts the page.
+                $html = self::capture_isolated_hook($hook);
                 if ($html !== '') $section .= $html;
             }
             if ($section !== '') {
@@ -3411,14 +3634,8 @@ class Brikpanel_Product_Editor {
         // render path used to come up empty.)
         $tab_meta = self::collect_custom_tab_meta();
         if (has_action('woocommerce_product_data_panels')) {
-            ob_start();
-            try {
-                do_action('woocommerce_product_data_panels');
-                $panels_html = trim(ob_get_clean());
-            } catch (\Throwable $e) {
-                ob_end_clean();
-                $panels_html = '';
-            }
+            // Buffer-safe fire — see capture_isolated_hook().
+            $panels_html = self::capture_isolated_hook('woocommerce_product_data_panels');
 
             if ($panels_html !== '') {
                 $target_to_label = $tab_meta['labels'];
@@ -3450,7 +3667,12 @@ class Brikpanel_Product_Editor {
                             foreach (['input', 'select', 'textarea', 'button'] as $tag) {
                                 if ($node->getElementsByTagName($tag)->length > 0) { $has_controls = true; break; }
                             }
-                            if (!$has_controls) continue;
+                            // Mirror collect_wc_product_data_sections(): a panel backed by
+                            // a registered tab (e.g. AcoWebs `wcpa_product-meta-tab`, a JS
+                            // mount point with no server-rendered control) is still a real
+                            // section. Render it so its builder can hydrate client-side.
+                            $is_registered_tab = isset($target_to_label[$id]);
+                            if (!$has_controls && !$is_registered_tab) continue;
 
                             // Preserve the panel wrapper itself (its id, classes and
                             // data-* attributes) rather than unwrapping it. Many custom

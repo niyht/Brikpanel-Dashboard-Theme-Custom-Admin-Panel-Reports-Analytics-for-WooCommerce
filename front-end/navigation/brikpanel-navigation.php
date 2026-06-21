@@ -314,6 +314,16 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 	if ( ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
 		brikpanel_nav_relocate_wc_submenus( $menu, $submenu );
 
+				// Pin the Products top-level into the store section, directly below
+				// WooCommerce (Orders). WooCommerce only repositions Products via a
+				// menu_order (display-time) filter, which this renderer — reading the
+				// raw $menu registration order — never sees. On installs where the
+				// product menu registers below the "Site management" anchor (edit.php
+				// / Posts), Products and the whole BrikPanel cluster pinned beneath it
+				// (Segments, Customer Analytics, Sheets) would otherwise be swept into
+				// Site management. Done before the cluster moves so they follow it.
+				$menu = brikpanel_move_item_after( $menu, 'edit.php?post_type=product', 'woocommerce' );
+
 				$menu = brikpanel_move_item_after( $menu, 'woocommerce-more', 'woocommerce-marketing' );
 				$menu = brikpanel_move_item_after( $menu, 'admin.php?page=wc-settings', 'woocommerce-marketing' );
 				$menu = brikpanel_move_item_after( $menu, 'admin.php?page=wc-settings&tab=checkout', 'edit.php?post_type=product' );

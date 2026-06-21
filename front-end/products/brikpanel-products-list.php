@@ -599,6 +599,9 @@ class Brikpanel_Products_List {
             <option value="set_stock"><?php esc_html_e('Set stock quantity', 'brikpanel'); ?></option>
             <option value="increase_stock"><?php esc_html_e('Increase stock by', 'brikpanel'); ?></option>
         </optgroup>
+        <optgroup label="<?php esc_attr_e('Cost', 'brikpanel'); ?>">
+            <option value="set_cogs"><?php esc_html_e('Set cost (COGS)', 'brikpanel'); ?></option>
+        </optgroup>
         <optgroup label="<?php esc_attr_e('Shipping', 'brikpanel'); ?>">
             <option value="set_weight" data-unit="<?php echo esc_attr($weight_unit); ?>"><?php esc_html_e('Set weight', 'brikpanel'); ?></option>
             <option value="set_length" data-unit="<?php echo esc_attr($dim_unit); ?>"><?php esc_html_e('Set length', 'brikpanel'); ?></option>
@@ -622,6 +625,9 @@ class Brikpanel_Products_List {
                     ?>
                 </option>
             <?php endforeach; ?>
+        </optgroup>
+        <optgroup label="<?php esc_attr_e('Maintenance', 'brikpanel'); ?>">
+            <option value="repair_visibility"><?php esc_html_e('Fix store visibility (after import)', 'brikpanel'); ?></option>
         </optgroup>
         <?php
     }
@@ -1545,12 +1551,37 @@ class Brikpanel_Products_List {
         return " AND ( ({$core}) OR ({$sku_clause}) )";
     }
 
+    /**
+     * Make the current product query language-agnostic under WPML.
+     *
+     * BrikPanel's product list is a store-management view, not a translation
+     * workflow. WPML filters WP_Query by the admin's current editor language,
+     * so an admin whose WPML language is set to a language that has no
+     * translated products would see an EMPTY list, even though the tab counts
+     * (computed via wp_count_posts, which is not language-filtered) still show
+     * the full total. That mismatch reads as "the plugin lost my products".
+     *
+     * Switching the query context to "all languages" makes the list show the
+     * whole catalog and stay consistent with the counts. Apply only to the
+     * read-only listing / id-resolution paths; never around product saves,
+     * where WPML must keep each product's own language. No-op without WPML.
+     */
+    private static function use_all_languages_for_query() {
+        if (defined('ICL_SITEPRESS_VERSION')) {
+            do_action('wpml_switch_language', 'all');
+        }
+    }
+
     public function ajax_fetch_products() {
         check_ajax_referer('brikpanel_products_list_nonce', 'security');
 
         if (!current_user_can('edit_products')) {
             wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
         }
+
+        // Show every product regardless of the admin's WPML language so the
+        // list matches the (language-agnostic) tab counts. See helper docblock.
+        self::use_all_languages_for_query();
 
         $page     = max(1, intval($_POST['page'] ?? 1));
         $per_page = max(1, min(100, intval($_POST['per_page'] ?? 20)));
@@ -2528,11 +2559,13 @@ class Brikpanel_Products_List {
         'sale_from_regular_percent',
         'set_stock',
         'increase_stock',
+        'set_cogs',
         'remove_sale_price',
         'set_weight',
         'set_length',
         'set_width',
         'set_height',
+        'repair_visibility',
     ];
 
     /**
@@ -2551,6 +2584,10 @@ class Brikpanel_Products_List {
         if (!current_user_can($required_cap)) {
             wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
         }
+
+        // Resolve target IDs across all WPML languages so "All products" /
+        // category scopes match what the list shows. See helper docblock.
+        self::use_all_languages_for_query();
 
         $mode = sanitize_key($_POST['mode'] ?? 'selected');
 
@@ -2970,6 +3007,10 @@ class Brikpanel_Products_List {
         ], true);
         $is_taxonomy = ($action === 'taxonomy');
         $is_shipping = in_array($action, ['set_weight', 'set_length', 'set_width', 'set_height'], true);
+        // COGS lives per variation (each variation carries its own cost), so it
+        // fans out to all variations of a variable product exactly like price.
+        $is_cogs = ($action === 'set_cogs');
+        $is_repair = ($action === 'repair_visibility');
         $has_attr_filter = ($attr_key !== '' && $attr_val !== '');
 
         $processed = 0;
@@ -2978,6 +3019,19 @@ class Brikpanel_Products_List {
 
         foreach ($parent_ids as $pid) {
             try {
+                // Visibility repair re-aligns the product_visibility "outofstock"
+                // term and the meta-lookup column with the stored stock status.
+                // Needed after CSV/Excel imports that write _stock_status meta
+                // directly and skip WooCommerce's CRUD term sync, which leaves
+                // in-stock products hidden from catalog/category pages.
+                if ($is_repair) {
+                    $product = wc_get_product($pid);
+                    if (!$product) continue;
+                    $this->repair_product_visibility($product);
+                    $processed++;
+                    continue;
+                }
+
                 // Taxonomy assignment is post-level — categories, tags and brands
                 // live on the parent product, never on individual variations.
                 if ($is_taxonomy) {
@@ -3006,7 +3060,7 @@ class Brikpanel_Products_List {
                 }
 
                 if ($product->get_type() === 'variable') {
-                    if ($is_price || $has_attr_filter) {
+                    if ($is_price || $is_cogs || $has_attr_filter) {
                         foreach ($product->get_children() as $vid) {
                             $v = wc_get_product($vid);
                             if (!$v) continue;
@@ -3062,6 +3116,74 @@ class Brikpanel_Products_List {
         }
 
         return ['processed' => $processed, 'errors' => $errors];
+    }
+
+    /**
+     * Re-sync one product's visibility with its true stock status.
+     *
+     * WooCommerce only writes the `outofstock` term in the product_visibility
+     * taxonomy (and the wc_product_meta_lookup.stock_status column) when the
+     * stock status changes through its CRUD save path. Importers that write the
+     * `_stock_status` meta directly bypass that sync, so an in-stock product can
+     * keep a stale `outofstock` term and stay hidden from the shop whenever the
+     * "Hide out of stock items" setting is on. This realigns both, idempotently.
+     *
+     * @return bool True when something was actually changed.
+     */
+    private function repair_product_visibility($product) {
+        $pid = $product->get_id();
+
+        // For variable products the parent's visibility reflects the rolled-up
+        // status of its variations. Recompute it from the children first so the
+        // term/lookup we then write match reality (mirrors a real save).
+        if ($product->is_type('variable') && class_exists('WC_Product_Variable')) {
+            WC_Product_Variable::sync($pid);
+            $fresh = wc_get_product($pid);
+            if ($fresh) {
+                $product = $fresh;
+            }
+        }
+
+        $status      = $product->get_stock_status();
+        $desired_out = ($status === 'outofstock');
+
+        $slugs = wp_get_post_terms($pid, 'product_visibility', ['fields' => 'slugs']);
+        if (is_wp_error($slugs)) {
+            $slugs = [];
+        }
+        $has_out = in_array('outofstock', $slugs, true);
+
+        $changed = false;
+
+        if ($desired_out !== $has_out) {
+            if ($desired_out) {
+                $slugs[] = 'outofstock';
+            } else {
+                $slugs = array_values(array_diff($slugs, ['outofstock']));
+            }
+            // append=false keeps the other visibility flags (featured,
+            // exclude-from-catalog / exclude-from-search) intact.
+            wp_set_object_terms($pid, array_values(array_unique($slugs)), 'product_visibility', false);
+            $changed = true;
+        }
+
+        // Realign the meta-lookup column used by stock filters / ordering.
+        global $wpdb;
+        $lookup        = $wpdb->prefix . 'wc_product_meta_lookup';
+        $current_value = $wpdb->get_var($wpdb->prepare(
+            "SELECT stock_status FROM {$lookup} WHERE product_id = %d",
+            $pid
+        ));
+        if ($current_value !== null && $current_value !== $status) {
+            $wpdb->update($lookup, ['stock_status' => $status], ['product_id' => $pid]);
+            $changed = true;
+        }
+
+        if ($changed) {
+            clean_post_cache($pid);
+        }
+
+        return $changed;
     }
 
     /**
@@ -3290,6 +3412,23 @@ class Brikpanel_Products_List {
             case 'increase_stock':
                 $product->set_manage_stock(true);
                 $product->set_stock_quantity((int) $product->get_stock_quantity() + intval($value));
+                break;
+            case 'set_cogs':
+                // Cost of goods sold — stored on _brikpanel_cogs (read by all
+                // BrikPanel reports) and mirrored to WC 9.5+ native COGS when
+                // the object exposes it. An empty value clears the cost. Mirrors
+                // the single-product / variation save logic. Applies per
+                // variation for variable products (each variation carries its
+                // own cost), just like price.
+                $cogs_decimal = $value === '' ? '' : wc_format_decimal($value);
+                if ($cogs_decimal !== '') {
+                    update_post_meta($product->get_id(), '_brikpanel_cogs', $cogs_decimal);
+                } else {
+                    delete_post_meta($product->get_id(), '_brikpanel_cogs');
+                }
+                if (method_exists($product, 'set_cogs_value')) {
+                    $product->set_cogs_value($cogs_decimal !== '' ? $cogs_decimal : null);
+                }
                 break;
             case 'remove_sale_price':
                 $product->set_sale_price('');

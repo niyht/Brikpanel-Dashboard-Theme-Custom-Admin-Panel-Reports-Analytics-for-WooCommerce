@@ -1026,6 +1026,19 @@ function brikpanel_enqueue_woo_assets($hook) {
         //     active — the BrikPanel SEO card renders its native metabox and
         //     relies on the plugin's own JS/CSS bundles to drive it.
         $selected_metaboxes = (array) get_option('brikpanel_pe_selected_metaboxes', []);
+        // 3rd-party WooCommerce product-data tabs the admin chose to surface
+        // (keyed `tab:<panel_id>`). Many of these panels are JS-driven mount
+        // points — e.g. AcoWebs "Custom Product Addons" (`wcpa_product-meta-tab`)
+        // renders an empty `<div id="wcpa_product_meta">` and hydrates it from
+        // its `product.js`, which only enqueues when the screen is `product`.
+        // Selecting such a tab must therefore also trigger the screen-spoof +
+        // admin_enqueue_scripts re-fire below, otherwise the panel renders but
+        // stays inert. Only custom `tab:` keys count — core sections need no
+        // 3rd-party assets.
+        $selected_wc_tabs = array_filter(
+            (array) get_option('brikpanel_pe_wc_tabs_selected', []),
+            static function ($k) { return is_string($k) && strpos($k, 'tab:') === 0; }
+        );
         $auto_seo = class_exists('Brikpanel_Product_Editor')
             ? Brikpanel_Product_Editor::get_active_seo_plugin()
             : null;
@@ -1058,7 +1071,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 )));
             }
         }
-        if (!empty($selected_metaboxes)) {
+        if (!empty($selected_metaboxes) || !empty($selected_wc_tabs)) {
             // Spoof screen + post globals as if we were on /wp-admin/post.php
             // so SEO plugins (Yoast, Rank Math, AIOSEO, SEOPress) register
             // their metabox + enqueue scripts the way they do natively.

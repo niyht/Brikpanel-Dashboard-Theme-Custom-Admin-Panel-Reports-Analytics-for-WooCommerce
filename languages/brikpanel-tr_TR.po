@@ -2680,8 +2680,8 @@ msgid "Marketplace analytics (BrikMarket)"
 msgstr "Pazar yeri analitiği (BrikMarket)"
 
 #: front-end/dashboard/brikpanel-dashboard.php:328
-msgid "— With Marketplace"
-msgstr "— Pazar Yeri ile"
+msgid "With Marketplace"
+msgstr "Pazar Yeri ile"
 
 #: front-end/dashboard/brikpanel-dashboard.php:337
 #: front-end/dashboard/brikpanel-dashboard.php:348

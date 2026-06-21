@@ -32,17 +32,24 @@ const BRIKPANEL_APPEARANCE_DEFAULT_COLOR = '#303030';
 // =============================================================================
 
 /**
- * Whether the admin has opted in to use a custom brand logo. Default off so
- * fresh installs keep the BrikPanel mark + site name.
+ * Whether a custom brand logo is in effect. The presence of a logo source is
+ * the switch — picking an image (or pasting a URL) turns it on, the picker's
+ * "Remove" action turns it off. There is no separate enable checkbox: a logo
+ * that is set but silently ignored because a second toggle was left off is a
+ * footgun, not a feature.
+ *
+ * The legacy `brikpanel_brand_logo_enabled` option is intentionally no longer
+ * read here, so existing installs that had a logo saved but the old toggle off
+ * now simply show their logo.
  */
 function brikpanel_brand_logo_is_enabled() {
-	return get_option( 'brikpanel_brand_logo_enabled', 'no' ) === 'yes';
+	return brikpanel_brand_logo_get_url() !== '';
 }
 
 /**
- * Resolve the brand logo URL. Returns an empty string when the feature is off
- * or no valid source is configured, so callers can branch with a simple
- * `if ( $url === '' )` instead of probing the options themselves.
+ * Resolve the brand logo URL. Returns an empty string when no valid source is
+ * configured, so callers can branch with a simple `if ( $url === '' )` instead
+ * of probing the options themselves.
  *
  * Two sources are supported, in priority order:
  *   1. An explicit external URL (e.g. a logo hosted on a CDN). Stored as
@@ -51,9 +58,6 @@ function brikpanel_brand_logo_is_enabled() {
  *   2. A WordPress media library attachment. Stored as `brikpanel_brand_logo_id`.
  */
 function brikpanel_brand_logo_get_url() {
-	if ( ! brikpanel_brand_logo_is_enabled() ) {
-		return '';
-	}
 	$custom = (string) get_option( 'brikpanel_brand_logo_url', '' );
 	if ( $custom !== '' ) {
 		return $custom;
@@ -403,17 +407,10 @@ function brikpanel_appearance_register_fields( $fields ) {
 			'css'      => 'width: 6.5rem;',
 		],
 		[
-			'name'    => __( 'Custom brand logo', 'brikpanel' ),
-			'id'      => 'brikpanel_brand_logo_enabled',
-			'type'    => 'checkbox',
-			'desc'    => __( 'Replace the BrikPanel mark in the admin top bar and on the modern login page with your own brand logo. When off, the default BrikPanel icon and your site name are shown.', 'brikpanel' ),
-			'default' => 'no',
-		],
-		[
-			'name' => __( 'Brand logo image', 'brikpanel' ),
+			'name' => __( 'Custom brand logo', 'brikpanel' ),
 			'id'   => 'brikpanel_brand_logo_id',
 			'type' => 'brikpanel_brand_logo_picker',
-			'desc' => __( 'Pick an image from your media library, or paste an external image URL to load the logo from a CDN. When a URL is set it takes priority over the media library pick. The same logo is used in the admin top bar and on the modern login page. PNG or SVG with transparent background gives the cleanest result. Recommended size: 256×256 px or wider.', 'brikpanel' ),
+			'desc' => __( 'Replace the BrikPanel mark in the admin top bar and on the modern login page with your own logo. Pick an image from your media library, or paste an external image URL to load it from a CDN. The logo applies as soon as it is set; use Remove to go back to the default BrikPanel icon and your site name. When a URL is set it takes priority over the media library pick. PNG or SVG with a transparent background gives the cleanest result. Recommended size: 256×256 px or wider.', 'brikpanel' ),
 		],
 		[
 			'name' => __( 'Custom CSS', 'brikpanel' ),
@@ -741,7 +738,9 @@ function brikpanel_brand_logo_print_login_styles() {
 		return;
 	}
 	$safe = esc_url( $url );
-	$css  = '.login h1::before{'
+	// Scope to `#login h1` (the visible logo), not `.login h1`, so the override
+	// never paints the page-level screen-reader heading as a second logo.
+	$css  = '#login h1::before{'
 		. 'width:200px !important;'
 		. 'height:64px !important;'
 		. 'margin:0 auto 1rem !important;'
@@ -754,7 +753,7 @@ function brikpanel_brand_logo_print_login_styles() {
 		. '}'
 		// Drop the "Welcome back" subtitle so the custom logo carries the
 		// brand identity without a redundant label underneath.
-		. '.login h1::after{display:none !important;}';
+		. '#login h1::after{display:none !important;}';
 	echo '<style id="brikpanel-brand-logo-login">' . $css . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- URL escaped above.
 }
 add_action( 'login_head', 'brikpanel_brand_logo_print_login_styles', 10000 );

@@ -86,18 +86,49 @@
         function place(hint) {
             var tip = hint.querySelector('.brikpanel-dash-hint-tip');
             if (!tip) return;
+            // Reset any prior placement so each open recomputes cleanly.
             hint.classList.remove('brikpanel-dash-hint--end');
-            var iconLeft = hint.getBoundingClientRect().left;
+            tip.style.left = '';
+            tip.style.right = '';
+            var hintRect = hint.getBoundingClientRect();
             var tipWidth = tip.offsetWidth;
             var margin = 12;
-            if (iconLeft - 8 + tipWidth + margin > window.innerWidth) {
+            // Use the document client width, not window.innerWidth: the dashboard
+            // scrolls inside <body> (the topbar layout), so a vertical scrollbar
+            // makes innerWidth ~15px wider than the usable content area. Clamping
+            // to innerWidth left the tip a few px past the real right edge.
+            var vw = document.documentElement.clientWidth || window.innerWidth;
+            if (vw <= 600) {
+                // Phone: a left/right flip alone can't keep a ~270px tip inside a
+                // ~375px screen for centre/right cards — it clips against the
+                // dashboard's overflow-x:clip box. Anchor near the icon but clamp
+                // the whole tip into the viewport so it is always fully readable.
+                var desiredLeft = hintRect.left - 8;
+                var maxLeft = vw - margin - tipWidth;
+                var clampedLeft = Math.max(margin, Math.min(desiredLeft, maxLeft));
+                tip.style.left = (clampedLeft - hintRect.left) + 'px';
+                tip.style.right = 'auto';
+                return;
+            }
+            // Desktop/tablet: flip leftward only if opening rightward would spill.
+            if (hintRect.left - 8 + tipWidth + margin > vw) {
                 hint.classList.add('brikpanel-dash-hint--end');
             }
         }
-        var hints = document.querySelectorAll('.brikpanel-dash-hint');
-        hints.forEach(function (hint) {
-            hint.addEventListener('pointerenter', function () { place(hint); });
-            hint.addEventListener('focusin', function () { place(hint); });
+        // Delegate from the document: most hints (the KPI cards in particular)
+        // are rendered later by the dashboard AJAX load, so binding directly to
+        // the elements present at init missed them entirely — their tooltips
+        // never got placed and overflowed the viewport on mobile. `pointerover`
+        // and `focusin` both bubble, so a single delegated pair covers hints
+        // added at any time. Recomputed on every open, so width/viewport changes
+        // stay correct.
+        document.addEventListener('pointerover', function (e) {
+            var hint = e.target.closest && e.target.closest('.brikpanel-dash-hint');
+            if (hint) place(hint);
+        });
+        document.addEventListener('focusin', function (e) {
+            var hint = e.target.closest && e.target.closest('.brikpanel-dash-hint');
+            if (hint) place(hint);
         });
     }
 

@@ -384,12 +384,23 @@
         document.addEventListener('click', function (e) {
             if (!document.body.classList.contains('brikpanel-mobile-nav-open')) return;
             var link = e.target.closest('#adminmenu a, #brikpanel-navigation a');
-            if (link) setOpen(false);
+            if (!link) return;
+            // First tap on a classic-menu parent that has children expands its
+            // submenu inline instead of navigating (WordPress core suppresses the
+            // jump at <=782px). Keep the off-canvas panel open so the revealed
+            // children are actually usable — only a leaf tap should close it.
+            var isClassicParentTap = link.classList.contains('menu-top')
+                && link.closest('#adminmenu li.wp-has-submenu')
+                && window.innerWidth <= 782;
+            if (isClassicParentTap) return;
+            setOpen(false);
         });
 
-        // Auto-close when resizing back up to desktop.
+        // Auto-close when resizing back up to the full desktop sidebar. The
+        // off-canvas hamburger now spans WP's whole auto-fold range (<=960px),
+        // so only a width past 960px means the static sidebar is back.
         window.addEventListener('resize', function () {
-            if (window.innerWidth > 782 && document.body.classList.contains('brikpanel-mobile-nav-open')) {
+            if (window.innerWidth > 960 && document.body.classList.contains('brikpanel-mobile-nav-open')) {
                 setOpen(false);
             }
         });

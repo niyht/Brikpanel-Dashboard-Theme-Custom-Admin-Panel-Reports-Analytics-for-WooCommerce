@@ -2956,13 +2956,18 @@
         var isTax = action.indexOf('tax_set__') === 0 || action.indexOf('tax_add__') === 0;
         var isShipping = action === 'set_weight' || action === 'set_length' ||
                          action === 'set_width' || action === 'set_height';
+        // Maintenance actions need no value: they recompute from existing data.
+        var isNoValue = action === 'repair_visibility';
 
         // The variation filter only applies to per-variation price/stock edits.
         if (which === 'cat') {
-            $('#bpl-bulk-varfilter-cat').toggle(!isTax && !isShipping);
+            $('#bpl-bulk-varfilter-cat').toggle(!isTax && !isShipping && !isNoValue);
         }
 
-        if (isTax) {
+        if (isNoValue) {
+            $('#bpl-bulk-term-region').hide();
+            $valWrap.hide();
+        } else if (isTax) {
             $valWrap.hide();
             var taxonomy = action.split('__')[1];
             var $region = $('#bpl-bulk-term-region').show();

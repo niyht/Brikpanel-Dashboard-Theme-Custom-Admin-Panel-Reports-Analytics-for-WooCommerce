@@ -29,12 +29,17 @@ body.login {
 }
 
 /* ---------- Logo / Header Area ---------- */
-.login h1 {
+/* The visible login logo is `#login h1` (recent WordPress tags it
+   `.wp-login-logo`). Scope our logo styling to it specifically: a plain
+   `.login h1` would ALSO match the page-level `<h1 class="screen-reader-text">
+   Log In</h1>` that WordPress prints as a child of <body>, painting a stray
+   second logo at the top of the screen. */
+#login h1 {
     text-align: center;
     margin-bottom: 1.5rem;
 }
 
-.login h1::before {
+#login h1::before {
     content: '';
     display: block;
     width: 48px;
@@ -48,7 +53,7 @@ body.login {
     background-size: 24px;
 }
 
-.login h1::after {
+#login h1::after {
     content: 'Welcome back';
     display: block;
     font-size: 1.125rem;

@@ -889,6 +889,7 @@
        every toolbar control can still tweak afterwards (the user's complaint
        was that pasted website markup could only be fixed via the code view). */
     var EDITOR_BLOCK_TAGS  = { P:1, H2:1, H3:1, H4:1, H5:1, H6:1, UL:1, OL:1, LI:1, BLOCKQUOTE:1 };
+    var EDITOR_TABLE_TAGS  = { TABLE:1, THEAD:1, TBODY:1, TFOOT:1, TR:1, TD:1, TH:1, CAPTION:1 };
     var EDITOR_INLINE_MAP  = { STRONG:'strong', B:'strong', EM:'em', I:'em', U:'u', A:'a', CODE:'code' };
     var EDITOR_DROP_TAGS   = { SCRIPT:1, STYLE:1, NOSCRIPT:1, IMG:1, IFRAME:1, VIDEO:1, AUDIO:1, OBJECT:1, EMBED:1, SVG:1, FORM:1, INPUT:1, BUTTON:1, META:1, LINK:1, HEAD:1 };
 
@@ -914,9 +915,15 @@
         function walk(node) {
             var out = '';
             var kids = node.childNodes;
+            var parentTag = node.tagName || '';
             for (var i = 0; i < kids.length; i++) {
                 var child = kids[i];
-                if (child.nodeType === 3) { out += esc(child.nodeValue); continue; }
+                if (child.nodeType === 3) {
+                    // Whitespace-only text between table-structural elements is
+                    // layout cruft from the source — keep the grid markup clean.
+                    if (/^(TABLE|THEAD|TBODY|TFOOT|TR)$/.test(parentTag) && !child.nodeValue.trim()) continue;
+                    out += esc(child.nodeValue); continue;
+                }
                 if (child.nodeType !== 1) continue;
                 var tag = child.tagName;
                 if (tag === 'BR') { out += '<br>'; continue; }
@@ -927,6 +934,18 @@
                     var lt = tag.toLowerCase();
                     if (tag === 'LI') { out += '<li>' + inner + '</li>'; }
                     else if (inner.replace(/<br>/g, '').trim() !== '' || tag === 'UL' || tag === 'OL') { out += '<' + lt + '>' + inner + '</' + lt + '>'; }
+                } else if (EDITOR_TABLE_TAGS[tag]) {
+                    // Preserve pasted tables (structure + colspan/rowspan) so the
+                    // grid survives instead of collapsing into loose text.
+                    var ltag = tag.toLowerCase();
+                    var attrs = '';
+                    if (tag === 'TD' || tag === 'TH') {
+                        var cs = parseInt(child.getAttribute('colspan'), 10);
+                        var rs = parseInt(child.getAttribute('rowspan'), 10);
+                        if (cs > 1) attrs += ' colspan="' + cs + '"';
+                        if (rs > 1) attrs += ' rowspan="' + rs + '"';
+                    }
+                    out += '<' + ltag + attrs + '>' + inner + '</' + ltag + '>';
                 } else if (EDITOR_INLINE_MAP[tag]) {
                     var m = EDITOR_INLINE_MAP[tag];
                     if (m === 'a') {
@@ -935,7 +954,7 @@
                     } else if (inner !== '') {
                         out += '<' + m + '>' + inner + '</' + m + '>';
                     }
-                } else if (tag === 'DIV' || tag === 'SECTION' || tag === 'ARTICLE' || tag === 'TD' || tag === 'TH') {
+                } else if (tag === 'DIV' || tag === 'SECTION' || tag === 'ARTICLE') {
                     out += inner.replace(/<br>/g, '').trim() !== '' ? '<p>' + inner + '</p>' : '';
                 } else {
                     out += inner; // span/font/etc — unwrap, keep content

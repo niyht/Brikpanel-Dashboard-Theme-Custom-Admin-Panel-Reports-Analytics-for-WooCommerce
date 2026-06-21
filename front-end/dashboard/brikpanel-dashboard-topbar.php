@@ -141,18 +141,24 @@ class Brikpanel_Dashboard_Topbar {
             return;
         }
 
+        // filemtime-suffixed versions so any edit to the topbar assets busts the
+        // browser cache immediately, even between releases (BRIKPANEL_VERSION
+        // alone serves a stale copy whenever the file changes without a bump).
+        $topbar_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/topbar/brikpanel-topbar.css' ) ?: BRIKPANEL_VERSION;
+        $topbar_js_ver  = @filemtime( BRIKPANEL_PATH . 'front-end/topbar/brikpanel-topbar.js' ) ?: BRIKPANEL_VERSION;
+
         wp_enqueue_style(
             'brikpanel_topbar_styles',
             BRIKPANEL_URL . 'front-end/topbar/brikpanel-topbar.css',
             [],
-            BRIKPANEL_VERSION
+            $topbar_css_ver
         );
 
         wp_enqueue_script(
             'brikpanel_topbar_scripts',
             BRIKPANEL_URL . 'front-end/topbar/brikpanel-topbar.js',
             [],
-            BRIKPANEL_VERSION,
+            $topbar_js_ver,
             true
         );
 

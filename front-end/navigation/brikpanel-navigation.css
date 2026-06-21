@@ -571,6 +571,107 @@ li#toplevel_page_woocommerce .wp-menu-image {
 	border-color: var(--brikpanel-border) !important;
 }
 
+/* ── Classic menu on mobile (≤960px, the off-canvas sheet range) ─────────
+   The classic reskin above is tuned for the desktop sidebar. The BrikPanel
+   topbar reveals the same #adminmenu as an off-canvas sheet across WP's whole
+   auto-fold range (≤960px, see brikpanel-topbar.css), but several desktop
+   assumptions break inside that narrow sheet:
+
+   1) WordPress core switches the menu icon to `position:absolute` at ≤782px
+      (so the whole row is a big tap target). Our desktop `.wp-menu-name`
+      padding has no left clearance, so the label slides under the icon and the
+      two overlap. Lay the row out as an explicit flex row with a static icon so
+      text always sits to the icon's right, at any width.
+   2) Non-current submenus are drawn as a hover flyout pinned ~210px to the
+      right — off the edge of the ~240px sheet, and hover never fires on touch.
+      Re-flow them inline as an accordion under their parent so every child item
+      is reachable. Core's own responsive JS still toggles which one is open.
+   3) The shared 960px rule higher up pins #adminmenu to `position:absolute`
+      width:190px (correct for the modern nav, whose visible menu is a separate
+      element). In classic mode #adminmenu IS the visible menu, so that left it
+      190px wide inside a 240px sheet — a dead light gutter on the right — and
+      absolutely positioned so it couldn't scroll within the sheet. Lay it out
+      statically and let it fill the sheet so it reads as one solid panel and
+      scrolls with the wrap (made a real scroll container in topbar.css).
+   The same applies to the untouched native menu mode, so scope both. */
+@media screen and (max-width: 960px) {
+	.brikpanel-classic-nav #adminmenu,
+	.brikpanel-native-nav #adminmenu {
+		position: static !important;
+		width: 100% !important;
+		box-sizing: border-box;
+	}
+	/* 783–960px: core shrinks each top-level <li>/<a> (and therefore the
+	   submenu's containing block) to a ~36px icon rail. Top-level labels only
+	   stayed legible by overflowing a nowrap flex item; submenu links, which
+	   wrap, collapsed to one letter per line. Give the rows the full sheet width
+	   so both top-level and submenu text lay out normally. */
+	.brikpanel-classic-nav #adminmenu li.menu-top,
+	.brikpanel-native-nav #adminmenu li.menu-top,
+	.brikpanel-classic-nav #adminmenu a.menu-top,
+	.brikpanel-native-nav #adminmenu a.menu-top {
+		width: auto !important;
+	}
+	.brikpanel-classic-nav #adminmenu a.menu-top {
+		display: flex;
+		align-items: center;
+	}
+	/* 783–960px: WordPress core collapses auto-fold to an icon-only rail and
+	   parks each label off-screen (`.wp-menu-name { position:absolute; left:-999px }`)
+	   to reveal it as a hover flyout. That hover never fires on touch and the
+	   off-screen label, squeezed into the flex row, wrapped one letter per line.
+	   Pull every label back into the row as a normal single-line in-flow element
+	   so the off-canvas sheet always shows the full expanded menu, identical to
+	   the ≤782px phone layout. */
+	.brikpanel-classic-nav #adminmenu .wp-menu-name,
+	.brikpanel-native-nav #adminmenu .wp-menu-name {
+		position: static !important;
+		left: auto !important;
+		width: auto !important;
+		clip: auto !important;
+		clip-path: none !important;
+		white-space: nowrap;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.brikpanel-classic-nav #adminmenu .wp-menu-image {
+		position: static !important;
+		flex: 0 0 30px;
+		width: 30px;
+		height: auto;
+		padding: 7px 0;
+		box-sizing: content-box;
+	}
+	.brikpanel-classic-nav #adminmenu .wp-menu-name {
+		padding: 7px 8px;
+	}
+	/* Submenu → inline accordion, full sheet width, no right-offset flyout. */
+	.brikpanel-classic-nav #adminmenu .wp-submenu,
+	.brikpanel-classic-nav #adminmenu .wp-not-current-submenu .wp-submenu {
+		position: static !important;
+		left: 0 !important;
+		width: auto !important;
+		min-width: 0 !important;
+		margin: 0 !important;
+		padding: 2px 0 4px !important;
+		background: transparent !important;
+		border: 0 !important;
+		border-radius: 0 !important;
+		box-shadow: none !important;
+	}
+	.brikpanel-classic-nav #adminmenu .wp-submenu a,
+	.brikpanel-classic-nav #adminmenu .wp-not-current-submenu .wp-submenu a {
+		padding-left: 38px !important;
+		white-space: normal;
+	}
+	/* The flyout pointer arrow that core draws between a hovered item and its
+	   right-side flyout makes no sense for an inline accordion. */
+	.brikpanel-classic-nav #adminmenu .wp-submenu::after,
+	.brikpanel-classic-nav #adminmenu .wp-has-current-submenu .wp-submenu::after {
+		display: none !important;
+	}
+}
+
 /* ── Original (untouched) WordPress menu mode ───────────────────────────
    For users who prefer the standard WordPress admin menu exactly as it was
    ("Style the default menu" turned off). We undo BrikPanel's menu chrome —

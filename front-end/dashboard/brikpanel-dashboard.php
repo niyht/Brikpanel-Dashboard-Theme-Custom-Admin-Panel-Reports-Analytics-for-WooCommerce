@@ -325,7 +325,7 @@ class Brikpanel_Dashboard {
                 <h1>
                     <?php esc_html_e( 'Dashboard', 'brikpanel' ); ?>
                     <?php if ( function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active() ) : ?>
-                        <span class="brikpanel-dash-header-suffix"><?php esc_html_e( '— With Marketplace', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-header-suffix"><?php esc_html_e( 'With Marketplace', 'brikpanel' ); ?></span>
                     <?php endif; ?>
                 </h1>
                 <div class="brikpanel-dash-filters">

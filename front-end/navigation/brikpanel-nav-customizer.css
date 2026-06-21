@@ -696,3 +696,37 @@
 .brikpanel-navc-submenu-item .brikpanel-navc-audience {
 	max-width: 120px;
 }
+
+/* =============================================================================
+   Mobile (≤600px). The row packs a drag handle, icon, label, toggle, an
+   audience <select> (~140px, non-shrinking) and two action buttons on one line
+   — a ~480px min-content that overflowed the narrow settings column and forced
+   the whole page to scroll sideways. Let the row wrap and drop the audience
+   select onto its own full-width line (order:1 sends it past the buttons), the
+   same pattern the submenu rows already use. Tighten card/strip padding so the
+   controls keep room to breathe. */
+@media (max-width: 600px) {
+	.brikpanel-navc-card {
+		padding: 1rem 1rem 1.125rem;
+	}
+	.brikpanel-navc-header {
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.brikpanel-navc-row {
+		flex-wrap: wrap;
+		row-gap: 0.5rem;
+	}
+	.brikpanel-navc-audience {
+		order: 1;
+		flex: 1 1 100%;
+		width: 100%;
+		max-width: none;
+	}
+	/* The role checklist + submenu panels indent to clear the desktop drag rail;
+	   on a phone that wastes a third of the width, so pull them back flush. */
+	.brikpanel-navc-roles,
+	.brikpanel-navc-submenus-inner {
+		padding-left: 0.75rem;
+	}
+}

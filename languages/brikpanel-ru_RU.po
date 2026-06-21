@@ -2694,8 +2694,8 @@ msgid "Marketplace analytics (BrikMarket)"
 msgstr "Аналитика маркетплейсов (BrikMarket)"
 
 #: front-end/dashboard/brikpanel-dashboard.php:328
-msgid "— With Marketplace"
-msgstr "— С маркетплейсом"
+msgid "With Marketplace"
+msgstr "С маркетплейсом"
 
 #: front-end/dashboard/brikpanel-dashboard.php:337
 #: front-end/dashboard/brikpanel-dashboard.php:348
