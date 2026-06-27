@@ -240,28 +240,46 @@ function brikpanel_render_section_order_field($field) {
 
     // Fold third-party plugin metaboxes into the same picker. They are
     // namespaced `mb:<id>` so they live alongside native section slugs in the
-    // saved order/visibility. ACF field groups (`acf-…`) are intentionally
-    // omitted here — the dedicated "Auto-include ACF field groups" toggle owns
-    // them. The collector is only ever called on this settings-page render, so
-    // the expensive screen spoof never touches the editor runtime path.
+    // saved order/visibility. The collector is only ever called on this
+    // settings-page render, so the expensive screen spoof never touches the
+    // editor runtime path.
+    //
+    // ACF field groups (`mb:acf-…`) get special treatment: they are only listed
+    // when the "Auto-include ACF field groups" toggle is on, and — unlike manual
+    // plugin boxes, which default hidden — they default to VISIBLE so the long-
+    // standing auto-include behaviour (matching groups show automatically) is
+    // preserved. Surfacing them here is purely so the admin can REORDER them
+    // (and optionally hide a specific one) instead of always getting them last.
+    $acf_auto_on   = (get_option('brikpanel_pe_acf_auto', 'yes') === 'yes');
     $metaboxes     = function_exists('brikpanel_collect_product_metaboxes')
         ? brikpanel_collect_product_metaboxes()
         : [];
-    $metabox_slugs = [];
+    $metabox_slugs = []; // manual plugin boxes — default hidden
+    $acf_slugs     = []; // ACF field groups — default visible (auto-include on)
     foreach ($metaboxes as $mb_id => $mb_title) {
-        if (!is_string($mb_id) || $mb_id === '' || strpos($mb_id, 'acf-') === 0) {
+        if (!is_string($mb_id) || $mb_id === '') {
             continue;
         }
-        $slug            = 'mb:' . $mb_id;
-        $options[$slug]  = $mb_title;
-        $metabox_slugs[] = $slug;
+        $is_acf = strpos($mb_id, 'acf-') === 0;
+        if ($is_acf && !$acf_auto_on) {
+            // Placement is only meaningful while auto-include is enabled.
+            continue;
+        }
+        $slug           = 'mb:' . $mb_id;
+        $options[$slug] = $mb_title;
+        if ($is_acf) {
+            $acf_slugs[] = $slug;
+        } else {
+            $metabox_slugs[] = $slug;
+        }
     }
 
-    $order = brikpanel_pe_get_section_order();
+    $order       = brikpanel_pe_get_section_order();
+    $saved_order = $order; // snapshot before appending freshly-detected slugs
     // Surface freshly-detected metaboxes that are not in the saved order yet,
-    // parked at the end and hidden by default (see default-hidden below) so
-    // enabling the feature never dumps every plugin box into the editor.
-    foreach ($metabox_slugs as $slug) {
+    // parked at the end. Manual plugin boxes are hidden by default (see
+    // default-hidden below); ACF groups default visible (handled per-row).
+    foreach (array_merge($metabox_slugs, $acf_slugs) as $slug) {
         if (!in_array($slug, $order, true)) {
             $order[] = $slug;
         }
@@ -270,10 +288,10 @@ function brikpanel_render_section_order_field($field) {
     $visible     = brikpanel_pe_get_visible_sections_ordered();
     $visible_set = array_flip($visible);
 
-    // Default order/hidden sets drive the "Reset to default" button. They must
-    // include the detected metaboxes (all hidden) so a reset returns the editor
-    // to its clean, native-only baseline.
-    $default_order  = array_merge(array_keys(brikpanel_pe_section_options()), $metabox_slugs);
+    // Default order/hidden sets drive the "Reset to default" button. Manual
+    // metaboxes reset to hidden (clean native-only baseline); ACF groups reset
+    // to visible so a reset keeps the auto-include default intact.
+    $default_order  = array_merge(array_keys(brikpanel_pe_section_options()), $metabox_slugs, $acf_slugs);
     $default_hidden = array_merge(array_values(brikpanel_pe_section_default_hidden()), $metabox_slugs);
 
     $title    = !empty($field['name']) ? esc_html($field['name']) : '';
@@ -293,13 +311,21 @@ function brikpanel_render_section_order_field($field) {
                 <ul class="brikpanel-section-order-list" role="list">
                     <?php foreach ($order as $slug) :
                         if (!isset($options[$slug])) continue;
-                        $is_visible  = isset($visible_set[$slug]);
                         $is_metabox  = brikpanel_pe_is_metabox_slug($slug);
+                        $is_acf_row  = (strpos($slug, 'mb:acf-') === 0);
+                        $is_visible  = isset($visible_set[$slug]);
+                        // A freshly-detected ACF group (not in the saved order
+                        // yet) defaults to visible, matching the auto-include
+                        // behaviour it had before placement control existed.
+                        if ($is_acf_row && !in_array($slug, $saved_order, true)) {
+                            $is_visible = true;
+                        }
+                        $badge_label = $is_acf_row ? __('ACF', 'brikpanel') : __('Plugin', 'brikpanel');
                         ?>
                         <li class="brikpanel-section-order-row<?php echo $is_visible ? '' : ' is-hidden-section'; ?><?php echo $is_metabox ? ' is-metabox-section' : ''; ?>" data-slug="<?php echo esc_attr($slug); ?>">
                             <label class="brikpanel-section-order-toggle">
                                 <input type="checkbox" class="brikpanel-section-order-checkbox" name="brikpanel_pe_section_visibility[]" value="<?php echo esc_attr($slug); ?>" <?php checked($is_visible); ?>>
-                                <span class="brikpanel-section-order-title"><?php echo esc_html($options[$slug]); ?><?php if ($is_metabox) : ?><span class="brikpanel-section-order-badge"><?php esc_html_e('Plugin', 'brikpanel'); ?></span><?php endif; ?></span>
+                                <span class="brikpanel-section-order-title"><?php echo esc_html($options[$slug]); ?><?php if ($is_metabox) : ?><span class="brikpanel-section-order-badge"><?php echo esc_html($badge_label); ?></span><?php endif; ?></span>
                             </label>
                             <div class="brikpanel-section-order-actions">
                                 <button type="button" class="brikpanel-section-order-btn brikpanel-section-order-up" aria-label="<?php esc_attr_e('Move up', 'brikpanel'); ?>" title="<?php esc_attr_e('Move up', 'brikpanel'); ?>">

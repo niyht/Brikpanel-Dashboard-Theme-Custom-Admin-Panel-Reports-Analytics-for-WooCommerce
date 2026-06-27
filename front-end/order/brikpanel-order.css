@@ -387,11 +387,14 @@ standard WooCommerce ones. */
 	--brk-error: #d72c0d;
 }
 
-/* ---- Hide unnecessary metaboxes ---- */
+/* ---- Hide redundant metaboxes ----
+   #order_custom is the raw WooCommerce "Custom Fields" box, which BrikPanel
+   replaces with its own clean "Additional details" card. Order Attribution
+   (#woocommerce-order-source-data) and Customer History
+   (#woocommerce-customer-history) are deliberately NOT hidden: they carry
+   useful native data and are styled like every other modern card below. */
 .brikpanel-modern-edit #order_custom,
-.brikpanel-modern-edit #woocommerce-order-downloads,
-.brikpanel-modern-edit #woocommerce-order-source-data,
-.brikpanel-modern-edit #woocommerce-customer-history {
+.brikpanel-modern-edit #woocommerce-order-downloads {
 	display: none !important;
 }
 
@@ -1130,8 +1133,11 @@ standard WooCommerce ones. */
 	text-indent: 0;
 }
 
-/* Row 2: trash link left, Update right */
-.brikpanel-modern-edit #woocommerce-order-actions ul.order_actions li.wide:not(#actions) {
+/* Row 2: trash link left, Update right.
+   Scoped to the row that actually holds the delete/save controls via :has(),
+   so third-party rows in this list (e.g. CURCY's "Change currency" select +
+   note) are NOT flexed side by side and squished. */
+.brikpanel-modern-edit #woocommerce-order-actions ul.order_actions li.wide:has( #delete-action ) {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -1139,6 +1145,24 @@ standard WooCommerce ones. */
 	margin-top: 0.875rem;
 	padding-top: 0.875rem;
 	border-top: 1px solid var(--brk-border);
+}
+
+/* ---- CURCY (WooCommerce Multi Currency) "Change currency" row ----
+   CURCY prepends an <li class="wide"> with a currency <select> and an italic
+   note. Keep the select full-width on its own line and turn the note into a
+   small muted helper line below it, matching the BrikPanel design language. */
+.brikpanel-modern-edit #woocommerce-order-actions ul.order_actions li.wide:has( select[name="wmc_change_currency"] ) {
+	margin: 0 0 0.75rem;
+	padding: 0;
+	border: none;
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions select[name="wmc_change_currency"] ~ p {
+	margin: 0.4rem 0 0 !important;
+	font-size: 0.6875rem !important;
+	font-style: normal !important;
+	line-height: 1.4;
+	color: var(--brk-text-muted) !important;
 }
 
 .brikpanel-modern-edit #woocommerce-order-actions #delete-action {

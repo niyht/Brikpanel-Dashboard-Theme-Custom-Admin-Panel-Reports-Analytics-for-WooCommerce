@@ -338,6 +338,30 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     color: #fff;
 }
 
+/* Owner-defined shortcut button — light secondary treatment. */
+.brikpanel-topbar-btn-secondary {
+    background: #ffffff;
+    color: var(--bp-topbar-text);
+    border: 1px solid var(--bp-topbar-border);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+    text-decoration: none;
+    max-width: 220px;
+}
+
+.brikpanel-topbar-btn-secondary:hover {
+    background: #f7f7f7;
+    color: var(--bp-topbar-text);
+    border-color: #cfcfcf;
+}
+
+.brikpanel-topbar-btn-secondary svg { flex-shrink: 0; }
+
+.brikpanel-topbar-btn-secondary .brikpanel-topbar-btn-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Icon buttons (bell, external) — sized to match the Create button height so
    every item in the right cluster shares one consistent height. */
 .brikpanel-topbar-icon-btn {

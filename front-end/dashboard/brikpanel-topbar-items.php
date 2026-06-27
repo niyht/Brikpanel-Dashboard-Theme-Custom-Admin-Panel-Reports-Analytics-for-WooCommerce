@@ -21,6 +21,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 const BRIKPANEL_TOPBAR_HIDDEN_ITEMS_OPTION = 'brikpanel_topbar_hidden_items';
 
+/** Hidden entries inside the quick-create dropdown (e.g. 'post'). */
+const BRIKPANEL_TOPBAR_CREATE_HIDDEN_OPTION = 'brikpanel_topbar_create_hidden_items';
+
+/** Custom top bar shortcut button — owner-defined label and target. */
+const BRIKPANEL_TOPBAR_CUSTOM_LABEL_OPTION = 'brikpanel_topbar_custom_link_label';
+const BRIKPANEL_TOPBAR_CUSTOM_URL_OPTION   = 'brikpanel_topbar_custom_link_url';
+
 /**
  * The toggleable top bar controls, in the order they appear in the bar.
  * Each entry carries a translatable label and a static inline SVG icon.
@@ -52,6 +59,10 @@ function brikpanel_topbar_items_label_map() {
         'view_site'     => [
             'label' => __( 'View store button', 'brikpanel' ),
             'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+        ],
+        'custom_link'   => [
+            'label' => __( 'Custom shortcut button', 'brikpanel' ),
+            'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
         ],
         'user'          => [
             'label' => __( 'User menu', 'brikpanel' ),
@@ -95,6 +106,109 @@ function brikpanel_topbar_item_is_visible( $key ) {
 }
 
 /**
+ * The entries inside the quick-create dropdown, in render order. Each carries a
+ * translatable label; the matching <a> in the bar is gated by its key so an
+ * owner can strip non-store entries (e.g. "New post") for a Woo-focused menu.
+ *
+ * @return array<string,string>
+ */
+function brikpanel_topbar_create_items_label_map() {
+    return [
+        'product' => __( 'New product', 'brikpanel' ),
+        'order'   => __( 'New order', 'brikpanel' ),
+        'coupon'  => __( 'New coupon', 'brikpanel' ),
+        'post'    => __( 'New post', 'brikpanel' ),
+    ];
+}
+
+/**
+ * Valid quick-create entry keys.
+ *
+ * @return string[]
+ */
+function brikpanel_topbar_create_item_keys() {
+    return array_keys( brikpanel_topbar_create_items_label_map() );
+}
+
+/**
+ * Keys of the quick-create entries the owner has hidden.
+ *
+ * @return string[]
+ */
+function brikpanel_topbar_create_hidden_items() {
+    $hidden = get_option( BRIKPANEL_TOPBAR_CREATE_HIDDEN_OPTION, [] );
+    if ( ! is_array( $hidden ) ) {
+        return [];
+    }
+    return array_values( array_intersect( $hidden, brikpanel_topbar_create_item_keys() ) );
+}
+
+/**
+ * Whether a quick-create entry should render. Unknown keys default to visible.
+ *
+ * @param string $key
+ * @return bool
+ */
+function brikpanel_topbar_create_item_is_visible( $key ) {
+    return ! in_array( $key, brikpanel_topbar_create_hidden_items(), true );
+}
+
+/**
+ * Whether at least one quick-create entry is still visible. The Create button
+ * hides itself when every entry has been turned off, so the bar never shows an
+ * empty dropdown.
+ *
+ * @return bool
+ */
+function brikpanel_topbar_has_visible_create_items() {
+    return count( brikpanel_topbar_create_hidden_items() ) < count( brikpanel_topbar_create_item_keys() );
+}
+
+/**
+ * Sanitize an owner-supplied shortcut URL. Accepts absolute http(s) URLs and
+ * site-relative paths (e.g. "/wp-admin/edit.php?post_type=shop_order"); strips
+ * dangerous schemes (javascript:, data:, …) so the bar can never carry an XSS
+ * vector. Returns '' for anything that does not survive.
+ *
+ * @param mixed $raw
+ * @return string
+ */
+function brikpanel_topbar_sanitize_link_url( $raw ) {
+    $raw = trim( (string) $raw );
+    if ( $raw === '' ) {
+        return '';
+    }
+    // Reject any explicit non-http(s) scheme up front (covers javascript:, data:, vbscript:, file:, …).
+    if ( preg_match( '#^[a-z][a-z0-9+.\-]*:#i', $raw ) && ! preg_match( '#^https?:#i', $raw ) ) {
+        return '';
+    }
+    // A scheme-less path that is not already rooted (e.g. "wp-admin/edit.php") is
+    // almost always a site path typed without the leading slash. Root it so
+    // esc_url does not read the first segment as a host ("http://wp-admin/…").
+    // Protocol-relative URLs ("//host/…") start with "/" and are left untouched.
+    if ( ! preg_match( '#^https?:#i', $raw ) && $raw[0] !== '/' ) {
+        $raw = '/' . ltrim( $raw, '/' );
+    }
+    // esc_url_raw keeps root-relative paths intact and enforces the protocol allow-list for absolute URLs.
+    return esc_url_raw( $raw, [ 'http', 'https' ] );
+}
+
+/**
+ * The configured custom shortcut, or null when not fully set up. Both a label
+ * and a valid target are required before the button appears in the bar.
+ *
+ * @return array{label:string,url:string}|null
+ */
+function brikpanel_topbar_custom_link() {
+    $label = sanitize_text_field( (string) get_option( BRIKPANEL_TOPBAR_CUSTOM_LABEL_OPTION, '' ) );
+    $url   = brikpanel_topbar_sanitize_link_url( get_option( BRIKPANEL_TOPBAR_CUSTOM_URL_OPTION, '' ) );
+    if ( $label === '' || $url === '' ) {
+        return null;
+    }
+    return [ 'label' => $label, 'url' => $url ];
+}
+
+/**
  * Render the toggle-switch list for the settings field.
  *
  * @param array $field WooCommerce settings field definition.
@@ -102,6 +216,16 @@ function brikpanel_topbar_item_is_visible( $key ) {
 function brikpanel_render_topbar_items_field( $field ) {
     $items  = brikpanel_topbar_items_label_map();
     $hidden = brikpanel_topbar_hidden_items();
+
+    $create_items  = brikpanel_topbar_create_items_label_map();
+    $create_hidden = brikpanel_topbar_create_hidden_items();
+    $custom_label  = sanitize_text_field( (string) get_option( BRIKPANEL_TOPBAR_CUSTOM_LABEL_OPTION, '' ) );
+    $custom_url    = trim( (string) get_option( BRIKPANEL_TOPBAR_CUSTOM_URL_OPTION, '' ) );
+
+    // Show a real, store-correct orders URL as the link placeholder (HPOS-aware).
+    $orders_url = ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' ) && \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() )
+        ? admin_url( 'admin.php?page=wc-orders' )
+        : admin_url( 'edit.php?post_type=shop_order' );
 
     $title   = ! empty( $field['name'] ) ? esc_html( $field['name'] ) : '';
     $tooltip = ( ! empty( $field['desc_tip'] ) && ! empty( $field['desc'] ) ) ? wc_help_tip( $field['desc'] ) : '';
@@ -132,6 +256,39 @@ function brikpanel_render_topbar_items_field( $field ) {
                                 <span class="brikpanel-topbar-items-track" aria-hidden="true"></span>
                             </label>
                         </li>
+
+                        <?php if ( $key === 'create' ) : ?>
+                            <li class="brikpanel-topbar-subpanel" data-bp-subpanel="create">
+                                <p class="brikpanel-topbar-subpanel-title"><?php esc_html_e( 'Items in the create menu', 'brikpanel' ); ?></p>
+                                <ul class="brikpanel-topbar-subitems" role="list">
+                                    <?php foreach ( $create_items as $ckey => $clabel ) :
+                                        $c_visible = ! in_array( $ckey, $create_hidden, true );
+                                        ?>
+                                        <li class="brikpanel-topbar-subitem<?php echo $c_visible ? '' : ' is-hidden-item'; ?>">
+                                            <span class="brikpanel-topbar-subitem-label"><?php echo esc_html( $clabel ); ?></span>
+                                            <label class="brikpanel-topbar-items-switch">
+                                                <input type="checkbox" name="brikpanel_topbar_create_visible_items[]" value="<?php echo esc_attr( $ckey ); ?>" <?php checked( $c_visible ); ?>>
+                                                <span class="brikpanel-topbar-items-track" aria-hidden="true"></span>
+                                            </label>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </li>
+                        <?php elseif ( $key === 'custom_link' ) : ?>
+                            <li class="brikpanel-topbar-subpanel" data-bp-subpanel="custom_link">
+                                <p class="brikpanel-topbar-subpanel-title"><?php esc_html_e( 'Set a label and a target, then turn the button on above. The button stays hidden until both are filled in.', 'brikpanel' ); ?></p>
+                                <div class="brikpanel-topbar-custom-fields">
+                                    <label class="brikpanel-topbar-custom-field">
+                                        <span class="brikpanel-topbar-custom-field-label"><?php esc_html_e( 'Button label', 'brikpanel' ); ?></span>
+                                        <input type="text" name="brikpanel_topbar_custom_link_label" value="<?php echo esc_attr( $custom_label ); ?>" maxlength="40" placeholder="<?php esc_attr_e( 'All orders', 'brikpanel' ); ?>">
+                                    </label>
+                                    <label class="brikpanel-topbar-custom-field">
+                                        <span class="brikpanel-topbar-custom-field-label"><?php esc_html_e( 'Button link', 'brikpanel' ); ?></span>
+                                        <input type="text" name="brikpanel_topbar_custom_link_url" value="<?php echo esc_attr( $custom_url ); ?>" placeholder="<?php echo esc_attr( $orders_url ); ?>">
+                                    </label>
+                                </div>
+                            </li>
+                        <?php endif; ?>
                     <?php endforeach; ?>
                 </ul>
             </div>
@@ -197,6 +354,81 @@ function brikpanel_render_topbar_items_field( $field ) {
                 .brikpanel-topbar-items-row.is-hidden-item .brikpanel-topbar-items-label {
                     color: #8a8a8a;
                 }
+                /* Sub-panel under a parent row (create entries, custom link fields). */
+                .brikpanel-topbar-subpanel {
+                    list-style: none;
+                    border-top: 1px solid #f0f0f0;
+                    padding: .75rem .875rem .875rem 3.25rem;
+                    background: #fbfbfb;
+                }
+                .brikpanel-topbar-subpanel-title {
+                    margin: 0 0 .5rem;
+                    font-size: .75rem;
+                    line-height: 1.5;
+                    color: #8a8a8a;
+                }
+                .brikpanel-topbar-subitems {
+                    margin: 0;
+                    padding: 0;
+                    list-style: none;
+                    background: #ffffff;
+                    border: 1px solid #e3e3e3;
+                    border-radius: .5rem;
+                    overflow: hidden;
+                }
+                .brikpanel-topbar-subitem {
+                    display: flex;
+                    align-items: center;
+                    gap: .75rem;
+                    padding: .5rem .75rem;
+                    border-top: 1px solid #f0f0f0;
+                }
+                .brikpanel-topbar-subitem:first-child {
+                    border-top: 0;
+                }
+                .brikpanel-topbar-subitem-label {
+                    flex: 1;
+                    font-size: .8125rem;
+                    color: #303030;
+                    transition: color .15s ease;
+                }
+                .brikpanel-topbar-subitem.is-hidden-item .brikpanel-topbar-subitem-label {
+                    color: #8a8a8a;
+                }
+                .brikpanel-topbar-custom-fields {
+                    display: flex;
+                    flex-direction: column;
+                    gap: .625rem;
+                }
+                .brikpanel-topbar-custom-field {
+                    display: flex;
+                    flex-direction: column;
+                    gap: .375rem;
+                }
+                .brikpanel-topbar-custom-field-label {
+                    font-size: .8125rem;
+                    font-weight: 600;
+                    color: #303030;
+                }
+                .brikpanel-topbar-custom-field input[type="text"] {
+                    width: 100%;
+                    max-width: 360px;
+                    padding: .5rem .625rem;
+                    font-size: .875rem;
+                    color: #303030;
+                    border: 1px solid #8a8a8a;
+                    border-radius: .5rem;
+                    background: #ffffff;
+                    box-shadow: none;
+                }
+                .brikpanel-topbar-custom-field input[type="text"]:focus {
+                    border-color: #303030;
+                    box-shadow: 0 0 0 1px #303030;
+                    outline: none;
+                }
+                .brikpanel-topbar-custom-field input[type="text"]::placeholder {
+                    color: #8a8a8a;
+                }
                 /* Toggle switch — matches the BrikPanel design system. */
                 .brikpanel-topbar-items-switch {
                     position: relative;
@@ -251,7 +483,7 @@ function brikpanel_render_topbar_items_field( $field ) {
                 root.addEventListener('change', function (e) {
                     var cb = e.target.closest('.brikpanel-topbar-items-switch input');
                     if (!cb) { return; }
-                    var row = cb.closest('.brikpanel-topbar-items-row');
+                    var row = cb.closest('.brikpanel-topbar-subitem') || cb.closest('.brikpanel-topbar-items-row');
                     if (row) { row.classList.toggle('is-hidden-item', !cb.checked); }
                 });
             })();
@@ -290,4 +522,28 @@ add_action( 'woocommerce_update_options_brikpanel', function () {
 
     $hidden = array_values( array_diff( $known, $visible ) );
     update_option( BRIKPANEL_TOPBAR_HIDDEN_ITEMS_OPTION, $hidden, false );
+
+    // Quick-create dropdown entries — same hidden-list semantics as the bar items.
+    $create_known   = brikpanel_topbar_create_item_keys();
+    $create_vis_raw = ( isset( $_POST['brikpanel_topbar_create_visible_items'] ) && is_array( $_POST['brikpanel_topbar_create_visible_items'] ) )
+        ? wp_unslash( $_POST['brikpanel_topbar_create_visible_items'] )
+        : [];
+    $create_visible = [];
+    foreach ( $create_vis_raw as $key ) {
+        if ( is_string( $key ) && in_array( $key, $create_known, true ) && ! in_array( $key, $create_visible, true ) ) {
+            $create_visible[] = $key;
+        }
+    }
+    $create_hidden = array_values( array_diff( $create_known, $create_visible ) );
+    update_option( BRIKPANEL_TOPBAR_CREATE_HIDDEN_OPTION, $create_hidden, false );
+
+    // Custom shortcut button — store the raw owner input; sanitize on read/render.
+    $custom_label = isset( $_POST['brikpanel_topbar_custom_link_label'] )
+        ? sanitize_text_field( wp_unslash( $_POST['brikpanel_topbar_custom_link_label'] ) )
+        : '';
+    $custom_url = isset( $_POST['brikpanel_topbar_custom_link_url'] )
+        ? brikpanel_topbar_sanitize_link_url( wp_unslash( $_POST['brikpanel_topbar_custom_link_url'] ) )
+        : '';
+    update_option( BRIKPANEL_TOPBAR_CUSTOM_LABEL_OPTION, $custom_label, false );
+    update_option( BRIKPANEL_TOPBAR_CUSTOM_URL_OPTION, $custom_url, false );
 }, 11 );

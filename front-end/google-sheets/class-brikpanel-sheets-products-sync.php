@@ -18,10 +18,18 @@
  * (without their own stock) emit one read-only summary row so the merchant
  * sees the product even if all stock lives on variations.
  *
- * Stock is the only writable column. Other Sheets edits to product fields
- * are overwritten on the next push pass — by design, since two-way write
- * for price/name/etc. would explode the surface area (currency conversion,
- * tax recalculation, translation conflicts, etc.) for marginal value.
+ * Reverse-writable columns (Sheets → Woo): stock, stock_status,
+ * regular_price, sale_price, cogs and status. A cell is only written back
+ * when the merchant has mapped that column AND the last-write-wins guard
+ * above confirms the sheet edit is both different from the snapshot and
+ * newer than Woo's _date_modified. Every other product field (name,
+ * descriptions, structural data) is deliberately one-way: it is rebuilt
+ * from Woo on the next push pass and any Sheets edit to it is overwritten,
+ * since two-way write there would explode the surface area (currency
+ * conversion, tax recalculation, translation/HTML conflicts) for marginal
+ * value. The Google Sheet is an admin-configured, OAuth-authenticated
+ * trusted source; granting a collaborator edit access to that sheet grants
+ * them control over the reverse-writable columns above.
  *
  * @package BrikPanel
  * @since   3.0.0
@@ -344,22 +352,41 @@ class Brikpanel_Sheets_Products_Sync {
 
 		$products = $this->expand_to_syncable_products( $ids );
 
+		// Reconcile against the rows already in the sheet so a product whose
+		// stored row number was lost still updates its existing row instead of
+		// appending a duplicate. This is what prevents the "same variation twice"
+		// rows that show up when an append's HTTP response is lost to a timeout
+		// (Google wrote the row, we never recorded its number) or when a rebuild
+		// was interrupted mid-way. Skipped on a rebuild — the tab was just
+		// cleared, so every product is genuinely new and there is nothing to
+		// reconcile against. Variations and their parents are keyed the same way
+		// (by product_id), so this protects variable products as well as simple.
+		$id_to_row = $rebuild ? [] : $this->existing_rows_by_product_id( $client, $config, $columns );
+
 		$to_append = [];
 		$to_update = []; // [ row_number => row_array ]
 		$snapshot_assignments = []; // [ product_id => row_array ]
 
 		foreach ( $products as $product ) {
+			$pid     = (int) $product->get_id();
 			$row     = $this->build_row( $product, $columns );
 			// On a rebuild the tab was just cleared, so any stored row number is
 			// stale — force an append and let the product pick up a fresh,
 			// contiguous row below.
 			$existing_row = $rebuild ? 0 : (int) $this->get_product_meta( $product, self::META_ROW );
-			if ( $existing_row > 0 ) {
-				$to_update[ $existing_row ] = [ 'pid' => $product->get_id(), 'row' => $row ];
-			} else {
-				$to_append[] = [ 'pid' => $product->get_id(), 'row' => $row ];
+			// No stored row (or it was never persisted): fall back to the live
+			// sheet. If the product is already present we adopt that row and
+			// re-persist the number; only a product that is truly absent appends.
+			if ( $existing_row <= 0 && isset( $id_to_row[ $pid ] ) ) {
+				$existing_row = (int) $id_to_row[ $pid ];
+				$this->set_product_meta( $product, self::META_ROW, $existing_row );
 			}
-			$snapshot_assignments[ $product->get_id() ] = $row;
+			if ( $existing_row > 0 ) {
+				$to_update[ $existing_row ] = [ 'pid' => $pid, 'row' => $row ];
+			} else {
+				$to_append[] = [ 'pid' => $pid, 'row' => $row ];
+			}
+			$snapshot_assignments[ $pid ] = $row;
 		}
 
 		$appended_count = 0;
@@ -901,6 +928,55 @@ class Brikpanel_Sheets_Products_Sync {
 		], false );
 
 		return [ 'checked' => $checked, 'applied' => $applied, 'conflicts' => $conflicts ];
+	}
+
+	/**
+	 * Map { product_id => 1-based sheet row } for the rows currently in the
+	 * target tab. Used to reconcile an event-driven push against the live sheet
+	 * so a product with a missing/stale stored row number updates its existing
+	 * row instead of appending a duplicate.
+	 *
+	 * Reads only the Product ID column (always present — it is a mandatory
+	 * column) so the call stays cheap even on large catalogues. On any read
+	 * failure we return an empty map and the caller falls back to its previous
+	 * append-only behaviour, never worse than before.
+	 *
+	 * @param Brikpanel_Sheets_Client $client
+	 * @param array                   $config  { spreadsheet_id, tab }
+	 * @param string[]                $columns Active column selection in order.
+	 * @return array<int,int> product_id => row number (first match wins)
+	 */
+	private function existing_rows_by_product_id( $client, array $config, array $columns ) {
+		$idx = Brikpanel_Sheets_Mapping::column_index_map( $columns );
+		if ( ! isset( $idx['product_id'] ) ) {
+			return [];
+		}
+		$col = self::col_letter( (int) $idx['product_id'] + 1 );
+		$range = Brikpanel_Sheets_Client::a1_quote_tab( $config['tab'] )
+			. '!' . $col . '1:' . $col;
+
+		try {
+			$values = $client->values_get( $config['spreadsheet_id'], $range );
+		} catch ( \Throwable $e ) {
+			Brikpanel_Sheets_Logger::log( 'products', 'Reconcile read failed: ' . $e->getMessage() );
+			return [];
+		}
+
+		$map = [];
+		foreach ( (array) $values as $i => $cells ) {
+			// Skip the header row (row 1) and blank cells (cleared/orphan rows).
+			$raw = isset( $cells[0] ) ? trim( (string) $cells[0] ) : '';
+			if ( $raw === '' || ! ctype_digit( $raw ) ) {
+				continue;
+			}
+			$pid = (int) $raw;
+			// First occurrence wins; a later duplicate row is left to be cleaned
+			// by the next "Sync now" rebuild rather than fought over here.
+			if ( $pid > 0 && ! isset( $map[ $pid ] ) ) {
+				$map[ $pid ] = $i + 1; // values_get is 0-indexed from row 1.
+			}
+		}
+		return $map;
 	}
 
 	// =========================================================================

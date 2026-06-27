@@ -9,7 +9,7 @@
     var PE = brikpanelPE || {};
     var productData = window.brikpanelProductData || {};
 
-    var state = { images: [], saving: false, dirty: false, varTemplate: null, varAttributes: [], variations: [], downloads: [], tags: [], linked: { upsells: [], cross_sells: [] } };
+    var state = { images: [], saving: false, dirty: false, varTemplate: null, varAttributes: [], variations: [], downloads: [], tags: [], linked: { upsells: [], cross_sells: [] }, varCustomStarted: false };
 
     function init() {
         bindEvents();
@@ -211,14 +211,31 @@
         $('#bpe-add-cat-toggle').on('click', function (e) { e.preventDefault(); toggleSection($('#bpe-new-cat-section')); });
         $('#bpe-add-cat-btn').on('click', addCategory);
 
+        // Keep the SEOPress "Primary category" dropdown in sync with the
+        // category checklist — only the currently-selected categories are valid
+        // primary choices. Delegated so it survives checklist re-renders.
+        $(document).on('change', 'input[name="category_ids[]"]', syncPrimaryCatOptions);
+
         $('#bpe-add-brand-toggle').on('click', function (e) { e.preventDefault(); toggleSection($('#bpe-new-brand-section')); });
         $('#bpe-add-brand-btn').on('click', addBrand);
 
-        $('.brikpanel-pe-var-template').on('click', function () { selectTemplate($(this).data('template')); });
-        $('#bpe-var-back').on('click', function () { showVarStep(1); });
-        $('#bpe-var-back-2').on('click', function () { captureVarTableInputs(); showVarStep(2); });
-        $('#bpe-var-forward-1').on('click', function () { showVarStep(2); });
-        $('#bpe-var-forward-2').on('click', function () { showVarStep(3); });
+        // Quick-start template cards (shown only on an empty variable product).
+        // "Size + Color" drops in the two variation rows; "Custom" just reveals
+        // the attribute controls so the user builds their own.
+        $('#bpe-var-templates').on('click', '.brikpanel-pe-var-template', function () {
+            var t = $(this).data('template');
+            state.varCustomStarted = true;
+            if (t === 'size-color') {
+                quickAddSizeColor();
+            } else {
+                if (!$('#bpe-var-toggle').is(':checked')) { $('#bpe-var-toggle').prop('checked', true).trigger('change'); }
+                updateVarStartView();
+                $('#bpe-attr-new-name').trigger('focus');
+            }
+        });
+        // Quick add from the controls: Size + Color rows flagged for variations,
+        // turning the product variable in one click.
+        $('#bpe-attr-quick-sizecolor').on('click', quickAddSizeColor);
         $('#bpe-generate-vars').on('click', generateVariations);
         $('#bpe-apply-bulk').on('click', applyBulk);
 
@@ -431,30 +448,28 @@
         bindToggle('#bpe-weight-toggle', '#bpe-weight-section');
         bindToggle('#bpe-dims-toggle', '#bpe-dims-section');
         bindToggle('#bpe-seo-toggle', '#bpe-seo-section');
-        bindToggle('#bpe-var-toggle', '#bpe-var-section');
         bindToggle('#bpe-digital-toggle', '#bpe-digital-section');
 
         // Hide the parent pricing + inventory cards whenever the variations
         // toggle is on — each variation row already carries its own price,
         // sale schedule, stock qty, stock status and SKU, so the top-level
         // fields are dead inputs in that mode and must not block submit.
-        // The Product attributes (specs) card stays visible for variable
-        // products too: a variable product commonly needs descriptive/tag
-        // attributes (e.g. "Occasion", "Material") that are NOT used for
-        // variations, alongside the variation attributes (Size, Color) the
-        // variations wizard manages. The two are independent (is_variation
-        // false vs true) and are merged on save.
+        // The unified attribute editor stays visible for both product types:
+        // a simple product treats every attribute as a spec, while a variable
+        // product splits them by each row's "Use for variations" switch (Size,
+        // Color drive variations; Brand, Material stay as specs). The variation
+        // builder (Generate + table) and the per-row switches only show while
+        // "Variable product" is on.
         function syncVariableMode() {
             var isVar = $('#bpe-var-toggle').is(':checked');
             $('#bpe-pricing-card, #bpe-inventory-card, #bpe-gtin-card').toggle(!isVar);
-            // When the product-type dropdown is the source of truth, the inline
-            // "does this product have sizes/colors?" toggle row inside the
-            // variations card is hidden. For a simple product that would leave
-            // the whole card visually empty, so hide it unless variable mode is
-            // active. When the inline toggle row is visible (selector disabled)
-            // the card must always stay shown — it holds that toggle.
-            var toggleRowHidden = $('#bpe-var-toggle-row').css('display') === 'none';
-            $('#bpe-var-card').toggle(isVar || !toggleRowHidden);
+            $('#bpe-var-card').toggleClass('bpe-variable-on', isVar);
+            $('#bpe-var-build').toggle(isVar);
+            // The table only makes sense once variations have been generated.
+            $('#bpe-var-table-section').toggle(isVar && !!(state.variations && state.variations.length));
+            $('.brikpanel-pe-attr-help-var').toggle(isVar);
+            $('.brikpanel-pe-attr-help-simple').toggle(!isVar);
+            updateVarStartView();
         }
         $('#bpe-var-toggle').on('change', syncVariableMode);
         syncVariableMode();
@@ -767,6 +782,27 @@
         });
     }
 
+    // Rebuild the SEOPress "Primary category" <select> from the currently
+    // checked categories, preserving the chosen primary when it is still
+    // selected. The first option (the server-rendered "None" label) is left
+    // untouched so no user-facing string lives in JS.
+    function syncPrimaryCatOptions() {
+        var $sel = $('#bpe-seo-primary-cat');
+        if (!$sel.length) return;
+        var current = $sel.val();
+        $sel.find('option').not(':first').remove();
+        $('input[name="category_ids[]"]:checked').each(function () {
+            var $cb = $(this);
+            var label = $.trim($cb.closest('label').text());
+            $sel.append($('<option></option>').attr('value', $cb.val()).text(label));
+        });
+        if (current && $sel.find('option[value="' + current + '"]').length) {
+            $sel.val(current);
+        } else {
+            $sel.val('none');
+        }
+    }
+
     function addCategory() {
         var $btn = $('#bpe-add-cat-btn');
         if ($btn.prop('disabled')) return;
@@ -799,6 +835,10 @@
             // Swap checklist — server-rendered HTML keeps depth classes,
             // hierarchical order, and the newly created term pre-checked.
             $('.brikpanel-pe-cat-list').html(d.checklist_html);
+
+            // The new term is pre-checked, so refresh the primary-category
+            // dropdown to include it.
+            syncPrimaryCatOptions();
 
             // Rebuild parent dropdown while preserving the "— No parent —"
             // sentinel and keeping the user's previously-selected parent
@@ -891,7 +931,58 @@
     var EDITOR_BLOCK_TAGS  = { P:1, H2:1, H3:1, H4:1, H5:1, H6:1, UL:1, OL:1, LI:1, BLOCKQUOTE:1 };
     var EDITOR_TABLE_TAGS  = { TABLE:1, THEAD:1, TBODY:1, TFOOT:1, TR:1, TD:1, TH:1, CAPTION:1 };
     var EDITOR_INLINE_MAP  = { STRONG:'strong', B:'strong', EM:'em', I:'em', U:'u', A:'a', CODE:'code' };
-    var EDITOR_DROP_TAGS   = { SCRIPT:1, STYLE:1, NOSCRIPT:1, IMG:1, IFRAME:1, VIDEO:1, AUDIO:1, OBJECT:1, EMBED:1, SVG:1, FORM:1, INPUT:1, BUTTON:1, META:1, LINK:1, HEAD:1 };
+    var EDITOR_DROP_TAGS   = { SCRIPT:1, STYLE:1, NOSCRIPT:1, IFRAME:1, VIDEO:1, AUDIO:1, OBJECT:1, EMBED:1, SVG:1, FORM:1, INPUT:1, BUTTON:1, META:1, LINK:1, HEAD:1 };
+
+    /* Only the four WordPress alignment classes are allowed on an editor image;
+       everything else (inline styles, arbitrary classes, onerror, …) is dropped
+       so a pasted/inserted <img> can never carry a script vector. */
+    function editorImageAlignClass(cls) {
+        var m = ('' + (cls == null ? '' : cls)).match(/align(none|left|center|right)/);
+        return m ? 'align' + m[1] : '';
+    }
+    /* Normalise an arbitrary width hint into a safe CSS width value
+       ("50%" / "300px") or '' (let the image use its natural size). Only a
+       bare number + optional %/px is accepted — anything else is dropped so a
+       pasted style string can never smuggle extra declarations. */
+    function editorSafeWidth(w) {
+        if (w == null || w === '') return '';
+        var m = ('' + w).match(/(\d{1,4})(?:\.\d+)?\s*(%|px)?/);
+        if (!m) return '';
+        var n = parseFloat(m[1]);
+        if (!(n > 0)) return '';
+        var unit = m[2] || 'px';
+        if (unit === '%') { if (n > 100) n = 100; }
+        else { if (n > 2000) n = 2000; }
+        return n + unit;
+    }
+    /* Build a clean, attribute-restricted <img>. Returns '' when the URL is not
+       safe. Only src, alt, the alignment + lightbox classes, and a width style
+       survive. The brikpanel-lightbox class opts the image into the front-end
+       click-to-enlarge overlay on the product page. */
+    function editorBuildImg(src, alt, align, width, lightbox) {
+        var safe = editorSafeUrl(src);
+        if (!safe) return '';
+        var cls = editorImageAlignClass(align && /^align/.test(align) ? align : ('align' + (align || 'none')));
+        var lb = lightbox === true || (typeof align === 'string' && /(^|\s)brikpanel-lightbox(\s|$)/.test(align));
+        if (lb) cls += (cls ? ' ' : '') + 'brikpanel-lightbox';
+        var w = editorSafeWidth(width);
+        var html = '<img src="' + editorEscAttr(safe) + '" alt="' + editorEscAttr(alt || '') + '"';
+        if (cls) html += ' class="' + cls + '"';
+        if (w) html += ' style="width:' + w + '"';
+        return html + '>';
+    }
+    /* The size presets the dialog offers, as a fraction of the available width.
+       'full' means no explicit width (natural size, capped by max-width:100%). */
+    var EDITOR_IMG_SIZES = { small: '25%', medium: '50%', large: '75%', full: '' };
+    function editorWidthToSize(cssWidth) {
+        var m = ('' + (cssWidth || '')).match(/(\d{1,4})(?:\.\d+)?\s*%/);
+        if (!m) return 'full';
+        var n = parseFloat(m[1]);
+        if (n <= 37) return 'small';
+        if (n <= 62) return 'medium';
+        if (n < 88) return 'large';
+        return 'full';
+    }
 
     function editorSafeUrl(u) {
         u = (u == null ? '' : ('' + u)).trim();
@@ -927,6 +1018,13 @@
                 if (child.nodeType !== 1) continue;
                 var tag = child.tagName;
                 if (tag === 'BR') { out += '<br>'; continue; }
+                if (tag === 'IMG') {
+                    // Void element — emit a sanitized image (safe URL + the four
+                    // alignment classes + a width style only); skip if unsafe.
+                    var iw = (child.style && child.style.width) ? child.style.width : (child.getAttribute('width') || '');
+                    out += editorBuildImg(child.getAttribute('src'), child.getAttribute('alt'), child.getAttribute('class'), iw);
+                    continue;
+                }
                 if (EDITOR_DROP_TAGS[tag]) continue;
                 var inner = walk(child);
                 if (tag === 'H1') tag = 'H2';
@@ -1146,8 +1244,221 @@
         setTimeout(function () { $('#bpe-link-url').focus().select(); }, 0);
     }
 
+    /* ---- Image dialog (choose / replace, alt text, alignment) ---------- */
+    var imageDlgState = { $field: null, img: null, src: '', alt: '', align: 'none', size: 'full', lightbox: false };
+    var imageMediaFrame = null;
+
+    function buildImageDialog() {
+        if (document.getElementById('bpe-image-dialog')) return;
+        var i = PE.i18n || {};
+        // Shares .brikpanel-pe-linkdlg styling (vars, backdrop, box, actions);
+        // .brikpanel-pe-imgdlg adds the preview + alignment-segment styles.
+        var html =
+            '<div id="bpe-image-dialog" class="brikpanel-pe-linkdlg brikpanel-pe-imgdlg" hidden>' +
+              '<div class="brikpanel-pe-linkdlg-backdrop"></div>' +
+              '<div class="brikpanel-pe-linkdlg-box" role="dialog" aria-modal="true" aria-label="' + esc(i.image_title || 'Insert image') + '">' +
+                '<div class="brikpanel-pe-linkdlg-title brikpanel-pe-imgdlg-title">' + esc(i.image_title || 'Insert image') + '</div>' +
+                '<div class="brikpanel-pe-imgdlg-preview" id="bpe-img-preview"></div>' +
+                '<button type="button" class="brikpanel-pe-btn secondary brikpanel-pe-imgdlg-choose">' + esc(i.image_choose || 'Choose image') + '</button>' +
+                '<label class="brikpanel-pe-linkdlg-lbl" for="bpe-img-alt">' + esc(i.image_alt || 'Alt text (description)') + '</label>' +
+                '<input type="text" id="bpe-img-alt" class="brikpanel-pe-linkdlg-url" placeholder="' + esc(i.image_alt_ph || '') + '" autocomplete="off">' +
+                '<label class="brikpanel-pe-linkdlg-lbl">' + esc(i.image_align || 'Alignment') + '</label>' +
+                '<div class="brikpanel-pe-imgdlg-align" role="group">' +
+                  '<button type="button" data-align="none">' + esc(i.align_none || 'None') + '</button>' +
+                  '<button type="button" data-align="left">' + esc(i.align_left || 'Left') + '</button>' +
+                  '<button type="button" data-align="center">' + esc(i.align_center || 'Center') + '</button>' +
+                  '<button type="button" data-align="right">' + esc(i.align_right || 'Right') + '</button>' +
+                '</div>' +
+                '<label class="brikpanel-pe-linkdlg-lbl">' + esc(i.image_size || 'Size') + '</label>' +
+                '<div class="brikpanel-pe-imgdlg-size" role="group">' +
+                  '<button type="button" data-size="small">' + esc(i.size_small || 'Small') + '</button>' +
+                  '<button type="button" data-size="medium">' + esc(i.size_medium || 'Medium') + '</button>' +
+                  '<button type="button" data-size="large">' + esc(i.size_large || 'Large') + '</button>' +
+                  '<button type="button" data-size="full">' + esc(i.size_full || 'Full') + '</button>' +
+                '</div>' +
+                '<label class="brikpanel-pe-linkdlg-check brikpanel-pe-imgdlg-lightbox"><input type="checkbox" id="bpe-img-lightbox"><span>' + esc(i.image_lightbox || 'Open in a lightbox when clicked') + '</span></label>' +
+                '<div class="brikpanel-pe-linkdlg-actions">' +
+                  '<button type="button" class="brikpanel-pe-btn secondary brikpanel-pe-imgdlg-cancel">' + esc(i.link_cancel || 'Cancel') + '</button>' +
+                  '<button type="button" class="brikpanel-pe-btn primary brikpanel-pe-imgdlg-ok">' + esc(i.image_insert || 'Insert image') + '</button>' +
+                '</div>' +
+              '</div>' +
+            '</div>';
+        $('body').append(html);
+
+        var $dlg = $('#bpe-image-dialog');
+        function closeDlg() {
+            $dlg.attr('hidden', true);
+            imageDlgState.$field = null;
+            imageDlgState.img = null;
+        }
+        function syncDlg() {
+            var i2 = PE.i18n || {};
+            var $prev = $('#bpe-img-preview');
+            if (imageDlgState.src) {
+                $prev.html('<img src="' + editorEscAttr(imageDlgState.src) + '" alt="">').removeClass('is-empty');
+                $dlg.find('.brikpanel-pe-imgdlg-choose').text(i2.image_replace || 'Replace image');
+            } else {
+                $prev.text(i2.image_none || 'No image selected').addClass('is-empty');
+                $dlg.find('.brikpanel-pe-imgdlg-choose').text(i2.image_choose || 'Choose image');
+            }
+            $dlg.find('.brikpanel-pe-imgdlg-align button').each(function () {
+                $(this).toggleClass('is-active', $(this).data('align') === imageDlgState.align);
+            });
+            $dlg.find('.brikpanel-pe-imgdlg-size button').each(function () {
+                $(this).toggleClass('is-active', $(this).data('size') === imageDlgState.size);
+            });
+            $('#bpe-img-lightbox').prop('checked', !!imageDlgState.lightbox);
+        }
+        $dlg.data('sync', syncDlg);
+
+        $dlg.find('.brikpanel-pe-imgdlg-cancel, .brikpanel-pe-linkdlg-backdrop').on('click', closeDlg);
+        $dlg.on('keydown', function (e) { if (e.key === 'Escape') closeDlg(); });
+
+        $dlg.find('.brikpanel-pe-imgdlg-align').on('click', 'button', function () {
+            imageDlgState.align = $(this).data('align');
+            syncDlg();
+        });
+
+        $dlg.find('.brikpanel-pe-imgdlg-size').on('click', 'button', function () {
+            imageDlgState.size = $(this).data('size');
+            syncDlg();
+        });
+
+        $dlg.on('change', '#bpe-img-lightbox', function () {
+            imageDlgState.lightbox = $(this).is(':checked');
+        });
+
+        $dlg.find('.brikpanel-pe-imgdlg-choose').on('click', function () {
+            if (typeof wp === 'undefined' || !wp.media) return;
+            if (!imageMediaFrame) {
+                imageMediaFrame = wp.media({
+                    title: PE.i18n.image_choose || 'Choose image',
+                    button: { text: PE.i18n.select || 'Select' },
+                    library: { type: 'image' },
+                    multiple: false
+                });
+                imageMediaFrame.on('select', function () {
+                    var a = imageMediaFrame.state().get('selection').first();
+                    if (!a) return;
+                    a = a.toJSON();
+                    // Prefer a web-friendly size over the full-res original.
+                    var url = a.url;
+                    if (a.sizes) {
+                        if (a.sizes.large) url = a.sizes.large.url;
+                        else if (a.sizes.medium_large) url = a.sizes.medium_large.url;
+                    }
+                    imageDlgState.src = url;
+                    if (!$('#bpe-img-alt').val()) {
+                        imageDlgState.alt = a.alt || '';
+                        $('#bpe-img-alt').val(imageDlgState.alt);
+                    }
+                    syncDlg();
+                });
+            }
+            imageMediaFrame.open();
+        });
+
+        $dlg.find('.brikpanel-pe-imgdlg-ok').on('click', function () {
+            var $field = imageDlgState.$field;
+            if (!$field) { closeDlg(); return; }
+            imageDlgState.src = imageDlgState.src || '';
+            if (!imageDlgState.src) { showToast(PE.i18n.image_required || 'Please choose an image first.', 'error'); return; }
+            var alt = $('#bpe-img-alt').val() || '';
+            var align = imageDlgState.align || 'none';
+            var width = EDITOR_IMG_SIZES[imageDlgState.size || 'full'] || '';
+            var lightbox = !!imageDlgState.lightbox;
+            var existing = imageDlgState.img;
+            var ed = $field.find('.brikpanel-pe-editor')[0];
+            closeDlg();
+
+            if (existing && ed && ed.contains(existing)) {
+                // Edit in place: only ever set the validated attributes.
+                existing.setAttribute('src', editorSafeUrl(imageDlgState.src) || existing.getAttribute('src'));
+                existing.setAttribute('alt', alt);
+                existing.className = 'align' + align + (lightbox ? ' brikpanel-lightbox' : '');
+                var sw = editorSafeWidth(width);
+                if (sw) { existing.style.width = sw; } else { existing.style.removeProperty('width'); }
+            } else {
+                insertImageIntoEditor($field, editorBuildImg(imageDlgState.src, alt, align, width, lightbox));
+            }
+            state.dirty = true;
+            refreshEditorToolbar($field);
+        });
+    }
+
+    /* Insert an image at the saved caret and leave the caret right after it so
+       the user can keep typing without re-clicking. A trailing <br> is added
+       when the image would otherwise be the last node in its block (a bare
+       block/floated image at the end of a contenteditable has no caret slot to
+       continue from), giving the integrated "type after the image" feel. */
+    function insertImageIntoEditor($field, imgHtml) {
+        if (!imgHtml) return;
+        restoreEditorRange($field);
+        var ed = $field.find('.brikpanel-pe-editor')[0];
+        if (!ed) return;
+        var tmp = document.createElement('div');
+        tmp.innerHTML = imgHtml;
+        var node = tmp.firstChild;
+        if (!node) return;
+
+        var sel = window.getSelection();
+        var range;
+        if (sel && sel.rangeCount && ed.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+            range = sel.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(node);
+        } else {
+            ed.appendChild(node);
+        }
+
+        // Guarantee a caret slot only when the image landed as a bare, trailing
+        // child of the editable root (an empty editor) — there a block/floated
+        // image has nowhere to type next. Inside a paragraph the browser already
+        // gives a caret after the image, so adding a <br> would just leave a
+        // stray blank line.
+        if (node.parentNode === ed && !node.nextSibling) {
+            node.parentNode.insertBefore(document.createElement('br'), null);
+        }
+
+        var r = document.createRange();
+        r.setStartAfter(node);
+        r.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(r);
+        ed.focus();
+    }
+
+    function openImageDialog($field, existingImg) {
+        buildImageDialog();
+        rememberEditorRange($field);
+        var i = PE.i18n || {};
+        imageDlgState.$field = $field;
+        imageDlgState.img = existingImg || null;
+        if (existingImg) {
+            imageDlgState.src = existingImg.getAttribute('src') || '';
+            imageDlgState.alt = existingImg.getAttribute('alt') || '';
+            imageDlgState.align = editorImageAlignClass(existingImg.className).replace('align', '') || 'none';
+            imageDlgState.size = editorWidthToSize(existingImg.style && existingImg.style.width);
+            imageDlgState.lightbox = /(^|\s)brikpanel-lightbox(\s|$)/.test(existingImg.className || '');
+        } else {
+            imageDlgState.src = '';
+            imageDlgState.alt = '';
+            imageDlgState.align = 'none';
+            imageDlgState.size = 'full';
+            imageDlgState.lightbox = false;
+        }
+        var $dlg = $('#bpe-image-dialog');
+        $dlg.find('.brikpanel-pe-imgdlg-title').text(existingImg ? (i.image_edit_title || 'Image settings') : (i.image_title || 'Insert image'));
+        $dlg.find('.brikpanel-pe-imgdlg-ok').text(existingImg ? (i.image_update || 'Update image') : (i.image_insert || 'Insert image'));
+        $('#bpe-img-alt').val(imageDlgState.alt);
+        ($dlg.data('sync') || function () {})();
+        $dlg.removeAttr('hidden');
+        setTimeout(function () { $('#bpe-img-alt').focus(); }, 0);
+    }
+
     function initEditor() {
         buildLinkDialog();
+        buildImageDialog();
 
         // Keep the caret inside the editable when a toolbar control is pressed
         // (mousedown would otherwise blur the selection first). This is what
@@ -1210,6 +1521,11 @@
                 return;
             }
 
+            if (cmd === 'image') {
+                if ($source.prop('hidden')) openImageDialog($field, null);
+                return;
+            }
+
             runEditorCommand($field, cmd);
         });
 
@@ -1251,6 +1567,15 @@
             }
             state.dirty = true;
             refreshEditorToolbar($(this).closest('[data-editor-field]'));
+        });
+
+        // Click an existing image to re-open the dialog (change alignment, alt,
+        // or replace it). Visual mode only.
+        $('.brikpanel-pe-editor').on('click', 'img', function (e) {
+            var $field = $(this).closest('[data-editor-field]');
+            if (!$field.find('.brikpanel-pe-editor-source').prop('hidden')) return;
+            e.preventDefault();
+            openImageDialog($field, this);
         });
 
         // Keep toolbar state in sync with the caret.
@@ -1295,84 +1620,26 @@
         return null;
     }
 
-    function selectTemplate(template) {
-        // Re-selecting the same template after going Back must not wipe the
-        // values the user already typed — only advance to step 2.
-        if (state.varTemplate === template && $('#bpe-var-attributes').children().length) {
-            showVarStep(2);
-            return;
+    /* Quick add: insert Size and Color rows already flagged for variations and
+       flip the product to variable, covering the common apparel case in one
+       click. Pre-attaches the matching global taxonomy when one exists so term
+       suggestions and the save path use the real attribute. */
+    function quickAddSizeColor() {
+        var $vt = $('#bpe-var-toggle');
+        if (!$vt.prop('checked')) { $vt.prop('checked', true).trigger('change'); }
+        var sizeAttr  = findGlobalAttrForRole('size');
+        var colorAttr = findGlobalAttrForRole('color');
+        var sizeName  = sizeAttr  ? sizeAttr.name  : (PE.i18n.size  || 'Size');
+        var colorName = colorAttr ? colorAttr.name : (PE.i18n.color || 'Color');
+        if (!attributeExistsInList(sizeName)) {
+            $('#bpe-attr-list').append(createAttrRow(sizeName, ['S', 'M', 'L', 'XL', 'XXL'], sizeAttr ? sizeAttr.taxonomy : '', true));
         }
-        state.varTemplate = template;
-        $('.brikpanel-pe-var-template').removeClass('active');
-        $('.brikpanel-pe-var-template[data-template="' + template + '"]').addClass('active');
-        var $attrs = $('#bpe-var-attributes').empty();
-
-        if (template === 'size-color') {
-            // If a matching global Size/Color attribute already exists, attach
-            // its taxonomy so the user gets term suggestions and the save
-            // path uses the real taxonomy directly. Otherwise leave taxonomy
-            // empty — the backend promotes it on publish.
-            var sizeAttr  = findGlobalAttrForRole('size');
-            var colorAttr = findGlobalAttrForRole('color');
-            $attrs.append(createTagGroup(
-                sizeAttr ? sizeAttr.name : (PE.i18n.size || 'Size'),
-                ['S', 'M', 'L', 'XL', 'XXL'],
-                sizeAttr ? sizeAttr.taxonomy : ''
-            ));
-            $attrs.append(createTagGroup(
-                colorAttr ? colorAttr.name : (PE.i18n.color || 'Color'),
-                [],
-                colorAttr ? colorAttr.taxonomy : ''
-            ));
-        } else if (template === 'custom') {
-            $attrs.append(createCustomAttrUI());
+        if (!attributeExistsInList(colorName)) {
+            $('#bpe-attr-list').append(createAttrRow(colorName, [], colorAttr ? colorAttr.taxonomy : '', true));
         }
-        showVarStep(2);
-    }
-
-    function createCustomAttrUI() {
-        var $wrap = $('<div>');
-        var globalAttrs = productData.global_attributes || [];
-
-        // Existing attributes dropdown
-        if (globalAttrs.length) {
-            var $selectWrap = $('<div class="brikpanel-pe-attr-select-wrap">');
-            var $select = $('<select class="brikpanel-pe-attr-select"><option value="">' + (PE.i18n.select_attribute || 'Select existing attribute...') + '</option></select>');
-            globalAttrs.forEach(function (a) {
-                $select.append('<option value="' + esc(a.name) + '" data-taxonomy="' + esc(a.taxonomy || '') + '">' + esc(a.name) + '</option>');
-            });
-            $select.on('change', function () {
-                var name = this.value;
-                if (!name) return;
-                var $opt = $(this).find(':selected');
-                var taxonomy = $opt.data('taxonomy') || '';
-                // Prevent duplicate
-                if ($('#bpe-custom-attrs-list .brikpanel-pe-tag-group[data-attr-name="' + name + '"]').length) { this.value = ''; return; }
-                // Empty value list — terms are added via the tag-input typeahead,
-                // not pre-populated (large taxonomies would otherwise hang the UI).
-                $('#bpe-custom-attrs-list').append(createTagGroup(name, [], taxonomy));
-                this.value = '';
-            });
-            $selectWrap.append($select);
-            $wrap.append($selectWrap);
-            $wrap.append('<div class="brikpanel-pe-attr-divider">' + (PE.i18n.or_create_new || 'or create new') + '</div>');
-        }
-
-        // Create new attribute
-        var $nameRow = $('<div class="brikpanel-pe-inline-form" style="margin-bottom:.75rem">');
-        var $nameInput = $('<input type="text" placeholder="' + (PE.i18n.attribute_name || 'Attribute name (e.g.: Material)') + '">');
-        var $addBtn = $('<button type="button" class="brikpanel-pe-btn secondary small">' + (PE.i18n.add_attribute || 'Add') + '</button>');
-        $addBtn.on('click', function () {
-            var name = $.trim($nameInput.val());
-            if (name && !$('#bpe-custom-attrs-list .brikpanel-pe-tag-group[data-attr-name="' + name + '"]').length) {
-                $('#bpe-custom-attrs-list').append(createTagGroup(name, []));
-                $nameInput.val('').focus();
-            }
-        });
-        $nameInput.on('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $addBtn.click(); } });
-        $nameRow.append($nameInput, $addBtn);
-        $wrap.append($nameRow, '<div id="bpe-custom-attrs-list"></div>');
-        return $wrap;
+        state.varCustomStarted = true;
+        state.dirty = true;
+        updateVarStartView();
     }
 
     function createTagGroup(name, defaults, taxonomy) {
@@ -1417,8 +1684,8 @@
         }
 
         $input.on('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); var v = $.trim(this.value); if (v && !tagExists($wrap, v)) { $input.before(createTag(v)); this.value = ''; showTermSuggestions(''); } }
-            if (e.key === 'Backspace' && !this.value) { $wrap.find('.brikpanel-pe-tag:last').remove(); showTermSuggestions(''); }
+            if (e.key === 'Enter') { e.preventDefault(); var v = $.trim(this.value); if (v && !tagExists($wrap, v)) { $input.before(createTag(v)); this.value = ''; showTermSuggestions(''); $(this).trigger('change'); } }
+            if (e.key === 'Backspace' && !this.value) { $wrap.find('.brikpanel-pe-tag:last').remove(); showTermSuggestions(''); $(this).trigger('change'); }
         });
 
         $input.on('input', function () { showTermSuggestions($.trim(this.value)); });
@@ -1432,6 +1699,7 @@
                 $input.before(createTag(v));
                 $input.val('');
                 showTermSuggestions('');
+                $input.trigger('change');
             }
         });
 
@@ -1445,7 +1713,14 @@
     function createTag(value) {
         var $tag = $('<span class="brikpanel-pe-tag">' + esc(value) + '</span>');
         var $rm = $('<button type="button" class="brikpanel-pe-tag-remove">&times;</button>');
-        $rm.on('click', function () { $tag.remove(); });
+        $rm.on('click', function () {
+            // Removing a value changes the attribute set — notify the list so the
+            // "regenerate variations" hint can re-evaluate (tag remove is a click,
+            // it emits no input/change event of its own).
+            var $list = $tag.closest('#bpe-attr-list');
+            $tag.remove();
+            if ($list.length) { $list.trigger('change'); }
+        });
         $tag.append($rm);
         return $tag;
     }
@@ -1456,42 +1731,134 @@
         return e;
     }
 
-    /* ====== Product Attributes (specs — independent from variations) ====== */
+    /* ====== Unified attribute editor (variation attributes + plain specs) ===
+       One list. Each row carries a "Use for variations" switch: when the
+       product is Variable, switched-on rows build the variation table and
+       switched-off rows stay as specs; when Simple, every row is a spec. */
+
+    function isVariableOn() { return $('#bpe-var-toggle').is(':checked'); }
+
+    /* Quick-start template cards vs. the attribute controls. The cards are an
+       empty-state shortcut: shown only when the product is Variable, no
+       attributes exist yet, and the user has not dismissed them via "Custom".
+       Otherwise the controls + list take over. */
+    function updateVarStartView() {
+        var $templates = $('#bpe-var-templates');
+        if (!$templates.length) { return; }
+        var empty = $('#bpe-attr-list .brikpanel-pe-attr-row').length === 0;
+        var showTemplates = isVariableOn() && empty && !state.varCustomStarted;
+        $templates.toggle(showTemplates);
+        $('#bpe-var-attr-controls').toggle(!showTemplates);
+        refreshVarStaleHint();
+    }
+
     function initAttributes() {
-        var $card = $('#bpe-attr-card');
-        if (!$card.length) return;
-
         var $list = $('#bpe-attr-list');
+        if (!$list.length) return;
 
-        // Wire up the taxonomy attribute selector. Selecting an option appends
-        // a tag-group pre-filled with that taxonomy's terms.
-        $('#bpe-attr-select').on('change', function () {
-            var name = this.value;
-            if (!name) return;
-            var $opt = $(this).find(':selected');
-            var taxonomy = $opt.attr('data-taxonomy') || '';
-            if (attributeExistsInList(name)) { this.value = ''; return; }
-            // Start with an empty value list: the typeahead inside the tag input
-            // lets the user pick the terms they actually want. Pre-populating
-            // every available term locks up the browser on large taxonomies
-            // (e.g. a 6k-term `author` attribute).
-            $list.append(createAttributeRow(name, [], taxonomy));
-            this.value = '';
-            state.dirty = true;
-        });
+        // Existing global attribute picker — a searchable popover dropdown.
+        // New rows default to "use for variations" when the product is currently
+        // Variable, else to a spec. Rows start with an empty value list: the
+        // typeahead inside the tag input lets the user pick only the terms they
+        // want (pre-loading every term locks up the browser on huge taxonomies).
+        var $combo = $('#bpe-attr-combo');
+        if ($combo.length) {
+            var $comboTrigger = $('#bpe-attr-combo-trigger');
+            var $comboSearch = $('#bpe-attr-combo-search');
+            var $comboOptions = $combo.find('.brikpanel-pe-combo-option');
+            var $comboEmpty = $combo.find('.brikpanel-pe-combo-empty');
 
-        // Wire up the "Add" button for new custom (non-taxonomy) attributes.
+            var closeCombo = function () {
+                $combo.removeClass('open');
+                $comboTrigger.attr('aria-expanded', 'false');
+            };
+            var openCombo = function () {
+                $combo.addClass('open');
+                $comboTrigger.attr('aria-expanded', 'true');
+                $comboSearch.val('').trigger('input');
+                setTimeout(function () { $comboSearch.trigger('focus'); }, 0);
+            };
+
+            $comboTrigger.on('click', function (e) {
+                e.stopPropagation();
+                if ($combo.hasClass('open')) { closeCombo(); } else { openCombo(); }
+            });
+
+            $comboSearch.on('input', function () {
+                var q = $.trim(this.value).toLowerCase();
+                var any = false;
+                $comboOptions.each(function () {
+                    var match = !q || this.textContent.toLowerCase().indexOf(q) !== -1;
+                    this.style.display = match ? '' : 'none';
+                    if (match) { any = true; }
+                });
+                $comboEmpty[0].style.display = any ? 'none' : '';
+            });
+
+            $comboSearch.on('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeCombo();
+                    $comboTrigger.trigger('focus');
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    var $first = $comboOptions.filter(function () { return this.style.display !== 'none'; }).first();
+                    if ($first.length) { $first.trigger('click'); }
+                }
+            });
+
+            $combo.on('click', '.brikpanel-pe-combo-option', function () {
+                var name = $(this).attr('data-value');
+                var taxonomy = $(this).attr('data-taxonomy') || '';
+                closeCombo();
+                if (!name || attributeExistsInList(name)) { return; }
+                $list.append(createAttrRow(name, [], taxonomy, isVariableOn()));
+                state.varCustomStarted = true;
+                state.dirty = true;
+                updateVarStartView();
+            });
+
+            $(document).on('click', function (e) {
+                if ($combo.hasClass('open') && !$combo[0].contains(e.target)) { closeCombo(); }
+            });
+        }
+
+        // "Add" button for new custom (non-taxonomy) attributes.
         var $newName = $('#bpe-attr-new-name');
         $('#bpe-attr-add').on('click', function () {
             var name = $.trim($newName.val());
             if (!name || attributeExistsInList(name)) { $newName.focus(); return; }
-            $list.append(createAttributeRow(name, [], ''));
+            $list.append(createAttrRow(name, [], '', isVariableOn()));
             $newName.val('').focus();
+            state.varCustomStarted = true;
             state.dirty = true;
+            updateVarStartView();
         });
         $newName.on('keydown', function (e) {
             if (e.key === 'Enter') { e.preventDefault(); $('#bpe-attr-add').click(); }
         });
+
+        // Editing values or toggling "use for variations" after a table was
+        // generated drifts it out of sync — surface the regenerate hint.
+        $list.on('input change', function () { refreshVarStaleHint(); });
+
+        // Drag-to-reorder attribute rows (jquery-ui-sortable is a dependency of
+        // this script). Order determines the variation axis order, so a reorder
+        // dirties the form and marks any generated table stale.
+        if (typeof $list.sortable === 'function') {
+            $list.sortable({
+                items: '> .brikpanel-pe-attr-row',
+                handle: '.brikpanel-pe-attr-drag',
+                tolerance: 'pointer',
+                cursor: 'grabbing',
+                placeholder: 'brikpanel-pe-attr-row-placeholder',
+                forcePlaceholderSize: true,
+                update: function () {
+                    state.dirty = true;
+                    refreshVarStaleHint();
+                }
+            });
+        }
     }
 
     function attributeExistsInList(name) {
@@ -1503,54 +1870,109 @@
         return found;
     }
 
-    /* Wraps createTagGroup with a remove-attribute button so users can drop a
-       whole spec from the product without clearing every tag manually. */
-    function createAttributeRow(name, defaults, taxonomy) {
+    /* One attribute row: the tag-group (label + value tags) plus a per-row
+       "Use for variations" switch and a remove button. The switch only shows
+       while the product is Variable (CSS, via #bpe-var-card.bpe-variable-on). */
+    function createAttrRow(name, defaults, taxonomy, useForVar) {
         var $row = $('<div class="brikpanel-pe-attr-row">');
-        var $group = createTagGroup(name, defaults, taxonomy);
+        var $group = createTagGroup(name, defaults || [], taxonomy);
+
+        var $controls = $('<span class="brikpanel-pe-attr-row-controls">');
+        var $useLabel = $('<label class="brikpanel-pe-usevar">');
+        var $useChk = $('<input type="checkbox" class="brikpanel-pe-usevar-check">');
+        if (useForVar) { $useChk.prop('checked', true); }
+        $useChk.on('change', function () { state.dirty = true; });
+        $useLabel.append(
+            $useChk,
+            $('<span class="brikpanel-pe-usevar-slider"></span>'),
+            $('<span class="brikpanel-pe-usevar-text">' + esc(PE.i18n.use_for_variations || 'Use for variations') + '</span>')
+        );
+
         var $remove = $('<button type="button" class="brikpanel-pe-attr-remove" aria-label="' + esc(PE.i18n.remove || 'Remove') + '" title="' + esc(PE.i18n.remove || 'Remove') + '">&times;</button>');
         $remove.on('click', function () {
             $row.remove();
             state.dirty = true;
+            // Back to a clean slate? Let the quick-start cards return.
+            if ($('#bpe-attr-list .brikpanel-pe-attr-row').length === 0) { state.varCustomStarted = false; }
+            updateVarStartView();
         });
-        $group.find('> label').first().append($remove);
-        $row.append($group);
+
+        $controls.append($useLabel, $remove);
+        $group.find('> label').first().append($controls);
+
+        // Drag handle (left gutter) for reordering. Attribute order = variation
+        // axis order, which drives the variation name join order and combo
+        // nesting, so reordering must mark dirty + flag the table stale.
+        var dragLabel = esc(PE.i18n.reorder_attribute || 'Drag to reorder');
+        var $drag = $('<span class="brikpanel-pe-attr-drag" role="button" tabindex="0" aria-label="' + dragLabel + '" title="' + dragLabel + '">' +
+            '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="3" r="1.4"/><circle cx="11" cy="3" r="1.4"/><circle cx="5" cy="8" r="1.4"/><circle cx="11" cy="8" r="1.4"/><circle cx="5" cy="13" r="1.4"/><circle cx="11" cy="13" r="1.4"/></svg>' +
+            '</span>');
+        $row.append($drag, $group);
         return $row;
     }
 
-    function collectNonVariationAttributes() {
-        var a = [], seen = {};
+    /* Read every attribute row into {name, values, taxonomy, useVar}. */
+    function collectAttrRows() {
+        var rows = [];
         $('#bpe-attr-list .brikpanel-pe-tag-group').each(function () {
             var $g = $(this);
             var name = $g.attr('data-attr-name');
-            var taxonomy = $g.attr('data-attr-taxonomy') || '';
+            if (!name) return;
             var vals = [];
             $g.find('.brikpanel-pe-tag').each(function () {
                 vals.push($(this).clone().children().remove().end().text().trim());
             });
-            if (!name || !vals.length) return;
-            var key = String(name).toLowerCase();
-            if (seen[key]) return;
-            seen[key] = true;
-            a.push({ name: name, values: vals, taxonomy: taxonomy });
+            rows.push({
+                name: name,
+                values: vals,
+                taxonomy: $g.attr('data-attr-taxonomy') || '',
+                useVar: $g.find('.brikpanel-pe-usevar-check').is(':checked')
+            });
         });
-        return a;
+        return rows;
     }
 
-    function showVarStep(s) {
-        $('.brikpanel-pe-var-step').hide();
-        $('.brikpanel-pe-var-step[data-step="' + s + '"]').show();
-        updateVarWizardNav();
+    /* Variation attributes = rows flagged "use for variations" (only when the
+       product is Variable). These drive the variation table. */
+    /* Effective axis key for a row — must match genCombinations()/the server so
+       two rows that resolve to the same key (e.g. "Size" and "Size ") collapse
+       to one axis here instead of silently clobbering each other in the
+       cartesian product. */
+    function attrAxisKey(r) {
+        return r.taxonomy ? r.taxonomy.toLowerCase() : slugify(r.name);
     }
 
-    /* Show the Forward (→) button only when the next step has something to
-       show. Lets the user retrace step1 → step2 → step3 after clicking Back
-       without re-running the template picker or Generate. */
-    function updateVarWizardNav() {
-        var hasAttrs = $('#bpe-var-attributes').children().length > 0;
-        var hasVars  = state.variations && state.variations.length > 0;
-        $('#bpe-var-forward-1').toggle(hasAttrs);
-        $('#bpe-var-forward-2').toggle(hasVars);
+    function collectVariationAttributes() {
+        if (!isVariableOn()) return [];
+        var out = [], seen = {};
+        collectAttrRows().forEach(function (r) {
+            if (!r.useVar || !r.values.length) return;
+            var key = attrAxisKey(r);
+            if (!key || seen[key]) return;
+            seen[key] = true;
+            out.push({ name: r.name, values: r.values, taxonomy: r.taxonomy });
+        });
+        return out;
+    }
+
+    /* Non-variation specs = every row when Simple; the not-used-for-variations
+       rows when Variable. Saved as the product's descriptive attributes.
+       `treatAsVariable` lets the save path pass the *effective* mode: when the
+       Variable toggle is on but zero variations exist (the product falls back to
+       simple server-side), pass false so the would-be variation rows are still
+       persisted as specs instead of silently vanishing. */
+    function collectNonVariationAttributes(treatAsVariable) {
+        var variable = (typeof treatAsVariable === 'boolean') ? treatAsVariable : isVariableOn();
+        var out = [], seen = {};
+        collectAttrRows().forEach(function (r) {
+            if (variable && r.useVar) return;
+            if (!r.values.length) return;
+            var key = attrAxisKey(r);
+            if (!key || seen[key]) return;
+            seen[key] = true;
+            out.push({ name: r.name, values: r.values, taxonomy: r.taxonomy });
+        });
+        return out;
     }
 
     /* Sync the variation table's live DOM inputs back into state.variations.
@@ -1587,28 +2009,22 @@
         });
     }
 
-    function collectAttributes() {
-        var a = [], seen = {};
-        // Scope to the variations container so unrelated tag-groups (if any
-        // ever appear elsewhere) can't interleave with attribute order, and
-        // de-dupe by name in case the same attribute was inserted twice.
-        $('#bpe-var-attributes .brikpanel-pe-tag-group').each(function () {
-            var $g = $(this);
-            var name = $g.attr('data-attr-name'), vals = [];
-            $g.find('.brikpanel-pe-tag').each(function () { vals.push($(this).clone().children().remove().end().text().trim()); });
-            if (!name || !vals.length) return;
-            var key = String(name).toLowerCase();
-            if (seen[key]) return;
-            seen[key] = true;
-            a.push({ name: name, values: vals, taxonomy: $g.attr('data-attr-taxonomy') || '' });
-        });
-        return a;
-    }
-
     function generateVariations() {
-        state.varAttributes = collectAttributes();
-        if (!state.varAttributes.length) return;
+        var attrs = collectVariationAttributes();
+        if (!attrs.length) {
+            showToast(PE.i18n.need_variation_attr || 'Switch on “Use for variations” for at least one attribute, then add its values.', 'error');
+            return;
+        }
+        state.varAttributes = attrs;
         var combos = genCombinations(state.varAttributes), baseSKU = $('#bpe-sku').val() || '';
+        // Guard the cartesian explosion: a handful of attributes with many
+        // values each can produce thousands of rows that freeze the tab (and
+        // the server caps the save anyway). Refuse and tell the user to trim.
+        var MAX_GEN = 500;
+        if (combos.length > MAX_GEN) {
+            showToast((PE.i18n.too_many_variations || 'That combination would create more than %d variations. Reduce the number of attribute values, then try again.').replace('%d', MAX_GEN), 'error');
+            return;
+        }
         state.variations = combos.map(function (combo) {
             var ex = findExVar(combo), np = [], sp = [baseSKU];
             Object.keys(combo).forEach(function (k) { np.push(combo[k]); sp.push(slugify(combo[k])); });
@@ -1633,8 +2049,31 @@
                 vendor_sku: ex ? (ex.vendor_sku || '') : '' };
         });
         renderVarTable();
-        showVarStep(3);
+        $('#bpe-var-table-section').show();
+        // Snapshot the attribute set this table was built from so later edits
+        // to the attribute rows can surface a "regenerate" hint.
+        state.varSignature = variationAttrSignature();
+        refreshVarStaleHint();
         fetchVariationPreviews();
+    }
+
+    /* Stable signature of the current variation-attribute set (names + values +
+       taxonomy). Used to detect that the attributes drifted from what the
+       generated variation table was built on. */
+    function variationAttrSignature() {
+        return JSON.stringify(collectVariationAttributes());
+    }
+
+    /* Show the "attributes changed, regenerate" hint when a generated table is
+       now out of sync with the attribute rows. Never blocks saving. */
+    function refreshVarStaleHint() {
+        var $hint = $('#bpe-var-stale-hint');
+        if (!$hint.length) return;
+        var stale = isVariableOn()
+            && state.variations && state.variations.length
+            && typeof state.varSignature === 'string'
+            && state.varSignature !== variationAttrSignature();
+        $hint.prop('hidden', !stale);
     }
 
     /* Pull the 3rd-party per-variation field structure for not-yet-saved rows
@@ -1647,16 +2086,26 @@
         if (!newCount) return;
         var pid = $('#bpe-product-id').val() || 0;
         if (!pid) return; // the auto-draft id is needed to parent the stub variation
+        // Sequence guard: rapid Generate clicks / attribute edits fire
+        // overlapping requests. Only the latest response may touch state, so a
+        // late reply for a now-stale table can't attach extras to wrong rows.
+        var seq = (state.previewSeq = (state.previewSeq || 0) + 1);
+        var expectCount = state.variations.length;
         $.post(PE.ajax_url, {
             action: 'brikpanel_pe_preview_variation_fields',
             security: PE.nonce,
             product_id: pid,
-            count: state.variations.length
+            count: expectCount
         }).done(function (r) {
+            if (seq !== state.previewSeq) return; // superseded by a newer fetch
+            if (state.variations.length !== expectCount) return; // table changed underneath
             if (r && r.success && r.data && r.data.extras && !$.isEmptyObject(r.data.extras)) {
                 state.previewExtras = r.data.extras;
                 renderVarTable();
             }
+        }).fail(function () {
+            if (seq !== state.previewSeq) return;
+            showToast(PE.i18n.preview_failed || 'Could not load extra variation fields. Saving still works.', 'error');
         });
     }
 
@@ -1709,8 +2158,12 @@
         // next manual render to be correct.
         if (silent) return;
         state.variations = savedVars.map(function (v) { return $.extend(true, {}, v); });
-        var $tableStep = $('.brikpanel-pe-var-step[data-step="3"]');
-        if ($tableStep.length && $tableStep.is(':visible') && state.variations.length) {
+        // The freshly-saved table matches the current attribute rows, so reset
+        // the drift baseline and clear any stale hint.
+        state.varSignature = variationAttrSignature();
+        refreshVarStaleHint();
+        var $tableSection = $('#bpe-var-table-section');
+        if ($tableSection.length && $tableSection.is(':visible') && state.variations.length) {
             renderVarTable();
         }
     }
@@ -1823,8 +2276,8 @@
                 '<td class="var-name">' + esc(v.name) + '</td>' +
                 '<td><input type="text" class="var-price" value="' + esc(pv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
                 '<td><input type="text" class="var-sale-price" value="' + esc(sv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
-                '<td><input type="text" class="var-sale-from" value="' + esc(v.sale_from || '') + '" placeholder="YYYY-MM-DD" autocomplete="off"></td>' +
-                '<td><input type="text" class="var-sale-to"   value="' + esc(v.sale_to   || '') + '" placeholder="YYYY-MM-DD" autocomplete="off"></td>' +
+                '<td><input type="text" class="var-sale-from" value="' + esc(v.sale_from || '') + '" placeholder="' + esc(PE.i18n.date_placeholder || 'YYYY-MM-DD') + '" autocomplete="off"></td>' +
+                '<td><input type="text" class="var-sale-to"   value="' + esc(v.sale_to   || '') + '" placeholder="' + esc(PE.i18n.date_placeholder || 'YYYY-MM-DD') + '" autocomplete="off"></td>' +
                 trackTd +
                 '<td><input type="number" class="var-stock" value="' + esc('' + stk) + '" min="0" placeholder="0"' + (varManage ? '' : ' disabled') + '></td>' +
                 statusTd +
@@ -1861,6 +2314,11 @@
             state.variations.splice(idx, 1);
             state.dirty = true;
             renderVarTable();
+            // When the last variation is removed there is nothing to show — hide
+            // the table. The product stays "Variable" per the top toggle until
+            // the user turns it off (save with zero variations falls back to a
+            // simple product server-side).
+            if (!state.variations.length) { $('#bpe-var-table-section').hide(); }
         });
         $tb.find('.var-expand-btn').on('click', function () {
             var idx = $(this).data('idx');
@@ -1890,7 +2348,10 @@
         // stock status flips to "On backorder". Adds/removes the
         // `has-backorder` class so the main row's bottom border merges.
         if (hasBackorderNotify) {
-            $tb.on('change', '.var-stock-status', function () {
+            // Delegated on the persistent table body, which survives re-renders,
+            // so namespace + off first or each render stacks another handler and
+            // one status change fires N times.
+            $tb.off('change.bpVarStatus').on('change.bpVarStatus', '.var-stock-status', function () {
                 var $sel = $(this);
                 var idx = $sel.closest('tr.var-main-row').data('idx');
                 var $mainRow = $tb.find('tr.var-main-row[data-idx="' + idx + '"]');
@@ -1993,6 +2454,9 @@
                 $('#bpe-var-table-body tr.var-backorder-row[data-idx="' + idx + '"]').attr('hidden', 'hidden');
             });
         }
+        // A bulk apply mutates the table — mark dirty so the unload guard and
+        // background auto-save treat it as a real change.
+        if (price || salePrice || stock !== '') { state.dirty = true; }
     }
 
     /* Validation — only enforces required fields that are actually visible.
@@ -2148,6 +2612,14 @@
         data.seo_canonical = $('#bpe-seo-canonical').val() || '';
         data.seo_noindex = $('#bpe-seo-noindex').is(':checked') ? 1 : 0;
         data.seo_description = $('#bpe-seo-desc').val() || '';
+
+        // Primary category — only sent when the field is rendered (a SEO plugin
+        // with the feature is active + the category section is visible). Omitting
+        // it leaves the existing value untouched on the server. The server
+        // mirrors it to every active plugin's meta key.
+        if ($('#bpe-seo-primary-cat').length) {
+            data.primary_cat = $('#bpe-seo-primary-cat').val() || 'none';
+        }
 
         // Virtual / Digital / downloads — flags are independent on the wire.
         // The server treats `is_downloadable=1` as implying virtual too, but
@@ -2334,12 +2806,17 @@
         // posted; the server merges them with any variation attributes. If the
         // card markup is absent entirely we omit the key, which tells the
         // server "section not posted — leave existing attributes alone".
-        if ($('#bpe-attr-card').length) {
-            data.non_variation_attributes = JSON.stringify(collectNonVariationAttributes());
+        if ($('#bpe-attr-list').length) {
+            // Pass the *effective* variable mode: when the toggle is on but no
+            // variations exist the save falls back to a simple product, so the
+            // variation-flagged rows must be kept as specs (isVar is false here).
+            data.non_variation_attributes = JSON.stringify(collectNonVariationAttributes(isVar));
         }
 
         if (isVar) {
-            data.attributes = JSON.stringify(state.varAttributes);
+            // Variation attributes come straight from the unified editor's
+            // "use for variations" rows so the latest toggles/edits are sent.
+            data.attributes = JSON.stringify(collectVariationAttributes());
             var tv = [];
             // Iterate only the main rows — extras rows sit between them and
             // would otherwise shift the idx → state.variations mapping.
@@ -2566,14 +3043,19 @@
         if (productData.is_downloadable || productData.is_virtual) {
             $('#bpe-weight-card, #bpe-dims-card').hide();
         }
-        // Hydrate the Product attributes (specs) card if the section is
-        // visible. Independent from variations — runs for simple AND variable
-        // products.
-        if (productData.non_variation_attributes && productData.non_variation_attributes.length) {
-            var $aList = $('#bpe-attr-list');
-            if ($aList.length) {
+        // Hydrate the unified attribute editor. Variation attributes load first
+        // (flagged "use for variations"), then the plain specs. Runs for simple
+        // AND variable products.
+        var $aList = $('#bpe-attr-list');
+        if ($aList.length) {
+            if (productData.is_variable && productData.attributes && productData.attributes.length) {
+                productData.attributes.forEach(function (attr) {
+                    $aList.append(createAttrRow(attr.name, attr.values || [], attr.taxonomy || '', true));
+                });
+            }
+            if (productData.non_variation_attributes && productData.non_variation_attributes.length) {
                 productData.non_variation_attributes.forEach(function (attr) {
-                    $aList.append(createAttributeRow(attr.name, attr.values || [], attr.taxonomy || ''));
+                    $aList.append(createAttrRow(attr.name, attr.values || [], attr.taxonomy || '', false));
                 });
             }
         }
@@ -2584,10 +3066,12 @@
                 var p = []; Object.keys(v.attributes).forEach(function (k) { p.push(v.attributes[k]); });
                 v.name = p.join(' - ');
             });
-            var $a = $('#bpe-var-attributes').empty();
-            productData.attributes.forEach(function (attr) { $a.append(createTagGroup(attr.name, attr.values, attr.taxonomy || '')); });
-            if (state.variations.length) { renderVarTable(); showVarStep(3); }
+            if (state.variations.length) { renderVarTable(); }
         }
+        // Reflect the loaded product type: the toggle is pre-checked by PHP for
+        // variable products. Running the sync now wires up the builder, table
+        // visibility, per-row switches and parent-pricing visibility to match.
+        $('#bpe-var-toggle').trigger('change');
     }
 
     /* Auto-save every 60s using the current visibility (no silent downgrade). */

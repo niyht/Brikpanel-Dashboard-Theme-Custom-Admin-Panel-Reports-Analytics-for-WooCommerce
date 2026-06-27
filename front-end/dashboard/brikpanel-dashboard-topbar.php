@@ -250,29 +250,37 @@ class Brikpanel_Dashboard_Topbar {
                     <?php endif; ?>
 
                     <!-- Quick create -->
-                    <?php if ( brikpanel_topbar_item_is_visible( 'create' ) ) : ?>
+                    <?php if ( brikpanel_topbar_item_is_visible( 'create' ) && brikpanel_topbar_has_visible_create_items() ) : ?>
                     <div class="brikpanel-topbar-menu" data-topbar-menu="create">
                         <button type="button" class="brikpanel-topbar-btn brikpanel-topbar-btn-primary" data-topbar-toggle="create" aria-haspopup="menu" aria-expanded="false">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             <span class="brikpanel-topbar-btn-label"><?php esc_html_e( 'Create', 'brikpanel' ); ?></span>
                         </button>
                         <div class="brikpanel-topbar-dropdown" role="menu">
+                            <?php if ( brikpanel_topbar_create_item_is_visible( 'product' ) ) : ?>
                             <a class="brikpanel-topbar-dropdown-item" role="menuitem" href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-product-editor' ) ); ?>">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7l-8-4-8 4 8 4 8-4z"/><path d="M4 7v10l8 4 8-4V7"/><line x1="12" y1="11" x2="12" y2="21"/></svg>
                                 <span><?php esc_html_e( 'New product', 'brikpanel' ); ?></span>
                             </a>
+                            <?php endif; ?>
+                            <?php if ( brikpanel_topbar_create_item_is_visible( 'order' ) ) : ?>
                             <a class="brikpanel-topbar-dropdown-item" role="menuitem" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=shop_order' ) ); ?>">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2l1 4h10l1-4"/><path d="M5 6h14l-1 15H6L5 6z"/><path d="M9 10v6"/><path d="M15 10v6"/></svg>
                                 <span><?php esc_html_e( 'New order', 'brikpanel' ); ?></span>
                             </a>
+                            <?php endif; ?>
+                            <?php if ( brikpanel_topbar_create_item_is_visible( 'coupon' ) ) : ?>
                             <a class="brikpanel-topbar-dropdown-item" role="menuitem" href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-coupons&action=new' ) ); ?>">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a2 2 0 0 1 2-2V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v4a2 2 0 0 1 2 2 2 2 0 0 1-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 1-2-2z"/><line x1="9" y1="9" x2="15" y2="15"/><circle cx="9" cy="9" r=".6"/><circle cx="15" cy="15" r=".6"/></svg>
                                 <span><?php esc_html_e( 'New coupon', 'brikpanel' ); ?></span>
                             </a>
+                            <?php endif; ?>
+                            <?php if ( brikpanel_topbar_create_item_is_visible( 'post' ) ) : ?>
                             <a class="brikpanel-topbar-dropdown-item" role="menuitem" href="<?php echo esc_url( admin_url( 'post-new.php' ) ); ?>">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                                 <span><?php esc_html_e( 'New post', 'brikpanel' ); ?></span>
                             </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                     <?php endif; ?>
@@ -345,6 +353,20 @@ class Brikpanel_Dashboard_Topbar {
                     ?>
 
                     <?php $this->render_cache_clear_button(); ?>
+
+                    <!-- Custom shortcut -->
+                    <?php
+                    $brikpanel_custom_link = brikpanel_topbar_item_is_visible( 'custom_link' ) ? brikpanel_topbar_custom_link() : null;
+                    if ( $brikpanel_custom_link ) :
+                        // Open links to a different host in a new tab; keep same-site admin links in place.
+                        $brikpanel_link_host  = wp_parse_url( $brikpanel_custom_link['url'], PHP_URL_HOST );
+                        $brikpanel_is_external = ! empty( $brikpanel_link_host ) && $brikpanel_link_host !== wp_parse_url( home_url(), PHP_URL_HOST );
+                        ?>
+                    <a class="brikpanel-topbar-btn brikpanel-topbar-btn-secondary" href="<?php echo esc_url( $brikpanel_custom_link['url'] ); ?>"<?php echo $brikpanel_is_external ? ' target="_blank" rel="noopener"' : ''; ?> title="<?php echo esc_attr( $brikpanel_custom_link['label'] ); ?>">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        <span class="brikpanel-topbar-btn-label"><?php echo esc_html( $brikpanel_custom_link['label'] ); ?></span>
+                    </a>
+                    <?php endif; ?>
 
                     <!-- View site -->
                     <?php if ( brikpanel_topbar_item_is_visible( 'view_site' ) ) : ?>

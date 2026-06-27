@@ -593,6 +593,7 @@ class Brikpanel_Products_List {
             <option value="sale_from_regular_percent"><?php esc_html_e('Sale from regular price %', 'brikpanel'); ?></option>
             <option value="increase_price_percent"><?php esc_html_e('Increase prices by %', 'brikpanel'); ?></option>
             <option value="decrease_price_percent"><?php esc_html_e('Decrease prices by %', 'brikpanel'); ?></option>
+            <option value="round_prices"><?php esc_html_e('Round prices (trailing digits to 0)', 'brikpanel'); ?></option>
             <option value="remove_sale_price"><?php esc_html_e('Remove sale price', 'brikpanel'); ?></option>
         </optgroup>
         <optgroup label="<?php esc_attr_e('Stock', 'brikpanel'); ?>">
@@ -1374,6 +1375,35 @@ class Brikpanel_Products_List {
                             <div class="brikpanel-pl-modal-field-label" id="bpl-bulk-term-label"><?php esc_html_e('Terms', 'brikpanel'); ?></div>
                             <?php $this->render_bulk_term_pickers(); ?>
                             <p class="brikpanel-pl-modal-hint"><?php esc_html_e('Terms apply at the product level. For variable products they are set on the parent product.', 'brikpanel'); ?></p>
+                        </div>
+
+                        <!-- Shared rounding options (revealed for the "Round prices" action) -->
+                        <div id="bpl-bulk-round-region" style="display:none;">
+                            <div class="brikpanel-pl-modal-divider"></div>
+                            <div class="brikpanel-pl-modal-row">
+                                <div class="brikpanel-pl-modal-field grow">
+                                    <label><?php esc_html_e('Trailing digits to zero', 'brikpanel'); ?></label>
+                                    <select id="bpl-bulk-round-digits" class="brikpanel-pl-select full">
+                                        <option value="1"><?php esc_html_e('Last 1 digit (…0)', 'brikpanel'); ?></option>
+                                        <option value="2" selected><?php esc_html_e('Last 2 digits (…00)', 'brikpanel'); ?></option>
+                                        <option value="3"><?php esc_html_e('Last 3 digits (…000)', 'brikpanel'); ?></option>
+                                        <option value="4"><?php esc_html_e('Last 4 digits (…0000)', 'brikpanel'); ?></option>
+                                    </select>
+                                </div>
+                                <div class="brikpanel-pl-modal-field grow">
+                                    <label><?php esc_html_e('Direction', 'brikpanel'); ?></label>
+                                    <select id="bpl-bulk-round-mode" class="brikpanel-pl-select full">
+                                        <option value="down" selected><?php esc_html_e('Round down', 'brikpanel'); ?></option>
+                                        <option value="nearest"><?php esc_html_e('Nearest', 'brikpanel'); ?></option>
+                                        <option value="up"><?php esc_html_e('Round up', 'brikpanel'); ?></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p class="brikpanel-pl-modal-hint">
+                                <?php esc_html_e('Example:', 'brikpanel'); ?>
+                                <span id="bpl-bulk-round-preview" dir="ltr">12,345 &rarr; 12,300</span>
+                            </p>
+                            <p class="brikpanel-pl-modal-hint"><?php esc_html_e('Applies to both regular and sale prices. A price is never rounded down to zero.', 'brikpanel'); ?></p>
                         </div>
 
                         <!-- Tab: Bulk Delete -->
@@ -2557,6 +2587,7 @@ class Brikpanel_Products_List {
         'increase_price_percent',
         'decrease_price_percent',
         'sale_from_regular_percent',
+        'round_prices',
         'set_stock',
         'increase_stock',
         'set_cogs',
@@ -2697,11 +2728,16 @@ class Brikpanel_Products_List {
                 if (!in_array($action, self::$bulk_update_actions, true)) {
                     wp_send_json_error(['message' => __('Invalid action.', 'brikpanel')]);
                 }
+                $round_mode = sanitize_key($_POST['round_mode'] ?? 'nearest');
+                if (!in_array($round_mode, ['nearest', 'up', 'down'], true)) {
+                    $round_mode = 'nearest';
+                }
                 $params = [
-                    'action'   => $action,
-                    'value'    => sanitize_text_field($_POST['value'] ?? ''),
-                    'attr_key' => sanitize_text_field($_POST['attr_key'] ?? ''),
-                    'attr_val' => sanitize_text_field($_POST['attr_val'] ?? ''),
+                    'action'     => $action,
+                    'value'      => sanitize_text_field($_POST['value'] ?? ''),
+                    'attr_key'   => sanitize_text_field($_POST['attr_key'] ?? ''),
+                    'attr_val'   => sanitize_text_field($_POST['attr_val'] ?? ''),
+                    'round_mode' => $round_mode,
                 ];
             }
         } else { // delete
@@ -3004,7 +3040,10 @@ class Brikpanel_Products_List {
             'set_regular_price', 'set_sale_price',
             'increase_price_percent', 'decrease_price_percent',
             'remove_sale_price', 'sale_from_regular_percent',
+            'round_prices',
         ], true);
+        // Rounding mode travels alongside the digit count (carried in $value).
+        $opts = ['round_mode' => $params['round_mode'] ?? 'nearest'];
         $is_taxonomy = ($action === 'taxonomy');
         $is_shipping = in_array($action, ['set_weight', 'set_length', 'set_width', 'set_height'], true);
         // COGS lives per variation (each variation carries its own cost), so it
@@ -3053,7 +3092,7 @@ class Brikpanel_Products_List {
                 // own value is empty, so we set the parent and leave overrides
                 // intact.
                 if ($is_shipping) {
-                    $this->apply_bulk_action($product, $action, $value);
+                    $this->apply_bulk_action($product, $action, $value, $opts);
                     $product->save();
                     $processed++;
                     continue;
@@ -3071,21 +3110,21 @@ class Brikpanel_Products_List {
                                 }
                                 if (!$match) continue;
                             }
-                            $this->apply_bulk_action($v, $action, $value);
+                            $this->apply_bulk_action($v, $action, $value, $opts);
                             $v->save();
                             $processed++;
                         }
                         $synced[$pid] = true;
                     } else {
                         if ($product->get_manage_stock()) {
-                            $this->apply_bulk_action($product, $action, $value);
+                            $this->apply_bulk_action($product, $action, $value, $opts);
                             $product->save();
                             $processed++;
                         } else {
                             foreach ($product->get_children() as $vid) {
                                 $v = wc_get_product($vid);
                                 if (!$v) continue;
-                                $this->apply_bulk_action($v, $action, $value);
+                                $this->apply_bulk_action($v, $action, $value, $opts);
                                 $v->save();
                                 $processed++;
                             }
@@ -3094,7 +3133,7 @@ class Brikpanel_Products_List {
                     }
                 } else {
                     if ($has_attr_filter) continue;
-                    $this->apply_bulk_action($product, $action, $value);
+                    $this->apply_bulk_action($product, $action, $value, $opts);
                     $product->save();
                     $processed++;
                     if ($product->is_type('variation')) {
@@ -3379,7 +3418,7 @@ class Brikpanel_Products_List {
         return ['processed' => $processed, 'errors' => $errors];
     }
 
-    private function apply_bulk_action(&$product, $action, $value) {
+    private function apply_bulk_action(&$product, $action, $value, $opts = []) {
         switch ($action) {
             case 'set_regular_price':
                 $product->set_regular_price(wc_format_decimal($value));
@@ -3403,6 +3442,47 @@ class Brikpanel_Products_List {
                 $rp = (float) $product->get_regular_price();
                 if ($rp > 0) {
                     $product->set_sale_price(round($rp * (1 - floatval($value) / 100), 2));
+                }
+                break;
+            case 'round_prices':
+                // Zero out the trailing digits of the price. $value is the digit
+                // count (1-6); the rounding direction comes from $opts. Applied to
+                // both the regular and sale price. Never produces a zero/negative
+                // price so a rounding step can't accidentally make a product free.
+                $digits = max(1, min(6, (int) $value));
+                $mode   = $opts['round_mode'] ?? 'nearest';
+                $factor = pow(10, $digits);
+                $round_one = static function ($price) use ($factor, $mode) {
+                    $price = (float) $price;
+                    if ($price <= 0) {
+                        return null;
+                    }
+                    switch ($mode) {
+                        case 'up':
+                            $r = ceil($price / $factor) * $factor;
+                            break;
+                        case 'down':
+                            $r = floor($price / $factor) * $factor;
+                            break;
+                        default:
+                            $r = round($price / $factor) * $factor;
+                            break;
+                    }
+                    if ($r <= 0) {
+                        return null;
+                    }
+                    return round($r, 2);
+                };
+                $rp = $round_one($product->get_regular_price());
+                if ($rp !== null) {
+                    $product->set_regular_price($rp);
+                }
+                $sp_raw = $product->get_sale_price();
+                if ($sp_raw !== '' && $sp_raw !== null) {
+                    $sp = $round_one($sp_raw);
+                    if ($sp !== null) {
+                        $product->set_sale_price($sp);
+                    }
                 }
                 break;
             case 'set_stock':

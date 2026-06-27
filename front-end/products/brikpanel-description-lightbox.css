@@ -1,0 +1,19 @@
+/* BrikPanel - Product description image lightbox (front-end) */
+img.brikpanel-lightbox{cursor:zoom-in}
+
+html.brikpanel-lightbox-open{overflow:hidden}
+
+.brikpanel-lightbox-overlay{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;padding:2.5rem;background:rgba(0,0,0,.82);opacity:0;transition:opacity .25s cubic-bezier(.4,0,.2,1);-webkit-tap-highlight-color:transparent}
+.brikpanel-lightbox-overlay[hidden]{display:none}
+.brikpanel-lightbox-overlay.is-open{opacity:1}
+
+.brikpanel-lightbox-img{max-width:min(1100px,92vw);max-height:88vh;width:auto;height:auto;object-fit:contain;border-radius:6px;box-shadow:0 20px 60px rgba(0,0,0,.5);transform:scale(.96);transition:transform .25s cubic-bezier(.4,0,.2,1);cursor:default}
+.brikpanel-lightbox-overlay.is-open .brikpanel-lightbox-img{transform:scale(1)}
+
+.brikpanel-lightbox-close{position:fixed;top:1rem;right:1rem;display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;padding:0;border:none;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;transition:background .15s ease}
+.brikpanel-lightbox-close:hover,.brikpanel-lightbox-close:focus-visible{background:rgba(255,255,255,.24);outline:none}
+
+@media (max-width:600px){
+	.brikpanel-lightbox-overlay{padding:1rem}
+	.brikpanel-lightbox-img{max-width:96vw;max-height:84vh}
+}

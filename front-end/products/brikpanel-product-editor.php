@@ -427,6 +427,11 @@ class Brikpanel_Product_Editor {
             <button type="button" data-cmd="unlink" title="<?php esc_attr_e('Remove link', 'brikpanel'); ?>">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71"/><line x1="8" y1="2" x2="8" y2="5"/><line x1="2" y1="8" x2="5" y2="8"/><line x1="16" y1="19" x2="16" y2="22"/><line x1="19" y1="16" x2="22" y2="16"/></svg>
             </button>
+            <span class="brikpanel-pe-editor-divider" aria-hidden="true"></span>
+            <button type="button" data-cmd="image" title="<?php esc_attr_e('Insert image', 'brikpanel'); ?>">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </button>
+            <span class="brikpanel-pe-editor-divider" aria-hidden="true"></span>
             <button type="button" data-cmd="removeFormat" title="<?php esc_attr_e('Clear formatting', 'brikpanel'); ?>">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M5 20h6"/><path d="M13 4 8 20"/><line x1="15" y1="15" x2="20" y2="20"/><line x1="20" y1="15" x2="15" y2="20"/></svg>
             </button>
@@ -619,7 +624,12 @@ class Brikpanel_Product_Editor {
             // For variable products the parent has no real backorder state,
             // so JS simply hides the parent radio in that case.
             'parent_backorders'    => (string) $data['backorders'],
-        ]);
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        // HEX flags above neutralise any literal `</script>`, `&`, quotes that
+        // could otherwise break out of the inline <script> below. The payload
+        // carries raw 3rd-party variation HTML (`variation_extras`) and
+        // attribute/term names that may originate from imports or other
+        // plugins, so escaping here is the stored-XSS guard for this admin page.
 
         // Pre-compute the "Additional product data" card once so we can echo
         // it at the top, middle, or bottom of the editor based on the
@@ -860,126 +870,178 @@ class Brikpanel_Product_Editor {
                 </div>
                 <?php $section_html['images'] = ob_get_clean(); endif; ?>
 
-                <?php if (in_array('variations', $visible, true)) : ob_start(); ?>
-                <!-- Variations -->
-                <div class="brikpanel-pe-card" id="bpe-var-card"<?php echo ($product_type_selector_enabled && !$data['is_variable']) ? ' style="display:none"' : ''; ?>>
-                    <div class="brikpanel-pe-toggle-row" id="bpe-var-toggle-row"<?php echo $product_type_selector_enabled ? ' style="display:none"' : ''; ?>>
-                        <span><?php esc_html_e('Does this product have sizes/colors?', 'brikpanel'); ?></span>
+                <?php
+                $bpe_show_var  = in_array('variations', $visible, true);
+                $bpe_show_attr = in_array('attributes', $visible, true);
+                if ($bpe_show_var || $bpe_show_attr) : ob_start(); ?>
+                <!-- Variations & attributes — one unified attribute editor with a
+                     top "Variable product" toggle (WooCommerce-native model).
+                     Each attribute row carries a "Use for variations" switch:
+                     switched-on rows build the variation table, switched-off rows
+                     stay as plain product specs (Brand, Material…). A variable
+                     product can carry BOTH at once; a simple product treats every
+                     attribute as a spec. The card is always visible. -->
+                <div class="brikpanel-pe-card<?php echo $data['is_variable'] ? ' bpe-variable-on' : ''; ?>" id="bpe-var-card">
+
+                    <?php if ($bpe_show_var) : ?>
+                    <div class="brikpanel-pe-var-head" id="bpe-var-toggle-row">
+                        <div class="brikpanel-pe-toggle-text">
+                            <span><?php esc_html_e('Variable product', 'brikpanel'); ?></span>
+                            <small><?php esc_html_e('Has options buyers choose from, like size or color.', 'brikpanel'); ?></small>
+                        </div>
                         <label class="brikpanel-pe-switch">
                             <input type="checkbox" id="bpe-var-toggle" <?php checked($data['is_variable']); ?>>
                             <span class="brikpanel-pe-slider"></span>
                         </label>
                     </div>
+                    <?php else : ?>
+                    <?php // Variations hidden by the admin: keep the flag present
+                          // (always simple) so the save path stays consistent. ?>
+                    <input type="checkbox" id="bpe-var-toggle" hidden style="display:none">
+                    <?php endif; ?>
 
-                    <div class="brikpanel-pe-collapse <?php echo $data['is_variable'] ? 'open' : ''; ?>" id="bpe-var-section">
-                        <div class="brikpanel-pe-var-wizard">
+                    <div class="brikpanel-pe-attr-editor">
+                        <label class="brikpanel-pe-attr-label"><?php echo esc_html(_x('Attributes', 'product editor attribute section heading', 'brikpanel')); ?></label>
+                        <p class="brikpanel-pe-help-text brikpanel-pe-attr-help-var" style="margin-top:0;<?php echo $data['is_variable'] ? '' : 'display:none'; ?>"><?php esc_html_e('Add attributes, then switch on “Use for variations” for the ones buyers pick (Size, Color). Others stay as specs shown on the product page.', 'brikpanel'); ?></p>
+                        <p class="brikpanel-pe-help-text brikpanel-pe-attr-help-simple" style="margin-top:0;<?php echo $data['is_variable'] ? 'display:none' : ''; ?>"><?php esc_html_e('Specs that appear on the product page (e.g. Brand, Material).', 'brikpanel'); ?></p>
 
-                            <!-- Step 1: Template Selection -->
-                            <div class="brikpanel-pe-var-step" data-step="1">
-                                <div class="brikpanel-pe-var-step-header">
-                                    <h3><?php esc_html_e('Choose variation type', 'brikpanel'); ?></h3>
-                                    <button type="button" class="brikpanel-pe-btn-text brikpanel-pe-var-forward" id="bpe-var-forward-1" style="display:none">
-                                        <?php esc_html_e('Forward', 'brikpanel'); ?>
-                                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <?php if ($bpe_show_var) : ?>
+                        <!-- Quick-start template cards — shown only while Variable is
+                             on and no attributes exist yet. JS toggles them against
+                             #bpe-var-attr-controls (see updateVarStartView). -->
+                        <div class="brikpanel-pe-var-templates" id="bpe-var-templates" style="display:none">
+                            <div class="brikpanel-pe-var-template" data-template="size-color">
+                                <div class="brikpanel-pe-var-template-icon">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="9" height="9" rx="2"/><circle cx="17" cy="17" r="5"/><circle cx="17" cy="17" r="2" fill="#e74c3c" stroke="none"/></svg>
+                                </div>
+                                <strong><?php esc_html_e('Size + Color', 'brikpanel'); ?></strong>
+                                <small><?php esc_html_e('Size and color combinations', 'brikpanel'); ?></small>
+                            </div>
+                            <div class="brikpanel-pe-var-template" data-template="custom">
+                                <div class="brikpanel-pe-var-template-icon">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                </div>
+                                <strong><?php esc_html_e('Custom', 'brikpanel'); ?></strong>
+                                <small><?php esc_html_e('Use existing or create new attributes', 'brikpanel'); ?></small>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+
+                        <div id="bpe-var-attr-controls">
+                            <div class="brikpanel-pe-attr-add">
+                                <?php if (!empty($global_attributes)) : ?>
+                                <!-- Searchable attribute picker (custom popover dropdown):
+                                     a styled trigger that opens a search box + scrollable
+                                     option list. Replaces the plain native <select>; the
+                                     list is driven entirely from data-* attributes so the
+                                     JS reuses the same add-attribute path. -->
+                                <div class="brikpanel-pe-combo" id="bpe-attr-combo">
+                                    <button type="button" class="brikpanel-pe-combo-trigger" id="bpe-attr-combo-trigger" aria-haspopup="listbox" aria-expanded="false">
+                                        <span class="brikpanel-pe-combo-value"><?php esc_html_e('Select existing attribute…', 'brikpanel'); ?></span>
+                                        <svg class="brikpanel-pe-combo-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                     </button>
-                                </div>
-                                <div class="brikpanel-pe-var-templates">
-                                    <div class="brikpanel-pe-var-template" data-template="size-color">
-                                        <div class="brikpanel-pe-var-template-icon">
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="9" height="9" rx="2"/><circle cx="17" cy="17" r="5"/><circle cx="17" cy="17" r="2" fill="#e74c3c" stroke="none"/></svg>
+                                    <div class="brikpanel-pe-combo-panel" id="bpe-attr-combo-panel">
+                                        <div class="brikpanel-pe-combo-search">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                                            <input type="text" id="bpe-attr-combo-search" placeholder="<?php esc_attr_e('Search attributes…', 'brikpanel'); ?>" autocomplete="off">
                                         </div>
-                                        <strong><?php esc_html_e('Size + Color', 'brikpanel'); ?></strong>
-                                        <small><?php esc_html_e('Size and color combinations', 'brikpanel'); ?></small>
-                                    </div>
-                                    <div class="brikpanel-pe-var-template" data-template="custom">
-                                        <div class="brikpanel-pe-var-template-icon">
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                                        </div>
-                                        <strong><?php esc_html_e('Custom', 'brikpanel'); ?></strong>
-                                        <small><?php esc_html_e('Use existing or create new attributes', 'brikpanel'); ?></small>
+                                        <ul class="brikpanel-pe-combo-list" id="bpe-attr-combo-list" role="listbox">
+                                            <?php foreach ($global_attributes as $ga) : ?>
+                                            <li class="brikpanel-pe-combo-option" role="option" data-value="<?php echo esc_attr($ga['name']); ?>" data-taxonomy="<?php echo esc_attr($ga['taxonomy']); ?>"><?php echo esc_html($ga['name']); ?></li>
+                                            <?php endforeach; ?>
+                                            <li class="brikpanel-pe-combo-empty" style="display:none"><?php esc_html_e('No matching attributes', 'brikpanel'); ?></li>
+                                        </ul>
                                     </div>
                                 </div>
+                                <div class="brikpanel-pe-attr-divider"><span><?php esc_html_e('or create new', 'brikpanel'); ?></span></div>
+                                <?php endif; ?>
+
+                                <div class="brikpanel-pe-attr-inputgroup">
+                                    <input type="text" id="bpe-attr-new-name" placeholder="<?php esc_attr_e('Attribute name (e.g.: Size, Brand)', 'brikpanel'); ?>">
+                                    <button type="button" id="bpe-attr-add"><?php esc_html_e('Add', 'brikpanel'); ?></button>
+                                </div>
+
+                                <?php if ($bpe_show_var) : ?>
+                                <div class="brikpanel-pe-attr-quickrow">
+                                    <span class="brikpanel-pe-attr-quicklabel"><?php esc_html_e('Quick add:', 'brikpanel'); ?></span>
+                                    <button type="button" class="brikpanel-pe-chip-btn brikpanel-pe-attr-quick" id="bpe-attr-quick-sizecolor"><?php esc_html_e('+ Size & Color', 'brikpanel'); ?></button>
+                                </div>
+                                <?php endif; ?>
                             </div>
 
-                            <!-- Step 2: Enter Values -->
-                            <div class="brikpanel-pe-var-step" data-step="2" style="display:none">
-                                <div class="brikpanel-pe-var-step-header">
-                                    <button type="button" class="brikpanel-pe-btn-text" id="bpe-var-back">
-                                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                        <?php esc_html_e('Back', 'brikpanel'); ?>
-                                    </button>
-                                    <h3><?php esc_html_e('Enter values', 'brikpanel'); ?></h3>
-                                    <button type="button" class="brikpanel-pe-btn-text brikpanel-pe-var-forward" id="bpe-var-forward-2" style="display:none">
-                                        <?php esc_html_e('Forward', 'brikpanel'); ?>
-                                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                    </button>
-                                </div>
-                                <div id="bpe-var-attributes"></div>
-                                <button type="button" class="brikpanel-pe-btn primary" id="bpe-generate-vars"><?php esc_html_e('Generate variations', 'brikpanel'); ?></button>
-                            </div>
-
-                            <!-- Step 3: Variation Table -->
-                            <div class="brikpanel-pe-var-step" data-step="3" style="display:none">
-                                <div class="brikpanel-pe-var-step-header">
-                                    <button type="button" class="brikpanel-pe-btn-text" id="bpe-var-back-2">
-                                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                        <?php esc_html_e('Back', 'brikpanel'); ?>
-                                    </button>
-                                    <h3><?php esc_html_e('Variations', 'brikpanel'); ?></h3>
-                                </div>
-                                <div class="brikpanel-pe-var-bulk">
-                                    <div class="brikpanel-pe-var-bulk-item">
-                                        <label><?php esc_html_e('Set all prices:', 'brikpanel'); ?></label>
-                                        <div class="brikpanel-pe-input-group small">
-                                            <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
-                                            <input type="text" id="bpe-bulk-price" data-price="1">
-                                        </div>
-                                    </div>
-                                    <div class="brikpanel-pe-var-bulk-item">
-                                        <label><?php esc_html_e('Set all sale prices:', 'brikpanel'); ?></label>
-                                        <div class="brikpanel-pe-input-group small">
-                                            <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
-                                            <input type="text" id="bpe-bulk-sale-price" data-price="1">
-                                        </div>
-                                    </div>
-                                    <div class="brikpanel-pe-var-bulk-item">
-                                        <label><?php esc_html_e('Set all stocks:', 'brikpanel'); ?></label>
-                                        <input type="number" id="bpe-bulk-stock" class="brikpanel-pe-input small" min="0">
-                                    </div>
-                                    <button type="button" class="brikpanel-pe-btn primary small" id="bpe-apply-bulk"><?php esc_html_e('Apply', 'brikpanel'); ?></button>
-                                </div>
-                                <div class="brikpanel-pe-var-table-wrap">
-                                    <table class="brikpanel-pe-var-table" id="bpe-var-table">
-                                        <thead>
-                                            <tr>
-                                                <th class="var-expand-col" aria-hidden="true"></th>
-                                                <th><?php esc_html_e('Variation', 'brikpanel'); ?></th>
-                                                <th><?php esc_html_e('Price', 'brikpanel'); ?></th>
-                                                <th><?php esc_html_e('Sale Price', 'brikpanel'); ?></th>
-                                                <th><?php esc_html_e('Sale start', 'brikpanel'); ?></th>
-                                                <th><?php esc_html_e('Sale end', 'brikpanel'); ?></th>
-                                                <th class="var-track-col" title="<?php esc_attr_e('Track stock quantity for this variation', 'brikpanel'); ?>"><?php esc_html_e('Track', 'brikpanel'); ?></th>
-                                                <th><?php esc_html_e('Stock', 'brikpanel'); ?></th>
-                                                <th><?php esc_html_e('Status', 'brikpanel'); ?></th>
-                                                <?php if ($cogs_enabled) : ?><th><?php esc_html_e('COGS', 'brikpanel'); ?></th><?php endif; ?>
-                                                <?php if ($bp_vendor_field_on) : ?><th class="bpe-var-vendor-th"><?php esc_html_e('Supplier', 'brikpanel'); ?></th><?php endif; ?>
-                                                <th><?php esc_html_e('SKU', 'brikpanel'); ?></th>
-                                                <?php if (in_array('gtin', $visible, true)) : ?><th><?php esc_html_e('GTIN', 'brikpanel'); ?></th><?php endif; ?>
-                                                <?php if (in_array('tax', $visible, true)) : ?><th><?php esc_html_e('Tax class', 'brikpanel'); ?></th><?php endif; ?>
-                                                <?php if (in_array('shipping_class', $visible, true)) : ?><th><?php esc_html_e('Shipping class', 'brikpanel'); ?></th><?php endif; ?>
-                                                <th><?php esc_html_e('Image', 'brikpanel'); ?></th>
-                                                <th class="var-delete-col" aria-hidden="true"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="bpe-var-table-body"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-
+                            <div id="bpe-attr-list"></div>
                         </div>
                     </div>
+
+                    <?php if ($bpe_show_var) : ?>
+                    <!-- Variation builder: visible only while "Variable product" is on -->
+                    <div class="brikpanel-pe-var-build" id="bpe-var-build"<?php echo $data['is_variable'] ? '' : ' style="display:none"'; ?>>
+                        <button type="button" class="brikpanel-pe-btn primary" id="bpe-generate-vars"><?php esc_html_e('Generate variations', 'brikpanel'); ?></button>
+                        <span class="brikpanel-pe-var-stale-hint" id="bpe-var-stale-hint" hidden><?php esc_html_e('Attributes changed since you generated. Click Generate variations to refresh the list.', 'brikpanel'); ?></span>
+
+                        <div class="brikpanel-pe-var-table-section" id="bpe-var-table-section" style="display:none">
+                            <div class="brikpanel-pe-var-bulk">
+                                <div class="brikpanel-pe-var-bulk-item">
+                                    <label><?php esc_html_e('Set all prices:', 'brikpanel'); ?></label>
+                                    <div class="brikpanel-pe-input-group small">
+                                        <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
+                                        <input type="text" id="bpe-bulk-price" data-price="1">
+                                    </div>
+                                </div>
+                                <div class="brikpanel-pe-var-bulk-item">
+                                    <label><?php esc_html_e('Set all sale prices:', 'brikpanel'); ?></label>
+                                    <div class="brikpanel-pe-input-group small">
+                                        <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
+                                        <input type="text" id="bpe-bulk-sale-price" data-price="1">
+                                    </div>
+                                </div>
+                                <div class="brikpanel-pe-var-bulk-item">
+                                    <label><?php esc_html_e('Set all stocks:', 'brikpanel'); ?></label>
+                                    <input type="number" id="bpe-bulk-stock" class="brikpanel-pe-input small" min="0">
+                                </div>
+                                <button type="button" class="brikpanel-pe-btn primary small" id="bpe-apply-bulk"><?php esc_html_e('Apply', 'brikpanel'); ?></button>
+                            </div>
+                            <div class="brikpanel-pe-var-table-wrap">
+                                <table class="brikpanel-pe-var-table" id="bpe-var-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="var-expand-col" aria-hidden="true"></th>
+                                            <th><?php esc_html_e('Variation', 'brikpanel'); ?></th>
+                                            <th><?php esc_html_e('Price', 'brikpanel'); ?></th>
+                                            <th><?php esc_html_e('Sale Price', 'brikpanel'); ?></th>
+                                            <th><?php esc_html_e('Sale start', 'brikpanel'); ?></th>
+                                            <th><?php esc_html_e('Sale end', 'brikpanel'); ?></th>
+                                            <th class="var-track-col" title="<?php esc_attr_e('Track stock quantity for this variation', 'brikpanel'); ?>"><?php esc_html_e('Track', 'brikpanel'); ?></th>
+                                            <th><?php esc_html_e('Stock', 'brikpanel'); ?></th>
+                                            <th><?php esc_html_e('Status', 'brikpanel'); ?></th>
+                                            <?php if ($cogs_enabled) : ?><th><?php esc_html_e('COGS', 'brikpanel'); ?></th><?php endif; ?>
+                                            <?php if ($bp_vendor_field_on) : ?><th class="bpe-var-vendor-th"><?php esc_html_e('Supplier', 'brikpanel'); ?></th><?php endif; ?>
+                                            <th><?php esc_html_e('SKU', 'brikpanel'); ?></th>
+                                            <?php if (in_array('gtin', $visible, true)) : ?><th><?php esc_html_e('GTIN', 'brikpanel'); ?></th><?php endif; ?>
+                                            <?php if (in_array('tax', $visible, true)) : ?><th><?php esc_html_e('Tax class', 'brikpanel'); ?></th><?php endif; ?>
+                                            <?php if (in_array('shipping_class', $visible, true)) : ?><th><?php esc_html_e('Shipping class', 'brikpanel'); ?></th><?php endif; ?>
+                                            <th><?php esc_html_e('Image', 'brikpanel'); ?></th>
+                                            <th class="var-delete-col" aria-hidden="true"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bpe-var-table-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; // $bpe_show_var ?>
                 </div>
-                <?php $section_html['variations'] = ob_get_clean(); endif; ?>
+                <?php
+                // Emit the combined card exactly once, at the slot of whichever
+                // section the admin kept visible (prefer the variations slot;
+                // fall back to the attributes slot when variations are hidden).
+                $bpe_combined = ob_get_clean();
+                if ($bpe_show_var) {
+                    $section_html['variations'] = $bpe_combined;
+                } elseif ($bpe_show_attr) {
+                    $section_html['attributes'] = $bpe_combined;
+                }
+                endif; ?>
 
                 <?php if (in_array('pricing', $visible, true)) : ob_start(); ?>
                 <!-- Pricing (hidden when the product has variations — each
@@ -1006,11 +1068,11 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-row">
                         <div class="brikpanel-pe-field">
                             <label for="bpe-sale-from"><?php esc_html_e('Sale start date', 'brikpanel'); ?></label>
-                            <input type="text" id="bpe-sale-from" value="<?php echo esc_attr($data['sale_from']); ?>" placeholder="<?php esc_attr_e('YYYY-MM-DD — optional', 'brikpanel'); ?>" autocomplete="off">
+                            <input type="text" id="bpe-sale-from" value="<?php echo esc_attr($data['sale_from']); ?>" placeholder="<?php esc_attr_e('YYYY-MM-DD (optional)', 'brikpanel'); ?>" autocomplete="off">
                         </div>
                         <div class="brikpanel-pe-field">
                             <label for="bpe-sale-to"><?php esc_html_e('Sale end date', 'brikpanel'); ?></label>
-                            <input type="text" id="bpe-sale-to" value="<?php echo esc_attr($data['sale_to']); ?>" placeholder="<?php esc_attr_e('YYYY-MM-DD — optional', 'brikpanel'); ?>" autocomplete="off">
+                            <input type="text" id="bpe-sale-to" value="<?php echo esc_attr($data['sale_to']); ?>" placeholder="<?php esc_attr_e('YYYY-MM-DD (optional)', 'brikpanel'); ?>" autocomplete="off">
                         </div>
                     </div>
                     <p class="brikpanel-pe-help-text"><?php esc_html_e('Schedule your sale in advance — leave the dates empty to start it immediately or keep it running indefinitely.', 'brikpanel'); ?></p>
@@ -1272,6 +1334,40 @@ class Brikpanel_Product_Editor {
                             <?php $this->render_category_checklist($categories, $data['category_ids']); ?>
                         </div>
                     </div>
+                    <?php
+                    // "Primary category" — SEOPress, Yoast and Rank Math each
+                    // normally inject this selector into the native Categories
+                    // panel via a JS bundle that never runs on the BrikPanel editor
+                    // page, so the field would be missing here for all of them.
+                    // Surface one shared control, populated from the currently
+                    // selected categories (kept in sync client-side as the
+                    // checklist changes), and mirror the choice to every active
+                    // plugin on save. Works for simple and variable products alike
+                    // — the value is product-level post meta.
+                    $bpe_pc_plugins = self::primary_category_seo_plugins();
+                    if (!empty($bpe_pc_plugins)) :
+                        $bpe_pc_badge = implode(' · ', array_column($bpe_pc_plugins, 'label'));
+                        $bpe_sel_cat_names = [];
+                        foreach ($categories as $bpe_cat) {
+                            if (in_array($bpe_cat->term_id, $data['category_ids'], true)) {
+                                $bpe_sel_cat_names[(int) $bpe_cat->term_id] = $bpe_cat->name;
+                            }
+                        }
+                    ?>
+                    <div class="brikpanel-pe-field brikpanel-pe-primary-cat-field" style="margin-top:0.75rem;">
+                        <label for="bpe-seo-primary-cat">
+                            <?php esc_html_e('Primary category', 'brikpanel'); ?>
+                            <span class="brikpanel-pe-seo-plugin-badge"><?php echo esc_html($bpe_pc_badge); ?></span>
+                        </label>
+                        <select id="bpe-seo-primary-cat" class="brikpanel-pe-select">
+                            <option value="none"><?php esc_html_e('None (will disable this feature)', 'brikpanel'); ?></option>
+                            <?php foreach ($bpe_sel_cat_names as $bpe_cid => $bpe_cname) : ?>
+                                <option value="<?php echo esc_attr($bpe_cid); ?>" <?php selected((string) $data['primary_cat'], (string) $bpe_cid); ?>><?php echo esc_html($bpe_cname); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="brikpanel-pe-help-text"><?php esc_html_e('The category used in the %category% permalink and breadcrumbs when a product has several categories.', 'brikpanel'); ?></p>
+                    </div>
+                    <?php endif; ?>
                     <a href="#" id="bpe-add-cat-toggle" class="brikpanel-pe-link"><?php esc_html_e('+ Add new category', 'brikpanel'); ?></a>
                     <div class="brikpanel-pe-collapse" id="bpe-new-cat-section">
                         <div>
@@ -1589,36 +1685,11 @@ class Brikpanel_Product_Editor {
                     <?php endif; ?>
                 <?php $section_html['seo'] = ob_get_clean(); endif; ?>
 
-                <?php if (in_array('attributes', $visible, true)) : ob_start(); ?>
-                <!-- Product attributes (specs) — independent from variations.
-                     Lets the user manage non-variation attributes (Brand,
-                     Material, Country of origin, …) for both simple and
-                     variable products. Variation attributes stay inside the
-                     variations wizard below. -->
-                <div class="brikpanel-pe-card" id="bpe-attr-card">
-                    <label><?php esc_html_e('Product attributes', 'brikpanel'); ?></label>
-                    <p class="brikpanel-pe-help-text" style="margin-top:0"><?php esc_html_e('Specs that appear on the product page (e.g. Brand, Material). For variation attributes (Size, Color), use the Variations section.', 'brikpanel'); ?></p>
-
-                    <?php if (!empty($global_attributes)) : ?>
-                    <div class="brikpanel-pe-attr-select-wrap">
-                        <select class="brikpanel-pe-attr-select" id="bpe-attr-select">
-                            <option value=""><?php esc_html_e('Select existing attribute…', 'brikpanel'); ?></option>
-                            <?php foreach ($global_attributes as $ga) : ?>
-                                <option value="<?php echo esc_attr($ga['name']); ?>" data-taxonomy="<?php echo esc_attr($ga['taxonomy']); ?>"><?php echo esc_html($ga['name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="brikpanel-pe-attr-divider"><?php esc_html_e('or create new', 'brikpanel'); ?></div>
-                    <?php endif; ?>
-
-                    <div class="brikpanel-pe-inline-form" style="margin-bottom:.75rem">
-                        <input type="text" id="bpe-attr-new-name" placeholder="<?php esc_attr_e('Attribute name (e.g.: Brand)', 'brikpanel'); ?>">
-                        <button type="button" class="brikpanel-pe-btn secondary small" id="bpe-attr-add"><?php esc_html_e('Add', 'brikpanel'); ?></button>
-                    </div>
-
-                    <div id="bpe-attr-list"></div>
-                </div>
-                <?php $section_html['attributes'] = ob_get_clean(); endif; ?>
+                <?php // Product attributes (specs) are no longer a standalone
+                      // card — they live as the third box inside the Variations &
+                      // attributes card above (Step 1 → "Attributes"), emitted at
+                      // the 'variations' (or, if that is hidden, 'attributes')
+                      // slot. See $bpe_combined routing earlier in this template. ?>
 
                 <?php
                 // -------------------------------------------------------------
@@ -1644,14 +1715,41 @@ class Brikpanel_Product_Editor {
                 if (in_array('seo', $visible, true) && !empty($active_seo)) {
                     $picked_mb_ids = array_values(array_diff($picked_mb_ids, $active_seo['metabox_ids']));
                 }
+                // ACF groups only ever render while "Auto-include ACF field
+                // groups" is on. The picker can persist `mb:acf-…` placements,
+                // so a since-disabled toggle could otherwise still surface them
+                // via the picks here — strip them to honour the master switch.
+                if (get_option('brikpanel_pe_acf_auto', 'yes') !== 'yes') {
+                    $picked_mb_ids = array_values(array_filter($picked_mb_ids, function ($mb_id) {
+                        return strpos($mb_id, 'acf-') !== 0;
+                    }));
+                }
 
                 // Auto-included boxes that are not part of the picker order:
                 // ACF field groups whose Location Rules resolve to this product,
                 // and WPML's native "Language" box (hooked to admin_head, so the
-                // picker never lists it). These render as a trailing group.
+                // picker never lists it). These render as a trailing group —
+                // UNLESS the admin has positioned them in the section picker, in
+                // which case they render at their chosen slot via $picked_mb_ids
+                // (and are removed from this trailing set by the array_diff).
                 $auto_mb_ids = [];
                 if (function_exists('brikpanel_resolve_auto_acf_metabox_ids')) {
-                    $auto_mb_ids = array_merge($auto_mb_ids, brikpanel_resolve_auto_acf_metabox_ids((int) $product_id, 'product'));
+                    $acf_auto = brikpanel_resolve_auto_acf_metabox_ids((int) $product_id, 'product');
+                    // Honor an explicit hide from the section picker: an ACF group
+                    // present in the saved section order but absent from the visible
+                    // set was deliberately switched off, so it must not reappear in
+                    // the trailing group. Groups the admin never touched (not in the
+                    // saved order) keep showing automatically.
+                    $order_slugs = function_exists('brikpanel_pe_get_section_order')
+                        ? brikpanel_pe_get_section_order()
+                        : [];
+                    if (!empty($order_slugs)) {
+                        $acf_auto = array_filter($acf_auto, function ($acf_id) use ($order_slugs, $visible) {
+                            $slug = 'mb:' . $acf_id;
+                            return !(in_array($slug, $order_slugs, true) && !in_array($slug, $visible, true));
+                        });
+                    }
+                    $auto_mb_ids = array_merge($auto_mb_ids, array_values($acf_auto));
                 }
                 if (self::wpml_translation_box_available()) {
                     $auto_mb_ids[] = 'icl_div';
@@ -1797,6 +1895,46 @@ class Brikpanel_Product_Editor {
     }
 
     /**
+     * Flatten a $wp_meta_boxes screen tree to a flat [id => box] map, keeping
+     * only boxes whose id is in $keep_ids.
+     *
+     * Iterates EVERY context and priority actually present rather than the WP
+     * core trio (normal/side/advanced) + standard priorities, because
+     * add_meta_box() accepts arbitrary context/priority strings and plugins use
+     * custom ones (e.g. ACF's "High (after title)" position registers under the
+     * `acf_after_title` context). A hardcoded list silently dropped such boxes
+     * from the editor. Filtering by $keep_ids means scanning extra contexts can
+     * never surface anything the caller didn't ask for, so this is always safe.
+     *
+     * @param mixed    $screen_boxes The $wp_meta_boxes[$screen] tree (context => priority => id => box).
+     * @param string[] $keep_ids     Metabox IDs to keep.
+     * @return array<string,array> Map of id => box, in discovery order.
+     */
+    private function flatten_selected_meta_boxes($screen_boxes, array $keep_ids) {
+        $flat = [];
+        if (!is_array($screen_boxes) || empty($keep_ids)) {
+            return $flat;
+        }
+        foreach ($screen_boxes as $priorities) {
+            if (!is_array($priorities)) {
+                continue;
+            }
+            foreach ($priorities as $boxes) {
+                if (!is_array($boxes)) {
+                    continue;
+                }
+                foreach ($boxes as $id => $box) {
+                    if (!$box || !in_array($id, $keep_ids, true)) {
+                        continue;
+                    }
+                    $flat[$id] = $box;
+                }
+            }
+        }
+        return $flat;
+    }
+
+    /**
      * Build standalone cards for a set of third-party product metaboxes.
      *
      * Returns ['html' => [id => card_html], 'acf' => bool]. Each metabox is
@@ -1894,20 +2032,17 @@ class Brikpanel_Product_Editor {
         }
 
         // Flatten the tree and keep only the user-selected IDs.
-        $flat = [];
-        foreach (['normal', 'side', 'advanced'] as $context) {
-            foreach (['high', 'core', 'default', 'low'] as $priority) {
-                if (empty($wp_meta_boxes['product'][$context][$priority])) {
-                    continue;
-                }
-                foreach ($wp_meta_boxes['product'][$context][$priority] as $id => $box) {
-                    if (!$box || !in_array($id, $selected_ids, true)) {
-                        continue;
-                    }
-                    $flat[$id] = $box;
-                }
-            }
-        }
+        // Scan EVERY context/priority actually registered rather than a fixed
+        // list: `add_meta_box()` accepts any context or priority string, and
+        // plugins use custom ones (ACF's "High (after title)" position registers
+        // under `acf_after_title`; others could invent their own). A hardcoded
+        // ['normal','side','advanced'] list silently dropped those boxes. Since
+        // we only ever keep IDs that are in $selected_ids, scanning extra
+        // contexts can never pull in anything unwanted.
+        $flat = $this->flatten_selected_meta_boxes(
+            isset($wp_meta_boxes['product']) ? $wp_meta_boxes['product'] : [],
+            $selected_ids
+        );
 
         // Preserve the order the admin picked in settings.
         $ordered = [];
@@ -2024,6 +2159,36 @@ class Brikpanel_Product_Editor {
         }
 
         return apply_filters('brikpanel_pe_active_seo_plugin', $detected);
+    }
+
+    /**
+     * Active SEO plugins that expose a per-product "primary category" for the
+     * product_cat taxonomy, mapped to the post meta key each one stores it in.
+     *
+     * Every one of these plugins injects its own primary-category selector into
+     * the native WordPress Categories panel via a JS bundle that only runs on
+     * post.php / post-new.php — never on the BrikPanel editor page — so the
+     * control is missing here for all of them. BrikPanel surfaces ONE primary
+     * category control and mirrors the choice into every active plugin's meta
+     * key, mirroring the unified-SEO-fields philosophy (write everywhere so
+     * switching SEO plugins never loses the data). AIOSEO is intentionally
+     * excluded: its primary term is a Pro-only feature stored in a custom DB
+     * table, not post meta, so it cannot be written the same safe way.
+     *
+     * @return array<string,array{key:string,label:string}>
+     */
+    public static function primary_category_seo_plugins() {
+        $map = [];
+        if (defined('SEOPRESS_VERSION') || function_exists('seopress_get_service')) {
+            $map['seopress'] = ['key' => '_seopress_robots_primary_cat', 'label' => 'SEOPress'];
+        }
+        if (defined('WPSEO_VERSION') || class_exists('WPSEO_Metabox')) {
+            $map['yoast'] = ['key' => '_yoast_wpseo_primary_product_cat', 'label' => 'Yoast SEO'];
+        }
+        if (class_exists('RankMath') || function_exists('rank_math') || defined('RANK_MATH_VERSION')) {
+            $map['rank_math'] = ['key' => 'rank_math_primary_product_cat', 'label' => 'Rank Math'];
+        }
+        return apply_filters('brikpanel_pe_primary_category_plugins', $map);
     }
 
     /**
@@ -2675,20 +2840,13 @@ class Brikpanel_Product_Editor {
 
         // Collect the boxes the plugin registered, keeping only the IDs we
         // expect so stray unrelated metaboxes never slip into the SEO card.
-        $render_queue = [];
-        foreach (['normal', 'side', 'advanced'] as $context) {
-            foreach (['high', 'core', 'default', 'low'] as $priority) {
-                if (empty($wp_meta_boxes['product'][$context][$priority])) {
-                    continue;
-                }
-                foreach ($wp_meta_boxes['product'][$context][$priority] as $id => $box) {
-                    if (!$box || !in_array($id, $active_seo['metabox_ids'], true)) {
-                        continue;
-                    }
-                    $render_queue[$id] = $box;
-                }
-            }
-        }
+        // Scan every registered context/priority (not a fixed list) so a SEO
+        // plugin registering under a custom context is still picked up; the
+        // metabox_ids filter keeps the result tight regardless.
+        $render_queue = $this->flatten_selected_meta_boxes(
+            isset($wp_meta_boxes['product']) ? $wp_meta_boxes['product'] : [],
+            $active_seo['metabox_ids']
+        );
 
         // Preserve the order declared in get_active_seo_plugin() so the
         // primary metabox (the big one) always renders before secondary
@@ -3525,6 +3683,12 @@ class Brikpanel_Product_Editor {
             wp_send_json_success(['extras' => []]);
         }
 
+        // Per-object capability: don't render (and momentarily create) scratch
+        // variations against a product the caller can't edit.
+        if (!current_user_can('edit_product', $product_id)) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
         $product = wc_get_product($product_id);
         if (!$product) {
             wp_send_json_success(['extras' => []]);
@@ -3777,6 +3941,7 @@ class Brikpanel_Product_Editor {
             'seo_focus_kw'      => '',
             'seo_canonical'     => '',
             'seo_noindex'       => false,
+            'primary_cat'       => '',
             'post_password'     => '',
             'catalog_visibility' => 'visible',
             'is_featured'       => false,
@@ -4190,6 +4355,22 @@ class Brikpanel_Product_Editor {
             'seo_focus_kw'      => $seo_focus_kw,
             'seo_canonical'     => $seo_canonical,
             'seo_noindex'       => $seo_noindex,
+            // "Primary category" — the product_cat used in %category% permalinks
+            // + breadcrumbs. SEOPress, Yoast and Rank Math each inject their own
+            // selector into the native Categories panel via JS that never runs on
+            // the BrikPanel editor page, so we surface + save one shared control
+            // inside the Category card and mirror it to every active plugin. Read
+            // the value from the first active plugin that has one (any is fine
+            // since we keep them in sync). Works for simple + variable products.
+            'primary_cat' => (function () use ($pid) {
+                foreach (self::primary_category_seo_plugins() as $plugin) {
+                    $v = (string) get_post_meta($pid, $plugin['key'], true);
+                    if ($v !== '' && $v !== '0') {
+                        return $v;
+                    }
+                }
+                return '';
+            })(),
             // WC's variable product data store does not persist parent-level
             // `_virtual` / `_downloadable` meta — they're always read as false
             // on the parent. Derive the toggle state from the variations so
@@ -4370,6 +4551,16 @@ class Brikpanel_Product_Editor {
         ob_start();
 
         $product_id  = intval($_POST['product_id'] ?? 0);
+
+        // Per-object authorization. The generic `edit_products` check above is
+        // not enough for author/vendor-scoped roles: core's map_meta_cap gates
+        // editing of an existing product behind `edit_product, $id` (ownership
+        // + published-state). Without this, a user holding `edit_products` but
+        // only author-scoped capabilities could POST an arbitrary product_id
+        // they don't own and overwrite it (including wiping its variations).
+        if ($product_id && !current_user_can('edit_product', $product_id)) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
 
         /**
          * Fires before the BrikPanel editor persists a product.
@@ -4713,6 +4904,26 @@ class Brikpanel_Product_Editor {
         // Save parent product
         $product->save();
         $saved_id = $product->get_id();
+
+        // "Primary category" — mirrored into every active SEO plugin's own meta
+        // key (SEOPress / Yoast / Rank Math). Saved in our own pipeline because
+        // each plugin's native save hook lives on the Categories metabox, which
+        // never fires on the BrikPanel editor page. Only a currently-assigned
+        // category is a valid choice; anything else (or "none"/empty) clears the
+        // meta, matching the plugins' own behaviour. Identical for simple and
+        // variable products — it is product-level post meta.
+        $primary_cat_plugins = self::primary_category_seo_plugins();
+        if (!empty($primary_cat_plugins) && array_key_exists('primary_cat', $_POST)) {
+            $primary_cat = absint($_POST['primary_cat']);
+            $primary_cat_valid = ($primary_cat > 0 && in_array($primary_cat, $cat_ids, true));
+            foreach ($primary_cat_plugins as $plugin) {
+                if ($primary_cat_valid) {
+                    update_post_meta($saved_id, $plugin['key'], (string) $primary_cat);
+                } else {
+                    delete_post_meta($saved_id, $plugin['key']);
+                }
+            }
+        }
 
         // Post password — must be set via wp_update_post after the WC save
         // because WC's CRUD does not manage post_password.
@@ -5089,6 +5300,22 @@ class Brikpanel_Product_Editor {
             unset($_POST['post_type']);
         }
 
+        // Reload a fresh product instance before the attribute/variation branch
+        // saves it a second time. The parent was already persisted above
+        // (correct DB state, including any emptied array props). Re-saving the
+        // ORIGINAL $product object here is unsafe: WC_Data::apply_changes() runs
+        // array_replace_recursive(), which cannot empty an array prop in memory,
+        // so a prop the user cleared (gallery, categories, up/cross-sells) still
+        // reports its OLD value on the stale object. WC then re-writes that old
+        // value on the second save whenever the meta row was deleted (it is, for
+        // an emptied gallery) — the deleted image reappears on reload. A fresh
+        // instance reads the just-persisted, correct state from the DB, so the
+        // attribute/variation save only touches what it should.
+        $reloaded = $saved_id ? wc_get_product($saved_id) : null;
+        if ($reloaded) {
+            $product = $reloaded;
+        }
+
         // Handle variable product attributes and variations
         if ($is_variable) {
             $this->save_variations($product, $_POST);
@@ -5103,6 +5330,17 @@ class Brikpanel_Product_Editor {
                 }
                 $product->set_attributes($non_var_attrs);
                 $product->save();
+
+                // Clear term relationships for any pa_* taxonomy the user
+                // removed from the spec list, so it stops appearing in that
+                // attribute's archive/filter queries.
+                $kept_taxonomies = [];
+                foreach ($non_var_attrs as $a) {
+                    if ($a->is_taxonomy()) {
+                        $kept_taxonomies[] = $a->get_name();
+                    }
+                }
+                $this->clear_removed_attribute_terms($saved_id, $kept_taxonomies);
             }
         }
 
@@ -5160,6 +5398,71 @@ class Brikpanel_Product_Editor {
      * @param int   $product_id Product ID for taxonomy term assignment.
      * @return WC_Product_Attribute[]|null
      */
+    /**
+     * Whether the current user may create new product attribute terms
+     * (wp_insert_term into a pa_* taxonomy). Shop managers / admins have this;
+     * a custom role granting only product editing should not silently spawn
+     * site-wide terms as a side effect of saving a product.
+     */
+    private function can_create_product_terms() {
+        return current_user_can('manage_product_terms') || current_user_can('assign_product_terms');
+    }
+
+    /**
+     * Resolve a term name to a term ID within $taxonomy, creating the term only
+     * when the current user is allowed to. Returns the term ID, or 0 when the
+     * term is absent and cannot be created (value is then silently skipped).
+     */
+    private function resolve_or_create_term($term_name, $taxonomy) {
+        $term = get_term_by('name', $term_name, $taxonomy);
+        if (!$term) {
+            $term = get_term_by('slug', sanitize_title($term_name), $taxonomy);
+        }
+        if ($term) {
+            return (int) $term->term_id;
+        }
+        if (!$this->can_create_product_terms()) {
+            return 0;
+        }
+        $inserted = wp_insert_term($term_name, $taxonomy);
+        if (!is_wp_error($inserted) && isset($inserted['term_id'])) {
+            return (int) $inserted['term_id'];
+        }
+        return 0;
+    }
+
+    /**
+     * Clear product-attribute term relationships for any pa_* taxonomy that is
+     * no longer present in the saved attribute set. Without this, deleting a
+     * taxonomy attribute row leaves the old term-product relationships behind,
+     * so the product keeps showing up in that attribute's archive/filter.
+     *
+     * @param int      $product_id      Saved product ID.
+     * @param string[] $kept_taxonomies pa_* taxonomies that should remain.
+     */
+    private function clear_removed_attribute_terms($product_id, array $kept_taxonomies) {
+        if (!$product_id || !function_exists('wc_get_attribute_taxonomy_names')) {
+            return;
+        }
+        $attr_taxonomies = wc_get_attribute_taxonomy_names();
+        if (empty($attr_taxonomies)) {
+            return;
+        }
+        $assigned = wp_get_object_terms($product_id, $attr_taxonomies, ['fields' => 'all']);
+        if (is_wp_error($assigned) || empty($assigned)) {
+            return;
+        }
+        $current = [];
+        foreach ($assigned as $term) {
+            $current[$term->taxonomy] = true;
+        }
+        foreach (array_keys($current) as $tax) {
+            if (!in_array($tax, $kept_taxonomies, true)) {
+                wp_set_object_terms($product_id, [], $tax);
+            }
+        }
+    }
+
     private function parse_non_variation_attributes_input($post_data, $product_id) {
         if (!isset($post_data['non_variation_attributes'])) {
             return null;
@@ -5194,17 +5497,9 @@ class Brikpanel_Product_Editor {
                 $attribute_id = (int) wc_attribute_taxonomy_id_by_name(str_replace('pa_', '', $taxonomy));
                 $term_ids = [];
                 foreach ($values as $term_name) {
-                    $term = get_term_by('name', $term_name, $taxonomy);
-                    if (!$term) {
-                        $term = get_term_by('slug', sanitize_title($term_name), $taxonomy);
-                    }
-                    if (!$term) {
-                        $inserted = wp_insert_term($term_name, $taxonomy);
-                        if (!is_wp_error($inserted) && isset($inserted['term_id'])) {
-                            $term_ids[] = (int) $inserted['term_id'];
-                        }
-                    } else {
-                        $term_ids[] = (int) $term->term_id;
+                    $tid = $this->resolve_or_create_term($term_name, $taxonomy);
+                    if ($tid) {
+                        $term_ids[] = $tid;
                     }
                 }
                 if ($product_id) {
@@ -5284,6 +5579,12 @@ class Brikpanel_Product_Editor {
     private function create_global_size_color_taxonomy($role, $display_label) {
         if ($role !== 'color' && $role !== 'size') return '';
 
+        // Creating a brand-new global attribute taxonomy is a store-management
+        // action. Gate it so a product-only editor can't spawn site-wide
+        // taxonomies; promotion is simply skipped and the attribute stays
+        // custom for users without the capability.
+        if (!current_user_can('manage_woocommerce')) return '';
+
         $slug = sanitize_title($role);
         $label = trim((string) $display_label) !== '' ? (string) $display_label : ucfirst($role);
 
@@ -5341,6 +5642,16 @@ class Brikpanel_Product_Editor {
             return;
         }
 
+        // Hard ceiling on the number of variations processed in a single save.
+        // Real catalogs stay far below this; an abnormal/tampered payload would
+        // otherwise run an unbounded per-variation save() loop (soft DoS). We
+        // bail before mutating anything so a rejected payload leaves the product
+        // untouched. Raise via filter for genuinely huge catalogs.
+        $max_variations = (int) apply_filters('brikpanel_max_variations', 1000);
+        if ($max_variations > 0 && count($variations_data) > $max_variations) {
+            return;
+        }
+
         // Determine the non-variation (spec) attributes for the merged save:
         //   - If the new "Product attributes" section was posted, use its
         //     contents (the user is editing specs explicitly).
@@ -5358,19 +5669,14 @@ class Brikpanel_Product_Editor {
             }
         }
 
-        $existing_variation_keys = [];
-        foreach ($product->get_attributes() as $existing_attr) {
-            if ($existing_attr->get_variation()) {
-                $existing_variation_keys[] = $existing_attr->is_taxonomy()
-                    ? $existing_attr->get_name()
-                    : strtolower($existing_attr->get_name());
-            }
-        }
-
         // Build WC attributes from submitted data. Order = insertion index =
         // position, so the sequence the user arranged in the UI is preserved.
         $wc_attributes = [];
         $position = 0;
+        // De-dupe variation attribute rows by lowercase taxonomy/name so a
+        // malformed payload (or two rows that slugify the same) can't add the
+        // same axis twice and clobber its own term assignment.
+        $seen_var_names = [];
 
         // Status gate for Color/Size promotion. We never create global
         // attribute taxonomies or terms while saving a draft — only when the
@@ -5391,6 +5697,12 @@ class Brikpanel_Product_Editor {
             $taxonomy = sanitize_text_field($attr_data['taxonomy'] ?? '');
 
             if (empty($name) || empty($values)) continue;
+
+            // Skip a second row for the same axis. Keyed by taxonomy when set,
+            // otherwise by the slugified name so "Size" and "Size " collapse.
+            $dedupe_key = $taxonomy !== '' ? strtolower($taxonomy) : sanitize_title($name);
+            if ($dedupe_key === '' || isset($seen_var_names[$dedupe_key])) continue;
+            $seen_var_names[$dedupe_key] = true;
 
             // Promote custom Color/Size attributes to real global taxonomies
             // when the product is going live. Detection is name-based using
@@ -5423,17 +5735,9 @@ class Brikpanel_Product_Editor {
                 $attribute_id = (int) wc_attribute_taxonomy_id_by_name(str_replace('pa_', '', $taxonomy));
                 $term_ids = [];
                 foreach ($values as $term_name) {
-                    $term = get_term_by('name', $term_name, $taxonomy);
-                    if (!$term) {
-                        $term = get_term_by('slug', sanitize_title($term_name), $taxonomy);
-                    }
-                    if (!$term) {
-                        $inserted = wp_insert_term($term_name, $taxonomy);
-                        if (!is_wp_error($inserted) && isset($inserted['term_id'])) {
-                            $term_ids[] = (int) $inserted['term_id'];
-                        }
-                    } else {
-                        $term_ids[] = (int) $term->term_id;
+                    $tid = $this->resolve_or_create_term($term_name, $taxonomy);
+                    if ($tid) {
+                        $term_ids[] = $tid;
                     }
                 }
                 wp_set_object_terms($product->get_id(), $term_ids, $taxonomy);
@@ -5461,6 +5765,18 @@ class Brikpanel_Product_Editor {
 
         $product->set_attributes($wc_attributes);
         $product->save();
+
+        // Drop term relationships for any pa_* taxonomy the user removed from
+        // the attribute set (both variation axes and preserved specs are in
+        // $wc_attributes), so a deleted taxonomy attribute no longer leaves the
+        // product hanging in that attribute's archive/filter queries.
+        $kept_taxonomies = [];
+        foreach ($wc_attributes as $kept_attr) {
+            if ($kept_attr->is_taxonomy()) {
+                $kept_taxonomies[] = $kept_attr->get_name();
+            }
+        }
+        $this->clear_removed_attribute_terms($product->get_id(), $kept_taxonomies);
 
         // Parent product type flags. We propagate Virtual + Downloadable to
         // every variation below so the storefront (which reads per-variation

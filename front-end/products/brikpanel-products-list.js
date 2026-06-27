@@ -2770,6 +2770,9 @@
         // Action change → swap the value control (numeric / shipping unit / term picker)
         $('#bpl-bulk-action-cat, #bpl-bulk-action-sel').on('change', refreshBulkValueUI);
 
+        // Keep the rounding example in sync with the digit / direction pickers.
+        $('#bpl-bulk-round-digits, #bpl-bulk-round-mode').on('change', updateRoundPreview);
+
         // Term picker search (categories / tags / brands), delegated.
         $(document).on('input', '.bpl-bulk-term-search', function () {
             filterTermList($(this).siblings('.bpl-bulk-term-list'), $(this).val());
@@ -2937,6 +2940,26 @@
         });
     }
 
+    // Renders a purely numeric "12,345 -> 12,300" example for the rounding action
+    // from the chosen digit count + direction. Numbers only — no translatable
+    // text — so it can live in the JS without an i18n key.
+    function updateRoundPreview() {
+        var $out = $('#bpl-bulk-round-preview');
+        if (!$out.length) { return; }
+        var sample = 12345;
+        var digits = parseInt($('#bpl-bulk-round-digits').val(), 10) || 2;
+        var mode   = $('#bpl-bulk-round-mode').val() || 'nearest';
+        var factor = Math.pow(10, digits);
+        var rounded;
+        if (mode === 'up')        { rounded = Math.ceil(sample / factor) * factor; }
+        else if (mode === 'down') { rounded = Math.floor(sample / factor) * factor; }
+        else                      { rounded = Math.round(sample / factor) * factor; }
+        var fmt = function (n) {
+            try { return n.toLocaleString(); } catch (e) { return String(n); }
+        };
+        $out.text(fmt(sample) + ' → ' + fmt(rounded));
+    }
+
     // Reads the active update tab, swaps the value control to match the chosen
     // action (numeric input, shipping unit suffix, or taxonomy term picker) and
     // hides the variation filter where it does not apply.
@@ -2958,13 +2981,20 @@
                          action === 'set_width' || action === 'set_height';
         // Maintenance actions need no value: they recompute from existing data.
         var isNoValue = action === 'repair_visibility';
+        // Rounding swaps the single value input for its own digit + direction picker.
+        var isRound = action === 'round_prices';
 
         // The variation filter only applies to per-variation price/stock edits.
         if (which === 'cat') {
             $('#bpl-bulk-varfilter-cat').toggle(!isTax && !isShipping && !isNoValue);
         }
 
-        if (isNoValue) {
+        $('#bpl-bulk-round-region').toggle(isRound);
+        if (isRound) {
+            $('#bpl-bulk-term-region').hide();
+            $valWrap.hide();
+            updateRoundPreview();
+        } else if (isNoValue) {
             $('#bpl-bulk-term-region').hide();
             $valWrap.hide();
         } else if (isTax) {
@@ -3006,6 +3036,11 @@
             termIds = ids.join(',');
         }
 
+        // For the rounding action the digit count travels in `value` and the
+        // direction in `round_mode`; the per-tab numeric input stays hidden.
+        var isRound   = action === 'round_prices';
+        var roundMode = isRound ? ($('#bpl-bulk-round-mode').val() || 'nearest') : 'nearest';
+
         var params;
         if (activeTab === 'bpl-bulk-tab-cat') {
             var scope = $('#bpl-bulk-scope').val();
@@ -3016,7 +3051,8 @@
                 mode: scope === 'all' ? 'all' : 'category',
                 category: scope === 'all' ? '' : catId,
                 bulk_action: action,
-                value: $('#bpl-bulk-value-cat').val(),
+                value: isRound ? ($('#bpl-bulk-round-digits').val() || '2') : $('#bpl-bulk-value-cat').val(),
+                round_mode: roundMode,
                 term_ids: termIds,
                 attr_key: isTax ? '' : ($('#bpl-bulk-attr-key').val() || ''),
                 attr_val: isTax ? '' : ($('#bpl-bulk-attr-val').val() || '')
@@ -3028,7 +3064,8 @@
                 mode: 'selected',
                 selected_ids: state.selected.join(','),
                 bulk_action: action,
-                value: $('#bpl-bulk-value-sel').val(),
+                value: isRound ? ($('#bpl-bulk-round-digits').val() || '2') : $('#bpl-bulk-value-sel').val(),
+                round_mode: roundMode,
                 term_ids: termIds
             };
         }
