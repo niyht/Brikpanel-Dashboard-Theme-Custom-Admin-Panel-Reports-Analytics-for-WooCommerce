@@ -870,6 +870,35 @@ class Brikpanel_Product_Editor {
                 </div>
                 <?php $section_html['images'] = ob_get_clean(); endif; ?>
 
+                <?php if (in_array('slug', $visible, true)) : ob_start();
+                    // Build a read-only URL prefix (e.g. https://shop.com/product/)
+                    // so the merchant sees exactly what the slug appends to. When
+                    // the product permalink base contains a dynamic token like
+                    // %product_cat% an exact prefix can't be shown, so fall back
+                    // to a bare input with just the help text.
+                    $bpe_perm       = function_exists('wc_get_permalink_structure') ? wc_get_permalink_structure() : array();
+                    $bpe_base_slug  = isset($bpe_perm['product_rewrite_slug']) ? $bpe_perm['product_rewrite_slug'] : 'product';
+                    $bpe_url_prefix = (strpos((string) $bpe_base_slug, '%') === false)
+                        ? trailingslashit(home_url('/' . ltrim((string) $bpe_base_slug, '/')))
+                        : '';
+                ?>
+                <!-- Permalink / URL slug (opt-in section) -->
+                <div class="brikpanel-pe-card">
+                    <div class="brikpanel-pe-field">
+                        <label for="bpe-slug"><?php esc_html_e('Permalink (URL slug)', 'brikpanel'); ?></label>
+                        <?php if ($bpe_url_prefix !== '') : ?>
+                        <div class="brikpanel-pe-input-group">
+                            <span class="brikpanel-pe-input-prefix brikpanel-pe-slug-prefix"><?php echo esc_html($bpe_url_prefix); ?></span>
+                            <input type="text" id="bpe-slug" value="<?php echo esc_attr($data['slug']); ?>" placeholder="<?php esc_attr_e('auto-generated-from-name', 'brikpanel'); ?>" spellcheck="false">
+                        </div>
+                        <?php else : ?>
+                        <input type="text" id="bpe-slug" value="<?php echo esc_attr($data['slug']); ?>" placeholder="<?php esc_attr_e('auto-generated-from-name', 'brikpanel'); ?>" spellcheck="false">
+                        <?php endif; ?>
+                        <p class="brikpanel-pe-help-text"><?php esc_html_e('The last part of the product URL. Leave blank to generate it automatically from the product name.', 'brikpanel'); ?></p>
+                    </div>
+                </div>
+                <?php $section_html['slug'] = ob_get_clean(); endif; ?>
+
                 <?php
                 $bpe_show_var  = in_array('variations', $visible, true);
                 $bpe_show_attr = in_array('attributes', $visible, true);
@@ -3906,6 +3935,7 @@ class Brikpanel_Product_Editor {
     private function get_product_data($product) {
         $defaults = [
             'name'              => '',
+            'slug'              => '',
             'regular_price'     => '',
             'sale_price'        => '',
             'stock_quantity'    => '',
@@ -4327,6 +4357,10 @@ class Brikpanel_Product_Editor {
 
         return [
             'name'              => $name,
+            // Permalink slug (post_name). Empty for brand-new products until WP
+            // derives one from the title on first publish; the editor leaves the
+            // field blank and shows the auto-from-title hint in that case.
+            'slug'              => $product->get_slug() ?? '',
             'regular_price'     => $regular_price,
             'sale_price'        => $sale_price,
             'stock_quantity'    => $stock_qty,
@@ -4927,10 +4961,27 @@ class Brikpanel_Product_Editor {
 
         // Post password — must be set via wp_update_post after the WC save
         // because WC's CRUD does not manage post_password.
-        wp_update_post([
+        $post_update_args = [
             'ID'            => $saved_id,
             'post_password' => $post_password,
-        ]);
+        ];
+
+        // Permalink slug — opt-in editor section. Only act when the client sent
+        // the key (the section is rendered); otherwise leave the stored slug
+        // untouched. A non-empty value is sanitised and applied; an empty value
+        // regenerates the slug from the product title. wp_update_post() runs
+        // wp_unique_post_slug() so duplicates are de-conflicted automatically.
+        if (isset($_POST['slug'])) {
+            $requested_slug = sanitize_title(wp_unslash($_POST['slug']));
+            if ($requested_slug === '') {
+                $requested_slug = sanitize_title((string) get_post_field('post_title', $saved_id));
+            }
+            if ($requested_slug !== '') {
+                $post_update_args['post_name'] = $requested_slug;
+            }
+        }
+
+        wp_update_post($post_update_args);
 
         // Stock status workaround is now applied AFTER the secondary
         // $refreshed->save() further down so WC core's validate_props()
@@ -5361,6 +5412,9 @@ class Brikpanel_Product_Editor {
         $response = [
             'product_id' => $saved_id,
             'permalink'  => get_permalink($saved_id),
+            // Hand back the final slug so the editor can reflect any value WP
+            // de-duplicated (e.g. appended -2) or auto-generated from the title.
+            'slug'       => get_post_field('post_name', $saved_id),
             'message'    => __('Product saved!', 'brikpanel'),
         ];
 

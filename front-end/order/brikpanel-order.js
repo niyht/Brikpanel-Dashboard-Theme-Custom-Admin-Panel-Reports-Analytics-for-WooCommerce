@@ -126,6 +126,26 @@
 
 		wrap.insertBefore(header, wrap.firstChild);
 
+		// Pull WordPress's "Screen Options" / "Help" toggles up into this header.
+		// WP floats #screen-meta-links at the very top of the content — exactly
+		// where this fixed header sits — so the buttons end up hidden behind it.
+		// Moving the whole container here (its native toggle handlers travel with
+		// the node) puts them back within reach beside the order actions; the
+		// slide-down panel (#screen-meta) is nudged below the header in
+		// positionHeader() so it opens fully visible.
+		var screenMeta = document.getElementById('screen-meta');
+		var screenMetaLinks = document.getElementById('screen-meta-links');
+		if (screenMetaLinks && !screenMetaLinks.closest('.brikpanel-order-header')) {
+			var hasToggle = false;
+			screenMetaLinks.querySelectorAll('.screen-meta-toggle button').forEach(function (b) {
+				if ((b.textContent || '').trim() !== '') hasToggle = true;
+			});
+			if (hasToggle) {
+				screenMetaLinks.classList.add('brikpanel-order-screen-meta');
+				right.insertBefore(screenMetaLinks, right.firstChild);
+			}
+		}
+
 		// Position header to align with WP content area and reserve vertical
 		// space below the fixed header. The reserve cannot live on the
 		// header's next CSS sibling (it is the hidden original <h1>), so we
@@ -144,6 +164,12 @@
 					header.getBoundingClientRect().bottom - poststuff.getBoundingClientRect().top + gap
 				);
 				poststuff.style.paddingTop = ( overlap > 0 ? overlap : 0 ) + 'px';
+			}
+			// The screen-options panel sits at the very top of the content, under
+			// this fixed header. Nudge it down by the header's height so it opens
+			// just beneath the bar instead of behind it.
+			if (screenMeta) {
+				screenMeta.style.marginTop = Math.round(header.getBoundingClientRect().height + 8) + 'px';
 			}
 		}
 		positionHeader();

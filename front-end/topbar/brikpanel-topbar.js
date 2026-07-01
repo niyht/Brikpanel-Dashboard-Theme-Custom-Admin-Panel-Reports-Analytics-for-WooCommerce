@@ -193,6 +193,7 @@
             if (n.classList.contains('inline') || n.classList.contains('below-h2')) return;
             if (n.classList.contains('hidden')) return;            // JS-controlled, leave it
             if (n.id === 'lost-connection-notice' || n.id === 'local-storage-notice') return;
+            if (isCoreUpdatedMessage(n)) return;                   // WP/WC own "Order updated." etc. stay in place
             if (isErrorNotice(n)) return;                          // red/error notices stay on screen
             if (!noticeHasContent(n)) return;                      // empty placeholder, leave in place
             n.classList.add('brikpanel-notice');
@@ -210,6 +211,18 @@
     function isErrorNotice(n) {
         if (window.brikpanelTopbar && window.brikpanelTopbar.hide_errors) return false;
         return n.classList.contains('notice-error') || n.classList.contains('error');
+    }
+
+    /**
+     * WordPress and WooCommerce print their own first-party "updated"
+     * confirmation bar with id="message" (e.g. "Order updated.", "Post
+     * updated.") directly in the page body, not via a third-party banner. These
+     * are the action feedback the user is waiting for after saving, so they must
+     * never be tucked behind the bell or hidden — keep them exactly where the
+     * screen rendered them.
+     */
+    function isCoreUpdatedMessage(n) {
+        return n.id === 'message';
     }
 
     /**

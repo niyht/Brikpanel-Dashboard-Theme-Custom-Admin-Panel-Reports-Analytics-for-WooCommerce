@@ -455,6 +455,18 @@ function brikpanel_marketplace_order_exclusion_sql( $hpos, $id_column = '' ) {
     // that HAVE the marketplace marker meta.
     if ( $hpos ) {
         $col = $id_column ?: 'id';
+        // The correlated subquery reads wc_orders_meta, which ALSO owns an `id`
+        // column. A bare/unqualified `id` from the caller binds to the
+        // subquery's OWN row id (inner scope wins), so the correlation becomes
+        // `bpmpx.order_id = bpmpx.id` — almost never true — making NOT EXISTS
+        // always pass and silently excluding NOTHING. On HPOS the orders table
+        // is always {$prefix}wc_orders, so qualify a bare id to it. Callers that
+        // alias the table (e.g. 'o.id') already pass a qualified column and are
+        // left untouched. This was a silent no-op on every marketplace-excluding
+        // KPI on HPOS stores (revenue, orders, AOV, conversion, charts).
+        if ( 'id' === $col ) {
+            $col = $wpdb->prefix . 'wc_orders.id';
+        }
         return [
             'sql'  => " AND NOT EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_orders_meta bpmpx WHERE bpmpx.order_id = {$col} AND bpmpx.meta_key = %s)",
             'args' => [ $meta_key ],

@@ -399,6 +399,18 @@ class Brikpanel_Dashboard_Topbar {
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                                 <span><?php esc_html_e( 'BrikPanel settings', 'brikpanel' ); ?></span>
                             </a>
+                            <?php
+                            // Multisite: BrikPanel hides the native WP toolbar, which is
+                            // normally the only path to "My Sites -> Network Admin". Surface
+                            // a direct Network Admin link for network administrators so they
+                            // can still reach network updates, plugins and tools.
+                            if ( is_multisite() && current_user_can( 'manage_network' ) ) :
+                                ?>
+                            <a class="brikpanel-topbar-dropdown-item" role="menuitem" href="<?php echo esc_url( network_admin_url() ); ?>">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                                <span><?php esc_html_e( 'Network Admin', 'brikpanel' ); ?></span>
+                            </a>
+                            <?php endif; ?>
                             <div class="brikpanel-topbar-dropdown-sep" aria-hidden="true"></div>
                             <a class="brikpanel-topbar-dropdown-item brikpanel-topbar-dropdown-item-danger" role="menuitem" href="<?php echo esc_url( $logout_url ); ?>">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -552,16 +564,35 @@ class Brikpanel_Dashboard_Topbar {
         $oos = (int) $oos_query->found_posts;
         wp_reset_postdata();
 
-        // New customers registered today.
-        $customer_args = [
-            'role__in'    => [ 'customer', 'subscriber' ],
-            'date_query'  => [ [ 'after' => $start_local, 'before' => $end_local, 'inclusive' => true ] ],
-            'count_total' => true,
-            'number'      => 1,
-            'fields'      => 'ID',
-        ];
-        $cu_query      = new WP_User_Query( $customer_args );
-        $new_customers = (int) $cu_query->get_total();
+        // New customers today = first-time buyers (returning_customer = 0), matching
+        // the dashboard "Customer Types" widget. This counts guest checkouts too, which
+        // a registration-date query (WP_User_Query) silently misses, so the two numbers
+        // stay consistent. Falls back to user-registration count if WC analytics is off.
+        global $wpdb;
+        $stats_table = $wpdb->prefix . 'wc_order_stats';
+        $new_customers = 0;
+        $has_stats     = function_exists( 'brikpanel_paid_statuses_sql' )
+            && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $stats_table ) );
+
+        if ( $has_stats ) {
+            $new_customers = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$stats_table}
+                WHERE returning_customer = 0
+                AND date_created_gmt BETWEEN %s AND %s
+                AND status IN (" . brikpanel_paid_statuses_sql() . ")", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                $start_gmt,
+                $end_gmt
+            ) );
+        } else {
+            $cu_query = new WP_User_Query( [
+                'role__in'    => [ 'customer', 'subscriber' ],
+                'date_query'  => [ [ 'after' => $start_local, 'before' => $end_local, 'inclusive' => true ] ],
+                'count_total' => true,
+                'number'      => 1,
+                'fields'      => 'ID',
+            ] );
+            $new_customers = (int) $cu_query->get_total();
+        }
 
         // Live visitors (shared transient with the dashboard live panel).
         $live = 0;

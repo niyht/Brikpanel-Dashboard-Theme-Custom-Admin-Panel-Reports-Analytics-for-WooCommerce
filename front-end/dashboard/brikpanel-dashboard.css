@@ -1222,6 +1222,70 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     text-align: right;
 }
 
+/* ===== Traffic Sources (third tab in the Visitors-by-Device panel) ===== */
+.brikpanel-source-referrers {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--bp-border, #e3e3e3);
+}
+
+.brikpanel-sources-subhead {
+    margin: 0 0 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--bp-text-muted, #8a8a8a);
+}
+
+.brikpanel-referrer-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+}
+
+.brikpanel-referrer-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--bp-border, #e3e3e3);
+}
+
+.brikpanel-referrer-row:last-child {
+    border-bottom: none;
+}
+
+.brikpanel-referrer-host {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--bp-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brikpanel-referrer-channel {
+    font-size: 0.6875rem;
+    font-weight: 550;
+    color: var(--bp-text-secondary, #616161);
+    background: var(--bp-bg, #f1f1f1);
+    border: 1px solid var(--bp-border, #e3e3e3);
+    border-radius: 999px;
+    padding: 0.0625rem 0.5rem;
+    white-space: nowrap;
+}
+
+.brikpanel-referrer-hits {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-align: right;
+    min-width: 2.5rem;
+}
+
 /* ===== Returns & Refunds widget ===== */
 .brikpanel-dash-returns {
     display: flex;

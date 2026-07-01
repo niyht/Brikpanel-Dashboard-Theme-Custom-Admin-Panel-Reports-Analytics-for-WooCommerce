@@ -65,6 +65,7 @@
 .brikpanel-pe-input-group input{border:none!important;box-shadow:none!important;border-radius:0!important;flex:1;min-width:0}
 .brikpanel-pe-input-prefix,.brikpanel-pe-input-suffix{display:flex;align-items:center;padding:0 .75rem;font-size:.875rem;font-weight:500;color:var(--pe-text-secondary);background:#f7f7f7;border-right:1px solid var(--pe-border);white-space:nowrap;user-select:none}
 .brikpanel-pe-input-suffix{border-right:none;border-left:1px solid var(--pe-border)}
+.brikpanel-pe-slug-prefix{max-width:60%;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:calc(2.5rem - 2px)}
 .brikpanel-pe-input-group.small{height:2rem}
 .brikpanel-pe-input-group.small input{padding:0 .5rem;font-size:.8125rem}
 .brikpanel-pe-input-group.small .brikpanel-pe-input-prefix{padding:0 .5rem;font-size:.8125rem}

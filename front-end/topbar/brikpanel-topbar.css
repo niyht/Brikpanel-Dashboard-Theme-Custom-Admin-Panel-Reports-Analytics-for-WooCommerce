@@ -207,7 +207,10 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 180px;
+    /* Grow with the viewport so longer site names aren't truncated when there
+       is room, while the flex parent (.brikpanel-topbar-brand-left, overflow
+       hidden + shrink) still clips and the ellipsis kicks in on tight screens. */
+    max-width: clamp(180px, 28vw, 440px);
 }
 
 .brikpanel-topbar-brand-sub {
@@ -964,9 +967,12 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
 @media (max-width: 782px) {
     /* Hide WP's "Screen Options" and "Help" toggles on small screens — they
        open desktop-sized panels that don't fit a phone, and the icons just
-       eat horizontal space below the topbar. */
-    body.brikpanel-has-topbar #screen-meta-links,
-    body.brikpanel-has-topbar #screen-meta {
+       eat horizontal space below the topbar. The order edit screen is exempt:
+       it relocates these toggles into its own header as compact icon buttons
+       and manages the panel itself (see brikpanel-order.css/.js), so they stay
+       usable on tablet & phone there. */
+    body.brikpanel-has-topbar:not(.brikpanel-modern-edit) #screen-meta-links,
+    body.brikpanel-has-topbar:not(.brikpanel-modern-edit) #screen-meta {
         display: none !important;
     }
 

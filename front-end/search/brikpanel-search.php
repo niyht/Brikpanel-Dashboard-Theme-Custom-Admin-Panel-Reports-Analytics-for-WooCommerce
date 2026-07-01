@@ -733,6 +733,25 @@ class Brikpanel_Pro_Search {
 			$product_ids = array_merge( $product_ids, array_map( 'absint', $sku_match ) );
 		}
 
+		// GTIN match (partial) on the WooCommerce native global unique id
+		// (GTIN/UPC/EAN/ISBN), covering both simple products and variations.
+		$gtin_match = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT p.ID FROM {$wpdb->posts} p
+				JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_global_unique_id'
+				WHERE p.post_type IN ('product','product_variation')
+				AND p.post_status != 'trash'
+				AND pm.meta_value <> ''
+				AND pm.meta_value LIKE %s
+				LIMIT %d",
+				$like,
+				$limit
+			)
+		);
+		if ( ! empty( $gtin_match ) ) {
+			$product_ids = array_merge( $product_ids, array_map( 'absint', $gtin_match ) );
+		}
+
 		$product_ids = array_slice( array_unique( array_filter( $product_ids ) ), 0, $limit );
 		if ( empty( $product_ids ) ) {
 			return '';
@@ -759,6 +778,11 @@ class Brikpanel_Pro_Search {
 			if ( $sku ) {
 				/* translators: %s: product SKU. */
 				$parts[] = sprintf( __( 'SKU: %s', 'brikpanel' ), $sku );
+			}
+			$gtin = trim( (string) $product->get_global_unique_id() );
+			if ( '' !== $gtin ) {
+				/* translators: %s: product GTIN/UPC/EAN/ISBN code. */
+				$parts[] = sprintf( __( 'GTIN: %s', 'brikpanel' ), $gtin );
 			}
 			$price_html = $product->get_price_html();
 			if ( $price_html ) {
@@ -1079,7 +1103,7 @@ class Brikpanel_Pro_Search {
 				'name'    => __( 'Search products', 'brikpanel' ),
 				'id'      => 'brikpanel_search_products',
 				'type'    => 'checkbox',
-				'desc'    => __( 'Find simple and variable products by name or SKU (variations included).', 'brikpanel' ),
+				'desc'    => __( 'Find simple and variable products by name, SKU or GTIN (variations included).', 'brikpanel' ),
 				'default' => 'yes',
 			),
 			array(

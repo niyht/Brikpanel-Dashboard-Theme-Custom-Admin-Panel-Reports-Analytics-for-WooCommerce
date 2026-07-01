@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.1.39
+ * Version: 3.1.46
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.1.39');
+define('BRIKPANEL_VERSION', '3.1.46');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -138,50 +138,18 @@ add_action('before_woocommerce_init', function () {
 });
 
 // =============================================================================
-// CUSTOM ORDER STATUSES (must register globally, not just in admin)
+// CUSTOM ORDER STATUSES
+//
+// The two legacy BrikPanel statuses — "Return Draft" (return-draft) and
+// "Change" (change) — used to be hard-coded here and registered on every
+// install with no way to switch them off. They are now folded into the
+// editable custom-status system (WooCommerce > Settings > BrikPanel > Order
+// statuses) by a one-time migration, so merchants can recolour, keep or remove
+// them like any status they create themselves. Both the post-status
+// registration and the wc_order_statuses filter now live in
+// front-end/order-statuses/brikpanel-order-statuses.php, driven entirely by the
+// brikpanel_custom_order_statuses option (see brikpanel_cos_migrate_legacy_statuses).
 // =============================================================================
-add_action('init', function () {
-    register_post_status('wc-return-draft', [
-        'label'                     => _x('Return Draft', 'Order status', 'brikpanel'),
-        'public'                    => true,
-        'exclude_from_search'       => false,
-        'show_in_admin_all_list'    => true,
-        'show_in_admin_status_list' => true,
-        'label_count'               => _n_noop(
-            'Return Draft <span class="count">(%s)</span>',
-            'Return Draft <span class="count">(%s)</span>',
-            'brikpanel'
-        ),
-    ]);
-
-    register_post_status('wc-change', [
-        'label'                     => _x('Change', 'Order status', 'brikpanel'),
-        'public'                    => true,
-        'exclude_from_search'       => false,
-        'show_in_admin_all_list'    => true,
-        'show_in_admin_status_list' => true,
-        'label_count'               => _n_noop(
-            'Change <span class="count">(%s)</span>',
-            'Change <span class="count">(%s)</span>',
-            'brikpanel'
-        ),
-    ]);
-});
-
-add_filter('wc_order_statuses', function ($statuses) {
-    // Other plugins (e.g. BrikMarket order migration) call wc_get_order_statuses()
-    // on plugins_loaded — before init runs and our textdomain is loaded. Calling
-    // _x() then triggers a WP 6.7 "_load_textdomain_just_in_time was called
-    // incorrectly" notice, so fall back to untranslated labels until init.
-    if (did_action('init')) {
-        $statuses['wc-return-draft'] = _x('Return Draft', 'Order status', 'brikpanel');
-        $statuses['wc-change']       = _x('Change', 'Order status', 'brikpanel');
-    } else {
-        $statuses['wc-return-draft'] = 'Return Draft';
-        $statuses['wc-change']       = 'Change';
-    }
-    return $statuses;
-});
 
 // =============================================================================
 // USER-DEFINED CUSTOM ORDER STATUSES (settings UI + global registration)
@@ -353,7 +321,10 @@ function brikpanel_suppress_foreign_notices() {
                 // disabled" warning or surface it when nothing is wrong.
                 $is_control_notice =
                     preg_match('#\bid=(["\'])(?:lost-connection-notice|local-storage-notice)\1#i', $open_tag)
-                    || preg_match('#\bclass=(["\'])[^"\']*\bhidden\b[^"\']*\1#i', $open_tag);
+                    || preg_match('#\bclass=(["\'])[^"\']*\bhidden\b[^"\']*\1#i', $open_tag)
+                    // WordPress/WooCommerce first-party "updated" confirmation
+                    // (id="message", e.g. "Order updated.") — keep it inline.
+                    || preg_match('#\bid=(["\'])message\1#i', $open_tag);
 
                 // Error notices (the red ones) flag something genuinely broken,
                 // so they stay on screen instead of being tucked behind the
@@ -446,14 +417,19 @@ function brikpanel_suppress_foreign_notices() {
             //    notices are hidden too (the matching `lost-connection-notice`
             //    control banner is still spared).
             $err_guard = $hide_errors ? '' : ':not(.notice-error)';
+            // WordPress/WooCommerce print their own first-party "updated"
+            // confirmation bar with id="message" (e.g. "Order updated.", "Post
+            // updated.") as a direct child of `.wrap` — the action feedback the
+            // user is waiting for after saving. Never hide it, on any screen.
+            $msg_guard = ':not(#message)';
             $err_lines = $hide_errors ? '
-                .wp-admin #wpbody-content > .error:not(.brikpanel-notice):not(.hidden):not(#lost-connection-notice),
-                .wp-admin .wrap > .error:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden):not(#lost-connection-notice),' : '';
+                .wp-admin #wpbody-content > .error:not(.brikpanel-notice):not(.hidden):not(#lost-connection-notice)' . $msg_guard . ',
+                .wp-admin .wrap > .error:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden):not(#lost-connection-notice)' . $msg_guard . ',' : '';
             echo '<style>
-                .wp-admin #wpbody-content > .notice:not(.brikpanel-notice):not(.hidden)' . $err_guard . ':not(#lost-connection-notice):not(#local-storage-notice),
-                .wp-admin #wpbody-content > .updated:not(.brikpanel-notice):not(.hidden),' . $err_lines . '
-                .wp-admin .wrap > .notice:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden)' . $err_guard . ':not(#lost-connection-notice):not(#local-storage-notice),
-                .wp-admin .wrap > .updated:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden) {
+                .wp-admin #wpbody-content > .notice:not(.brikpanel-notice):not(.hidden)' . $err_guard . $msg_guard . ':not(#lost-connection-notice):not(#local-storage-notice),
+                .wp-admin #wpbody-content > .updated:not(.brikpanel-notice):not(.hidden)' . $msg_guard . ',' . $err_lines . '
+                .wp-admin .wrap > .notice:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden)' . $err_guard . $msg_guard . ':not(#lost-connection-notice):not(#local-storage-notice),
+                .wp-admin .wrap > .updated:not(.brikpanel-notice):not(.inline):not(.below-h2):not(.hidden)' . $msg_guard . ' {
                     display: none !important;
                 }
             </style>';
@@ -668,6 +644,7 @@ function brikpanel_create_table() {
     $visitors_table       = $wpdb->prefix . "brikpanel_visitors";
     $cart_tracking_table  = $wpdb->prefix . "brikpanel_cart_tracking";
     $visited_pages_table  = $wpdb->prefix . "brikpanel_visited_pages";
+    $referrers_table      = $wpdb->prefix . "brikpanel_referrers";
     $charset_collate = $wpdb->get_charset_collate();
 
     $sql_visitors = "CREATE TABLE $visitors_table (
@@ -701,6 +678,21 @@ function brikpanel_create_table() {
         KEY page_id (page_id),
         KEY idx_date (date_column),
         KEY idx_page_date (page_id, date_column)
+    ) $charset_collate;";
+
+    // Daily traffic-source roll-up: one row per (day, channel, host) with a hit
+    // counter. Powers the dashboard "Traffic Sources" card (channel bars + top
+    // referrers). host = '' for direct / campaign-without-referrer rows. The
+    // UNIQUE key lets the tracker upsert atomically (INSERT ... ON DUPLICATE KEY).
+    $sql_referrers = "CREATE TABLE $referrers_table (
+        id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        date_column DATE NOT NULL,
+        channel VARCHAR(20) NOT NULL DEFAULT 'direct',
+        host VARCHAR(190) NOT NULL DEFAULT '',
+        hits INT DEFAULT 0,
+        UNIQUE KEY uniq_day_channel_host (date_column, channel, host),
+        KEY idx_date (date_column),
+        KEY idx_channel_date (channel, date_column)
     ) $charset_collate;";
 
     $expenses_table = $wpdb->prefix . "brikpanel_expenses";
@@ -856,6 +848,7 @@ function brikpanel_create_table() {
     dbDelta($sql_visitors);
     dbDelta($sql_cart_tracking);
     dbDelta($sql_visited_pages);
+    dbDelta($sql_referrers);
     dbDelta($sql_expenses);
     dbDelta($sql_customer_metrics);
     dbDelta($sql_cohort);
@@ -898,9 +891,22 @@ function brikpanel_enable_cogs_default() {
  * subsite is created on a network where BrikPanel is already active.
  */
 function brikpanel_provision_site() {
+    // A truly fresh install has no db_version stamped yet; an existing site
+    // being reactivated already does. We capture this before stamping below.
+    $is_fresh_install = ( false === get_option('brikpanel_db_version') );
+
     brikpanel_create_table();
     brikpanel_enable_cogs_default();
     update_option('brikpanel_db_version', BRIKPANEL_VERSION);
+
+    // Fresh installs start with a clean status list: pre-set the one-time
+    // legacy-status migration flag so brikpanel_cos_migrate_legacy_statuses()
+    // never seeds the old "Return Draft" / "Change" pair. Existing installs
+    // (flag absent) still receive them once on upgrade for backward compat,
+    // and can then remove them from the Order statuses settings screen.
+    if ($is_fresh_install) {
+        update_option('brikpanel_cos_legacy_migrated', 1);
+    }
 }
 
 /**

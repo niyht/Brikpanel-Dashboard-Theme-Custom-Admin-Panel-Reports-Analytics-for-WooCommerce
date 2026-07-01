@@ -31,8 +31,10 @@
     let globeVisible = false;
     let locView = 'orders';       // 'orders' | 'customers'
     let locationsData = null;     // cached locations payload for re-render on tab switch
-    let deviceView = 'visitors';  // 'visitors' | 'orders' — tab inside the device panel
+    let deviceView = 'visitors';  // 'visitors' | 'orders' | 'sources' — tab inside the device panel
     let deviceData = { visitors: null, orders: null }; // cached payloads for re-render on tab switch
+    let sourceData = null;        // cached traffic-source channel breakdown
+    let topReferrersData = null;  // cached top referrers list
     var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let datepickerInstance = null;
     let isLoading = false;
@@ -300,6 +302,9 @@
             // round-trip; render the active view.
             deviceData.visitors = d.devices;
             deviceData.orders   = d.order_devices;
+            // Traffic sources live as a third tab in the same panel.
+            sourceData       = d.sources;
+            topReferrersData = d.top_referrers;
             applyDeviceView(deviceView);
             renderCustomerTypes(d.customer_types);
 
@@ -1345,6 +1350,81 @@
         wrap.innerHTML = html;
     }
 
+    // Channel labels for the Traffic Sources card. Falls back to English so the
+    // bars never render blank if a key is missing from the localize payload.
+    function sourceChannelLabel(channel) {
+        var map = {
+            direct:   i18n.src_direct   || 'Direct',
+            search:   i18n.src_search   || 'Organic Search',
+            social:   i18n.src_social   || 'Social',
+            referral: i18n.src_referral || 'Referral',
+            paid:     i18n.src_paid     || 'Paid',
+            email:    i18n.src_email    || 'Email'
+        };
+        return map[channel] || channel;
+    }
+
+    function renderSources(data) {
+        // Shares the breakdown container with the device views (same panel, tabbed).
+        var wrap = document.getElementById('brikpanel-device-breakdown');
+        if (!wrap) return;
+        if (!data) {
+            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+            return;
+        }
+
+        // Fixed display order; hide empty channels so the card stays clean.
+        var order = ['direct', 'search', 'social', 'referral', 'paid', 'email'];
+        var total = 0;
+        order.forEach(function (k) { total += (data[k] || 0); });
+
+        if (total === 0) {
+            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.src_empty || 'No visits with a known source yet for this period.') + '</p>';
+            return;
+        }
+
+        var pct = function (n) { return total > 0 ? Math.round((n / total) * 100) : 0; };
+
+        var rows = order
+            .map(function (k) { return { label: sourceChannelLabel(k), count: data[k] || 0, p: pct(data[k] || 0) }; })
+            .filter(function (r) { return r.count > 0; })
+            .sort(function (a, b) { return b.count - a.count; });
+
+        var html = '<div class="brikpanel-device-list">';
+        rows.forEach(function (r) {
+            html += '<div class="brikpanel-device-row">'
+                + '<span class="brikpanel-device-label">' + escapeHtml(r.label) + '</span>'
+                + '<div class="brikpanel-device-bar-wrap">'
+                +   '<div class="brikpanel-device-bar" style="width:' + r.p + '%"></div>'
+                + '</div>'
+                + '<span class="brikpanel-device-pct">' + r.p + '%</span>'
+                + '<span class="brikpanel-device-count brikpanel-dash-muted">(' + formatNumber(r.count) + ')</span>'
+                + '</div>';
+        });
+        html += '</div>';
+        wrap.innerHTML = html;
+    }
+
+    function renderTopReferrers(list) {
+        var wrap = document.getElementById('brikpanel-top-referrers');
+        if (!wrap) return;
+        if (!list || !list.length) {
+            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.src_no_referrers || 'No external referrers yet for this period.') + '</p>';
+            return;
+        }
+
+        var html = '<ul class="brikpanel-referrer-list">';
+        list.forEach(function (r) {
+            html += '<li class="brikpanel-referrer-row">'
+                + '<span class="brikpanel-referrer-host">' + escapeHtml(r.host || '') + '</span>'
+                + '<span class="brikpanel-referrer-channel">' + escapeHtml(sourceChannelLabel(r.channel)) + '</span>'
+                + '<span class="brikpanel-referrer-hits brikpanel-dash-muted">' + formatNumber(r.hits || 0) + '</span>'
+                + '</li>';
+        });
+        html += '</ul>';
+        wrap.innerHTML = html;
+    }
+
     var rfmDonutChart = null;
     function renderRfmSegments(segments) {
         var wrap = document.getElementById('brikpanel-rfm-segments');
@@ -1923,12 +2003,23 @@
     }
 
     function applyDeviceView(view) {
-        var title = document.getElementById('brikpanel-device-title');
+        var title   = document.getElementById('brikpanel-device-title');
+        var refWrap = document.getElementById('brikpanel-source-referrers');
+
+        if (view === 'sources') {
+            if (title) { title.textContent = i18n.src_title || 'Traffic Sources'; }
+            renderSources(sourceData);
+            renderTopReferrers(topReferrersData);
+            if (refWrap) { refWrap.style.display = ''; }
+            return;
+        }
+
         if (title) {
             title.textContent = view === 'orders'
                 ? (i18n.device_title_orders   || 'Orders by Device')
                 : (i18n.device_title_visitors || 'Visitors by Device');
         }
+        if (refWrap) { refWrap.style.display = 'none'; }
         renderDevices(deviceData[view]);
     }
 

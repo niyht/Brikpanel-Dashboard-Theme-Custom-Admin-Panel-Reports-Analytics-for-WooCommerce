@@ -68,6 +68,7 @@ function brikpanel_pe_brand_taxonomy() {
 function brikpanel_pe_section_options() {
     $options = [
         'images'      => __('Product images', 'brikpanel'),
+        'slug'        => __('Permalink (URL slug)', 'brikpanel'),
         'variations'  => __('Variations (sizes/colors)', 'brikpanel'),
         'pricing'     => __('Pricing', 'brikpanel'),
         'cogs'        => __('Cost of goods (COGS)', 'brikpanel'),
@@ -112,7 +113,7 @@ function brikpanel_pe_section_options() {
  * @return string[]
  */
 function brikpanel_pe_section_default_hidden() {
-    return ['gtin', 'tax', 'weight', 'dimensions', 'tags', 'shipping_class', 'sold_individually', 'linked', 'advanced'];
+    return ['slug', 'gtin', 'tax', 'weight', 'dimensions', 'tags', 'shipping_class', 'sold_individually', 'linked', 'advanced'];
 }
 
 /**

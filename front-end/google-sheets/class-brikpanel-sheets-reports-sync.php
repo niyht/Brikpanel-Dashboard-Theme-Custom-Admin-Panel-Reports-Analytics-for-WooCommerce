@@ -252,8 +252,13 @@ class Brikpanel_Sheets_Reports_Sync {
 				$rev_start   = $start_gmt;
 			}
 
-			$revenue = (float) brikpanel_get_total_revenue( $rev_start, $end_gmt );
-			$s       = brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local );
+			// Combined basis (site + marketplace), matching the dashboard's
+			// headline Revenue / Net profit. Marketplace turnover belongs in the
+			// money figures, and Cost of goods is computed on the SAME set
+			// (exclude_marketplace = false) so revenue and cost reconcile and the
+			// margin is correct. Single-channel stores are unaffected.
+			$revenue = (float) brikpanel_get_total_revenue( $rev_start, $end_gmt, false );
+			$s       = brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local, false );
 
 			$rows[] = [
 				$label === 'all' ? __( 'All time', 'brikpanel' ) : $label,

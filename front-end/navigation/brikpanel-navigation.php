@@ -173,8 +173,18 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 				continue;
 			}
 
-			// Rewrite to the URL form the renderer links moved items with.
-			$temp[2] = 'admin.php?page=' . $temp[2];
+			// Rewrite to the URL form the renderer links moved items with, but
+			// ONLY for plugin-page slugs (e.g. wc-settings, wpo_wcpdf_options_page).
+			// Slugs that already point at a real admin file — custom post types
+			// (edit.php?post_type=shop_coupon / ?post_type=estado-pedido) or any
+			// other *.php?... target registered by third-party plugins — are
+			// navigable as-is; prefixing them produces a broken
+			// admin.php?page=edit.php?... URL ("could not load" error). Mirror the
+			// nav customizer's guard exactly so the live sidebar and the picker
+			// agree on the link target.
+			if ( strpos( $slug, '.php' ) === false && strpos( $slug, '?' ) === false ) {
+				$temp[2] = 'admin.php?page=' . $temp[2];
+			}
 
 			if ( in_array( $slug, $to_move, true ) ) {
 				if ( $temp[2] === 'admin.php?page=wc-settings' ) {

@@ -1084,18 +1084,25 @@
     // complete. When the column is off for the current user the payload is
     // null and the cell renders an em-dash so it stays a valid <td> if a
     // different admin had the column on in the same page.
-    function renderCogsCell(cogs) {
-        if (!cogs) {
-            return '<span class="brikpanel-pl-text-muted">&mdash;</span>';
-        }
-        var inner = cogs.html || '<span class="brikpanel-pl-text-muted">&mdash;</span>';
-        if (cogs.partial && cogs.missing > 0) {
+    function renderCogsCell(p) {
+        var cogs = p ? p.cogs : null;
+        var inner = (cogs && cogs.html) ? cogs.html : '<span class="brikpanel-pl-text-muted">&mdash;</span>';
+        var flag = '';
+        if (cogs && cogs.partial && cogs.missing > 0) {
             var tpl   = PL.i18n.cogs_partial || '%d variations have no cost';
             var label = tpl.replace('%d', cogs.missing);
-            inner += ' <span class="brikpanel-pl-cogs-flag" tabindex="0" role="note" aria-label="'
+            flag = ' <span class="brikpanel-pl-cogs-flag" tabindex="0" role="note" aria-label="'
                 + escAttr(label) + '" title="' + escAttr(label) + '">!</span>';
         }
-        return inner;
+        // Variable products: cost is stored per variation (edited via the
+        // variation popup / quick edit), so the aggregated parent cell stays
+        // read-only. Simple products get an inline-editable cost.
+        if (!p || p.type === 'variable') {
+            return inner + flag;
+        }
+        var cogsVal = (p.cogs_value === '' || p.cogs_value == null) ? '' : String(p.cogs_value);
+        return '<span class="brikpanel-pl-editable brikpanel-pl-cogs-cell" data-field="cogs_value" data-value="'
+            + escAttr(cogsVal) + '">' + inner + '</span>' + flag;
     }
 
     function renderProductRow(p) {
@@ -1270,7 +1277,7 @@
             '<td class="brikpanel-pl-cell-sku brikpanel-pl-col brikpanel-pl-col-sku"><span class="brikpanel-pl-editable brikpanel-pl-sku-cell" data-field="sku" data-value="' + escAttr(p.sku || '') + '">' + (p.sku ? escHtml(p.sku) : '<span class="brikpanel-pl-text-muted">—</span>') + '</span></td>' +
             '<td class="brikpanel-pl-cell-guid brikpanel-pl-col brikpanel-pl-col-global_unique_id">' + gidInner + '</td>' +
             '<td class="brikpanel-pl-cell-price brikpanel-pl-col brikpanel-pl-col-price">' + priceEditable + '</td>' +
-            '<td class="brikpanel-pl-cell-cogs brikpanel-pl-col brikpanel-pl-col-cogs">' + renderCogsCell(p.cogs) + '</td>' +
+            '<td class="brikpanel-pl-cell-cogs brikpanel-pl-col brikpanel-pl-col-cogs">' + renderCogsCell(p) + '</td>' +
             '<td class="brikpanel-pl-cell-stock brikpanel-pl-col brikpanel-pl-col-stock" data-id="' + p.id + '">' + stockCellHtml + '</td>' +
             '<td class="brikpanel-pl-cell-cat brikpanel-pl-col brikpanel-pl-col-category">' + catText + '</td>' +
             '<td class="brikpanel-pl-cell-shipclass brikpanel-pl-col brikpanel-pl-col-shipping_class">' + (p.shipping_class ? escHtml(p.shipping_class) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
@@ -1307,6 +1314,7 @@
         if ($el.find('.brikpanel-pl-inline-input').length) return;
         if ($('.brikpanel-pl-var-popup').length) closeVariationPopup();
         closeStockPopover();
+        closePricePopover();
 
         var field = $el.data('field');
         var value = $el.data('value') || '';
@@ -1323,6 +1331,13 @@
         // Simple product stock click → rich popover with quantity + status
         if (field === 'stock') {
             openStockPopover($el, productId);
+            return;
+        }
+
+        // Simple product price click → popover with regular + sale price so
+        // both can be edited from the list (not just the regular price).
+        if (field === 'price') {
+            openPricePopover($el, productId);
             return;
         }
 
@@ -1469,6 +1484,118 @@
         return null;
     }
 
+    /* Simple-product price popover: regular + sale price. Variable products
+       route to the variation popup instead (per-variation pricing). Reuses the
+       stock popover's visual classes so no extra CSS is needed. */
+    function closePricePopover() {
+        $('.brikpanel-pl-price-popover').remove();
+        $(document).off('click.bplPricePopover');
+        $(document).off('keydown.bplPricePopover');
+    }
+
+    function openPricePopover($el, productId) {
+        closeStockPopover();
+        var product = getProductById(productId);
+        var reg  = (product && product.regular_price != null) ? String(product.regular_price) : '';
+        var sale = (product && product.sale_price != null) ? String(product.sale_price) : '';
+
+        var html =
+            '<div class="brikpanel-pl-stock-popover brikpanel-pl-price-popover" role="dialog" aria-label="' + escAttr(PL.i18n.price_label || 'Price') + '">' +
+                '<div class="brikpanel-pl-stock-popover-field">' +
+                    '<label>' + escHtml(PL.i18n.price_label || 'Price') + '</label>' +
+                    '<input type="text" inputmode="decimal" class="brikpanel-pl-stock-popover-qty brikpanel-pl-price-popover-regular" value="' + escAttr(reg) + '" placeholder="0">' +
+                '</div>' +
+                '<div class="brikpanel-pl-stock-popover-field">' +
+                    '<label>' + escHtml(PL.i18n.sale_label || 'Sale') + '</label>' +
+                    '<input type="text" inputmode="decimal" class="brikpanel-pl-stock-popover-qty brikpanel-pl-price-popover-sale" value="' + escAttr(sale) + '" placeholder="—">' +
+                '</div>' +
+                '<div class="brikpanel-pl-stock-popover-actions">' +
+                    '<button type="button" class="brikpanel-pl-btn secondary small brikpanel-pl-price-popover-cancel">' + escHtml(PL.i18n.cancel || 'Cancel') + '</button>' +
+                    '<button type="button" class="brikpanel-pl-btn primary small brikpanel-pl-price-popover-save">' + escHtml(PL.i18n.save_changes || 'Save') + '</button>' +
+                '</div>' +
+            '</div>';
+
+        var $pop = $(html);
+        $('body').append($pop);
+
+        // Position relative to the clicked cell with position:fixed so table or
+        // body scroll cannot cause drift. Clamp to the viewport, flip above when
+        // there is no room below. Mirrors the stock popover.
+        var rect = $el[0].getBoundingClientRect();
+        var popW = $pop.outerWidth();
+        var popH = $pop.outerHeight();
+        var margin = 12;
+        var left = rect.left;
+        if (left + popW + margin > window.innerWidth) {
+            left = window.innerWidth - popW - margin;
+        }
+        if (left < margin) left = margin;
+        var top = rect.bottom + 8;
+        if (top + popH + margin > window.innerHeight) {
+            top = rect.top - popH - 8;
+            if (top < margin) top = margin;
+        }
+        $pop.css({position: 'fixed', top: top, left: left});
+        $pop.find('.brikpanel-pl-price-popover-regular').focus().select();
+
+        $pop.on('click', '.brikpanel-pl-price-popover-save', function () {
+            var regVal  = $pop.find('.brikpanel-pl-price-popover-regular').val();
+            var saleVal = $pop.find('.brikpanel-pl-price-popover-sale').val();
+            savePricePopover(productId, regVal, saleVal, $el);
+        });
+        $pop.on('keydown', 'input', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                $pop.find('.brikpanel-pl-price-popover-save').click();
+            }
+        });
+        $pop.on('click', '.brikpanel-pl-price-popover-cancel', closePricePopover);
+
+        setTimeout(function () {
+            $(document).on('click.bplPricePopover', function (e) {
+                if (!$(e.target).closest('.brikpanel-pl-price-popover, .brikpanel-pl-cell-price').length) {
+                    closePricePopover();
+                }
+            });
+            $(document).on('keydown.bplPricePopover', function (e) {
+                if (e.key === 'Escape') closePricePopover();
+            });
+        }, 50);
+    }
+
+    function savePricePopover(productId, regVal, saleVal, $cell) {
+        var data = {
+            action: 'brikpanel_quick_edit_product',
+            security: PL.nonce,
+            product_id: productId,
+            regular_price: regVal,
+            sale_price: saleVal
+        };
+        var $save = $('.brikpanel-pl-price-popover-save');
+        $save.prop('disabled', true).text(PL.i18n.saving || 'Saving...');
+
+        $.ajax({
+            url: PL.ajax_url,
+            type: 'POST',
+            data: data,
+            success: function (res) {
+                if (res.success) {
+                    updateProductInState(res.data.product);
+                    refreshRow($cell.closest('tr'), res.data.product);
+                    closePricePopover();
+                    showToast(PL.i18n.saved, 'success');
+                } else {
+                    $save.prop('disabled', false).text(PL.i18n.save_changes || 'Save');
+                    showToast(res.data.message || PL.i18n.error, 'error');
+                }
+            },
+            error: function () {
+                $save.prop('disabled', false).text(PL.i18n.save_changes || 'Save');
+                showToast(PL.i18n.error, 'error');
+            }
+        });
+    }
+
     function saveInlineEdit($input) {
         var $el = $input.closest('.brikpanel-pl-editable');
         if (!$el.length) return;
@@ -1501,6 +1628,8 @@
             data.sku = newValue;
         } else if (field === 'menu_order') {
             data.menu_order = newValue;
+        } else if (field === 'cogs_value') {
+            data.cogs_value = newValue;
         }
 
         $.ajax({

@@ -25,6 +25,30 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Marketplace-order exclusion fragment for a Profit-section query, gated by the
+ * caller's intent.
+ *
+ * The Profit components must measure the SAME orders the Revenue card does. On
+ * a BrikMarket store the Revenue KPI drops marketplace-imported orders, so when
+ * the caller passes the matching basis ($exclude_marketplace = true) every
+ * order-derived cost figure (COGS, tax, returns, coupons, coverage) drops them
+ * too. Returns an empty fragment when not requested or when BrikMarket is
+ * inactive, so single-channel stores are untouched and callers can append it
+ * unconditionally.
+ *
+ * @param bool   $exclude_marketplace Whether the caller wants marketplace orders dropped.
+ * @param bool   $is_hpos             Whether HPOS is active.
+ * @param string $id_column           Column referencing the order id (e.g. 'o.id', 'p.ID').
+ * @return array{sql: string, args: array}
+ */
+function brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $id_column ) {
+	if ( ! $exclude_marketplace || ! function_exists( 'brikpanel_marketplace_order_exclusion_sql' ) ) {
+		return [ 'sql' => '', 'args' => [] ];
+	}
+	return brikpanel_marketplace_order_exclusion_sql( $is_hpos, $id_column );
+}
+
+/**
  * Cost of goods sold for paid orders inside [$start_gmt, $end_gmt].
  *
  * Source of truth is BrikPanel's own `_brikpanel_cogs` product/variation
@@ -34,10 +58,17 @@ if ( ! defined( 'ABSPATH' ) ) {
  * fall back to the parent product's cost. Reads current cost (not a
  * sale-time snapshot) so past orders gain a cost the moment it is filled in.
  * Admin-placed orders are excluded so this reconciles with the Revenue KPI.
+ * When $exclude_marketplace is true (BrikMarket store), marketplace-imported
+ * orders are also dropped so COGS shares the SAME order basis as the Revenue
+ * card — otherwise store-only revenue would be measured against a COGS that
+ * still carries the cost of marketplace orders, manufacturing a permanent loss.
  *
+ * @param string $start_gmt           Y-m-d H:i:s (UTC)
+ * @param string $end_gmt             Y-m-d H:i:s (UTC)
+ * @param bool   $exclude_marketplace Drop BrikMarket-imported orders to match the revenue basis.
  * @return float
  */
-function brikpanel_profit_cogs( $start_gmt, $end_gmt ) {
+function brikpanel_profit_cogs( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
@@ -91,6 +122,12 @@ function brikpanel_profit_cogs( $start_gmt, $end_gmt ) {
 		$args = array_merge( $args, $excl['args'] );
 	}
 
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
+	}
+
 	return (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
 }
 
@@ -108,7 +145,7 @@ function brikpanel_profit_cogs( $start_gmt, $end_gmt ) {
  *
  * @return array{total_lines:int,missing_lines:int,total_revenue:float,missing_revenue:float,coverage_pct:float}
  */
-function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt ) {
+function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
@@ -173,6 +210,12 @@ function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt ) {
 		$args = array_merge( $args, $excl['args'] );
 	}
 
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
+	}
+
 	$row = $wpdb->get_row( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
 
 	$total_lines = (int) ( $row->total_lines ?? 0 );
@@ -222,7 +265,7 @@ function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt ) {
  * @param int    $limit     Hard cap on rows returned (kept small for payload size).
  * @return array<int,array{id:int,name:string,edit_url:string,units:int,missing_revenue:float,missing_revenue_html:string,unlinked:bool}>
  */
-function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 20 ) {
+function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 20, $exclude_marketplace = false ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
@@ -295,6 +338,12 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 		$args = array_merge( $args, $excl['args'] );
 	}
 
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
+	}
+
 	$sql .= " GROUP BY {$group_key}
 		ORDER BY missing_revenue DESC, missing_units DESC
 		LIMIT {$limit}";
@@ -345,7 +394,7 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
  *
  * @return float
  */
-function brikpanel_profit_returns( $start_gmt, $end_gmt ) {
+function brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
@@ -387,6 +436,14 @@ function brikpanel_profit_returns( $start_gmt, $end_gmt ) {
 		$args = array_merge( $args, $excl['args'] );
 	}
 
+	// The marketplace marker meta lives on the PARENT order (alias o in both
+	// branches), so exclude against o.id / o.ID, not the refund row.
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'o.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
+	}
+
 	$returns = (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
 
 	/**
@@ -411,7 +468,7 @@ function brikpanel_profit_returns( $start_gmt, $end_gmt ) {
  *
  * @return float
  */
-function brikpanel_profit_coupons( $start_gmt, $end_gmt ) {
+function brikpanel_profit_coupons( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
@@ -443,6 +500,12 @@ function brikpanel_profit_coupons( $start_gmt, $end_gmt ) {
 		$args = array_merge( $args, $excl['args'] );
 	}
 
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
+	}
+
 	$coupons = (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
 
 	/**
@@ -461,7 +524,7 @@ function brikpanel_profit_coupons( $start_gmt, $end_gmt ) {
  *
  * @return float
  */
-function brikpanel_profit_tax( $start_gmt, $end_gmt ) {
+function brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
@@ -493,6 +556,12 @@ function brikpanel_profit_tax( $start_gmt, $end_gmt ) {
 	if ( ! empty( $excl['sql'] ) ) {
 		$sql .= $excl['sql'];
 		$args = array_merge( $args, $excl['args'] );
+	}
+
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
 	}
 
 	$tax = (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
@@ -614,7 +683,7 @@ function brikpanel_profit_manual_expenses_by_category( $start_local, $end_local 
  * @param string $end_gmt   Y-m-d H:i:s (UTC)
  * @return array{total:float,items:array<int,array{title:string,rate:float,amount:float}>}
  */
-function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt ) {
+function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marketplace = null ) {
 	global $wpdb;
 	$out = [ 'total' => 0.0, 'items' => [] ];
 
@@ -633,7 +702,12 @@ function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt ) {
 		return $out;
 	}
 
-	$exclude_mp = function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active();
+	// The commission must bite into the SAME revenue the rest of the snapshot
+	// uses. Honour an explicit basis from the caller; fall back to the legacy
+	// "exclude when BrikMarket is active" default for standalone callers.
+	$exclude_mp = ( null === $exclude_marketplace )
+		? ( function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active() )
+		: (bool) $exclude_marketplace;
 	$revenue    = (float) brikpanel_get_total_revenue( $start_gmt, $end_gmt, $exclude_mp );
 	if ( $revenue <= 0 ) {
 		return $out; // no sales in the window → nothing for a rate to bite into
@@ -735,31 +809,38 @@ function brikpanel_profit_ad_spend( $start_local, $end_local ) {
  * it always matches whatever "Total Sales" figure that surface already shows
  * (the dashboard never displays two different revenue numbers).
  *
- * @param float  $revenue     Pre-computed revenue for the window.
- * @param string $start_gmt   Y-m-d H:i:s (UTC)
- * @param string $end_gmt     Y-m-d H:i:s (UTC)
- * @param string $start_local Y-m-d H:i:s (site time)
- * @param string $end_local   Y-m-d H:i:s (site time)
+ * The $exclude_marketplace flag MUST match the basis of the $revenue passed in:
+ * if that revenue dropped BrikMarket-imported orders (the dashboard Revenue KPI
+ * does on a marketplace store), pass true so COGS/tax/returns/coupons drop them
+ * too. Mixing a store-only revenue with a marketplace-inclusive COGS is what
+ * manufactured the permanent "loss" merchants reported.
+ *
+ * @param float  $revenue             Pre-computed revenue for the window.
+ * @param string $start_gmt           Y-m-d H:i:s (UTC)
+ * @param string $end_gmt             Y-m-d H:i:s (UTC)
+ * @param string $start_local         Y-m-d H:i:s (site time)
+ * @param string $end_local           Y-m-d H:i:s (site time)
+ * @param bool   $exclude_marketplace Match the order basis of $revenue.
  * @return array
  */
-function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local ) {
+function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local, $exclude_marketplace = false ) {
 	$revenue  = (float) $revenue;
-	$cogs     = brikpanel_profit_cogs( $start_gmt, $end_gmt );
-	$coverage = brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt );
+	$cogs     = brikpanel_profit_cogs( $start_gmt, $end_gmt, $exclude_marketplace );
+	$coverage = brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt, $exclude_marketplace );
 	// Only resolve the "which products are missing a cost" list when there is
 	// an actionable gap; skips the extra query on healthy stores.
 	$missing_products = ( $revenue > 0 && (int) $coverage['missing_lines'] > 0 )
-		? brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt )
+		? brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, 20, $exclude_marketplace )
 		: [];
-	$tax      = brikpanel_profit_tax( $start_gmt, $end_gmt );
-	$returns  = brikpanel_profit_returns( $start_gmt, $end_gmt );
-	$coupons  = brikpanel_profit_coupons( $start_gmt, $end_gmt );
+	$tax      = brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace );
+	$returns  = brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace );
+	$coupons  = brikpanel_profit_coupons( $start_gmt, $end_gmt, $exclude_marketplace );
 	$ads_by   = brikpanel_profit_ad_spend_by_platform( $start_local, $end_local );
 	$ads      = brikpanel_profit_ad_spend( $start_local, $end_local );
 
 	list( $exp_manual, $exp_inventory, $exp_other ) = brikpanel_profit_manual_expenses( $start_local, $end_local );
 	$exp_by_category = brikpanel_profit_manual_expenses_by_category( $start_local, $end_local );
-	$percent         = brikpanel_profit_percent_expenses( $start_gmt, $end_gmt );
+	$percent         = brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marketplace );
 
 	// Net revenue = gross sales minus what was handed back to customers. This
 	// is the figure the dashboard's Revenue card shows and the basis for every

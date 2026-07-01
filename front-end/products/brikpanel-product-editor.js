@@ -2499,6 +2499,12 @@
         var $gtinField = $('#bpe-gtin');
         if ($gtinField.length) data.global_unique_id = $gtinField.val();
 
+        // Permalink slug — opt-in section. Only sent when its card is rendered so
+        // a disabled section never rewrites the stored slug. An empty value tells
+        // the server to let WordPress regenerate it from the product name.
+        var $slugField = $('#bpe-slug');
+        if ($slugField.length) data.slug = $slugField.val();
+
         // Opt-in WC-core sections — only send a key when its card is rendered
         // so a disabled section never wipes the stored value server-side.
         if ($('#bpe-tax-card').length) {
@@ -2902,6 +2908,10 @@
                 if (r.data.variations) { adoptSavedVariations(r.data.variations, r.data.variation_extras || {}, silent); }
                 if (r.data.product_id) {
                     $('#bpe-product-id').val(r.data.product_id);
+                    // Reflect the final slug (WP may have de-duplicated it or
+                    // generated it from the title when left blank) so the field
+                    // shows the real permalink without a reload.
+                    if (typeof r.data.slug !== 'undefined') { $('#bpe-slug').val(r.data.slug); }
                     // Keep the auto-save gate in sync: a product becomes live
                     // once saved as publish/private/password, and reverts when
                     // saved back to draft.

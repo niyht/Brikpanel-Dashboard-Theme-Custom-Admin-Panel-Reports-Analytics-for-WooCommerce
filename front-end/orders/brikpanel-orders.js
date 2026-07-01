@@ -365,6 +365,11 @@ function brikpanelPageHeader() {
 	document.querySelectorAll('.page-title-action').forEach($pageAction => {
 		$pageActions.insertAdjacentElement('beforeend', $pageAction);
 	});
+
+	// WordPress's "Screen Options" / "Help" toggles (#screen-meta-links) are left
+	// untouched in their default position and styling, exactly like every other
+	// admin screen.
+
 	$header.insertAdjacentElement('beforeend', $pageActions);
 }
 

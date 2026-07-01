@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0+.
 msgid ""
 msgstr ""
-"Project-Id-Version: BrikPanel: WooCommerce Admin Dashboard Theme 3.1.38\n"
+"Project-Id-Version: BrikPanel: WooCommerce Admin Dashboard Theme 3.1.45\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/brikpanel\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-26T06:11:16+00:00\n"
+"POT-Creation-Date: 2026-06-30T18:05:15+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: brikpanel\n"
@@ -38,45 +38,19 @@ msgstr ""
 msgid "WooCommerce is not active on this site, so BrikPanel features are disabled here. Activate WooCommerce to enable BrikPanel."
 msgstr ""
 
-#: brikpanel.php:145
-#: brikpanel.php:177
-msgctxt "Order status"
-msgid "Return Draft"
-msgstr ""
-
-#: brikpanel.php:150
-#, php-format
-msgid "Return Draft <span class=\"count\">(%s)</span>"
-msgid_plural "Return Draft <span class=\"count\">(%s)</span>"
-msgstr[0] ""
-msgstr[1] ""
-
-#: brikpanel.php:158
-#: brikpanel.php:178
-msgctxt "Order status"
-msgid "Change"
-msgstr ""
-
-#: brikpanel.php:163
-#, php-format
-msgid "Change <span class=\"count\">(%s)</span>"
-msgid_plural "Change <span class=\"count\">(%s)</span>"
-msgstr[0] ""
-msgstr[1] ""
-
 #. translators: %d: number of hidden third-party admin notices
-#: brikpanel.php:494
+#: brikpanel.php:470
 #, php-format
 msgid "%d hidden notice"
 msgid_plural "%d hidden notices"
 msgstr[0] ""
 msgstr[1] ""
 
-#: brikpanel.php:497
+#: brikpanel.php:473
 msgid "Other plugins and themes posted these notices. BrikPanel keeps them hidden, click to show."
 msgstr ""
 
-#: brikpanel.php:1228
+#: brikpanel.php:1234
 #: front-end/navigation/brikpanel-nav-customizer.php:364
 #: front-end/vendors/class-brikpanel-vendor-settings.php:241
 msgid "Settings"
@@ -184,15 +158,15 @@ msgstr ""
 #: front-end/products/brikpanel-category-enhancements.php:118
 #: front-end/products/brikpanel-product-editor.php:98
 #: front-end/products/brikpanel-product-editor.php:183
-#: front-end/products/brikpanel-product-editor.php:3673
-#: front-end/products/brikpanel-product-editor.php:3689
-#: front-end/products/brikpanel-product-editor.php:4545
-#: front-end/products/brikpanel-product-editor.php:4562
-#: front-end/products/brikpanel-product-editor.php:6090
-#: front-end/products/brikpanel-product-editor.php:6154
-#: front-end/products/brikpanel-product-editor.php:6212
-#: front-end/products/brikpanel-product-editor.php:6243
-#: front-end/products/brikpanel-product-editor.php:6303
+#: front-end/products/brikpanel-product-editor.php:3702
+#: front-end/products/brikpanel-product-editor.php:3718
+#: front-end/products/brikpanel-product-editor.php:4579
+#: front-end/products/brikpanel-product-editor.php:4596
+#: front-end/products/brikpanel-product-editor.php:6144
+#: front-end/products/brikpanel-product-editor.php:6208
+#: front-end/products/brikpanel-product-editor.php:6266
+#: front-end/products/brikpanel-product-editor.php:6297
+#: front-end/products/brikpanel-product-editor.php:6357
 #: front-end/products/brikpanel-products-list.php:137
 #: front-end/products/brikpanel-products-list.php:1609
 #: front-end/products/brikpanel-products-list.php:2003
@@ -374,14 +348,14 @@ msgstr ""
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:154
 #: front-end/ad-platforms/views/page.php:267
-#: front-end/dashboard/brikpanel-dashboard.php:1381
+#: front-end/dashboard/brikpanel-dashboard.php:1470
 #: front-end/welcome/brikpanel-welcome.php:198
 msgid "Google Ads"
 msgstr ""
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:155
 #: front-end/ad-platforms/views/page.php:277
-#: front-end/dashboard/brikpanel-dashboard.php:1382
+#: front-end/dashboard/brikpanel-dashboard.php:1471
 #: front-end/welcome/brikpanel-welcome.php:199
 msgid "Meta Ads"
 msgstr ""
@@ -468,7 +442,7 @@ msgstr ""
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:178
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:199
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:259
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:264
 msgid "All time"
 msgstr ""
 
@@ -592,9 +566,9 @@ msgstr ""
 #: front-end/vendors/class-brikpanel-stock-orders.php:307
 #: front-end/vendors/class-brikpanel-vendors.php:271
 #: front-end/vendors/class-brikpanel-vendors.php:545
-#: includes/brikpanel-enqueue.php:699
-#: includes/brikpanel-enqueue.php:747
-#: includes/brikpanel-enqueue.php:1481
+#: includes/brikpanel-enqueue.php:708
+#: includes/brikpanel-enqueue.php:756
+#: includes/brikpanel-enqueue.php:1490
 msgid "Save"
 msgstr ""
 
@@ -761,12 +735,12 @@ msgstr ""
 
 #: front-end/appearance/brikpanel-appearance.php:509
 #: front-end/vendors/class-brikpanel-stock-orders.php:443
-#: includes/brikpanel-enqueue.php:398
-#: includes/brikpanel-enqueue.php:485
-#: includes/brikpanel-enqueue.php:1007
-#: includes/brikpanel-enqueue.php:1461
-#: includes/brikpanel-enqueue.php:1491
-#: includes/brikpanel-enqueue.php:1556
+#: includes/brikpanel-enqueue.php:407
+#: includes/brikpanel-enqueue.php:494
+#: includes/brikpanel-enqueue.php:1016
+#: includes/brikpanel-enqueue.php:1470
+#: includes/brikpanel-enqueue.php:1500
+#: includes/brikpanel-enqueue.php:1565
 msgid "Remove"
 msgstr ""
 
@@ -1064,7 +1038,7 @@ msgstr ""
 
 #: front-end/brikcontrol/views/page.php:56
 #: front-end/brikcontrol/views/partials/check-card.php:28
-#: front-end/products/brikpanel-product-editor.php:2410
+#: front-end/products/brikpanel-product-editor.php:2439
 msgid "Critical"
 msgstr ""
 
@@ -1094,7 +1068,7 @@ msgid "No checks registered yet. Once the first scan finishes, you will see resu
 msgstr ""
 
 #: front-end/brikcontrol/views/partials/check-card.php:27
-#: front-end/products/brikpanel-product-editor.php:2411
+#: front-end/products/brikpanel-product-editor.php:2440
 msgid "Warning"
 msgstr ""
 
@@ -1138,15 +1112,15 @@ msgid "Largest images (top 10)"
 msgstr ""
 
 #: front-end/brikcontrol/views/partials/check-card.php:150
-#: front-end/products/brikpanel-product-editor.php:1023
-#: front-end/products/brikpanel-product-editor.php:6339
+#: front-end/products/brikpanel-product-editor.php:1052
+#: front-end/products/brikpanel-product-editor.php:6393
 #: front-end/products/brikpanel-products-list.php:66
 msgid "Image"
 msgstr ""
 
 #: front-end/brikcontrol/views/partials/check-card.php:151
-#: includes/brikpanel-enqueue.php:471
-#: includes/brikpanel-enqueue.php:1485
+#: includes/brikpanel-enqueue.php:480
+#: includes/brikpanel-enqueue.php:1494
 #: includes/brikpanel-store-summary.php:1296
 msgid "Size"
 msgstr ""
@@ -1178,14 +1152,14 @@ msgstr ""
 #: front-end/dashboard/brikpanel-dashboard.php:549
 #: front-end/dashboard/brikpanel-dashboard.php:881
 #: front-end/dashboard/brikpanel-dashboard.php:961
-#: front-end/dashboard/brikpanel-dashboard.php:3115
-#: front-end/dashboard/brikpanel-dashboard.php:3153
-#: front-end/dashboard/brikpanel-dashboard.php:3171
-#: front-end/dashboard/brikpanel-dashboard.php:3230
-#: front-end/dashboard/brikpanel-dashboard.php:3241
-#: front-end/dashboard/brikpanel-dashboard.php:3251
+#: front-end/dashboard/brikpanel-dashboard.php:3238
+#: front-end/dashboard/brikpanel-dashboard.php:3276
+#: front-end/dashboard/brikpanel-dashboard.php:3294
+#: front-end/dashboard/brikpanel-dashboard.php:3353
+#: front-end/dashboard/brikpanel-dashboard.php:3364
+#: front-end/dashboard/brikpanel-dashboard.php:3374
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:170
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:281
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:286
 #: front-end/google-sheets/views/page.php:53
 #: front-end/navigation/brikpanel-nav-customizer.php:356
 #: front-end/orders/brikpanel-orders.php:816
@@ -1193,11 +1167,11 @@ msgstr ""
 #: front-end/segments/brikpanel-segments.php:1087
 #: front-end/segments/views/page.php:35
 #: includes/brikpanel-enqueue.php:229
-#: includes/brikpanel-enqueue.php:284
-#: includes/brikpanel-enqueue.php:374
-#: includes/brikpanel-enqueue.php:469
-#: includes/brikpanel-enqueue.php:746
-#: includes/brikpanel-enqueue.php:796
+#: includes/brikpanel-enqueue.php:293
+#: includes/brikpanel-enqueue.php:383
+#: includes/brikpanel-enqueue.php:478
+#: includes/brikpanel-enqueue.php:755
+#: includes/brikpanel-enqueue.php:805
 #: includes/brikpanel-store-summary.php:769
 #: includes/brikpanel-store-summary.php:868
 #: includes/brikpanel-store-summary.php:970
@@ -1246,7 +1220,7 @@ msgid "Search coupons..."
 msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:131
-#: includes/brikpanel-enqueue.php:1549
+#: includes/brikpanel-enqueue.php:1558
 msgid "Add coupon"
 msgstr ""
 
@@ -1254,7 +1228,7 @@ msgstr ""
 #: front-end/products/brikpanel-products-list.php:1030
 #: front-end/vendors/class-brikpanel-stock-orders.php:177
 #: front-end/vendors/class-brikpanel-vendors.php:172
-#: includes/brikpanel-enqueue.php:378
+#: includes/brikpanel-enqueue.php:387
 msgid "All"
 msgstr ""
 
@@ -1262,12 +1236,12 @@ msgstr ""
 #: front-end/coupons/brikpanel-coupons.php:818
 #: front-end/products/brikpanel-product-editor.php:729
 #: front-end/products/brikpanel-product-editor.php:744
-#: front-end/products/brikpanel-product-editor.php:6369
+#: front-end/products/brikpanel-product-editor.php:6423
 #: front-end/products/brikpanel-products-list.php:842
 #: front-end/products/brikpanel-products-list.php:1034
 #: front-end/products/brikpanel-products-list.php:2536
-#: includes/brikpanel-enqueue.php:924
-#: includes/brikpanel-enqueue.php:1529
+#: includes/brikpanel-enqueue.php:933
+#: includes/brikpanel-enqueue.php:1538
 msgid "Published"
 msgstr ""
 
@@ -1276,7 +1250,7 @@ msgstr ""
 #: front-end/products/brikpanel-product-editor.php:730
 #: front-end/products/brikpanel-product-editor.php:734
 #: front-end/products/brikpanel-product-editor.php:751
-#: front-end/products/brikpanel-product-editor.php:6369
+#: front-end/products/brikpanel-product-editor.php:6423
 #: front-end/products/brikpanel-products-list.php:843
 #: front-end/products/brikpanel-products-list.php:1038
 #: front-end/products/brikpanel-products-list.php:2536
@@ -1284,16 +1258,16 @@ msgstr ""
 #: front-end/vendors/class-brikpanel-stock-orders.php:236
 #: front-end/vendors/class-brikpanel-stock-orders.php:1129
 #: front-end/vendors/class-brikpanel-vendors.php:1055
-#: includes/brikpanel-enqueue.php:925
-#: includes/brikpanel-enqueue.php:1530
+#: includes/brikpanel-enqueue.php:934
+#: includes/brikpanel-enqueue.php:1539
 msgid "Draft"
 msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:153
 #: front-end/products/brikpanel-products-list.php:1049
-#: includes/brikpanel-enqueue.php:927
-#: includes/brikpanel-enqueue.php:928
-#: includes/brikpanel-enqueue.php:1531
+#: includes/brikpanel-enqueue.php:936
+#: includes/brikpanel-enqueue.php:937
+#: includes/brikpanel-enqueue.php:1540
 msgid "Trash"
 msgstr ""
 
@@ -1333,7 +1307,7 @@ msgstr ""
 #: front-end/coupons/brikpanel-coupons.php:176
 #: front-end/products/brikpanel-product-editor.php:809
 #: front-end/products/brikpanel-products-list.php:1165
-#: includes/brikpanel-enqueue.php:1480
+#: includes/brikpanel-enqueue.php:1489
 msgid "Publish"
 msgstr ""
 
@@ -1344,8 +1318,8 @@ msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:178
 #: front-end/products/brikpanel-products-list.php:1167
-#: includes/brikpanel-enqueue.php:934
-#: includes/brikpanel-enqueue.php:1536
+#: includes/brikpanel-enqueue.php:943
+#: includes/brikpanel-enqueue.php:1545
 msgid "Move to trash"
 msgstr ""
 
@@ -1357,7 +1331,7 @@ msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:192
 #: front-end/dashboard/brikpanel-dashboard.php:705
-#: front-end/dashboard/brikpanel-dashboard.php:3184
+#: front-end/dashboard/brikpanel-dashboard.php:3307
 #: front-end/expenses/brikpanel-expenses.php:202
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:109
 #: includes/brikpanel-store-summary.php:1479
@@ -1391,13 +1365,13 @@ msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:196
 #: front-end/dashboard/brikpanel-dashboard.php:607
-#: front-end/dashboard/brikpanel-dashboard.php:3122
+#: front-end/dashboard/brikpanel-dashboard.php:3245
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:169
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:218
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:280
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:343
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:285
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:348
 #: includes/brikpanel-enqueue.php:228
-#: includes/brikpanel-enqueue.php:800
+#: includes/brikpanel-enqueue.php:809
 #: includes/brikpanel-store-summary.php:769
 #: includes/brikpanel-store-summary.php:868
 #: includes/brikpanel-store-summary.php:970
@@ -1418,12 +1392,12 @@ msgid "Expiry date"
 msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:198
-#: front-end/dashboard/brikpanel-dashboard.php:3158
-#: front-end/dashboard/brikpanel-dashboard.php:3273
-#: front-end/dashboard/brikpanel-dashboard.php:3287
+#: front-end/dashboard/brikpanel-dashboard.php:3281
+#: front-end/dashboard/brikpanel-dashboard.php:3396
+#: front-end/dashboard/brikpanel-dashboard.php:3410
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:127
-#: front-end/products/brikpanel-product-editor.php:1016
-#: front-end/products/brikpanel-product-editor.php:6346
+#: front-end/products/brikpanel-product-editor.php:1045
+#: front-end/products/brikpanel-product-editor.php:6400
 #: front-end/products/brikpanel-products-list.php:77
 #: front-end/products/brikpanel-products-list.php:840
 #: front-end/products/brikpanel-products-list.php:1202
@@ -1433,7 +1407,7 @@ msgstr ""
 #: front-end/vendors/class-brikpanel-vendors.php:168
 #: front-end/vendors/class-brikpanel-vendors.php:440
 #: includes/brikpanel-enqueue.php:246
-#: includes/brikpanel-enqueue.php:366
+#: includes/brikpanel-enqueue.php:375
 #: includes/brikpanel-store-summary.php:1051
 #: includes/brikpanel-store-summary.php:1479
 #: includes/cron/class-brikpanel-cron-page.php:116
@@ -1442,13 +1416,13 @@ msgid "Status"
 msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:222
-#: includes/brikpanel-enqueue.php:1550
+#: includes/brikpanel-enqueue.php:1559
 msgid "Edit coupon"
 msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:232
 #: front-end/orders/brikpanel-orders.php:811
-#: front-end/products/brikpanel-product-editor.php:3704
+#: front-end/products/brikpanel-product-editor.php:3733
 msgid "General"
 msgstr ""
 
@@ -1486,7 +1460,7 @@ msgid "Fixed product discount"
 msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:270
-#: includes/brikpanel-enqueue.php:390
+#: includes/brikpanel-enqueue.php:399
 msgid "Free shipping"
 msgstr ""
 
@@ -1589,7 +1563,7 @@ msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:398
 #: front-end/coupons/brikpanel-coupons.php:402
-#: includes/brikpanel-enqueue.php:757
+#: includes/brikpanel-enqueue.php:766
 msgid "Unlimited"
 msgstr ""
 
@@ -1625,11 +1599,11 @@ msgstr ""
 #: front-end/vendors/class-brikpanel-stock-orders.php:315
 #: front-end/vendors/class-brikpanel-vendors.php:268
 #: front-end/vendors/class-brikpanel-vendors.php:542
-#: includes/brikpanel-enqueue.php:488
-#: includes/brikpanel-enqueue.php:809
-#: includes/brikpanel-enqueue.php:977
-#: includes/brikpanel-enqueue.php:988
-#: includes/brikpanel-enqueue.php:1414
+#: includes/brikpanel-enqueue.php:497
+#: includes/brikpanel-enqueue.php:818
+#: includes/brikpanel-enqueue.php:986
+#: includes/brikpanel-enqueue.php:997
+#: includes/brikpanel-enqueue.php:1423
 #: includes/cron/class-brikpanel-cron-page.php:200
 msgid "Cancel"
 msgstr ""
@@ -1637,15 +1611,15 @@ msgstr ""
 #: front-end/coupons/brikpanel-coupons.php:423
 #: front-end/customer-analytics/views/page.php:267
 #: front-end/products/brikpanel-products-list.php:1279
-#: includes/brikpanel-enqueue.php:486
-#: includes/brikpanel-enqueue.php:923
-#: includes/brikpanel-enqueue.php:1527
+#: includes/brikpanel-enqueue.php:495
+#: includes/brikpanel-enqueue.php:932
+#: includes/brikpanel-enqueue.php:1536
 #: includes/brikpanel-network-access.php:464
 msgid "Save changes"
 msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:657
-#: includes/brikpanel-enqueue.php:1551
+#: includes/brikpanel-enqueue.php:1560
 msgid "Coupon code is required."
 msgstr ""
 
@@ -1688,7 +1662,7 @@ msgid "Coupon status changed to %s."
 msgstr ""
 
 #: front-end/coupons/brikpanel-coupons.php:885
-#: includes/brikpanel-enqueue.php:1535
+#: includes/brikpanel-enqueue.php:1544
 msgid "Coupon duplicated!"
 msgstr ""
 
@@ -1707,7 +1681,7 @@ msgstr ""
 #: front-end/currency/brikpanel-currency-settings.php:27
 #: front-end/currency/brikpanel-currency-settings.php:31
 #: front-end/currency/brikpanel-currency-settings.php:68
-#: front-end/dashboard/brikpanel-dashboard.php:3106
+#: front-end/dashboard/brikpanel-dashboard.php:3229
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:52
 #: includes/brikpanel-store-summary.php:641
 msgid "Currency"
@@ -1773,13 +1747,14 @@ msgstr ""
 
 #: front-end/customer-analytics/brikpanel-customer-analytics.php:381
 #: front-end/customer-analytics/brikpanel-customer-analytics.php:612
-#: front-end/dashboard/brikpanel-dashboard.php:3286
+#: front-end/dashboard/brikpanel-dashboard.php:3409
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:135
 #: front-end/segments/brikpanel-segments.php:1058
 #: front-end/segments/brikpanel-segments.php:1084
 #: front-end/vendors/class-brikpanel-vendors.php:224
 #: front-end/vendors/class-brikpanel-vendors.php:498
-#: includes/brikpanel-enqueue.php:368
+#: includes/brikpanel-enqueue.php:275
+#: includes/brikpanel-enqueue.php:377
 #: includes/brikpanel-store-summary.php:1174
 msgid "Email"
 msgstr ""
@@ -1790,7 +1765,7 @@ msgstr ""
 #: front-end/segments/brikpanel-segments.php:1085
 #: front-end/vendors/class-brikpanel-vendors.php:228
 #: front-end/vendors/class-brikpanel-vendors.php:502
-#: includes/brikpanel-enqueue.php:369
+#: includes/brikpanel-enqueue.php:378
 msgid "Phone"
 msgstr ""
 
@@ -1830,7 +1805,7 @@ msgstr ""
 #: front-end/customer-analytics/views/page.php:115
 #: front-end/customer-analytics/views/page.php:174
 #: front-end/segments/brikpanel-segments.php:1091
-#: includes/brikpanel-enqueue.php:377
+#: includes/brikpanel-enqueue.php:386
 #: includes/brikpanel-store-summary.php:655
 msgid "Last order"
 msgstr ""
@@ -1840,7 +1815,7 @@ msgid "Invalid segment."
 msgstr ""
 
 #: front-end/customer-analytics/brikpanel-customer-analytics.php:614
-#: front-end/dashboard/brikpanel-dashboard.php:3189
+#: front-end/dashboard/brikpanel-dashboard.php:3312
 #: includes/brikpanel-store-summary.php:1237
 msgid "Segment"
 msgstr ""
@@ -1905,7 +1880,7 @@ msgid "Not computed yet — running first sync…"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:34
-#: includes/brikpanel-enqueue.php:490
+#: includes/brikpanel-enqueue.php:499
 msgid "Exclude customers"
 msgstr ""
 
@@ -1932,13 +1907,13 @@ msgid "Cohort Retention"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:65
-#: front-end/dashboard/brikpanel-dashboard.php:3136
-#: includes/brikpanel-enqueue.php:276
+#: front-end/dashboard/brikpanel-dashboard.php:3259
+#: includes/brikpanel-enqueue.php:285
 msgid "Total customers"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:70
-#: front-end/dashboard/brikpanel-dashboard.php:3137
+#: front-end/dashboard/brikpanel-dashboard.php:3260
 msgid "Average LTV"
 msgstr ""
 
@@ -1947,7 +1922,7 @@ msgid "Median:"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:78
-#: front-end/dashboard/brikpanel-dashboard.php:3138
+#: front-end/dashboard/brikpanel-dashboard.php:3261
 #: includes/brikpanel-store-summary.php:1237
 msgid "Total LTV"
 msgstr ""
@@ -1983,11 +1958,11 @@ msgstr ""
 
 #: front-end/customer-analytics/views/page.php:111
 #: front-end/customer-analytics/views/page.php:169
-#: front-end/dashboard/brikpanel-dashboard.php:3285
+#: front-end/dashboard/brikpanel-dashboard.php:3408
 #: front-end/segments/brikpanel-segments.php:1057
 #: front-end/sound/brikpanel-sound.php:149
 #: includes/brikpanel-enqueue.php:244
-#: includes/brikpanel-enqueue.php:367
+#: includes/brikpanel-enqueue.php:376
 #: includes/brikpanel-store-summary.php:1174
 msgid "Customer"
 msgstr ""
@@ -1995,9 +1970,9 @@ msgstr ""
 #: front-end/customer-analytics/views/page.php:113
 #: front-end/customer-analytics/views/page.php:172
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:171
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:282
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:287
 #: includes/brikpanel-enqueue.php:257
-#: includes/brikpanel-enqueue.php:376
+#: includes/brikpanel-enqueue.php:385
 #: includes/brikpanel-store-summary.php:769
 #: includes/brikpanel-store-summary.php:868
 #: includes/brikpanel-store-summary.php:970
@@ -2009,14 +1984,14 @@ msgstr ""
 
 #: front-end/customer-analytics/views/page.php:114
 #: front-end/customer-analytics/views/page.php:173
-#: includes/brikpanel-enqueue.php:468
+#: includes/brikpanel-enqueue.php:477
 #: includes/brikpanel-store-summary.php:1174
 msgid "LTV"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:116
 #: front-end/customer-analytics/views/page.php:175
-#: includes/brikpanel-enqueue.php:474
+#: includes/brikpanel-enqueue.php:483
 #: includes/brikpanel-store-summary.php:1174
 msgid "Recency"
 msgstr ""
@@ -2031,8 +2006,8 @@ msgstr ""
 #: front-end/vendors/class-brikpanel-vendors.php:193
 #: front-end/vendors/class-brikpanel-vendors.php:448
 #: front-end/vendors/class-brikpanel-vendors.php:472
-#: includes/brikpanel-enqueue.php:317
-#: includes/brikpanel-enqueue.php:456
+#: includes/brikpanel-enqueue.php:326
+#: includes/brikpanel-enqueue.php:465
 #: includes/cron/class-brikpanel-cron-page.php:160
 #: includes/cron/class-brikpanel-cron-page.php:179
 msgid "Loading…"
@@ -2131,7 +2106,7 @@ msgid "Export matrix (CSV)"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:244
-#: includes/brikpanel-enqueue.php:477
+#: includes/brikpanel-enqueue.php:486
 msgid "Exclude customers from analytics"
 msgstr ""
 
@@ -2147,42 +2122,42 @@ msgstr ""
 #: front-end/welcome/brikpanel-welcome.php:251
 #: includes/brikpanel-early-access.php:203
 #: includes/brikpanel-early-access.php:263
-#: includes/brikpanel-enqueue.php:1016
+#: includes/brikpanel-enqueue.php:1025
 #: includes/brikpanel-hooks-api.php:257
 #: includes/cron/class-brikpanel-cron-page.php:176
 msgid "Close"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:248
-#: includes/brikpanel-enqueue.php:478
+#: includes/brikpanel-enqueue.php:487
 msgid "Pick the accounts you do not want counted as customers, for example a point-of-sale or staff login that places many orders. Their orders still count toward your shop revenue and order totals, but they are left out of customer averages, segments, and retention so the numbers reflect your real customers."
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:251
-#: includes/brikpanel-enqueue.php:479
+#: includes/brikpanel-enqueue.php:488
 msgid "People"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:253
-#: includes/brikpanel-enqueue.php:480
+#: includes/brikpanel-enqueue.php:489
 msgid "Search by name or email…"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:260
-#: includes/brikpanel-enqueue.php:483
+#: includes/brikpanel-enqueue.php:492
 msgid "Roles"
 msgstr ""
 
 #: front-end/customer-analytics/views/page.php:261
-#: includes/brikpanel-enqueue.php:484
+#: includes/brikpanel-enqueue.php:493
 msgid "Everyone with a checked role is excluded too."
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-section-order.php:140
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:219
-#: front-end/products/brikpanel-product-editor.php:1094
+#: front-end/products/brikpanel-product-editor.php:1123
 #: front-end/products/brikpanel-products-list.php:757
-#: includes/brikpanel-enqueue.php:1475
+#: includes/brikpanel-enqueue.php:1484
 msgid "Cost of goods"
 msgstr ""
 
@@ -2201,20 +2176,20 @@ msgstr ""
 #: front-end/dashboard/brikpanel-dashboard-section-order.php:243
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1161
 #: front-end/products/brikpanel-qe-order.php:236
-#: front-end/products/brikpanel-section-order.php:331
+#: front-end/products/brikpanel-section-order.php:332
 msgid "Move up"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-section-order.php:246
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1162
 #: front-end/products/brikpanel-qe-order.php:239
-#: front-end/products/brikpanel-section-order.php:334
+#: front-end/products/brikpanel-section-order.php:335
 msgid "Move down"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-section-order.php:256
 #: front-end/products/brikpanel-qe-order.php:249
-#: front-end/products/brikpanel-section-order.php:344
+#: front-end/products/brikpanel-section-order.php:345
 msgid "Reset to default"
 msgstr ""
 
@@ -2236,7 +2211,7 @@ msgid "BrikPanel dashboard"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:226
-#: front-end/dashboard/brikpanel-dashboard.php:2980
+#: front-end/dashboard/brikpanel-dashboard.php:3103
 msgid "Admin"
 msgstr ""
 
@@ -2250,18 +2225,18 @@ msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:245
 #: front-end/search/brikpanel-search.php:204
-#: front-end/search/brikpanel-search.php:1072
+#: front-end/search/brikpanel-search.php:1096
 msgid "Search orders"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:247
 #: front-end/search/brikpanel-search.php:149
 #: front-end/search/brikpanel-search.php:167
-#: front-end/search/brikpanel-search.php:1042
-#: front-end/search/brikpanel-search.php:1046
+#: front-end/search/brikpanel-search.php:1066
+#: front-end/search/brikpanel-search.php:1070
 #: front-end/vendors/class-brikpanel-stock-orders.php:171
 #: front-end/vendors/class-brikpanel-vendors.php:164
-#: includes/brikpanel-enqueue.php:806
+#: includes/brikpanel-enqueue.php:815
 msgid "Search"
 msgstr ""
 
@@ -2305,23 +2280,23 @@ msgid "Processing orders"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:304
-#: front-end/dashboard/brikpanel-dashboard.php:1327
-#: includes/brikpanel-enqueue.php:385
+#: front-end/dashboard/brikpanel-dashboard.php:1416
+#: includes/brikpanel-enqueue.php:394
 msgid "Pending payment"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:308
-#: front-end/dashboard/brikpanel-dashboard.php:1324
-#: includes/brikpanel-enqueue.php:386
+#: front-end/dashboard/brikpanel-dashboard.php:1413
+#: includes/brikpanel-enqueue.php:395
 msgid "On hold"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:312
-#: front-end/products/brikpanel-product-editor.php:1177
+#: front-end/products/brikpanel-product-editor.php:1206
 #: front-end/products/brikpanel-products-list.php:790
 #: front-end/products/brikpanel-products-list.php:1064
-#: includes/brikpanel-enqueue.php:971
-#: includes/brikpanel-enqueue.php:1464
+#: includes/brikpanel-enqueue.php:980
+#: includes/brikpanel-enqueue.php:1473
 #: includes/brikpanel-store-summary.php:1670
 msgid "Out of stock"
 msgstr ""
@@ -2354,23 +2329,27 @@ msgstr ""
 msgid "BrikPanel settings"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:405
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:411
+msgid "Network Admin"
+msgstr ""
+
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:417
 msgid "Log out"
 msgstr ""
 
 #. translators: %s: cache plugin name (e.g. "WP Rocket")
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:452
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:464
 #, php-format
 msgid "Purge %s"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:474
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:475
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:481
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:486
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:487
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:493
 msgid "Clear cache"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:488
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:500
 msgid "Clear all caches"
 msgstr ""
 
@@ -2412,7 +2391,7 @@ msgid "Most viewed pages + Most added to cart"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:192
-msgid "Visitors by device + Customer types"
+msgid "Visitors by device + Customer types + Traffic sources"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:193
@@ -2424,8 +2403,8 @@ msgid "Low stock + Customer lifetime value"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:195
-#: front-end/dashboard/brikpanel-dashboard.php:1304
-#: front-end/dashboard/brikpanel-dashboard.php:3356
+#: front-end/dashboard/brikpanel-dashboard.php:1393
+#: front-end/dashboard/brikpanel-dashboard.php:3479
 #: front-end/navigation/brikpanel-nav-customizer.php:363
 msgid "Subscriptions"
 msgstr ""
@@ -2444,7 +2423,7 @@ msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:337
 #: front-end/dashboard/brikpanel-dashboard.php:348
-#: includes/brikpanel-enqueue.php:293
+#: includes/brikpanel-enqueue.php:302
 msgid "Copy everything"
 msgstr ""
 
@@ -2469,42 +2448,42 @@ msgid "Download the selected period as an Excel workbook (opens in Excel / Googl
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:380
-#: includes/brikpanel-enqueue.php:314
+#: includes/brikpanel-enqueue.php:323
 msgid "Export Excel"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:384
-#: front-end/dashboard/brikpanel-dashboard.php:1977
-#: includes/brikpanel-enqueue.php:379
-#: includes/brikpanel-enqueue.php:462
-#: includes/brikpanel-enqueue.php:790
+#: front-end/dashboard/brikpanel-dashboard.php:2094
+#: includes/brikpanel-enqueue.php:388
+#: includes/brikpanel-enqueue.php:471
+#: includes/brikpanel-enqueue.php:799
 #: includes/brikpanel-store-summary.php:751
 msgid "Today"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:385
-#: front-end/dashboard/brikpanel-dashboard.php:1978
+#: front-end/dashboard/brikpanel-dashboard.php:2095
 #: includes/brikpanel-store-summary.php:752
 msgid "Yesterday"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:386
-#: front-end/dashboard/brikpanel-dashboard.php:1979
+#: front-end/dashboard/brikpanel-dashboard.php:2096
 msgid "Last 7 Days"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:387
-#: front-end/dashboard/brikpanel-dashboard.php:1980
+#: front-end/dashboard/brikpanel-dashboard.php:2097
 msgid "Last 30 Days"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:388
-#: front-end/dashboard/brikpanel-dashboard.php:1981
+#: front-end/dashboard/brikpanel-dashboard.php:2098
 msgid "Last 90 Days"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:389
-#: front-end/products/brikpanel-product-editor.php:924
+#: front-end/products/brikpanel-product-editor.php:953
 msgid "Custom"
 msgstr ""
 
@@ -2557,22 +2536,22 @@ msgid "Orders placed by store administrators are not counted here, so test order
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:544
-#: front-end/dashboard/brikpanel-dashboard.php:3114
+#: front-end/dashboard/brikpanel-dashboard.php:3237
 msgid "Total Sales"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:554
-#: front-end/dashboard/brikpanel-dashboard.php:3116
+#: front-end/dashboard/brikpanel-dashboard.php:3239
 msgid "Avg. Order Value"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:559
 #: front-end/dashboard/brikpanel-dashboard.php:958
-#: front-end/dashboard/brikpanel-dashboard.php:3117
-#: front-end/dashboard/brikpanel-dashboard.php:3149
-#: front-end/dashboard/brikpanel-dashboard.php:3171
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:283
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:417
+#: front-end/dashboard/brikpanel-dashboard.php:3240
+#: front-end/dashboard/brikpanel-dashboard.php:3272
+#: front-end/dashboard/brikpanel-dashboard.php:3294
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:288
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:422
 #: includes/brikpanel-enqueue.php:230
 #: includes/brikpanel-store-summary.php:1377
 #: includes/brikpanel-store-summary.php:1422
@@ -2603,7 +2582,7 @@ msgstr ""
 
 #. translators: %s: percentage of revenue.
 #: front-end/dashboard/brikpanel-dashboard.php:627
-#: front-end/dashboard/brikpanel-dashboard.php:3124
+#: front-end/dashboard/brikpanel-dashboard.php:3247
 msgid "Cost of Goods"
 msgstr ""
 
@@ -2617,9 +2596,9 @@ msgstr ""
 
 #. translators: %s: percentage of revenue.
 #: front-end/dashboard/brikpanel-dashboard.php:638
-#: front-end/dashboard/brikpanel-dashboard.php:3126
+#: front-end/dashboard/brikpanel-dashboard.php:3249
 #: front-end/expenses/brikpanel-expenses.php:66
-#: front-end/navigation/brikpanel-navigation.php:207
+#: front-end/navigation/brikpanel-navigation.php:217
 #: includes/brikpanel-store-summary.php:1532
 #: includes/brikpanel-store-summary.php:2010
 #: includes/brikpanel-store-summary.php:2018
@@ -2650,7 +2629,7 @@ msgstr ""
 
 #. translators: %s: profit margin percentage.
 #: front-end/dashboard/brikpanel-dashboard.php:668
-#: front-end/dashboard/brikpanel-dashboard.php:3128
+#: front-end/dashboard/brikpanel-dashboard.php:3251
 msgid "Net Profit"
 msgstr ""
 
@@ -2686,15 +2665,15 @@ msgid "e.g. Rent, Salaries, Credit card commission"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:729
-#: front-end/dashboard/brikpanel-dashboard.php:3230
-#: front-end/dashboard/brikpanel-dashboard.php:3284
+#: front-end/dashboard/brikpanel-dashboard.php:3353
+#: front-end/dashboard/brikpanel-dashboard.php:3407
 #: front-end/expenses/brikpanel-expenses.php:166
 #: front-end/expenses/brikpanel-expenses.php:198
 #: front-end/expenses/brikpanel-expenses.php:272
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:279
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:416
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:284
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:421
 #: front-end/segments/brikpanel-segments.php:1055
-#: includes/brikpanel-enqueue.php:365
+#: includes/brikpanel-enqueue.php:374
 msgid "Date"
 msgstr ""
 
@@ -2775,12 +2754,12 @@ msgstr ""
 #: front-end/dashboard/brikpanel-dashboard.php:923
 #: front-end/dashboard/brikpanel-dashboard.php:937
 #: front-end/dashboard/brikpanel-dashboard.php:943
-#: front-end/dashboard/brikpanel-dashboard.php:966
-#: front-end/dashboard/brikpanel-dashboard.php:972
-#: front-end/dashboard/brikpanel-dashboard.php:990
-#: front-end/dashboard/brikpanel-dashboard.php:1131
-#: front-end/dashboard/brikpanel-dashboard.php:1142
-#: front-end/dashboard/brikpanel-dashboard.php:1306
+#: front-end/dashboard/brikpanel-dashboard.php:969
+#: front-end/dashboard/brikpanel-dashboard.php:979
+#: front-end/dashboard/brikpanel-dashboard.php:997
+#: front-end/dashboard/brikpanel-dashboard.php:1220
+#: front-end/dashboard/brikpanel-dashboard.php:1231
+#: front-end/dashboard/brikpanel-dashboard.php:1395
 msgid "Loading..."
 msgstr ""
 
@@ -2797,7 +2776,7 @@ msgid "Top Marketplace Products"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:833
-#: front-end/dashboard/brikpanel-dashboard.php:3351
+#: front-end/dashboard/brikpanel-dashboard.php:3474
 msgid "Sales Over Time"
 msgstr ""
 
@@ -2820,7 +2799,7 @@ msgid "Order Rates"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:878
-#: includes/brikpanel-enqueue.php:286
+#: includes/brikpanel-enqueue.php:295
 msgid "Order Locations"
 msgstr ""
 
@@ -2829,18 +2808,18 @@ msgid "View mode"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:884
-#: front-end/dashboard/brikpanel-dashboard.php:3184
-#: front-end/dashboard/brikpanel-dashboard.php:3189
-#: front-end/dashboard/brikpanel-dashboard.php:3241
-#: front-end/dashboard/brikpanel-dashboard.php:3251
+#: front-end/dashboard/brikpanel-dashboard.php:3307
+#: front-end/dashboard/brikpanel-dashboard.php:3312
+#: front-end/dashboard/brikpanel-dashboard.php:3364
+#: front-end/dashboard/brikpanel-dashboard.php:3374
 #: front-end/google-sheets/views/page.php:56
 #: front-end/navigation/brikpanel-nav-customizer.php:357
 #: front-end/search/brikpanel-search.php:100
 #: front-end/segments/views/page.php:38
 #: front-end/welcome/brikpanel-welcome.php:169
 #: includes/brikpanel-enqueue.php:174
-#: includes/brikpanel-enqueue.php:285
-#: includes/brikpanel-enqueue.php:460
+#: includes/brikpanel-enqueue.php:294
+#: includes/brikpanel-enqueue.php:469
 #: includes/brikpanel-store-summary.php:1237
 #: includes/brikpanel-store-summary.php:3254
 msgid "Customers"
@@ -2860,7 +2839,7 @@ msgid "Top Cities"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:915
-#: front-end/dashboard/brikpanel-dashboard.php:3348
+#: front-end/dashboard/brikpanel-dashboard.php:3471
 msgid "Top Products"
 msgstr ""
 
@@ -2873,7 +2852,7 @@ msgid "Most Viewed Pages"
 msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:941
-#: front-end/dashboard/brikpanel-dashboard.php:3350
+#: front-end/dashboard/brikpanel-dashboard.php:3473
 msgid "Most Added to Cart"
 msgstr ""
 
@@ -2886,103 +2865,111 @@ msgstr ""
 msgid "Device breakdown view"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:970
+#: front-end/dashboard/brikpanel-dashboard.php:964
+msgid "Sources"
+msgstr ""
+
+#: front-end/dashboard/brikpanel-dashboard.php:972
+msgid "Top Referrers"
+msgstr ""
+
+#: front-end/dashboard/brikpanel-dashboard.php:977
 msgid "Customer Types"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:984
+#: front-end/dashboard/brikpanel-dashboard.php:991
 msgid "Customer Segments (RFM)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:986
-#: front-end/dashboard/brikpanel-dashboard.php:1138
+#: front-end/dashboard/brikpanel-dashboard.php:993
+#: front-end/dashboard/brikpanel-dashboard.php:1227
 msgid "View details →"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1129
-#: front-end/dashboard/brikpanel-dashboard.php:3354
+#: front-end/dashboard/brikpanel-dashboard.php:1218
+#: front-end/dashboard/brikpanel-dashboard.php:3477
 msgid "Low Stock"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1136
+#: front-end/dashboard/brikpanel-dashboard.php:1225
 msgid "Customer Lifetime Value"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1253
+#: front-end/dashboard/brikpanel-dashboard.php:1342
 msgid "WordPress widgets"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1274
+#: front-end/dashboard/brikpanel-dashboard.php:1363
 msgid "Widget failed to load."
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1323
+#: front-end/dashboard/brikpanel-dashboard.php:1412
 #: front-end/vendors/class-brikpanel-vendors.php:170
 #: front-end/vendors/class-brikpanel-vendors.php:298
 msgid "Active"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1325
-#: front-end/dashboard/brikpanel-dashboard.php:3162
+#: front-end/dashboard/brikpanel-dashboard.php:1414
+#: front-end/dashboard/brikpanel-dashboard.php:3285
 #: front-end/vendors/class-brikpanel-stock-orders.php:182
 #: front-end/vendors/class-brikpanel-stock-orders.php:240
 #: front-end/vendors/class-brikpanel-stock-orders.php:1133
 #: front-end/vendors/class-brikpanel-vendors.php:1059
 #: includes/brikpanel-enqueue.php:187
 #: includes/brikpanel-enqueue.php:237
-#: includes/brikpanel-enqueue.php:388
-#: includes/brikpanel-enqueue.php:799
+#: includes/brikpanel-enqueue.php:397
+#: includes/brikpanel-enqueue.php:808
 #: includes/cron/class-brikpanel-cron-page.php:123
 #: includes/cron/class-brikpanel-cron.php:549
 msgid "Cancelled"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1326
+#: front-end/dashboard/brikpanel-dashboard.php:1415
 msgid "Expired"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1328
+#: front-end/dashboard/brikpanel-dashboard.php:1417
 msgid "Pending cancellation"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1383
+#: front-end/dashboard/brikpanel-dashboard.php:1472
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:222
-#: front-end/products/brikpanel-product-editor.php:3347
+#: front-end/products/brikpanel-product-editor.php:3376
 #: front-end/vendors/class-brikpanel-stock-orders.php:365
 #: front-end/vendors/class-brikpanel-stock-orders.php:414
 msgid "Tax"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1406
+#: front-end/dashboard/brikpanel-dashboard.php:1495
 #: includes/brikpanel-early-access.php:198
 msgid "Other"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1408
+#: front-end/dashboard/brikpanel-dashboard.php:1497
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:223
 msgid "Supplier / stock"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1473
+#: front-end/dashboard/brikpanel-dashboard.php:1562
 msgid "Gross sales"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1481
-#: includes/brikpanel-enqueue.php:389
+#: front-end/dashboard/brikpanel-dashboard.php:1570
+#: includes/brikpanel-enqueue.php:398
 msgid "Returns"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1490
+#: front-end/dashboard/brikpanel-dashboard.php:1579
 msgid "Coupons (already in totals)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:1982
+#: front-end/dashboard/brikpanel-dashboard.php:2099
 msgid "Custom range"
 msgstr ""
 
 #. translators: %d: number of days.
-#: front-end/dashboard/brikpanel-dashboard.php:1996
-#: front-end/dashboard/brikpanel-dashboard.php:3104
+#: front-end/dashboard/brikpanel-dashboard.php:2113
+#: front-end/dashboard/brikpanel-dashboard.php:3227
 #: front-end/vendors/class-brikpanel-vendors.php:402
 #, php-format
 msgid "%d day"
@@ -2990,227 +2977,229 @@ msgid_plural "%d days"
 msgstr[0] ""
 msgstr[1] ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:2874
-#: front-end/dashboard/brikpanel-dashboard.php:3319
+#: front-end/dashboard/brikpanel-dashboard.php:2997
+#: front-end/dashboard/brikpanel-dashboard.php:3442
 #: front-end/segments/brikpanel-segments.php:980
-#: includes/brikpanel-enqueue.php:361
-#: includes/brikpanel-enqueue.php:459
+#: includes/brikpanel-enqueue.php:370
+#: includes/brikpanel-enqueue.php:468
 msgid "Guest"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:2964
+#: front-end/dashboard/brikpanel-dashboard.php:3087
 msgid "Organic"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:2968
+#: front-end/dashboard/brikpanel-dashboard.php:3091
+#: includes/brikpanel-enqueue.php:273
 msgid "Referral"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:2972
+#: front-end/dashboard/brikpanel-dashboard.php:3095
 msgid "Campaign"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:2976
-#: front-end/dashboard/brikpanel-dashboard.php:3331
+#: front-end/dashboard/brikpanel-dashboard.php:3099
+#: front-end/dashboard/brikpanel-dashboard.php:3454
+#: includes/brikpanel-enqueue.php:270
 msgid "Direct"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3022
+#: front-end/dashboard/brikpanel-dashboard.php:3145
 msgid "You do not have permission to export dashboard data."
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3053
+#: front-end/dashboard/brikpanel-dashboard.php:3176
 msgid "Export engine unavailable on this server."
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3065
+#: front-end/dashboard/brikpanel-dashboard.php:3188
 #: front-end/welcome/brikpanel-welcome.php:185
-#: includes/brikpanel-enqueue.php:313
+#: includes/brikpanel-enqueue.php:322
 msgid "New"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3098
+#: front-end/dashboard/brikpanel-dashboard.php:3221
 msgid "BrikPanel Report"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3099
+#: front-end/dashboard/brikpanel-dashboard.php:3222
 #: front-end/vendors/class-brikpanel-vendors.php:232
 #: front-end/vendors/class-brikpanel-vendors.php:389
 #: front-end/vendors/class-brikpanel-vendors.php:506
 msgid "Website"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3100
+#: front-end/dashboard/brikpanel-dashboard.php:3223
 msgid "Report period"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3101
+#: front-end/dashboard/brikpanel-dashboard.php:3224
 #: front-end/expenses/brikpanel-expenses.php:133
 #: front-end/vendors/class-brikpanel-stock-orders.php:186
 msgid "From"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3102
+#: front-end/dashboard/brikpanel-dashboard.php:3225
 #: front-end/expenses/brikpanel-expenses.php:137
 #: front-end/vendors/class-brikpanel-stock-orders.php:190
 msgid "To"
 msgstr ""
 
 #. translators: %d: number of days.
-#: front-end/dashboard/brikpanel-dashboard.php:3104
+#: front-end/dashboard/brikpanel-dashboard.php:3227
 msgid "Duration"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3105
+#: front-end/dashboard/brikpanel-dashboard.php:3228
 msgid "Generated"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3108
+#: front-end/dashboard/brikpanel-dashboard.php:3231
 msgid "Key Metrics"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3110
-#: front-end/dashboard/brikpanel-dashboard.php:3121
+#: front-end/dashboard/brikpanel-dashboard.php:3233
+#: front-end/dashboard/brikpanel-dashboard.php:3244
 msgid "Metric"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3111
+#: front-end/dashboard/brikpanel-dashboard.php:3234
 #: front-end/products/brikpanel-products-list.php:1326
 #: front-end/products/brikpanel-products-list.php:1364
 msgid "Value"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3112
+#: front-end/dashboard/brikpanel-dashboard.php:3235
 msgid "Change vs previous period"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3118
+#: front-end/dashboard/brikpanel-dashboard.php:3241
 msgid "Conversion Rate (%)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3120
+#: front-end/dashboard/brikpanel-dashboard.php:3243
 msgid "Profit"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3121
+#: front-end/dashboard/brikpanel-dashboard.php:3244
 #, php-format
 msgid "Amount (%s)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3121
+#: front-end/dashboard/brikpanel-dashboard.php:3244
 msgid "Context"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3122
-#: includes/brikpanel-enqueue.php:305
+#: front-end/dashboard/brikpanel-dashboard.php:3245
+#: includes/brikpanel-enqueue.php:314
 msgid "Same as Total Sales"
 msgstr ""
 
 #. translators: %s: percentage of revenue.
-#: front-end/dashboard/brikpanel-dashboard.php:3124
-#: front-end/dashboard/brikpanel-dashboard.php:3126
+#: front-end/dashboard/brikpanel-dashboard.php:3247
+#: front-end/dashboard/brikpanel-dashboard.php:3249
 #, php-format
 msgid "%s%% of revenue"
 msgstr ""
 
 #. translators: %s: profit margin percentage.
-#: front-end/dashboard/brikpanel-dashboard.php:3128
+#: front-end/dashboard/brikpanel-dashboard.php:3251
 #, php-format
 msgid "%s%% margin"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3130
-#: front-end/dashboard/brikpanel-dashboard.php:3161
+#: front-end/dashboard/brikpanel-dashboard.php:3253
+#: front-end/dashboard/brikpanel-dashboard.php:3284
 #: includes/brikpanel-enqueue.php:236
 msgid "Returns & Refunds"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3131
+#: front-end/dashboard/brikpanel-dashboard.php:3254
 msgid "Returned / refunded orders"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3132
-#: front-end/dashboard/brikpanel-dashboard.php:3164
-#: includes/brikpanel-enqueue.php:274
-#: includes/brikpanel-enqueue.php:795
+#: front-end/dashboard/brikpanel-dashboard.php:3255
+#: front-end/dashboard/brikpanel-dashboard.php:3287
+#: includes/brikpanel-enqueue.php:283
+#: includes/brikpanel-enqueue.php:804
 msgid "Total orders"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3133
+#: front-end/dashboard/brikpanel-dashboard.php:3256
 msgid "Return & refund rate (%)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3135
+#: front-end/dashboard/brikpanel-dashboard.php:3258
 msgid "Customer Lifetime Value (all-time)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3139
-#: includes/brikpanel-enqueue.php:279
+#: front-end/dashboard/brikpanel-dashboard.php:3262
+#: includes/brikpanel-enqueue.php:288
 msgid "Top customer LTV"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3140
-#: front-end/dashboard/brikpanel-dashboard.php:3186
-#: includes/brikpanel-enqueue.php:270
-#: includes/brikpanel-enqueue.php:277
+#: front-end/dashboard/brikpanel-dashboard.php:3263
+#: front-end/dashboard/brikpanel-dashboard.php:3309
+#: includes/brikpanel-enqueue.php:279
+#: includes/brikpanel-enqueue.php:286
 #: includes/brikpanel-store-summary.php:2527
 msgid "Repeat customers"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3141
+#: front-end/dashboard/brikpanel-dashboard.php:3264
 msgid "Repeat rate (%)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3143
+#: front-end/dashboard/brikpanel-dashboard.php:3266
 msgid "Note: the Orders tab lists every order placed in this period (all statuses). The “Orders” metric above counts paid orders only (processing + completed)."
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3148
+#: front-end/dashboard/brikpanel-dashboard.php:3271
 #: includes/brikpanel-store-summary.php:1375
 msgid "Stage"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3148
-#: front-end/dashboard/brikpanel-dashboard.php:3273
+#: front-end/dashboard/brikpanel-dashboard.php:3271
+#: front-end/dashboard/brikpanel-dashboard.php:3396
 #: includes/brikpanel-store-summary.php:1375
 #: includes/brikpanel-store-summary.php:1651
 msgid "Count"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3148
+#: front-end/dashboard/brikpanel-dashboard.php:3271
 msgid "% of visitors"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3150
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:418
+#: front-end/dashboard/brikpanel-dashboard.php:3273
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:423
 #: includes/brikpanel-store-summary.php:1378
 msgid "Product views"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3151
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:419
+#: front-end/dashboard/brikpanel-dashboard.php:3274
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:424
 #: includes/brikpanel-store-summary.php:1379
 msgid "Add to cart"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3152
+#: front-end/dashboard/brikpanel-dashboard.php:3275
 #: includes/brikpanel-enqueue.php:172
 #: includes/brikpanel-enqueue.php:233
 msgid "Checkout"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3158
-#: front-end/dashboard/brikpanel-dashboard.php:3189
+#: front-end/dashboard/brikpanel-dashboard.php:3281
+#: front-end/dashboard/brikpanel-dashboard.php:3312
 msgid "Share (%)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3159
+#: front-end/dashboard/brikpanel-dashboard.php:3282
 #: includes/brikpanel-enqueue.php:184
 #: includes/brikpanel-enqueue.php:234
 msgid "Successful"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3160
+#: front-end/dashboard/brikpanel-dashboard.php:3283
 #: includes/brikpanel-enqueue.php:185
 #: includes/brikpanel-enqueue.php:235
 #: includes/brikpanel-store-summary.php:2322
@@ -3219,65 +3208,65 @@ msgstr ""
 msgid "Failed"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3171
+#: front-end/dashboard/brikpanel-dashboard.php:3294
 #: includes/brikpanel-store-summary.php:1422
 msgid "Device"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3172
+#: front-end/dashboard/brikpanel-dashboard.php:3295
 #: includes/brikpanel-enqueue.php:264
 #: includes/brikpanel-store-summary.php:1426
 msgid "Desktop"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3173
+#: front-end/dashboard/brikpanel-dashboard.php:3296
 #: includes/brikpanel-enqueue.php:265
 #: includes/brikpanel-store-summary.php:1424
 msgid "Mobile"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3174
+#: front-end/dashboard/brikpanel-dashboard.php:3297
 #: includes/brikpanel-enqueue.php:266
 #: includes/brikpanel-store-summary.php:1425
 msgid "Tablet"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3175
+#: front-end/dashboard/brikpanel-dashboard.php:3298
 #: front-end/segments/brikpanel-segments.php:1063
 #: front-end/sound/brikpanel-sound.php:147
 #: front-end/vendors/class-brikpanel-stock-orders.php:208
 #: front-end/vendors/class-brikpanel-stock-orders.php:415
 #: front-end/vendors/class-brikpanel-vendors.php:444
 #: includes/brikpanel-enqueue.php:247
-#: includes/brikpanel-enqueue.php:372
+#: includes/brikpanel-enqueue.php:381
 #: includes/brikpanel-store-summary.php:1430
 #: includes/brikpanel-store-summary.php:1539
 msgid "Total"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3183
+#: front-end/dashboard/brikpanel-dashboard.php:3306
 msgid "New vs Repeat (this period)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3185
-#: includes/brikpanel-enqueue.php:269
+#: front-end/dashboard/brikpanel-dashboard.php:3308
+#: includes/brikpanel-enqueue.php:278
 msgid "New customers"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3188
+#: front-end/dashboard/brikpanel-dashboard.php:3311
 msgid "RFM Segments (all-time)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3192
-#: includes/brikpanel-enqueue.php:280
+#: front-end/dashboard/brikpanel-dashboard.php:3315
+#: includes/brikpanel-enqueue.php:289
 msgid "Customer metrics will appear after the nightly recompute."
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3200
-#: front-end/dashboard/brikpanel-dashboard.php:3210
-#: front-end/dashboard/brikpanel-dashboard.php:3220
-#: front-end/dashboard/brikpanel-dashboard.php:3261
-#: front-end/products/brikpanel-product-editor.php:6340
+#: front-end/dashboard/brikpanel-dashboard.php:3323
+#: front-end/dashboard/brikpanel-dashboard.php:3333
+#: front-end/dashboard/brikpanel-dashboard.php:3343
+#: front-end/dashboard/brikpanel-dashboard.php:3384
+#: front-end/products/brikpanel-product-editor.php:6394
 #: front-end/products/brikpanel-products-list.php:67
 #: front-end/products/brikpanel-products-list.php:1192
 #: front-end/vendors/class-brikpanel-stock-orders.php:395
@@ -3288,39 +3277,39 @@ msgstr ""
 msgid "Product"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3200
+#: front-end/dashboard/brikpanel-dashboard.php:3323
 #: includes/brikpanel-enqueue.php:242
 msgid "Qty Sold"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3202
-#: front-end/dashboard/brikpanel-dashboard.php:3212
-#: front-end/dashboard/brikpanel-dashboard.php:3222
-#: front-end/dashboard/brikpanel-dashboard.php:3232
-#: front-end/dashboard/brikpanel-dashboard.php:3243
-#: front-end/dashboard/brikpanel-dashboard.php:3253
+#: front-end/dashboard/brikpanel-dashboard.php:3325
+#: front-end/dashboard/brikpanel-dashboard.php:3335
+#: front-end/dashboard/brikpanel-dashboard.php:3345
+#: front-end/dashboard/brikpanel-dashboard.php:3355
+#: front-end/dashboard/brikpanel-dashboard.php:3366
+#: front-end/dashboard/brikpanel-dashboard.php:3376
 #: includes/brikpanel-enqueue.php:239
 msgid "No data for this period"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3210
+#: front-end/dashboard/brikpanel-dashboard.php:3333
 #: includes/brikpanel-enqueue.php:251
 msgid "Views"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3220
+#: front-end/dashboard/brikpanel-dashboard.php:3343
 #: includes/brikpanel-enqueue.php:252
 msgid "Cart Adds"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3230
-#: front-end/dashboard/brikpanel-dashboard.php:3241
+#: front-end/dashboard/brikpanel-dashboard.php:3353
+#: front-end/dashboard/brikpanel-dashboard.php:3364
 #, php-format
 msgid "Revenue (%s)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3241
-#: front-end/dashboard/brikpanel-dashboard.php:3251
+#: front-end/dashboard/brikpanel-dashboard.php:3364
+#: front-end/dashboard/brikpanel-dashboard.php:3374
 #: front-end/segments/brikpanel-segments.php:1060
 #: front-end/segments/views/page.php:73
 #: includes/brikpanel-enqueue.php:248
@@ -3329,7 +3318,7 @@ msgstr ""
 msgid "Country"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3251
+#: front-end/dashboard/brikpanel-dashboard.php:3374
 #: front-end/segments/brikpanel-segments.php:1061
 #: front-end/segments/views/page.php:78
 #: includes/brikpanel-enqueue.php:249
@@ -3337,98 +3326,98 @@ msgstr ""
 msgid "City"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3251
-#: front-end/dashboard/brikpanel-dashboard.php:3288
+#: front-end/dashboard/brikpanel-dashboard.php:3374
+#: front-end/dashboard/brikpanel-dashboard.php:3411
 #: front-end/orders/brikpanel-orders.php:2155
 #: front-end/sound/brikpanel-sound.php:148
 #: front-end/vendors/class-brikpanel-stock-orders.php:382
 msgid "Items"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3261
+#: front-end/dashboard/brikpanel-dashboard.php:3384
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:93
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:110
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:341
-#: front-end/products/brikpanel-product-editor.php:1019
-#: front-end/products/brikpanel-product-editor.php:1183
-#: front-end/products/brikpanel-product-editor.php:6341
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:346
+#: front-end/products/brikpanel-product-editor.php:1048
+#: front-end/products/brikpanel-product-editor.php:1212
+#: front-end/products/brikpanel-product-editor.php:6395
 #: front-end/products/brikpanel-products-list.php:68
 #: front-end/products/brikpanel-products-list.php:774
 #: front-end/products/brikpanel-products-list.php:1193
 #: front-end/vendors/class-brikpanel-vendors.php:465
-#: includes/brikpanel-enqueue.php:281
+#: includes/brikpanel-enqueue.php:290
 #: includes/brikpanel-store-summary.php:1120
 msgid "SKU"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3261
-#: includes/brikpanel-enqueue.php:282
+#: front-end/dashboard/brikpanel-dashboard.php:3384
+#: includes/brikpanel-enqueue.php:291
 msgid "Remaining"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3263
-#: includes/brikpanel-enqueue.php:271
+#: front-end/dashboard/brikpanel-dashboard.php:3386
+#: includes/brikpanel-enqueue.php:280
 msgid "All products are sufficiently stocked"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3283
+#: front-end/dashboard/brikpanel-dashboard.php:3406
 msgid "Order #"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3289
+#: front-end/dashboard/brikpanel-dashboard.php:3412
 #, php-format
 msgid "Total (%s)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3290
+#: front-end/dashboard/brikpanel-dashboard.php:3413
 #: includes/brikpanel-enqueue.php:245
 msgid "Source"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3339
+#: front-end/dashboard/brikpanel-dashboard.php:3462
 msgid "No orders in this period"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3343
+#: front-end/dashboard/brikpanel-dashboard.php:3466
 msgid "Summary"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3344
+#: front-end/dashboard/brikpanel-dashboard.php:3467
 msgid "Funnel"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3345
+#: front-end/dashboard/brikpanel-dashboard.php:3468
 msgid "Order Status"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3346
+#: front-end/dashboard/brikpanel-dashboard.php:3469
 msgid "Devices"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3347
+#: front-end/dashboard/brikpanel-dashboard.php:3470
 #: includes/brikpanel-store-summary.php:3309
 msgid "Customer Segments"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3349
+#: front-end/dashboard/brikpanel-dashboard.php:3472
 msgid "Most Viewed"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3352
+#: front-end/dashboard/brikpanel-dashboard.php:3475
 msgid "Countries"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3353
+#: front-end/dashboard/brikpanel-dashboard.php:3476
 msgid "Cities"
 msgstr ""
 
 #. translators: %d: number of orders.
-#: front-end/dashboard/brikpanel-dashboard.php:3360
+#: front-end/dashboard/brikpanel-dashboard.php:3483
 #, php-format
 msgid "Orders (%d)"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-dashboard.php:3368
+#: front-end/dashboard/brikpanel-dashboard.php:3491
 msgid "Could not generate the Excel file. Please try again."
 msgstr ""
 
@@ -3460,23 +3449,23 @@ msgstr ""
 msgid "User menu"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-topbar-items.php:244
+#: front-end/dashboard/brikpanel-topbar-items.php:262
 msgid "Items in the create menu"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-topbar-items.php:261
+#: front-end/dashboard/brikpanel-topbar-items.php:279
 msgid "Set a label and a target, then turn the button on above. The button stays hidden until both are filled in."
 msgstr ""
 
-#: front-end/dashboard/brikpanel-topbar-items.php:264
+#: front-end/dashboard/brikpanel-topbar-items.php:282
 msgid "Button label"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-topbar-items.php:265
+#: front-end/dashboard/brikpanel-topbar-items.php:283
 msgid "All orders"
 msgstr ""
 
-#: front-end/dashboard/brikpanel-topbar-items.php:268
+#: front-end/dashboard/brikpanel-topbar-items.php:286
 msgid "Button link"
 msgstr ""
 
@@ -3485,7 +3474,7 @@ msgstr ""
 #: front-end/expenses/brikpanel-expenses.php:65
 #: front-end/expenses/brikpanel-expenses.php:77
 #: front-end/expenses/brikpanel-expenses.php:107
-#: front-end/navigation/brikpanel-navigation.php:210
+#: front-end/navigation/brikpanel-navigation.php:220
 msgid "Operational Expenses"
 msgstr ""
 
@@ -3507,9 +3496,9 @@ msgid "All titles"
 msgstr ""
 
 #: front-end/expenses/brikpanel-expenses.php:151
-#: front-end/products/brikpanel-product-editor.php:1002
+#: front-end/products/brikpanel-product-editor.php:1031
 #: front-end/products/brikpanel-products-list.php:1491
-#: includes/brikpanel-enqueue.php:959
+#: includes/brikpanel-enqueue.php:968
 #: includes/cron/class-brikpanel-cron-page.php:139
 msgid "Apply"
 msgstr ""
@@ -3534,8 +3523,8 @@ msgstr ""
 #: front-end/vendors/class-brikpanel-stock-orders.php:441
 #: front-end/vendors/class-brikpanel-vendors.php:289
 #: front-end/vendors/class-brikpanel-vendors.php:562
-#: includes/brikpanel-enqueue.php:357
-#: includes/brikpanel-enqueue.php:457
+#: includes/brikpanel-enqueue.php:366
+#: includes/brikpanel-enqueue.php:466
 #: includes/cron/class-brikpanel-cron-page.php:195
 msgid "Something went wrong."
 msgstr ""
@@ -3555,7 +3544,7 @@ msgstr ""
 #: front-end/expenses/brikpanel-expenses.php:270
 #: front-end/navigation/brikpanel-nav-customizer.php:1366
 #: front-end/vendors/class-brikpanel-vendors.php:301
-#: includes/brikpanel-enqueue.php:1532
+#: includes/brikpanel-enqueue.php:1541
 msgid "Edit"
 msgstr ""
 
@@ -3774,8 +3763,8 @@ msgstr ""
 
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:91
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:107
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:339
-#: includes/brikpanel-enqueue.php:946
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:344
+#: includes/brikpanel-enqueue.php:955
 msgid "Product ID"
 msgstr ""
 
@@ -3784,7 +3773,7 @@ msgid "Variation ID"
 msgstr ""
 
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:94
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:340
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:345
 #: front-end/products/brikpanel-product-editor.php:824
 #: front-end/products/brikpanel-products-list.php:725
 #: front-end/products/brikpanel-qe-order.php:46
@@ -3826,21 +3815,21 @@ msgid "Parent ID"
 msgstr ""
 
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:113
-#: front-end/products/brikpanel-product-editor.php:1467
-#: front-end/products/brikpanel-section-order.php:87
+#: front-end/products/brikpanel-product-editor.php:1496
+#: front-end/products/brikpanel-section-order.php:88
 msgid "Short description"
 msgstr ""
 
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:117
-#: front-end/products/brikpanel-product-editor.php:1010
-#: front-end/products/brikpanel-product-editor.php:1052
-#: front-end/products/brikpanel-product-editor.php:6343
+#: front-end/products/brikpanel-product-editor.php:1039
+#: front-end/products/brikpanel-product-editor.php:1081
+#: front-end/products/brikpanel-product-editor.php:6397
 #: front-end/products/brikpanel-products-list.php:70
 #: front-end/products/brikpanel-products-list.php:590
 #: front-end/products/brikpanel-products-list.php:736
 #: front-end/products/brikpanel-products-list.php:1195
 #: front-end/vendors/class-brikpanel-vendors.php:468
-#: includes/brikpanel-enqueue.php:965
+#: includes/brikpanel-enqueue.php:974
 msgid "Price"
 msgstr ""
 
@@ -3849,7 +3838,7 @@ msgid "Regular price"
 msgstr ""
 
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:119
-#: front-end/products/brikpanel-product-editor.php:1060
+#: front-end/products/brikpanel-product-editor.php:1089
 #: front-end/products/brikpanel-products-list.php:743
 msgid "Sale price"
 msgstr ""
@@ -3859,18 +3848,18 @@ msgid "Cost (COGS)"
 msgstr ""
 
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:125
-#: front-end/products/brikpanel-product-editor.php:1015
-#: front-end/products/brikpanel-product-editor.php:6344
+#: front-end/products/brikpanel-product-editor.php:1044
+#: front-end/products/brikpanel-product-editor.php:6398
 #: front-end/products/brikpanel-products-list.php:72
 #: front-end/products/brikpanel-products-list.php:599
 #: front-end/products/brikpanel-products-list.php:1197
 #: front-end/vendors/class-brikpanel-vendors.php:466
-#: includes/brikpanel-enqueue.php:967
+#: includes/brikpanel-enqueue.php:976
 msgid "Stock"
 msgstr ""
 
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:126
-#: front-end/products/brikpanel-product-editor.php:1174
+#: front-end/products/brikpanel-product-editor.php:1203
 msgid "Stock status"
 msgstr ""
 
@@ -3893,8 +3882,8 @@ msgstr ""
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:139
 #: front-end/segments/brikpanel-segments.php:1088
 #: front-end/segments/views/page.php:97
-#: includes/brikpanel-enqueue.php:363
-#: includes/brikpanel-enqueue.php:375
+#: includes/brikpanel-enqueue.php:372
+#: includes/brikpanel-enqueue.php:384
 msgid "Total spent"
 msgstr ""
 
@@ -4003,15 +3992,15 @@ msgstr ""
 msgid "Net margin %"
 msgstr ""
 
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:284
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:289
 msgid "Conversion %"
 msgstr ""
 
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:342
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:347
 msgid "Units sold"
 msgstr ""
 
-#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:420
+#: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:425
 msgid "Checkout started"
 msgstr ""
 
@@ -4678,12 +4667,12 @@ msgid "Log In"
 msgstr ""
 
 #: front-end/login/brikpanel-login.php:130
-#: includes/brikpanel-enqueue.php:696
-#: includes/brikpanel-enqueue.php:752
-#: includes/brikpanel-enqueue.php:873
-#: includes/brikpanel-enqueue.php:920
-#: includes/brikpanel-enqueue.php:1409
-#: includes/brikpanel-enqueue.php:1524
+#: includes/brikpanel-enqueue.php:705
+#: includes/brikpanel-enqueue.php:761
+#: includes/brikpanel-enqueue.php:882
+#: includes/brikpanel-enqueue.php:929
+#: includes/brikpanel-enqueue.php:1418
+#: includes/brikpanel-enqueue.php:1533
 msgid "An error occurred. Please try again."
 msgstr ""
 
@@ -4903,7 +4892,7 @@ msgid "Items above the “Site management” heading."
 msgstr ""
 
 #: front-end/navigation/brikpanel-nav-customizer.php:1237
-#: front-end/navigation/brikpanel-navigation.php:516
+#: front-end/navigation/brikpanel-navigation.php:526
 msgid "Site management"
 msgstr ""
 
@@ -4932,7 +4921,7 @@ msgid "Customer support"
 msgstr ""
 
 #: front-end/navigation/brikpanel-nav-customizer.php:1257
-#: includes/brikpanel-enqueue.php:1411
+#: includes/brikpanel-enqueue.php:1420
 #: includes/brikpanel-store-summary.php:639
 msgid "URL"
 msgstr ""
@@ -4954,7 +4943,7 @@ msgid "Paste an SVG from Icons8, SVG Repo or anywhere — it overrides the icon 
 msgstr ""
 
 #: front-end/navigation/brikpanel-nav-customizer.php:1278
-#: includes/brikpanel-enqueue.php:1412
+#: includes/brikpanel-enqueue.php:1421
 msgid "Open in a new tab"
 msgstr ""
 
@@ -4994,63 +4983,73 @@ msgstr ""
 msgid "Please enter a label."
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:272
-#: front-end/order-statuses/brikpanel-order-statuses.php:276
-#: front-end/order-statuses/brikpanel-order-statuses.php:321
-msgid "Order statuses"
+#: front-end/order-statuses/brikpanel-order-statuses.php:192
+msgctxt "Order status"
+msgid "Return Draft"
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:314
-msgid "WooCommerce default (Pending payment)"
-msgstr ""
-
-#: front-end/order-statuses/brikpanel-order-statuses.php:324
-msgid "Create your own order statuses and choose where new orders begin. Use these for workflows WooCommerce does not cover out of the box, such as \"Awaiting stock\", \"Packed\" or \"Ready for pickup\". This applies to every order, whether it contains simple or variable products."
+#: front-end/order-statuses/brikpanel-order-statuses.php:193
+msgctxt "Order status"
+msgid "Change"
 msgstr ""
 
 #: front-end/order-statuses/brikpanel-order-statuses.php:327
+#: front-end/order-statuses/brikpanel-order-statuses.php:331
+#: front-end/order-statuses/brikpanel-order-statuses.php:376
+msgid "Order statuses"
+msgstr ""
+
+#: front-end/order-statuses/brikpanel-order-statuses.php:369
+msgid "WooCommerce default (Pending payment)"
+msgstr ""
+
+#: front-end/order-statuses/brikpanel-order-statuses.php:379
+msgid "Create your own order statuses and choose where new orders begin. Use these for workflows WooCommerce does not cover out of the box, such as \"Awaiting stock\", \"Packed\" or \"Ready for pickup\". This applies to every order, whether it contains simple or variable products."
+msgstr ""
+
+#: front-end/order-statuses/brikpanel-order-statuses.php:382
 msgid "Default status for new orders"
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:332
+#: front-end/order-statuses/brikpanel-order-statuses.php:387
 msgid "The status every new order starts in before payment is processed. Leave on the WooCommerce default unless you have a specific workflow that needs otherwise — changing this affects checkout and can interfere with payment gateways."
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:361
+#: front-end/order-statuses/brikpanel-order-statuses.php:416
 msgid "Your custom statuses"
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:362
+#: front-end/order-statuses/brikpanel-order-statuses.php:417
 msgid "Add as many as you need. Pick a colour so each one stands out in the orders list."
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:366
+#: front-end/order-statuses/brikpanel-order-statuses.php:421
 msgid "Add status"
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:372
+#: front-end/order-statuses/brikpanel-order-statuses.php:427
 msgid "No custom statuses yet. Click \"Add status\" to create your first one."
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:385
-#: front-end/order-statuses/brikpanel-order-statuses.php:416
+#: front-end/order-statuses/brikpanel-order-statuses.php:440
+#: front-end/order-statuses/brikpanel-order-statuses.php:471
 msgid "Status name"
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:399
-#: front-end/order-statuses/brikpanel-order-statuses.php:422
+#: front-end/order-statuses/brikpanel-order-statuses.php:454
+#: front-end/order-statuses/brikpanel-order-statuses.php:477
 msgid "Remove status"
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:410
+#: front-end/order-statuses/brikpanel-order-statuses.php:465
 msgid "Removing a status that orders already use will leave those orders showing the raw status key until you re-create it. Existing status keys cannot be renamed."
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:507
+#: front-end/order-statuses/brikpanel-order-statuses.php:562
 msgid "Remove this status? Orders already using it will show the raw status key until you re-create it."
 msgstr ""
 
-#: front-end/order-statuses/brikpanel-order-statuses.php:508
+#: front-end/order-statuses/brikpanel-order-statuses.php:563
 msgid "new"
 msgstr ""
 
@@ -5581,9 +5580,9 @@ msgid "Product Editor"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:372
-#: front-end/products/brikpanel-product-editor.php:4626
-#: front-end/products/brikpanel-product-editor.php:6249
-#: front-end/products/brikpanel-product-editor.php:6312
+#: front-end/products/brikpanel-product-editor.php:4660
+#: front-end/products/brikpanel-product-editor.php:6303
+#: front-end/products/brikpanel-product-editor.php:6366
 #: front-end/products/brikpanel-products-list.php:2095
 #: front-end/products/brikpanel-products-list.php:2565
 msgid "Product not found."
@@ -5627,8 +5626,8 @@ msgid "Numbered list"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:424
-#: includes/brikpanel-enqueue.php:1410
-#: includes/brikpanel-enqueue.php:1413
+#: includes/brikpanel-enqueue.php:1419
+#: includes/brikpanel-enqueue.php:1422
 msgid "Insert link"
 msgstr ""
 
@@ -5637,8 +5636,8 @@ msgid "Remove link"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:431
-#: includes/brikpanel-enqueue.php:1415
-#: includes/brikpanel-enqueue.php:1434
+#: includes/brikpanel-enqueue.php:1424
+#: includes/brikpanel-enqueue.php:1443
 msgid "Insert image"
 msgstr ""
 
@@ -5681,31 +5680,31 @@ msgid "More actions"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:682
-#: includes/brikpanel-enqueue.php:1449
+#: includes/brikpanel-enqueue.php:1458
 msgid "View product"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:684
-#: includes/brikpanel-enqueue.php:931
-#: includes/brikpanel-enqueue.php:1452
-#: includes/brikpanel-enqueue.php:1533
+#: includes/brikpanel-enqueue.php:940
+#: includes/brikpanel-enqueue.php:1461
+#: includes/brikpanel-enqueue.php:1542
 msgid "Duplicate"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:688
-#: includes/brikpanel-enqueue.php:1479
+#: includes/brikpanel-enqueue.php:1488
 msgid "Add new"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:706
-#: includes/brikpanel-enqueue.php:1437
+#: includes/brikpanel-enqueue.php:1446
 msgid "Featured"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:707
 #: front-end/products/brikpanel-products-list.php:1234
 #: front-end/products/brikpanel-products-list.php:1238
-#: includes/brikpanel-enqueue.php:947
+#: includes/brikpanel-enqueue.php:956
 msgid "Mark as featured"
 msgstr ""
 
@@ -5713,7 +5712,7 @@ msgstr ""
 #: front-end/products/brikpanel-product-editor.php:758
 #: front-end/products/brikpanel-products-list.php:844
 #: front-end/products/brikpanel-products-list.php:1043
-#: includes/brikpanel-enqueue.php:926
+#: includes/brikpanel-enqueue.php:935
 msgid "Private"
 msgstr ""
 
@@ -5763,7 +5762,7 @@ msgid "Catalog visibility"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:807
-#: includes/brikpanel-enqueue.php:1448
+#: includes/brikpanel-enqueue.php:1457
 msgid "Update"
 msgstr ""
 
@@ -5789,133 +5788,147 @@ msgid "Drag & drop images here"
 msgstr ""
 
 #: front-end/products/brikpanel-product-editor.php:866
-#: includes/brikpanel-enqueue.php:1438
+#: includes/brikpanel-enqueue.php:1447
 msgid "Add images"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:889
-#: includes/brikpanel-helpers.php:840
-#: includes/brikpanel-helpers.php:851
+#: front-end/products/brikpanel-product-editor.php:888
+#: front-end/products/brikpanel-section-order.php:71
+msgid "Permalink (URL slug)"
+msgstr ""
+
+#: front-end/products/brikpanel-product-editor.php:892
+#: front-end/products/brikpanel-product-editor.php:895
+msgid "auto-generated-from-name"
+msgstr ""
+
+#: front-end/products/brikpanel-product-editor.php:897
+msgid "The last part of the product URL. Leave blank to generate it automatically from the product name."
+msgstr ""
+
+#: front-end/products/brikpanel-product-editor.php:918
+#: includes/brikpanel-helpers.php:852
+#: includes/brikpanel-helpers.php:863
 msgid "Variable product"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:890
+#: front-end/products/brikpanel-product-editor.php:919
 msgid "Has options buyers choose from, like size or color."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:904
+#: front-end/products/brikpanel-product-editor.php:933
 msgctxt "product editor attribute section heading"
 msgid "Attributes"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:905
+#: front-end/products/brikpanel-product-editor.php:934
 msgid "Add attributes, then switch on “Use for variations” for the ones buyers pick (Size, Color). Others stay as specs shown on the product page."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:906
+#: front-end/products/brikpanel-product-editor.php:935
 msgid "Specs that appear on the product page (e.g. Brand, Material)."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:917
+#: front-end/products/brikpanel-product-editor.php:946
 msgid "Size + Color"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:918
+#: front-end/products/brikpanel-product-editor.php:947
 msgid "Size and color combinations"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:925
+#: front-end/products/brikpanel-product-editor.php:954
 msgid "Use existing or create new attributes"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:940
+#: front-end/products/brikpanel-product-editor.php:969
 msgid "Select existing attribute…"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:946
+#: front-end/products/brikpanel-product-editor.php:975
 msgid "Search attributes…"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:952
+#: front-end/products/brikpanel-product-editor.php:981
 msgid "No matching attributes"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:956
-#: includes/brikpanel-enqueue.php:1451
+#: front-end/products/brikpanel-product-editor.php:985
+#: includes/brikpanel-enqueue.php:1460
 msgid "or create new"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:960
+#: front-end/products/brikpanel-product-editor.php:989
 msgid "Attribute name (e.g.: Size, Brand)"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:961
-#: front-end/products/brikpanel-product-editor.php:1380
+#: front-end/products/brikpanel-product-editor.php:990
 #: front-end/products/brikpanel-product-editor.php:1409
-#: includes/brikpanel-enqueue.php:1444
+#: front-end/products/brikpanel-product-editor.php:1438
+#: includes/brikpanel-enqueue.php:1453
 msgid "Add"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:966
+#: front-end/products/brikpanel-product-editor.php:995
 msgid "Quick add:"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:967
+#: front-end/products/brikpanel-product-editor.php:996
 msgid "+ Size & Color"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:979
+#: front-end/products/brikpanel-product-editor.php:1008
 msgid "Generate variations"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:980
+#: front-end/products/brikpanel-product-editor.php:1009
 msgid "Attributes changed since you generated. Click Generate variations to refresh the list."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:985
+#: front-end/products/brikpanel-product-editor.php:1014
 msgid "Set all prices:"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:992
+#: front-end/products/brikpanel-product-editor.php:1021
 msgid "Set all sale prices:"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:999
+#: front-end/products/brikpanel-product-editor.php:1028
 msgid "Set all stocks:"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1009
+#: front-end/products/brikpanel-product-editor.php:1038
 msgid "Variation"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1011
+#: front-end/products/brikpanel-product-editor.php:1040
 msgid "Sale Price"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1012
+#: front-end/products/brikpanel-product-editor.php:1041
 msgid "Sale start"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1013
+#: front-end/products/brikpanel-product-editor.php:1042
 msgid "Sale end"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1014
+#: front-end/products/brikpanel-product-editor.php:1043
 msgid "Track stock quantity for this variation"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1014
+#: front-end/products/brikpanel-product-editor.php:1043
 msgid "Track"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1017
-#: includes/brikpanel-enqueue.php:1476
+#: front-end/products/brikpanel-product-editor.php:1046
+#: includes/brikpanel-enqueue.php:1485
 #: includes/brikpanel-store-summary.php:2010
 msgid "COGS"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1018
-#: front-end/products/brikpanel-product-editor.php:1103
+#: front-end/products/brikpanel-product-editor.php:1047
+#: front-end/products/brikpanel-product-editor.php:1132
 #: front-end/vendors/class-brikpanel-stock-orders.php:203
 #: front-end/vendors/class-brikpanel-stock-orders.php:330
 #: front-end/vendors/class-brikpanel-vendor-product-editor.php:140
@@ -5924,470 +5937,470 @@ msgstr ""
 msgid "Supplier"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1020
-#: front-end/products/brikpanel-product-editor.php:6342
+#: front-end/products/brikpanel-product-editor.php:1049
+#: front-end/products/brikpanel-product-editor.php:6396
 #: front-end/products/brikpanel-products-list.php:69
 #: front-end/products/brikpanel-products-list.php:1194
 msgid "GTIN"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1021
-#: front-end/products/brikpanel-product-editor.php:1247
+#: front-end/products/brikpanel-product-editor.php:1050
+#: front-end/products/brikpanel-product-editor.php:1276
 msgid "Tax class"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1022
-#: front-end/products/brikpanel-product-editor.php:1554
+#: front-end/products/brikpanel-product-editor.php:1051
+#: front-end/products/brikpanel-product-editor.php:1583
 #: front-end/products/brikpanel-products-list.php:74
 #: front-end/products/brikpanel-products-list.php:1199
-#: front-end/products/brikpanel-section-order.php:92
+#: front-end/products/brikpanel-section-order.php:93
 msgid "Shipping class"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1070
+#: front-end/products/brikpanel-product-editor.php:1099
 msgid "Sale start date"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1071
-#: front-end/products/brikpanel-product-editor.php:1075
+#: front-end/products/brikpanel-product-editor.php:1100
+#: front-end/products/brikpanel-product-editor.php:1104
 msgid "YYYY-MM-DD (optional)"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1074
+#: front-end/products/brikpanel-product-editor.php:1103
 msgid "Sale end date"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1078
+#: front-end/products/brikpanel-product-editor.php:1107
 msgid "Schedule your sale in advance — leave the dates empty to start it immediately or keep it running indefinitely."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1106
+#: front-end/products/brikpanel-product-editor.php:1135
 msgid "— None —"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1119
+#: front-end/products/brikpanel-product-editor.php:1148
 msgid "Supplier SKU"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1120
+#: front-end/products/brikpanel-product-editor.php:1149
 msgid "The supplier's product code. Optional — used by stock orders to match this product on incoming POs."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1122
+#: front-end/products/brikpanel-product-editor.php:1151
 msgid "Optional"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1129
+#: front-end/products/brikpanel-product-editor.php:1158
 msgid "What this product costs you, and where you buy it from. Used in profit calculations and stock orders."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1131
+#: front-end/products/brikpanel-product-editor.php:1160
 msgid "The cost you pay for this product. Used to calculate profit margins."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1150
+#: front-end/products/brikpanel-product-editor.php:1179
 msgid "Track quantity"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1151
+#: front-end/products/brikpanel-product-editor.php:1180
 msgid "Manage stock at product level. Turn off to simply mark the product in or out of stock."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1160
+#: front-end/products/brikpanel-product-editor.php:1189
 #: front-end/products/brikpanel-products-list.php:770
 msgid "Stock quantity"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1164
+#: front-end/products/brikpanel-product-editor.php:1193
 msgid "Allow backorders?"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1166
+#: front-end/products/brikpanel-product-editor.php:1195
 msgid "Do not allow"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1168
+#: front-end/products/brikpanel-product-editor.php:1197
 msgid "Allow, but notify customer"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1170
+#: front-end/products/brikpanel-product-editor.php:1199
 msgid "Allow"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1176
+#: front-end/products/brikpanel-product-editor.php:1205
 #: front-end/products/brikpanel-products-list.php:787
 #: front-end/products/brikpanel-products-list.php:1063
-#: includes/brikpanel-enqueue.php:970
-#: includes/brikpanel-enqueue.php:1463
+#: includes/brikpanel-enqueue.php:979
+#: includes/brikpanel-enqueue.php:1472
 #: includes/brikpanel-store-summary.php:1669
 msgid "In stock"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1178
+#: front-end/products/brikpanel-product-editor.php:1207
 #: front-end/products/brikpanel-products-list.php:793
-#: includes/brikpanel-enqueue.php:972
-#: includes/brikpanel-enqueue.php:1465
+#: includes/brikpanel-enqueue.php:981
+#: includes/brikpanel-enqueue.php:1474
 #: includes/brikpanel-store-summary.php:1671
 msgid "On backorder"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1184
+#: front-end/products/brikpanel-product-editor.php:1213
 msgid "Important for marketplace synchronization. Should match your Trendyol/Hepsiburada product code."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1186
+#: front-end/products/brikpanel-product-editor.php:1215
 msgid "e.g.: TSH-001"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1201
+#: front-end/products/brikpanel-product-editor.php:1230
 msgid "Backorder behavior"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1205
-#: includes/brikpanel-enqueue.php:1467
+#: front-end/products/brikpanel-product-editor.php:1234
+#: includes/brikpanel-enqueue.php:1476
 msgid "Allow without notification"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1209
-#: includes/brikpanel-enqueue.php:1468
+#: front-end/products/brikpanel-product-editor.php:1238
+#: includes/brikpanel-enqueue.php:1477
 msgid "Allow and notify customer"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1212
+#: front-end/products/brikpanel-product-editor.php:1241
 msgid "Notification adds a customer-visible note to backorder line items at checkout."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1226
+#: front-end/products/brikpanel-product-editor.php:1255
 msgid "GTIN, UPC, EAN, or ISBN"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1227
+#: front-end/products/brikpanel-product-editor.php:1256
 msgid "The global product barcode. Used by Google Shopping and marketplace feeds. Leave empty if you do not have one."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1229
+#: front-end/products/brikpanel-product-editor.php:1258
 msgid "e.g.: 0012345678905"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1239
+#: front-end/products/brikpanel-product-editor.php:1268
 msgid "Tax status"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1241
+#: front-end/products/brikpanel-product-editor.php:1270
 msgid "Taxable"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1242
+#: front-end/products/brikpanel-product-editor.php:1271
 msgid "Shipping only"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1243
-#: includes/brikpanel-enqueue.php:1423
+#: front-end/products/brikpanel-product-editor.php:1272
+#: includes/brikpanel-enqueue.php:1432
 msgid "None"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1255
+#: front-end/products/brikpanel-product-editor.php:1284
 msgid "Variable products: each variation can override the tax class from the variations table."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1264
+#: front-end/products/brikpanel-product-editor.php:1293
 msgid "Sold individually"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1265
+#: front-end/products/brikpanel-product-editor.php:1294
 msgid "Limit purchases to one of this product per order."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1280
+#: front-end/products/brikpanel-product-editor.php:1309
 msgid "Upsells"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1281
+#: front-end/products/brikpanel-product-editor.php:1310
 msgid "Products promoted on the product page as a higher-value alternative."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1285
-#: front-end/products/brikpanel-product-editor.php:1296
+#: front-end/products/brikpanel-product-editor.php:1314
+#: front-end/products/brikpanel-product-editor.php:1325
 #: front-end/products/brikpanel-products-list.php:1005
 msgid "Search products..."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1291
+#: front-end/products/brikpanel-product-editor.php:1320
 msgid "Cross-sells"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1292
+#: front-end/products/brikpanel-product-editor.php:1321
 msgid "Products promoted in the cart alongside this one."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1307
+#: front-end/products/brikpanel-product-editor.php:1336
 msgid "Purchase note"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1308
+#: front-end/products/brikpanel-product-editor.php:1337
 msgid "Note sent to the customer after they buy this product."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1312
+#: front-end/products/brikpanel-product-editor.php:1341
 msgid "Enable reviews"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1313
+#: front-end/products/brikpanel-product-editor.php:1342
 msgid "Allow customers to leave reviews on this product."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1321
+#: front-end/products/brikpanel-product-editor.php:1350
 msgid "Menu order"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1330
-#: front-end/products/brikpanel-product-editor.php:6345
+#: front-end/products/brikpanel-product-editor.php:1359
+#: front-end/products/brikpanel-product-editor.php:6399
 #: front-end/products/brikpanel-products-list.php:73
 #: front-end/products/brikpanel-products-list.php:1198
 #: front-end/products/brikpanel-products-list.php:1310
 #: front-end/products/brikpanel-products-list.php:1424
-#: front-end/products/brikpanel-section-order.php:80
+#: front-end/products/brikpanel-section-order.php:81
 #: includes/brikpanel-enqueue.php:258
 #: includes/brikpanel-store-summary.php:1539
 msgid "Category"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1332
+#: front-end/products/brikpanel-product-editor.php:1361
 #: front-end/products/brikpanel-products-list.php:856
 msgid "Search categories..."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1359
+#: front-end/products/brikpanel-product-editor.php:1388
 msgid "Primary category"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1363
+#: front-end/products/brikpanel-product-editor.php:1392
 msgid "None (will disable this feature)"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1368
+#: front-end/products/brikpanel-product-editor.php:1397
 #, php-format
 msgid "The category used in the %category% permalink and breadcrumbs when a product has several categories."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1371
+#: front-end/products/brikpanel-product-editor.php:1400
 msgid "+ Add new category"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1375
+#: front-end/products/brikpanel-product-editor.php:1404
 msgid "Category name"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1377
-#: front-end/products/brikpanel-product-editor.php:1405
+#: front-end/products/brikpanel-product-editor.php:1406
+#: front-end/products/brikpanel-product-editor.php:1434
 msgid "— No parent —"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1390
-#: front-end/products/brikpanel-section-order.php:85
+#: front-end/products/brikpanel-product-editor.php:1419
+#: front-end/products/brikpanel-section-order.php:86
 msgid "Brand"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1392
+#: front-end/products/brikpanel-product-editor.php:1421
 msgid "Search brands..."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1398
+#: front-end/products/brikpanel-product-editor.php:1427
 msgid "+ Add new brand"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1402
+#: front-end/products/brikpanel-product-editor.php:1431
 msgid "Brand name"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1420
+#: front-end/products/brikpanel-product-editor.php:1449
 #: front-end/products/brikpanel-products-list.php:869
 #: front-end/products/brikpanel-products-list.php:1453
 #: front-end/products/brikpanel-qe-order.php:54
-#: front-end/products/brikpanel-section-order.php:86
+#: front-end/products/brikpanel-section-order.php:87
 msgid "Tags"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1422
-#: includes/brikpanel-enqueue.php:1462
+#: front-end/products/brikpanel-product-editor.php:1451
+#: includes/brikpanel-enqueue.php:1471
 msgid "Type and press Enter to add a tag..."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1433
+#: front-end/products/brikpanel-product-editor.php:1462
 #: front-end/products/brikpanel-products-list.php:806
 msgid "Virtual (no shipping)"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1434
+#: front-end/products/brikpanel-product-editor.php:1463
 #: front-end/products/brikpanel-products-list.php:807
 msgid "Service or intangible product — no physical shipping."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1443
+#: front-end/products/brikpanel-product-editor.php:1472
 #: front-end/products/brikpanel-products-list.php:816
 msgid "Digital (downloadable)"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1444
+#: front-end/products/brikpanel-product-editor.php:1473
 #: front-end/products/brikpanel-products-list.php:817
 msgid "Customers receive download links after purchase."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1456
+#: front-end/products/brikpanel-product-editor.php:1485
 #: front-end/products/brikpanel-products-list.php:829
 msgid "Add downloadable file"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1469
+#: front-end/products/brikpanel-product-editor.php:1498
 msgid "Brief product summary..."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1479
-#: front-end/products/brikpanel-section-order.php:88
+#: front-end/products/brikpanel-product-editor.php:1508
+#: front-end/products/brikpanel-section-order.php:89
 msgid "Product description"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1491
-#: front-end/products/brikpanel-section-order.php:90
+#: front-end/products/brikpanel-product-editor.php:1520
+#: front-end/products/brikpanel-section-order.php:91
 msgid "Shipping weight"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1514
-#: front-end/products/brikpanel-section-order.php:91
+#: front-end/products/brikpanel-product-editor.php:1543
+#: front-end/products/brikpanel-section-order.php:92
 msgid "Shipping dimensions"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1524
+#: front-end/products/brikpanel-product-editor.php:1553
 msgid "Length"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1531
+#: front-end/products/brikpanel-product-editor.php:1560
 msgid "Width"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1538
+#: front-end/products/brikpanel-product-editor.php:1567
 msgid "Height"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1561
+#: front-end/products/brikpanel-product-editor.php:1590
 msgid "Shipping classes let certain shipping methods group similar products together. Variable products: each variation can override this from the variations table."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1597
-#: front-end/products/brikpanel-product-editor.php:1619
+#: front-end/products/brikpanel-product-editor.php:1626
+#: front-end/products/brikpanel-product-editor.php:1648
 msgid "SEO"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1601
-#: front-end/products/brikpanel-product-editor.php:1625
-#: includes/brikpanel-enqueue.php:1454
+#: front-end/products/brikpanel-product-editor.php:1630
+#: front-end/products/brikpanel-product-editor.php:1654
+#: includes/brikpanel-enqueue.php:1463
 msgid "Product title"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1630
+#: front-end/products/brikpanel-product-editor.php:1659
 msgid "SEO title"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1631
+#: front-end/products/brikpanel-product-editor.php:1660
 msgid "Leave empty to use product name"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1635
+#: front-end/products/brikpanel-product-editor.php:1664
 msgid "Meta description"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1636
+#: front-end/products/brikpanel-product-editor.php:1665
 msgid "Brief description for search engines..."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1641
+#: front-end/products/brikpanel-product-editor.php:1670
 msgid "Focus keyword"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1642
+#: front-end/products/brikpanel-product-editor.php:1671
 msgid "e.g. cotton t-shirt"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1645
+#: front-end/products/brikpanel-product-editor.php:1674
 msgid "Canonical URL"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1646
+#: front-end/products/brikpanel-product-editor.php:1675
 msgid "Defaults to product permalink"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1651
+#: front-end/products/brikpanel-product-editor.php:1680
 msgid "Hide from search engines"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1652
+#: front-end/products/brikpanel-product-editor.php:1681
 msgid "Adds noindex — the product stays accessible but search engines will not list it."
 msgstr ""
 
 #. translators: %s: active SEO plugin name (SureRank or SmartCrawl)
-#: front-end/products/brikpanel-product-editor.php:1662
+#: front-end/products/brikpanel-product-editor.php:1691
 #, php-format
 msgid "These fields are saved to %s, plus Yoast SEO, Rank Math, All in One SEO and SEOPress, so switching SEO plugins never loses your work."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1664
+#: front-end/products/brikpanel-product-editor.php:1693
 msgid "These fields are saved to Yoast SEO, Rank Math, All in One SEO and SEOPress simultaneously, so switching SEO plugins never loses your work."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1673
+#: front-end/products/brikpanel-product-editor.php:1702
 msgid "SEO analysis"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:1676
-#: includes/brikpanel-enqueue.php:1493
+#: front-end/products/brikpanel-product-editor.php:1705
+#: includes/brikpanel-enqueue.php:1502
 msgid "Re-analyze"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2070
+#: front-end/products/brikpanel-product-editor.php:2099
 msgid "Metabox failed to load."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2127
+#: front-end/products/brikpanel-product-editor.php:2156
 msgid "Yoast SEO"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2133
+#: front-end/products/brikpanel-product-editor.php:2162
 msgid "Rank Math SEO"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2139
+#: front-end/products/brikpanel-product-editor.php:2168
 msgid "All in One SEO"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2155
-#: front-end/products/brikpanel-product-editor.php:2256
+#: front-end/products/brikpanel-product-editor.php:2184
+#: front-end/products/brikpanel-product-editor.php:2285
 msgid "SEOPress"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2254
+#: front-end/products/brikpanel-product-editor.php:2283
 msgid "SureRank"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2258
+#: front-end/products/brikpanel-product-editor.php:2287
 msgid "SmartCrawl"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2346
+#: front-end/products/brikpanel-product-editor.php:2375
 msgid "No focus keyword set. Add one to analyze the title, description, URL and content."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2412
-#: front-end/products/brikpanel-product-editor.php:2705
+#: front-end/products/brikpanel-product-editor.php:2441
+#: front-end/products/brikpanel-product-editor.php:2734
 msgid "Suggestion"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2413
-#: front-end/products/brikpanel-product-editor.php:2706
+#: front-end/products/brikpanel-product-editor.php:2442
+#: front-end/products/brikpanel-product-editor.php:2735
 msgid "Passed"
 msgstr ""
 
 #. translators: %d: number of critical SEO issues
-#: front-end/products/brikpanel-product-editor.php:2441
+#: front-end/products/brikpanel-product-editor.php:2470
 #, php-format
 msgid "%d critical"
 msgid_plural "%d critical"
@@ -6395,7 +6408,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of SEO warnings
-#: front-end/products/brikpanel-product-editor.php:2446
+#: front-end/products/brikpanel-product-editor.php:2475
 #, php-format
 msgid "%d warning"
 msgid_plural "%d warnings"
@@ -6403,8 +6416,8 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of SEO suggestions
-#: front-end/products/brikpanel-product-editor.php:2451
-#: front-end/products/brikpanel-product-editor.php:2763
+#: front-end/products/brikpanel-product-editor.php:2480
+#: front-end/products/brikpanel-product-editor.php:2792
 #, php-format
 msgid "%d suggestion"
 msgid_plural "%d suggestions"
@@ -6412,115 +6425,115 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of passed SEO checks
-#: front-end/products/brikpanel-product-editor.php:2455
-#: front-end/products/brikpanel-product-editor.php:2767
+#: front-end/products/brikpanel-product-editor.php:2484
+#: front-end/products/brikpanel-product-editor.php:2796
 #, php-format
 msgid "%d passed"
 msgid_plural "%d passed"
 msgstr[0] ""
 msgstr[1] ""
 
-#: front-end/products/brikpanel-product-editor.php:2458
-#: front-end/products/brikpanel-product-editor.php:2770
+#: front-end/products/brikpanel-product-editor.php:2487
+#: front-end/products/brikpanel-product-editor.php:2799
 msgid "Page checks"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2459
+#: front-end/products/brikpanel-product-editor.php:2488
 msgid "Keyword checks"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2477
+#: front-end/products/brikpanel-product-editor.php:2506
 msgid "SEO title length is within the recommended range"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2478
+#: front-end/products/brikpanel-product-editor.php:2507
 msgid "Meta description length is within the recommended range"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2479
+#: front-end/products/brikpanel-product-editor.php:2508
 msgid "Meta description is hand-written, not auto-generated"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2480
+#: front-end/products/brikpanel-product-editor.php:2509
 msgid "URL slug uses hyphens instead of underscores"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2481
+#: front-end/products/brikpanel-product-editor.php:2510
 msgid "Focus keyword appears in the SEO title"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2482
+#: front-end/products/brikpanel-product-editor.php:2511
 msgid "Focus keyword appears in the meta description"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2483
+#: front-end/products/brikpanel-product-editor.php:2512
 msgid "Focus keyword appears in the URL slug"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2484
+#: front-end/products/brikpanel-product-editor.php:2513
 msgid "Focus keyword does not consist only of stop words"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2485
+#: front-end/products/brikpanel-product-editor.php:2514
 msgid "Focus keyword has not been used on another product"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2486
+#: front-end/products/brikpanel-product-editor.php:2515
 msgid "Secondary keyword appears in the SEO title"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2488
+#: front-end/products/brikpanel-product-editor.php:2517
 msgid "Content is long enough"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2489
+#: front-end/products/brikpanel-product-editor.php:2518
 msgid "Content contains at least one link"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2490
+#: front-end/products/brikpanel-product-editor.php:2519
 msgid "Outbound links are followed where appropriate"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2491
+#: front-end/products/brikpanel-product-editor.php:2520
 msgid "Focus keyword density is within the recommended range"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2492
+#: front-end/products/brikpanel-product-editor.php:2521
 msgid "Focus keyword appears in the first paragraph"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2493
+#: front-end/products/brikpanel-product-editor.php:2522
 msgid "Focus keyword appears in a subheading"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2494
+#: front-end/products/brikpanel-product-editor.php:2523
 msgid "Focus keyword appears in an image alt text"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2495
+#: front-end/products/brikpanel-product-editor.php:2524
 msgid "Focus keyword is emphasized somewhere in the content"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2661
+#: front-end/products/brikpanel-product-editor.php:2690
 msgid "No focus keyword set. Add one to check the title, description, URL and content against it."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2704
+#: front-end/products/brikpanel-product-editor.php:2733
 msgid "Needs work"
 msgstr ""
 
 #. translators: %d: SEO score out of 100
-#: front-end/products/brikpanel-product-editor.php:2744
+#: front-end/products/brikpanel-product-editor.php:2773
 #, php-format
 msgid "SEO score: %d out of 100"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2748
+#: front-end/products/brikpanel-product-editor.php:2777
 msgid "SEO score"
 msgstr ""
 
 #. translators: %d: number of passed SEO checks
-#: front-end/products/brikpanel-product-editor.php:2751
+#: front-end/products/brikpanel-product-editor.php:2780
 #, php-format
 msgid "%d check passed"
 msgid_plural "%d checks passed"
@@ -6528,122 +6541,122 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of SEO checks that need work
-#: front-end/products/brikpanel-product-editor.php:2758
+#: front-end/products/brikpanel-product-editor.php:2787
 #, php-format
 msgid "%d to improve"
 msgid_plural "%d to improve"
 msgstr[0] ""
 msgstr[1] ""
 
-#: front-end/products/brikpanel-product-editor.php:2771
+#: front-end/products/brikpanel-product-editor.php:2800
 msgid "Content checks"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:2870
+#: front-end/products/brikpanel-product-editor.php:2899
 msgid "SEO metabox failed to load."
 msgstr ""
 
 #. translators: %s: SEO plugin name
-#: front-end/products/brikpanel-product-editor.php:2981
+#: front-end/products/brikpanel-product-editor.php:3010
 #, php-format
 msgid "%s is installed but did not register its SEO fields for products. Enable SEO for the Product post type in the plugin settings."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3342
+#: front-end/products/brikpanel-product-editor.php:3371
 msgid "Variation options"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3343
-#: front-end/products/brikpanel-section-order.php:72
+#: front-end/products/brikpanel-product-editor.php:3372
+#: front-end/products/brikpanel-section-order.php:73
 msgid "Pricing"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3344
-#: front-end/products/brikpanel-product-editor.php:3709
+#: front-end/products/brikpanel-product-editor.php:3373
+#: front-end/products/brikpanel-product-editor.php:3738
 msgid "Inventory"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3345
+#: front-end/products/brikpanel-product-editor.php:3374
 msgid "Shipping & dimensions"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3346
+#: front-end/products/brikpanel-product-editor.php:3375
 msgid "Downloadable"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3348
+#: front-end/products/brikpanel-product-editor.php:3377
 msgid "After attributes"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3710
+#: front-end/products/brikpanel-product-editor.php:3739
 #: front-end/products/brikpanel-products-list.php:606
 #: front-end/vendors/class-brikpanel-stock-orders.php:413
 #: front-end/vendors/class-brikpanel-vendors.php:303
 msgid "Shipping"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3711
+#: front-end/products/brikpanel-product-editor.php:3740
 msgid "Linked Products"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3715
+#: front-end/products/brikpanel-product-editor.php:3744
 #: front-end/products/brikpanel-products-list.php:1457
 msgid "Attributes"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3716
+#: front-end/products/brikpanel-product-editor.php:3745
 msgid "Advanced"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:3759
+#: front-end/products/brikpanel-product-editor.php:3788
 msgid "Multi-currency prices"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:4666
+#: front-end/products/brikpanel-product-editor.php:4700
 msgid "Product name is required."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:5364
-#: includes/brikpanel-enqueue.php:1404
+#: front-end/products/brikpanel-product-editor.php:5418
+#: includes/brikpanel-enqueue.php:1413
 msgid "Product saved!"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:6097
+#: front-end/products/brikpanel-product-editor.php:6151
 msgid "Category name is required."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:6148
+#: front-end/products/brikpanel-product-editor.php:6202
 msgid "Brands are not available on this site."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:6161
+#: front-end/products/brikpanel-product-editor.php:6215
 msgid "Brand name is required."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:6216
+#: front-end/products/brikpanel-product-editor.php:6270
 msgid "No file uploaded."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:6254
-#: includes/brikpanel-enqueue.php:748
+#: front-end/products/brikpanel-product-editor.php:6308
+#: includes/brikpanel-enqueue.php:757
 msgid "Copy"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:6291
-#: includes/brikpanel-enqueue.php:933
+#: front-end/products/brikpanel-product-editor.php:6345
+#: includes/brikpanel-enqueue.php:942
 msgid "Product duplicated!"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:6325
+#: front-end/products/brikpanel-product-editor.php:6379
 msgid "Invalid field."
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:6329
+#: front-end/products/brikpanel-product-editor.php:6383
 msgid "Updated"
 msgstr ""
 
 #. translators: %d: number of distinct variation GTINs.
-#: front-end/products/brikpanel-product-editor.php:6410
+#: front-end/products/brikpanel-product-editor.php:6464
 #: front-end/products/brikpanel-products-list.php:438
 #, php-format
 msgid "%d GTIN"
@@ -6655,7 +6668,7 @@ msgstr[1] ""
 #: front-end/products/brikpanel-products-list.php:603
 #: front-end/products/brikpanel-products-list.php:1196
 #: front-end/vendors/class-brikpanel-vendors.php:467
-#: includes/brikpanel-enqueue.php:968
+#: includes/brikpanel-enqueue.php:977
 msgid "Cost"
 msgstr ""
 
@@ -6766,7 +6779,7 @@ msgid "No categories found."
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:784
-#: includes/brikpanel-enqueue.php:969
+#: includes/brikpanel-enqueue.php:978
 msgid "Availability"
 msgstr ""
 
@@ -6843,7 +6856,7 @@ msgid "Price high-low"
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1101
-#: includes/brikpanel-enqueue.php:1015
+#: includes/brikpanel-enqueue.php:1024
 msgid "Custom order"
 msgstr ""
 
@@ -6852,7 +6865,7 @@ msgid "Drag products to reorder them in the storefront"
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1105
-#: includes/brikpanel-enqueue.php:1009
+#: includes/brikpanel-enqueue.php:1018
 msgid "Sort"
 msgstr ""
 
@@ -6861,7 +6874,7 @@ msgid "Columns"
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1122
-#: includes/brikpanel-enqueue.php:999
+#: includes/brikpanel-enqueue.php:1008
 msgid "Plugin columns"
 msgstr ""
 
@@ -6880,8 +6893,8 @@ msgid "Export selected"
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1170
-#: includes/brikpanel-enqueue.php:937
-#: includes/brikpanel-enqueue.php:1539
+#: includes/brikpanel-enqueue.php:946
+#: includes/brikpanel-enqueue.php:1548
 msgid "Delete permanently"
 msgstr ""
 
@@ -6890,7 +6903,7 @@ msgid "Drag the handle on the left of each row to set the order products appear 
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1181
-#: includes/brikpanel-enqueue.php:1010
+#: includes/brikpanel-enqueue.php:1019
 msgid "Done sorting"
 msgstr ""
 
@@ -6899,7 +6912,7 @@ msgid "Position on the storefront when Custom ordering is active. Click a value 
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1232
-#: includes/brikpanel-enqueue.php:930
+#: includes/brikpanel-enqueue.php:939
 msgid "Quick edit"
 msgstr ""
 
@@ -6939,12 +6952,12 @@ msgid "Variation filter (optional)"
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1340
-#: includes/brikpanel-enqueue.php:961
+#: includes/brikpanel-enqueue.php:970
 msgid "All products / variations"
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1345
-#: includes/brikpanel-enqueue.php:962
+#: includes/brikpanel-enqueue.php:971
 msgid "Select attribute first"
 msgstr ""
 
@@ -7070,7 +7083,7 @@ msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:1514
 #: includes/brikpanel-early-access.php:250
-#: includes/brikpanel-enqueue.php:989
+#: includes/brikpanel-enqueue.php:998
 #: includes/cron/class-brikpanel-cron-page.php:121
 #: includes/cron/class-brikpanel-cron.php:542
 msgid "Done"
@@ -7099,7 +7112,7 @@ msgid "%d products updated."
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:2493
-#: includes/brikpanel-enqueue.php:938
+#: includes/brikpanel-enqueue.php:947
 msgid "Product permanently deleted."
 msgstr ""
 
@@ -7131,7 +7144,7 @@ msgid "No products selected."
 msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:2646
-#: includes/brikpanel-enqueue.php:954
+#: includes/brikpanel-enqueue.php:963
 msgid "Please select a category."
 msgstr ""
 
@@ -7141,8 +7154,8 @@ msgstr ""
 
 #: front-end/products/brikpanel-products-list.php:2686
 #: front-end/vendors/class-brikpanel-stock-orders.php:442
-#: includes/brikpanel-enqueue.php:360
-#: includes/brikpanel-enqueue.php:919
+#: includes/brikpanel-enqueue.php:369
+#: includes/brikpanel-enqueue.php:928
 msgid "No products found."
 msgstr ""
 
@@ -7192,12 +7205,12 @@ msgid "Pricing (regular & sale)"
 msgstr ""
 
 #: front-end/products/brikpanel-qe-order.php:48
-#: front-end/products/brikpanel-section-order.php:73
+#: front-end/products/brikpanel-section-order.php:74
 msgid "Cost of goods (COGS)"
 msgstr ""
 
 #: front-end/products/brikpanel-qe-order.php:49
-#: front-end/products/brikpanel-section-order.php:74
+#: front-end/products/brikpanel-section-order.php:75
 msgid "Inventory (stock & SKU)"
 msgstr ""
 
@@ -7237,47 +7250,47 @@ msgstr ""
 msgid "Header"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:71
+#: front-end/products/brikpanel-section-order.php:72
 msgid "Variations (sizes/colors)"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:75
+#: front-end/products/brikpanel-section-order.php:76
 msgid "GTIN / barcode (UPC, EAN, ISBN)"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:76
+#: front-end/products/brikpanel-section-order.php:77
 msgid "Tax (status & class)"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:77
+#: front-end/products/brikpanel-section-order.php:78
 msgid "Sold individually (limit 1 per order)"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:78
+#: front-end/products/brikpanel-section-order.php:79
 msgid "Linked products (upsells & cross-sells)"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:79
+#: front-end/products/brikpanel-section-order.php:80
 msgid "Advanced (purchase note, reviews, menu order)"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:89
+#: front-end/products/brikpanel-section-order.php:90
 msgid "Digital product (downloadable)"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:93
+#: front-end/products/brikpanel-section-order.php:94
 msgid "SEO settings"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:94
+#: front-end/products/brikpanel-section-order.php:95
 msgid "Product attributes (specs)"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:323
+#: front-end/products/brikpanel-section-order.php:324
 msgid "ACF"
 msgstr ""
 
-#: front-end/products/brikpanel-section-order.php:323
+#: front-end/products/brikpanel-section-order.php:324
 msgid "Plugin"
 msgstr ""
 
@@ -7312,44 +7325,50 @@ msgid "No results found"
 msgstr ""
 
 #. translators: %s: product SKU.
-#: front-end/search/brikpanel-search.php:761
+#: front-end/search/brikpanel-search.php:780
 #, php-format
 msgid "SKU: %s"
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1066
+#. translators: %s: product GTIN/UPC/EAN/ISBN code.
+#: front-end/search/brikpanel-search.php:785
+#, php-format
+msgid "GTIN: %s"
+msgstr ""
+
+#: front-end/search/brikpanel-search.php:1090
 msgid "Command palette (Cmd/Ctrl + K)"
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1069
+#: front-end/search/brikpanel-search.php:1093
 msgid "Pick which areas the Cmd/Ctrl + K palette searches. Turn sources off to keep it focused, or leave them on for a full admin-wide search. Navigation also covers third-party plugin pages automatically."
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1075
+#: front-end/search/brikpanel-search.php:1099
 msgid "Find orders by customer name, email, phone, order ID or a product SKU inside the order."
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1079
+#: front-end/search/brikpanel-search.php:1103
 msgid "Search products"
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1082
-msgid "Find simple and variable products by name or SKU (variations included)."
+#: front-end/search/brikpanel-search.php:1106
+msgid "Find simple and variable products by name, SKU or GTIN (variations included)."
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1086
+#: front-end/search/brikpanel-search.php:1110
 msgid "Search customers"
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1089
+#: front-end/search/brikpanel-search.php:1113
 msgid "Find registered customers by name, email or username."
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1093
+#: front-end/search/brikpanel-search.php:1117
 msgid "Search navigation"
 msgstr ""
 
-#: front-end/search/brikpanel-search.php:1096
+#: front-end/search/brikpanel-search.php:1120
 msgid "Jump to any admin page or settings screen, including pages added by other plugins."
 msgstr ""
 
@@ -7362,12 +7381,12 @@ msgstr ""
 
 #: front-end/segments/brikpanel-segments.php:1062
 #: front-end/sound/brikpanel-sound.php:150
-#: includes/brikpanel-enqueue.php:371
+#: includes/brikpanel-enqueue.php:380
 msgid "Payment"
 msgstr ""
 
 #: front-end/segments/brikpanel-segments.php:1086
-#: includes/brikpanel-enqueue.php:373
+#: includes/brikpanel-enqueue.php:382
 msgid "Registered"
 msgstr ""
 
@@ -7436,7 +7455,7 @@ msgid "Results"
 msgstr ""
 
 #: front-end/segments/views/page.php:173
-#: includes/brikpanel-enqueue.php:362
+#: includes/brikpanel-enqueue.php:371
 #: includes/brikpanel-store-summary.php:1978
 #: includes/brikpanel-store-summary.php:2454
 msgid "Total revenue"
@@ -7930,7 +7949,7 @@ msgid "—"
 msgstr ""
 
 #: front-end/vendors/class-brikpanel-vendors.php:300
-#: includes/brikpanel-enqueue.php:976
+#: includes/brikpanel-enqueue.php:985
 msgid "View"
 msgstr ""
 
@@ -8562,7 +8581,7 @@ msgstr ""
 
 #: includes/brikpanel-enqueue.php:173
 #: includes/brikpanel-enqueue.php:243
-#: includes/brikpanel-enqueue.php:364
+#: includes/brikpanel-enqueue.php:373
 msgid "Order"
 msgstr ""
 
@@ -8579,8 +8598,8 @@ msgid "Please select a valid custom date range."
 msgstr ""
 
 #: includes/brikpanel-enqueue.php:186
-#: includes/brikpanel-enqueue.php:387
-#: includes/brikpanel-enqueue.php:798
+#: includes/brikpanel-enqueue.php:396
+#: includes/brikpanel-enqueue.php:807
 msgid "Refunded"
 msgstr ""
 
@@ -8668,361 +8687,385 @@ msgstr ""
 msgid "Orders by Device"
 msgstr ""
 
+#: includes/brikpanel-enqueue.php:269
+msgid "Traffic Sources"
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:271
+msgid "Organic Search"
+msgstr ""
+
 #: includes/brikpanel-enqueue.php:272
+msgid "Social"
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:274
+msgid "Paid"
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:276
+msgid "No visits with a known source yet for this period."
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:277
+msgid "No external referrers yet for this period."
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:281
 msgid "return & refund rate"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:273
+#: includes/brikpanel-enqueue.php:282
 msgid "Returns & refunds"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:275
+#: includes/brikpanel-enqueue.php:284
 msgid "Average customer LTV"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:278
+#: includes/brikpanel-enqueue.php:287
 msgid "Total lifetime value"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:283
+#: includes/brikpanel-enqueue.php:292
 msgid "total subscriptions"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:287
+#: includes/brikpanel-enqueue.php:296
 msgid "Customer Locations"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:288
+#: includes/brikpanel-enqueue.php:297
 msgid "Top Countries by Orders"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:289
+#: includes/brikpanel-enqueue.php:298
 msgid "Top Countries by Customers"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:290
+#: includes/brikpanel-enqueue.php:299
 msgid "Top Cities by Orders"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:291
+#: includes/brikpanel-enqueue.php:300
 msgid "Top Cities by Customers"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:292
+#: includes/brikpanel-enqueue.php:301
 msgid "customers"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:294
+#: includes/brikpanel-enqueue.php:303
 msgid "Collecting data…"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:295
+#: includes/brikpanel-enqueue.php:304
 msgid "Copied to clipboard!"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:296
+#: includes/brikpanel-enqueue.php:305
 msgid "Failed — try again"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:297
+#: includes/brikpanel-enqueue.php:306
 msgid "margin"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:298
+#: includes/brikpanel-enqueue.php:307
 msgid "Loss"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:299
+#: includes/brikpanel-enqueue.php:308
 msgid "Set “Cost of goods” on products"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:300
+#: includes/brikpanel-enqueue.php:309
 #, php-format
 msgid "cost missing on %d items — profit overstated"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:301
+#: includes/brikpanel-enqueue.php:310
 msgid "Products without a cost"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:302
+#: includes/brikpanel-enqueue.php:311
 #, php-format
 msgid "%d products are missing a cost"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:303
+#: includes/brikpanel-enqueue.php:312
 msgid "no longer in catalog"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:304
+#: includes/brikpanel-enqueue.php:313
 #, php-format
 msgid "%d sold items have no cost set. Add their “Cost of goods” so Net profit is accurate."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:306
+#: includes/brikpanel-enqueue.php:315
 msgid "Net of returns"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:307
+#: includes/brikpanel-enqueue.php:316
 msgid "Net revenue"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:308
+#: includes/brikpanel-enqueue.php:317
 #: includes/brikpanel-store-summary.php:2409
 msgid "of revenue"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:309
-#: includes/brikpanel-enqueue.php:487
-#: includes/brikpanel-enqueue.php:701
+#: includes/brikpanel-enqueue.php:318
+#: includes/brikpanel-enqueue.php:496
+#: includes/brikpanel-enqueue.php:710
 msgid "Saving…"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:310
+#: includes/brikpanel-enqueue.php:319
 msgid "Expense added"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:311
+#: includes/brikpanel-enqueue.php:320
 msgid "Could not save. Please try again."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:312
+#: includes/brikpanel-enqueue.php:321
 msgid "Enter an amount and a category."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:315
+#: includes/brikpanel-enqueue.php:324
 msgid "Preparing…"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:316
+#: includes/brikpanel-enqueue.php:325
 msgid "Pick a custom date range first."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:318
+#: includes/brikpanel-enqueue.php:327
 msgid "Order Locations Globe"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:358
+#: includes/brikpanel-enqueue.php:367
 msgid "No orders match these filters."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:359
+#: includes/brikpanel-enqueue.php:368
 msgid "No customers match these filters."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:370
+#: includes/brikpanel-enqueue.php:379
 msgid "Location"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:380
-#: includes/brikpanel-enqueue.php:792
+#: includes/brikpanel-enqueue.php:389
+#: includes/brikpanel-enqueue.php:801
 #: includes/brikpanel-store-summary.php:753
 msgid "Last 7 days"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:381
-#: includes/brikpanel-enqueue.php:793
+#: includes/brikpanel-enqueue.php:390
+#: includes/brikpanel-enqueue.php:802
 #: includes/brikpanel-store-summary.php:754
 #: includes/brikpanel-store-summary.php:1331
 #: includes/brikpanel-store-summary.php:3237
 msgid "Last 30 days"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:382
+#: includes/brikpanel-enqueue.php:391
 #: includes/brikpanel-store-summary.php:755
 msgid "Last 90 days"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:383
-#: includes/brikpanel-enqueue.php:797
+#: includes/brikpanel-enqueue.php:392
+#: includes/brikpanel-enqueue.php:806
 msgid "Completed"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:384
+#: includes/brikpanel-enqueue.php:393
 msgid "Processing"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:391
+#: includes/brikpanel-enqueue.php:400
 msgid "Paid shipping"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:392
+#: includes/brikpanel-enqueue.php:401
 msgid "High value"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:393
+#: includes/brikpanel-enqueue.php:402
 msgid "VIP (5+ orders)"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:394
+#: includes/brikpanel-enqueue.php:403
 msgid "New (30 days)"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:395
+#: includes/brikpanel-enqueue.php:404
 msgid "One-time buyers"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:396
+#: includes/brikpanel-enqueue.php:405
 msgid "Dormant (90+ days)"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:397
+#: includes/brikpanel-enqueue.php:406
 msgid "Repeat buyers"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:458
+#: includes/brikpanel-enqueue.php:467
 msgid "No customers yet."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:461
+#: includes/brikpanel-enqueue.php:470
 msgid "repeat"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:463
+#: includes/brikpanel-enqueue.php:472
 msgid "1 day"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:464
+#: includes/brikpanel-enqueue.php:473
 msgctxt "short for days"
 msgid "d"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:465
+#: includes/brikpanel-enqueue.php:474
 msgid "Refreshing…"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:466
+#: includes/brikpanel-enqueue.php:475
 msgid "Customer metrics recomputed"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:467
+#: includes/brikpanel-enqueue.php:476
 msgid "rows"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:470
+#: includes/brikpanel-enqueue.php:479
 #: includes/brikpanel-store-summary.php:1296
 #: includes/brikpanel-store-summary.php:2448
 msgid "Cohort"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:472
+#: includes/brikpanel-enqueue.php:481
 msgid "Not enough order history to build cohorts yet."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:473
+#: includes/brikpanel-enqueue.php:482
 msgid "Avg retention"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:475
+#: includes/brikpanel-enqueue.php:484
 msgid "Frequency"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:476
+#: includes/brikpanel-enqueue.php:485
 msgid "Monetary"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:481
+#: includes/brikpanel-enqueue.php:490
 msgid "No matching users."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:482
+#: includes/brikpanel-enqueue.php:491
 msgid "No people excluded yet."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:489
+#: includes/brikpanel-enqueue.php:498
 msgid "Exclusions saved"
 msgstr ""
 
 #. translators: %d: number of excluded accounts
-#: includes/brikpanel-enqueue.php:492
+#: includes/brikpanel-enqueue.php:501
 #, php-format
 msgid "%d account(s) excluded"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:493
+#: includes/brikpanel-enqueue.php:502
 msgid "members"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:542
+#: includes/brikpanel-enqueue.php:551
 msgid "You can search orders by customer name, email, phone, order ID, or product SKUs within an order."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:695
+#: includes/brikpanel-enqueue.php:704
 msgid "Change status"
 msgstr ""
 
 #. translators: 1: order number, 2: original status label, 3: new status label
-#: includes/brikpanel-enqueue.php:698
+#: includes/brikpanel-enqueue.php:707
 #, php-format
 msgid "Order #%1$s: %2$s → %3$s"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:700
+#: includes/brikpanel-enqueue.php:709
 msgid "Discard"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:749
+#: includes/brikpanel-enqueue.php:758
 #: includes/brikpanel-hooks-api.php:664
 msgid "Copied!"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:750
+#: includes/brikpanel-enqueue.php:759
 msgid "Address copied to clipboard"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:751
+#: includes/brikpanel-enqueue.php:760
 msgid "Note added"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:753
+#: includes/brikpanel-enqueue.php:762
 msgid "Downloads"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:754
+#: includes/brikpanel-enqueue.php:763
 #, php-format
 msgid "%d download"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:755
+#: includes/brikpanel-enqueue.php:764
 #, php-format
 msgid "%d downloads"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:756
+#: includes/brikpanel-enqueue.php:765
 #, php-format
 msgid "%s left"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:758
+#: includes/brikpanel-enqueue.php:767
 #, php-format
 msgid "Expires %s"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:759
+#: includes/brikpanel-enqueue.php:768
 msgid "Never expires"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:760
+#: includes/brikpanel-enqueue.php:769
 msgid "Never downloaded"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:791
+#: includes/brikpanel-enqueue.php:800
 msgid "Last 24 hours"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:794
+#: includes/brikpanel-enqueue.php:803
 msgid "Date range"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:801
+#: includes/brikpanel-enqueue.php:810
 msgid "Marketplaces"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:802
+#: includes/brikpanel-enqueue.php:811
 msgid "products"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:803
+#: includes/brikpanel-enqueue.php:812
 #: includes/brikpanel-store-summary.php:2127
 #: includes/brikpanel-store-summary.php:2128
 #: includes/brikpanel-store-summary.php:2235
@@ -9035,568 +9078,568 @@ msgstr ""
 msgid "orders"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:804
+#: includes/brikpanel-enqueue.php:813
 msgid "Show all"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:805
+#: includes/brikpanel-enqueue.php:814
 msgid "Show less"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:807
+#: includes/brikpanel-enqueue.php:816
 msgid "Searching by"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:808
+#: includes/brikpanel-enqueue.php:817
 msgid "Search and filter (F)"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:810
+#: includes/brikpanel-enqueue.php:819
 msgid "Filter by"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:811
+#: includes/brikpanel-enqueue.php:820
 msgid "Clear filters"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:812
+#: includes/brikpanel-enqueue.php:821
 msgid "order tag"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:813
+#: includes/brikpanel-enqueue.php:822
 msgid "shipping method"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:870
+#: includes/brikpanel-enqueue.php:879
 msgid "Drag onto another category to make it a sub-category"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:871
+#: includes/brikpanel-enqueue.php:880
 #, php-format
 msgid "Move \"%1$s\" as a sub-category of \"%2$s\"?"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:872
+#: includes/brikpanel-enqueue.php:881
 msgid "Make top level"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:921
-#: includes/brikpanel-enqueue.php:1525
+#: includes/brikpanel-enqueue.php:930
+#: includes/brikpanel-enqueue.php:1534
 msgid "Saved!"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:922
-#: includes/brikpanel-enqueue.php:1408
-#: includes/brikpanel-enqueue.php:1526
+#: includes/brikpanel-enqueue.php:931
+#: includes/brikpanel-enqueue.php:1417
+#: includes/brikpanel-enqueue.php:1535
 msgid "Saving..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:929
+#: includes/brikpanel-enqueue.php:938
 msgid "Variable"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:932
-#: includes/brikpanel-enqueue.php:1453
-#: includes/brikpanel-enqueue.php:1534
+#: includes/brikpanel-enqueue.php:941
+#: includes/brikpanel-enqueue.php:1462
+#: includes/brikpanel-enqueue.php:1543
 msgid "Duplicating..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:935
-#: includes/brikpanel-enqueue.php:1537
+#: includes/brikpanel-enqueue.php:944
+#: includes/brikpanel-enqueue.php:1546
 msgid "Restore"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:936
+#: includes/brikpanel-enqueue.php:945
 msgid "Product restored!"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:939
-#: includes/brikpanel-enqueue.php:1540
+#: includes/brikpanel-enqueue.php:948
+#: includes/brikpanel-enqueue.php:1549
 #, php-format
 msgid "Are you sure you want to trash \"%s\"?"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:940
-#: includes/brikpanel-enqueue.php:1541
-msgid "Are you sure? This cannot be undone."
-msgstr ""
-
-#: includes/brikpanel-enqueue.php:941
-#, php-format
-msgid "Are you sure you want to update %d products?"
-msgstr ""
-
-#: includes/brikpanel-enqueue.php:942
-#, php-format
-msgid "Are you sure you want to trash %d products?"
-msgstr ""
-
-#: includes/brikpanel-enqueue.php:943
-#, php-format
-msgid "Are you sure you want to permanently delete %d products? This cannot be undone."
-msgstr ""
-
-#: includes/brikpanel-enqueue.php:944
-msgid "FINAL WARNING: This will permanently delete the selected products. Are you absolutely sure?"
-msgstr ""
-
-#: includes/brikpanel-enqueue.php:945
-#: includes/brikpanel-enqueue.php:1546
-msgid "Click to toggle status"
-msgstr ""
-
-#: includes/brikpanel-enqueue.php:948
-msgid "Featured — click to remove"
-msgstr ""
-
 #: includes/brikpanel-enqueue.php:949
-#, php-format
-msgid "Showing %1$d of %2$d products"
+#: includes/brikpanel-enqueue.php:1550
+msgid "Are you sure? This cannot be undone."
 msgstr ""
 
 #: includes/brikpanel-enqueue.php:950
 #, php-format
-msgid "Showing %1$d–%2$d of %3$d products"
+msgid "Are you sure you want to update %d products?"
 msgstr ""
 
 #: includes/brikpanel-enqueue.php:951
-msgid "Apply this action to the selected products? This cannot be undone."
+#, php-format
+msgid "Are you sure you want to trash %d products?"
 msgstr ""
 
 #: includes/brikpanel-enqueue.php:952
-msgid "Apply this action to all products in the selected category? This cannot be undone."
+#, php-format
+msgid "Are you sure you want to permanently delete %d products? This cannot be undone."
 msgstr ""
 
 #: includes/brikpanel-enqueue.php:953
-msgid "Apply this action to ALL products in the store? This cannot be undone."
+msgid "FINAL WARNING: This will permanently delete the selected products. Are you absolutely sure?"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:955
-msgid "No products selected. Select products from the table first."
-msgstr ""
-
-#: includes/brikpanel-enqueue.php:956
-msgid "Please select at least one item to add."
+#: includes/brikpanel-enqueue.php:954
+#: includes/brikpanel-enqueue.php:1555
+msgid "Click to toggle status"
 msgstr ""
 
 #: includes/brikpanel-enqueue.php:957
+msgid "Featured — click to remove"
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:958
+#, php-format
+msgid "Showing %1$d of %2$d products"
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:959
+#, php-format
+msgid "Showing %1$d–%2$d of %3$d products"
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:960
+msgid "Apply this action to the selected products? This cannot be undone."
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:961
+msgid "Apply this action to all products in the selected category? This cannot be undone."
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:962
+msgid "Apply this action to ALL products in the store? This cannot be undone."
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:964
+msgid "No products selected. Select products from the table first."
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:965
+msgid "Please select at least one item to add."
+msgstr ""
+
+#: includes/brikpanel-enqueue.php:966
 #, php-format
 msgid "%d products selected"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:958
+#: includes/brikpanel-enqueue.php:967
 msgid "Applying..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:960
+#: includes/brikpanel-enqueue.php:969
 msgid "Loading attributes..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:963
+#: includes/brikpanel-enqueue.php:972
 msgid "Stock by variation"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:964
+#: includes/brikpanel-enqueue.php:973
 msgid "Price by variation"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:966
-#: includes/brikpanel-enqueue.php:974
+#: includes/brikpanel-enqueue.php:975
+#: includes/brikpanel-enqueue.php:983
 msgid "Sale"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:973
+#: includes/brikpanel-enqueue.php:982
 msgid "0"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:975
+#: includes/brikpanel-enqueue.php:984
 msgid "No variations found."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:978
+#: includes/brikpanel-enqueue.php:987
 msgid "Are you sure you want to delete these products?"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:979
+#: includes/brikpanel-enqueue.php:988
 msgid "Are you sure you want to delete ALL products in the store? This is extremely dangerous!"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:980
+#: includes/brikpanel-enqueue.php:989
 msgid "PERMANENT DELETE — This cannot be undone. Are you absolutely sure?"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:981
+#: includes/brikpanel-enqueue.php:990
 msgid "Preparing..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:982
+#: includes/brikpanel-enqueue.php:991
 #, php-format
 msgid "%1$d / %2$d processed"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:983
+#: includes/brikpanel-enqueue.php:992
 msgid "Bulk update in progress"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:984
+#: includes/brikpanel-enqueue.php:993
 msgid "Bulk delete in progress"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:985
+#: includes/brikpanel-enqueue.php:994
 #, php-format
 msgid "Update complete: %d items."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:986
+#: includes/brikpanel-enqueue.php:995
 #, php-format
 msgid "Delete complete: %d items."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:987
+#: includes/brikpanel-enqueue.php:996
 #: includes/cron/class-brikpanel-cron.php:467
 msgid "Cancelled."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:990
+#: includes/brikpanel-enqueue.php:999
 #, php-format
 msgid "%d errors occurred."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:991
+#: includes/brikpanel-enqueue.php:1000
 msgid "Network error, retrying..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:992
+#: includes/brikpanel-enqueue.php:1001
 msgid "Bulk job failed."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:993
+#: includes/brikpanel-enqueue.php:1002
 msgid "Cancel the running bulk job? Items processed so far will remain changed."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:994
+#: includes/brikpanel-enqueue.php:1003
 msgid "FAST DELETE — This bypasses all plugin hooks and is IRREVERSIBLE. Image files will remain on disk. SEO/search/cache plugins will show stale data until re-indexed. Continue?"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:995
+#: includes/brikpanel-enqueue.php:1004
 msgid "Wipe the selected taxonomies (categories/tags/attributes/brands)? This cannot be undone."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:996
+#: includes/brikpanel-enqueue.php:1005
 msgid "Preparing export..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:997
+#: includes/brikpanel-enqueue.php:1006
 msgid "No products selected for export."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:998
+#: includes/brikpanel-enqueue.php:1007
 #, php-format
 msgid "%d more categories"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1000
+#: includes/brikpanel-enqueue.php:1009
 #, php-format
 msgid "%d variations have no cost on file"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1002
-#: includes/brikpanel-enqueue.php:1457
+#: includes/brikpanel-enqueue.php:1011
+#: includes/brikpanel-enqueue.php:1466
 msgid "Select downloadable file"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1003
-#: includes/brikpanel-enqueue.php:1439
+#: includes/brikpanel-enqueue.php:1012
+#: includes/brikpanel-enqueue.php:1448
 msgid "Select"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1004
-#: includes/brikpanel-enqueue.php:1458
+#: includes/brikpanel-enqueue.php:1013
+#: includes/brikpanel-enqueue.php:1467
 msgid "No files added yet."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1005
-#: includes/brikpanel-enqueue.php:1459
+#: includes/brikpanel-enqueue.php:1014
+#: includes/brikpanel-enqueue.php:1468
 msgid "File name"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1006
+#: includes/brikpanel-enqueue.php:1015
 msgid "Choose file"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1011
+#: includes/brikpanel-enqueue.php:1020
 msgid "Saving order..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1012
+#: includes/brikpanel-enqueue.php:1021
 msgid "Order saved"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1013
+#: includes/brikpanel-enqueue.php:1022
 msgid "Could not save order. Please try again."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1014
-#: includes/brikpanel-enqueue.php:1474
+#: includes/brikpanel-enqueue.php:1023
+#: includes/brikpanel-enqueue.php:1483
 msgid "Drag to reorder"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1405
+#: includes/brikpanel-enqueue.php:1414
 msgid "Please fill in the required fields"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1406
+#: includes/brikpanel-enqueue.php:1415
 msgid "Please fill in the product name"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1407
+#: includes/brikpanel-enqueue.php:1416
 msgid "Please fill in the price field"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1416
+#: includes/brikpanel-enqueue.php:1425
 msgid "Image settings"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1417
+#: includes/brikpanel-enqueue.php:1426
 msgid "Choose image"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1418
+#: includes/brikpanel-enqueue.php:1427
 msgid "Replace image"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1419
+#: includes/brikpanel-enqueue.php:1428
 msgid "No image selected"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1420
+#: includes/brikpanel-enqueue.php:1429
 msgid "Alt text (description)"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1421
+#: includes/brikpanel-enqueue.php:1430
 msgid "Describe the image for SEO and accessibility"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1422
+#: includes/brikpanel-enqueue.php:1431
 msgid "Alignment"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1424
+#: includes/brikpanel-enqueue.php:1433
 msgid "Left"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1425
+#: includes/brikpanel-enqueue.php:1434
 msgid "Center"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1426
+#: includes/brikpanel-enqueue.php:1435
 msgid "Right"
 msgstr ""
 
 #. translators: image dimensions in the editor, not apparel size
-#: includes/brikpanel-enqueue.php:1428
+#: includes/brikpanel-enqueue.php:1437
 msgctxt "image dimensions"
 msgid "Size"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1429
+#: includes/brikpanel-enqueue.php:1438
 msgid "Small"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1430
+#: includes/brikpanel-enqueue.php:1439
 msgid "Medium"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1431
+#: includes/brikpanel-enqueue.php:1440
 msgid "Large"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1432
+#: includes/brikpanel-enqueue.php:1441
 msgid "Full"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1433
+#: includes/brikpanel-enqueue.php:1442
 msgid "Open in a lightbox when clicked"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1435
+#: includes/brikpanel-enqueue.php:1444
 msgid "Update image"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1436
+#: includes/brikpanel-enqueue.php:1445
 msgid "Please choose an image first."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1440
+#: includes/brikpanel-enqueue.php:1449
 msgid "Select image"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1441
+#: includes/brikpanel-enqueue.php:1450
 msgid "Type and press Enter..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1442
+#: includes/brikpanel-enqueue.php:1451
 msgid "Press Enter to add..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1443
+#: includes/brikpanel-enqueue.php:1452
 msgid "Attribute name (e.g.: Material)"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1445
+#: includes/brikpanel-enqueue.php:1454
 msgid "Category added"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1446
+#: includes/brikpanel-enqueue.php:1455
 msgid "Brand added"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1447
+#: includes/brikpanel-enqueue.php:1456
 msgid "This field is required"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1450
+#: includes/brikpanel-enqueue.php:1459
 msgid "Select existing attribute..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1455
+#: includes/brikpanel-enqueue.php:1464
 msgid "Select images"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1456
+#: includes/brikpanel-enqueue.php:1465
 msgid "Auto-saved"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1460
+#: includes/brikpanel-enqueue.php:1469
 msgid "Choose from media library"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1466
+#: includes/brikpanel-enqueue.php:1475
 msgid "Backorder"
 msgstr ""
 
 #. translators: date input hint, must stay a 4-2-2 digit mask
-#: includes/brikpanel-enqueue.php:1470
+#: includes/brikpanel-enqueue.php:1479
 msgid "YYYY-MM-DD"
 msgstr ""
 
 #. translators: %d is the maximum number of variations
-#: includes/brikpanel-enqueue.php:1472
+#: includes/brikpanel-enqueue.php:1481
 #, php-format
 msgid "That combination would create more than %d variations. Reduce the number of attribute values, then try again."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1473
+#: includes/brikpanel-enqueue.php:1482
 msgid "Could not load extra variation fields. Saving still works."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1477
+#: includes/brikpanel-enqueue.php:1486
 msgid "(parent)"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1478
+#: includes/brikpanel-enqueue.php:1487
 #, php-format
 msgid "(parent: %s)"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1482
+#: includes/brikpanel-enqueue.php:1491
 msgid "Schedule start"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1483
+#: includes/brikpanel-enqueue.php:1492
 msgid "Schedule end"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1484
+#: includes/brikpanel-enqueue.php:1493
 msgid "Optional — leave empty to keep the sale active indefinitely."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1486
+#: includes/brikpanel-enqueue.php:1495
 msgid "Color"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1487
+#: includes/brikpanel-enqueue.php:1496
 msgid "Use for variations"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1488
+#: includes/brikpanel-enqueue.php:1497
 msgid "Switch on “Use for variations” for at least one attribute, then add its values."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1489
+#: includes/brikpanel-enqueue.php:1498
 msgid "Delete variation"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1490
+#: includes/brikpanel-enqueue.php:1499
 msgid "Delete this variation? This change is applied when you save the product."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1492
+#: includes/brikpanel-enqueue.php:1501
 msgid "More fields"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1494
+#: includes/brikpanel-enqueue.php:1503
 msgid "Analyzing..."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1523
+#: includes/brikpanel-enqueue.php:1532
 msgid "No coupons found."
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1528
+#: includes/brikpanel-enqueue.php:1537
 msgid "Create coupon"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1538
+#: includes/brikpanel-enqueue.php:1547
 msgid "Coupon restored!"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1542
+#: includes/brikpanel-enqueue.php:1551
 #, php-format
 msgid "Are you sure you want to update %d coupons?"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1543
+#: includes/brikpanel-enqueue.php:1552
 #, php-format
 msgid "Are you sure you want to trash %d coupons?"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1544
+#: includes/brikpanel-enqueue.php:1553
 msgid "Coupons updated!"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1545
+#: includes/brikpanel-enqueue.php:1554
 msgid "Coupons moved to trash!"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1547
+#: includes/brikpanel-enqueue.php:1556
 #, php-format
 msgid "Showing %1$d of %2$d coupons"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1548
+#: includes/brikpanel-enqueue.php:1557
 #, php-format
 msgid "Showing %1$d-%2$d of %3$d coupons"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1552
+#: includes/brikpanel-enqueue.php:1561
 msgid "Percentage"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1553
+#: includes/brikpanel-enqueue.php:1562
 msgid "Fixed cart"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1554
+#: includes/brikpanel-enqueue.php:1563
 msgid "Fixed product"
 msgstr ""
 
-#: includes/brikpanel-enqueue.php:1555
+#: includes/brikpanel-enqueue.php:1564
 msgid "No matches found."
 msgstr ""
 
-#: includes/brikpanel-helpers.php:839
-#: includes/brikpanel-helpers.php:848
+#: includes/brikpanel-helpers.php:851
+#: includes/brikpanel-helpers.php:860
 msgid "Simple product"
 msgstr ""
 
@@ -9768,11 +9811,11 @@ msgstr ""
 msgid "You do not have permission to use BrikPanel here."
 msgstr ""
 
-#: includes/brikpanel-profit.php:313
+#: includes/brikpanel-profit.php:362
 msgid "(Unknown product)"
 msgstr ""
 
-#: includes/brikpanel-profit.php:653
+#: includes/brikpanel-profit.php:727
 msgid "Commission"
 msgstr ""
 

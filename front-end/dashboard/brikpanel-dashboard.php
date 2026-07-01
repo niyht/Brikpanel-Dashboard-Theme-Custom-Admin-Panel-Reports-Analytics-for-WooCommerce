@@ -189,7 +189,7 @@ class Brikpanel_Dashboard {
             'locations'         => __( 'Order locations globe + Top countries/cities', 'brikpanel' ),
             'products_orders'   => __( 'Top products + Recent orders', 'brikpanel' ),
             'views_cart'        => __( 'Most viewed pages + Most added to cart', 'brikpanel' ),
-            'devices'           => __( 'Visitors by device + Customer types', 'brikpanel' ),
+            'devices'           => __( 'Visitors by device + Customer types + Traffic sources', 'brikpanel' ),
             'customer_segments' => __( 'Customer segments (RFM)', 'brikpanel' ),
             'stock_returns'     => __( 'Low stock + Customer lifetime value', 'brikpanel' ),
             'subscriptions'     => __( 'Subscriptions', 'brikpanel' ),
@@ -960,10 +960,17 @@ class Brikpanel_Dashboard {
                         <button class="brikpanel-loc-tab brikpanel-device-tab" data-device-view="orders" type="button">
                             <?php esc_html_e( 'Orders', 'brikpanel' ); ?>
                         </button>
+                        <button class="brikpanel-loc-tab brikpanel-device-tab" data-device-view="sources" type="button">
+                            <?php esc_html_e( 'Sources', 'brikpanel' ); ?>
+                        </button>
                     </div>
                 </div>
                 <div id="brikpanel-device-breakdown">
                     <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
+                </div>
+                <div id="brikpanel-source-referrers" class="brikpanel-source-referrers" style="display:none;">
+                    <h3 class="brikpanel-sources-subhead"><?php esc_html_e( 'Top Referrers', 'brikpanel' ); ?></h3>
+                    <div id="brikpanel-top-referrers"></div>
                 </div>
             </div>
             <div class="brikpanel-dash-panel">
@@ -1119,6 +1126,88 @@ class Brikpanel_Dashboard {
         }
 
         return $counts;
+    }
+
+    /**
+     * Channel set for the Traffic Sources card, in display order. Each visit is
+     * bucketed into exactly one of these by brikpanel_classify_traffic_source().
+     */
+    private function traffic_source_channels(): array {
+        return [ 'direct', 'search', 'social', 'referral', 'paid', 'email' ];
+    }
+
+    /**
+     * Aggregate visitor counts per traffic-source channel from
+     * wp_brikpanel_referrers for a date range. Returns every known channel
+     * (zero-filled) so the front end can decide what to show.
+     *
+     * @return array<string,int> channel => hits
+     */
+    private function get_traffic_source_breakdown( string $start_local, string $end_local ): array {
+        global $wpdb;
+        $table = $wpdb->prefix . 'brikpanel_referrers';
+
+        $counts = array_fill_keys( $this->traffic_source_channels(), 0 );
+
+        // Table may not exist yet on installs that haven't run the 3.1.46 upgrade.
+        if ( ! $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) ) { // phpcs:ignore
+            return $counts;
+        }
+
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT channel, COALESCE(SUM(hits), 0) AS hits
+             FROM {$table}
+             WHERE date_column BETWEEN %s AND %s
+             GROUP BY channel",
+            $start_local,
+            $end_local
+        ) );
+
+        foreach ( (array) $rows as $row ) {
+            if ( isset( $counts[ $row->channel ] ) ) {
+                $counts[ $row->channel ] = (int) $row->hits;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Top referring domains (external only) for a date range — the detail list
+     * shown alongside the channel bars on the Traffic Sources card.
+     *
+     * @return array<int,array{host:string,channel:string,hits:int}>
+     */
+    private function get_top_referrers( string $start_local, string $end_local, int $limit = 8 ): array {
+        global $wpdb;
+        $table = $wpdb->prefix . 'brikpanel_referrers';
+
+        if ( ! $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) ) { // phpcs:ignore
+            return [];
+        }
+
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT host, channel, SUM(hits) AS hits
+             FROM {$table}
+             WHERE date_column BETWEEN %s AND %s
+               AND host <> ''
+             GROUP BY host, channel
+             ORDER BY hits DESC
+             LIMIT %d",
+            $start_local,
+            $end_local,
+            $limit
+        ) );
+
+        $out = [];
+        foreach ( (array) $rows as $row ) {
+            $out[] = [
+                'host'    => (string) $row->host,
+                'channel' => (string) $row->channel,
+                'hits'    => (int) $row->hits,
+            ];
+        }
+        return $out;
     }
 
     public function render_section_stock_returns() {
@@ -1368,8 +1457,8 @@ class Brikpanel_Dashboard {
      *
      * @return array
      */
-    private function build_profit_block( $revenue, $start_gmt, $end_gmt, $start_local, $end_local ) {
-        $s = brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local );
+    private function build_profit_block( $revenue, $start_gmt, $end_gmt, $start_local, $end_local, $exclude_marketplace = false ) {
+        $s = brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local, $exclude_marketplace );
 
         // Expenses breakdown. External costs (ad spend, tax) keep their fixed
         // translated labels; manual expenses are listed by their OWN category
@@ -1622,14 +1711,25 @@ class Brikpanel_Dashboard {
         $prev_start_local = $prev['start_local'];
         $prev_end_local   = $prev['end_local'];
 
-        // When BrikMarket is active, the storefront KPIs (sales, orders, AOV,
-        // conversion) must NOT count marketplace-imported orders — those don't
-        // come from on-site visitors and would distort the conversion rate
-        // and per-visitor averages.
+        // When BrikMarket is active, the traffic-funnel KPIs (orders, AOV,
+        // conversion, visitors) stay ON-SITE only — marketplace-imported orders
+        // have no on-site visit, so counting them would distort the conversion
+        // rate and per-visitor averages. The HEADLINE FINANCIALS are the
+        // opposite: merchants want their marketplace turnover reflected in the
+        // money figures, so Revenue / Total Sales / Cost of goods / Net profit
+        // COUNT marketplace orders (combined site + marketplace view).
         $exclude_mp = function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active();
 
         // --- Current period data ---
-        $total_sales   = brikpanel_get_total_revenue( $start_gmt, $end_gmt, $exclude_mp );
+        // Site-only revenue: feeds the conversion funnel and the marketplace
+        // breakdown card (which adds marketplace revenue on top to show the
+        // combined split — passing the combined figure there would double-count).
+        $site_sales    = brikpanel_get_total_revenue( $start_gmt, $end_gmt, $exclude_mp );
+        // Headline revenue: combined site + marketplace. The Gelir / Total Sales
+        // card and the Profit section both read this. When BrikMarket is
+        // inactive $exclude_mp is false, so this equals $site_sales and nothing
+        // changes for single-channel stores.
+        $total_sales   = brikpanel_get_total_revenue( $start_gmt, $end_gmt, false );
         $order_count   = brikpanel_get_order_count( $start_gmt, $end_gmt, $exclude_mp );
         $aov           = brikpanel_get_average_order_value( $start_gmt, $end_gmt, $exclude_mp );
         $visitor_count = brikpanel_get_visitor_count( $start_local, $end_local );
@@ -1668,6 +1768,11 @@ class Brikpanel_Dashboard {
         // visitors/orders tab toggle in the JS.
         $order_devices = $this->get_order_device_breakdown( $start_gmt, $end_gmt );
 
+        // Traffic sources (uses local dates for the brikpanel_referrers table):
+        // channel breakdown bars + top external referrers detail list.
+        $sources       = $this->get_traffic_source_breakdown( $start_local, $end_local );
+        $top_referrers = $this->get_top_referrers( $start_local, $end_local );
+
         // New vs repeat customer breakdown (uses WC analytics table, UTC dates)
         $customer_types = $this->get_customer_type_breakdown( $start_gmt, $end_gmt );
 
@@ -1688,8 +1793,11 @@ class Brikpanel_Dashboard {
         ];
 
         // Marketplace analytics (BrikMarket only)
+        // Pass the SITE-only revenue: get_marketplace_analytics adds marketplace
+        // revenue on top to compute the combined split, so handing it the
+        // already-combined headline figure would double-count marketplace.
         $marketplace_analytics = $exclude_mp
-            ? $this->get_marketplace_analytics( $start_gmt, $end_gmt, $prev_start_gmt, $prev_end_gmt, $total_sales )
+            ? $this->get_marketplace_analytics( $start_gmt, $end_gmt, $prev_start_gmt, $prev_end_gmt, $site_sales )
             : null;
 
         // All-time customer LTV roll-up from precomputed metrics. Date-range
@@ -1738,7 +1846,9 @@ class Brikpanel_Dashboard {
         }
 
         // --- Previous period data (for deltas) ---
-        $prev_total_sales   = brikpanel_get_total_revenue( $prev_start_gmt, $prev_end_gmt, $exclude_mp );
+        // Combined (site + marketplace) to match the current-period headline, so
+        // the Total Sales / Net profit deltas compare like with like.
+        $prev_total_sales   = brikpanel_get_total_revenue( $prev_start_gmt, $prev_end_gmt, false );
         $prev_order_count   = brikpanel_get_order_count( $prev_start_gmt, $prev_end_gmt, $exclude_mp );
         $prev_aov           = brikpanel_get_average_order_value( $prev_start_gmt, $prev_end_gmt, $exclude_mp );
         $prev_visitor_count = brikpanel_get_visitor_count( $prev_start_local, $prev_end_local );
@@ -1747,8 +1857,13 @@ class Brikpanel_Dashboard {
         // Profit: Revenue − Cost of goods − Expenses, for the current and the
         // previous comparison period. Standalone — never depends on any ad
         // platform being connected.
-        $profit_curr = $this->build_profit_block( $total_sales, $start_gmt, $end_gmt, $start_local, $end_local );
-        $profit_prev = $this->build_profit_block( $prev_total_sales, $prev_start_gmt, $prev_end_gmt, $prev_start_local, $prev_end_local );
+        // Combined basis (exclude_marketplace = false): revenue already includes
+        // marketplace, so Cost of goods / tax / returns must too, otherwise the
+        // headline revenue would be netted against a site-only cost and the
+        // margin would be wrong. This is what makes the "permanent loss after
+        // entering costs" symptom go away on marketplace stores.
+        $profit_curr = $this->build_profit_block( $total_sales, $start_gmt, $end_gmt, $start_local, $end_local, false );
+        $profit_prev = $this->build_profit_block( $prev_total_sales, $prev_start_gmt, $prev_end_gmt, $prev_start_local, $prev_end_local, false );
         $profit_curr['delta_revenue'] = $this->calc_delta( $profit_curr['revenue_raw'], $profit_prev['revenue_raw'] );
         $profit_curr['delta_net']     = $this->calc_delta( $profit_curr['net_raw'], $profit_prev['net_raw'] );
 
@@ -1798,6 +1913,8 @@ class Brikpanel_Dashboard {
             'order_locations'  => $order_locations,
             'devices'          => $devices,
             'order_devices'    => $order_devices,
+            'sources'          => $sources,
+            'top_referrers'    => $top_referrers,
             'customer_types'     => $customer_types,
             'subscription_stats' => $subscription_stats,
             'low_stock'          => $low_stock,
@@ -2639,14 +2756,19 @@ class Brikpanel_Dashboard {
 
         if ( $is_hpos ) {
             $admin_sql  = str_replace( 'customer_id', 'o.customer_id', $exclusion['sql'] );
+            // Convert each marketplace order to the store base currency before
+            // summing, exactly like the headline Revenue KPI does, so the
+            // marketplace card and the combined headline reconcile on a
+            // multi-currency store (raw total_amount would mix currencies).
+            $fx         = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount', 'bpfx' );
             $args       = array_merge( [ $meta_key ], $include_statuses, $exclusion['args'], [ $start_gmt, $end_gmt ] );
             $sql        = $wpdb->prepare(
                 "SELECT om.meta_value AS marketplace_id,
                         COUNT(o.id)          AS orders,
-                        SUM(o.total_amount)  AS revenue
+                        SUM({$fx['expr']})   AS revenue
                  FROM {$wpdb->prefix}wc_orders o
                  INNER JOIN {$wpdb->prefix}wc_orders_meta om
-                     ON o.id = om.order_id AND om.meta_key = %s
+                     ON o.id = om.order_id AND om.meta_key = %s{$fx['join']}
                  WHERE o.type = 'shop_order'
                  AND o.status IN ({$status_placeholders}){$admin_sql}
                  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s
@@ -2654,16 +2776,17 @@ class Brikpanel_Dashboard {
                 $args
             );
         } else {
+            $fx   = brikpanel_base_total_sql( false, 'p.ID', 'pm_total.meta_value', 'bpfx' );
             $args = array_merge( [ $meta_key ], $include_statuses, $exclusion['args'], [ $start_gmt, $end_gmt ] );
             $sql  = $wpdb->prepare(
                 "SELECT pm.meta_value AS marketplace_id,
-                        COUNT(p.ID)                            AS orders,
-                        SUM(CAST(pm_total.meta_value AS DECIMAL(20,6))) AS revenue
+                        COUNT(p.ID)        AS orders,
+                        SUM(CAST({$fx['expr']} AS DECIMAL(20,6))) AS revenue
                  FROM {$wpdb->posts} p
                  INNER JOIN {$wpdb->postmeta} pm
                      ON p.ID = pm.post_id AND pm.meta_key = %s
                  LEFT JOIN {$wpdb->postmeta} pm_total
-                     ON p.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'
+                     ON p.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'{$fx['join']}
                  WHERE p.post_type = 'shop_order'
                  AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}
                  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s

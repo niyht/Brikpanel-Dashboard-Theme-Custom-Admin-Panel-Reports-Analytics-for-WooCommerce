@@ -431,14 +431,89 @@ standard WooCommerce ones. */
 	margin-bottom: 0;
 }
 
-/* ---- Screen options subtle ---- */
-.brikpanel-modern-edit #screen-meta-links {
-	opacity: 0.3;
-	transition: opacity 0.2s;
+/* ---- Screen Options / Help toggles, relocated into the order header ----
+   WP floats #screen-meta-links at the top of the content where the fixed order
+   header would cover it; buildHeader() moves the whole container into the
+   header (keeping WP's native ids + toggle handlers). Here we strip WP's
+   float/tab chrome and present the buttons as subtle secondary controls beside
+   the order actions. The id form outranks the global `#screen-meta-links`
+   display rule above. */
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	position: static;
+	float: none;
+	margin: 0;
+	padding: 0;
+	opacity: 1;
 }
 
-.brikpanel-modern-edit #screen-meta-links:hover {
-	opacity: 1;
+.brikpanel-order-header .brikpanel-order-screen-meta .screen-meta-toggle {
+	position: static;
+	float: none;
+	margin: 0;
+	padding: 0;
+}
+
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	height: 32px;
+	min-height: 0;
+	margin: 0;
+	padding: 0 0.6875rem;
+	box-sizing: border-box;
+	border: 0;
+	border-radius: 0.5rem;
+	background: var(--brk-card, #fff);
+	color: var(--brk-text-secondary, #616161);
+	box-shadow: inset 0 0 0 1px var(--brk-border, #e3e3e3), 0 1px 0 rgba(0,0,0,0.05);
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1;
+	transition: background 0.15s, color 0.15s;
+}
+
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings:hover,
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings:focus {
+	background: #f7f7f7;
+	color: var(--brk-text, #303030);
+	box-shadow: inset 0 0 0 1px var(--brk-border, #e3e3e3), 0 1px 0 rgba(0,0,0,0.05);
+	outline: none;
+}
+
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings.screen-meta-active {
+	background: #f1f1f1;
+	color: var(--brk-text, #303030);
+	box-shadow: inset 0 0 0 1px #d4d4d4;
+	outline: none;
+}
+
+/* A leading dashicons glyph per toggle, in place of WP's text-caret (which we
+   drop). id-qualified so these beat WP's own `#screen-meta-links .show-settings`
+   ::after / ::before rules. */
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings::after {
+	content: none;
+}
+
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings::before {
+	font-family: dashicons;
+	font-size: 16px;
+	line-height: 1;
+	vertical-align: middle;
+	color: inherit;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta #show-settings-link::before {
+	content: "\f111"; /* gear — Screen Options */
+}
+
+.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta #contextual-help-link::before {
+	content: "\f223"; /* question mark — Help */
 }
 
 /* =================================================================
@@ -1666,6 +1741,28 @@ standard WooCommerce ones. */
 		padding-right: 16px;
 	}
 
+	/* Screen Options / Help stay reachable on tablet & phone. The global topbar
+	   rule hides #screen-meta-links below 782px; re-show it inside the order
+	   header but shrink to icon-only buttons so they fit the tight bar. */
+	.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta {
+		display: inline-flex !important;
+		gap: 0.375rem;
+	}
+
+	/* Drop the text label so the toggles collapse to icon-only (the leading
+	   ::before glyph defined in the base block carries the meaning). */
+	.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings {
+		width: 32px;
+		padding: 0;
+		gap: 0;
+		justify-content: center;
+		font-size: 0;
+	}
+
+	.brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings::before {
+		font-size: 18px;
+	}
+
 	/* --- Unified horizontal gutter. The page normally carries a wide ~20px
 	   desktop inset on .wrap while the fixed header uses its own padding, so
 	   their left/right edges never line up. Pin both to the same value so the
@@ -1860,6 +1957,13 @@ standard WooCommerce ones. */
 
 	.brikpanel-order-header__divider,
 	.brikpanel-order-header__date {
+		display: none;
+	}
+
+	/* The single-row phone header is tight; keep only the Screen Options icon
+	   and drop the less-used Help toggle so the status badge + Save never get
+	   pushed off-screen. */
+	.brikpanel-order-header .brikpanel-order-screen-meta #contextual-help-link-wrap {
 		display: none;
 	}
 

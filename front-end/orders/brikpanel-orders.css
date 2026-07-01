@@ -100,10 +100,33 @@ html {
 	opacity: 1;
 }
 
+/* #wpbody-content is a flex column here, which cancels the native float:right on
+   WP's Screen Options / Help toggles and stretches them full width on the left.
+   align-self keeps them shrink-wrapped at the top right, exactly like every
+   other admin screen, without touching their default look or behaviour. */
 #screen-meta-links {
-	display: flex;
-	justify-content: flex-end;
-	height: 0;
+	align-self: flex-end;
+}
+
+/* On the legacy (non-HPOS) order list, WooCommerce's embed stylesheet hides WP's
+   Screen Options / Help toggles via a screen-reader clip
+   (`.woocommerce-admin-page #screen-options-link-wrap { position:absolute;
+   width:1px; height:1px; clip:... }`) because it normally renders its own React
+   header. BrikPanel replaces that header, so the toggles would vanish entirely.
+   Two-id specificity beats WC's `.woocommerce-admin-page #id` rule and restores
+   the native toggles to normal flow so they show top-right like every other
+   screen. */
+#screen-meta-links #screen-options-link-wrap,
+#screen-meta-links #contextual-help-link-wrap {
+	position: relative;
+	width: auto;
+	height: auto;
+	margin: 0;
+	padding: 0;
+	overflow: visible;
+	clip: auto;
+	clip-path: none;
+	white-space: nowrap;
 }
 
 .woocommerce-embed-page .woocommerce-store-alerts {
@@ -913,7 +936,6 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	display: flex;
 	justify-content: space-between;
 	align-items: flex-start;
-	margin-top: 2rem;
 }
 
 .brikpanel-page-actions {

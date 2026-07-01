@@ -23,15 +23,21 @@ const BRIKPANEL_DEFAULT_STATUS_OPTION  = 'brikpanel_default_order_status';
 
 /**
  * Status slugs we must never let a custom status overwrite: every WooCommerce
- * core status plus the two legacy BrikPanel statuses and the WordPress system
- * statuses. Used both when minting a slug and when validating the default.
+ * core status plus the WordPress system statuses. Used both when minting a slug
+ * and when validating the default.
+ *
+ * The former hard-coded BrikPanel statuses "Return Draft" (return-draft) and
+ * "Change" (change) are deliberately NOT reserved any more: they are now
+ * ordinary managed rows in the editable list (seeded once by
+ * brikpanel_cos_migrate_legacy_statuses), so the reader must be allowed to
+ * surface and register them instead of skipping them as reserved.
  *
  * @return string[] Slugs without the `wc-` prefix.
  */
 function brikpanel_cos_reserved_slugs() {
 	return [
 		'pending', 'processing', 'on-hold', 'completed', 'cancelled',
-		'refunded', 'failed', 'checkout-draft', 'return-draft', 'change',
+		'refunded', 'failed', 'checkout-draft',
 		'trash', 'draft', 'auto-draft', 'publish', 'future', 'private', 'inherit',
 	];
 }
@@ -150,6 +156,55 @@ function brikpanel_cos_hex_rgb( $hex ) {
 		hexdec( substr( $hex, 4, 2 ) ),
 	];
 }
+
+/**
+ * One-time migration: fold the two legacy hard-coded BrikPanel order statuses
+ * — "Return Draft" (return-draft) and "Change" (change) — into the editable
+ * custom-status list so merchants can recolour, keep or remove them from the
+ * Order statuses settings screen exactly like a status they create themselves.
+ *
+ * Earlier releases registered these two unconditionally with no off switch,
+ * leaving every store with statuses it never asked for. Existing installs keep
+ * them once on upgrade (so orders already parked in those statuses, and the
+ * dashboard's "Return Draft" returns bucket, keep working) but can now delete
+ * them; fresh installs start clean because activation pre-sets the migration
+ * flag (see brikpanel_provision_site() in the main plugin file).
+ *
+ * Runs once, guarded by an autoloaded flag. Hooked before the option-driven
+ * registration (init, priority 5) so the seeded rows register in the same
+ * request — the update_option() call flushes the per-request status cache via
+ * its reset hook. Kept on `init` (not the earlier upgrade routine) so the _x()
+ * labels resolve after the text domain has loaded (init, priority 1).
+ */
+function brikpanel_cos_migrate_legacy_statuses() {
+	if ( get_option( 'brikpanel_cos_legacy_migrated' ) ) {
+		return;
+	}
+
+	$existing = get_option( BRIKPANEL_CUSTOM_STATUSES_OPTION, [] );
+	if ( ! is_array( $existing ) ) {
+		$existing = [];
+	}
+
+	// Seed each legacy status only when it is not already present, so a re-run
+	// (or a merchant who had recreated one by hand) never clobbers a live row.
+	$legacy = [
+		'return-draft' => _x( 'Return Draft', 'Order status', 'brikpanel' ),
+		'change'       => _x( 'Change', 'Order status', 'brikpanel' ),
+	];
+	foreach ( $legacy as $slug => $label ) {
+		if ( ! isset( $existing[ $slug ] ) ) {
+			$existing[ $slug ] = [
+				'label' => $label,
+				'color' => '#646970',
+			];
+		}
+	}
+
+	update_option( BRIKPANEL_CUSTOM_STATUSES_OPTION, $existing );
+	update_option( 'brikpanel_cos_legacy_migrated', 1 );
+}
+add_action( 'init', 'brikpanel_cos_migrate_legacy_statuses', 4 );
 
 // =============================================================================
 // GLOBAL REGISTRATION — runs on every request, not only in admin.
