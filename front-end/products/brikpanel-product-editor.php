@@ -405,9 +405,12 @@ class Brikpanel_Product_Editor {
                     $pe_fmt_check = '<svg class="brikpanel-pe-fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
                     ?>
                     <button type="button" class="brikpanel-pe-fmt-item is-active" data-format="p" role="menuitem"><span class="brikpanel-pe-fmt-name"><?php esc_html_e('Paragraph', 'brikpanel'); ?></span><?php echo $pe_fmt_check; ?></button>
+                    <button type="button" class="brikpanel-pe-fmt-item" data-format="h1" role="menuitem"><span class="brikpanel-pe-fmt-name"><?php esc_html_e('Heading 1', 'brikpanel'); ?></span><?php echo $pe_fmt_check; ?></button>
                     <button type="button" class="brikpanel-pe-fmt-item" data-format="h2" role="menuitem"><span class="brikpanel-pe-fmt-name"><?php esc_html_e('Heading 2', 'brikpanel'); ?></span><?php echo $pe_fmt_check; ?></button>
                     <button type="button" class="brikpanel-pe-fmt-item" data-format="h3" role="menuitem"><span class="brikpanel-pe-fmt-name"><?php esc_html_e('Heading 3', 'brikpanel'); ?></span><?php echo $pe_fmt_check; ?></button>
                     <button type="button" class="brikpanel-pe-fmt-item" data-format="h4" role="menuitem"><span class="brikpanel-pe-fmt-name"><?php esc_html_e('Heading 4', 'brikpanel'); ?></span><?php echo $pe_fmt_check; ?></button>
+                    <button type="button" class="brikpanel-pe-fmt-item" data-format="h5" role="menuitem"><span class="brikpanel-pe-fmt-name"><?php esc_html_e('Heading 5', 'brikpanel'); ?></span><?php echo $pe_fmt_check; ?></button>
+                    <button type="button" class="brikpanel-pe-fmt-item" data-format="blockquote" role="menuitem"><span class="brikpanel-pe-fmt-name"><?php esc_html_e('Quote', 'brikpanel'); ?></span><?php echo $pe_fmt_check; ?></button>
                 </div>
             </div>
             <span class="brikpanel-pe-editor-divider" aria-hidden="true"></span>
@@ -420,6 +423,37 @@ class Brikpanel_Product_Editor {
             <button type="button" data-cmd="insertOrderedList" title="<?php esc_attr_e('Numbered list', 'brikpanel'); ?>">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
             </button>
+            <span class="brikpanel-pe-editor-divider" aria-hidden="true"></span>
+            <button type="button" data-cmd="justifyLeft" title="<?php esc_attr_e('Align left', 'brikpanel'); ?>">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+            </button>
+            <button type="button" data-cmd="justifyCenter" title="<?php esc_attr_e('Align center', 'brikpanel'); ?>">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+            </button>
+            <button type="button" data-cmd="justifyRight" title="<?php esc_attr_e('Align right', 'brikpanel'); ?>">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <div class="brikpanel-pe-colorpick">
+                <button type="button" class="brikpanel-pe-color-trigger" data-cmd="colorMenu" aria-haspopup="true" aria-expanded="false" title="<?php esc_attr_e('Text color', 'brikpanel'); ?>">
+                    <span class="brikpanel-pe-color-a" aria-hidden="true">A</span>
+                </button>
+                <div class="brikpanel-pe-colorpick-menu" role="menu">
+                    <?php
+                    // Curated monochrome-friendly palette; the first swatch is the
+                    // default body text colour so it doubles as "reset to normal".
+                    $pe_text_colors = array(
+                        '#303030', '#616161', '#8a8a8a', '#ffffff',
+                        '#d72c0d', '#b45309', '#1a8917', '#0b7285',
+                        '#1971c2', '#6741d9', '#c2255c', '#000000',
+                    );
+                    foreach ($pe_text_colors as $pe_color) :
+                        ?>
+                        <button type="button" class="brikpanel-pe-color-swatch" data-color="<?php echo esc_attr($pe_color); ?>" style="background:<?php echo esc_attr($pe_color); ?>" title="<?php echo esc_attr($pe_color); ?>" role="menuitem"></button>
+                        <?php
+                    endforeach;
+                    ?>
+                </div>
+            </div>
             <span class="brikpanel-pe-editor-divider" aria-hidden="true"></span>
             <button type="button" data-cmd="createLink" title="<?php esc_attr_e('Insert link', 'brikpanel'); ?>">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>

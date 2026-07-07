@@ -75,6 +75,7 @@ class Brikpanel_Products_List {
             'author'   => ['label' => __('Author', 'brikpanel'),   'default' => false],
             'menu_order' => ['label' => __('Sort order', 'brikpanel'), 'default' => false],
             'status'   => ['label' => __('Status', 'brikpanel'),   'default' => true],
+            'date'     => ['label' => __('Date', 'brikpanel'),     'default' => false],
         ];
 
         // Surface columns contributed by SEO / 3rd-party plugins (Yoast, Rank
@@ -925,6 +926,14 @@ class Brikpanel_Products_List {
         if (is_wp_error($categories)) {
             $categories = [];
         }
+        // Brands — only when the store has a brand taxonomy (WC native
+        // product_brand or a 3rd-party brand plugin). Drives the optional brand
+        // filter dropdown; empty array hides the control entirely.
+        $brand_taxonomy = function_exists('brikpanel_pe_brand_taxonomy') ? brikpanel_pe_brand_taxonomy() : '';
+        $brands = $brand_taxonomy ? get_terms(['taxonomy' => $brand_taxonomy, 'hide_empty' => false, 'orderby' => 'name']) : [];
+        if (is_wp_error($brands)) {
+            $brands = [];
+        }
         $tags = get_terms(['taxonomy' => 'product_tag', 'hide_empty' => false, 'orderby' => 'name']);
         if (is_wp_error($tags)) {
             $tags = [];
@@ -1058,6 +1067,14 @@ class Brikpanel_Products_List {
                             <option value="<?php echo esc_attr($cat->term_id); ?>"><?php echo esc_html($cat->name); ?> (<?php echo esc_html($cat->count); ?>)</option>
                         <?php endforeach; ?>
                     </select>
+                    <?php if (!empty($brands)) : ?>
+                    <select id="bpl-brand-filter" class="brikpanel-pl-select">
+                        <option value=""><?php esc_html_e('All brands', 'brikpanel'); ?></option>
+                        <?php foreach ($brands as $brand_term) : ?>
+                            <option value="<?php echo esc_attr($brand_term->term_id); ?>"><?php echo esc_html($brand_term->name); ?> (<?php echo esc_html($brand_term->count); ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php endif; ?>
                     <select id="bpl-stock-filter" class="brikpanel-pl-select">
                         <option value=""><?php esc_html_e('All stock', 'brikpanel'); ?></option>
                         <option value="instock"><?php esc_html_e('In stock', 'brikpanel'); ?></option>
@@ -1200,12 +1217,13 @@ class Brikpanel_Products_List {
                                 <th class="brikpanel-pl-th-author brikpanel-pl-col brikpanel-pl-col-author"><?php esc_html_e('Author', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-menu_order brikpanel-pl-col brikpanel-pl-col-menu_order" title="<?php esc_attr_e('Position on the storefront when Custom ordering is active. Click a value to edit.', 'brikpanel'); ?>"><?php esc_html_e('Sort order', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-status brikpanel-pl-col brikpanel-pl-col-status"><?php esc_html_e('Status', 'brikpanel'); ?></th>
+                                <th class="brikpanel-pl-th-date brikpanel-pl-col brikpanel-pl-col-date"><?php esc_html_e('Date', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-actions"></th>
                             </tr>
                         </thead>
                         <tbody id="bpl-table-body">
                             <tr class="brikpanel-pl-loading-row">
-                                <td colspan="14">
+                                <td colspan="15">
                                     <div class="brikpanel-pl-spinner"></div>
                                 </td>
                             </tr>
@@ -1618,6 +1636,7 @@ class Brikpanel_Products_List {
         $search   = sanitize_text_field($_POST['search'] ?? '');
         $status   = sanitize_key($_POST['status'] ?? 'any');
         $category = intval($_POST['category'] ?? 0);
+        $brand        = intval($_POST['brand'] ?? 0);
         $stock_filter = sanitize_key($_POST['stock_filter'] ?? '');
         $product_type = sanitize_key($_POST['product_type'] ?? '');
         $featured     = sanitize_key($_POST['featured'] ?? '');
@@ -1687,6 +1706,20 @@ class Brikpanel_Products_List {
                 'field'    => 'term_id',
                 'terms'    => $category,
             ];
+        }
+
+        // Brand filter — parallel to category, keyed by term_id against whatever
+        // brand taxonomy the store uses (WC native product_brand or a 3rd-party
+        // brand plugin). No-op when the store has no brand taxonomy.
+        if ($brand > 0) {
+            $brand_tax = function_exists('brikpanel_pe_brand_taxonomy') ? brikpanel_pe_brand_taxonomy() : '';
+            if ($brand_tax !== '') {
+                $tax_query[] = [
+                    'taxonomy' => $brand_tax,
+                    'field'    => 'term_id',
+                    'terms'    => $brand,
+                ];
+            }
         }
 
         if ($product_type !== '') {
@@ -1921,6 +1954,10 @@ class Brikpanel_Products_List {
                 'manage_stock'   => $stock_info['manage_stock'],
                 'backorders'     => $stock_info['backorders'],
                 'status'         => $post->post_status,
+                // Publish date + time in the site timezone/format. Merchants who
+                // order category pages by date rely on seeing (and re-dating)
+                // this; column is opt-in via the Columns picker (default off).
+                'date'           => wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post)),
                 'image'          => $image_url,
                 'categories'     => $cat_names,
                 'category_ids'   => $cat_ids,
@@ -2376,6 +2413,7 @@ class Brikpanel_Products_List {
                 'tag_ids'         => $tag_ids_qe,
                 'custom_taxonomies' => (object) $custom_taxonomy_ids_qe,
                 'menu_order'      => (int) $product->get_menu_order(),
+                'date'            => wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($product_id)),
                 'type'            => $product->get_type(),
                 'is_downloadable' => $product->is_downloadable(),
                 'is_virtual'      => $product->is_virtual(),

@@ -368,6 +368,75 @@
 	color: var(--text);
 }
 
+/* Add-link + add-spacer buttons sit side by side under each section list. */
+.brikpanel-navc-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+.brikpanel-navc-actions .brikpanel-navc-add {
+	margin-top: 0.625rem;
+}
+
+/* ----- Global item-spacing control (header) ----- */
+.brikpanel-navc-controls {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem 0.875rem;
+	margin: 0 0 1.25rem;
+	padding: 0.875rem 1rem;
+	background: #fafafa;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+}
+.brikpanel-navc-control {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin: 0;
+}
+.brikpanel-navc-control-label {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--text);
+}
+.brikpanel-navc-control-hint {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+}
+
+/* ----- Spacer row ----- */
+.brikpanel-navc-item.is-spacer {
+	background: repeating-linear-gradient(
+		-45deg,
+		#fafafa,
+		#fafafa 6px,
+		#f3f3f3 6px,
+		#f3f3f3 12px
+	);
+}
+.brikpanel-navc-item.is-spacer .brikpanel-navc-row {
+	padding: 0.375rem 0.5rem;
+}
+.brikpanel-navc-spacer-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	flex: 1;
+	min-width: 0;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	color: var(--text-secondary);
+}
+.brikpanel-navc-spacer-badge svg {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+}
+.brikpanel-navc-spacer-variant {
+	max-width: 9.5rem;
+}
+
 /* ----- Primary / secondary buttons ----- */
 .brikpanel-navc-btn {
 	display: inline-flex;

@@ -207,7 +207,7 @@ add_action( 'admin_footer', function () {
             'title'      => __( 'Stock & operations', 'brikpanel' ),
             'sub'        => __( 'Keep stock, suppliers, and costs under control from one place.', 'brikpanel' ),
             'highlights' => [
-                __( 'Manage suppliers and suppliers with full contact details', 'brikpanel' ),
+                __( 'Manage suppliers with full contact details', 'brikpanel' ),
                 __( 'Create purchase orders and track received stock', 'brikpanel' ),
                 __( 'Assign a supplier per product and per variation', 'brikpanel' ),
                 __( 'Log operating expenses for accurate profit', 'brikpanel' ),

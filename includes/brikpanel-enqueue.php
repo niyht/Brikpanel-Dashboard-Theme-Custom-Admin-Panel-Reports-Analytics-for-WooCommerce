@@ -1651,6 +1651,36 @@ function brikpanel_enqueue_expenses_assets( $hook ) {
 add_action( 'admin_enqueue_scripts', 'brikpanel_enqueue_expenses_assets' );
 
 // =============================================================================
+// ABANDONED CARTS PAGE ASSETS
+// =============================================================================
+function brikpanel_enqueue_cartab_assets( $hook ) {
+    if ( strpos( (string) $hook, 'brikpanel-abandoned-carts' ) === false ) {
+        return;
+    }
+
+    // filemtime-based version so asset edits bust the browser cache
+    // immediately (same rationale as the expenses assets above).
+    $css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/cart-abandonment/cart-abandonment-admin.css' ) ?: BRIKPANEL_VERSION;
+    $js_ver  = @filemtime( BRIKPANEL_PATH . 'front-end/cart-abandonment/cart-abandonment-admin.js' ) ?: BRIKPANEL_VERSION;
+
+    wp_enqueue_style(
+        'brikpanel_cartab_admin_styles',
+        BRIKPANEL_URL . 'front-end/cart-abandonment/cart-abandonment-admin.css',
+        [],
+        $css_ver
+    );
+
+    wp_enqueue_script(
+        'brikpanel_cartab_admin_scripts',
+        BRIKPANEL_URL . 'front-end/cart-abandonment/cart-abandonment-admin.js',
+        [],
+        $js_ver,
+        true
+    );
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_enqueue_cartab_assets' );
+
+// =============================================================================
 // SCHEDULED TASKS (CRON) PAGE ASSETS
 // =============================================================================
 function brikpanel_enqueue_cron_assets( $hook ) {

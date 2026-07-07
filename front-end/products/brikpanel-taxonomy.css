@@ -71,6 +71,26 @@ body.brikpanel-tax .screen-meta-toggle .button[aria-expanded="true"] {
     color: var(--bpl-text) !important;
 }
 
+/* Some WooCommerce builds ship an embed stylesheet that hides WP's Screen
+   Options / Help toggles on `.woocommerce-admin-page` screens (product
+   categories/tags/attributes get that class) via a screen-reader clip on
+   `#screen-options-link-wrap` / `#contextual-help-link-wrap`, because WC renders
+   its own header there. BrikPanel replaces that header, so the toggles vanish.
+   The `body.brikpanel-tax #id` form outranks WC's `.woocommerce-admin-page #id`
+   rule and returns them to normal flow. No-op where WC doesn't clip them. */
+body.brikpanel-tax #screen-options-link-wrap,
+body.brikpanel-tax #contextual-help-link-wrap {
+    position: relative;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+    white-space: nowrap;
+}
+
 /* Hide WP inline notice (but keep red error notices visible) */
 body.brikpanel-tax .notice:not(.brikpanel-notice):not(.notice-error) {
     display: none;

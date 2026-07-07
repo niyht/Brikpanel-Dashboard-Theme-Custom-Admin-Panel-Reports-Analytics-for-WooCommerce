@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.1.46
+ * Version: 3.2.1
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.1.46');
+define('BRIKPANEL_VERSION', '3.2.1');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -158,6 +158,13 @@ add_action('before_woocommerce_init', function () {
 // end too (checkout/programmatic orders), not only inside wp-admin.
 // =============================================================================
 require_once BRIKPANEL_PATH . 'front-end/order-statuses/brikpanel-order-statuses.php';
+
+// Status-change emails: a configurable email per custom status (recipients,
+// subject, heading, body with {placeholders}), sent through WooCommerce's own
+// email templates. Loaded globally so the sender fires on every request where an
+// order status can change (checkout, cron, REST); only its settings UI is
+// admin-gated. See front-end/order-statuses/brikpanel-status-emails.php.
+require_once BRIKPANEL_PATH . 'front-end/order-statuses/brikpanel-status-emails.php';
 
 // =============================================================================
 // LOAD TEXT DOMAIN
@@ -628,6 +635,17 @@ require_once BRIKPANEL_PATH . 'front-end/google-sheets/brikpanel-google-sheets.p
 require_once BRIKPANEL_PATH . 'front-end/ad-platforms/brikpanel-ad-platforms.php';
 
 // =============================================================================
+// CART ABANDONMENT — checkout/popup email capture with cart snapshots.
+//
+// Loaded outside the is_admin gate because everything interesting happens on
+// front-end requests: the public capture AJAX endpoint, the
+// woocommerce_cart_updated snapshot mirror, and the order-recovery hooks that
+// fire during checkout. The admin list page, exports and settings fields all
+// self-gate to admin context inside the class.
+// =============================================================================
+require_once BRIKPANEL_PATH . 'front-end/cart-abandonment/brikpanel-cart-abandonment.php';
+
+// =============================================================================
 // STORE SUMMARY (on-demand Markdown digest, triggered from dashboard "Copy
 // everything" button — no cron, generated on click only)
 // =============================================================================
@@ -751,6 +769,7 @@ function brikpanel_create_table() {
         computed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_customer_key (customer_key),
         KEY idx_user_id (user_id),
+        KEY idx_customer_email (customer_email),
         KEY idx_total_spent (total_spent),
         KEY idx_rfm_segment (rfm_segment),
         KEY idx_last_order (last_order_date)
@@ -844,6 +863,38 @@ function brikpanel_create_table() {
         KEY idx_date (date)
     ) $charset_collate;";
 
+    // Abandoned carts — one row per (browser, email) capture from checkout /
+    // popup / logged-in account, with a JSON cart snapshot. Lifecycle:
+    // active → abandoned (no activity for N minutes) → recovered (order
+    // placed). Rows are deduped in code on (visitor_id, email, non-recovered)
+    // so a recovered row stays as history when the same browser starts a new
+    // cart. See front-end/cart-abandonment/.
+    $abandoned_carts_table = $wpdb->prefix . "brikpanel_abandoned_carts";
+    $sql_abandoned_carts = "CREATE TABLE $abandoned_carts_table (
+        id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        visitor_id VARCHAR(64) NOT NULL DEFAULT '',
+        email VARCHAR(190) NOT NULL DEFAULT '',
+        first_name VARCHAR(100) NOT NULL DEFAULT '',
+        last_name VARCHAR(100) NOT NULL DEFAULT '',
+        phone VARCHAR(40) NOT NULL DEFAULT '',
+        user_id BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        source VARCHAR(20) NOT NULL DEFAULT 'checkout',
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        cart_items LONGTEXT NULL,
+        item_count INT UNSIGNED NOT NULL DEFAULT 0,
+        cart_total DECIMAL(20,4) NOT NULL DEFAULT 0,
+        currency VARCHAR(10) NOT NULL DEFAULT '',
+        order_id BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        abandoned_at DATETIME NULL DEFAULT NULL,
+        recovered_at DATETIME NULL DEFAULT NULL,
+        KEY idx_visitor_email (visitor_id, email),
+        KEY idx_email (email),
+        KEY idx_status_updated (status, updated_at),
+        KEY idx_created (created_at)
+    ) $charset_collate;";
+
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta($sql_visitors);
     dbDelta($sql_cart_tracking);
@@ -856,6 +907,7 @@ function brikpanel_create_table() {
     dbDelta($sql_stock_orders);
     dbDelta($sql_stock_order_items);
     dbDelta($sql_ad_spend);
+    dbDelta($sql_abandoned_carts);
 
     // Stamp the moment the recurring-expense engine became available. Only
     // expense templates created at or after this point are auto-materialised
@@ -1000,6 +1052,7 @@ function brikpanel_drop_subsite_tables($tables, $blog_id) {
         'brikpanel_stock_orders',
         'brikpanel_stock_order_items',
         'brikpanel_ad_spend',
+        'brikpanel_abandoned_carts',
     ] as $name) {
         $tables[] = $prefix . $name;
     }

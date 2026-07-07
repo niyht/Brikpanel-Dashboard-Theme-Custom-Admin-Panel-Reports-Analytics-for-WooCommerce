@@ -2069,40 +2069,89 @@ class Brikpanel_Store_Summary {
 		// key mirrors how `customer_metrics` is keyed (user_id when > 0,
 		// otherwise email).
 		if ( $this->is_hpos() ) {
+			// Split the customer<->order match into two single-column equi-joins
+			// wrapped in a UNION ALL, instead of a single OR across two columns.
+			// An OR in the ON clause defeats index usage (MySQL falls back to a
+			// block-nested-loop full scan of the metrics table for every order),
+			// which times out on large stores. Each branch below is a plain
+			// equi-join that can use idx_user_id / idx_customer_email.
+			$paid = brikpanel_paid_statuses_sql();
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym,
-				        SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN o.total_amount ELSE 0 END) AS new_rev,
-				        SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN o.total_amount ELSE 0 END) AS ret_rev,
-				        SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
-				        SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
-				 FROM {$wpdb->prefix}wc_orders o
-				 INNER JOIN {$tbl_metrics} m
-				   ON ( ( o.customer_id > 0 AND m.user_id = o.customer_id ) OR ( o.customer_id = 0 AND m.customer_email = o.billing_email ) )
-				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND o.date_created_gmt >= %s
+				"SELECT ym,
+				        SUM(new_rev) AS new_rev, SUM(ret_rev) AS ret_rev,
+				        SUM(new_orders) AS new_orders, SUM(ret_orders) AS ret_orders
+				 FROM (
+				   SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym,
+				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN o.total_amount ELSE 0 END) AS new_rev,
+				          SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN o.total_amount ELSE 0 END) AS ret_rev,
+				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
+				          SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
+				   FROM {$wpdb->prefix}wc_orders o
+				   INNER JOIN {$tbl_metrics} m ON m.user_id = o.customer_id
+				   WHERE o.type='shop_order' AND o.status IN ({$paid})
+				     AND o.customer_id > 0
+				     AND o.date_created_gmt >= %s
+				   GROUP BY ym
+				   UNION ALL
+				   SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym,
+				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN o.total_amount ELSE 0 END) AS new_rev,
+				          SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN o.total_amount ELSE 0 END) AS ret_rev,
+				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
+				          SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
+				   FROM {$wpdb->prefix}wc_orders o
+				   INNER JOIN {$tbl_metrics} m ON m.customer_email = o.billing_email
+				   WHERE o.type='shop_order' AND o.status IN ({$paid})
+				     AND o.customer_id = 0 AND o.billing_email <> ''
+				     AND o.date_created_gmt >= %s
+				   GROUP BY ym
+				 ) u
 				 GROUP BY ym
 				 ORDER BY ym ASC",
+				$start_dt,
 				$start_dt
 			) ); // phpcs:ignore
 		} else {
 			// Legacy postmeta path (rarely hit since most stores are HPOS now).
+			// Same OR-join rewrite as the HPOS branch: one UNION ALL leg keyed on
+			// the registered user id, one on the guest billing email, so each leg
+			// is a plain equi-join against an indexed metrics column.
+			$paid = brikpanel_paid_statuses_sql();
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
-				        SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS new_rev,
-				        SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS ret_rev,
-				        SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
-				        SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
-				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
-				 LEFT JOIN {$wpdb->postmeta} pm_e ON pm_e.post_id=p.ID AND pm_e.meta_key='_billing_email'
-				 LEFT JOIN {$wpdb->postmeta} pm_c ON pm_c.post_id=p.ID AND pm_c.meta_key='_customer_user'
-				 INNER JOIN {$tbl_metrics} m
-				   ON ( ( CAST(pm_c.meta_value AS UNSIGNED) > 0 AND m.user_id = CAST(pm_c.meta_value AS UNSIGNED) )
-				        OR ( CAST(IFNULL(pm_c.meta_value,'0') AS UNSIGNED) = 0 AND m.customer_email = pm_e.meta_value ) )
-				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND p.post_date_gmt >= %s
+				"SELECT ym,
+				        SUM(new_rev) AS new_rev, SUM(ret_rev) AS ret_rev,
+				        SUM(new_orders) AS new_orders, SUM(ret_orders) AS ret_orders
+				 FROM (
+				   SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
+				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS new_rev,
+				          SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS ret_rev,
+				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
+				          SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
+				   FROM {$wpdb->posts} p
+				   INNER JOIN {$wpdb->postmeta} pm_c ON pm_c.post_id=p.ID AND pm_c.meta_key='_customer_user' AND CAST(pm_c.meta_value AS UNSIGNED) > 0
+				   INNER JOIN {$tbl_metrics} m ON m.user_id = CAST(pm_c.meta_value AS UNSIGNED)
+				   LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
+				   WHERE p.post_type='shop_order' AND p.post_status IN ({$paid})
+				     AND p.post_date_gmt >= %s
+				   GROUP BY ym
+				   UNION ALL
+				   SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
+				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS new_rev,
+				          SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS ret_rev,
+				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
+				          SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
+				   FROM {$wpdb->posts} p
+				   INNER JOIN {$wpdb->postmeta} pm_e ON pm_e.post_id=p.ID AND pm_e.meta_key='_billing_email' AND pm_e.meta_value <> ''
+				   INNER JOIN {$tbl_metrics} m ON m.customer_email = pm_e.meta_value
+				   LEFT JOIN {$wpdb->postmeta} pm_c ON pm_c.post_id=p.ID AND pm_c.meta_key='_customer_user'
+				   LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
+				   WHERE p.post_type='shop_order' AND p.post_status IN ({$paid})
+				     AND CAST(IFNULL(pm_c.meta_value,'0') AS UNSIGNED) = 0
+				     AND p.post_date_gmt >= %s
+				   GROUP BY ym
+				 ) u
 				 GROUP BY ym
 				 ORDER BY ym ASC",
+				$start_dt,
 				$start_dt
 			) ); // phpcs:ignore
 		}

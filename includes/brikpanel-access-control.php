@@ -64,6 +64,16 @@ const BRIKPANEL_ACCESS_OPT_SETTINGS_ADMINS_ONLY = 'brikpanel_settings_admins_onl
 // store-wide setting only administrators can change. On ('yes') by default.
 const BRIKPANEL_MASTER_OPT = 'brikpanel_master_enabled';
 
+// Which roles may see and use the BrikPanel on/off switch (the power control in
+// the top bar and the native admin-bar node). The switch flips the store-wide
+// master option above, so it is deliberately narrow: administrators (and, on
+// multisite, super admins) always see it, and any role listed here sees it too.
+// Empty by default, so out of the box only administrators see the control — a
+// shop manager who was handed `manage_options` by a role editor no longer gets
+// it. Add roles here to widen access; you can always change it back from the
+// BrikPanel settings page as an administrator.
+const BRIKPANEL_MASTER_SWITCH_ROLES = 'brikpanel_master_switch_roles';
+
 // "Screen Options" tab control. Two independent axes, both off by default:
 //   - …_SCREEN_OPTIONS_ALL  hides the Screen Options tab from every back-office
 //     user (administrators included).
@@ -85,6 +95,48 @@ const BRIKPANEL_ACCESS_OPT_SCREEN_OPTIONS_NONADMIN = 'brikpanel_hide_screen_opti
  */
 function brikpanel_master_enabled() {
 	return get_option( BRIKPANEL_MASTER_OPT, 'yes' ) !== 'no';
+}
+
+/**
+ * Whether the current user may see and use the BrikPanel on/off (power) switch.
+ *
+ * The switch flips the store-wide master option, so visibility is gated by
+ * *role* rather than a raw capability: administrators (and, on multisite, super
+ * admins) always qualify — they must always be able to turn BrikPanel back on —
+ * and any role the store owner adds to BRIKPANEL_MASTER_SWITCH_ROLES qualifies
+ * too. This intentionally does not use `manage_options`, so a non-administrator
+ * who was granted that capability by a role editor does not get the control
+ * unless their role is explicitly listed.
+ *
+ * @param int|null $user_id Optional user to test; defaults to the current user.
+ * @return bool
+ */
+function brikpanel_can_use_master_switch( $user_id = null ) {
+	$user = $user_id ? get_user_by( 'id', $user_id ) : wp_get_current_user();
+	if ( ! $user || ! $user->exists() ) {
+		return false;
+	}
+
+	// Multisite network administrators always keep the control.
+	if ( is_multisite() && is_super_admin( $user->ID ) ) {
+		return true;
+	}
+
+	$roles = array_map( 'strval', (array) $user->roles );
+
+	// Administrators always keep the control (safety: they must be able to turn
+	// the interface back on after switching it off).
+	if ( in_array( 'administrator', $roles, true ) ) {
+		return true;
+	}
+
+	// Additional roles the store owner has opted in.
+	$allowed = array_map( 'strval', (array) get_option( BRIKPANEL_MASTER_SWITCH_ROLES, [] ) );
+	if ( $allowed && array_intersect( $roles, $allowed ) ) {
+		return true;
+	}
+
+	return false;
 }
 
 // =============================================================================
@@ -679,6 +731,16 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'type'    => 'checkbox',
 			'desc'    => __( 'Master switch for the whole BrikPanel interface. Turn this off to instantly hand every back-office user the default WordPress / WooCommerce admin store-wide; turn it on to bring BrikPanel back. You can also flip this from the on/off switch in the BrikPanel top bar, or from the native WordPress admin bar while it is off. Only administrators see and change it. On by default.', 'brikpanel' ),
 			'default' => 'yes',
+		],
+		[
+			'name'     => __( 'Show the on/off switch to roles', 'brikpanel' ),
+			'id'       => BRIKPANEL_MASTER_SWITCH_ROLES,
+			'type'     => 'multiselect',
+			'class'    => 'wc-enhanced-select',
+			'desc'     => __( 'Choose which roles, besides administrators, can see and use the BrikPanel on/off (power) switch in the top bar. The switch turns BrikPanel off for the whole store, so administrators always keep it; everyone else only sees it if their role is selected here. Leave empty so only administrators can reach it. This hides the control from shop managers even if they were granted the "manage options" capability elsewhere.', 'brikpanel' ),
+			'desc_tip' => true,
+			'options'  => brikpanel_access_collect_roles(),
+			'default'  => [],
 		],
 		[
 			'name'    => __( 'Restrict settings to administrators', 'brikpanel' ),

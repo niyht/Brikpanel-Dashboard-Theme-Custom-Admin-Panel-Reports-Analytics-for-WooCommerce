@@ -195,6 +195,7 @@ function brikpanel_ea_render_modal() {
         'brevo'     => 'Brevo (Sendinblue)',
         'omnisend'  => 'Omnisend',
         'mailerlite'=> 'MailerLite',
+        'hostinger_reach' => 'Hostinger Reach',
         'other'     => __( 'Other', 'brikpanel' ),
     );
     ?>
@@ -599,7 +600,7 @@ function brikpanel_ea_ajax_tool() {
         wp_send_json_error( array( 'reason' => 'forbidden' ), 403 );
     }
 
-    $allowed = array( 'none', 'klaviyo', 'mailchimp', 'brevo', 'omnisend', 'mailerlite', 'other' );
+    $allowed = array( 'none', 'klaviyo', 'mailchimp', 'brevo', 'omnisend', 'mailerlite', 'hostinger_reach', 'other' );
     $tool    = isset( $_POST['tool'] ) ? sanitize_key( wp_unslash( $_POST['tool'] ) ) : '';
     if ( $tool && ! in_array( $tool, $allowed, true ) ) {
         $tool = 'other';

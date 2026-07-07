@@ -67,14 +67,22 @@ class Brikpanel_Master_Switch {
 	// =========================================================================
 
 	/**
-	 * Only administrators (manage_options) may see and flip the switch. Shop
-	 * managers, who hold manage_woocommerce but not manage_options, never see
-	 * the control even though the switch affects their interface too.
+	 * Who may see and flip the switch. Administrators (and multisite super
+	 * admins) always can; additional roles qualify only when the store owner
+	 * opts them in via the "Show the on/off switch to roles" setting. Gated by
+	 * role rather than the raw `manage_options` capability, so a shop manager
+	 * who was handed that cap by a role editor still does not see the control
+	 * unless their role is explicitly selected.
 	 *
 	 * @return bool
 	 */
 	public static function user_can_toggle() {
-		return current_user_can( 'manage_options' );
+		if ( function_exists( 'brikpanel_can_use_master_switch' ) ) {
+			return brikpanel_can_use_master_switch();
+		}
+		// Access-control layer not loaded yet (should not happen at runtime):
+		// fall back to the strict administrator check.
+		return current_user_can( 'manage_options' ) && in_array( 'administrator', (array) wp_get_current_user()->roles, true );
 	}
 
 	/**
@@ -125,8 +133,9 @@ class Brikpanel_Master_Switch {
 	 * this switch is always shown in its "on" position and clicking it turns
 	 * BrikPanel off store-wide.
 	 *
-	 * Administrator only — a non-admin viewing the top bar (e.g. a shop manager)
-	 * never sees the control.
+	 * Visibility is gated by user_can_toggle(): administrators (and any role the
+	 * store owner opts in via the "Show the on/off switch to roles" setting).
+	 * Every other back-office user — a shop manager by default — never sees it.
 	 */
 	public function render_topbar_switch() {
 		if ( ! self::user_can_toggle() ) {

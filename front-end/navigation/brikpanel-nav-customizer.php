@@ -212,6 +212,24 @@ function brikpanel_nav_config_save( $config ) {
 		$section = isset( $item['section'] ) && in_array( $item['section'], $valid_sections, true ) ? $item['section'] : 'store';
 		$hidden  = ! empty( $item['hidden'] );
 
+		if ( $type === 'spacer' ) {
+			// Purely visual gap / divider the user drops between menu rows. It
+			// carries no link, icon or audience rule — just an id (for stable
+			// ordering) and a variant ('space' = blank gap, 'line' = divider).
+			$id = isset( $item['id'] ) ? preg_replace( '/[^a-zA-Z0-9_]/', '', (string) $item['id'] ) : '';
+			if ( $id === '' ) {
+				$id = 's' . wp_generate_password( 10, false, false );
+			}
+			$variant = isset( $item['variant'] ) && in_array( $item['variant'], [ 'space', 'line' ], true ) ? $item['variant'] : 'space';
+			$cleaned[] = [
+				'type'    => 'spacer',
+				'id'      => $id,
+				'section' => $section,
+				'variant' => $variant,
+			];
+			continue;
+		}
+
 		if ( $type === 'system' ) {
 			$slug = isset( $item['slug'] ) ? wp_unslash( $item['slug'] ) : '';
 			$slug = is_string( $slug ) ? trim( $slug ) : '';
@@ -330,11 +348,31 @@ function brikpanel_nav_config_save( $config ) {
 		}
 	}
 
+	// Global item-spacing preference — controls the vertical gap between every
+	// sidebar row. 'comfortable' matches the historical default so existing
+	// installs render unchanged.
+	$spacing = isset( $config['spacing'] ) ? (string) $config['spacing'] : 'comfortable';
+	$spacing = in_array( $spacing, [ 'compact', 'comfortable', 'spacious' ], true ) ? $spacing : 'comfortable';
+
 	$payload = [
 		'version' => 1,
 		'items'   => $cleaned,
+		'spacing' => $spacing,
 	];
 	update_option( BRIKPANEL_NAV_CONFIG_OPTION, wp_json_encode( $payload ), false );
+}
+
+/**
+ * Return the sanitized global item-spacing preference
+ * ('compact' | 'comfortable' | 'spacious'). Used by the live renderer to add
+ * the matching CSS class to the sidebar.
+ *
+ * @return string
+ */
+function brikpanel_nav_config_spacing() {
+	$config  = brikpanel_nav_config_get();
+	$spacing = isset( $config['spacing'] ) ? (string) $config['spacing'] : 'comfortable';
+	return in_array( $spacing, [ 'compact', 'comfortable', 'spacious' ], true ) ? $spacing : 'comfortable';
 }
 
 // =============================================================================
@@ -627,9 +665,140 @@ function brikpanel_nav_customizer_apply_default_reorder( &$menu ) {
 	$menu = $move_after( $menu, 'brikpanel-segments', 'edit.php?post_type=product' );
 	$menu = $move_after( $menu, 'brikpanel-customer-analytics', 'brikpanel-segments' );
 	$menu = $move_after( $menu, 'brikpanel-google-sheets', 'brikpanel-customer-analytics' );
+	// Abandoned Carts — mirror of the renderer's two-step pin (after Sheets
+	// when present, else after Customer Analytics).
+	$menu = $move_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-customer-analytics' );
+	$menu = $move_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-google-sheets' );
 	// Vendors is pinned AFTER the customizer in the renderer; mirror it last so
 	// the snapshot order matches the rendered sidebar's final position.
 	$menu = $move_after( $menu, 'brikpanel-vendors', 'edit.php?post_type=product' );
+
+	// Push third-party top-levels that leaked above the "Site management"
+	// anchor down into that section — mirrors the same pass the live renderer
+	// runs, so the settings-page snapshot lists them exactly where the sidebar
+	// shows them and saving an unmodified config stays a true no-op.
+	brikpanel_nav_demote_foreign_toplevels( $menu );
+}
+
+/**
+ * Whether a top-level menu slug legitimately belongs in the store cluster that
+ * BrikPanel renders ABOVE the "Site management" heading.
+ *
+ * Third-party plugins frequently register their top-level menu with a tiny
+ * menu position (e.g. Elementor at 2, WOOCS Multi Currency at 2.08), which
+ * sorts them above the Posts (edit.php) anchor and makes them masquerade as
+ * part of BrikPanel's store cluster. Everything above the anchor that is NOT
+ * one of these curated store surfaces is treated as a foreign leak and demoted
+ * into Site management. Slugs below the anchor are never inspected here.
+ *
+ * @param string $slug Top-level menu slug ($item[2]).
+ * @return bool
+ */
+function brikpanel_nav_is_store_slug( $slug ) {
+	$slug = (string) $slug;
+	if ( $slug === '' ) {
+		return false;
+	}
+
+	// BrikPanel's own + BrikMarket top-levels always belong in the store cluster.
+	foreach ( array( 'brikpanel', 'brikmarket', 'brik_' ) as $prefix ) {
+		if ( strpos( $slug, $prefix ) === 0 ) {
+			return true;
+		}
+	}
+
+	// WooCommerce store surfaces BrikPanel deliberately promotes to the top
+	// (matched exactly so lookalikes such as "woocommerce-multi-currency" or
+	// "woocommerce-more"-imitating third-party slugs are not swept in).
+	static $exact = array(
+		'index.php'                   => true, // Dashboard
+		'woocommerce'                 => true, // Orders
+		'edit.php?post_type=product'  => true, // Products
+		'woocommerce-marketing'       => true, // Marketing
+		'woocommerce-more'            => true, // More
+		'wf_woocommerce_packing_list' => true,
+	);
+	if ( isset( $exact[ $slug ] ) ) {
+		return true;
+	}
+
+	// WooCommerce analytics / payments / customers / settings / reports
+	// surfaces — their slugs carry query args so match by substring.
+	foreach ( array(
+		'wc-admin&path=/analytics',
+		'wc-admin&path=/payments',
+		'wc-admin&path=/wc-pay',
+		'wc-admin&path=/customers',
+		'page=wc-settings',
+		'page=wc-reports',
+	) as $needle ) {
+		if ( strpos( $slug, $needle ) !== false ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Relocate foreign top-level menu items that sort ABOVE the "Site management"
+ * anchor (edit.php / Posts) to the bottom of the menu, grouping them with the
+ * other third-party plugin menus that already live at the end of Site
+ * management. Store-cluster surfaces (see brikpanel_nav_is_store_slug()) and
+ * native separators keep their position.
+ *
+ * Called identically by the live renderer and the settings-page snapshot so
+ * the two never diverge. No-op when there is no anchor (Posts hidden) or when
+ * nothing needs demoting.
+ *
+ * @param array $menu Reference to a $menu-shaped array (mutated in place).
+ */
+function brikpanel_nav_demote_foreign_toplevels( &$menu ) {
+	if ( ! is_array( $menu ) || empty( $menu ) ) {
+		return;
+	}
+
+	// Without the Posts anchor there is no store / site-management split, so
+	// there is nothing to demote.
+	$has_anchor = false;
+	foreach ( $menu as $item ) {
+		if ( isset( $item[2] ) && (string) $item[2] === 'edit.php' ) {
+			$has_anchor = true;
+			break;
+		}
+	}
+	if ( ! $has_anchor ) {
+		return;
+	}
+
+	$before_anchor = true;
+	$kept          = array();
+	$demoted       = array();
+	foreach ( $menu as $item ) {
+		$slug = isset( $item[2] ) ? (string) $item[2] : '';
+
+		if ( $before_anchor && $slug === 'edit.php' ) {
+			$before_anchor = false;
+		}
+
+		$is_separator = isset( $item[4] ) && is_string( $item[4] ) && strpos( $item[4], 'wp-menu-separator' ) !== false;
+
+		if ( $before_anchor && $slug !== '' && ! $is_separator && ! brikpanel_nav_is_store_slug( $slug ) ) {
+			$demoted[] = $item;
+			continue;
+		}
+
+		$kept[] = $item;
+	}
+
+	if ( empty( $demoted ) ) {
+		return;
+	}
+
+	// Re-append the demoted rows (in their original relative order) after
+	// everything else, so they sit with the other third-party plugin menus at
+	// the bottom of Site management.
+	$menu = array_merge( $kept, $demoted );
 }
 
 // =============================================================================
@@ -700,6 +869,37 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 		// downgrade to "store" — keeps AME-active mode safe.
 		if ( $section === 'more' && ! $more_supported ) {
 			$section = 'store';
+		}
+
+		if ( $cfg['type'] === 'spacer' ) {
+			// Spacers are only meaningful in the two top-level sections; inside
+			// the "More" dropdown they'd have nothing to separate, so skip them.
+			if ( $raw_section === 'more' ) {
+				continue;
+			}
+			$id = isset( $cfg['id'] ) ? (string) $cfg['id'] : '';
+			if ( $id === '' ) {
+				continue;
+			}
+			$variant = ( isset( $cfg['variant'] ) && $cfg['variant'] === 'line' ) ? 'line' : 'space';
+			$slug    = 'brikpanel_spacer__' . $id;
+			// Synthetic $menu row: index 7 carries a sentinel the renderer reads
+			// to emit a decorative gap/divider instead of a normal link. It never
+			// becomes the site-management anchor.
+			$new_menu[] = [
+				'',
+				'read',
+				$slug,
+				'',
+				'menu-top brikpanel-nav-spacer-item',
+				'menu-' . $slug,
+				'div',
+				[
+					'is_spacer' => true,
+					'variant'   => $variant,
+				],
+			];
+			continue;
 		}
 
 		if ( $cfg['type'] === 'system' ) {
@@ -919,6 +1119,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 	$current_items    = brikpanel_nav_customizer_collect_menu_items();
 	$icon_options     = brikpanel_nav_customizer_icon_options();
 	$icons_url_base   = plugins_url( 'icons/', __FILE__ );
+	$spacing          = brikpanel_nav_config_spacing();
 
 	// Build slug → submenu list and slug → title maps from the live snapshot
 	// for quick lookup while constructing rows.
@@ -986,6 +1187,13 @@ function brikpanel_render_nav_customizer_field( $value ) {
 				'icon_svg'       => ! empty( $cfg['icon_svg'] ) ? (string) $cfg['icon_svg'] : '',
 				'submenus'       => $merge_submenus( $live_subs, $saved_subs ),
 				'available'      => $live !== null,
+			];
+		} elseif ( $cfg['type'] === 'spacer' ) {
+			$rows[] = [
+				'type'    => 'spacer',
+				'id'      => isset( $cfg['id'] ) ? (string) $cfg['id'] : '',
+				'variant' => ( isset( $cfg['variant'] ) && $cfg['variant'] === 'line' ) ? 'line' : 'space',
+				'section' => isset( $cfg['section'] ) ? $cfg['section'] : 'store',
 			];
 		} elseif ( $cfg['type'] === 'custom' ) {
 			$rows[] = [
@@ -1081,6 +1289,18 @@ function brikpanel_render_nav_customizer_field( $value ) {
 						</button>
 					</div>
 
+					<div class="brikpanel-navc-controls">
+						<label class="brikpanel-navc-control">
+							<span class="brikpanel-navc-control-label"><?php esc_html_e( 'Item spacing', 'brikpanel' ); ?></span>
+							<select class="brikpanel-navc-audience" data-navc-spacing aria-label="<?php esc_attr_e( 'Spacing between menu items', 'brikpanel' ); ?>">
+								<option value="compact" <?php selected( $spacing, 'compact' ); ?>><?php esc_html_e( 'Compact', 'brikpanel' ); ?></option>
+								<option value="comfortable" <?php selected( $spacing, 'comfortable' ); ?>><?php esc_html_e( 'Comfortable', 'brikpanel' ); ?></option>
+								<option value="spacious" <?php selected( $spacing, 'spacious' ); ?>><?php esc_html_e( 'Spacious', 'brikpanel' ); ?></option>
+							</select>
+						</label>
+						<span class="brikpanel-navc-control-hint"><?php esc_html_e( 'Sets the vertical gap between every sidebar item.', 'brikpanel' ); ?></span>
+					</div>
+
 					<?php
 					$roles_list = brikpanel_access_collect_roles();
 
@@ -1128,13 +1348,42 @@ function brikpanel_render_nav_customizer_field( $value ) {
 							<ul class="brikpanel-navc-list" data-section="<?php echo esc_attr( $section_key ); ?>">
 								<?php foreach ( $items as $row ) : ?>
 									<?php
+									// Spacer rows are purely decorative — render a compact,
+									// self-contained item and skip the normal link markup.
+									if ( isset( $row['type'] ) && $row['type'] === 'spacer' ) {
+										$spacer_variant = ( isset( $row['variant'] ) && $row['variant'] === 'line' ) ? 'line' : 'space';
+										?>
+										<li class="brikpanel-navc-item is-spacer"
+										    data-type="spacer"
+										    data-id="<?php echo esc_attr( isset( $row['id'] ) ? $row['id'] : '' ); ?>"
+										    data-variant="<?php echo esc_attr( $spacer_variant ); ?>">
+											<div class="brikpanel-navc-row">
+												<span class="brikpanel-navc-drag" aria-hidden="true">
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>
+												</span>
+												<span class="brikpanel-navc-spacer-badge">
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="8 8 4 12 8 16"/><polyline points="16 8 20 12 16 16"/></svg>
+													<span><?php esc_html_e( 'Spacer', 'brikpanel' ); ?></span>
+												</span>
+												<select class="brikpanel-navc-audience brikpanel-navc-spacer-variant" data-navc-spacer-variant aria-label="<?php esc_attr_e( 'Spacer style', 'brikpanel' ); ?>">
+													<option value="space" <?php selected( $spacer_variant, 'space' ); ?>><?php esc_html_e( 'Blank space', 'brikpanel' ); ?></option>
+													<option value="line" <?php selected( $spacer_variant, 'line' ); ?>><?php esc_html_e( 'Divider line', 'brikpanel' ); ?></option>
+												</select>
+												<button type="button" class="brikpanel-navc-iconbtn brikpanel-navc-iconbtn-danger" data-navc-action="delete" title="<?php esc_attr_e( 'Remove spacer', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Remove spacer', 'brikpanel' ); ?>">
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+												</button>
+											</div>
+										</li>
+										<?php
+										continue;
+									}
 									$is_custom      = ( $row['type'] === 'custom' );
 									$icon_slug      = $is_custom ? ( $row['icon'] ?: 'default' ) : '';
-									$icon_url       = $is_custom ? $icons_url_base . $icon_slug . '.svg' : '';
+									$icon_url       = $is_custom ? brikpanel_nav_icon_src( $icon_slug ) : '';
 									$icon_override  = $is_custom ? '' : ( isset( $row['icon_override'] ) ? (string) $row['icon_override'] : '' );
 									$icon_svg       = isset( $row['icon_svg'] ) ? (string) $row['icon_svg'] : '';
 									$has_submenus   = ! $is_custom && ! empty( $row['submenus'] );
-									$override_url   = $icon_override !== '' ? $icons_url_base . $icon_override . '.svg' : '';
+									$override_url   = $icon_override !== '' ? brikpanel_nav_icon_src( $icon_override ) : '';
 									$label_override = $is_custom ? '' : ( isset( $row['label_override'] ) ? (string) $row['label_override'] : '' );
 									$display_label  = $is_custom ? $row['label'] : ( $label_override !== '' ? $label_override : $row['title'] );
 									?>
@@ -1225,10 +1474,18 @@ function brikpanel_render_nav_customizer_field( $value ) {
 									</li>
 								<?php endforeach; ?>
 							</ul>
-							<button type="button" class="brikpanel-navc-add" data-navc-action="add">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-								<?php esc_html_e( 'Add custom link', 'brikpanel' ); ?>
-							</button>
+							<div class="brikpanel-navc-actions">
+								<button type="button" class="brikpanel-navc-add" data-navc-action="add">
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+									<?php esc_html_e( 'Add custom link', 'brikpanel' ); ?>
+								</button>
+								<?php if ( $section_key !== 'more' ) : ?>
+									<button type="button" class="brikpanel-navc-add" data-navc-action="add-spacer">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="8 8 4 12 8 16"/><polyline points="16 8 20 12 16 16"/></svg>
+										<?php esc_html_e( 'Add spacer', 'brikpanel' ); ?>
+									</button>
+								<?php endif; ?>
+							</div>
 						</div>
 						<?php
 					};
@@ -1352,6 +1609,9 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 	wp_localize_script( 'brikpanel-nav-customizer', 'brikpanelNavCustomizer', [
 		'iconOptions' => brikpanel_nav_customizer_icon_options(),
 		'iconsBase'   => plugins_url( 'icons/', __FILE__ ),
+		'iconVer'     => BRIKPANEL_VERSION,
+		'iconStyle'   => function_exists( 'brikpanel_nav_icon_style' ) ? brikpanel_nav_icon_style() : 'solid',
+		'lineIconSlugs' => brikpanel_nav_line_icon_slugs(),
 		'roles'       => brikpanel_access_collect_roles(),
 		'i18n'        => [
 			'editLink'      => __( 'Edit custom link', 'brikpanel' ),
@@ -1370,6 +1630,11 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 			'audienceAdmins'=> __( 'Admins only', 'brikpanel' ),
 			'audienceRoles' => __( 'Specific roles', 'brikpanel' ),
 			'hideFromRoles' => __( 'Hide from these roles', 'brikpanel' ),
+			'spacer'        => __( 'Spacer', 'brikpanel' ),
+			'spacerStyle'   => __( 'Spacer style', 'brikpanel' ),
+			'spacerSpace'   => __( 'Blank space', 'brikpanel' ),
+			'spacerLine'    => __( 'Divider line', 'brikpanel' ),
+			'removeSpacer'  => __( 'Remove spacer', 'brikpanel' ),
 		],
 	] );
 } );

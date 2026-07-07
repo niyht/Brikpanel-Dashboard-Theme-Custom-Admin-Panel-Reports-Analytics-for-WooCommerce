@@ -1,0 +1,1326 @@
+/**
+ * BrikPanel — Cart Abandonment signup popup (front-end).
+ * Monochrome, Shopify-inspired design system: near-black primary, grey
+ * borders, soft radius, subtle shadow.
+ *
+ * This widget is injected into arbitrary themes, so every visual property
+ * that themes commonly restyle (buttons, inputs, headings) is declared with
+ * !important behind the overlay-scoped selector — otherwise theme button
+ * rules (e.g. outlined pink buttons) bleed into the popup.
+ */
+
+.brikpanel-cartab-popup-overlay {
+	position: fixed !important;
+	inset: 0 !important;
+	z-index: 999999 !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	padding: 1rem;
+	margin: 0 !important;
+	background: rgba(20, 20, 20, 0.45) !important;
+	-webkit-backdrop-filter: blur(3px) saturate(1.05);
+	backdrop-filter: blur(3px) saturate(1.05);
+	opacity: 0;
+	transition: opacity 0.25s ease;
+}
+
+.brikpanel-cartab-popup-overlay.is-open {
+	opacity: 1;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup {
+	position: relative !important;
+	width: 100% !important;
+	max-width: 420px !important;
+	background: #ffffff !important;
+	border: 1px solid #e3e3e3 !important;
+	border-radius: 1rem !important;
+	box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+	padding: 2.25rem 1.75rem 1.75rem !important;
+	margin: 0 !important;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+	color: #303030 !important;
+	text-align: center !important;
+	overflow: hidden !important;
+	transform: translateY(26px) scale(0.94);
+	transition: transform 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
+	box-sizing: border-box !important;
+}
+
+/* Faint dot texture across the top of the card — quiet Stripe-style depth. */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup::before {
+	content: "";
+	position: absolute;
+	inset: 0 0 auto 0;
+	height: 130px;
+	background-image: radial-gradient(circle, rgba(48, 48, 48, 0.10) 1px, transparent 1.5px);
+	background-size: 14px 14px;
+	-webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent);
+	mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent);
+	pointer-events: none;
+}
+
+.brikpanel-cartab-popup-overlay.is-open .brikpanel-cartab-popup {
+	transform: translateY(0) scale(1);
+}
+
+/* Staggered entrance: each content block fades up a beat after the card. */
+.brikpanel-cartab-popup-overlay.is-open .brikpanel-cartab-ticket-wrap,
+.brikpanel-cartab-popup-overlay.is-open .brikpanel-cartab-popup-title,
+.brikpanel-cartab-popup-overlay.is-open .brikpanel-cartab-popup-message,
+.brikpanel-cartab-popup-overlay.is-open .brikpanel-cartab-popup-form {
+	animation: brikpanel-cartab-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.brikpanel-cartab-popup-overlay.is-open .brikpanel-cartab-popup-title {
+	animation-delay: 0.08s;
+}
+
+.brikpanel-cartab-popup-overlay.is-open .brikpanel-cartab-popup-message {
+	animation-delay: 0.14s;
+}
+
+.brikpanel-cartab-popup-overlay.is-open .brikpanel-cartab-popup-form {
+	animation-delay: 0.2s;
+}
+
+@keyframes brikpanel-cartab-fade-up {
+	0% { opacity: 0; transform: translateY(10px); }
+	100% { opacity: 1; transform: translateY(0); }
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup *,
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup *::before,
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup *::after {
+	box-sizing: border-box;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-close {
+	position: absolute !important;
+	top: 0.625rem !important;
+	right: 0.75rem !important;
+	left: auto !important;
+	width: 32px !important;
+	height: 32px !important;
+	min-height: 0 !important;
+	border: 0 !important;
+	background: transparent !important;
+	color: #8a8a8a !important;
+	font-size: 1.5rem !important;
+	font-weight: 400 !important;
+	line-height: 1 !important;
+	cursor: pointer !important;
+	border-radius: 0.5rem !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	box-shadow: none !important;
+	transition: color 0.15s ease, background 0.15s ease;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-close:hover {
+	color: #303030 !important;
+	background: #f1f1f1 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-title {
+	margin: 0 0 0.5rem !important;
+	padding: 0 !important;
+	font-size: 1.25rem !important;
+	font-weight: 600 !important;
+	line-height: 1.3 !important;
+	color: #303030 !important;
+	text-transform: none !important;
+	letter-spacing: normal !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-message {
+	margin: 0 0 1.25rem !important;
+	padding: 0 !important;
+	font-size: 0.875rem !important;
+	line-height: 1.5 !important;
+	color: #616161 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-form {
+	display: flex !important;
+	flex-direction: column !important;
+	gap: 0.625rem !important;
+	margin: 0 !important;
+	padding: 0 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-input {
+	width: 100% !important;
+	max-width: none !important;
+	min-height: 0 !important;
+	padding: 0.625rem 0.75rem !important;
+	margin: 0 !important;
+	font-size: 0.875rem !important;
+	line-height: 1.5 !important;
+	color: #303030 !important;
+	background: #ffffff !important;
+	border: 1px solid #8a8a8a !important;
+	border-radius: 0.5rem !important;
+	outline: none !important;
+	box-shadow: none !important;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-input::placeholder {
+	color: #8a8a8a !important;
+	opacity: 1 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-input:focus {
+	border-color: #303030 !important;
+	box-shadow: 0 0 0 1px #303030 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-button {
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: 0.375rem !important;
+	width: 100% !important;
+	min-height: 0 !important;
+	padding: 0.625rem 1rem !important;
+	margin: 0 !important;
+	font-size: 0.875rem !important;
+	font-weight: 550 !important;
+	line-height: 1.5 !important;
+	color: #ffffff !important;
+	background: #303030 !important;
+	border: 0 !important;
+	border-radius: 0.5rem !important;
+	cursor: pointer !important;
+	text-transform: none !important;
+	letter-spacing: normal !important;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+	transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-button:hover {
+	background: #1a1a1a !important;
+	color: #ffffff !important;
+	border: 0 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-button:active {
+	transform: scale(0.985);
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-button-arrow {
+	flex: 0 0 auto !important;
+	transform: translateX(0);
+	transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-button:hover .brikpanel-cartab-popup-button-arrow {
+	transform: translateX(3px);
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-button:disabled {
+	opacity: 0.6 !important;
+	cursor: default !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-note {
+	min-height: 0;
+	margin: 0.625rem 0 0 !important;
+	font-size: 0.8125rem !important;
+	line-height: 1.4 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-note:empty {
+	margin: 0 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-note.is-error {
+	color: #d72c0d !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-note.is-success {
+	color: #1a8917 !important;
+	font-weight: 550 !important;
+}
+
+@media (max-width: 480px) {
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup {
+		padding: 1.5rem 1.25rem 1.25rem !important;
+	}
+}
+
+/* ==========================================================================
+ * Coupon ticket — the animated visual hook at the top of the popup.
+ * ========================================================================== */
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-wrap {
+	position: relative !important;
+	display: flex !important;
+	justify-content: center !important;
+	margin: 0.375rem 0 1.25rem !important;
+}
+
+/* Soft pulsing halo behind the ticket (classic style only). */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-wrap--classic::before {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 74px;
+	height: 74px;
+	margin: -37px 0 0 -37px;
+	border-radius: 50%;
+	background: radial-gradient(circle, rgba(48, 48, 48, 0.10) 0%, transparent 70%);
+	animation: brikpanel-cartab-halo 3.2s ease-in-out infinite;
+	pointer-events: none;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket {
+	position: relative !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 0.625rem !important;
+	background: linear-gradient(135deg, #3a3a3a 0%, #262626 100%) !important;
+	color: #ffffff !important;
+	padding: 0.7rem 1.5rem !important;
+	border-radius: 0.625rem !important;
+	box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+	overflow: hidden !important;
+	animation: brikpanel-cartab-ticket-float 3.2s ease-in-out infinite;
+	transform: rotate(-4deg);
+}
+
+/* Shine sweep across the ticket every few seconds. */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket::after {
+	content: "";
+	position: absolute;
+	top: -20%;
+	left: -60%;
+	width: 45%;
+	height: 140%;
+	background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.22) 50%, transparent 100%);
+	transform: skewX(-18deg);
+	animation: brikpanel-cartab-shine 3.4s ease-in-out infinite;
+	pointer-events: none;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-pct {
+	font-size: 1.625rem !important;
+	font-weight: 700 !important;
+	line-height: 1 !important;
+	letter-spacing: -0.02em !important;
+	color: #ffffff !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-off {
+	font-size: 0.6875rem !important;
+	font-weight: 700 !important;
+	letter-spacing: 0.14em !important;
+	color: #ffffff !important;
+	opacity: 0.75;
+	border-left: 1px dashed rgba(255, 255, 255, 0.4) !important;
+	padding-left: 0.5rem !important;
+	line-height: 1.4 !important;
+}
+
+/* Punched notches on the ticket edges */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-notch {
+	position: absolute !important;
+	top: 50% !important;
+	width: 12px !important;
+	height: 12px !important;
+	background: #ffffff !important;
+	border-radius: 50% !important;
+	transform: translateY(-50%) !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-notch-l {
+	left: -6px !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-notch-r {
+	right: -6px !important;
+}
+
+/* Tiny sparkles around the ticket */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-spark {
+	position: absolute !important;
+	width: 7px !important;
+	height: 7px !important;
+	background: #303030 !important;
+	clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+	opacity: 0;
+	animation: brikpanel-cartab-spark 2.6s ease-in-out infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-spark-1 {
+	top: -4px;
+	left: 32%;
+	animation-delay: 0s;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-spark-2 {
+	top: 40%;
+	right: 24%;
+	width: 5px !important;
+	height: 5px !important;
+	animation-delay: 0.9s;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-spark-3 {
+	bottom: -2px;
+	left: 26%;
+	width: 5px !important;
+	height: 5px !important;
+	animation-delay: 1.7s;
+}
+
+@keyframes brikpanel-cartab-ticket-float {
+	0%, 100% { transform: rotate(-4deg) translateY(0); }
+	50% { transform: rotate(2deg) translateY(-5px); }
+}
+
+@keyframes brikpanel-cartab-spark {
+	0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+	50% { opacity: 0.9; transform: scale(1) rotate(40deg); }
+}
+
+@keyframes brikpanel-cartab-shine {
+	0%, 55% { left: -60%; }
+	85%, 100% { left: 130%; }
+}
+
+@keyframes brikpanel-cartab-halo {
+	0%, 100% { transform: scale(1); opacity: 0.7; }
+	50% { transform: scale(1.35); opacity: 1; }
+}
+
+/* ==========================================================================
+ * Offer reveal styles — selectable via the "Offer animation" setting.
+ * Each style loops a full reveal sequence continuously: the discount is
+ * covered/hidden, then revealed (scratched, spun, opened, sprung, assembled),
+ * held on screen, then reset for the next cycle. Shared pieces first.
+ * ========================================================================== */
+
+/* Star particle used by the reveal styles. The pop is baked into each style's
+ * spark keyframe (fired at the moment of reveal), so it repeats every cycle. */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-star {
+	position: absolute !important;
+	width: 8px !important;
+	height: 8px !important;
+	background: #303030 !important;
+	clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+	opacity: 0;
+	pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+ * Style: scratch — a coin scratches the foil off a prize card.
+ * ------------------------------------------------------------------------ */
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-box {
+	position: relative !important;
+	width: 184px !important;
+	height: 84px !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch {
+	position: absolute !important;
+	inset: 0 !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	background: #ffffff !important;
+	border: 1px solid #e3e3e3 !important;
+	border-radius: 10px !important;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12) !important;
+	overflow: hidden !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-win {
+	display: inline-flex !important;
+	align-items: baseline !important;
+	gap: 6px !important;
+	animation: brikpanel-cartab-scratch-winpop 5s ease-in-out infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-pct {
+	font-size: 1.5rem !important;
+	font-weight: 750 !important;
+	letter-spacing: -0.02em !important;
+	line-height: 1 !important;
+	color: #303030 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-off {
+	font-size: 0.6875rem !important;
+	font-weight: 700 !important;
+	letter-spacing: 0.16em !important;
+	color: #8a8a8a !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-foil {
+	position: absolute !important;
+	inset: 0 !important;
+	background: repeating-linear-gradient(115deg, #c7c7c7 0 7px, #d6d6d6 7px 14px) !important;
+	animation: brikpanel-cartab-scratch-wipe 5s linear infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-foil-label {
+	position: absolute !important;
+	inset: 0 !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	font-size: 0.625rem !important;
+	font-weight: 700 !important;
+	letter-spacing: 0.2em !important;
+	text-transform: uppercase !important;
+	color: #8f8f8f !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-coin {
+	position: absolute !important;
+	top: -16px !important;
+	left: 0 !important;
+	width: 28px !important;
+	height: 28px !important;
+	border-radius: 50% !important;
+	background: linear-gradient(135deg, #4a4a4a, #262626) !important;
+	border: 2px solid #6b6b6b !important;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3) !important;
+	animation: brikpanel-cartab-scratch-coin 5s linear infinite;
+	z-index: 3;
+	pointer-events: none;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-coin::after {
+	content: "";
+	position: absolute;
+	inset: 4px;
+	border-radius: 50%;
+	border: 1.5px dashed rgba(255, 255, 255, 0.35);
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-crumb {
+	position: absolute !important;
+	bottom: -6px !important;
+	width: 5px !important;
+	height: 5px !important;
+	border-radius: 50% !important;
+	background: #bcbcbc !important;
+	opacity: 0;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-crumb-1 { left: 22%; animation: brikpanel-cartab-scratch-crumb 5s linear infinite; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-crumb-2 { left: 48%; animation: brikpanel-cartab-scratch-crumb 5s linear 0.55s infinite; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-crumb-3 { left: 72%; width: 4px !important; height: 4px !important; animation: brikpanel-cartab-scratch-crumb 5s linear 1.1s infinite; }
+
+/* Foil wipes off (12%→55%), stays gone while the prize shows, then snaps back
+ * (90%→97%) for the next cycle. */
+@keyframes brikpanel-cartab-scratch-wipe {
+	0%, 12% { clip-path: inset(-4px -4px -4px 0); opacity: 1; }
+	55% { clip-path: inset(-4px -4px -4px 101%); opacity: 1; }
+	90% { clip-path: inset(-4px -4px -4px 101%); opacity: 0; }
+	92% { clip-path: inset(-4px -4px -4px 0); opacity: 0; }
+	97%, 100% { clip-path: inset(-4px -4px -4px 0); opacity: 1; }
+}
+
+@keyframes brikpanel-cartab-scratch-coin {
+	0%, 10% { transform: translate(-12px, 6px) rotate(-15deg); opacity: 0; }
+	12% { transform: translate(-4px, 10px) rotate(-10deg); opacity: 1; }
+	20% { transform: translate(24px, 14px) rotate(8deg); }
+	28% { transform: translate(52px, 8px) rotate(-8deg); }
+	36% { transform: translate(88px, 15px) rotate(10deg); }
+	44% { transform: translate(122px, 9px) rotate(-6deg); }
+	55% { transform: translate(162px, 13px) rotate(12deg); opacity: 1; }
+	62%, 100% { transform: translate(190px, 40px) rotate(30deg); opacity: 0; }
+}
+
+@keyframes brikpanel-cartab-scratch-winpop {
+	0%, 55% { transform: scale(1); }
+	61% { transform: scale(1.12); }
+	66% { transform: scale(1); }
+}
+
+@keyframes brikpanel-cartab-scratch-crumb {
+	0%, 18% { transform: translateY(0); opacity: 0; }
+	24% { opacity: 0.9; }
+	40% { transform: translateY(20px); opacity: 0; }
+	100% { transform: translateY(20px); opacity: 0; }
+}
+
+/* --------------------------------------------------------------------------
+ * Style: slot — reels spin and land on the discount digits.
+ * ------------------------------------------------------------------------ */
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot {
+	position: relative !important;
+	display: inline-flex !important;
+	gap: 7px !important;
+	background: linear-gradient(135deg, #3a3a3a 0%, #262626 100%) !important;
+	padding: 11px 13px !important;
+	border-radius: 12px !important;
+	box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+	animation: brikpanel-cartab-slot-pulse 5.4s ease-in-out infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-reel {
+	width: 38px !important;
+	height: 40px !important;
+	overflow: hidden !important;
+	background: #fcfcfc !important;
+	border-radius: 7px !important;
+	box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.18) !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-strip {
+	display: flex !important;
+	flex-direction: column !important;
+	animation-duration: 5.4s;
+	animation-timing-function: cubic-bezier(0.22, 0.9, 0.32, 1.05);
+	animation-iteration-count: infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-strip span {
+	height: 40px !important;
+	line-height: 40px !important;
+	text-align: center !important;
+	font-size: 1.25rem !important;
+	font-weight: 750 !important;
+	color: #303030 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-reel-1 .brikpanel-cartab-slot-strip { animation-name: brikpanel-cartab-slot-spin-1; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-reel-2 .brikpanel-cartab-slot-strip { animation-name: brikpanel-cartab-slot-spin-2; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-reel-3 .brikpanel-cartab-slot-strip { animation-name: brikpanel-cartab-slot-spin-3; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-reel-4 .brikpanel-cartab-slot-strip { animation-name: brikpanel-cartab-slot-spin-4; }
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-stamp {
+	position: absolute !important;
+	right: -12px !important;
+	top: -14px !important;
+	background: #ffffff !important;
+	color: #303030 !important;
+	border: 1.5px solid #303030 !important;
+	border-radius: 7px !important;
+	padding: 3px 8px !important;
+	font-size: 0.6875rem !important;
+	font-weight: 750 !important;
+	letter-spacing: 0.12em !important;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15) !important;
+	animation: brikpanel-cartab-slot-stamp 5.4s ease-in-out infinite;
+}
+
+/* Strips hold 9 cells of 40px; landing on the last = 8 cells (320px) of travel.
+ * Each reel spins down blurred, lands staggered, holds, then resets at 98-100%
+ * for the next cycle. */
+@keyframes brikpanel-cartab-slot-spin-1 {
+	0%, 8% { transform: translateY(0); filter: blur(0); }
+	14% { filter: blur(2px); }
+	30% { filter: blur(2px); }
+	38% { transform: translateY(-320px); filter: blur(0); }
+	92% { transform: translateY(-320px); }
+	98%, 100% { transform: translateY(0); }
+}
+
+@keyframes brikpanel-cartab-slot-spin-2 {
+	0%, 8% { transform: translateY(0); filter: blur(0); }
+	14% { filter: blur(2px); }
+	38% { filter: blur(2px); }
+	46% { transform: translateY(-320px); filter: blur(0); }
+	92% { transform: translateY(-320px); }
+	98%, 100% { transform: translateY(0); }
+}
+
+@keyframes brikpanel-cartab-slot-spin-3 {
+	0%, 8% { transform: translateY(0); filter: blur(0); }
+	14% { filter: blur(2px); }
+	46% { filter: blur(2px); }
+	54% { transform: translateY(-320px); filter: blur(0); }
+	92% { transform: translateY(-320px); }
+	98%, 100% { transform: translateY(0); }
+}
+
+@keyframes brikpanel-cartab-slot-spin-4 {
+	0%, 8% { transform: translateY(0); filter: blur(0); }
+	14% { filter: blur(2px); }
+	54% { filter: blur(2px); }
+	62% { transform: translateY(-320px); filter: blur(0); }
+	92% { transform: translateY(-320px); }
+	98%, 100% { transform: translateY(0); }
+}
+
+@keyframes brikpanel-cartab-slot-pulse {
+	0%, 62% { transform: scale(1); }
+	65% { transform: scale(1.06); }
+	68% { transform: scale(1); }
+	71% { transform: scale(1.03); }
+	74% { transform: scale(1); }
+}
+
+@keyframes brikpanel-cartab-slot-stamp {
+	0%, 62% { transform: rotate(10deg) scale(0); opacity: 0; }
+	67% { transform: rotate(10deg) scale(1.25); opacity: 1; }
+	71% { transform: rotate(10deg) scale(1); opacity: 1; }
+	90% { transform: rotate(10deg) scale(1); opacity: 1; }
+	96%, 100% { transform: rotate(10deg) scale(0); opacity: 0; }
+}
+
+/* --------------------------------------------------------------------------
+ * Style: envelope — the wax seal pops, the flap opens, the coupon rises.
+ * ------------------------------------------------------------------------ */
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env {
+	position: relative !important;
+	width: 150px !important;
+	height: 118px !important;
+	perspective: 420px;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-back {
+	position: absolute !important;
+	left: 0 !important;
+	right: 0 !important;
+	bottom: 0 !important;
+	height: 64px !important;
+	background: #e9e9e9 !important;
+	border: 1px solid #d5d5d5 !important;
+	border-radius: 7px !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-card {
+	position: absolute !important;
+	left: 22px !important;
+	right: 22px !important;
+	bottom: 12px !important;
+	height: 56px !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	background: #ffffff !important;
+	border: 1px solid #e3e3e3 !important;
+	border-radius: 7px !important;
+	box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.12) !important;
+	z-index: 1;
+	animation: brikpanel-cartab-env-card 5.2s ease-in-out infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-mini {
+	display: inline-flex !important;
+	align-items: baseline !important;
+	gap: 5px !important;
+	background: linear-gradient(135deg, #3a3a3a 0%, #262626 100%) !important;
+	color: #ffffff !important;
+	border-radius: 6px !important;
+	padding: 5px 12px !important;
+	white-space: nowrap !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-pct {
+	font-size: 0.9375rem !important;
+	font-weight: 750 !important;
+	letter-spacing: -0.01em !important;
+	color: #ffffff !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-off {
+	font-size: 0.5625rem !important;
+	font-weight: 700 !important;
+	letter-spacing: 0.16em !important;
+	color: #ffffff !important;
+	opacity: 0.7;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-front {
+	position: absolute !important;
+	left: 0 !important;
+	right: 0 !important;
+	bottom: 0 !important;
+	height: 64px !important;
+	background: linear-gradient(180deg, #f4f4f4 0%, #ececec 100%) !important;
+	border: 1px solid #d5d5d5 !important;
+	border-radius: 7px !important;
+	clip-path: polygon(0 0, 50% 55%, 100% 0, 100% 100%, 0 100%);
+	z-index: 2;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-flap {
+	position: absolute !important;
+	left: 1px !important;
+	right: 1px !important;
+	bottom: 30px !important;
+	height: 34px !important;
+	background: #dfdfdf !important;
+	border-radius: 3px !important;
+	clip-path: polygon(0 0, 50% 100%, 100% 0);
+	transform-origin: 50% 0;
+	z-index: 3;
+	animation: brikpanel-cartab-env-flap 5.2s ease-in-out infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-wax {
+	position: absolute !important;
+	left: 50% !important;
+	bottom: 22px !important;
+	width: 22px !important;
+	height: 22px !important;
+	margin-left: -11px !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	border-radius: 50% !important;
+	background: radial-gradient(circle at 36% 32%, #4c4c4c, #232323) !important;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+	color: #ffffff !important;
+	font-size: 0.625rem !important;
+	font-weight: 750 !important;
+	z-index: 4;
+	animation: brikpanel-cartab-env-wax 5.2s ease-in-out infinite;
+}
+
+.brikpanel-cartab-ticket-wrap--envelope .brikpanel-cartab-star { animation: brikpanel-cartab-spk-env 5.2s ease-in-out infinite; }
+.brikpanel-cartab-ticket-wrap--envelope .brikpanel-cartab-star-1 { top: 6px; left: 14px; }
+.brikpanel-cartab-ticket-wrap--envelope .brikpanel-cartab-star-2 { top: -6px; right: 20px; width: 6px !important; height: 6px !important; animation-delay: 0.25s; }
+.brikpanel-cartab-ticket-wrap--envelope .brikpanel-cartab-star-3 { top: 30px; right: 2px; width: 6px !important; height: 6px !important; animation-delay: 0.5s; }
+
+/* Seal pops off (14%→24%), flap swings open (18%→34%), card rises out and
+ * bobs, everything resets near 96-100% for the loop. */
+@keyframes brikpanel-cartab-env-wax {
+	0%, 14% { transform: scale(1) translateY(0); opacity: 1; }
+	17% { transform: scale(1.15) translateY(-2px); opacity: 1; }
+	24%, 92% { transform: scale(1.5) translateY(-16px); opacity: 0; }
+	98%, 100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes brikpanel-cartab-env-flap {
+	0%, 18% { transform: rotateX(0); opacity: 1; }
+	34% { transform: rotateX(-160deg); opacity: 1; }
+	38%, 92% { transform: rotateX(-160deg); opacity: 0; }
+	97%, 100% { transform: rotateX(0); opacity: 1; }
+}
+
+@keyframes brikpanel-cartab-env-card {
+	0%, 30% { transform: translateY(6px); }
+	44% { transform: translateY(-46px) rotate(-2deg); }
+	50% { transform: translateY(-38px) rotate(0); }
+	62% { transform: translateY(-42px); }
+	74% { transform: translateY(-38px); }
+	88% { transform: translateY(-40px); }
+	96%, 100% { transform: translateY(6px); }
+}
+
+@keyframes brikpanel-cartab-spk-env {
+	0%, 44% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+	50% { opacity: 0.9; transform: scale(1) rotate(40deg); }
+	58%, 100% { opacity: 0; transform: scale(0.3) rotate(80deg); }
+}
+
+/* --------------------------------------------------------------------------
+ * Style: pocket — the coupon card springs out of a stitched pocket.
+ * ------------------------------------------------------------------------ */
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-pocketwrap {
+	position: relative !important;
+	width: 160px !important;
+	height: 116px !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-pk-card {
+	position: absolute !important;
+	left: 15px !important;
+	right: 15px !important;
+	bottom: 34px !important;
+	height: 62px !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: 7px !important;
+	background: linear-gradient(135deg, #3a3a3a 0%, #262626 100%) !important;
+	color: #ffffff !important;
+	border-radius: 9px !important;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important;
+	overflow: hidden !important;
+	animation: brikpanel-cartab-pk-slide 4.6s ease-in-out infinite;
+}
+
+/* Shine sweep across the card while it is out. */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-pk-card::after {
+	content: "";
+	position: absolute;
+	top: -20%;
+	left: -60%;
+	width: 45%;
+	height: 140%;
+	background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.28) 50%, transparent 100%);
+	transform: skewX(-18deg);
+	animation: brikpanel-cartab-pk-shine 4.6s ease-in-out infinite;
+	pointer-events: none;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-pk-pct {
+	font-size: 1.375rem !important;
+	font-weight: 750 !important;
+	letter-spacing: -0.02em !important;
+	line-height: 1 !important;
+	color: #ffffff !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-pk-off {
+	font-size: 0.5625rem !important;
+	font-weight: 700 !important;
+	letter-spacing: 0.2em !important;
+	color: #ffffff !important;
+	opacity: 0.7;
+	border-left: 1px dashed rgba(255, 255, 255, 0.4) !important;
+	padding-left: 7px !important;
+	line-height: 1.3 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-pocket {
+	position: absolute !important;
+	left: 0 !important;
+	right: 0 !important;
+	bottom: 0 !important;
+	height: 50px !important;
+	background: linear-gradient(180deg, #ececec 0%, #e0e0e0 100%) !important;
+	border: 1px solid #d2d2d2 !important;
+	border-radius: 10px 10px 12px 12px !important;
+	box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.08) !important;
+	z-index: 2;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-pocket::after {
+	content: "";
+	position: absolute;
+	top: 9px;
+	left: 14px;
+	right: 14px;
+	height: 0;
+	border-top: 1.5px dashed #bdbdbd;
+}
+
+.brikpanel-cartab-ticket-wrap--pocket .brikpanel-cartab-star { animation: brikpanel-cartab-spk-pocket 4.6s ease-in-out infinite; }
+.brikpanel-cartab-ticket-wrap--pocket .brikpanel-cartab-star-1 { top: -6px; left: 18px; }
+.brikpanel-cartab-ticket-wrap--pocket .brikpanel-cartab-star-2 { top: -14px; right: 26px; width: 6px !important; height: 6px !important; animation-delay: 0.2s; }
+.brikpanel-cartab-ticket-wrap--pocket .brikpanel-cartab-star-3 { top: 18px; right: -6px; width: 6px !important; height: 6px !important; animation-delay: 0.4s; }
+
+/* Card springs out of the pocket (10%→36%), holds with a gentle bob, then
+ * drops back in (86%→100%) for the next cycle. */
+@keyframes brikpanel-cartab-pk-slide {
+	0%, 10% { transform: translateY(38px) rotate(0); }
+	20% { transform: translateY(-24px) rotate(-2deg); }
+	26% { transform: translateY(-10px) rotate(0); }
+	31% { transform: translateY(-16px) rotate(0); }
+	36% { transform: translateY(-13px) rotate(0); }
+	56% { transform: translateY(-15px) rotate(0); }
+	76% { transform: translateY(-13px) rotate(0); }
+	86% { transform: translateY(-14px) rotate(0); }
+	96%, 100% { transform: translateY(38px) rotate(0); }
+}
+
+@keyframes brikpanel-cartab-pk-shine {
+	0%, 24% { left: -60%; }
+	40%, 100% { left: 130%; }
+}
+
+@keyframes brikpanel-cartab-spk-pocket {
+	0%, 22% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+	30% { opacity: 0.9; transform: scale(1) rotate(40deg); }
+	42%, 100% { opacity: 0; transform: scale(0.3) rotate(80deg); }
+}
+
+/* --------------------------------------------------------------------------
+ * Style: assembly — coupon shards fly in, flash, and form the badge.
+ * ------------------------------------------------------------------------ */
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm {
+	position: relative !important;
+	width: 176px !important;
+	height: 76px !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-chip {
+	position: absolute !important;
+	inset: 0 !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: 0.6rem !important;
+	background: linear-gradient(135deg, #3a3a3a 0%, #262626 100%) !important;
+	color: #ffffff !important;
+	border-radius: 10px !important;
+	box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+	animation: brikpanel-cartab-asm-chip 4.8s ease-in-out infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-pct {
+	font-size: 1.5rem !important;
+	font-weight: 750 !important;
+	letter-spacing: -0.02em !important;
+	line-height: 1 !important;
+	color: #ffffff !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-off {
+	font-size: 0.625rem !important;
+	font-weight: 700 !important;
+	letter-spacing: 0.16em !important;
+	color: #ffffff !important;
+	opacity: 0.75;
+	border-left: 1px dashed rgba(255, 255, 255, 0.4) !important;
+	padding-left: 0.5rem !important;
+	line-height: 1.3 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-piece {
+	position: absolute !important;
+	inset: 0 !important;
+	background: linear-gradient(135deg, #3a3a3a 0%, #262626 100%) !important;
+	border-radius: 10px !important;
+	z-index: 2;
+	pointer-events: none;
+	animation: brikpanel-cartab-asm-piece 4.8s cubic-bezier(0.22, 0.9, 0.3, 1) infinite;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-piece-1 { clip-path: polygon(0 0, 38% 0, 30% 52%, 0 45%); --brik-tx: -60px; --brik-ty: -44px; --brik-rot: -40deg; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-piece-2 { clip-path: polygon(38% 0, 72% 0, 65% 48%, 30% 52%); --brik-tx: 8px; --brik-ty: -64px; --brik-rot: 20deg; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-piece-3 { clip-path: polygon(72% 0, 100% 0, 100% 55%, 65% 48%); --brik-tx: 64px; --brik-ty: -46px; --brik-rot: 38deg; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-piece-4 { clip-path: polygon(0 45%, 30% 52%, 24% 100%, 0 100%); --brik-tx: -62px; --brik-ty: 40px; --brik-rot: 34deg; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-piece-5 { clip-path: polygon(30% 52%, 65% 48%, 70% 100%, 24% 100%); --brik-tx: 4px; --brik-ty: 62px; --brik-rot: -18deg; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-piece-6 { clip-path: polygon(65% 48%, 100% 55%, 100% 100%, 70% 100%); --brik-tx: 60px; --brik-ty: 44px; --brik-rot: -36deg; }
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-flash {
+	position: absolute !important;
+	inset: -16px !important;
+	border-radius: 50% !important;
+	background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, transparent 62%) !important;
+	opacity: 0;
+	z-index: 3;
+	pointer-events: none;
+	animation: brikpanel-cartab-asm-flash 4.8s ease-out infinite;
+}
+
+.brikpanel-cartab-ticket-wrap--assembly .brikpanel-cartab-star { animation: brikpanel-cartab-spk-asm 4.8s ease-in-out infinite; }
+.brikpanel-cartab-ticket-wrap--assembly .brikpanel-cartab-star-1 { top: -12px; left: 22%; }
+.brikpanel-cartab-ticket-wrap--assembly .brikpanel-cartab-star-2 { top: 10px; right: -8px; width: 6px !important; height: 6px !important; animation-delay: 0.15s; }
+.brikpanel-cartab-ticket-wrap--assembly .brikpanel-cartab-star-3 { bottom: -10px; left: 8%; width: 6px !important; height: 6px !important; animation-delay: 0.3s; }
+
+/* Shards fly in from all sides and lock together (8%→34%), the chip fades in
+ * over them with a flash, holds, then the whole badge fades for the next loop. */
+@keyframes brikpanel-cartab-asm-piece {
+	0%, 8% { transform: translate(var(--brik-tx, 0px), var(--brik-ty, 0px)) rotate(var(--brik-rot, 0deg)); opacity: 0; }
+	12% { opacity: 1; }
+	34% { transform: translate(0, 0) rotate(0); opacity: 1; }
+	37%, 100% { transform: translate(0, 0) rotate(0); opacity: 0; }
+}
+
+@keyframes brikpanel-cartab-asm-chip {
+	0%, 33% { transform: scale(1); opacity: 0; }
+	36% { transform: scale(1.08); opacity: 1; }
+	41% { transform: scale(1); }
+	88% { transform: scale(1); opacity: 1; }
+	95%, 100% { transform: scale(0.9); opacity: 0; }
+}
+
+@keyframes brikpanel-cartab-asm-flash {
+	0%, 32% { opacity: 0; transform: scale(0.5); }
+	36% { opacity: 0.9; transform: scale(1); }
+	44%, 100% { opacity: 0; transform: scale(1.25); }
+}
+
+@keyframes brikpanel-cartab-spk-asm {
+	0%, 36% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+	43% { opacity: 0.9; transform: scale(1) rotate(40deg); }
+	54%, 100% { opacity: 0; transform: scale(0.3) rotate(80deg); }
+}
+
+/* On success, freeze whichever reveal is on screen so it stops competing
+ * with the coupon-code block for attention. */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup.is-done .brikpanel-cartab-ticket-wrap *,
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup.is-done .brikpanel-cartab-ticket-wrap *::before,
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup.is-done .brikpanel-cartab-ticket-wrap *::after {
+	animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket::after,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-wrap::before,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-spark,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-wrap,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-wrap *,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-wrap *::before,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-ticket-wrap *::after,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-title,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-message,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup-form,
+	.brikpanel-cartab-teaser .brikpanel-cartab-teaser-ticket {
+		animation: none !important;
+	}
+
+	/* One-shot reveals rely on animation fill for their final state; without
+	 * animation, pin every style to its revealed end state statically. */
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-foil,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-coin,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-crumb,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-flap,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-wax,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-piece,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-flash,
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-star {
+		display: none !important;
+	}
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-strip {
+		transform: translateY(-320px) !important;
+		filter: none !important;
+	}
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-slot-stamp {
+		opacity: 1 !important;
+		transform: rotate(10deg) scale(1) !important;
+	}
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-env-card {
+		transform: translateY(-40px) !important;
+	}
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-pk-card {
+		transform: translateY(-13px) !important;
+	}
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-asm-chip {
+		opacity: 1 !important;
+	}
+}
+
+/* ==========================================================================
+ * Success state — coupon code reveal.
+ * ========================================================================== */
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup.is-done .brikpanel-cartab-ticket {
+	animation: none;
+	transform: rotate(0deg) scale(1.04);
+	transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon {
+	margin-top: 0.875rem !important;
+	animation: brikpanel-cartab-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-intro {
+	font-size: 0.75rem !important;
+	font-weight: 600 !important;
+	text-transform: uppercase !important;
+	letter-spacing: 0.08em !important;
+	color: #8a8a8a !important;
+	margin-bottom: 0.375rem !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-row {
+	display: flex !important;
+	align-items: stretch !important;
+	justify-content: center !important;
+	gap: 0.5rem !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-code {
+	display: inline-flex !important;
+	align-items: center !important;
+	padding: 0.5rem 0.875rem !important;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+	font-size: 1rem !important;
+	font-weight: 700 !important;
+	letter-spacing: 0.06em !important;
+	color: #303030 !important;
+	background: #fafafa !important;
+	border: 1.5px dashed #8a8a8a !important;
+	border-radius: 0.5rem !important;
+	user-select: all;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-copy {
+	padding: 0.5rem 0.875rem !important;
+	min-height: 0 !important;
+	font-size: 0.8125rem !important;
+	font-weight: 550 !important;
+	color: #ffffff !important;
+	background: #303030 !important;
+	border: 0 !important;
+	border-radius: 0.5rem !important;
+	cursor: pointer !important;
+	text-transform: none !important;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+	transition: background 0.15s ease;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-copy:hover {
+	background: #1a1a1a !important;
+	color: #ffffff !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-copy.is-copied {
+	background: #1a8917 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-hint {
+	margin-top: 0.5rem !important;
+	font-size: 0.75rem !important;
+	color: #8a8a8a !important;
+}
+
+@keyframes brikpanel-cartab-pop-in {
+	0% { opacity: 0; transform: translateY(8px) scale(0.92); }
+	100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Confetti burst on successful signup — small monochrome + green pieces
+ * launched from the ticket area; removed from the DOM by JS afterwards. */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti {
+	position: absolute !important;
+	top: 4.25rem !important;
+	left: 50% !important;
+	width: 0 !important;
+	height: 0 !important;
+	pointer-events: none !important;
+	z-index: 2 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span {
+	position: absolute !important;
+	width: 7px !important;
+	height: 10px !important;
+	border-radius: 2px !important;
+	opacity: 0;
+	animation: brikpanel-cartab-confetti 1.1s cubic-bezier(0.22, 0.9, 0.36, 1) both;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(3n) {
+	background: #303030 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(3n + 1) {
+	background: #1a8917 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(3n + 2) {
+	background: #b7b7b7 !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(1)  { --bp-cf-x: -110px; --bp-cf-y: -70px;  --bp-cf-r: -200deg; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(2)  { --bp-cf-x: -80px;  --bp-cf-y: -110px; --bp-cf-r: 160deg;  animation-delay: 0.04s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(3)  { --bp-cf-x: -45px;  --bp-cf-y: -130px; --bp-cf-r: -140deg; animation-delay: 0.02s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(4)  { --bp-cf-x: -15px;  --bp-cf-y: -145px; --bp-cf-r: 220deg;  animation-delay: 0.06s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(5)  { --bp-cf-x: 15px;   --bp-cf-y: -140px; --bp-cf-r: -180deg; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(6)  { --bp-cf-x: 50px;   --bp-cf-y: -125px; --bp-cf-r: 240deg;  animation-delay: 0.05s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(7)  { --bp-cf-x: 85px;   --bp-cf-y: -100px; --bp-cf-r: -160deg; animation-delay: 0.03s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(8)  { --bp-cf-x: 115px;  --bp-cf-y: -65px;  --bp-cf-r: 190deg;  animation-delay: 0.07s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(9)  { --bp-cf-x: -95px;  --bp-cf-y: -30px;  --bp-cf-r: 150deg;  animation-delay: 0.08s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(10) { --bp-cf-x: 100px;  --bp-cf-y: -25px;  --bp-cf-r: -230deg; animation-delay: 0.09s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(11) { --bp-cf-x: -60px;  --bp-cf-y: -55px;  --bp-cf-r: 260deg;  animation-delay: 0.1s; }
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-confetti span:nth-child(12) { --bp-cf-x: 65px;   --bp-cf-y: -50px;  --bp-cf-r: -150deg; animation-delay: 0.11s; }
+
+@keyframes brikpanel-cartab-confetti {
+	0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+	70% { opacity: 1; }
+	100% { opacity: 0; transform: translate(var(--bp-cf-x, 0), calc(var(--bp-cf-y, -100px) + 90px)) rotate(var(--bp-cf-r, 180deg)) scale(0.7); }
+}
+
+/* ==========================================================================
+ * Floating tab (teaser) — bottom-left, Klaviyo-style.
+ * ========================================================================== */
+
+.brikpanel-cartab-teaser {
+	position: fixed !important;
+	left: 16px !important;
+	bottom: 16px !important;
+	z-index: 999998 !important;
+	transform: translateX(-120%);
+	transition: transform 0.35s cubic-bezier(0.34, 1.3, 0.64, 1);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.brikpanel-cartab-teaser.is-in {
+	transform: translateX(0);
+}
+
+.brikpanel-cartab-teaser .brikpanel-cartab-teaser-btn {
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 0.5rem !important;
+	padding: 0.625rem 1rem !important;
+	min-height: 0 !important;
+	background: #303030 !important;
+	color: #ffffff !important;
+	border: 0 !important;
+	border-radius: 999px !important;
+	font-size: 0.8125rem !important;
+	font-weight: 600 !important;
+	line-height: 1.3 !important;
+	letter-spacing: normal !important;
+	text-transform: none !important;
+	cursor: pointer !important;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+	transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.brikpanel-cartab-teaser .brikpanel-cartab-teaser-btn:hover {
+	background: #1a1a1a !important;
+	color: #ffffff !important;
+	transform: translateY(-2px);
+}
+
+.brikpanel-cartab-teaser .brikpanel-cartab-teaser-ticket {
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	width: 20px !important;
+	height: 20px !important;
+	background: #ffffff !important;
+	color: #303030 !important;
+	border-radius: 50% !important;
+	font-size: 0.75rem !important;
+	font-weight: 700 !important;
+	animation: brikpanel-cartab-teaser-wiggle 3s ease-in-out infinite;
+}
+
+@keyframes brikpanel-cartab-teaser-wiggle {
+	0%, 84%, 100% { transform: rotate(0deg); }
+	88% { transform: rotate(-12deg); }
+	92% { transform: rotate(10deg); }
+	96% { transform: rotate(-6deg); }
+}
+
+.brikpanel-cartab-teaser .brikpanel-cartab-teaser-close {
+	position: absolute !important;
+	top: -7px !important;
+	right: -7px !important;
+	width: 20px !important;
+	height: 20px !important;
+	min-height: 0 !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	padding: 0 !important;
+	background: #ffffff !important;
+	color: #616161 !important;
+	border: 1px solid #e3e3e3 !important;
+	border-radius: 50% !important;
+	font-size: 0.8125rem !important;
+	line-height: 1 !important;
+	cursor: pointer !important;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18) !important;
+	opacity: 0;
+	transform: scale(0.7);
+	transition: opacity 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+
+.brikpanel-cartab-teaser:hover .brikpanel-cartab-teaser-close,
+.brikpanel-cartab-teaser .brikpanel-cartab-teaser-close:focus {
+	opacity: 1;
+	transform: scale(1);
+}
+
+.brikpanel-cartab-teaser .brikpanel-cartab-teaser-close:hover {
+	color: #d72c0d !important;
+}

@@ -159,9 +159,42 @@
 	:not(.admin-menu-editor-active):not(#toplevel_page_woocommerce),
 	.admin-menu-editor-active
 ) {
-	padding: 0.4rem 0.5rem;
+	padding: var(--brikpanel-nav-item-pad-y, 0.4rem) 0.5rem;
 	border-radius: 0.5rem;
 	transition: background-color 0.15s cubic-bezier(0.19, 0.91, 0.38, 1);
+}
+
+/* Global item-spacing preference (Navigation settings → Item spacing). The
+   default "comfortable" keeps the historical 0.4rem so existing installs are
+   unchanged. */
+#brikpanel-navigation.brikpanel-nav-space-compact { --brikpanel-nav-item-pad-y: 0.2rem; }
+#brikpanel-navigation.brikpanel-nav-space-comfortable { --brikpanel-nav-item-pad-y: 0.4rem; }
+#brikpanel-navigation.brikpanel-nav-space-spacious { --brikpanel-nav-item-pad-y: 0.62rem; }
+
+/* Decorative spacer rows: a blank gap or a thin divider line the user drops
+   between menu items. They are not interactive. */
+#brikpanel-navigation li.brikpanel-nav-spacer-item,
+#brikpanel-navigation li.brikpanel-nav-spacer-item:where(
+	:not(.admin-menu-editor-active):not(#toplevel_page_woocommerce),
+	.admin-menu-editor-active
+) {
+	padding: 0;
+	margin: 0;
+	background: none !important;
+	pointer-events: none;
+	cursor: default;
+	list-style: none;
+}
+#brikpanel-navigation li.brikpanel-nav-spacer-item .brikpanel-nav-spacer-inner {
+	display: block;
+}
+#brikpanel-navigation li.brikpanel-nav-spacer-item .brikpanel-nav-spacer-space {
+	height: 0.9rem;
+}
+#brikpanel-navigation li.brikpanel-nav-spacer-item .brikpanel-nav-spacer-line {
+	height: 0;
+	margin: 0.55rem 0.15rem;
+	border-top: 1px solid #e3e3e3;
 }
 #brikpanel-navigation li.brikpanel-has-open-submenu .brikpanel-menu-icon-title-chevron-container {
 	padding-bottom: 0.4rem;

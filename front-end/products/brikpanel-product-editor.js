@@ -242,7 +242,11 @@
         // Duplicate (delegated so dynamically injected button still works)
         $(document).on('click', '#bpe-duplicate', duplicateProduct);
 
-        $('[data-required]').on('blur', function () { validateField($(this)); });
+        // Scope to real form controls: ACF (and other plugins) put
+        // data-required="1" on the field *wrapper div*, not the input. A bare
+        // [data-required] selector would match those wrappers too — see the
+        // note in validateAll().
+        $(':input[data-required]').on('blur', function () { validateField($(this)); });
 
         // Ctrl+S shortcut
         $(document).on('keydown', function (e) {
@@ -1094,6 +1098,9 @@
         $field.find('[data-cmd="italic"]').toggleClass('is-active', st('italic'));
         $field.find('[data-cmd="insertUnorderedList"]').toggleClass('is-active', st('insertUnorderedList'));
         $field.find('[data-cmd="insertOrderedList"]').toggleClass('is-active', st('insertOrderedList'));
+        $field.find('[data-cmd="justifyLeft"]').toggleClass('is-active', st('justifyLeft'));
+        $field.find('[data-cmd="justifyCenter"]').toggleClass('is-active', st('justifyCenter'));
+        $field.find('[data-cmd="justifyRight"]').toggleClass('is-active', st('justifyRight'));
         var sel = window.getSelection();
         var block = 'p';
         if (sel && sel.rangeCount) {
@@ -1101,19 +1108,31 @@
             while (n && n !== ed) {
                 if (n.nodeType === 1) {
                     var t = n.tagName.toLowerCase();
-                    if (t === 'h2' || t === 'h3' || t === 'h4') { block = t; break; }
-                    if (t === 'p' || t === 'div' || t === 'li' || /^h[1-6]$/.test(t)) { block = (t === 'h1') ? 'h2' : (/^h[56]$/.test(t) ? 'p' : (t === 'div' || t === 'li' ? 'p' : t)); break; }
+                    // Every format the menu offers is reported as-is so the label
+                    // and active tick match the caret's real block.
+                    if (/^h[1-6]$/.test(t) || t === 'blockquote' || t === 'p') { block = t; break; }
+                    if (t === 'div' || t === 'li') { block = 'p'; break; }
                 }
                 n = n.parentNode;
             }
         }
-        if (['p', 'h2', 'h3', 'h4'].indexOf(block) === -1) block = 'p';
+        if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'blockquote'].indexOf(block) === -1) block = 'p';
         var $items = $field.find('.brikpanel-pe-fmt-item');
         $items.removeClass('is-active');
         var $active = $items.filter('[data-format="' + block + '"]').addClass('is-active');
         if ($active.length) {
             $field.find('.brikpanel-pe-fmt-label').text($active.text());
         }
+    }
+
+    // execCommand('foreColor') always emits `color: rgb(...)`, but wp_kses_post
+    // strips rgb() on save (it only keeps hex / named colours). Convert to hex
+    // so applied colours actually persist. Idempotent for values already hex.
+    function bpeRgbToHex(rgb) {
+        var m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(rgb || '');
+        if (!m) return null;
+        function h(x) { x = parseInt(x, 10).toString(16); return x.length === 1 ? '0' + x : x; }
+        return '#' + h(m[1]) + h(m[2]) + h(m[3]);
     }
 
     function runEditorCommand($field, cmd, value) {
@@ -1123,6 +1142,26 @@
         $editor.focus();
         if (cmd === 'formatBlock') {
             document.execCommand('formatBlock', false, '<' + value + '>');
+        } else if (cmd === 'foreColor') {
+            // styleWithCSS makes execCommand emit <span style="color:…"> instead
+            // of the deprecated <font color> tag, so the colour survives
+            // wp_kses_post on save (text-align + color are allowed CSS props).
+            try { document.execCommand('styleWithCSS', false, true); } catch (e) {}
+            document.execCommand('foreColor', false, value);
+            try { document.execCommand('styleWithCSS', false, false); } catch (e) {}
+            // Normalise the rgb() execCommand produced to hex so wp_kses_post
+            // keeps it (it strips color: rgb(...) but allows hex). Must rewrite
+            // the style ATTRIBUTE string via setAttribute — assigning
+            // element.style.color re-serialises back to rgb() in innerHTML.
+            $editor.find('[style*="color"]').each(function () {
+                var styleAttr = this.getAttribute('style');
+                if (!styleAttr || !/color:\s*rgb/i.test(styleAttr)) { return; }
+                var fixed = styleAttr.replace(/color:\s*(rgba?\([^)]*\))/gi, function (whole, rgbVal) {
+                    var hex = bpeRgbToHex(rgbVal);
+                    return hex ? 'color: ' + hex : whole;
+                });
+                this.setAttribute('style', fixed);
+            });
         } else {
             document.execCommand(cmd, false, null);
         }
@@ -1138,8 +1177,8 @@
     }
 
     function closeFmtMenus() {
-        $('.brikpanel-pe-fmt.is-open').removeClass('is-open')
-            .find('.brikpanel-pe-fmt-trigger').attr('aria-expanded', 'false');
+        $('.brikpanel-pe-fmt.is-open, .brikpanel-pe-colorpick.is-open').removeClass('is-open')
+            .find('.brikpanel-pe-fmt-trigger, .brikpanel-pe-color-trigger').attr('aria-expanded', 'false');
     }
 
     /* ---- Link dialog (URL + "open in new tab") ------------------------- */
@@ -1490,6 +1529,23 @@
                 return;
             }
 
+            // Text-colour dropdown — trigger toggles, swatches apply.
+            if ($btn.hasClass('brikpanel-pe-color-trigger')) {
+                var $cp = $btn.closest('.brikpanel-pe-colorpick');
+                var cpOpen = !$cp.hasClass('is-open');
+                closeFmtMenus();
+                $cp.toggleClass('is-open', cpOpen);
+                $btn.attr('aria-expanded', cpOpen ? 'true' : 'false');
+                return;
+            }
+            if ($btn.hasClass('brikpanel-pe-color-swatch')) {
+                closeFmtMenus();
+                if ($source.prop('hidden')) {
+                    runEditorCommand($field, 'foreColor', $btn.data('color'));
+                }
+                return;
+            }
+
             if (cmd === 'html') {
                 var isSource = !$source.prop('hidden');
                 var $controls = $field.find('.brikpanel-pe-editor-toolbar button').not('.brikpanel-pe-fmt-item');
@@ -1529,9 +1585,9 @@
             runEditorCommand($field, cmd);
         });
 
-        // Close the heading menu on outside click / Escape.
+        // Close the heading + colour menus on outside click / Escape.
         $(document).on('click', function (e) {
-            if (!$(e.target).closest('.brikpanel-pe-fmt').length) closeFmtMenus();
+            if (!$(e.target).closest('.brikpanel-pe-fmt, .brikpanel-pe-colorpick').length) closeFmtMenus();
         });
         $(document).on('keydown', function (e) {
             if (e.key === 'Escape') closeFmtMenus();
@@ -2471,7 +2527,15 @@
     }
     function validateAll() {
         var ok = true;
-        $('[data-required]:visible').each(function () { if (!validateField($(this))) ok = false; });
+        // Only validate BrikPanel's own required inputs. ACF and other
+        // metabox plugins mark required fields with data-required="1" on the
+        // *wrapper div* (e.g. <div class="acf-field is-required" data-required="1">);
+        // a bare [data-required] selector matched those divs, and $(div).val()
+        // is undefined, so a single required ACF field made validateAll() always
+        // fail — silently blocking the Update/Publish button. Scoping to :input
+        // (input/select/textarea/button) excludes the wrappers; the fields'
+        // native/ACF validation still runs server-side.
+        $(':input[data-required]:visible').each(function () { if (!validateField($(this))) ok = false; });
         return ok;
     }
 
@@ -2481,6 +2545,35 @@
         if (!silent && status === 'publish' && !validateAll()) { showToast(PE.i18n.fill_required || 'Please fill in the required fields', 'error'); return; }
         var name = $.trim($('#bpe-name').val());
         if (!name) { if (!silent) { showToast(PE.i18n.fill_name || 'Please fill in the product name', 'error'); validateField($('#bpe-name')); } return; }
+
+        // ACF client-side validation. ACF marks its required/format errors only
+        // through its own validator; BrikPanel's custom save never triggered it,
+        // so on an explicit save ACF's *server-side* validation would fail
+        // silently and drop the ENTIRE $_POST['acf'] payload — discarding every
+        // ACF edit in that save while the editor still reported success. Run
+        // ACF's validateForm first (over the card container that holds all ACF
+        // groups + the #acf-form-data nonce block); on failure it renders the
+        // inline field errors natively and we abort with a toast. Skipped for
+        // silent autosaves and when ACF is absent. The `acfValidated` flag guards
+        // the one-level re-entry after validation succeeds.
+        if (!silent && !state.acfValidated && window.acf && typeof acf.validateForm === 'function') {
+            var $acfForm = $('.brikpanel-pe-content');
+            if ($acfForm.find('.acf-field').length) {
+                acf.validateForm({
+                    form: $acfForm,
+                    reset: true,
+                    success: function () {
+                        state.acfValidated = true;
+                        saveProduct(status, silent);
+                        state.acfValidated = false;
+                    },
+                    failure: function () {
+                        showToast(PE.i18n.fill_required || 'Please fill in the required fields', 'error');
+                    }
+                });
+                return;
+            }
+        }
 
         state.saving = true;
         var $pub = $('#bpe-publish'), op = $pub.text();
@@ -2683,6 +2776,12 @@
             if (!name) return;
             if (($el.is(':checkbox') || $el.is(':radio')) && !$el.is(':checked')) return;
             var val = $el.val();
+            // A <select multiple> (ACF select with multiple=1, taxonomy
+            // multi_select, any 3rd-party multi-select) returns an ARRAY from
+            // .val() — or null when nothing is selected. Normalise null to an
+            // empty array so the array-spread paths below handle it uniformly
+            // instead of pushing a bare null.
+            if (val === null && $el.is('select[multiple]')) val = [];
             // Extract bracket groups: name="a[b][c]" → key="a", suffixes=["b","c"].
             var m = /^([^\[]+)((?:\[[^\]]*\])*)$/.exec(name);
             if (!m) return;
@@ -2708,7 +2807,16 @@
             var last = parts[parts.length - 1];
             if (last === '') {
                 if (!Array.isArray(cursor.__arr)) cursor.__arr = [];
-                cursor.__arr.push(val);
+                // When the input is a <select multiple>, .val() is an array and
+                // each selected value must become its own element of __arr.
+                // Pushing the whole array (the old behaviour) made PHP receive a
+                // nested array (`[['x','y']]`) — ACF then stringified it to the
+                // literal "Array", silently destroying multi-select values.
+                if (Array.isArray(val)) {
+                    for (var ai = 0; ai < val.length; ai++) cursor.__arr.push(val[ai]);
+                } else {
+                    cursor.__arr.push(val);
+                }
             } else {
                 cursor[last] = val;
             }
@@ -2729,6 +2837,16 @@
             // taxonomy checkboxes). Emit the array values under the original
             // prefix so the `__arr` key never leaks into the POST payload.
             if (Array.isArray(val.__arr)) {
+                // An empty __arr with no sibling keys means a <select multiple>
+                // was emptied (all options deselected). ACF submits a bare
+                // hidden input for this case so it can clear the value; emit an
+                // empty string under the base prefix to reproduce that, else the
+                // field is simply absent from the POST and ACF keeps the old
+                // value — making it impossible to clear a multi-select.
+                if (val.__arr.length === 0 && Object.keys(val).length === 1) {
+                    target.push([prefix, '']);
+                    return;
+                }
                 val.__arr.forEach(function (v, i) { flattenPost(target, prefix + '[' + i + ']', v); });
                 Object.keys(val).forEach(function (k) {
                     if (k === '__arr') return;

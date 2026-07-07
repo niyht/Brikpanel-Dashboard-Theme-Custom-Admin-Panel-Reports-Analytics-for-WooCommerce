@@ -19,6 +19,15 @@
 	const i18n = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.i18n) || {};
 	const iconOptions = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.iconOptions) || {};
 	const iconsBase = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.iconsBase) || '';
+	const iconVer = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.iconVer) || '';
+	const iconStyle = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.iconStyle) || 'solid';
+	const lineIconSlugs = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.lineIconSlugs) || [];
+	// Build a versioned built-in icon URL (cache-bust + style-aware, mirrors PHP's helper).
+	function iconUrl(slug) {
+		slug = slug || 'default';
+		const sub = (iconStyle === 'line' && lineIconSlugs.indexOf(slug) !== -1) ? 'line/' : '';
+		return iconsBase + sub + slug + '.svg' + (iconVer ? '?ver=' + iconVer : '');
+	}
 	const roles = (window.brikpanelNavCustomizer && window.brikpanelNavCustomizer.roles) || {};
 
 	/**
@@ -119,6 +128,8 @@
 		// ---------------------------------------------------------------------
 		// State sync: read DOM → JSON, write into hidden input.
 		// ---------------------------------------------------------------------
+		const spacingSelect = root.querySelector('[data-navc-spacing]');
+
 		function serialize() {
 			const items = [];
 			lists.forEach(function (ul) {
@@ -126,6 +137,15 @@
 				ul.querySelectorAll(':scope > .brikpanel-navc-item').forEach(function (li) {
 					const type = li.getAttribute('data-type');
 					const hidden = li.classList.contains('is-hidden');
+					if (type === 'spacer') {
+						items.push({
+							type: 'spacer',
+							id: li.getAttribute('data-id') || '',
+							variant: li.getAttribute('data-variant') === 'line' ? 'line' : 'space',
+							section: section,
+						});
+						return;
+					}
 					if (type === 'system') {
 						const entry = {
 							type: 'system',
@@ -182,7 +202,10 @@
 					}
 				});
 			});
-			hiddenInput.value = JSON.stringify({ version: 1, items: items });
+			const spacing = spacingSelect && ['compact', 'comfortable', 'spacious'].indexOf(spacingSelect.value) !== -1
+				? spacingSelect.value
+				: 'comfortable';
+			hiddenInput.value = JSON.stringify({ version: 1, items: items, spacing: spacing });
 		}
 
 		// ---------------------------------------------------------------------
@@ -207,6 +230,17 @@
 		// Top-level visibility toggle (system + custom row main switch).
 		// ---------------------------------------------------------------------
 		root.addEventListener('change', function (e) {
+			const spacerVariant = e.target.closest('[data-navc-spacer-variant]');
+			if (spacerVariant) {
+				const li = spacerVariant.closest('.brikpanel-navc-item');
+				if (li) li.setAttribute('data-variant', spacerVariant.value === 'line' ? 'line' : 'space');
+				serialize();
+				return;
+			}
+			if (e.target.closest('[data-navc-spacing]')) {
+				serialize();
+				return;
+			}
 			const audienceSel = e.target.closest('[data-navc-audience]');
 			if (audienceSel) {
 				const owner = audienceSel.closest('.brikpanel-navc-submenu-item')
@@ -272,10 +306,22 @@
 				openDialog({ mode: 'edit', element: li, section: li.closest('.brikpanel-navc-list').getAttribute('data-section') });
 				return;
 			}
+			if (action === 'add-spacer') {
+				e.preventDefault();
+				const section = actionEl.closest('.brikpanel-navc-section').getAttribute('data-section');
+				const ul = root.querySelector('.brikpanel-navc-list[data-section="' + section + '"]');
+				if (!ul) return;
+				const li = createSpacerRow({ id: 's' + Math.random().toString(36).slice(2, 12), variant: 'space' });
+				ul.appendChild(li);
+				serialize();
+				return;
+			}
 			if (action === 'delete') {
 				e.preventDefault();
-				if (i18n.confirmDelete && !window.confirm(i18n.confirmDelete)) return;
 				const li = actionEl.closest('.brikpanel-navc-item');
+				const isSpacer = li && li.getAttribute('data-type') === 'spacer';
+				// Spacers are trivial/decorative — remove without a confirm prompt.
+				if (!isSpacer && i18n.confirmDelete && !window.confirm(i18n.confirmDelete)) return;
 				if (li && li.parentNode) {
 					li.parentNode.removeChild(li);
 					serialize();
@@ -335,8 +381,9 @@
 				// pending submission will reset everything. We re-mark every item
 				// as visible, remove custom items, clear icon overrides, restore
 				// submenu visibility.
+				if (spacingSelect) spacingSelect.value = 'comfortable';
 				lists.forEach(function (ul) {
-					ul.querySelectorAll('.brikpanel-navc-item.is-custom').forEach(function (li) { li.parentNode.removeChild(li); });
+					ul.querySelectorAll('.brikpanel-navc-item.is-custom, .brikpanel-navc-item.is-spacer').forEach(function (li) { li.parentNode.removeChild(li); });
 					ul.querySelectorAll('.brikpanel-navc-item.is-hidden').forEach(function (li) {
 						li.classList.remove('is-hidden');
 						const cb = li.querySelector(':scope > .brikpanel-navc-row > [data-navc-toggle]');
@@ -378,7 +425,7 @@
 			if (svg) {
 				iconWrap.innerHTML = '<img src="' + escapeAttr(svg) + '" alt="" width="14" height="14">';
 			} else if (override) {
-				iconWrap.innerHTML = '<img src="' + escapeAttr(iconsBase + override + '.svg') + '" alt="" width="14" height="14">';
+				iconWrap.innerHTML = '<img src="' + escapeAttr(iconUrl(override)) + '" alt="" width="14" height="14">';
 			} else {
 				// Reset to neutral placeholder (matches the PHP-render fallback).
 				iconWrap.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>';
@@ -554,7 +601,7 @@
 				const labelMeta = li.querySelector('.brikpanel-navc-label-meta');
 				if (labelMeta) labelMeta.textContent = url;
 				const iconImg = li.querySelector('.brikpanel-navc-icon img');
-				if (iconImg) iconImg.src = iconSvg ? iconSvg : iconsBase + icon + '.svg';
+				if (iconImg) iconImg.src = iconSvg ? iconSvg : iconUrl(icon);
 			} else {
 				// Add a new custom row to the matching section.
 				const section = dialogContext.section || 'store';
@@ -586,7 +633,7 @@
 			li.setAttribute('data-icon', data.icon || 'default');
 			li.setAttribute('data-icon-svg', data.icon_svg || '');
 			li.setAttribute('data-new-tab', data.new_tab ? '1' : '0');
-			const iconSrc = data.icon_svg ? data.icon_svg : iconsBase + (data.icon || 'default') + '.svg';
+			const iconSrc = data.icon_svg ? data.icon_svg : iconUrl(data.icon);
 			li.innerHTML =
 				'<div class="brikpanel-navc-row">' +
 					'<span class="brikpanel-navc-drag" aria-hidden="true">' +
@@ -614,6 +661,35 @@
 				audienceRolesHTML();
 			li.querySelector('.brikpanel-navc-label-text').textContent = data.label;
 			li.querySelector('.brikpanel-navc-label-meta').textContent = data.url;
+			return li;
+		}
+
+		// Build a spacer row (decorative gap / divider). Mirrors the PHP-rendered
+		// markup so it serializes identically.
+		function createSpacerRow(data) {
+			const variant = data.variant === 'line' ? 'line' : 'space';
+			const li = document.createElement('li');
+			li.className = 'brikpanel-navc-item is-spacer';
+			li.setAttribute('data-type', 'spacer');
+			li.setAttribute('data-id', data.id);
+			li.setAttribute('data-variant', variant);
+			li.innerHTML =
+				'<div class="brikpanel-navc-row">' +
+					'<span class="brikpanel-navc-drag" aria-hidden="true">' +
+						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>' +
+					'</span>' +
+					'<span class="brikpanel-navc-spacer-badge">' +
+						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="8 8 4 12 8 16"/><polyline points="16 8 20 12 16 16"/></svg>' +
+						'<span>' + escapeAttr(i18n.spacer || 'Spacer') + '</span>' +
+					'</span>' +
+					'<select class="brikpanel-navc-audience brikpanel-navc-spacer-variant" data-navc-spacer-variant aria-label="' + escapeAttr(i18n.spacerStyle || 'Spacer style') + '">' +
+						'<option value="space"' + (variant === 'space' ? ' selected' : '') + '>' + escapeAttr(i18n.spacerSpace || 'Blank space') + '</option>' +
+						'<option value="line"' + (variant === 'line' ? ' selected' : '') + '>' + escapeAttr(i18n.spacerLine || 'Divider line') + '</option>' +
+					'</select>' +
+					'<button type="button" class="brikpanel-navc-iconbtn brikpanel-navc-iconbtn-danger" data-navc-action="delete" aria-label="' + escapeAttr(i18n.removeSpacer || 'Remove spacer') + '">' +
+						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>' +
+					'</button>' +
+				'</div>';
 			return li;
 		}
 

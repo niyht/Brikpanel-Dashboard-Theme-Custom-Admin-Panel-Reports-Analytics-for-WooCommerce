@@ -315,6 +315,358 @@ if ( ! is_admin() ) {
 	return;
 }
 
+// =============================================================================
+// ORDER-LIST BULK ACTIONS — expose custom statuses in the "Bulk actions" menu.
+//
+// WooCommerce only registers the four native mark_* bulk actions, so custom
+// statuses could be assigned one order at a time from inside the order only.
+// WooCommerce's bulk handler, however, already accepts ANY "mark_<slug>" whose
+// "wc-<slug>" exists in wc_get_order_statuses() (which our wc_order_statuses
+// filter above populates) — for both HPOS and classic post storage — so the
+// only missing piece is the dropdown entry itself.
+//
+// Both list tables run their action list through WP core's
+// "bulk_actions-{$screen->id}" filter, so we inject one "mark_<slug>" entry per
+// custom status there. On the Trash view WooCommerce omits every mark_* action,
+// so we skip injecting when none is present (never offer a status change on
+// trashed orders). BrikPanel's own order screen rebuilds its Shopify-style
+// action buttons straight from these dropdown options, so they surface there too
+// with no extra work.
+
+/**
+ * Inject a "Change status to <label>" entry for every custom order status into
+ * the orders-list bulk-action menu.
+ *
+ * @param array $actions Existing bulk actions (key => label).
+ * @return array
+ */
+function brikpanel_cos_add_bulk_actions( $actions ) {
+	if ( ! is_array( $actions ) ) {
+		return $actions;
+	}
+
+	// Only offer status changes where WooCommerce itself does. On the Trash view
+	// the action list holds untrash/delete only — no mark_* keys — so bail.
+	$has_mark = false;
+	foreach ( $actions as $key => $unused ) {
+		if ( 0 === strpos( (string) $key, 'mark_' ) ) {
+			$has_mark = true;
+			break;
+		}
+	}
+	if ( ! $has_mark ) {
+		return $actions;
+	}
+
+	$custom = brikpanel_get_custom_order_statuses();
+	if ( ! $custom ) {
+		return $actions;
+	}
+
+	// Build the custom entries. Keys mirror WooCommerce's native "mark_<slug>"
+	// convention so its existing bulk handler processes them unchanged.
+	$custom_entries = [];
+	foreach ( $custom as $slug => $data ) {
+		/* translators: %s: custom order status label. */
+		$custom_entries[ 'mark_' . $slug ] = sprintf(
+			_x( 'Change status to %s', 'orders bulk action', 'brikpanel' ),
+			$data['label'] // i18n-ignore: user-defined status label.
+		);
+	}
+
+	// Slot the custom entries right after the native mark_* block (i.e. before
+	// "trash"/"remove_personal_data"), so status changes stay grouped together.
+	$out    = [];
+	$placed = false;
+	foreach ( $actions as $key => $label ) {
+		if ( ! $placed && 0 !== strpos( (string) $key, 'mark_' ) ) {
+			foreach ( $custom_entries as $ck => $cl ) {
+				$out[ $ck ] = $cl;
+			}
+			$placed = true;
+		}
+		$out[ $key ] = $label;
+	}
+	if ( ! $placed ) {
+		foreach ( $custom_entries as $ck => $cl ) {
+			$out[ $ck ] = $cl;
+		}
+	}
+
+	return $out;
+}
+
+// Classic post storage list table screen id + HPOS orders table screen ids
+// (the "admin_page_" variant covers users who cannot view the WooCommerce menu).
+// Priority 20 runs after WooCommerce's own callback so the native mark_* entries
+// and "trash" already exist when we position ours.
+add_filter( 'bulk_actions-edit-shop_order', 'brikpanel_cos_add_bulk_actions', 20 );
+add_filter( 'bulk_actions-woocommerce_page_wc-orders', 'brikpanel_cos_add_bulk_actions', 20 );
+add_filter( 'bulk_actions-admin_page_wc-orders', 'brikpanel_cos_add_bulk_actions', 20 );
+
+// =============================================================================
+// MIGRATION — inherit custom statuses from another plugin.
+//
+// An order's status is stored on the order itself (the HPOS `status` column or
+// the legacy post_status), never inside the plugin that defined the status. So
+// when a merchant deactivates a third-party custom-status plugin — WPFactory's
+// "Additional Custom Order Status", Tyche's "Custom Order Status", a hand-rolled
+// snippet — the orders keep their `wc-<slug>` value untouched; WooCommerce just
+// stops recognising the slug, so the list shows the raw key and drops the status
+// from its filters, bulk actions, tabs and reports.
+//
+// Re-registering the same slug in BrikPanel restores all of that. This block
+// detects those "foreign" statuses (both ones an active plugin still registers
+// and orphans that survive only on the orders) and lets the merchant adopt them
+// into BrikPanel's own editable list in one click, so the other plugin can be
+// removed without a single order ever losing its status. Works identically for
+// orders holding simple or variable products — status lives on the order, not
+// the product.
+// =============================================================================
+
+/**
+ * Turn a status slug into a readable fallback label ("kargo-verildi" ->
+ * "Kargo Verildi") for orphans whose defining plugin is gone and left no label.
+ *
+ * @param string $slug Bare slug.
+ * @return string
+ */
+function brikpanel_cos_humanize_slug( $slug ) {
+	$text = trim( str_replace( [ '-', '_' ], ' ', (string) $slug ) );
+	return '' === $text ? (string) $slug : ucwords( $text );
+}
+
+/**
+ * Distinct order statuses actually present on real orders, mapped to how many
+ * orders carry each. Reads both the HPOS orders table and the legacy post table
+ * so the count is correct whichever storage the store runs.
+ *
+ * Cached in a short transient: the only callers are the settings-screen render
+ * and the import handler (both admin-only, infrequent), and we would rather not
+ * group-scan the orders table on every settings paint. Busted after an import.
+ *
+ * @param bool $fresh Skip and refresh the cache.
+ * @return array<string,int> Bare slug (no `wc-`) => order count.
+ */
+function brikpanel_cos_used_order_statuses( $fresh = false ) {
+	$key = 'brikpanel_cos_used_statuses';
+	if ( ! $fresh ) {
+		$cached = get_transient( $key );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+	}
+
+	global $wpdb;
+	$counts = [];
+
+	// HPOS orders table (authoritative when custom order tables are in use).
+	$hpos_table = $wpdb->prefix . 'wc_orders';
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $hpos_table ) ) === $hpos_table ) {
+		$rows = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- validated table name, no user input.
+			"SELECT status, COUNT(*) AS c FROM {$hpos_table} WHERE status LIKE 'wc-%' GROUP BY status",
+			ARRAY_A
+		);
+		foreach ( (array) $rows as $row ) {
+			$slug = substr( (string) $row['status'], 3 );
+			if ( '' !== $slug ) {
+				$counts[ $slug ] = ( $counts[ $slug ] ?? 0 ) + (int) $row['c'];
+			}
+		}
+	}
+
+	// Legacy post table (present when HPOS is off, or in sync/compat mode).
+	$rows = $wpdb->get_results(
+		"SELECT post_status, COUNT(*) AS c FROM {$wpdb->posts} WHERE post_type = 'shop_order' AND post_status LIKE 'wc-%' GROUP BY post_status",
+		ARRAY_A
+	);
+	foreach ( (array) $rows as $row ) {
+		$slug = substr( (string) $row['post_status'], 3 );
+		if ( '' !== $slug ) {
+			// max(), not +=, so a mirrored sync install never double-counts.
+			$counts[ $slug ] = max( $counts[ $slug ] ?? 0, (int) $row['c'] );
+		}
+	}
+
+	set_transient( $key, $counts, 10 * MINUTE_IN_SECONDS );
+	return $counts;
+}
+
+/**
+ * Best-effort colour for a foreign status, read from the formats the common
+ * custom-status plugins use. Falls back to BrikPanel's neutral grey, which the
+ * merchant can recolour in one click after importing — the colour is purely
+ * cosmetic, so a miss never blocks the migration.
+ *
+ * @param string $slug Bare slug.
+ * @return string Validated hex colour.
+ */
+function brikpanel_cos_guess_foreign_color( $slug ) {
+	$default = '#646970';
+	global $wpdb;
+
+	// Tyche "Custom Order Status": statuses are a `custom_order_status` CPT whose
+	// post_name is the slug and whose colour lives in the `color` post meta.
+	$post_id = $wpdb->get_var( $wpdb->prepare(
+		"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'custom_order_status' AND post_name = %s LIMIT 1",
+		$slug
+	) );
+	if ( $post_id ) {
+		$color = sanitize_hex_color( (string) get_post_meta( (int) $post_id, 'color', true ) );
+		if ( $color ) {
+			return $color;
+		}
+	}
+
+	// WPFactory "Additional Custom Order Status" and sibling alg_wc_* plugins keep
+	// their statuses in options; probe the documented shapes for a hex keyed by
+	// this slug. Best-effort only — a miss yields the neutral default.
+	foreach ( [ 'alg_orders_custom_statuses_colors', 'alg_wc_custom_order_statuses_colors' ] as $opt_name ) {
+		$val = get_option( $opt_name );
+		if ( is_array( $val ) ) {
+			foreach ( [ $slug, 'wc-' . $slug ] as $candidate ) {
+				if ( isset( $val[ $candidate ] ) ) {
+					$color = sanitize_hex_color( (string) $val[ $candidate ] );
+					if ( $color ) {
+						return $color;
+					}
+				}
+			}
+		}
+	}
+
+	return $default;
+}
+
+/**
+ * Detect custom order statuses that belong to another plugin and can be adopted
+ * into BrikPanel. Two kinds surface:
+ *
+ *   - "orphan": present on real orders but registered by nobody (the defining
+ *     plugin is already gone). These render as raw keys right now, so they are
+ *     the highest-value imports — the UI pre-selects them.
+ *   - "registered": still registered by an active third-party plugin (the live
+ *     WPFactory / Tyche deactivation case). Offered too but not pre-selected,
+ *     because the owning plugin is still handling them for now.
+ *
+ * WooCommerce core statuses and statuses BrikPanel already manages are excluded.
+ *
+ * @param bool $fresh Refresh the used-status scan.
+ * @return array<string,array{label:string,color:string,count:int,registered:bool}>
+ */
+function brikpanel_cos_detect_foreign_statuses( $fresh = false ) {
+	$reserved = brikpanel_cos_reserved_slugs();
+	$owned    = brikpanel_get_custom_order_statuses();
+	$registry = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_statuses() : [];
+	$used     = brikpanel_cos_used_order_statuses( $fresh );
+
+	$out = [];
+
+	$consider = function ( $slug, $label, $registered ) use ( &$out, $reserved, $owned, $used ) {
+		$slug = sanitize_key( (string) $slug );
+		// Real order statuses fit `wc-` + <=17 chars; anything longer cannot be
+		// one and must never be minted (it would not match the stored value).
+		if ( '' === $slug || strlen( $slug ) > 17 ) {
+			return;
+		}
+		if ( in_array( $slug, $reserved, true ) || isset( $owned[ $slug ] ) ) {
+			return;
+		}
+		if ( isset( $out[ $slug ] ) ) {
+			// Already seen (e.g. from the registry): promote to registered if any
+			// source registers it; keep the first non-empty label.
+			if ( $registered ) {
+				$out[ $slug ]['registered'] = true;
+			}
+			return;
+		}
+		$label = sanitize_text_field( (string) $label );
+		if ( '' === $label ) {
+			$label = brikpanel_cos_humanize_slug( $slug );
+		}
+		$out[ $slug ] = [
+			'label'      => $label,
+			'color'      => brikpanel_cos_guess_foreign_color( $slug ),
+			'count'      => isset( $used[ $slug ] ) ? (int) $used[ $slug ] : 0,
+			'registered' => (bool) $registered,
+		];
+	};
+
+	// 1) Registered-but-foreign, straight from the live WooCommerce registry.
+	foreach ( $registry as $wc_key => $label ) {
+		$slug = ( 0 === strpos( (string) $wc_key, 'wc-' ) ) ? substr( (string) $wc_key, 3 ) : (string) $wc_key;
+		$consider( $slug, $label, true );
+	}
+
+	// 2) Orphans that survive only on the orders themselves.
+	foreach ( $used as $slug => $count ) {
+		$consider( $slug, '', false );
+	}
+
+	// Orphans (broken right now) first, then registered; alphabetical within.
+	uasort( $out, function ( $a, $b ) {
+		if ( $a['registered'] !== $b['registered'] ) {
+			return $a['registered'] ? 1 : -1;
+		}
+		return strcasecmp( $a['label'], $b['label'] );
+	} );
+
+	return $out;
+}
+
+/**
+ * Adopt selected foreign statuses into BrikPanel's managed list (AJAX).
+ *
+ * Re-validates every requested slug against a fresh detection so a forged POST
+ * can never inject an arbitrary status, a reserved slug, or a status BrikPanel
+ * already owns. Writes each survivor in the exact option shape the reader
+ * expects, then the normal registration path (init / wc_order_statuses) picks
+ * them up and the affected orders render, filter and count correctly again.
+ */
+add_action( 'wp_ajax_brikpanel_cos_import', function () {
+	check_ajax_referer( 'brikpanel_cos_import', 'nonce' );
+	if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		wp_send_json_error( [ 'message' => __( 'You are not allowed to do this.', 'brikpanel' ) ], 403 );
+	}
+
+	$requested = isset( $_POST['slugs'] ) && is_array( $_POST['slugs'] )
+		? array_map( 'sanitize_key', wp_unslash( $_POST['slugs'] ) )
+		: [];
+	if ( ! $requested ) {
+		wp_send_json_error( [ 'message' => __( 'Select at least one status to import.', 'brikpanel' ) ], 400 );
+	}
+
+	$detected = brikpanel_cos_detect_foreign_statuses( true );
+	$existing = get_option( BRIKPANEL_CUSTOM_STATUSES_OPTION, [] );
+	if ( ! is_array( $existing ) ) {
+		$existing = [];
+	}
+
+	$imported = 0;
+	foreach ( $requested as $slug ) {
+		if ( ! isset( $detected[ $slug ] ) || isset( $existing[ $slug ] ) ) {
+			continue;
+		}
+		$existing[ $slug ] = [
+			'label' => sanitize_text_field( $detected[ $slug ]['label'] ),
+			'color' => sanitize_hex_color( $detected[ $slug ]['color'] ) ?: '#646970',
+		];
+		$imported++;
+	}
+
+	if ( $imported > 0 ) {
+		update_option( BRIKPANEL_CUSTOM_STATUSES_OPTION, $existing );
+		delete_transient( 'brikpanel_cos_used_statuses' );
+	}
+
+	wp_send_json_success( [
+		'imported' => $imported,
+		/* translators: %d: number of order statuses imported. */
+		'message'  => sprintf( _n( '%d status imported.', '%d statuses imported.', $imported, 'brikpanel' ), $imported ),
+	] );
+} );
+
 /**
  * Register the "Order statuses" section under the BrikPanel settings tab and
  * slot it into the Store group, right after Orders.
@@ -400,6 +752,61 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 } );
 
 /**
+ * Render the "Import from another plugin" card, shown only when foreign statuses
+ * are detected. Each row is a checkbox (orphans pre-selected because they are
+ * broken right now), the label, a colour dot, the slug, an in-use order count,
+ * and a source hint. A single "Import selected" button posts to the AJAX handler.
+ */
+function brikpanel_render_status_import_card() {
+	$foreign = brikpanel_cos_detect_foreign_statuses();
+	if ( ! $foreign ) {
+		return;
+	}
+	?>
+	<section class="bp-cos-card bp-cos-import" data-cos-import>
+		<header class="bp-cos-card__head">
+			<div>
+				<h3 class="bp-cos-card__title"><?php esc_html_e( 'Import from another plugin', 'brikpanel' ); ?></h3>
+				<p class="bp-cos-card__sub"><?php esc_html_e( 'We found custom order statuses created outside BrikPanel. Adopt them here so you can safely deactivate the other plugin — your orders keep their status, colour and filters. This is the same for orders with simple or variable products.', 'brikpanel' ); ?></p>
+			</div>
+			<button type="button" class="bp-cos-add bp-cos-import-btn" data-cos-import-run>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+				<?php esc_html_e( 'Import selected', 'brikpanel' ); ?>
+			</button>
+		</header>
+
+		<div class="bp-cos-import-list">
+			<?php foreach ( $foreign as $slug => $data ) : ?>
+				<label class="bp-cos-import-row">
+					<input type="checkbox" class="bp-cos-import-check" value="<?php echo esc_attr( $slug ); ?>" <?php checked( ! $data['registered'] ); ?>>
+					<span class="bp-cos-dot" style="background:<?php echo esc_attr( $data['color'] ); ?>"></span>
+					<span class="bp-cos-import-label"><?php echo esc_html( $data['label'] ); ?></span>
+					<code class="bp-cos-slug"><?php echo esc_html( $slug ); ?></code>
+					<?php if ( $data['count'] > 0 ) : ?>
+						<span class="bp-cos-import-count">
+							<?php
+							/* translators: %s: number of orders. */
+							echo esc_html( sprintf( _n( '%s order', '%s orders', $data['count'], 'brikpanel' ), number_format_i18n( $data['count'] ) ) );
+							?>
+						</span>
+					<?php endif; ?>
+					<?php if ( $data['registered'] ) : ?>
+						<span class="bp-cos-import-tag" title="<?php esc_attr_e( 'Currently provided by another active plugin.', 'brikpanel' ); ?>"><?php esc_html_e( 'active plugin', 'brikpanel' ); ?></span>
+					<?php else : ?>
+						<span class="bp-cos-import-tag is-orphan" title="<?php esc_attr_e( 'Used by orders but no longer registered by any plugin — orders show the raw status key until you import it.', 'brikpanel' ); ?>"><?php esc_html_e( 'needs rescue', 'brikpanel' ); ?></span>
+					<?php endif; ?>
+				</label>
+			<?php endforeach; ?>
+		</div>
+
+		<p class="bp-cos-hint">
+			<?php esc_html_e( 'Imported statuses appear in the list below, where you can rename the colour or remove them. Only import statuses from a plugin you plan to remove — a status marked "active plugin" is still managed by that plugin.', 'brikpanel' ); ?>
+		</p>
+	</section>
+	<?php
+}
+
+/**
  * Render the custom-status repeater card.
  *
  * Mirrors the nav-customizer pattern: close the form-table WooCommerce opened
@@ -410,6 +817,7 @@ function brikpanel_render_order_statuses_field() {
 	$statuses = brikpanel_get_custom_order_statuses();
 	?>
 	</table>
+	<?php brikpanel_render_status_import_card(); ?>
 	<section class="bp-cos-card">
 		<header class="bp-cos-card__head">
 			<div>
@@ -544,23 +952,32 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 	if ( 'brikpanel' !== $tab ) {
 		return;
 	}
+	// filemtime cache-bust so an updated asset is never served stale from cache.
+	$css_path = __DIR__ . '/brikpanel-order-statuses.css';
+	$js_path  = __DIR__ . '/brikpanel-order-statuses.js';
 	wp_enqueue_style(
 		'brikpanel-order-statuses',
 		plugins_url( 'brikpanel-order-statuses.css', __FILE__ ),
 		[],
-		BRIKPANEL_VERSION
+		file_exists( $css_path ) ? filemtime( $css_path ) : BRIKPANEL_VERSION
 	);
 	wp_enqueue_script(
 		'brikpanel-order-statuses',
 		plugins_url( 'brikpanel-order-statuses.js', __FILE__ ),
 		[],
-		BRIKPANEL_VERSION,
+		file_exists( $js_path ) ? filemtime( $js_path ) : BRIKPANEL_VERSION,
 		true
 	);
 	wp_localize_script( 'brikpanel-order-statuses', 'brikpanelOrderStatuses', [
+		'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
+		'importNonce' => wp_create_nonce( 'brikpanel_cos_import' ),
 		'i18n' => [
 			'confirmRemoveExisting' => __( 'Remove this status? Orders already using it will show the raw status key until you re-create it.', 'brikpanel' ),
 			'newBadge'              => __( 'new', 'brikpanel' ),
+			'importNone'            => __( 'Select at least one status to import.', 'brikpanel' ),
+			'importing'             => __( 'Importing…', 'brikpanel' ),
+			'importBtn'             => __( 'Import selected', 'brikpanel' ),
+			'importError'           => __( 'Import failed. Please try again.', 'brikpanel' ),
 		],
 	] );
 } );

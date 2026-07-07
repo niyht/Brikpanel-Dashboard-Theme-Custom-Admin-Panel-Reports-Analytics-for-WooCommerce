@@ -400,15 +400,49 @@ function brikpanel_render_section_order_field($field) {
                 color: #303030;
                 line-height: 1.4;
             }
+            /* Fully custom, animation-free checkbox. WordPress core styles the
+               admin checkbox with an SVG checkmark in ::before plus
+               `transition: all`, which makes the tick visibly animate/shimmer on
+               toggle ("movement"). We override appearance and draw a static
+               CSS checkmark with transition:none so there is zero motion. */
             .brikpanel-section-order-checkbox {
+                -webkit-appearance: none;
+                appearance: none;
                 margin: 0 !important;
-                width: 14px;
-                height: 14px;
-                border-radius: 3px;
+                width: 16px;
+                height: 16px;
+                border: 1px solid #8a8a8a;
+                border-radius: 4px;
+                background: #ffffff;
                 cursor: pointer;
                 flex-shrink: 0;
+                position: relative;
+                transition: none !important;
+            }
+            .brikpanel-section-order-checkbox::before {
+                content: "" !important;
+                position: absolute;
+                top: 1px;
+                left: 5px;
+                width: 4px;
+                height: 8px;
+                border: solid #ffffff;
+                border-width: 0 2px 2px 0;
+                transform: rotate(45deg);
+                opacity: 0;
+                background: none !important;
+                margin: 0 !important;
+                transition: none !important;
+            }
+            .brikpanel-section-order-checkbox:checked {
+                background: #303030;
+                border-color: #303030;
+            }
+            .brikpanel-section-order-checkbox:checked::before {
+                opacity: 1;
             }
             .brikpanel-section-order-checkbox:focus {
+                outline: none;
                 box-shadow: 0 0 0 2px rgba(48, 48, 48, .15);
             }
             .brikpanel-section-order-title {

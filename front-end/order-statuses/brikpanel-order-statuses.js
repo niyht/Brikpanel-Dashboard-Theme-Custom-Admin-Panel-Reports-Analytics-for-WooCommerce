@@ -11,15 +11,17 @@
 	var cfg  = window.brikpanelOrderStatuses || {};
 	var i18n = cfg.i18n || {};
 
-	var root = document.querySelector( '.bp-cos-card' );
-	if ( ! root ) {
+	// The repeater card is the one holding the list; a sibling "import" card may
+	// precede it in the DOM, so select by the list, not by the shared card class.
+	var list = document.querySelector( '[data-cos-list]' );
+	var root = list ? list.closest( '.bp-cos-card' ) : null;
+	if ( ! root || ! list ) {
 		return;
 	}
 
-	var list     = root.querySelector( '[data-cos-list]' );
 	var emptyMsg = root.querySelector( '[data-cos-emptymsg]' );
 	var template = root.querySelector( '[data-cos-template]' );
-	if ( ! list || ! template ) {
+	if ( ! template ) {
 		return;
 	}
 
@@ -130,5 +132,76 @@
 				slugEl.classList.toggle( 'is-pending', preview === '' );
 			}
 		}
+	} );
+}() );
+
+/**
+ * Import card — adopt foreign order statuses into BrikPanel via AJAX, then
+ * reload so the freshly adopted rows appear in the repeater below (fully
+ * editable) and the import card refreshes. Kept as a separate IIFE so it runs
+ * even on installs where the repeater card is somehow absent.
+ */
+( function () {
+	'use strict';
+
+	var cfg  = window.brikpanelOrderStatuses || {};
+	var i18n = cfg.i18n || {};
+
+	var card = document.querySelector( '[data-cos-import]' );
+	if ( ! card ) {
+		return;
+	}
+	var runBtn = card.querySelector( '[data-cos-import-run]' );
+	if ( ! runBtn ) {
+		return;
+	}
+
+	runBtn.addEventListener( 'click', function () {
+		var checked = card.querySelectorAll( '.bp-cos-import-check:checked' );
+		var slugs   = Array.prototype.map.call( checked, function ( el ) {
+			return el.value;
+		} );
+
+		if ( ! slugs.length ) {
+			window.alert( i18n.importNone || 'Select at least one status to import.' );
+			return;
+		}
+
+		var body = new URLSearchParams();
+		body.append( 'action', 'brikpanel_cos_import' );
+		body.append( 'nonce', cfg.importNonce || '' );
+		slugs.forEach( function ( slug ) {
+			body.append( 'slugs[]', slug );
+		} );
+
+		runBtn.disabled = true;
+		var originalLabel = runBtn.lastChild ? runBtn.lastChild.nodeValue : '';
+		if ( runBtn.lastChild && i18n.importing ) {
+			runBtn.lastChild.nodeValue = ' ' + i18n.importing;
+		}
+
+		fetch( cfg.ajaxUrl || window.ajaxurl, {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: body.toString()
+		} )
+			.then( function ( r ) { return r.json(); } )
+			.then( function ( res ) {
+				if ( res && res.success ) {
+					// Reload so adopted statuses render as editable rows and the
+					// import card recomputes (dropping the ones just imported).
+					window.location.reload();
+				} else {
+					throw new Error( ( res && res.data && res.data.message ) || '' );
+				}
+			} )
+			.catch( function ( err ) {
+				runBtn.disabled = false;
+				if ( runBtn.lastChild ) {
+					runBtn.lastChild.nodeValue = originalLabel || ( ' ' + ( i18n.importBtn || 'Import selected' ) );
+				}
+				window.alert( ( err && err.message ) || i18n.importError || 'Import failed. Please try again.' );
+			} );
 	} );
 }() );

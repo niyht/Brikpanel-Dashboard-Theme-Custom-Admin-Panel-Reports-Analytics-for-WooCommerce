@@ -1,0 +1,517 @@
+/**
+ * BrikPanel — Abandoned Carts admin list page.
+ * Follows the BrikPanel design system (monochrome, white cards on #f1f1f1).
+ */
+
+.brikpanel-cartab-wrap {
+	max-width: 1100px;
+	margin: 1.25rem auto 2rem;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	color: #303030;
+}
+
+/* Header */
+.brikpanel-cartab-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	flex-wrap: wrap;
+	margin-bottom: 1rem;
+}
+
+/* Let the title column shrink (subtitle wraps as text) instead of forcing
+   the whole action row to wrap below when the coupon control appears. */
+.brikpanel-cartab-header-left {
+	flex: 1 1 260px;
+	min-width: 0;
+}
+
+.brikpanel-cartab-header-left h1 {
+	margin: 0;
+	font-size: 1.125rem;
+	font-weight: 600;
+	color: #303030;
+	padding: 0;
+}
+
+.brikpanel-cartab-subtitle {
+	margin: 0.25rem 0 0;
+	font-size: 0.8125rem;
+	color: #616161;
+}
+
+.brikpanel-cartab-header-right {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+	flex-wrap: wrap;
+}
+
+/* Buttons */
+.brikpanel-cartab-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	padding: 0.5rem 1rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.4;
+	border-radius: 0.5rem;
+	border: 0;
+	cursor: pointer;
+	text-decoration: none;
+	transition: background 0.15s ease;
+}
+
+.brikpanel-cartab-btn-primary {
+	background: #303030;
+	color: #ffffff;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-cartab-btn-primary:hover {
+	background: #1a1a1a;
+	color: #ffffff;
+}
+
+.brikpanel-cartab-btn-secondary {
+	background: #ffffff;
+	color: #303030;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.brikpanel-cartab-btn-secondary:hover {
+	background: #f7f7f7;
+	color: #303030;
+}
+
+.brikpanel-cartab-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* Popup toggle switch */
+.brikpanel-cartab-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	cursor: pointer;
+	user-select: none;
+	margin-right: 0.375rem;
+}
+
+.brikpanel-cartab-toggle-label {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: #303030;
+}
+
+.brikpanel-cartab-switch {
+	position: relative;
+	display: inline-block;
+	width: 40px;
+	height: 22px;
+	flex: 0 0 auto;
+}
+
+.brikpanel-cartab-switch input {
+	position: absolute;
+	opacity: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	cursor: pointer;
+	z-index: 1;
+}
+
+.brikpanel-cartab-slider {
+	position: absolute;
+	inset: 0;
+	background: #ccc;
+	border-radius: 22px;
+	transition: background 0.15s ease;
+}
+
+.brikpanel-cartab-slider::before {
+	content: "";
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 16px;
+	height: 16px;
+	background: #ffffff;
+	border-radius: 50%;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+	transition: transform 0.15s ease;
+}
+
+.brikpanel-cartab-switch input:checked + .brikpanel-cartab-slider {
+	background: #303030;
+}
+
+.brikpanel-cartab-switch input:checked + .brikpanel-cartab-slider::before {
+	transform: translateX(18px);
+}
+
+/* Cards */
+.brikpanel-cartab-card {
+	background: #ffffff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	padding: 1.25rem 1.5rem;
+	margin-bottom: 1rem;
+}
+
+.brikpanel-cartab-disabled-note {
+	color: #616161;
+	font-size: 0.8125rem;
+	border-left: 3px solid #8a8a8a;
+}
+
+/* Summary cards */
+.brikpanel-cartab-summary {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 1rem;
+	margin-bottom: 1rem;
+}
+
+.brikpanel-cartab-summary-card {
+	background: #ffffff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	padding: 1rem 1.25rem;
+}
+
+.brikpanel-cartab-summary-label {
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: #616161;
+	margin-bottom: 0.25rem;
+}
+
+.brikpanel-cartab-summary-value {
+	font-size: 1.375rem;
+	font-weight: 600;
+	color: #303030;
+}
+
+/* Filters */
+.brikpanel-cartab-filter-row {
+	display: flex;
+	align-items: flex-end;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
+.brikpanel-cartab-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+}
+
+.brikpanel-cartab-field-grow {
+	flex: 1 1 180px;
+}
+
+.brikpanel-cartab-field label {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: #303030;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-field input,
+.brikpanel-cartab-wrap .brikpanel-cartab-field select {
+	padding: 0.5rem 0.75rem;
+	font-size: 0.875rem;
+	line-height: 1.4;
+	color: #303030;
+	background: #ffffff;
+	border: 1px solid #8a8a8a;
+	border-radius: 0.5rem;
+	min-height: 0;
+	box-shadow: none;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-field input:focus,
+.brikpanel-cartab-wrap .brikpanel-cartab-field select:focus {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+	outline: none;
+}
+
+.brikpanel-cartab-filter-actions {
+	display: flex;
+	gap: 0.5rem;
+	padding-bottom: 1px;
+}
+
+/* Table */
+.brikpanel-cartab-table-card {
+	padding: 0;
+	overflow: hidden;
+}
+
+.brikpanel-cartab-table-wrap {
+	overflow-x: auto;
+}
+
+.brikpanel-cartab-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.875rem;
+}
+
+.brikpanel-cartab-table th {
+	text-align: left;
+	padding: 0.75rem 1rem;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: #616161;
+	background: #fafafa;
+	border-bottom: 1px solid #e3e3e3;
+	white-space: nowrap;
+}
+
+.brikpanel-cartab-table td {
+	padding: 0.75rem 1rem;
+	border-bottom: 1px solid #f1f1f1;
+	vertical-align: middle;
+	color: #303030;
+}
+
+.brikpanel-cartab-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+.brikpanel-cartab-email-cell {
+	font-weight: 550;
+}
+
+.brikpanel-cartab-date-cell {
+	color: #616161;
+	font-size: 0.8125rem;
+	white-space: nowrap;
+}
+
+.brikpanel-cartab-empty {
+	text-align: center;
+	color: #8a8a8a;
+	padding: 2rem 1rem !important;
+}
+
+.brikpanel-cartab-muted {
+	color: #8a8a8a;
+}
+
+.brikpanel-cartab-cart-count {
+	display: block;
+	font-weight: 550;
+}
+
+.brikpanel-cartab-cart-total {
+	display: block;
+	font-size: 0.8125rem;
+	color: #616161;
+}
+
+/* Badges */
+.brikpanel-cartab-badge {
+	display: inline-block;
+	padding: 0.125rem 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 550;
+	border-radius: 999px;
+	white-space: nowrap;
+}
+
+.brikpanel-cartab-badge-source {
+	background: #f1f1f1;
+	color: #616161;
+}
+
+.brikpanel-cartab-badge-active {
+	background: #eef4ff;
+	color: #2c5282;
+}
+
+.brikpanel-cartab-badge-abandoned {
+	background: #fce4e4;
+	color: #c62828;
+}
+
+.brikpanel-cartab-badge-recovered {
+	background: #e4f5e1;
+	color: #1a6b15;
+}
+
+/* Row actions */
+.brikpanel-cartab-actions-cell {
+	white-space: nowrap;
+	text-align: right;
+}
+
+.brikpanel-cartab-row-btn {
+	background: transparent;
+	border: 0;
+	padding: 0.25rem 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	color: #616161;
+	cursor: pointer;
+	border-radius: 0.375rem;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.brikpanel-cartab-row-btn:hover {
+	background: #f1f1f1;
+	color: #303030;
+}
+
+.brikpanel-cartab-row-btn-danger:hover {
+	background: #fce4e4;
+	color: #c62828;
+}
+
+/* Details row */
+.brikpanel-cartab-details-row td {
+	background: #fafafa;
+	padding: 0.75rem 1rem;
+}
+
+.brikpanel-cartab-details {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	font-size: 0.8125rem;
+}
+
+.brikpanel-cartab-details-item {
+	display: flex;
+	align-items: baseline;
+	gap: 0.625rem;
+	flex-wrap: wrap;
+}
+
+.brikpanel-cartab-details-name {
+	font-weight: 550;
+	color: #303030;
+}
+
+.brikpanel-cartab-details-attrs {
+	color: #616161;
+}
+
+.brikpanel-cartab-details-sku {
+	color: #8a8a8a;
+	font-size: 0.75rem;
+}
+
+.brikpanel-cartab-details-order {
+	margin-top: 0.25rem;
+	font-weight: 550;
+	color: #303030;
+	text-decoration: underline;
+}
+
+/* Pagination */
+.brikpanel-cartab-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 1rem;
+	padding: 0.875rem 1rem;
+	border-top: 1px solid #e3e3e3;
+}
+
+.brikpanel-cartab-page-info {
+	font-size: 0.8125rem;
+	color: #616161;
+	font-weight: 550;
+}
+
+/* Toast notification (import results) */
+.brikpanel-cartab-toast {
+	position: fixed;
+	top: 64px;
+	right: 20px;
+	z-index: 100001;
+	max-width: 380px;
+	padding: 0.75rem 1rem;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.45;
+	color: #1a6b15;
+	background: #e4f5e1;
+	border: 1px solid #b7e1b0;
+	border-radius: 0.5rem;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+	transform: translateX(110%);
+	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brikpanel-cartab-toast.is-in {
+	transform: translateX(0);
+}
+
+.brikpanel-cartab-toast.is-error {
+	color: #c62828;
+	background: #fce4e4;
+	border-color: #f1b0b0;
+}
+
+/* Popup coupon discount control (header, next to the toggle) */
+.brikpanel-cartab-discount {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-right: 0.375rem;
+}
+
+.brikpanel-cartab-discount-group {
+	display: inline-flex;
+	align-items: stretch;
+	border: 1px solid #8a8a8a;
+	border-radius: 0.5rem;
+	overflow: hidden;
+	background: #ffffff;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-discount-group input[type="number"] {
+	width: 3.25rem;
+	border: 0;
+	border-radius: 0;
+	padding: 0.375rem 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: #303030;
+	text-align: right;
+	min-height: 0;
+	box-shadow: none;
+	background: #ffffff;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-discount-group input[type="number"]:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.brikpanel-cartab-discount-group:focus-within {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+}
+
+.brikpanel-cartab-discount-suffix {
+	display: inline-flex;
+	align-items: center;
+	padding: 0 0.5rem;
+	background: #f7f7f7;
+	border-left: 1px solid #e3e3e3;
+	color: #616161;
+	font-size: 0.8125rem;
+	font-weight: 600;
+}

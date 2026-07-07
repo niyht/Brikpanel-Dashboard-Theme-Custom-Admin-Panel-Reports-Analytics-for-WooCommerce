@@ -4,6 +4,68 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Resolve the sidebar icon style preference ('solid' | 'line'). 'solid' is the
+ * default (the original filled/dark icons that match Shopify's admin); 'line'
+ * swaps in the thin outline set. Set from Settings ▸ BrikPanel ▸ Appearance.
+ * Statically cached — read once per request.
+ *
+ * @return string
+ */
+function brikpanel_nav_icon_style() {
+	static $style = null;
+	if ( $style === null ) {
+		$saved = get_option( 'brikpanel_nav_icon_style', 'solid' );
+		$style = ( $saved === 'line' ) ? 'line' : 'solid';
+	}
+	return $style;
+}
+
+/**
+ * Build the URL for a built-in sidebar icon, appending the plugin version as a
+ * cache-busting query. The icon SVGs are referenced with stable filenames, so
+ * without a version query a browser keeps serving a previously-cached copy —
+ * which means an icon redesign shipped in an update would stay invisible to
+ * existing users until their cache expired. The version bump on every release
+ * forces a fresh fetch.
+ *
+ * When the 'line' style is active the thin variant under icons/line/ is used,
+ * falling back to the solid icon whenever a line variant doesn't exist (so a
+ * brand icon without a line version still renders).
+ *
+ * @param string $file  Icon slug (filename without extension).
+ * @param string $style Optional explicit style ('solid'|'line'); defaults to the saved preference.
+ * @return string
+ */
+function brikpanel_nav_icon_src( $file, $style = null ) {
+	if ( $style === null ) {
+		$style = brikpanel_nav_icon_style();
+	}
+	$rel = 'icons/' . $file . '.svg';
+	if ( $style === 'line' && file_exists( __DIR__ . '/icons/line/' . $file . '.svg' ) ) {
+		$rel = 'icons/line/' . $file . '.svg';
+	}
+	return plugins_url( $rel, __FILE__ ) . '?ver=' . BRIKPANEL_VERSION;
+}
+
+/**
+ * List of icon slugs that ship a thin "line" variant under icons/line/. The
+ * customizer JS uses it to build the right icon URL for client-created rows
+ * when the line style is active. Statically cached.
+ *
+ * @return string[]
+ */
+function brikpanel_nav_line_icon_slugs() {
+	static $slugs = null;
+	if ( $slugs === null ) {
+		$slugs = [];
+		foreach ( (array) glob( __DIR__ . '/icons/line/*.svg' ) as $path ) {
+			$slugs[] = basename( $path, '.svg' );
+		}
+	}
+	return $slugs;
+}
+
+/**
  * The custom navigation rebuilds the admin sidebar based on each subsite's own
  * $menu / $submenu globals — those globals don't exist (and the link targets
  * don't apply) on the Network Admin or User Admin chrome. Skip the entire
@@ -233,7 +295,9 @@ function brikpanel_render_navigation() {
         return;
     }
     $items = brikpanel_get_navigation_items();
-    echo '<nav id="brikpanel-navigation">';
+    // Global item-spacing preference → CSS class on the sidebar shell.
+    $brikpanel_nav_spacing = function_exists( 'brikpanel_nav_config_spacing' ) ? brikpanel_nav_config_spacing() : 'comfortable';
+    echo '<nav id="brikpanel-navigation" class="' . esc_attr( 'brikpanel-nav-space-' . $brikpanel_nav_spacing ) . '">';
     // Allow the `data:` protocol so user-supplied custom SVG icons (stored as
     // sanitised base64 data URIs and rendered inside <img> tags, where SVG
     // scripts never execute) survive sanitisation. Everything else stays at the
@@ -344,6 +408,22 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				$menu = brikpanel_move_item_after( $menu, 'brikpanel-segments', 'edit.php?post_type=product' );
 				$menu = brikpanel_move_item_after( $menu, 'brikpanel-customer-analytics', 'brikpanel-segments' );
 				$menu = brikpanel_move_item_after( $menu, 'brikpanel-google-sheets', 'brikpanel-customer-analytics' );
+
+				// Abandoned Carts joins the analytics cluster: after Sheets when
+				// present, otherwise directly after Customer Analytics. Two calls
+				// on purpose — the second is a no-op when Sheets is missing.
+				$menu = brikpanel_move_item_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-customer-analytics' );
+				$menu = brikpanel_move_item_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-google-sheets' );
+
+				// Third-party plugins (Elementor, Multi Currency, Hezarfen, ...)
+				// often register their top-level menu with a tiny menu position,
+				// which sorts them above the Posts (edit.php) anchor and makes
+				// them render inside BrikPanel's store cluster. Demote any such
+				// foreign top-level into the Site management section. Runs before
+				// the customizer so an explicit saved placement still wins.
+				if ( function_exists( 'brikpanel_nav_demote_foreign_toplevels' ) ) {
+					brikpanel_nav_demote_foreign_toplevels( $menu );
+				}
 			}
 
 			// Apply user-defined sidebar customization (reorder / hide / inject
@@ -523,7 +603,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		// to 'edit.php' (the legacy hardcoded position) when no config exists.
 		$heading = '';
 		if ( ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
-			$heading = $item_slug === $brikpanel_sitemgmt_anchor ? '<span class="brikpanel-menu-heading">' . __('Site management', 'brikpanel') . '<img class="brikpanel-site-management-toggle" src="' . plugins_url( 'icons/chevron-down.svg', __FILE__ ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">' : '';
+			$heading = $item_slug === $brikpanel_sitemgmt_anchor ? '<span class="brikpanel-menu-heading">' . __('Site management', 'brikpanel') . '<img class="brikpanel-site-management-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">' : '';
 		}
 
 		$html .= "
@@ -545,7 +625,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			if ( $custom_svg !== '' ) {
 				$icon_html = '<img src="' . esc_url( $custom_svg, array( 'data', 'http', 'https' ) ) . '" width="15" height="18">';
 			} else {
-				$icon_html = '<img src="' . esc_url( plugins_url( 'icons/' . $custom_icon . '.svg', __FILE__ ) ) . '" width="15" height="18">';
+				$icon_html = '<img src="' . esc_url( brikpanel_nav_icon_src( $custom_icon ) ) . '" width="15" height="18">';
 			}
 			$html .= "
 				<div class='brikpanel-menu-icon-title-container $toplevel_page_class'>
@@ -559,6 +639,16 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			continue;
 		}
 
+		// Decorative spacer injected by the nav customizer — a blank gap or a
+		// thin divider line. It has no link, icon, submenu or title; render just
+		// the spacer element and skip the rest of the loop.
+		if ( isset( $item[7] ) && is_array( $item[7] ) && ! empty( $item[7]['is_spacer'] ) ) {
+			$spacer_variant = ( isset( $item[7]['variant'] ) && $item[7]['variant'] === 'line' ) ? 'line' : 'space';
+			$html .= '<span class="brikpanel-nav-spacer-inner brikpanel-nav-spacer-' . esc_attr( $spacer_variant ) . '" aria-hidden="true"></span>';
+			$html .= '</li>';
+			continue;
+		}
+
 		// Özel ikon atamaları:
 		$has_custom_icon = array(
 			'edit.php?post_type=product' => 'products',
@@ -567,6 +657,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			'brikpanel-google-sheets' => 'google-sheets',
 			'brikpanel-vendors' => 'invoice',
 			'brikpanel-expenses' => 'payments',
+			'brikpanel-abandoned-carts' => 'orders',
 			'wf_woocommerce_packing_list' => 'invoice',
 			'admin.php?page=wc-settings&tab=checkout' => 'payments',
 			'wc-admin&path=/wc-pay-welcome-page' => 'payments',
@@ -602,14 +693,14 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				if ( $override['type'] === 'svg' ) {
 					$icon = '<img src="' . esc_url( (string) $override['value'], array( 'data', 'http', 'https' ) ) . '" width="15" height="18">';
 				} else {
-					$icon = '<img src="' . esc_url( plugins_url( 'icons/' . $override['value'] . '.svg', __FILE__ ) ) . '" width="15" height="18">';
+					$icon = '<img src="' . esc_url( brikpanel_nav_icon_src( $override['value'] ) ) . '" width="15" height="18">';
 				}
 			}
 		}
 		if ( $icon === '' ) {
 			foreach ( $has_custom_icon as $slug => $icon_file ) {
 				if ( $item_slug === $slug ) {
-					$icon = '<img src="' . plugins_url( 'icons/' . $icon_file . '.svg', __FILE__ ) . '" width="15" height="18">';
+					$icon = '<img src="' . brikpanel_nav_icon_src( $icon_file ) . '" width="15" height="18">';
 					break;
 				}
 			}
@@ -675,7 +766,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				$html .= '
 						<img
 							class="brikpanel-menu-chevron"
-							src="' . plugins_url( 'icons/chevron-down.svg', __FILE__ ) . '"
+							src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '"
 							width="10"
 							height="10"
 						>
@@ -755,7 +846,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					if ( $sub_svg !== '' ) {
 						$sub_icon_html = '<img src="' . esc_url( $sub_svg, array( 'data', 'http', 'https' ) ) . '" width="12">';
 					} else {
-						$sub_icon_html = '<img src="' . esc_url( plugins_url( 'icons/' . $sub_icon . '.svg', __FILE__ ) ) . '" width="12">';
+						$sub_icon_html = '<img src="' . esc_url( brikpanel_nav_icon_src( $sub_icon ) ) . '" width="12">';
 					}
 					$html .= "
 						<li class='brikpanel-more-custom-item'>
@@ -937,14 +1028,14 @@ if (!empty($sub_item[4])) {
 						'css'       => 'margin-right: 1px;',
 					),
 				);
-				$icon = '<img src="' . plugins_url( 'icons/default.svg', __FILE__ ) . '" width="12">';
+				$icon = '<img src="' . brikpanel_nav_icon_src( 'default' ) . '" width="12">';
 
 				foreach ( $woocommerce_submenu_has_custom_icon as $slug => $properties ) {
 					if ( $sub_item_slug === $slug ) {
 						$width = isset( $properties['width'] ) ? $properties['width'] : 15;
 						$css   = isset( $properties['css'] ) ? $properties['css'] : '';
 						$icon  = '<img
-							src="' . plugins_url( 'icons/' . $properties['icon_file'] . '.svg', __FILE__ ) . '"
+							src="' . brikpanel_nav_icon_src( $properties['icon_file'] ) . '"
 							width="' . $width . '"
 							style="' . $css . '"
 						>';

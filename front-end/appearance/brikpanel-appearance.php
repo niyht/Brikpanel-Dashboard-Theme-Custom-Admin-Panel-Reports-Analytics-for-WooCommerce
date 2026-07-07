@@ -407,6 +407,18 @@ function brikpanel_appearance_register_fields( $fields ) {
 			'css'      => 'width: 6.5rem;',
 		],
 		[
+			'name'     => __( 'Sidebar icon style', 'brikpanel' ),
+			'id'       => 'brikpanel_nav_icon_style',
+			'type'     => 'select',
+			'desc'     => __( 'Choose how the sidebar menu icons look. "Solid" uses the original filled icons (matching Shopify\'s admin). "Line" uses a thinner outline set for a lighter look.', 'brikpanel' ),
+			'desc_tip' => true,
+			'options'  => [
+				'solid' => __( 'Solid (filled, original)', 'brikpanel' ),
+				'line'  => __( 'Line (thin outline)', 'brikpanel' ),
+			],
+			'default'  => 'solid',
+		],
+		[
 			'name' => __( 'Custom brand logo', 'brikpanel' ),
 			'id'   => 'brikpanel_brand_logo_id',
 			'type' => 'brikpanel_brand_logo_picker',

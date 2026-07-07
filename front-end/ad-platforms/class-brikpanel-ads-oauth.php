@@ -41,20 +41,25 @@ class Brikpanel_Ads_OAuth {
 	 *   - openid+email: surface the connected account email in the UI.
 	 *
 	 * Meta:
-	 *   - ads_read            : read campaign + ad insights (spend, impressions, clicks).
-	 *   - business_management : list ad accounts that live under a Business
-	 *     Manager. Without this, /me/adaccounts only returns personal ad
-	 *     accounts — most pro Meta advertisers organise their accounts under
-	 *     a BM, so without business_management the picker is empty for them.
-	 *   - email               : surface the connected user email.
-	 *   - public_profile      : required by Meta for any login flow.
+	 *   - ads_read       : read campaign + ad insights (spend, impressions, clicks)
+	 *                      AND list the connected user's ad accounts via
+	 *                      /me/adaccounts. Per Meta docs ads_read alone returns
+	 *                      every ad account the token can reach.
+	 *   - email          : surface the connected user email.
+	 *   - public_profile : required by Meta for any login flow.
 	 *
-	 * Both ads_read and business_management require App Review + Advanced
-	 * Access for Production use. In Development mode (no review yet), they
-	 * work for app Admins / Developers / Testers only.
+	 * business_management was intentionally dropped: it is a read+write Business
+	 * Manager scope, far broader than our read-only need, and it drew heavier App
+	 * Review scrutiny. The rare case it covered (an ad account owned by a Business
+	 * Manager the user has no direct role on, so it is absent from /me/adaccounts)
+	 * is handled by the manual "enter ad account ID" fallback in the account card.
+	 *
+	 * ads_read requires App Review + Advanced Access for Production use. In
+	 * Development mode (no review yet) it works for app Admins / Developers /
+	 * Testers only.
 	 */
 	const SCOPES_GOOGLE = 'https://www.googleapis.com/auth/adwords openid email';
-	const SCOPES_META   = 'ads_read,business_management,email,public_profile';
+	const SCOPES_META   = 'ads_read,email,public_profile';
 
 	public function __construct() {
 		add_action( 'wp_ajax_brikpanel_ads_oauth_start',      [ $this, 'ajax_start' ] );

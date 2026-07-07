@@ -1,15 +1,15 @@
-=== BrikPanel — WooCommerce Dashboard, Sales Report, Google Sheets Sync, Inventory Management & Bulk Editor ===
+=== BrikPanel: WooCommerce Dashboard, Abandoned Cart Recovery, Google Sheets Sync, Inventory Management & Bulk Editor ===
 Contributors: brksoft
 Donate link: https://donate.stripe.com/14AdR9ghJcxKaAqdzbc3m00
 Tags: woocommerce dashboard, woocommerce inventory management, google sheets, woocommerce bulk editor, roas
 Requires at least: 6.0
 Tested up to: 7.0
-Stable tag: 3.1.46
+Stable tag: 3.2.1
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Free WooCommerce dashboard & sales report: Google Sheets sync, ROAS, bulk editor, inventory management & live visitors
+Free WooCommerce dashboard & sales report: abandoned cart recovery, Google Sheets sync, ROAS, bulk editor & inventory management
 
 == Description ==
 
@@ -17,45 +17,41 @@ Free WooCommerce dashboard & sales report: Google Sheets sync, ROAS, bulk editor
 
 https://www.youtube.com/watch?v=pmtmVQifZME&t
 
-**BrikPanel turns the default WooCommerce admin panel into a clean, fast, all-in-one cockpit** — a modern WooCommerce dashboard, a powerful WooCommerce bulk editor, an inventory management workspace, an order management center, a coupon manager, a custom WP login page, and a real-time conversion tracking suite. Everything is free. Forever. No premium tier, no feature locks, no monthly subscriptions. A self-hosted **Shopify alternative for WooCommerce** — own your data, your products, and your customer list, with no monthly platform fee and no transaction fee.
-
-Built by a developer who shipped 1000+ WooCommerce stores and got tired of every workflow taking five extra clicks.
+**BrikPanel turns the default WooCommerce admin panel into a clean, fast, all-in-one cockpit**: a modern WooCommerce dashboard, a real-time WooCommerce sales report, a powerful WooCommerce bulk editor, an inventory management workspace, an order management center, a coupon manager, a custom WP login page, and a real-time conversion tracking suite. Everything is free. Forever. No premium tier, no feature locks, no monthly subscriptions. A self-hosted **Shopify alternative for WooCommerce**: own your data, your products, and your customer list, with no monthly platform fee and no transaction fee.
 
 = Who is BrikPanel for? =
 
-* Store owners who want a **modern WooCommerce dashboard** with real numbers, not the slow built-in reports — and a **self-hosted WooCommerce analytics** solution instead of paying monthly fees to external SaaS tools
+* Store owners who want a **modern WooCommerce dashboard** with real numbers, not the slow built-in reports, and a **self-hosted WooCommerce analytics** solution instead of paying monthly fees to external SaaS tools
 * Stores that want a lighter **woocommerce inventory management** workspace built into a complete admin redesign
-* Anyone who needs to **bulk edit WooCommerce products** — including variations — without a premium plugin
+* Anyone who needs to **bulk edit WooCommerce products**, including variations, without a premium plugin
 * Agencies handing off stores to non-technical clients who need a **simplified WooCommerce admin**
-* Shop owners migrating from Shopify who want a familiar, modern admin for their WooCommerce store — a free, self-hosted **Shopify alternative**
+* Shop owners migrating from Shopify who want a familiar, modern admin for their WooCommerce store, a free, self-hosted **Shopify alternative**
 
 == What you get (all free) ==
 
-= Modern WooCommerce Dashboard with Real-Time Sales Analytics =
+= Modern WooCommerce Dashboard & Sales Report with Real-Time Analytics =
 
-The heart of BrikPanel is a **modern WooCommerce dashboard** — a true **woocommerce admin panel plugin**, not a styling layer.
+The heart of BrikPanel is a **modern WooCommerce dashboard**, a true **woocommerce admin panel plugin**, not a styling layer.
 
-* **Total Sales, Total Orders, Average Order Value (AOV)** — today, yesterday, last 7/30 days, or any custom range, with **±% period-over-period delta** on every metric
+* **Total Sales, Total Orders, Average Order Value (AOV)**: today, yesterday, last 7/30 days, or any custom range, with **±% period-over-period delta** on every metric
 * **Visitors** counted from your own database (admins excluded), and **Conversion Rate** computed live from real visitors and real orders
 * **Beautiful sales chart** powered by Chart.js, plus an **order status donut** (Completed, Processing, Cancelled, Refunded, Failed)
-* **WooCommerce conversion funnel** — Visitors → Add to Cart → Checkout → Orders, with the conversion percentage at every step
+* **WooCommerce conversion funnel**: Visitors → Add to Cart → Checkout → Orders, with the conversion percentage at every step
 
-This is the **best WooCommerce dashboard** and a complete **WooCommerce sales report** for stores that need a **modern WooCommerce admin** and a **woocommerce custom dashboard**.
+This is a complete **WooCommerce sales report** and **reporting** layer: real-time **sales reports**, charts and KPIs inside a **modern WooCommerce admin**, with no external analytics service.
 
-= Customer Analytics — LTV, RFM Segmentation & Cohort Retention =
+= Customer Analytics: LTV, RFM Segmentation & Cohort Retention =
 
-BrikPanel ships a complete **WooCommerce customer analytics** suite, calculated from your store data and visualized in the dashboard — no external service.
+BrikPanel ships a complete **WooCommerce customer analytics** suite, calculated from your store data and visualized in the dashboard, no external service.
 
-* **Customer Lifetime Value (LTV)** — total customers, average and top LTV, full LTV distribution histogram, and a sortable top-customers table
-* **RFM segmentation** — every customer scored on Recency, Frequency, and Monetary, then bucketed into Champions, Loyal, At Risk, About to Sleep, Hibernating, and Lost, with revenue per segment
-* **Cohort retention** — month-by-month cohort retention grid plus an average retention by month-offset trend line
-* **Advanced filtering and segmentation** — combine spend range, product, location, date and more to build saved segments for both customers and orders
-
-A free **woocommerce LTV plugin**, **woocommerce RFM** tool, and **woocommerce cohort retention** report rolled into the same dashboard you already use for sales.
+* **Customer Lifetime Value (LTV)**: total customers, average and top LTV, full LTV distribution histogram, and a sortable top-customers table
+* **RFM segmentation**: every customer scored on Recency, Frequency, and Monetary, then bucketed into Champions, Loyal, At Risk, About to Sleep, Hibernating, and Lost, with revenue per segment
+* **Cohort retention**: month-by-month cohort retention grid plus an average retention by month-offset trend line
+* **Advanced filtering and segmentation**: combine spend range, product, location, date and more to build saved segments for both customers and orders
 
 = Live Visitors & Real-Time Conversion Tracking =
 
-BrikPanel ships a built-in **WooCommerce live visitors** widget — see who is on your store right now, what page they are on, and whether they have items in the cart. Refreshes every 30 seconds. No external service, no Hotjar, no monthly fee.
+BrikPanel ships a built-in **WooCommerce live visitors** widget, see who is on your store right now, what page they are on, and whether they have items in the cart. Refreshes every 30 seconds. No external service, no Hotjar, no monthly fee.
 
 * **WooCommerce real time visitors** widget with cart status (*Browsing / Has items in cart / On thank-you page*), current page, and customer info
 * **WooCommerce conversion tracking** in the same database that powers the dashboard
@@ -64,13 +60,13 @@ BrikPanel ships a built-in **WooCommerce live visitors** widget — see who is o
 
 A free **woocommerce statistics plugin** and **woocommerce sales tracker** without any external SaaS.
 
-= Geographic Analytics — WooCommerce Sales by Country =
+= Geographic Analytics: WooCommerce Sales by Country =
 
-A 3D rotating globe (Cobe.js) plots every order on its real location — see **WooCommerce sales by country** and city without exporting a CSV, with **Top 10 Countries** and **Top 10 Cities** tables. Works with both HPOS and legacy order storage.
+A 3D rotating globe (Cobe.js) plots every order on its real location, see **WooCommerce sales by country** and city without exporting a CSV, with **Top 10 Countries** and **Top 10 Cities** tables. Works with both HPOS and legacy order storage.
 
-= Lightning-Fast Order Search — Cmd/Ctrl + K from Anywhere =
+= Lightning-Fast Order Search: Cmd/Ctrl + K from Anywhere =
 
-Hit `Ctrl + K` (or `Cmd + K` on Mac) anywhere in wp-admin and a beautiful order search overlay opens — the free **woocommerce order search plugin** every store owner has been asking for. Searches across order ID, customer first/last name, email, phone, and product SKU inside order line items at once. True **woocommerce quick search** with results as you type, color-coded status badges, totals, and dates.
+Hit `Ctrl + K` (or `Cmd + K` on Mac) anywhere in wp-admin and a beautiful order search overlay opens, the free **woocommerce order search plugin** every store owner has been asking for. Searches across order ID, customer first/last name, email, phone, and product SKU inside order line items at once. True **woocommerce quick search** with results as you type, color-coded status badges, totals, and dates.
 
 = Modern WooCommerce Order Management =
 
@@ -86,37 +82,37 @@ BrikPanel replaces the cluttered default orders page with a clean **woocommerce 
 
 A real **woocommerce order management plugin**, not a reskin. Disable from settings anytime.
 
-= WooCommerce Product List Plugin — Built for People Who Actually Edit Products =
+= WooCommerce Product List Plugin: Built for People Who Actually Edit Products =
 
 The default **WooCommerce product list** is fine for browsing, painful for editing. BrikPanel ships a complete **woocommerce product list plugin** that fixes it.
 
 * Thumbnail, name, SKU, regular/sale price, stock badge, category
-* **Publish status toggle** — flip draft ↔ published with one click, no reload
+* **Publish status toggle**: flip draft ↔ published with one click, no reload
 * Edit, Duplicate, Delete actions; bulk publish, draft, delete
 * Status tabs (All / Published / Draft / Trash), live search by name or SKU
 * Configurable per-page (5–100, default 20), AJAX pagination
 * **Per-user toggles for any third-party / SEO column** added by Yoast, Rank Math, ASE and other plugins
 * **Admin and Site Enhancements (ASE) custom columns** are respected in the BrikPanel product, order and customer lists
 
-= Quick Edit Sidebar — Edit Without Leaving the List =
+= Quick Edit Sidebar: Edit Without Leaving the List =
 
-A slide-in panel from any product row to edit name, SKU, regular/sale price, stock, and category — save without leaving the list. The **woocommerce quick edit** experience WooCommerce should have shipped years ago. Update **woocommerce quick edit price**, stock, or category in two clicks.
+A slide-in panel from any product row to edit name, SKU, regular/sale price, stock, and category, save without leaving the list. The **woocommerce quick edit** experience WooCommerce should have shipped years ago. Update **woocommerce quick edit price**, stock, or category in two clicks.
 
-= Bulk Edit WooCommerce Products with the Variation Editor — Full Variation Support =
+= Bulk Edit WooCommerce Products with the Variation Editor: Full Variation Support =
 
-This is where BrikPanel pulls ahead of every other free **woocommerce bulk editor**. Most free plugins only handle simple products and only let you "increase price by X%". BrikPanel does much more — and does it for variable products too.
+This is where BrikPanel pulls ahead of every other free **woocommerce bulk editor**. Most free plugins only handle simple products and only let you "increase price by X%". BrikPanel does much more, and does it for variable products too.
 
-* **WooCommerce bulk price update** (regular and sale) — percentage, fixed amount, or absolute value, across the whole catalog or filtered by category
+* **WooCommerce bulk price update** (regular and sale): percentage, fixed amount, or absolute value, across the whole catalog or filtered by category
 * **Bulk update WooCommerce products** stock quantities (in/out of stock, set quantity, add/subtract)
-* **WooCommerce bulk price by category** — pick a category, set a rule, every product updates
+* **WooCommerce bulk price by category**: pick a category, set a rule, every product updates
 * **WooCommerce bulk sale price** updates with a date range
 * Confirmation dialog on every bulk action
 
 Now the part nobody else does for free: **variation support**.
 
-* **WooCommerce variation editor** — open any variable product and edit every variation in one modal (regular price, sale price, stock, SKU)
-* **Bulk edit variation prices WooCommerce** — set the same price for all variations of an attribute (every "Red" variation, every "L" size), or apply a percentage rule
-* **Bulk update variation stock** — set or adjust the stock of every variation in one click
+* **WooCommerce variation editor**: open any variable product and edit every variation in one modal (regular price, sale price, stock, SKU)
+* **Bulk edit variation prices WooCommerce**: set the same price for all variations of an attribute (every "Red" variation, every "L" size), or apply a percentage rule
+* **Bulk update variation stock**: set or adjust the stock of every variation in one click
 * Attribute filter to narrow visible variations when a product has 50+ combinations
 
 **How to bulk edit WooCommerce products** including variations without buying a $79/year plugin? BrikPanel handles both simple and variable products for free.
@@ -128,10 +124,10 @@ The default WooCommerce add-product screen has 11 metaboxes, 3 tabs, and 40+ fie
 * **Featured image + product gallery** with drag-and-drop upload, unlimited images, drag-to-reorder
 * Regular price, sale price with decimal validation
 * **Searchable category picker** with multi-select + **quick create category** without leaving the page
-* **Brand field** — the WooCommerce `product_brand` taxonomy is now first-class alongside categories and tags
+* **Brand field**: the WooCommerce `product_brand` taxonomy is now first-class alongside categories and tags
 * Short description + full rich-text description (wp_editor)
-* **SEO fields** — custom slug, meta title, meta description, live Google SERP preview
-* **Full SEO plugin compatibility** — Yoast SEO, Rank Math, All in One SEO and SEOPress metaboxes (including the SEO score panel) render and save inside the BrikPanel product editor
+* **SEO fields**: custom slug, meta title, meta description, live Google SERP preview
+* **Full SEO plugin compatibility**: Yoast SEO, Rank Math, All in One SEO and SEOPress metaboxes (including the SEO score panel) render and save inside the BrikPanel product editor
 * Product type (Simple, Variable), **attribute management** with inline create
 * **Auto-generate variations** from attribute combinations, per-variation price/sale/SKU/stock
 * Duplicate any product in one click
@@ -140,25 +136,29 @@ Opt-in. Keep the default WooCommerce product page if you prefer.
 
 = WooCommerce Variation Gallery =
 
-Attach a separate image gallery to each product variation — the frontend swaps gallery automatically when a customer picks a variation. Image metadata (srcset, sizes, alt text) is fully preserved.
+Attach a separate image gallery to each product variation, the frontend swaps gallery automatically when a customer picks a variation. Image metadata (srcset, sizes, alt text) is fully preserved.
 
-= WooCommerce Categories Page — Drag-and-Drop Parent/Child Management =
+= WooCommerce Categories Page: Drag-and-Drop Parent/Child Management =
 
 The default WooCommerce category screen has not been redesigned in a decade. BrikPanel rebuilds it with per-page settings (5–200), **drag-and-drop parent/child nesting** with circular reference prevention, for both `product_cat` and `product_tag`.
 
-= Best WooCommerce Coupon Plugin — Free Coupon Manager =
+= Best WooCommerce Coupon Plugin: Free Coupon Manager =
 
-A complete **WooCommerce coupon manager** that makes coupons a first-class part of the admin — we honestly think this is the **best WooCommerce coupon plugin** in the free repository.
+A complete **WooCommerce coupon manager** that makes coupons a first-class part of the admin, we honestly think this is the **best WooCommerce coupon plugin** in the free repository.
 
 * Coupon table with code copy-to-clipboard, discount type icon, amount, usage count, expiry highlighting, and status
-* Status tabs, AJAX pagination, **slide-over coupon panel** — create/edit without a reload
+* Status tabs, AJAX pagination, **slide-over coupon panel**: create/edit without a reload
 * Auto-generate random coupon codes; one-click duplicate
 * Discount types: percentage, fixed cart, fixed product + free shipping toggle
 * Expiry date picker, total + per-customer usage limits, min/max spend, individual use toggle, product/category include/exclude rules
 
-= Custom WordPress Login Page — Custom WP Login Page for WooCommerce =
+= WooCommerce Cart Abandonment & Cart Recovery =
 
-BrikPanel ships a **custom WP login page** that fully replaces the default `wp-login.php` look — a real **WordPress login customizer** built for WooCommerce stores.
+A built-in **WooCommerce cart abandonment** and **cart recovery** system, with no external email SaaS. A dedicated **Abandoned Carts** screen captures the checkout email of shoppers who do not finish (classic and block checkout, plus logged-in add-to-cart) and snapshots each cart down to the exact variation. Carts move Active → Abandoned → Recovered automatically, and an optional popup hands each subscriber a single-use **cart recovery coupon**, with search and date filters, CSV / Excel export and email-list import.
+
+= Custom WordPress Login Page: Custom WP Login Page for WooCommerce =
+
+BrikPanel ships a **custom WP login page** that fully replaces the default `wp-login.php` look, a real **WordPress login customizer** built for WooCommerce stores.
 
 * Centered card layout with your site name as logo
 * Minimal, distraction-free fields, AJAX submission (no reload)
@@ -177,20 +177,20 @@ A free **woocommerce inventory management plugin** that covers the daily workflo
 
 = Custom Top Admin Bar & Notifications =
 
-A **Custom BrikPanel-styled top admin bar** replaces the default WordPress toolbar across the entire admin with a larger, e-commerce-focused notification bell and quick links — toggleable from settings. Notification sound, confetti animation and a top-right popup the moment a new completed order arrives.
+A **Custom BrikPanel-styled top admin bar** replaces the default WordPress toolbar across the entire admin with a larger, e-commerce-focused notification bell and quick links, toggleable from settings. Notification sound, confetti animation and a top-right popup the moment a new completed order arrives.
 
-= Google Sheets Sync — Real-Time WooCommerce Google Sheets Integration =
+= Google Sheets Sync: Real-Time WooCommerce Google Sheets Integration =
 
-BrikPanel ships a free **WooCommerce Google Sheets sync** — a fully native **WooCommerce to Google Sheets** integration that streams orders, customers and analytics into a Google Sheet you control. The free **GSheetConnector alternative** with no Zapier, no Make, no monthly fee.
+BrikPanel ships a free **WooCommerce Google Sheets sync**, a fully native **WooCommerce to Google Sheets** integration that streams orders, customers and analytics into a Google Sheet you control. The free **GSheetConnector alternative** with no Zapier, no Make, no monthly fee.
 
-* **Real-time order sync** — every new WooCommerce order is appended within seconds, one row per line item so variations get their own columns. Free **woocommerce order sync to google sheets** with no external automation tool
-* **Scheduled WooCommerce Google Sheets export** — hourly, every 4h or daily catch-up; idempotent so re-runs never duplicate rows
-* **Analytics report snapshots** — Sales Summary, Daily KPIs, Top Products and Funnel tabs refreshed on an interval for pivots and dashboards in Sheets
-* **Customer + RFM snapshot** — chained to the nightly RFM recompute
+* **Real-time order sync**: every new WooCommerce order is appended within seconds, one row per line item so variations get their own columns. Free **woocommerce order sync to google sheets** with no external automation tool
+* **Scheduled WooCommerce Google Sheets export**: hourly, every 4h or daily catch-up; idempotent so re-runs never duplicate rows
+* **Analytics report snapshots**: Sales Summary, Daily KPIs, Top Products and Funnel tabs refreshed on an interval for pivots and dashboards in Sheets
+* **Customer + RFM snapshot**: chained to the nightly RFM recompute
 
 HPOS-compatible. A real **google sheets woocommerce sync** for stores that want orders, customers and analytics in Sheets without paying a monthly fee.
 
-= WooCommerce ROAS, Net Profit & Ad Spend — Google Ads + Meta Ads =
+= WooCommerce ROAS, Net Profit & Ad Spend: Google Ads + Meta Ads =
 
 BrikPanel pulls daily spend from **Google Ads** and **Meta Ads** (Facebook / Instagram) so you see real **WooCommerce ROAS**, **Net Profit** and **ad spend** next to revenue. Multi-currency aware. A free **Triple Whale alternative** and **woocommerce profit tracking** dashboard with no monthly fee.
 
@@ -200,11 +200,11 @@ When BrikMarket is active, marketplace orders are excluded from the storefront c
 
 = Subscription & Membership Plugin Compatibility =
 
-Compatible with major subscription and membership plugins (WooCommerce Subscriptions, MemberPress, Paid Memberships Pro and more) — subscription products and member orders show up in the same product list, order screens and customer analytics.
+Compatible with major subscription and membership plugins (WooCommerce Subscriptions, MemberPress, Paid Memberships Pro and more), subscription products and member orders show up in the same product list, order screens and customer analytics.
 
 = Developer Hooks & Filters =
 
-A **developer hooks and filters system** for agencies — actions and filters like `brikpanel_after_product_save`, plus a built-in docs popup in settings with one-click copy buttons.
+A **developer hooks and filters system** for agencies, actions and filters like `brikpanel_after_product_save`, plus a built-in docs popup in settings with one-click copy buttons.
 
 = Navigation & Admin UI Cleanup =
 
@@ -215,10 +215,9 @@ A **developer hooks and filters system** for agencies — actions and filters li
 
 Store owners pay monthly SaaS fees for parts of what BrikPanel does free:
 
-* **Self-hosted WooCommerce analytics** — sales, AOV, conversion, funnels, geo data, customer LTV, RFM, cohort retention, no third-party
-* A simpler inventory workspace for stores that only need stock-level visibility and bulk updates
-* A free Metorik and Triple Whale alternative — analytics, ROAS and profit on your own server
-* **Shopify alternative for WooCommerce** — the clean admin experience of Shopify with your storefront, customer data and orders on your own server
+* **Self-hosted WooCommerce analytics**: sales, AOV, conversion, funnels, geo data, customer LTV, RFM, cohort retention, no third-party
+* A free Metorik and Triple Whale alternative: analytics, ROAS and profit on your own server
+* **Shopify alternative for WooCommerce**: the clean admin experience of Shopify with your storefront, customer data and orders on your own server
 
 == Why BrikPanel and not the default WooCommerce admin? ==
 
@@ -226,8 +225,8 @@ WooCommerce's built-in analytics are slow, refresh hourly, and have no live visi
 
 == WooCommerce HPOS Compatibility & Performance ==
 
-* **Zero impact on storefront speed** — only loads inside wp-admin
-* **Hardened performance for low-resource hosting** — heavy queries are batched, cached and run through Action Scheduler so the dashboard, customer analytics and bulk editor stay responsive on shared hosting
+* **Zero impact on storefront speed**: only loads inside wp-admin
+* **Hardened performance for low-resource hosting**: heavy queries are batched, cached and run through Action Scheduler so the dashboard, customer analytics and bulk editor stay responsive on shared hosting
 * **HPOS (High-Performance Order Storage)** fully supported with dual code paths
 * WooCommerce 7.x, 8.x, and newer; works alongside Admin Menu Editor, Slider Revolution, Yoast SEO, RankMath, WPML, Polylang
 * Translation-ready (`.pot` file included), with all JavaScript / jQuery strings routed through `wp_localize_script`
@@ -237,7 +236,7 @@ WooCommerce's built-in analytics are slow, refresh hourly, and have no live visi
 
 1. Upload the plugin files to `/wp-content/plugins/brikpanel`, or install via **Plugins → Add New → Upload Plugin**.
 2. Activate through the **Plugins** menu.
-3. Open **BrikPanel** in the admin sidebar — the dashboard loads immediately.
+3. Open **BrikPanel** in the admin sidebar, the dashboard loads immediately.
 4. (Optional) Visit **WooCommerce → Settings → BrikPanel** to enable or disable specific modules.
 
 That is it. No license key, no email signup, no external account.
@@ -250,11 +249,11 @@ Yes. Every feature on this page is in the free version. There is no premium tier
 
 = Is BrikPanel a self-hosted WooCommerce analytics solution? =
 
-Yes. BrikPanel gives you a complete WooCommerce analytics suite that runs entirely on your own server with no external dependencies. Sales analytics, product reports, conversion tracking, customer LTV, RFM segmentation, cohort retention and customer data are all included — nothing is sent to any third-party SaaS.
+Yes. BrikPanel gives you a complete WooCommerce analytics suite that runs entirely on your own server with no external dependencies. Sales analytics, product reports, conversion tracking, customer LTV, RFM segmentation, cohort retention and customer data are all included, nothing is sent to any third-party SaaS.
 
 = Does BrikPanel include a WooCommerce sales report? =
 
-Yes. The BrikPanel dashboard ships a complete **WooCommerce sales report** out of the box — total sales, total orders, average order value (AOV), refunds, and net revenue, each with a ±% period-over-period delta. Filter the sales report by today, yesterday, last 7 days, last 30 days, or any custom date range. The sales chart is rendered with Chart.js and pairs with the order status donut and conversion funnel for a full sales report you can read at a glance, without ever leaving wp-admin and without paying for an external analytics service.
+Yes. The BrikPanel dashboard ships a complete **WooCommerce sales report** out of the box, total sales, total orders, average order value (AOV), refunds, and net revenue, each with a ±% period-over-period delta. Filter the sales report by today, yesterday, last 7 days, last 30 days, or any custom date range. The sales chart is rendered with Chart.js and pairs with the order status donut and conversion funnel for a full sales report you can read at a glance, without ever leaving wp-admin and without paying for an external analytics service.
 
 = Does BrikPanel offer custom WooCommerce reports, KPIs and a profit report? =
 
@@ -266,23 +265,23 @@ Yes. The BrikPanel **admin dashboard** is built from modular **dashboard widgets
 
 = Does BrikPanel show customer LTV, RFM segments and cohort retention? =
 
-Yes. BrikPanel ships a full **WooCommerce customer analytics** suite directly in the dashboard. Customer Lifetime Value (LTV) is calculated for every customer with average, top, and full distribution histogram. RFM segmentation scores every customer on Recency, Frequency and Monetary and groups them into Champions, Loyal, At Risk, About to Sleep, Hibernating and Lost. Cohort retention shows a month-by-month grid plus an average retention trend line. All three are computed from your own store data — no external service involved.
+Yes. BrikPanel ships a full **WooCommerce customer analytics** suite directly in the dashboard. Customer Lifetime Value (LTV) is calculated for every customer with average, top, and full distribution histogram. RFM segmentation scores every customer on Recency, Frequency and Monetary and groups them into Champions, Loyal, At Risk, About to Sleep, Hibernating and Lost. Cohort retention shows a month-by-month grid plus an average retention trend line. All three are computed from your own store data, no external service involved.
 
 = Is BrikPanel a free Shopify alternative for WooCommerce? =
 
-Yes, for store owners who want to stay self-hosted. BrikPanel gives your WooCommerce store the clean, modern admin experience of Shopify — product list with inline editing, bulk price and stock updates, live visitors, conversion tracking, geographic analytics, customer LTV / RFM / cohort reports, a branded login page — but your storefront, your customer data, and your orders stay on your own server. No monthly platform fee, no transaction fee, no vendor lock-in. If you were evaluating Shopify but want to own your stack, this is the **Shopify alternative for WooCommerce** we built for that exact use case.
+Yes, for store owners who want to stay self-hosted. BrikPanel gives your WooCommerce store the clean, modern admin experience of Shopify: product list with inline editing, bulk price and stock updates, live visitors, conversion tracking, geographic analytics, customer LTV / RFM / cohort reports, a branded login page, but your storefront, your customer data, and your orders stay on your own server. No monthly platform fee, no transaction fee, no vendor lock-in. If you were evaluating Shopify but want to own your stack, this is the **Shopify alternative for WooCommerce** we built for that exact use case.
 
 = Is BrikPanel an ATUM alternative for inventory management? =
 
-For most stores, yes. BrikPanel includes complete **woocommerce inventory management** — stock levels, low stock badges, bulk stock updates, variation stock updates — all integrated into the same dashboard you use for sales and orders. If you only need daily stock work without advanced supplier or purchase order features, BrikPanel is a much lighter **ATUM alternative**.
+For most stores, yes. BrikPanel includes complete **woocommerce inventory management**: stock levels, low stock badges, bulk stock updates, variation stock updates, all integrated into the same dashboard you use for sales and orders. If you only need daily stock work without advanced supplier or purchase order features, BrikPanel is a much lighter **ATUM alternative**.
 
 = How do I get a faster WooCommerce product list with bulk actions and quick edit? =
 
-The default **WooCommerce product list** is built for browsing — searching, sorting and editing it is slow. BrikPanel ships a complete **woocommerce product list plugin** with thumbnail, SKU, regular and sale price, stock badge, category, AJAX pagination, live search, status tabs, one-click publish toggle and a slide-in quick edit panel for every row. Works on both simple and variable products, and the same **woocommerce product list** screen powers the bulk price and bulk stock updates so you never leave the page to edit your catalog.
+The default **WooCommerce product list** is built for browsing, searching, sorting and editing it is slow. BrikPanel ships a complete **woocommerce product list plugin** with thumbnail, SKU, regular and sale price, stock badge, category, AJAX pagination, live search, status tabs, one-click publish toggle and a slide-in quick edit panel for every row. Works on both simple and variable products, and the same **woocommerce product list** screen powers the bulk price and bulk stock updates so you never leave the page to edit your catalog.
 
 = How do I bulk edit WooCommerce products including variations? =
 
-Open **BrikPanel → Products** and click the **Bulk Update** button in the toolbar. You can update prices, sale prices, and stock for all products, by category, or for selected products. For variable products, open any product, click **Edit Variations**, and bulk update prices and stock across every variation in one modal. This is the part most free **WooCommerce bulk editor** plugins do not handle — BrikPanel does.
+Open **BrikPanel → Products** and click the **Bulk Update** button in the toolbar. You can update prices, sale prices, and stock for all products, by category, or for selected products. For variable products, open any product, click **Edit Variations**, and bulk update prices and stock across every variation in one modal. This is the part most free **WooCommerce bulk editor** plugins do not handle, BrikPanel does.
 
 = Can I bulk edit variation prices in WooCommerce with the free version? =
 
@@ -294,7 +293,7 @@ No. BrikPanel only loads inside wp-admin. It has zero impact on your storefront 
 
 = Is BrikPanel compatible with HPOS (High-Performance Order Storage)? =
 
-Yes. Every order query has dual code paths — `wc_get_orders()` for HPOS, `WP_Query` for legacy. BrikPanel declares HPOS compatibility via `FeaturesUtil::declare_compatibility('custom_order_tables', ...)` and is tested on stores running both modes.
+Yes. Every order query has dual code paths, `wc_get_orders()` for HPOS, `WP_Query` for legacy. BrikPanel declares HPOS compatibility via `FeaturesUtil::declare_compatibility('custom_order_tables', ...)` and is tested on stores running both modes.
 
 = How do I see WooCommerce sales by country? =
 
@@ -318,31 +317,39 @@ Yes. BrikPanel includes a complete **woocommerce conversion tracking** system th
 
 = Is there a free WooCommerce conversion tracking plugin built into BrikPanel? =
 
-Yes. BrikPanel ships a free **WooCommerce conversion tracking plugin** that records every visitor, add-to-cart, checkout start and completed order in your own database — no Google Analytics setup, no Hotjar, no monthly fee. The funnel and conversion-rate widgets on the dashboard are computed from this same dataset in real time.
+Yes. BrikPanel ships a free **WooCommerce conversion tracking plugin** that records every visitor, add-to-cart, checkout start and completed order in your own database, no Google Analytics setup, no Hotjar, no monthly fee. The funnel and conversion-rate widgets on the dashboard are computed from this same dataset in real time.
+
+= Does BrikPanel recover abandoned carts? =
+
+Yes. BrikPanel includes a built-in **WooCommerce cart abandonment** and **cart recovery** system in the free version: no Klaviyo, Mailchimp or external email SaaS. It captures the email of shoppers who begin checkout but do not complete the order (from both the classic shortcode checkout and the newer block checkout, and from logged-in customers the moment they add to cart) and lists every one on a dedicated **Abandoned Carts** screen. Each entry keeps a full snapshot of the cart, including the exact variation, quantity and total, and moves through Active, Abandoned and Recovered automatically, even if the shopper later checks out with a different email. The screen has search, status, source and date filters, per-row product details, CSV and Excel export, statistics cards, and a CSV importer to bring in an existing email list. It works on both simple and variable products.
+
+= How does the WooCommerce cart recovery coupon popup work? =
+
+Switch on the optional email popup and BrikPanel shows a clean, on-brand sign-up offer to your visitors. Anyone who subscribes is issued their own single-use percentage **cart recovery coupon** (10% by default, and you set the rate), restricted to their email and valid for 30 days, shown right there with a one-click Copy button. You control the heading, message, button and success text, the delay before it appears, the cooldown after it is dismissed, and which of six animated reveal styles the coupon uses (Sealed envelope, Pocket card, Scratch card, Slot machine, Magnetic assembly or Classic ticket), all of which respect a visitor's reduced-motion preference. Close the popup and it folds into a small floating tab, one click from reopening.
 
 = How do I sync WooCommerce orders to Google Sheets for free? =
 
-Open **WooCommerce → BrikPanel → Google Sheets**, click "Connect Google account", pick or create a target spreadsheet, and toggle "Real-time order sync" on. Every new WooCommerce order is then appended to your Sheet within seconds, with one row per line item so variations land in their own columns. Status changes update the existing row in place. No Zapier, no Make, no monthly fee — a real **woocommerce google sheets sync** built into BrikPanel.
+Open **WooCommerce → BrikPanel → Google Sheets**, click "Connect Google account", pick or create a target spreadsheet, and toggle "Real-time order sync" on. Every new WooCommerce order is then appended to your Sheet within seconds, with one row per line item so variations land in their own columns. Status changes update the existing row in place. No Zapier, no Make, no monthly fee, a real **woocommerce google sheets sync** built into BrikPanel.
 
 = Does BrikPanel work as a free GSheetConnector or WPSyncSheets alternative? =
 
-Yes. BrikPanel includes a complete **WooCommerce to Google Sheets** integration in the free version — real-time order sync, scheduled bulk export, analytics snapshot tabs (Sales Summary, Daily KPIs, Top Products, Funnel) and a customer + RFM snapshot. All four flows ship free with no row limit, no premium tier, and OAuth-based authentication that requests minimum scopes only (`drive.file` — never full Drive access).
+Yes. BrikPanel includes a complete **WooCommerce to Google Sheets** integration in the free version: real-time order sync, scheduled bulk export, analytics snapshot tabs (Sales Summary, Daily KPIs, Top Products, Funnel) and a customer + RFM snapshot. All four flows ship free with no row limit, no premium tier, and OAuth-based authentication that requests minimum scopes only (`drive.file`, never full Drive access).
 
 = How do I see real ROAS and net profit in WooCommerce? =
 
-Connect **Google Ads** and/or **Meta Ads** from the BrikPanel Ad Platforms page. BrikPanel then pulls your daily ad spend and shows three new dashboard cards: **Ad Spend** (summed across every connected platform for the active date range), **WooCommerce ROAS** (store revenue ÷ ad spend), and **Net Profit** (revenue − COGS − ad spend − manual expenses). COGS comes from WooCommerce's native order cost meta and expenses from the BrikPanel expenses table, so the **woocommerce roas** and net profit numbers are real, not estimates. The cards are multi-currency aware — if an ad account reports in a different currency than the store, spend is shown split and ROAS / Net Profit are omitted instead of printing a misleading converted number.
+Connect **Google Ads** and/or **Meta Ads** from the BrikPanel Ad Platforms page. BrikPanel then pulls your daily ad spend and shows three new dashboard cards: **Ad Spend** (summed across every connected platform for the active date range), **WooCommerce ROAS** (store revenue ÷ ad spend), and **Net Profit** (revenue − COGS − ad spend − manual expenses). COGS comes from WooCommerce's native order cost meta and expenses from the BrikPanel expenses table, so the **woocommerce roas** and net profit numbers are real, not estimates. The cards are multi-currency aware, if an ad account reports in a different currency than the store, spend is shown split and ROAS / Net Profit are omitted instead of printing a misleading converted number.
 
 = Is BrikPanel a free Triple Whale alternative for WooCommerce? =
 
-For self-hosted stores, yes. BrikPanel gives you the **WooCommerce ROAS** and **net profit** view store owners buy Triple Whale, TrueProfit or BeProfit for — daily **Google Ads** and **Meta Ads** spend pulled in next to store revenue, COGS and expenses — but it runs entirely on your own server with no monthly fee and no data sent to a third party. If you only need true ROAS and profit (not full multi-touch ad attribution), this is the free **Triple Whale alternative** built for that exact use case.
+For self-hosted stores, yes. BrikPanel gives you the **WooCommerce ROAS** and **net profit** view store owners buy Triple Whale, TrueProfit or BeProfit for: daily **Google Ads** and **Meta Ads** spend pulled in next to store revenue, COGS and expenses, but it runs entirely on your own server with no monthly fee and no data sent to a third party. If you only need true ROAS and profit (not full multi-touch ad attribution), this is the free **Triple Whale alternative** built for that exact use case.
 
 = Does BrikPanel connect to Google Ads and Meta (Facebook / Instagram) Ads? =
 
-Yes. BrikPanel connects to both **Google Ads** and **Meta Ads** through a secure OAuth proxy (the plugin only ever stores encrypted tokens, never your password). It pulls daily spend per platform, backfills history, and re-syncs recent days automatically so the dashboard ROAS and net profit stay accurate. The integration is spend-and-profit focused — it does not install a Facebook pixel or do multi-touch attribution; it gives you true **woocommerce roas** and net profit without a paid SaaS.
+Yes. BrikPanel connects to both **Google Ads** and **Meta Ads** through a secure OAuth proxy (the plugin only ever stores encrypted tokens, never your password). It pulls daily spend per platform, backfills history, and re-syncs recent days automatically so the dashboard ROAS and net profit stay accurate. The integration is spend-and-profit focused, it does not install a Facebook pixel or do multi-touch attribution; it gives you true **woocommerce roas** and net profit without a paid SaaS.
 
 = Is there a free WooCommerce variation editor for bulk price and stock updates? =
 
-Yes. BrikPanel includes a complete **WooCommerce variation editor** in the free version. Open any variable product, click "Edit Variations", and you can bulk update every variation's price, sale price, stock and SKU in one modal — with attribute filtering when a product has 50+ combinations. The same **woocommerce variation editor** also supports per-attribute rules ("set every Red variation to $X").
+Yes. BrikPanel includes a complete **WooCommerce variation editor** in the free version. Open any variable product, click "Edit Variations", and you can bulk update every variation's price, sale price, stock and SKU in one modal, with attribute filtering when a product has 50+ combinations. The same **woocommerce variation editor** also supports per-attribute rules ("set every Red variation to $X").
 
 = What makes BrikPanel different from the built-in WooCommerce analytics? =
 
@@ -377,32 +384,58 @@ By default, nothing. BrikPanel only contacts an external service for features yo
 
 = Will BrikPanel always be free? =
 
-Yes. The dashboard, the bulk editor, the inventory tools, the order management, the coupon manager, the custom login, the conversion tracking, the customer analytics suite, and every other feature listed above will remain free forever. We may release a separate paid product (BrikMentor) on top of BrikPanel in the future, but it will be additive — BrikPanel itself stays 100% free.
+Yes. The dashboard, the bulk editor, the inventory tools, the order management, the coupon manager, the custom login, the conversion tracking, the customer analytics suite, and every other feature listed above will remain free forever. We may release a separate paid product (BrikMentor) on top of BrikPanel in the future, but it will be additive, BrikPanel itself stays 100% free.
 
 == Screenshots ==
 
-1. **Modern WooCommerce Dashboard** — a real-time WooCommerce sales report and admin panel: Total Sales, Orders, AOV, Visitors and Conversion Rate with period-over-period deltas, an interactive sales chart, Net Profit, ROAS and a live visitors widget
-2. **Real ROAS & Net Profit with Google Ads + Meta Ads** — native Google Ads and Meta (Facebook / Instagram) Ads integration that pulls daily ad spend into the dashboard so you see true return on ad spend and net profit next to store revenue
-3. **WooCommerce Google Sheets Sync** — real-time order sync to a Google Sheet, scheduled bulk export, per-status filters and reorderable columns — a free GSheetConnector alternative
-4. **WooCommerce Inventory Management & Product List** — clean product table with thumbnails, SKU, regular/sale price, color-coded stock badges, category and a one-click publish toggle, for both simple and variable products
-5. **Quick Edit Sidebar** — a slide-in panel to edit name, prices, SKU, stock and category without ever leaving the product list
-6. **Bulk Edit WooCommerce Products** — bulk update prices, sale prices and stock for the whole catalog, by category or by selection, with full variation support (e.g. only "Size: XL")
-7. **Simplified WooCommerce Product Editor** — drag-and-drop image gallery, clean pricing and an inline variation builder for simple and variable products
-8. **WooCommerce Customer Analytics — Lifetime Value (LTV)** — total customers, average and top customer lifetime value, the full LTV distribution histogram, and a sortable top-customers table
-9. **WooCommerce Customer Analytics — RFM Segmentation** — every customer scored on Recency, Frequency and Monetary and grouped into Champions, Loyal, At Risk, Hibernating, About to Sleep and Lost, with revenue per segment
-10. **WooCommerce Customer Analytics — Cohort Retention** — a month-by-month cohort retention grid plus an average retention by month-offset trend
-11. **Geographic Analytics — WooCommerce Sales by Country** — a 3D globe of order locations with Top Countries and Top Cities by orders and revenue
-12. **Live Visitors & Conversion Funnel** — real-time WooCommerce live visitors with cart status, plus the Visitors > Add to Cart > Checkout > Orders conversion funnel and order-status breakdown
-13. **Lightning-Fast Order Search (Cmd/Ctrl + K)** — an instant order search overlay across order ID, customer name, email, phone and product SKU from anywhere in wp-admin
-14. **Segments — Orders Explorer** — saved segments and quick filters with totals (orders, revenue, AOV) and a clean order list with location, payment method and status
-15. **Segments — Customers Explorer** — a segmentable customer list (new, repeat, VIP, dormant, high value) with total spent, AOV and first/last order
-16. **Modern WooCommerce Order Management** — a redesigned orders page with a 30-day overview bar, color-coded status tabs and inline status change
-17. **WooCommerce Categories Page** — drag-and-drop parent/child category and tag management with circular-reference protection
-18. **WooCommerce Coupon Manager** — a clean coupon table with discount-type badges, usage stats, revenue and expiry highlighting
-19. **Add Coupon Slide-Over Panel** — create or edit coupons with all WooCommerce coupon options without leaving the page
-20. **Custom WP Login Page** — a modern, branded login screen that replaces the default WordPress login
+1. **Modern WooCommerce Dashboard**: a real-time WooCommerce sales report and admin panel with Total Sales, Orders, AOV, Visitors and Conversion Rate with period-over-period deltas, an interactive sales chart, Net Profit, ROAS and a live visitors widget
+2. **WooCommerce Cart Abandonment & Recovery**: the Abandoned Carts screen captures the email of shoppers who do not finish checkout, with emails-captured, active, abandoned and recovered stat cards, per-cart product and exact-variation snapshots, source and status filters, and CSV / Excel export
+3. **Real ROAS & Net Profit with Google Ads + Meta Ads**: native Google Ads and Meta (Facebook / Instagram) Ads integration that pulls daily ad spend into the dashboard so you see true return on ad spend and net profit next to store revenue
+4. **WooCommerce Google Sheets Sync**: real-time order sync to a Google Sheet, scheduled bulk export, per-status filters and reorderable columns, a free GSheetConnector alternative
+5. **WooCommerce Inventory Management & Product List**: clean product table with thumbnails, SKU, regular/sale price, color-coded stock badges, category and a one-click publish toggle, for both simple and variable products
+6. **Quick Edit Sidebar**: a slide-in panel to edit name, prices, SKU, stock and category without ever leaving the product list
+7. **Bulk Edit WooCommerce Products**: bulk update prices, sale prices and stock for the whole catalog, by category or by selection, with full variation support (e.g. only "Size: XL")
+8. **Simplified WooCommerce Product Editor**: drag-and-drop image gallery, clean pricing and an inline variation builder for simple and variable products
+9. **WooCommerce Customer Analytics: Lifetime Value (LTV)**, total customers, average and top customer lifetime value, the full LTV distribution histogram, and a sortable top-customers table
+10. **WooCommerce Customer Analytics: RFM Segmentation**, every customer scored on Recency, Frequency and Monetary and grouped into Champions, Loyal, At Risk, Hibernating, About to Sleep and Lost, with revenue per segment
+11. **WooCommerce Customer Analytics: Cohort Retention**, a month-by-month cohort retention grid plus an average retention by month-offset trend
+12. **Geographic Analytics: WooCommerce Sales by Country**, a 3D globe of order locations with Top Countries and Top Cities by orders and revenue
+13. **Live Visitors & Conversion Funnel**: real-time WooCommerce live visitors with cart status, plus the Visitors > Add to Cart > Checkout > Orders conversion funnel and order-status breakdown
+14. **Lightning-Fast Order Search (Cmd/Ctrl + K)**: an instant order search overlay across order ID, customer name, email, phone and product SKU from anywhere in wp-admin
+15. **Segments: Orders Explorer**, saved segments and quick filters with totals (orders, revenue, AOV) and a clean order list with location, payment method and status
+16. **Segments: Customers Explorer**, a segmentable customer list (new, repeat, VIP, dormant, high value) with total spent, AOV and first/last order
+17. **Modern WooCommerce Order Management**: a redesigned orders page with a 30-day overview bar, color-coded status tabs and inline status change
+18. **WooCommerce Categories Page**: drag-and-drop parent/child category and tag management with circular-reference protection
+19. **WooCommerce Coupon Manager**: a clean coupon table with discount-type badges, usage stats, revenue and expiry highlighting
+20. **Add Coupon Slide-Over Panel**: create or edit coupons with all WooCommerce coupon options without leaving the page
+21. **Custom WP Login Page**: a modern, branded login screen that replaces the default WordPress login
 
 == Changelog ==
+
+= 3.2.1 (2026-07-06) =
+* Docs: expanded the readme with the new **cart abandonment / cart recovery** feature and clearer **WooCommerce sales report** wording, and refreshed the screenshots (added the Abandoned Carts screen). No functional or code changes in this release.
+
+= 3.2.0 (2026-07-06) =
+* New: **Recover lost sales with the Cart Abandonment module**. BrikPanel now captures the email of shoppers who start checkout but do not finish, and collects them on a new "Abandoned Carts" screen so no lead slips away. Emails are picked up from the checkout email field (classic shortcode and the newer block checkout, including custom pages), and from logged-in customers as soon as they add to cart. Every entry keeps a full snapshot of the cart, including the exact variation chosen (for example "Colour: Red"), quantity and total, and each cart moves through Active, then Abandoned, then Recovered once the shopper places the order, even if they check out with a different email. The screen has search, status, source and date filters, per-row product details, CSV and Excel export, and statistics cards
+* New: **An optional discount popup that hands out a personal coupon**. Switch on the email popup and BrikPanel shows a clean, on-brand sign-up offer to your visitors. Anyone who subscribes is issued their own single-use percentage coupon (10% by default, and you set the rate), restricted to their email and valid for 30 days, shown right there with a one-click Copy button. Close the popup and it folds into a small floating tab so it is never in the way but is one click from reopening. You control the heading, message, button and success text, the delay before it appears, and the cooldown after it is dismissed
+* New: **Pick how the offer is revealed**. The coupon in the popup can be revealed with one of six animated styles, choose the one that fits your store under WooCommerce > Settings > BrikPanel > Cart abandonment: Sealed envelope, Pocket card, Scratch card, Slot machine, Magnetic assembly or the Classic ticket. All of them respect the visitor's reduced-motion preference
+* New: **Import an email list into Abandoned Carts**. Already have a list of leads? The new "Import CSV" button on the Abandoned Carts screen reads a CSV of emails (with optional first name, last name and phone), auto-detects comma or semicolon separators, matches your column headings, skips duplicates and invalid rows, and reports exactly what was imported
+* New: **Spacers and spacing controls for the sidebar**. The navigation editor can now add blank spacers and divider lines between menu items to group them how you like, and a new "Item spacing" setting (Compact, Comfortable or Spacious) sets how much breathing room each row gets
+* New: **Choose your sidebar icon style**. A new "Sidebar icon style" setting under Appearance lets you switch the sidebar icons between Solid (the original filled look) and Line (a lighter outline style). Solid stays the default, so nothing changes unless you want it to
+* Fix: **"Copy all" on the store summary no longer times out on large stores**. On stores with tens of thousands of orders and customers, the store summary could fail with a timeout while working out new versus returning customers. The query behind it has been rebuilt to use the right database indexes, so it now returns quickly while showing exactly the same figures
+
+= 3.1.51 (2026-07-05) =
+* New: **Send an automatic email when an order reaches a custom status**. Each custom order status now has its own email settings under WooCommerce > Settings > BrikPanel > Order statuses. Switch it on and, whenever an order moves into that status, BrikPanel sends a message you have written, to the customer, your store admin, and any extra addresses you add. You choose the subject, heading and body, and can drop in placeholders such as the order number, total, items, customer name and a link to view the order. The emails are wrapped in WooCommerce's own header and footer, so they carry your store's email branding. Works the same on simple and variable product orders
+* New: **Import order statuses from another plugin**. Moving to BrikPanel from another custom-order-status plugin? A new "Import from another plugin" card on the Order statuses screen finds statuses that other plugins have registered, and any "orphan" statuses left on your orders after a plugin was removed (which otherwise show as a raw code and drop out of filters and reports). Import the ones you want in a click and they become editable BrikPanel statuses, keeping their existing colour where it can be detected
+* Improvement: **Apply a custom order status to many orders at once**. Your custom statuses now appear in the orders list "Bulk actions" menu (and in BrikPanel's own bulk buttons), so you can select several orders and change them all to a custom status in one go, instead of opening each order. Works on both simple and variable product orders, on classic and High-Performance Order Storage
+* Fix: **The on/off switch can no longer be hidden from you by a store manager**. The top bar's BrikPanel power switch used to appear for anyone with the "manage options" permission, so a shop manager granted that permission could turn BrikPanel off for the whole store. Its visibility is now decided by role: administrators (and network super admins) always see it, and you can grant it to other roles from a new "Show the on/off switch to roles" setting under Access control
+
+= 3.1.47 (2026-07-02) =
+* New: **Filter the Products list by brand**. A brand drop-down now sits next to the category filter, so you can narrow the list to a single brand in one click. It appears only when your store has a brand taxonomy (WooCommerce's own product brands or a third-party one), and your choice is kept in the page URL
+* New: **A "Date" column for the Products list**. You can now show each product's publish date and time in the list, in your site's own date format and time zone. It is off by default; switch it on from the "Columns" button. Handy if you re-date products to refresh them at the top of a category
+* Improvement: **Category cells in the Products list are now clickable**. Click a product's category and the list filters to that category straight away, just like the native WooCommerce list. Works on both simple and variable products
+* New: **More formatting in the description editors**. The rich-text toolbar (long and short description, on simple and variable products) gains Heading 1, Heading 5 and Quote block styles, left/centre/right text alignment, and a text colour picker with an on-brand palette. Useful when your theme does not turn the product title into an H1 and you want one in the description for SEO
+* Fix: **The visible-sections checkboxes no longer flicker**. The checkboxes under WooCommerce > Settings > BrikPanel > Products (which sections show in the editor) had a small visual jump when ticked; they now use a clean, static BrikPanel checkbox
 
 = 3.1.46 (2026-06-30) =
 * New: **Traffic Sources in the dashboard**. The "Visitors by Device" panel has a new "Sources" tab that breaks your visitors down into Direct, Organic Search, Social, Referral, Paid and Email, with a "Top Referrers" list showing which sites send you the most traffic. A lightweight tracker records each visitor's referrer and landing page, one record per visitor per day, so the picture builds up over time

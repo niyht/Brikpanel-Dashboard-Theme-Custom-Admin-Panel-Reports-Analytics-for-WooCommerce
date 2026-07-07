@@ -312,7 +312,19 @@ class Brikpanel_Dashboard_Topbar {
                                 <span class="brikpanel-topbar-dropdown-row-label"><?php esc_html_e( 'Out of stock', 'brikpanel' ); ?></span>
                                 <span class="brikpanel-topbar-dropdown-row-count" id="brikpanel-topbar-notif-oos">0</span>
                             </a>
-                            <a class="brikpanel-topbar-dropdown-row" role="menuitem" href="<?php echo esc_url( admin_url( 'users.php?role=customer' ) ); ?>">
+                            <?php
+                            // The count measures first-time buyers today (WooCommerce
+                            // customers, guest checkouts included), so link to the Woo
+                            // Customers report rather than the WordPress Users list. Fall
+                            // back to the Users list only when Analytics is unavailable,
+                            // mirroring the count's own fallback in the AJAX handler.
+                            $brikpanel_customers_url = admin_url( 'users.php?role=customer' );
+                            if ( class_exists( '\Automattic\WooCommerce\Admin\Features\Features' )
+                                && \Automattic\WooCommerce\Admin\Features\Features::is_enabled( 'analytics' ) ) {
+                                $brikpanel_customers_url = admin_url( 'admin.php?page=wc-admin&path=/customers' );
+                            }
+                            ?>
+                            <a class="brikpanel-topbar-dropdown-row" role="menuitem" href="<?php echo esc_url( $brikpanel_customers_url ); ?>">
                                 <span class="brikpanel-topbar-dropdown-row-label"><?php esc_html_e( 'New customers today', 'brikpanel' ); ?></span>
                                 <span class="brikpanel-topbar-dropdown-row-count" id="brikpanel-topbar-notif-customers">0</span>
                             </a>

@@ -185,12 +185,89 @@
 	margin: 0.875rem 0 0;
 }
 
+/* Import-from-another-plugin card */
+.bp-cos-import {
+	border-color: #d9e2ef;
+	background: #fbfcfe;
+}
+
+.bp-cos-import-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.bp-cos-import-row {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+	padding: 0.5rem 0.625rem;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	background: #fff;
+	cursor: pointer;
+	transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.bp-cos-import-row:hover {
+	border-color: #c5c5c5;
+	background: #fafafa;
+}
+
+.bp-cos-import-check {
+	flex: 0 0 auto;
+	margin: 0;
+}
+
+.bp-cos-import-label {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 0.875rem;
+	font-weight: 550;
+	color: #303030;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bp-cos-import-count {
+	flex: 0 0 auto;
+	font-size: 0.75rem;
+	color: #616161;
+}
+
+.bp-cos-import-tag {
+	flex: 0 0 auto;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	color: #616161;
+	background: #f1f1f1;
+	border-radius: 0.35rem;
+	padding: 0.15rem 0.45rem;
+	white-space: nowrap;
+}
+
+.bp-cos-import-tag.is-orphan {
+	color: #b3401b;
+	background: #fdeee7;
+}
+
+.bp-cos-import-btn:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
 @media ( max-width: 600px ) {
 	.bp-cos-card__head {
 		flex-direction: column;
 	}
 
 	.bp-cos-slug {
+		display: none;
+	}
+
+	.bp-cos-import-count,
+	.bp-cos-import-tag {
 		display: none;
 	}
 }

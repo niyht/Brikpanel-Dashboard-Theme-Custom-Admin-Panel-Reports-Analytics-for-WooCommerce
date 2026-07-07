@@ -14,6 +14,7 @@
         search: '',
         status: 'any',
         category: '',
+        brand: '',
         stock_filter: '',
         product_type: '',
         featured: '',
@@ -95,13 +96,14 @@
         search:       'bpl_s',
         status:       'bpl_status',
         category:     'bpl_cat',
+        brand:        'bpl_brand',
         stock_filter: 'bpl_stock',
         product_type: 'bpl_type',
         featured:     'bpl_featured',
         sort:         'bpl_sort'
     };
     var URL_DEFAULTS = {
-        search: '', status: 'any', category: '', stock_filter: '',
+        search: '', status: 'any', category: '', brand: '', stock_filter: '',
         product_type: '', featured: '', sort: 'date-desc'
     };
     // Taxonomy-filter URL params (keyed by taxonomy slug) seeded from the DOM.
@@ -150,6 +152,7 @@
 
         $('#bpl-search').val(state.search);
         $('#bpl-cat-filter').val(state.category);
+        $('#bpl-brand-filter').val(state.brand);
         $('#bpl-stock-filter').val(state.stock_filter);
         $('#bpl-type-filter').val(state.product_type);
         $('#bpl-featured-filter').val(state.featured);
@@ -240,6 +243,26 @@
         // Filters
         $('#bpl-cat-filter').on('change', function () {
             state.category = $(this).val();
+            state.page = 1;
+            fetchProducts();
+        });
+
+        $('#bpl-brand-filter').on('change', function () {
+            state.brand = $(this).val();
+            state.page = 1;
+            fetchProducts();
+        });
+
+        // Click a product's category to filter the whole list by it (reuses the
+        // category dropdown path so the control and the URL stay in sync).
+        $(document).on('click', '.brikpanel-pl-cat-link', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var catId = String($(this).data('cat-id') || '');
+            if (!catId) { return; }
+            hideCatMorePopover();
+            state.category = catId;
+            $('#bpl-cat-filter').val(catId);
             state.page = 1;
             fetchProducts();
         });
@@ -628,18 +651,32 @@
         });
 
         // Category "+N" hover/focus popover — floating on <body> so it
-        // escapes the table wrapper's overflow clipping.
+        // escapes the table wrapper's overflow clipping. A short close grace
+        // period lets the cursor travel from the badge into the popover so the
+        // list stays open and can be scrolled/read.
         $(document)
             .on('mouseenter focusin', '.brikpanel-pl-cat-more', function () {
+                cancelCatMoreClose();
                 showCatMorePopover(this);
             })
             .on('mouseleave focusout', '.brikpanel-pl-cat-more', function () {
-                hideCatMorePopover();
+                scheduleCatMoreClose();
             });
         $(window).on('scroll resize', hideCatMorePopover);
     }
 
     var $catMorePop = null;
+    var catMoreCloseTimer = null;
+    function cancelCatMoreClose() {
+        if (catMoreCloseTimer) {
+            clearTimeout(catMoreCloseTimer);
+            catMoreCloseTimer = null;
+        }
+    }
+    function scheduleCatMoreClose() {
+        cancelCatMoreClose();
+        catMoreCloseTimer = setTimeout(hideCatMorePopover, 180);
+    }
     function showCatMorePopover(el) {
         var raw = el.getAttribute('data-others') || '[]';
         var others;
@@ -648,10 +685,22 @@
 
         if (!$catMorePop) {
             $catMorePop = $('<div class="brikpanel-pl-cat-popover" role="tooltip"></div>').appendTo(document.body);
+            // Keep the popover open while the cursor is over it, and close
+            // once the cursor leaves it (with the same grace period).
+            $catMorePop
+                .on('mouseenter', cancelCatMoreClose)
+                .on('mouseleave', scheduleCatMoreClose);
         }
+        cancelCatMoreClose();
         var html = '<ul class="brikpanel-pl-cat-popover-list">';
         for (var i = 0; i < others.length; i++) {
-            html += '<li>' + escHtml(others[i]) + '</li>';
+            var o = others[i];
+            // Support both the object shape {name, id} and the legacy string.
+            var name = (o && typeof o === 'object') ? o.name : o;
+            var id = (o && typeof o === 'object') ? o.id : null;
+            html += (id != null)
+                ? '<li><a href="#" class="brikpanel-pl-cat-link" data-cat-id="' + escAttr(String(id)) + '">' + escHtml(name) + '</a></li>'
+                : '<li>' + escHtml(name) + '</li>';
         }
         html += '</ul>';
         $catMorePop.html(html).addClass('is-visible');
@@ -692,7 +741,7 @@
         // in the DOM so colspan calculations stay stable; CSS hides it when
         // sortMode is off, but it still counts as a real column.
         var extras = state.extraColumns ? Object.keys(state.extraColumns).length : 0;
-        return 13 + extras;
+        return 14 + extras;
     }
 
     /**
@@ -827,6 +876,7 @@
                 search: state.search,
                 status: state.status,
                 category: state.category,
+                brand: state.brand,
                 stock_filter: state.stock_filter,
                 product_type: state.product_type,
                 featured: state.featured,
@@ -1170,12 +1220,27 @@
         var catText;
         if (!p.categories.length) {
             catText = '<span class="brikpanel-pl-text-muted">—</span>';
-        } else if (p.categories.length === 1) {
-            catText = '<span class="brikpanel-pl-cat-main">' + escHtml(p.categories[0]) + '</span>';
         } else {
-            var others = p.categories.slice(1);
-            catText = '<span class="brikpanel-pl-cat-main">' + escHtml(p.categories[0]) + '</span>' +
-                '<span class="brikpanel-pl-cat-more" data-others="' + escAttr(JSON.stringify(others)) + '" tabindex="0" aria-label="' + escAttr((PL.i18n.more_categories || '%d more').replace('%d', others.length)) + '">+' + others.length + '</span>';
+            // Primary category is a link that filters the list to it (like the
+            // native WooCommerce list). category_ids is parallel to categories.
+            var catIds0 = (p.category_ids && p.category_ids.length) ? p.category_ids : [];
+            var mainCatId = catIds0.length ? catIds0[0] : null;
+            var mainCat = (mainCatId != null)
+                ? '<a href="#" class="brikpanel-pl-cat-main brikpanel-pl-cat-link" data-cat-id="' + escAttr(String(mainCatId)) + '">' + escHtml(p.categories[0]) + '</a>'
+                : '<span class="brikpanel-pl-cat-main">' + escHtml(p.categories[0]) + '</span>';
+            if (p.categories.length === 1) {
+                catText = mainCat;
+            } else {
+                // Pair each overflow category name with its term id (parallel
+                // arrays) so the popover can render clickable filter links too.
+                var otherNames = p.categories.slice(1);
+                var otherIds = catIds0.slice(1);
+                var others = otherNames.map(function (name, i) {
+                    return { name: name, id: (otherIds[i] != null ? otherIds[i] : null) };
+                });
+                catText = mainCat +
+                    '<span class="brikpanel-pl-cat-more" data-others="' + escAttr(JSON.stringify(others)) + '" tabindex="0" aria-label="' + escAttr((PL.i18n.more_categories || '%d more').replace('%d', others.length)) + '">+' + others.length + '</span>';
+            }
         }
 
         var typeLabel = '';
@@ -1284,6 +1349,7 @@
             '<td class="brikpanel-pl-cell-author brikpanel-pl-col brikpanel-pl-col-author">' + (p.author ? escHtml(p.author) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             '<td class="brikpanel-pl-cell-menu_order brikpanel-pl-col brikpanel-pl-col-menu_order"><span class="brikpanel-pl-editable brikpanel-pl-menu-order-cell" data-field="menu_order" data-value="' + escAttr(p.menu_order != null ? p.menu_order : 0) + '">' + escHtml(String(p.menu_order != null ? p.menu_order : 0)) + '</span></td>' +
             '<td class="brikpanel-pl-cell-status brikpanel-pl-col brikpanel-pl-col-status"><span class="brikpanel-pl-status-badge ' + statusClass + '" title="' + escAttr(PL.i18n.click_to_toggle) + '">' + escHtml(statusLabel) + '</span></td>' +
+            '<td class="brikpanel-pl-cell-date brikpanel-pl-col brikpanel-pl-col-date">' + (p.date ? escHtml(p.date) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             aseCellsHtml +
             '<td class="brikpanel-pl-actions-cell">' +
                 (p.status !== 'trash' ?
