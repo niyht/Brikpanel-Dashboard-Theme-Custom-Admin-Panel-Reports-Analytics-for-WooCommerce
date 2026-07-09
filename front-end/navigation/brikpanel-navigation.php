@@ -3,67 +3,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Resolve the sidebar icon style preference ('solid' | 'line'). 'solid' is the
- * default (the original filled/dark icons that match Shopify's admin); 'line'
- * swaps in the thin outline set. Set from Settings ▸ BrikPanel ▸ Appearance.
- * Statically cached — read once per request.
- *
- * @return string
- */
-function brikpanel_nav_icon_style() {
-	static $style = null;
-	if ( $style === null ) {
-		$saved = get_option( 'brikpanel_nav_icon_style', 'solid' );
-		$style = ( $saved === 'line' ) ? 'line' : 'solid';
-	}
-	return $style;
-}
-
-/**
- * Build the URL for a built-in sidebar icon, appending the plugin version as a
- * cache-busting query. The icon SVGs are referenced with stable filenames, so
- * without a version query a browser keeps serving a previously-cached copy —
- * which means an icon redesign shipped in an update would stay invisible to
- * existing users until their cache expired. The version bump on every release
- * forces a fresh fetch.
- *
- * When the 'line' style is active the thin variant under icons/line/ is used,
- * falling back to the solid icon whenever a line variant doesn't exist (so a
- * brand icon without a line version still renders).
- *
- * @param string $file  Icon slug (filename without extension).
- * @param string $style Optional explicit style ('solid'|'line'); defaults to the saved preference.
- * @return string
- */
-function brikpanel_nav_icon_src( $file, $style = null ) {
-	if ( $style === null ) {
-		$style = brikpanel_nav_icon_style();
-	}
-	$rel = 'icons/' . $file . '.svg';
-	if ( $style === 'line' && file_exists( __DIR__ . '/icons/line/' . $file . '.svg' ) ) {
-		$rel = 'icons/line/' . $file . '.svg';
-	}
-	return plugins_url( $rel, __FILE__ ) . '?ver=' . BRIKPANEL_VERSION;
-}
-
-/**
- * List of icon slugs that ship a thin "line" variant under icons/line/. The
- * customizer JS uses it to build the right icon URL for client-created rows
- * when the line style is active. Statically cached.
- *
- * @return string[]
- */
-function brikpanel_nav_line_icon_slugs() {
-	static $slugs = null;
-	if ( $slugs === null ) {
-		$slugs = [];
-		foreach ( (array) glob( __DIR__ . '/icons/line/*.svg' ) as $path ) {
-			$slugs[] = basename( $path, '.svg' );
-		}
-	}
-	return $slugs;
-}
+// Pure sidebar-icon helpers (brikpanel_nav_icon_style / brikpanel_nav_icon_src /
+// brikpanel_nav_line_icon_slugs) now live in brikpanel-nav-icon-helpers.php,
+// which is loaded on every admin request. They were moved out of this file so
+// the navigation customizer settings screen — which is loaded even when the
+// modern navigation toggle is OFF — can still resolve icons without fataling on
+// an undefined function.
 
 /**
  * The custom navigation rebuilds the admin sidebar based on each subsite's own
@@ -415,6 +360,18 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				$menu = brikpanel_move_item_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-customer-analytics' );
 				$menu = brikpanel_move_item_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-google-sheets' );
 
+				/**
+				 * Companion plugins (e.g. BrikMentor) pin their own top-levels
+				 * into the store cluster here, now that BrikPanel's analytics
+				 * surfaces are in place. $menu is passed by reference; use
+				 * brikpanel_move_item_after() to position a slug. Runs before the
+				 * foreign-top-level demotion so pinned items are treated as store
+				 * (paired with the `brikpanel_nav_is_store_slug` filter).
+				 *
+				 * @param array $menu The $menu-shaped array (by reference).
+				 */
+				do_action_ref_array( 'brikpanel_nav_store_cluster_ready', array( &$menu ) );
+
 				// Third-party plugins (Elementor, Multi Currency, Hezarfen, ...)
 				// often register their top-level menu with a tiny menu position,
 				// which sorts them above the Posts (edit.php) anchor and makes
@@ -474,6 +431,15 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 				if ( ! empty( $submenu_items ) ) {
 					$class[] = 'wp-has-submenu';
+				}
+
+				// The synthetic "More" group is a pure dropdown container — it has
+				// no page of its own. When nothing landed under it (all children
+				// hidden, or none registered), skip the row entirely instead of
+				// emitting a top-level link to the non-existent `woocommerce-more`
+				// screen, which resolves to a 404.
+				if ( $item_slug === 'woocommerce-more' && empty( $submenu_items ) ) {
+					continue;
 				}
 
 		// Güvenli hale getirilen path, page ve tab değerleri
@@ -716,6 +682,21 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		} elseif ( $submenu_as_parent && ! empty( $submenu_items ) ) {
 			// Alt menü var, ilk alt menü öğesini üst seviye gibi bağla:
 			$submenu_items = array_values( $submenu_items );
+
+			// A custom-link child (only possible under the synthetic "More" group)
+			// keeps its real destination in row metadata (index 7); its index-2
+			// slug is a synthetic `brikpanel_custom__<id>` placeholder that is NOT
+			// a real screen. Linking the parent header to that placeholder resolves
+			// to `/wp-admin/brikpanel_custom__<id>`, which 404s (the reported "More"
+			// bug). Resolve the child's real URL so the header always points at a
+			// valid destination.
+			$first_child_meta = function_exists( 'brikpanel_nav_customizer_extract_meta' )
+				? brikpanel_nav_customizer_extract_meta( $submenu_items[0] )
+				: null;
+			$first_child_href = ( $first_child_meta && ! empty( $first_child_meta['url'] ) )
+				? esc_url( (string) $first_child_meta['url'] )
+				: '';
+
 			$menu_hook     = get_plugin_page_hook( $submenu_items[0][2], $item_slug );
 			$menu_file     = $submenu_items[0][2];
 			$pos           = strpos( $menu_file, '?' );
@@ -751,11 +732,14 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					";
 				}
 			} else {
+				// Prefer a custom-link child's real URL over its synthetic slug so
+				// the "More" header never links to a non-existent screen.
+				$parent_href = $first_child_href !== '' ? $first_child_href : $submenu_items[0][2];
 				$html .= "
 					<div class='brikpanel-menu-icon-title-chevron-container'>
 						<div class='brikpanel-menu-icon-title-container $toplevel_page_class'>
 							$icon
-							<a href='{$submenu_items[0][2]}' $class $aria_attributes>
+							<a href='{$parent_href}' $class $aria_attributes>
 								$title
 							</a>
 						</div>

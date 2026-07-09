@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.2.1
+ * Version: 3.2.5
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.2.1');
+define('BRIKPANEL_VERSION', '3.2.5');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -189,11 +189,17 @@ function brikpanel_init_admin() {
 
     // Front-end files (for admin)
     require_once BRIKPANEL_PATH . 'includes/brikpanel-cache-clear.php';
+    require_once BRIKPANEL_PATH . 'includes/brikpanel-remove-help.php';
     require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard.php';
     require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-section-order.php';
     require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-topbar.php';
     require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-topbar-items.php';
+    require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-widget-access.php';
     require_once BRIKPANEL_PATH . 'front-end/master-switch/brikpanel-master-switch.php';
+    // Pure sidebar-icon helpers — loaded unconditionally because the navigation
+    // customizer (below) needs them even when the modern navigation module is
+    // skipped. Must come before both requires so either can rely on them.
+    require_once BRIKPANEL_PATH . 'front-end/navigation/brikpanel-nav-icon-helpers.php';
     if ( get_option( 'brikpanel_modern_navigation', 'yes' ) !== 'no' ) {
         require_once BRIKPANEL_PATH . 'front-end/navigation/brikpanel-navigation.php';
     }
@@ -203,6 +209,7 @@ function brikpanel_init_admin() {
     require_once BRIKPANEL_PATH . 'front-end/navigation/brikpanel-nav-customizer.php';
     require_once BRIKPANEL_PATH . 'front-end/search/brikpanel-search.php';
     require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-orders.php';
+    require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-order-whatsapp.php';
     require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-orders-stats.php';
     require_once BRIKPANEL_PATH . 'front-end/currency/brikpanel-currency-settings.php';
     require_once BRIKPANEL_PATH . 'front-end/order/brikpanel-order-fields.php';

@@ -760,6 +760,11 @@
     color: #3b3b7a;
 }
 
+.brikpanel-pl-status-badge.scheduled {
+    background: #e6effd;
+    color: #1d4ed8;
+}
+
 .brikpanel-pl-status-badge:hover {
     box-shadow: 0 0 0 2px var(--primary);
 }

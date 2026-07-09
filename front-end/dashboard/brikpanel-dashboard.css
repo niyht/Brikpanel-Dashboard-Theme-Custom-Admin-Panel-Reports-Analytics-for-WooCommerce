@@ -199,6 +199,18 @@
     font-weight: 600;
 }
 
+/* Compact catalog-size line under the Low Stock heading: quiet, monochrome
+   reference info (products / variations / sellable items), not a headline
+   metric — it sits right below the panel title without its own card. */
+.brikpanel-dash-inv-line {
+    margin: -0.25rem 0 0.875rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--bp-text-muted);
+    line-height: 1.4;
+    cursor: default;
+}
+
 /* Net profit shown while some sold items have no cost on file: a quiet,
    monochrome "!" next to the label instead of a loud card border. It
    reveals what to fix on hover/focus. */

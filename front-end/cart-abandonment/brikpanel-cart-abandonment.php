@@ -356,6 +356,9 @@ class Brikpanel_Cart_Abandonment {
 				'emailLabel'   => __( 'Email address', 'brikpanel' ),
 				'couponIntro'  => __( 'Your discount code', 'brikpanel' ),
 				'couponHint'   => __( 'Apply it at checkout. Valid for 30 days.', 'brikpanel' ),
+				/* translators: %s: the visitor's email address */
+				'couponEmailed'     => __( 'We sent your discount code to %s', 'brikpanel' ),
+				'couponEmailedHint' => __( 'Check your inbox — if it landed in the Promotions tab, drag it to Primary so you never miss it.', 'brikpanel' ),
 				'copy'         => __( 'Copy', 'brikpanel' ),
 				'copied'       => __( 'Copied!', 'brikpanel' ),
 				'offBadge'     => __( 'OFF', 'brikpanel' ),
@@ -426,8 +429,36 @@ class Brikpanel_Cart_Abandonment {
 			self::remember_customer_email( strtolower( $email ) );
 			$coupon = self::get_or_create_popup_coupon( strtolower( $email ) );
 			if ( $coupon ) {
-				$response['coupon']   = $coupon['code'];
-				$response['discount'] = $coupon['amount'];
+				/**
+				 * How the popup coupon reaches the visitor.
+				 *
+				 * 'inline' (default) shows the code in the popup; 'email'
+				 * suppresses it and tells the visitor to check their inbox —
+				 * a companion plugin (e.g. BrikMentor) then delivers the code
+				 * by email via the deferred action below.
+				 *
+				 * @param string $delivery 'inline' | 'email'.
+				 * @param array  $coupon   {code, amount}.
+				 * @param string $email    Lowercased captured email.
+				 * @param int    $id       Cart-abandonment entry id.
+				 */
+				$delivery = apply_filters( 'brikpanel_cartab_popup_coupon_delivery', 'inline', $coupon, strtolower( $email ), (int) $id );
+				if ( 'email' === $delivery ) {
+					$response['coupon_emailed'] = true;
+					$response['email']          = strtolower( $email );
+					/**
+					 * The popup coupon was deferred to email delivery — the
+					 * companion plugin sends it from here.
+					 *
+					 * @param array  $coupon {code, amount}.
+					 * @param string $email  Lowercased captured email.
+					 * @param int    $id     Cart-abandonment entry id.
+					 */
+					do_action( 'brikpanel_cartab_popup_coupon_deferred', $coupon, strtolower( $email ), (int) $id );
+				} else {
+					$response['coupon']   = $coupon['code'];
+					$response['discount'] = $coupon['amount'];
+				}
 			}
 		}
 

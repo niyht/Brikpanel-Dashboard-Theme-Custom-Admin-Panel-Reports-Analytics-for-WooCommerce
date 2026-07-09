@@ -617,6 +617,15 @@ class Brikpanel_Product_Editor {
             ? brikpanel_qe_is_field_visible('featured')
             : false;
 
+        // Scheduled publishing — on by default, toggleable in settings. Adds a
+        // "Scheduled" entry to the status menu plus an inline date/time picker so a
+        // product can go live automatically at a future moment (WordPress "future"
+        // post status + WP-Cron). We also surface the option when the product is
+        // ALREADY scheduled, so a merchant who disables the setting later can still
+        // see and edit an existing schedule instead of it silently reading "Draft".
+        $scheduling_on = (get_option('brikpanel_pe_enable_scheduling', 'yes') === 'yes')
+            || ($data['status'] === 'future');
+
         // Backorder "Notify customer" sub-option — opt-in via settings.
         // When on, selecting "On backorder" reveals a radio group letting
         // the merchant pick between silent backorders and ones that flag
@@ -761,6 +770,7 @@ class Brikpanel_Product_Editor {
                                 <?php
                                 $labels = array(
                                     'publish'  => __('Published', 'brikpanel'),
+                                    'future'   => __('Scheduled', 'brikpanel'),
                                     'draft'    => __('Draft', 'brikpanel'),
                                     'private'  => __('Private', 'brikpanel'),
                                     'password' => __('Password protected', 'brikpanel'),
@@ -779,6 +789,15 @@ class Brikpanel_Product_Editor {
                                     <small><?php esc_html_e('Visible to everyone on the storefront', 'brikpanel'); ?></small>
                                 </span>
                             </li>
+                            <?php if ($scheduling_on) : ?>
+                            <li role="option" data-value="future" class="<?php echo $effective_status === 'future' ? 'is-active' : ''; ?>">
+                                <span class="brikpanel-pe-status-dot" data-status="future"></span>
+                                <span class="brikpanel-pe-status-option-text">
+                                    <strong><?php esc_html_e('Scheduled', 'brikpanel'); ?></strong>
+                                    <small><?php esc_html_e('Publishes automatically on a future date', 'brikpanel'); ?></small>
+                                </span>
+                            </li>
+                            <?php endif; ?>
                             <li role="option" data-value="draft" class="<?php echo $effective_status === 'draft' ? 'is-active' : ''; ?>">
                                 <span class="brikpanel-pe-status-dot" data-status="draft"></span>
                                 <span class="brikpanel-pe-status-option-text">
@@ -805,6 +824,11 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-password-inline <?php echo $is_password ? 'is-visible' : ''; ?>" id="bpe-password-wrap">
                         <input type="text" id="bpe-post-password" value="<?php echo esc_attr($data['post_password']); ?>" placeholder="<?php esc_attr_e('Password...', 'brikpanel'); ?>">
                     </div>
+                    <?php if ($scheduling_on) : ?>
+                    <div class="brikpanel-pe-schedule-inline <?php echo $effective_status === 'future' ? 'is-visible' : ''; ?>" id="bpe-schedule-wrap">
+                        <input type="datetime-local" id="bpe-schedule-date" value="<?php echo esc_attr($data['post_date']); ?>" aria-label="<?php esc_attr_e('Publish date and time', 'brikpanel'); ?>">
+                    </div>
+                    <?php endif; ?>
                     <!-- Catalog Visibility (mini dropdown) -->
                     <?php
                     $cv_labels = [
@@ -837,7 +861,9 @@ class Brikpanel_Product_Editor {
                         // Brand-new product with the default Published status →
                         // Publish (clicking actually publishes).
                         // Anything else (Draft / Private new product) → Save.
-                        if (($is_edit && in_array($data['status'], ['publish', 'private'], true)) || $is_password) {
+                        if ($effective_status === 'future') {
+                            esc_html_e('Schedule', 'brikpanel');
+                        } elseif (($is_edit && in_array($data['status'], ['publish', 'private'], true)) || $is_password) {
                             esc_html_e('Update', 'brikpanel');
                         } elseif (!$is_edit && $data['status'] === 'publish') {
                             esc_html_e('Publish', 'brikpanel');
@@ -4007,6 +4033,10 @@ class Brikpanel_Product_Editor {
             'seo_noindex'       => false,
             'primary_cat'       => '',
             'post_password'     => '',
+            // Scheduled publish date/time, formatted for a datetime-local input
+            // ("Y-m-d\TH:i"). Empty for new products — the picker defaults to a
+            // near-future moment client-side when the merchant chooses "Scheduled".
+            'post_date'         => '',
             'catalog_visibility' => 'visible',
             'is_featured'       => false,
             // Opt-in WC-core sections (off by default; toggled from settings).
@@ -4120,9 +4150,15 @@ class Brikpanel_Product_Editor {
                     }
                 }
 
-                // Variation images: thumbnail + custom gallery
+                // Variation images: thumbnail + custom gallery.
+                // Read the variation's OWN image in 'edit' context: WC_Product_Variation
+                // ::get_image_id() falls back to the PARENT product's featured image in
+                // the default 'view' context when the variation has none. Without 'edit',
+                // clearing a variation image (own id -> 0) would silently show the parent
+                // image again on reload, so the "Remove image" control looked like it
+                // never saved. Same reasoning as the shipping-class read below.
                 $var_images = [];
-                $var_image_id = $variation->get_image_id();
+                $var_image_id = $variation->get_image_id('edit');
                 if ($var_image_id) {
                     $var_images[] = [
                         'id'  => (int) $var_image_id,
@@ -4462,6 +4498,19 @@ class Brikpanel_Product_Editor {
             'sale_from'         => $product->get_date_on_sale_from() ? $product->get_date_on_sale_from()->date('Y-m-d') : '',
             'sale_to'           => $product->get_date_on_sale_to()   ? $product->get_date_on_sale_to()->date('Y-m-d')   : '',
             'post_password'     => get_post_field('post_password', $product->get_id()),
+            // Local publish date/time for the datetime-local picker. Only emitted
+            // for an already-scheduled ("future") product — that's the moment it
+            // goes live. For every other status we leave it empty so the picker
+            // seeds a sensible near-future default client-side instead of showing
+            // the product's (past) creation time. get_post_field is site-local.
+            'post_date'         => (function () use ($product) {
+                if ($product->get_status() !== 'future') {
+                    return '';
+                }
+                $raw = get_post_field('post_date', $product->get_id());
+                $ts  = $raw ? strtotime($raw) : false;
+                return $ts ? gmdate('Y-m-d\TH:i', $ts) : '';
+            })(),
             'catalog_visibility' => $product->get_catalog_visibility() ?: 'visible',
             'is_featured'       => $product->is_featured(),
             'tax_status'        => $product->get_tax_status() ?: 'taxable',
@@ -4683,7 +4732,37 @@ class Brikpanel_Product_Editor {
             $post_password = '';
         }
 
-        if (!in_array($status, ['draft', 'publish', 'private'], true)) {
+        // Scheduled publishing (opt-in). "future" is a real WP status where the
+        // publish is deferred to a chosen moment via WP-Cron. Gate on the setting
+        // so a disabled feature can never leave a product stuck unpublished; a
+        // product already scheduled is allowed through so an existing schedule
+        // stays editable even after the setting is turned off. When the chosen
+        // date is missing or not in the future we fall back to publishing now,
+        // matching WordPress core's own behaviour.
+        $schedule_gmt = 0; // UTC timestamp the product should go live at (0 = none)
+        if ($status === 'future') {
+            $scheduling_enabled = (get_option('brikpanel_pe_enable_scheduling', 'yes') === 'yes');
+            $already_future     = $product_id && get_post_status($product_id) === 'future';
+            if (!$scheduling_enabled && !$already_future) {
+                $status = 'publish';
+            } else {
+                $raw_date = sanitize_text_field(wp_unslash($_POST['publish_date'] ?? ''));
+                if ($raw_date !== '') {
+                    // The datetime-local value is site-local; interpret it in the
+                    // site timezone and keep the resulting UTC timestamp.
+                    $dt = date_create($raw_date, wp_timezone());
+                    if ($dt) {
+                        $schedule_gmt = $dt->getTimestamp();
+                    }
+                }
+                if ($schedule_gmt <= (time() + 30)) {
+                    $status       = 'publish';
+                    $schedule_gmt = 0;
+                }
+            }
+        }
+
+        if (!in_array($status, ['draft', 'publish', 'private', 'future'], true)) {
             $status = 'draft';
         }
 
@@ -4735,6 +4814,21 @@ class Brikpanel_Product_Editor {
         }
         $product->set_name($name);
         $product->set_status($status);
+
+        // Scheduled publishing: pin the product's created/publish date to the
+        // chosen future moment so WordPress defers going live (status "future")
+        // and schedules the WP-Cron publish. WC's data store writes
+        // post_date/post_date_gmt from this WC_DateTime (numeric = UTC), and the
+        // resulting `future` transition schedules `publish_future_post`.
+        if ($status === 'future' && $schedule_gmt > 0) {
+            $product->set_date_created($schedule_gmt);
+        } elseif ($product_id && $status !== 'future' && get_post_status($product_id) === 'future') {
+            // Un-scheduling: a product leaving "future" for publish/draft/private
+            // still carries its future-dated post_date, which WordPress would
+            // bounce straight back to "future". Reset the created date to now so
+            // the new status takes effect immediately.
+            $product->set_date_created(time());
+        }
 
         // Catalog visibility
         $catalog_vis = sanitize_key($_POST['catalog_visibility'] ?? 'visible');
@@ -4999,6 +5093,22 @@ class Brikpanel_Product_Editor {
             'ID'            => $saved_id,
             'post_password' => $post_password,
         ];
+
+        // Scheduled publishing — force the "future" status + date through
+        // wp_update_post as well. On the FIRST save of a brand-new product (which
+        // starts life as an `auto-draft`), WooCommerce's create path does not keep
+        // a future post_date, so the product would publish immediately even though
+        // we set the date on the object. Re-asserting it here (with edit_date so
+        // WP honours the explicit date) makes scheduling stick on the very first
+        // save too, and the resulting `future` transition schedules the WP-Cron
+        // publish. Only added when actually scheduling, so normal saves are
+        // untouched.
+        if ($status === 'future' && $schedule_gmt > 0) {
+            $post_update_args['post_status']   = 'future';
+            $post_update_args['post_date']     = get_date_from_gmt(gmdate('Y-m-d H:i:s', $schedule_gmt));
+            $post_update_args['post_date_gmt'] = gmdate('Y-m-d H:i:s', $schedule_gmt);
+            $post_update_args['edit_date']     = true;
+        }
 
         // Permalink slug — opt-in editor section. Only act when the client sent
         // the key (the section is rendered); otherwise leave the stored slug

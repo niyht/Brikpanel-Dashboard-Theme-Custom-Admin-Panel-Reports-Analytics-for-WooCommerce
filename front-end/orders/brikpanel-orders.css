@@ -128,6 +128,9 @@ html {
 	clip-path: none;
 	white-space: nowrap;
 }
+/* The WordPress "Help" toggle itself is removed admin-wide (see
+   includes/brikpanel-remove-help.php); only "Screen Options" survives the
+   un-clip above, which is the intent on the enhanced orders list. */
 
 .woocommerce-embed-page .woocommerce-store-alerts {
 	margin-top: 20px !important;

@@ -618,10 +618,21 @@
             duplicateProduct(id);
         });
 
-        // Toggle status
+        // Toggle status. Scheduled products are excluded — a plain click can't
+        // express a new publish date, so changing a schedule stays in the full
+        // editor. Clicking the "Scheduled" badge opens that product instead.
         $(document).on('click', '.brikpanel-pl-status-badge', function (e) {
             e.stopPropagation();
-            var id = parseInt($(this).closest('tr').data('id'));
+            var $tr = $(this).closest('tr');
+            if ($(this).hasClass('scheduled')) {
+                var editUrl = $tr.data('edit-url');
+                if (editUrl) {
+                    if (PL.open_in_new_tab) { window.open(editUrl, '_blank', 'noopener'); }
+                    else { window.location.href = editUrl; }
+                }
+                return;
+            }
+            var id = parseInt($tr.data('id'));
             toggleStatus(id);
         });
 
@@ -1157,10 +1168,16 @@
 
     function renderProductRow(p) {
         var checked = state.selected.indexOf(p.id) > -1 ? ' checked' : '';
-        var statusClass, statusLabel;
+        var statusClass, statusLabel, statusTitle = PL.i18n.click_to_toggle;
         if (p.status === 'publish') {
             statusClass = 'published';
             statusLabel = PL.i18n.published;
+        } else if (p.status === 'future') {
+            // Scheduled: shows the future publish date on hover and is NOT a
+            // quick toggle (changing a schedule needs the full editor).
+            statusClass = 'scheduled';
+            statusLabel = PL.i18n.scheduled || 'Scheduled';
+            statusTitle = p.scheduled_label || (PL.i18n.scheduled || 'Scheduled');
         } else if (p.status === 'trash') {
             statusClass = 'trashed';
             statusLabel = PL.i18n.trashed;
@@ -1348,7 +1365,7 @@
             '<td class="brikpanel-pl-cell-shipclass brikpanel-pl-col brikpanel-pl-col-shipping_class">' + (p.shipping_class ? escHtml(p.shipping_class) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             '<td class="brikpanel-pl-cell-author brikpanel-pl-col brikpanel-pl-col-author">' + (p.author ? escHtml(p.author) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             '<td class="brikpanel-pl-cell-menu_order brikpanel-pl-col brikpanel-pl-col-menu_order"><span class="brikpanel-pl-editable brikpanel-pl-menu-order-cell" data-field="menu_order" data-value="' + escAttr(p.menu_order != null ? p.menu_order : 0) + '">' + escHtml(String(p.menu_order != null ? p.menu_order : 0)) + '</span></td>' +
-            '<td class="brikpanel-pl-cell-status brikpanel-pl-col brikpanel-pl-col-status"><span class="brikpanel-pl-status-badge ' + statusClass + '" title="' + escAttr(PL.i18n.click_to_toggle) + '">' + escHtml(statusLabel) + '</span></td>' +
+            '<td class="brikpanel-pl-cell-status brikpanel-pl-col brikpanel-pl-col-status"><span class="brikpanel-pl-status-badge ' + statusClass + '" title="' + escAttr(statusTitle) + '">' + escHtml(statusLabel) + '</span></td>' +
             '<td class="brikpanel-pl-cell-date brikpanel-pl-col brikpanel-pl-col-date">' + (p.date ? escHtml(p.date) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             aseCellsHtml +
             '<td class="brikpanel-pl-actions-cell">' +
@@ -2555,6 +2572,28 @@
         $('[data-count="publish"]').text(counts.publish);
         $('[data-count="draft"]').text(counts.draft);
         $('#bpl-total-count').text(counts.all);
+
+        // Show/hide the Scheduled (future) tab. Inserted between Published and
+        // Draft to match the static markup order. Kept visible while the user is
+        // on the Scheduled view so they don't lose their place when the count
+        // hits 0 (e.g. the last scheduled product just went live).
+        if (counts.future > 0) {
+            if (!$('[data-count="future"]').length) {
+                var $futureTab = $(
+                    '<button class="brikpanel-pl-tab' + (state.status === 'future' ? ' active' : '') + '" data-status="future">' +
+                    (PL.i18n.scheduled || 'Scheduled') + ' <span class="brikpanel-pl-tab-count" data-count="future">' + counts.future + '</span></button>'
+                );
+                var $draftTab = $('[data-status="draft"]');
+                if ($draftTab.length) { $futureTab.insertBefore($draftTab); }
+                else { $('.brikpanel-pl-tabs').append($futureTab); }
+            } else {
+                $('[data-count="future"]').text(counts.future);
+            }
+        } else if (state.status === 'future') {
+            $('[data-count="future"]').text(0);
+        } else {
+            $('[data-status="future"]').remove();
+        }
 
         // Show/hide private tab (inserted before trash tab if present)
         if (counts.private > 0) {

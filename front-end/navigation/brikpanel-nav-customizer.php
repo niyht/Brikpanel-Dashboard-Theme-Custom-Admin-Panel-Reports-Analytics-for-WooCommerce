@@ -61,6 +61,80 @@ function brikpanel_nav_config_get() {
 	return $decoded;
 }
 
+/**
+ * Custom links are injected into the admin menu with a synthetic slug of the
+ * form `brikpanel_custom__<id>`; the item's real destination lives in the row's
+ * metadata (index 7) that only BrikPanel's own sidebar renderer reads. That's
+ * fine for the BrikPanel sidebar — it emits the real <a href> directly.
+ *
+ * But some hosts render their OWN admin navigation from the raw $menu/$submenu
+ * slugs instead of BrikPanel's markup (notably WordPress.com / Atomic's
+ * nav-unification sidebar, and the admin bar's "shortcuts"). Those build a link
+ * to `wp-admin/brikpanel_custom__<id>` (or `admin.php?page=brikpanel_custom__<id>`),
+ * which is not a real screen — clicking it lands the user on a 404 / "you are not
+ * allowed to access this page" error instead of the URL they configured.
+ *
+ * This guard closes that gap regardless of which navigation rendered the link:
+ * if the current request targets a synthetic custom-link slug, we look the id up
+ * in the saved config and redirect to the real destination. Spacers (which have
+ * no destination) fall back to the admin dashboard rather than erroring.
+ *
+ * Hooked on `admin_page_access_denied`, which WordPress fires from menu.php the
+ * moment it decides the requested page is not one the user can access — exactly
+ * when someone lands on a synthetic slug — and right before it calls wp_die().
+ * No output has started yet at that point, so the redirect always succeeds.
+ */
+function brikpanel_nav_redirect_synthetic_slug() {
+	// Only the `admin.php?page=` form is interceptable in PHP; the bare
+	// `wp-admin/<slug>` path form is resolved by the web server before WordPress
+	// boots. WordPress.com routes both through admin.php, so this covers the
+	// real-world case.
+	$page = isset( $_GET['page'] ) ? (string) wp_unslash( $_GET['page'] ) : '';
+	if ( $page === '' ) {
+		return;
+	}
+	$is_custom = strpos( $page, 'brikpanel_custom__' ) === 0;
+	$is_spacer = strpos( $page, 'brikpanel_spacer__' ) === 0;
+	if ( ! $is_custom && ! $is_spacer ) {
+		return;
+	}
+
+	// Spacers are decorative; there is nothing to open. Send the user home.
+	if ( $is_spacer ) {
+		wp_safe_redirect( admin_url() );
+		exit;
+	}
+
+	$id     = substr( $page, strlen( 'brikpanel_custom__' ) );
+	$config = brikpanel_nav_config_get();
+	foreach ( $config['items'] as $cfg ) {
+		if ( empty( $cfg['type'] ) || $cfg['type'] !== 'custom' ) {
+			continue;
+		}
+		if ( ! isset( $cfg['id'] ) || (string) $cfg['id'] !== $id ) {
+			continue;
+		}
+		$url = isset( $cfg['url'] ) ? trim( (string) $cfg['url'] ) : '';
+		if ( $url === '' ) {
+			break;
+		}
+		// Full external URL → redirect straight there (custom links may point
+		// off-site by design). Otherwise treat it as an admin-relative path.
+		if ( preg_match( '#^https?://#i', $url ) ) {
+			wp_redirect( esc_url_raw( $url ) );
+		} else {
+			wp_safe_redirect( admin_url( ltrim( $url, '/' ) ) );
+		}
+		exit;
+	}
+
+	// No matching custom link (stale link after the item was deleted): fall back
+	// to the dashboard instead of a hard error.
+	wp_safe_redirect( admin_url() );
+	exit;
+}
+add_action( 'admin_page_access_denied', 'brikpanel_nav_redirect_synthetic_slug' );
+
 // =============================================================================
 // PER-AUDIENCE VISIBILITY (role / admin gating)
 // =============================================================================
@@ -373,6 +447,18 @@ function brikpanel_nav_config_spacing() {
 	$config  = brikpanel_nav_config_get();
 	$spacing = isset( $config['spacing'] ) ? (string) $config['spacing'] : 'comfortable';
 	return in_array( $spacing, [ 'compact', 'comfortable', 'spacious' ], true ) ? $spacing : 'comfortable';
+}
+
+/**
+ * Whether newly-detected menu items (from freshly installed plugins, not yet
+ * placed in the saved config) should be hidden by default in the live sidebar
+ * until an administrator reviews them in the editor. Off by default, so the
+ * historical behaviour — new items appear immediately — is unchanged.
+ *
+ * @return bool
+ */
+function brikpanel_nav_hide_new_items_enabled() {
+	return get_option( 'brikpanel_nav_hide_new_items', 'no' ) === 'yes';
 }
 
 // =============================================================================
@@ -737,7 +823,15 @@ function brikpanel_nav_is_store_slug( $slug ) {
 		}
 	}
 
-	return false;
+	/**
+	 * Companion plugins (e.g. BrikMentor) mark their own top-level slugs as
+	 * store-cluster surfaces so they are kept beside BrikPanel's items instead
+	 * of being demoted into the "Site management" group.
+	 *
+	 * @param bool   $is_store Whether $slug belongs in the store cluster.
+	 * @param string $slug     Top-level menu slug under test.
+	 */
+	return (bool) apply_filters( 'brikpanel_nav_is_store_slug', false, $slug );
 }
 
 /**
@@ -1037,6 +1131,11 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 	// Append any system items not present in the config (newly installed
 	// plugins, or items the user has not yet customized). We append them to
 	// the store section by default; users can move them in the customizer.
+	//
+	// When "Hide new menu items by default" is on, these unconfigured items are
+	// left OUT of the live sidebar until an administrator reviews them in the
+	// editor (which always lists them). Native separators are always kept.
+	$hide_new = brikpanel_nav_hide_new_items_enabled();
 	foreach ( $menu as $item ) {
 		if ( ! isset( $item[2] ) ) {
 			continue;
@@ -1048,6 +1147,10 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 		// Skip native separators — they are unrelated to user-controllable items.
 		if ( isset( $item[4] ) && is_string( $item[4] ) && strpos( $item[4], 'wp-menu-separator' ) !== false ) {
 			$new_menu[] = $item;
+			continue;
+		}
+		if ( $hide_new ) {
+			// Newly-detected item, not yet reviewed — keep it off the sidebar.
 			continue;
 		}
 		$new_menu[] = $item;
@@ -1120,6 +1223,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 	$icon_options     = brikpanel_nav_customizer_icon_options();
 	$icons_url_base   = plugins_url( 'icons/', __FILE__ );
 	$spacing          = brikpanel_nav_config_spacing();
+	$hide_new         = brikpanel_nav_hide_new_items_enabled();
 
 	// Build slug → submenu list and slug → title maps from the live snapshot
 	// for quick lookup while constructing rows.
@@ -1243,7 +1347,11 @@ function brikpanel_render_nav_customizer_field( $value ) {
 			'title'          => $ci['title'],
 			'label_override' => '',
 			'section'        => $default_section,
-			'hidden'         => false,
+			// Never placed in the saved config → a "new" item. When the hide-new
+			// preference is on it starts hidden, matching the live sidebar, so the
+			// admin can review it here and flip it on deliberately.
+			'hidden'         => $hide_new,
+			'is_new'         => true,
 			'audience'       => 'all',
 			'hide_roles'     => [],
 			'icon_override'  => '',
@@ -1418,7 +1526,12 @@ function brikpanel_render_nav_customizer_field( $value ) {
 												<?php endif; ?>
 											</span>
 											<span class="brikpanel-navc-label">
-												<span class="brikpanel-navc-label-text"><?php echo esc_html( $display_label ); ?></span>
+												<span class="brikpanel-navc-label-text">
+													<?php echo esc_html( $display_label ); ?>
+													<?php if ( ! empty( $row['is_new'] ) ) : ?>
+														<span class="brikpanel-navc-new-badge" title="<?php esc_attr_e( 'Newly detected — not yet reviewed', 'brikpanel' ); ?>"><?php esc_html_e( 'New', 'brikpanel' ); ?></span>
+													<?php endif; ?>
+												</span>
 												<?php if ( $is_custom ) : ?>
 													<span class="brikpanel-navc-label-meta"><?php echo esc_html( $row['url'] ); ?></span>
 												<?php endif; ?>

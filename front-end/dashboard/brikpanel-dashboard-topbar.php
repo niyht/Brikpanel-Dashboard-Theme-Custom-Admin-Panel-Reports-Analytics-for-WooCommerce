@@ -334,7 +334,11 @@ class Brikpanel_Dashboard_Topbar {
 
                     <!-- Hidden third-party notices. Starts display:none and is
                          revealed by the script only when suppressed notices are
-                         found on the page and relocated into this panel. -->
+                         found on the page and relocated into this panel. Has its
+                         own top bar item ("hidden_notices") so its visibility and
+                         audience can be controlled independently of the order
+                         notifications bell. -->
+                    <?php if ( ! function_exists( 'brikpanel_topbar_item_is_visible' ) || brikpanel_topbar_item_is_visible( 'hidden_notices' ) ) : ?>
                     <div class="brikpanel-topbar-menu brikpanel-fn-menu" data-topbar-menu="hidden-notices" style="display:none">
                         <button type="button" class="brikpanel-topbar-icon-btn" data-topbar-toggle="hidden-notices" aria-haspopup="menu" aria-expanded="false" aria-label="<?php esc_attr_e( 'Hidden notices from other plugins', 'brikpanel' ); ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -348,6 +352,7 @@ class Brikpanel_Dashboard_Topbar {
                             <div class="brikpanel-fn-panel-list"></div>
                         </div>
                     </div>
+                    <?php endif; ?>
 
                     <?php
                     if ( class_exists( 'Brikpanel_BrikControl' ) ) {
@@ -407,10 +412,20 @@ class Brikpanel_Dashboard_Topbar {
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                                 <span><?php esc_html_e( 'Your profile', 'brikpanel' ); ?></span>
                             </a>
+                            <?php
+                            // Only surface the settings shortcut to users who may
+                            // actually open the BrikPanel settings tab. With the
+                            // "Restrict settings to administrators" lock on, a shop
+                            // manager (even one granted manage_options by a role
+                            // editor) is redirected away from the tab, so the link
+                            // would be a dead end that wrongly implies access.
+                            if ( ! function_exists( 'brikpanel_user_can_open_settings' ) || brikpanel_user_can_open_settings() ) :
+                                ?>
                             <a class="brikpanel-topbar-dropdown-item" role="menuitem" href="<?php echo esc_url( admin_url( 'admin.php?page=wc-settings&tab=brikpanel' ) ); ?>">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                                 <span><?php esc_html_e( 'BrikPanel settings', 'brikpanel' ); ?></span>
                             </a>
+                            <?php endif; ?>
                             <?php
                             // Multisite: BrikPanel hides the native WP toolbar, which is
                             // normally the only path to "My Sites -> Network Admin". Surface

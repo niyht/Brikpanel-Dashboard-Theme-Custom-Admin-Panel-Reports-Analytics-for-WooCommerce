@@ -841,6 +841,10 @@ class Brikpanel_Products_List {
                     <label for="bpl-qe-status"><?php esc_html_e('Status', 'brikpanel'); ?></label>
                     <select id="bpl-qe-status" class="brikpanel-pl-select">
                         <option value="publish"><?php esc_html_e('Published', 'brikpanel'); ?></option>
+                        <?php // "Scheduled" only reflects a product that already carries a future
+                              // publish date (set in the full editor). Keeping the choice lets
+                              // quick-edit display it and leave the schedule intact on save. ?>
+                        <option value="future"><?php esc_html_e('Scheduled', 'brikpanel'); ?></option>
                         <option value="draft"><?php esc_html_e('Draft', 'brikpanel'); ?></option>
                         <option value="private"><?php esc_html_e('Private', 'brikpanel'); ?></option>
                     </select>
@@ -996,8 +1000,9 @@ class Brikpanel_Products_List {
         $total     = isset($counts->publish) ? (int) $counts->publish : 0;
         $draft     = isset($counts->draft) ? (int) $counts->draft : 0;
         $private_c = isset($counts->private) ? (int) $counts->private : 0;
+        $future    = isset($counts->future) ? (int) $counts->future : 0;
         $trash     = isset($counts->trash) ? (int) $counts->trash : 0;
-        $all_count = $total + $draft + $private_c;
+        $all_count = $total + $draft + $private_c + $future;
         ?>
         <div class="wrap">
         <div class="brikpanel-pl" id="brikpanel-products-list" data-tax-filters="<?php echo esc_attr(wp_json_encode((object) $active_tax_filters)); ?>">
@@ -1043,6 +1048,12 @@ class Brikpanel_Products_List {
                         <?php esc_html_e('Published', 'brikpanel'); ?>
                         <span class="brikpanel-pl-tab-count" data-count="publish"><?php echo esc_html($total); ?></span>
                     </button>
+                    <?php if ($future > 0) : ?>
+                    <button class="brikpanel-pl-tab" data-status="future">
+                        <?php esc_html_e('Scheduled', 'brikpanel'); ?>
+                        <span class="brikpanel-pl-tab-count" data-count="future"><?php echo esc_html($future); ?></span>
+                    </button>
+                    <?php endif; ?>
                     <button class="brikpanel-pl-tab" data-status="draft">
                         <?php esc_html_e('Draft', 'brikpanel'); ?>
                         <span class="brikpanel-pl-tab-count" data-count="draft"><?php echo esc_html($draft); ?></span>
@@ -1657,6 +1668,8 @@ class Brikpanel_Products_List {
         $statuses = ['any'];
         if ($status === 'publish') {
             $statuses = ['publish'];
+        } elseif ($status === 'future') {
+            $statuses = ['future'];
         } elseif ($status === 'draft') {
             $statuses = ['draft'];
         } elseif ($status === 'private') {
@@ -1664,7 +1677,9 @@ class Brikpanel_Products_List {
         } elseif ($status === 'trash') {
             $statuses = ['trash'];
         } else {
-            $statuses = ['publish', 'draft', 'private'];
+            // "All" includes scheduled (future) products so they are never
+            // hidden from the default view — mirrors WordPress's own edit list.
+            $statuses = ['publish', 'future', 'draft', 'private'];
         }
 
         $args = [
@@ -1958,6 +1973,15 @@ class Brikpanel_Products_List {
                 // order category pages by date rely on seeing (and re-dating)
                 // this; column is opt-in via the Columns picker (default off).
                 'date'           => wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post)),
+                // Tooltip for the "Scheduled" status badge — the moment the
+                // product goes live. Empty for non-scheduled products.
+                'scheduled_label' => $post->post_status === 'future'
+                    ? sprintf(
+                        /* translators: %s: date and time the product publishes */
+                        __('Scheduled for %s', 'brikpanel'),
+                        wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post))
+                    )
+                    : '',
                 'image'          => $image_url,
                 'categories'     => $cat_names,
                 'category_ids'   => $cat_ids,
@@ -1983,6 +2007,7 @@ class Brikpanel_Products_List {
         $publish_count = isset($counts->publish) ? (int) $counts->publish : 0;
         $draft_count   = isset($counts->draft) ? (int) $counts->draft : 0;
         $private_count = isset($counts->private) ? (int) $counts->private : 0;
+        $future_count  = isset($counts->future) ? (int) $counts->future : 0;
         $trash_count   = isset($counts->trash) ? (int) $counts->trash : 0;
 
         // Visibility state for the extra (3rd-party) columns. Resolved here
@@ -2004,8 +2029,9 @@ class Brikpanel_Products_List {
             'extra_columns' => (object) $extra_columns,
             'extra_columns_state' => (object) $extra_state,
             'counts'        => [
-                'all'     => $publish_count + $draft_count + $private_count,
+                'all'     => $publish_count + $future_count + $draft_count + $private_count,
                 'publish' => $publish_count,
+                'future'  => $future_count,
                 'draft'   => $draft_count,
                 'private' => $private_count,
                 'trash'   => $trash_count,
@@ -2187,7 +2213,19 @@ class Brikpanel_Products_List {
 
         if (isset($_POST['status'])) {
             $status = sanitize_key($_POST['status']);
+            // "future" is accepted but intentionally a no-op here: scheduling
+            // needs a date, which quick-edit has no field for. Leaving a already
+            // scheduled product on "Scheduled" keeps its existing future date
+            // (the in-memory product still holds status=future, so save() below
+            // persists it unchanged).
             if (in_array($status, ['publish', 'draft', 'private'], true)) {
+                // When moving a currently-scheduled product to a live status,
+                // reset its created date to now first — a future-dated post_date
+                // would otherwise make WordPress bounce the status straight back
+                // to "future". Mirrors the full editor's un-schedule handling.
+                if (get_post_status($product_id) === 'future') {
+                    $product->set_date_created(time());
+                }
                 // Set the status on the product object so the single
                 // $product->save() below persists it. A standalone
                 // wp_update_post() here would be silently clobbered: when any

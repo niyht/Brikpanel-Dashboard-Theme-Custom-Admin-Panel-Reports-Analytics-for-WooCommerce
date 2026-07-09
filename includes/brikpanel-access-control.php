@@ -318,6 +318,40 @@ function brikpanel_access_should_neutralize() {
 	return brikpanel_access_is_disabled_for_user();
 }
 
+/**
+ * Whether a user counts as a real site administrator for BrikPanel access rules.
+ *
+ * Deliberately role-based, NOT capability-based. Stores routinely hand the
+ * `manage_options` capability to shop managers with a role editor, so treating
+ * that capability as "administrator" lets those managers slip straight past
+ * every admin-only gate (the settings lock, the Screen Options hiding, the
+ * welcome tour). We therefore look at the real `administrator` role, plus
+ * multisite network super admins who must always keep control. This mirrors
+ * `brikpanel_can_use_master_switch()`, which switched off the capability check
+ * for exactly this reason.
+ *
+ * @param WP_User|int|null $user Optional user or user ID; defaults to current.
+ * @return bool
+ */
+function brikpanel_user_is_administrator( $user = null ) {
+	if ( null === $user ) {
+		$user = wp_get_current_user();
+	} elseif ( is_numeric( $user ) ) {
+		$user = get_user_by( 'id', (int) $user );
+	}
+	if ( ! $user instanceof WP_User || ! $user->ID ) {
+		return false;
+	}
+
+	// Multisite network administrators always count, even on a subsite where
+	// they may not carry the `administrator` role directly.
+	if ( is_multisite() && is_super_admin( (int) $user->ID ) ) {
+		return true;
+	}
+
+	return in_array( 'administrator', array_map( 'strval', (array) $user->roles ), true );
+}
+
 // =============================================================================
 // SETTINGS-PAGE ADMIN LOCK
 // =============================================================================
@@ -347,9 +381,11 @@ function brikpanel_settings_admins_only_active() {
  *
  * Baseline is WooCommerce's own `manage_woocommerce` cap (so a user who could
  * never reach WC settings stays out regardless). When the admin lock is on the
- * user must additionally be an administrator: `manage_options`, which shop
- * managers do not hold. Super admins on multisite always pass because they
- * carry every capability.
+ * user must additionally be a real administrator. That test is role-based, not
+ * `manage_options`-based: stores commonly grant shop managers `manage_options`
+ * with a role editor, and gating on the capability would let those managers
+ * open the settings tab anyway. `brikpanel_user_is_administrator()` looks at the
+ * actual `administrator` role plus multisite super admins.
  *
  * @param WP_User|int|null $user Optional user or user ID; defaults to current.
  * @return bool
@@ -372,7 +408,7 @@ function brikpanel_user_can_open_settings( $user = null ) {
 		return true;
 	}
 
-	return user_can( $user, 'manage_options' ) || is_super_admin( (int) $user->ID );
+	return brikpanel_user_is_administrator( $user );
 }
 
 /**
@@ -459,7 +495,7 @@ function brikpanel_should_hide_screen_options() {
 		return true;
 	}
 	if ( get_option( BRIKPANEL_ACCESS_OPT_SCREEN_OPTIONS_NONADMIN, 'no' ) === 'yes'
-		&& ! current_user_can( 'manage_options' ) ) {
+		&& ! brikpanel_user_is_administrator() ) {
 		return true;
 	}
 	return false;

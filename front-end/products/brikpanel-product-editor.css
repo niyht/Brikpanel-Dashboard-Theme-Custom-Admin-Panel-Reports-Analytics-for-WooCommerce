@@ -813,6 +813,12 @@
 .brikpanel-pe-var-table .var-image-btn img{width:100%;height:100%;object-fit:cover;position:relative;z-index:2;border-radius:3px}
 .brikpanel-pe-var-table .var-image-btn svg{color:var(--pe-text-muted);position:relative;z-index:2}
 .var-image-count{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;border-radius:9px;background:var(--pe-primary);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;z-index:5;line-height:1;padding:0 4px;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+/* Remove-image control — appears on hover over a variation image cell */
+.brikpanel-pe-var-table .var-image-wrap{position:relative;display:inline-block}
+.brikpanel-pe-var-table .var-image-remove{position:absolute;top:-7px;left:-7px;width:18px;height:18px;padding:0;border:1.5px solid #fff;border-radius:50%;background:var(--pe-primary);color:#fff;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:7;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:background .15s ease}
+.brikpanel-pe-var-table .var-image-wrap:hover .var-image-remove{display:flex}
+.brikpanel-pe-var-table .var-image-remove:hover{background:var(--pe-error)}
+.brikpanel-pe-var-table .var-image-remove svg{position:relative;z-index:2}
 
 /* Toast */
 .bpe-toast-container{position:fixed;top:44px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:.5rem}
@@ -1020,7 +1026,9 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-status-wrap[data-status="draft"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#9ca3af;box-shadow:0 0 0 3px rgba(156,163,175,.2)}
 .brikpanel-pe-status-wrap[data-status="private"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#4c1d95;box-shadow:0 0 0 3px rgba(76,29,149,.15)}
 .brikpanel-pe-status-wrap[data-status="password"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#b45309;box-shadow:0 0 0 3px rgba(180,83,9,.15)}
+.brikpanel-pe-status-wrap[data-status="future"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="publish"]{background:var(--pe-success)}
+.brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="future"]{background:#2563eb}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="draft"]{background:#9ca3af}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="private"]{background:#4c1d95}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="password"]{background:#b45309}
@@ -1041,6 +1049,12 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-password-inline.is-visible{display:inline-flex}
 .brikpanel-pe-password-inline input{width:100px;padding:.375rem .5rem;font:inherit;font-size:.75rem;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);color:var(--pe-text);transition:border-color .15s ease,box-shadow .15s ease}
 .brikpanel-pe-password-inline input:focus{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
+
+/* Scheduled publish date/time — inline beside the status dropdown */
+.brikpanel-pe-schedule-inline{display:none;align-items:center}
+.brikpanel-pe-schedule-inline.is-visible{display:inline-flex}
+.brikpanel-pe-schedule-inline input{padding:.375rem .5rem;font:inherit;font-size:.75rem;color:var(--pe-text);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);transition:border-color .15s ease,box-shadow .15s ease}
+.brikpanel-pe-schedule-inline input:focus{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 
 /* Catalog visibility — mini dropdown in the header */
 .brikpanel-pe-catvis-wrap{position:relative;display:inline-block}

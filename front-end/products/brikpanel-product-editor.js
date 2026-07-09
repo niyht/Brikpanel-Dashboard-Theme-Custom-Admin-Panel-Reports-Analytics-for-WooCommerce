@@ -304,6 +304,32 @@
         });
     }
 
+    /* Build a datetime-local value (Y-m-d\TH:i) for ~24h from now, in the
+       browser's local time — used to seed the schedule picker when the merchant
+       first switches to "Scheduled" and the field is empty. */
+    function defaultScheduleValue() {
+        var d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+               'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    /* Swap the primary button label to "Schedule" while the status is future,
+       restoring the original label (Publish/Update/Save) for any other status.
+       The server-rendered label is captured once as the baseline. */
+    function updatePublishLabel(status) {
+        var $pub = $('#bpe-publish');
+        if (!$pub.length) return;
+        if (typeof $pub.data('origLabel') === 'undefined') {
+            $pub.data('origLabel', $.trim($pub.text()));
+        }
+        if (status === 'future') {
+            $pub.text(PE.i18n.schedule || 'Schedule');
+        } else {
+            $pub.text($pub.data('origLabel'));
+        }
+    }
+
     /* Custom Visibility dropdown (replaces the old <select>) */
     function initStatusDropdown() {
         var $wrap = $('.brikpanel-pe-status-wrap');
@@ -311,6 +337,20 @@
         var $trigger = $('#bpe-status-trigger');
         var $menu = $wrap.find('.brikpanel-pe-status-menu');
         var $hidden = $('#bpe-status');
+
+        // Capture the non-future baseline for the primary button label. If the
+        // product loads already scheduled, the server label is "Schedule"; derive
+        // the correct fallback (Update for an existing product, Publish for a new
+        // one) so switching away from "Scheduled" doesn't leave a stale label.
+        var $pubBtn = $('#bpe-publish');
+        if ($pubBtn.length && typeof $pubBtn.data('origLabel') === 'undefined') {
+            if ($hidden.val() === 'future') {
+                var isEdit = parseInt($('#bpe-product-id').val() || '0', 10) > 0;
+                $pubBtn.data('origLabel', isEdit ? (PE.i18n.update || 'Update') : (PE.i18n.publish || 'Publish'));
+            } else {
+                $pubBtn.data('origLabel', $.trim($pubBtn.text()));
+            }
+        }
 
         function close() {
             $wrap.removeClass('is-open');
@@ -342,6 +382,21 @@
             } else {
                 $pwWrap.removeClass('is-visible');
             }
+            // Show/hide the scheduled publish date/time picker. When switching to
+            // "Scheduled" with an empty field, seed a sensible near-future default
+            // (tomorrow, same time) so the merchant isn't left with a blank input.
+            var $schedWrap = $('#bpe-schedule-wrap');
+            if ($schedWrap.length) {
+                if (v === 'future') {
+                    var $date = $('#bpe-schedule-date');
+                    if (!$date.val()) { $date.val(defaultScheduleValue()); }
+                    $schedWrap.addClass('is-visible');
+                    $date.focus();
+                } else {
+                    $schedWrap.removeClass('is-visible');
+                }
+            }
+            updatePublishLabel(v);
             close();
         });
 
@@ -2357,6 +2412,7 @@
             }
         });
         $tb.find('.var-image-btn').on('click', function () { openVarImagePicker($(this).data('idx')); });
+        $tb.find('.var-image-remove').on('click', function (e) { e.stopPropagation(); removeVarImage($(this).data('idx')); });
         $tb.find('.var-delete-btn').on('click', function () {
             var idx = $(this).data('idx');
             var confirmMsg = PE.i18n.confirm_delete_variation || 'Delete this variation? This change is applied when you save the product.';
@@ -2431,11 +2487,36 @@
         var count = images ? images.length : 0;
         var badge = count > 1 ? '<span class="var-image-count">' + count + '</span>' : '';
         if (count > 0) {
-            return '<button type="button" class="var-image-btn has-images" data-idx="' + idx + '">' +
-                '<img src="' + esc(images[0].url) + '" alt="">' + badge + '</button>';
+            var removeLabel = esc(PE.i18n.remove_image || 'Remove image');
+            return '<span class="var-image-wrap" data-idx="' + idx + '">' +
+                '<button type="button" class="var-image-btn has-images" data-idx="' + idx + '">' +
+                '<img src="' + esc(images[0].url) + '" alt="">' + badge + '</button>' +
+                '<button type="button" class="var-image-remove" data-idx="' + idx + '" aria-label="' + removeLabel + '" title="' + removeLabel + '">' +
+                '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
+                '</span>';
         }
-        return '<button type="button" class="var-image-btn" data-idx="' + idx + '">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>';
+        return '<span class="var-image-wrap" data-idx="' + idx + '">' +
+            '<button type="button" class="var-image-btn" data-idx="' + idx + '">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>' +
+            '</span>';
+    }
+
+    // Rebind click handlers for a single (re-rendered) variation image cell.
+    function bindVarImageCell(idx) {
+        var $wrap = $('#bpe-var-table-body .var-image-wrap[data-idx="' + idx + '"]');
+        $wrap.find('.var-image-btn').off('click').on('click', function () { openVarImagePicker(idx); });
+        $wrap.find('.var-image-remove').off('click').on('click', function (e) {
+            e.stopPropagation();
+            removeVarImage(idx);
+        });
+    }
+
+    // Clear all images for a variation. The change is committed on product save
+    // (an empty image_ids array clears the thumbnail + gallery meta server-side).
+    function removeVarImage(idx) {
+        state.variations[idx].images = [];
+        $('#bpe-var-table-body .var-image-wrap[data-idx="' + idx + '"]').replaceWith(buildVarImageCell([], idx));
+        bindVarImageCell(idx);
     }
 
     function openVarImagePicker(idx) {
@@ -2478,13 +2559,9 @@
             });
             if (!galleryEnabled) newImages = newImages.slice(0, 1);
             state.variations[idx].images = newImages;
-            // Re-render just this cell
-            var $btn = $('.var-image-btn[data-idx="' + idx + '"]');
-            $btn.replaceWith(buildVarImageCell(newImages, idx));
-            // Rebind click
-            $('#bpe-var-table-body .var-image-btn[data-idx="' + idx + '"]').on('click', function () {
-                openVarImagePicker(idx);
-            });
+            // Re-render just this cell, then rebind its picker + remove handlers.
+            $('#bpe-var-table-body .var-image-wrap[data-idx="' + idx + '"]').replaceWith(buildVarImageCell(newImages, idx));
+            bindVarImageCell(idx);
         });
 
         frame.open();
@@ -2542,7 +2619,7 @@
     /* Save */
     function saveProduct(status, silent) {
         if (state.saving) return;
-        if (!silent && status === 'publish' && !validateAll()) { showToast(PE.i18n.fill_required || 'Please fill in the required fields', 'error'); return; }
+        if (!silent && (status === 'publish' || status === 'future') && !validateAll()) { showToast(PE.i18n.fill_required || 'Please fill in the required fields', 'error'); return; }
         var name = $.trim($('#bpe-name').val());
         if (!name) { if (!silent) { showToast(PE.i18n.fill_name || 'Please fill in the product name', 'error'); validateField($('#bpe-name')); } return; }
 
@@ -2634,6 +2711,13 @@
 
         // Password protected
         data.post_password = status === 'password' ? ($('#bpe-post-password').val() || '') : '';
+
+        // Scheduled publishing — send the chosen datetime-local value only when
+        // the "Scheduled" status is selected. The server treats an empty or past
+        // date as "publish now". Only relevant when the schedule UI is rendered.
+        if (status === 'future') {
+            data.publish_date = $('#bpe-schedule-date').val() || '';
+        }
 
         // Catalog visibility
         data.catalog_visibility = $('#bpe-catalog-visibility').val() || 'visible';

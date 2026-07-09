@@ -36,6 +36,21 @@ function brikpanel_should_show_welcome() {
     if ( ! is_admin() || wp_doing_ajax() ) {
         return false;
     }
+
+    // The welcome tour is a setup walkthrough that ends on a call to open the
+    // BrikPanel settings, so it is only relevant to users who can actually
+    // configure BrikPanel. Gating it on the same settings-access check keeps it
+    // away from shop managers and other non-administrators (including managers a
+    // role editor granted manage_options) when the settings lock is on, matching
+    // the hidden settings link. Users the BrikPanel interface is disabled for see
+    // the native admin and should never get the tour either.
+    if ( function_exists( 'brikpanel_user_can_open_settings' ) && ! brikpanel_user_can_open_settings() ) {
+        return false;
+    }
+    if ( function_exists( 'brikpanel_access_is_disabled_for_user' ) && brikpanel_access_is_disabled_for_user() ) {
+        return false;
+    }
+
     $dismissed = get_user_meta( get_current_user_id(), '_brikpanel_welcome_dismissed', true );
     return empty( $dismissed );
 }

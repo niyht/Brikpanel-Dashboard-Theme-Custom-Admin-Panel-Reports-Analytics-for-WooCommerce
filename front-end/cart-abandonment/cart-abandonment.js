@@ -508,6 +508,26 @@
 					}
 				}, 1800);
 
+				// Companion-plugin mode: the coupon was deferred to email —
+				// show the "check your inbox" state instead of the code.
+				var emailedCoupon = data && data.coupon_emailed;
+				if (emailedCoupon) {
+					var emailedBox = document.createElement('div');
+					emailedBox.className = 'brikpanel-cartab-coupon';
+
+					var emailedIntro = document.createElement('div');
+					emailedIntro.className = 'brikpanel-cartab-coupon-intro';
+					emailedIntro.textContent = cfg.i18n.couponEmailed.replace('%s', data.email || '');
+
+					var emailedHint = document.createElement('div');
+					emailedHint.className = 'brikpanel-cartab-coupon-hint';
+					emailedHint.textContent = cfg.i18n.couponEmailedHint;
+
+					emailedBox.appendChild(emailedIntro);
+					emailedBox.appendChild(emailedHint);
+					modal.appendChild(emailedBox);
+				}
+
 				var hasCoupon = data && data.coupon;
 				if (hasCoupon) {
 					var couponBox = document.createElement('div');
@@ -559,11 +579,11 @@
 					modal.appendChild(couponBox);
 				}
 
-				// Auto-close: longer when a coupon is on screen so the
-				// visitor has time to copy it.
+				// Auto-close: longer when a coupon (or the emailed-coupon
+				// notice) is on screen so the visitor has time to read it.
 				window.setTimeout(function () {
 					closePopup(true);
-				}, hasCoupon ? 9000 : 2500);
+				}, (hasCoupon || emailedCoupon) ? 9000 : 2500);
 			}
 
 			form.addEventListener('submit', function (e) {

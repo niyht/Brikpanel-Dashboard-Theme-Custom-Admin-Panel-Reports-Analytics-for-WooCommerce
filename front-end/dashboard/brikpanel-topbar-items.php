@@ -29,6 +29,82 @@ const BRIKPANEL_TOPBAR_CUSTOM_LABEL_OPTION = 'brikpanel_topbar_custom_link_label
 const BRIKPANEL_TOPBAR_CUSTOM_URL_OPTION   = 'brikpanel_topbar_custom_link_url';
 
 /**
+ * Per-item audience rules (who may SEE a control), on top of the binary
+ * show/hide. `..._audience` maps item key → 'all' | 'admins' | 'roles';
+ * `..._roles` maps item key → array of role slugs the control is hidden from
+ * when the audience is 'roles'. Absent/empty means "everyone", so existing
+ * installs are unchanged.
+ */
+const BRIKPANEL_TOPBAR_ITEM_AUDIENCE_OPTION = 'brikpanel_topbar_item_audience';
+const BRIKPANEL_TOPBAR_ITEM_ROLES_OPTION    = 'brikpanel_topbar_item_hide_roles';
+
+/**
+ * Saved per-item audience map (key => 'all'|'admins'|'roles').
+ *
+ * @return array<string,string>
+ */
+function brikpanel_topbar_item_audience_map() {
+    $map = get_option( BRIKPANEL_TOPBAR_ITEM_AUDIENCE_OPTION, [] );
+    return is_array( $map ) ? $map : [];
+}
+
+/**
+ * Saved per-item hidden-roles map (key => string[]).
+ *
+ * @return array<string,string[]>
+ */
+function brikpanel_topbar_item_roles_map() {
+    $map = get_option( BRIKPANEL_TOPBAR_ITEM_ROLES_OPTION, [] );
+    return is_array( $map ) ? $map : [];
+}
+
+/**
+ * Whether the current user's role passes a top bar item's audience rule.
+ * Administrators (and network admins) always pass, so an owner can never lock
+ * themselves out of a control they hid from their own role.
+ *
+ * @param string $key
+ * @return bool
+ */
+function brikpanel_topbar_item_audience_allows( $key ) {
+    $map = brikpanel_topbar_item_audience_map();
+    // Backward-compat: the hidden-notices bell historically shared the
+    // "notifications" audience rule. If no explicit rule has been saved for it
+    // yet, inherit the notifications rule so pre-existing configs behave the
+    // same until the owner sets a rule of its own. Once the settings page is
+    // saved, an explicit key is written and the two become independent.
+    if ( $key === 'hidden_notices' && ! isset( $map[ $key ] ) && isset( $map['notifications'] ) ) {
+        $key = 'notifications';
+    }
+    $audience = ( isset( $map[ $key ] ) && in_array( $map[ $key ], [ 'all', 'admins', 'roles' ], true ) ) ? $map[ $key ] : 'all';
+    if ( $audience === 'all' ) {
+        return true;
+    }
+    if ( current_user_can( 'manage_options' ) || ( is_multisite() && current_user_can( 'manage_network' ) ) ) {
+        return true;
+    }
+    if ( $audience === 'admins' ) {
+        return false;
+    }
+    // audience 'roles' — hidden from users holding any listed role.
+    $roles_map = brikpanel_topbar_item_roles_map();
+    $hide      = ( isset( $roles_map[ $key ] ) && is_array( $roles_map[ $key ] ) ) ? $roles_map[ $key ] : [];
+    if ( empty( $hide ) ) {
+        return true;
+    }
+    $user = wp_get_current_user();
+    if ( ! $user || empty( $user->roles ) ) {
+        return true;
+    }
+    foreach ( (array) $user->roles as $role ) {
+        if ( in_array( $role, $hide, true ) ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * The toggleable top bar controls, in the order they appear in the bar.
  * Each entry carries a translatable label and a static inline SVG icon.
  *
@@ -55,6 +131,10 @@ function brikpanel_topbar_items_label_map() {
         'notifications' => [
             'label' => __( 'Order notifications', 'brikpanel' ),
             'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+        ],
+        'hidden_notices' => [
+            'label' => __( 'Hidden notices bell', 'brikpanel' ),
+            'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
         ],
         'view_site'     => [
             'label' => __( 'View store button', 'brikpanel' ),
@@ -102,7 +182,10 @@ function brikpanel_topbar_hidden_items() {
  * @return bool
  */
 function brikpanel_topbar_item_is_visible( $key ) {
-    return ! in_array( $key, brikpanel_topbar_hidden_items(), true );
+    if ( in_array( $key, brikpanel_topbar_hidden_items(), true ) ) {
+        return false;
+    }
+    return brikpanel_topbar_item_audience_allows( $key );
 }
 
 /**
@@ -217,6 +300,11 @@ function brikpanel_render_topbar_items_field( $field ) {
     $items  = brikpanel_topbar_items_label_map();
     $hidden = brikpanel_topbar_hidden_items();
 
+    // Per-item audience (who may see each control) + the role list to choose from.
+    $audience_map = brikpanel_topbar_item_audience_map();
+    $roles_map    = brikpanel_topbar_item_roles_map();
+    $all_roles    = function_exists( 'brikpanel_access_collect_roles' ) ? brikpanel_access_collect_roles() : [];
+
     $create_items  = brikpanel_topbar_create_items_label_map();
     $create_hidden = brikpanel_topbar_create_hidden_items();
     $custom_label  = sanitize_text_field( (string) get_option( BRIKPANEL_TOPBAR_CUSTOM_LABEL_OPTION, '' ) );
@@ -245,16 +333,41 @@ function brikpanel_render_topbar_items_field( $field ) {
                 <ul class="brikpanel-topbar-items-list" role="list">
                     <?php foreach ( $items as $key => $item ) :
                         $is_visible = ! in_array( $key, $hidden, true );
+                        $audience   = ( isset( $audience_map[ $key ] ) && in_array( $audience_map[ $key ], [ 'all', 'admins', 'roles' ], true ) ) ? $audience_map[ $key ] : 'all';
+                        $item_roles = ( isset( $roles_map[ $key ] ) && is_array( $roles_map[ $key ] ) ) ? array_map( 'strval', $roles_map[ $key ] ) : [];
                         ?>
                         <li class="brikpanel-topbar-items-row<?php echo $is_visible ? '' : ' is-hidden-item'; ?>">
-                            <span class="brikpanel-topbar-items-icon" aria-hidden="true"><?php
-                                echo $item['icon']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG markup
-                            ?></span>
-                            <span class="brikpanel-topbar-items-label"><?php echo esc_html( $item['label'] ); ?></span>
-                            <label class="brikpanel-topbar-items-switch">
-                                <input type="checkbox" name="brikpanel_topbar_visible_items[]" value="<?php echo esc_attr( $key ); ?>" <?php checked( $is_visible ); ?>>
-                                <span class="brikpanel-topbar-items-track" aria-hidden="true"></span>
-                            </label>
+                            <div class="brikpanel-topbar-items-main">
+                                <span class="brikpanel-topbar-items-icon" aria-hidden="true"><?php
+                                    echo $item['icon']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG markup
+                                ?></span>
+                                <span class="brikpanel-topbar-items-label"><?php echo esc_html( $item['label'] ); ?></span>
+                                <label class="brikpanel-topbar-items-switch">
+                                    <input type="checkbox" name="brikpanel_topbar_visible_items[]" value="<?php echo esc_attr( $key ); ?>" <?php checked( $is_visible ); ?>>
+                                    <span class="brikpanel-topbar-items-track" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                            <div class="brikpanel-topbar-items-audience-line">
+                                <span class="brikpanel-topbar-items-audience-label"><?php esc_html_e( 'Visible to', 'brikpanel' ); ?></span>
+                                <select class="brikpanel-topbar-items-audience" name="brikpanel_topbar_item_audience[<?php echo esc_attr( $key ); ?>]" data-bp-audience aria-label="<?php esc_attr_e( 'Who can see this control', 'brikpanel' ); ?>">
+                                    <option value="all" <?php selected( $audience, 'all' ); ?>><?php esc_html_e( 'Everyone', 'brikpanel' ); ?></option>
+                                    <option value="admins" <?php selected( $audience, 'admins' ); ?>><?php esc_html_e( 'Admins only', 'brikpanel' ); ?></option>
+                                    <option value="roles" <?php selected( $audience, 'roles' ); ?>><?php esc_html_e( 'Specific roles', 'brikpanel' ); ?></option>
+                                </select>
+                            </div>
+                            <?php if ( ! empty( $all_roles ) ) : ?>
+                                <div class="brikpanel-topbar-items-roles" data-bp-roles <?php echo $audience === 'roles' ? '' : 'hidden'; ?>>
+                                    <span class="brikpanel-topbar-items-roles-title"><?php esc_html_e( 'Hide from these roles', 'brikpanel' ); ?></span>
+                                    <div class="brikpanel-topbar-items-roles-grid">
+                                        <?php foreach ( $all_roles as $role_slug => $role_name ) : ?>
+                                            <label class="brikpanel-topbar-items-role">
+                                                <input type="checkbox" name="brikpanel_topbar_item_roles[<?php echo esc_attr( $key ); ?>][]" value="<?php echo esc_attr( $role_slug ); ?>" <?php checked( in_array( (string) $role_slug, $item_roles, true ) ); ?>>
+                                                <span><?php echo esc_html( $role_name ); ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                         </li>
 
                         <?php if ( $key === 'create' ) : ?>
@@ -313,16 +426,80 @@ function brikpanel_render_topbar_items_field( $field ) {
                     overflow: hidden;
                 }
                 .brikpanel-topbar-items-row {
-                    display: flex;
-                    align-items: center;
-                    gap: .75rem;
-                    padding: .625rem .875rem;
                     border-top: 1px solid #f0f0f0;
                     background: #ffffff;
                     transition: background .15s ease;
                 }
                 .brikpanel-topbar-items-row:first-child {
                     border-top: 0;
+                }
+                .brikpanel-topbar-items-main {
+                    display: flex;
+                    align-items: center;
+                    gap: .75rem;
+                    padding: .625rem .875rem;
+                }
+                /* Audience control sits on its own line beneath the label + toggle
+                   so the four columns never crowd each other in WooCommerce's
+                   narrow settings column. */
+                .brikpanel-topbar-items-audience-line {
+                    display: flex;
+                    align-items: center;
+                    gap: .5rem;
+                    padding: 0 .875rem .625rem 3.25rem;
+                }
+                .brikpanel-topbar-items-audience-label {
+                    font-size: .75rem;
+                    font-weight: 600;
+                    color: #616161;
+                    flex-shrink: 0;
+                }
+                /* WooCommerce's admin form styles force select width, max-width,
+                   padding, line-height and font-size with class-based selectors.
+                   The container ID here raises specificity to (1,1,0) so every one
+                   of ours wins and the select stays compact and on-brand. */
+                #brikpanel-topbar-items .brikpanel-topbar-items-audience {
+                    flex: 0 0 auto;
+                    width: 11rem;
+                    max-width: 11rem;
+                    min-width: 0;
+                    height: 34px;
+                    min-height: 0;
+                    margin: 0;
+                    padding: 0 1.5rem 0 .5rem;
+                    font-size: .8125rem;
+                    line-height: 1.5;
+                    color: #303030;
+                    background-color: #fff;
+                    border: 1px solid #8a8a8a;
+                    border-radius: .375rem;
+                }
+                .brikpanel-topbar-items-roles {
+                    padding: .5rem .875rem .75rem 3.25rem;
+                    background: #fbfbfb;
+                    border-top: 1px dashed #e3e3e3;
+                }
+                .brikpanel-topbar-items-roles[hidden] {
+                    display: none;
+                }
+                .brikpanel-topbar-items-roles-title {
+                    display: block;
+                    margin-bottom: .375rem;
+                    font-size: .75rem;
+                    font-weight: 600;
+                    color: #616161;
+                }
+                .brikpanel-topbar-items-roles-grid {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: .375rem .875rem;
+                }
+                .brikpanel-topbar-items-role {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: .3rem;
+                    font-size: .8125rem;
+                    color: #303030;
                 }
                 .brikpanel-topbar-items-icon {
                     display: inline-flex;
@@ -481,10 +658,20 @@ function brikpanel_render_topbar_items_field( $field ) {
                 if (!root || root.dataset.bpInit === '1') { return; }
                 root.dataset.bpInit = '1';
                 root.addEventListener('change', function (e) {
+                    var audience = e.target.closest('[data-bp-audience]');
+                    if (audience) {
+                        var row = audience.closest('.brikpanel-topbar-items-row');
+                        var panel = row ? row.querySelector('[data-bp-roles]') : null;
+                        if (panel) {
+                            if (audience.value === 'roles') { panel.removeAttribute('hidden'); }
+                            else { panel.setAttribute('hidden', ''); }
+                        }
+                        return;
+                    }
                     var cb = e.target.closest('.brikpanel-topbar-items-switch input');
                     if (!cb) { return; }
-                    var row = cb.closest('.brikpanel-topbar-subitem') || cb.closest('.brikpanel-topbar-items-row');
-                    if (row) { row.classList.toggle('is-hidden-item', !cb.checked); }
+                    var row2 = cb.closest('.brikpanel-topbar-subitem') || cb.closest('.brikpanel-topbar-items-row');
+                    if (row2) { row2.classList.toggle('is-hidden-item', !cb.checked); }
                 });
             })();
             </script>
@@ -546,4 +733,35 @@ add_action( 'woocommerce_update_options_brikpanel', function () {
         : '';
     update_option( BRIKPANEL_TOPBAR_CUSTOM_LABEL_OPTION, $custom_label, false );
     update_option( BRIKPANEL_TOPBAR_CUSTOM_URL_OPTION, $custom_url, false );
+
+    // Per-item audience (who may see each control) + hidden-roles list.
+    $valid_roles   = function_exists( 'brikpanel_access_collect_roles' ) ? array_keys( brikpanel_access_collect_roles() ) : [];
+    $audience_in   = ( isset( $_POST['brikpanel_topbar_item_audience'] ) && is_array( $_POST['brikpanel_topbar_item_audience'] ) )
+        ? wp_unslash( $_POST['brikpanel_topbar_item_audience'] )
+        : [];
+    $roles_in      = ( isset( $_POST['brikpanel_topbar_item_roles'] ) && is_array( $_POST['brikpanel_topbar_item_roles'] ) )
+        ? wp_unslash( $_POST['brikpanel_topbar_item_roles'] )
+        : [];
+    $audience_out  = [];
+    $roles_out     = [];
+    foreach ( $known as $item_key ) {
+        $aud = isset( $audience_in[ $item_key ] ) ? sanitize_key( $audience_in[ $item_key ] ) : 'all';
+        if ( ! in_array( $aud, [ 'all', 'admins', 'roles' ], true ) ) {
+            $aud = 'all';
+        }
+        if ( $aud !== 'all' ) {
+            $audience_out[ $item_key ] = $aud;
+        }
+        if ( $aud === 'roles' && isset( $roles_in[ $item_key ] ) && is_array( $roles_in[ $item_key ] ) ) {
+            $picked = array_values( array_intersect(
+                array_map( 'sanitize_key', $roles_in[ $item_key ] ),
+                $valid_roles
+            ) );
+            if ( ! empty( $picked ) ) {
+                $roles_out[ $item_key ] = $picked;
+            }
+        }
+    }
+    update_option( BRIKPANEL_TOPBAR_ITEM_AUDIENCE_OPTION, $audience_out, false );
+    update_option( BRIKPANEL_TOPBAR_ITEM_ROLES_OPTION, $roles_out, false );
 }, 11 );

@@ -350,6 +350,13 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'    => __('Hide new menu items by default', 'brikpanel'),
+            'id'      => 'brikpanel_nav_hide_new_items',
+            'type'    => 'checkbox',
+            'desc'    => __('When a newly installed plugin adds a sidebar menu item, keep it hidden until you review it in the editor below. Handy when you manage sites for clients and do not want new items to appear before you have checked them. Items you have already placed are unaffected.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
             'type' => 'brikpanel_nav_customizer',
             'id'   => 'brikpanel_nav_customizer_field',
         ],
@@ -413,6 +420,13 @@ function brikpanel_settings_fields() {
             'id'       => 'brikpanel_pe_visible_sections_field',
             'type'     => 'brikpanel_section_order',
             'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder — the product editor renders sections in the order shown here. Metaboxes registered by other plugins (Yoast SEO, Rank Math, All in One SEO, SEOPress, custom post types, etc.) appear in this list automatically, tagged "Plugin" — enable and position any you want to edit right inside the BrikPanel editor.', 'brikpanel'),
+        ],
+        [
+            'name'    => __('Product publish scheduling', 'brikpanel'),
+            'id'      => 'brikpanel_pe_enable_scheduling',
+            'type'    => 'checkbox',
+            'desc'    => __('Add a "Scheduled" option to the status menu in the product editor so you can set a future date and time for a product to go live automatically. Works for simple and variable products.', 'brikpanel'),
+            'default' => 'yes',
         ],
         [
             'name'    => __('Auto-include ACF field groups', 'brikpanel'),
@@ -552,6 +566,12 @@ function brikpanel_settings_fields() {
             'desc_tip' => true,
             'options'  => $dashboard_widget_options,
             'default'  => [],
+        ],
+        [
+            'name' => __('Widget access', 'brikpanel'),
+            'id'   => 'brikpanel_dashboard_widget_access_field',
+            'type' => 'brikpanel_dashboard_widget_access',
+            'desc' => __('Choose who can see each embedded WordPress dashboard widget. Use this to keep sensitive widgets like "Site Health Status" limited to administrators or specific roles. Administrators always see every widget.', 'brikpanel'),
         ],
         [
             'name'     => __('Dashboard sections', 'brikpanel'),

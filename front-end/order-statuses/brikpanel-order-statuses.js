@@ -191,6 +191,17 @@
 				if ( res && res.success ) {
 					// Reload so adopted statuses render as editable rows and the
 					// import card recomputes (dropping the ones just imported).
+					// The import checkboxes live inside WooCommerce's settings form,
+					// so ticking one trips WC's "unsaved changes" guard. Our reload
+					// is intentional and the import is already persisted server-side,
+					// so drop that guard first — otherwise the browser shows a
+					// "Leave site?" prompt and, if the user cancels it, the page
+					// never reloads and the freshly imported status never appears,
+					// which reads as a failed/errored import.
+					if ( window.jQuery ) {
+						window.jQuery( window ).off( 'beforeunload' );
+					}
+					window.onbeforeunload = null;
 					window.location.reload();
 				} else {
 					throw new Error( ( res && res.data && res.data.message ) || '' );

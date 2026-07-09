@@ -56,6 +56,25 @@ class Brikpanel_Dashboard {
         add_action( 'wp_ajax_brikpanel_dashboard_live', [ $this, 'ajax_dashboard_live' ] );
         // CSV export of the current date-range report (streamed download).
         add_action( 'admin_post_brikpanel_dashboard_export', [ $this, 'handle_export' ] );
+
+        // Invalidate the cached catalog counts whenever the product catalog
+        // changes (create/update, trash/restore, delete, CSV import). The
+        // transient is short-lived anyway, so this just keeps the inventory
+        // summary tiles fresh after edits without a full re-count each view.
+        add_action( 'woocommerce_new_product', [ $this, 'bust_catalog_counts' ] );
+        add_action( 'woocommerce_update_product', [ $this, 'bust_catalog_counts' ] );
+        add_action( 'woocommerce_trash_product', [ $this, 'bust_catalog_counts' ] );
+        add_action( 'woocommerce_delete_product', [ $this, 'bust_catalog_counts' ] );
+        add_action( 'untrashed_post', [ $this, 'bust_catalog_counts' ] );
+        add_action( 'woocommerce_product_import_inserted_product_object', [ $this, 'bust_catalog_counts' ] );
+    }
+
+    /**
+     * Delete the cached catalog counters so the inventory summary tiles
+     * recompute on the next dashboard view. Cheap, accepts any hook args.
+     */
+    public function bust_catalog_counts() {
+        delete_transient( 'brikpanel_catalog_counts' );
     }
 
     /**
@@ -1211,11 +1230,36 @@ class Brikpanel_Dashboard {
     }
 
     public function render_section_stock_returns() {
+        $catalog = $this->get_catalog_counts();
+        // Compact catalog-size line shown under the Low Stock heading. Three
+        // plural-aware parts joined with a middot: products (catalog entries),
+        // variations, and sellable items (purchasable products + variations,
+        // i.e. counting variable products by their variations, not as one).
+        $catalog_parts = array(
+            sprintf(
+                /* translators: %s: number of published products */
+                _n( '%s product', '%s products', $catalog['products'], 'brikpanel' ),
+                number_format_i18n( $catalog['products'] )
+            ),
+            sprintf(
+                /* translators: %s: number of product variations */
+                _n( '%s variation', '%s variations', $catalog['variations'], 'brikpanel' ),
+                number_format_i18n( $catalog['variations'] )
+            ),
+            sprintf(
+                /* translators: %s: number of purchasable items (products + variations) */
+                _n( '%s sellable item', '%s sellable items', $catalog['sellable'], 'brikpanel' ),
+                number_format_i18n( $catalog['sellable'] )
+            ),
+        );
         ?>
             <!-- Row: Low Stock + Customer Lifetime Value -->
             <div class="brikpanel-dash-row brikpanel-dash-row-1-1">
                 <div class="brikpanel-dash-panel">
                     <h2><?php esc_html_e( 'Low Stock', 'brikpanel' ); ?></h2>
+                    <p class="brikpanel-dash-inv-line" title="<?php esc_attr_e( 'Sellable items counts each variable product by its purchasable variations, not as a single product.', 'brikpanel' ); ?>">
+                        <?php echo esc_html( implode( '  ·  ', $catalog_parts ) ); ?>
+                    </p>
                     <div class="brikpanel-dash-table-wrap" id="low-stock-table">
                         <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
                     </div>
@@ -1308,6 +1352,81 @@ class Brikpanel_Dashboard {
         return $products;
     }
 
+    /**
+     * Catalog size counters for the inventory summary tiles.
+     *
+     * WooCommerce spreads a store's "product count" across two post types:
+     * a variable product is a single `product` row plus N `product_variation`
+     * rows, and only the variations are actually purchasable. wp_count_posts()
+     * only ever sees the parent rows, so a store owner has no single place to
+     * see how many sellable items the catalog really holds. We compute three
+     * figures directly in SQL (cheap COUNTs, cached briefly for big stores):
+     *
+     *   - products   : published `product` entries (the "normal" catalog count)
+     *   - variations : enabled variations under published parents
+     *   - sellable   : purchasable SKUs = non-variable products + variations
+     *
+     * @return array{products:int,variations:int,variable:int,sellable:int}
+     */
+    private function get_catalog_counts(): array {
+        $cached = get_transient( 'brikpanel_catalog_counts' );
+        if ( is_array( $cached ) ) {
+            return $cached;
+        }
+
+        global $wpdb;
+
+        // Published parent products (simple, variable, grouped, external, ...).
+        $product_counts = wp_count_posts( 'product' );
+        $products = isset( $product_counts->publish ) ? (int) $product_counts->publish : 0;
+
+        // Enabled variations belonging to a published parent. A disabled
+        // variation is stored with post_status = 'private', so requiring
+        // 'publish' on the variation row counts only purchasable ones.
+        $variations = (int) $wpdb->get_var(
+            "SELECT COUNT(*)
+             FROM {$wpdb->posts} v
+             INNER JOIN {$wpdb->posts} p ON v.post_parent = p.ID
+             WHERE v.post_type = 'product_variation'
+               AND v.post_status = 'publish'
+               AND p.post_type = 'product'
+               AND p.post_status = 'publish'"
+        );
+
+        // Published products of type `variable` (their parent row is not
+        // itself purchasable — the variations replace it in the SKU total).
+        $variable = (int) $wpdb->get_var(
+            "SELECT COUNT(DISTINCT p.ID)
+             FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+             INNER JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+             INNER JOIN {$wpdb->terms} t ON tt.term_id = t.term_id
+             WHERE p.post_type = 'product'
+               AND p.post_status = 'publish'
+               AND tt.taxonomy = 'product_type'
+               AND t.slug = 'variable'"
+        );
+
+        // Sellable SKUs: every non-variable product counts once, and each
+        // variable product is replaced by its variations. Guard against odd
+        // states (e.g. a variable product with zero variations) so the total
+        // never dips below the plain product count.
+        $sellable = max( $products, ( $products - $variable ) + $variations );
+
+        $result = [
+            'products'   => $products,
+            'variations' => $variations,
+            'variable'   => $variable,
+            'sellable'   => $sellable,
+        ];
+
+        // Short cache: counts change rarely relative to dashboard views and the
+        // joins can be non-trivial on very large catalogs.
+        set_transient( 'brikpanel_catalog_counts', $result, 5 * MINUTE_IN_SECONDS );
+
+        return $result;
+    }
+
     // =========================================================================
     // EMBEDDED WORDPRESS DASHBOARD WIDGETS
     // =========================================================================
@@ -1327,12 +1446,19 @@ class Brikpanel_Dashboard {
         }
 
         $widgets = brikpanel_collect_dashboard_widgets();
-        // Preserve user-selected order.
+        // Preserve user-selected order. Each widget is additionally gated by its
+        // own audience rule (Everyone / Admins only / Specific roles) so the
+        // owner can keep sensitive widgets like Site Health limited by role.
         $chosen = [];
         foreach ( $selected as $widget_id ) {
-            if ( isset( $widgets[ $widget_id ] ) ) {
-                $chosen[ $widget_id ] = $widgets[ $widget_id ];
+            if ( ! isset( $widgets[ $widget_id ] ) ) {
+                continue;
             }
+            if ( function_exists( 'brikpanel_dashboard_widget_audience_allows' )
+                && ! brikpanel_dashboard_widget_audience_allows( $widget_id ) ) {
+                continue;
+            }
+            $chosen[ $widget_id ] = $widgets[ $widget_id ];
         }
         if ( empty( $chosen ) ) {
             return;
