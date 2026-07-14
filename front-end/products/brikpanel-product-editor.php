@@ -15,6 +15,16 @@ if (!defined('ABSPATH')) {
 
 class Brikpanel_Product_Editor {
 
+    /**
+     * User-facing, non-fatal warnings collected during a single save request
+     * (e.g. a SKU or GTIN that WooCommerce rejected as duplicate/invalid).
+     * Surfaced in the AJAX response so the editor can tell the merchant *why*
+     * a value did not persist instead of showing a bare "Product saved!".
+     *
+     * @var string[]
+     */
+    private $save_warnings = [];
+
     public function __construct() {
         // Always register the page slug so WordPress doesn't throw a permission error
         // when someone navigates to the URL while the editor is disabled.
@@ -686,9 +696,42 @@ class Brikpanel_Product_Editor {
         if ($product_id) {
             $wc_extras = $this->capture_wc_product_data_fields($product_id, $product);
             if ($wc_extras !== '') {
+                // Recreate the native editor's ancestor chain around the
+                // captured third-party panels:
+                //
+                //   form#post > #woocommerce-product-data > .inside >
+                //     .panel-wrap.product_data > (panels)
+                //
+                // Plugins that add a custom product-data panel bind their JS
+                // handlers (repeater "+ Add" buttons, remove-row, sortables,
+                // WC core's own meta-boxes-product.js) by DELEGATION on one of
+                // those ancestors — most on `#woocommerce-product-data`, some
+                // on `#post` or `.product_data`. Inside the BrikPanel card
+                // none of them existed, so the delegated handlers never fired
+                // and the buttons looked dead ("+ Add does nothing").
+                //
+                // Safety: nothing else on this page carries these ids (the
+                // native metabox/form are not rendered here — `#post` is a div,
+                // scripts using `$('form#post')` simply don't match), and WC's
+                // type-based show/hide never runs because there is no
+                // `select#product-type` to trigger it, so no field gets hidden.
+                //
+                // Layout: WooCommerce admin.css scopes STRUCTURAL rules under
+                // `#woocommerce-product-data` (panels float:left/right at 80%
+                // width beside a 20% tab sidebar). Our card stacks panels
+                // full-width, so those rules are neutralised in
+                // brikpanel-product-editor.css (see the "datawrap" reset) —
+                // without that reset the group titles scatter around the
+                // floated panels (reported on an RTL store after 3.2.9).
                 $wc_extras_card = '<div class="brikpanel-pe-card brikpanel-pe-wc-fields">'
                     . '<label>' . esc_html__('Additional product data', 'brikpanel') . '</label>'
-                    . '<div class="brikpanel-pe-wc-fields-content">' . $wc_extras . '</div>'
+                    . '<div class="brikpanel-pe-wc-fields-content">'
+                    . '<div id="post" class="brikpanel-pe-wc-postsim">'
+                    . '<div id="woocommerce-product-data" class="brikpanel-pe-wc-datawrap">'
+                    . '<div class="inside"><div class="panel-wrap product_data">' . $wc_extras . '</div></div>'
+                    . '</div>'
+                    . '</div>'
+                    . '</div>'
                     . '</div>';
             }
         }
@@ -1069,26 +1112,38 @@ class Brikpanel_Product_Editor {
                         <span class="brikpanel-pe-var-stale-hint" id="bpe-var-stale-hint" hidden><?php esc_html_e('Attributes changed since you generated. Click Generate variations to refresh the list.', 'brikpanel'); ?></span>
 
                         <div class="brikpanel-pe-var-table-section" id="bpe-var-table-section" style="display:none">
+                            <!-- Variation tools panel: two grouped rows sharing one
+                                 quiet gray card. Row 1 = bulk edits pushed to every
+                                 variation (labels ABOVE the inputs, Apply aligned to
+                                 the input baseline). Row 2 = storefront "Default Form
+                                 Values", divider-separated, filled by JS so it always
+                                 mirrors the current variation attributes. -->
                             <div class="brikpanel-pe-var-bulk">
-                                <div class="brikpanel-pe-var-bulk-item">
-                                    <label><?php esc_html_e('Set all prices:', 'brikpanel'); ?></label>
-                                    <div class="brikpanel-pe-input-group small">
-                                        <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
-                                        <input type="text" id="bpe-bulk-price" data-price="1">
+                                <div class="brikpanel-pe-var-bulk-group">
+                                    <span class="brikpanel-pe-var-bulk-heading"><?php esc_html_e('Apply to all variations', 'brikpanel'); ?></span>
+                                    <div class="brikpanel-pe-var-bulk-fields">
+                                        <div class="brikpanel-pe-var-bulk-item">
+                                            <label for="bpe-bulk-price"><?php esc_html_e('Price', 'brikpanel'); ?></label>
+                                            <div class="brikpanel-pe-input-group small">
+                                                <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
+                                                <input type="text" id="bpe-bulk-price" data-price="1">
+                                            </div>
+                                        </div>
+                                        <div class="brikpanel-pe-var-bulk-item">
+                                            <label for="bpe-bulk-sale-price"><?php esc_html_e('Sale Price', 'brikpanel'); ?></label>
+                                            <div class="brikpanel-pe-input-group small">
+                                                <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
+                                                <input type="text" id="bpe-bulk-sale-price" data-price="1">
+                                            </div>
+                                        </div>
+                                        <div class="brikpanel-pe-var-bulk-item">
+                                            <label for="bpe-bulk-stock"><?php esc_html_e('Stock', 'brikpanel'); ?></label>
+                                            <input type="number" id="bpe-bulk-stock" class="brikpanel-pe-input small" min="0">
+                                        </div>
+                                        <button type="button" class="brikpanel-pe-btn primary small" id="bpe-apply-bulk"><?php esc_html_e('Apply', 'brikpanel'); ?></button>
                                     </div>
                                 </div>
-                                <div class="brikpanel-pe-var-bulk-item">
-                                    <label><?php esc_html_e('Set all sale prices:', 'brikpanel'); ?></label>
-                                    <div class="brikpanel-pe-input-group small">
-                                        <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
-                                        <input type="text" id="bpe-bulk-sale-price" data-price="1">
-                                    </div>
-                                </div>
-                                <div class="brikpanel-pe-var-bulk-item">
-                                    <label><?php esc_html_e('Set all stocks:', 'brikpanel'); ?></label>
-                                    <input type="number" id="bpe-bulk-stock" class="brikpanel-pe-input small" min="0">
-                                </div>
-                                <button type="button" class="brikpanel-pe-btn primary small" id="bpe-apply-bulk"><?php esc_html_e('Apply', 'brikpanel'); ?></button>
+                                <div class="brikpanel-pe-var-defaults" id="bpe-var-defaults" style="display:none"></div>
                             </div>
                             <div class="brikpanel-pe-var-table-wrap">
                                 <table class="brikpanel-pe-var-table" id="bpe-var-table">
@@ -3338,7 +3393,20 @@ class Brikpanel_Product_Editor {
         $labels = [];
         $keys   = [];
 
-        $tabs_meta = apply_filters('woocommerce_product_data_tabs', []);
+        // Throwable-safe: the render path fires this filter with a real product
+        // object, but the settings-page enumeration fires it in a spoofed
+        // product context. A tab callback that resolves the product from its own
+        // source (not our spoofed global $product_object) may get null and
+        // dereference it — WooCommerce Composite Products' product_data_tabs
+        // callback fatals with "Call to a member function get_id() on null".
+        // That must never take down the wc-settings ▸ brikpanel page: swallow it
+        // exactly as capture_isolated_hook() does for the action hooks, and keep
+        // whatever tabs the surviving callbacks contributed.
+        try {
+            $tabs_meta = apply_filters('woocommerce_product_data_tabs', []);
+        } catch (\Throwable $e) {
+            $tabs_meta = [];
+        }
         if (is_array($tabs_meta)) {
             foreach ($tabs_meta as $key => $tab) {
                 $target = isset($tab['target']) ? (string) $tab['target'] : (string) $key;
@@ -4126,10 +4194,32 @@ class Brikpanel_Product_Editor {
         if ($is_variable) {
             // Surface only variation attributes for the variations wizard;
             // spec-style non-variation attributes are handled by the
-            // dedicated "Product attributes" card above.
+            // dedicated "Product attributes" card above. Each record also
+            // carries its current "Default Form Values" selection (WC's
+            // _default_attributes) resolved to a display NAME so the editor's
+            // dropdown can pre-select it — taxonomy defaults are stored as term
+            // slugs, so translate slug -> name here to match the UI's names.
+            $default_attributes = $product->get_default_attributes('edit');
             foreach ($product->get_attributes() as $attr) {
                 if (!$attr->get_variation()) continue;
-                $attributes_data[] = $build_attr_record($attr);
+                $record = $build_attr_record($attr);
+                $attr_name = $attr->get_name();
+                $is_tax = $attr->is_taxonomy() || (is_string($attr_name) && strpos($attr_name, 'pa_') === 0 && taxonomy_exists($attr_name));
+                // WC keys default_attributes by the taxonomy for global attrs,
+                // or by sanitize_title() of the label for custom ones.
+                $def_key = $is_tax ? $attr_name : sanitize_title($attr_name);
+                $def_raw = isset($default_attributes[$def_key]) ? $default_attributes[$def_key] : '';
+                $def_name = '';
+                if ($def_raw !== '') {
+                    if ($is_tax) {
+                        $def_term = get_term_by('slug', $def_raw, $attr_name);
+                        $def_name = ($def_term && !is_wp_error($def_term)) ? $def_term->name : $def_raw;
+                    } else {
+                        $def_name = $def_raw;
+                    }
+                }
+                $record['default'] = $def_name;
+                $attributes_data[] = $record;
             }
 
             foreach ($product->get_children() as $child_id) {
@@ -4658,6 +4748,9 @@ class Brikpanel_Product_Editor {
     public function ajax_save_product() {
         check_ajax_referer('brikpanel_product_editor_nonce', 'security');
 
+        // Fresh per-request warning bucket (duplicate SKU/GTIN etc.).
+        $this->save_warnings = [];
+
         if (!current_user_can('edit_products')) {
             wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
         }
@@ -4902,7 +4995,18 @@ class Brikpanel_Product_Editor {
         try {
             $product->set_sku($sku);
         } catch (\Exception $e) {
-            // SKU might be duplicate — continue without it
+            // WooCommerce throws WC_Data_Exception here when the SKU is a
+            // duplicate (or otherwise invalid). The rest of the product still
+            // saves fine, so we keep going — but silently swallowing this left
+            // the merchant with a phantom "Product saved!" and no SKU, unable
+            // to tell why. Surface the reason so they can pick a unique value.
+            if ($sku !== '') {
+                $this->save_warnings[] = sprintf(
+                    /* translators: %s: the SKU the merchant tried to save */
+                    __('The SKU "%s" was not saved because it is already used by another product. SKUs must be unique.', 'brikpanel'),
+                    $sku
+                );
+            }
         }
 
         // Global Unique ID (GTIN/UPC/EAN/ISBN). Only touch it when the field
@@ -4913,7 +5017,15 @@ class Brikpanel_Product_Editor {
             try {
                 $product->set_global_unique_id($gtin);
             } catch (\Exception $e) {
-                // Value might be a duplicate or invalid — continue without it
+                // Duplicate/invalid GTIN — save the rest but tell the merchant
+                // why the barcode did not stick (same rationale as SKU above).
+                if ($gtin !== '') {
+                    $this->save_warnings[] = sprintf(
+                        /* translators: %s: the GTIN/UPC/EAN/ISBN the merchant tried to save */
+                        __('The GTIN "%s" was not saved because it is already used by another product or is invalid.', 'brikpanel'),
+                        $gtin
+                    );
+                }
             }
         }
 
@@ -5562,6 +5674,13 @@ class Brikpanel_Product_Editor {
             'message'    => __('Product saved!', 'brikpanel'),
         ];
 
+        // Non-fatal issues (duplicate SKU/GTIN…): the product saved, but some
+        // values were rejected. Hand them back so the editor can tell the
+        // merchant exactly what did not persist instead of a bare success.
+        if (!empty($this->save_warnings)) {
+            $response['warnings'] = array_values(array_unique($this->save_warnings));
+        }
+
         // Variable products: hand back the freshly-persisted variation list and
         // any per-variation 3rd-party fields so the JS can adopt the new
         // variation IDs and surface the "More fields" expander without a full
@@ -5876,6 +5995,12 @@ class Brikpanel_Product_Editor {
         // same axis twice and clobber its own term assignment.
         $seen_var_names = [];
 
+        // "Default Form Values" — the option pre-selected on the storefront.
+        // Built alongside the attributes below (so promotions/taxonomy resolve
+        // once) and written via set_default_attributes() before the parent save.
+        // Rebuilt fresh every save: an all-blank selection clears prior defaults.
+        $default_attributes = [];
+
         // Status gate for Color/Size promotion. We never create global
         // attribute taxonomies or terms while saving a draft — only when the
         // product is going live. `password` is a virtual status that the
@@ -5952,6 +6077,25 @@ class Brikpanel_Product_Editor {
             $attribute->set_variation(true);
 
             $wc_attributes[] = $attribute;
+
+            // Capture this axis's default selection. JS sends a display NAME;
+            // store the term SLUG for taxonomy axes (what WC's frontend default
+            // lookup compares against) and the raw value for custom ones, keyed
+            // exactly like WC core (taxonomy name / sanitize_title of the label)
+            // and using the post-promotion $taxonomy so a just-promoted custom
+            // Color maps to pa_color, not the old slug.
+            $default_val = isset($attr_data['default']) ? sanitize_text_field($attr_data['default']) : '';
+            if ($default_val !== '') {
+                if ($taxonomy && taxonomy_exists($taxonomy)) {
+                    $def_term = get_term_by('name', $default_val, $taxonomy);
+                    if (!$def_term) {
+                        $def_term = get_term_by('slug', sanitize_title($default_val), $taxonomy);
+                    }
+                    $default_attributes[$taxonomy] = $def_term ? $def_term->slug : sanitize_title($default_val);
+                } else {
+                    $default_attributes[sanitize_title($name)] = $default_val;
+                }
+            }
         }
 
         // Append preserved non-variation attributes after variation ones —
@@ -6101,7 +6245,16 @@ class Brikpanel_Product_Editor {
             try {
                 $variation->set_sku($var_sku);
             } catch (\Exception $e) {
-                // Ignore duplicate SKU
+                // Duplicate/invalid variation SKU — persist the rest of the
+                // variation but report why the SKU was dropped (mirrors the
+                // simple-product path so variable products behave the same).
+                if ($var_sku !== '') {
+                    $this->save_warnings[] = sprintf(
+                        /* translators: %s: the variation SKU the merchant tried to save */
+                        __('The variation SKU "%s" was not saved because it is already used by another product. SKUs must be unique.', 'brikpanel'),
+                        $var_sku
+                    );
+                }
             }
 
             // Global Unique ID (GTIN/UPC/EAN/ISBN) per variation. Opt-in
@@ -6112,7 +6265,14 @@ class Brikpanel_Product_Editor {
                 try {
                     $variation->set_global_unique_id($var_gtin);
                 } catch (\Exception $e) {
-                    // Ignore duplicate / invalid value
+                    // Duplicate/invalid variation GTIN — keep the rest, warn why.
+                    if ($var_gtin !== '') {
+                        $this->save_warnings[] = sprintf(
+                            /* translators: %s: the variation GTIN/UPC/EAN/ISBN the merchant tried to save */
+                            __('The variation GTIN "%s" was not saved because it is already used by another product or is invalid.', 'brikpanel'),
+                            $var_gtin
+                        );
+                    }
                 }
             }
 
@@ -6275,6 +6435,16 @@ class Brikpanel_Product_Editor {
             $variable_for_sync->save();
         }
         WC_Product_Variable::sync($variable_for_sync);
+
+        // Persist the storefront "Default Form Values" selection AFTER sync().
+        // WC_Product_Variable::sync() saves the in-memory parent, which reverts
+        // default_attributes to whatever value the object was loaded with — so
+        // writing it earlier is silently undone on a change/clear. Writing it
+        // here, as the final save, makes it authoritative; a later fresh-load
+        // sync (WC's deferred shutdown sync from the variation saves) then reads
+        // it from disk and preserves it. An empty array clears a prior default.
+        $variable_for_sync->set_default_attributes($default_attributes);
+        $variable_for_sync->save();
     }
 
     // =========================================================================

@@ -1504,6 +1504,10 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'more_fields'      => __('More fields', 'brikpanel'),
                 'analyze'          => __('Re-analyze', 'brikpanel'),
                 'analyzing'        => __('Analyzing...', 'brikpanel'),
+                'default_form_values'      => __('Default Form Values', 'brikpanel'),
+                'default_form_values_help' => __('Choose which options are pre-selected on the product page. Leave blank for no default.', 'brikpanel'),
+                /* translators: %s is the attribute name, e.g. "No default Color…" */
+                'no_default_for'   => __('No default %s…', 'brikpanel'),
             ],
         ]);
     }

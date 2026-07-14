@@ -405,6 +405,27 @@
 	font-size: 0.75rem;
 	color: var(--text-muted);
 }
+.brikpanel-navc-input {
+	font-family: inherit;
+	font-size: 0.875rem;
+	padding: 0.5rem 0.625rem;
+	border: 1px solid var(--input-border);
+	border-radius: 0.5rem;
+	background: #fff;
+	color: var(--text);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	min-width: 220px;
+	box-sizing: border-box;
+	line-height: 1.4;
+}
+.brikpanel-navc-input::placeholder {
+	color: var(--text-muted);
+}
+.brikpanel-navc-input:focus {
+	outline: none;
+	border-color: var(--input-focus);
+	box-shadow: 0 0 0 1px var(--input-focus);
+}
 
 /* ----- Spacer row ----- */
 .brikpanel-navc-item.is-spacer {

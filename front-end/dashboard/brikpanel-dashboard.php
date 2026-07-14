@@ -57,24 +57,53 @@ class Brikpanel_Dashboard {
         // CSV export of the current date-range report (streamed download).
         add_action( 'admin_post_brikpanel_dashboard_export', [ $this, 'handle_export' ] );
 
-        // Invalidate the cached catalog counts whenever the product catalog
-        // changes (create/update, trash/restore, delete, CSV import). The
-        // transient is short-lived anyway, so this just keeps the inventory
-        // summary tiles fresh after edits without a full re-count each view.
-        add_action( 'woocommerce_new_product', [ $this, 'bust_catalog_counts' ] );
-        add_action( 'woocommerce_update_product', [ $this, 'bust_catalog_counts' ] );
-        add_action( 'woocommerce_trash_product', [ $this, 'bust_catalog_counts' ] );
-        add_action( 'woocommerce_delete_product', [ $this, 'bust_catalog_counts' ] );
-        add_action( 'untrashed_post', [ $this, 'bust_catalog_counts' ] );
-        add_action( 'woocommerce_product_import_inserted_product_object', [ $this, 'bust_catalog_counts' ] );
+        // Invalidate the cached catalog counts whenever a product or variation
+        // is created, published, unpublished, trashed, restored or deleted —
+        // through ANY path: the product editor, Quick Edit, bulk actions,
+        // adding/removing variations, CSV import, REST or WP-CLI.
+        //
+        // We deliberately hook WordPress core rather than the WooCommerce
+        // product CRUD actions: adding a variation does not fire
+        // `woocommerce_update_product`, and removing one force-deletes the
+        // variation post (skipping `woocommerce_delete_product`), so those
+        // never busted the cache and the Variations / Sellable figures went
+        // stale for up to 5 minutes. `transition_post_status` catches every
+        // status write via wp_insert_post; `before_delete_post` catches the
+        // force-deletes (like variation removal) that skip the trash step.
+        add_action( 'transition_post_status', [ $this, 'bust_catalog_counts_on_transition' ], 10, 3 );
+        add_action( 'before_delete_post', [ $this, 'bust_catalog_counts_on_delete' ], 10, 1 );
     }
 
     /**
-     * Delete the cached catalog counters so the inventory summary tiles
-     * recompute on the next dashboard view. Cheap, accepts any hook args.
+     * Delete the cached catalog counters so the inventory summary line
+     * recomputes on the next dashboard view. Cheap; accepts any hook args.
      */
     public function bust_catalog_counts() {
         delete_transient( 'brikpanel_catalog_counts' );
+    }
+
+    /**
+     * Bust the cache on any product/variation status change. Runs on every
+     * post save site-wide, so it bails immediately for unrelated post types.
+     */
+    public function bust_catalog_counts_on_transition( $new_status, $old_status, $post ) {
+        if ( $post instanceof WP_Post
+            && ( $post->post_type === 'product' || $post->post_type === 'product_variation' ) ) {
+            $this->bust_catalog_counts();
+        }
+    }
+
+    /**
+     * Bust the cache when a product/variation is permanently deleted (e.g. a
+     * variation removed in the editor, which force-deletes without trashing).
+     * before_delete_post fires while the row still exists, so the type is
+     * still resolvable.
+     */
+    public function bust_catalog_counts_on_delete( $post_id ) {
+        $type = get_post_type( $post_id );
+        if ( $type === 'product' || $type === 'product_variation' ) {
+            $this->bust_catalog_counts();
+        }
     }
 
     /**
@@ -1251,13 +1280,18 @@ class Brikpanel_Dashboard {
                 _n( '%s sellable item', '%s sellable items', $catalog['sellable'], 'brikpanel' ),
                 number_format_i18n( $catalog['sellable'] )
             ),
+            sprintf(
+                /* translators: %s: total number of stock units on hand across the store */
+                _n( '%s unit in stock', '%s units in stock', $catalog['stock_units'], 'brikpanel' ),
+                number_format_i18n( $catalog['stock_units'] )
+            ),
         );
         ?>
             <!-- Row: Low Stock + Customer Lifetime Value -->
             <div class="brikpanel-dash-row brikpanel-dash-row-1-1">
                 <div class="brikpanel-dash-panel">
                     <h2><?php esc_html_e( 'Low Stock', 'brikpanel' ); ?></h2>
-                    <p class="brikpanel-dash-inv-line" title="<?php esc_attr_e( 'Sellable items counts each variable product by its purchasable variations, not as a single product.', 'brikpanel' ); ?>">
+                    <p class="brikpanel-dash-inv-line" title="<?php esc_attr_e( 'Sellable items counts each variable product by its purchasable variations, not as a single product. Units in stock is the total on-hand quantity across all stock-managed products.', 'brikpanel' ); ?>">
                         <?php echo esc_html( implode( '  ·  ', $catalog_parts ) ); ?>
                     </p>
                     <div class="brikpanel-dash-table-wrap" id="low-stock-table">
@@ -1365,12 +1399,16 @@ class Brikpanel_Dashboard {
      *   - products   : published `product` entries (the "normal" catalog count)
      *   - variations : enabled variations under published parents
      *   - sellable   : purchasable SKUs = non-variable products + variations
+     *   - stock_units: total on-hand units (SUM of _stock for managed items)
      *
-     * @return array{products:int,variations:int,variable:int,sellable:int}
+     * @return array{products:int,variations:int,variable:int,sellable:int,stock_units:int}
      */
     private function get_catalog_counts(): array {
         $cached = get_transient( 'brikpanel_catalog_counts' );
-        if ( is_array( $cached ) ) {
+        // Require the full current key set: a transient written by an older
+        // build (before stock_units existed) is treated as a miss so the
+        // view never reads an undefined key.
+        if ( is_array( $cached ) && isset( $cached['stock_units'] ) ) {
             return $cached;
         }
 
@@ -1408,16 +1446,56 @@ class Brikpanel_Dashboard {
         );
 
         // Sellable SKUs: every non-variable product counts once, and each
-        // variable product is replaced by its variations. Guard against odd
-        // states (e.g. a variable product with zero variations) so the total
-        // never dips below the plain product count.
-        $sellable = max( $products, ( $products - $variable ) + $variations );
+        // variable product is replaced by its purchasable variations. So a
+        // variable product with no enabled variations is genuinely not
+        // sellable and correctly contributes 0 — the total can legitimately
+        // sit below the plain product count in a catalog full of incomplete
+        // variable products. `variable` is always a subset of `products`
+        // (both are published), so the subtraction can't go negative; the
+        // max(0, …) is only defensive against inconsistent data.
+        $sellable = max( 0, $products - $variable ) + $variations;
+
+        // Total on-hand inventory: the sum of `_stock` across every
+        // stock-managed, published product/variation. This answers a
+        // different question than the counts above — not "how many SKUs"
+        // but "how many physical units are on the shelf" (a store with 3
+        // products can hold thousands of units). Only rows whose owner has
+        // `_manage_stock = yes` carry a meaningful `_stock`, so unmanaged
+        // products are excluded. Counting both `product` and
+        // `product_variation` does not double-count, because in WooCommerce
+        // a variable parent and its variations never both manage stock at
+        // the same time — stock lives on the parent OR on each variation.
+        //
+        // Value format is the subtlety here: WooCommerce stores `_stock` as
+        // a DECIMAL string, so a stock of 37 is persisted as "37.000000".
+        // The REGEXP therefore has to allow an optional fractional part
+        // (`^-?[0-9]+([.][0-9]+)?$` — the dot is a character class so no
+        // PHP/SQL backslash escaping is involved); a naive integer-only
+        // pattern silently drops every managed row and undercounts the
+        // store, which is exactly the bug in the naive version. CAST … AS
+        // SIGNED then truncates toward zero, matching WooCommerce's own
+        // default `wc_stock_amount()` (intval) so this total agrees exactly
+        // with what get_stock_quantity() reports per item. The REGEXP still
+        // rejects blank/non-numeric meta that CAST would otherwise coerce
+        // to 0.
+        $stock_units = (int) $wpdb->get_var(
+            "SELECT SUM(CAST(pm.meta_value AS SIGNED))
+             FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->postmeta} ms ON pm.post_id = ms.post_id AND ms.meta_key = '_manage_stock'
+             INNER JOIN {$wpdb->posts} p     ON pm.post_id = p.ID
+             WHERE pm.meta_key = '_stock'
+               AND ms.meta_value = 'yes'
+               AND p.post_status = 'publish'
+               AND p.post_type IN ('product','product_variation')
+               AND pm.meta_value REGEXP '^-?[0-9]+([.][0-9]+)?$'"
+        );
 
         $result = [
-            'products'   => $products,
-            'variations' => $variations,
-            'variable'   => $variable,
-            'sellable'   => $sellable,
+            'products'    => $products,
+            'variations'  => $variations,
+            'variable'    => $variable,
+            'sellable'    => $sellable,
+            'stock_units' => $stock_units,
         ];
 
         // Short cache: counts change rarely relative to dashboard views and the

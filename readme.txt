@@ -4,7 +4,7 @@ Donate link: https://donate.stripe.com/14AdR9ghJcxKaAqdzbc3m00
 Tags: woocommerce dashboard, woocommerce inventory management, google sheets, woocommerce bulk editor, roas
 Requires at least: 6.0
 Tested up to: 7.0
-Stable tag: 3.2.5
+Stable tag: 3.2.12
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
@@ -388,31 +388,47 @@ Yes. The dashboard, the bulk editor, the inventory tools, the order management, 
 
 == Screenshots ==
 
-1. **Modern WooCommerce Dashboard**: a real-time WooCommerce sales report and admin panel with Total Sales, Orders, AOV, Visitors and Conversion Rate with period-over-period deltas, an interactive sales chart, Net Profit, ROAS and a live visitors widget
-2. **WooCommerce Cart Abandonment & Recovery**: the Abandoned Carts screen captures the email of shoppers who do not finish checkout, with emails-captured, active, abandoned and recovered stat cards, per-cart product and exact-variation snapshots, source and status filters, and CSV / Excel export
-3. **Real ROAS & Net Profit with Google Ads + Meta Ads**: native Google Ads and Meta (Facebook / Instagram) Ads integration that pulls daily ad spend into the dashboard so you see true return on ad spend and net profit next to store revenue
-4. **WooCommerce Google Sheets Sync**: real-time order sync to a Google Sheet, scheduled bulk export, per-status filters and reorderable columns, a free GSheetConnector alternative
-5. **WooCommerce Inventory Management & Product List**: clean product table with thumbnails, SKU, regular/sale price, color-coded stock badges, category and a one-click publish toggle, for both simple and variable products
-6. **Quick Edit Sidebar**: a slide-in panel to edit name, prices, SKU, stock and category without ever leaving the product list
-7. **Bulk Edit WooCommerce Products**: bulk update prices, sale prices and stock for the whole catalog, by category or by selection, with full variation support (e.g. only "Size: XL")
-8. **Simplified WooCommerce Product Editor**: drag-and-drop image gallery, clean pricing and an inline variation builder for simple and variable products
-9. **WooCommerce Customer Analytics: Lifetime Value (LTV)**, total customers, average and top customer lifetime value, the full LTV distribution histogram, and a sortable top-customers table
-10. **WooCommerce Customer Analytics: RFM Segmentation**, every customer scored on Recency, Frequency and Monetary and grouped into Champions, Loyal, At Risk, Hibernating, About to Sleep and Lost, with revenue per segment
-11. **WooCommerce Customer Analytics: Cohort Retention**, a month-by-month cohort retention grid plus an average retention by month-offset trend
-12. **Geographic Analytics: WooCommerce Sales by Country**, a 3D globe of order locations with Top Countries and Top Cities by orders and revenue
-13. **Live Visitors & Conversion Funnel**: real-time WooCommerce live visitors with cart status, plus the Visitors > Add to Cart > Checkout > Orders conversion funnel and order-status breakdown
-14. **Lightning-Fast Order Search (Cmd/Ctrl + K)**: an instant order search overlay across order ID, customer name, email, phone and product SKU from anywhere in wp-admin
-15. **Segments: Orders Explorer**, saved segments and quick filters with totals (orders, revenue, AOV) and a clean order list with location, payment method and status
-16. **Segments: Customers Explorer**, a segmentable customer list (new, repeat, VIP, dormant, high value) with total spent, AOV and first/last order
-17. **Modern WooCommerce Order Management**: a redesigned orders page with a 30-day overview bar, color-coded status tabs and inline status change
-18. **WooCommerce Categories Page**: drag-and-drop parent/child category and tag management with circular-reference protection
-19. **WooCommerce Coupon Manager**: a clean coupon table with discount-type badges, usage stats, revenue and expiry highlighting
-20. **Add Coupon Slide-Over Panel**: create or edit coupons with all WooCommerce coupon options without leaving the page
-21. **Custom WP Login Page**: a modern, branded login screen that replaces the default WordPress login
+1. Dashboard
+2. Cart Recovery
+3. Ads ROAS
+4. Sheets Sync
+5. Product List
+6. Quick Edit
+7. Bulk Edit
+8. Product Editor
+9. Customer LTV
+10. RFM Segments
+11. Cohort Retention
+12. Geo Analytics
+13. Live Visitors
+14. Order Search
+15. Orders Explorer
+16. Customers Explorer
+17. Order Management
+18. Categories
+19. Coupons
+20. Add Coupon
+21. Login Page
 
 == Changelog ==
 
-= 3.2.5 (2026-07-08) =
+= 3.2.12 (2026-07-14) =
+* Fix: **The "Additional product data" card no longer breaks its layout on stores where WooCommerce's tab styling applies**. After the previous compatibility fix, WooCommerce's own stylesheet could float the third-party sections into a narrow column, scattering the group titles around them (most visible on RTL languages such as Persian or Arabic). The sections now always stack full-width inside the card, on both LTR and RTL admins.
+* Improvement: **Broader compatibility for buttons inside third-party "Additional product data" sections**. The card now recreates the native product editor's full container chain, so plugins that attach their add/remove/sort buttons to any of the standard WooCommerce containers work inside the streamlined editor as well. Works on both simple and variable products.
+
+= 3.2.11 (2026-07-10) =
+* Fix: **Buttons inside third-party "Additional product data" sections now work again**. When another plugin adds its own section to the product data (for example a "Box Contents" repeater with an "+ Add Item" button, product insurance or warranty fields), those buttons rely on the WooCommerce product-data container that the streamlined editor did not recreate, so clicking them did nothing and the changes could not be saved. The container is now provided, so add/remove/sort buttons and their fields work and save exactly as they do on the standard WooCommerce editor. Works on both simple and variable products.
+* Fix: **A duplicate SKU or GTIN is no longer dropped silently when saving a product**. If you entered a SKU (or GTIN) already used by another product, WooCommerce rejected it as not unique, but the editor still showed "Product saved!" and left the field blank, so it looked like the SKU could not be set. The product now still saves, and a clear message tells you the SKU/GTIN was skipped because it must be unique. Works on both simple and variable products.
+* New: **Rename the "Site management" heading in the sidebar**. A new "Section heading label" field under WooCommerce > Settings > BrikPanel > Navigation lets you replace the "Site management" label above the lower group of menu items with your own wording. Leave it blank to keep the default label, which stays fully translatable.
+* Fix: **The WooCommerce > Settings > BrikPanel screen no longer crashes when WooCommerce Composite Products is active**. To detect which extra tabs your product editor offers, BrikPanel briefly runs WooCommerce's product-data-tabs hook; Composite Products' handler expected a real product in that moment and hit a fatal error, which took down the whole settings page. That hook is now run safely, so a tab from any plugin that misbehaves is ignored and the page loads normally. Other plugins' tabs are still detected as before.
+* Fix: **The product Categories, Tags, Brands and Attributes screens no longer leave a large empty area on the right**. With the modern sidebar hidden, these screens pinned their content to the left and left the rest of the page blank on some themes. The layout now centres correctly whether the modern sidebar is shown or hidden.
+
+= 3.2.6 (2026-07-09) =
+* Fix: **The Appearance > Menus screen no longer crashes on some sites**. On stores where another plugin left an unexpected entry in WordPress's admin menu, opening Appearance > Menus (and a few related admin screens) could hit a fatal error. BrikPanel's sidebar now safely skips any such entry, so those pages load normally again.
+* Improvement: **Every value of a large product attribute is now reachable while editing a product**. When adding values from a global attribute that has many terms (for example a "Color" attribute with 40 colours), the suggestion list only showed the first ten and hid the rest, even after you typed to filter it. It now offers up to fifty matching values in a scrollable list, so you can pick any of them. Works on both simple and variable products.
+
+= 3.2.5 (2026-07-09) =
+* Fix: **The dashboard catalog summary (products, variations, sellable items) now updates the moment your catalog changes**. It could previously keep showing the earlier totals for a few minutes after you added or removed variations, or trashed a product, because the figures were cached too aggressively. They now refresh immediately whenever a product or variation is added, published, trashed, restored or deleted. The "sellable items" total is also now exact for variable products that have no purchasable variations yet (they no longer inflate the count). (This was never related to legacy vs High-Performance Order Storage: product counts always read from the same place.)
 * New: **Control who sees each embedded WordPress dashboard widget**. The dashboard widgets you pull into the BrikPanel dashboard (under WooCommerce > Settings > BrikPanel > Dashboard) can now each be limited to Everyone, Admins only, or hidden from specific roles, just like the top bar controls. This is handy for keeping the "Site Health Status" widget, which exposes server and security details, away from staff. Administrators always see every widget so you can never lock yourself out.
 * Fix: **The "More" sidebar menu no longer lands on a 404**. When the "More" group's first item was a custom link, clicking the "More" label itself opened a "page not found" error instead of the link's real address. The "More" header now points at a valid destination, and an empty "More" group (with nothing left inside it) is hidden entirely rather than shown as a broken link.
 * Improvement: **The generic WordPress "Help" tab is now hidden across the whole admin**. That top-right "Help" button only ever showed generic, non-store help, so it no longer appears on any screen: the orders list, the product and order editors, settings, and every core WordPress screen. "Screen Options" is left untouched, so you can still choose which columns a list shows.

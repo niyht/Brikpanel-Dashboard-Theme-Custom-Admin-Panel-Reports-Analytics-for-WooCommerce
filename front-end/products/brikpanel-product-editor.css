@@ -515,6 +515,26 @@
 .brikpanel-pe-wc-fields-content .panel,.brikpanel-pe-wc-fields-content .woocommerce_options_panel,.brikpanel-pe-wc-fields-content .brikpanel-pe-wc-panel{display:block!important;padding:0!important}
 /* Hidden WC-shaped tab-nav used only to fire lazy-load handlers (see capture_wc_product_data_fields). */
 .brikpanel-pe-wc-tabsim{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(1px,1px,1px,1px);margin:0!important;padding:0!important;border:0!important}
+/* ============================================================
+   Native-editor scaffold ("datawrap") reset.
+   The card recreates the native ancestor chain
+   #post > #woocommerce-product-data > .inside > .panel-wrap.product_data
+   so third-party DELEGATED handlers (repeater "+ Add", remove-row,
+   sortables) bind and fire. But WooCommerce admin.css scopes its
+   20%-tabs / 80%-panel STRUCTURAL layout under that id — panels get
+   float:left (RTL: float:right) + width:80%, which scatters the group
+   titles around the floats inside our stacked card. Neutralise every
+   structural id-scoped rule; selectors carry the card class + id so
+   they out-rank WC's (id + 1 class) in both LTR and RTL.
+   ============================================================ */
+.brikpanel-pe-wc-fields #woocommerce-product-data .woocommerce_options_panel,
+.brikpanel-pe-wc-fields #woocommerce-product-data .wc-metaboxes-wrapper{float:none!important;width:100%!important}
+.brikpanel-pe-wc-fields #woocommerce-product-data .woocommerce_options_panel .wc-radios,
+.brikpanel-pe-wc-fields #woocommerce-product-data .wc-metaboxes-wrapper .wc-radios{float:none!important}
+.brikpanel-pe-wc-fields #woocommerce-product-data input.dp-applied{float:none!important}
+.brikpanel-pe-wc-fields #woocommerce-product-data .panel-wrap{background:transparent!important;overflow:visible!important;padding:0!important}
+.brikpanel-pe-wc-fields #woocommerce-product-data .inside{margin:0!important;padding:0!important}
+.brikpanel-pe-wc-postsim{display:block}
 
 /* ============================================================
    Stray inline accents from 3rd-party plugins.
@@ -785,11 +805,32 @@
    other way for the status select while tracking is on. */
 .brikpanel-pe-var-table .var-stock:disabled,.brikpanel-pe-var-table .var-stock-status:disabled{background:#f1f1f1;color:var(--pe-text-muted);cursor:not-allowed;opacity:.7}
 
-/* Variation Bulk — single row with Apply at end */
-.brikpanel-pe-var-bulk{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem;padding:.75rem;background:#fafafa;border-radius:var(--pe-radius-sm)}
-.brikpanel-pe-var-bulk-item{display:flex;align-items:center;gap:.5rem}
-.brikpanel-pe-var-bulk-item label{font-size:.75rem;font-weight:500;color:var(--pe-text-secondary);white-space:nowrap}
-.brikpanel-pe-var-bulk #bpe-apply-bulk{margin-left:auto}
+/* Variation tools panel — one quiet gray card, two groups SIDE BY SIDE on a
+   single row (flex-wrap drops the second group below only when space runs out):
+   1) "Apply to all variations" bulk edits: micro-heading, labels ABOVE the
+      inputs (design-system field pattern), Apply on the same input baseline.
+   2) "Default Form Values": vertical-divider-separated group filled by JS —
+      same micro-heading + compact selects. Every control locks to 34px. */
+.brikpanel-pe-var-bulk{display:flex;flex-wrap:wrap;align-items:stretch;gap:.875rem 1.25rem;margin-bottom:1rem;padding:.875rem 1rem 1rem;background:#fafafa;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
+.brikpanel-pe-var-bulk-group{display:flex;flex-direction:column;gap:.625rem}
+.brikpanel-pe-var-bulk-heading{font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--pe-text-muted);white-space:nowrap;cursor:default}
+.brikpanel-pe-var-bulk-fields{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.625rem}
+.brikpanel-pe-var-bulk-item{display:flex;flex-direction:column;gap:.375rem}
+.brikpanel-pe-var-bulk-item label{font-size:.75rem;font-weight:550;color:var(--pe-text-secondary);white-space:nowrap}
+.brikpanel-pe-var-bulk-item .brikpanel-pe-input-group.small{background:var(--pe-card)}
+.brikpanel-pe-var-bulk #bpe-bulk-price,
+.brikpanel-pe-var-bulk #bpe-bulk-sale-price{width:90px}
+/* Every control locks to the input-group's 34px outer height (2rem content +
+   1px borders): the stock input fights WP admin's min-height:40px and the
+   button's natural 32px — mismatched heights break the shared bottom line. */
+.brikpanel-pe-var-bulk #bpe-bulk-stock{width:70px;height:2.125rem;min-height:0}
+.brikpanel-pe-var-bulk #bpe-apply-bulk{height:2.125rem}
+
+/* Default Form Values group — vertical divider on its left; selects match the
+   bulk controls' height/border/radius (override WP's forced select sizing). */
+.brikpanel-pe-var-defaults{flex:1 1 12rem;min-width:0;flex-direction:column;gap:.625rem;border-left:1px solid var(--pe-border);padding-left:1.25rem}
+.brikpanel-pe-var-defaults-row{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:auto}
+.brikpanel-pe-var-defaults .bpe-var-default{width:auto;min-width:0;max-width:180px;height:2.125rem;min-height:0;line-height:normal;padding:0 1.6rem 0 .5rem;font-size:.8125rem;background:var(--pe-card);border-radius:var(--pe-radius-sm);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .5rem center;cursor:pointer}
 
 /* Variation Table */
 .brikpanel-pe-var-table-wrap{overflow-x:auto;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
@@ -945,6 +986,16 @@
 body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe{overflow-x:clip}
 
+/* Tablet band: the editor card narrows (folded/unfolded WP sidebar) below the
+   ~735px the side-by-side variation tools panel needs, so the Default Form
+   Values group would wrap under the bulk group while keeping its now-orphaned
+   vertical divider. Make the wrap deliberate: full-width second row with a
+   horizontal divider. Bulk fields stay on one line (unlike phones). */
+@media screen and (min-width:783px) and (max-width:1180px){
+.brikpanel-pe-var-defaults{flex-basis:100%;border-left:none;padding-left:0;border-top:1px solid var(--pe-border);padding-top:.875rem}
+.brikpanel-pe-var-defaults-row{margin-top:0}
+}
+
 @media screen and (max-width:782px){
 /* Compact two-row sticky header: row 1 = back + product title (left), the
    action cluster wraps onto row 2 (right-aligned). The secondary nav actions
@@ -958,15 +1009,18 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-row{grid-template-columns:1fr}
 .brikpanel-pe-row-3{grid-template-columns:1fr}
 .brikpanel-pe-var-templates{grid-template-columns:1fr}
+/* Stack the whole variation tools panel on narrow phones: groups go vertical
+   (the desktop side-by-side layout with its vertical divider flips to a
+   horizontal one), each label-over-input field and the selects go full width. */
 .brikpanel-pe-var-bulk{flex-direction:column;align-items:stretch}
-/* Stack each bulk-edit control (label over a full-width field) so the nowrap
-   labels and fixed-width inputs can't push past the gray panel on narrow phones. */
-.brikpanel-pe-var-bulk-item{flex-direction:column;align-items:stretch;gap:.25rem}
+.brikpanel-pe-var-bulk-fields{flex-direction:column;align-items:stretch}
 .brikpanel-pe-var-bulk-item label{white-space:normal}
 .brikpanel-pe-var-bulk-item .brikpanel-pe-input-group,
 .brikpanel-pe-var-bulk-item .brikpanel-pe-input,
 .brikpanel-pe-var-bulk-item input{width:100%!important;min-width:0}
-.brikpanel-pe-var-bulk #bpe-apply-bulk{margin-left:0}
+.brikpanel-pe-var-defaults{border-left:none;padding-left:0;border-top:1px solid var(--pe-border);padding-top:.875rem}
+.brikpanel-pe-var-defaults-row{flex-direction:column;align-items:stretch;margin-top:0}
+.brikpanel-pe-var-defaults .bpe-var-default{width:100%;max-width:none}
 .brikpanel-pe-card{padding:1rem}
 .brikpanel-pe-field input[type="text"],.brikpanel-pe-field input[type="number"],.brikpanel-pe-field textarea{font-size:1rem;padding:.75rem}
 .brikpanel-pe-gallery-item{width:70px;height:70px}

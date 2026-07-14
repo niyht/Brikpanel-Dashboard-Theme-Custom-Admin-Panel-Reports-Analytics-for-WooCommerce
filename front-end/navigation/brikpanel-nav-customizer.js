@@ -129,6 +129,7 @@
 		// State sync: read DOM → JSON, write into hidden input.
 		// ---------------------------------------------------------------------
 		const spacingSelect = root.querySelector('[data-navc-spacing]');
+		const sitemgmtLabelInput = root.querySelector('[data-navc-sitemgmt-label]');
 
 		function serialize() {
 			const items = [];
@@ -205,7 +206,8 @@
 			const spacing = spacingSelect && ['compact', 'comfortable', 'spacious'].indexOf(spacingSelect.value) !== -1
 				? spacingSelect.value
 				: 'comfortable';
-			hiddenInput.value = JSON.stringify({ version: 1, items: items, spacing: spacing });
+			const sitemgmtLabel = sitemgmtLabelInput ? sitemgmtLabelInput.value.trim().slice(0, 60) : '';
+			hiddenInput.value = JSON.stringify({ version: 1, items: items, spacing: spacing, sitemgmt_label: sitemgmtLabel });
 		}
 
 		// ---------------------------------------------------------------------
@@ -229,6 +231,12 @@
 		// ---------------------------------------------------------------------
 		// Top-level visibility toggle (system + custom row main switch).
 		// ---------------------------------------------------------------------
+		// Text label field re-serializes on every keystroke so the pending value
+		// is always captured even if the user hits Save without blurring first.
+		if (sitemgmtLabelInput) {
+			sitemgmtLabelInput.addEventListener('input', serialize);
+		}
+
 		root.addEventListener('change', function (e) {
 			const spacerVariant = e.target.closest('[data-navc-spacer-variant]');
 			if (spacerVariant) {
@@ -238,6 +246,10 @@
 				return;
 			}
 			if (e.target.closest('[data-navc-spacing]')) {
+				serialize();
+				return;
+			}
+			if (e.target.closest('[data-navc-sitemgmt-label]')) {
 				serialize();
 				return;
 			}
@@ -382,6 +394,7 @@
 				// as visible, remove custom items, clear icon overrides, restore
 				// submenu visibility.
 				if (spacingSelect) spacingSelect.value = 'comfortable';
+				if (sitemgmtLabelInput) sitemgmtLabelInput.value = '';
 				lists.forEach(function (ul) {
 					ul.querySelectorAll('.brikpanel-navc-item.is-custom, .brikpanel-navc-item.is-spacer').forEach(function (li) { li.parentNode.removeChild(li); });
 					ul.querySelectorAll('.brikpanel-navc-item.is-hidden').forEach(function (li) {

@@ -407,6 +407,14 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 			// Loop through each top-level menu and build HTML.
 			foreach ( $menu as $key => $item ) {
+				// Third-party plugins can leave a non-array (scalar) entry in the
+				// global $menu (e.g. an int/bool at some position). Writing to
+				// $item[0] on a scalar fatals with "Cannot use a scalar value as
+				// an array", so skip anything that isn't a proper menu row.
+				if ( ! is_array( $item ) ) {
+					continue;
+				}
+
 				// Ensure all menu item indices are strings (PHP 8.1+ null deprecation fix)
 				$item[0] = $item[0] ?? '';
 				$item[2] = $item[2] ?? '';
@@ -568,8 +576,13 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		// item the user has placed in the "Site management" section. Defaults
 		// to 'edit.php' (the legacy hardcoded position) when no config exists.
 		$heading = '';
-		if ( ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
-			$heading = $item_slug === $brikpanel_sitemgmt_anchor ? '<span class="brikpanel-menu-heading">' . __('Site management', 'brikpanel') . '<img class="brikpanel-site-management-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">' : '';
+		if ( $item_slug === $brikpanel_sitemgmt_anchor && ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+			// Custom heading label (falls back to the translated default). Fetched
+			// only on the anchor row, never for every menu item.
+			$brikpanel_sitemgmt_label = function_exists( 'brikpanel_nav_config_sitemgmt_label' )
+				? brikpanel_nav_config_sitemgmt_label()
+				: __( 'Site management', 'brikpanel' );
+			$heading = '<span class="brikpanel-menu-heading">' . esc_html( $brikpanel_sitemgmt_label ) . '<img class="brikpanel-site-management-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">';
 		}
 
 		$html .= "
@@ -1140,6 +1153,10 @@ function brikpanel_move_item_after( $array, $item_to_move, $after_item_value ) {
 
 	// Hangi index'lerin taşınacağını bul.
 	foreach ( $array as $index => $inner_array ) {
+		// Skip scalar entries a third-party plugin may have left in $menu.
+		if ( ! is_array( $inner_array ) || ! isset( $inner_array[2] ) ) {
+			continue;
+		}
 		if ( $inner_array[2] === $item_to_move ) {
 			$item_to_move_index = $index;
 			$item_to_move_item  = $inner_array;

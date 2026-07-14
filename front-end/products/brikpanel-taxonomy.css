@@ -21,11 +21,22 @@
 }
 
 /* ---------- Page Layout ---------- */
-body.brikpanel-tax #wpbody-content,
-body.brikpanel-tax #wpbody-content,
+/* WordPress core floats #wpbody-content left, and auto side-margins are
+   ignored on floated elements, so `margin: 0 auto` alone never centers the
+   column. With the native admin menu visible the sidebar masks the gap, but in
+   BrikPanel's topbar-only layout (no left menu, #wpcontent margin-left:0) the
+   column stays pinned to the left and the whole right side is left blank.
+   Drop the float and give #wpbody full width so the auto margins genuinely
+   center the 1200px column in both menu-visible and menu-hidden layouts. */
+body.brikpanel-tax #wpbody {
+    display: block !important;
+    width: 100% !important;
+}
 body.brikpanel-tax #wpbody-content {
+    float: none !important;
     max-width: 1200px;
-    margin: 0 auto;
+    margin-left: auto !important;
+    margin-right: auto !important;
     padding: 0 1rem 2rem;
     /* Without border-box the 1rem side padding is added on top of the full
        content width, pushing the page ~32px past the viewport on phones. */

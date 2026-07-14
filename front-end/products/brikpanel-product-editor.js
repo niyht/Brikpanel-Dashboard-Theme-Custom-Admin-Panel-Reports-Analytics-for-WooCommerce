@@ -9,7 +9,7 @@
     var PE = brikpanelPE || {};
     var productData = window.brikpanelProductData || {};
 
-    var state = { images: [], saving: false, dirty: false, varTemplate: null, varAttributes: [], variations: [], downloads: [], tags: [], linked: { upsells: [], cross_sells: [] }, varCustomStarted: false };
+    var state = { images: [], saving: false, dirty: false, varTemplate: null, varAttributes: [], variations: [], downloads: [], tags: [], linked: { upsells: [], cross_sells: [] }, varCustomStarted: false, defaultAttributes: {} };
 
     function init() {
         bindEvents();
@@ -238,6 +238,15 @@
         $('#bpe-attr-quick-sizecolor').on('click', quickAddSizeColor);
         $('#bpe-generate-vars').on('click', generateVariations);
         $('#bpe-apply-bulk').on('click', applyBulk);
+
+        // Default Form Values selects (delegated — rebuilt on every table render).
+        $('#bpe-var-defaults').on('change', '.bpe-var-default', function () {
+            var key = $(this).attr('data-key');
+            var val = $(this).val();
+            if (val) { state.defaultAttributes[key] = val; }
+            else { delete state.defaultAttributes[key]; }
+            state.dirty = true;
+        });
 
         // Duplicate (delegated so dynamically injected button still works)
         $(document).on('click', '#bpe-duplicate', duplicateProduct);
@@ -1783,9 +1792,14 @@
             if (!availableTerms.length) { $suggestions.hide(); return; }
             var existing = getExistingTags();
             var q = (filter || '').toLowerCase();
+            // Cap the rendered rows so a huge taxonomy (hundreds of terms)
+            // keeps the DOM light, but high enough that a store with ~40
+            // colors shows every option in the scrollable dropdown. The old
+            // cap of 10 hid the rest even while typing a substring, so terms
+            // past the 10th could never be picked.
             var matches = availableTerms.filter(function (t) {
                 return existing.indexOf(t.toLowerCase()) === -1 && (!q || t.toLowerCase().indexOf(q) !== -1);
-            }).slice(0, 10);
+            }).slice(0, 50);
             if (!matches.length) { $suggestions.hide(); return; }
             var html = '';
             matches.forEach(function (t) {
@@ -2279,8 +2293,51 @@
         }
     }
 
+    /* Default Form Values — one dropdown per variation attribute letting the
+       merchant pick which option is pre-selected on the storefront (WC's
+       native _default_attributes). Rebuilt from the live attribute rows so it
+       always tracks the current axes/values; the chosen names are kept in
+       state.defaultAttributes and round-tripped on save. */
+    function renderDefaultFormValues() {
+        var $wrap = $('#bpe-var-defaults');
+        if (!$wrap.length) return;
+        var attrs = collectVariationAttributes();
+        if (!attrs.length) { $wrap.hide().empty(); return; }
+        var i18n = PE.i18n || {};
+
+        // Second group of the variation tools panel: a micro-heading matching
+        // the bulk group's "Apply to all variations", then one self-describing
+        // select per axis ("No default Color…"). The placeholder names the
+        // attribute, so no per-field labels are needed; help rides as tooltip.
+        var $title = $('<span class="brikpanel-pe-var-bulk-heading"></span>').text(i18n.default_form_values || 'Default Form Values');
+        if (i18n.default_form_values_help) { $title.attr('title', i18n.default_form_values_help); }
+
+        var $row = $('<div class="brikpanel-pe-var-defaults-row"></div>');
+        attrs.forEach(function (a) {
+            var key = attrAxisKey(a);
+            var cur = state.defaultAttributes[key] || '';
+            // Drop a stale selection that no longer matches a current value.
+            if (cur && a.values.indexOf(cur) === -1) { cur = ''; delete state.defaultAttributes[key]; }
+
+            var $sel = $('<select class="brikpanel-pe-select bpe-var-default"></select>').attr('data-key', key);
+            var noneLabel = (i18n.no_default_for || 'No default %s…').replace('%s', a.name);
+            $sel.append($('<option value=""></option>').text(noneLabel));
+            a.values.forEach(function (val) {
+                var $opt = $('<option></option>').attr('value', val).text(val);
+                if (val === cur) $opt.prop('selected', true);
+                $sel.append($opt);
+            });
+            $row.append($sel);
+        });
+
+        // Explicit flex (not .show(), which would force display:block and lose
+        // the group's column layout).
+        $wrap.empty().append($title).append($row).css('display', 'flex');
+    }
+
     function renderVarTable() {
         var $tb = $('#bpe-var-table-body').empty(), sep = PE.decimal_sep || ',';
+        renderDefaultFormValues();
         var hasCogs   = productData.cogs_enabled || false;
         var hasGtin   = !!productData.gtin_enabled;
         var hasTax    = !!productData.tax_enabled;
@@ -3024,7 +3081,13 @@
         if (isVar) {
             // Variation attributes come straight from the unified editor's
             // "use for variations" rows so the latest toggles/edits are sent.
-            data.attributes = JSON.stringify(collectVariationAttributes());
+            // Attach each axis's Default Form Values selection (display name,
+            // '' = none) so the server can persist _default_attributes.
+            var varAttrs = collectVariationAttributes();
+            varAttrs.forEach(function (a) {
+                a['default'] = state.defaultAttributes[attrAxisKey(a)] || '';
+            });
+            data.attributes = JSON.stringify(varAttrs);
             var tv = [];
             // Iterate only the main rows — extras rows sit between them and
             // would otherwise shift the idx → state.variations mapping.
@@ -3099,6 +3162,16 @@
             if (r.success) {
                 state.dirty = false;
                 showToast(r.data.message + ' \u2713', 'success');
+                // Surface non-fatal save warnings (e.g. a duplicate SKU/GTIN
+                // that WooCommerce rejected). The product saved, but these
+                // values did not \u2014 show each as a longer-lived error toast so
+                // the merchant knows to pick a unique value instead of assuming
+                // everything persisted. Messages are already localized server-side.
+                if (r.data.warnings && r.data.warnings.length) {
+                    r.data.warnings.forEach(function (w, i) {
+                        setTimeout(function () { showToast(w, 'error', 7000); }, 250 * (i + 1));
+                    });
+                }
                 // Refresh SureRank's SEO analysis so the checks reflect the
                 // just-saved title/description/keyword/content. Deferred so it
                 // reads the product id this handler may set just below.
@@ -3273,6 +3346,14 @@
         }
         if (productData.is_variable && productData.attributes && productData.attributes.length) {
             state.varAttributes = productData.attributes;
+            // Seed the Default Form Values selection map from each variation
+            // attribute's stored default (a display name resolved server-side).
+            state.defaultAttributes = {};
+            productData.attributes.forEach(function (a) {
+                if (a && a['default']) {
+                    state.defaultAttributes[attrAxisKey({ name: a.name, taxonomy: a.taxonomy })] = a['default'];
+                }
+            });
             state.variations = productData.variations || [];
             state.variations.forEach(function (v) {
                 var p = []; Object.keys(v.attributes).forEach(function (k) { p.push(v.attributes[k]); });
@@ -3530,13 +3611,13 @@
     }
 
     /* Toast */
-    function showToast(msg, type) {
+    function showToast(msg, type, duration) {
         var $c = $('#bpe-toast-container');
         if (!$c.length) { $c = $('<div id="bpe-toast-container" class="bpe-toast-container">'); $('body').append($c); }
         var $t = $('<div class="bpe-toast bpe-toast-' + type + '">' + esc(msg) + '</div>');
         $c.append($t);
         requestAnimationFrame(function () { $t.addClass('show'); });
-        setTimeout(function () { $t.removeClass('show'); setTimeout(function () { $t.remove(); }, 300); }, 3500);
+        setTimeout(function () { $t.removeClass('show'); setTimeout(function () { $t.remove(); }, 300); }, duration || 3500);
     }
 
     /* Helpers */

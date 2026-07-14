@@ -428,10 +428,22 @@ function brikpanel_nav_config_save( $config ) {
 	$spacing = isset( $config['spacing'] ) ? (string) $config['spacing'] : 'comfortable';
 	$spacing = in_array( $spacing, [ 'compact', 'comfortable', 'spacious' ], true ) ? $spacing : 'comfortable';
 
+	// Optional custom label for the "Site management" heading. Empty string
+	// means "use the default translated label", so existing installs are
+	// unaffected. Stripped of markup and length-capped to stay a heading.
+	$sitemgmt_label = isset( $config['sitemgmt_label'] ) ? wp_strip_all_tags( (string) $config['sitemgmt_label'] ) : '';
+	$sitemgmt_label = trim( preg_replace( '/\s+/', ' ', $sitemgmt_label ) );
+	if ( $sitemgmt_label !== '' ) {
+		$sitemgmt_label = function_exists( 'mb_substr' )
+			? mb_substr( $sitemgmt_label, 0, 60 )
+			: substr( $sitemgmt_label, 0, 60 );
+	}
+
 	$payload = [
-		'version' => 1,
-		'items'   => $cleaned,
-		'spacing' => $spacing,
+		'version'        => 1,
+		'items'          => $cleaned,
+		'spacing'        => $spacing,
+		'sitemgmt_label' => $sitemgmt_label,
 	];
 	update_option( BRIKPANEL_NAV_CONFIG_OPTION, wp_json_encode( $payload ), false );
 }
@@ -447,6 +459,23 @@ function brikpanel_nav_config_spacing() {
 	$config  = brikpanel_nav_config_get();
 	$spacing = isset( $config['spacing'] ) ? (string) $config['spacing'] : 'comfortable';
 	return in_array( $spacing, [ 'compact', 'comfortable', 'spacious' ], true ) ? $spacing : 'comfortable';
+}
+
+/**
+ * Return the label to render for the "Site management" heading. When the
+ * administrator has set a custom label in the navigation customizer it wins;
+ * otherwise the default translated string is used so untouched installs are
+ * unchanged.
+ *
+ * @return string Ready-to-print heading text (not yet escaped).
+ */
+function brikpanel_nav_config_sitemgmt_label() {
+	$config = brikpanel_nav_config_get();
+	$label  = isset( $config['sitemgmt_label'] ) ? trim( (string) $config['sitemgmt_label'] ) : '';
+	if ( $label !== '' ) {
+		return $label;
+	}
+	return __( 'Site management', 'brikpanel' );
 }
 
 /**
@@ -1224,6 +1253,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 	$icons_url_base   = plugins_url( 'icons/', __FILE__ );
 	$spacing          = brikpanel_nav_config_spacing();
 	$hide_new         = brikpanel_nav_hide_new_items_enabled();
+	$sitemgmt_label   = isset( $config['sitemgmt_label'] ) ? trim( (string) $config['sitemgmt_label'] ) : '';
 
 	// Build slug → submenu list and slug → title maps from the live snapshot
 	// for quick lookup while constructing rows.
@@ -1407,6 +1437,14 @@ function brikpanel_render_nav_customizer_field( $value ) {
 							</select>
 						</label>
 						<span class="brikpanel-navc-control-hint"><?php esc_html_e( 'Sets the vertical gap between every sidebar item.', 'brikpanel' ); ?></span>
+					</div>
+
+					<div class="brikpanel-navc-controls">
+						<label class="brikpanel-navc-control">
+							<span class="brikpanel-navc-control-label"><?php esc_html_e( 'Section heading label', 'brikpanel' ); ?></span>
+							<input type="text" class="brikpanel-navc-input" data-navc-sitemgmt-label maxlength="60" value="<?php echo esc_attr( $sitemgmt_label ); ?>" placeholder="<?php esc_attr_e( 'Site management', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Label for the Site management heading', 'brikpanel' ); ?>">
+						</label>
+						<span class="brikpanel-navc-control-hint"><?php esc_html_e( 'Rename the “Site management” heading that separates your store items from the rest. Leave blank to keep the default.', 'brikpanel' ); ?></span>
 					</div>
 
 					<?php
