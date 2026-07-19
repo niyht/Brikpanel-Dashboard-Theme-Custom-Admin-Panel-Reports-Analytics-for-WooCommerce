@@ -154,10 +154,28 @@ function brikpanel_ea_is_brikpanel_page() {
     return isset( $_GET['page'] ) && 0 === strpos( (string) $_GET['page'], 'brikpanel' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen check.
 }
 
+/**
+ * Waitlist surfaces retire once BrikMentor launches: with the product live
+ * (brikpanel_brikmentor_live flag) they flip into launch CTAs, and with the
+ * BrikMentor plugin installed they disappear entirely. With the flag off and
+ * the plugin absent, the waitlist behaves exactly as it always has.
+ *
+ * @return bool True when the waitlist capture should be suppressed.
+ */
+function brikpanel_ea_waitlist_suppressed() {
+    if ( function_exists( 'brikpanel_brikmentor_installed' ) && brikpanel_brikmentor_installed() ) {
+        return true;
+    }
+    return function_exists( 'brikpanel_brikmentor_is_live' ) && brikpanel_brikmentor_is_live();
+}
+
 /* ── Render the modal ───────────────────────────────────────────────────────── */
 add_action( 'admin_footer', 'brikpanel_ea_render_modal' );
 function brikpanel_ea_render_modal() {
     if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    if ( brikpanel_ea_waitlist_suppressed() ) {
         return;
     }
     // Render the modal when it can be opened. The milestone auto-open is limited
@@ -645,7 +663,17 @@ function brikpanel_ea_ajax_card_dismiss() {
 /* ── Self-serve card on the dashboard (low-friction, always-on entry point) ──── */
 add_action( 'brikpanel_dashboard_after_sections', 'brikpanel_ea_render_card' );
 function brikpanel_ea_render_card() {
-    if ( ! current_user_can( 'manage_options' ) || ! brikpanel_ea_card_available() ) {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    // Launch mode: the waitlist card becomes a "BrikMentor is live" CTA card
+    // (own dismissal flag, so merchants who dismissed the waitlist still hear
+    // about the launch once). Installed → no card at all.
+    if ( function_exists( 'brikpanel_brikmentor_promo_active' ) && brikpanel_brikmentor_promo_active() ) {
+        brikpanel_ea_render_live_card();
+        return;
+    }
+    if ( brikpanel_ea_waitlist_suppressed() || ! brikpanel_ea_card_available() ) {
         return;
     }
     ?>
@@ -697,6 +725,83 @@ function brikpanel_ea_render_card() {
             .brikpanel-ea-card__text { flex-basis: 100%; order: 2; }
         }
     </style>
+    <?php
+}
+
+/* ── Launch-mode dashboard card ("BrikMentor is live", first month $1) ────────── */
+function brikpanel_ea_render_live_card() {
+    if ( get_option( 'brikpanel_bm_live_card_dismissed' ) ) {
+        return;
+    }
+    $nonce        = wp_create_nonce( 'brikpanel_bm_promo_nonce' );
+    $cta_url      = function_exists( 'brikpanel_brikmentor_url' ) ? brikpanel_brikmentor_url() : 'https://brksoft.com/brikmentor';
+    $checkout_url = function_exists( 'brikpanel_brikmentor_checkout_url' ) ? brikpanel_brikmentor_checkout_url() : $cta_url;
+    ?>
+    <div class="brikpanel-ea-card brikpanel-bm-live-card" data-bm-live-card data-nonce="<?php echo esc_attr( $nonce ); ?>">
+        <div class="brikpanel-ea-card__badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" fill="#fff"/></svg>
+        </div>
+        <div class="brikpanel-ea-card__text">
+            <p class="brikpanel-ea-card__title"><?php esc_html_e( 'BrikMentor is live: first month $1', 'brikpanel' ); ?></p>
+            <p class="brikpanel-ea-card__body"><?php esc_html_e( 'The AI assistant and email marketing engine for your store data is out now. Automated cart recovery, win-back and segment campaigns, running inside WooCommerce.', 'brikpanel' ); ?></p>
+        </div>
+        <a class="brikpanel-ea-card__cta brikpanel-bm-checkout" data-bm-checkout href="<?php echo esc_url( $checkout_url ); ?>"><?php esc_html_e( 'Try BrikMentor for $1', 'brikpanel' ); ?></a>
+        <a class="brikpanel-ea-card__learn" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
+        <button type="button" class="brikpanel-ea-card__close" data-bm-live-card-dismiss aria-label="<?php esc_attr_e( 'Dismiss', 'brikpanel' ); ?>">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+    </div>
+    <style>
+        .brikpanel-ea-card {
+            display: flex; align-items: center; gap: 1rem;
+            background: #fff; border: 1px solid #e3e3e3; border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 1rem 1.25rem; margin: 1rem 0 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        .brikpanel-ea-card__badge {
+            flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%;
+            background: #303030; display: flex; align-items: center; justify-content: center;
+        }
+        .brikpanel-ea-card__text { flex: 1 1 auto; min-width: 0; }
+        .brikpanel-ea-card__title { margin: 0 0 0.15rem; padding: 0; font-size: 0.9375rem; font-weight: 600; color: #303030; }
+        .brikpanel-ea-card__body { margin: 0; padding: 0; font-size: 0.8125rem; line-height: 1.45; color: #616161; }
+        .brikpanel-ea-card__cta {
+            flex-shrink: 0; cursor: pointer; border: none; text-decoration: none;
+            background: #303030; color: #fff; font-weight: 550; font-size: 0.8125rem;
+            font-family: inherit; padding: 0.5rem 1rem; border-radius: 0.5rem;
+            box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+            transition: background 0.15s ease;
+        }
+        .brikpanel-ea-card__cta:hover { background: #1a1a1a; color: #fff; }
+        .brikpanel-ea-card__learn { flex-shrink: 0; color: #616161; text-decoration: none; font-size: 0.8125rem; }
+        .brikpanel-ea-card__learn:hover { color: #303030; }
+        .brikpanel-ea-card__close {
+            flex-shrink: 0; width: 26px; height: 26px; border-radius: 0.375rem;
+            background: transparent; border: none; color: #8a8a8a; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; padding: 0;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .brikpanel-ea-card__close:hover { background: #f7f7f7; color: #303030; }
+        @media (max-width: 600px) {
+            .brikpanel-ea-card { flex-wrap: wrap; }
+            .brikpanel-ea-card__text { flex-basis: 100%; order: 2; }
+        }
+    </style>
+    <script>
+    (function () {
+        var card = document.querySelector('[data-bm-live-card]');
+        if (!card) return;
+        var btn = card.querySelector('[data-bm-live-card-dismiss]');
+        btn.addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('action', 'brikpanel_bm_card_dismiss');
+            fd.append('_ajax_nonce', card.getAttribute('data-nonce'));
+            fetch(<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>, { method: 'POST', body: fd, credentials: 'same-origin' });
+            card.parentNode.removeChild(card);
+        });
+    })();
+    </script>
     <?php
 }
 
@@ -861,10 +966,16 @@ function brikpanel_ea_admin_init_flush() {
  */
 add_filter( 'brikpanel_settings_fields', 'brikpanel_ea_settings_field', 999 );
 function brikpanel_ea_settings_field( $fields ) {
+    // Nothing to promote once the BrikMentor plugin itself is on this site.
+    if ( function_exists( 'brikpanel_brikmentor_installed' ) && brikpanel_brikmentor_installed() ) {
+        return $fields;
+    }
+    $live = function_exists( 'brikpanel_brikmentor_is_live' ) && brikpanel_brikmentor_is_live();
+
     $fields[] = array(
         'type'  => 'title',
         'id'    => 'brk_brikmentor_title',
-        'title' => __( 'BrikMentor early access', 'brikpanel' ),
+        'title' => $live ? __( 'BrikMentor', 'brikpanel' ) : __( 'BrikMentor early access', 'brikpanel' ),
     );
     $fields[] = array(
         'type' => 'brikpanel_early_access',
@@ -880,6 +991,35 @@ function brikpanel_ea_settings_field( $fields ) {
 /** Render the early-access settings row (CTA, or a confirmation once joined). */
 add_action( 'woocommerce_admin_field_brikpanel_early_access', 'brikpanel_ea_render_settings_field' );
 function brikpanel_ea_render_settings_field( $field ) {
+    // Launch mode: the waitlist row becomes a plain "it's out now" CTA.
+    if ( function_exists( 'brikpanel_brikmentor_promo_active' ) && brikpanel_brikmentor_promo_active() ) {
+        $cta_url      = brikpanel_brikmentor_url();
+        $checkout_url = function_exists( 'brikpanel_brikmentor_checkout_url' ) ? brikpanel_brikmentor_checkout_url() : $cta_url;
+        ?>
+        <tr valign="top">
+            <th scope="row" class="titledesc">
+                <label><?php esc_html_e( 'BrikMentor is live', 'brikpanel' ); ?></label>
+            </th>
+            <td class="forminp">
+                <p class="brikpanel-ea-settings-desc">
+                    <?php esc_html_e( 'BrikMentor, the AI assistant and email marketing engine for your store data, is out now: automated cart recovery, win-back and segment campaigns inside WooCommerce. First month just $1.', 'brikpanel' ); ?>
+                </p>
+                <a class="button button-primary brikpanel-ea-settings-btn brikpanel-bm-checkout" data-bm-checkout href="<?php echo esc_url( $checkout_url ); ?>">
+                    <?php esc_html_e( 'Try BrikMentor for $1', 'brikpanel' ); ?>
+                </a>
+                <a class="brikpanel-ea-settings-learn" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
+                <style>
+                    .brikpanel-ea-settings-desc { max-width: 640px; color: #616161; margin: 0 0 0.75rem; }
+                    .brikpanel-ea-settings-btn { display: inline-flex; align-items: center; }
+                    .brikpanel-ea-settings-learn { margin-left: 0.75rem; color: #616161; text-decoration: none; font-size: 0.8125rem; }
+                    .brikpanel-ea-settings-learn:hover { color: #303030; }
+                </style>
+            </td>
+        </tr>
+        <?php
+        return;
+    }
+
     $subscribed = (bool) get_option( 'brikpanel_ea_subscribed' );
     ?>
     <tr valign="top">

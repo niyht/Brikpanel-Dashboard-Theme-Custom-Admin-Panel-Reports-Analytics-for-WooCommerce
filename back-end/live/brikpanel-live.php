@@ -4,9 +4,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Seconds after which a visitor with no ping is considered inactive.
-// Ping interval is 30s, so 75s = 2.5x tolerance.
+// Derived from the configurable ping interval (default 30s) with a 2.5x
+// tolerance, and never below the historical 75s so the default behaviour
+// is unchanged for existing installs.
 if ( ! defined( 'BRIKPANEL_VISITOR_TIMEOUT' ) ) {
-    define( 'BRIKPANEL_VISITOR_TIMEOUT', 75 );
+    $brikpanel_live_interval = function_exists( 'brikpanel_live_ping_interval' ) ? brikpanel_live_ping_interval() : 30;
+    define( 'BRIKPANEL_VISITOR_TIMEOUT', max( 75, (int) ceil( $brikpanel_live_interval * 2.5 ) ) );
+    unset( $brikpanel_live_interval );
 }
 
 // Hard cap on the number of visitors stored in the transient. Prevents the
@@ -17,9 +21,13 @@ if ( ! defined( 'BRIKPANEL_VISITOR_MAX' ) ) {
 }
 
 // Minimum seconds between accepted pings from the same visitor. Drops
-// duplicate / spammy pings cheaply before we touch the transient.
+// duplicate / spammy pings cheaply before we touch the transient. Kept
+// comfortably below the ping interval so legitimate pings are never eaten
+// (matters when the merchant lowers the interval to its 10s floor).
 if ( ! defined( 'BRIKPANEL_VISITOR_PING_INTERVAL' ) ) {
-    define( 'BRIKPANEL_VISITOR_PING_INTERVAL', 10 );
+    $brikpanel_live_interval = function_exists( 'brikpanel_live_ping_interval' ) ? brikpanel_live_ping_interval() : 30;
+    define( 'BRIKPANEL_VISITOR_PING_INTERVAL', min( 10, max( 5, $brikpanel_live_interval - 5 ) ) );
+    unset( $brikpanel_live_interval );
 }
 
 /**
@@ -54,21 +62,24 @@ function _brikpanel_get_visitor_id() {
 
 
 /* ----------------------------------------------------------
- * 2) AJAX: Ziyaretçiyi Kaydet VEYA Sil (Frontend)
+ * 2) Ziyaretçiyi Kaydet VEYA Sil (kayıt çekirdeği + legacy AJAX)
  * ---------------------------------------------------------- */
-function brikpanel_track_live_visitor() {
-    // No nonce: this is a public endpoint reachable from any frontend visitor.
-    // We defend against abuse with three cheap checks instead — bot UA filter,
-    // per-visitor rate limit, and a hard cap on the transient size — so a
-    // single host can't fill memory or hammer admin-ajax.
-
-    if ( _brikpanel_is_bot_ua() ) {
-        wp_send_json_success( 'Skipped' );
-    }
-
+/**
+ * Records (or removes) a live visitor in the transient store.
+ *
+ * Core write path shared by the unified tracker endpoint and the legacy
+ * standalone AJAX action (kept for cached storefront pages that still carry
+ * the pre-3.2.20 tracker JS). Callers are expected to have applied the
+ * master-switch and bot-UA guards already.
+ *
+ * @param string $page_url Current page URL as reported by the tracker.
+ * @param bool   $is_exit  True when the visitor's tab reported an exit.
+ * @return string Status keyword: Tracked | Removed | Skipped | Throttled.
+ */
+function brikpanel_record_live_visitor( $page_url, $is_exit = false ) {
     $visitor_id = _brikpanel_get_visitor_id();
     if ( ! $visitor_id ) {
-        wp_send_json_success( 'Skipped' );
+        return 'Skipped';
     }
 
     // Per-visitor rate limit. Use the object cache when available (in-memory,
@@ -77,18 +88,15 @@ function brikpanel_track_live_visitor() {
     $rl_key = 'bp_lv_' . md5( $visitor_id );
     if ( function_exists( 'brikpanel_has_object_cache' ) && brikpanel_has_object_cache() ) {
         if ( wp_cache_get( $rl_key, 'brikpanel_live' ) ) {
-            wp_send_json_success( 'Throttled' );
+            return 'Throttled';
         }
         wp_cache_set( $rl_key, 1, 'brikpanel_live', BRIKPANEL_VISITOR_PING_INTERVAL );
     } else {
         if ( get_transient( $rl_key ) ) {
-            wp_send_json_success( 'Throttled' );
+            return 'Throttled';
         }
         set_transient( $rl_key, 1, BRIKPANEL_VISITOR_PING_INTERVAL );
     }
-
-    $page_url = isset( $_POST['page_url'] ) ? esc_url_raw( wp_unslash( $_POST['page_url'] ) ) : '';
-    $is_exit  = isset( $_POST['is_exit'] ) && $_POST['is_exit'] === 'true';
 
     // Visitor status detection: browsing / cart / order_received
     $visitor_status = 'browsing';
@@ -106,15 +114,19 @@ function brikpanel_track_live_visitor() {
         $visitor_status = 'order_received';
     }
 
-    // Collect customer info if logged in
+    // Collect customer info if logged in — only when the merchant keeps the
+    // "Customer details in Live view" setting on. When off, the visit is
+    // still counted but no personal fields are cached at all (data
+    // minimisation for stores that want a fully anonymous Live view).
     $customer_name  = '';
     $customer_email = '';
     $customer_phone = '';
-    $customer_id    = 0;
 
-    if ( is_user_logged_in() ) {
-        $user = wp_get_current_user();
-        $customer_id = $user->ID;
+    $details_enabled = ! function_exists( 'brikpanel_live_customer_details_enabled' )
+        || brikpanel_live_customer_details_enabled();
+
+    if ( $details_enabled && is_user_logged_in() ) {
+        $user  = wp_get_current_user();
         $first = get_user_meta( $user->ID, 'billing_first_name', true );
         $last  = get_user_meta( $user->ID, 'billing_last_name', true );
         $customer_name = trim( $first . ' ' . $last );
@@ -125,9 +137,20 @@ function brikpanel_track_live_visitor() {
         $customer_phone = get_user_meta( $user->ID, 'billing_phone', true );
     }
 
-    // Real IP address (first 10 chars of hash for privacy, full for admin display)
-    $raw_ip    = $_SERVER['REMOTE_ADDR'] ?? '';
-    $hashed_ip = substr( md5( $raw_ip ), 0, 10 );
+    // Visitor IP, one-way hashed. The raw address is never stored.
+    //
+    // This is a salted SHA-256 (HMAC), not a bare digest: the IPv4 space is
+    // only ~4 billion addresses, so an unsalted hash of an IP is a rainbow
+    // table away from being reversible no matter which algorithm is used. The
+    // per-site salt (wp_salt) is what actually makes it one-way here, since an
+    // attacker would need this site's salt to precompute anything.
+    //
+    // Only the first 10 characters are kept: the value is used purely as a
+    // short, stable per-visitor label in the Live Visitors widget, never
+    // compared against anything, so a longer digest would store more
+    // identifying material for no benefit.
+    $raw_ip    = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+    $hashed_ip = '' === $raw_ip ? '' : substr( hash_hmac( 'sha256', $raw_ip, wp_salt( 'brikpanel_visitor_ip' ) ), 0, 10 );
 
     $visitors = get_transient( 'brikpanel_live_visitors' );
     if ( ! is_array( $visitors ) ) {
@@ -149,7 +172,6 @@ function brikpanel_track_live_visitor() {
             'customer_name'  => $customer_name,
             'customer_email' => $customer_email,
             'customer_phone' => $customer_phone,
-            'customer_id'    => $customer_id,
             'last_active'    => time(),
         ];
     }
@@ -173,7 +195,33 @@ function brikpanel_track_live_visitor() {
 
     set_transient( 'brikpanel_live_visitors', $visitors, 120 );
 
-    wp_send_json_success( $is_exit ? 'Removed' : 'Tracked' );
+    return $is_exit ? 'Removed' : 'Tracked';
+}
+
+/**
+ * Legacy standalone AJAX action (pre-3.2.20 tracker JS).
+ *
+ * New pages ship the unified tracker (single combined request); this action
+ * stays registered because page caches keep serving the old inline JS until
+ * they expire. No nonce: this is a public endpoint reachable from any
+ * frontend visitor — abuse is bounded by the bot UA filter, the per-visitor
+ * rate limit and the hard transient cap inside the record function.
+ */
+function brikpanel_track_live_visitor() {
+    // Master tracking switch. Cached storefront pages keep firing the old JS
+    // until the page cache expires — so the endpoint must refuse too.
+    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+        wp_send_json_success( 'Disabled' );
+    }
+
+    if ( _brikpanel_is_bot_ua() ) {
+        wp_send_json_success( 'Skipped' );
+    }
+
+    $page_url = isset( $_POST['page_url'] ) ? esc_url_raw( wp_unslash( $_POST['page_url'] ) ) : '';
+    $is_exit  = isset( $_POST['is_exit'] ) && $_POST['is_exit'] === 'true';
+
+    wp_send_json_success( brikpanel_record_live_visitor( $page_url, $is_exit ) );
 }
 add_action( 'wp_ajax_nopriv_brikpanel_track_live_visitor', 'brikpanel_track_live_visitor' );
 add_action( 'wp_ajax_brikpanel_track_live_visitor', 'brikpanel_track_live_visitor' );
@@ -208,71 +256,11 @@ add_action( 'wp_ajax_brikpanel_get_live_data', 'brikpanel_get_live_data' );
 
 
 /* ----------------------------------------------------------
- * 4) JS Tracker (Frontend - SendBeacon Eklendi)
+ * 4) Frontend tracker JS
+ * ----------------------------------------------------------
+ * The inline live tracker that used to be printed here moved into the
+ * unified tracker (back-end/tracking/brikpanel-unified-tracker.php) in
+ * 3.2.20: one combined request per page view instead of separate live +
+ * page-view + visitor + product calls, and no per-navigation exit beacon
+ * (visitors now expire via BRIKPANEL_VISITOR_TIMEOUT instead).
  * ---------------------------------------------------------- */
-function brikpanel_live_visitor_tracker_js() {
-    if ( is_admin() ) return;
-    // Skip the tracker for logged-in admins (matches _brikpanel_get_visitor_id)
-    // and for obvious bots — saves the network round-trip entirely.
-    if ( is_user_logged_in() && current_user_can( 'manage_options' ) ) return;
-    if ( _brikpanel_is_bot_ua() ) return;
-    ?>
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            const endpoint = "<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>";
-            
-            // 1. Normal Ping Fonksiyonu (Her 10 saniyede bir)
-            function pingTracker() {
-                const fd = new FormData();
-                fd.append('action', 'brikpanel_track_live_visitor');
-                fd.append('page_url', window.location.href);
-                fd.append('is_exit', 'false');
-
-                fetch(endpoint, {
-                    method: 'POST',
-                    body: fd,
-                    keepalive: true // İstek sayfa kapansa bile devam etmeye çalışsın
-                }).catch(() => {});
-            }
-
-            // 2. Çıkış Sinyali (Sekme kapanınca çalışır)
-            function sendExitSignal() {
-                // FormData ile beacon göndermek bazı tarayıcılarda sorun olabilir, 
-                // bu yüzden URLSearchParams kullanıyoruz.
-                const data = new URLSearchParams();
-                data.append('action', 'brikpanel_track_live_visitor');
-                data.append('page_url', window.location.href);
-                data.append('is_exit', 'true');
-
-                // navigator.sendBeacon: Sayfa kapanırken veri göndermenin en güvenilir yoludur.
-                // Asenkron çalışır ve sayfanın kapanmasını engellemez.
-                if (navigator.sendBeacon) {
-                    navigator.sendBeacon(endpoint, data);
-                } else {
-                    fetch(endpoint, {
-                        method: 'POST',
-                        body: data,
-                        keepalive: true,
-                    }).catch(() => {});
-                }
-            }
-
-            // Sayfa kapatıldığında veya gizlendiğinde (mobil için) tetikle
-            window.addEventListener("pagehide", sendExitSignal);
-            // Mobilde sekme değiştirince visibilitychange daha güvenilirdir
-            document.addEventListener("visibilitychange", function() {
-                if (document.visibilityState === 'hidden') {
-                    // Mobilde arkaplana atılınca da bazen çıkış sayılabilir, 
-                    // ama şimdilik "pagehide" en güvenli "kapanma" sinyalidir.
-                    // Buraya ekleme yapmıyorum, pagehide yeterlidir.
-                }
-            });
-
-            // Başlat
-            pingTracker();
-            setInterval(pingTracker, 30000);
-        });
-    </script>
-    <?php
-}
-add_action( 'wp_footer', 'brikpanel_live_visitor_tracker_js' );

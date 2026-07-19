@@ -313,10 +313,12 @@ class Brikpanel_Products_List {
      * Build the per-row Cost of goods cell payload. Mirrors the cost
      * resolution used by the dashboard profit math so the column never
      * disagrees with Net profit's view of the same product:
-     *   - simple → its own `_brikpanel_cogs` meta
+     *   - simple → its own cost (WC native `_cogs_total_value` first, legacy
+     *     `_brikpanel_cogs` fallback)
      *   - variable → range across variations that have a cost. Variations
      *     with no cost on file inherit the parent's value (WC native COGS
-     *     behaviour); when neither side has a cost the row is blank.
+     *     behaviour), additive variations add theirs on top of the parent's;
+     *     when neither side has a cost the row is blank.
      *
      * Returns a `partial` flag when some variations are missing a cost so
      * the JS can render a quiet inline warning marker without us hard-coding
@@ -343,30 +345,44 @@ class Brikpanel_Products_List {
                 return $blank;
             }
             $placeholders = implode(',', array_fill(0, $total, '%d'));
+            // One round-trip for all three cost keys: native first, legacy
+            // fallback, plus the additive flag (same resolution as the
+            // profit SQL).
             // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT post_id, meta_value FROM {$wpdb->postmeta}
-                     WHERE meta_key = '_brikpanel_cogs' AND post_id IN ($placeholders)",
+                    "SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta}
+                     WHERE meta_key IN ('_cogs_total_value', '_brikpanel_cogs', '_cogs_value_is_additive')
+                       AND post_id IN ($placeholders)",
                     ...$children
                 )
             );
             // phpcs:enable
-            $by_id = [];
+            $native = $legacy = $additive = [];
             foreach ((array) $rows as $r) {
-                $by_id[(int) $r->post_id] = (string) $r->meta_value;
+                $pid = (int) $r->post_id;
+                if ('_cogs_total_value' === $r->meta_key) {
+                    $native[$pid] = (string) $r->meta_value;
+                } elseif ('_brikpanel_cogs' === $r->meta_key) {
+                    $legacy[$pid] = (string) $r->meta_value;
+                } else {
+                    $additive[$pid] = (string) $r->meta_value;
+                }
             }
             // "Set" means the meta row exists. Explicit 0 (free sample, comp
             // item, digital good with no per-unit cost) is a deliberate
             // answer from the merchant, not an absence — count it as set.
-            $parent_meta = (string) get_post_meta($product->get_id(), '_brikpanel_cogs', true);
+            $parent_meta = brikpanel_product_cogs_raw($product->get_id());
             $parent_val  = $parent_meta !== '' ? (float) $parent_meta : null;
 
             $values  = [];
             $missing = 0;
             foreach ($children as $cid) {
-                $raw = $by_id[(int) $cid] ?? '';
-                if ($raw !== '') {
+                $cid = (int) $cid;
+                $raw = ($native[$cid] ?? '') !== '' ? $native[$cid] : ($legacy[$cid] ?? '');
+                if (($additive[$cid] ?? '') === 'yes' && ($raw !== '' || $parent_val !== null)) {
+                    $values[] = (float) $raw + (float) $parent_val;
+                } elseif ($raw !== '') {
                     $values[] = (float) $raw;
                 } elseif ($parent_val !== null) {
                     $values[] = $parent_val;
@@ -389,7 +405,7 @@ class Brikpanel_Products_List {
             ];
         }
 
-        $raw = (string) get_post_meta($product->get_id(), '_brikpanel_cogs', true);
+        $raw = brikpanel_product_cogs_raw($product->get_id());
         if ($raw === '') {
             return $blank;
         }
@@ -1963,7 +1979,7 @@ class Brikpanel_Products_List {
                 'price_html'     => $product->get_price_html(),
                 'sale_display'   => $sale_display_html,
                 'cogs'           => $cogs_payload,
-                'cogs_value'     => (string) get_post_meta($post->ID, '_brikpanel_cogs', true),
+                'cogs_value'     => brikpanel_product_cogs_raw($post->ID),
                 'stock'          => $stock_qty,
                 'stock_status'   => $product->get_stock_status(),
                 'manage_stock'   => $stock_info['manage_stock'],
@@ -2439,7 +2455,7 @@ class Brikpanel_Products_List {
                 'sale_price'      => $product->get_sale_price(),
                 'price_html'      => $product->get_price_html(),
                 'cogs'            => self::compute_cogs_display($product),
-                'cogs_value'      => (string) get_post_meta($product_id, '_brikpanel_cogs', true),
+                'cogs_value'      => brikpanel_product_cogs_raw($product_id),
                 'stock'           => $stock_info_qe['qty'],
                 'stock_status'    => $product->get_stock_status(),
                 'manage_stock'    => $stock_info_qe['manage_stock'],
@@ -3666,14 +3682,13 @@ class Brikpanel_Products_List {
                 'manage_stock'  => $v->get_manage_stock(),
                 'sale_from'     => $v->get_date_on_sale_from() ? $v->get_date_on_sale_from()->date('Y-m-d') : '',
                 'sale_to'       => $v->get_date_on_sale_to()   ? $v->get_date_on_sale_to()->date('Y-m-d')   : '',
-                // Always emit as a JSON string. WC's get_cogs_value() returns
-                // a float (e.g. 0.0 for a saved zero cost); without the cast
-                // the JSON ends up `cogs_value: 0` and the drawer's input
-                // populator collapses falsy numbers to empty, which made a
-                // saved "0" cost look unsaved on reopen.
-                'cogs_value'    => (string) (method_exists($v, 'get_cogs_value')
-                    ? ($v->get_cogs_value() ?? get_post_meta($v->get_id(), '_brikpanel_cogs', true))
-                    : get_post_meta($v->get_id(), '_brikpanel_cogs', true)),
+                // Always emit as a JSON string (a bare 0 would be collapsed
+                // to empty by the drawer's input populator, making a saved
+                // "0" cost look unsaved on reopen). Raw meta read: native
+                // `_cogs_total_value` first, legacy fallback — unlike WC's
+                // get_cogs_value() it keeps working when the WC COGS
+                // feature flag is off.
+                'cogs_value'    => brikpanel_product_cogs_raw($v->get_id()),
             ];
         }
 

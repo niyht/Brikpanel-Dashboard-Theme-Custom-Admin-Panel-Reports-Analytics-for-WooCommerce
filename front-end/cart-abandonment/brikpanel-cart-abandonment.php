@@ -120,10 +120,10 @@ class Brikpanel_Cart_Abandonment {
 			$v = get_option( $key, false );
 			return ( $v === false || $v === '' ) ? $default : (string) $v;
 		};
-		$message = get_option( 'brikpanel_cartab_popup_message', false );
-		if ( $message === false ) {
-			$message = __( 'Subscribe to get special offers and updates.', 'brikpanel' );
-		}
+		$message = $text(
+			'brikpanel_cartab_popup_message',
+			__( 'Subscribe to get special offers and updates.', 'brikpanel' )
+		);
 		$discount = self::popup_discount();
 		if ( $discount > 0 ) {
 			/* translators: %d: discount percentage */
@@ -1051,6 +1051,39 @@ class Brikpanel_Cart_Abandonment {
 		return implode( '; ', $parts );
 	}
 
+	/**
+	 * Format a currency => amount map into a single plain-text money string.
+	 * Multi-currency stores get every currency listed ("$1,240.00 + €310.00")
+	 * because cart totals are stored as captured and must not be added across
+	 * currencies. Entities are decoded so JS can drop the string into
+	 * textContent without showing "&#36;".
+	 *
+	 * @param array<string,float> $totals
+	 * @return string
+	 */
+	private static function format_amounts( array $totals ) {
+		$totals = array_filter( $totals, static function ( $amount ) {
+			return (float) $amount > 0;
+		} );
+		if ( ! $totals ) {
+			return html_entity_decode(
+				wp_strip_all_tags( wc_price( 0 ) ),
+				ENT_QUOTES,
+				'UTF-8'
+			);
+		}
+		arsort( $totals );
+		$parts = [];
+		foreach ( $totals as $currency => $amount ) {
+			$parts[] = html_entity_decode(
+				wp_strip_all_tags( wc_price( (float) $amount, [ 'currency' => $currency ] ) ),
+				ENT_QUOTES,
+				'UTF-8'
+			);
+		}
+		return implode( ' + ', $parts );
+	}
+
 	// =========================================================================
 	// Admin page
 	// =========================================================================
@@ -1142,18 +1175,34 @@ class Brikpanel_Cart_Abandonment {
 				<div class="brikpanel-cartab-summary-card">
 					<div class="brikpanel-cartab-summary-label"><?php esc_html_e( 'Emails collected', 'brikpanel' ); ?></div>
 					<div class="brikpanel-cartab-summary-value" id="brikpanel-cartab-stat-total">—</div>
+					<div class="brikpanel-cartab-summary-meta">
+						<span class="brikpanel-cartab-summary-meta-label"><?php esc_html_e( 'Total cart value', 'brikpanel' ); ?></span>
+						<span class="brikpanel-cartab-summary-meta-value" id="brikpanel-cartab-amount-total">—</span>
+					</div>
 				</div>
 				<div class="brikpanel-cartab-summary-card">
 					<div class="brikpanel-cartab-summary-label"><?php esc_html_e( 'Active carts', 'brikpanel' ); ?></div>
 					<div class="brikpanel-cartab-summary-value" id="brikpanel-cartab-stat-active">—</div>
+					<div class="brikpanel-cartab-summary-meta">
+						<span class="brikpanel-cartab-summary-meta-label"><?php esc_html_e( 'Value in cart', 'brikpanel' ); ?></span>
+						<span class="brikpanel-cartab-summary-meta-value" id="brikpanel-cartab-amount-active">—</span>
+					</div>
 				</div>
 				<div class="brikpanel-cartab-summary-card">
 					<div class="brikpanel-cartab-summary-label"><?php esc_html_e( 'Abandoned', 'brikpanel' ); ?></div>
 					<div class="brikpanel-cartab-summary-value" id="brikpanel-cartab-stat-abandoned">—</div>
+					<div class="brikpanel-cartab-summary-meta">
+						<span class="brikpanel-cartab-summary-meta-label"><?php esc_html_e( 'Recoverable value', 'brikpanel' ); ?></span>
+						<span class="brikpanel-cartab-summary-meta-value" id="brikpanel-cartab-amount-abandoned">—</span>
+					</div>
 				</div>
 				<div class="brikpanel-cartab-summary-card">
 					<div class="brikpanel-cartab-summary-label"><?php esc_html_e( 'Recovered', 'brikpanel' ); ?></div>
 					<div class="brikpanel-cartab-summary-value" id="brikpanel-cartab-stat-recovered">—</div>
+					<div class="brikpanel-cartab-summary-meta">
+						<span class="brikpanel-cartab-summary-meta-label"><?php esc_html_e( 'Recovered value', 'brikpanel' ); ?></span>
+						<span class="brikpanel-cartab-summary-meta-value" id="brikpanel-cartab-amount-recovered">—</span>
+					</div>
 				</div>
 			</div>
 
@@ -1314,23 +1363,47 @@ class Brikpanel_Cart_Abandonment {
 			$items[] = $row;
 		}
 
-		// Status breakdown for the stat cards (unfiltered, whole table).
+		// Status breakdown + cart value per status for the stat cards
+		// (unfiltered, whole table). Cart totals are stored in the currency
+		// that was active when the cart was captured, so they are summed per
+		// currency and rendered side by side instead of blindly added up.
 		global $wpdb;
-		$table  = self::table();
-		$counts = [ 'total' => 0, 'active' => 0, 'abandoned' => 0, 'recovered' => 0 ];
-		foreach ( $wpdb->get_results( "SELECT status, COUNT(*) AS c FROM {$table} GROUP BY status" ) as $r ) { // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			if ( isset( $counts[ $r->status ] ) ) {
-				$counts[ $r->status ] = (int) $r->c;
+		$table   = self::table();
+		$counts  = [ 'total' => 0, 'active' => 0, 'abandoned' => 0, 'recovered' => 0 ];
+		$by_curr = [ 'total' => [], 'active' => [], 'abandoned' => [], 'recovered' => [] ];
+		$rows    = $wpdb->get_results( "SELECT status, currency, COUNT(*) AS c, SUM(cart_total) AS amount FROM {$table} GROUP BY status, currency" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		foreach ( $rows as $r ) {
+			$status = (string) $r->status;
+			if ( isset( $counts[ $status ] ) ) {
+				$counts[ $status ] += (int) $r->c;
 			}
 			$counts['total'] += (int) $r->c;
+
+			$currency = $r->currency ? (string) $r->currency : get_woocommerce_currency();
+			$amount   = (float) $r->amount;
+			foreach ( [ $status, 'total' ] as $bucket ) {
+				if ( ! isset( $by_curr[ $bucket ] ) ) {
+					continue;
+				}
+				if ( ! isset( $by_curr[ $bucket ][ $currency ] ) ) {
+					$by_curr[ $bucket ][ $currency ] = 0.0;
+				}
+				$by_curr[ $bucket ][ $currency ] += $amount;
+			}
+		}
+
+		$amounts = [];
+		foreach ( $by_curr as $status => $totals ) {
+			$amounts[ $status ] = self::format_amounts( $totals );
 		}
 
 		wp_send_json_success( [
-			'items'  => $items,
-			'total'  => (int) $result['total'],
-			'page'   => $page,
-			'pages'  => max( 1, (int) ceil( $result['total'] / $per_page ) ),
-			'counts' => $counts,
+			'items'   => $items,
+			'total'   => (int) $result['total'],
+			'page'    => $page,
+			'pages'   => max( 1, (int) ceil( $result['total'] / $per_page ) ),
+			'counts'  => $counts,
+			'amounts' => $amounts,
 		] );
 	}
 

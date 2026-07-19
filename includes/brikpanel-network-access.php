@@ -211,6 +211,16 @@ function brikpanel_network_access_register_page() {
     if ( ! is_multisite() ) {
         return;
     }
+    // The whole access-rules module only takes effect while BrikPanel is
+    // network-activated (every gate returns true otherwise) — with the
+    // plugin now also installable per-site, hide the page in that mode so
+    // the super admin never edits rules that silently do nothing.
+    if ( ! function_exists( 'is_plugin_active_for_network' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+    if ( defined( 'BRIKPANEL_BASENAME' ) && ! is_plugin_active_for_network( BRIKPANEL_BASENAME ) ) {
+        return;
+    }
     add_submenu_page(
         'settings.php',
         __( 'BrikPanel Access Rules', 'brikpanel' ),

@@ -1140,6 +1140,14 @@ class Brikpanel_Product_Editor {
                                             <label for="bpe-bulk-stock"><?php esc_html_e('Stock', 'brikpanel'); ?></label>
                                             <input type="number" id="bpe-bulk-stock" class="brikpanel-pe-input small" min="0">
                                         </div>
+                                        <div class="brikpanel-pe-var-bulk-item">
+                                            <label for="bpe-bulk-active"><?php esc_html_e('Active', 'brikpanel'); ?></label>
+                                            <select id="bpe-bulk-active" class="brikpanel-pe-select small">
+                                                <option value=""><?php esc_html_e('No change', 'brikpanel'); ?></option>
+                                                <option value="1"><?php esc_html_e('Set active', 'brikpanel'); ?></option>
+                                                <option value="0"><?php esc_html_e('Set inactive', 'brikpanel'); ?></option>
+                                            </select>
+                                        </div>
                                         <button type="button" class="brikpanel-pe-btn primary small" id="bpe-apply-bulk"><?php esc_html_e('Apply', 'brikpanel'); ?></button>
                                     </div>
                                 </div>
@@ -4289,6 +4297,13 @@ class Brikpanel_Product_Editor {
 
                 $variations_data[] = [
                     'id'             => $variation->get_id(),
+                    // WC stores the "Active/Enabled" state as the variation's
+                    // post_status: 'publish' = active (purchasable, shown in
+                    // store), anything else ('private'/'draft') = disabled. We
+                    // mirror WC's own checkbox, which is checked only for
+                    // 'publish', so a variation left inactive by an import or a
+                    // third-party plugin shows up here honestly as "off".
+                    'enabled'        => ($variation->get_status() === 'publish'),
                     'attributes'     => $var_attrs,
                     'regular_price'  => $variation->get_regular_price(),
                     'sale_price'     => $variation->get_sale_price(),
@@ -4302,7 +4317,7 @@ class Brikpanel_Product_Editor {
                     'tax_class'      => (string) $variation->get_tax_class('edit'),
                     'shipping_class' => $var_ship_class,
                     'images'         => $var_images,
-                    'cogs_value'     => method_exists($variation, 'get_cogs_value') ? ($variation->get_cogs_value() ?? get_post_meta($variation->get_id(), '_brikpanel_cogs', true)) : get_post_meta($variation->get_id(), '_brikpanel_cogs', true),
+                    'cogs_value'     => brikpanel_product_cogs_raw($variation->get_id()),
                     'stock_status'   => $variation->get_stock_status() ?: 'instock',
                     // WC stores three backorder values: no / yes / notify.
                     // Pass the raw value so the editor can roundtrip it
@@ -4584,7 +4599,7 @@ class Brikpanel_Product_Editor {
             // Same as variations — keep the raw `no/yes/notify` so the
             // editor's optional "Notify customer" radio survives a save.
             'backorders'        => $product->get_backorders() ?: 'no',
-            'cogs_value'        => method_exists($product, 'get_cogs_value') ? ($product->get_cogs_value() ?? get_post_meta($product->get_id(), '_brikpanel_cogs', true)) : get_post_meta($product->get_id(), '_brikpanel_cogs', true),
+            'cogs_value'        => brikpanel_product_cogs_raw($product->get_id()),
             'sale_from'         => $product->get_date_on_sale_from() ? $product->get_date_on_sale_from()->date('Y-m-d') : '',
             'sale_to'           => $product->get_date_on_sale_to()   ? $product->get_date_on_sale_to()->date('Y-m-d')   : '',
             'post_password'     => get_post_field('post_password', $product->get_id()),
@@ -6196,6 +6211,21 @@ class Brikpanel_Product_Editor {
             }
             $variation->set_attributes($var_attrs);
 
+            // "Active" toggle → WC's per-variation enabled state, stored as the
+            // variation post_status ('publish' = active, 'private' = disabled/
+            // hidden from the store). BrikPanel historically never wrote this,
+            // relying on WC's default. Two problems flowed from that: (1) a
+            // variation disabled anywhere else — classic editor, a CSV import,
+            // or a third-party plugin filtering woocommerce_new_product_variation_data
+            // to 'draft' — could never be reactivated from this dashboard; and
+            // (2) such plugins made new variations inactive by default. Writing
+            // the status explicitly makes BrikPanel authoritative: it overrides
+            // any foreign default and guarantees variations are Active unless
+            // the merchant deliberately turns one off. A missing key (older
+            // client) is treated as active — the safe, non-destructive default.
+            $var_enabled = !array_key_exists('enabled', $var_data) || !empty($var_data['enabled']);
+            $variation->set_status($var_enabled ? 'publish' : 'private');
+
             // Price
             $var_price = isset($var_data['regular_price']) ? wc_format_decimal(sanitize_text_field($var_data['regular_price'])) : '';
             $variation->set_regular_price($var_price);
@@ -6348,6 +6378,22 @@ class Brikpanel_Product_Editor {
             $variation->set_image_id(!empty($var_image_ids) ? $var_image_ids[0] : 0);
 
             $variation->save();
+
+            // Enforce the intended Active state at the DB level. WC runs a new
+            // variation's post_status through the woocommerce_new_product_variation_data
+            // filter on insert, which some third-party plugins hook to force new
+            // variations to 'draft' — the exact cause of variations landing
+            // "inactive by default". set_status() loses that race on the first
+            // insert (the object reports 'publish' while the row is 'draft'), so
+            // reconcile against the stored status and correct only on mismatch.
+            // This keeps it a no-op in the normal case and never fires an extra
+            // write unless a foreign default actually diverged from the toggle.
+            $desired_var_status = $var_enabled ? 'publish' : 'private';
+            $saved_var_id = $variation->get_id();
+            if ($saved_var_id && get_post_status($saved_var_id) !== $desired_var_status) {
+                wp_update_post(['ID' => $saved_var_id, 'post_status' => $desired_var_status]);
+                clean_post_cache($saved_var_id);
+            }
 
             // Gallery meta must be written after save() so new variations have a real ID.
             // When the variation gallery toggle is off, leave the meta untouched so any

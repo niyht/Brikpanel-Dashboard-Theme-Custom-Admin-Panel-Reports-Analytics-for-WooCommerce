@@ -6,6 +6,10 @@ if (!defined('ABSPATH')) { exit; }
  * Not: Veriler Yerel Zaman (Local Time) olarak kaydediliyor.
  */
 function brikpanel_track_cart_addition( $cart_item_key, $product_id ) {
+    // Master tracking switch.
+    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+        return;
+    }
     if ( brikpanel_is_admin_user() ) {
         return;
     }

@@ -247,6 +247,18 @@ function brikpanel_status_email_on_status_changed( $order_id, $from, $to, $order
 		return;
 	}
 
+	// A single status change can reach this worker twice in one request: once
+	// from the resilient save-lifecycle path (brikpanel_status_email_after_save)
+	// and once from WooCommerce's native `woocommerce_order_status_changed`
+	// action. Deliver each transition only once. Keyed per request; a genuine
+	// re-transition in a later request starts with a fresh (empty) map.
+	static $handled = [];
+	$dedupe_key = $order_id . '|' . sanitize_key( (string) $from ) . '|' . $to;
+	if ( isset( $handled[ $dedupe_key ] ) ) {
+		return;
+	}
+	$handled[ $dedupe_key ] = true;
+
 	/**
 	 * Last-chance gate to skip a status-change email for a specific order.
 	 *
@@ -259,6 +271,20 @@ function brikpanel_status_email_on_status_changed( $order_id, $from, $to, $order
 	}
 
 	try {
+		// WooCommerce lazy-loads its email framework: WC_Email lives in
+		// includes/emails/, which WC's autoloader does not cover, and the class
+		// is only included when WC_Emails (the mailer) instantiates. WC only
+		// instantiates the mailer when one of its own transactional email
+		// actions fires — and transitions into CUSTOM statuses match none of
+		// them. On a lean site nothing else loads the mailer either, so without
+		// this boot `new WC_Email()` below throws "class not found", the catch
+		// swallows it, and the email silently never sends. Booting the mailer
+		// also attaches WooCommerce's email header/footer/styling hooks, so the
+		// rendered message carries the store's full email branding.
+		if ( function_exists( 'WC' ) && is_callable( [ WC(), 'mailer' ] ) ) {
+			WC()->mailer();
+		}
+
 		$cfg      = $configs[ $to ];
 		$defaults = brikpanel_status_email_defaults();
 
@@ -310,6 +336,131 @@ function brikpanel_status_email_on_status_changed( $order_id, $from, $to, $order
 	}
 }
 add_action( 'woocommerce_order_status_changed', 'brikpanel_status_email_on_status_changed', 10, 4 );
+
+// -----------------------------------------------------------------------------
+// Resilient delivery via the order save lifecycle.
+//
+// WooCommerce fires `woocommerce_order_status_' . $to`, `..._$from_to_$to` and
+// finally `woocommerce_order_status_changed` inside ONE try/catch in
+// WC_Order::status_transition(). If any earlier callback (a third-party plugin
+// hooking a `woocommerce_order_status_*` action) throws, WooCommerce swallows
+// the exception and the trailing `woocommerce_order_status_changed` action —
+// the only one the sender above listens to — never runs. The status still
+// changes, so the merchant sees the move but no email is sent and nothing
+// reaches the mail log. This is a common symptom when migrating from another
+// custom-status plugin whose hooks are still present.
+//
+// `woocommerce_before/after_order_object_save` run OUTSIDE that transition
+// try/catch (the transition happens after WC_Order::save() calls parent::save()),
+// so this path delivers the email even when the native action is blocked. It is
+// de-duplicated with the native hook by the static guard in the worker above, so
+// a normal (conflict-free) transition still sends exactly one email.
+
+/**
+ * Per-order stash for the order's persisted status captured just before a save,
+ * so the after-save handler can tell a real transition from an ordinary re-save.
+ *
+ * @param int         $order_id Order ID.
+ * @param string|null $value    Value to store (null to read).
+ * @param bool        $pop      Read and remove.
+ * @return string|null
+ */
+function brikpanel_status_email_prev_status( $order_id, $value = null, $pop = false ) {
+	static $store = [];
+	$order_id = (int) $order_id;
+	if ( $pop ) {
+		$prev = isset( $store[ $order_id ] ) ? $store[ $order_id ] : null;
+		unset( $store[ $order_id ] );
+		return $prev;
+	}
+	if ( null !== $value ) {
+		$store[ $order_id ] = (string) $value;
+		return $store[ $order_id ];
+	}
+	return isset( $store[ $order_id ] ) ? $store[ $order_id ] : null;
+}
+
+/**
+ * Read an order's currently persisted status (bare slug, no `wc-`) straight from
+ * storage, honouring HPOS or the legacy post table. Called at most once per save
+ * and only when the order is being moved into a status that has an email enabled.
+ *
+ * @param int $order_id Order ID.
+ * @return string Bare status slug, or '' if unknown.
+ */
+function brikpanel_status_email_persisted_status( $order_id ) {
+	$order_id = (int) $order_id;
+	if ( $order_id <= 0 ) {
+		return '';
+	}
+
+	$status = '';
+	if ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
+		&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+		global $wpdb;
+		$table  = $wpdb->prefix . 'wc_orders';
+		$status = $wpdb->get_var( $wpdb->prepare( "SELECT status FROM {$table} WHERE id = %d", $order_id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	} else {
+		$status = get_post_status( $order_id );
+	}
+
+	$status = (string) $status;
+	if ( '' === $status ) {
+		return '';
+	}
+	return 0 === strpos( $status, 'wc-' ) ? substr( $status, 3 ) : $status;
+}
+
+/**
+ * Before an order is written, if it is moving into a status that has an email
+ * enabled, remember the status still in storage so the after-save handler can
+ * confirm a real transition. Cheap for everyone else: stores with no enabled
+ * status emails, or saves that do not enter an enabled status, return at once
+ * without touching the database.
+ *
+ * @param WC_Order $order Order about to be saved.
+ */
+function brikpanel_status_email_capture_prev_status( $order ) {
+	if ( ! $order instanceof WC_Order ) {
+		return;
+	}
+	$to      = $order->get_status();
+	$configs = brikpanel_get_status_emails();
+	if ( empty( $configs[ $to ] ) || empty( $configs[ $to ]['enabled'] ) ) {
+		return;
+	}
+	$order_id = $order->get_id();
+	if ( ! $order_id ) {
+		return; // Brand-new order (no prior status): parity with the native hook.
+	}
+	brikpanel_status_email_prev_status( $order_id, brikpanel_status_email_persisted_status( $order_id ) );
+}
+add_action( 'woocommerce_before_order_object_save', 'brikpanel_status_email_capture_prev_status', 1 );
+
+/**
+ * After an order is written, if we stashed a prior status for it and the order
+ * actually moved to a different status, deliver the email. Runs before the
+ * status-transition actions fire, so it is immune to a third-party callback that
+ * throws inside `woocommerce_order_status_*` and blocks the native hook.
+ *
+ * @param WC_Order $order Order that was saved.
+ */
+function brikpanel_status_email_after_save( $order ) {
+	if ( ! $order instanceof WC_Order ) {
+		return;
+	}
+	$order_id = $order->get_id();
+	$from     = brikpanel_status_email_prev_status( $order_id, null, true );
+	if ( null === $from ) {
+		return; // Not a save we flagged (order did not enter an enabled status).
+	}
+	$to = $order->get_status();
+	if ( '' === $from || $from === $to ) {
+		return; // No real transition.
+	}
+	brikpanel_status_email_on_status_changed( $order_id, $from, $to, $order );
+}
+add_action( 'woocommerce_after_order_object_save', 'brikpanel_status_email_after_save', 1 );
 
 // =============================================================================
 // SETTINGS SCREEN — per-status email configuration UI.

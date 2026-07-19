@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.2.12
+ * Version: 3.2.20
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -11,7 +11,6 @@
  * WC requires at least: 4.0
  * WC tested up to: 9.4
  * Requires PHP: 7.4
- * Network: true
  * License: GPL-2.0+
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
 **/
@@ -23,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.2.12');
+define('BRIKPANEL_VERSION', '3.2.20');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -209,6 +208,10 @@ function brikpanel_init_admin() {
     require_once BRIKPANEL_PATH . 'front-end/navigation/brikpanel-nav-customizer.php';
     require_once BRIKPANEL_PATH . 'front-end/search/brikpanel-search.php';
     require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-orders.php';
+    // BrikMentor installer bridge (settings section + license-gated install).
+    require_once BRIKPANEL_PATH . 'front-end/brikmentor/brikpanel-brikmentor-installer.php';
+    // BrikMentor zero-paste magic purchase flow (claim + poll + auto-install).
+    require_once BRIKPANEL_PATH . 'front-end/brikmentor/brikpanel-brikmentor-magic.php';
     require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-order-whatsapp.php';
     require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-orders-stats.php';
     require_once BRIKPANEL_PATH . 'front-end/currency/brikpanel-currency-settings.php';
@@ -556,6 +559,7 @@ function brikpanel_init_other() {
     require_once BRIKPANEL_PATH . 'back-end/most-count/most-sale/brikpanel-most-sale.php';
     require_once BRIKPANEL_PATH . 'back-end/most-count/most-view/brikpanel-most-view.php';
     require_once BRIKPANEL_PATH . 'back-end/live/brikpanel-live.php';
+    require_once BRIKPANEL_PATH . 'back-end/tracking/brikpanel-unified-tracker.php';
 }
 add_action('init', 'brikpanel_init_other');
 
@@ -611,6 +615,12 @@ require_once BRIKPANEL_PATH . 'includes/brikpanel-review-notices.php';
 // BRIKMENTOR EARLY-ACCESS CAPTURE (100 / 200 completed orders)
 // =============================================================================
 require_once BRIKPANEL_PATH . 'includes/brikpanel-early-access.php';
+
+// =============================================================================
+// BRIKMENTOR LAUNCH SURFACES (behind the brikpanel_brikmentor_live flag,
+// default off; also flips the early-access waitlist into launch CTAs)
+// =============================================================================
+require_once BRIKPANEL_PATH . 'includes/brikpanel-brikmentor-promo.php';
 
 // =============================================================================
 // CRON / BACKGROUND JOBS (Action Scheduler wrapper + admin page)
@@ -963,6 +973,13 @@ function brikpanel_provision_site() {
 
     brikpanel_create_table();
     brikpanel_enable_cogs_default();
+    // Stores that already had WooCommerce's native Cost of Goods populated
+    // before installing BrikPanel need the catch-up pass here too: stamping
+    // db_version below makes brikpanel_maybe_upgrade_db() return early on
+    // every later request, so activation is the only place a fresh install
+    // would ever reach the backfill.
+    brikpanel_backfill_native_cogs();
+    brikpanel_unify_cogs_to_native();
     update_option('brikpanel_db_version', BRIKPANEL_VERSION);
 
     // Fresh installs start with a clean status list: pre-set the one-time
@@ -1083,6 +1100,27 @@ add_filter('wpmu_drop_tables', 'brikpanel_drop_subsite_tables', 10, 2);
 add_action('plugins_loaded', 'brikpanel_enable_cogs_default', 20);
 
 /**
+ * Safety net for the native COGS backfill. The version-transition path in
+ * brikpanel_maybe_upgrade_db() is skipped whenever brikpanel_db_version
+ * already equals the current version — which is exactly the state a fresh
+ * install lands in, and the state of any site whose activation predates the
+ * provisioning call above. Those stores show Cost of Goods £0.00 even though
+ * WooCommerce's own `_cogs_total_value` is populated on hundreds of products.
+ *
+ * Gating on the one-shot marker option (rather than the version transition)
+ * makes this run exactly once per site, whatever route brought it here.
+ * Admin-only so no front-end request ever pays for the guard or the pass.
+ */
+function brikpanel_backfill_native_cogs_safety_net() {
+    if (!is_admin() || wp_doing_ajax()) {
+        return;
+    }
+    brikpanel_backfill_native_cogs();
+    brikpanel_unify_cogs_to_native();
+}
+add_action('plugins_loaded', 'brikpanel_backfill_native_cogs_safety_net', 20);
+
+/**
  * Run table creation on plugin upgrade so existing installs pick up new
  * tables without requiring a manual deactivate/reactivate. dbDelta is
  * idempotent — re-running on every version bump only emits ALTERs when
@@ -1099,6 +1137,7 @@ function brikpanel_maybe_upgrade_db() {
     }
     brikpanel_create_table();
     brikpanel_backfill_native_cogs();
+    brikpanel_unify_cogs_to_native();
     update_option('brikpanel_db_version', BRIKPANEL_VERSION);
 
     // Trigger an immediate first computation of customer metrics + cohort
@@ -1188,6 +1227,87 @@ function brikpanel_backfill_native_cogs() {
     update_option( 'brikpanel_native_cogs_backfilled', 'yes', false );
 }
 
+/**
+ * One-time unification (reverse direction of the backfill above): copy costs
+ * that only exist on BrikPanel's legacy `_brikpanel_cogs` meta into
+ * WooCommerce's native `_cogs_total_value`.
+ *
+ * WooCommerce's native field is the source of truth for every cost read
+ * (dashboard profit, product list, Sheets, Quick Edit) with the legacy key as
+ * fallback. Costs saved by older BrikPanel versions while the WC COGS feature
+ * was unavailable or off exist only on the legacy key; this pass promotes
+ * them so native-first reads — and any other plugin reading WC's field — see
+ * the complete picture. Rows where native already has a value are never
+ * touched (native wins by definition), so re-running is always safe; the
+ * marker option just avoids paying for the no-op query on every request.
+ */
+function brikpanel_unify_cogs_to_native() {
+    if ( get_option( 'brikpanel_cogs_unified_native' ) === 'yes' ) {
+        return;
+    }
+
+    global $wpdb;
+
+    $target_ids = $wpdb->get_col(
+        "SELECT bp.post_id
+         FROM {$wpdb->postmeta} bp
+         INNER JOIN {$wpdb->posts} p
+                 ON p.ID = bp.post_id
+                AND p.post_type IN ('product', 'product_variation')
+         LEFT JOIN {$wpdb->postmeta} wc
+                ON wc.post_id = bp.post_id
+               AND wc.meta_key = '_cogs_total_value'
+         WHERE bp.meta_key = '_brikpanel_cogs'
+           AND bp.meta_value <> ''
+           AND (wc.meta_id IS NULL OR wc.meta_value = '')"
+    );
+
+    if ( empty( $target_ids ) ) {
+        update_option( 'brikpanel_cogs_unified_native', 'yes', false );
+        return;
+    }
+
+    // Promote rows with no native meta at all.
+    $wpdb->query(
+        "INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value)
+         SELECT bp.post_id, '_cogs_total_value', bp.meta_value
+         FROM {$wpdb->postmeta} bp
+         INNER JOIN {$wpdb->posts} p
+                 ON p.ID = bp.post_id
+                AND p.post_type IN ('product', 'product_variation')
+         LEFT JOIN {$wpdb->postmeta} wc
+                ON wc.post_id = bp.post_id
+               AND wc.meta_key = '_cogs_total_value'
+         WHERE bp.meta_key = '_brikpanel_cogs'
+           AND bp.meta_value <> ''
+           AND wc.meta_id IS NULL"
+    );
+
+    // Heal the rare native row that exists but was left as an empty string.
+    $wpdb->query(
+        "UPDATE {$wpdb->postmeta} wc
+         INNER JOIN {$wpdb->posts} p
+                 ON p.ID = wc.post_id
+                AND p.post_type IN ('product', 'product_variation')
+         INNER JOIN {$wpdb->postmeta} bp
+                 ON bp.post_id = wc.post_id
+                AND bp.meta_key = '_brikpanel_cogs'
+                AND bp.meta_value <> ''
+         SET wc.meta_value = bp.meta_value
+         WHERE wc.meta_key = '_cogs_total_value'
+           AND wc.meta_value = ''"
+    );
+
+    foreach ( $target_ids as $pid ) {
+        wp_cache_delete( (int) $pid, 'post_meta' );
+    }
+    if ( function_exists( 'brikpanel_bust_data_caches' ) ) {
+        brikpanel_bust_data_caches();
+    }
+
+    update_option( 'brikpanel_cogs_unified_native', 'yes', false );
+}
+
 
 // =============================================================================
 // ONE-TIME MIGRATION — heal variable products stuck "out of stock"
@@ -1209,9 +1329,20 @@ function brikpanel_backfill_native_cogs() {
  * parent-level stock and are genuinely out of stock (no in-stock child) are
  * left untouched. Cursor-paginated and rescheduled in batches so large
  * catalogs never hit a timeout.
+ *
+ * v2 (3.2.17): the first pass only caught parents ALREADY pinned to
+ * `outofstock`, so a leftover `_manage_stock = yes` with an empty `_stock`
+ * on a parent still showing "instock" slipped through — a time bomb: the
+ * first completed order (POS, storefront, anywhere) triggers WooCommerce's
+ * deferred parent sync, the parent saves itself, and WC derives `outofstock`
+ * from the parent's own empty quantity even though every variation still has
+ * stock. v2 also heals that case: parent manages stock with NO quantity while
+ * at least one variation manages its own stock → the parent flag is a
+ * meaningless leftover, clear it. Parents with a real quantity (deliberate
+ * parent-level stock, variations inheriting) are still left untouched.
  */
 function brikpanel_fix_variable_parent_stock() {
-    if (get_option('brikpanel_var_stock_fix_done') === '1') {
+    if (get_option('brikpanel_var_stock_fix2_done') === '1') {
         return;
     }
     if (!function_exists('wc_get_product') || !class_exists('WC_Product_Variable')) {
@@ -1221,20 +1352,24 @@ function brikpanel_fix_variable_parent_stock() {
 
     global $wpdb;
     $batch    = 200;
-    $last_id  = (int) get_option('brikpanel_var_stock_fix_cursor', 0);
+    $last_id  = (int) get_option('brikpanel_var_stock_fix2_cursor', 0);
 
-    // Candidate parents: product_type = variable, parent manages stock, parent
-    // currently out of stock. Cursor on ID keeps each run bounded and ordered.
+    // Candidate parents: product_type = variable, parent manages stock, AND is
+    // either already pinned out of stock (v1 contradiction) or carries no
+    // quantity at all (v2 leftover — flips OOS on the first completed order).
+    // Cursor on ID keeps each run bounded and ordered.
     $candidate_ids = $wpdb->get_col($wpdb->prepare(
-        "SELECT p.ID
+        "SELECT DISTINCT p.ID
            FROM {$wpdb->posts} p
            INNER JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
            INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_type'
            INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id AND t.slug = 'variable'
            INNER JOIN {$wpdb->postmeta} mm ON mm.post_id = p.ID AND mm.meta_key = '_manage_stock'  AND mm.meta_value = 'yes'
-           INNER JOIN {$wpdb->postmeta} ms ON ms.post_id = p.ID AND ms.meta_key = '_stock_status' AND ms.meta_value = 'outofstock'
+           LEFT JOIN {$wpdb->postmeta} ms ON ms.post_id = p.ID AND ms.meta_key = '_stock_status'
+           LEFT JOIN {$wpdb->postmeta} mq ON mq.post_id = p.ID AND mq.meta_key = '_stock'
           WHERE p.post_type = 'product'
             AND p.ID > %d
+            AND (ms.meta_value = 'outofstock' OR mq.meta_value IS NULL OR mq.meta_value = '')
           ORDER BY p.ID ASC
           LIMIT %d",
         $last_id,
@@ -1242,7 +1377,9 @@ function brikpanel_fix_variable_parent_stock() {
     ));
 
     if (empty($candidate_ids)) {
-        update_option('brikpanel_var_stock_fix_done', '1', true);
+        update_option('brikpanel_var_stock_fix2_done', '1', true);
+        delete_option('brikpanel_var_stock_fix2_cursor');
+        delete_option('brikpanel_var_stock_fix_done');
         delete_option('brikpanel_var_stock_fix_cursor');
         return;
     }
@@ -1254,17 +1391,44 @@ function brikpanel_fix_variable_parent_stock() {
             continue;
         }
 
-        // Only heal the genuine contradiction: parent says out of stock but a
-        // variation is actually in stock. Otherwise leave the product alone.
-        $has_instock_child = false;
+        // Inspect the variations once: does any manage its own stock, and is
+        // any currently in stock?
+        $has_self_managed_child = false;
+        $has_instock_child      = false;
         foreach ($product->get_children() as $cid) {
             $child = wc_get_product($cid);
-            if ($child && $child->is_in_stock()) {
+            if (!$child) {
+                continue;
+            }
+            // Variations return a BOOL here (true = manages its own stock;
+            // 'parent' appears only in view context when inheriting).
+            if (true === $child->get_manage_stock('edit')) {
+                $has_self_managed_child = true;
+            }
+            if ($child->is_in_stock()) {
                 $has_instock_child = true;
+            }
+            if ($has_self_managed_child && $has_instock_child) {
                 break;
             }
         }
-        if (!$has_instock_child) {
+
+        $parent_qty = $product->get_stock_quantity('edit');
+
+        // Heal when either:
+        //  (a) v1 contradiction — parent pinned out of stock while a variation
+        //      is actually in stock; or
+        //  (b) v2 leftover — parent "manages" stock with NO quantity while at
+        //      least one variation manages its own stock, so the parent flag
+        //      can only ever do damage (WC derives outofstock from qty 0/null
+        //      on the next save, e.g. WooCommerce's deferred sync after any
+        //      completed order).
+        // Deliberate parent-level stock (real quantity, variations inheriting)
+        // never matches either branch and is left alone.
+        $is_v1_contradiction = ('outofstock' === $product->get_stock_status('edit') && $has_instock_child);
+        $is_v2_leftover      = (('' === $parent_qty || null === $parent_qty) && $has_self_managed_child);
+
+        if (!$is_v1_contradiction && !$is_v2_leftover) {
             continue;
         }
 
@@ -1276,10 +1440,12 @@ function brikpanel_fix_variable_parent_stock() {
     // Advance the cursor and continue on the next load if a full batch came
     // back (more rows may remain); otherwise we have reached the end.
     $new_cursor = (int) end($candidate_ids);
-    update_option('brikpanel_var_stock_fix_cursor', $new_cursor, true);
+    update_option('brikpanel_var_stock_fix2_cursor', $new_cursor, true);
 
     if (count($candidate_ids) < $batch) {
-        update_option('brikpanel_var_stock_fix_done', '1', true);
+        update_option('brikpanel_var_stock_fix2_done', '1', true);
+        delete_option('brikpanel_var_stock_fix2_cursor');
+        delete_option('brikpanel_var_stock_fix_done');
         delete_option('brikpanel_var_stock_fix_cursor');
     } elseif (!wp_next_scheduled('brikpanel_fix_variable_parent_stock_event')) {
         wp_schedule_single_event(time() + 30, 'brikpanel_fix_variable_parent_stock_event');

@@ -5,6 +5,11 @@ if( ! defined( 'ABSPATH' ) ) exit;
  * Sepete ekleme olayını sayar ve veritabanına kaydeder.
  */
 function brikpanel_add_to_cart_counter() {
+    // Master tracking switch.
+    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+        return;
+    }
+
     // Skip tracking for admin users.
     if ( brikpanel_is_admin_user() ) {
         return;

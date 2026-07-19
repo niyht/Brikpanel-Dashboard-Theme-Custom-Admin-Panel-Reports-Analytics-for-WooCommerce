@@ -1,23 +1,13 @@
 <?php
 if( ! defined( 'ABSPATH' ) ) exit;
 
-// Ürün sayfası ziyaretini veritabanına kaydeden AJAX fonksiyonu
-function brikpanel_product_view() {
-    if ( brikpanel_is_admin_user() ) {
-        wp_send_json_success();
-    }
-    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
-        wp_send_json_success();
-    }
-
-    if ( ! isset( $_POST['security'] ) || ! wp_verify_nonce( sanitize_key( $_POST['security'] ), 'brikpanel_nonce_action' ) ) {
-        wp_send_json_error( [ 'message' => 'Invalid nonce.' ] );
-    }
-
-    if ( empty( $_POST['is_product'] ) || $_POST['is_product'] !== '1' ) {
-        wp_send_json_error();
-    }
-
+/**
+ * Ürün sayfası ziyaretini veritabanına kaydeder (kayıt çekirdeği).
+ *
+ * Shared by the unified tracker endpoint and the legacy standalone AJAX
+ * action below. Callers apply the master-switch / admin / bot guards.
+ */
+function brikpanel_record_product_view() {
     global $wpdb;
     $table = $wpdb->prefix . 'brikpanel_visitors';
     $today = wp_date( 'Y-m-d' );
@@ -34,51 +24,43 @@ function brikpanel_product_view() {
             [ '%s', '%d' ]
         );
     }
+}
+
+/**
+ * Legacy standalone AJAX action (pre-3.2.20 tracker JS). New pages ship the
+ * unified tracker; this stays registered for cached pages still carrying the
+ * old inline JS.
+ */
+function brikpanel_product_view() {
+    // Master tracking switch — also guards pings from cached pages that still
+    // carry the old tracker JS after the merchant turned tracking off.
+    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+        wp_send_json_success();
+    }
+    if ( brikpanel_is_admin_user() ) {
+        wp_send_json_success();
+    }
+    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
+        wp_send_json_success();
+    }
+
+    if ( ! isset( $_POST['security'] ) || ! wp_verify_nonce( sanitize_key( $_POST['security'] ), 'brikpanel_nonce_action' ) ) {
+        wp_send_json_error( [ 'message' => 'Invalid nonce.' ] );
+    }
+
+    if ( empty( $_POST['is_product'] ) || $_POST['is_product'] !== '1' ) {
+        wp_send_json_error();
+    }
+
+    brikpanel_record_product_view();
 
     wp_send_json_success();
 }
 add_action( 'wp_ajax_nopriv_brikpanel_product_view', 'brikpanel_product_view' );
 add_action( 'wp_ajax_brikpanel_product_view', 'brikpanel_product_view' );
 
-
-// Ürün sayfasına JS kodunu ekleyen fonksiyon
-function brikpanel_product_view_script() {
-    if ( ! is_singular( 'product' ) || brikpanel_is_admin_user() ) {
-        return;
-    }
-    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
-        return;
-    }
-
-    // --- DÜZELTME: gmdate() yerine wp_date() kullanıyoruz ---
-    // Bu, localStorage anahtarının sitenin saat dilimine göre doğru gün için üretilmesini sağlar.
-    $key   = 'brikpanel_product_viewed_' . wp_date( 'Y-m-d' );
-    $ajax  = esc_url( admin_url( 'admin-ajax.php' ) );
-    $nonce = wp_create_nonce('brikpanel_nonce_action');
-
-    ?>
-    <script>
-    (function() {
-        const KEY = '<?php echo esc_js($key); ?>';
-        if (localStorage.getItem(KEY)) return;
-
-        const fd = new FormData();
-        fd.append('action', 'brikpanel_product_view');
-        fd.append('is_product', '1');
-        fd.append('security', '<?php echo esc_js($nonce); ?>');
-
-        fetch('<?php echo esc_url_raw($ajax); ?>', {
-            method: 'POST',
-            credentials: 'same-origin',
-            body: fd
-        }).then(() => {
-            localStorage.setItem(KEY, '1');
-        });
-    })();
-    </script>
-    <?php
-}
-add_action( 'wp_footer', 'brikpanel_product_view_script', 20 );
+// The inline product-view tracker JS moved into the unified tracker
+// (back-end/tracking/brikpanel-unified-tracker.php) in 3.2.20.
 
 
 /**

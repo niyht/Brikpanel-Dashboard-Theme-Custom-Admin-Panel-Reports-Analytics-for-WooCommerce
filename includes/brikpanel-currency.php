@@ -124,6 +124,30 @@ function brikpanel_plugin_fx_factor( $order, $order_currency ) {
             return $base_rate / $order_rate;
         }
     }
+
+    // WCML (WooCommerce Multilingual & Multicurrency). Unlike CURCY it never
+    // snapshots a day-of-sale rate onto the order — its rate table only lives
+    // in the `_wcml_settings` option ("units of this currency per one base
+    // unit", so base = amount / rate). Because BrikPanel snapshots the
+    // converted total onto the order the moment the order is created, reading
+    // WCML's current rate at that moment effectively IS the day-of-sale rate
+    // for every order placed from now on; only historical orders backfilled
+    // later settle for the rate current at backfill time — still far better
+    // than summing foreign totals at face value.
+    if ( defined( 'WCML_VERSION' ) || class_exists( 'woocommerce_wpml' ) ) {
+        $wcml = get_option( '_wcml_settings' );
+        $independent = defined( 'WCML_MULTI_CURRENCIES_INDEPENDENT' ) ? WCML_MULTI_CURRENCIES_INDEPENDENT : 2;
+        if ( is_array( $wcml )
+            && isset( $wcml['enable_multi_currency'] )
+            && (int) $wcml['enable_multi_currency'] === (int) $independent
+            && isset( $wcml['currency_options'][ $order_currency ]['rate'] ) ) {
+            $rate = (float) $wcml['currency_options'][ $order_currency ]['rate'];
+            if ( $rate > 0 ) {
+                return 1.0 / $rate;
+            }
+        }
+    }
+
     return 0.0;
 }
 
@@ -433,3 +457,28 @@ function brikpanel_fx_on_rates_changed() {
 }
 add_action( 'update_option_' . BRIKPANEL_FX_RATES_OPTION, 'brikpanel_fx_on_rates_changed' );
 add_action( 'add_option_' . BRIKPANEL_FX_RATES_OPTION, 'brikpanel_fx_on_rates_changed' );
+
+/**
+ * When WCML's settings are saved (rates edited, multi-currency toggled),
+ * re-run the backfill too. WCML never snapshots a per-order rate, so the
+ * conversions BrikPanel stored are the only record — historical foreign
+ * orders must be recomputed from the new rate table, exactly as happens when
+ * the merchant edits BrikPanel's own manual rates. Gated on multi-currency
+ * being (or having been) enabled so unrelated WCML settings saves on
+ * single-currency stores don't queue a pointless pass.
+ *
+ * @param mixed $old_value Previous option value (null on first add).
+ * @param mixed $value     New option value.
+ * @return void
+ */
+function brikpanel_fx_on_wcml_settings_changed( $old_value, $value = null ) {
+    $was = is_array( $old_value ) && 2 === (int) ( $old_value['enable_multi_currency'] ?? 0 );
+    $now = is_array( $value ) && 2 === (int) ( $value['enable_multi_currency'] ?? 0 );
+    if ( $was || $now ) {
+        brikpanel_fx_on_rates_changed();
+    }
+}
+add_action( 'update_option__wcml_settings', 'brikpanel_fx_on_wcml_settings_changed', 10, 2 );
+add_action( 'add_option__wcml_settings', function ( $option, $value ) {
+    brikpanel_fx_on_wcml_settings_changed( null, $value );
+}, 10, 2 );

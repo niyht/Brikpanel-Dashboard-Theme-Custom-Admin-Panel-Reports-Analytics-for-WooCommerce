@@ -962,18 +962,13 @@ class Brikpanel_Vendors {
 				? ( ( $parent ? $parent->get_name() : '' ) . ' — ' . wp_strip_all_tags( wc_get_formatted_variation( $product, true ) ) )
 				: $product->get_name();
 
+			// Raw meta read (native first, legacy fallback) — unlike
+			// get_cogs_value() it keeps working when the WC COGS feature
+			// flag is off.
 			$cost = '';
-			if ( method_exists( $product, 'get_cogs_value' ) ) {
-				$v = $product->get_cogs_value();
-				if ( $v !== null && $v !== '' ) {
-					$cost = $this->money_fmt( (float) $v );
-				}
-			}
-			if ( $cost === '' ) {
-				$legacy = get_post_meta( $pid, '_brikpanel_cogs', true );
-				if ( $legacy !== '' ) {
-					$cost = $this->money_fmt( (float) $legacy );
-				}
+			$raw  = brikpanel_product_cogs_raw( $pid );
+			if ( $raw !== '' ) {
+				$cost = $this->money_fmt( (float) $raw );
 			}
 
 			$products[] = [

@@ -242,6 +242,13 @@
 			$('brikpanel-cartab-stat-abandoned').textContent = d.counts.abandoned;
 			$('brikpanel-cartab-stat-recovered').textContent = d.counts.recovered;
 
+			// Money strings arrive pre-formatted (and entity-decoded) from PHP.
+			var amounts = d.amounts || {};
+			$('brikpanel-cartab-amount-total').textContent = amounts.total || '';
+			$('brikpanel-cartab-amount-active').textContent = amounts.active || '';
+			$('brikpanel-cartab-amount-abandoned').textContent = amounts.abandoned || '';
+			$('brikpanel-cartab-amount-recovered').textContent = amounts.recovered || '';
+
 			var pager = $('brikpanel-cartab-pagination');
 			pager.style.display = d.pages > 1 ? '' : 'none';
 			$('brikpanel-cartab-page-info').textContent = d.page + ' / ' + d.pages;

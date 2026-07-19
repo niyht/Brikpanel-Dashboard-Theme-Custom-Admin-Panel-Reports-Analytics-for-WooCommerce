@@ -1819,7 +1819,10 @@
 
         $suggestions.on('mousedown', '.brikpanel-pe-tag-suggestion', function (e) {
             e.preventDefault();
-            var v = $(this).data('value');
+            // Read via attr(), not data(): jQuery.data() JSON-coerces a purely
+            // numeric term (shoe sizes like "40", "42") into a Number, and the
+            // string helpers below then throw on .toLowerCase(). Keep it a string.
+            var v = String($(this).attr('data-value') || '');
             if (v && !tagExists($wrap, v)) {
                 $input.before(createTag(v));
                 $input.val('');
@@ -1851,8 +1854,9 @@
     }
 
     function tagExists($w, val) {
+        var needle = String(val).toLowerCase();
         var e = false;
-        $w.find('.brikpanel-pe-tag').each(function () { if ($(this).clone().children().remove().end().text().trim().toLowerCase() === val.toLowerCase()) e = true; });
+        $w.find('.brikpanel-pe-tag').each(function () { if ($(this).clone().children().remove().end().text().trim().toLowerCase() === needle) e = true; });
         return e;
     }
 
@@ -2114,6 +2118,7 @@
             v.sale_from      = $row.find('.var-sale-from').val() || '';
             v.sale_to        = $row.find('.var-sale-to').val()   || '';
             v.manage_stock   = $row.find('.var-manage').is(':checked');
+            v.enabled        = $row.find('.var-enabled').is(':checked');
             v.stock_quantity = $row.find('.var-stock').val();
             v.stock_status   = $row.find('.var-stock-status').val() || 'instock';
             v.sku            = $row.find('.var-sku').val();
@@ -2161,6 +2166,9 @@
                 // active), preserving the prior behavior; existing ones keep
                 // whatever was saved.
                 manage_stock: ex ? !!ex.manage_stock : true,
+                // New variations are Active by default (matches WooCommerce);
+                // regenerating keeps whatever active state an existing row had.
+                enabled: ex ? (ex.enabled === undefined ? true : !!ex.enabled) : true,
                 backorders: ex ? (ex.backorders || 'no') : 'no',
                 sale_from: ex ? (ex.sale_from || '') : '',
                 sale_to:   ex ? (ex.sale_to   || '') : '',
@@ -2366,6 +2374,9 @@
             // active and the status select is disabled (WC derives it); when
             // off, the reverse. Mirrors the simple-product "Track quantity".
             var varManage = !!v.manage_stock;
+            // "Active" state. Undefined (freshly generated rows) defaults to on,
+            // matching WooCommerce, so new variations are purchasable by default.
+            var varEnabled = (v.enabled === undefined) ? true : !!v.enabled;
             var trackTd = '<td class="var-track-cell"><label class="brikpanel-pe-switch brikpanel-pe-switch-sm">' +
                 '<input type="checkbox" class="var-manage"' + (varManage ? ' checked' : '') + '>' +
                 '<span class="brikpanel-pe-slider"></span></label></td>';
@@ -2439,9 +2450,16 @@
             var rowClasses = 'var-main-row';
             if (hasExtra) rowClasses += ' has-extra';
             if (hasBackorderNotify && varStatus === 'onbackorder') rowClasses += ' has-backorder';
+            if (!varEnabled) rowClasses += ' is-disabled';
+            // "Active" toggle sits at the head of the variation name cell —
+            // where WooCommerce's own "Enabled" checkbox lives — so merchants
+            // working only in this dashboard can turn a variation on/off.
+            var enabledSwitch = '<label class="brikpanel-pe-switch brikpanel-pe-switch-xs var-enabled-switch" title="' + esc(PE.i18n.variation_active || 'Active') + '">' +
+                '<input type="checkbox" class="var-enabled"' + (varEnabled ? ' checked' : '') + ' aria-label="' + esc(PE.i18n.variation_active || 'Active') + '">' +
+                '<span class="brikpanel-pe-slider"></span></label>';
             $tb.append('<tr data-idx="' + idx + '" class="' + rowClasses + '">' +
                 expanderTd +
-                '<td class="var-name">' + esc(v.name) + '</td>' +
+                '<td class="var-name">' + enabledSwitch + '<span class="var-name-text">' + esc(v.name) + '</span></td>' +
                 '<td><input type="text" class="var-price" value="' + esc(pv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
                 '<td><input type="text" class="var-sale-price" value="' + esc(sv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
                 '<td><input type="text" class="var-sale-from" value="' + esc(v.sale_from || '') + '" placeholder="' + esc(PE.i18n.date_placeholder || 'YYYY-MM-DD') + '" autocomplete="off"></td>' +
@@ -2499,6 +2517,14 @@
         // Per-variation "Track" toggle: enables the quantity input and lets
         // WC derive the status (status select disabled), or vice-versa.
         // Bound on fresh checkboxes each render — no event stacking.
+        // Per-variation "Active" toggle: reflect the on/off state visually
+        // (dim the row when disabled) and mark the editor dirty so the change
+        // is persisted on the next save. Bound fresh each render.
+        $tb.find('.var-enabled').on('change', function () {
+            var $cb = $(this), $row = $cb.closest('tr.var-main-row');
+            $row.toggleClass('is-disabled', !$cb.is(':checked'));
+            state.dirty = true;
+        });
         $tb.find('.var-manage').on('change', function () {
             var $cb = $(this), $row = $cb.closest('tr.var-main-row');
             var on = $cb.is(':checked');
@@ -2644,9 +2670,20 @@
                 $('#bpe-var-table-body tr.var-backorder-row[data-idx="' + idx + '"]').attr('hidden', 'hidden');
             });
         }
+        // Bulk Active/Inactive — flip every row's toggle and its dimmed state.
+        // Empty value means "No change", so it never touches rows accidentally.
+        var active = $('#bpe-bulk-active').val();
+        if (active === '1' || active === '0') {
+            var on = active === '1';
+            $('#bpe-var-table-body tr.var-main-row').each(function () {
+                var $row = $(this);
+                $row.find('.var-enabled').prop('checked', on);
+                $row.toggleClass('is-disabled', !on);
+            });
+        }
         // A bulk apply mutates the table — mark dirty so the unload guard and
         // background auto-save treat it as a real change.
-        if (price || salePrice || stock !== '') { state.dirty = true; }
+        if (price || salePrice || stock !== '' || active === '1' || active === '0') { state.dirty = true; }
     }
 
     /* Validation — only enforces required fields that are actually visible.
@@ -3097,6 +3134,7 @@
                 var varManageStock = $mainRow.find('.var-manage').is(':checked');
                 var varStockStatus = $mainRow.find('.var-stock-status').val() || 'instock';
                 var varObj = { id: v.id || 0, attributes: v.attributes,
+                    enabled: $mainRow.find('.var-enabled').is(':checked') ? 1 : 0,
                     regular_price: parsePrice($mainRow.find('.var-price').val(), sep),
                     sale_price: parsePrice($mainRow.find('.var-sale-price').val(), sep),
                     sale_from: $mainRow.find('.var-sale-from').val() || '',
@@ -3267,7 +3305,9 @@
 
         $suggestions.on('mousedown', '.brikpanel-pe-tag-suggestion', function (e) {
             e.preventDefault();
-            var v = $(this).data('value');
+            // See the attribute-term handler above: attr(), not data(), so a
+            // numeric tag name stays a string instead of being coerced to Number.
+            var v = String($(this).attr('data-value') || '');
             if (v && !hasTag(v)) {
                 addProductTag(v);
                 $input.val('');
@@ -3283,7 +3323,8 @@
     }
 
     function hasTag(name) {
-        return state.tags.some(function (t) { return t.toLowerCase() === name.toLowerCase(); });
+        var needle = String(name).toLowerCase();
+        return state.tags.some(function (t) { return String(t).toLowerCase() === needle; });
     }
 
     function addProductTag(name) {

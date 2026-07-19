@@ -187,15 +187,14 @@ function brikpanel_record_traffic_source( $channel, $host ) {
  *   - the extra SELECT round-trip on every page view.
  *
  * Requires a UNIQUE key on date_column for ON DUPLICATE KEY UPDATE to fire.
+ *
+ * Shared by the unified tracker endpoint and the legacy standalone AJAX
+ * action below. Callers apply the master-switch / admin / bot guards.
+ *
+ * @param string $referrer    document.referrer reported by the tracker.
+ * @param string $landing_url location.href of the landing page.
  */
-function brikpanel_visitor_view() {
-    if ( brikpanel_is_admin_user() ) {
-        wp_send_json_success();
-    }
-    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
-        wp_send_json_success();
-    }
-
+function brikpanel_record_visitor_view( $referrer = '', $landing_url = '' ) {
     global $wpdb;
     $table       = $wpdb->prefix . 'brikpanel_visitors';
     $today       = wp_date( 'Y-m-d' );
@@ -234,56 +233,40 @@ function brikpanel_visitor_view() {
     // Record the traffic-source channel for the same visit. The tracker fires
     // once per visitor per day (localStorage), so this captures the first-touch
     // referrer of the day, matching the visitor_count semantics above.
+    $site_host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+    $source    = brikpanel_classify_traffic_source( $referrer, $landing_url, $site_host );
+    brikpanel_record_traffic_source( $source['channel'], $source['host'] );
+}
+
+/**
+ * Legacy standalone AJAX action (pre-3.2.20 tracker JS). New pages ship the
+ * unified tracker; this stays registered for cached pages still carrying the
+ * old inline JS.
+ */
+function brikpanel_visitor_view() {
+    // Master tracking switch — also guards pings from cached pages that still
+    // carry the old tracker JS after the merchant turned tracking off.
+    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+        wp_send_json_success();
+    }
+    if ( brikpanel_is_admin_user() ) {
+        wp_send_json_success();
+    }
+    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
+        wp_send_json_success();
+    }
+
     $referrer    = isset( $_POST['ref'] ) ? esc_url_raw( wp_unslash( $_POST['ref'] ) ) : '';
     $landing_url = isset( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ) ) : '';
-    $site_host   = (string) wp_parse_url( home_url(), PHP_URL_HOST );
-    $source      = brikpanel_classify_traffic_source( $referrer, $landing_url, $site_host );
-    brikpanel_record_traffic_source( $source['channel'], $source['host'] );
+    brikpanel_record_visitor_view( $referrer, $landing_url );
 
     wp_send_json_success();
 }
 add_action('wp_ajax_nopriv_brikpanel_visitor_view', 'brikpanel_visitor_view');
 add_action('wp_ajax_brikpanel_visitor_view', 'brikpanel_visitor_view');
 
-/**
- * Ziyaretçiyi saymak için JS kodunu siteye ekler.
- */
-function brikpanel_visitor_view_script() {
-    if (is_admin() || wp_doing_ajax() || brikpanel_is_admin_user()) return;
-    // Skip the script entirely for bots — saves the localStorage check + fetch.
-    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) return;
-
-    // --- DÜZELTME: gmdate() yerine wp_date() kullanıyoruz ---
-    // Bu, localStorage anahtarının sitenin saat dilimine göre doğru gün için üretilmesini sağlar.
-    $key = 'brikpanel_visitor_viewed_' . wp_date('Y-m-d');
-    $ajax = esc_url(admin_url('admin-ajax.php'));
-    ?>
-    <script>
-    (function() {
-        const KEY = '<?php echo esc_js($key); ?>';
-        if (localStorage.getItem(KEY)) return;
-        const fd = new FormData();
-        fd.append('action', 'brikpanel_visitor_view');
-        // Traffic-source signals: where the visitor came from (referrer) and the
-        // landing URL (carries UTM tags / ad click ids). Classified server-side.
-        try {
-            fd.append('ref', document.referrer || '');
-            fd.append('url', window.location.href || '');
-        } catch (e) {}
-        fetch('<?php echo esc_url_raw($ajax); ?>', {
-            method: 'POST',
-            credentials: 'same-origin',
-            body: fd
-        }).then(function(res) {
-            if (res.ok) {
-                localStorage.setItem(KEY, '1');
-            }
-        });
-    })();
-    </script>
-    <?php
-}
-add_action('wp_footer', 'brikpanel_visitor_view_script', 20);
+// The inline visitor-view tracker JS moved into the unified tracker
+// (back-end/tracking/brikpanel-unified-tracker.php) in 3.2.20.
 
 /**
  * ANA YARDIMCI FONKSİYON

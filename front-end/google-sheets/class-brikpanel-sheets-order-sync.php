@@ -967,25 +967,18 @@ class Brikpanel_Sheets_Order_Sync {
 	private $cogs_total_cache = [];
 
 	/**
-	 * Per-unit cost of goods for a product/variation. Mirrors the profit
-	 * report's COALESCE(variation cogs, parent cogs, 0) logic: a variation's own
-	 * `_brikpanel_cogs` wins, otherwise the parent's, otherwise 0. WooCommerce
-	 * native Cost of Goods values are mirrored into this same meta key, so this
-	 * one read covers both.
+	 * Per-unit cost of goods for a product/variation. Delegates to the central
+	 * accessor so the sheet always agrees with the profit reports: WC-native
+	 * cost first with the legacy `_brikpanel_cogs` fallback, variation →
+	 * parent fallback, and additive variations handled.
 	 *
 	 * @param int $product_id
 	 * @param int $variation_id
 	 * @return float
 	 */
 	private static function unit_cost( $product_id, $variation_id = 0 ) {
-		$cost = '';
-		if ( $variation_id > 0 ) {
-			$cost = get_post_meta( $variation_id, '_brikpanel_cogs', true );
-		}
-		if ( $cost === '' || $cost === null ) {
-			$cost = get_post_meta( $product_id, '_brikpanel_cogs', true );
-		}
-		return ( $cost === '' || $cost === null ) ? 0.0 : (float) $cost;
+		$cost = brikpanel_product_cogs( $product_id, $variation_id );
+		return null === $cost ? 0.0 : (float) $cost;
 	}
 
 	// =========================================================================

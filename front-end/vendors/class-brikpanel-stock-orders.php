@@ -1049,13 +1049,10 @@ class Brikpanel_Stock_Orders {
 	}
 
 	private function get_existing_cost( $product ) {
-		if ( method_exists( $product, 'get_cogs_value' ) ) {
-			$v = $product->get_cogs_value();
-			if ( $v !== null && $v !== '' ) {
-				return (float) $v;
-			}
-		}
-		$meta = get_post_meta( $product->get_id(), '_brikpanel_cogs', true );
+		// Raw meta read (native first, legacy fallback) — unlike
+		// get_cogs_value() it keeps working when the WC COGS feature flag
+		// is off.
+		$meta = brikpanel_product_cogs_raw( $product->get_id() );
 		return $meta === '' ? 0.0 : (float) $meta;
 	}
 

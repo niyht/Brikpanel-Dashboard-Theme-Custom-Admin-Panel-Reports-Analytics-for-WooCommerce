@@ -819,11 +819,15 @@
 .brikpanel-pe-var-bulk-item label{font-size:.75rem;font-weight:550;color:var(--pe-text-secondary);white-space:nowrap}
 .brikpanel-pe-var-bulk-item .brikpanel-pe-input-group.small{background:var(--pe-card)}
 .brikpanel-pe-var-bulk #bpe-bulk-price,
-.brikpanel-pe-var-bulk #bpe-bulk-sale-price{width:90px}
+.brikpanel-pe-var-bulk #bpe-bulk-sale-price{width:78px}
+/* Bulk "Active" select — same compact metrics as every other control in the
+   row (2.125rem tall, small type) so the five boxes read as one symmetric
+   strip; the generic .brikpanel-pe-select padding would make it a tall slab. */
+.brikpanel-pe-var-bulk #bpe-bulk-active{width:auto;min-width:0;height:2.125rem;min-height:0;line-height:normal;padding:0 1.6rem 0 .5rem;font-size:.8125rem;background-color:var(--pe-card);border-radius:var(--pe-radius-sm);background-position:right .5rem center}
 /* Every control locks to the input-group's 34px outer height (2rem content +
    1px borders): the stock input fights WP admin's min-height:40px and the
    button's natural 32px — mismatched heights break the shared bottom line. */
-.brikpanel-pe-var-bulk #bpe-bulk-stock{width:70px;height:2.125rem;min-height:0}
+.brikpanel-pe-var-bulk #bpe-bulk-stock{width:60px;height:2.125rem;min-height:0}
 .brikpanel-pe-var-bulk #bpe-apply-bulk{height:2.125rem}
 
 /* Default Form Values group — vertical divider on its left; selects match the
@@ -842,6 +846,24 @@
 .brikpanel-pe-var-table td input{width:100%;min-width:60px;padding:.375rem .5rem;font-size:.8125rem;border:1px solid var(--pe-border);border-radius:4px;outline:none;transition:border-color .15s ease,box-shadow .15s ease;box-sizing:border-box}
 .brikpanel-pe-var-table td input:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-var-table .var-name{font-weight:550;white-space:nowrap;color:var(--pe-text)}
+/* Variation name cell carries a leading "Active" toggle (WC's Enabled state).
+   Extra-small switch variant: deliberately daintier than the Track switch so
+   the row reads calm — the name stays the visual anchor, not the control. */
+.brikpanel-pe-switch-xs{width:26px;height:14px;border-radius:14px}
+.brikpanel-pe-switch-xs .brikpanel-pe-slider{border-radius:14px;background:#d6d6d6}
+.brikpanel-pe-switch-xs .brikpanel-pe-slider::before{width:10px;height:10px;left:2px;bottom:2px}
+.brikpanel-pe-switch-xs input:checked+.brikpanel-pe-slider{background:var(--pe-primary)}
+.brikpanel-pe-switch-xs input:checked+.brikpanel-pe-slider::before{transform:translateX(12px)}
+/* Inline alignment on purpose: display:flex on a <td> stops it acting as a
+   table cell, so the cell no longer stretches to the row height and its
+   bottom border floats up mid-row (looked broken next to the other columns).
+   vertical-align keeps real table layout and centers both pieces. */
+.brikpanel-pe-var-table .var-name .var-enabled-switch{vertical-align:middle;margin-right:.55rem}
+.brikpanel-pe-var-table .var-name-text{vertical-align:middle}
+/* Inactive variation: dim its editable cells so its off-state reads at a glance,
+   while the Active toggle, expander and delete control stay fully legible. */
+.brikpanel-pe-var-table tr.is-disabled td:not(.var-name):not(.var-expand-cell):not(.var-delete-cell){opacity:.42}
+.brikpanel-pe-var-table tr.is-disabled .var-name-text{color:var(--pe-text-muted)}
 
 /* Variation Image — stacked card effect for multi-image */
 .brikpanel-pe-var-table .var-image-btn{position:relative;width:40px;height:40px;border:1.5px solid #999;border-radius:4px;background:#fafafa;cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:visible;padding:0;z-index:1;transition:border-color .15s ease}
@@ -1017,8 +1039,12 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-var-bulk-item label{white-space:normal}
 .brikpanel-pe-var-bulk-item .brikpanel-pe-input-group,
 .brikpanel-pe-var-bulk-item .brikpanel-pe-input,
+.brikpanel-pe-var-bulk-item select,
 .brikpanel-pe-var-bulk-item input{width:100%!important;min-width:0}
-.brikpanel-pe-var-defaults{border-left:none;padding-left:0;border-top:1px solid var(--pe-border);padding-top:.875rem}
+/* flex:auto matters: the desktop rule's flex-basis (12rem) becomes a HEIGHT
+   once the panel flips to a column layout, leaving a tall empty band under
+   the selects on phones. */
+.brikpanel-pe-var-defaults{flex:0 0 auto;border-left:none;padding-left:0;border-top:1px solid var(--pe-border);padding-top:.875rem}
 .brikpanel-pe-var-defaults-row{flex-direction:column;align-items:stretch;margin-top:0}
 .brikpanel-pe-var-defaults .bpe-var-default{width:100%;max-width:none}
 .brikpanel-pe-card{padding:1rem}

@@ -1500,6 +1500,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'need_variation_attr' => __('Switch on “Use for variations” for at least one attribute, then add its values.', 'brikpanel'),
                 'delete_variation' => __('Delete variation', 'brikpanel'),
                 'confirm_delete_variation' => __('Delete this variation? This change is applied when you save the product.', 'brikpanel'),
+                'variation_active' => __('Active', 'brikpanel'),
                 'chip_remove'      => __('Remove', 'brikpanel'),
                 'more_fields'      => __('More fields', 'brikpanel'),
                 'analyze'          => __('Re-analyze', 'brikpanel'),

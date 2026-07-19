@@ -10,6 +10,11 @@ function brikpanel_checkout_counter() {
         return;
     }
 
+    // Master tracking switch.
+    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+        return;
+    }
+
     // Skip tracking for admin users.
     if ( brikpanel_is_admin_user() ) {
         return;

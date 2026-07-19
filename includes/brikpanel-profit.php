@@ -51,12 +51,16 @@ function brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $id_
 /**
  * Cost of goods sold for paid orders inside [$start_gmt, $end_gmt].
  *
- * Source of truth is BrikPanel's own `_brikpanel_cogs` product/variation
- * meta (always written by the product editor regardless of the WC native
- * COGS feature flag), multiplied by quantity sold. Works for BOTH simple and
- * variable products: variation lines prefer the variation's own cost and
- * fall back to the parent product's cost. Reads current cost (not a
- * sale-time snapshot) so past orders gain a cost the moment it is filled in.
+ * Source of truth is WooCommerce's native `_cogs_total_value` product/
+ * variation meta, with BrikPanel's legacy `_brikpanel_cogs` as fallback for
+ * values that only ever existed on the legacy key (both keys are kept in
+ * lockstep by the live mirror and the one-time unification pass, and the
+ * raw meta read works whether or not the WC COGS feature flag is on).
+ * Multiplied by quantity sold; works for BOTH simple and variable products:
+ * variation lines prefer the variation's own cost and fall back to the
+ * parent product's cost (or ADD to it when the variation is flagged
+ * additive). Reads current cost (not a sale-time snapshot) so past orders
+ * gain a cost the moment it is filled in.
  * Admin-placed orders are excluded so this reconciles with the Revenue KPI.
  * When $exclude_marketplace is true (BrikMarket store), marketplace-imported
  * orders are also dropped so COGS shares the SAME order basis as the Revenue
@@ -84,17 +88,39 @@ function brikpanel_profit_cogs( $start_gmt, $end_gmt, $exclude_marketplace = fal
 				ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta vid
 				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'
+		LEFT JOIN  {$wpdb->postmeta} vnat
+				ON vnat.post_id = CAST(vid.meta_value AS UNSIGNED)
+			   AND vnat.meta_key = '_cogs_total_value'
+			   AND CAST(vid.meta_value AS UNSIGNED) > 0
 		LEFT JOIN  {$wpdb->postmeta} vcog
 				ON vcog.post_id = CAST(vid.meta_value AS UNSIGNED)
 			   AND vcog.meta_key = '_brikpanel_cogs'
 			   AND CAST(vid.meta_value AS UNSIGNED) > 0
+		LEFT JOIN  {$wpdb->postmeta} vadd
+				ON vadd.post_id = CAST(vid.meta_value AS UNSIGNED)
+			   AND vadd.meta_key = '_cogs_value_is_additive'
+			   AND CAST(vid.meta_value AS UNSIGNED) > 0
+		LEFT JOIN  {$wpdb->postmeta} pnat
+				ON pnat.post_id = CAST(pid.meta_value AS UNSIGNED)
+			   AND pnat.meta_key = '_cogs_total_value'
 		LEFT JOIN  {$wpdb->postmeta} pcog
 				ON pcog.post_id = CAST(pid.meta_value AS UNSIGNED)
 			   AND pcog.meta_key = '_brikpanel_cogs'";
 
+	// Unit cost resolution — WooCommerce's native `_cogs_total_value` is the
+	// source of truth, BrikPanel's legacy `_brikpanel_cogs` is the fallback
+	// (kept in lockstep by the mirror + one-time unification, so pre-existing
+	// installs report identical numbers). A variation flagged additive
+	// (`_cogs_value_is_additive` = yes, WC 9.5+) adds its own cost ON TOP of
+	// the parent's instead of replacing it.
+	$vval = "COALESCE(NULLIF(vnat.meta_value, ''), NULLIF(vcog.meta_value, ''))";
+	$pval = "COALESCE(NULLIF(pnat.meta_value, ''), NULLIF(pcog.meta_value, ''))";
+	$unit = "CASE WHEN vadd.meta_value = 'yes'
+				THEN CAST(COALESCE({$vval}, '0') AS DECIMAL(20,4)) + CAST(COALESCE({$pval}, '0') AS DECIMAL(20,4))
+				ELSE CAST(COALESCE({$vval}, {$pval}, '0') AS DECIMAL(20,4)) END";
+
 	$sum = "COALESCE(SUM(
-			CAST(qty.meta_value AS DECIMAL(20,4)) *
-			CAST(COALESCE(NULLIF(vcog.meta_value, ''), pcog.meta_value, '0') AS DECIMAL(20,4))
+			CAST(qty.meta_value AS DECIMAL(20,4)) * {$unit}
 		), 0)";
 
 	if ( $is_hpos ) {
@@ -161,10 +187,21 @@ function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt, $exclude_marketpl
 				ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta vid
 				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'
+		LEFT JOIN  {$wpdb->postmeta} vnat
+				ON vnat.post_id = CAST(vid.meta_value AS UNSIGNED)
+			   AND vnat.meta_key = '_cogs_total_value'
+			   AND CAST(vid.meta_value AS UNSIGNED) > 0
 		LEFT JOIN  {$wpdb->postmeta} vcog
 				ON vcog.post_id = CAST(vid.meta_value AS UNSIGNED)
 			   AND vcog.meta_key = '_brikpanel_cogs'
 			   AND CAST(vid.meta_value AS UNSIGNED) > 0
+		LEFT JOIN  {$wpdb->postmeta} vadd
+				ON vadd.post_id = CAST(vid.meta_value AS UNSIGNED)
+			   AND vadd.meta_key = '_cogs_value_is_additive'
+			   AND CAST(vid.meta_value AS UNSIGNED) > 0
+		LEFT JOIN  {$wpdb->postmeta} pnat
+				ON pnat.post_id = CAST(pid.meta_value AS UNSIGNED)
+			   AND pnat.meta_key = '_cogs_total_value'
 		LEFT JOIN  {$wpdb->postmeta} pcog
 				ON pcog.post_id = CAST(pid.meta_value AS UNSIGNED)
 			   AND pcog.meta_key = '_brikpanel_cogs'";
@@ -176,8 +213,8 @@ function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt, $exclude_marketpl
 	// file". The save handler deletes the meta when the field is cleared, so
 	// a present row with an empty string is a legacy edge case we still treat
 	// as missing for defensiveness.
-	$has_cost = "((vcog.meta_value IS NOT NULL AND vcog.meta_value <> '')"
-		. " OR (pcog.meta_value IS NOT NULL AND pcog.meta_value <> ''))";
+	$has_cost = "(COALESCE(NULLIF(vnat.meta_value, ''), NULLIF(vcog.meta_value, '')) IS NOT NULL"
+		. " OR COALESCE(NULLIF(pnat.meta_value, ''), NULLIF(pcog.meta_value, '')) IS NOT NULL)";
 	$rev      = "CAST(COALESCE(lt.meta_value, '0') AS DECIMAL(20,4))";
 	$select   = "
 		COUNT(*) AS total_lines,
@@ -284,10 +321,21 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 				ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta vid
 				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'
+		LEFT JOIN  {$wpdb->postmeta} vnat
+				ON vnat.post_id = CAST(vid.meta_value AS UNSIGNED)
+			   AND vnat.meta_key = '_cogs_total_value'
+			   AND CAST(vid.meta_value AS UNSIGNED) > 0
 		LEFT JOIN  {$wpdb->postmeta} vcog
 				ON vcog.post_id = CAST(vid.meta_value AS UNSIGNED)
 			   AND vcog.meta_key = '_brikpanel_cogs'
 			   AND CAST(vid.meta_value AS UNSIGNED) > 0
+		LEFT JOIN  {$wpdb->postmeta} vadd
+				ON vadd.post_id = CAST(vid.meta_value AS UNSIGNED)
+			   AND vadd.meta_key = '_cogs_value_is_additive'
+			   AND CAST(vid.meta_value AS UNSIGNED) > 0
+		LEFT JOIN  {$wpdb->postmeta} pnat
+				ON pnat.post_id = CAST(pid.meta_value AS UNSIGNED)
+			   AND pnat.meta_key = '_cogs_total_value'
 		LEFT JOIN  {$wpdb->postmeta} pcog
 				ON pcog.post_id = CAST(pid.meta_value AS UNSIGNED)
 			   AND pcog.meta_key = '_brikpanel_cogs'
@@ -296,8 +344,8 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 
 	// "Missing" follows the same rule as the coverage helper: no cost row on
 	// either side. Explicit 0 is treated as a deliberate cost — not missing.
-	$missing_clause = "NOT ((vcog.meta_value IS NOT NULL AND vcog.meta_value <> '')"
-		. " OR (pcog.meta_value IS NOT NULL AND pcog.meta_value <> ''))";
+	$missing_clause = "NOT (COALESCE(NULLIF(vnat.meta_value, ''), NULLIF(vcog.meta_value, '')) IS NOT NULL"
+		. " OR COALESCE(NULLIF(pnat.meta_value, ''), NULLIF(pcog.meta_value, '')) IS NOT NULL)";
 
 	// Group by the *resolvable* product when one exists, otherwise fall back to
 	// the order_item_name so unlinked rows for the same item collapse into a

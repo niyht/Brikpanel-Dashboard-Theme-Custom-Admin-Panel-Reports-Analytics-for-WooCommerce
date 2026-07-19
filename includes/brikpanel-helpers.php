@@ -82,7 +82,7 @@ add_action( 'woocommerce_order_refunded',       'brikpanel_bust_data_caches' );
  * @param string $meta_key   Meta key that changed.
  */
 function brikpanel_bust_data_caches_on_cogs_meta( $meta_id, $object_id, $meta_key ) {
-    if ( '_brikpanel_cogs' === $meta_key ) {
+    if ( '_brikpanel_cogs' === $meta_key || '_cogs_total_value' === $meta_key || '_cogs_value_is_additive' === $meta_key ) {
         brikpanel_bust_data_caches();
     }
 }
@@ -148,6 +148,159 @@ function brikpanel_mirror_wc_native_cogs( $meta_id, $object_id, $meta_key, $meta
 add_action( 'added_post_meta',   'brikpanel_mirror_wc_native_cogs', 10, 4 );
 add_action( 'updated_post_meta', 'brikpanel_mirror_wc_native_cogs', 10, 4 );
 add_action( 'deleted_post_meta', 'brikpanel_mirror_wc_native_cogs', 10, 4 );
+
+/**
+ * Reverse mirror: propagate BrikPanel's legacy `_brikpanel_cogs` writes into
+ * WooCommerce's native `_cogs_total_value`.
+ *
+ * Every BrikPanel write path pairs its legacy-meta write with
+ * WC_Product::set_cogs_value(), but that setter is a silent no-op whenever
+ * the WC Cost of Goods feature flag is off — which would leave the native
+ * key (the read side's source of truth) stale. Mirroring at the meta layer
+ * closes that gap for all writers at once, flag on or off.
+ *
+ * No ping-pong with the forward mirror above: both mirrors normalise through
+ * wc_format_decimal and only write on a real value change, so the second hop
+ * always sees equal values and stops.
+ *
+ * @param int    $meta_id    Unused (an array of ids on the delete hook).
+ * @param int    $object_id  Product or variation ID whose meta changed.
+ * @param string $meta_key   Meta key that changed.
+ * @param mixed  $meta_value New value ('' on delete / clear).
+ */
+function brikpanel_mirror_legacy_cogs_to_native( $meta_id, $object_id, $meta_key, $meta_value = '' ) {
+    if ( '_brikpanel_cogs' !== $meta_key ) {
+        return;
+    }
+    if ( ! in_array( get_post_type( $object_id ), array( 'product', 'product_variation' ), true ) ) {
+        return;
+    }
+
+    $legacy = (string) $meta_value;
+    $native = (string) get_post_meta( $object_id, '_cogs_total_value', true );
+
+    if ( '' === $legacy ) {
+        if ( '' !== $native ) {
+            delete_post_meta( $object_id, '_cogs_total_value' );
+        }
+        return;
+    }
+
+    $formatted = wc_format_decimal( $legacy );
+    if ( '' === $native || (float) $native !== (float) $formatted ) {
+        update_post_meta( $object_id, '_cogs_total_value', $formatted );
+    }
+}
+add_action( 'added_post_meta',   'brikpanel_mirror_legacy_cogs_to_native', 10, 4 );
+add_action( 'updated_post_meta', 'brikpanel_mirror_legacy_cogs_to_native', 10, 4 );
+add_action( 'deleted_post_meta', 'brikpanel_mirror_legacy_cogs_to_native', 10, 4 );
+
+/**
+ * The cost defined directly on ONE product or variation post — no parent
+ * fallback, no additive math. WooCommerce's native `_cogs_total_value` meta
+ * is the source of truth; BrikPanel's legacy `_brikpanel_cogs` covers values
+ * that only ever existed on the legacy key. Reading the raw meta (instead of
+ * WC_Product::get_cogs_value()) keeps this working even when the merchant
+ * has switched WooCommerce's Cost of Goods Sold feature off — the data stays
+ * in the database either way.
+ *
+ * @param int $post_id Product or variation ID.
+ * @return string Decimal string, or '' when no cost is on file.
+ */
+function brikpanel_product_cogs_raw( $post_id ) {
+    $native = (string) get_post_meta( (int) $post_id, '_cogs_total_value', true );
+    if ( '' !== $native ) {
+        return $native;
+    }
+    return (string) get_post_meta( (int) $post_id, '_brikpanel_cogs', true );
+}
+
+/**
+ * The EFFECTIVE unit cost of a product line, resolved the same way the
+ * profit engine's SQL does: variation cost first, parent product cost as
+ * fallback, and WooCommerce's additive-variation flag honoured (variation
+ * cost added on top of the parent's when `_cogs_value_is_additive` is yes).
+ *
+ * This is the single integration point for cost: the result runs through the
+ * `brikpanel_product_cogs` filter, so a store that keeps cost in another
+ * plugin's field can point every BrikPanel per-product read at it from one
+ * hook. (The dashboard profit aggregates read the same two meta keys in SQL
+ * for performance, so a filter-based override only affects per-product
+ * surfaces; writing `_cogs_total_value` covers everything.)
+ *
+ * @param int $product_id   Parent (or simple) product ID.
+ * @param int $variation_id Variation ID, 0 for simple products.
+ * @return float|null Unit cost, or null when no cost is on file at all.
+ */
+function brikpanel_product_cogs( $product_id, $variation_id = 0 ) {
+    $product_id   = (int) $product_id;
+    $variation_id = (int) $variation_id;
+
+    $pval = '' !== ( $p = brikpanel_product_cogs_raw( $product_id ) ) ? (float) $p : null;
+    $cost = $pval;
+
+    if ( $variation_id > 0 ) {
+        $vval = '' !== ( $v = brikpanel_product_cogs_raw( $variation_id ) ) ? (float) $v : null;
+        if ( 'yes' === get_post_meta( $variation_id, '_cogs_value_is_additive', true ) ) {
+            $cost = ( null === $vval && null === $pval ) ? null : (float) $vval + (float) $pval;
+        } else {
+            $cost = ( null !== $vval ) ? $vval : $pval;
+        }
+    }
+
+    /**
+     * Filter the resolved unit cost BrikPanel uses for a product line.
+     *
+     * @param float|null $cost         Resolved cost (null = no cost on file).
+     * @param int        $product_id   Parent (or simple) product ID.
+     * @param int        $variation_id Variation ID (0 for simple products).
+     */
+    return apply_filters( 'brikpanel_product_cogs', $cost, $product_id, $variation_id );
+}
+
+/**
+ * Whether BrikPanel's own front-end visitor tracking is enabled.
+ *
+ * Gates every storefront beacon and counter: the daily visitor / page-view /
+ * product-view scripts, the live-visitor ping, the checkout counter and both
+ * add-to-cart counters. Stores that already run a dedicated analytics plugin
+ * can switch all of it off from WooCommerce ▸ Settings ▸ BrikPanel ▸
+ * Analytics; the dashboard cards those counters feed then simply stop
+ * receiving new data. Defaults to on so existing installs are unaffected.
+ *
+ * @return bool
+ */
+function brikpanel_frontend_tracking_enabled() {
+    return get_option( 'brikpanel_frontend_tracking', 'yes' ) !== 'no';
+}
+
+/**
+ * Interval, in seconds, between live-visitor pings from an open storefront tab.
+ *
+ * Clamped to 10–300: below 10 s the ping would defeat its own server-side
+ * rate limit, above 5 minutes a visitor would be considered gone (and drop
+ * off the Live widget) between two legitimate pings of the same open tab.
+ *
+ * @return int
+ */
+function brikpanel_live_ping_interval() {
+    $interval = (int) get_option( 'brikpanel_live_ping_interval', 30 );
+    return max( 10, min( 300, $interval > 0 ? $interval : 30 ) );
+}
+
+/**
+ * Whether the Live widget may store/show logged-in customer details
+ * (name, e-mail, phone) alongside the anonymous visit data.
+ *
+ * When off, live tracking still counts the visitor and shows the page and
+ * cart state, but no personal fields are cached at all — useful for stores
+ * that prefer strict data minimisation. Defaults to on (existing behaviour).
+ *
+ * @return bool
+ */
+function brikpanel_live_customer_details_enabled() {
+    return get_option( 'brikpanel_live_customer_details', 'yes' ) !== 'no';
+}
 
 /**
  * Option name storing the order statuses a merchant counts as valid,

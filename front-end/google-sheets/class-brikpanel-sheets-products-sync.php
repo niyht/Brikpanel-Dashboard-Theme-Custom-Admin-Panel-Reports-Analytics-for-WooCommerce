@@ -860,7 +860,7 @@ class Brikpanel_Sheets_Products_Sync {
 				$raw = $row[ (int) $col_map['cogs'] ] ?? '';
 				if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
 					$new = wc_format_decimal( $raw );
-					$cur = $product->get_meta( '_brikpanel_cogs', true );
+					$cur = brikpanel_product_cogs_raw( (int) $product->get_id() );
 					if ( self::decimal_changed( $new, $cur ) ) {
 						// Mirror both stores BrikPanel writes everywhere else:
 						// WC-native COGS (when present) and the _brikpanel_cogs meta.
@@ -1135,14 +1135,14 @@ class Brikpanel_Sheets_Products_Sync {
 			case 'regular_price': return $product->get_regular_price() === '' ? '' : (float) $product->get_regular_price();
 			case 'sale_price':    return $product->get_sale_price() === '' ? '' : (float) $product->get_sale_price();
 			case 'cogs':
-				// Per-unit cost. Variations fall back to the parent's cost when
-				// they have none of their own; an unset cost shows as blank so
-				// the merchant can tell "no cost configured" from "free / cost 0".
-				$cogs = $product->get_meta( '_brikpanel_cogs', true );
-				if ( ( $cogs === '' || $cogs === null ) && $product->is_type( 'variation' ) ) {
-					$cogs = get_post_meta( (int) $product->get_parent_id(), '_brikpanel_cogs', true );
-				}
-				return ( $cogs === '' || $cogs === null ) ? '' : (float) $cogs;
+				// Per-unit cost via the central accessor (native-first with
+				// legacy fallback, variation → parent fallback, additive
+				// variations). An unset cost shows as blank so the merchant
+				// can tell "no cost configured" from "free / cost 0".
+				$cogs = $product->is_type( 'variation' )
+					? brikpanel_product_cogs( (int) $product->get_parent_id(), (int) $product->get_id() )
+					: brikpanel_product_cogs( (int) $product->get_id() );
+				return null === $cogs ? '' : (float) $cogs;
 			case 'stock':
 				if ( ! $product->get_manage_stock() ) { return ''; }
 				$q = $product->get_stock_quantity();

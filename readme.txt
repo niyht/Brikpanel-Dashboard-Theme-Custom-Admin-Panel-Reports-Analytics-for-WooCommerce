@@ -4,7 +4,7 @@ Donate link: https://donate.stripe.com/14AdR9ghJcxKaAqdzbc3m00
 Tags: woocommerce dashboard, woocommerce inventory management, google sheets, woocommerce bulk editor, roas
 Requires at least: 6.0
 Tested up to: 7.0
-Stable tag: 3.2.12
+Stable tag: 3.2.20
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
@@ -51,11 +51,12 @@ BrikPanel ships a complete **WooCommerce customer analytics** suite, calculated 
 
 = Live Visitors & Real-Time Conversion Tracking =
 
-BrikPanel ships a built-in **WooCommerce live visitors** widget, see who is on your store right now, what page they are on, and whether they have items in the cart. Refreshes every 30 seconds. No external service, no Hotjar, no monthly fee.
+BrikPanel ships a built-in **WooCommerce live visitors** widget, see who is on your store right now, what page they are on, and whether they have items in the cart. Refreshes every 30 seconds by default (configurable). No external service, no Hotjar, no monthly fee.
 
 * **WooCommerce real time visitors** widget with cart status (*Browsing / Has items in cart / On thank-you page*), current page, and customer info
 * **WooCommerce conversion tracking** in the same database that powers the dashboard
-* IP addresses SHA-256 hashed for privacy
+* Visitor IPs are never stored, only a salted SHA-256 hash, and live visitor data stays in a short-lived cache, never in the database
+* Privacy switches: turn front-end tracking off entirely, or keep it on while excluding logged-in customer details from the Live view
 * Most-viewed pages and most added-to-cart products reports
 
 A free **woocommerce statistics plugin** and **woocommerce sales tracker** without any external SaaS.
@@ -66,7 +67,7 @@ A 3D rotating globe (Cobe.js) plots every order on its real location, see **WooC
 
 = Lightning-Fast Order Search: Cmd/Ctrl + K from Anywhere =
 
-Hit `Ctrl + K` (or `Cmd + K` on Mac) anywhere in wp-admin and a beautiful order search overlay opens, the free **woocommerce order search plugin** every store owner has been asking for. Searches across order ID, customer first/last name, email, phone, and product SKU inside order line items at once. True **woocommerce quick search** with results as you type, color-coded status badges, totals, and dates.
+Hit `Ctrl + K` (or `Cmd + K` on Mac) anywhere in wp-admin and an order search overlay opens, the free **woocommerce order search plugin**. Searches order ID, customer name, email, phone and product SKU inside line items at once. True **woocommerce quick search**, with results as you type, status badges, totals and dates.
 
 = Modern WooCommerce Order Management =
 
@@ -96,11 +97,11 @@ The default **WooCommerce product list** is fine for browsing, painful for editi
 
 = Quick Edit Sidebar: Edit Without Leaving the List =
 
-A slide-in panel from any product row to edit name, SKU, regular/sale price, stock, and category, save without leaving the list. The **woocommerce quick edit** experience WooCommerce should have shipped years ago. Update **woocommerce quick edit price**, stock, or category in two clicks.
+A slide-in panel from any product row to edit name, SKU, regular/sale price, stock and category, saved without leaving the list. The **woocommerce quick edit** WooCommerce should have shipped years ago: update **woocommerce quick edit price**, stock or category in two clicks.
 
 = Bulk Edit WooCommerce Products with the Variation Editor: Full Variation Support =
 
-This is where BrikPanel pulls ahead of every other free **woocommerce bulk editor**. Most free plugins only handle simple products and only let you "increase price by X%". BrikPanel does much more, and does it for variable products too.
+This is where BrikPanel pulls ahead of every other free **woocommerce bulk editor**. Most free plugins only handle simple products and only "increase price by X%". BrikPanel does far more, on variable products too.
 
 * **WooCommerce bulk price update** (regular and sale): percentage, fixed amount, or absolute value, across the whole catalog or filtered by category
 * **Bulk update WooCommerce products** stock quantities (in/out of stock, set quantity, add/subtract)
@@ -119,7 +120,7 @@ Now the part nobody else does for free: **variation support**.
 
 = Simplified WooCommerce Product Editor =
 
-The default WooCommerce add-product screen has 11 metaboxes, 3 tabs, and 40+ fields. New owners give up before finishing their first product. BrikPanel ships a complete **woocommerce product editor plugin** with the noise removed.
+The default WooCommerce add-product screen has 11 metaboxes, 3 tabs and 40+ fields. BrikPanel ships a complete **woocommerce product editor plugin** with the noise removed.
 
 * **Featured image + product gallery** with drag-and-drop upload, unlimited images, drag-to-reorder
 * Regular price, sale price with decimal validation
@@ -140,11 +141,11 @@ Attach a separate image gallery to each product variation, the frontend swaps ga
 
 = WooCommerce Categories Page: Drag-and-Drop Parent/Child Management =
 
-The default WooCommerce category screen has not been redesigned in a decade. BrikPanel rebuilds it with per-page settings (5–200), **drag-and-drop parent/child nesting** with circular reference prevention, for both `product_cat` and `product_tag`.
+BrikPanel rebuilds the dated WooCommerce category screen with per-page settings (5–200) and **drag-and-drop parent/child nesting** with circular reference prevention, for both `product_cat` and `product_tag`.
 
 = Best WooCommerce Coupon Plugin: Free Coupon Manager =
 
-A complete **WooCommerce coupon manager** that makes coupons a first-class part of the admin, we honestly think this is the **best WooCommerce coupon plugin** in the free repository.
+A complete **WooCommerce coupon manager** that makes coupons first-class in the admin, and we think the **best WooCommerce coupon plugin** in the free repository.
 
 * Coupon table with code copy-to-clipboard, discount type icon, amount, usage count, expiry highlighting, and status
 * Status tabs, AJAX pagination, **slide-over coupon panel**: create/edit without a reload
@@ -154,11 +155,11 @@ A complete **WooCommerce coupon manager** that makes coupons a first-class part 
 
 = WooCommerce Cart Abandonment & Cart Recovery =
 
-A built-in **WooCommerce cart abandonment** and **cart recovery** system, with no external email SaaS. A dedicated **Abandoned Carts** screen captures the checkout email of shoppers who do not finish (classic and block checkout, plus logged-in add-to-cart) and snapshots each cart down to the exact variation. Carts move Active → Abandoned → Recovered automatically, and an optional popup hands each subscriber a single-use **cart recovery coupon**, with search and date filters, CSV / Excel export and email-list import.
+A built-in **WooCommerce cart abandonment** and **cart recovery** system, with no external email SaaS. A dedicated **Abandoned Carts** screen captures the checkout email of shoppers who do not finish (classic and block checkout, plus logged-in add-to-cart) and snapshots each cart down to the exact variation. Carts move Active to Abandoned to Recovered automatically, and an optional popup hands each subscriber a single-use **cart recovery coupon**. Search and date filters, CSV / Excel export and email-list import.
 
 = Custom WordPress Login Page: Custom WP Login Page for WooCommerce =
 
-BrikPanel ships a **custom WP login page** that fully replaces the default `wp-login.php` look, a real **WordPress login customizer** built for WooCommerce stores.
+A **custom WP login page** that fully replaces the default `wp-login.php` look, a real **WordPress login customizer** for WooCommerce stores.
 
 * Centered card layout with your site name as logo
 * Minimal, distraction-free fields, AJAX submission (no reload)
@@ -167,17 +168,17 @@ BrikPanel ships a **custom WP login page** that fully replaces the default `wp-l
 
 = WooCommerce Inventory Management =
 
-BrikPanel includes a complete **woocommerce inventory management** workspace. The product list, bulk editor, variation editor, and quick edit sidebar work together as one inventory workflow.
+A complete **woocommerce inventory management** workspace: the product list, bulk editor, variation editor and quick edit sidebar work together as one inventory workflow.
 
 * Current stock for every product and variation in one place, with stock badges in the product list (in stock / low stock / out of stock)
 * Update stock inline from the quick edit sidebar, or bulk update across categories and variations
 * HPOS-enabled stores supported
 
-A free **woocommerce inventory management plugin** that covers the daily workflow without installing another heavy stock control plugin.
+A free **woocommerce inventory management plugin** that covers the daily workflow, no heavy stock control plugin needed.
 
 = Custom Top Admin Bar & Notifications =
 
-A **Custom BrikPanel-styled top admin bar** replaces the default WordPress toolbar across the entire admin with a larger, e-commerce-focused notification bell and quick links, toggleable from settings. Notification sound, confetti animation and a top-right popup the moment a new completed order arrives.
+A **Custom BrikPanel-styled top admin bar** replaces the default WordPress toolbar with an e-commerce notification bell and quick links, toggleable from settings. Sound, confetti and a popup the moment a completed order arrives.
 
 = Google Sheets Sync: Real-Time WooCommerce Google Sheets Integration =
 
@@ -188,7 +189,7 @@ BrikPanel ships a free **WooCommerce Google Sheets sync**, a fully native **WooC
 * **Analytics report snapshots**: Sales Summary, Daily KPIs, Top Products and Funnel tabs refreshed on an interval for pivots and dashboards in Sheets
 * **Customer + RFM snapshot**: chained to the nightly RFM recompute
 
-HPOS-compatible. A real **google sheets woocommerce sync** for stores that want orders, customers and analytics in Sheets without paying a monthly fee.
+HPOS-compatible: a real **google sheets woocommerce sync**, free.
 
 = WooCommerce ROAS, Net Profit & Ad Spend: Google Ads + Meta Ads =
 
@@ -196,11 +197,11 @@ BrikPanel pulls daily spend from **Google Ads** and **Meta Ads** (Facebook / Ins
 
 = BrikMarket Marketplace Analytics =
 
-When BrikMarket is active, marketplace orders are excluded from the storefront conversion rate and a dedicated dashboard block breaks down orders, share and top categories per marketplace.
+When BrikMarket is active, marketplace orders are excluded from the storefront conversion rate, and a dashboard block breaks down orders, share and top categories per marketplace.
 
 = Subscription & Membership Plugin Compatibility =
 
-Compatible with major subscription and membership plugins (WooCommerce Subscriptions, MemberPress, Paid Memberships Pro and more), subscription products and member orders show up in the same product list, order screens and customer analytics.
+Subscription products and member orders (WooCommerce Subscriptions, MemberPress, Paid Memberships Pro and more) show up in the same product list, order screens and customer analytics.
 
 = Developer Hooks & Filters =
 
@@ -230,7 +231,7 @@ WooCommerce's built-in analytics are slow, refresh hourly, and have no live visi
 * **HPOS (High-Performance Order Storage)** fully supported with dual code paths
 * WooCommerce 7.x, 8.x, and newer; works alongside Admin Menu Editor, Slider Revolution, Yoast SEO, RankMath, WPML, Polylang
 * Translation-ready (`.pot` file included), with all JavaScript / jQuery strings routed through `wp_localize_script`
-* All AJAX actions verify nonces and `manage_woocommerce` capability; DB writes use prepared statements; IPs SHA-256 hashed; admin activity excluded from analytics
+* All AJAX actions verify nonces and `manage_woocommerce` capability; DB writes use prepared statements; visitor IPs stored only as truncated salted SHA-256 hashes; admin activity excluded from analytics; front-end tracking can be disabled entirely from settings
 
 == Installation ==
 
@@ -262,6 +263,22 @@ Yes. The dashboard goes far beyond the built-in screens with a complete set of *
 = Can I customize the dashboard widgets, sales charts and graphs? =
 
 Yes. The BrikPanel **admin dashboard** is built from modular **dashboard widgets** (sales, orders, AOV, the conversion funnel, live visitors, the geographic globe, customer analytics and more), and the modules you do not need can be turned off from **WooCommerce → Settings → BrikPanel**. The **sales charts** and **sales graphs** are rendered with Chart.js and redraw for any date range you pick, so your **custom dashboard** shows exactly the **sales charts**, KPIs and reports you care about and nothing you do not.
+
+= Does BrikPanel work with multi-currency stores (CURCY, WCML)? =
+
+Yes. When your store takes orders in more than one currency, BrikPanel converts every order to your store's base currency before summing, so Revenue, AOV and the sales chart are never a meaningless mix of currencies. With **CURCY (WooCommerce Multi Currency)** the exact day-of-sale rate is read from the snapshot CURCY stores on each order. With **WCML (WooCommerce Multilingual & Multicurrency)** the current WCML rate is applied and snapshotted onto the order the moment it is placed, which captures the day-of-sale rate for every order going forward. For any other multi-currency setup you can enter flat fallback rates under **WooCommerce → Settings → BrikPanel → Currency**, or supply a rate programmatically through the `brikpanel_order_base_factor` filter (parameters: current factor, `WC_Order`, order currency, base currency — return the multiplier that converts one unit of the order currency into the base currency).
+
+= Where does BrikPanel read Cost of Goods (COGS) from? Can I use my own cost field? =
+
+BrikPanel reads product cost from **WooCommerce's own native Cost of Goods Sold field** (`_cogs_total_value`, WooCommerce 9.5+) — the same field the WooCommerce product screen edits — so any plugin or import pipeline that writes the native cost is picked up automatically, including direct database writes. Costs saved by older BrikPanel versions are migrated into the native field automatically. Variation costs follow WooCommerce's semantics, including the "additive" flag that adds a variation's cost on top of the parent's. If you keep cost somewhere else entirely, hook the `brikpanel_product_cogs` filter (parameters: resolved cost or null, product id, variation id) to point BrikPanel's per-product cost reads at your own source.
+
+= Can I turn off BrikPanel's front-end visitor tracking? =
+
+Yes. If you already run a dedicated analytics tool, disable **Visitor tracking** under **WooCommerce → Settings → BrikPanel → Analytics** and BrikPanel adds zero scripts and zero requests to your storefront. You can also keep tracking on but raise the live-visitor refresh interval to reduce server load, or exclude logged-in customer details from the Live view for a fully anonymous setup.
+
+= Does BrikPanel support WordPress multisite? =
+
+Yes, both ways: network-activate it to run on every store in the network, or activate it on individual subsites only. Each site gets its own tables and settings either way. When network-activated, super admins additionally get network-wide access rules under **Network Admin → Settings → BrikPanel Access**.
 
 = Does BrikPanel show customer LTV, RFM segments and cohort retention? =
 
@@ -412,6 +429,29 @@ Yes. The dashboard, the bulk editor, the inventory tools, the order management, 
 
 == Changelog ==
 
+= 3.2.20 (2026-07-19) =
+* Performance: **Storefront tracking now uses a single combined request per page view instead of up to four separate ones.** The page-view counter, live-visitor ping, daily visitor/traffic-source count and product-view count are all carried by one request, and the extra "visitor left" call that used to fire on every page navigation was removed entirely (the Live view now simply expires idle visitors on its own, within about a minute). On stores with heavy traffic this cuts BrikPanel's tracking requests by roughly two thirds. Background browser tabs also stop pinging while hidden. Tracking can still be disabled completely, or the live refresh interval stretched up to 300 seconds, under WooCommerce → Settings → BrikPanel → Analytics
+
+= 3.2.18 (2026-07-19) =
+* New: **Front-end tracking can now be switched off entirely** (WooCommerce → Settings → BrikPanel → Analytics → "Visitor tracking"). When off, BrikPanel adds zero scripts and zero requests to your storefront — ideal for stores that already run a dedicated analytics tool. The live-visitor refresh interval is also configurable (10–300 seconds, default 30) to reduce load on busy stores
+* New: **"Customer details in Live view" privacy switch** — keep live tracking on but stop caching logged-in customers' name, email and phone entirely, for a fully anonymous Live view. Live visitor data was already only kept in a short-lived cache (about two minutes) and never written to the database
+* New: **WooCommerce's native Cost of Goods Sold field is now the source of truth for all cost reads** (dashboard profit, product list, Quick Edit, Google Sheets, purchase orders). Costs written by other plugins or import pipelines directly to WooCommerce's cost field — even via direct database updates — are picked up automatically; older BrikPanel-only costs are migrated over once, automatically. WooCommerce's additive-variation cost flag is now honoured too (variation cost added on top of the parent's). Existing stores see identical numbers, the two cost stores simply can no longer drift apart
+* New: **`brikpanel_product_cogs` filter** for integrators who keep product cost in a custom field — point BrikPanel's per-product cost reads at any source from one hook
+* New: **WCML (WooCommerce Multilingual & Multicurrency) support** — foreign-currency orders are converted to your base currency using WCML's rate, snapshotted onto the order at purchase time so the day-of-sale rate is captured going forward. Saving WCML's settings also re-converts your existing foreign-currency orders in the background, so historical figures catch up too. The `brikpanel_order_base_factor` filter is now documented for bridging any other multi-currency stack
+* New: **Per-site activation on multisite** — BrikPanel can now be activated on individual subsites instead of forcing network-wide activation. Existing network-activated installs are unaffected; the network access-rules page only shows while network-activated (it only applies in that mode)
+* Fix: **Visitor IP hashing upgraded to a salted SHA-256 (HMAC) with a per-site secret**, matching what this readme always claimed. The previous truncated-MD5 hash was theoretically reversible for IPv4 by brute force; the raw IP was never stored or exposed either way
+* Fix: **Cost of Goods backfill now runs on fresh installs** — on stores where WooCommerce's native cost field was already populated before BrikPanel was installed, the dashboard showed Cost of Goods 0.00 because the one-time import only ran on version upgrades, never on a first install. It now runs at activation and self-heals on existing installs with the update
+* Tweak: The live visitor cache no longer stores the customer's user id (it was never displayed)
+
+= 3.2.17 (2026-07-17) =
+* Fix: **Variable products no longer flip to "out of stock" after a sale (POS or storefront) when their variations still have stock**. Some variable products carry a leftover parent-level "manage stock" flag with no quantity (from an import or a simple-to-variable conversion); the first completed order made WooCommerce derive out-of-stock from the empty parent quantity, hiding the whole product. BrikPanel's self-repair routine now also clears this dormant leftover before it can do damage, and re-runs automatically once after updating. Deliberate parent-level stock setups are left untouched.
+
+= 3.2.15 (2026-07-14) =
+* New: **You can now turn individual product variations on or off directly from the BrikPanel product editor**. Each variation row has an "Active" switch (next to its name), matching WooCommerce's own Enabled control, plus a bulk "Set active / Set inactive" option under "Apply to all variations". Inactive variations are hidden from your store; new variations are Active by default. This fixes cases where variations added through the dashboard could end up inactive with no way to re-enable them without leaving BrikPanel. Works on both simple and variable products.
+
+= 3.2.13 (2026-07-14) =
+* Fix: **You can now add numeric attribute values (like shoe sizes 38, 40, 42) to variations again**. When an attribute's values were purely numbers, clicking a suggested value from the dropdown silently did nothing after the first one was added, so variable products with size-number attributes could not be built. Selecting values from the suggestion list now works for numeric and text values alike, on both simple and variable products. The same fix applies to numeric product tags.
+
 = 3.2.12 (2026-07-14) =
 * Fix: **The "Additional product data" card no longer breaks its layout on stores where WooCommerce's tab styling applies**. After the previous compatibility fix, WooCommerce's own stylesheet could float the third-party sections into a narrow column, scattering the group titles around them (most visible on RTL languages such as Persian or Arabic). The sections now always stack full-width inside the card, on both LTR and RTL admins.
 * Improvement: **Broader compatibility for buttons inside third-party "Additional product data" sections**. The card now recreates the native product editor's full container chain, so plugins that attach their add/remove/sort buttons to any of the standard WooCommerce containers work inside the streamlined editor as well. Works on both simple and variable products.
@@ -466,50 +506,6 @@ Yes. The dashboard, the bulk editor, the inventory tools, the order management, 
 * New: **Import order statuses from another plugin**. Moving to BrikPanel from another custom-order-status plugin? A new "Import from another plugin" card on the Order statuses screen finds statuses that other plugins have registered, and any "orphan" statuses left on your orders after a plugin was removed (which otherwise show as a raw code and drop out of filters and reports). Import the ones you want in a click and they become editable BrikPanel statuses, keeping their existing colour where it can be detected
 * Improvement: **Apply a custom order status to many orders at once**. Your custom statuses now appear in the orders list "Bulk actions" menu (and in BrikPanel's own bulk buttons), so you can select several orders and change them all to a custom status in one go, instead of opening each order. Works on both simple and variable product orders, on classic and High-Performance Order Storage
 * Fix: **The on/off switch can no longer be hidden from you by a store manager**. The top bar's BrikPanel power switch used to appear for anyone with the "manage options" permission, so a shop manager granted that permission could turn BrikPanel off for the whole store. Its visibility is now decided by role: administrators (and network super admins) always see it, and you can grant it to other roles from a new "Show the on/off switch to roles" setting under Access control
-
-= 3.1.47 (2026-07-02) =
-* New: **Filter the Products list by brand**. A brand drop-down now sits next to the category filter, so you can narrow the list to a single brand in one click. It appears only when your store has a brand taxonomy (WooCommerce's own product brands or a third-party one), and your choice is kept in the page URL
-* New: **A "Date" column for the Products list**. You can now show each product's publish date and time in the list, in your site's own date format and time zone. It is off by default; switch it on from the "Columns" button. Handy if you re-date products to refresh them at the top of a category
-* Improvement: **Category cells in the Products list are now clickable**. Click a product's category and the list filters to that category straight away, just like the native WooCommerce list. Works on both simple and variable products
-* New: **More formatting in the description editors**. The rich-text toolbar (long and short description, on simple and variable products) gains Heading 1, Heading 5 and Quote block styles, left/centre/right text alignment, and a text colour picker with an on-brand palette. Useful when your theme does not turn the product title into an H1 and you want one in the description for SEO
-* Fix: **The visible-sections checkboxes no longer flicker**. The checkboxes under WooCommerce > Settings > BrikPanel > Products (which sections show in the editor) had a small visual jump when ticked; they now use a clean, static BrikPanel checkbox
-
-= 3.1.46 (2026-06-30) =
-* New: **Traffic Sources in the dashboard**. The "Visitors by Device" panel has a new "Sources" tab that breaks your visitors down into Direct, Organic Search, Social, Referral, Paid and Email, with a "Top Referrers" list showing which sites send you the most traffic. A lightweight tracker records each visitor's referrer and landing page, one record per visitor per day, so the picture builds up over time
-* New: **Edit a product's URL slug (permalink) from the editor**. A new "Permalink (URL slug)" section in the product editor lets you set a custom URL for a product, with the storefront URL prefix shown for reference. Leave it blank and WooCommerce builds the slug from the title as before. It is off by default; switch it on under WooCommerce > Settings > BrikPanel > Products. Works on both simple and variable products
-* New: **Edit the sale price and cost straight from the Products list**. Clicking the price of a simple product now opens a small popover with both the Regular and Sale price, and the Cost (COGS) column is editable inline too, so a quick change no longer means opening the editor. Variable products keep using the per-variation popup, where regular, sale and cost are already editable one by one
-* New: **Edit the legacy "Return Draft" and "Change" order statuses**. These two built-in statuses used to be fixed and could not be removed; they now appear in your list under WooCommerce > Settings > BrikPanel > Order statuses, so you can rename or delete them like any other custom status. New installs start without them
-* New: **Search by GTIN in the command palette**. The CMD+K search already matched product name and SKU; it now also matches a product's GTIN, UPC, EAN or ISBN, on both products and variations, and shows the code in the result
-* New: **Network Admin link for multisite**. On a multisite network, BrikPanel hides the WordPress toolbar, which was the only way back to the Network Admin. Network administrators now have a "Network Admin" item in the top bar's user menu
-* Fix: **The "More" menu no longer breaks links to Coupons and custom order-status pages**. Clicking Coupons, or a third-party page such as a custom order-status plugin, from the sidebar's "More" group could land on a WordPress error page. Those links now point to the right place
-* Fix: **The "New customers today" notification now matches the dashboard**. The top bar's new-customer count only counted registered accounts and missed guest checkouts, so it could read zero while the dashboard's Customer Types showed new customers. It now uses exactly the same source as the dashboard
-* Fix: **"Order updated." and "Post updated." confirmations are back**. BrikPanel's hiding of third-party admin notices was also swallowing WordPress and WooCommerce's own confirmation bar after you saved an order or a post. The first-party message is now left alone
-* Fix: **The "Screen Options" and "Help" buttons now show on the classic (non-HPOS) order screen too**, where WooCommerce's own styles had hidden them. On the orders list they are back to WordPress's standard buttons in their usual top-right place
-* Fix: **Your site name is no longer cut off in the top bar on wide screens**. A long store name was being trimmed even when there was plenty of room; it can now grow with the window before it ever shortens
-
-= 3.1.45 (2026-06-27) =
-* Fix: **The "Screen Options" and "Help" buttons are no longer hidden on the orders screens**. WordPress tucks those toggles into the very top-right corner, exactly where BrikPanel's bars sit, so they ended up hidden behind them. On the single order screen they now live inside the sticky header next to the status and Save button; on the orders list they sit next to the "Add order" button. Either way they open the same panel as before, fully visible. On tablets and phones they shrink to compact icons so they stay reachable without crowding the bar. Works on both simple and variable product orders
-
-= 3.1.40 (2026-06-27) =
-* Improvement: **Marketplace sales now count in Revenue and Net profit**. On stores that use BrikMarket, the headline Revenue, Total Sales, Cost of goods and Net profit now include your marketplace turnover (Trendyol, Hepsiburada and the rest) together with your website orders, so the dashboard reflects the whole business instead of showing your revenue as zero while the marketplace cards held all the sales
-* Fix: **The Profit section no longer shows a permanent loss after you add product costs**. Cost of goods was counting your marketplace orders' costs while Revenue did not count their sales, so the moment you filled in a product cost the store looked like it was losing money. Revenue and Cost of goods now cover exactly the same orders, on both simple and variable products, so profit and margin are correct. The Google Sheets profit report uses the same basis
-* Improvement: **Conversion rate and visitor stats stay website-only**. Orders, average order value, conversion rate and visitors keep counting only on-site activity (marketplace orders have no website visit), so your conversion rate stays accurate even though the money figures now include the marketplace. A separate fix means marketplace orders are now reliably recognised for this split on High-Performance Order Storage stores
-* Fix: **Marketplace revenue is converted to your store currency**. The per-marketplace sales totals are now converted to your base currency before being added up, matching the rest of the dashboard, so a store selling in more than one currency no longer mixes raw amounts together
-
-= 3.1.39 (2026-06-26) =
-* New: **Add images to the product description**. The description editors (both the long description and the short description, on simple and variable products) now have an "Insert image" button that opens your media library. You can set the image's alt text, its alignment (None, Left, Centre or Right) and its size (Small, Medium, Large or Full, that is roughly a quarter, half, three-quarters or the image's natural width). Click an image you have already inserted to change its alignment, size or alt text, or to swap it for another. No more closing BrikPanel to add a picture with the classic editor
-* New: **Open description images in a lightbox**. While inserting or editing an image, tick "Open in a lightbox when clicked" and that image opens in a clean full-screen overlay on the product page when a shopper clicks it (click to enlarge, then close with the backdrop, the X button or the Esc key). The small lightbox script only loads on product pages that actually use it, so storefront performance is unaffected
-* Improvement: **Keep typing straight after inserting an image**. The cursor is now placed right after a newly inserted image, so you can carry on writing without having to click back into the editor
-
-= 3.1.38 (2026-06-25) =
-* Fix: **Google Sheets product sync no longer creates duplicate rows for variations (or any product)**. When a stock or price change was pushed but the plugin had lost track of which sheet row a product lived on, for example after a network hiccup dropped Google's reply or an earlier full sync was interrupted, the next push could add a second row for the same item. The push now reconciles against the Product ID already in the sheet and updates that existing row instead of appending a duplicate. Variations and their parent product are protected the same way. Run "Sync now" once to clear any duplicate rows a previous version left behind
-
-= 3.1.36 (2026-06-22) =
-* New: **The product editor's attributes and variations section was redesigned**. The card now has a clean header (the "Variable product" title, a short description and the toggle) above a tidy body, matching the rest of the editor, instead of the previous stacked grey text. The plain attribute drop-down is replaced with a modern, searchable picker: click the field, type to filter your global attributes, and press Enter to add the match. The free-text "add a value" box and its Add button are now one joined input, and the "Size and Color" shortcut moved into a clear "Quick add" chip. Every action behaves exactly as before, on both simple and variable products
-* New: **Drag to reorder attribute rows**. Each attribute row now has a drag handle, so you can reorder your attributes the way WooCommerce does. Because the order decides how variation names are built, reordering marks any already-generated variations as needing a refresh and prompts you to regenerate them
-* Fix: **WooCommerce's "Customer history" and "Order attribution" boxes are back on the modern order screen**. Both boxes carry useful native data and were being hidden by mistake; they now show with BrikPanel's card styling. Only the raw "Custom Fields" box (already replaced by BrikPanel's "Additional details" card) and the download-permissions box stay hidden
-* Fix: **The "Order actions" box no longer looks broken with the CURCY multi-currency plugin**. CURCY adds a currency selector and a note to that box; the selector now sits on its own full-width row with the note as small helper text underneath, and the Trash and Update buttons line up correctly. Stores without CURCY are unchanged
-* Improvement: **Security and reliability hardening of the attributes and variations editor**. The data the editor embeds in the page is now safely encoded so attribute or term names imported from elsewhere can never break out of the script, saving and the variation preview now run a per-product permission check, and creating a new term or global attribute is limited to users allowed to do so. Removing a taxonomy attribute from a product now cleans up its old term links, a sensible upper limit guards against a runaway number of variations, and several smaller fixes make the variation preview race-safe and stop duplicate attribute rows. Works on both simple and variable products
 
 = Earlier versions =
 For the complete release history (and all earlier versions), see changelog.txt bundled with the plugin.
