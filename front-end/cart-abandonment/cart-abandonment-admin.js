@@ -37,25 +37,6 @@
 			.then(function (res) { return res.json(); });
 	}
 
-	function toast(message, isError) {
-		var el = document.createElement('div');
-		el.className = 'brikpanel-cartab-toast' + (isError ? ' is-error' : '');
-		el.setAttribute('role', 'status');
-		el.textContent = message;
-		document.body.appendChild(el);
-		window.requestAnimationFrame(function () {
-			el.classList.add('is-in');
-		});
-		window.setTimeout(function () {
-			el.classList.remove('is-in');
-			window.setTimeout(function () {
-				if (el.parentNode) {
-					el.parentNode.removeChild(el);
-				}
-			}, 350);
-		}, 3500);
-	}
-
 	function badge(text, kind) {
 		var el = document.createElement('span');
 		el.className = 'brikpanel-cartab-badge brikpanel-cartab-badge-' + kind;
@@ -302,57 +283,6 @@
 	});
 	$('brikpanel-cartab-export-xlsx').addEventListener('click', function () {
 		window.location.href = exportUrl('xlsx');
-	});
-	$('brikpanel-cartab-import').addEventListener('click', function () {
-		$('brikpanel-cartab-import-file').click();
-	});
-	$('brikpanel-cartab-import-file').addEventListener('change', function () {
-		var fileInput = this;
-		var button = $('brikpanel-cartab-import');
-		if (!fileInput.files || !fileInput.files.length) {
-			return;
-		}
-		var body = new FormData();
-		body.append('action', 'brikpanel_cartab_import');
-		body.append('_ajax_nonce', cfg.nonce);
-		body.append('file', fileInput.files[0]);
-		fileInput.value = '';
-		button.disabled = true;
-		button.textContent = cfg.i18n.importing;
-		fetch(cfg.ajax_url, { method: 'POST', credentials: 'same-origin', body: body })
-			.then(function (res) { return res.json(); })
-			.then(function (json) {
-				if (!json || !json.success) {
-					toast((json && json.data && json.data.message) || cfg.i18n.error, true);
-					return;
-				}
-				var d = json.data;
-				var parts = [];
-				if (d.imported > 0) {
-					parts.push(cfg.i18n.import_done.replace('%s', d.imported));
-				} else {
-					parts.push(cfg.i18n.import_none);
-				}
-				if (d.duplicates > 0) {
-					parts.push(cfg.i18n.import_dupes.replace('%s', d.duplicates));
-				}
-				if (d.invalid > 0) {
-					parts.push(cfg.i18n.import_invalid.replace('%s', d.invalid));
-				}
-				if (d.truncated) {
-					parts.push(cfg.i18n.import_truncated);
-				}
-				toast(parts.join(' '), d.imported === 0);
-				state.page = 1;
-				load();
-			})
-			.catch(function () {
-				toast(cfg.i18n.error, true);
-			})
-			.finally(function () {
-				button.disabled = false;
-				button.textContent = cfg.i18n.import_label;
-			});
 	});
 	$('brikpanel-cartab-popup-toggle').addEventListener('change', function () {
 		var checkbox = this;

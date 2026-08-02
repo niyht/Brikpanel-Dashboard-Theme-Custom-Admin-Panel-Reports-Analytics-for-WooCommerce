@@ -193,6 +193,29 @@
 	pointer-events: none;
 }
 
+/* Reconnect-required banner: the stored token stopped working, so the card is
+   still "connected" but nothing is importing. Error-toned, not warning-toned,
+   because it needs an action from the merchant. */
+.bp-ads-stale-note {
+	display: flex;
+	gap: 0.625rem;
+	align-items: flex-start;
+	padding: 0.875rem 1rem;
+	margin-bottom: 1rem;
+	background: #fce4e4;
+	border: 1px solid #f1b0b0;
+	border-radius: 0.5rem;
+	color: #a3271a;
+}
+.bp-ads-stale-note svg { flex-shrink: 0; margin-top: 0.1rem; }
+.bp-ads-stale-note strong {
+	display: block;
+	font-size: 0.875rem;
+	margin-bottom: 0.2rem;
+	color: #8a1f14;
+}
+.bp-ads-stale-note .bp-ads-card-sub { color: #a3271a; margin: 0; }
+
 /* ---------- Form fields ---------- */
 .bp-ads-field { margin-top: 1rem; }
 .bp-ads-label {
@@ -231,6 +254,21 @@
 	flex-wrap: wrap;
 }
 .bp-ads-input-row .bp-ads-input { flex: 1 1 220px; min-width: 0; }
+.bp-ads-manual { margin-top: 0.75rem; }
+.bp-ads-manual-summary {
+	display: inline-block;
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: var(--text-secondary);
+	cursor: pointer;
+	list-style: none;
+	user-select: none;
+}
+.bp-ads-manual-summary::-webkit-details-marker { display: none; }
+.bp-ads-manual-summary::before { content: "+ "; color: var(--text-muted); }
+.bp-ads-manual[open] .bp-ads-manual-summary::before { content: "- "; }
+.bp-ads-manual-summary:hover { color: var(--text); }
+.bp-ads-manual-body { margin-top: 0.5rem; }
 select.bp-ads-input {
 	cursor: pointer;
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%23303030' d='M6 8.5L1.5 4h9z'/%3E%3C/svg%3E");

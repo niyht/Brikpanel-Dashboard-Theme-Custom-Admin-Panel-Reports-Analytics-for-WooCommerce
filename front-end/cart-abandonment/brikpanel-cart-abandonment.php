@@ -50,7 +50,6 @@ class Brikpanel_Cart_Abandonment {
 		add_action( 'wp_ajax_brikpanel_cartab_popup_toggle', [ $this, 'ajax_popup_toggle' ] );
 		add_action( 'wp_ajax_brikpanel_cartab_popup_discount', [ $this, 'ajax_popup_discount' ] );
 		add_action( 'wp_ajax_brikpanel_cartab_export',       [ $this, 'ajax_export' ] );
-		add_action( 'wp_ajax_brikpanel_cartab_import',       [ $this, 'ajax_import' ] );
 
 		// Popup text options: WC's default text sanitizer (sanitize_text_field)
 		// strips anything that looks like a percent-encoded octet, so a title
@@ -80,6 +79,11 @@ class Brikpanel_Cart_Abandonment {
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_frontend' ] );
 		add_action( 'wp_ajax_nopriv_brikpanel_cartab_capture', [ $this, 'ajax_capture' ] );
 		add_action( 'wp_ajax_brikpanel_cartab_capture',        [ $this, 'ajax_capture' ] );
+
+		// Popup "edit email" correction: lets a visitor who mistyped their
+		// address fix it and have the coupon re-delivered to the right inbox.
+		add_action( 'wp_ajax_nopriv_brikpanel_cartab_popup_update_email', [ $this, 'ajax_update_popup_email' ] );
+		add_action( 'wp_ajax_brikpanel_cartab_popup_update_email',        [ $this, 'ajax_update_popup_email' ] );
 
 		// Server-side cart mirror: keeps snapshots fresh for every known email
 		// (popup or checkout sourced) without relying on any front-end JS.
@@ -213,6 +217,8 @@ class Brikpanel_Cart_Abandonment {
 			'checkout' => __( 'Checkout', 'brikpanel' ),
 			'popup'    => __( 'Popup', 'brikpanel' ),
 			'account'  => __( 'Account', 'brikpanel' ),
+			// Legacy: CSV import was removed, but rows captured by it before
+			// the removal still need a readable label in the list and export.
 			'import'   => __( 'Imported', 'brikpanel' ),
 		];
 	}
@@ -359,6 +365,10 @@ class Brikpanel_Cart_Abandonment {
 				/* translators: %s: the visitor's email address */
 				'couponEmailed'     => __( 'We sent your discount code to %s', 'brikpanel' ),
 				'couponEmailedHint' => __( 'Check your inbox — if it landed in the Promotions tab, drag it to Primary so you never miss it.', 'brikpanel' ),
+				'editEmail'    => __( 'Wrong address? Edit it', 'brikpanel' ),
+				'editSave'     => __( 'Update & resend', 'brikpanel' ),
+				'editCancel'   => __( 'Cancel', 'brikpanel' ),
+				'editDone'     => __( 'Sent to your new address', 'brikpanel' ),
 				'copy'         => __( 'Copy', 'brikpanel' ),
 				'copied'       => __( 'Copied!', 'brikpanel' ),
 				'offBadge'     => __( 'OFF', 'brikpanel' ),
@@ -396,12 +406,21 @@ class Brikpanel_Cart_Abandonment {
 			$source = 'checkout';
 		}
 
-		$visitor = self::visitor_id();
+		// Read the id the request actually ARRIVED with before minting one:
+		// visitor_id() both creates a new id and writes it into $_COOKIE, so
+		// after that call there is no way left to tell a returning browser from
+		// a client that sends no cookie at all - and that distinction is what
+		// the popup rate limit below is keyed on.
+		$known_visitor = self::existing_visitor_id();
+		$visitor       = self::visitor_id();
 
 		// Rate limit: at most one accepted capture per 2s per browser (per IP
-		// when the cookie could not be set). Popup submits are exempt — they
-		// are deliberate one-off user actions and must not lose their coupon
-		// to a racing checkout-poller ping.
+		// when the cookie could not be set). Popup submits are exempt from THIS
+		// bucket — they are deliberate one-off user actions and must not lose
+		// their coupon to a racing checkout-poller ping — but they are not
+		// exempt from rate limiting as such: they get their own, stricter
+		// bucket below, because the popup branch is the expensive one (it mints
+		// a coupon and, with a companion plugin installed, sends mail).
 		$rl_id  = $visitor !== '' ? $visitor : ( isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : 'unknown' );
 		$rl_key = 'bp_cartab_rl_' . md5( $rl_id );
 		if ( 'popup' !== $source ) {
@@ -409,6 +428,11 @@ class Brikpanel_Cart_Abandonment {
 				wp_send_json_success( [ 'throttled' => true ] );
 			}
 			set_transient( $rl_key, 1, 2 );
+		} elseif ( self::popup_capture_throttled( $known_visitor ) ) {
+			// Answer exactly like the checkout throttle does: the visitor still
+			// gets the popup's thank-you state, just without a coupon. Telling
+			// an abusive client that it hit a limit only helps it tune.
+			wp_send_json_success( [ 'throttled' => true ] );
 		}
 
 		$extra = [];
@@ -426,42 +450,226 @@ class Brikpanel_Cart_Abandonment {
 
 		// Popup signups earn a personal discount coupon (when configured).
 		if ( 'popup' === $source ) {
-			self::remember_customer_email( strtolower( $email ) );
-			$coupon = self::get_or_create_popup_coupon( strtolower( $email ) );
-			if ( $coupon ) {
-				/**
-				 * How the popup coupon reaches the visitor.
-				 *
-				 * 'inline' (default) shows the code in the popup; 'email'
-				 * suppresses it and tells the visitor to check their inbox —
-				 * a companion plugin (e.g. BrikMentor) then delivers the code
-				 * by email via the deferred action below.
-				 *
-				 * @param string $delivery 'inline' | 'email'.
-				 * @param array  $coupon   {code, amount}.
-				 * @param string $email    Lowercased captured email.
-				 * @param int    $id       Cart-abandonment entry id.
-				 */
-				$delivery = apply_filters( 'brikpanel_cartab_popup_coupon_delivery', 'inline', $coupon, strtolower( $email ), (int) $id );
-				if ( 'email' === $delivery ) {
-					$response['coupon_emailed'] = true;
-					$response['email']          = strtolower( $email );
-					/**
-					 * The popup coupon was deferred to email delivery — the
-					 * companion plugin sends it from here.
-					 *
-					 * @param array  $coupon {code, amount}.
-					 * @param string $email  Lowercased captured email.
-					 * @param int    $id     Cart-abandonment entry id.
-					 */
-					do_action( 'brikpanel_cartab_popup_coupon_deferred', $coupon, strtolower( $email ), (int) $id );
-				} else {
-					$response['coupon']   = $coupon['code'];
-					$response['discount'] = $coupon['amount'];
-				}
-			}
+			$response = array_merge( $response, self::deliver_popup_coupon( strtolower( $email ), (int) $id ) );
 		}
 
+		wp_send_json_success( $response );
+	}
+
+	/**
+	 * Volume guard for the popup branch of the capture endpoint.
+	 *
+	 * The endpoint is deliberately nonce-less (it has to work on fully cached
+	 * pages), so the only honest brake left is volume. Two details matter:
+	 *
+	 * - The hourly cap is keyed on the IP, never on the visitor cookie. A
+	 *   client that simply never sends the cookie is handed a brand new id on
+	 *   every request, so a cookie-keyed cap is no cap at all — which is the
+	 *   exact shape of an automated spray.
+	 * - The burst brake prefers the cookie and only falls back to the IP. Real
+	 *   browsers each carry their own id, so two genuine shoppers behind one
+	 *   office NAT never throttle each other; a cookie-less client lands in the
+	 *   shared IP bucket, which is where it belongs.
+	 *
+	 * A store-wide ceiling sits on top for the same spray arriving from
+	 * rotating addresses. All three limits are sized so a real signup rate
+	 * never reaches them (a visitor submits the popup once), and all are
+	 * filterable for the rare shop that genuinely exceeds them.
+	 *
+	 * @param string $visitor Id the request ARRIVED with; '' when it sent no
+	 *                        cookie. Must be the pre-mint value: visitor_id()
+	 *                        hands a cookie-less client a brand new id (and
+	 *                        writes it into $_COOKIE), so keying on the minted
+	 *                        value gives that client a fresh bucket on every
+	 *                        request - a limiter that never limits the one
+	 *                        client it exists for.
+	 * @return bool True when this capture should be dropped.
+	 */
+	private static function popup_capture_throttled( $visitor ) {
+		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : 'unknown';
+
+		// Burst brake: one popup submit per 10s per browser (per IP when the
+		// browser sends no id). Cheapest check, and on its own it already turns
+		// a flood into a trickle.
+		$burst = 'bp_cartab_pop_b_' . md5( $visitor !== '' ? 'v:' . $visitor : 'i:' . $ip );
+		if ( get_transient( $burst ) ) {
+			return true;
+		}
+		set_transient( $burst, 1, 10 );
+
+		/**
+		 * Popup signups accepted per hour from a single address. 0 disables it.
+		 *
+		 * @param int $cap
+		 */
+		$per_ip = (int) apply_filters( 'brikpanel_cartab_popup_ip_hourly_cap', 30 );
+
+		/**
+		 * Popup signups accepted per hour store-wide. 0 disables it.
+		 *
+		 * @param int $cap
+		 */
+		$global = (int) apply_filters( 'brikpanel_cartab_popup_hourly_cap', 100 );
+
+		return self::popup_quota_spent( 'bp_cartab_pop_ip_' . md5( $ip ), $per_ip )
+			|| self::popup_quota_spent( 'bp_cartab_pop_all', $global );
+	}
+
+	/**
+	 * Consume one unit from a fixed hourly window and report whether it was
+	 * already empty.
+	 *
+	 * Fixed window rather than a rolling one on purpose: a rolling counter
+	 * whose expiry is pushed forward on every hit never releases while an
+	 * abusive client keeps knocking, which would let an attacker lock a shared
+	 * office IP out of the coupon for as long as it cared to keep trying. This
+	 * window always reopens one hour after its first hit.
+	 *
+	 * @param string $key Transient key.
+	 * @param int    $cap Allowance per hour; 0 or less disables the limit.
+	 * @return bool True when the allowance is already used up.
+	 */
+	private static function popup_quota_spent( $key, $cap ) {
+		if ( $cap <= 0 ) {
+			return false;
+		}
+
+		$bucket = get_transient( $key );
+		if ( ! is_array( $bucket ) || empty( $bucket['start'] )
+			|| ( time() - (int) $bucket['start'] ) >= HOUR_IN_SECONDS ) {
+			$bucket = [ 'n' => 0, 'start' => time() ];
+		}
+		if ( (int) $bucket['n'] >= $cap ) {
+			return true;
+		}
+
+		$bucket['n'] = (int) $bucket['n'] + 1;
+		set_transient( $key, $bucket, HOUR_IN_SECONDS );
+		return false;
+	}
+	/**
+	 * Mint (or reuse) the signup coupon for a popup email and decide how it
+	 * reaches the visitor. Returns the response fragment the popup consumes:
+	 * either an inline code or an "emailed" notice. Shared by the initial
+	 * capture and the "edit email" correction so both behave identically.
+	 *
+	 * @param string $email Validated, lowercased email.
+	 * @param int    $id    Cart-abandonment entry id.
+	 * @return array{coupon?:string,discount?:int,coupon_emailed?:bool,email?:string}
+	 */
+	private static function deliver_popup_coupon( $email, $id ) {
+		// A popup coupon only exists while the merchant actually runs the
+		// popup. `source` is just a POST field on a public, nonce-less
+		// endpoint, so without this check anyone could mint coupons — and
+		// trigger a companion plugin's delivery email — on a store that never
+		// switched the popup on. Front-end callers are unaffected: the popup
+		// is only rendered under the same option.
+		if ( get_option( 'brikpanel_cartab_popup_enabled', 'no' ) !== 'yes' ) {
+			return [];
+		}
+
+		self::remember_customer_email( $email );
+		$coupon = self::get_or_create_popup_coupon( $email );
+		if ( ! $coupon ) {
+			return [];
+		}
+
+		/**
+		 * How the popup coupon reaches the visitor.
+		 *
+		 * 'inline' (default) shows the code in the popup; 'email' suppresses it
+		 * and tells the visitor to check their inbox — a companion plugin (e.g.
+		 * BrikMentor) then delivers the code by email via the deferred action.
+		 *
+		 * @param string $delivery 'inline' | 'email'.
+		 * @param array  $coupon   {code, amount}.
+		 * @param string $email    Lowercased captured email.
+		 * @param int    $id       Cart-abandonment entry id.
+		 */
+		$delivery = apply_filters( 'brikpanel_cartab_popup_coupon_delivery', 'inline', $coupon, $email, (int) $id );
+		if ( 'email' === $delivery ) {
+			/**
+			 * The popup coupon was deferred to email delivery — the companion
+			 * plugin sends it from here.
+			 *
+			 * @param array  $coupon {code, amount}.
+			 * @param string $email  Lowercased captured email.
+			 * @param int    $id     Cart-abandonment entry id.
+			 */
+			do_action( 'brikpanel_cartab_popup_coupon_deferred', $coupon, $email, (int) $id );
+			return [ 'coupon_emailed' => true, 'email' => $email ];
+		}
+
+		return [ 'coupon' => $coupon['code'], 'discount' => $coupon['amount'] ];
+	}
+
+	/**
+	 * Public (nopriv) endpoint: correct the email on a just-made popup signup
+	 * and re-deliver the coupon to the fixed address. A visitor who mistypes
+	 * their inbox never receives the emailed code, so this is the escape hatch.
+	 *
+	 * Authorization mirrors the capture endpoint's cache-safe model (no nonce):
+	 * the row must belong to THIS browser's visitor cookie, be a recent popup
+	 * signup, and still be open, plus a throttle and a per-entry edit cap so a
+	 * single signup can never be turned into a coupon-email spray.
+	 */
+	public function ajax_update_popup_email() {
+		if ( ! self::is_enabled() || self::is_staff()
+			|| ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) ) {
+			wp_send_json_error( [ 'message' => __( 'Editing is not available right now.', 'brikpanel' ) ], 403 );
+		}
+
+		$id    = isset( $_POST['id'] ) ? absint( wp_unslash( $_POST['id'] ) ) : 0;
+		$email = isset( $_POST['email'] ) ? strtolower( sanitize_email( wp_unslash( $_POST['email'] ) ) ) : '';
+		if ( ! $id || $email === '' || strlen( $email ) > 190 || ! is_email( $email ) ) {
+			wp_send_json_error( [ 'message' => __( 'Please enter a valid email address.', 'brikpanel' ) ], 400 );
+		}
+
+		// Without a visitor cookie there is nothing to authorize the edit
+		// against, so it is refused (the popup submit itself always sets one).
+		$visitor = self::existing_visitor_id();
+		if ( $visitor === '' ) {
+			wp_send_json_error( [ 'message' => __( 'Editing is not available right now.', 'brikpanel' ) ], 403 );
+		}
+
+		global $wpdb;
+		$table = self::table();
+		$row   = $wpdb->get_row( $wpdb->prepare(
+			"SELECT id, email, source, visitor_id, created_at FROM {$table} WHERE id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$id
+		) );
+		if ( ! $row
+			|| 'popup' !== $row->source
+			|| ! hash_equals( (string) $row->visitor_id, $visitor )
+			|| strtotime( (string) $row->created_at . ' UTC' ) < time() - HOUR_IN_SECONDS
+		) {
+			wp_send_json_error( [ 'message' => __( 'Editing is not available right now.', 'brikpanel' ) ], 403 );
+		}
+
+		// Throttle (one correction per 3s per browser) + hard cap (5 per entry
+		// per hour) so re-delivery can never be abused to spam an inbox.
+		$rl_key = 'bp_cartab_edit_rl_' . md5( $visitor );
+		if ( get_transient( $rl_key ) ) {
+			wp_send_json_error( [ 'message' => __( 'Please wait a moment before trying again.', 'brikpanel' ) ], 429 );
+		}
+		set_transient( $rl_key, 1, 3 );
+		$cnt_key = 'bp_cartab_edit_cnt_' . (int) $id;
+		$count   = (int) get_transient( $cnt_key );
+		if ( $count >= 5 ) {
+			wp_send_json_error( [ 'message' => __( 'You have changed the address too many times. Please try later.', 'brikpanel' ) ], 429 );
+		}
+		set_transient( $cnt_key, $count + 1, HOUR_IN_SECONDS );
+
+		// Apply the corrected address to the row (only when it actually changed).
+		if ( $email !== strtolower( (string) $row->email ) ) {
+			$wpdb->update(
+				$table,
+				[ 'email' => $email, 'updated_at' => current_time( 'mysql', true ) ],
+				[ 'id' => (int) $id ]
+			);
+		}
+
+		$response = array_merge( [ 'id' => (int) $id ], self::deliver_popup_coupon( $email, (int) $id ) );
 		wp_send_json_success( $response );
 	}
 
@@ -1153,11 +1361,6 @@ class Brikpanel_Cart_Abandonment {
 					<button type="button" class="brikpanel-cartab-btn brikpanel-cartab-btn-secondary" id="brikpanel-cartab-export-xlsx">
 						<?php esc_html_e( 'Export Excel', 'brikpanel' ); ?>
 					</button>
-					<button type="button" class="brikpanel-cartab-btn brikpanel-cartab-btn-secondary" id="brikpanel-cartab-import"
-						title="<?php esc_attr_e( 'Import leads from a CSV file. Columns: email (required), first name, last name, phone.', 'brikpanel' ); ?>">
-						<?php esc_html_e( 'Import CSV', 'brikpanel' ); ?>
-					</button>
-					<input type="file" id="brikpanel-cartab-import-file" accept=".csv,text/csv" style="display:none" />
 					<a class="brikpanel-cartab-btn brikpanel-cartab-btn-primary" href="<?php echo esc_url( $settings_url ); ?>">
 						<?php esc_html_e( 'Settings', 'brikpanel' ); ?>
 					</a>
@@ -1294,16 +1497,6 @@ class Brikpanel_Cart_Abandonment {
 				popup_on:       <?php echo wp_json_encode( __( 'Popup enabled.', 'brikpanel' ) ); ?>,
 				popup_off:      <?php echo wp_json_encode( __( 'Popup disabled.', 'brikpanel' ) ); ?>,
 				sku:            <?php echo wp_json_encode( __( 'SKU', 'brikpanel' ) ); ?>,
-				importing:      <?php echo wp_json_encode( __( 'Importing…', 'brikpanel' ) ); ?>,
-				import_label:   <?php echo wp_json_encode( __( 'Import CSV', 'brikpanel' ) ); ?>,
-				/* translators: %s: number of imported emails */
-				import_done:    <?php echo wp_json_encode( __( '%s emails imported.', 'brikpanel' ) ); ?>,
-				/* translators: %s: number of skipped rows */
-				import_dupes:   <?php echo wp_json_encode( __( '%s skipped (already in the list).', 'brikpanel' ) ); ?>,
-				/* translators: %s: number of invalid rows */
-				import_invalid: <?php echo wp_json_encode( __( '%s skipped (invalid email).', 'brikpanel' ) ); ?>,
-				import_none:    <?php echo wp_json_encode( __( 'Nothing new to import.', 'brikpanel' ) ); ?>,
-				import_truncated: <?php echo wp_json_encode( __( 'File was larger than the 20,000 row limit; the rest was skipped.', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>
@@ -1554,173 +1747,6 @@ class Brikpanel_Cart_Abandonment {
 		header( 'Content-Length: ' . strlen( $xlsx ) );
 		echo $xlsx; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- binary file body
 		exit;
-	}
-
-	/**
-	 * CSV lead import. Accepts a small uploaded CSV (comma or semicolon
-	 * separated) and inserts each valid, not-yet-known email as a new entry
-	 * with source "import". Column mapping is resolved from the header row
-	 * (email / first name / last name / phone, common variants included);
-	 * a headerless file whose first cell is an email address works too.
-	 */
-	public function ajax_import() {
-		$this->check_auth();
-
-		if ( empty( $_FILES['file'] ) || ! is_uploaded_file( $_FILES['file']['tmp_name'] ?? '' ) || ! empty( $_FILES['file']['error'] ) ) {
-			wp_send_json_error( [ 'message' => __( 'No file received. Please choose a CSV file.', 'brikpanel' ) ], 400 );
-		}
-		if ( (int) $_FILES['file']['size'] > 5 * MB_IN_BYTES ) {
-			wp_send_json_error( [ 'message' => __( 'File is too large. The maximum size is 5 MB.', 'brikpanel' ) ], 400 );
-		}
-
-		$handle = fopen( $_FILES['file']['tmp_name'], 'r' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
-		if ( ! $handle ) {
-			wp_send_json_error( [ 'message' => __( 'The file could not be read.', 'brikpanel' ) ], 400 );
-		}
-
-		// Delimiter sniff on the first line (Excel exports “;” in many locales).
-		$first_line = (string) fgets( $handle );
-		$first_line = preg_replace( '/^\xEF\xBB\xBF/', '', $first_line ); // strip UTF-8 BOM
-		$delimiter  = substr_count( $first_line, ';' ) > substr_count( $first_line, ',' ) ? ';' : ',';
-		$first_row  = str_getcsv( $first_line, $delimiter, '"', '\\' );
-
-		// Column mapping from the header row.
-		$map     = [ 'email' => null, 'first_name' => null, 'last_name' => null, 'phone' => null ];
-		$aliases = [
-			'email'      => [ 'email', 'e-mail', 'mail', 'email address', 'e-mail address', 'eposta', 'e-posta' ],
-			'first_name' => [ 'first name', 'first_name', 'firstname', 'name', 'ad', 'isim' ],
-			'last_name'  => [ 'last name', 'last_name', 'lastname', 'surname', 'soyad', 'soyisim' ],
-			'phone'      => [ 'phone', 'telephone', 'phone number', 'tel', 'telefon' ],
-		];
-		$has_header = false;
-		foreach ( $first_row as $idx => $cell ) {
-			$cell = strtolower( trim( (string) $cell ) );
-			foreach ( $aliases as $field => $names ) {
-				if ( null === $map[ $field ] && in_array( $cell, $names, true ) ) {
-					$map[ $field ] = $idx;
-					$has_header    = true;
-				}
-			}
-		}
-		if ( ! $has_header ) {
-			// Headerless file: assume the conventional column order
-			// (email, first name, last name, phone); row 1 is data.
-			$map = [ 'email' => 0, 'first_name' => 1, 'last_name' => 2, 'phone' => 3 ];
-		}
-		if ( null === $map['email'] ) {
-			fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
-			wp_send_json_error( [ 'message' => __( 'No email column found. Add an "Email" header or put emails in the first column.', 'brikpanel' ) ], 400 );
-		}
-
-		// Parse + validate + dedupe inside the file.
-		$rows       = [];
-		$invalid    = 0;
-		$file_dupes = 0;
-		$max_rows   = 20000;
-		$truncated  = false;
-		$add_row    = static function ( $line ) use ( &$rows, &$invalid, &$file_dupes, $map ) {
-			$email = strtolower( sanitize_email( trim( (string) ( $line[ $map['email'] ] ?? '' ) ) ) );
-			if ( $email === '' || strlen( $email ) > 190 || ! is_email( $email ) ) {
-				$invalid++;
-				return;
-			}
-			if ( isset( $rows[ $email ] ) ) {
-				$file_dupes++;
-				return; // duplicate inside the file — first occurrence wins
-			}
-			$get = static function ( $field ) use ( $line, $map ) {
-				if ( null === $map[ $field ] || ! isset( $line[ $map[ $field ] ] ) ) {
-					return '';
-				}
-				return sanitize_text_field( (string) $line[ $map[ $field ] ] );
-			};
-			$rows[ $email ] = [
-				'first_name' => substr( $get( 'first_name' ), 0, 100 ),
-				'last_name'  => substr( $get( 'last_name' ), 0, 100 ),
-				'phone'      => substr( $get( 'phone' ), 0, 40 ),
-			];
-		};
-		if ( ! $has_header ) {
-			$add_row( $first_row );
-		}
-		while ( ( $line = fgetcsv( $handle, 0, $delimiter, '"', '\\' ) ) !== false ) {
-			if ( null === $line || ( count( $line ) === 1 && trim( (string) $line[0] ) === '' ) ) {
-				continue; // blank line
-			}
-			if ( count( $rows ) >= $max_rows ) {
-				$truncated = true;
-				break;
-			}
-			$add_row( $line );
-		}
-		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
-
-		if ( ! $rows ) {
-			wp_send_json_error( [ 'message' => __( 'No valid email addresses found in the file.', 'brikpanel' ) ], 400 );
-		}
-
-		global $wpdb;
-		$table = self::table();
-
-		// Drop emails already in the list (chunked IN() on the email index).
-		$emails = array_keys( $rows );
-		foreach ( array_chunk( $emails, 500 ) as $chunk ) {
-			$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
-			$existing     = $wpdb->get_col( $wpdb->prepare(
-				"SELECT email FROM {$table} WHERE email IN ({$placeholders})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				$chunk
-			) );
-			foreach ( $existing as $known ) {
-				unset( $rows[ $known ] );
-			}
-		}
-		$duplicates = $file_dupes + ( count( $emails ) - count( $rows ) );
-
-		// Batched inserts.
-		$now      = current_time( 'mysql', true );
-		$imported = 0;
-		foreach ( array_chunk( $rows, 200, true ) as $chunk ) {
-			$values = [];
-			$params = [];
-			foreach ( $chunk as $email => $extra ) {
-				$values[] = '(%s, %s, %s, %s, %s, 0, %s, %s, %s, 0, 0, %s, %s, %s)';
-				array_push(
-					$params,
-					'', // visitor_id — imported leads have no browser yet
-					$email,
-					$extra['first_name'],
-					$extra['last_name'],
-					$extra['phone'],
-					'import',
-					'active',
-					'[]',
-					'',
-					$now,
-					$now
-				);
-			}
-			$imported += (int) $wpdb->query( $wpdb->prepare(
-				"INSERT INTO {$table}
-					(visitor_id, email, first_name, last_name, phone, user_id, source, status,
-					 cart_items, item_count, cart_total, currency, created_at, updated_at)
-				 VALUES " . implode( ',', $values ), // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-				$params
-			) );
-		}
-
-		/**
-		 * Fires once after a CSV lead import (NOT per row — high-volume safe).
-		 *
-		 * @param int $imported Number of new rows inserted.
-		 */
-		do_action( 'brikpanel_cartab_emails_imported', $imported );
-
-		wp_send_json_success( [
-			'imported'   => $imported,
-			'duplicates' => $duplicates,
-			'invalid'    => $invalid,
-			'truncated'  => $truncated ? 1 : 0,
-		] );
 	}
 
 	// =========================================================================

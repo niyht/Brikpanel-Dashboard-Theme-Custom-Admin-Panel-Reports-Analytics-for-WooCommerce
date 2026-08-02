@@ -95,7 +95,21 @@
 			method: 'POST',
 			credentials: 'same-origin',
 			body: body
-		}).then(function (r) { return r.json(); }).then(function (j) {
+		}).then(function (r) {
+			// A PHP fatal or a host-level timeout answers with an HTML error
+			// page, not JSON. Reporting that as the generic error hid the real
+			// cause, so name it instead of swallowing it.
+			return r.text().then(function (text) {
+				var parsed = null;
+				try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
+				if (parsed === null) {
+					var serverErr = new Error(i18n.server_error || i18n.generic_error);
+					serverErr.payload = { http: r.status, raw: text.slice(0, 500) };
+					throw serverErr;
+				}
+				return parsed;
+			});
+		}).then(function (j) {
 			if (!j || j.success !== true) {
 				var msg = (j && j.data && j.data.message) ? j.data.message : i18n.generic_error;
 				var err = new Error(msg);
@@ -306,6 +320,104 @@
 		});
 	});
 
+	// ---------------------------------------------------------------------
+	// Orders export-scope preview
+	//
+	// Ticking every shipping box is NOT the same as ticking none: the filter
+	// only matches orders that recorded a shipping method, so orders without a
+	// shipping line vanish from the export. That surprise is invisible until
+	// after a sync, so count it live here instead.
+	// ---------------------------------------------------------------------
+	(function () {
+		var ordersForm = root.querySelector('.bp-gs-form[data-flow="orders"]');
+		if (!ordersForm) { return; }
+		var scopeEl = ordersForm.querySelector('[data-role="orders-scope"]');
+		if (!scopeEl) { return; }
+
+		var countEl = document.createElement('span');
+		countEl.className = 'bp-gs-scope-count';
+		var warnEl = document.createElement('span');
+		warnEl.className = 'bp-gs-scope-warn';
+		scopeEl.appendChild(countEl);
+		scopeEl.appendChild(warnEl);
+
+		function checkedValues(name) {
+			var out = [];
+			ordersForm.querySelectorAll('input[name="' + name + '"]:checked').forEach(function (el) {
+				out.push(el.value);
+			});
+			return out;
+		}
+
+		// Minimal printf for the %s / %1$s placeholders used by the localized
+		// strings. Values are numbers we produced, never user input.
+		function format(tpl, args) {
+			var i = 0;
+			return String(tpl || '')
+				.replace(/%(\d+)\$s/g, function (m, n) { return args[parseInt(n, 10) - 1]; })
+				.replace(/%s/g, function () { return args[i++]; });
+		}
+
+		var timer = null;
+		var seq = 0;
+
+		function refresh() {
+			var methods = checkedValues('shipping_methods[]');
+			var statuses = checkedValues('bulk_statuses[]');
+			var sinceEl = ordersForm.querySelector('input[name="bulk_since"]');
+			var mySeq = ++seq;
+
+			scopeEl.hidden = false;
+			scopeEl.removeAttribute('data-tone');
+			countEl.textContent = i18n.scope_counting || '';
+			warnEl.textContent = '';
+
+			ajax('brikpanel_gs_orders_scope', {
+				shipping_methods: methods,
+				statuses: statuses,
+				since: sinceEl ? sinceEl.value : ''
+			}).then(function (data) {
+				// Drop stale responses so fast clicking cannot leave a wrong count on screen.
+				if (mySeq !== seq || !data) { return; }
+				var matched = Number(data.matched) || 0;
+				var total = Number(data.total) || 0;
+
+				if (!data.filtered) {
+					countEl.textContent = format(i18n.scope_all, [total.toLocaleString()]);
+					warnEl.textContent = '';
+					return;
+				}
+				countEl.textContent = format(i18n.scope_filtered, [matched.toLocaleString(), total.toLocaleString()]);
+				if (matched === 0) {
+					warnEl.textContent = i18n.scope_none || '';
+					scopeEl.setAttribute('data-tone', 'warn');
+				} else if (matched < total) {
+					warnEl.textContent = i18n.scope_warning || '';
+					scopeEl.setAttribute('data-tone', 'warn');
+				}
+			}).catch(function () {
+				// A failed count must never block the form; just hide the hint.
+				if (mySeq !== seq) { return; }
+				scopeEl.hidden = true;
+			});
+		}
+
+		function schedule() {
+			clearTimeout(timer);
+			timer = setTimeout(refresh, 250);
+		}
+
+		ordersForm.addEventListener('change', function (ev) {
+			var t = ev.target;
+			if (!t || !t.name) { return; }
+			if (t.name === 'shipping_methods[]' || t.name === 'bulk_statuses[]' || t.name === 'bulk_since') {
+				schedule();
+			}
+		});
+
+		refresh();
+	})();
+
 	function resetSync(btn, form) {
 		// Pick the right confirm message based on which flow's reset button was
 		// clicked — orders reset wording mentions order history, products reset
@@ -315,6 +427,8 @@
 		var defaultMsg = i18n.reset_confirm;
 		if (resetFlow === 'products' && i18n.reset_products_confirm) {
 			defaultMsg = i18n.reset_products_confirm;
+		} else if (resetFlow === 'expenses' && i18n.reset_expenses_confirm) {
+			defaultMsg = i18n.reset_expenses_confirm;
 		}
 		if (!window.confirm(defaultMsg)) { return; }
 		btn.disabled = true;
@@ -381,7 +495,16 @@
 		});
 		btn.disabled = true;
 		ajax('brikpanel_gs_save_settings', payload)
-			.then(function () { toast('success', i18n.saved); })
+			.then(function (data) {
+				// A save can carry a consequence worth spelling out (e.g. a row
+				// layout change wipes the tab) — prefer the server's message.
+				toast('success', (data && data.message) || i18n.saved, { duration: 6000 });
+				if (data && data.reload) {
+					// Column picker + mandatory flags changed server-side; the
+					// simplest honest UI is a fresh render.
+					setTimeout(function () { window.location.reload(); }, 1200);
+				}
+			})
 			.catch(function (e) { toast('error', e.message); })
 			.then(function () { btn.disabled = false; });
 	}
@@ -391,15 +514,45 @@
 		var originalText = btn.textContent;
 		btn.innerHTML = '<span class="bp-gs-spinner" aria-hidden="true"></span> ' + escapeHtml(i18n.syncing);
 
-		// Sticky "Syncing..." toast — stays visible until request completes.
+		// Sticky "Syncing..." toast — stays visible until the run completes.
 		toast('info', i18n.syncing, { sticky: true });
 
-		ajax('brikpanel_gs_sync_now', { flow: flow })
+		// A large date range can hold far more orders than one request may
+		// safely process, so the server hands back `more` and we keep asking.
+		// Each request stays short, and the merchant watches the count climb
+		// instead of staring at a spinner that eventually times out.
+		var totalOrders = 0;
+		var totalRows = 0;
+		var MAX_PASSES = 500; // backstop against a server that never clears `more`
+
+		function runPass(pass) {
+			return ajax('brikpanel_gs_sync_now', { flow: flow }).then(function (data) {
+				var result = (data && data.result) ? data.result : {};
+				totalOrders += Number(result.orders) || 0;
+				totalRows += Number(result.rows) || 0;
+
+				if (flow === 'orders' && result.more && pass < MAX_PASSES) {
+					toast('info', formatProgress(totalOrders, totalRows), { sticky: true });
+					return runPass(pass + 1);
+				}
+				return data;
+			});
+		}
+
+		function formatProgress(orders, rows, finished) {
+			var tpl = finished ? i18n.sync_done : i18n.sync_progress;
+			if (!tpl) { return i18n.syncing; }
+			return tpl.replace('%1$d', orders).replace('%2$d', rows);
+		}
+
+		runPass(1)
 			.then(function (data) {
 				dismissToast();
 				var msg = (data && data.message) ? data.message : i18n.saved;
-				if (data && typeof data.duration_seconds === 'number') {
-					msg += ' (' + data.duration_seconds + 's)';
+				// Across several passes the last response only describes its own
+				// pass, so report the run total instead.
+				if (flow === 'orders' && totalOrders > 0) {
+					msg = formatProgress(totalOrders, totalRows, true);
 				}
 				toast('success', msg, { duration: 5000 });
 

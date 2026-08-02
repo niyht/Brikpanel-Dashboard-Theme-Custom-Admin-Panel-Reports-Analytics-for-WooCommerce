@@ -752,7 +752,9 @@
         // in the DOM so colspan calculations stay stable; CSS hides it when
         // sortMode is off, but it still counts as a real column.
         var extras = state.extraColumns ? Object.keys(state.extraColumns).length : 0;
-        return 14 + extras;
+        // +1 for the opt-in Product Code column when its plugin is active (its
+        // <th>/<td> are always in the DOM in that case; CSS hides them when off).
+        return 14 + (PL.has_product_code ? 1 : 0) + extras;
     }
 
     /**
@@ -1330,6 +1332,20 @@
                 : escHtml(gid.value))
             : '<span class="brikpanel-pl-text-muted">—</span>';
 
+        // Product Code cell — rendered only when the "Product Code for
+        // WooCommerce" plugin is active. Same compact "N codes" badge shape as
+        // the GTIN cell for variable products whose codes live on variations.
+        var pcodeCell = '';
+        if (PL.has_product_code) {
+            var pc = p.product_code || { value: '', tooltip: '', multi: false };
+            var pcInner = pc.value
+                ? (pc.multi
+                    ? '<span class="brikpanel-pl-gid-multi" title="' + escAttr(pc.tooltip) + '">' + escHtml(pc.value) + '</span>'
+                    : escHtml(pc.value))
+                : '<span class="brikpanel-pl-text-muted">—</span>';
+            pcodeCell = '<td class="brikpanel-pl-cell-pcode brikpanel-pl-col brikpanel-pl-col-product_code">' + pcInner + '</td>';
+        }
+
         var handleTitle = PL.i18n.sort_drag_handle || 'Drag to reorder';
         // Span instead of <button> on purpose: jQuery UI Sortable's default
         // `cancel` selector includes `button`, which blocks the drag from
@@ -1358,6 +1374,7 @@
             '<td class="brikpanel-pl-cell-name brikpanel-pl-col brikpanel-pl-col-name"><span class="brikpanel-pl-name-id" title="' + escAttr(PL.i18n.product_id || '') + '">#' + p.id + '</span>' + featuredStarHtml + '<a href="' + escAttr(editHref) + '" class="brikpanel-pl-product-name-link"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text">' + escHtml(p.name) + '</span></a>' + typeLabel + aseActionsHtml + '</td>' +
             '<td class="brikpanel-pl-cell-sku brikpanel-pl-col brikpanel-pl-col-sku"><span class="brikpanel-pl-editable brikpanel-pl-sku-cell" data-field="sku" data-value="' + escAttr(p.sku || '') + '">' + (p.sku ? escHtml(p.sku) : '<span class="brikpanel-pl-text-muted">—</span>') + '</span></td>' +
             '<td class="brikpanel-pl-cell-guid brikpanel-pl-col brikpanel-pl-col-global_unique_id">' + gidInner + '</td>' +
+            pcodeCell +
             '<td class="brikpanel-pl-cell-price brikpanel-pl-col brikpanel-pl-col-price">' + priceEditable + '</td>' +
             '<td class="brikpanel-pl-cell-cogs brikpanel-pl-col brikpanel-pl-col-cogs">' + renderCogsCell(p) + '</td>' +
             '<td class="brikpanel-pl-cell-stock brikpanel-pl-col brikpanel-pl-col-stock" data-id="' + p.id + '">' + stockCellHtml + '</td>' +
@@ -2571,7 +2588,16 @@
         $('[data-count="all"]').text(counts.all);
         $('[data-count="publish"]').text(counts.publish);
         $('[data-count="draft"]').text(counts.draft);
-        $('#bpl-total-count').text(counts.all);
+
+        // The count beside the page title reflects the CURRENT result set, not
+        // the whole catalog. The status tabs right below already carry the
+        // catalog-wide totals, so mirroring counts.all here was both redundant
+        // and actively misleading once a filter was active: arriving from the
+        // "Out of stock" notification showed "Products 94" above 9 rows. Reads
+        // as the sum of every tab when nothing is filtered, so the unfiltered
+        // view is unchanged. `state.total` is assigned from the same response
+        // immediately before this call.
+        $('#bpl-total-count').text(state.total);
 
         // Show/hide the Scheduled (future) tab. Inserted between Published and
         // Draft to match the static markup order. Kept visible while the user is

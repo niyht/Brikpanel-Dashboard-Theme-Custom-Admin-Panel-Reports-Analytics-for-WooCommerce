@@ -110,6 +110,14 @@ class Brikpanel_Ads_OAuth {
 			self::STATE_TTL
 		);
 
+		// "Re-authorize" must be able to recover a permission the merchant
+		// unticked on a previous consent screen. Meta will not re-ask for a
+		// permission it has already recorded a decision about unless the
+		// authorize call carries auth_type=rerequest, so pass the intent along
+		// to the proxy. Older proxy builds ignore the extra field, which just
+		// leaves today's behaviour unchanged.
+		$reauth = ! empty( $_POST['reauth'] );
+
 		$payload = [
 			'platform'              => $platform,
 			'return_url'            => $return_url,
@@ -118,6 +126,7 @@ class Brikpanel_Ads_OAuth {
 			'code_challenge_method' => 'S256',
 			'site_url'              => home_url(),
 			'scope'                 => $scope,
+			'reauth'                => $reauth ? 1 : 0,
 		];
 
 		$resp = wp_remote_post( BRIKPANEL_ADS_PROXY_BASE . '/oauth/start', [
@@ -175,6 +184,22 @@ class Brikpanel_Ads_OAuth {
 		}
 
 		Brikpanel_Ads_Tokens::disconnect( $platform );
+		Brikpanel_Ads_Tokens::clear_needs_reconnect( $platform );
+
+		// The confirmation dialog promises "your synced spend data will be
+		// deleted", and until now nothing ever deleted it. The leftover rows
+		// stayed in wp_brikpanel_ad_spend and kept feeding the dashboard's Ad
+		// Spend, ROAS and Net Profit cards for a platform the merchant had
+		// explicitly disconnected, with no surface anywhere that showed where
+		// the numbers were coming from. Honour the promise.
+		//
+		// Note this is scoped to an explicit, user-initiated disconnect. A
+		// token that merely got revoked upstream keeps its history, because
+		// past spend for past dates is still factual and deleting it would
+		// silently rewrite months of closed-period profit figures.
+		$deleted = Brikpanel_Ads_Store::delete_account( $platform );
+		Brikpanel_Ads_Logger::log( 'oauth', 'Disconnected ' . $platform . '; removed ' . (int) $deleted . ' stored spend row(s).' );
+
 		wp_send_json_success( [ 'message' => __( 'Disconnected.', 'brikpanel' ) ] );
 	}
 
@@ -183,7 +208,16 @@ class Brikpanel_Ads_OAuth {
 	// =========================================================================
 
 	public function handle_return() {
-		if ( ! isset( $_GET[ self::RETURN_PARAM ] ) || ! isset( $_GET['state'] ) ) {
+		// The consent-denied branch matters as much as the success branch: when
+		// the merchant clicks "Cancel" on the platform's consent screen the
+		// proxy bounces back with `brikpanel_ads_oauth_error` + `state` and NO
+		// handoff token. Requiring the handoff token here (which is what this
+		// guard used to do) made the whole error branch below unreachable, so a
+		// denied consent dropped the user back on the page with no toast, no
+		// notice, and the error still hanging in the URL.
+		$has_error  = isset( $_GET['brikpanel_ads_oauth_error'] );
+		$has_return = isset( $_GET[ self::RETURN_PARAM ] );
+		if ( ( ! $has_return && ! $has_error ) || ! isset( $_GET['state'] ) ) {
 			return;
 		}
 		if ( ! is_admin() ) {
@@ -194,13 +228,15 @@ class Brikpanel_Ads_OAuth {
 		}
 
 		$state   = sanitize_text_field( wp_unslash( $_GET['state'] ) );
-		$handoff = sanitize_text_field( wp_unslash( $_GET[ self::RETURN_PARAM ] ) );
+		$handoff = $has_return ? sanitize_text_field( wp_unslash( $_GET[ self::RETURN_PARAM ] ) ) : '';
 
 		// Proxy-reported error short-circuit (e.g. user denied consent).
-		if ( isset( $_GET['brikpanel_ads_oauth_error'] ) ) {
+		if ( $has_error ) {
 			$err = sanitize_text_field( wp_unslash( $_GET['brikpanel_ads_oauth_error'] ) );
 			Brikpanel_Ads_Logger::log( 'oauth', 'Proxy reported error during consent: ' . $err );
-			$this->finish_with_notice( 'error', $err );
+			// Burn the pending state so a stale one cannot be replayed.
+			delete_transient( self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state ) );
+			$this->finish_with_notice( 'error', self::consent_error_message( $err ) );
 		}
 
 		$trans_key = self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state );
@@ -256,11 +292,21 @@ class Brikpanel_Ads_OAuth {
 			$this->finish_with_notice( 'error', __( 'OAuth redemption failed. Please try connecting again.', 'brikpanel' ) );
 		}
 
+		// Meta's token endpoint does not echo the granted scope back, so the
+		// vault would record an empty string and `describe()['scope']` was
+		// permanently blank for Meta. Fall back to what we asked for.
+		$granted_scope = (string) ( $body['scope'] ?? '' );
+		if ( $granted_scope === '' ) {
+			$granted_scope = $platform === Brikpanel_Ads_Tokens::PLATFORM_GOOGLE
+				? self::SCOPES_GOOGLE
+				: self::SCOPES_META;
+		}
+
 		$ok = Brikpanel_Ads_Tokens::save( $platform, [
 			'access_token'    => (string) $body['access_token'],
 			'refresh_token'   => (string) ( $body['refresh_token'] ?? '' ),
 			'expires_in'      => (int) ( $body['expires_in'] ?? 3600 ),
-			'scope'           => (string) ( $body['scope'] ?? '' ),
+			'scope'           => $granted_scope,
 			'token_type'      => (string) ( $body['token_type'] ?? 'Bearer' ),
 			'connected_email' => (string) ( $body['email'] ?? '' ),
 		] );
@@ -269,13 +315,22 @@ class Brikpanel_Ads_OAuth {
 			$this->finish_with_notice( 'error', __( 'Could not save tokens. Please try again.', 'brikpanel' ) );
 		}
 
-		// Successful reconnect clears any operator kill-switch latch.
+		// Successful reconnect clears any operator kill-switch latch and the
+		// "reconnect required" banner raised by a failed token renewal.
 		Brikpanel_Ads_Proxy::clear_killswitch();
+		Brikpanel_Ads_Tokens::clear_needs_reconnect( $platform );
 
 		// Mark this connection as needing an initial historical backfill on
 		// the next scheduled sync. The sync orchestrator reads this flag,
 		// resets it once it queues the backfill.
 		update_option( 'brikpanel_ads_needs_backfill_' . $platform, 'yes', false );
+
+		// One cheap probe so a Meta connect that silently lost `ads_read`
+		// tells the merchant immediately instead of at the first sync.
+		$permission_warning = self::verify_meta_permissions( $platform );
+		if ( $permission_warning !== '' ) {
+			$this->finish_with_notice( 'error', $permission_warning );
+		}
 
 		$label = $platform === Brikpanel_Ads_Tokens::PLATFORM_GOOGLE
 			? __( 'Google Ads connected.', 'brikpanel' )
@@ -299,6 +354,68 @@ class Brikpanel_Ads_OAuth {
 		);
 		wp_safe_redirect( $url );
 		exit;
+	}
+
+	/**
+	 * Translate the platform's OAuth error slug into a sentence the merchant
+	 * can act on. Unknown slugs pass through so we never swallow a real cause.
+	 *
+	 * @param string $err
+	 * @return string
+	 */
+	private static function consent_error_message( $err ) {
+		switch ( strtolower( trim( (string) $err ) ) ) {
+			case 'access_denied':
+			case 'user_denied':
+				return __( 'Connection cancelled: the permission request was declined on the platform’s consent screen. Nothing was saved. Click Connect to try again.', 'brikpanel' );
+			case 'consent_required':
+			case 'interaction_required':
+				return __( 'The platform needs you to complete the consent screen. Click Connect to try again.', 'brikpanel' );
+			case 'server_error':
+			case 'temporarily_unavailable':
+				return __( 'The advertising platform is temporarily unavailable. Please try connecting again in a few minutes.', 'brikpanel' );
+		}
+		if ( $err === '' ) {
+			return __( 'The connection did not complete. Nothing was saved. Please try again.', 'brikpanel' );
+		}
+		/* translators: %s = raw error code reported by the advertising platform. */
+		return sprintf( __( 'The connection did not complete (%s). Nothing was saved. Please try again.', 'brikpanel' ), $err );
+	}
+
+	/**
+	 * Right after a Meta connect, confirm the token can actually read ad
+	 * accounts.
+	 *
+	 * Meta's consent screen lets a user untick individual permissions, so it is
+	 * entirely possible to finish the handshake with a perfectly valid token
+	 * that has no `ads_read`. Without this probe the card would say "Connected"
+	 * and every later action would fail with a developer-facing Graph string.
+	 * Worse, Meta will not re-prompt for a permission the user already decided
+	 * on unless the authorize call carries `auth_type=rerequest`, which is what
+	 * the Re-authorize button now asks for.
+	 *
+	 * Only permission-shaped failures are reported; a transient network or rate
+	 * limit error must not scare the merchant off a connection that is fine.
+	 *
+	 * @param string $platform
+	 * @return string '' when healthy, otherwise a translated warning.
+	 */
+	private static function verify_meta_permissions( $platform ) {
+		if ( $platform !== Brikpanel_Ads_Tokens::PLATFORM_META || ! class_exists( 'Brikpanel_Ads_Meta_Client' ) ) {
+			return '';
+		}
+		try {
+			( new Brikpanel_Ads_Meta_Client() )->list_accounts();
+		} catch ( Brikpanel_Ads_Meta_Exception $e ) {
+			if ( Brikpanel_Ads_Meta_Client::is_permission_error( $e->meta_code ) ) {
+				Brikpanel_Ads_Logger::log( 'oauth', 'Meta connected without ads_read; prompting for re-authorisation.', $e->http_code );
+				return __( 'Meta connected, but the advertising permission (ads_read) was not granted, so no spend can be imported. Click Re-authorize and leave the advertising permission enabled.', 'brikpanel' );
+			}
+		} catch ( \Throwable $e ) {
+			// Not a permission problem — stay quiet.
+			return '';
+		}
+		return '';
 	}
 
 	/** URL-safe Base64 without padding (RFC 4648 §5 / PKCE spec). */

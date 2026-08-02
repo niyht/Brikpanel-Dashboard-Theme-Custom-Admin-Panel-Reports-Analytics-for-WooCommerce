@@ -24,6 +24,7 @@ class Brikpanel_Sheets_Mapping {
 	const OPT_ORDERS    = 'brikpanel_gs_columns_orders';
 	const OPT_CUSTOMERS = 'brikpanel_gs_columns_customers';
 	const OPT_PRODUCTS  = 'brikpanel_gs_columns_products';
+	const OPT_EXPENSES  = 'brikpanel_gs_columns_expenses';
 
 	// Trailing glyph appended to writable column headers in the sheet so a
 	// merchant can tell two-way (Sheets -> Woo) columns from display-only ones.
@@ -48,7 +49,11 @@ class Brikpanel_Sheets_Mapping {
 				'order_id'             => [ 'label' => __( 'Order ID',             'brikpanel' ), 'mandatory' => true,  'default' => true,  'group' => 'order' ],
 				'order_number'         => [ 'label' => __( 'Order number',         'brikpanel' ), 'default' => true,  'group' => 'order' ],
 				'order_date'           => [ 'label' => __( 'Order date',           'brikpanel' ), 'default' => true,  'group' => 'order' ],
-				'order_status'         => [ 'label' => __( 'Order status',         'brikpanel' ), 'default' => true,  'group' => 'order' ],
+				// Two-way: an edit to this cell is read back by the orders pull
+				// pass (see class-brikpanel-sheets-order-sync.php::pull_locked)
+				// and applied via $order->update_status(). Every other orders
+				// column is display-only.
+				'order_status'         => [ 'label' => __( 'Order status',         'brikpanel' ), 'default' => true,  'group' => 'order', 'writable' => true ],
 				'currency'             => [ 'label' => __( 'Currency',             'brikpanel' ), 'group' => 'order' ],
 				'subtotal'             => [ 'label' => __( 'Subtotal',             'brikpanel' ), 'group' => 'order' ],
 				'tax_total'            => [ 'label' => __( 'Tax total',            'brikpanel' ), 'group' => 'order' ],
@@ -87,6 +92,7 @@ class Brikpanel_Sheets_Mapping {
 				'shipping_country'     => [ 'label' => __( 'Shipping country',     'brikpanel' ), 'group' => 'shipping' ],
 
 				// Line item
+				'items_summary'        => [ 'label' => __( 'Items',                'brikpanel' ), 'group' => 'item' ],
 				'line_item_id'         => [ 'label' => __( 'Line item ID',         'brikpanel' ), 'mandatory' => true, 'default' => true, 'group' => 'item' ],
 				'product_id'           => [ 'label' => __( 'Product ID',           'brikpanel' ), 'default' => true, 'group' => 'item' ],
 				'variation_id'         => [ 'label' => __( 'Variation ID',         'brikpanel' ), 'default' => true, 'group' => 'item' ],
@@ -144,6 +150,22 @@ class Brikpanel_Sheets_Mapping {
 				'm_score'        => [ 'label' => __( 'Monetary score (M)',    'brikpanel' ), 'default' => true ],
 				'rfm_segment'    => [ 'label' => __( 'RFM segment',           'brikpanel' ), 'default' => true ],
 			],
+
+			// Operational expenses. Almost every column is two-way here, unlike
+			// the other flows: the whole point of the tab is to be the place a
+			// merchant types costs in bulk instead of one modal at a time. The
+			// four mandatory keys are what an expense minimally IS (identity,
+			// when, what, how much), so the ingest can always locate them.
+			'expenses' => [
+				'expense_id'  => [ 'label' => __( 'Expense ID',  'brikpanel' ), 'mandatory' => true, 'default' => true ],
+				'date'        => [ 'label' => __( 'Date',        'brikpanel' ), 'mandatory' => true, 'default' => true, 'writable' => true ],
+				'title'       => [ 'label' => __( 'Title',       'brikpanel' ), 'mandatory' => true, 'default' => true, 'writable' => true ],
+				'amount'      => [ 'label' => _x( 'Amount', 'money value of an expense', 'brikpanel' ), 'mandatory' => true, 'default' => true, 'writable' => true ],
+				'type'        => [ 'label' => __( 'Type',        'brikpanel' ), 'default' => true, 'writable' => true ],
+				'repeats'     => [ 'label' => __( 'Repeats',     'brikpanel' ), 'default' => true, 'writable' => true ],
+				'description' => [ 'label' => __( 'Description', 'brikpanel' ), 'default' => true, 'writable' => true ],
+				'created_at'  => [ 'label' => __( 'Added on',    'brikpanel' ) ],
+			],
 		];
 
 		// Append any custom checkout / order fields the merchant has, discovered
@@ -180,6 +202,57 @@ class Brikpanel_Sheets_Mapping {
 				$out[] = $key;
 			}
 		}
+		if ( 'orders' === $flow ) {
+			$out = self::adapt_order_columns_to_layout( $out );
+		}
+		return $out;
+	}
+
+	/**
+	 * Translate an orders column selection between the two row layouts.
+	 *
+	 * In the one-row-per-order layout the per-line-item identity columns make
+	 * no sense (every cell would read 0 or repeat), so they are swapped for
+	 * their order-level equivalents; in the one-row-per-line-item layout the
+	 * aggregate "Items" cell is redundant with the per-item columns, so the
+	 * reverse swap restores the item detail set. Keys keep their position so
+	 * the merchant's column ordering survives the switch.
+	 *
+	 * @param string[] $columns Current selection.
+	 * @param string   $layout  Target layout; defaults to the active one.
+	 * @return string[]
+	 */
+	public static function adapt_order_columns_to_layout( array $columns, $layout = '' ) {
+		if ( $layout === '' && class_exists( 'Brikpanel_Sheets_Order_Sync' ) ) {
+			$layout = Brikpanel_Sheets_Order_Sync::row_layout();
+		}
+		if ( 'order' === $layout ) {
+			$swap = [
+				'line_item_id'         => 'items_summary',
+				'product_name'         => 'items_summary',
+				'product_id'           => '',
+				'variation_id'         => '',
+				'product_sku'          => '',
+				'variation_attributes' => '',
+				'unit_price'           => '',
+				'line_subtotal'        => 'subtotal',
+				'line_tax'             => 'tax_total',
+				'line_total'           => 'total',
+				'line_cogs'            => 'order_cogs_total',
+			];
+		} else {
+			$swap = [
+				'items_summary'    => 'line_item_id',
+				'order_cogs_total' => 'line_cogs',
+			];
+		}
+		$out = [];
+		foreach ( $columns as $key ) {
+			$mapped = array_key_exists( $key, $swap ) ? $swap[ $key ] : $key;
+			if ( $mapped !== '' && ! in_array( $mapped, $out, true ) ) {
+				$out[] = $mapped;
+			}
+		}
 		return $out;
 	}
 
@@ -195,6 +268,15 @@ class Brikpanel_Sheets_Mapping {
 			if ( ! empty( $meta['mandatory'] ) ) {
 				$out[] = $key;
 			}
+		}
+		// line_item_id is the dedup key only when rows ARE line items. In the
+		// one-row-per-order layout each order occupies exactly one row, so
+		// order_id alone identifies it and a forced line_item_id column would
+		// just print a 0 in every row.
+		if ( 'orders' === $flow
+			&& class_exists( 'Brikpanel_Sheets_Order_Sync' )
+			&& 'order' === Brikpanel_Sheets_Order_Sync::row_layout() ) {
+			$out = array_values( array_diff( $out, [ 'line_item_id' ] ) );
 		}
 		return $out;
 	}
@@ -296,6 +378,7 @@ class Brikpanel_Sheets_Mapping {
 			case 'orders':    return self::OPT_ORDERS;
 			case 'customers': return self::OPT_CUSTOMERS;
 			case 'products':  return self::OPT_PRODUCTS;
+			case 'expenses':  return self::OPT_EXPENSES;
 		}
 		return '';
 	}

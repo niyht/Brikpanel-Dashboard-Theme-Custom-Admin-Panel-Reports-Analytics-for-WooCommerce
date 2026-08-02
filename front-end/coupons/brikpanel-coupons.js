@@ -21,25 +21,32 @@
         pages: 0,
         extraColumns: {},
         // Token-picker selections keyed by target ('products', 'exclude_products',
-        // 'categories', 'exclude_categories'). Each value is an array of
-        // {value, label} objects.
+        // 'categories', 'exclude_categories', 'emails'). Each value is an array
+        // of {value, label, sub} objects.
         tokens: {
             products: [],
             exclude_products: [],
             categories: [],
-            exclude_categories: []
+            exclude_categories: [],
+            emails: []
         }
     };
 
     var searchTimer = null;
     var tokenSearchTimers = {};
 
-    // Map of token-target -> config (which AJAX action to call and which DOM ids to use).
+    // Matches a plain address as well as WooCommerce wildcards (*@example.com).
+    var EMAIL_RE = /^[a-z0-9._%+\-*]+@[a-z0-9.\-*]+\.[a-z*]{2,}$/i;
+
+    // Map of token-target -> config (which AJAX action to call and which DOM ids
+    // to use). 'string' targets keep their value as text (an email) instead of
+    // an integer ID; 'free' targets also accept values typed by hand.
     var TOKEN_TARGETS = {
         products:           { action: 'brikpanel_coupons_search_products',   tokensId: 'bpc-products-tokens',           inputId: 'bpc-products-search',           sugId: 'bpc-products-suggestions' },
         exclude_products:   { action: 'brikpanel_coupons_search_products',   tokensId: 'bpc-exclude-products-tokens',   inputId: 'bpc-exclude-products-search',   sugId: 'bpc-exclude-products-suggestions' },
         categories:         { action: 'brikpanel_coupons_search_categories', tokensId: 'bpc-categories-tokens',         inputId: 'bpc-categories-search',         sugId: 'bpc-categories-suggestions' },
-        exclude_categories: { action: 'brikpanel_coupons_search_categories', tokensId: 'bpc-exclude-categories-tokens', inputId: 'bpc-exclude-categories-search', sugId: 'bpc-exclude-categories-suggestions' }
+        exclude_categories: { action: 'brikpanel_coupons_search_categories', tokensId: 'bpc-exclude-categories-tokens', inputId: 'bpc-exclude-categories-search', sugId: 'bpc-exclude-categories-suggestions' },
+        emails:             { action: 'brikpanel_coupons_search_users',      tokensId: 'bpc-emails-tokens',             inputId: 'bpc-emails-search',             sugId: 'bpc-emails-suggestions', string: true, free: true }
     };
 
     function isFieldEnabled(name) {
@@ -274,16 +281,37 @@
                 }, 250);
             });
 
-            // Keyboard: Escape closes suggestions.
+            // Keyboard: Escape closes suggestions. On free-entry fields Enter,
+            // comma and Tab turn whatever was typed into a token, and Backspace
+            // on an empty input removes the last one.
             $input.on('keydown', function (e) {
                 if (e.key === 'Escape') {
                     $('#' + cfg.sugId).attr('hidden', true);
+                    return;
+                }
+                if (!cfg.free) return;
+
+                if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+                    if (!$(this).val().trim()) return;
+                    if (e.key !== 'Tab') e.preventDefault();
+                    commitFreeTokens(target);
+                    $('#' + cfg.sugId).attr('hidden', true);
+                } else if (e.key === 'Backspace' && !$(this).val()) {
+                    var list = state.tokens[target] || [];
+                    if (list.length) {
+                        removeToken(target, list[list.length - 1].value);
+                    }
                 }
             });
 
             // Hide suggestions when focus leaves the wrap (small delay so a click registers).
             $input.on('blur', function () {
-                setTimeout(function () { $('#' + cfg.sugId).attr('hidden', true); }, 150);
+                setTimeout(function () {
+                    $('#' + cfg.sugId).attr('hidden', true);
+                    // Do not lose a hand-typed address just because the field lost
+                    // focus. Silent here: a half-typed search term is not an error.
+                    if (cfg.free) commitFreeTokens(target, true);
+                }, 150);
             });
         });
 
@@ -295,8 +323,9 @@
             var target = $field.data('token-target');
             if (!target) return;
             addToken(target, {
-                value: $(this).data('value'),
-                label: $(this).data('label')
+                value: $(this).attr('data-value'),
+                label: $(this).attr('data-label'),
+                sub: $(this).attr('data-sub')
             });
             $field.find('.brikpanel-cp-token-input').val('').focus();
             $sug.attr('hidden', true);
@@ -309,8 +338,44 @@
             var $field = $token.closest('.brikpanel-cp-token-field');
             var target = $field.data('token-target');
             if (!target) return;
-            removeToken(target, $token.data('value'));
+            // .attr() not .data(): jQuery would coerce numeric-looking values.
+            removeToken(target, $token.attr('data-value'));
         });
+    }
+
+    /**
+     * Turns whatever is typed in a free-entry token input into tokens.
+     * Accepts several addresses at once (comma / space / semicolon separated),
+     * which makes pasting a list work.
+     */
+    function commitFreeTokens(target, silent) {
+        var cfg = TOKEN_TARGETS[target];
+        if (!cfg || !cfg.free) return;
+
+        var $input = $('#' + cfg.inputId);
+        var raw = ($input.val() || '').trim();
+        if (!raw) return;
+
+        var parts = raw.split(/[\s,;]+/);
+        var invalid = [];
+
+        for (var i = 0; i < parts.length; i++) {
+            var candidate = parts[i].trim();
+            if (!candidate) continue;
+            if (EMAIL_RE.test(candidate)) {
+                addToken(target, { value: candidate, label: candidate, sub: '' });
+            } else {
+                invalid.push(candidate);
+            }
+        }
+
+        // Anything unparsable stays in the box so it can be corrected instead of
+        // vanishing. Silent callers (blur, save) skip the toast: a half-typed
+        // search term is not an error.
+        if (invalid.length && !silent) {
+            showToast(CP.i18n.invalid_email.replace('%s', invalid.join(', ')), 'error');
+        }
+        $input.val(invalid.join(', '));
     }
 
     function runTokenSearch(target, term) {
@@ -334,11 +399,15 @@
                     return;
                 }
                 // Filter out anything already selected for this target.
-                var selectedValues = (state.tokens[target] || []).map(function (t) { return String(t.value); });
+                var selectedValues = (state.tokens[target] || []).map(function (t) { return String(t.value).toLowerCase(); });
                 var html = '';
                 for (var i = 0; i < items.length; i++) {
-                    if (selectedValues.indexOf(String(items[i].value)) !== -1) continue;
-                    html += '<div class="brikpanel-cp-token-suggestion" data-value="' + escAttr(items[i].value) + '" data-label="' + escAttr(items[i].label) + '">' + escHtml(items[i].label) + '</div>';
+                    if (selectedValues.indexOf(String(items[i].value).toLowerCase()) !== -1) continue;
+                    var sub = items[i].sub || '';
+                    html += '<div class="brikpanel-cp-token-suggestion" data-value="' + escAttr(items[i].value) + '" data-label="' + escAttr(items[i].label) + '" data-sub="' + escAttr(sub) + '">' +
+                        '<span class="brikpanel-cp-token-suggestion-label">' + escHtml(items[i].label) + '</span>' +
+                        (sub ? '<span class="brikpanel-cp-token-suggestion-sub" dir="ltr">' + escHtml(sub) + '</span>' : '') +
+                        '</div>';
                 }
                 if (!html) {
                     $sug.html('<div class="brikpanel-cp-token-empty">' + escHtml(CP.i18n.no_results) + '</div>');
@@ -350,28 +419,43 @@
         });
     }
 
-    function addToken(target, item) {
-        if (!item || !item.value) return;
-        var list = state.tokens[target] || (state.tokens[target] = []);
-        var sv = String(item.value);
-        for (var i = 0; i < list.length; i++) {
-            if (String(list[i].value) === sv) return; // already in
+    // Normalizes one {value,label,sub} descriptor for its target: integer IDs
+    // for product/category pickers, lowercased text for the email picker.
+    function normalizeToken(target, item) {
+        var cfg = TOKEN_TARGETS[target] || {};
+        if (cfg.string) {
+            var val = String(item.value == null ? '' : item.value).trim().toLowerCase();
+            return { value: val, label: String(item.label || val), sub: String(item.sub || '') };
         }
-        list.push({ value: parseInt(item.value, 10), label: String(item.label || item.value) });
+        var id = parseInt(item.value, 10);
+        return { value: id, label: String(item.label || id), sub: '' };
+    }
+
+    function addToken(target, item) {
+        if (!item || item.value === undefined || item.value === null || item.value === '') return;
+        var token = normalizeToken(target, item);
+        if (!token.value) return;
+
+        var list = state.tokens[target] || (state.tokens[target] = []);
+        var sv = String(token.value).toLowerCase();
+        for (var i = 0; i < list.length; i++) {
+            if (String(list[i].value).toLowerCase() === sv) return; // already in
+        }
+        list.push(token);
         renderTokens(target);
     }
 
     function removeToken(target, value) {
         var list = state.tokens[target] || [];
-        var sv = String(value);
-        state.tokens[target] = list.filter(function (t) { return String(t.value) !== sv; });
+        var sv = String(value).toLowerCase();
+        state.tokens[target] = list.filter(function (t) { return String(t.value).toLowerCase() !== sv; });
         renderTokens(target);
     }
 
     function setTokens(target, items) {
         state.tokens[target] = (items || []).map(function (i) {
-            return { value: parseInt(i.value, 10), label: String(i.label || i.value) };
-        });
+            return normalizeToken(target, i);
+        }).filter(function (t) { return !!t.value; });
         renderTokens(target);
     }
 
@@ -388,8 +472,13 @@
         }
         var html = '';
         for (var i = 0; i < list.length; i++) {
-            html += '<span class="brikpanel-cp-token" data-value="' + escAttr(list[i].value) + '">' +
-                '<span class="brikpanel-cp-token-label">' + escHtml(list[i].label) + '</span>' +
+            var sub = list[i].sub || '';
+            // Email addresses are left-to-right even on an RTL admin: without
+            // this, "*@team.com" is reordered on screen as "team.com@*".
+            var labelDir = (cfg.string && !sub) ? ' dir="ltr"' : '';
+            html += '<span class="brikpanel-cp-token" data-value="' + escAttr(list[i].value) + '" title="' + escAttr(sub || list[i].label) + '">' +
+                '<span class="brikpanel-cp-token-label"' + labelDir + '>' + escHtml(list[i].label) + '</span>' +
+                (sub ? '<span class="brikpanel-cp-token-sub" dir="ltr">' + escHtml(sub) + '</span>' : '') +
                 '<button type="button" class="brikpanel-cp-token-remove" aria-label="' + escAttr(CP.i18n.remove) + '">&times;</button>' +
                 '</span>';
         }
@@ -398,6 +487,10 @@
 
     function tokenValues(target) {
         var list = state.tokens[target] || [];
+        var cfg = TOKEN_TARGETS[target] || {};
+        if (cfg.string) {
+            return list.map(function (t) { return String(t.value); }).filter(function (v) { return v !== ''; });
+        }
         return list.map(function (t) { return parseInt(t.value, 10); }).filter(function (v) { return v > 0; });
     }
 
@@ -749,7 +842,8 @@
         setTokens('categories',         isNew ? [] : (coupon.category_labels || []));
         setTokens('exclude_categories', isNew ? [] : (coupon.excluded_category_labels || []));
 
-        $('#bpc-allowed-emails').val(isNew ? '' : (coupon.email_restrictions || ''));
+        setTokens('emails',             isNew ? [] : (coupon.email_labels || []));
+
         $('#bpc-limit-items').val(isNew ? '' : (coupon.limit_usage_to_x_items || ''));
 
         // Clear any leftover search input / suggestions in token pickers.
@@ -790,6 +884,9 @@
         var $btn = $('#bpc-drawer-save');
         var couponId = parseInt($('#bpc-coupon-id').val()) || 0;
         var code = $('#bpc-code').val().trim();
+
+        // An address typed but never confirmed with Enter still counts as intent.
+        commitFreeTokens('emails', true);
 
         if (!code) {
             showToast(CP.i18n.code_required, 'error');
@@ -836,7 +933,7 @@
             data.excluded_category_ids = tokenValues('exclude_categories').join(',');
         }
         if (isFieldEnabled('emails')) {
-            data.email_restrictions = $('#bpc-allowed-emails').val();
+            data.email_restrictions = tokenValues('emails').join(',');
         }
         if (isFieldEnabled('limit_items')) {
             data.limit_usage_to_x_items = $('#bpc-limit-items').val();

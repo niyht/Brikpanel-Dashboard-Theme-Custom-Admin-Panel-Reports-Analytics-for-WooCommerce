@@ -196,12 +196,21 @@ function brikpanel_topbar_item_is_visible( $key ) {
  * @return array<string,string>
  */
 function brikpanel_topbar_create_items_label_map() {
-    return [
+    $items = [
         'product' => __( 'New product', 'brikpanel' ),
         'order'   => __( 'New order', 'brikpanel' ),
         'coupon'  => __( 'New coupon', 'brikpanel' ),
-        'post'    => __( 'New post', 'brikpanel' ),
     ];
+
+    // The cart-share link builder only makes sense (and its page only exists)
+    // while the Cart Share feature is switched on.
+    if ( ! class_exists( 'Brikpanel_Cart_Share' ) || Brikpanel_Cart_Share::is_enabled() ) {
+        $items['cart_link'] = __( 'Cart share link', 'brikpanel' );
+    }
+
+    $items['post'] = __( 'New post', 'brikpanel' );
+
+    return $items;
 }
 
 /**

@@ -456,37 +456,6 @@
 	font-weight: 550;
 }
 
-/* Toast notification (import results) */
-.brikpanel-cartab-toast {
-	position: fixed;
-	top: 64px;
-	right: 20px;
-	z-index: 100001;
-	max-width: 380px;
-	padding: 0.75rem 1rem;
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-	font-size: 0.8125rem;
-	font-weight: 550;
-	line-height: 1.45;
-	color: #1a6b15;
-	background: #e4f5e1;
-	border: 1px solid #b7e1b0;
-	border-radius: 0.5rem;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-	transform: translateX(110%);
-	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.brikpanel-cartab-toast.is-in {
-	transform: translateX(0);
-}
-
-.brikpanel-cartab-toast.is-error {
-	color: #c62828;
-	background: #fce4e4;
-	border-color: #f1b0b0;
-}
-
 /* Popup coupon discount control (header, next to the toggle) */
 .brikpanel-cartab-discount {
 	display: inline-flex;

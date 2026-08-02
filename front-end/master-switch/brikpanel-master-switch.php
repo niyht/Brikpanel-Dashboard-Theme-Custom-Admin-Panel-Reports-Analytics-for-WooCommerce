@@ -86,6 +86,48 @@ class Brikpanel_Master_Switch {
 	}
 
 	/**
+	 * Whether the store is in per-user ("personal") mode, in which the switch
+	 * governs the current user's OWN account instead of the whole store.
+	 *
+	 * @return bool
+	 */
+	public static function personal_active() {
+		return function_exists( 'brikpanel_access_personal_mode_active' )
+			&& brikpanel_access_personal_mode_active();
+	}
+
+	/**
+	 * Whether the current user may see and use the switch in the ACTIVE mode.
+	 *
+	 * In personal mode any eligible back-office user may flip their own account;
+	 * in the default store-wide mode only administrators (and roles opted in via
+	 * the settings) may flip the store.
+	 *
+	 * @return bool
+	 */
+	public static function can_use_switch() {
+		if ( self::personal_active() ) {
+			return function_exists( 'brikpanel_can_use_personal_switch' )
+				&& brikpanel_can_use_personal_switch();
+		}
+		return self::user_can_toggle();
+	}
+
+	/**
+	 * Whether BrikPanel is currently ON in the active mode: the store-wide master
+	 * option in the default mode, or this user's own effective state in personal
+	 * mode. Drives the switch position and the toolbar node's label.
+	 *
+	 * @return bool
+	 */
+	public static function switch_state_on() {
+		if ( self::personal_active() && function_exists( 'brikpanel_access_is_disabled_for_user' ) ) {
+			return ! brikpanel_access_is_disabled_for_user();
+		}
+		return brikpanel_master_enabled();
+	}
+
+	/**
 	 * Whether the current request is an admin screen where the controls should
 	 * be wired up (not AJAX, not the network / user admin contexts).
 	 *
@@ -98,7 +140,7 @@ class Brikpanel_Master_Switch {
 		if ( is_network_admin() || is_user_admin() ) {
 			return false;
 		}
-		return self::user_can_toggle();
+		return self::can_use_switch();
 	}
 
 	// =========================================================================
@@ -106,20 +148,33 @@ class Brikpanel_Master_Switch {
 	// =========================================================================
 
 	/**
-	 * Flip the master switch. Expects POST `enable` = '1' | '0'. Administrator
-	 * only, nonce protected.
+	 * Flip the switch. Expects POST `enable` = '1' | '0'. Nonce protected.
+	 *
+	 * In personal mode this saves the current user's OWN preference (user meta),
+	 * gated by brikpanel_can_use_personal_switch(); in the default store-wide
+	 * mode it flips the master option, gated by the administrator/role check. The
+	 * active mode is resolved server-side, so the stored value is authoritative
+	 * regardless of what the page thought it was doing.
 	 */
 	public function ajax_toggle() {
 		if ( ! check_ajax_referer( self::NONCE_ACTION, 'nonce', false ) ) {
 			wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload and try again.', 'brikpanel' ) ], 400 );
 		}
+
+		$enable = isset( $_POST['enable'] ) && '1' === (string) wp_unslash( $_POST['enable'] );
+
+		if ( self::personal_active() ) {
+			if ( ! function_exists( 'brikpanel_can_use_personal_switch' ) || ! brikpanel_can_use_personal_switch() ) {
+				wp_send_json_error( [ 'message' => __( 'You do not have permission to change this.', 'brikpanel' ) ], 403 );
+			}
+			update_user_meta( get_current_user_id(), BRIKPANEL_ACCESS_USER_META_PERSONAL, $enable ? 'yes' : 'no' );
+			wp_send_json_success( [ 'enabled' => $enable ] );
+		}
+
 		if ( ! self::user_can_toggle() ) {
 			wp_send_json_error( [ 'message' => __( 'You do not have permission to change this.', 'brikpanel' ) ], 403 );
 		}
-
-		$enable = isset( $_POST['enable'] ) && '1' === (string) wp_unslash( $_POST['enable'] );
 		update_option( BRIKPANEL_MASTER_OPT, $enable ? 'yes' : 'no' );
-
 		wp_send_json_success( [ 'enabled' => $enable ] );
 	}
 
@@ -138,11 +193,13 @@ class Brikpanel_Master_Switch {
 	 * Every other back-office user — a shop manager by default — never sees it.
 	 */
 	public function render_topbar_switch() {
-		if ( ! self::user_can_toggle() ) {
+		if ( ! self::can_use_switch() ) {
 			return;
 		}
 
-		$tooltip = __( 'BrikPanel is on for the whole store. Switch off to use the classic WordPress admin.', 'brikpanel' );
+		$tooltip = self::personal_active()
+			? __( 'BrikPanel is on for your account. Switch off to use the classic WordPress admin for yourself only.', 'brikpanel' )
+			: __( 'BrikPanel is on for the whole store. Switch off to use the classic WordPress admin.', 'brikpanel' );
 		?>
 		<div class="brikpanel-topbar-masterswitch" title="<?php echo esc_attr( $tooltip ); ?>">
 			<svg class="brikpanel-topbar-masterswitch-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
@@ -178,18 +235,25 @@ class Brikpanel_Master_Switch {
 		if ( is_network_admin() || is_user_admin() ) {
 			return;
 		}
-		if ( ! self::user_can_toggle() ) {
+		if ( ! self::can_use_switch() ) {
 			return;
 		}
 		if ( ! $bar instanceof WP_Admin_Bar ) {
 			return;
 		}
 
-		$on    = brikpanel_master_enabled();
-		$label = $on ? __( 'BrikPanel on', 'brikpanel' ) : __( 'BrikPanel off', 'brikpanel' );
-		$hint  = $on
-			? __( 'Switch BrikPanel off and use the classic WordPress admin', 'brikpanel' )
-			: __( 'Switch the BrikPanel interface back on', 'brikpanel' );
+		$on        = self::switch_state_on();
+		$personal  = self::personal_active();
+		$label     = $on ? __( 'BrikPanel on', 'brikpanel' ) : __( 'BrikPanel off', 'brikpanel' );
+		if ( $personal ) {
+			$hint = $on
+				? __( 'Switch BrikPanel off for your account and use the classic WordPress admin', 'brikpanel' )
+				: __( 'Switch the BrikPanel interface back on for your account', 'brikpanel' );
+		} else {
+			$hint = $on
+				? __( 'Switch BrikPanel off and use the classic WordPress admin', 'brikpanel' )
+				: __( 'Switch the BrikPanel interface back on', 'brikpanel' );
+		}
 
 		// A power glyph (green when on, grey when off) carried in WP's own
 		// .ab-icon slot, so on phones — where WP shows admin-bar icons but hides
@@ -293,7 +357,7 @@ class Brikpanel_Master_Switch {
 			'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
 			'action'       => self::AJAX_ACTION,
 			'nonce'        => wp_create_nonce( self::NONCE_ACTION ),
-			'enabled'      => brikpanel_master_enabled(),
+			'enabled'      => self::switch_state_on(),
 			// Where to land after switching off. Empty on native (skinned)
 			// screens — those survive the switch, so the JS reloads in place. On
 			// a BrikPanel-only screen (page=brikpanel-*) the screen ceases to

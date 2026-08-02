@@ -76,6 +76,11 @@ class Brikpanel_Ads_Settings {
 		$google_backfill = (array) get_option( 'brikpanel_ads_backfill_status_' . Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, [] );
 		$meta_backfill   = (array) get_option( 'brikpanel_ads_backfill_status_' . Brikpanel_Ads_Tokens::PLATFORM_META, [] );
 
+		// Set when a token renewal failed permanently. Surfaced as a banner so
+		// a dead connection never hides behind a green "Connected" pill.
+		$google_stale = Brikpanel_Ads_Tokens::needs_reconnect( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE ) !== '';
+		$meta_stale   = Brikpanel_Ads_Tokens::needs_reconnect( Brikpanel_Ads_Tokens::PLATFORM_META ) !== '';
+
 		$flash = [
 			'tone'    => isset( $_GET['brikpanel_ads_flash'] ) ? sanitize_key( wp_unslash( $_GET['brikpanel_ads_flash'] ) ) : '',
 			'message' => isset( $_GET['brikpanel_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['brikpanel_msg'] ) ) : '',
@@ -147,6 +152,7 @@ class Brikpanel_Ads_Settings {
 					'connected_label'    => __( 'Connected', 'brikpanel' ),
 					'not_connected_label'=> __( 'Not connected', 'brikpanel' ),
 					'pick_account_first' => __( 'Pick a primary account first.', 'brikpanel' ),
+					'manual_empty'       => __( 'Enter an ad account ID first.', 'brikpanel' ),
 					'manager_suffix'     => __( 'Manager', 'brikpanel' ),
 					/* translators: %1$d = chunks completed, %2$d = total chunks (each chunk is 90 days). */
 					'backfill_progress'  => __( 'Loading history… %1$d of %2$d 90-day chunks done', 'brikpanel' ),
@@ -198,6 +204,28 @@ class Brikpanel_Ads_Settings {
 		return in_array( $p, [ Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, Brikpanel_Ads_Tokens::PLATFORM_META ], true ) ? $p : '';
 	}
 
+	/**
+	 * Normalise a picker- or manually-entered ad account ID to the canonical
+	 * form each platform's API expects. Returns '' when the value cannot be a
+	 * valid ID so the caller can reject it.
+	 *
+	 * Meta: "act_<digits>". Bare digits are accepted and get the "act_" prefix
+	 * so a merchant can paste just the number from Ads Manager. Google: the
+	 * numeric customer ID, digits only ("123-456-7890" dashes are stripped).
+	 */
+	private function normalize_account_id( $platform, $id ) {
+		$id = trim( (string) $id );
+		if ( $platform === Brikpanel_Ads_Tokens::PLATFORM_META ) {
+			$id = preg_replace( '/\s+/', '', $id );
+			if ( preg_match( '/^\d+$/', $id ) ) {
+				$id = 'act_' . $id;
+			}
+			return preg_match( '/^act_\d+$/', $id ) ? $id : '';
+		}
+		// Google Ads customer ID: digits only.
+		return preg_replace( '/\D/', '', $id );
+	}
+
 	// =========================================================================
 	// AJAX — connection / sync status (polled by JS after Connect / Sync now)
 	// =========================================================================
@@ -214,6 +242,7 @@ class Brikpanel_Ads_Settings {
 				'email'             => (string) $desc['email'],
 				'primary_account'   => (string) $desc['primary_account'],
 				'login_customer_id' => (string) $desc['login_customer_id'],
+				'needs_reconnect'   => Brikpanel_Ads_Tokens::needs_reconnect( $p ) !== '',
 				'last_sync_ts'      => (int)    ( $last['ts'] ?? 0 ),
 				'last_sync_ok'      => (bool)   ( $last['ok'] ?? false ),
 				'backfill'          => [
@@ -260,11 +289,15 @@ class Brikpanel_Ads_Settings {
 
 	public function ajax_save_primary() {
 		$this->check_auth();
-		$platform   = $this->sanitize_platform( $_POST['platform'] ?? '' );
-		$account_id = sanitize_text_field( wp_unslash( $_POST['account_id'] ?? '' ) );
+		$platform = $this->sanitize_platform( $_POST['platform'] ?? '' );
+		$raw_id   = sanitize_text_field( wp_unslash( $_POST['account_id'] ?? '' ) );
 
-		if ( $platform === '' || $account_id === '' ) {
+		if ( $platform === '' || $raw_id === '' ) {
 			wp_send_json_error( [ 'message' => __( 'Pick an account before saving.', 'brikpanel' ) ], 400 );
+		}
+		$account_id = $this->normalize_account_id( $platform, $raw_id );
+		if ( $account_id === '' ) {
+			wp_send_json_error( [ 'message' => __( 'That does not look like a valid ad account ID.', 'brikpanel' ) ], 400 );
 		}
 		if ( ! Brikpanel_Ads_Tokens::is_connected( $platform ) ) {
 			wp_send_json_error( [ 'message' => __( 'Connect this platform first.', 'brikpanel' ) ], 400 );
@@ -274,11 +307,21 @@ class Brikpanel_Ads_Settings {
 		// previous account so the dashboard doesn't show mixed totals.
 		$desc = Brikpanel_Ads_Tokens::describe( $platform );
 		$prev = (string) ( $desc['primary_account'] ?? '' );
-		if ( $prev !== '' && $prev !== $account_id ) {
-			Brikpanel_Ads_Store::delete_account( $platform, $prev );
-		}
+		$switched = ( $prev !== '' && $prev !== $account_id );
 
+		// Set the new primary BEFORE clearing old rows. A backfill chunk for
+		// the previous account can be mid-flight in an Action Scheduler worker
+		// right now, and the guard that makes it a no-op reads the stored
+		// primary account — so flipping that first is what actually stops it
+		// from re-inserting rows behind us.
 		Brikpanel_Ads_Tokens::set_meta( $platform, 'primary_account', $account_id );
+
+		if ( $switched ) {
+			// Sweep everything that is not the newly-chosen account, not just
+			// the one we know about: an earlier switch may have left rows from
+			// an account that is no longer recorded anywhere.
+			Brikpanel_Ads_Store::delete_other_accounts( $platform, [ $account_id ] );
+		}
 
 		// Trigger a backfill if this account has no rows yet.
 		if ( ! Brikpanel_Ads_Store::has_data( $platform, $account_id ) ) {
@@ -326,10 +369,9 @@ class Brikpanel_Ads_Settings {
 
 		wp_send_json_success( [
 			'message' => sprintf(
-				/* translators: 1: row count, 2: day count */
-				__( 'Synced %1$d row(s) across %2$d day(s).', 'brikpanel' ),
-				(int) $result['rows'],
-				(int) $result['days']
+				/* translators: %d = number of days of spend data imported. */
+				_n( 'Synced %d day of spend data.', 'Synced %d days of spend data.', (int) $result['rows'], 'brikpanel' ),
+				(int) $result['rows']
 			),
 			'result' => $result,
 		] );

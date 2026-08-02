@@ -19,6 +19,13 @@ class Brikpanel_Sheets_Settings {
 	const PAGE_SLUG    = 'brikpanel-google-sheets';
 	const NONCE_ACTION = 'brikpanel_gs_nonce';
 
+	/**
+	 * Wall-clock budget for one interactive "Sync now" request. Kept well under
+	 * the 30s max_execution_time that shared hosts commonly enforce so the
+	 * response always comes back as JSON instead of a truncated fatal page.
+	 */
+	const SYNC_BUDGET_SECONDS = 15;
+
 	/** Transient caching the proxy-served Picker bootstrap config. */
 	const PICKER_CFG_TRANSIENT = 'brikpanel_gs_picker_cfg';
 	const PICKER_CFG_TTL       = 12 * HOUR_IN_SECONDS;
@@ -110,6 +117,7 @@ class Brikpanel_Sheets_Settings {
 		add_action( 'wp_ajax_brikpanel_gs_create_spreadsheet',   [ $this, 'ajax_create_spreadsheet' ] );
 		add_action( 'wp_ajax_brikpanel_gs_save_settings',        [ $this, 'ajax_save_settings' ] );
 		add_action( 'wp_ajax_brikpanel_gs_save_columns',         [ $this, 'ajax_save_columns' ] );
+		add_action( 'wp_ajax_brikpanel_gs_orders_scope',         [ $this, 'ajax_orders_scope' ] );
 		add_action( 'wp_ajax_brikpanel_gs_sync_now',             [ $this, 'ajax_sync_now' ] );
 		add_action( 'wp_ajax_brikpanel_gs_pull_now',             [ $this, 'ajax_pull_now' ] );
 		add_action( 'wp_ajax_brikpanel_gs_view_log',             [ $this, 'ajax_view_log' ] );
@@ -157,6 +165,7 @@ class Brikpanel_Sheets_Settings {
 			'orders_enabled'   => get_option( Brikpanel_Sheets_Order_Sync::OPT_ENABLED, 'no' ),
 			'orders_realtime'  => get_option( Brikpanel_Sheets_Order_Sync::OPT_REALTIME, 'yes' ),
 			'orders_tab'       => Brikpanel_Sheets_Order_Sync::tab_name(),
+			'orders_row_layout' => Brikpanel_Sheets_Order_Sync::row_layout(),
 			'orders_bulk_interval' => (string) get_option( Brikpanel_Sheets_Order_Sync::OPT_BULK_INTERVAL, 'off' ),
 			'orders_bulk_since' => (string) get_option( Brikpanel_Sheets_Order_Sync::OPT_BULK_SINCE, gmdate( 'Y-m-d', strtotime( '-90 days' ) ) ),
 			'orders_bulk_statuses' => Brikpanel_Sheets_Order_Sync::bulk_statuses(),
@@ -184,12 +193,21 @@ class Brikpanel_Sheets_Settings {
 			'customers_tab'     => Brikpanel_Sheets_Customers_Sync::tab_name(),
 			'customers_last'    => (array) get_option( Brikpanel_Sheets_Customers_Sync::OPT_LAST, [] ),
 
+			'expenses_enabled'       => get_option( Brikpanel_Sheets_Expenses_Sync::OPT_ENABLED, 'no' ),
+			'expenses_tab'           => Brikpanel_Sheets_Expenses_Sync::tab_name(),
+			'expenses_pull_enabled'  => get_option( Brikpanel_Sheets_Expenses_Sync::OPT_PULL_ENABLED, 'no' ),
+			'expenses_pull_interval' => (string) get_option( Brikpanel_Sheets_Expenses_Sync::OPT_PULL_INTERVAL, '5' ),
+			'expenses_last_push'     => (array) get_option( Brikpanel_Sheets_Expenses_Sync::OPT_LAST_PUSH, [] ),
+			'expenses_last_pull'     => (array) get_option( Brikpanel_Sheets_Expenses_Sync::OPT_LAST_PULL, [] ),
+
 			'columns_orders'    => Brikpanel_Sheets_Mapping::get_columns( 'orders' ),
 			'columns_customers' => Brikpanel_Sheets_Mapping::get_columns( 'customers' ),
 			'columns_products'  => Brikpanel_Sheets_Mapping::get_columns( 'products' ),
+			'columns_expenses'  => Brikpanel_Sheets_Mapping::get_columns( 'expenses' ),
 			'columns_orders_catalogue'    => Brikpanel_Sheets_Mapping::available_columns_for( 'orders' ),
 			'columns_customers_catalogue' => Brikpanel_Sheets_Mapping::available_columns_for( 'customers' ),
 			'columns_products_catalogue'  => Brikpanel_Sheets_Mapping::available_columns_for( 'products' ),
+			'columns_expenses_catalogue'  => Brikpanel_Sheets_Mapping::available_columns_for( 'expenses' ),
 		];
 
 		$flash = [
@@ -251,8 +269,20 @@ class Brikpanel_Sheets_Settings {
 					'picker_failed'      => __( 'Could not open the Google Picker. Please try again.', 'brikpanel' ),
 					'picker_unavailable' => __( 'Picking an existing spreadsheet is not available yet. Create a new one below.', 'brikpanel' ),
 					'generic_error'      => __( 'Something went wrong. Please try again.', 'brikpanel' ),
+					'server_error'       => __( 'The server ended the request before it finished. Nothing was lost — click Sync now again to continue where it stopped.', 'brikpanel' ),
+					/* translators: 1: orders synced so far, 2: sheet rows written so far. */
+					'sync_progress'      => __( 'Synced %1$d orders (%2$d rows)…', 'brikpanel' ),
+					/* translators: 1: total orders synced, 2: total sheet rows written. */
+					'sync_done'          => __( 'Synced %1$d orders (%2$d rows).', 'brikpanel' ),
 					'no_access'          => __( 'BrikPanel does not have access yet. Open the spreadsheet, share it with %s, then click Validate.', 'brikpanel' ),
 					'log_empty'          => __( 'No errors logged.', 'brikpanel' ),
+					/* translators: %s: number of orders. */
+					'scope_all'          => __( 'All %s orders in this date and status range will be exported.', 'brikpanel' ),
+					/* translators: 1: matching orders, 2: total orders in range. */
+					'scope_filtered'     => __( '%1$s of %2$s orders match this shipping filter.', 'brikpanel' ),
+					'scope_warning'      => __( 'Orders with no shipping method recorded are excluded while any box is ticked. Untick every box to export all orders.', 'brikpanel' ),
+					'scope_none'         => __( 'No orders match this shipping filter, so nothing would be exported. Untick every box to export all orders.', 'brikpanel' ),
+					'scope_counting'     => __( 'Counting…', 'brikpanel' ),
 					'reset_confirm'      => __( "This will WIPE the current target tab in Google Sheets and then re-push every order from scratch. Any rows you added manually to that tab will be lost. Continue?", 'brikpanel' ),
 					'resetting'          => __( 'Resetting…', 'brikpanel' ),
 					'connected_label'    => __( 'Connected', 'brikpanel' ),
@@ -261,6 +291,7 @@ class Brikpanel_Sheets_Settings {
 					'expires_template'   => __( 'in %d min (auto-refreshed)', 'brikpanel' ),
 					'pulling'            => __( 'Pulling changes from Sheets…', 'brikpanel' ),
 					'reset_products_confirm' => __( "This will WIPE the current Products tab in Google Sheets and then re-push every product from scratch. Any rows you added manually to that tab will be lost. Continue?", 'brikpanel' ),
+					'reset_expenses_confirm' => __( "This will WIPE the current Expenses tab in Google Sheets and then re-write it from your BrikPanel expenses. Any rows you typed into that tab and have not pulled in yet will be lost. Continue?", 'brikpanel' ),
 				],
 			]
 		);
@@ -476,6 +507,14 @@ class Brikpanel_Sheets_Settings {
 		// user already populated for another purpose).
 		if ( $old !== '' && $old !== $id ) {
 			self::reset_sync_state();
+			// Products keep their own row/snapshot meta. Leaving it behind meant
+			// the next product save wrote into the NEW spreadsheet at the OLD
+			// sheet's absolute row numbers — scattering rows at arbitrary
+			// positions and, if the new sheet already held the merchant's own
+			// data, overwriting it row by row.
+			if ( class_exists( 'Brikpanel_Sheets_Products_Sync' ) ) {
+				Brikpanel_Sheets_Products_Sync::reset_sync_state();
+			}
 		}
 	}
 
@@ -534,6 +573,53 @@ class Brikpanel_Sheets_Settings {
 		}
 	}
 
+	/**
+	 * Wipe the Expenses tab and re-write its header + dropdowns.
+	 *
+	 * Only ever called from "Reset & re-push", where the merchant has already
+	 * been warned that rows they typed into the tab go with it. The normal
+	 * push rebuilds the tab too, but ingests it first so nothing typed is lost.
+	 *
+	 * @return bool False when the wipe did not happen, so the caller can abort
+	 *               the rest of the reset instead of leaving the two sides
+	 *               inconsistent.
+	 */
+	public static function clear_expenses_target_tab() {
+		$id = (string) get_option( 'brikpanel_gs_spreadsheet_id', '' );
+		if ( $id === '' || ! Brikpanel_Sheets_Tokens::is_connected() ) {
+			return false;
+		}
+		$tab = Brikpanel_Sheets_Expenses_Sync::tab_name();
+		try {
+			$client      = new Brikpanel_Sheets_Client();
+			$columns     = Brikpanel_Sheets_Mapping::get_columns( 'expenses' );
+			$headers     = Brikpanel_Sheets_Expenses_Sync::headers( $columns );
+			$validations = Brikpanel_Sheets_Expenses_Sync::build_dropdown_validations( $columns );
+			$client->ensure_tab( $id, $tab, $headers, $validations );
+			$client->values_clear( $id, Brikpanel_Sheets_Client::a1_quote_tab( $tab ) );
+			$client->values_update(
+				$id,
+				Brikpanel_Sheets_Client::a1_quote_tab( $tab ) . '!A1',
+				[ $headers ],
+				'RAW'
+			);
+			// values_clear() drops data validation — put the dropdowns back.
+			if ( ! empty( $validations ) ) {
+				$sheet_id = null;
+				foreach ( $client->list_sheets( $id ) as $sid => $name ) {
+					if ( strcasecmp( $name, $tab ) === 0 ) { $sheet_id = (int) $sid; break; }
+				}
+				if ( $sheet_id !== null ) {
+					$client->apply_data_validation( $id, $sheet_id, $validations );
+				}
+			}
+			return true;
+		} catch ( \Throwable $e ) {
+			Brikpanel_Sheets_Logger::log( 'expenses', 'Target tab clear failed during reset: ' . $e->getMessage() );
+			return false;
+		}
+	}
+
 	public static function clear_orders_target_tab() {
 		$id = (string) get_option( 'brikpanel_gs_spreadsheet_id', '' );
 		if ( $id === '' ) {
@@ -587,6 +673,13 @@ class Brikpanel_Sheets_Settings {
 		global $wpdb;
 		$is_hpos = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
 
+		// The tab was (or is about to be) wiped — any cached view of which
+		// order occupies which row is now a lie. Without this, a long-lived
+		// worker could "adopt" orders onto rows that no longer exist.
+		if ( class_exists( 'Brikpanel_Sheets_Order_Sync' ) ) {
+			Brikpanel_Sheets_Order_Sync::invalidate_sheet_index();
+		}
+
 		// Cancel pending AS jobs FIRST so that, after we wipe the per-order
 		// META_SYNCED_AT flags below, a stale realtime/bulk worker doesn't
 		// race in, see every order as "unsynced", and re-push the entire
@@ -609,6 +702,9 @@ class Brikpanel_Sheets_Settings {
 			Brikpanel_Sheets_Order_Sync::META_SPREADSHEET,
 			Brikpanel_Sheets_Order_Sync::META_TAB,
 			Brikpanel_Sheets_Order_Sync::META_LAST_PUSHED_STATUS,
+			// Clear skip markers too, so an order that failed to map once gets
+			// another chance on a full re-push.
+			Brikpanel_Sheets_Order_Sync::META_SKIPPED,
 		];
 		$placeholders = implode( ',', array_fill( 0, count( $keys ), '%s' ) );
 
@@ -632,6 +728,12 @@ class Brikpanel_Sheets_Settings {
 		delete_option( Brikpanel_Sheets_Order_Sync::OPT_LAST_SYNC );
 		delete_option( Brikpanel_Sheets_Reports_Sync::OPT_LAST );
 		delete_option( Brikpanel_Sheets_Customers_Sync::OPT_LAST );
+		// Expense row snapshots describe rows in the OLD spreadsheet. Carried
+		// into a new one they would make the first pull compare live cells
+		// against hashes from a document that is no longer the target.
+		if ( class_exists( 'Brikpanel_Sheets_Expenses_Sync' ) ) {
+			Brikpanel_Sheets_Expenses_Sync::reset_sync_state();
+		}
 		// Drop any stale flush lock so the immediate "Sync now" can acquire it.
 		delete_transient( Brikpanel_Sheets_Order_Sync::FLUSH_LOCK );
 		Brikpanel_Sheets_Logger::log( 'orders', 'Sync state reset (spreadsheet changed).' );
@@ -688,6 +790,44 @@ class Brikpanel_Sheets_Settings {
 					$pull_int = '5';
 				}
 				update_option( Brikpanel_Sheets_Order_Sync::OPT_PULL_INTERVAL, $pull_int, false );
+
+				// Row layout LAST, because a failed switch aborts the request:
+				// everything saved above must already be committed by then.
+				// Switching layouts changes what a row IS, so old rows can
+				// never be mixed with new ones — the target tab must be wiped
+				// and the sync state reset in the same atomic step as the
+				// option flip. If the wipe fails (quota, connection), revert
+				// the flip and report; nothing is left half-switched.
+				$new_layout = sanitize_key( wp_unslash( $_POST['row_layout'] ?? '' ) );
+				if ( in_array( $new_layout, [ 'order', 'line_item' ], true )
+					&& $new_layout !== Brikpanel_Sheets_Order_Sync::row_layout() ) {
+
+					$old_layout  = Brikpanel_Sheets_Order_Sync::row_layout();
+					$old_columns = Brikpanel_Sheets_Mapping::get_columns( 'orders' );
+
+					update_option( Brikpanel_Sheets_Order_Sync::OPT_ROW_LAYOUT, $new_layout, false );
+					Brikpanel_Sheets_Mapping::set_columns(
+						'orders',
+						Brikpanel_Sheets_Mapping::adapt_order_columns_to_layout( $old_columns, $new_layout )
+					);
+
+					// Clear AFTER the flip so the freshly written header row
+					// reflects the new column set, not the old one.
+					if ( ! self::clear_orders_target_tab() ) {
+						update_option( Brikpanel_Sheets_Order_Sync::OPT_ROW_LAYOUT, $old_layout, false );
+						Brikpanel_Sheets_Mapping::set_columns( 'orders', $old_columns );
+						wp_send_json_error( [
+							'message' => __( 'Row layout was not changed: the target tab could not be wiped (rate limit or connection issue). Your other settings were saved — wait a minute and try the layout switch again.', 'brikpanel' ),
+						], 502 );
+					}
+					self::reset_sync_state();
+
+					wp_send_json_success( [
+						'message' => __( 'Row layout changed — the target tab was wiped and all orders will re-export in the new layout. Click "Sync now" to fill it.', 'brikpanel' ),
+						'reload'  => true,
+					] );
+				}
+
 				// Re-register handlers / recurring schedule on next cron tick.
 				do_action( 'brikpanel_cron_register' );
 				break;
@@ -733,6 +873,19 @@ class Brikpanel_Sheets_Settings {
 				update_option( Brikpanel_Sheets_Customers_Sync::OPT_ENABLED, $this->yes_no( $_POST['enabled'] ?? '' ), false );
 				$tab = sanitize_text_field( wp_unslash( $_POST['tab'] ?? '' ) );
 				update_option( Brikpanel_Sheets_Customers_Sync::OPT_TAB_NAME, $tab !== '' ? $tab : 'Customers', false );
+				break;
+
+			case 'expenses':
+				update_option( Brikpanel_Sheets_Expenses_Sync::OPT_ENABLED, $this->yes_no( $_POST['enabled'] ?? '' ), false );
+				$tab = sanitize_text_field( wp_unslash( $_POST['tab'] ?? '' ) );
+				update_option( Brikpanel_Sheets_Expenses_Sync::OPT_TAB_NAME, $tab !== '' ? $tab : 'Expenses', false );
+				update_option( Brikpanel_Sheets_Expenses_Sync::OPT_PULL_ENABLED, $this->yes_no( $_POST['pull_enabled'] ?? '' ), false );
+				$pull_int = sanitize_key( $_POST['pull_interval'] ?? '5' );
+				if ( ! in_array( $pull_int, [ '2', '5', '15' ], true ) ) {
+					$pull_int = '5';
+				}
+				update_option( Brikpanel_Sheets_Expenses_Sync::OPT_PULL_INTERVAL, $pull_int, false );
+				do_action( 'brikpanel_cron_register' );
 				break;
 
 			default:
@@ -796,11 +949,48 @@ class Brikpanel_Sheets_Settings {
 		$columns = isset( $_POST['columns'] ) ? (array) wp_unslash( $_POST['columns'] ) : [];
 		$columns = array_values( array_filter( array_map( 'sanitize_key', $columns ) ) );
 
-		if ( ! in_array( $flow, [ 'orders', 'customers', 'products' ], true ) ) {
+		if ( ! in_array( $flow, [ 'orders', 'customers', 'products', 'expenses' ], true ) ) {
 			wp_send_json_error( [ 'message' => __( 'Unknown flow.', 'brikpanel' ) ], 400 );
 		}
 		Brikpanel_Sheets_Mapping::set_columns( $flow, $columns );
 		wp_send_json_success();
+	}
+
+	// =========================================================================
+	// AJAX — export-scope preview for the orders filters
+	// =========================================================================
+
+	/**
+	 * Count how many orders the CURRENTLY EDITED (not yet saved) orders filters
+	 * would export. Lets the settings screen warn before a merchant syncs and
+	 * wonders why only a handful of rows landed in the sheet.
+	 */
+	public function ajax_orders_scope() {
+		$this->check_auth();
+
+		$statuses = isset( $_POST['statuses'] ) ? (array) wp_unslash( $_POST['statuses'] ) : [];
+		$statuses = array_values( array_filter( array_map( 'sanitize_key', $statuses ) ) );
+		// Only statuses WooCommerce actually knows; a stale/unknown key would
+		// silently narrow the count and make the preview lie.
+		$valid    = array_keys( wc_get_order_statuses() );
+		$statuses = array_values( array_intersect( $statuses, $valid ) );
+
+		$methods = isset( $_POST['shipping_methods'] ) ? (array) wp_unslash( $_POST['shipping_methods'] ) : [];
+		$methods = array_values( array_filter( array_map( 'sanitize_text_field', $methods ) ) );
+
+		$since_raw = isset( $_POST['since'] ) ? sanitize_text_field( wp_unslash( $_POST['since'] ) ) : '';
+		$since_ts  = $since_raw !== '' ? strtotime( $since_raw . ' 00:00:00 UTC' ) : 0;
+		if ( ! $since_ts ) {
+			$since_ts = Brikpanel_Sheets_Order_Sync::bulk_since_timestamp();
+		}
+
+		$scope = Brikpanel_Sheets_Order_Sync::count_export_scope( $statuses, $since_ts, $methods );
+
+		wp_send_json_success( [
+			'matched'  => (int) $scope['matched'],
+			'total'    => (int) $scope['total'],
+			'filtered' => ! empty( $methods ),
+		] );
 	}
 
 	// =========================================================================
@@ -822,6 +1012,7 @@ class Brikpanel_Sheets_Settings {
 			'products'  => Brikpanel_Sheets_Products_Sync::is_enabled(),
 			'reports'   => Brikpanel_Sheets_Reports_Sync::is_enabled(),
 			'customers' => Brikpanel_Sheets_Customers_Sync::is_enabled(),
+			'expenses'  => Brikpanel_Sheets_Expenses_Sync::is_enabled(),
 		];
 		if ( isset( $flow_enabled[ $flow ] ) && ! $flow_enabled[ $flow ] ) {
 			wp_send_json_error( [ 'message' => __( 'Enable this sync first, then click Save before clicking Sync now.', 'brikpanel' ) ], 400 );
@@ -837,10 +1028,58 @@ class Brikpanel_Sheets_Settings {
 		try {
 			switch ( $flow ) {
 				case 'orders':
-					$sync   = new Brikpanel_Sheets_Order_Sync();
-					$result = $sync->handle_flush_bulk();
+					$sync = new Brikpanel_Sheets_Order_Sync();
+
+					// Drain in small passes under a wall-clock budget rather than
+					// one huge pass. A single 250-order pass was the whole reason
+					// a large date range failed: it could outlast the request and
+					// die after the rows had already reached the sheet. Small
+					// passes keep every request short, and the browser asks for
+					// the next one while showing progress.
+					$result   = [ 'orders' => 0, 'rows' => 0, 'more' => false ];
+					$deadline = microtime( true ) + self::SYNC_BUDGET_SECONDS;
+					do {
+						$pass = $sync->handle_flush_bulk( [
+							'limit' => Brikpanel_Sheets_Order_Sync::INTERACTIVE_BATCH_SIZE,
+							'defer' => false,
+						] );
+						if ( ! empty( $pass['locked'] ) ) {
+							// A background job (hourly schedule, realtime append)
+							// holds the flush lock. That is NOT "all synced" —
+							// wait briefly and retry within the budget; if the
+							// budget runs out first, report `more` so the
+							// browser keeps polling until the lock frees up.
+							$result['more'] = true;
+							if ( microtime( true ) + 2 < $deadline ) {
+								sleep( 2 );
+								continue;
+							}
+							break;
+						}
+						$result['orders'] += (int) ( $pass['orders'] ?? 0 );
+						$result['rows']   += (int) ( $pass['rows'] ?? 0 );
+						$result['more']    = ! empty( $pass['more'] );
+					} while ( $result['more'] && microtime( true ) < $deadline );
+
+					// Safety net: if the merchant closes the tab mid-drain the
+					// browser stops asking, so hand the remainder to the
+					// background queue. 'unique' keeps a second click from
+					// stacking duplicate paging jobs.
+					if ( ! empty( $result['more'] ) ) {
+						Brikpanel_Cron::enqueue_async(
+							Brikpanel_Sheets_Order_Sync::HOOK_BULK_FLUSH,
+							[],
+							[ 'unique' => true ]
+						);
+					}
+
 					$orders_n = (int) ( $result['orders'] ?? 0 );
-					if ( $orders_n === 0 ) {
+					if ( $orders_n === 0 && ! empty( $result['more'] ) ) {
+						// Whole budget spent waiting on the flush lock — a
+						// background job owns the export right now. Saying
+						// "everything is synced" here would be a lie.
+						$message = __( 'A background sync is already running — it will finish on its own, or click "Sync now" again in a moment to watch progress.', 'brikpanel' );
+					} elseif ( $orders_n === 0 ) {
 						// Distinguish "already synced everything" from "your filters
 						// match no orders in the configured window". Both produce 0
 						// here but the user-facing fix is different.
@@ -910,12 +1149,38 @@ class Brikpanel_Sheets_Settings {
 				case 'customers':
 					$sync   = new Brikpanel_Sheets_Customers_Sync();
 					$result = $sync->handle();
-					$message = sprintf(
-						/* translators: %d: customer rows */
-						_n( 'Synced %d customer.', 'Synced %d customers.', (int) ( $result['rows'] ?? 0 ), 'brikpanel' ),
-						(int) ( $result['rows'] ?? 0 )
-					);
+					// Resolve the plural into a variable before sprintf(): the
+					// string extractor that builds brikpanel.pot skips an _n()
+					// written inline as sprintf's first argument, so this message
+					// was shipping untranslatable.
+					$cust_n = (int) ( $result['rows'] ?? 0 );
+					/* translators: %d: customer rows */
+					$template = _n( 'Synced %d customer.', 'Synced %d customers.', $cust_n, 'brikpanel' );
+					$message  = sprintf( $template, $cust_n );
 					$last = (array) get_option( Brikpanel_Sheets_Customers_Sync::OPT_LAST, [] );
+					break;
+
+				case 'expenses':
+					$sync    = new Brikpanel_Sheets_Expenses_Sync();
+					$result  = $sync->handle_push();
+					$rows_n  = (int) ( $result['rows'] ?? 0 );
+					/* translators: %d: expense rows written to the sheet */
+					$template = _n( 'Wrote %d expense to the sheet.', 'Wrote %d expenses to the sheet.', $rows_n, 'brikpanel' );
+					$message  = sprintf( $template, $rows_n );
+					// The push ingests the tab first when two-way sync is on, so
+					// report anything it picked up on the way in — otherwise a
+					// merchant who typed rows and clicked "Sync now" would see
+					// only the row count and wonder if their entries were read.
+					$ingested = (int) ( $result['created'] ?? 0 ) + (int) ( $result['updated'] ?? 0 );
+					if ( $ingested > 0 ) {
+						$message .= ' ' . sprintf(
+							/* translators: 1: expenses created from the sheet, 2: expenses updated from the sheet */
+							__( 'Added %1$d and updated %2$d from your edits in the sheet.', 'brikpanel' ),
+							(int) ( $result['created'] ?? 0 ),
+							(int) ( $result['updated'] ?? 0 )
+						);
+					}
+					$last = (array) get_option( Brikpanel_Sheets_Expenses_Sync::OPT_LAST_PUSH, [] );
 					break;
 
 				default:
@@ -1007,6 +1272,34 @@ class Brikpanel_Sheets_Settings {
 					);
 					break;
 
+				case 'expenses':
+					if ( ! Brikpanel_Sheets_Expenses_Sync::is_enabled() || ! Brikpanel_Sheets_Expenses_Sync::pull_enabled() ) {
+						wp_send_json_error( [ 'message' => __( 'Enable two-way sync for expenses first, then click Save before clicking Pull now.', 'brikpanel' ) ], 400 );
+					}
+					$sync   = new Brikpanel_Sheets_Expenses_Sync();
+					$result = $sync->handle_pull();
+					$message = sprintf(
+						/* translators: 1: rows read, 2: expenses added, 3: expenses updated, 4: rows skipped */
+						__( 'Read %1$d rows: added %2$d, updated %3$d, skipped %4$d.', 'brikpanel' ),
+						(int) ( $result['checked'] ?? 0 ),
+						(int) ( $result['created'] ?? 0 ),
+						(int) ( $result['updated'] ?? 0 ),
+						(int) ( $result['skipped'] ?? 0 )
+					);
+					if ( ! empty( $result['conflicts'] ) ) {
+						$message .= ' ' . sprintf(
+							/* translators: %d: rows changed on both sides since the last sync */
+							_n(
+								'%d row was changed in both places, so the BrikPanel version was kept.',
+								'%d rows were changed in both places, so the BrikPanel versions were kept.',
+								(int) $result['conflicts'],
+								'brikpanel'
+							),
+							(int) $result['conflicts']
+						);
+					}
+					break;
+
 				default:
 					wp_send_json_error( [ 'message' => __( 'Unknown flow.', 'brikpanel' ) ], 400 );
 			}
@@ -1055,6 +1348,17 @@ class Brikpanel_Sheets_Settings {
 
 		foreach ( $keep as &$e ) {
 			$e['ts_display'] = $e['ts'] ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $e['ts'] ) : '';
+			// Repeats are collapsed into one entry (see the logger); say so, or
+			// a recurring failure reads as a single one-off event.
+			$repeats = (int) ( $e['count'] ?? 1 );
+			if ( $repeats > 1 ) {
+				$e['message'] = sprintf(
+					/* translators: 1: log message, 2: how many times it repeated. */
+					__( '%1$s (repeated %2$s times)', 'brikpanel' ),
+					(string) $e['message'],
+					number_format_i18n( $repeats )
+				);
+			}
 		}
 		wp_send_json_success( [ 'entries' => $keep ] );
 	}
@@ -1077,20 +1381,39 @@ class Brikpanel_Sheets_Settings {
 		$this->check_auth();
 		$flow = isset( $_POST['flow'] ) ? sanitize_key( wp_unslash( $_POST['flow'] ) ) : 'orders';
 
+		// ATOMIC, clear-first ordering. The old flow wiped the per-order meta
+		// even when the tab clear failed (quota, network, revoked token) and
+		// then told the user to "Sync now anyway" — which appended a complete
+		// second copy of every order onto the stale rows. If we cannot wipe
+		// the tab, we must NOT touch the meta: the sheet and the row maps are
+		// still consistent with each other, so aborting is loss-free.
 		if ( $flow === 'products' ) {
 			$tab_cleared = self::clear_products_target_tab();
-			Brikpanel_Sheets_Products_Sync::reset_sync_state();
+			if ( $tab_cleared ) {
+				Brikpanel_Sheets_Products_Sync::reset_sync_state();
+			}
+		} elseif ( $flow === 'expenses' ) {
+			$tab_cleared = self::clear_expenses_target_tab();
+			if ( $tab_cleared ) {
+				Brikpanel_Sheets_Expenses_Sync::reset_sync_state();
+			}
 		} else {
 			// Default: orders (matches the original behaviour).
 			$tab_cleared = self::clear_orders_target_tab();
-			self::reset_sync_state();
+			if ( $tab_cleared ) {
+				self::reset_sync_state();
+			}
+		}
+
+		if ( ! $tab_cleared ) {
+			wp_send_json_error( [
+				'message' => __( 'The target tab could not be wiped (rate limit or connection issue), so the reset was cancelled to avoid duplicate rows. Nothing was changed — wait a minute and try again.', 'brikpanel' ),
+			], 502 );
 		}
 
 		wp_send_json_success( [
-			'message' => $tab_cleared
-				? __( 'Sync state cleared and target tab wiped. Click "Sync now" to repopulate it.', 'brikpanel' )
-				: __( 'Sync state cleared, but the target tab could not be wiped (check connection). Click "Sync now" anyway.', 'brikpanel' ),
-			'tab_cleared' => (bool) $tab_cleared,
+			'message'     => __( 'Sync state cleared and target tab wiped. Click "Sync now" to repopulate it.', 'brikpanel' ),
+			'tab_cleared' => true,
 		] );
 	}
 
@@ -1113,13 +1436,28 @@ class Brikpanel_Sheets_Settings {
 			<?php
 			// Two-way notice: list exactly which columns sync Sheets -> Woo so a
 			// merchant never assumes an edit to a display-only column (name,
-			// description, price, ...) will reach the store. Only the products
-			// flow has writable columns, so this renders there and nowhere else.
+			// description, price, ...) will reach the store. Renders on the
+			// orders flow (order_status) and the products flow (stock, price,
+			// COGS, status); the customers flow has no writable columns.
 			$writable_labels = [];
 			foreach ( $catalogue as $ck => $cmeta ) {
 				if ( ! empty( $cmeta['writable'] ) && isset( $cmeta['label'] ) ) {
 					$writable_labels[] = (string) $cmeta['label'];
 				}
+			}
+			// Writeback only actually happens when that flow's reverse-sync
+			// toggle is on. Saying "your edits are written back" while the
+			// toggle is off is the exact mismatch that makes merchants report
+			// two-way sync as missing, so surface the real state here.
+			// The sync classes load in the same all-or-nothing block as this
+			// one (see brikpanel-google-sheets.php), so they are always here in
+			// practice; class_exists keeps a direct third-party call to this
+			// public static from fataling, and defaults to the quiet state.
+			$pull_on = true;
+			if ( 'orders' === $flow && class_exists( 'Brikpanel_Sheets_Order_Sync' ) ) {
+				$pull_on = Brikpanel_Sheets_Order_Sync::pull_enabled();
+			} elseif ( 'products' === $flow && class_exists( 'Brikpanel_Sheets_Products_Sync' ) ) {
+				$pull_on = Brikpanel_Sheets_Products_Sync::pull_enabled();
 			}
 			if ( $writable_labels ) :
 			?>
@@ -1138,6 +1476,17 @@ class Brikpanel_Sheets_Settings {
 						?>
 					</p>
 					<p><?php esc_html_e( 'Every other column is one-way (store to sheet). Anything you type into those cells is display-only and will be overwritten on the next sync. Columns that sync back are marked with this glyph in the sheet header.', 'brikpanel' ); ?></p>
+					<?php if ( ! $pull_on ) : ?>
+						<p class="bp-gs-twoway-note-off">
+							<?php
+							if ( 'orders' === $flow ) {
+								esc_html_e( 'Two-way sync is currently turned off, so edits in the sheet are not written back yet. Turn on "Two-way sync: apply status changes from Sheets" below and save to enable it.', 'brikpanel' );
+							} else {
+								esc_html_e( 'Two-way sync is currently turned off, so edits in the sheet are not written back yet. Turn on the two-way sync option below and save to enable it.', 'brikpanel' );
+							}
+							?>
+						</p>
+					<?php endif; ?>
 				</div>
 			<?php endif; ?>
 			<ul class="bp-gs-column-list" data-role="selected">

@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Render a single platform card. Used twice — for Google and Meta — to avoid
  * 200 lines of nearly identical markup.
  */
-$render_platform_card = function ( $platform, $title, $tagline, $desc, $last_sync, $backfill, $locked = false, $disguise = false ) {
+$render_platform_card = function ( $platform, $title, $tagline, $desc, $last_sync, $backfill, $locked = false, $disguise = false, $stale = false ) {
 	$is_connected = (bool) $desc['connected'];
 	$primary      = (string) $desc['primary_account'];
 	$last_ts      = (int) ( $last_sync['ts'] ?? 0 );
@@ -103,6 +103,18 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 
 		<div class="bp-ads-card-body">
 
+			<?php if ( $stale ) : ?>
+				<div class="bp-ads-stale-note" role="alert">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+					<div>
+						<strong><?php esc_html_e( 'Reconnect required', 'brikpanel' ); ?></strong>
+						<p class="bp-ads-card-sub">
+							<?php esc_html_e( 'The stored authorisation stopped working, so no new spend is being imported. Your existing history is untouched. Connect again to resume syncing.', 'brikpanel' ); ?>
+						</p>
+					</div>
+				</div>
+			<?php endif; ?>
+
 			<?php if ( ! $is_connected ) : ?>
 
 				<p class="bp-ads-card-sub">
@@ -156,6 +168,31 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 						</button>
 					</div>
 				</div>
+
+				<details class="bp-ads-manual">
+					<summary class="bp-ads-manual-summary"><?php esc_html_e( 'Can’t find your account?', 'brikpanel' ); ?></summary>
+					<div class="bp-ads-field bp-ads-manual-body">
+						<p class="bp-ads-help">
+							<?php
+							if ( $platform === Brikpanel_Ads_Tokens::PLATFORM_META ) {
+								esc_html_e( 'If your ad account is owned by a Business Manager it may not appear in the list above. Enter its ID manually. You can find it in Meta Ads Manager, shown next to the account name.', 'brikpanel' );
+							} else {
+								esc_html_e( 'Enter your Google Ads customer ID manually if it is not listed above. Digits only, no dashes. You can find it at the top-right of your Google Ads account.', 'brikpanel' );
+							}
+							?>
+						</p>
+						<div class="bp-ads-input-row">
+							<input type="text"
+								class="bp-ads-input"
+								data-role="manual-account"
+								autocomplete="off"
+								placeholder="<?php echo esc_attr( $platform === Brikpanel_Ads_Tokens::PLATFORM_META ? 'act_1234567890' : '1234567890' ); ?>">
+							<button type="button" class="bp-ads-btn bp-ads-btn-primary" data-action="save-manual">
+								<?php esc_html_e( 'Save', 'brikpanel' ); ?>
+							</button>
+						</div>
+					</div>
+				</details>
 
 				<?php if ( $platform === Brikpanel_Ads_Tokens::PLATFORM_GOOGLE ) : ?>
 					<div class="bp-ads-field">
@@ -270,7 +307,8 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 				$google_last_sync,
 				$google_backfill,
 				! empty( $google_locked ),
-				! empty( $google_disguised )
+				! empty( $google_disguised ),
+				! empty( $google_stale )
 			);
 			$render_platform_card(
 				Brikpanel_Ads_Tokens::PLATFORM_META,
@@ -280,7 +318,8 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 				$meta_last_sync,
 				$meta_backfill,
 				! empty( $meta_locked ),
-				! empty( $meta_disguised )
+				! empty( $meta_disguised ),
+				! empty( $meta_stale )
 			);
 			?>
 		</div>

@@ -74,6 +74,31 @@ const BRIKPANEL_MASTER_OPT = 'brikpanel_master_enabled';
 // BrikPanel settings page as an administrator.
 const BRIKPANEL_MASTER_SWITCH_ROLES = 'brikpanel_master_switch_roles';
 
+// Per-user control ("personal mode"). When 'yes', the BrikPanel interface is no
+// longer a single store-wide decision an administrator makes for everyone:
+// instead every back-office user governs BrikPanel for their OWN account, from
+// the same on/off switch in the top bar / WordPress toolbar and from their
+// profile page. One user's choice never touches another user's view. What each
+// role STARTS with — before the user picks — is decided by the role-defaults
+// option below. Off by default, so nothing changes until the store owner opts
+// in. The admin-forced rules (disabled users / roles / "disable for admins")
+// still win over a user's personal choice: an account the owner has locked to
+// the native admin cannot re-enable BrikPanel for itself.
+const BRIKPANEL_ACCESS_OPT_PERSONAL_MODE = 'brikpanel_access_personal_mode';
+
+// Roles that START with BrikPanel switched off under personal mode (the user can
+// still turn it on for themselves). Everyone else starts with it on. Empty by
+// default, so out of the box every role starts on. Setting this to
+// [administrator] is the canonical agency case: administrators start on the
+// native admin, shop managers keep BrikPanel, and each admin can opt their own
+// account back in without affecting the others.
+const BRIKPANEL_ACCESS_OPT_DEFAULT_OFF_ROLES = 'brikpanel_access_default_off_roles';
+
+// Per-user preference storage (user meta). One of 'yes' (this user forces
+// BrikPanel on for themselves), 'no' (forces it off) or absent/'' (follow the
+// role default). Only consulted while personal mode is active.
+const BRIKPANEL_ACCESS_USER_META_PERSONAL = 'brikpanel_personal_enabled';
+
 // "Screen Options" tab control. Two independent axes, both off by default:
 //   - …_SCREEN_OPTIONS_ALL  hides the Screen Options tab from every back-office
 //     user (administrators included).
@@ -176,13 +201,101 @@ function brikpanel_access_gated_options() {
 }
 
 /**
- * Whether the BrikPanel interface should be disabled for a given user.
+ * Whether per-user control ("personal mode") is switched on for the store.
  *
- * Resolution order (any match → disabled):
+ * @return bool
+ */
+function brikpanel_access_personal_mode_active() {
+	return get_option( BRIKPANEL_ACCESS_OPT_PERSONAL_MODE, 'no' ) === 'yes';
+}
+
+/**
+ * A user's own saved BrikPanel preference under personal mode.
+ *
+ * @param WP_User|int $user User or user ID.
+ * @return string 'yes' (force on for me), 'no' (force off for me) or '' (follow
+ *                the role default).
+ */
+function brikpanel_access_user_personal_pref( $user ) {
+	$uid = $user instanceof WP_User ? (int) $user->ID : (int) $user;
+	if ( ! $uid ) {
+		return '';
+	}
+	$pref = get_user_meta( $uid, BRIKPANEL_ACCESS_USER_META_PERSONAL, true );
+	return ( 'yes' === $pref || 'no' === $pref ) ? $pref : '';
+}
+
+/**
+ * Whether a user's ROLE starts BrikPanel off under personal mode, before the
+ * user's own preference is applied.
+ *
+ * @param WP_User $user
+ * @return bool
+ */
+function brikpanel_access_role_defaults_off( WP_User $user ) {
+	$off_roles = array_map( 'strval', (array) get_option( BRIKPANEL_ACCESS_OPT_DEFAULT_OFF_ROLES, [] ) );
+	if ( ! $off_roles ) {
+		return false;
+	}
+	$roles = array_map( 'strval', (array) $user->roles );
+	return (bool) array_intersect( $roles, $off_roles );
+}
+
+/**
+ * The admin-forced ("hard") disable rules only, evaluated for a user.
+ *
+ * These are the store-owner rules a user can never override for themselves:
  *   1. The user's ID is in the explicit "disabled users" list.
  *   2. One of the user's roles is in the "disabled roles" list.
  *   3. "Disable for administrators" is on and the user has the
  *      `administrator` role.
+ *
+ * Kept separate from the personal-mode layer so both the core gate and the
+ * "may this user flip their own switch?" check can share one source of truth.
+ *
+ * @param WP_User $user
+ * @return bool
+ */
+function brikpanel_access_hard_disabled_for_user( WP_User $user ) {
+	$uid   = (int) $user->ID;
+	$roles = array_map( 'strval', (array) $user->roles );
+
+	// 1. Explicit per-user list.
+	$disabled_users = array_map( 'absint', (array) get_option( BRIKPANEL_ACCESS_OPT_USERS, [] ) );
+	if ( in_array( $uid, $disabled_users, true ) ) {
+		return true;
+	}
+
+	// 2. Per-role list.
+	$disabled_roles = array_map( 'strval', (array) get_option( BRIKPANEL_ACCESS_OPT_ROLES, [] ) );
+	if ( $disabled_roles && array_intersect( $roles, $disabled_roles ) ) {
+		return true;
+	}
+
+	// 3. Blanket administrator switch.
+	if ( get_option( BRIKPANEL_ACCESS_OPT_ADMINS, 'no' ) === 'yes'
+		&& in_array( 'administrator', $roles, true ) ) {
+		return true;
+	}
+
+	return false;
+}
+
+/**
+ * Whether the BrikPanel interface should be disabled for a given user.
+ *
+ * Resolution order (first decisive layer wins):
+ *   1. Admin-forced hard rules (disabled users / roles / "disable for admins").
+ *      These always win — a locked account cannot re-enable BrikPanel itself.
+ *   2. Personal mode (per-user control), when the store owner has switched it
+ *      on: the user's own saved preference decides; with no preference the role
+ *      default decides (a role listed in "start off" begins disabled).
+ *   3. Otherwise BrikPanel stays enabled.
+ *
+ * The final decision is passed through the `brikpanel_access_user_disabled`
+ * filter, so a store can implement any bespoke per-user policy in code without
+ * touching the options — returning true hands that user the native admin, false
+ * keeps BrikPanel.
  *
  * Returns false for logged-out requests (front-end / login page) and any
  * context where the current user cannot yet be resolved (very early boot,
@@ -211,27 +324,38 @@ function brikpanel_access_is_disabled_for_user( $user = null ) {
 		return $cache[ $uid ];
 	}
 
-	$roles = array_map( 'strval', (array) $user->roles );
+	// 1. Admin-forced hard rules always win.
+	$disabled = brikpanel_access_hard_disabled_for_user( $user );
 
-	// 1. Explicit per-user list.
-	$disabled_users = array_map( 'absint', (array) get_option( BRIKPANEL_ACCESS_OPT_USERS, [] ) );
-	if ( in_array( $uid, $disabled_users, true ) ) {
-		return $cache[ $uid ] = true;
+	// 2. Personal mode: the user governs BrikPanel for their own account.
+	if ( ! $disabled && brikpanel_access_personal_mode_active() ) {
+		$pref = brikpanel_access_user_personal_pref( $user );
+		if ( 'yes' === $pref ) {
+			$disabled = false;
+		} elseif ( 'no' === $pref ) {
+			$disabled = true;
+		} else {
+			$disabled = brikpanel_access_role_defaults_off( $user );
+		}
 	}
 
-	// 2. Per-role list.
-	$disabled_roles = array_map( 'strval', (array) get_option( BRIKPANEL_ACCESS_OPT_ROLES, [] ) );
-	if ( $disabled_roles && array_intersect( $roles, $disabled_roles ) ) {
-		return $cache[ $uid ] = true;
-	}
+	/**
+	 * Filter the final per-user BrikPanel interface decision.
+	 *
+	 * Runs after every built-in rule (the admin-forced lists, the personal-mode
+	 * preference and the role defaults). Return true to hand this user the
+	 * native WordPress / WooCommerce admin, false to keep the BrikPanel
+	 * interface — letting a store implement any bespoke per-user policy in code
+	 * without touching the options.
+	 *
+	 * @since 3.2.23
+	 *
+	 * @param bool    $disabled Whether BrikPanel is disabled for this user.
+	 * @param WP_User $user     The user being evaluated.
+	 */
+	$disabled = (bool) apply_filters( 'brikpanel_access_user_disabled', $disabled, $user );
 
-	// 3. Blanket administrator switch.
-	if ( get_option( BRIKPANEL_ACCESS_OPT_ADMINS, 'no' ) === 'yes'
-		&& in_array( 'administrator', $roles, true ) ) {
-		return $cache[ $uid ] = true;
-	}
-
-	return $cache[ $uid ] = false;
+	return $cache[ $uid ] = $disabled;
 }
 
 /**
@@ -351,6 +475,136 @@ function brikpanel_user_is_administrator( $user = null ) {
 
 	return in_array( 'administrator', array_map( 'strval', (array) $user->roles ), true );
 }
+
+/**
+ * Whether a user is a back-office (staff) account BrikPanel could ever apply to.
+ *
+ * Plain shoppers (customers / subscribers) never see the BrikPanel interface, so
+ * they are excluded from the personal on/off switch. Anyone who can manage
+ * WooCommerce, edit posts, or is a real administrator qualifies — this covers
+ * shop managers, editors and administrators.
+ *
+ * @param WP_User|int|null $user Optional user or user ID; defaults to current.
+ * @return bool
+ */
+function brikpanel_user_is_backoffice( $user = null ) {
+	if ( null === $user ) {
+		$user = wp_get_current_user();
+	} elseif ( is_numeric( $user ) ) {
+		$user = get_user_by( 'id', (int) $user );
+	}
+	if ( ! $user instanceof WP_User || ! $user->ID ) {
+		return false;
+	}
+	if ( brikpanel_user_is_administrator( $user ) ) {
+		return true;
+	}
+	return user_can( $user, 'manage_woocommerce' ) || user_can( $user, 'edit_posts' );
+}
+
+/**
+ * Whether a user may flip the BrikPanel on/off switch for their OWN account.
+ *
+ * True only when: personal mode is active, the user is a back-office account,
+ * and the store owner has not hard-locked that account to the native admin via
+ * the "disabled users / roles / administrators" rules (those win, so offering a
+ * personal switch there would be a lie). This is the gate the top-bar switch,
+ * the WordPress-toolbar node and the profile checkbox all share.
+ *
+ * @param WP_User|int|null $user Optional user or user ID; defaults to current.
+ * @return bool
+ */
+function brikpanel_can_use_personal_switch( $user = null ) {
+	if ( null === $user ) {
+		$user = wp_get_current_user();
+	} elseif ( is_numeric( $user ) ) {
+		$user = get_user_by( 'id', (int) $user );
+	}
+	if ( ! $user instanceof WP_User || ! $user->ID ) {
+		return false;
+	}
+	if ( ! brikpanel_access_personal_mode_active() ) {
+		return false;
+	}
+	if ( ! brikpanel_user_is_backoffice( $user ) ) {
+		return false;
+	}
+	if ( brikpanel_access_hard_disabled_for_user( $user ) ) {
+		return false;
+	}
+	return true;
+}
+
+// =============================================================================
+// PERSONAL MODE — SELF-SERVICE PROFILE CHECKBOX
+// =============================================================================
+//
+// A discoverable home for the per-user choice, on the user's own profile screen.
+// Rendered only on the user's OWN profile (`show_user_profile`) and only when
+// personal mode is on for an eligible account. It reads and writes the same user
+// meta the top-bar / toolbar switch flips, so the two controls stay in lock-step.
+
+/**
+ * Render the "Use the BrikPanel interface for my account" checkbox on the user's
+ * own profile page.
+ *
+ * @param WP_User $profileuser The profile being edited (the current user here).
+ */
+function brikpanel_access_render_personal_profile_field( $profileuser ) {
+	if ( ! $profileuser instanceof WP_User ) {
+		return;
+	}
+	if ( ! brikpanel_can_use_personal_switch( $profileuser ) ) {
+		return;
+	}
+
+	$on = ! brikpanel_access_is_disabled_for_user( $profileuser );
+	wp_nonce_field( 'brikpanel_personal_pref', 'brikpanel_personal_pref_nonce' );
+	?>
+	<h2><?php esc_html_e( 'BrikPanel interface', 'brikpanel' ); ?></h2>
+	<table class="form-table" role="presentation">
+		<tr>
+			<th scope="row"><?php esc_html_e( 'My interface', 'brikpanel' ); ?></th>
+			<td>
+				<label for="brikpanel_personal_enabled">
+					<input type="checkbox" name="brikpanel_personal_enabled" id="brikpanel_personal_enabled" value="1" <?php checked( $on ); ?> />
+					<?php esc_html_e( 'Use the BrikPanel interface for my account', 'brikpanel' ); ?>
+				</label>
+				<p class="description">
+					<?php esc_html_e( 'Turn this off to use the default WordPress and WooCommerce admin for your own account only. It does not change anything for other users, and you can turn it back on here or from the on/off switch in the toolbar at any time.', 'brikpanel' ); ?>
+				</p>
+			</td>
+		</tr>
+	</table>
+	<?php
+}
+add_action( 'show_user_profile', 'brikpanel_access_render_personal_profile_field' );
+
+/**
+ * Save the personal-mode checkbox from the user's own profile submission.
+ *
+ * @param int $user_id The user being saved.
+ */
+function brikpanel_access_save_personal_profile_field( $user_id ) {
+	if ( ! brikpanel_access_personal_mode_active() ) {
+		return;
+	}
+	// "Own account only": ignore an administrator editing someone else's profile.
+	if ( get_current_user_id() !== (int) $user_id ) {
+		return;
+	}
+	if ( ! isset( $_POST['brikpanel_personal_pref_nonce'] )
+		|| ! wp_verify_nonce( sanitize_key( wp_unslash( $_POST['brikpanel_personal_pref_nonce'] ) ), 'brikpanel_personal_pref' ) ) {
+		return;
+	}
+	$user = get_user_by( 'id', (int) $user_id );
+	if ( ! $user instanceof WP_User || ! brikpanel_can_use_personal_switch( $user ) ) {
+		return;
+	}
+	$enabled = isset( $_POST['brikpanel_personal_enabled'] );
+	update_user_meta( (int) $user_id, BRIKPANEL_ACCESS_USER_META_PERSONAL, $enabled ? 'yes' : 'no' );
+}
+add_action( 'personal_options_update', 'brikpanel_access_save_personal_profile_field' );
 
 // =============================================================================
 // SETTINGS-PAGE ADMIN LOCK
@@ -774,6 +1028,23 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'type'     => 'multiselect',
 			'class'    => 'wc-enhanced-select',
 			'desc'     => __( 'Choose which roles, besides administrators, can see and use the BrikPanel on/off (power) switch in the top bar. The switch turns BrikPanel off for the whole store, so administrators always keep it; everyone else only sees it if their role is selected here. Leave empty so only administrators can reach it. This hides the control from shop managers even if they were granted the "manage options" capability elsewhere.', 'brikpanel' ),
+			'desc_tip' => true,
+			'options'  => brikpanel_access_collect_roles(),
+			'default'  => [],
+		],
+		[
+			'name'    => __( 'Let each user choose (per-user control)', 'brikpanel' ),
+			'id'      => BRIKPANEL_ACCESS_OPT_PERSONAL_MODE,
+			'type'    => 'checkbox',
+			'desc'    => __( 'Let each user turn the BrikPanel interface on or off for their own account only, from the on/off switch in the top bar (or the WordPress toolbar) and from their profile page. One person\'s choice never affects anyone else. Use "Roles that start with BrikPanel off" below to decide what each role begins with. Off by default.', 'brikpanel' ),
+			'default' => 'no',
+		],
+		[
+			'name'     => __( 'Roles that start with BrikPanel off', 'brikpanel' ),
+			'id'       => BRIKPANEL_ACCESS_OPT_DEFAULT_OFF_ROLES,
+			'type'     => 'multiselect',
+			'class'    => 'wc-enhanced-select',
+			'desc'     => __( 'Only used when per-user control is on. Users with any of the selected roles start with BrikPanel switched off and can turn it on for their own account; everyone else starts with it on. For example select Administrator so administrators start on the native admin while shop managers keep BrikPanel, and each administrator can opt their own account back in. Leave empty to start everyone with BrikPanel on.', 'brikpanel' ),
 			'desc_tip' => true,
 			'options'  => brikpanel_access_collect_roles(),
 			'default'  => [],

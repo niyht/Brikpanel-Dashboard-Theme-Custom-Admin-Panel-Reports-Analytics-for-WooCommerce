@@ -28,7 +28,6 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 			<div class="bp-gs-header-left">
 				<h1>
 					<?php esc_html_e( 'Google Sheets', 'brikpanel' ); ?>
-					<span class="brikpanel-beta-badge" aria-label="<?php esc_attr_e( 'Beta feature', 'brikpanel' ); ?>"><?php esc_html_e( 'Beta', 'brikpanel' ); ?></span>
 				</h1>
 				<p class="bp-gs-subtitle">
 					<?php esc_html_e( 'Send your orders, customers, and analytics straight to a Google Sheet.', 'brikpanel' ); ?>
@@ -54,6 +53,7 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 			<button type="button" class="bp-gs-tab"           data-tab="products"   role="tab"><?php esc_html_e( 'Products',   'brikpanel' ); ?></button>
 			<button type="button" class="bp-gs-tab"           data-tab="reports"    role="tab"><?php esc_html_e( 'Reports',    'brikpanel' ); ?></button>
 			<button type="button" class="bp-gs-tab"           data-tab="customers"  role="tab"><?php esc_html_e( 'Customers',  'brikpanel' ); ?></button>
+			<button type="button" class="bp-gs-tab"           data-tab="expenses"   role="tab"><?php esc_html_e( 'Expenses',   'brikpanel' ); ?></button>
 		</div>
 
 		<!-- ============================================================== -->
@@ -199,6 +199,22 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 							<input type="text" id="bp-gs-orders-tab" name="tab" class="bp-gs-input" value="<?php echo esc_attr( $config['orders_tab'] ); ?>">
 						</div>
 
+						<div class="bp-gs-field">
+							<span class="bp-gs-label"><?php esc_html_e( 'Row layout', 'brikpanel' ); ?></span>
+							<div class="bp-gs-radio-row">
+								<?php foreach ( [
+									'order'     => __( 'One row per order (items combined in one cell)', 'brikpanel' ),
+									'line_item' => __( 'One row per line item (detailed)', 'brikpanel' ),
+								] as $val => $label ) : ?>
+									<label class="bp-gs-radio">
+										<input type="radio" name="row_layout" value="<?php echo esc_attr( $val ); ?>" <?php checked( $config['orders_row_layout'], $val ); ?>>
+										<span><?php echo esc_html( $label ); ?></span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+							<p class="bp-gs-help"><?php esc_html_e( 'Changing the layout wipes the target tab and re-exports every order in the new format, so rows from the two layouts are never mixed.', 'brikpanel' ); ?></p>
+						</div>
+
 						<div class="bp-gs-field bp-gs-field-toggle">
 							<span class="bp-gs-label"><?php esc_html_e( 'Real-time append on new order', 'brikpanel' ); ?></span>
 							<label class="bp-gs-toggle">
@@ -261,6 +277,15 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 										</label>
 									<?php endforeach; ?>
 								</div>
+								<?php
+								// Live export-scope preview. Ticking every box is not the
+								// same as ticking none (orders with no shipping line are
+								// dropped the moment the filter is non-empty), so show the
+								// real number before the merchant syncs and wonders where
+								// the rest of the orders went. Filled in by JS on load and
+								// on every change.
+								?>
+								<p class="bp-gs-scope" data-role="orders-scope" hidden></p>
 							</div>
 						<?php endif; ?>
 
@@ -518,6 +543,90 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 
 			<?php
 			Brikpanel_Sheets_Settings::render_activity_card( 'customers', $config['customers_last'] );
+			?>
+		</div>
+
+		<!-- ============================================================== -->
+		<!-- EXPENSES TAB                                                     -->
+		<!-- ============================================================== -->
+		<div class="bp-gs-tabpanel" data-panel="expenses">
+
+			<div class="bp-gs-card">
+				<div class="bp-gs-card-body">
+					<h2><?php esc_html_e( 'Expenses sync', 'brikpanel' ); ?></h2>
+					<p class="bp-gs-card-sub">
+						<?php esc_html_e( 'Manage your operational costs in a spreadsheet instead of adding them one at a time. Turn on two-way sync and any row you type into the tab becomes a real expense in BrikPanel, counted in your net profit.', 'brikpanel' ); ?>
+					</p>
+
+					<form class="bp-gs-form" data-flow="expenses">
+						<div class="bp-gs-field bp-gs-field-toggle">
+							<span class="bp-gs-label"><?php esc_html_e( 'Enable expenses sync', 'brikpanel' ); ?></span>
+							<label class="bp-gs-toggle">
+								<input type="checkbox" name="enabled" <?php checked( $config['expenses_enabled'], 'yes' ); ?>>
+								<span class="bp-gs-toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="bp-gs-field">
+							<label class="bp-gs-label" for="bp-gs-expenses-tab"><?php esc_html_e( 'Target tab name', 'brikpanel' ); ?></label>
+							<input type="text" id="bp-gs-expenses-tab" name="tab" class="bp-gs-input" value="<?php echo esc_attr( $config['expenses_tab'] ); ?>">
+						</div>
+
+						<div class="bp-gs-section-divider"></div>
+
+						<div class="bp-gs-field bp-gs-field-toggle">
+							<span class="bp-gs-label"><?php esc_html_e( 'Two-way sync: add and edit expenses from the sheet', 'brikpanel' ); ?></span>
+							<label class="bp-gs-toggle">
+								<input type="checkbox" name="pull_enabled" <?php checked( $config['expenses_pull_enabled'], 'yes' ); ?>>
+								<span class="bp-gs-toggle-slider"></span>
+							</label>
+						</div>
+						<p class="bp-gs-help"><?php esc_html_e( 'When on, BrikPanel reads the tab on a schedule. Leave the Expense ID cell empty on a new row and it is added as a new expense, then the ID is filled in for you. Change a cell on an existing row and that expense is updated.', 'brikpanel' ); ?></p>
+
+						<div class="bp-gs-field">
+							<span class="bp-gs-label"><?php esc_html_e( 'Poll interval', 'brikpanel' ); ?></span>
+							<div class="bp-gs-radio-row">
+								<?php foreach ( [
+									'2'  => __( 'Every 2 minutes', 'brikpanel' ),
+									'5'  => __( 'Every 5 minutes', 'brikpanel' ),
+									'15' => __( 'Every 15 minutes', 'brikpanel' ),
+								] as $val => $label ) : ?>
+									<label class="bp-gs-radio">
+										<input type="radio" name="pull_interval" value="<?php echo esc_attr( $val ); ?>" <?php checked( $config['expenses_pull_interval'], $val ); ?>>
+										<span><?php echo esc_html( $label ); ?></span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+						</div>
+
+						<ul class="bp-gs-info-list">
+							<li><?php esc_html_e( 'The tab holds one row per expense you manage: every one-off cost, plus the first row of each repeating cost. The extra dated copies BrikPanel creates from a repeating cost are not listed, because they are rebuilt from that first row whenever you change it.', 'brikpanel' ); ?></li>
+							<li><?php esc_html_e( 'Set Type to "Percentage of revenue" for costs like card commission. The Amount cell then holds the rate, so 2.9 means 2.9%.', 'brikpanel' ); ?></li>
+							<li><?php esc_html_e( 'Deleting a row from the sheet does not delete the expense, because an empty row cannot be told apart from one that has not loaded yet. Delete it on the Operational Expenses screen instead.', 'brikpanel' ); ?></li>
+						</ul>
+
+						<div class="bp-gs-actions">
+							<button type="button" class="bp-gs-btn bp-gs-btn-primary" data-action="save"><?php esc_html_e( 'Save', 'brikpanel' ); ?></button>
+							<button type="button" class="bp-gs-btn bp-gs-btn-secondary" data-action="sync-now"><?php esc_html_e( 'Sync now', 'brikpanel' ); ?></button>
+							<button type="button" class="bp-gs-btn bp-gs-btn-secondary" data-action="pull-now" title="<?php esc_attr_e( 'Read the Expenses tab right now and add or update the expenses in BrikPanel.', 'brikpanel' ); ?>"><?php esc_html_e( 'Pull now', 'brikpanel' ); ?></button>
+							<button type="button" class="bp-gs-btn bp-gs-btn-link" data-action="reset-sync" data-reset-flow="expenses" title="<?php esc_attr_e( 'Wipe the Expenses tab in Google Sheets and re-write it from your BrikPanel expenses. Rows you typed there and have not pulled in yet will be lost.', 'brikpanel' ); ?>"><?php esc_html_e( 'Reset & re-push everything', 'brikpanel' ); ?></button>
+						</div>
+					</form>
+				</div>
+			</div>
+
+			<div class="bp-gs-card">
+				<div class="bp-gs-card-body">
+					<h2><?php esc_html_e( 'Columns to export', 'brikpanel' ); ?></h2>
+					<p class="bp-gs-card-sub"><?php esc_html_e( 'Expense ID, Date, Title and Amount are always included: they are what an expense is, and BrikPanel needs them to match a row back to the right entry.', 'brikpanel' ); ?></p>
+					<?php
+					Brikpanel_Sheets_Settings::render_column_mapper( 'expenses', $config['columns_expenses'], $config['columns_expenses_catalogue'] );
+					?>
+				</div>
+			</div>
+
+			<?php
+			Brikpanel_Sheets_Settings::render_activity_card( 'expenses', $config['expenses_last_push'] );
 			?>
 		</div>
 

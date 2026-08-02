@@ -102,14 +102,19 @@
 
 		switch (action) {
 			case 'connect':
+				return handleConnect($btn, platform, false);
 			case 'reconnect':
-				return handleConnect($btn, platform);
+				// Re-authorize must be able to win back a permission the user
+				// unticked last time, which needs auth_type=rerequest upstream.
+				return handleConnect($btn, platform, true);
 			case 'disconnect':
 				return handleDisconnect($btn, platform);
 			case 'load-accounts':
 				return handleLoadAccounts($btn, platform);
 			case 'save-primary':
 				return handleSavePrimary($btn, platform);
+			case 'save-manual':
+				return handleSaveManual($btn, platform);
 			case 'save-mcc':
 				return handleSaveMcc($btn);
 			case 'sync-now':
@@ -133,10 +138,10 @@
 	});
 
 	// ---------- action handlers ----------
-	function handleConnect($btn, platform) {
+	function handleConnect($btn, platform, reauth) {
 		if (!platform) { return; }
 		busy($btn, true);
-		ajax('brikpanel_ads_oauth_start', { platform: platform })
+		ajax('brikpanel_ads_oauth_start', { platform: platform, reauth: reauth ? 1 : 0 })
 			.then(function (data) {
 				if (data && data.authorize_url) {
 					window.location.href = data.authorize_url;
@@ -191,8 +196,12 @@
 							(acc.is_manager ? ' — ' + BP.i18n.manager_suffix : '');
 					} else {
 						opt.value = acc.id || ('act_' + (acc.account_id || ''));
+						// Surface disabled / closed / unsettled accounts so the
+						// merchant doesn't pick a dead one and then wonder why
+						// today's spend never moves off zero.
 						opt.textContent = (acc.name || acc.id) +
-							(acc.currency ? ' (' + acc.currency + ')' : '');
+							(acc.currency ? ' (' + acc.currency + ')' : '') +
+							(acc.status_label ? ' — ' + acc.status_label : '');
 					}
 					if (opt.value === current) { opt.selected = true; }
 					$sel.appendChild(opt);
@@ -220,6 +229,29 @@
 			.then(function (data) {
 				toast((data && data.message) || BP.i18n.saved, 'success');
 				busy($btn, false);
+			})
+			.catch(function (err) {
+				busy($btn, false);
+				toast(err.message || BP.i18n.generic_error, 'error');
+			});
+	}
+
+	function handleSaveManual($btn, platform) {
+		if (!platform) { return; }
+		var $card = cardForButton($btn);
+		var $inp  = $card.querySelector('[data-role="manual-account"]');
+		var accountId = $inp ? $inp.value.trim() : '';
+		if (!accountId) {
+			toast(BP.i18n.manual_empty, 'error');
+			return;
+		}
+		busy($btn, true);
+		ajax('brikpanel_ads_save_primary', { platform: platform, account_id: accountId })
+			.then(function (data) {
+				toast((data && data.message) || BP.i18n.saved, 'success');
+				// Reload so the server-rendered card shows the saved account
+				// in the picker and enables Sync now.
+				setTimeout(function () { window.location.reload(); }, 900);
 			})
 			.catch(function (err) {
 				busy($btn, false);
@@ -489,7 +521,7 @@
 						var pct = Math.min(100, Math.round((completed / Math.max(1, total)) * 100));
 						$back.querySelector('.bp-ads-backfill-fill').style.width = pct + '%';
 						$back.querySelector('.bp-ads-backfill-label').textContent =
-							(BP.i18n.backfill_progress || 'Loading history… %1$d of %2$d 90-day chunks done')
+							String(BP.i18n.backfill_progress || '')
 								.replace('%1$d', completed)
 								.replace('%2$d', total);
 					} else if ($back) {

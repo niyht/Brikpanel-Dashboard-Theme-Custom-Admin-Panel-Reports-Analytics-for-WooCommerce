@@ -435,12 +435,19 @@ body.rtl .wp-list-table thead .check-column#cb {
 /* Sticky check-column / order-number columns are anchored with `left: 0` and
    `left: 31px` in LTR. Browsers compute scroll origin differently for RTL +
    sticky elements inside an `overflow-x: auto` container, which causes the
-   whole table to render shifted negatively past the left edge. Disabling
+   whole table to render shifted negatively past the left edge. Dropping
    sticky in RTL keeps the table within bounds; users can still scroll to
-   see all columns, they just lose the pinned column behaviour. */
+   see all columns, they just lose the pinned column behaviour.
+
+   It must be `relative`, never `static`: WordPress core sizes the checkbox
+   `<label>` with `position: absolute; width: 100%; height: 100%` and relies on
+   `.check-column { position: relative }` to scope it to its own cell. With
+   `static` the cell stops being a containing block, so the label resolves
+   against a far-away ancestor and stretches over the entire table, swallowing
+   every click and firing "select all" instead. Reported on wp.org by iesayi. */
 body.rtl .wp-list-table .check-column,
 body.rtl .wp-list-table .column-order_number {
-    position: static !important;
+    position: relative !important;
     left: auto !important;
     right: auto !important;
 }

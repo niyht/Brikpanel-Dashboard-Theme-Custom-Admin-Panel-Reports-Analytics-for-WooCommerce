@@ -729,6 +729,24 @@ function brikpanel_ea_render_card() {
 }
 
 /* ── Launch-mode dashboard card ("BrikMentor is live", first month $1) ────────── */
+
+/**
+ * Fill a promo sentence's "%s" with the first-month price token.
+ *
+ * Thin wrapper over the promo module so this file keeps working on its own if
+ * that module is ever missing (the loader is deliberately fault-tolerant); the
+ * fallback simply drops the placeholder rather than printing a raw "%s".
+ *
+ * @param string $format Translated sentence containing a single %s.
+ * @return string
+ */
+function brikpanel_ea_price_text( $format ) {
+    if ( function_exists( 'brikpanel_brikmentor_price_text' ) ) {
+        return brikpanel_brikmentor_price_text( $format );
+    }
+    return trim( str_replace( array( '%1$s', '%s' ), '', (string) $format ) );
+}
+
 function brikpanel_ea_render_live_card() {
     if ( get_option( 'brikpanel_bm_live_card_dismissed' ) ) {
         return;
@@ -736,16 +754,20 @@ function brikpanel_ea_render_live_card() {
     $nonce        = wp_create_nonce( 'brikpanel_bm_promo_nonce' );
     $cta_url      = function_exists( 'brikpanel_brikmentor_url' ) ? brikpanel_brikmentor_url() : 'https://brksoft.com/brikmentor';
     $checkout_url = function_exists( 'brikpanel_brikmentor_checkout_url' ) ? brikpanel_brikmentor_checkout_url() : $cta_url;
+    // Price is injected, never baked into the copy, so it stays one unbreakable
+    // token in every locale (see brikpanel_brikmentor_price()).
+    $title        = brikpanel_ea_price_text( __( 'BrikMentor is live: first month %s', 'brikpanel' ) );
+    $cta_label    = brikpanel_ea_price_text( __( 'Try BrikMentor for %s', 'brikpanel' ) );
     ?>
     <div class="brikpanel-ea-card brikpanel-bm-live-card" data-bm-live-card data-nonce="<?php echo esc_attr( $nonce ); ?>">
         <div class="brikpanel-ea-card__badge" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" fill="#fff"/></svg>
         </div>
         <div class="brikpanel-ea-card__text">
-            <p class="brikpanel-ea-card__title"><?php esc_html_e( 'BrikMentor is live: first month $1', 'brikpanel' ); ?></p>
+            <p class="brikpanel-ea-card__title"><?php echo esc_html( $title ); ?></p>
             <p class="brikpanel-ea-card__body"><?php esc_html_e( 'The AI assistant and email marketing engine for your store data is out now. Automated cart recovery, win-back and segment campaigns, running inside WooCommerce.', 'brikpanel' ); ?></p>
         </div>
-        <a class="brikpanel-ea-card__cta brikpanel-bm-checkout" data-bm-checkout href="<?php echo esc_url( $checkout_url ); ?>"><?php esc_html_e( 'Try BrikMentor for $1', 'brikpanel' ); ?></a>
+        <a class="brikpanel-ea-card__cta" href="<?php echo esc_url( $checkout_url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $cta_label ); ?></a>
         <a class="brikpanel-ea-card__learn" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
         <button type="button" class="brikpanel-ea-card__close" data-bm-live-card-dismiss aria-label="<?php esc_attr_e( 'Dismiss', 'brikpanel' ); ?>">
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -1002,10 +1024,14 @@ function brikpanel_ea_render_settings_field( $field ) {
             </th>
             <td class="forminp">
                 <p class="brikpanel-ea-settings-desc">
-                    <?php esc_html_e( 'BrikMentor, the AI assistant and email marketing engine for your store data, is out now: automated cart recovery, win-back and segment campaigns inside WooCommerce. First month just $1.', 'brikpanel' ); ?>
+                    <?php
+                    echo esc_html(
+                        brikpanel_ea_price_text( __( 'BrikMentor, the AI assistant and email marketing engine for your store data, is out now: automated cart recovery, win-back and segment campaigns inside WooCommerce. First month just %s.', 'brikpanel' ) )
+                    );
+                    ?>
                 </p>
-                <a class="button button-primary brikpanel-ea-settings-btn brikpanel-bm-checkout" data-bm-checkout href="<?php echo esc_url( $checkout_url ); ?>">
-                    <?php esc_html_e( 'Try BrikMentor for $1', 'brikpanel' ); ?>
+                <a class="button button-primary brikpanel-ea-settings-btn" href="<?php echo esc_url( $checkout_url ); ?>" target="_blank" rel="noopener noreferrer">
+                    <?php echo esc_html( brikpanel_ea_price_text( __( 'Try BrikMentor for %s', 'brikpanel' ) ) ); ?>
                 </a>
                 <a class="brikpanel-ea-settings-learn" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
                 <style>

@@ -275,6 +275,12 @@ class Brikpanel_Dashboard_Topbar {
                                 <span><?php esc_html_e( 'New coupon', 'brikpanel' ); ?></span>
                             </a>
                             <?php endif; ?>
+                            <?php if ( brikpanel_topbar_create_item_is_visible( 'cart_link' ) && class_exists( 'Brikpanel_Cart_Share' ) && Brikpanel_Cart_Share::is_enabled() ) : ?>
+                            <a class="brikpanel-topbar-dropdown-item" role="menuitem" href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-cart-share' ) ); ?>">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                                <span><?php esc_html_e( 'Cart share link', 'brikpanel' ); ?></span>
+                            </a>
+                            <?php endif; ?>
                             <?php if ( brikpanel_topbar_create_item_is_visible( 'post' ) ) : ?>
                             <a class="brikpanel-topbar-dropdown-item" role="menuitem" href="<?php echo esc_url( admin_url( 'post-new.php' ) ); ?>">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
@@ -308,7 +314,20 @@ class Brikpanel_Dashboard_Topbar {
                                 <span class="brikpanel-topbar-dropdown-row-label"><?php esc_html_e( 'On hold', 'brikpanel' ); ?></span>
                                 <span class="brikpanel-topbar-dropdown-row-count" id="brikpanel-topbar-notif-onhold">0</span>
                             </a>
-                            <a class="brikpanel-topbar-dropdown-row" role="menuitem" href="<?php echo esc_url( admin_url( 'edit.php?post_type=product&stock_status=outofstock' ) ); ?>">
+                            <?php
+                            // The count only ever measures *published* out-of-stock
+                            // products, so the link must land on exactly that filtered
+                            // view — otherwise the number in the bell and the number of
+                            // rows on the target screen disagree. When the modern
+                            // products list is active we can express both filters in its
+                            // own URL params; otherwise fall back to the native list,
+                            // which understands `stock_status` but has no matching
+                            // "published only" filter beyond `post_status`.
+                            $brikpanel_oos_url = get_option( 'brikpanel_modern_products_list', 'yes' ) === 'yes'
+                                ? admin_url( 'admin.php?page=brikpanel-products&bpl_stock=outofstock&bpl_status=publish' )
+                                : admin_url( 'edit.php?post_type=product&stock_status=outofstock&post_status=publish' );
+                            ?>
+                            <a class="brikpanel-topbar-dropdown-row" role="menuitem" href="<?php echo esc_url( $brikpanel_oos_url ); ?>">
                                 <span class="brikpanel-topbar-dropdown-row-label"><?php esc_html_e( 'Out of stock', 'brikpanel' ); ?></span>
                                 <span class="brikpanel-topbar-dropdown-row-count" id="brikpanel-topbar-notif-oos">0</span>
                             </a>

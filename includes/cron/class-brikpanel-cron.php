@@ -220,10 +220,62 @@ class Brikpanel_Cron {
 		}
 		$interval = max( 60, (int) $interval_seconds );
 		if ( as_has_scheduled_action( $hook, [ $args ], self::GROUP ) ) {
-			return true;
+			// as_has_scheduled_action matches on hook + args + group only — the
+			// recurrence is NOT part of that identity. Returning early on a
+			// match therefore pinned the cadence forever: a merchant moving a
+			// sync from every 15 minutes to every 2 kept the 15-minute action,
+			// with the UI happily showing the new setting. Compare the live
+			// recurrence and re-create the action when it no longer matches.
+			if ( self::recurring_interval_matches( $hook, $args, $interval ) ) {
+				return true;
+			}
+			self::cancel( $hook, $args );
 		}
 		$first_run = time() + ( $start_offset !== null ? (int) $start_offset : $interval );
 		return (int) as_schedule_recurring_action( $first_run, $interval, $hook, [ $args ], self::GROUP, false, 10 );
+	}
+
+	/**
+	 * Whether the pending recurring action for this hook already runs at the
+	 * given interval. Returns true when we cannot tell, so an unexpected
+	 * Action Scheduler shape degrades to the old "leave it alone" behaviour
+	 * rather than rescheduling on every request.
+	 *
+	 * @param string $hook
+	 * @param array  $args
+	 * @param int    $interval Seconds.
+	 * @return bool
+	 */
+	private static function recurring_interval_matches( $hook, array $args, $interval ) {
+		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+			return true;
+		}
+		$actions = as_get_scheduled_actions(
+			[
+				'hook'     => $hook,
+				'args'     => [ $args ],
+				'group'    => self::GROUP,
+				'status'   => 'pending',
+				'per_page' => 1,
+			],
+			OBJECT
+		);
+		if ( empty( $actions ) || ! is_array( $actions ) ) {
+			return true;
+		}
+		$action = reset( $actions );
+		if ( ! is_object( $action ) || ! method_exists( $action, 'get_schedule' ) ) {
+			return true;
+		}
+		$schedule = $action->get_schedule();
+		if ( ! is_object( $schedule ) || ! method_exists( $schedule, 'get_recurrence' ) ) {
+			return true;
+		}
+		$current = $schedule->get_recurrence();
+		if ( ! is_numeric( $current ) ) {
+			return true; // cron-expression schedule: not ours to second-guess
+		}
+		return (int) $current === (int) $interval;
 	}
 
 	/**

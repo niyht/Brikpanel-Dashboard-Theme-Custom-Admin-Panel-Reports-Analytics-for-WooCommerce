@@ -184,31 +184,59 @@ class Brikpanel_Product_Editor {
     }
 
     /**
-     * Lightweight product search for the Linked products (upsell/cross-sell)
-     * picker. Returns up to 20 matches as {id, text} pairs.
+     * Product search for the Linked products (upsell/cross-sell) picker.
+     * Returns matches as {id, text} pairs.
+     *
+     * Runs through WooCommerce's OWN product search data store — the same call
+     * WC_AJAX::json_search_products makes for the native "Linked Products" tab —
+     * so this picker returns exactly what the native WooCommerce admin returns.
+     *
+     * The previous implementation used wc_get_products( 's' => … ), which maps
+     * onto WP_Query's post search: title, excerpt and content only. That silently
+     * dropped every SKU and GTIN match (searching a SKU like "502" found nothing)
+     * and never surfaced variations, so the picker returned far fewer results
+     * than the native field for the same term.
+     *
+     * Matching WC also means inheriting its filters: `woocommerce_json_search_limit`
+     * for the result count and `woocommerce_search_products_post_statuses` for
+     * which statuses are searchable.
      */
     public function ajax_search_products() {
         check_ajax_referer('brikpanel_product_editor_nonce', 'security');
         if (!current_user_can('edit_products')) {
             wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')], 403);
         }
-        $term    = isset($_GET['q']) ? sanitize_text_field(wp_unslash($_GET['q'])) : '';
+        $term    = isset($_GET['q']) ? wc_clean(wp_unslash($_GET['q'])) : '';
         $exclude = isset($_GET['exclude']) ? absint($_GET['exclude']) : 0;
         if (strlen($term) < 2) {
             wp_send_json_success(['results' => []]);
         }
-        $ids = wc_get_products([
-            'status'  => ['publish', 'private', 'draft'],
-            'limit'   => 20,
-            'return'  => 'ids',
-            's'       => $term,
-            'exclude' => $exclude ? [$exclude] : [],
-            'orderby' => 'relevance',
-        ]);
+
+        /** This filter is documented in WooCommerce: includes/class-wc-ajax.php */
+        $limit = absint(apply_filters('woocommerce_json_search_limit', 30));
+
+        // `true` = include variations, mirroring the native upsell/cross-sell
+        // fields, which use the woocommerce_json_search_products_and_variations
+        // endpoint so a single variation can be linked as well.
+        $ids = WC_Data_Store::load('product')->search_products(
+            $term,
+            '',
+            true,
+            false,
+            $limit,
+            [],
+            $exclude ? [$exclude] : []
+        );
+
         $results = [];
         foreach ($ids as $pid) {
             $p = wc_get_product($pid);
             if (!$p) continue;
+            // Same readability gate WC applies to its own search results, so a
+            // shop manager never sees a product they may not read.
+            if (function_exists('wc_products_array_filter_readable') && !wc_products_array_filter_readable($p)) {
+                continue;
+            }
             $sku = $p->get_sku();
             $results[] = [
                 'id'   => (int) $pid,
@@ -609,6 +637,19 @@ class Brikpanel_Product_Editor {
         if (!empty($data['variations']) && $product && $product->is_type('variable')) {
             $variation_ids = array_map(function ($v) { return isset($v['id']) ? (int) $v['id'] : 0; }, $data['variations']);
             $variation_extras = $this->capture_wc_variation_fields($product, $variation_ids);
+            /**
+             * Filter the per-variation extras HTML for existing variations.
+             * Runs regardless of which native sections are enabled so an
+             * integration can surface its own per-variation fields
+             * unconditionally. Keyed by variation ID; $variations is the
+             * ordered ID list (position = save loop index).
+             *
+             * @param array<int,string> $variation_extras [variation_id => html]
+             * @param WC_Product         $product          Parent variable product.
+             * @param array              $variation_ids    Ordered variation IDs.
+             * @param string             $context          'saved'.
+             */
+            $variation_extras = apply_filters('brikpanel_pe_variation_extras', $variation_extras, $product, $variation_ids, 'saved');
         }
 
         // Vendor integration — gated on a settings toggle. Resolved up front
@@ -723,9 +764,31 @@ class Brikpanel_Product_Editor {
                 // brikpanel-product-editor.css (see the "datawrap" reset) —
                 // without that reset the group titles scatter around the
                 // floated panels (reported on an RTL store after 3.2.9).
+                // WooCommerce's own product form ships a `woocommerce_meta_nonce`
+                // field (action `woocommerce_save_data`). Many product-data-tab
+                // plugins verify it in their `woocommerce_process_product_meta`
+                // save handler before persisting, and crucially they often read
+                // it with filter_input(INPUT_POST), which ignores any runtime
+                // $_POST changes, so it MUST travel in the real request. Emitting
+                // it here, inside the collected `.brikpanel-pe-wc-fields`
+                // container, lets the JS save collector forward it verbatim so
+                // those handlers recognise the save as authentic and persist.
+                //
+                // Emitted whenever this card renders (auto mode OR the merchant
+                // manually picked a section). That is safe because the card only
+                // renders when there is third-party content to save, and every
+                // core-tab section that carries third-party fields is ALSO
+                // rendered here (hidden when not picked, see
+                // capture_wc_product_data_fields) so a "save my field, or delete
+                // it when absent" handler always finds its field in the payload
+                // and never wipes it. When the card does not render (auto off and
+                // nothing picked) the nonce is absent, so no third-party handler
+                // runs at all.
+                $wc_meta_nonce_field = wp_nonce_field('woocommerce_save_data', 'woocommerce_meta_nonce', false, false);
                 $wc_extras_card = '<div class="brikpanel-pe-card brikpanel-pe-wc-fields">'
                     . '<label>' . esc_html__('Additional product data', 'brikpanel') . '</label>'
                     . '<div class="brikpanel-pe-wc-fields-content">'
+                    . $wc_meta_nonce_field
                     . '<div id="post" class="brikpanel-pe-wc-postsim">'
                     . '<div id="woocommerce-product-data" class="brikpanel-pe-wc-datawrap">'
                     . '<div class="inside"><div class="panel-wrap product_data">' . $wc_extras . '</div></div>'
@@ -748,6 +811,36 @@ class Brikpanel_Product_Editor {
                         <?php esc_html_e('Products', 'brikpanel'); ?>
                     </a>
                     <h1><?php echo esc_html($page_title); ?></h1>
+                    <?php
+                    // Publish-date control — always available, sits right after the
+                    // page title. Lets the merchant view and edit the product's
+                    // publish date (WordPress post_date) for any status: backdate or
+                    // correct a live product, or, with the "Scheduled" status, pick a
+                    // future go-live moment. The single datetime input
+                    // (#bpe-schedule-date) is shared with the scheduling flow so the
+                    // save payload stays unified. A brand-new or auto-draft product
+                    // has no committed date yet, so the label reads "Immediately"
+                    // until the merchant picks one.
+                    $pubdate_ts = 0;
+                    if ($data['post_date'] !== '') {
+                        $pd = date_create($data['post_date'], wp_timezone());
+                        if ($pd) { $pubdate_ts = $pd->getTimestamp(); }
+                    }
+                    $pubdate_label = $pubdate_ts
+                        ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), $pubdate_ts)
+                        : __('Immediately', 'brikpanel');
+                    ?>
+                    <div class="brikpanel-pe-pubdate-wrap" id="bpe-pubdate-wrap">
+                        <button type="button" class="brikpanel-pe-pubdate-trigger" id="bpe-pubdate-trigger" aria-haspopup="dialog" aria-expanded="false" title="<?php esc_attr_e('Publish date', 'brikpanel'); ?>">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span class="brikpanel-pe-pubdate-label" id="bpe-pubdate-label"><?php echo esc_html($pubdate_label); ?></span>
+                            <svg class="brikpanel-pe-pubdate-chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+                        <div class="brikpanel-pe-pubdate-pop" id="bpe-pubdate-pop" role="dialog" aria-label="<?php esc_attr_e('Publish date', 'brikpanel'); ?>">
+                            <label for="bpe-schedule-date" class="brikpanel-pe-pubdate-poplabel"><?php esc_html_e('Publish date', 'brikpanel'); ?></label>
+                            <input type="datetime-local" id="bpe-schedule-date" value="<?php echo esc_attr($data['post_date']); ?>" aria-label="<?php esc_attr_e('Publish date and time', 'brikpanel'); ?>">
+                        </div>
+                    </div>
                 </div>
                 <div class="brikpanel-pe-header-right">
                     <?php
@@ -867,11 +960,6 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-password-inline <?php echo $is_password ? 'is-visible' : ''; ?>" id="bpe-password-wrap">
                         <input type="text" id="bpe-post-password" value="<?php echo esc_attr($data['post_password']); ?>" placeholder="<?php esc_attr_e('Password...', 'brikpanel'); ?>">
                     </div>
-                    <?php if ($scheduling_on) : ?>
-                    <div class="brikpanel-pe-schedule-inline <?php echo $effective_status === 'future' ? 'is-visible' : ''; ?>" id="bpe-schedule-wrap">
-                        <input type="datetime-local" id="bpe-schedule-date" value="<?php echo esc_attr($data['post_date']); ?>" aria-label="<?php esc_attr_e('Publish date and time', 'brikpanel'); ?>">
-                    </div>
-                    <?php endif; ?>
                     <!-- Catalog Visibility (mini dropdown) -->
                     <?php
                     $cv_labels = [
@@ -1614,11 +1702,15 @@ class Brikpanel_Product_Editor {
 
                 <?php if (in_array('short_desc', $visible, true)) : ob_start(); ?>
                 <!-- Short Description -->
+                <?php $pe_short_desc_html = self::editor_display_html($data['short_description']); ?>
                 <div class="brikpanel-pe-card">
                     <div class="brikpanel-pe-field" data-editor-field="short-desc">
                         <label><?php esc_html_e('Short description', 'brikpanel'); ?></label>
                         <?php echo $pe_editor_toolbar; ?>
-                        <div class="brikpanel-pe-editor" id="bpe-short-desc" contenteditable="true" data-placeholder="<?php esc_attr_e('Brief product summary...', 'brikpanel'); ?>"><?php echo wp_kses_post($data['short_description']); ?></div>
+                        <div class="brikpanel-pe-editor" id="bpe-short-desc" contenteditable="true" data-placeholder="<?php esc_attr_e('Brief product summary...', 'brikpanel'); ?>"><?php echo wp_kses_post($pe_short_desc_html); ?></div>
+                        <?php /* Seeded with the value exactly as stored, not the paragraph-normalised
+                                 one: JS keeps it as the pristine copy so an untouched field is saved
+                                 back byte-for-byte instead of being rewritten just by opening it. */ ?>
                         <textarea class="brikpanel-pe-editor-source" id="bpe-short-desc-source" spellcheck="false" hidden><?php echo esc_textarea($data['short_description']); ?></textarea>
                     </div>
                 </div>
@@ -1626,11 +1718,14 @@ class Brikpanel_Product_Editor {
 
                 <?php if (in_array('description', $visible, true)) : ob_start(); ?>
                 <!-- Description -->
+                <?php $pe_desc_html = self::editor_display_html($data['description']); ?>
                 <div class="brikpanel-pe-card">
                     <div class="brikpanel-pe-field" data-editor-field="description">
                         <label><?php esc_html_e('Product description', 'brikpanel'); ?></label>
                         <?php echo $pe_editor_toolbar; ?>
-                        <div class="brikpanel-pe-editor" id="bpe-description" contenteditable="true"><?php echo wp_kses_post($data['description']); ?></div>
+                        <div class="brikpanel-pe-editor" id="bpe-description" contenteditable="true"><?php echo wp_kses_post($pe_desc_html); ?></div>
+                        <?php /* See the short description above: seeded with the stored value so an
+                                 untouched description is never rewritten by a save. */ ?>
                         <textarea class="brikpanel-pe-editor-source" id="bpe-description-source" spellcheck="false" hidden><?php echo esc_textarea($data['description']); ?></textarea>
                     </div>
                 </div>
@@ -3237,6 +3332,55 @@ class Brikpanel_Product_Editor {
      *
      * Safe to call during settings render (multi-call cached).
      */
+    /**
+     * Pull the human field labels out of a captured chunk of product-data HTML,
+     * so a section option can be labelled by the fields it actually contains.
+     *
+     * @param string $html Rendered field HTML for one section.
+     * @return string[] De-duplicated field label texts, in order.
+     */
+    private static function extract_field_labels($html) {
+        if (!is_string($html) || $html === '') {
+            return [];
+        }
+        $labels = [];
+        if (preg_match_all('/<label\b[^>]*>(.*?)<\/label>/is', $html, $m)) {
+            foreach ($m[1] as $raw) {
+                // Drop nested markup (help-tip spans, etc.), collapse whitespace,
+                // and trim trailing tooltip/colon glyphs.
+                $text = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($raw)));
+                $text = trim($text, " \t\n\r\0\x0B?:");
+                if ($text !== '' && !in_array($text, $labels, true)) {
+                    $labels[] = $text;
+                }
+            }
+        }
+        return $labels;
+    }
+
+    /**
+     * Decorate a native tab label with the plugin field names it contains,
+     * e.g. "Inventory (Product Code)". Falls back to the bare label when no
+     * field labels can be parsed.
+     *
+     * @param string $base Native tab label.
+     * @param string $html Captured field HTML for the section.
+     * @return string
+     */
+    private static function section_label_with_fields($base, $html) {
+        $fields = self::extract_field_labels($html);
+        if (empty($fields)) {
+            return $base;
+        }
+        $shown  = array_slice($fields, 0, 4);
+        $suffix = implode(', ', $shown);
+        if (count($fields) > 4) {
+            /* translators: appended after a truncated list of field names */
+            $suffix .= ', ' . __('…', 'brikpanel');
+        }
+        return $base . ' (' . $suffix . ')';
+    }
+
     public static function collect_wc_product_data_sections() {
         static $cache = null;
         if ($cache !== null) return $cache;
@@ -3276,10 +3420,31 @@ class Brikpanel_Product_Editor {
             'post' => $post, 'tp' => $thepostid ?? null, 'po' => $product_object ?? null,
             'cs' => $current_screen, 'pn' => $pagenow ?? null,
         ];
-        $probe = get_posts([
+        // Probe against a NON-variable (simple) product. Many plugins render
+        // their product-data-tab field only for simple products (WooCommerce
+        // itself hides the simple SKU/inventory/pricing fields on variable
+        // products in favour of per-variation ones, and add-ons follow suit, e.g.
+        // Product Code for WooCommerce prints its Inventory field only when
+        // !is_type('variable')). Probing with whatever product happened to be
+        // most recent meant a variable product would make those sections vanish
+        // from the picker entirely, so the field could not be found or enabled.
+        // Prefer a simple product; fall back to any product only if the store has
+        // none (in which case those simple-only fields are irrelevant anyway).
+        $probe_args = [
             'post_type' => 'product', 'posts_per_page' => 1, 'post_status' => 'any',
             'no_found_rows' => true, 'suppress_filters' => true,
+        ];
+        $probe = get_posts($probe_args + [
+            'tax_query' => [[
+                'taxonomy' => 'product_type',
+                'field'    => 'slug',
+                'terms'    => ['variable', 'variable-subscription', 'grouped', 'external'],
+                'operator' => 'NOT IN',
+            ]],
         ]);
+        if (empty($probe)) {
+            $probe = get_posts($probe_args);
+        }
         if (!empty($probe)) {
             $post = $probe[0];
             $thepostid = $post->ID;
@@ -3300,7 +3465,11 @@ class Brikpanel_Product_Editor {
                 $section .= self::capture_isolated_hook($hook);
             }
             if ($section !== '') {
-                $out['core:' . sanitize_key($label)] = $label;
+                // Append the names of the fields a plugin added to this native
+                // tab (e.g. "Inventory (Product Code)"), so a merchant can find a
+                // specific plugin's field by name in the settings picker instead
+                // of having to know which WooCommerce tab it hooks into.
+                $out['core:' . sanitize_key($label)] = self::section_label_with_fields($label, $section);
             }
         }
 
@@ -3560,6 +3729,67 @@ class Brikpanel_Product_Editor {
     }
 
     /**
+     * Auto-surface every product-data / variation section that a third-party
+     * plugin has actually added fields to, without the merchant having to pick
+     * them in settings.
+     *
+     * The section-collectors (collect_wc_product_data_sections /
+     * collect_wc_variation_sections) already return ONLY the sections that
+     * contain real third-party content (they gate on has_action() and on the
+     * hook echoing a control), and the render path already isolates and
+     * buffer-guards each one. So "automatic" is simply: merge every available
+     * section key into the selected list. Core-only tabs never appear (their
+     * hooks have no listeners), so this never duplicates BrikPanel's own native
+     * fields; it only pulls in what other plugins bolted on.
+     *
+     * Gated (for the product-data context) by the `brikpanel_pe_wc_tabs_auto`
+     * option (default off) and a code filter so a store can enable it globally
+     * or per-context. The variation context is never gated (see below).
+     *
+     * @param string[] $selected Section keys already chosen in settings.
+     * @param string   $context  'product' or 'variation'.
+     * @return string[] Possibly-augmented section keys.
+     */
+    private static function augment_sections_auto( array $selected, $context ) {
+        // Per-variation sections are ALWAYS surfaced, regardless of the toggle.
+        // BrikPanel fires woocommerce_save_product_variation for every variation
+        // on every save, and many per-variation field handlers (internal product
+        // codes, etc.) DELETE their meta when their input is absent from the
+        // post. So the fields must always be captured and forwarded, or a save
+        // would wipe them. The toggle instead controls whether they are shown to
+        // the merchant (see the variation-row renderer): when off they are still
+        // present in the form as hidden inputs carrying their current values, so
+        // the save round-trips them unchanged. Product-data tab sections stay
+        // gated by the toggle; they save through woocommerce_process_product_meta,
+        // which BrikPanel only authenticates (nonce) when the toggle is on, so
+        // with it off no such handler runs and nothing is wiped.
+        if ( 'variation' !== $context && get_option( 'brikpanel_pe_wc_tabs_auto', 'no' ) !== 'yes' ) {
+            return $selected;
+        }
+        /**
+         * Toggle automatic surfacing of third-party product-editor fields.
+         *
+         * @param bool   $enabled Default true.
+         * @param string $context 'product' or 'variation'.
+         */
+        if ( ! apply_filters( 'brikpanel_pe_auto_surface_thirdparty', true, $context ) ) {
+            return $selected;
+        }
+        $available = ( 'variation' === $context )
+            ? self::collect_wc_variation_sections()
+            : self::collect_wc_product_data_sections();
+        if ( ! is_array( $available ) ) {
+            return $selected;
+        }
+        foreach ( array_keys( $available ) as $key ) {
+            if ( ! in_array( $key, $selected, true ) ) {
+                $selected[] = $key;
+            }
+        }
+        return $selected;
+    }
+
+    /**
      * Render ONLY the multi-currency plugin's own field output on a given WC
      * product-data hook, isolating it from every other plugin that also hooks
      * there. We snapshot the hook's callbacks, keep only those whose class is
@@ -3646,6 +3876,7 @@ class Brikpanel_Product_Editor {
     private function capture_wc_variation_fields($product, $variations) {
         $selected = (array) get_option('brikpanel_pe_wc_variation_sections', []);
         $selected = self::augment_sections_for_multicurrency($selected, 'variation');
+        $selected = self::augment_sections_auto($selected, 'variation');
         if (empty($selected) || empty($variations)) return [];
 
         if (!function_exists('woocommerce_wp_text_input')) {
@@ -3734,6 +3965,7 @@ class Brikpanel_Product_Editor {
     private function preview_wc_variation_fields($product, array $loops) {
         $selected = (array) get_option('brikpanel_pe_wc_variation_sections', []);
         $selected = self::augment_sections_for_multicurrency($selected, 'variation');
+        $selected = self::augment_sections_auto($selected, 'variation');
         if (empty($selected) || empty($loops)) return [];
 
         if (!function_exists('woocommerce_wp_text_input')) {
@@ -3859,7 +4091,18 @@ class Brikpanel_Product_Editor {
             wp_send_json_success(['extras' => []]);
         }
 
-        $extras = $this->preview_wc_variation_fields($product, range(0, $count - 1));
+        $loops  = range(0, $count - 1);
+        $extras = $this->preview_wc_variation_fields($product, $loops);
+        /**
+         * Filter the per-variation extras HTML for not-yet-saved (preview)
+         * variation rows. Keyed by zero-based loop index.
+         *
+         * @param array<int,string> $extras  [loop => html]
+         * @param WC_Product         $product Parent variable product.
+         * @param array              $loops   Zero-based row indices.
+         * @param string             $context 'preview'.
+         */
+        $extras = apply_filters('brikpanel_pe_variation_extras_preview', $extras, $product, $loops, 'preview');
         wp_send_json_success(['extras' => $extras]);
     }
 
@@ -3894,6 +4137,7 @@ class Brikpanel_Product_Editor {
     private function capture_wc_product_data_fields($product_id, $product) {
         $selected = (array) get_option('brikpanel_pe_wc_tabs_selected', []);
         $selected = self::augment_sections_for_multicurrency($selected, 'product');
+        $selected = self::augment_sections_auto($selected, 'product');
         if (empty($selected)) return '';
 
         if (!function_exists('woocommerce_wp_text_input')) {
@@ -3928,9 +4172,18 @@ class Brikpanel_Product_Editor {
         }
 
         // Core sub-hook sections — keyed `core:<label_slug>`.
+        //
+        // We render EVERY core section that carries third-party content, then
+        // show the ones in $selected and keep the rest hidden. The hidden ones
+        // still forward their current values on save: BrikPanel emits the
+        // WooCommerce save nonce whenever this card renders, which fires every
+        // process_product_meta handler, and a "save my field, or delete it when
+        // absent" handler for a section the merchant did not pick would wipe its
+        // data if that field were missing from the post. Forwarding it hidden
+        // makes the save round-trip it unchanged. So the picker controls what is
+        // shown; nothing a plugin stores is ever silently dropped.
         foreach ($core_sub_hooks as $label => $hooks) {
             $key = 'core:' . sanitize_key($label);
-            if (!in_array($key, $selected, true)) continue;
 
             $section = '';
             foreach ($hooks as $hook) {
@@ -3942,7 +4195,8 @@ class Brikpanel_Product_Editor {
                 if ($html !== '') $section .= $html;
             }
             if ($section !== '') {
-                $output .= '<div class="brikpanel-pe-wc-tab-group" data-tab="' . esc_attr($label) . '">'
+                $hidden_attr = in_array($key, $selected, true) ? '' : ' style="display:none" aria-hidden="true"';
+                $output .= '<div class="brikpanel-pe-wc-tab-group" data-tab="' . esc_attr($label) . '"' . $hidden_attr . '>'
                     . '<h4 class="brikpanel-pe-wc-tab-title">' . esc_html($label) . '</h4>'
                     . $section
                     . '</div>';
@@ -4068,6 +4322,42 @@ class Brikpanel_Product_Editor {
     // DATA HELPERS
     // =========================================================================
 
+    /**
+     * Prepare stored description HTML for the rich-text editable.
+     *
+     * Descriptions written before BrikPanel (classic editor, WP-CLI, importers)
+     * are stored as plain text whose paragraphs are only blank lines: WordPress
+     * turns those into <p> at render time through wpautop(). A contenteditable
+     * has no such render step — it collapses the newlines, so every paragraph
+     * runs together on one line and the browser then emits <div> wrappers when
+     * the user presses Enter to fix it.
+     *
+     * Promoting those blank lines to real paragraphs up front is exactly what
+     * the classic TinyMCE editor does, so the editable shows what the shop
+     * shows and Enter splits a real block instead of inventing one.
+     *
+     * @param string $html Stored description.
+     * @return string Editor-ready HTML.
+     */
+    private static function editor_display_html($html) {
+        $html = (string) $html;
+
+        // No newline means the value is already a single HTML run (BrikPanel
+        // output) — nothing for wpautop to do, so skip the work.
+        if ($html === '' || strpos($html, "\n") === false) {
+            return $html;
+        }
+
+        // Block-editor content already states its own paragraphs; wpautop()
+        // would wrap the `<!-- wp:… -->` delimiters themselves and leave empty
+        // paragraphs behind on the storefront. Hand it through untouched.
+        if (function_exists('has_blocks') && has_blocks($html)) {
+            return $html;
+        }
+
+        return wpautop($html);
+    }
+
     private function get_product_data($product) {
         $defaults = [
             'name'              => '',
@@ -4132,18 +4422,21 @@ class Brikpanel_Product_Editor {
         }
 
         // Gallery data
+        $blocksy_video = function_exists('brikpanel_blocksy_video_active') && brikpanel_blocksy_video_active();
         $gallery = [];
         $image_id = $product->get_image_id();
         if ($image_id) {
             $gallery[] = [
-                'id'  => (int) $image_id,
-                'url' => wp_get_attachment_image_url($image_id, 'thumbnail'),
+                'id'    => (int) $image_id,
+                'url'   => wp_get_attachment_image_url($image_id, 'thumbnail'),
+                'video' => $blocksy_video ? brikpanel_blocksy_get_video_for_attachment((int) $image_id) : null,
             ];
         }
         foreach ($product->get_gallery_image_ids() as $gid) {
             $gallery[] = [
-                'id'  => (int) $gid,
-                'url' => wp_get_attachment_image_url($gid, 'thumbnail'),
+                'id'    => (int) $gid,
+                'url'   => wp_get_attachment_image_url($gid, 'thumbnail'),
+                'video' => $blocksy_video ? brikpanel_blocksy_get_video_for_attachment((int) $gid) : null,
             ];
         }
 
@@ -4603,13 +4896,15 @@ class Brikpanel_Product_Editor {
             'sale_from'         => $product->get_date_on_sale_from() ? $product->get_date_on_sale_from()->date('Y-m-d') : '',
             'sale_to'           => $product->get_date_on_sale_to()   ? $product->get_date_on_sale_to()->date('Y-m-d')   : '',
             'post_password'     => get_post_field('post_password', $product->get_id()),
-            // Local publish date/time for the datetime-local picker. Only emitted
-            // for an already-scheduled ("future") product — that's the moment it
-            // goes live. For every other status we leave it empty so the picker
-            // seeds a sensible near-future default client-side instead of showing
-            // the product's (past) creation time. get_post_field is site-local.
+            // Local publish date/time for the datetime-local picker. Emitted for
+            // every committed product so the header's "Publish date" control can
+            // show and edit the real WordPress post_date (backdate a live product,
+            // correct a date, or — for a "future" product — the moment it goes
+            // live). Auto-drafts are treated as new (empty) so the control reads
+            // "Immediately" instead of the placeholder row's creation time.
+            // get_post_field returns the site-local datetime.
             'post_date'         => (function () use ($product) {
-                if ($product->get_status() !== 'future') {
+                if ($product->get_status() === 'auto-draft') {
                     return '';
                 }
                 $raw = get_post_field('post_date', $product->get_id());
@@ -4775,6 +5070,18 @@ class Brikpanel_Product_Editor {
         // send_clean_json() drops the buffer immediately before sending.
         ob_start();
 
+        // A third-party plugin hooking into the product save pipeline (media
+        // offload, SEO, ERP sync, image processing…) can let an uncaught
+        // exception bubble up from deep inside WooCommerce's save. Left
+        // unhandled that surfaces as a bare HTTP 500 with WordPress's generic
+        // "critical error" HTML page — the editor can then only report a vague
+        // failure and the merchant has no hint that a *different* plugin is at
+        // fault. Catch any Throwable from the save body and return a clean JSON
+        // error instead, so the editor shows an actionable toast. Catching the
+        // exception here (before it becomes a fatal) also keeps WordPress's own
+        // shutdown fatal-handler from firing and corrupting the response.
+        try {
+
         $product_id  = intval($_POST['product_id'] ?? 0);
 
         // Per-object authorization. The generic `edit_products` check above is
@@ -4797,6 +5104,40 @@ class Brikpanel_Product_Editor {
          * @param array $post_data  Raw $_POST payload.
          */
         do_action('brikpanel_before_product_save', $product_id, $_POST);
+
+        // WooCommerce registers WC_Meta_Box_Product_Data::save and
+        // WC_Meta_Box_Product_Images::save on woocommerce_process_product_meta
+        // (priority 10/20). Both read the FULL native product form and reset any
+        // property whose field is absent from $_POST — upsells, cross-sells, the
+        // image gallery, downloads, sale dates — which would wipe exactly the
+        // values BrikPanel posts in its own condensed field names.
+        //
+        // They must therefore stay unhooked across EVERY
+        // woocommerce_process_product_meta dispatch this request can trigger:
+        //
+        //   1. WC_Admin_Meta_Boxes::save_meta_boxes, hooked on save_post at
+        //      priority 1. It fires on the very FIRST post write of this request
+        //      — WC_Product::save() for a new product, and wp_update_post() for
+        //      the post password / slug / schedule — because BrikPanel already
+        //      populates $_POST['post_ID'] + the woocommerce_meta_nonce at
+        //      plugins_loaded (see brikpanel.php) so third-party tab fields and
+        //      SEO metaboxes recognise the save. That happens LONG before the
+        //      deliberate save_post dispatch further down, which is why the
+        //      unhook lives here at the very top of the save rather than next to
+        //      that dispatch (bug: linked products + gallery silently reverted
+        //      on every save once the "Additional product data" card was shown).
+        //   2. our own explicit dispatch further down;
+        //   3. the follow-up $refreshed->save().
+        //
+        // They are re-added right after $refreshed->save(); by then every
+        // product-meta dispatch of this request is done. If the save aborts
+        // early the request ends anyway, so the removal cannot leak.
+        $_wc_data_save = ['WC_Meta_Box_Product_Data', 'save'];
+        $_wc_img_save  = ['WC_Meta_Box_Product_Images', 'save'];
+        $_removed = [
+            'data'   => remove_action('woocommerce_process_product_meta', $_wc_data_save, 10),
+            'images' => remove_action('woocommerce_process_product_meta', $_wc_img_save, 20),
+        ];
 
         $is_variable = !empty($_POST['is_variable']);
         $status      = sanitize_key($_POST['status'] ?? 'draft');
@@ -4847,26 +5188,70 @@ class Brikpanel_Product_Editor {
         // stays editable even after the setting is turned off. When the chosen
         // date is missing or not in the future we fall back to publishing now,
         // matching WordPress core's own behaviour.
-        $schedule_gmt = 0; // UTC timestamp the product should go live at (0 = none)
+        // Parse the single publish-date field once. The datetime-local value is
+        // site-local; interpret it in the site timezone and keep the UTC stamp.
+        $raw_date   = sanitize_text_field(wp_unslash($_POST['publish_date'] ?? ''));
+        $chosen_ts  = 0;
+        if ($raw_date !== '') {
+            $dt = date_create($raw_date, wp_timezone());
+            if ($dt) {
+                $chosen_ts = $dt->getTimestamp();
+            }
+        }
+        $scheduling_enabled = (get_option('brikpanel_pe_enable_scheduling', 'yes') === 'yes');
+
+        $schedule_gmt = 0; // UTC stamp the product should go live at   (0 = none)
+        $post_date_ts = 0; // explicit post_date for a live/draft status (0 = leave)
+
         if ($status === 'future') {
-            $scheduling_enabled = (get_option('brikpanel_pe_enable_scheduling', 'yes') === 'yes');
-            $already_future     = $product_id && get_post_status($product_id) === 'future';
+            // Explicit "Scheduled" status. Gate on the setting so a disabled
+            // feature can never leave a product stuck unpublished; a product that
+            // is already scheduled stays editable even after the setting is off.
+            $already_future = $product_id && get_post_status($product_id) === 'future';
             if (!$scheduling_enabled && !$already_future) {
                 $status = 'publish';
             } else {
-                $raw_date = sanitize_text_field(wp_unslash($_POST['publish_date'] ?? ''));
-                if ($raw_date !== '') {
-                    // The datetime-local value is site-local; interpret it in the
-                    // site timezone and keep the resulting UTC timestamp.
-                    $dt = date_create($raw_date, wp_timezone());
-                    if ($dt) {
-                        $schedule_gmt = $dt->getTimestamp();
-                    }
-                }
+                $schedule_gmt = $chosen_ts;
+                // A missing or past date is not a real schedule → publish now.
                 if ($schedule_gmt <= (time() + 30)) {
                     $status       = 'publish';
                     $schedule_gmt = 0;
                 }
+            }
+        }
+
+        // A publish date chosen against a live/draft status. This is what makes
+        // the publish-date control work for ordinary products: backdate or correct
+        // a published product, or set any date on a draft/private one.
+        //
+        // The datetime-local field only carries minute precision, so re-saving an
+        // untouched product would strip the original seconds and nudge the stored
+        // time on every save. Skip when the chosen minute already matches the
+        // product's current publish minute — that's an unchanged date.
+        if ($status !== 'future' && $chosen_ts > 0 && $product_id) {
+            $existing_raw = get_post_field('post_date', $product_id);
+            $existing_dt  = $existing_raw ? date_create($existing_raw, wp_timezone()) : false;
+            if ($existing_dt
+                && intdiv($existing_dt->getTimestamp(), 60) === intdiv($chosen_ts, 60)) {
+                $chosen_ts = 0; // unchanged — leave the existing post_date intact
+            }
+        }
+        if ($status !== 'future' && $chosen_ts > 0) {
+            if ($status === 'publish' && $chosen_ts > (time() + 30)) {
+                // A future date on a "Published" product is really a schedule
+                // request. Honour it when scheduling is enabled; otherwise clamp
+                // to now so the product can never silently vanish into a future
+                // (unpublished) state — mirroring WordPress core's intent.
+                if ($scheduling_enabled) {
+                    $status       = 'future';
+                    $schedule_gmt = $chosen_ts;
+                } else {
+                    $post_date_ts = time();
+                }
+            } else {
+                // Backdated / corrected publish date, or any date on a
+                // draft/private product (not public, so a future date is harmless).
+                $post_date_ts = $chosen_ts;
             }
         }
 
@@ -4930,6 +5315,10 @@ class Brikpanel_Product_Editor {
         // resulting `future` transition schedules `publish_future_post`.
         if ($status === 'future' && $schedule_gmt > 0) {
             $product->set_date_created($schedule_gmt);
+        } elseif ($post_date_ts > 0) {
+            // Explicit publish date for a live/draft product (backdate or correct).
+            // WC's data store writes post_date/post_date_gmt from this WC_DateTime.
+            $product->set_date_created($post_date_ts);
         } elseif ($product_id && $status !== 'future' && get_post_status($product_id) === 'future') {
             // Un-scheduling: a product leaving "future" for publish/draft/private
             // still carries its future-dated post_date, which WordPress would
@@ -4954,8 +5343,16 @@ class Brikpanel_Product_Editor {
             $product->set_featured(!empty($_POST['is_featured']));
         }
 
-        $product->set_short_description(wp_kses_post(wp_unslash($_POST['short_description'] ?? '')));
-        $product->set_description(wp_kses_post(wp_unslash($_POST['description'] ?? '')));
+        // Both description fields are opt-in sections. A store that hides them
+        // sends no key at all, and an absent key must leave the stored copy
+        // alone — defaulting to '' here wiped the description of every product
+        // saved while the section was switched off.
+        if (isset($_POST['short_description'])) {
+            $product->set_short_description(wp_kses_post(wp_unslash($_POST['short_description'])));
+        }
+        if (isset($_POST['description'])) {
+            $product->set_description(wp_kses_post(wp_unslash($_POST['description'])));
+        }
 
         // Price (simple products only)
         if (!$is_variable) {
@@ -5103,6 +5500,27 @@ class Brikpanel_Product_Editor {
         $gallery_ids_raw = sanitize_text_field($_POST['gallery_ids'] ?? '');
         $gallery_ids = $gallery_ids_raw ? array_map('intval', explode(',', $gallery_ids_raw)) : [];
         $product->set_gallery_image_ids($gallery_ids);
+
+        // Blocksy product videos: attachments carry their own video meta. Only
+        // the images the merchant actually touched are posted, so untouched
+        // media is never rewritten. Ignored entirely when Blocksy is inactive.
+        if (function_exists('brikpanel_blocksy_video_active') && brikpanel_blocksy_video_active()) {
+            $videos_raw = isset($_POST['blocksy_videos']) ? wp_unslash($_POST['blocksy_videos']) : '';
+            if (is_string($videos_raw) && $videos_raw !== '') {
+                $videos = json_decode($videos_raw, true);
+                if (is_array($videos)) {
+                    $allowed_ids = array_merge([$image_id], $gallery_ids);
+                    foreach ($videos as $att_id => $video) {
+                        $att_id = (int) $att_id;
+                        // Guard: only write video meta for images that belong to
+                        // this product's gallery, never arbitrary attachments.
+                        if ($att_id > 0 && is_array($video) && in_array($att_id, $allowed_ids, true)) {
+                            brikpanel_blocksy_save_video_for_attachment($att_id, $video);
+                        }
+                    }
+                }
+            }
+        }
 
         // Categories
         $cat_ids_raw = sanitize_text_field($_POST['category_ids'] ?? '');
@@ -5531,6 +5949,37 @@ class Brikpanel_Product_Editor {
             add_action('save_post', [aioseo()->postSettings, 'saveSettingsMetabox']);
         }
 
+        // WC core's own product-data / product-images save handlers were
+        // unhooked at the very top of this method (see the long note there);
+        // they stay unhooked until right after $refreshed->save() below.
+
+        // WooCommerce Product Data tab extensions (Subscriptions, Memberships,
+        // Bookings, shipping add-ons, internal product codes, SEO Product Boxes,
+        // etc.) register their save handlers on woocommerce_process_product_meta
+        // rather than save_post. Dispatch it explicitly so fields captured by
+        // capture_wc_product_data_fields() round-trip through the plugin's own
+        // save pipeline.
+        //
+        // This dispatch runs BEFORE save_post on purpose: on a native WooCommerce
+        // save, process_product_meta fires from save_post priority 1, i.e.
+        // BEFORE most save_post listeners. Some plugins pair a
+        // process_product_meta handler (which clears a value when its field is
+        // absent, e.g. on a variable product that carries the field per
+        // variation) with a save_post handler that rebuilds it. Firing here,
+        // ahead of save_post, preserves that "clear then rebuild" ordering so
+        // such derived data survives; firing after save_post would clear it
+        // again after the rebuild.
+        $post_type_key = 'simple';
+        if ($product && method_exists($product, 'get_type')) {
+            $type = $product->get_type();
+            if ($type) $post_type_key = $type;
+        }
+        // Attach save handlers that third-party tab plugins only register on
+        // non-ajax admin requests (e.g. Pektsekye Product Options).
+        self::boot_thirdparty_ajax_save_handlers();
+        do_action('woocommerce_process_product_meta', $saved_id, $post_obj);
+        do_action('woocommerce_process_product_meta_' . $post_type_key, $saved_id);
+
         do_action('save_post', $saved_id, $post_obj, true);
         do_action('save_post_product', $saved_id, $post_obj, true);
         do_action('edit_post', $saved_id, $post_obj);
@@ -5541,36 +5990,6 @@ class Brikpanel_Product_Editor {
         // Yoast bails. Re-dispatch the hook now that everything is in place.
         do_action('wp_insert_post', $saved_id, $post_obj, true);
 
-        // WooCommerce Product Data tab extensions (Subscriptions, Memberships,
-        // Bookings, shipping add-ons, SEO Product Boxes, etc.) register their
-        // save handlers on these WC-specific hooks rather than save_post. Fire
-        // them explicitly so fields captured by capture_wc_product_data_fields()
-        // round-trip through the 3rd-party plugin's own save pipeline.
-        $post_type_key = 'simple';
-        if ($product && method_exists($product, 'get_type')) {
-            $type = $product->get_type();
-            if ($type) $post_type_key = $type;
-        }
-        // WooCommerce registers WC_Meta_Box_Product_Data::save and
-        // WC_Meta_Box_Product_Images::save on woocommerce_process_product_meta
-        // at priority 10/20. Those handlers read the *full* WC metabox form
-        // from $_POST and reset any property whose field is missing — which
-        // would wipe our downloadable/virtual/images/etc. since we post a
-        // condensed payload. Unhook them for the duration of the hook so only
-        // third-party extensions (which only read their own $_POST fields) run.
-        $_wc_data_save = ['WC_Meta_Box_Product_Data', 'save'];
-        $_wc_img_save  = ['WC_Meta_Box_Product_Images', 'save'];
-        $_removed = [
-            'data'   => remove_action('woocommerce_process_product_meta', $_wc_data_save, 10),
-            'images' => remove_action('woocommerce_process_product_meta', $_wc_img_save, 20),
-        ];
-        // Attach save handlers that third-party tab plugins only register on
-        // non-ajax admin requests (e.g. Pektsekye Product Options).
-        self::boot_thirdparty_ajax_save_handlers();
-        do_action('woocommerce_process_product_meta', $saved_id, $post_obj);
-        if ($_removed['data'])   add_action('woocommerce_process_product_meta', $_wc_data_save, 10, 2);
-        if ($_removed['images']) add_action('woocommerce_process_product_meta', $_wc_img_save, 20, 2);
-        do_action('woocommerce_process_product_meta_' . $post_type_key, $saved_id);
         // `woocommerce_admin_process_product_object` lets plugins mutate the
         // WC_Product instance itself before the caller persists it. We fetch
         // a fresh product, let listeners mutate, then re-save.
@@ -5579,6 +5998,10 @@ class Brikpanel_Product_Editor {
             do_action('woocommerce_admin_process_product_object', $refreshed);
             $refreshed->save();
         }
+        // Every product-meta dispatch inside the spoof window is done; restore
+        // WC core's data/image save handlers (see the unhook before save_post).
+        if (!empty($_removed['data']))   add_action('woocommerce_process_product_meta', $_wc_data_save, 10, 2);
+        if (!empty($_removed['images'])) add_action('woocommerce_process_product_meta', $_wc_img_save, 20, 2);
 
         // WC core's validate_props() auto-syncs stock_status from quantity
         // every time save() is called (stock > 0 forces "instock"), which
@@ -5709,12 +6132,29 @@ class Brikpanel_Product_Editor {
                 return isset($v['id']) ? (int) $v['id'] : 0;
             }, $variations);
             $response['variations']       = $variations;
-            $response['variation_extras'] = $variation_ids
+            $fresh_extras = $variation_ids
                 ? $this->capture_wc_variation_fields($final_product, $variation_ids)
                 : [];
+            // Same extras filter as the initial render so integrations surface
+            // their per-variation fields on freshly generated/saved rows too.
+            $response['variation_extras'] = apply_filters('brikpanel_pe_variation_extras', $fresh_extras, $final_product, $variation_ids, 'saved');
         }
 
         $this->send_clean_json(true, $response);
+
+        } catch (\Throwable $e) {
+            // A hook fired during the save threw. The product may have been
+            // partially persisted by WooCommerce before the throw, but there is
+            // nothing safe we can add here — surface a clean, translatable error
+            // so the editor reports it instead of a raw 500, and log the detail
+            // for the site owner to diagnose which plugin is responsible.
+            if (function_exists('error_log')) {
+                error_log('[BrikPanel] Product save aborted by an exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+            }
+            $this->send_clean_json(false, [
+                'message' => __('The product could not be saved because another plugin raised an error during the save. Please disable or update that plugin (for example your media offload or SEO plugin) and try again.', 'brikpanel'),
+            ]);
+        }
     }
 
     /**

@@ -138,6 +138,9 @@
 .brikpanel-pe-gallery-item-badge{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:.5625rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#fff;background:var(--pe-primary);padding:1px 0}
 .brikpanel-pe-gallery-item-remove{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;font-size:14px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0}
 .brikpanel-pe-gallery-item:hover .brikpanel-pe-gallery-item-remove{display:flex}
+.brikpanel-pe-gallery-item-video{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;line-height:0;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0}
+.brikpanel-pe-gallery-item:hover .brikpanel-pe-gallery-item-video{display:flex}
+.brikpanel-pe-gallery-item-video.is-active{display:flex;background:var(--pe-primary)}
 /* Upload spinner placeholder */
 .brikpanel-pe-gallery-item.is-uploading{border-color:var(--pe-primary);animation:bpe-pulse 1.2s ease-in-out infinite}
 .brikpanel-pe-gallery-item.is-uploading::after{content:"";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.7);border-radius:inherit;z-index:3}
@@ -261,6 +264,13 @@
 .brikpanel-pe-imgdlg-align button,.brikpanel-pe-imgdlg-size button{padding:.4375rem .25rem;font-size:.8125rem;font-weight:550;color:var(--pe-text-secondary);background:none;border:none;border-radius:calc(var(--pe-radius-sm) - .1875rem);cursor:pointer;transition:background .1s ease,color .1s ease}
 .brikpanel-pe-imgdlg-align button:hover,.brikpanel-pe-imgdlg-size button:hover{background:var(--pe-border);color:var(--pe-text)}
 .brikpanel-pe-imgdlg-align button.is-active,.brikpanel-pe-imgdlg-size button.is-active{background:var(--pe-primary);color:#fff}
+
+/* Blocksy product video dialog (rides on .brikpanel-pe-linkdlg base) */
+.brikpanel-pe-viddlg-help{font-size:.8125rem;color:var(--pe-text-muted);line-height:1.5;margin:0 0 1rem}
+.brikpanel-pe-viddlg-filerow{display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;background:var(--pe-bg);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
+.brikpanel-pe-viddlg-filename{flex:1;min-width:0;font-size:.8125rem;color:var(--pe-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brikpanel-pe-viddlg-filerow .brikpanel-pe-btn{flex-shrink:0}
+.brikpanel-pe-viddlg-actions{align-items:center}
 
 /* Variation Wizard */
 .brikpanel-pe-var-wizard{position:relative;min-width:0;max-width:100%}
@@ -1081,6 +1091,11 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
    The label is still reachable inside the dropdown it opens. */
 .brikpanel-pe-catvis-trigger .brikpanel-pe-catvis-label{display:none}
 .brikpanel-pe-catvis-trigger{padding:.4375rem .375rem}
+/* Same treatment for the publish-date control: collapse to its calendar icon so
+   the header action cluster stays on one row. Date is reachable in its popover. */
+.brikpanel-pe-pubdate-trigger .brikpanel-pe-pubdate-label,
+.brikpanel-pe-pubdate-trigger .brikpanel-pe-pubdate-chevron{display:none}
+.brikpanel-pe-pubdate-trigger{padding:.4375rem .375rem}
 /* Tighten the action cluster so it stays on a single row down to ~340px
    instead of wrapping the Update button onto its own line. */
 .brikpanel-pe-header-right{gap:.3125rem}
@@ -1130,11 +1145,20 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-password-inline input{width:100px;padding:.375rem .5rem;font:inherit;font-size:.75rem;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);color:var(--pe-text);transition:border-color .15s ease,box-shadow .15s ease}
 .brikpanel-pe-password-inline input:focus{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 
-/* Scheduled publish date/time — inline beside the status dropdown */
-.brikpanel-pe-schedule-inline{display:none;align-items:center}
-.brikpanel-pe-schedule-inline.is-visible{display:inline-flex}
-.brikpanel-pe-schedule-inline input{padding:.375rem .5rem;font:inherit;font-size:.75rem;color:var(--pe-text);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);transition:border-color .15s ease,box-shadow .15s ease}
-.brikpanel-pe-schedule-inline input:focus{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
+/* Publish date — mini popover in the header (shares the datetime input with the
+   scheduling flow). Mirrors the catalog-visibility control's look. */
+.brikpanel-pe-pubdate-wrap{position:relative;display:inline-block}
+.brikpanel-pe-pubdate-trigger{display:inline-flex;align-items:center;gap:.3rem;padding:.3125rem .5rem;background:transparent;color:var(--pe-text-secondary);border:none;font:inherit;font-size:.6875rem;font-weight:500;cursor:pointer;border-radius:var(--pe-radius-sm);transition:background .15s ease,color .15s ease;white-space:nowrap}
+.brikpanel-pe-pubdate-trigger:hover{background:#f0f0f0;color:var(--pe-text)}
+.brikpanel-pe-pubdate-trigger svg{flex-shrink:0}
+.brikpanel-pe-pubdate-label{max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.brikpanel-pe-pubdate-chevron{color:var(--pe-text-muted);transition:transform .15s ease}
+.brikpanel-pe-pubdate-wrap.is-open .brikpanel-pe-pubdate-chevron{transform:rotate(180deg)}
+.brikpanel-pe-pubdate-pop{position:absolute;top:calc(100% + .25rem);left:0;min-width:220px;padding:.75rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;transform:translateY(-4px) scale(.97);transform-origin:top left;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:200}
+.brikpanel-pe-pubdate-wrap.is-open .brikpanel-pe-pubdate-pop{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+.brikpanel-pe-pubdate-poplabel{display:block;margin-bottom:.375rem;font-size:.8125rem;font-weight:600;color:var(--pe-text)}
+.brikpanel-pe-pubdate-pop input{width:100%;box-sizing:border-box;padding:.5rem .625rem;font:inherit;font-size:.8125rem;color:var(--pe-text);border:1px solid var(--pe-input-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);transition:border-color .15s ease,box-shadow .15s ease}
+.brikpanel-pe-pubdate-pop input:focus{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 
 /* Catalog visibility — mini dropdown in the header */
 .brikpanel-pe-catvis-wrap{position:relative;display:inline-block}

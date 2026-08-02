@@ -921,6 +921,7 @@ function brikpanel_enqueue_woo_assets($hook) {
             'per_page'      => (int) $per_page,
             'open_in_new_tab'    => get_option('brikpanel_open_edit_in_new_tab', 'yes') !== 'no',
             'show_featured_star' => function_exists('brikpanel_qe_is_field_visible') && brikpanel_qe_is_field_visible('featured'),
+            'has_product_code'   => function_exists('brikpanel_pcfw_active') && brikpanel_pcfw_active(),
             'qe_cogs_visible'    => function_exists('brikpanel_qe_is_field_visible') && brikpanel_qe_is_field_visible('cogs'),
             'weight_unit'        => get_option('woocommerce_weight_unit', 'kg'),
             'dimension_unit'     => get_option('woocommerce_dimension_unit', 'cm'),
@@ -1410,6 +1411,12 @@ function brikpanel_enqueue_woo_assets($hook) {
             'currency'    => get_woocommerce_currency_symbol(),
             'decimal_sep' => wc_get_price_decimal_separator(),
             'variation_gallery_enabled' => get_option('brikpanel_variation_gallery_enabled', 'yes') === 'yes' ? '1' : '0',
+            // Surface the Blocksy per-image video editor only when Blocksy is
+            // the active theme (its render path reads the same attachment meta).
+            'blocksy_video' => (function_exists('brikpanel_blocksy_video_active') && brikpanel_blocksy_video_active()) ? '1' : '0',
+            // Whether future-dating a live product promotes it to a scheduled
+            // publish. Drives the header's "Publish"/"Schedule" button label.
+            'scheduling_enabled' => get_option('brikpanel_pe_enable_scheduling', 'yes') === 'yes' ? '1' : '0',
             'i18n'        => [
                 'product_saved'  => __('Product saved!', 'brikpanel'),
                 'fill_required'  => __('Please fill in the required fields', 'brikpanel'),
@@ -1491,6 +1498,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'publish'          => __('Publish', 'brikpanel'),
                 'save'             => __('Save', 'brikpanel'),
                 'schedule'         => __('Schedule', 'brikpanel'),
+                /* translators: shown as the publish date of a not-yet-dated product */
+                'immediately'      => __('Immediately', 'brikpanel'),
                 'schedule_start'   => __('Schedule start', 'brikpanel'),
                 'schedule_end'     => __('Schedule end', 'brikpanel'),
                 'schedule_hint'    => __('Optional — leave empty to keep the sale active indefinitely.', 'brikpanel'),
@@ -1501,6 +1510,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'delete_variation' => __('Delete variation', 'brikpanel'),
                 'confirm_delete_variation' => __('Delete this variation? This change is applied when you save the product.', 'brikpanel'),
                 'variation_active' => __('Active', 'brikpanel'),
+                /* translators: %s is the attribute name, a variation slot that matches every value of it, e.g. "Any Color" */
+                'variation_any_value' => __('Any %s', 'brikpanel'),
                 'chip_remove'      => __('Remove', 'brikpanel'),
                 'more_fields'      => __('More fields', 'brikpanel'),
                 'analyze'          => __('Re-analyze', 'brikpanel'),
@@ -1509,6 +1520,36 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'default_form_values_help' => __('Choose which options are pre-selected on the product page. Leave blank for no default.', 'brikpanel'),
                 /* translators: %s is the attribute name, e.g. "No default Color…" */
                 'no_default_for'   => __('No default %s…', 'brikpanel'),
+                // Blocksy product video editor.
+                'video_edit'       => __('Video', 'brikpanel'),
+                'video_title'      => __('Product video', 'brikpanel'),
+                'video_help'       => __('Attach a video to this image. It plays in the product gallery when your theme supports it.', 'brikpanel'),
+                'video_source'     => __('Video source', 'brikpanel'),
+                'video_youtube'    => __('YouTube', 'brikpanel'),
+                'video_vimeo'      => __('Vimeo', 'brikpanel'),
+                'video_upload'     => __('Self-hosted', 'brikpanel'),
+                'video_youtube_url' => __('YouTube URL', 'brikpanel'),
+                'video_vimeo_url'  => __('Vimeo URL', 'brikpanel'),
+                'video_youtube_ph' => __('https://www.youtube.com/watch?v=…', 'brikpanel'),
+                'video_vimeo_ph'   => __('https://vimeo.com/…', 'brikpanel'),
+                'video_choose_file' => __('Choose video', 'brikpanel'),
+                'video_replace_file' => __('Replace video', 'brikpanel'),
+                'video_no_file'    => __('No video selected', 'brikpanel'),
+                'video_playback'   => __('Playback', 'brikpanel'),
+                'video_on_click'   => __('Play on click', 'brikpanel'),
+                'video_autoplay'   => __('Autoplay (muted)', 'brikpanel'),
+                'video_on_hover'   => __('Play on hover', 'brikpanel'),
+                'video_loop'       => __('Loop the video', 'brikpanel'),
+                'video_simple_player' => __('Hide player controls', 'brikpanel'),
+                'video_remove'     => __('Remove video', 'brikpanel'),
+                'video_save'       => __('Save video', 'brikpanel'),
+                'video_cancel'     => __('Cancel', 'brikpanel'),
+                'video_added'      => __('Video added to image', 'brikpanel'),
+                'video_removed'    => __('Video removed from image', 'brikpanel'),
+                'video_url_required' => __('Please enter a video URL first.', 'brikpanel'),
+                'video_file_required' => __('Please choose a video file first.', 'brikpanel'),
+                'video_select'     => __('Use this video', 'brikpanel'),
+                'video_badge'      => __('Has video', 'brikpanel'),
             ],
         ]);
     }
@@ -1519,14 +1560,14 @@ function brikpanel_enqueue_woo_assets($hook) {
             'brikpanel_coupons_styles',
             BRIKPANEL_URL . 'front-end/coupons/brikpanel-coupons.css',
             [],
-            BRIKPANEL_VERSION . '.1'
+            BRIKPANEL_VERSION . '.3'
         );
 
         wp_enqueue_script(
             'brikpanel_coupons_scripts',
             BRIKPANEL_URL . 'front-end/coupons/brikpanel-coupons.js',
             ['jquery'],
-            BRIKPANEL_VERSION . '.1',
+            BRIKPANEL_VERSION . '.3',
             true
         );
 
@@ -1571,6 +1612,54 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'type_fixed_product'      => __('Fixed product', 'brikpanel'),
                 'no_results'              => __('No matches found.', 'brikpanel'),
                 'remove'                  => __('Remove', 'brikpanel'),
+                /* translators: %s: the text that could not be read as an email address */
+                'invalid_email'           => __('Not a valid email address: %s', 'brikpanel'),
+            ],
+        ]);
+    }
+
+    // Cart Share builder (admin)
+    if ('admin_page_brikpanel-cart-share' === $hook
+        && class_exists('Brikpanel_Cart_Share')
+        && Brikpanel_Cart_Share::is_enabled()) {
+
+        $cs_dir = BRIKPANEL_PATH . 'front-end/cart-share/';
+
+        wp_enqueue_style(
+            'brikpanel_cartshare_admin',
+            BRIKPANEL_URL . 'front-end/cart-share/cart-share-admin.css',
+            [],
+            file_exists($cs_dir . 'cart-share-admin.css') ? (string) filemtime($cs_dir . 'cart-share-admin.css') : BRIKPANEL_VERSION
+        );
+
+        wp_enqueue_script(
+            'brikpanel_cartshare_admin',
+            BRIKPANEL_URL . 'front-end/cart-share/cart-share-admin.js',
+            [],
+            file_exists($cs_dir . 'cart-share-admin.js') ? (string) filemtime($cs_dir . 'cart-share-admin.js') : BRIKPANEL_VERSION,
+            true
+        );
+
+        wp_localize_script('brikpanel_cartshare_admin', 'brikpanelCartShareAdmin', [
+            'ajaxUrl'      => admin_url('admin-ajax.php'),
+            'nonce'        => wp_create_nonce('brikpanel_cartshare_admin'),
+            'linkPrefix'   => home_url('/') . '?bp-cart=',
+            'whatsappBase' => 'https://wa.me/?text=',
+            'i18n'         => [
+                'searching'                => __('Searching…', 'brikpanel'),
+                'no_results'               => __('No matching products found.', 'brikpanel'),
+                'variable_badge'           => __('Variable', 'brikpanel'),
+                'remove'                   => __('Remove', 'brikpanel'),
+                'quantity'                 => __('Quantity', 'brikpanel'),
+                'increase'                 => __('Increase quantity', 'brikpanel'),
+                'decrease'                 => __('Decrease quantity', 'brikpanel'),
+                'select_variation'         => __('Choose a variation…', 'brikpanel'),
+                'loading_variations'       => __('Loading variations…', 'brikpanel'),
+                'no_shareable_variations'  => __('This product has no variation that can be shared.', 'brikpanel'),
+                'copied'                   => __('Link copied to clipboard.', 'brikpanel'),
+                'copy_failed'              => __('Could not copy. The link is selected, press Ctrl/Cmd+C.', 'brikpanel'),
+                'shareText'                => __('Here are the products for your order:', 'brikpanel'),
+                'share_title'              => __('Your cart', 'brikpanel'),
             ],
         ]);
     }
@@ -1736,7 +1825,7 @@ function brikpanel_enqueue_rtl_overrides() {
         'brikpanel_rtl_overrides',
         BRIKPANEL_URL . 'assets/css/brikpanel-rtl.css',
         [],
-        BRIKPANEL_VERSION . '.r2'
+        BRIKPANEL_VERSION . '.r3'
     );
 }
 add_action( 'admin_enqueue_scripts', 'brikpanel_enqueue_rtl_overrides', 999 );

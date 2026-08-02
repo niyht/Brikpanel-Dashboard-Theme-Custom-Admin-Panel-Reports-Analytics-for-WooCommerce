@@ -29,6 +29,12 @@ function brikpanel_checkout_counter() {
         return;
     }
 
+    // Same daily cap for cookieless clients as the cookie above gives real
+    // shoppers, so a crawler walking the checkout cannot inflate the funnel.
+    if ( function_exists( 'brikpanel_cookieless_daily_gate' ) && ! brikpanel_cookieless_daily_gate( 'checkout' ) ) {
+        return;
+    }
+
     global $wpdb;
     $table_name   = $wpdb->prefix . "brikpanel_visitors";
     $current_date = wp_date( 'Y-m-d' );

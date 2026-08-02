@@ -2514,6 +2514,7 @@ body.brikpanel-pl-drawer-open {
 .brikpanel-pl-table[data-hide-name] .brikpanel-pl-col-name,
 .brikpanel-pl-table[data-hide-sku] .brikpanel-pl-col-sku,
 .brikpanel-pl-table[data-hide-global_unique_id] .brikpanel-pl-col-global_unique_id,
+.brikpanel-pl-table[data-hide-product_code] .brikpanel-pl-col-product_code,
 .brikpanel-pl-table[data-hide-price] .brikpanel-pl-col-price,
 .brikpanel-pl-table[data-hide-cogs] .brikpanel-pl-col-cogs,
 .brikpanel-pl-table[data-hide-stock] .brikpanel-pl-col-stock,

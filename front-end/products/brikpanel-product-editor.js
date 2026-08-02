@@ -15,6 +15,7 @@
         bindEvents();
         initStatusDropdown();
         initCatalogVisibility();
+        initPubDate();
         initHeaderOverflow();
         initFeaturedStar();
         initToggles();
@@ -305,7 +306,7 @@
        per-dropdown outside-click handlers don't fire for sibling triggers;
        this keeps only one header menu open at a time. */
     function closeHeaderPopovers(except) {
-        $('.brikpanel-pe-status-wrap, #bpe-catvis-wrap, #bpe-header-overflow').not(except).each(function () {
+        $('.brikpanel-pe-status-wrap, #bpe-catvis-wrap, #bpe-pubdate-wrap, #bpe-header-overflow').not(except).each(function () {
             var $w = $(this);
             if ($w.hasClass('is-open')) {
                 $w.removeClass('is-open').find('[aria-expanded="true"]').attr('aria-expanded', 'false');
@@ -323,6 +324,89 @@
                'T' + p(d.getHours()) + ':' + p(d.getMinutes());
     }
 
+    /* ----- Publish-date control (header) -----------------------------------
+       A compact popover showing the product's publish date (WordPress
+       post_date). Editable for any status: backdate/correct a live product, or
+       pick a future go-live moment together with the "Scheduled" status. Shares
+       the single #bpe-schedule-date input with the scheduling flow. */
+
+    /* Format the datetime-local value for the trigger label. Empty → the
+       localized "Immediately". Uses the browser locale for the date/time so it
+       reads naturally; the word "Immediately" comes from the server i18n bag. */
+    function formatPubDateLabel(val) {
+        var immediately = (PE.i18n && PE.i18n.immediately) || 'Immediately';
+        if (!val) return immediately;
+        var d = new Date(val);
+        if (isNaN(d.getTime())) return immediately;
+        try {
+            return d.toLocaleString(undefined, {
+                year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+        } catch (e) {
+            return val.replace('T', ' ');
+        }
+    }
+
+    function syncPubDateLabel() {
+        var $lbl = $('#bpe-pubdate-label');
+        if (!$lbl.length) return;
+        $lbl.text(formatPubDateLabel($('#bpe-schedule-date').val()));
+    }
+
+    function openPubDate() {
+        var $wrap = $('#bpe-pubdate-wrap');
+        if (!$wrap.length || $wrap.hasClass('is-open')) return;
+        closeHeaderPopovers($wrap);
+        $wrap.addClass('is-open');
+        $('#bpe-pubdate-trigger').attr('aria-expanded', 'true');
+        // Defer focus so the popover has painted before the picker opens.
+        window.setTimeout(function () { $('#bpe-schedule-date').focus(); }, 0);
+    }
+
+    function closePubDate() {
+        var $wrap = $('#bpe-pubdate-wrap');
+        if (!$wrap.length) return;
+        $wrap.removeClass('is-open');
+        $('#bpe-pubdate-trigger').attr('aria-expanded', 'false');
+    }
+
+    function initPubDate() {
+        var $wrap = $('#bpe-pubdate-wrap');
+        if (!$wrap.length) return;
+        syncPubDateLabel();
+
+        $('#bpe-pubdate-trigger').on('click', function (e) {
+            e.stopPropagation();
+            $wrap.hasClass('is-open') ? closePubDate() : openPubDate();
+        });
+
+        // Keep the trigger label in step with the picker, and flag the form dirty
+        // so the change is committed on the next Update/Publish (or auto-save).
+        $('#bpe-schedule-date').on('change input', function () {
+            syncPubDateLabel();
+            updatePublishLabel($('#bpe-status').val());
+            state.dirty = true;
+        });
+
+        $(document).on('click', function (e) {
+            if (!$(e.target).closest('#bpe-pubdate-wrap').length) closePubDate();
+        });
+        $(document).on('keydown', function (e) {
+            if (e.key === 'Escape' && $wrap.hasClass('is-open')) closePubDate();
+        });
+    }
+
+    /* True when the picker holds a moment in the future — used to mirror WordPress
+       core, which relabels the primary button to "Schedule" once a future publish
+       date is set even on an otherwise "Published" product. */
+    function pubDateIsFuture() {
+        var val = $('#bpe-schedule-date').val();
+        if (!val) return false;
+        var d = new Date(val);
+        return !isNaN(d.getTime()) && d.getTime() > Date.now() + 30000;
+    }
+
     /* Swap the primary button label to "Schedule" while the status is future,
        restoring the original label (Publish/Update/Save) for any other status.
        The server-rendered label is captured once as the baseline. */
@@ -332,7 +416,13 @@
         if (typeof $pub.data('origLabel') === 'undefined') {
             $pub.data('origLabel', $.trim($pub.text()));
         }
-        if (status === 'future') {
+        // Show "Schedule" for the explicit Scheduled status, and also when a live
+        // status carries a future publish date and scheduling is enabled — the
+        // server promotes that to a scheduled publish, so the button should say so.
+        var schedulingOn = !PE || PE.scheduling_enabled !== '0';
+        var willSchedule = status === 'future'
+            || (schedulingOn && (status === 'publish') && pubDateIsFuture());
+        if (willSchedule) {
             $pub.text(PE.i18n.schedule || 'Schedule');
         } else {
             $pub.text($pub.data('origLabel'));
@@ -391,19 +481,14 @@
             } else {
                 $pwWrap.removeClass('is-visible');
             }
-            // Show/hide the scheduled publish date/time picker. When switching to
-            // "Scheduled" with an empty field, seed a sensible near-future default
-            // (tomorrow, same time) so the merchant isn't left with a blank input.
-            var $schedWrap = $('#bpe-schedule-wrap');
-            if ($schedWrap.length) {
-                if (v === 'future') {
-                    var $date = $('#bpe-schedule-date');
-                    if (!$date.val()) { $date.val(defaultScheduleValue()); }
-                    $schedWrap.addClass('is-visible');
-                    $date.focus();
-                } else {
-                    $schedWrap.removeClass('is-visible');
-                }
+            // Switching to "Scheduled" needs a future go-live moment. The publish
+            // date lives in its own always-visible control now, so seed a sensible
+            // near-future default (tomorrow, same time) when it's empty, then open
+            // that control so the merchant lands right on the picker.
+            if (v === 'future') {
+                var $date = $('#bpe-schedule-date');
+                if (!$date.val()) { $date.val(defaultScheduleValue()); syncPubDateLabel(); }
+                openPubDate();
             }
             updatePublishLabel(v);
             close();
@@ -769,9 +854,18 @@
         });
     }
 
-    function addImage(id, url) {
+    // Whether the Blocksy per-image video editor is available on this site.
+    var blocksyVideo = String(PE.blocksy_video) === '1';
+    // Attachment ids whose video was edited this session; only these are sent.
+    var videoDirty = {};
+
+    function defaultVideo() {
+        return { has: false, source: 'youtube', upload: 0, upload_url: '', upload_name: '', youtube: '', vimeo: '', event: 'click', loop: false, player: false };
+    }
+
+    function addImage(id, url, video) {
         if (state.images.some(function (i) { return i.id === id; })) return;
-        state.images.push({ id: id, url: url });
+        state.images.push({ id: id, url: url, video: (video && typeof video === 'object') ? video : defaultVideo() });
         renderGallery();
     }
 
@@ -789,6 +883,16 @@
             var $rm = $('<button type="button" class="brikpanel-pe-gallery-item-remove">&times;</button>');
             $rm.on('click', function (e) { e.stopPropagation(); removeImage(img.id); });
             $item.append($rm);
+            if (blocksyVideo) {
+                if (!img.video || typeof img.video !== 'object') img.video = defaultVideo();
+                var hasVid = !!img.video.has;
+                var $vb = $('<button type="button" class="brikpanel-pe-gallery-item-video' + (hasVid ? ' is-active' : '') + '">' +
+                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>');
+                $vb.attr('title', hasVid ? (PE.i18n.video_badge || 'Has video') : (PE.i18n.video_edit || 'Video'));
+                $vb.attr('aria-label', hasVid ? (PE.i18n.video_badge || 'Has video') : (PE.i18n.video_edit || 'Video'));
+                $vb.on('click', function (e) { e.stopPropagation(); openVideoDialog(img.id); });
+                $item.append($vb);
+            }
             $g.append($item);
         });
         $g.sortable('refresh');
@@ -805,6 +909,175 @@
         renderGallery();
     }
 
+    // ---- Blocksy per-image video dialog -----------------------------------
+    var $videoDlg = null;
+    var videoDlgState = { id: 0, video: null };
+    var videoMediaFrame = null;
+
+    function buildVideoDialog() {
+        if ($videoDlg) return $videoDlg;
+        var t = PE.i18n;
+        var html = '' +
+            '<div class="brikpanel-pe-linkdlg brikpanel-pe-viddlg" hidden>' +
+                '<div class="brikpanel-pe-linkdlg-backdrop"></div>' +
+                '<div class="brikpanel-pe-linkdlg-box">' +
+                    '<h3 class="brikpanel-pe-linkdlg-title">' + esc(t.video_title || 'Product video') + '</h3>' +
+                    '<p class="brikpanel-pe-viddlg-help">' + esc(t.video_help || '') + '</p>' +
+                    '<label class="brikpanel-pe-linkdlg-lbl">' + esc(t.video_source || 'Video source') + '</label>' +
+                    '<div class="brikpanel-pe-imgdlg-align brikpanel-pe-viddlg-source" style="grid-template-columns:repeat(3,1fr)">' +
+                        '<button type="button" data-source="youtube">' + esc(t.video_youtube || 'YouTube') + '</button>' +
+                        '<button type="button" data-source="vimeo">' + esc(t.video_vimeo || 'Vimeo') + '</button>' +
+                        '<button type="button" data-source="upload">' + esc(t.video_upload || 'Self-hosted') + '</button>' +
+                    '</div>' +
+                    '<div class="brikpanel-pe-viddlg-field" data-for="youtube" style="margin-top:.875rem">' +
+                        '<label class="brikpanel-pe-linkdlg-lbl">' + esc(t.video_youtube_url || 'YouTube URL') + '</label>' +
+                        '<input type="url" class="brikpanel-pe-linkdlg-url brikpanel-pe-viddlg-youtube" placeholder="' + esc(t.video_youtube_ph || '') + '" spellcheck="false">' +
+                    '</div>' +
+                    '<div class="brikpanel-pe-viddlg-field" data-for="vimeo" style="margin-top:.875rem" hidden>' +
+                        '<label class="brikpanel-pe-linkdlg-lbl">' + esc(t.video_vimeo_url || 'Vimeo URL') + '</label>' +
+                        '<input type="url" class="brikpanel-pe-linkdlg-url brikpanel-pe-viddlg-vimeo" placeholder="' + esc(t.video_vimeo_ph || '') + '" spellcheck="false">' +
+                    '</div>' +
+                    '<div class="brikpanel-pe-viddlg-field" data-for="upload" style="margin-top:.875rem" hidden>' +
+                        '<div class="brikpanel-pe-viddlg-filerow">' +
+                            '<span class="brikpanel-pe-viddlg-filename">' + esc(t.video_no_file || 'No video selected') + '</span>' +
+                            '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-choose">' + esc(t.video_choose_file || 'Choose video') + '</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<label class="brikpanel-pe-linkdlg-lbl" style="margin-top:.875rem">' + esc(t.video_playback || 'Playback') + '</label>' +
+                    '<div class="brikpanel-pe-imgdlg-align brikpanel-pe-viddlg-event" style="grid-template-columns:repeat(3,1fr)">' +
+                        '<button type="button" data-event="click">' + esc(t.video_on_click || 'Play on click') + '</button>' +
+                        '<button type="button" data-event="autoplay">' + esc(t.video_autoplay || 'Autoplay') + '</button>' +
+                        '<button type="button" data-event="hover">' + esc(t.video_on_hover || 'Play on hover') + '</button>' +
+                    '</div>' +
+                    '<div class="brikpanel-pe-toggle-row" style="margin-top:.875rem">' +
+                        '<span>' + esc(t.video_loop || 'Loop the video') + '</span>' +
+                        '<label class="brikpanel-pe-switch"><input type="checkbox" class="brikpanel-pe-viddlg-loop"><span class="brikpanel-pe-slider"></span></label>' +
+                    '</div>' +
+                    '<div class="brikpanel-pe-toggle-row">' +
+                        '<span>' + esc(t.video_simple_player || 'Hide player controls') + '</span>' +
+                        '<label class="brikpanel-pe-switch"><input type="checkbox" class="brikpanel-pe-viddlg-player"><span class="brikpanel-pe-slider"></span></label>' +
+                    '</div>' +
+                    '<div class="brikpanel-pe-linkdlg-actions brikpanel-pe-viddlg-actions">' +
+                        '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-remove" style="margin-right:auto">' + esc(t.video_remove || 'Remove video') + '</button>' +
+                        '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-cancel">' + esc(t.video_cancel || 'Cancel') + '</button>' +
+                        '<button type="button" class="brikpanel-pe-btn primary small brikpanel-pe-viddlg-ok">' + esc(t.video_save || 'Save video') + '</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        $videoDlg = $(html).appendTo('body');
+
+        function close() { $videoDlg.attr('hidden', true); }
+
+        function syncSource() {
+            var src = videoDlgState.video.source || 'youtube';
+            $videoDlg.find('.brikpanel-pe-viddlg-source button').each(function () {
+                $(this).toggleClass('is-active', $(this).data('source') === src);
+            });
+            $videoDlg.find('.brikpanel-pe-viddlg-field').each(function () {
+                $(this).prop('hidden', $(this).data('for') !== src);
+            });
+        }
+        function syncEvent() {
+            var ev = videoDlgState.video.event || 'click';
+            $videoDlg.find('.brikpanel-pe-viddlg-event button').each(function () {
+                $(this).toggleClass('is-active', $(this).data('event') === ev);
+            });
+        }
+        function syncFile() {
+            var v = videoDlgState.video;
+            var name = v.upload_name || v.upload_url || '';
+            $videoDlg.find('.brikpanel-pe-viddlg-filename').text(name || (PE.i18n.video_no_file || 'No video selected'));
+            $videoDlg.find('.brikpanel-pe-viddlg-choose').text(name ? (PE.i18n.video_replace_file || 'Replace video') : (PE.i18n.video_choose_file || 'Choose video'));
+        }
+        function syncAll() {
+            var v = videoDlgState.video;
+            $videoDlg.find('.brikpanel-pe-viddlg-youtube').val(v.youtube || '');
+            $videoDlg.find('.brikpanel-pe-viddlg-vimeo').val(v.vimeo || '');
+            $videoDlg.find('.brikpanel-pe-viddlg-loop').prop('checked', !!v.loop);
+            $videoDlg.find('.brikpanel-pe-viddlg-player').prop('checked', !!v.player);
+            syncSource(); syncEvent(); syncFile();
+        }
+        $videoDlg.data('sync', syncAll);
+
+        $videoDlg.find('.brikpanel-pe-viddlg-cancel, .brikpanel-pe-linkdlg-backdrop').on('click', close);
+        $videoDlg.on('keydown', function (e) { if (e.key === 'Escape') close(); });
+
+        $videoDlg.find('.brikpanel-pe-viddlg-source').on('click', 'button', function () {
+            videoDlgState.video.source = $(this).data('source'); syncSource();
+        });
+        $videoDlg.find('.brikpanel-pe-viddlg-event').on('click', 'button', function () {
+            videoDlgState.video.event = $(this).data('event'); syncEvent();
+        });
+
+        $videoDlg.find('.brikpanel-pe-viddlg-choose').on('click', function () {
+            if (typeof wp === 'undefined' || !wp.media) return;
+            if (!videoMediaFrame) {
+                videoMediaFrame = wp.media({
+                    title: PE.i18n.video_choose_file || 'Choose video',
+                    button: { text: PE.i18n.video_select || 'Use this video' },
+                    library: { type: 'video' },
+                    multiple: false
+                });
+                videoMediaFrame.on('select', function () {
+                    var a = videoMediaFrame.state().get('selection').first();
+                    if (!a) return;
+                    a = a.toJSON();
+                    videoDlgState.video.upload = a.id;
+                    videoDlgState.video.upload_url = a.url || '';
+                    videoDlgState.video.upload_name = a.title || a.filename || '';
+                    syncFile();
+                });
+            }
+            videoMediaFrame.open();
+        });
+
+        $videoDlg.find('.brikpanel-pe-viddlg-remove').on('click', function () {
+            var img = state.images.find(function (i) { return i.id === videoDlgState.id; });
+            if (img) { img.video = defaultVideo(); videoDirty[videoDlgState.id] = true; renderGallery(); }
+            close();
+            showToast(PE.i18n.video_removed || 'Video removed from image', 'success');
+        });
+
+        $videoDlg.find('.brikpanel-pe-viddlg-ok').on('click', function () {
+            var v = videoDlgState.video;
+            v.youtube = ($videoDlg.find('.brikpanel-pe-viddlg-youtube').val() || '').trim();
+            v.vimeo = ($videoDlg.find('.brikpanel-pe-viddlg-vimeo').val() || '').trim();
+            v.loop = $videoDlg.find('.brikpanel-pe-viddlg-loop').is(':checked');
+            v.player = $videoDlg.find('.brikpanel-pe-viddlg-player').is(':checked');
+
+            var src = v.source || 'youtube';
+            if (src === 'youtube') {
+                if (!v.youtube) { showToast(PE.i18n.video_url_required || 'Please enter a video URL first.', 'error'); return; }
+                v.has = true;
+            } else if (src === 'vimeo') {
+                if (!v.vimeo) { showToast(PE.i18n.video_url_required || 'Please enter a video URL first.', 'error'); return; }
+                v.has = true;
+            } else if (src === 'upload') {
+                if (!v.upload && !v.upload_url) { showToast(PE.i18n.video_file_required || 'Please choose a video file first.', 'error'); return; }
+                v.has = true;
+            }
+
+            var img = state.images.find(function (i) { return i.id === videoDlgState.id; });
+            if (img) { img.video = v; videoDirty[videoDlgState.id] = true; renderGallery(); }
+            close();
+            showToast(PE.i18n.video_added || 'Video added to image', 'success');
+        });
+
+        return $videoDlg;
+    }
+
+    function openVideoDialog(id) {
+        var img = state.images.find(function (i) { return i.id === id; });
+        if (!img) return;
+        if (!img.video || typeof img.video !== 'object') img.video = defaultVideo();
+        var $dlg = buildVideoDialog();
+        // Work on a copy so Cancel discards changes.
+        videoDlgState.id = id;
+        videoDlgState.video = $.extend({}, defaultVideo(), img.video);
+        $dlg.data('sync')();
+        $dlg.removeAttr('hidden');
+    }
+
     function initPriceInputs() {
         $(document).on('input', '[data-price]', function () {
             var sep = PE.decimal_sep || ',';
@@ -814,23 +1087,160 @@
 
     function initCharCounter() { /* char counter removed — short description now supports HTML with no length limit */ }
 
+    /* Tags that already carry their own block box — an autop pass must leave
+       them alone instead of nesting them inside a paragraph. */
+    var EDITOR_LEADING_BLOCK = /^\s*<(?:p|div|h[1-6]|ul|ol|li|dl|dt|dd|table|thead|tbody|tfoot|tr|td|th|blockquote|pre|hr|figure|figcaption|section|article|aside|header|footer|address|form|fieldset|iframe|video|audio|noscript)\b/i;
+
+    /* Same set as a selector, for asking "does this wrapper hold real blocks?" */
+    var EDITOR_BLOCK_SELECTOR = 'p,div,h1,h2,h3,h4,h5,h6,ul,ol,dl,table,blockquote,pre,hr,figure,section,article,aside,header,footer,address,form,fieldset';
+
+    /* Turn blank-line paragraphs into real <p> blocks.
+
+       Descriptions written outside BrikPanel (classic editor, importers, CLI)
+       store paragraphs as blank lines and rely on wpautop() at render time. A
+       contenteditable has no render step, so those newlines collapse into one
+       run of text. The server already normalises what it prints on page load;
+       this is the same pass for HTML typed into the source view, so switching
+       back to the visual editor keeps the paragraphs the author just wrote. */
+    function editorAutop(html) {
+        html = html == null ? '' : String(html);
+        if (html.indexOf('\n') === -1) return html;
+        // Block-editor markup states its own paragraphs — wrapping the
+        // `<!-- wp:… -->` delimiters would strand empty ones on the storefront.
+        if (html.indexOf('<!-- wp:') !== -1) return html;
+
+        var parts = html.split(/\n[ \t]*\n+/);
+        var out = '';
+        for (var i = 0; i < parts.length; i++) {
+            var block = parts[i].replace(/^\s+|\s+$/g, '');
+            if (block === '') continue;
+            out += EDITOR_LEADING_BLOCK.test(block)
+                ? block
+                : '<p>' + block.replace(/\n/g, '<br>') + '</p>';
+        }
+        return out;
+    }
+
+    /* Normalise what the browser leaves behind in a contenteditable.
+
+       Chrome and Firefox wrap each new line in a bare <div>, which renders with
+       no paragraph spacing on the storefront because wpautop() treats a <div>
+       as an already-formed block. Rewriting those attribute-less wrappers as
+       <p> (and giving a leading loose text run its own paragraph) means what is
+       saved matches what the editor shows. Divs the author wrote themselves in
+       the source view carry attributes and are left untouched. */
+    function normalizeEditorOutput(html) {
+        html = html == null ? '' : String(html);
+        if (html === '') return '';
+
+        var wrap = document.createElement('div');
+        wrap.innerHTML = html;
+
+        // Deepest first (reverse document order), so a wrapper is judged after
+        // its own children have already been rewritten.
+        var divs = Array.prototype.slice.call(wrap.getElementsByTagName('div'));
+        for (var i = divs.length - 1; i >= 0; i--) {
+            var div = divs[i];
+            if (!div.parentNode) continue;          // already lifted out
+            if (div.attributes.length) continue;    // author-written wrapper — keep
+            if (div.querySelector(EDITOR_BLOCK_SELECTOR)) {
+                // Grouping wrapper around real blocks. A <p> may not contain a
+                // block, and the browser would split the illegal nesting back
+                // apart into stray empty paragraphs — so lift the children out
+                // instead of wrapping them.
+                while (div.firstChild) div.parentNode.insertBefore(div.firstChild, div);
+                div.parentNode.removeChild(div);
+                continue;
+            }
+            var p = document.createElement('p');
+            while (div.firstChild) p.appendChild(div.firstChild);
+            if (!p.firstChild) p.appendChild(document.createElement('br'));
+            div.parentNode.replaceChild(p, div);
+        }
+
+        // A leading run of loose text/inline nodes is a paragraph too — the
+        // browser only wraps the lines it creates, never the first one.
+        var lead = [];
+        for (var n = wrap.firstChild; n; n = n.nextSibling) {
+            // Stop at a block, and at a block-editor delimiter: those comments
+            // must stay exactly where the block editor put them.
+            if (n.nodeType === 8) break;
+            if (n.nodeType === 1 && EDITOR_LEADING_BLOCK.test('<' + n.tagName)) break;
+            lead.push(n);
+        }
+        if (lead.length && lead.length < wrap.childNodes.length) {
+            var lp = document.createElement('p');
+            wrap.insertBefore(lp, lead[0]);
+            for (var k = 0; k < lead.length; k++) lp.appendChild(lead[k]);
+            if (lp.textContent.trim() === '' && !lp.querySelector('img, br, hr')) {
+                // Nothing but whitespace — unwrap rather than leave a stray
+                // paragraph, and put the original nodes back where they were.
+                while (lp.firstChild) wrap.insertBefore(lp.firstChild, lp);
+                wrap.removeChild(lp);
+            }
+        }
+
+        // A paragraph holding nothing but a line break is the blank line the
+        // author deliberately typed. wpautop() drops the bare <br> and then
+        // discards the now-empty paragraph, so that blank line would disappear
+        // on the storefront. A non-breaking space is what the classic editor
+        // stores for the same thing and it survives the render untouched.
+        var ps = wrap.getElementsByTagName('p');
+        for (var q = 0; q < ps.length; q++) {
+            if (ps[q].textContent.trim() === '' && !ps[q].querySelector('img, hr, iframe')) {
+                ps[q].innerHTML = '&nbsp;';
+            }
+        }
+
+        return wrap.innerHTML;
+    }
+
+    /* The description exactly as it is stored, per editor id, captured before
+       anything can touch it. A description the merchant never edited is saved
+       back from here unchanged — otherwise simply opening a product (the
+       background auto-save fires on its own) would rewrite an older plain-text
+       description into paragraph markup and leave a revision nobody asked for.
+       Once the field IS edited we save the editor's own clean HTML. */
+    var editorPristine = {};
+    var editorTouched  = {};
+
+    function captureEditorPristine() {
+        $('.brikpanel-pe-editor').each(function () {
+            if (!this.id) return;
+            var $src = $(this).closest('[data-editor-field]').find('.brikpanel-pe-editor-source');
+            editorPristine[this.id] = $src.length ? $src.val() : this.innerHTML;
+        });
+    }
+
+    function markEditorTouched($field) {
+        $field.find('.brikpanel-pe-editor').each(function () {
+            if (this.id) editorTouched[this.id] = true;
+        });
+    }
+
     /* Keep editor contenteditable in sync with its HTML-source textarea. */
     function syncEditorFromSource($field) {
         var $editor = $field.find('.brikpanel-pe-editor');
         var $source = $field.find('.brikpanel-pe-editor-source');
         if ($source.is(':visible') || !$source.prop('hidden')) {
-            $editor.html($source.val());
+            $editor.html(editorAutop($source.val()));
         }
     }
 
     function getEditorHtml(id) {
+        // Untouched — hand back what was stored, so a save never rewrites a
+        // description the merchant did not edit. Checked before the source-mode
+        // branch: opening the HTML view to read the markup is not an edit.
+        if (!editorTouched[id] && Object.prototype.hasOwnProperty.call(editorPristine, id)) {
+            return editorPristine[id];
+        }
         var $field = $('#' + id).closest('[data-editor-field]');
         var $source = $field.find('.brikpanel-pe-editor-source');
         if (!$source.prop('hidden')) {
             // HTML source mode is active — trust the textarea value.
             return $source.val();
         }
-        return $('#' + id).html();
+        return normalizeEditorOutput($('#' + id).html());
     }
 
     function initCategorySearch() {
@@ -1203,6 +1613,7 @@
         var $editor = $field.find('.brikpanel-pe-editor');
         var $source = $field.find('.brikpanel-pe-editor-source');
         if (!$source.prop('hidden')) return; // visual mode only
+        markEditorTouched($field);
         $editor.focus();
         if (cmd === 'formatBlock') {
             document.execCommand('formatBlock', false, '<' + value + '>');
@@ -1320,6 +1731,7 @@
                 }
             }
             state.dirty = true;
+            markEditorTouched($field);
             refreshEditorToolbar($field);
         });
     }
@@ -1485,6 +1897,7 @@
                 insertImageIntoEditor($field, editorBuildImg(imageDlgState.src, alt, align, width, lightbox));
             }
             state.dirty = true;
+            markEditorTouched($field);
             refreshEditorToolbar($field);
         });
     }
@@ -1562,6 +1975,21 @@
     function initEditor() {
         buildLinkDialog();
         buildImageDialog();
+        captureEditorPristine();
+
+        // Browsers default to <div> for the block Enter creates, which the
+        // storefront renders with no paragraph spacing (wpautop() leaves an
+        // existing block alone). Ask for <p> instead so a new paragraph in the
+        // editor is a real paragraph in the shop.
+        try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
+
+        // Any real edit — typing, a toolbar command, a paste, an inserted image
+        // or link — routes through an `input` event on the editable or on its
+        // HTML source textarea, so this is the one place that has to mark the
+        // field as genuinely changed.
+        $(document).on('input', '.brikpanel-pe-editor, .brikpanel-pe-editor-source', function () {
+            markEditorTouched($(this).closest('[data-editor-field]'));
+        });
 
         // Keep the caret inside the editable when a toolbar control is pressed
         // (mousedown would otherwise blur the selection first). This is what
@@ -1615,7 +2043,7 @@
                 var $controls = $field.find('.brikpanel-pe-editor-toolbar button').not('.brikpanel-pe-fmt-item');
                 if (isSource) {
                     // Switch back to visual
-                    $editor.html($source.val());
+                    $editor.html(editorAutop($source.val()));
                     $source.prop('hidden', true);
                     $editor.prop('hidden', false);
                     $btn.removeClass('is-active');
@@ -1624,7 +2052,7 @@
                     refreshEditorToolbar($field);
                 } else {
                     // Switch to HTML source
-                    $source.val($editor.html());
+                    $source.val(normalizeEditorOutput($editor.html()));
                     $editor.prop('hidden', true);
                     $source.prop('hidden', false);
                     $btn.addClass('is-active');
@@ -1686,6 +2114,7 @@
                 sel2.addRange(rng);
             }
             state.dirty = true;
+            markEditorTouched($(this).closest('[data-editor-field]'));
             refreshEditorToolbar($(this).closest('[data-editor-field]'));
         });
 
@@ -2084,6 +2513,68 @@
         return out;
     }
 
+    /* Axis key -> attribute label ("pa_renk" -> "Color"), used to name the
+       variation rows. Live attribute rows win because they reflect edits made
+       since the last save; the hydrated snapshot backs them up for products
+       whose attribute section is hidden by the section picker. */
+    function variationAxisLabels() {
+        var map = {};
+        function add(list) {
+            (list || []).forEach(function (a) {
+                if (!a || !a.name) return;
+                var key = attrAxisKey({ name: a.name, taxonomy: a.taxonomy || '' });
+                if (!key) return;
+                if (!map[key]) map[key] = a.name;
+                // Second, looser index. WordPress's sanitize_title drops
+                // characters such as & and $ where slugify() turns them into a
+                // separator, so a custom attribute named "A&B" is stored on the
+                // variation as "ab" while its axis key here is "a-b". Stripping
+                // the separators makes both spellings land on the same label.
+                var loose = key.replace(/-/g, '');
+                if (loose && !map[loose]) map[loose] = a.name;
+            });
+        }
+        add(collectVariationAttributes());
+        add(productData.attributes);
+        return map;
+    }
+
+    /* Display name of a variation row — its attribute values joined in axis
+       order ("S - Black"). This is presentation only and is never stored, so it
+       has to be derived from the attributes EVERY time a variation list is
+       taken on: the list the server hands back after a save carries the saved
+       fields but no name, so adopting it verbatim used to blank out the whole
+       Variation column until the page was reloaded.
+       An empty value is WooCommerce's "matches any value of this attribute" —
+       render it as "Any Color" rather than as a bare separator. */
+    function varDisplayName(v, labels) {
+        if (!v || !v.attributes) return '';
+        var parts = [];
+        Object.keys(v.attributes).forEach(function (k) {
+            var raw = v.attributes[k];
+            var val = (raw === null || raw === undefined) ? '' : String(raw);
+            if (val !== '') { parts.push(val); return; }
+            // Only an "Any" slot needs the attribute labels, and building them
+            // walks the attribute rows — so build them at most once per call and
+            // let a caller naming a whole table hand the same map to every row.
+            if (!labels) labels = variationAxisLabels();
+            var key = String(k).toLowerCase();
+            var label = labels[key] || labels[key.replace(/-/g, '')] || key.replace(/^pa_/, '');
+            // Function replacement, not a string: a label containing $& or $1
+            // would otherwise be read as a replacement pattern.
+            parts.push((PE.i18n.variation_any_value || 'Any %s').replace('%s', function () { return label; }));
+        });
+        return parts.join(' - ');
+    }
+
+    /* Re-derive the display name of every row in a variation list, in place. */
+    function applyVarDisplayNames(list) {
+        if (!Array.isArray(list)) return list;
+        var labels = variationAxisLabels();
+        list.forEach(function (v) { if (v) v.name = varDisplayName(v, labels); });
+        return list;
+    }
+
     /* Non-variation specs = every row when Simple; the not-used-for-variations
        rows when Variable. Saved as the product's descriptive attributes.
        `treatAsVariable` lets the save path pass the *effective* mode: when the
@@ -2156,9 +2647,9 @@
             return;
         }
         state.variations = combos.map(function (combo) {
-            var ex = findExVar(combo), np = [], sp = [baseSKU];
-            Object.keys(combo).forEach(function (k) { np.push(combo[k]); sp.push(slugify(combo[k])); });
-            return { id: ex ? ex.id : 0, attributes: combo, name: np.join(' - '),
+            var ex = findExVar(combo), sp = [baseSKU];
+            Object.keys(combo).forEach(function (k) { sp.push(slugify(combo[k])); });
+            return { id: ex ? ex.id : 0, attributes: combo, name: varDisplayName({ attributes: combo }),
                 regular_price: ex ? ex.regular_price : '', sale_price: ex ? ex.sale_price : '',
                 stock_quantity: ex ? (ex.stock_quantity !== null ? ex.stock_quantity : '') : '',
                 stock_status: ex ? (ex.stock_status || 'instock') : 'instock',
@@ -2290,7 +2781,11 @@
         // live table/state mid-edit. The fresh productData is enough for the
         // next manual render to be correct.
         if (silent) return;
-        state.variations = savedVars.map(function (v) { return $.extend(true, {}, v); });
+        // The saved list has no display name — derive it, or the Variation
+        // column renders blank for every row after a save.
+        state.variations = applyVarDisplayNames(savedVars.map(function (v) {
+            return $.extend(true, {}, v);
+        }));
         // The freshly-saved table matches the current attribute rows, so reset
         // the drift baseline and clear any stale hint.
         state.varSignature = variationAttrSignature();
@@ -2754,9 +3249,16 @@
         var sep = PE.decimal_sep || ',';
         var data = { action: 'brikpanel_save_product', security: PE.nonce,
             product_id: $('#bpe-product-id').val() || 0, status: status, name: name,
-            short_description: getEditorHtml('bpe-short-desc'), description: getEditorHtml('bpe-description'),
             sku: $('#bpe-sku').val(),
             is_variable: isVar ? 1 : 0 };
+
+        // Both description fields are opt-in sections, so send a key only when
+        // the editor is actually on the page. An always-present key meant a
+        // store that had switched the section off wiped the stored description
+        // of every product it saved.
+        if ($('#bpe-short-desc').length) data.short_description = getEditorHtml('bpe-short-desc');
+        if ($('#bpe-description').length) data.description      = getEditorHtml('bpe-description');
+
         // Only send the GTIN when the field is actually rendered (the section
         // is opt-in). Omitting the key lets the server leave any existing
         // value untouched instead of wiping it.
@@ -2806,11 +3308,15 @@
         // Password protected
         data.post_password = status === 'password' ? ($('#bpe-post-password').val() || '') : '';
 
-        // Scheduled publishing — send the chosen datetime-local value only when
-        // the "Scheduled" status is selected. The server treats an empty or past
-        // date as "publish now". Only relevant when the schedule UI is rendered.
-        if (status === 'future') {
-            data.publish_date = $('#bpe-schedule-date').val() || '';
+        // Publish date — always send the chosen datetime-local value. It is the
+        // product's WordPress post_date: for "Scheduled" it's the future go-live
+        // moment; for any live status it backdates/corrects the publish date. An
+        // empty value means "publish now" (new products default to the moment of
+        // saving). The server clamps/promotes future dates per the scheduling
+        // setting, so the merchant can never leave a product silently stuck.
+        var $pubDateInput = $('#bpe-schedule-date');
+        if ($pubDateInput.length) {
+            data.publish_date = $pubDateInput.val() || '';
         }
 
         // Catalog visibility
@@ -2912,6 +3418,16 @@
 
         if (state.images.length) { data.image_id = state.images[0].id; data.gallery_ids = state.images.slice(1).map(function (i) { return i.id; }).join(','); }
         else { data.image_id = 0; data.gallery_ids = ''; }
+
+        // Blocksy per-image videos: only send the images the merchant edited,
+        // and only those still present in the gallery.
+        if (blocksyVideo) {
+            var vidMap = {};
+            state.images.forEach(function (i) {
+                if (videoDirty[i.id] && i.video && typeof i.video === 'object') { vidMap[i.id] = i.video; }
+            });
+            if (Object.keys(vidMap).length) { data.blocksy_videos = JSON.stringify(vidMap); }
+        }
 
         var cats = []; $('input[name="category_ids[]"]:checked').each(function () { cats.push($(this).val()); });
         data.category_ids = cats.join(',');
@@ -3257,9 +3773,17 @@
                     }
                 }
             } else showToast(r.data.message || PE.i18n.error || 'An error occurred', 'error');
-        }).fail(function () {
-            state.saving = false; $pub.prop('disabled', false).text(op); $draft.prop('disabled', false).text(od);
-            showToast(PE.i18n.error || 'An error occurred', 'error');
+        }).fail(function (xhr) {
+            // Only $pub/op exist in this scope; the old $draft/od references were
+            // never declared and threw a ReferenceError here, which swallowed the
+            // real error toast whenever the save request failed (e.g. a 500 raised
+            // by a third-party plugin hooking into the product save). Restore the
+            // publish button and surface the actual server error instead.
+            state.saving = false; $pub.prop('disabled', false).text(op);
+            var msg = (xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message)
+                ? xhr.responseJSON.data.message
+                : (PE.i18n.error || 'An error occurred');
+            showToast(msg, 'error');
         });
     }
 
@@ -3355,7 +3879,7 @@
     function loadExistingData() {
         if (!productData || !productData.id) return;
         if (productData.gallery && productData.gallery.length) {
-            productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url }); });
+            productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url, video: (i.video && typeof i.video === 'object') ? i.video : defaultVideo() }); });
             renderGallery();
         }
         if (productData.downloads && productData.downloads.length) {
@@ -3395,11 +3919,7 @@
                     state.defaultAttributes[attrAxisKey({ name: a.name, taxonomy: a.taxonomy })] = a['default'];
                 }
             });
-            state.variations = productData.variations || [];
-            state.variations.forEach(function (v) {
-                var p = []; Object.keys(v.attributes).forEach(function (k) { p.push(v.attributes[k]); });
-                v.name = p.join(' - ');
-            });
+            state.variations = applyVarDisplayNames(productData.variations || []);
             if (state.variations.length) { renderVarTable(); }
         }
         // Reflect the loaded product type: the toggle is pre-checked by PHP for

@@ -65,7 +65,7 @@ function brikpanel_gs_register_module_setting( $fields ) {
 			'name' => __( 'Google Sheets integration', 'brikpanel' ),
 			'type' => 'title',
 			'id'   => 'brk_google_sheets_title',
-			'desc' => __( 'Sync your orders, customers, and analytics straight to Google Sheets. The integration is currently in beta — turn it off below to hide the admin page and stop all background sync jobs. Your connection and per-flow settings stay saved, so turning it back on restores everything.', 'brikpanel' ),
+			'desc' => __( 'Sync your orders, customers, and analytics straight to Google Sheets. Turn it off below to hide the admin page and stop all background sync jobs. Your connection and per-flow settings stay saved, so turning it back on restores everything.', 'brikpanel' ),
 		],
 		[
 			'name'    => __( 'Enable Google Sheets integration', 'brikpanel' ),
@@ -99,7 +99,7 @@ function brikpanel_gs_register_module_setting( $fields ) {
 /**
  * Surface Google Sheets on the shared "Integrations" sub-nav section rather
  * than the catch-all General page. The Ad Platforms module registers the same
- * section id (idempotent), so both beta integrations share one page.
+ * section id (idempotent), so both integrations share one page.
  */
 add_filter( 'woocommerce_get_sections_brikpanel', 'brikpanel_gs_register_settings_section' );
 function brikpanel_gs_register_settings_section( $sections ) {
@@ -113,78 +113,48 @@ function brikpanel_gs_map_settings_title( $map ) {
 	$map['brk_google_sheets_title'] = 'integrations';
 	return $map;
 }
-add_filter( 'brikpanel_settings_nav_badges', 'brikpanel_gs_register_nav_badge' );
-function brikpanel_gs_register_nav_badge( $badges ) {
-	if ( ! isset( $badges['integrations'] ) ) {
-		$badges['integrations'] = __( 'Beta', 'brikpanel' );
-	}
-	return $badges;
-}
-
-/**
- * After WC renders the section title, inject a Beta badge next to the <h2>
- * heading. Plain JS append because WC esc_html()'s the title — we can't put
- * markup in the `name` field itself.
- */
-add_action( 'woocommerce_settings_brk_google_sheets_title', 'brikpanel_gs_inject_beta_badge_in_settings' );
-function brikpanel_gs_inject_beta_badge_in_settings() {
-	$label = esc_js( __( 'Beta', 'brikpanel' ) );
-	echo "<script>(function(){"
-		. "var d=document.getElementById('brk_google_sheets_title-description');"
-		// BrikPanel wraps the title + description into a `.bp-settings-card`, so
-		// the <h2> is no longer the description's previousElementSibling. Prefer
-		// the card's heading, then fall back to the legacy DOM shape.
-		. "var c=d?d.closest('.bp-settings-card'):null;"
-		. "var h=c?c.querySelector('h2'):(d?d.previousElementSibling:document.querySelector('h2'));"
-		. "if(!h||h.tagName.toLowerCase()!=='h2'||h.querySelector('.brikpanel-beta-badge'))return;"
-		. "var s=document.createElement('span');"
-		. "s.className='brikpanel-beta-badge';"
-		. "s.textContent='{$label}';"
-		. "h.appendChild(s);"
-		. "})();</script>";
-}
-
-/**
- * Print the inline CSS for the Beta badge. Loaded admin-wide because the
- * badge is used in the sidebar menu item (which renders on every admin page)
- * and on the BrikPanel WC settings tab title. The rule is tiny enough that a
- * dedicated stylesheet would cost more than it saves.
- */
-add_action( 'admin_head', 'brikpanel_gs_print_beta_badge_styles', 9999 );
-function brikpanel_gs_print_beta_badge_styles() {
-	// Excluded users (access control) get the stock admin with no BrikPanel
-	// menu, so the badge it styles never renders — skip the inline CSS too.
-	if ( function_exists( 'brikpanel_access_should_neutralize' ) && brikpanel_access_should_neutralize() ) {
-		return;
-	}
-	echo '<style id="brikpanel-beta-badge-css">'
-		. '.brikpanel-beta-badge{'
-			. 'display:inline-flex;align-items:center;'
-			. 'margin-left:0.4rem;padding:0.05rem 0.45rem;'
-			. 'background:#f1f1f1;color:#616161;'
-			. 'border:1px solid #e3e3e3;border-radius:999px;'
-			. 'font-size:0.625rem;font-weight:600;letter-spacing:0.04em;'
-			. 'line-height:1.6;text-transform:uppercase;'
-			. 'vertical-align:middle;'
-		. '}'
-		. '#adminmenu .brikpanel-beta-badge{'
-			. 'background:rgba(255,255,255,0.14);color:#fff;'
-			. 'border-color:rgba(255,255,255,0.22);'
-			. 'font-size:0.6rem;padding:0.02rem 0.38rem;line-height:1.5;'
-		. '}'
-		. '.brikpanel-menu-icon-title-container .brikpanel-beta-badge{'
-			. 'background:#fff;color:#303030;border-color:#e3e3e3;'
-		. '}'
-		. '</style>';
-}
-
 // =============================================================================
 // Hard short-circuit when the integration is disabled. Nothing below loads:
 // no admin page, no sync classes, no OAuth handlers, no order-write listeners,
 // no Action Scheduler handler registration.
 // =============================================================================
 if ( ! brikpanel_gs_module_is_enabled() ) {
+	// The short-circuit above is what makes "dormant" true for everything that
+	// runs per-request — but the recurring Action Scheduler jobs were already
+	// registered while the module was on, and nothing below this line loads to
+	// cancel them. They stayed pending forever, waking every 2-15 minutes to
+	// fire a hook with no listener, and came back at the OLD cadence the moment
+	// the module was re-enabled. Sweep them once, here, where we know the
+	// module is off. Hook names are inlined deliberately: the classes that own
+	// the constants are exactly what we are refusing to load.
+	add_action( 'init', 'brikpanel_gs_unschedule_when_disabled', 30 );
 	return;
+}
+
+/**
+ * Cancel the module's recurring jobs while it is switched off.
+ *
+ * Runs once per request but only ever touches Action Scheduler when something
+ * is actually still pending, so the disabled path stays cheap.
+ */
+function brikpanel_gs_unschedule_when_disabled() {
+	if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
+		return;
+	}
+	$hooks = [
+		'brikpanel_gs_order_bulk_export',
+		'brikpanel_gs_order_pull',
+		'brikpanel_gs_products_push',
+		'brikpanel_gs_products_pull',
+		'brikpanel_gs_expenses_push',
+		'brikpanel_gs_expenses_pull',
+		'brikpanel_gs_reports_snapshot',
+	];
+	foreach ( $hooks as $hook ) {
+		if ( as_has_scheduled_action( $hook, null, Brikpanel_Cron::GROUP ) ) {
+			Brikpanel_Cron::cancel( $hook );
+		}
+	}
 }
 
 // =============================================================================
@@ -199,6 +169,7 @@ require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-client.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-mapping.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-order-sync.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-products-sync.php';
+require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-expenses-sync.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-reports-sync.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-customers-sync.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-settings.php';
@@ -210,5 +181,6 @@ new Brikpanel_Sheets_Settings();
 new Brikpanel_Sheets_OAuth();
 new Brikpanel_Sheets_Order_Sync();
 new Brikpanel_Sheets_Products_Sync();
+new Brikpanel_Sheets_Expenses_Sync();
 new Brikpanel_Sheets_Reports_Sync();
 new Brikpanel_Sheets_Customers_Sync();

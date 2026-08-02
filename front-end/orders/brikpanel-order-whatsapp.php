@@ -24,6 +24,106 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// =============================================================================
+// MODULE SWITCH + ROLE SCOPING
+// =============================================================================
+//
+// The WhatsApp shortcut is opt-out per store and opt-out per role, mirroring the
+// Access control options (e.g. brikpanel_orders_overview_hidden_roles):
+//
+//   brikpanel_whatsapp_enabled       yes/no, default 'yes' — global on/off.
+//   brikpanel_whatsapp_hidden_roles  array of role slugs   — roles that do NOT
+//                                                            see the shortcut.
+//   brikpanel_whatsapp_optin (user meta) 'yes' — a per-user override that lets a
+//     user whose role is hidden switch the shortcut back on for their own account
+//     (the common ask: hide it from administrators by default, but let an admin
+//     re-enable it just for themselves from their profile page).
+//
+// Defaults keep existing behaviour identical: the global switch is on and no role
+// is hidden, so every user with WooCommerce's `manage_woocommerce` capability
+// still sees the shortcut exactly as before.
+
+const BRIKPANEL_WHATSAPP_OPT_ENABLED      = 'brikpanel_whatsapp_enabled';
+const BRIKPANEL_WHATSAPP_OPT_HIDDEN_ROLES = 'brikpanel_whatsapp_hidden_roles';
+const BRIKPANEL_WHATSAPP_USER_OPTIN_META  = 'brikpanel_whatsapp_optin';
+
+/**
+ * Whether the WhatsApp order module is switched on store-wide.
+ *
+ * A missing option counts as on, so a fresh install behaves exactly as before.
+ *
+ * @return bool
+ */
+function brikpanel_whatsapp_module_enabled() {
+	return get_option( BRIKPANEL_WHATSAPP_OPT_ENABLED, 'yes' ) !== 'no';
+}
+
+/**
+ * Whether a given user's role is currently in the "hidden roles" list.
+ *
+ * @param WP_User|null $user
+ * @return bool
+ */
+function brikpanel_whatsapp_user_is_hidden_by_role( $user ) {
+	if ( ! $user instanceof WP_User || ! $user->ID ) {
+		return false;
+	}
+	$hidden_roles = array_map( 'strval', (array) get_option( BRIKPANEL_WHATSAPP_OPT_HIDDEN_ROLES, [] ) );
+	if ( ! $hidden_roles ) {
+		return false;
+	}
+	return (bool) array_intersect( array_map( 'strval', (array) $user->roles ), $hidden_roles );
+}
+
+/**
+ * Whether the WhatsApp shortcut should render for a user.
+ *
+ * Resolution (any earlier rule wins):
+ *   1. Global switch off  → hidden for everyone.
+ *   2. No resolvable user → hidden (front-end, cron, logged-out).
+ *   3. User lacks `manage_woocommerce` → hidden (the baseline this feature has
+ *      always honoured — only order handlers ever saw it).
+ *   4. User's role is in the hidden-roles list → hidden, UNLESS the user has
+ *      opted back in for their own account (per-user meta).
+ *   5. Otherwise → shown.
+ *
+ * @param WP_User|null $user Optional user; defaults to the current user.
+ * @return bool
+ */
+function brikpanel_whatsapp_visible_for_user( $user = null ) {
+	if ( ! brikpanel_whatsapp_module_enabled() ) {
+		return false;
+	}
+	if ( ! function_exists( 'wp_get_current_user' ) ) {
+		return false;
+	}
+	if ( null === $user ) {
+		$user = wp_get_current_user();
+	}
+	if ( ! $user instanceof WP_User || ! $user->ID ) {
+		return false;
+	}
+
+	// Baseline WooCommerce order-management capability — unchanged from before.
+	if ( ! user_can( $user, 'manage_woocommerce' ) ) {
+		return false;
+	}
+
+	$visible = true;
+	if ( brikpanel_whatsapp_user_is_hidden_by_role( $user ) ) {
+		// Hidden by role, unless this user re-enabled it for their own account.
+		$visible = get_user_meta( $user->ID, BRIKPANEL_WHATSAPP_USER_OPTIN_META, true ) === 'yes';
+	}
+
+	/**
+	 * Filter the final per-user visibility of the WhatsApp order shortcut.
+	 *
+	 * @param bool    $visible
+	 * @param WP_User $user
+	 */
+	return (bool) apply_filters( 'brikpanel_whatsapp_visible_for_user', $visible, $user );
+}
+
 /**
  * ISO 3166-1 alpha-2 country code → international dialing code (digits only,
  * no leading "+"). Used to complete a local phone number into the E.164-style
@@ -174,6 +274,9 @@ function brikpanel_wa_add_order_column( $columns ) {
 	if ( ! is_array( $columns ) || isset( $columns['brikpanel_whatsapp'] ) ) {
 		return $columns;
 	}
+	if ( ! brikpanel_whatsapp_visible_for_user() ) {
+		return $columns;
+	}
 	$label  = __( 'WhatsApp', 'brikpanel' );
 	$anchor = isset( $columns['order_number'] ) ? 'order_number' : ( isset( $columns['order_title'] ) ? 'order_title' : '' );
 
@@ -225,6 +328,9 @@ function brikpanel_wa_fill_order_column_legacy( $column, $post_id ) {
  * @param WC_Order $order
  */
 function brikpanel_wa_render_list_icon( $order ) {
+	if ( ! brikpanel_whatsapp_visible_for_user() ) {
+		return;
+	}
 	$url = brikpanel_order_whatsapp_url( $order );
 	if ( $url === '' ) {
 		return;
@@ -250,6 +356,9 @@ add_action( 'woocommerce_admin_order_data_after_billing_address', 'brikpanel_wa_
  * @param WC_Order $order
  */
 function brikpanel_wa_render_order_screen_button( $order ) {
+	if ( ! brikpanel_whatsapp_visible_for_user() ) {
+		return;
+	}
 	$url = brikpanel_order_whatsapp_url( $order );
 	if ( $url === '' ) {
 		return;
@@ -276,6 +385,9 @@ add_action( 'admin_head', function () {
 	$is_edit  = ( $id === 'woocommerce_page_wc-orders' && ( isset( $_GET['action'] ) && $_GET['action'] === 'edit' ) )
 		|| $id === 'shop_order';
 	if ( ! $is_list && ! $is_edit ) {
+		return;
+	}
+	if ( ! brikpanel_whatsapp_visible_for_user() ) {
 		return;
 	}
 	?>
@@ -329,3 +441,145 @@ add_action( 'admin_head', function () {
 	</style>
 	<?php
 } );
+
+// =============================================================================
+// SETTINGS — WhatsApp on/off + role scoping (grouped under the Orders section)
+// =============================================================================
+
+/**
+ * All registered roles as slug => translated display name, for the role
+ * multiselect. Reuses the Access control collector when available so the two
+ * role pickers stay identical; falls back to a local copy otherwise.
+ *
+ * @return array<string,string>
+ */
+function brikpanel_whatsapp_collect_roles() {
+	if ( function_exists( 'brikpanel_access_collect_roles' ) ) {
+		return brikpanel_access_collect_roles();
+	}
+	$out = [];
+	if ( function_exists( 'wp_roles' ) ) {
+		foreach ( wp_roles()->roles as $slug => $info ) {
+			$out[ $slug ] = isset( $info['name'] ) ? translate_user_role( $info['name'] ) : $slug;
+		}
+	}
+	return $out;
+}
+
+/**
+ * Place the WhatsApp settings title under the existing "Orders" sub-nav section.
+ */
+add_filter( 'brikpanel_settings_title_section_map', function ( $map ) {
+	if ( is_array( $map ) ) {
+		$map['brk_whatsapp_title'] = 'orders';
+	}
+	return $map;
+} );
+
+/**
+ * Register the WhatsApp module settings (global switch + hidden roles).
+ */
+add_filter( 'brikpanel_settings_fields', function ( $fields ) {
+	if ( ! is_array( $fields ) ) {
+		return $fields;
+	}
+
+	$block = [
+		[
+			'name' => __( 'WhatsApp', 'brikpanel' ),
+			'type' => 'title',
+			'id'   => 'brk_whatsapp_title',
+			'desc' => __( 'A one-click WhatsApp shortcut for reaching a customer about their order: a small WhatsApp icon on the orders list and a "Message on WhatsApp" button under the billing address on the order edit screen. It opens a chat pre-targeting the order\'s billing phone. Shown to everyone who can manage WooCommerce orders by default.', 'brikpanel' ),
+		],
+		[
+			'name'    => __( 'WhatsApp order shortcut', 'brikpanel' ),
+			'id'      => BRIKPANEL_WHATSAPP_OPT_ENABLED,
+			'type'    => 'checkbox',
+			'desc'    => __( 'Show the WhatsApp icon on the orders list and the "Message on WhatsApp" button on the order edit screen. Turn this off to remove both everywhere. On by default.', 'brikpanel' ),
+			'default' => 'yes',
+		],
+		[
+			'name'     => __( 'Hide WhatsApp shortcut from roles', 'brikpanel' ),
+			'id'       => BRIKPANEL_WHATSAPP_OPT_HIDDEN_ROLES,
+			'type'     => 'multiselect',
+			'class'    => 'wc-enhanced-select',
+			'desc'     => __( 'Users with any of the selected roles no longer see the WhatsApp shortcut, while everyone else keeps it. A user hidden this way can switch it back on for their own account from their WordPress profile page. Leave empty to show it to everyone who can manage WooCommerce orders.', 'brikpanel' ),
+			'desc_tip' => true,
+			'options'  => brikpanel_whatsapp_collect_roles(),
+			'default'  => [],
+		],
+		[
+			'type' => 'sectionend',
+			'id'   => 'brk_whatsapp_title',
+		],
+	];
+
+	return array_merge( $fields, $block );
+}, 8 );
+
+// =============================================================================
+// PER-USER OPT-IN — profile checkbox for a user whose role is hidden by default
+// =============================================================================
+
+/**
+ * Render the "show it for my account" checkbox on the profile screen — but only
+ * for a user who could otherwise see the shortcut (has `manage_woocommerce`) and
+ * whose role is currently in the hidden list, so there is something to opt into.
+ *
+ * @param WP_User $user The profile being viewed/edited.
+ */
+function brikpanel_whatsapp_render_profile_field( $user ) {
+	if ( ! brikpanel_whatsapp_module_enabled() ) {
+		return;
+	}
+	if ( ! $user instanceof WP_User || ! user_can( $user, 'manage_woocommerce' ) ) {
+		return;
+	}
+	if ( ! brikpanel_whatsapp_user_is_hidden_by_role( $user ) ) {
+		return;
+	}
+	$optin = get_user_meta( $user->ID, BRIKPANEL_WHATSAPP_USER_OPTIN_META, true ) === 'yes';
+	?>
+	<h2><?php esc_html_e( 'WhatsApp order shortcut', 'brikpanel' ); ?></h2>
+	<table class="form-table" role="presentation">
+		<tr>
+			<th scope="row"><?php esc_html_e( 'WhatsApp shortcut', 'brikpanel' ); ?></th>
+			<td>
+				<label>
+					<input type="checkbox" name="brikpanel_whatsapp_optin" value="yes" <?php checked( $optin ); ?> />
+					<?php esc_html_e( 'Show the WhatsApp order shortcut for my account', 'brikpanel' ); ?>
+				</label>
+				<p class="description"><?php esc_html_e( 'Your role has the WhatsApp order shortcut turned off. Tick this to show the WhatsApp icon on the orders list and the button on the order edit screen for your account only.', 'brikpanel' ); ?></p>
+			</td>
+		</tr>
+	</table>
+	<?php
+}
+add_action( 'show_user_profile', 'brikpanel_whatsapp_render_profile_field' );
+add_action( 'edit_user_profile', 'brikpanel_whatsapp_render_profile_field' );
+
+/**
+ * Save the per-user opt-in. WordPress core verifies the profile-update nonce
+ * before these hooks fire. The opt-in is only stored for a user who is actually
+ * hidden by role, so a stale POST can never leave an orphan meta behind.
+ *
+ * @param int $user_id
+ */
+function brikpanel_whatsapp_save_profile_field( $user_id ) {
+	if ( ! current_user_can( 'edit_user', $user_id ) ) {
+		return;
+	}
+	$user = get_user_by( 'id', $user_id );
+	if ( ! $user || ! user_can( $user, 'manage_woocommerce' ) || ! brikpanel_whatsapp_user_is_hidden_by_role( $user ) ) {
+		return;
+	}
+	// phpcs:ignore WordPress.Security.NonceVerification.Missing -- core verifies the update-user nonce before these hooks run.
+	$opt_in = isset( $_POST['brikpanel_whatsapp_optin'] ) && $_POST['brikpanel_whatsapp_optin'] === 'yes';
+	if ( $opt_in ) {
+		update_user_meta( $user_id, BRIKPANEL_WHATSAPP_USER_OPTIN_META, 'yes' );
+	} else {
+		delete_user_meta( $user_id, BRIKPANEL_WHATSAPP_USER_OPTIN_META );
+	}
+}
+add_action( 'personal_options_update', 'brikpanel_whatsapp_save_profile_field' );
+add_action( 'edit_user_profile_update', 'brikpanel_whatsapp_save_profile_field' );

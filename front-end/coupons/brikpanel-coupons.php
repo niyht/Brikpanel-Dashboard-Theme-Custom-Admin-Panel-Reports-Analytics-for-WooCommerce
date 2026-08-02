@@ -31,6 +31,7 @@ class Brikpanel_Coupons {
         add_action('wp_ajax_brikpanel_duplicate_coupon', [$this, 'ajax_duplicate_coupon']);
         add_action('wp_ajax_brikpanel_coupons_search_products', [$this, 'ajax_search_products']);
         add_action('wp_ajax_brikpanel_coupons_search_categories', [$this, 'ajax_search_categories']);
+        add_action('wp_ajax_brikpanel_coupons_search_users', [$this, 'ajax_search_users']);
     }
 
     /**
@@ -381,9 +382,15 @@ class Brikpanel_Coupons {
 
                         <?php if ($fields['emails']) : ?>
                         <div class="brikpanel-cp-qe-field">
-                            <label for="bpc-allowed-emails"><?php esc_html_e('Allowed emails', 'brikpanel'); ?></label>
-                            <textarea id="bpc-allowed-emails" rows="2" placeholder="<?php esc_attr_e('e.g. jane@example.com, *@team.com', 'brikpanel'); ?>"></textarea>
-                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Comma- or newline-separated. Wildcards like *@example.com are supported.', 'brikpanel'); ?></span>
+                            <label for="bpc-emails-search"><?php esc_html_e('Assigned customers', 'brikpanel'); ?></label>
+                            <div class="brikpanel-cp-token-field" data-token-target="emails">
+                                <div class="brikpanel-cp-tokens" id="bpc-emails-tokens"></div>
+                                <div class="brikpanel-cp-token-input-wrap">
+                                    <input type="text" id="bpc-emails-search" class="brikpanel-cp-token-input" autocomplete="off" placeholder="<?php esc_attr_e('Search customers by name, username or email…', 'brikpanel'); ?>">
+                                    <div class="brikpanel-cp-token-suggestions" id="bpc-emails-suggestions" hidden></div>
+                                </div>
+                            </div>
+                            <span class="brikpanel-cp-field-hint"><?php esc_html_e('Only these customers can use the coupon. Pick registered users from the list, or type any email address (wildcards like *@example.com work too) and press Enter. A picked user is matched by their account email, so it works even if they check out with a different billing address.', 'brikpanel'); ?></span>
                         </div>
                         <?php endif; ?>
                     </div>
@@ -504,6 +511,16 @@ class Brikpanel_Coupons {
         // Single DB query for all coupon revenues on this page.
         $revenue_map = $this->get_coupons_revenue_batch($coupon_codes);
 
+        // Resolve every restricted email to a registered user in one query so the
+        // drawer can label them, instead of one lookup per email per coupon.
+        $all_emails = [];
+        foreach ($coupon_objects as $c) {
+            foreach ((array) $c->get_email_restrictions() as $restricted_email) {
+                $all_emails[] = $restricted_email;
+            }
+        }
+        $this->prime_user_email_cache($all_emails);
+
         foreach ($query->posts as $post) {
             $coupon = $coupon_objects[$post->ID];
 
@@ -559,6 +576,7 @@ class Brikpanel_Coupons {
                 'excluded_category_ids'    => $excluded_category_ids,
                 'excluded_category_labels' => $this->build_category_labels($excluded_category_ids),
                 'email_restrictions'       => implode(', ', $email_restrictions),
+                'email_labels'             => $this->build_email_labels($email_restrictions),
                 'limit_usage_to_x_items'   => $limit_items ? (int) $limit_items : '',
                 'extra_cells'              => (object) $extra_cells,
                 'extra_actions'            => $extra_actions,
@@ -980,8 +998,171 @@ class Brikpanel_Coupons {
     }
 
     // =========================================================================
+    // AJAX: SEARCH USERS (for the "Allowed emails" picker)
+    // =========================================================================
+
+    /**
+     * Searches registered users by display name, username or email so the
+     * coupon drawer can restrict a coupon to real accounts without the store
+     * owner having to remember and retype email addresses.
+     */
+    public function ajax_search_users() {
+        check_ajax_referer('brikpanel_coupons_nonce', 'security');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $term = isset($_POST['q']) ? sanitize_text_field(wp_unslash($_POST['q'])) : '';
+        if (strlen($term) < 2) {
+            wp_send_json_success(['items' => []]);
+        }
+
+        /**
+         * Filters the user query used by the coupon "Allowed emails" picker,
+         * e.g. to limit suggestions to the customer role only.
+         *
+         * @param array  $args WP_User_Query arguments.
+         * @param string $term Search term.
+         */
+        $args = apply_filters('brikpanel_coupons_user_search_args', [
+            'search'         => '*' . $term . '*',
+            'search_columns' => ['user_login', 'user_email', 'user_nicename', 'display_name'],
+            'number'         => 20,
+            'orderby'        => 'display_name',
+            'order'          => 'ASC',
+            'fields'         => ['ID', 'user_login', 'user_email', 'display_name'],
+        ], $term);
+
+        $users = (new WP_User_Query($args))->get_results();
+
+        $items = [];
+        foreach ($users as $user) {
+            if (empty($user->user_email)) {
+                continue;
+            }
+            $items[] = [
+                'value' => $user->user_email,
+                'label' => $this->format_user_label($user->display_name, $user->user_login),
+                'sub'   => $user->user_email,
+            ];
+        }
+
+        wp_send_json_success(['items' => $items]);
+    }
+
+    // =========================================================================
     // HELPERS
     // =========================================================================
+
+    /**
+     * Cached email => user row map, filled by prime_user_email_cache().
+     *
+     * @var array<string,object|null>
+     */
+    private $user_email_cache = [];
+
+    /**
+     * Resolves a batch of email addresses to registered users in a single query.
+     *
+     * @param string[] $emails Raw email addresses (wildcards are ignored).
+     */
+    private function prime_user_email_cache(array $emails) {
+        $lookup = [];
+        foreach ($emails as $email) {
+            $email = strtolower(trim((string) $email));
+            if ($email === '' || strpos($email, '*') !== false) {
+                continue;
+            }
+            if (!array_key_exists($email, $this->user_email_cache)) {
+                $lookup[$email] = true;
+            }
+        }
+
+        if (empty($lookup)) {
+            return;
+        }
+
+        global $wpdb;
+
+        $list         = array_keys($lookup);
+        $placeholders = implode(',', array_fill(0, count($list), '%s'));
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT user_login, user_email, display_name
+             FROM {$wpdb->users}
+             WHERE user_email IN ($placeholders)",
+            ...$list
+        ));
+
+        // Default everything to "not a registered user", then fill in the hits.
+        foreach ($list as $email) {
+            $this->user_email_cache[$email] = null;
+        }
+        foreach ($rows as $row) {
+            $this->user_email_cache[strtolower($row->user_email)] = $row;
+        }
+    }
+
+    /**
+     * Builds {value,label,sub} token descriptors for a coupon's email
+     * restrictions. Registered users get their name and username as the label;
+     * plain addresses and wildcards fall back to the address itself.
+     *
+     * @param string[] $emails
+     * @return array<int,array<string,string>>
+     */
+    private function build_email_labels(array $emails) {
+        if (empty($emails)) {
+            return [];
+        }
+
+        $this->prime_user_email_cache($emails);
+
+        $labels = [];
+        foreach ($emails as $email) {
+            $email = strtolower(trim((string) $email));
+            if ($email === '') {
+                continue;
+            }
+            $user = $this->user_email_cache[$email] ?? null;
+            if ($user) {
+                $labels[] = [
+                    'value' => $email,
+                    'label' => $this->format_user_label($user->display_name, $user->user_login),
+                    'sub'   => $email,
+                ];
+                continue;
+            }
+            $labels[] = [
+                'value' => $email,
+                'label' => $email,
+                'sub'   => '',
+            ];
+        }
+
+        return $labels;
+    }
+
+    /**
+     * "Jane Doe (jane)" when the username adds information, otherwise just the
+     * name. Keeps the picker readable when display name and login are the same.
+     */
+    private function format_user_label($display_name, $user_login) {
+        $display_name = trim((string) $display_name);
+        $user_login   = trim((string) $user_login);
+
+        if ($display_name === '') {
+            return $user_login;
+        }
+        if ($user_login === '' || strcasecmp($display_name, $user_login) === 0) {
+            return $display_name;
+        }
+
+        /* translators: 1: user display name, 2: username */
+        return sprintf(_x('%1$s (%2$s)', 'user display name (username)', 'brikpanel'), $display_name, $user_login);
+    }
 
     private function sanitize_id_list($raw) {
         if (is_string($raw)) {
@@ -1001,6 +1182,11 @@ class Brikpanel_Coupons {
     }
 
     private function sanitize_email_list($raw) {
+        // Accepts both the comma-separated string the token picker posts and a
+        // plain array, so programmatic callers keep working.
+        if (is_array($raw)) {
+            $raw = implode(',', array_map('strval', $raw));
+        }
         if (!is_string($raw)) {
             return [];
         }

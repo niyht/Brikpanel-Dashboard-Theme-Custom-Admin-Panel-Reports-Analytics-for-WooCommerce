@@ -17,6 +17,15 @@ function brikpanel_track_cart_addition( $cart_item_key, $product_id ) {
         return;
     }
 
+    // Backstop for crawlers with a browser-shaped user agent: cap cookieless
+    // clients at one recorded add per product per day. A real shopper is not
+    // affected — WooCommerce sets its session cookie on the first add, so
+    // only that first event can ever be cookieless, and it is still counted.
+    if ( function_exists( 'brikpanel_cookieless_daily_gate' )
+        && ! brikpanel_cookieless_daily_gate( 'atc_product_' . (int) $product_id ) ) {
+        return;
+    }
+
     global $wpdb;
     $table_name   = $wpdb->prefix . 'brikpanel_cart_tracking';
     $current_date = wp_date( 'Y-m-d' );

@@ -167,7 +167,7 @@ class Brikpanel_Expenses {
 								<th><?php esc_html_e( 'Title', 'brikpanel' ); ?></th>
 								<th><?php esc_html_e( 'Description', 'brikpanel' ); ?></th>
 								<th><?php esc_html_e( 'Recurring', 'brikpanel' ); ?></th>
-								<th class="brikpanel-ex-num"><?php esc_html_e( 'Amount', 'brikpanel' ); ?></th>
+								<th class="brikpanel-ex-num"><?php echo esc_html( _x( 'Amount', 'money value of an expense', 'brikpanel' ) ); ?></th>
 								<th class="brikpanel-ex-actions-th"></th>
 							</tr>
 						</thead>
@@ -206,7 +206,7 @@ class Brikpanel_Expenses {
 										</select>
 									</div>
 									<div class="brikpanel-ex-field">
-									<label for="brikpanel-ex-amount"><?php esc_html_e( 'Amount', 'brikpanel' ); ?></label>
+									<label for="brikpanel-ex-amount"><?php echo esc_html( _x( 'Amount', 'money value of an expense', 'brikpanel' ) ); ?></label>
 									<div class="brikpanel-ex-input-group">
 										<span class="brikpanel-ex-prefix" id="brikpanel-ex-prefix"><?php echo esc_html( $currency ); ?></span>
 										<input type="number" id="brikpanel-ex-amount" min="0" step="0.01" placeholder="0.00" required />
@@ -273,7 +273,7 @@ class Brikpanel_Expenses {
 				csv_category:      <?php echo wp_json_encode( __( 'Title', 'brikpanel' ) ); ?>,
 				csv_description:   <?php echo wp_json_encode( __( 'Description', 'brikpanel' ) ); ?>,
 				csv_recurring:     <?php echo wp_json_encode( __( 'Recurring', 'brikpanel' ) ); ?>,
-				csv_amount:        <?php echo wp_json_encode( __( 'Amount', 'brikpanel' ) ); ?>,
+				csv_amount:        <?php echo wp_json_encode( _x( 'Amount', 'money value of an expense', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>
@@ -469,6 +469,18 @@ class Brikpanel_Expenses {
 
 		self::bust_dashboard_cache();
 
+		/**
+		 * Fires after an expense is created or edited in wp-admin.
+		 *
+		 * The Google Sheets expense sync listens for this to refresh its tab,
+		 * so a cost added here shows up in the spreadsheet without waiting for
+		 * a manual sync. Passed the row id and whether it was newly inserted.
+		 *
+		 * @param int  $id       Expense row id.
+		 * @param bool $is_new   True when this call created the row.
+		 */
+		do_action( 'brikpanel_expense_saved', $id, 0 === absint( $_POST['id'] ?? 0 ) );
+
 		wp_send_json_success( [ 'id' => $id, 'materialized' => $materialized ] );
 	}
 
@@ -493,6 +505,13 @@ class Brikpanel_Expenses {
 		$wpdb->delete( $table, [ 'recurring_parent' => $id ], [ '%d' ] );
 
 		self::bust_dashboard_cache();
+
+		/**
+		 * Fires after an expense (and any generated repeats) is deleted.
+		 *
+		 * @param int $id Expense row id that was removed.
+		 */
+		do_action( 'brikpanel_expense_deleted', $id );
 
 		wp_send_json_success();
 	}

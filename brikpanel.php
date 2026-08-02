@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.2.20
+ * Version: 3.2.33
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,10 +22,75 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.2.20');
+define('BRIKPANEL_VERSION', '3.2.33');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
+
+// =============================================================================
+// RESILIENT MODULE LOADER
+//
+// Every BrikPanel module below is pulled in with brikpanel_require() instead of
+// a bare `require_once`. A bare require of a missing file throws an uncaught
+// E_ERROR from wp-settings.php, which white-screens the ENTIRE site (front end
+// and wp-admin alike), leaving the merchant locked out. That is exactly what a
+// partial/interrupted plugin update or an over-eager security scanner (which can
+// quarantine a single .php file) triggers: one absent module kills everything.
+//
+// brikpanel_require() checks the file exists and is readable first. When a
+// module is missing it is skipped, the path is logged, and a single dismissible
+// admin notice tells the merchant to reinstall. The site stays up and the
+// remaining modules keep working. Standard require_once dedup still applies
+// (tracked globally regardless of call scope); these module files only define
+// functions and register hooks at top level, so the wrapper does not alter their
+// runtime behaviour.
+// =============================================================================
+function brikpanel_require($relative_path) {
+    $full_path = BRIKPANEL_PATH . $relative_path;
+
+    if (is_readable($full_path)) {
+        require_once $full_path;
+        return true;
+    }
+
+    // Record the missing module so the admin notice can list it, and leave a
+    // trail in the error log for support. The notice is wired up only once.
+    $GLOBALS['brikpanel_missing_modules'][] = $relative_path;
+
+    if (function_exists('error_log')) {
+        error_log('BrikPanel: required module missing or unreadable: ' . $full_path);
+    }
+
+    if (!has_action('admin_notices', 'brikpanel_missing_modules_notice')) {
+        add_action('admin_notices', 'brikpanel_missing_modules_notice');
+        add_action('network_admin_notices', 'brikpanel_missing_modules_notice');
+    }
+
+    return false;
+}
+
+/**
+ * Admin notice shown when one or more BrikPanel modules could not be loaded.
+ * Points the merchant at the fix (reinstall) without exposing a fatal error.
+ */
+function brikpanel_missing_modules_notice() {
+    if (!current_user_can('activate_plugins')) {
+        return;
+    }
+
+    $missing = isset($GLOBALS['brikpanel_missing_modules']) ? array_unique($GLOBALS['brikpanel_missing_modules']) : array();
+    if (empty($missing)) {
+        return;
+    }
+
+    echo '<div class="notice notice-error brikpanel-notice"><p><strong>'
+        . esc_html__('BrikPanel could not load all of its files.', 'brikpanel')
+        . '</strong> '
+        . esc_html__('Some plugin files are missing, most likely from an interrupted update or a security scan. BrikPanel is running in a limited mode. Please reinstall the plugin (deactivate, delete, then install the latest version again) to restore full functionality. Your settings and data are kept.', 'brikpanel')
+        . '</p><p><code>'
+        . implode('</code>, <code>', array_map('esc_html', $missing))
+        . '</code></p></div>';
+}
 
 // =============================================================================
 // NETWORK ACCESS RULES (multisite-only Super Admin gate)
@@ -34,7 +99,7 @@ define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
 // settings page stays reachable even on networks whose main site does not
 // have WooCommerce active. The module is a no-op on single-site installs.
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-network-access.php';
+brikpanel_require('includes/brikpanel-network-access.php');
 
 // =============================================================================
 // WOOCOMMERCE DEPENDENCY GUARD (multisite-critical)
@@ -156,14 +221,14 @@ add_action('before_woocommerce_init', function () {
 // Loaded outside brikpanel_init_admin() so the statuses register on the front
 // end too (checkout/programmatic orders), not only inside wp-admin.
 // =============================================================================
-require_once BRIKPANEL_PATH . 'front-end/order-statuses/brikpanel-order-statuses.php';
+brikpanel_require('front-end/order-statuses/brikpanel-order-statuses.php');
 
 // Status-change emails: a configurable email per custom status (recipients,
 // subject, heading, body with {placeholders}), sent through WooCommerce's own
 // email templates. Loaded globally so the sender fires on every request where an
 // order status can change (checkout, cron, REST); only its settings UI is
 // admin-gated. See front-end/order-statuses/brikpanel-status-emails.php.
-require_once BRIKPANEL_PATH . 'front-end/order-statuses/brikpanel-status-emails.php';
+brikpanel_require('front-end/order-statuses/brikpanel-status-emails.php');
 
 // =============================================================================
 // LOAD TEXT DOMAIN
@@ -184,55 +249,58 @@ function brikpanel_init_admin() {
     // Desktop Mode compatibility — loaded first so the gate helper
     // (brikpanel_is_desktop_mode) exists before the top bar / navigation
     // modules below consult it at render time.
-    require_once BRIKPANEL_PATH . 'includes/brikpanel-desktop-mode-compat.php';
+    brikpanel_require('includes/brikpanel-desktop-mode-compat.php');
 
     // Front-end files (for admin)
-    require_once BRIKPANEL_PATH . 'includes/brikpanel-cache-clear.php';
-    require_once BRIKPANEL_PATH . 'includes/brikpanel-remove-help.php';
-    require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard.php';
-    require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-section-order.php';
-    require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-topbar.php';
-    require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-topbar-items.php';
-    require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-widget-access.php';
-    require_once BRIKPANEL_PATH . 'front-end/master-switch/brikpanel-master-switch.php';
+    brikpanel_require('includes/brikpanel-cache-clear.php');
+    brikpanel_require('includes/brikpanel-remove-help.php');
+    brikpanel_require('front-end/dashboard/brikpanel-dashboard.php');
+    brikpanel_require('front-end/dashboard/brikpanel-dashboard-section-order.php');
+    brikpanel_require('front-end/dashboard/brikpanel-dashboard-topbar.php');
+    brikpanel_require('front-end/dashboard/brikpanel-topbar-items.php');
+    brikpanel_require('front-end/dashboard/brikpanel-dashboard-widget-access.php');
+    brikpanel_require('front-end/master-switch/brikpanel-master-switch.php');
     // Pure sidebar-icon helpers — loaded unconditionally because the navigation
     // customizer (below) needs them even when the modern navigation module is
     // skipped. Must come before both requires so either can rely on them.
-    require_once BRIKPANEL_PATH . 'front-end/navigation/brikpanel-nav-icon-helpers.php';
+    brikpanel_require('front-end/navigation/brikpanel-nav-icon-helpers.php');
     if ( get_option( 'brikpanel_modern_navigation', 'yes' ) !== 'no' ) {
-        require_once BRIKPANEL_PATH . 'front-end/navigation/brikpanel-navigation.php';
+        brikpanel_require('front-end/navigation/brikpanel-navigation.php');
     }
     // Sidebar customizer (settings UI + render-time application). Loaded even
     // when modern navigation is off so admins can pre-configure the layout
     // before flipping the toggle.
-    require_once BRIKPANEL_PATH . 'front-end/navigation/brikpanel-nav-customizer.php';
-    require_once BRIKPANEL_PATH . 'front-end/search/brikpanel-search.php';
-    require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-orders.php';
-    // BrikMentor installer bridge (settings section + license-gated install).
-    require_once BRIKPANEL_PATH . 'front-end/brikmentor/brikpanel-brikmentor-installer.php';
-    // BrikMentor zero-paste magic purchase flow (claim + poll + auto-install).
-    require_once BRIKPANEL_PATH . 'front-end/brikmentor/brikpanel-brikmentor-magic.php';
-    require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-order-whatsapp.php';
-    require_once BRIKPANEL_PATH . 'front-end/orders/brikpanel-orders-stats.php';
-    require_once BRIKPANEL_PATH . 'front-end/currency/brikpanel-currency-settings.php';
-    require_once BRIKPANEL_PATH . 'front-end/order/brikpanel-order-fields.php';
-    require_once BRIKPANEL_PATH . 'front-end/import-export/brikpanel-import-export.php';
-    require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-section-order.php';
-    require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-qe-order.php';
-    require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-product-editor.php';
-    require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-products-list.php';
-    require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-category-enhancements.php';
-    require_once BRIKPANEL_PATH . 'front-end/coupons/brikpanel-coupons.php';
-    require_once BRIKPANEL_PATH . 'front-end/segments/brikpanel-segments.php';
-    require_once BRIKPANEL_PATH . 'front-end/customer-analytics/brikpanel-customer-analytics.php';
-    require_once BRIKPANEL_PATH . 'front-end/expenses/brikpanel-expenses.php';
-    require_once BRIKPANEL_PATH . 'front-end/vendors/brikpanel-vendors.php';
+    brikpanel_require('front-end/navigation/brikpanel-nav-customizer.php');
+    brikpanel_require('front-end/search/brikpanel-search.php');
+    brikpanel_require('front-end/orders/brikpanel-orders.php');
+    // BrikMentor launch surfaces (promo FAB, dashboard/settings CTAs) live in
+    // includes/brikpanel-brikmentor-promo.php + includes/brikpanel-early-access.php.
+    // Purchase is a plain link to the brksoft.com relay checkout; the plugin is
+    // downloaded and installed by the merchant from the relay's own welcome page,
+    // never pushed from inside wp-admin (keeps BrikPanel within wp.org Guideline 8).
+    brikpanel_require('front-end/orders/brikpanel-order-whatsapp.php');
+    brikpanel_require('front-end/orders/brikpanel-orders-stats.php');
+    brikpanel_require('front-end/currency/brikpanel-currency-settings.php');
+    brikpanel_require('front-end/order/brikpanel-order-fields.php');
+    brikpanel_require('front-end/import-export/brikpanel-import-export.php');
+    brikpanel_require('front-end/products/brikpanel-section-order.php');
+    brikpanel_require('front-end/products/brikpanel-qe-order.php');
+    brikpanel_require('front-end/products/brikpanel-blocksy-video.php');
+    brikpanel_require('front-end/products/brikpanel-product-editor.php');
+    brikpanel_require('front-end/products/brikpanel-products-list.php');
+    brikpanel_require('front-end/products/brikpanel-product-code.php');
+    brikpanel_require('front-end/products/brikpanel-category-enhancements.php');
+    brikpanel_require('front-end/coupons/brikpanel-coupons.php');
+    brikpanel_require('front-end/segments/brikpanel-segments.php');
+    brikpanel_require('front-end/customer-analytics/brikpanel-customer-analytics.php');
+    brikpanel_require('front-end/expenses/brikpanel-expenses.php');
+    brikpanel_require('front-end/vendors/brikpanel-vendors.php');
 
     // Back-end files
-    require_once BRIKPANEL_PATH . 'back-end/total-sales/brikpanel-total-sales.php';
-    require_once BRIKPANEL_PATH . 'back-end/conversion-count/brikpanel-total-orders.php';
-    require_once BRIKPANEL_PATH . 'back-end/order-value/brikpanel-order-value.php';
-    require_once BRIKPANEL_PATH . 'back-end/order-rates/brikpanel-order-rates.php';
+    brikpanel_require('back-end/total-sales/brikpanel-total-sales.php');
+    brikpanel_require('back-end/conversion-count/brikpanel-total-orders.php');
+    brikpanel_require('back-end/order-value/brikpanel-order-value.php');
+    brikpanel_require('back-end/order-rates/brikpanel-order-rates.php');
 }
 add_action('init', 'brikpanel_init_admin');
 
@@ -530,7 +598,7 @@ function brikpanel_render_hidden_notices_box($notices_html, $count) {
 // =============================================================================
 // LOGIN PAGE CUSTOMIZATION
 // =============================================================================
-require_once BRIKPANEL_PATH . 'front-end/login/brikpanel-login.php';
+brikpanel_require('front-end/login/brikpanel-login.php');
 
 // =============================================================================
 // APPEARANCE CUSTOMIZATION (font + accent color)
@@ -538,42 +606,51 @@ require_once BRIKPANEL_PATH . 'front-end/login/brikpanel-login.php';
 // modern login page. Registers its own hooks (settings field, admin_head,
 // login_head, admin_enqueue_scripts).
 // =============================================================================
-require_once BRIKPANEL_PATH . 'front-end/appearance/brikpanel-appearance.php';
+brikpanel_require('front-end/appearance/brikpanel-appearance.php');
 
 // =============================================================================
 // FRONT-END & GENERAL FILES
 // =============================================================================
 function brikpanel_init_other() {
-    require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-variation-gallery.php';
-    require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-short-description.php';
-    require_once BRIKPANEL_PATH . 'front-end/products/brikpanel-description-lightbox.php';
+    brikpanel_require('front-end/products/brikpanel-variation-gallery.php');
+    brikpanel_require('front-end/products/brikpanel-short-description.php');
+    brikpanel_require('front-end/products/brikpanel-description-lightbox.php');
     if ( get_option( 'brikpanel_modern_navigation', 'yes' ) !== 'no' ) {
-        require_once BRIKPANEL_PATH . 'front-end/brikpanel-site-submenu.php';
+        brikpanel_require('front-end/brikpanel-site-submenu.php');
     }
-    require_once BRIKPANEL_PATH . 'front-end/sound/brikpanel-sound.php';
-    require_once BRIKPANEL_PATH . 'back-end/conversion-count/brikpanel-conversion-count.php';
-    require_once BRIKPANEL_PATH . 'back-end/conversion-count/brikpanel-product-count.php';
-    require_once BRIKPANEL_PATH . 'back-end/conversion-count/brikpanel-checkout-count.php';
-    require_once BRIKPANEL_PATH . 'back-end/conversion-count/brikpanel-add-to-cart-count.php';
-    require_once BRIKPANEL_PATH . 'back-end/most-count/most-add-to-cart/brikpanel-most-add-to-cart.php';
-    require_once BRIKPANEL_PATH . 'back-end/most-count/most-sale/brikpanel-most-sale.php';
-    require_once BRIKPANEL_PATH . 'back-end/most-count/most-view/brikpanel-most-view.php';
-    require_once BRIKPANEL_PATH . 'back-end/live/brikpanel-live.php';
-    require_once BRIKPANEL_PATH . 'back-end/tracking/brikpanel-unified-tracker.php';
+    brikpanel_require('front-end/sound/brikpanel-sound.php');
+    brikpanel_require('back-end/conversion-count/brikpanel-conversion-count.php');
+    brikpanel_require('back-end/conversion-count/brikpanel-product-count.php');
+    brikpanel_require('back-end/conversion-count/brikpanel-checkout-count.php');
+    brikpanel_require('back-end/conversion-count/brikpanel-add-to-cart-count.php');
+    brikpanel_require('back-end/most-count/most-add-to-cart/brikpanel-most-add-to-cart.php');
+    brikpanel_require('back-end/most-count/most-sale/brikpanel-most-sale.php');
+    brikpanel_require('back-end/most-count/most-view/brikpanel-most-view.php');
+    brikpanel_require('back-end/live/brikpanel-live.php');
+    brikpanel_require('back-end/tracking/brikpanel-unified-tracker.php');
 }
 add_action('init', 'brikpanel_init_other');
 
 // =============================================================================
 // WELCOME / FEATURE SHOWCASE POPUP
 // =============================================================================
-require_once BRIKPANEL_PATH . 'front-end/welcome/brikpanel-welcome.php';
+brikpanel_require('front-end/welcome/brikpanel-welcome.php');
 
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-helpers.php';
-require_once BRIKPANEL_PATH . 'includes/brikpanel-currency.php';
-require_once BRIKPANEL_PATH . 'includes/brikpanel-profit.php';
+brikpanel_require('includes/brikpanel-helpers.php');
+brikpanel_require('includes/brikpanel-currency.php');
+brikpanel_require('includes/brikpanel-profit.php');
+
+// =============================================================================
+// BOT / CRAWLER FILTER FOR STOREFRONT ANALYTICS
+//
+// Loaded at file scope, before `init`, because the storefront counters that
+// call it (add-to-cart, checkout, cart abandonment) can fire on very early
+// hooks. Shared by every tracker so there is exactly one list to maintain.
+// =============================================================================
+brikpanel_require('includes/brikpanel-bot-filter.php');
 
 // =============================================================================
 // ACCESS CONTROL — per-user / per-role interface gate
@@ -582,58 +659,58 @@ require_once BRIKPANEL_PATH . 'includes/brikpanel-profit.php';
 // place by the time brikpanel_init_admin() / brikpanel_init_other() read the
 // interface toggles to decide which modules to load.
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-access-control.php';
+brikpanel_require('includes/brikpanel-access-control.php');
 
 // =============================================================================
 // THIRD-PARTY COMPATIBILITY: ASE (Admin and Site Enhancements) bridge
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-ase-bridge.php';
+brikpanel_require('includes/brikpanel-ase-bridge.php');
 
 // =============================================================================
 // ENQUEUE SCRIPTS & STYLES
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-enqueue.php';
+brikpanel_require('includes/brikpanel-enqueue.php');
 
 // =============================================================================
 // FOREIGN ASSET ISOLATION
 // Keep other plugins' (and the theme's) render-blocking payloads off BrikPanel's
 // own full-screen app pages, where they serve no purpose and only slow the page.
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-asset-isolation.php';
+brikpanel_require('includes/brikpanel-asset-isolation.php');
 
 // =============================================================================
 // DEVELOPER HOOKS API (public actions/filters + docs modal)
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-hooks-api.php';
+brikpanel_require('includes/brikpanel-hooks-api.php');
 
 // =============================================================================
 // REVIEW REQUEST NOTICES (50 completed orders)
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-review-notices.php';
+brikpanel_require('includes/brikpanel-review-notices.php');
 
 // =============================================================================
 // BRIKMENTOR EARLY-ACCESS CAPTURE (100 / 200 completed orders)
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-early-access.php';
+brikpanel_require('includes/brikpanel-early-access.php');
 
 // =============================================================================
 // BRIKMENTOR LAUNCH SURFACES (behind the brikpanel_brikmentor_live flag,
 // default off; also flips the early-access waitlist into launch CTAs)
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/brikpanel-brikmentor-promo.php';
+brikpanel_require('includes/brikpanel-brikmentor-promo.php');
 
 // =============================================================================
 // CRON / BACKGROUND JOBS (Action Scheduler wrapper + admin page)
 // =============================================================================
-require_once BRIKPANEL_PATH . 'includes/cron/brikpanel-cron.php';
-require_once BRIKPANEL_PATH . 'includes/cron/customer-analytics-jobs.php';
+brikpanel_require('includes/cron/brikpanel-cron.php');
+brikpanel_require('includes/cron/customer-analytics-jobs.php');
 
 // =============================================================================
 // BRIKCONTROL — Store Health panel (loaded outside the is_admin gate so the
 // Action Scheduler worker can resolve registered handlers when running over
 // WP-Cron / CLI). Admin menu + AJAX hooks self-gate to admin context.
 // =============================================================================
-require_once BRIKPANEL_PATH . 'front-end/brikcontrol/brikpanel-brikcontrol.php';
+brikpanel_require('front-end/brikcontrol/brikpanel-brikcontrol.php');
 
 // =============================================================================
 // GOOGLE SHEETS — must load outside is_admin so:
@@ -645,7 +722,7 @@ require_once BRIKPANEL_PATH . 'front-end/brikcontrol/brikpanel-brikcontrol.php';
 //      orders silently bypass the realtime queue.
 // Admin menu, asset enqueue, AJAX endpoints all self-gate to admin context.
 // =============================================================================
-require_once BRIKPANEL_PATH . 'front-end/google-sheets/brikpanel-google-sheets.php';
+brikpanel_require('front-end/google-sheets/brikpanel-google-sheets.php');
 
 // =============================================================================
 // AD PLATFORMS — Google Ads + Meta Ads daily-spend integration.
@@ -656,7 +733,7 @@ require_once BRIKPANEL_PATH . 'front-end/google-sheets/brikpanel-google-sheets.p
 // endpoints, and asset enqueue all self-gate to admin context inside the
 // module classes.
 // =============================================================================
-require_once BRIKPANEL_PATH . 'front-end/ad-platforms/brikpanel-ad-platforms.php';
+brikpanel_require('front-end/ad-platforms/brikpanel-ad-platforms.php');
 
 // =============================================================================
 // CART ABANDONMENT — checkout/popup email capture with cart snapshots.
@@ -667,14 +744,24 @@ require_once BRIKPANEL_PATH . 'front-end/ad-platforms/brikpanel-ad-platforms.php
 // fire during checkout. The admin list page, exports and settings fields all
 // self-gate to admin context inside the class.
 // =============================================================================
-require_once BRIKPANEL_PATH . 'front-end/cart-abandonment/brikpanel-cart-abandonment.php';
+brikpanel_require('front-end/cart-abandonment/brikpanel-cart-abandonment.php');
+
+// =============================================================================
+// CART SHARE — shareable cart links + admin cart builder.
+//
+// Loaded outside the is_admin gate because the link consumer (wp_loaded), the
+// storefront "Share cart" button (wp_enqueue_scripts) and its public AJAX all
+// run on front-end requests. The admin builder page, its search/variation AJAX
+// and the settings fields self-gate to admin context inside the class.
+// =============================================================================
+brikpanel_require('front-end/cart-share/brikpanel-cart-share.php');
 
 // =============================================================================
 // STORE SUMMARY (on-demand Markdown digest, triggered from dashboard "Copy
 // everything" button — no cron, generated on click only)
 // =============================================================================
 if ( is_admin() ) {
-    require_once BRIKPANEL_PATH . 'includes/brikpanel-store-summary.php';
+    brikpanel_require('includes/brikpanel-store-summary.php');
 }
 
 // =============================================================================

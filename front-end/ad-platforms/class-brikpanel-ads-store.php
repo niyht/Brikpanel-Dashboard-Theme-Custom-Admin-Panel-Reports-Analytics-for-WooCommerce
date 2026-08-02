@@ -108,7 +108,7 @@ class Brikpanel_Ads_Store {
 	 * @param string  $platform
 	 * @param string  $account_id
 	 * @param array[] $rows Each entry: ['date' => YYYY-MM-DD, ...self::upsert data]
-	 * @return int Number of rows written / updated.
+	 * @return int Number of distinct day-rows persisted.
 	 */
 	public static function bulk_upsert( $platform, $account_id, array $rows ) {
 		global $wpdb;
@@ -119,12 +119,14 @@ class Brikpanel_Ads_Store {
 		$now    = current_time( 'mysql', true );
 		$values = [];
 		$args   = [];
+		$dates  = [];
 
 		foreach ( $rows as $row ) {
 			$date = isset( $row['date'] ) ? (string) $row['date'] : '';
 			if ( ! self::is_valid_date( $date ) ) {
 				continue;
 			}
+			$dates[ $date ] = true;
 			$values[] = '(%s, %s, %s, %s, %s, %d, %d, %s, %s)';
 			$args[] = $date;
 			$args[] = $platform;
@@ -154,7 +156,44 @@ class Brikpanel_Ads_Store {
 		$result = $wpdb->query( $wpdb->prepare( $sql, $args ) );
 		// Bump the dashboard cache version so KPI cards re-query on next render.
 		self::bump_cache_version();
-		return $result === false ? 0 : (int) $result;
+
+		// Deliberately NOT $result. MySQL's affected-rows for
+		// INSERT ... ON DUPLICATE KEY UPDATE counts 1 per insert but 2 per
+		// update and 0 per unchanged row, so re-syncing a 7-day window where
+		// every day shifted reported "14 rows" for 7 days of data. Report the
+		// number of distinct days we persisted instead, which is what the
+		// merchant-facing "Sync now" message actually means.
+		return $result === false ? 0 : count( $dates );
+	}
+
+	/**
+	 * Delete every row that does not belong to one of the given account IDs for
+	 * a platform. Used after an account switch so a chunk that was already in
+	 * flight cannot leave rows behind under the old account.
+	 *
+	 * @param string   $platform
+	 * @param string[] $keep_account_ids
+	 * @return int Rows deleted.
+	 */
+	public static function delete_other_accounts( $platform, array $keep_account_ids ) {
+		global $wpdb;
+		if ( ! self::is_valid_platform( $platform ) ) {
+			return 0;
+		}
+		$keep = array_values( array_filter( array_map( 'strval', $keep_account_ids ), 'strlen' ) );
+		$table = self::table();
+		if ( empty( $keep ) ) {
+			return self::delete_account( $platform );
+		}
+		$placeholders = implode( ',', array_fill( 0, count( $keep ), '%s' ) );
+		$n = (int) $wpdb->query( $wpdb->prepare(
+			"DELETE FROM {$table} WHERE platform = %s AND account_id NOT IN ($placeholders)",
+			array_merge( [ $platform ], $keep )
+		) );
+		if ( $n > 0 ) {
+			self::bump_cache_version();
+		}
+		return $n;
 	}
 
 	/**

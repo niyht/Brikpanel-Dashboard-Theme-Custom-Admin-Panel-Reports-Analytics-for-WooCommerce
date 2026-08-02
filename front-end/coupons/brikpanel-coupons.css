@@ -1021,6 +1021,20 @@
     max-width: 220px;
 }
 
+/* Secondary line inside a token (the email behind a user name). */
+.brikpanel-cp-token-sub {
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+.brikpanel-cp-token-sub::before {
+    content: "\00b7";
+    margin-inline-end: 0.25rem; /* logical: flips with the writing direction on RTL admins */
+}
+
 .brikpanel-cp-token-remove {
     appearance: none;
     border: none;
@@ -1085,6 +1099,21 @@
 
 .brikpanel-cp-token-suggestion:hover {
     background: var(--hover-bg);
+}
+
+/* Two-line suggestion: display name on top, email underneath. */
+.brikpanel-cp-token-suggestion-label,
+.brikpanel-cp-token-suggestion-sub {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brikpanel-cp-token-suggestion-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.0625rem;
 }
 
 .brikpanel-cp-token-empty {

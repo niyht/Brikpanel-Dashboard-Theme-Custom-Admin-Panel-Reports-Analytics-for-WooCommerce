@@ -1,0 +1,401 @@
+/**
+ * BrikPanel - Cart Share (admin builder) styles
+ * Monochrome, Shopify-admin-inspired BrikPanel design language.
+ */
+
+.brikpanel-cs {
+    --cs-bg: #f1f1f1;
+    --cs-card: #ffffff;
+    --cs-text: #303030;
+    --cs-text-secondary: #616161;
+    --cs-text-muted: #8a8a8a;
+    --cs-border: #e3e3e3;
+    --cs-input-border: #8a8a8a;
+    --cs-primary: #303030;
+    --cs-primary-hover: #1a1a1a;
+    --cs-success: #1a8917;
+    --cs-error: #d72c0d;
+
+    max-width: 900px;
+    margin: 1.25rem auto 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--cs-text);
+}
+
+.brikpanel-cs * {
+    box-sizing: border-box;
+}
+
+/* The [hidden] attribute must win over the display rules our own classes set
+   (e.g. .brikpanel-cs-empty { display:flex }), otherwise toggling .hidden in JS
+   has no visual effect. */
+.brikpanel-cs [hidden] {
+    display: none !important;
+}
+
+/* Header */
+.brikpanel-cs-header {
+    margin-bottom: 1rem;
+}
+.brikpanel-cs-header h1 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 0.25rem;
+    padding: 0;
+    color: var(--cs-text);
+}
+.brikpanel-cs-subtitle {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--cs-text-secondary);
+    line-height: 1.5;
+}
+
+/* Layout */
+.brikpanel-cs-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.brikpanel-cs-card {
+    background: var(--cs-card);
+    border: 1px solid var(--cs-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    padding: 1.25rem 1.5rem;
+}
+.brikpanel-cs-card-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--cs-text-secondary);
+    margin: 0 0 0.875rem;
+    padding: 0;
+}
+
+/* Search */
+.brikpanel-cs-search-field {
+    position: relative;
+}
+.brikpanel-cs-search {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--cs-text);
+    border: 1px solid var(--cs-input-border);
+    border-radius: 0.5rem;
+    background: #fff;
+    line-height: 1.5;
+}
+.brikpanel-cs-search::placeholder {
+    color: var(--cs-text-muted);
+}
+.brikpanel-cs-search:focus {
+    outline: none;
+    border-color: var(--cs-primary);
+    box-shadow: 0 0 0 1px var(--cs-primary);
+}
+
+.brikpanel-cs-suggestions {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    background: #fff;
+    border: 1px solid var(--cs-border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 0.25rem;
+}
+.brikpanel-cs-suggestion {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+.brikpanel-cs-suggestion:hover,
+.brikpanel-cs-suggestion.is-active {
+    background: #f7f7f7;
+}
+.brikpanel-cs-suggestion.is-muted {
+    color: var(--cs-text-muted);
+    cursor: default;
+    justify-content: flex-start;
+}
+.brikpanel-cs-suggestion.is-muted:hover {
+    background: transparent;
+}
+.brikpanel-cs-suggestion-name {
+    color: var(--cs-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.brikpanel-cs-suggestion-meta {
+    color: var(--cs-text-muted);
+    font-size: 0.75rem;
+    font-weight: 550;
+    flex-shrink: 0;
+}
+
+/* Items */
+.brikpanel-cs-items {
+    margin-top: 0.875rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.brikpanel-cs-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.625rem;
+    text-align: center;
+    padding: 1.75rem 1rem;
+    color: var(--cs-text-muted);
+    border: 1px dashed var(--cs-border);
+    border-radius: 0.5rem;
+    background: #fafafa;
+}
+.brikpanel-cs-empty svg {
+    color: #c9c9c9;
+}
+.brikpanel-cs-empty span {
+    font-size: 0.8125rem;
+    max-width: 320px;
+    line-height: 1.5;
+}
+
+.brikpanel-cs-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--cs-border);
+    border-radius: 0.5rem;
+    background: #fff;
+}
+.brikpanel-cs-item-main {
+    flex: 1;
+    min-width: 0;
+}
+.brikpanel-cs-item-name {
+    font-size: 0.875rem;
+    font-weight: 550;
+    color: var(--cs-text);
+    line-height: 1.4;
+    word-break: break-word;
+}
+.brikpanel-cs-item-variation {
+    margin-top: 0.5rem;
+}
+.brikpanel-cs-item-hint {
+    font-size: 0.75rem;
+    color: var(--cs-text-muted);
+}
+.brikpanel-cs-item-hint.is-warning {
+    color: var(--cs-error);
+}
+.brikpanel-cs-variation-select {
+    width: 100%;
+    max-width: 340px;
+    padding: 0.4rem 0.625rem;
+    font-size: 0.8125rem;
+    color: var(--cs-text);
+    border: 1px solid var(--cs-input-border);
+    border-radius: 0.5rem;
+    background: #fff;
+}
+.brikpanel-cs-variation-select:focus {
+    outline: none;
+    border-color: var(--cs-primary);
+    box-shadow: 0 0 0 1px var(--cs-primary);
+}
+.brikpanel-cs-variation-select.is-required {
+    border-color: var(--cs-error);
+    box-shadow: 0 0 0 1px var(--cs-error);
+}
+
+/* Quantity stepper */
+.brikpanel-cs-qty {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--cs-input-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.brikpanel-cs-qty-btn {
+    width: 30px;
+    height: 32px;
+    border: none;
+    background: #f7f7f7;
+    color: var(--cs-text);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+.brikpanel-cs-qty-btn:hover {
+    background: #ededed;
+}
+.brikpanel-cs-qty-input {
+    width: 40px;
+    height: 32px;
+    border: none;
+    border-left: 1px solid var(--cs-border);
+    border-right: 1px solid var(--cs-border);
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--cs-text);
+    background: #fff;
+    padding: 0;
+}
+.brikpanel-cs-qty-input:focus {
+    outline: none;
+}
+
+.brikpanel-cs-item-remove {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--cs-text-muted);
+    cursor: pointer;
+    border-radius: 0.375rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+}
+.brikpanel-cs-item-remove:hover {
+    background: #fce4e4;
+    color: var(--cs-error);
+}
+
+/* Link card */
+.brikpanel-cs-link-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+.brikpanel-cs-link-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--cs-text-secondary);
+    border: 1px solid var(--cs-input-border);
+    border-radius: 0.5rem;
+    background: #f7f7f7;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.brikpanel-cs-link-input:focus {
+    outline: none;
+    border-color: var(--cs-primary);
+    box-shadow: 0 0 0 1px var(--cs-primary);
+}
+
+.brikpanel-cs-share-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.brikpanel-cs-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1.2;
+    border: none;
+    white-space: nowrap;
+}
+.brikpanel-cs-btn.primary {
+    background: var(--cs-primary);
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.brikpanel-cs-btn.primary:hover {
+    background: var(--cs-primary-hover);
+}
+.brikpanel-cs-btn.primary:disabled {
+    background: #c9c9c9;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+.brikpanel-cs-btn.secondary {
+    background: #fff;
+    color: var(--cs-text);
+    box-shadow: inset 0 0 0 1px var(--cs-border), 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+.brikpanel-cs-btn.secondary:hover {
+    background: #f7f7f7;
+}
+
+.brikpanel-cs-note {
+    margin: 0.75rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+.brikpanel-cs-note.is-warning {
+    color: var(--cs-error);
+}
+.brikpanel-cs-hint {
+    margin: 0.75rem 0 0;
+    font-size: 0.75rem;
+    color: var(--cs-text-muted);
+    line-height: 1.5;
+}
+
+/* Toast */
+.brikpanel-cs-toast-container {
+    position: fixed;
+    top: 44px;
+    right: 20px;
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.brikpanel-cs-toast {
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    transform: translateX(110%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.brikpanel-cs-toast.show {
+    transform: translateX(0);
+}
+.brikpanel-cs-toast.success {
+    background: #e4f5e1;
+    color: #1a6b15;
+    border: 1px solid #b7e1b0;
+}
+.brikpanel-cs-toast.error {
+    background: #fce4e4;
+    color: #c62828;
+    border: 1px solid #f1b0b0;
+}

@@ -262,6 +262,39 @@ class Brikpanel_Products_List {
                 $target = add_query_arg($tax_filters, $target);
             }
 
+            // Carry over the native stock/status filters too. WooCommerce's own
+            // "out of stock" links (status widget, inventory reports, plugins)
+            // all point at edit.php?post_type=product&stock_status=outofstock;
+            // without this they'd land on an unfiltered list and the user would
+            // have to re-apply the filter by hand. Only values the modern list
+            // actually supports are forwarded, so an arbitrary URL can't smuggle
+            // in an unexpected filter.
+            $carry       = [];
+            $stock_map   = ['outofstock' => 'outofstock', 'instock' => 'instock', 'lowstock' => 'lowstock'];
+            $stock_param = isset($_GET['stock_status']) && is_string($_GET['stock_status'])
+                ? sanitize_key(wp_unslash($_GET['stock_status']))
+                : '';
+            if (isset($stock_map[$stock_param])) {
+                $carry['bpl_stock'] = $stock_map[$stock_param];
+            }
+
+            // Only statuses the list has a tab for. `pending` exists natively but
+            // has no tab here, so carrying it would put a filter in the URL that
+            // the query then ignores — the address bar would disagree with the
+            // rows on screen. Dropping it keeps the pre-existing "unfiltered"
+            // behaviour, which is at least honest.
+            $status_allow = ['publish', 'future', 'draft', 'private', 'trash'];
+            $status_param = isset($_GET['post_status']) && is_string($_GET['post_status'])
+                ? sanitize_key(wp_unslash($_GET['post_status']))
+                : '';
+            if (in_array($status_param, $status_allow, true)) {
+                $carry['bpl_status'] = $status_param;
+            }
+
+            if (!empty($carry)) {
+                $target = add_query_arg($carry, $target);
+            }
+
             wp_safe_redirect($target);
             exit;
         }
@@ -1236,6 +1269,9 @@ class Brikpanel_Products_List {
                                 <th class="brikpanel-pl-th-name brikpanel-pl-col brikpanel-pl-col-name"><?php esc_html_e('Product', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-sku brikpanel-pl-col brikpanel-pl-col-sku"><?php esc_html_e('SKU', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-guid brikpanel-pl-col brikpanel-pl-col-global_unique_id"><?php esc_html_e('GTIN', 'brikpanel'); ?></th>
+                                <?php if (function_exists('brikpanel_pcfw_active') && brikpanel_pcfw_active()) : ?>
+                                <th class="brikpanel-pl-th-pcode brikpanel-pl-col brikpanel-pl-col-product_code"><?php echo esc_html(brikpanel_pcfw_column_label()); ?></th>
+                                <?php endif; ?>
                                 <th class="brikpanel-pl-th-price brikpanel-pl-col brikpanel-pl-col-price"><?php esc_html_e('Price', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-cogs brikpanel-pl-col brikpanel-pl-col-cogs"><?php esc_html_e('Cost', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-stock brikpanel-pl-col brikpanel-pl-col-stock"><?php esc_html_e('Stock', 'brikpanel'); ?></th>
@@ -1974,6 +2010,11 @@ class Brikpanel_Products_List {
                 'name'           => $product->get_name() ?? '',
                 'sku'            => $product->get_sku() ?? '',
                 'global_unique_id' => self::compute_global_unique_id_display($product),
+                // Product Code (opt-in column, present only when the
+                // "Product Code for WooCommerce" plugin is active).
+                'product_code'   => (function_exists('brikpanel_pcfw_active') && brikpanel_pcfw_active())
+                    ? brikpanel_pcfw_product_code_display($product)
+                    : null,
                 'regular_price'  => $product->get_regular_price(),
                 'sale_price'     => $product->get_sale_price(),
                 'price_html'     => $product->get_price_html(),

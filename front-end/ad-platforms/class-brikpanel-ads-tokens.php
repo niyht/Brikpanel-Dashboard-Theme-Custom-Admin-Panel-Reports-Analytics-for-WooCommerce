@@ -33,8 +33,34 @@ class Brikpanel_Ads_Tokens {
 	/** Option key holding the encrypted token blob. autoload=no. */
 	const OPTION = 'brikpanel_ads_tokens';
 
-	/** Refresh-skew seconds: refresh if a token expires sooner than this. */
-	const REFRESH_SKEW = 90;
+	/**
+	 * Refresh-skew seconds: refresh if a token expires sooner than this.
+	 *
+	 * This is per-platform because the two token lifetimes are three orders of
+	 * magnitude apart:
+	 *
+	 *   - Google issues 1-hour access tokens and a long-lived refresh_token, so
+	 *     a 90-second skew is fine: something touches the API far more often
+	 *     than once an hour, and the refresh_token can always mint a new one.
+	 *
+	 *   - Meta has no refresh_token. The long-lived user token lives ~60 days
+	 *     and the ONLY way to renew it is to hand the still-valid token back
+	 *     through fb_exchange_token before it dies. With a 90-second skew the
+	 *     renewal window is 90 seconds wide at the end of 60 days, while the
+	 *     only thing that reliably calls in is the once-a-day sync — so the
+	 *     renewal fired on roughly 0.1% of cycles and the connection silently
+	 *     died every two months. A 7-day skew gives the daily sync seven
+	 *     consecutive chances to renew while the token is still valid.
+	 */
+	const REFRESH_SKEW      = 90;
+	const REFRESH_SKEW_META = 7 * DAY_IN_SECONDS;
+
+	/**
+	 * Option prefix latched when a refresh failed permanently, so the settings
+	 * page can tell the merchant to reconnect instead of showing a green
+	 * "Connected" pill over a dead connection.
+	 */
+	const NEEDS_RECONNECT_PREFIX = 'brikpanel_ads_needs_reconnect_';
 
 	/** HKDF info parameter — bump if the storage format ever changes. */
 	const KDF_INFO = 'brikpanel-ads-v1';
@@ -249,15 +275,58 @@ class Brikpanel_Ads_Tokens {
 			return null;
 		}
 
-		if ( ( (int) $tokens['expires_at'] - time() ) > self::REFRESH_SKEW ) {
+		$remaining = (int) $tokens['expires_at'] - time();
+		if ( $remaining > self::refresh_skew( $platform ) ) {
 			return (string) $tokens['access_token'];
 		}
 
 		$refreshed = self::refresh( $platform );
 		if ( $refreshed === false ) {
-			return null;
+			// Renewal failed but the token itself may still have life left (we
+			// start trying a week early on Meta). Keep using it rather than
+			// hard-failing the sync a week before we have to.
+			return $remaining > 0 ? (string) $tokens['access_token'] : null;
 		}
 		return (string) $refreshed['access_token'];
+	}
+
+	/**
+	 * How early to renew, per platform. See REFRESH_SKEW for the rationale.
+	 *
+	 * @param string $platform
+	 * @return int Seconds.
+	 */
+	private static function refresh_skew( $platform ) {
+		return $platform === self::PLATFORM_META ? self::REFRESH_SKEW_META : self::REFRESH_SKEW;
+	}
+
+	/**
+	 * Whether the last renewal attempt for this platform failed permanently
+	 * (token revoked / expired past recovery). The settings page surfaces this
+	 * as a "reconnect required" banner.
+	 *
+	 * @param string $platform
+	 * @return string '' when healthy, otherwise a short reason slug.
+	 */
+	public static function needs_reconnect( $platform ) {
+		if ( ! self::is_valid_platform( $platform ) ) {
+			return '';
+		}
+		return (string) get_option( self::NEEDS_RECONNECT_PREFIX . $platform, '' );
+	}
+
+	/** Latch the reconnect-required flag. */
+	public static function flag_needs_reconnect( $platform, $reason = 'revoked' ) {
+		if ( self::is_valid_platform( $platform ) ) {
+			update_option( self::NEEDS_RECONNECT_PREFIX . $platform, (string) $reason, false );
+		}
+	}
+
+	/** Clear the reconnect-required flag (called on a successful connect). */
+	public static function clear_needs_reconnect( $platform ) {
+		if ( self::is_valid_platform( $platform ) ) {
+			delete_option( self::NEEDS_RECONNECT_PREFIX . $platform );
+		}
 	}
 
 	/**
@@ -314,13 +383,17 @@ class Brikpanel_Ads_Tokens {
 		$body = $open['data'];
 		if ( ! $open['ok'] || ! is_array( $body ) || empty( $body['access_token'] ) ) {
 			Brikpanel_Ads_Logger::log_request_error( 'oauth', $platform . ' token refresh', $resp, $code );
-			// Permanent revocation / invalid_grant — wipe so the UI shows
-			// "Disconnected" cleanly and the user is prompted to reconnect.
-			if ( $code === 400 || $code === 401 ) {
-				$err = is_array( $body ) ? (string) ( $body['error'] ?? '' ) : '';
-				if ( in_array( $err, [ 'invalid_grant', 'unauthorized_client', 'oauth_exception', 'token_revoked', 'token_expired' ], true ) ) {
-					self::disconnect( $platform );
-				}
+			if ( self::is_permanent_refresh_failure( $platform, $code, $body ) ) {
+				// Token is gone for good. Latch the reconnect flag FIRST (the
+				// UI reads it to explain why the platform went dark), then drop
+				// the dead credentials so nothing keeps retrying with them.
+				self::flag_needs_reconnect( $platform, 'revoked' );
+				Brikpanel_Ads_Logger::log(
+					'oauth',
+					$platform . ' refresh failed permanently (HTTP ' . $code . ') — connection dropped, merchant must reconnect.',
+					$code
+				);
+				self::disconnect( $platform );
 			}
 			return false;
 		}
@@ -330,6 +403,8 @@ class Brikpanel_Ads_Tokens {
 		if ( ! empty( $body['scope'] ) ) {
 			$tokens['scope'] = (string) $body['scope'];
 		}
+		// A renewal that came back clean means the connection is healthy again.
+		self::clear_needs_reconnect( $platform );
 		// Meta's fb_exchange_token does NOT issue a new refresh_token (there is
 		// none), and Google's refresh response usually omits one too. Preserve
 		// whatever we already had.
@@ -406,6 +481,72 @@ class Brikpanel_Ads_Tokens {
 
 	private static function is_valid_platform( $platform ) {
 		return $platform === self::PLATFORM_GOOGLE || $platform === self::PLATFORM_META;
+	}
+
+	/**
+	 * Decide whether a failed refresh is permanent (credentials are dead and
+	 * only a fresh consent can fix it) or transient (network blip, proxy
+	 * hiccup, rate limit) and therefore worth retrying tomorrow.
+	 *
+	 * Google speaks OAuth 2.0 error slugs, so we match the well-known
+	 * permanent ones. Meta does NOT: Graph replies with a nested error object
+	 * ({"error":{"type":"OAuthException","code":190,...}}) and the proxy used
+	 * to flatten that with a bare (string) cast, which produced the literal
+	 * text "Array" — a value that matched nothing in the allowlist, so a
+	 * revoked Meta token was never detected and the card sat on a green
+	 * "Connected" pill forever. We now dig the real type/code out of the
+	 * nested shape AND fall back to the HTTP status: fb_exchange_token only
+	 * answers 400/401 when the token itself is unusable (throttling is 429,
+	 * outages are 5xx), and because Meta renewal now starts a full week early
+	 * a 400 there is never "the token merely aged out in flight".
+	 *
+	 * @param string $platform
+	 * @param int    $code HTTP status from the proxy.
+	 * @param mixed  $body Decoded proxy body.
+	 * @return bool
+	 */
+	private static function is_permanent_refresh_failure( $platform, $code, $body ) {
+		if ( $code !== 400 && $code !== 401 ) {
+			return false;
+		}
+
+		// The proxy answers 400 for its OWN request-validation problems too
+		// ("Bad request.", "Missing access_token.", "Proxy not configured.").
+		// Those say nothing about the merchant's credentials, so never drop a
+		// healthy connection over one.
+		$message = is_array( $body ) && isset( $body['message'] ) && is_scalar( $body['message'] )
+			? strtolower( trim( (string) $body['message'] ) )
+			: '';
+		if ( $message !== '' && $message !== 'refresh failed.' ) {
+			return false;
+		}
+
+		$err = '';
+		if ( is_array( $body ) && isset( $body['error'] ) ) {
+			$raw = $body['error'];
+			if ( is_array( $raw ) ) {
+				// Meta's nested error object, or a proxy that forwarded it whole.
+				$err = (string) ( $raw['type'] ?? $raw['message'] ?? '' );
+			} elseif ( is_scalar( $raw ) ) {
+				$err = (string) $raw;
+			}
+		}
+		$err = strtolower( trim( $err ) );
+
+		if ( $platform === self::PLATFORM_META ) {
+			// Any upstream 400/401 from fb_exchange_token means the token is
+			// unusable: Graph answers 429 for throttling and 5xx for outages,
+			// and because Meta renewal now starts a full week early this can
+			// never be "the token merely aged out while the call was in
+			// flight". Reconnect is the only fix.
+			return true;
+		}
+
+		return in_array(
+			$err,
+			[ 'invalid_grant', 'unauthorized_client', 'oauth_exception', 'token_revoked', 'token_expired', 'invalid_token' ],
+			true
+		);
 	}
 
 	/**

@@ -374,10 +374,28 @@ class Brikpanel_Sheets_Products_Sync {
 			// stale — force an append and let the product pick up a fresh,
 			// contiguous row below.
 			$existing_row = $rebuild ? 0 : (int) $this->get_product_meta( $product, self::META_ROW );
-			// No stored row (or it was never persisted): fall back to the live
-			// sheet. If the product is already present we adopt that row and
-			// re-persist the number; only a product that is truly absent appends.
-			if ( $existing_row <= 0 && isset( $id_to_row[ $pid ] ) ) {
+
+			// The sheet is authoritative, not our stored number. A stored row
+			// only stayed correct while nobody touched the tab; sorting it or
+			// inserting/deleting a row shifts everything below and the stored
+			// number then points at a DIFFERENT product, which we would happily
+			// overwrite. Consulting the reconcile map only when the stored row
+			// was missing (as this used to) left exactly that case unguarded.
+			// $id_to_row is empty on a rebuild (tab just cleared) or if the
+			// reconcile read failed, so only trust it when we actually have it.
+			if ( ! $rebuild && ! empty( $id_to_row ) ) {
+				if ( isset( $id_to_row[ $pid ] ) ) {
+					if ( $existing_row !== (int) $id_to_row[ $pid ] ) {
+						$existing_row = (int) $id_to_row[ $pid ];
+						$this->set_product_meta( $product, self::META_ROW, $existing_row );
+					}
+				} elseif ( $existing_row > 0 ) {
+					// We think it has a row but the sheet says it is not there.
+					// Append it fresh rather than write over the current tenant.
+					$existing_row = 0;
+					$this->set_product_meta( $product, self::META_ROW, 0 );
+				}
+			} elseif ( $existing_row <= 0 && isset( $id_to_row[ $pid ] ) ) {
 				$existing_row = (int) $id_to_row[ $pid ];
 				$this->set_product_meta( $product, self::META_ROW, $existing_row );
 			}
@@ -391,6 +409,7 @@ class Brikpanel_Sheets_Products_Sync {
 
 		$appended_count = 0;
 		$updated_count  = 0;
+		$failed_pids    = []; // [ product_id => true ] rows whose write threw
 
 		// Updates first (single batchUpdate via values:batchUpdate isn't
 		// strictly needed — per-row writes are cheap when batched by AS).
@@ -404,7 +423,10 @@ class Brikpanel_Sheets_Products_Sync {
 					$updated_count++;
 				} catch ( Brikpanel_Sheets_Exception $e ) {
 					Brikpanel_Sheets_Logger::log( 'products', 'Row update failed for product ' . $info['pid'] . ': ' . $e->getMessage(), $e->http_code );
-					// Continue with the rest — don't let one bad row tank the batch.
+					// Continue with the rest — don't let one bad row tank the
+					// batch — but remember the failure so we do not record a
+					// snapshot for a row that never reached the sheet.
+					$failed_pids[ (int) $info['pid'] ] = true;
 				}
 			}
 		}
@@ -441,15 +463,27 @@ class Brikpanel_Sheets_Products_Sync {
 			}
 		}
 
-		// Persist snapshot + synced_at on every successfully-attempted product
-		// (we update even on update failures so a permanently broken row does
-		// not retry forever; the user can use "Reset & re-push" to recover).
+		// Persist snapshot + synced_at only for rows that actually landed.
+		// Recording a snapshot for a write that failed (a 429 that exhausted
+		// its retries, a 403) tells the reverse pull "the sheet holds this row"
+		// when it does not: the pull then compares the merchant's real cell
+		// against a snapshot that never matched it, flags a false conflict, and
+		// the sheet stays permanently out of step with Woo. Leaving the failed
+		// products without a snapshot makes the next push retry them, which is
+		// the behaviour a merchant expects from a transient API error.
 		$now_mysql = current_time( 'mysql', true );
 		foreach ( $snapshot_assignments as $pid => $row ) {
+			if ( isset( $failed_pids[ (int) $pid ] ) ) { continue; }
 			$product = wc_get_product( $pid );
 			if ( ! $product ) { continue; }
 			$this->set_product_meta( $product, self::META_SYNCED_AT, $now_mysql );
 			$this->set_product_meta( $product, self::META_SNAPSHOT_HASH, self::hash_row( $row ) );
+		}
+		if ( ! empty( $failed_pids ) ) {
+			Brikpanel_Sheets_Logger::log(
+				'products',
+				count( $failed_pids ) . ' product row(s) failed to write and were left unsynced so the next push retries them.'
+			);
 		}
 
 		if ( ! $force_all ) {
@@ -860,15 +894,65 @@ class Brikpanel_Sheets_Products_Sync {
 				$raw = $row[ (int) $col_map['cogs'] ] ?? '';
 				if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
 					$new = wc_format_decimal( $raw );
-					$cur = brikpanel_product_cogs_raw( (int) $product->get_id() );
+
+					// Compare against the EFFECTIVE cost, i.e. exactly what the
+					// push wrote into this cell. Comparing against the row's own
+					// raw meta (as this used to) is an asymmetry that corrupted
+					// Woo data without anyone touching the cost column:
+					//   - Inherited cost: variation has none, parent has 5. Push
+					//     writes 5; raw is '' so 5 !== '' looked like an edit and
+					//     froze 5 onto the variation. Later parent changes then
+					//     silently stopped applying to it.
+					//   - Additive: parent 5 + variation 2 = 7 pushed, raw 2, so
+					//     7 !== 2 looked like an edit and wrote raw = 7, making
+					//     the effective cost 12. Reproduced live by editing only
+					//     the STOCK cell, which is what drags the row into this
+					//     branch in the first place.
+					$is_variation = $product->is_type( 'variation' );
+					$cogs_parent  = $is_variation ? (int) $product->get_parent_id() : (int) $product->get_id();
+					$cogs_var     = $is_variation ? (int) $product->get_id() : 0;
+					$effective    = brikpanel_product_cogs( $cogs_parent, $cogs_var );
+					$cur          = ( null === $effective ) ? '' : wc_format_decimal( (string) $effective );
+
 					if ( self::decimal_changed( $new, $cur ) ) {
-						// Mirror both stores BrikPanel writes everywhere else:
-						// WC-native COGS (when present) and the _brikpanel_cogs meta.
-						if ( method_exists( $product, 'set_cogs_value' ) ) {
-							$product->set_cogs_value( $new !== '' ? $new : null );
+						// The merchant means "this line's unit cost is $new". For
+						// an additive variation the stored value is the amount ON
+						// TOP of the parent, so store the difference and keep the
+						// effective cost equal to what they typed.
+						$store   = $new;
+						$skip    = false;
+						$additive = $is_variation
+							&& 'yes' === get_post_meta( $cogs_var, '_cogs_value_is_additive', true );
+
+						if ( $additive ) {
+							$parent_raw  = brikpanel_product_cogs_raw( $cogs_parent );
+							$parent_cost = ( '' === $parent_raw ) ? 0.0 : (float) $parent_raw;
+							$delta       = (float) $new - $parent_cost;
+							if ( $delta < 0 ) {
+								// Below the parent's own cost there is no additive
+								// value that produces it. Refuse rather than write
+								// a negative surcharge the merchant never intended.
+								$skip = true;
+								Brikpanel_Sheets_Logger::log(
+									'products',
+									'Pull skipped cost for variation ' . $cogs_var . ': ' . $new
+										. ' is below the parent cost (' . $parent_cost . ') and this'
+										. ' variation adds to the parent, so no additive value matches.'
+								);
+							} else {
+								$store = wc_format_decimal( (string) $delta );
+							}
 						}
-						$product->update_meta_data( '_brikpanel_cogs', $new );
-						$setter_dirty = true;
+
+						if ( ! $skip ) {
+							// Mirror both stores BrikPanel writes everywhere else:
+							// WC-native COGS (when present) and the _brikpanel_cogs meta.
+							if ( method_exists( $product, 'set_cogs_value' ) ) {
+								$product->set_cogs_value( $store !== '' ? $store : null );
+							}
+							$product->update_meta_data( '_brikpanel_cogs', $store );
+							$setter_dirty = true;
+						}
 					}
 				}
 			}

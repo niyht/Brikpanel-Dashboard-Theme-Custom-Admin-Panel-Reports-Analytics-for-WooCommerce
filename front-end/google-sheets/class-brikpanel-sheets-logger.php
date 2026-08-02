@@ -41,7 +41,27 @@ class Brikpanel_Sheets_Logger {
 		];
 
 		$log = (array) get_option( self::OPTION, [] );
-		$log[] = $entry;
+
+		// Collapse an immediate repeat instead of appending it. The buffer only
+		// holds MAX_ENTRIES, and the sync loops are polls: one unrecognised
+		// status or one failing row re-logs the identical line every pass and
+		// evicted the whole history — including the OAuth failure that explains
+		// why syncing stopped — within minutes. Keep the newest timestamp and
+		// count the repeats so the signal survives.
+		$last_idx = count( $log ) - 1;
+		if ( $last_idx >= 0
+			&& isset( $log[ $last_idx ] )
+			&& is_array( $log[ $last_idx ] )
+			&& ( $log[ $last_idx ]['message'] ?? null ) === $entry['message']
+			&& ( $log[ $last_idx ]['flow'] ?? null ) === $entry['flow']
+			&& (int) ( $log[ $last_idx ]['code'] ?? 0 ) === $entry['code']
+		) {
+			$log[ $last_idx ]['ts']    = $entry['ts'];
+			$log[ $last_idx ]['count'] = (int) ( $log[ $last_idx ]['count'] ?? 1 ) + 1;
+		} else {
+			$log[] = $entry;
+		}
+
 		if ( count( $log ) > self::MAX_ENTRIES ) {
 			$log = array_slice( $log, -self::MAX_ENTRIES );
 		}

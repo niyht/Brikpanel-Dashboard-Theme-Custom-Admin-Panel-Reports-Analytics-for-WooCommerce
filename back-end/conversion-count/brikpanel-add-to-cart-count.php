@@ -24,6 +24,14 @@ function brikpanel_add_to_cart_counter() {
         return;
     }
 
+    // Backstop for crawlers whose user agent looks like a browser. The cookie
+    // above caps a real shopper at one add-to-cart per day; a cookieless
+    // client would otherwise be counted once per `?add-to-cart=` URL it
+    // follows, so apply the same daily cap keyed on its address instead.
+    if ( function_exists( 'brikpanel_cookieless_daily_gate' ) && ! brikpanel_cookieless_daily_gate( 'atc' ) ) {
+        return;
+    }
+
     global $wpdb;
     $table_name   = $wpdb->prefix . "brikpanel_visitors";
     $current_date = wp_date( 'Y-m-d' );

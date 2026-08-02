@@ -143,6 +143,16 @@ class Brikpanel_Ads_Sync {
 			return;
 		}
 
+		// Bump the generation counter so any chunk still sitting in the queue
+		// from an earlier account selection becomes a no-op the moment it runs.
+		// Cancelling the queued actions directly is not enough: Action
+		// Scheduler may already have claimed a batch, and a chunk that lands
+		// after we wiped the previous account's rows would silently resurrect
+		// them under an account the merchant no longer uses. Those rows then
+		// fed the dashboard's Ad Spend / ROAS / Net Profit with no way for the
+		// merchant to see where the numbers came from.
+		$generation = self::bump_backfill_generation( $platform );
+
 		$end       = self::today();
 		$start     = gmdate( 'Y-m-d', time() - BRIKPANEL_ADS_BACKFILL_DAYS * DAY_IN_SECONDS );
 		$chunks    = self::date_chunks( $start, $end, self::BACKFILL_CHUNK_DAYS );
@@ -165,6 +175,7 @@ class Brikpanel_Ads_Sync {
 					'end'        => $chunk[1],
 					'chunk'      => $i + 1,
 					'total'      => $total,
+					'generation' => $generation,
 				]
 			);
 			$offset += self::BACKFILL_CHUNK_INTERVAL_SECONDS;
@@ -175,7 +186,25 @@ class Brikpanel_Ads_Sync {
 			'total_chunks'    => $total,
 			'completed_chunks'=> 0,
 			'last_error'      => '',
+			'generation'      => $generation,
 		], false );
+	}
+
+	/** Option key holding the current backfill generation for a platform. */
+	private static function backfill_generation_key( $platform ) {
+		return 'brikpanel_ads_backfill_gen_' . $platform;
+	}
+
+	/** Current backfill generation (0 when a backfill has never been queued). */
+	public static function backfill_generation( $platform ) {
+		return (int) get_option( self::backfill_generation_key( $platform ), 0 );
+	}
+
+	/** Invalidate every queued chunk for this platform and return the new generation. */
+	private static function bump_backfill_generation( $platform ) {
+		$next = self::backfill_generation( $platform ) + 1;
+		update_option( self::backfill_generation_key( $platform ), $next, false );
+		return $next;
 	}
 
 	// =========================================================================
@@ -188,6 +217,15 @@ class Brikpanel_Ads_Sync {
 	 * revisions ad platforms apply to recent-day numbers.
 	 */
 	public function handle_daily( array $payload = [] ) {
+		// Every connected platform must get its turn even when an earlier one
+		// blows up. Rethrowing from inside the loop (which is what this used to
+		// do) meant a broken Google connection permanently starved Meta of its
+		// daily pull, because Google is iterated first and the exception left
+		// the loop before Meta was ever touched. Collect failures instead and
+		// raise a single aggregate at the end, so Action Scheduler still marks
+		// the run failed and shows the reason on the Scheduled Tasks page.
+		$failures = [];
+
 		foreach ( [ Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, Brikpanel_Ads_Tokens::PLATFORM_META ] as $platform ) {
 			$desc = Brikpanel_Ads_Tokens::describe( $platform );
 			if ( ! $desc['connected'] || empty( $desc['primary_account'] ) ) {
@@ -212,10 +250,12 @@ class Brikpanel_Ads_Sync {
 					[ 'ts' => time(), 'start' => $start, 'end' => $end, 'ok' => false, 'error' => $e->getMessage() ],
 					false
 				);
-				// Rethrow so AS marks the action failed and surfaces the
-				// reason on the Scheduled Tasks page.
-				throw $e;
+				$failures[] = $platform . ': ' . $e->getMessage();
 			}
+		}
+
+		if ( ! empty( $failures ) ) {
+			throw new \RuntimeException( implode( ' | ', $failures ) );
 		}
 	}
 
@@ -230,6 +270,7 @@ class Brikpanel_Ads_Sync {
 		$end        = isset( $payload['end'] ) ? (string) $payload['end'] : '';
 		$chunk      = isset( $payload['chunk'] ) ? (int) $payload['chunk'] : 0;
 		$total      = isset( $payload['total'] ) ? (int) $payload['total'] : 0;
+		$generation = isset( $payload['generation'] ) ? (int) $payload['generation'] : 0;
 
 		if ( $platform === '' || $account_id === '' || $start === '' || $end === '' ) {
 			Brikpanel_Ads_Logger::log( 'sync', 'Backfill chunk missing required args; skipped.' );
@@ -240,6 +281,24 @@ class Brikpanel_Ads_Sync {
 		// and execution — happens rarely but we don't want to spam the log.
 		if ( ! Brikpanel_Ads_Tokens::is_connected( $platform ) ) {
 			Brikpanel_Ads_Logger::log( 'sync', 'Backfill chunk ' . $platform . ' skipped: not connected.' );
+			return;
+		}
+
+		// Superseded by a newer backfill (the merchant re-picked an account
+		// while this chunk was queued). Generation 0 means the chunk predates
+		// this guard, so fall through to the account check below instead.
+		$current_gen = self::backfill_generation( $platform );
+		if ( $generation > 0 && $current_gen > 0 && $generation !== $current_gen ) {
+			Brikpanel_Ads_Logger::log( 'sync', 'Backfill chunk ' . $platform . ' skipped: superseded by a newer backfill.' );
+			return;
+		}
+
+		// Never write rows for an account that is no longer the selected one.
+		// Those rows are invisible in the settings UI (which only reports the
+		// primary account) yet still counted by the dashboard totals.
+		$primary = (string) Brikpanel_Ads_Tokens::describe( $platform )['primary_account'];
+		if ( $primary !== '' && $primary !== $account_id ) {
+			Brikpanel_Ads_Logger::log( 'sync', 'Backfill chunk ' . $platform . ' skipped: account no longer selected.' );
 			return;
 		}
 

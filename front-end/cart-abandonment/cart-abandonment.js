@@ -74,6 +74,23 @@
 			});
 	}
 
+	// Correct the email on a popup signup and re-deliver the coupon. Used by
+	// the emailed-coupon "edit" affordance so a mistyped inbox is recoverable.
+	function updateEmail(id, email) {
+		var body = new FormData();
+		body.append('action', 'brikpanel_cartab_popup_update_email');
+		body.append('id', id);
+		body.append('email', email);
+		return fetch(cfg.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body })
+			.then(function (res) { return res.json(); })
+			.then(function (json) {
+				if (!json || !json.success) {
+					throw new Error('rejected');
+				}
+				return json;
+			});
+	}
+
 	/* ------------------------------------------------------------------
 	 * 1) Checkout capture
 	 * ------------------------------------------------------------------ */
@@ -483,6 +500,8 @@
 				}
 			});
 
+			var autoClose = null;
+
 			function showSuccess(data) {
 				// Inline !important because the form's own display rule is
 				// !important (theme hardening) and would beat [hidden].
@@ -525,6 +544,104 @@
 
 					emailedBox.appendChild(emailedIntro);
 					emailedBox.appendChild(emailedHint);
+
+					// "Edit email" affordance: only meaningful when the code was
+					// emailed (an inline code is already on screen, no inbox to
+					// miss). Needs the entry id the server returned to authorize
+					// the correction.
+					if (data && data.id) {
+						var editWrap = document.createElement('div');
+						editWrap.className = 'brikpanel-cartab-editmail';
+
+						var editToggle = document.createElement('button');
+						editToggle.type = 'button';
+						editToggle.className = 'brikpanel-cartab-editmail-toggle';
+						editToggle.textContent = cfg.i18n.editEmail;
+
+						var editForm = document.createElement('form');
+						editForm.className = 'brikpanel-cartab-editmail-form';
+						editForm.noValidate = true;
+						editForm.hidden = true;
+
+						var editInput = document.createElement('input');
+						editInput.type = 'email';
+						editInput.required = true;
+						editInput.autocomplete = 'email';
+						editInput.className = 'brikpanel-cartab-editmail-input';
+						editInput.value = data.email || '';
+						editInput.setAttribute('aria-label', cfg.i18n.emailLabel);
+
+						var editSave = document.createElement('button');
+						editSave.type = 'submit';
+						editSave.className = 'brikpanel-cartab-editmail-save';
+						editSave.textContent = cfg.i18n.editSave;
+
+						var editCancel = document.createElement('button');
+						editCancel.type = 'button';
+						editCancel.className = 'brikpanel-cartab-editmail-cancel';
+						editCancel.textContent = cfg.i18n.editCancel;
+
+						var editNote = document.createElement('div');
+						editNote.className = 'brikpanel-cartab-editmail-note';
+						editNote.setAttribute('aria-live', 'polite');
+
+						editForm.appendChild(editInput);
+						editForm.appendChild(editSave);
+						editForm.appendChild(editCancel);
+						editWrap.appendChild(editToggle);
+						editWrap.appendChild(editForm);
+						editWrap.appendChild(editNote);
+						emailedBox.appendChild(editWrap);
+
+						function openEdit() {
+							window.clearTimeout(autoClose); // don't auto-close mid-edit
+							editToggle.hidden = true;
+							editForm.hidden = false;
+							editNote.textContent = '';
+							editInput.focus({ preventScroll: true });
+							editInput.select();
+						}
+
+						function closeEdit() {
+							editForm.hidden = true;
+							editToggle.hidden = false;
+							editNote.textContent = '';
+						}
+
+						editToggle.addEventListener('click', openEdit);
+						editCancel.addEventListener('click', closeEdit);
+
+						editForm.addEventListener('submit', function (e) {
+							e.preventDefault();
+							var next = (editInput.value || '').trim();
+							if (!EMAIL_RE.test(next)) {
+								editNote.textContent = cfg.i18n.invalidEmail;
+								editNote.className = 'brikpanel-cartab-editmail-note is-error';
+								return;
+							}
+							editSave.disabled = true;
+							editCancel.disabled = true;
+							updateEmail(data.id, next).then(function (json) {
+								var d = (json && json.data) ? json.data : {};
+								var addr = d.email || next;
+								editForm.hidden = true;
+								editToggle.hidden = false;
+								editToggle.disabled = true;
+								editToggle.textContent = cfg.i18n.editDone;
+								editNote.textContent = '';
+								emailedIntro.textContent = cfg.i18n.couponEmailed.replace('%s', addr);
+								// Give the reader time again after a correction.
+								window.clearTimeout(autoClose);
+								autoClose = window.setTimeout(function () { closePopup(true); }, 9000);
+							}).catch(function () {
+								editSave.disabled = false;
+								editCancel.disabled = false;
+								editNote.textContent = cfg.i18n.error;
+								editNote.className = 'brikpanel-cartab-editmail-note is-error';
+							});
+						});
+					}
+
 					modal.appendChild(emailedBox);
 				}
 
@@ -581,7 +698,8 @@
 
 				// Auto-close: longer when a coupon (or the emailed-coupon
 				// notice) is on screen so the visitor has time to read it.
-				window.setTimeout(function () {
+				// Stored so the edit-email flow can defer it while correcting.
+				autoClose = window.setTimeout(function () {
 					closePopup(true);
 				}, (hasCoupon || emailedCoupon) ? 9000 : 2500);
 			}

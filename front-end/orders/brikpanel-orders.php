@@ -436,11 +436,18 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'    => __('Auto-show fields other plugins add', 'brikpanel'),
+            'id'      => 'brikpanel_pe_wc_tabs_auto',
+            'type'    => 'checkbox',
+            'desc'    => __('Automatically show, and save, fields that another plugin adds to WooCommerce\'s native "Product data" tabs (internal product codes, subscription options, booking settings, extra fields, and so on), with no setup, for both simple and variable products. When off (the default), pick the sections you want in the "Additional product data sections" picker below — each option lists the fields it contains, so you can find a plugin\'s field by name. Per-variation fields added by other plugins are always kept and saved either way, so saving a product never wipes them.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
             'name'     => __('Additional product data sections', 'brikpanel'),
             'id'       => 'brikpanel_pe_wc_tabs_selected',
             'type'     => 'multiselect',
             'class'    => 'wc-enhanced-select',
-            'desc'     => __('Pick which sections from WooCommerce\'s native "Product data" tabs (General, Inventory, Shipping, and custom tabs added by Subscriptions, Memberships, Bookings, swatches, SEO plugins…) should appear as "Additional product data" inside the BrikPanel editor. Leave empty to hide all — hidden by default.', 'brikpanel'),
+            'desc'     => __('Only needed when "Auto-show fields other plugins add" is off (or to force-include a section). Pick which sections from WooCommerce\'s native "Product data" tabs (General, Inventory, Shipping, and custom tabs added by Subscriptions, Memberships, Bookings, swatches, SEO plugins…) should appear as "Additional product data" inside the BrikPanel editor.', 'brikpanel'),
             'desc_tip' => true,
             'options'  => $wc_product_data_sections,
             'default'  => [],
@@ -627,6 +634,24 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'     => __('Excluded user agents', 'brikpanel'),
+            'id'       => 'brikpanel_excluded_user_agents',
+            'type'     => 'textarea',
+            'desc'     => __('BrikPanel already ignores every crawler it recognises, including Googlebot, Google Storebot, Bing, the AI crawlers and any tool that identifies itself as a bot. Add anything else you want left out of your analytics here, one entry per line. A partial name is enough: typing "shopping" leaves out every visit whose browser name contains it.', 'brikpanel'),
+            'css'      => 'min-width:400px;height:90px;',
+            'default'  => '',
+            'placeholder' => "some-crawler\nprice-checker", // i18n-ignore: sample crawler names, not prose.
+        ],
+        [
+            'name'     => __('Excluded IP addresses', 'brikpanel'),
+            'id'       => 'brikpanel_excluded_ips',
+            'type'     => 'textarea',
+            'desc'     => __('Visits from these addresses are never counted. Use it for your own office or warehouse, or for a crawler that pretends to be a normal browser. One per line. You can enter a single address, or a whole range in the 203.0.113.0/24 style.', 'brikpanel'),
+            'css'      => 'min-width:400px;height:90px;',
+            'default'  => '',
+            'placeholder' => "203.0.113.42\n203.0.113.0/24", // i18n-ignore: sample IP notation, not prose.
+        ],
+        [
             'name'              => __('Live visitor refresh interval', 'brikpanel'),
             'id'                => 'brikpanel_live_ping_interval',
             'type'              => 'number',
@@ -693,10 +718,10 @@ function brikpanel_settings_fields() {
             'default' => 'no',
         ],
         [
-            'name'    => __('Allowed email addresses', 'brikpanel'),
+            'name'    => __('Assign to specific customers', 'brikpanel'),
             'id'      => 'brikpanel_coupons_show_emails',
             'type'    => 'checkbox',
-            'desc'    => __('Show an "Allowed emails" field that whitelists which billing email addresses can use the coupon.', 'brikpanel'),
+            'desc'    => __('Show a searchable customer picker so you can assign the coupon to one or more registered users, or to any email address you type.', 'brikpanel'),
             'default' => 'no',
         ],
         [

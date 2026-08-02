@@ -30,18 +30,11 @@ if ( ! defined( 'BRIKPANEL_VISITOR_PING_INTERVAL' ) ) {
     unset( $brikpanel_live_interval );
 }
 
-/**
- * Skip live tracking for obvious bots. Light user-agent sniff — not a
- * security boundary, just a load-shedding heuristic so search crawlers
- * don't fill the transient.
- */
-function _brikpanel_is_bot_ua() {
-    $ua = isset( $_SERVER['HTTP_USER_AGENT'] ) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
-    if ( $ua === '' ) {
-        return true;
-    }
-    return (bool) preg_match( '/(bot|crawler|spider|crawling|facebookexternalhit|slurp|mediapartners|ahrefs|semrush|petalbot|bingpreview|yandex|baidu|duckduckbot|applebot)/i', $ua );
-}
+// Bot detection (_brikpanel_is_bot_ua / brikpanel_is_bot_request) moved to
+// includes/brikpanel-bot-filter.php in 3.2.30, where every tracker in the
+// plugin shares one list plus the merchant's own exclusions. It used to live
+// here, matching a handful of tokens that missed most of Google's non-
+// "Googlebot" crawlers.
 
 /* ----------------------------------------------------------
  * 1) Ziyaretçi ID (Cookie)
@@ -214,7 +207,10 @@ function brikpanel_track_live_visitor() {
         wp_send_json_success( 'Disabled' );
     }
 
-    if ( _brikpanel_is_bot_ua() ) {
+    // Guarded like every other call site: the detector moved to
+    // includes/brikpanel-bot-filter.php in 3.2.30, and this is a public
+    // endpoint — a missing module file must degrade, never fatal.
+    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
         wp_send_json_success( 'Skipped' );
     }
 

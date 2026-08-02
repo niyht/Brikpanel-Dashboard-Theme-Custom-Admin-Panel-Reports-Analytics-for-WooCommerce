@@ -89,6 +89,120 @@ function brikpanel_brikmentor_url() {
     return esc_url_raw( $url );
 }
 
+/**
+ * Checkout URL for the "$1 launch" CTAs. A plain link the merchant follows to
+ * the brksoft.com relay's Stripe Checkout; on success the relay lands them on
+ * its own welcome page (license key + plugin download + install steps). No
+ * install ever happens from inside wp-admin — that is what keeps BrikPanel
+ * within wp.org Guideline 8 (a directory plugin may not install an
+ * off-directory plugin from an external server).
+ *
+ * `src` + `site_url` ride along so the relay can attribute the sale and
+ * recognise a returning store (the first-month discount is first-purchase-only).
+ * `site_url` is rawurlencode()'d before add_query_arg() because WordPress's
+ * build_query() does NOT url-encode values — this matches the exact wire format
+ * the relay already parses.
+ *
+ * Overridable via option/filter so campaigns can be re-pointed without a release.
+ *
+ * @return string
+ */
+function brikpanel_brikmentor_checkout_url() {
+    $base = get_option( 'brikpanel_brikmentor_checkout_url', '' );
+    if ( ! is_string( $base ) || '' === trim( $base ) ) {
+        $relay = get_option( 'brikmentor_relay_url' );
+        $relay = ( is_string( $relay ) && '' !== trim( $relay ) )
+            ? untrailingslashit( $relay )
+            : 'https://brksoft.com';
+        $base = $relay . '/wp-json/brikmentor-relay/v1/checkout';
+    }
+    $base = add_query_arg(
+        array(
+            'src'      => 'panel',
+            'site_url' => rawurlencode( home_url() ),
+        ),
+        $base
+    );
+    /**
+     * Filter the BrikMentor Stripe Checkout URL used by the launch CTAs.
+     *
+     * @param string $base Full checkout URL including src/site_url args.
+     */
+    return esc_url_raw( (string) apply_filters( 'brikpanel_brikmentor_checkout_url', $base ) );
+}
+
+/* ── Promo price token ──────────────────────────────────────────────────────── */
+
+/**
+ * The first-month promo price, ready to print.
+ *
+ * The amount and its currency symbol are a single typographic unit. Locales
+ * that put the symbol last ("1 $") used to wrap between the two whenever the
+ * pair happened to land on a line end, leaving a stray "$." opening the next
+ * line. Every space inside the token is therefore collapsed to a non-breaking
+ * space, so the pair can never be split no matter the locale or the container
+ * width.
+ *
+ * Keeping the price out of the sentences also means a campaign change is one
+ * string, not nine translations.
+ *
+ * @return string Price token, e.g. "$1" or "1 $" with a non-breaking space.
+ */
+function brikpanel_brikmentor_price() {
+    /* translators: first-month promo price in US dollars. Locales that place the symbol after the amount should translate this as "1 $". The space is turned into a non-breaking space automatically, so the amount and its symbol never split across two lines. */
+    $price     = trim( _x( '$1', 'first-month promo price', 'brikpanel' ) );
+    $unbroken  = preg_replace( '/[\s\x{00A0}]+/u', "\u{00A0}", $price );
+    $price     = ( null === $unbroken || '' === $unbroken ) ? $price : $unbroken;
+
+    /**
+     * Filter the first-month promo price token shown on every launch surface.
+     *
+     * @param string $price Display price, symbol and amount already joined.
+     */
+    return (string) apply_filters( 'brikpanel_brikmentor_price', $price );
+}
+
+/**
+ * Glue a figure to the unit that follows it.
+ *
+ * Several locales write the unit detached ("25 %", "1 $"). When such a pair
+ * lands on a line end the symbol drops alone onto the next line, which reads
+ * like a typo. A non-breaking space keeps the pair together everywhere, at no
+ * cost to locales that write the symbol first ("%25").
+ *
+ * @param string $text Translated copy.
+ * @return string
+ */
+function brikpanel_brikmentor_nb_units( $text ) {
+    $out = preg_replace( '/(\d)\x20+([%$€£₺¥])/u', "\$1\u{00A0}\$2", (string) $text );
+    return ( null === $out ) ? (string) $text : $out;
+}
+
+/**
+ * Fill a promo sentence's "%s" with the price token.
+ *
+ * Deliberately a literal swap rather than sprintf(): this copy is full of
+ * literal percent signs ("15-25%", "100% free") and the translations come from
+ * outside contributors, so a locale string can easily read as a malformed
+ * format. sprintf() answers that with a mangled sentence ("100% free" becomes
+ * "1000.000000ree") or, in PHP 8, a thrown Error. A marketing line is never
+ * worth either, and the price token needs no formatting flags.
+ *
+ * @param string $format Translated sentence containing a single %s.
+ * @return string
+ */
+function brikpanel_brikmentor_price_text( $format ) {
+    $format = (string) $format;
+    if ( false === strpos( $format, '%s' ) && false === strpos( $format, '%1$s' ) ) {
+        return brikpanel_brikmentor_nb_units( $format );
+    }
+    $text = str_replace( array( '%1$s', '%s' ), brikpanel_brikmentor_price(), $format );
+    // A translator who escaped their literal percent signs still gets one.
+    $text = str_replace( '%%', '%', $text );
+
+    return brikpanel_brikmentor_nb_units( $text );
+}
+
 /* ── Floating launch button (Abandoned Carts + Customer Analytics) ──────────── */
 
 /**
@@ -99,25 +213,42 @@ function brikpanel_brikmentor_url() {
  * @return array<string, array>
  */
 function brikpanel_brikmentor_fab_screens() {
-    return array(
+    $screens = array(
         'brikpanel-abandoned-carts'    => array(
             'context' => 'carts',
             'title'   => __( 'Recover these carts on autopilot', 'brikpanel' ),
-            'body'    => __( 'Sending cart recovery emails consistently, with the right strategy, directly lifts a store\'s total revenue by 15-25% on average. Across the industry, roughly 70 of every 100 shoppers leave without completing checkout, which makes this automation the highest-ROI marketing channel there is. Don\'t leave money on the table: with BrikMentor, your first month is just $1.', 'brikpanel' ),
+            // The price never lives inside the pitch copy: it is printed on its
+            // own line below, where it cannot wrap or fight the sentence.
+            'body'    => __( 'Sending cart recovery emails consistently, with the right strategy, directly lifts a store\'s total revenue by 15-25% on average. Across the industry, roughly 70 of every 100 shoppers leave without completing checkout, which makes this automation the highest-ROI marketing channel there is. Don\'t leave that money on the table.', 'brikpanel' ),
         ),
         'brikpanel-customer-analytics' => array(
             'context'  => 'analytics',
             'title'    => __( 'Turn this data into revenue', 'brikpanel' ),
             // Default body (LTV tab is the landing tab); the rest are swapped
             // in client-side when the merchant changes tabs.
-            'body'     => __( 'Your best customers are worth many times a single order. BrikMentor turns your LTV data into automated email campaigns that bring high-value customers back to buy again. First month just $1.', 'brikpanel' ),
+            // Each variant describes a flow BrikMentor actually ships (post
+            // purchase, winback), in the terms of the tab on screen. Nothing
+            // here may promise targeting the product does not have: there is
+            // no LTV-keyed campaign and no cohort-keyed campaign, so neither
+            // is claimed.
+            'body'     => __( 'Lifetime value grows one repeat order at a time. BrikMentor follows up a few days after each completed order with the products other customers bought alongside it, then starts a win-back series for the buyers who drift away.', 'brikpanel' ),
             'variants' => array(
-                'ltv'    => __( 'Your best customers are worth many times a single order. BrikMentor turns your LTV data into automated email campaigns that bring high-value customers back to buy again. First month just $1.', 'brikpanel' ),
-                'rfm'    => __( 'These segments are ready-made audiences. BrikMentor automatically sends each RFM segment the right email and wins back at-risk customers before they churn. First month just $1.', 'brikpanel' ),
-                'cohort' => __( 'Every cohort that fades is repeat revenue lost. BrikMentor runs win-back campaigns that re-activate lapsed cohorts on autopilot. First month just $1.', 'brikpanel' ),
+                'ltv'    => __( 'Lifetime value grows one repeat order at a time. BrikMentor follows up a few days after each completed order with the products other customers bought alongside it, then starts a win-back series for the buyers who drift away.', 'brikpanel' ),
+                'rfm'    => __( 'These segments are ready-made audiences. BrikMentor reads them straight from BrikPanel: pick the ones to re-engage (At Risk, Can\'t Lose Them and Hibernating by default) and it sends a reminder first, a coupon only if that is not enough.', 'brikpanel' ),
+                'cohort' => __( 'A retention curve that flattens out is repeat revenue leaking away. BrikMentor scans your customers daily, starts a win-back series for anyone who has not ordered in months, and cancels it the moment they buy again.', 'brikpanel' ),
             ),
         ),
     );
+
+    // Figures keep their unit ("25 %") on the same line in every locale.
+    foreach ( $screens as $slug => $screen ) {
+        $screens[ $slug ]['body'] = brikpanel_brikmentor_nb_units( $screen['body'] );
+        if ( ! empty( $screen['variants'] ) ) {
+            $screens[ $slug ]['variants'] = array_map( 'brikpanel_brikmentor_nb_units', $screen['variants'] );
+        }
+    }
+
+    return $screens;
 }
 
 /** Current screen's floating-button config, or null when not applicable. */
@@ -160,12 +291,18 @@ function brikpanel_brikmentor_render_fab() {
             </div>
             <h2 class="brikpanel-bm-panel__title" id="brikpanel-bm-panel-title"><?php echo esc_html( $screen['title'] ); ?></h2>
             <p class="brikpanel-bm-panel__body" data-bm-body><?php echo esc_html( $screen['body'] ); ?></p>
+            <div class="brikpanel-bm-panel__offer">
+                <span class="brikpanel-bm-panel__offer-label"><?php esc_html_e( 'First month', 'brikpanel' ); ?></span>
+                <span class="brikpanel-bm-panel__offer-price"><?php echo esc_html( brikpanel_brikmentor_price() ); ?></span>
+            </div>
             <div class="brikpanel-bm-panel__actions">
-                <a class="brikpanel-bm-panel__cta brikpanel-bm-checkout" data-bm-checkout href="<?php echo esc_url( $checkout_url ); ?>">
-                    <?php esc_html_e( 'Try BrikMentor for $1', 'brikpanel' ); ?>
+                <a class="brikpanel-bm-panel__cta" href="<?php echo esc_url( $checkout_url ); ?>" target="_blank" rel="noopener noreferrer">
+                    <?php esc_html_e( 'Try BrikMentor', 'brikpanel' ); ?>
                 </a>
-                <a class="brikpanel-bm-panel__ghost" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
-                <button type="button" class="brikpanel-bm-panel__ghost" data-bm-panel-close><?php esc_html_e( 'Not now', 'brikpanel' ); ?></button>
+                <div class="brikpanel-bm-panel__links">
+                    <a class="brikpanel-bm-panel__ghost" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
+                    <button type="button" class="brikpanel-bm-panel__ghost" data-bm-panel-close><?php esc_html_e( 'Not now', 'brikpanel' ); ?></button>
+                </div>
             </div>
         </div>
         <button type="button" class="brikpanel-bm-fab" data-bm-fab aria-haspopup="dialog" aria-expanded="false" title="BrikMentor">
@@ -260,13 +397,29 @@ function brikpanel_brikmentor_render_fab() {
             font-size: 1rem; font-weight: 600; line-height: 1.35; color: #303030;
         }
         .brikpanel-bm-panel__body {
-            margin: 0 0 1rem; padding: 0;
+            margin: 0 0 0.875rem; padding: 0;
             font-size: 0.8125rem; line-height: 1.55; color: #616161;
         }
-        .brikpanel-bm-panel__actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        /* The offer is a price tag, not a sentence: label left, amount right,
+           on its own line so no locale can wrap the amount away from its
+           currency symbol. */
+        .brikpanel-bm-panel__offer {
+            display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem;
+            margin: 0 0 1rem; padding: 0.5rem 0.75rem;
+            background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 0.5rem;
+        }
+        .brikpanel-bm-panel__offer-label {
+            font-size: 0.75rem; font-weight: 550; color: #616161;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .brikpanel-bm-panel__offer-price {
+            font-size: 1.125rem; font-weight: 600; color: #303030;
+            line-height: 1.2; white-space: nowrap; font-variant-numeric: tabular-nums;
+        }
+        .brikpanel-bm-panel__actions { display: flex; flex-direction: column; gap: 0.375rem; }
         .brikpanel-bm-panel__cta {
-            display: inline-flex; align-items: center; justify-content: center;
-            padding: 0.5rem 1rem; border-radius: 0.5rem;
+            display: flex; align-items: center; justify-content: center; text-align: center;
+            padding: 0.5625rem 1rem; border-radius: 0.5rem;
             background: #303030; color: #fff; text-decoration: none;
             font-size: 0.8125rem; font-weight: 550; line-height: 1.2;
             box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
@@ -274,13 +427,18 @@ function brikpanel_brikmentor_render_fab() {
         }
         .brikpanel-bm-panel__cta:hover { background: #1a1a1a; color: #fff; }
         .brikpanel-bm-panel__cta:focus { outline: none; box-shadow: 0 0 0 2px #303030; color: #fff; }
+        .brikpanel-bm-panel__links {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 0.5rem; margin: 0 -0.5rem;
+        }
         .brikpanel-bm-panel__ghost {
-            background: transparent; border: none; cursor: pointer;
-            padding: 0.5rem 0.75rem; border-radius: 0.5rem;
+            background: transparent; border: none; cursor: pointer; text-decoration: none;
+            padding: 0.375rem 0.5rem; border-radius: 0.375rem;
             font-size: 0.8125rem; font-weight: 550; font-family: inherit; color: #8a8a8a;
             transition: background 0.15s ease, color 0.15s ease;
         }
-        .brikpanel-bm-panel__ghost:hover { background: #f7f7f7; color: #303030; }
+        .brikpanel-bm-panel__ghost:hover { background: #f7f7f7; color: #303030; text-decoration: none; }
+        .brikpanel-bm-panel__ghost:focus { outline: none; box-shadow: 0 0 0 2px #303030; color: #303030; }
         @media (max-width: 782px) {
             .brikpanel-bm-fab-root { right: 16px; bottom: 16px; }
         }

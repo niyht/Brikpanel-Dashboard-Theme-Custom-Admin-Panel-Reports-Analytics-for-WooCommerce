@@ -151,8 +151,14 @@ function brikpanel_ads_meta_locked() {
  * Whether the Meta Ads card wears the "Coming soon" skin while still being
  * fully functional underneath.
  *
- * Product decision: the card should read as "Coming soon / Pending Meta
- * approval" so the public listing stays clean and we don't field "it doesn't
+ * Defaults to OFF: Meta approved ads_read for Advanced Access (2026-07-05), so
+ * public merchants can connect their own account warning-free and the plain
+ * Connected / Not-connected card is the correct out-of-the-box look. The skin
+ * is kept only as an operator escape hatch (constant / option) in case Meta
+ * ever revokes access. Same contract as Google above.
+ *
+ * Legacy rationale (pre-approval): the card read "Coming soon / Pending Meta
+ * approval" so the public listing stayed clean and we did not field "it doesn't
  * work" reports — but the Connect button is live, the OAuth handshake runs,
  * and once connected the normal account picker / Sync now / Disconnect body
  * renders so the integration genuinely works for whoever connects it.
@@ -168,7 +174,7 @@ function brikpanel_ads_meta_disguised() {
 	if ( defined( 'BRIKPANEL_ADS_META_DISGUISE' ) ) {
 		return (bool) BRIKPANEL_ADS_META_DISGUISE;
 	}
-	return get_option( 'brikpanel_ads_meta_disguise', 'yes' ) === 'yes';
+	return get_option( 'brikpanel_ads_meta_disguise', 'no' ) === 'yes';
 }
 
 /**
@@ -270,8 +276,41 @@ function brikpanel_ads_register_nav_badge( $badges ) {
 }
 
 /**
- * Add a Beta badge next to the section <h2> in WC settings, matching the
- * Google Sheets section treatment.
+ * Print the inline CSS for the Beta badge. Loaded admin-wide because the badge
+ * is used in the sidebar menu item (which renders on every admin page) and on
+ * the BrikPanel WC settings tab title. The rule is tiny enough that a
+ * dedicated stylesheet would cost more than it saves.
+ */
+add_action( 'admin_head', 'brikpanel_ads_print_beta_badge_styles', 9999 );
+function brikpanel_ads_print_beta_badge_styles() {
+	// Excluded users (access control) get the stock admin with no BrikPanel
+	// menu, so the badge it styles never renders — skip the inline CSS too.
+	if ( function_exists( 'brikpanel_access_should_neutralize' ) && brikpanel_access_should_neutralize() ) {
+		return;
+	}
+	echo '<style id="brikpanel-beta-badge-css">'
+		. '.brikpanel-beta-badge{'
+			. 'display:inline-flex;align-items:center;'
+			. 'margin-left:0.4rem;padding:0.05rem 0.45rem;'
+			. 'background:#f1f1f1;color:#616161;'
+			. 'border:1px solid #e3e3e3;border-radius:999px;'
+			. 'font-size:0.625rem;font-weight:600;letter-spacing:0.04em;'
+			. 'line-height:1.6;text-transform:uppercase;'
+			. 'vertical-align:middle;'
+		. '}'
+		. '#adminmenu .brikpanel-beta-badge{'
+			. 'background:rgba(255,255,255,0.14);color:#fff;'
+			. 'border-color:rgba(255,255,255,0.22);'
+			. 'font-size:0.6rem;padding:0.02rem 0.38rem;line-height:1.5;'
+		. '}'
+		. '.brikpanel-menu-icon-title-container .brikpanel-beta-badge{'
+			. 'background:#fff;color:#303030;border-color:#e3e3e3;'
+		. '}'
+		. '</style>';
+}
+
+/**
+ * Add a Beta badge next to the section <h2> in WC settings.
  */
 add_action( 'woocommerce_settings_brk_ad_platforms_title', 'brikpanel_ads_inject_beta_badge_in_settings' );
 function brikpanel_ads_inject_beta_badge_in_settings() {

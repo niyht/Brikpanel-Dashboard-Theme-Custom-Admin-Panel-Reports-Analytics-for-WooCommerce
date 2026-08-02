@@ -63,10 +63,21 @@ class Brikpanel_Sheets_Client {
 	 * @param string $tab_name
 	 * @param array  $rows  Array of arrays of scalars. e.g. [['#1','John',9.99], ...]
 	 * @param string $value_input_option USER_ENTERED parses formulas; RAW writes literal.
+	 * @param bool   $retry_ambiguous Pass false when the caller wants to handle
+	 *               ambiguous failures (network timeout, 5xx) itself. An append
+	 *               is NOT idempotent: when a request times out AFTER Google
+	 *               processed it, a blind internal retry appends the same rows
+	 *               a second time — the classic source of duplicated order
+	 *               blocks in the sheet. With false, those failures throw
+	 *               immediately with api_reason "ambiguous_failure" so the
+	 *               caller can read the sheet back and decide whether the rows
+	 *               actually landed before retrying. Unambiguous rejections
+	 *               (429 rate limit, quota 403) are still retried internally in
+	 *               both modes since Google did not execute them.
 	 * @return array
 	 * @throws Brikpanel_Sheets_Exception
 	 */
-	public function append_rows( $spreadsheet_id, $tab_name, array $rows, $value_input_option = 'USER_ENTERED' ) {
+	public function append_rows( $spreadsheet_id, $tab_name, array $rows, $value_input_option = 'USER_ENTERED', $retry_ambiguous = true ) {
 		if ( empty( $rows ) ) {
 			return [];
 		}
@@ -77,7 +88,7 @@ class Brikpanel_Sheets_Client {
 			. ':append?valueInputOption=' . rawurlencode( $value_input_option )
 			. '&insertDataOption=INSERT_ROWS&includeValuesInResponse=false';
 
-		return $this->request( 'POST', self::SHEETS_BASE . $path, [ 'values' => $rows ] );
+		return $this->request( 'POST', self::SHEETS_BASE . $path, [ 'values' => $rows ], $retry_ambiguous );
 	}
 
 	/**
@@ -480,10 +491,15 @@ class Brikpanel_Sheets_Client {
 	 * @param string     $method GET|POST|PUT|DELETE
 	 * @param string     $url    Full URL (already includes query string).
 	 * @param array|object|null $body  JSON-serialisable body for POST/PUT.
+	 * @param bool       $retry_ambiguous See append_rows(): false makes ambiguous
+	 *                   failures (network error, 5xx — where Google MAY have
+	 *                   executed the request) throw immediately with api_reason
+	 *                   "ambiguous_failure" instead of blind-retrying, so a
+	 *                   non-idempotent caller can verify before re-sending.
 	 * @return array Decoded JSON response.
 	 * @throws Brikpanel_Sheets_Exception
 	 */
-	private function request( $method, $url, $body = null ) {
+	private function request( $method, $url, $body = null, $retry_ambiguous = true ) {
 		$attempt          = 0;
 		$refreshed_once   = false;
 		$last_status      = 0;
@@ -513,6 +529,12 @@ class Brikpanel_Sheets_Client {
 			$resp = wp_remote_request( $url, $args );
 			if ( is_wp_error( $resp ) ) {
 				$last_message = $resp->get_error_message();
+				if ( ! $retry_ambiguous ) {
+					// The request may have reached Google and been executed even
+					// though we never saw the response (timeout after send).
+					// Non-idempotent caller — surface it instead of re-sending.
+					throw new Brikpanel_Sheets_Exception( $last_message, 0, 'ambiguous_failure' );
+				}
 				// Transient network error — backoff and retry.
 				$this->sleep_backoff( $attempt, self::BACKOFF );
 				$attempt++;
@@ -558,7 +580,15 @@ class Brikpanel_Sheets_Client {
 				continue;
 			}
 
-			// 429 / 5xx -> standard backoff.
+			// 5xx: Google may or may not have executed the request before
+			// failing — ambiguous for non-idempotent callers, same as a
+			// network error above.
+			if ( $code >= 500 && $code < 600 && ! $retry_ambiguous ) {
+				throw new Brikpanel_Sheets_Exception( $last_message, $code, 'ambiguous_failure' );
+			}
+
+			// 429 / 5xx -> standard backoff. (429 means the request was
+			// rejected before execution, so retrying it is always safe.)
 			if ( $code === 429 || ( $code >= 500 && $code < 600 ) ) {
 				$this->sleep_backoff( $attempt, self::BACKOFF );
 				$attempt++;

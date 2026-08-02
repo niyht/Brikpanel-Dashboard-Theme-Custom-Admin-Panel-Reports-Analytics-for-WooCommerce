@@ -434,6 +434,34 @@
 	color: #616161;
 }
 .bp-gs-twoway-note .bp-gs-col-badge { font-weight: 600; }
+.bp-gs-scope {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	margin: 0.625rem 0 0;
+	padding: 0.625rem 0.75rem;
+	background: #fafafa;
+	border: 1px solid #e3e3e3;
+	border-left: 3px solid #8a8a8a;
+	border-radius: 0.5rem;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: #616161;
+}
+.bp-gs-scope[data-tone="warn"] {
+	background: #fdf6e3;
+	border-color: #e8d9a8;
+	border-left-color: #b8860b;
+}
+.bp-gs-scope-count { font-weight: 600; color: #303030; }
+.bp-gs-scope-warn:empty { display: none; }
+.bp-gs-twoway-note p.bp-gs-twoway-note-off {
+	margin-top: 0.5rem;
+	padding-top: 0.5rem;
+	border-top: 1px solid #e3e3e3;
+	color: #303030;
+	font-weight: 550;
+}
 .bp-gs-icon-btn {
 	appearance: none;
 	border: 1px solid #e3e3e3;

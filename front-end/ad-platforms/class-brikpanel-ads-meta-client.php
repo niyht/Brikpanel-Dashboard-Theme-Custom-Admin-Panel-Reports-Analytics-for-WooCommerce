@@ -58,6 +58,13 @@ class Brikpanel_Ads_Meta_Client {
 	 */
 	const MAX_WINDOW_DAYS = 90;
 
+	/**
+	 * Hard ceiling on cursor-following inside a single window / listing. Both
+	 * loops already stop on their natural end condition; this is the backstop
+	 * that keeps a misbehaving upstream from pinning a worker forever.
+	 */
+	const MAX_PAGES = 25;
+
 	// =========================================================================
 	// Public API
 	// =========================================================================
@@ -69,23 +76,90 @@ class Brikpanel_Ads_Meta_Client {
 	 * @throws Brikpanel_Ads_Meta_Exception
 	 */
 	public function list_accounts() {
-		$resp = $this->request( 'POST', '/meta/list-ad-accounts', [] );
-		$accounts = isset( $resp['data'] ) && is_array( $resp['data'] ) ? $resp['data'] : [];
-		$out = [];
-		foreach ( $accounts as $row ) {
-			if ( empty( $row['id'] ) ) {
-				continue;
+		$out    = [];
+		$seen   = [];
+		$after  = '';
+		$pages  = 0;
+
+		// /me/adaccounts is capped at 100 per page by the proxy, so a merchant
+		// on an agency account with more than 100 ad accounts used to simply
+		// never see the rest of them. Follow the cursor.
+		//
+		// The loop is written to be safe against an older proxy build that does
+		// not forward the `after` param: such a proxy replies with page 1 over
+		// and over, which yields no unseen IDs, and we stop on the first
+		// repeat instead of spinning forever.
+		do {
+			$body = [];
+			if ( $after !== '' ) {
+				$body['after'] = $after;
 			}
-			$out[] = [
-				'id'         => (string) $row['id'],                                       // act_1234567890
-				'account_id' => (string) ( $row['account_id'] ?? '' ),                     // bare 1234567890
-				'name'       => (string) ( $row['name'] ?? $row['id'] ),
-				'currency'   => (string) ( $row['currency'] ?? '' ),
-				'timezone'   => (string) ( $row['timezone_name'] ?? '' ),
-				'status'     => (int)    ( $row['account_status'] ?? 0 ),
-			];
-		}
+			$resp     = $this->request( 'POST', '/meta/list-ad-accounts', $body );
+			$accounts = isset( $resp['data'] ) && is_array( $resp['data'] ) ? $resp['data'] : [];
+
+			$fresh = 0;
+			foreach ( $accounts as $row ) {
+				if ( empty( $row['id'] ) ) {
+					continue;
+				}
+				$id = (string) $row['id'];
+				if ( isset( $seen[ $id ] ) ) {
+					continue;
+				}
+				$seen[ $id ] = true;
+				$fresh++;
+				$status = (int) ( $row['account_status'] ?? 0 );
+				$out[] = [
+					'id'          => $id,                                                  // act_1234567890
+					'account_id'  => (string) ( $row['account_id'] ?? '' ),                 // bare 1234567890
+					'name'        => (string) ( $row['name'] ?? $id ),
+					'currency'    => (string) ( $row['currency'] ?? '' ),
+					'timezone'    => (string) ( $row['timezone_name'] ?? '' ),
+					'status'      => $status,
+					'status_label'=> self::account_status_label( $status ),
+					'usable'      => self::account_status_is_usable( $status ),
+				];
+			}
+
+			$after = self::next_cursor( $resp );
+			$pages++;
+		} while ( $after !== '' && $fresh > 0 && $pages < self::MAX_PAGES );
+
 		return $out;
+	}
+
+	/**
+	 * Meta ad account states we care about. Anything other than ACTIVE (1) can
+	 * still be selected — history is readable on a closed account — but the
+	 * picker labels it so a merchant does not pick a dead account and then
+	 * wonder why today's spend is always zero.
+	 *
+	 * @param int $status
+	 * @return string Translated label, '' for a healthy account.
+	 */
+	private static function account_status_label( $status ) {
+		// _x() rather than __(): every one of these is a bare, very common word
+		// ("Disabled", "Closed", "Inactive") that a translator would otherwise
+		// see with no idea it labels a Meta ad account, and that can collide
+		// with an unrelated string of the same spelling elsewhere in the
+		// catalogue.
+		switch ( (int) $status ) {
+			case 1:   return '';
+			case 2:   return _x( 'Disabled', 'Meta ad account status', 'brikpanel' );
+			case 3:   return _x( 'Unsettled', 'Meta ad account status', 'brikpanel' );
+			case 7:   return _x( 'Pending review', 'Meta ad account status', 'brikpanel' );
+			case 8:   return _x( 'Pending closure', 'Meta ad account status', 'brikpanel' );
+			case 9:   return _x( 'In grace period', 'Meta ad account status', 'brikpanel' );
+			case 100: return _x( 'Closed', 'Meta ad account status', 'brikpanel' );
+			case 101: return _x( 'Any active', 'Meta ad account status', 'brikpanel' );
+			case 201: return _x( 'Any closed', 'Meta ad account status', 'brikpanel' );
+			default:  return _x( 'Inactive', 'Meta ad account status', 'brikpanel' );
+		}
+	}
+
+	/** True for a status that can still accrue new spend. */
+	private static function account_status_is_usable( $status ) {
+		return in_array( (int) $status, [ 1, 3, 7, 9, 101 ], true );
 	}
 
 	/**
@@ -129,39 +203,19 @@ class Brikpanel_Ads_Meta_Client {
 				)
 			);
 
-			$resp = $this->request( 'POST', '/meta/insights', [
-				'account_id' => $account_id,
-				'since'      => $cursor,
-				'until'      => $slice_end,
-			] );
-
-			$data = isset( $resp['data'] ) && is_array( $resp['data'] ) ? $resp['data'] : [];
-			foreach ( $data as $row ) {
-				$date = (string) ( $row['date_start'] ?? '' );
-				if ( ! self::is_valid_date( $date ) ) {
-					continue;
-				}
-				$rows[] = [
-					'date'           => $date,
-					'spend_amount'   => (float)  ( $row['spend'] ?? 0 ),
-					'spend_currency' => (string) ( $row['account_currency'] ?? '' ),
-					'impressions'    => (int)    ( $row['impressions'] ?? 0 ),
-					'clicks'         => (int)    ( $row['clicks'] ?? 0 ),
-					'raw'            => $row,
-				];
-			}
-
-			// Follow pagination cursor if Graph returned `paging.next` —
-			// shouldn't happen at time_increment=1 with our 90-day windows,
-			// but defend against the edge case.
-			$next_cursor = isset( $resp['paging']['cursors']['after'] ) ? (string) $resp['paging']['cursors']['after'] : '';
-			while ( $next_cursor !== '' ) {
-				$resp = $this->request( 'POST', '/meta/insights', [
+			$after = '';
+			$pages = 0;
+			do {
+				$body = [
 					'account_id' => $account_id,
 					'since'      => $cursor,
 					'until'      => $slice_end,
-					'after'      => $next_cursor,
-				] );
+				];
+				if ( $after !== '' ) {
+					$body['after'] = $after;
+				}
+				$resp = $this->request( 'POST', '/meta/insights', $body );
+
 				$data = isset( $resp['data'] ) && is_array( $resp['data'] ) ? $resp['data'] : [];
 				foreach ( $data as $row ) {
 					$date = (string) ( $row['date_start'] ?? '' );
@@ -177,13 +231,45 @@ class Brikpanel_Ads_Meta_Client {
 						'raw'            => $row,
 					];
 				}
-				$next_cursor = isset( $resp['paging']['cursors']['after'] ) ? (string) $resp['paging']['cursors']['after'] : '';
-			}
+
+				$prev  = $after;
+				$after = self::next_cursor( $resp );
+				// A cursor that did not move means the upstream is handing us
+				// the same page again; stop rather than loop on it.
+				if ( $after !== '' && $after === $prev ) {
+					$after = '';
+				}
+				$pages++;
+			} while ( $after !== '' && $pages < self::MAX_PAGES );
 
 			// Advance the cursor one day past the slice_end.
 			$cursor = gmdate( 'Y-m-d', strtotime( $slice_end . ' 00:00:00 UTC' ) + DAY_IN_SECONDS );
 		}
 		return $rows;
+	}
+
+	/**
+	 * Cursor for the NEXT page, or '' when this was the last one.
+	 *
+	 * Graph returns `paging.cursors.after` on essentially every edge response,
+	 * including the final page, so keying off its mere presence meant one
+	 * pointless extra Graph call for every single window we fetched (about
+	 * fourteen wasted calls per three-year backfill, all of them counting
+	 * against Meta's rate limits) and, on any response that came back with
+	 * cursors but no rows, an unterminated loop. `paging.next` is the field
+	 * that actually means "there is more", so gate on that and only then read
+	 * the cursor.
+	 *
+	 * @param array $resp Decoded Graph payload.
+	 * @return string
+	 */
+	private static function next_cursor( $resp ) {
+		if ( empty( $resp['paging']['next'] ) ) {
+			return '';
+		}
+		return isset( $resp['paging']['cursors']['after'] )
+			? (string) $resp['paging']['cursors']['after']
+			: '';
 	}
 
 	// =========================================================================
@@ -208,11 +294,14 @@ class Brikpanel_Ads_Meta_Client {
 		while ( $attempt < self::MAX_ATTEMPTS ) {
 			$token = Brikpanel_Ads_Tokens::get_access_token( Brikpanel_Ads_Tokens::PLATFORM_META );
 			if ( $token === null ) {
-				throw new Brikpanel_Ads_Meta_Exception(
-					__( 'Not connected to Meta Ads.', 'brikpanel' ),
-					0,
-					0
-				);
+				// Distinguish "you never connected" from "we just found out
+				// your authorisation was revoked and dropped it". Landing on
+				// the generic copy right after clicking Sync now on a card that
+				// still said Connected reads like a bug rather than an action.
+				$message = Brikpanel_Ads_Tokens::needs_reconnect( Brikpanel_Ads_Tokens::PLATFORM_META ) !== ''
+					? __( 'Your Meta authorisation is no longer valid, so the connection was dropped. Click Connect Meta Ads to authorise again. Your imported history is untouched.', 'brikpanel' )
+					: __( 'Not connected to Meta Ads.', 'brikpanel' );
+				throw new Brikpanel_Ads_Meta_Exception( $message, 0, 0 );
 			}
 
 			$payload = array_merge( [
@@ -302,15 +391,55 @@ class Brikpanel_Ads_Meta_Client {
 			}
 
 			Brikpanel_Ads_Logger::log( 'meta', $method . ' ' . $path . ' → ' . $code . ' ' . $msg, $code, [ 'meta_code' => $meta_code ] );
-			throw new Brikpanel_Ads_Meta_Exception( $last_message, $code, $meta_code );
+			throw new Brikpanel_Ads_Meta_Exception( self::friendly_message( $meta_code, $last_message ), $code, $meta_code );
 		}
 
 		Brikpanel_Ads_Logger::log( 'meta', $method . ' ' . $path . ' exhausted retries (last ' . $last_status . ')', $last_status, [ 'meta_code' => $last_meta_code ] );
 		throw new Brikpanel_Ads_Meta_Exception(
-			$last_message !== '' ? $last_message : __( 'Request to Meta Ads failed after retries.', 'brikpanel' ),
+			self::friendly_message( $last_meta_code, $last_message !== '' ? $last_message : __( 'Request to Meta Ads failed after retries.', 'brikpanel' ) ),
 			$last_status,
 			$last_meta_code
 		);
+	}
+
+	/**
+	 * Turn a Graph error into something a shop owner can act on.
+	 *
+	 * Graph's own strings are English-only and written for developers
+	 * ("Invalid OAuth access token - Cannot parse access token"), which is not
+	 * a useful thing to show a merchant in a translated admin. Map the codes we
+	 * actually expect onto translated, actionable sentences and fall back to
+	 * the raw string only for the long tail.
+	 *
+	 * @param int    $meta_code Graph error code.
+	 * @param string $fallback  Raw upstream message.
+	 * @return string
+	 */
+	private static function friendly_message( $meta_code, $fallback ) {
+		switch ( (int) $meta_code ) {
+			case 102:
+			case 190:
+				return __( 'Meta rejected the saved authorisation. Click Re-authorize to reconnect your Meta account.', 'brikpanel' );
+			case 3:
+			case 10:
+			case 200:
+				return __( 'Your Meta connection is missing the ads_read permission. Click Re-authorize and make sure you leave the advertising permission enabled on the Meta consent screen.', 'brikpanel' );
+			case 100:
+				return __( 'Meta rejected the request for this ad account. Check that the ad account ID is correct and that your Meta user can view it.', 'brikpanel' );
+			case 4:
+			case 17:
+			case 32:
+			case 613:
+				return __( 'Meta is rate-limiting this connection right now. The next scheduled sync will pick up where this one stopped.', 'brikpanel' );
+			case 803:
+				return __( 'Meta could not find that ad account. Check the ad account ID and try again.', 'brikpanel' );
+		}
+		return $fallback;
+	}
+
+	/** True when the Graph error means "the token lacks the ads_read scope". */
+	public static function is_permission_error( $meta_code ) {
+		return in_array( (int) $meta_code, [ 3, 10, 200 ], true );
 	}
 
 	private function sleep_backoff( $attempt ) {
