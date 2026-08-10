@@ -88,16 +88,15 @@ msgstr "Intégration des plateformes publicitaires"
 
 #: front-end/ad-platforms/brikpanel-ad-platforms.php:211
 msgid ""
-"Pull daily ad spend from Google Ads and Meta Ads to calculate true ROAS and "
-"Net Profit on the dashboard. Currently in beta. Turn it off below to hide "
-"the admin page and stop all background sync jobs. Your connections stay "
-"saved."
+"Pull daily ad spend from Google Ads and Meta Ads to calculate true ROAS "
+"and Net Profit on the dashboard. Turn it off below to hide the admin page "
+"and stop all background sync jobs. Your connections stay saved."
 msgstr ""
-"Récupérez les dépenses publicitaires quotidiennes de Google Ads et Meta Ads "
-"pour calculer le vrai ROAS et le bénéfice net sur le tableau de bord. "
-"Actuellement en bêta. Désactivez-le ci-dessous pour masquer la page "
-"d'administration et arrêter toutes les tâches de synchronisation en arrière-"
-"plan. Vos connexions restent enregistrées."
+"Récupérez les dépenses publicitaires quotidiennes de Google Ads et Meta "
+"Ads pour calculer le vrai ROAS et le bénéfice net sur le tableau de bord. "
+"Désactivez-le ci-dessous pour masquer la page d'administration et arrêter "
+"toutes les tâches de synchronisation en arrière-plan. Vos connexions "
+"restent enregistrées."
 
 #: front-end/ad-platforms/brikpanel-ad-platforms.php:214
 msgid "Enable Ad Platforms integration"
@@ -14917,3 +14916,9 @@ msgid "Builds the monthly cohort × period retention matrix."
 msgstr "Construit la matrice de rétention cohorte mensuelle × période."
 
 
+
+msgid "Price minus cost of goods, with the percentage measured against cost. Taxes, shipping and fees are not deducted."
+msgstr "Prix moins le coût des marchandises, le pourcentage étant calculé sur le coût. Les taxes, la livraison et les frais ne sont pas déduits."
+
+msgid "%d variations have no cost or price on file"
+msgstr "%d variations n'ont pas de coût ou de prix enregistré"

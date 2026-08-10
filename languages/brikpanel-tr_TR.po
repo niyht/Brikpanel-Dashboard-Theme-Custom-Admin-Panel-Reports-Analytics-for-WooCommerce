@@ -88,15 +88,14 @@ msgstr "Reklam Platformları entegrasyonu"
 
 #: front-end/ad-platforms/brikpanel-ad-platforms.php:211
 msgid ""
-"Pull daily ad spend from Google Ads and Meta Ads to calculate true ROAS and "
-"Net Profit on the dashboard. Currently in beta. Turn it off below to hide "
-"the admin page and stop all background sync jobs. Your connections stay "
-"saved."
+"Pull daily ad spend from Google Ads and Meta Ads to calculate true ROAS "
+"and Net Profit on the dashboard. Turn it off below to hide the admin page "
+"and stop all background sync jobs. Your connections stay saved."
 msgstr ""
 "Kontrol panelinde gerçek ROAS ve Net Kâr hesabı için günlük reklam "
-"harcamalarını Google Ads ve Meta Ads üzerinden çekin. Şu anda beta "
-"aşamasında. Yönetim sayfasını gizlemek ve tüm arka plan senkronizasyon "
-"işlerini durdurmak için aşağıdan kapatın. Bağlantılarınız kayıtlı kalır."
+"harcamalarını Google Ads ve Meta Ads üzerinden çekin. Yönetim sayfasını "
+"gizlemek ve tüm arka plan senkronizasyon işlerini durdurmak için aşağıdan "
+"kapatın. Bağlantılarınız kayıtlı kalır."
 
 #: front-end/ad-platforms/brikpanel-ad-platforms.php:214
 msgid "Enable Ad Platforms integration"
@@ -5653,12 +5652,6 @@ msgid "Enable this sync first, then click Save before clicking Sync now."
 msgstr ""
 "Önce bu senkronizasyonu etkinleştirin, ardından Şimdi senkronize et'e "
 "tıklamadan önce Kaydet'e tıklayın."
-
-#: front-end/google-sheets/class-brikpanel-sheets-settings.php:1081
-msgid ""
-"A background sync is already running — it will finish on its own, or click "
-"\"Sync now\" again in a moment to watch progress."
-msgstr ""
 
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1099
 msgid ""
@@ -14772,3 +14765,26 @@ msgid "Builds the monthly cohort × period retention matrix."
 msgstr "Aylık kohort × dönem elde tutma matrisini oluşturur."
 
 
+#. translators: %1$d: product rows written to the sheet so far.
+#: front-end/google-sheets/class-brikpanel-sheets-settings.php:277
+msgid "Synced %1$d product rows…"
+msgstr "%1$d ürün satırı senkronize edildi…"
+
+#. translators: %1$d: total product rows written to the sheet.
+#: front-end/google-sheets/class-brikpanel-sheets-settings.php:279
+msgid "Synced %1$d product rows."
+msgstr "%1$d ürün satırı senkronize edildi."
+
+#: front-end/google-sheets/class-brikpanel-sheets-settings.php:1201
+msgid "The target tab could not be wiped, so nothing was re-pushed and your existing rows were left untouched. This is usually a Google rate limit, wait a minute and click \"Sync now\" again."
+msgstr "Hedef sekme temizlenemedi, bu yüzden hiçbir şey yeniden gönderilmedi ve mevcut satırlarınıza dokunulmadı. Bu genellikle bir Google hız sınırıdır, bir dakika bekleyip \"Şimdi senkronize et\" düğmesine tekrar tıklayın."
+
+#: front-end/google-sheets/class-brikpanel-sheets-settings.php:1203
+msgid "A background sync is already running — it will finish on its own, or click \"Sync now\" again in a moment to watch progress."
+msgstr "Arka planda zaten bir senkronizasyon çalışıyor, kendi kendine tamamlanacak. İlerlemeyi görmek için birazdan \"Şimdi senkronize et\" düğmesine tekrar tıklayabilirsiniz."
+
+msgid "Price minus cost of goods, with the percentage measured against cost. Taxes, shipping and fees are not deducted."
+msgstr "Fiyattan mal maliyeti düşülür, yüzde maliyet üzerinden hesaplanır. Vergi, kargo ve komisyonlar düşülmez."
+
+msgid "%d variations have no cost or price on file"
+msgstr "%d varyasyonun kayıtlı maliyeti veya fiyatı yok"

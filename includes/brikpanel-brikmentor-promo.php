@@ -90,6 +90,37 @@ function brikpanel_brikmentor_url() {
 }
 
 /**
+ * Stable per-store id for this store's BrikMentor purchase attempt.
+ *
+ * WHY IT EXISTS. The relay treats this value as "one store's one purchase", and
+ * two things hang off it that silently do not happen without it:
+ *
+ *  1. SESSION REUSE. Without a claim_id the relay has nothing to key on, so
+ *     every single click on a launch CTA mints a brand new Stripe Checkout
+ *     session. A merchant who clicks twice ends up with two live payment pages
+ *     open, which is two ways to pay for the same thing.
+ *  2. AUTOMATIC DUPLICATE REFUND. When a store does pay twice, the relay
+ *     cancels the second subscription and refunds it automatically, and it
+ *     recognises that case by the repeated claim_id. Without one the double
+ *     payment is only flagged for a human to refund by hand.
+ *
+ * The id is generated once, lazily, and stored. Lazily matters: this function is
+ * only reached from a rendering CTA, and CTAs only render once the launch flag
+ * is on, so a pre-launch install never writes the option at all.
+ *
+ * @return string UUIDv4, in the exact lowercase-hyphenated shape the relay validates.
+ */
+function brikpanel_brikmentor_claim_id() {
+    $id = get_option( 'brikpanel_brikmentor_claim_id', '' );
+    if ( ! is_string( $id )
+        || ! preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $id ) ) {
+        $id = wp_generate_uuid4();
+        update_option( 'brikpanel_brikmentor_claim_id', $id, false );
+    }
+    return $id;
+}
+
+/**
  * Checkout URL for the "$1 launch" CTAs. A plain link the merchant follows to
  * the brksoft.com relay's Stripe Checkout; on success the relay lands them on
  * its own welcome page (license key + plugin download + install steps). No
@@ -97,8 +128,10 @@ function brikpanel_brikmentor_url() {
  * within wp.org Guideline 8 (a directory plugin may not install an
  * off-directory plugin from an external server).
  *
- * `src` + `site_url` ride along so the relay can attribute the sale and
- * recognise a returning store (the first-month discount is first-purchase-only).
+ * `src` + `site_url` + `claim_id` ride along so the relay can attribute the
+ * sale, recognise a returning store (the first-month discount is
+ * first-purchase-only), reuse an already-open Checkout session instead of
+ * opening another one, and auto-refund a genuine double payment.
  * `site_url` is rawurlencode()'d before add_query_arg() because WordPress's
  * build_query() does NOT url-encode values — this matches the exact wire format
  * the relay already parses.
@@ -120,6 +153,7 @@ function brikpanel_brikmentor_checkout_url() {
         array(
             'src'      => 'panel',
             'site_url' => rawurlencode( home_url() ),
+            'claim_id' => brikpanel_brikmentor_claim_id(),
         ),
         $base
     );

@@ -618,6 +618,25 @@
     outline-offset: 1px;
 }
 
+/* ---------- Profit cell (derived: price minus cost, read-only) ---------- */
+.brikpanel-pl-cell-profit {
+    white-space: nowrap;
+    color: var(--text-secondary, #616161);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Loss is the one thing in this column worth a colour. */
+.brikpanel-pl-profit-value.is-negative,
+.brikpanel-pl-profit-value.is-negative .woocommerce-Price-amount {
+    color: #d72c0d;
+}
+
+.brikpanel-pl-profit-pct {
+    color: #8a8a8a;
+    font-size: 0.75rem;
+}
+
 .brikpanel-pl-price-display ins {
     text-decoration: none;
 }
@@ -1421,6 +1440,8 @@
     .brikpanel-pl-cell-price,
     .brikpanel-pl-th-cogs,
     .brikpanel-pl-cell-cogs,
+    .brikpanel-pl-th-profit,
+    .brikpanel-pl-cell-profit,
     .brikpanel-pl-th-stock,
     .brikpanel-pl-cell-stock,
     .brikpanel-pl-th-status,
@@ -2517,6 +2538,7 @@ body.brikpanel-pl-drawer-open {
 .brikpanel-pl-table[data-hide-product_code] .brikpanel-pl-col-product_code,
 .brikpanel-pl-table[data-hide-price] .brikpanel-pl-col-price,
 .brikpanel-pl-table[data-hide-cogs] .brikpanel-pl-col-cogs,
+.brikpanel-pl-table[data-hide-profit] .brikpanel-pl-col-profit,
 .brikpanel-pl-table[data-hide-stock] .brikpanel-pl-col-stock,
 .brikpanel-pl-table[data-hide-category] .brikpanel-pl-col-category,
 .brikpanel-pl-table[data-hide-shipping_class] .brikpanel-pl-col-shipping_class,
@@ -2689,6 +2711,8 @@ a.brikpanel-pl-cat-link:focus {
     font-size: 0.8125rem;
     color: #303030;
     vertical-align: middle;
+    max-width: 17rem;
+    white-space: normal;
 }
 
 .brikpanel-pl-cell-ase img {
@@ -2702,6 +2726,62 @@ a.brikpanel-pl-cat-link:focus {
     font-size: 0.75rem;
     color: #616161;
     line-height: 1.3;
+}
+
+/* Plugin columns are display-only inside BrikPanel's list.
+   These cells are captured by replaying manage_*_posts_custom_column against
+   an AJAX-rendered table. The originating plugin's own script binds directly
+   at DOM-ready, against .wp-list-table rows keyed `id="post-N"` that do not
+   exist here, and BrikPanel re-renders every row on each fetch — so any
+   control the plugin emits is inert no matter when it loads. Hide the dead
+   affordances instead of showing buttons that do nothing. Deliberately
+   generic: no plugin is named. */
+.brikpanel-pl-cell-ase input,
+.brikpanel-pl-cell-ase select,
+.brikpanel-pl-cell-ase textarea,
+.brikpanel-pl-cell-ase button,
+.brikpanel-pl-cell-ase a[href="#"],
+.brikpanel-pl-cell-ase a[href=""] {
+    display: none !important;
+}
+
+.brikpanel-pl-cell-ase label {
+    color: #8a8a8a;
+    font-size: 0.75rem;
+}
+
+/* Score badges emitted by SEO plugins. Their own stylesheet scopes every rule
+   to `.wp-list-table td`, which never matches this table, so the badge would
+   render as bare bold text. Colour only — restated in the BrikPanel palette.
+   `.good` intentionally falls through to the neutral chip: the palette keeps
+   colour for success and error alone. */
+.brikpanel-pl-cell-ase .seo-score strong {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 550;
+    background: #f7f7f7;
+    color: #616161;
+    border: 1px solid #e3e3e3;
+}
+
+.brikpanel-pl-cell-ase .seo-score.great strong {
+    background: #eef7ee;
+    color: #1a8917;
+    border-color: #cfe6cf;
+}
+
+.brikpanel-pl-cell-ase .seo-score.bad strong {
+    background: #fef3f2;
+    color: #d72c0d;
+    border-color: #f5cdc7;
+}
+
+.brikpanel-pl-cell-ase .seo-score img.is-pillar {
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
 }
 
 /* Row actions injected via post_row_actions filter (e.g. ASE "ID: N"). */

@@ -26,6 +26,12 @@ class Brikpanel_Sheets_Settings {
 	 */
 	const SYNC_BUDGET_SECONDS = 15;
 
+	/** How long a background job waits before taking over a bulk export the
+	 *  browser was driving. Long enough that the next interactive pass gets
+	 *  there first and cancels it; short enough that a closed tab does not
+	 *  leave the export stalled for long. */
+	const SYNC_HANDOFF_DELAY = 60;
+
 	/** Transient caching the proxy-served Picker bootstrap config. */
 	const PICKER_CFG_TRANSIENT = 'brikpanel_gs_picker_cfg';
 	const PICKER_CFG_TTL       = 12 * HOUR_IN_SECONDS;
@@ -274,6 +280,10 @@ class Brikpanel_Sheets_Settings {
 					'sync_progress'      => __( 'Synced %1$d orders (%2$d rows)…', 'brikpanel' ),
 					/* translators: 1: total orders synced, 2: total sheet rows written. */
 					'sync_done'          => __( 'Synced %1$d orders (%2$d rows).', 'brikpanel' ),
+					/* translators: %1$d: product rows written to the sheet so far. */
+					'sync_progress_products' => __( 'Synced %1$d product rows…', 'brikpanel' ),
+					/* translators: %1$d: total product rows written to the sheet. */
+					'sync_done_products'     => __( 'Synced %1$d product rows.', 'brikpanel' ),
 					'no_access'          => __( 'BrikPanel does not have access yet. Open the spreadsheet, share it with %s, then click Validate.', 'brikpanel' ),
 					'log_empty'          => __( 'No errors logged.', 'brikpanel' ),
 					/* translators: %s: number of orders. */
@@ -856,6 +866,11 @@ class Brikpanel_Sheets_Settings {
 				}
 				update_option( Brikpanel_Sheets_Products_Sync::OPT_CATEGORIES, $valid_cats, false );
 
+				// The tab name, the category filter and the enabled flag all
+				// change what a rebuild is supposed to write. One that is still
+				// draining must not resume under the new rules.
+				Brikpanel_Sheets_Products_Sync::abandon_rebuild();
+
 				do_action( 'brikpanel_cron_register' );
 				break;
 
@@ -953,6 +968,12 @@ class Brikpanel_Sheets_Settings {
 			wp_send_json_error( [ 'message' => __( 'Unknown flow.', 'brikpanel' ) ], 400 );
 		}
 		Brikpanel_Sheets_Mapping::set_columns( $flow, $columns );
+		if ( $flow === 'products' ) {
+			// A rebuild that is mid-flight was writing the OLD column layout.
+			// Letting it resume would leave the tab holding two different row
+			// shapes under one header, so make the next "Sync now" start over.
+			Brikpanel_Sheets_Products_Sync::abandon_rebuild();
+		}
 		wp_send_json_success();
 	}
 
@@ -1120,16 +1141,91 @@ class Brikpanel_Sheets_Settings {
 					break;
 
 				case 'products':
-					$sync   = new Brikpanel_Sheets_Products_Sync();
-					$result = $sync->handle_push_bulk();
-					$message = sprintf(
-						/* translators: 1: appended count, 2: updated count */
-						__( 'Pushed %1$d new and updated %2$d existing product rows.', 'brikpanel' ),
-						(int) ( $result['appended'] ?? 0 ),
-						(int) ( $result['updated'] ?? 0 )
-					);
+					$sync = new Brikpanel_Sheets_Products_Sync();
+
+					// Drain in short passes under a wall-clock budget, exactly
+					// like the order flow. A catalogue larger than one batch used
+					// to hand the rest to a background job and report success
+					// immediately, so a store with thousands of products saw only
+					// the first batch in its sheet. The browser now asks for the
+					// next pass while the merchant watches the count climb.
+					$result   = [ 'appended' => 0, 'updated' => 0, 'rows' => 0, 'more' => false ];
+					$deadline = microtime( true ) + self::SYNC_BUDGET_SECONDS;
+					$locked   = false;
+					$clear_failed = false;
+
+					// The browser owns the paging for the next few seconds, so
+					// stand down any handoff job left waiting from the previous
+					// pass before we start writing.
+					Brikpanel_Cron::cancel( Brikpanel_Sheets_Products_Sync::HOOK_PUSH_FLUSH );
+					do {
+						$pass = $sync->handle_push_bulk( [ 'defer' => false ] );
+						if ( ! empty( $pass['clear_failed'] ) ) {
+							$clear_failed  = true;
+							$result['more'] = false;
+							break;
+						}
+						if ( ! empty( $pass['locked'] ) ) {
+							// A background job owns the push right now. Wait
+							// briefly inside the budget; if it never frees up,
+							// report `more` so the browser keeps polling instead
+							// of claiming the catalogue is fully synced.
+							$locked         = true;
+							$result['more'] = true;
+							if ( microtime( true ) + 2 < $deadline ) {
+								sleep( 2 );
+								continue;
+							}
+							break;
+						}
+						$locked = false;
+						$result['appended'] += (int) ( $pass['appended'] ?? 0 );
+						$result['updated']  += (int) ( $pass['updated'] ?? 0 );
+						$result['more']      = ! empty( $pass['more'] );
+					} while ( $result['more'] && microtime( true ) < $deadline );
+
+					$result['rows'] = $result['appended'] + $result['updated'];
+
+					// Safety net: if the merchant closes the tab mid-drain the
+					// browser stops asking, so the remainder has to finish in
+					// the background. Schedule it with a delay rather than
+					// immediately, the next interactive pass is seconds away
+					// and cancels this job on arrival, so the two never page the
+					// catalogue at the same time. Only when the browser really
+					// has stopped does the delay expire and the job take over.
+					// Only stand jobs down when we are replacing them with a fresh
+					// handoff. Cancelling unconditionally also killed the job a
+					// just-finished rebuild schedules to flush product edits it
+					// had parked, so those edits sat in the queue unsent.
 					if ( ! empty( $result['more'] ) ) {
-						$message .= ' ' . __( 'More running in background…', 'brikpanel' );
+						Brikpanel_Cron::cancel( Brikpanel_Sheets_Products_Sync::HOOK_PUSH_FLUSH );
+						$state = Brikpanel_Sheets_Products_Sync::rebuild_state();
+						Brikpanel_Cron::schedule_single(
+							time() + self::SYNC_HANDOFF_DELAY,
+							Brikpanel_Sheets_Products_Sync::HOOK_PUSH_FLUSH,
+							[
+								'force_all' => true,
+								'rebuild'   => $state !== null,
+								'offset'    => $state !== null ? (int) $state['offset'] : 0,
+							],
+							[ 'unique' => false ]
+						);
+					}
+
+					if ( $clear_failed ) {
+						$message = __( 'The target tab could not be wiped, so nothing was re-pushed and your existing rows were left untouched. This is usually a Google rate limit, wait a minute and click "Sync now" again.', 'brikpanel' );
+					} elseif ( $locked ) {
+						$message = __( 'A background sync is already running — it will finish on its own, or click "Sync now" again in a moment to watch progress.', 'brikpanel' );
+					} else {
+						$message = sprintf(
+							/* translators: 1: appended count, 2: updated count */
+							__( 'Pushed %1$d new and updated %2$d existing product rows.', 'brikpanel' ),
+							(int) $result['appended'],
+							(int) $result['updated']
+						);
+						if ( ! empty( $result['more'] ) ) {
+							$message .= ' ' . __( 'More running in background…', 'brikpanel' );
+						}
 					}
 					$last = (array) get_option( Brikpanel_Sheets_Products_Sync::OPT_LAST_PUSH, [] );
 					break;

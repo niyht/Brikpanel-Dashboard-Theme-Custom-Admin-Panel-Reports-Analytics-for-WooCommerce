@@ -524,6 +524,9 @@
 		var totalOrders = 0;
 		var totalRows = 0;
 		var MAX_PASSES = 500; // backstop against a server that never clears `more`
+		// Flows whose bulk export pages itself across several short requests.
+		// Anything else answers in one pass.
+		var PAGED = { orders: true, products: true };
 
 		function runPass(pass) {
 			return ajax('brikpanel_gs_sync_now', { flow: flow }).then(function (data) {
@@ -531,7 +534,7 @@
 				totalOrders += Number(result.orders) || 0;
 				totalRows += Number(result.rows) || 0;
 
-				if (flow === 'orders' && result.more && pass < MAX_PASSES) {
+				if (PAGED[flow] && result.more && pass < MAX_PASSES) {
 					toast('info', formatProgress(totalOrders, totalRows), { sticky: true });
 					return runPass(pass + 1);
 				}
@@ -540,6 +543,11 @@
 		}
 
 		function formatProgress(orders, rows, finished) {
+			if (flow === 'products') {
+				var ptpl = finished ? i18n.sync_done_products : i18n.sync_progress_products;
+				if (!ptpl) { return i18n.syncing; }
+				return ptpl.replace('%1$d', rows);
+			}
 			var tpl = finished ? i18n.sync_done : i18n.sync_progress;
 			if (!tpl) { return i18n.syncing; }
 			return tpl.replace('%1$d', orders).replace('%2$d', rows);
@@ -552,6 +560,8 @@
 				// Across several passes the last response only describes its own
 				// pass, so report the run total instead.
 				if (flow === 'orders' && totalOrders > 0) {
+					msg = formatProgress(totalOrders, totalRows, true);
+				} else if (flow === 'products' && totalRows > 0) {
 					msg = formatProgress(totalOrders, totalRows, true);
 				}
 				toast('success', msg, { duration: 5000 });

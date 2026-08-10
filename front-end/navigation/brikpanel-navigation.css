@@ -595,14 +595,6 @@ li#toplevel_page_woocommerce .wp-menu-image {
 .brikpanel-classic-nav #collapse-button .collapse-button-icon:before {
 	color: #616161 !important;
 }
-/* "Beta" badges (Google Sheets, Ads, …) ship a white-on-translucent variant
-   meant for the default dark menu; on our light sidebar that reads as blank,
-   so flip it back to the light pill. */
-.brikpanel-classic-nav #adminmenu .brikpanel-beta-badge {
-	background: #fff !important;
-	color: var(--brikpanel-text) !important;
-	border-color: var(--brikpanel-border) !important;
-}
 
 /* ── Classic menu on mobile (≤960px, the off-canvas sheet range) ─────────
    The classic reskin above is tuned for the desktop sidebar. The BrikPanel

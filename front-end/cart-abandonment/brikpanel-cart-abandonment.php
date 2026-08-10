@@ -286,7 +286,13 @@ class Brikpanel_Cart_Abandonment {
 		if ( is_admin() || self::is_staff() ) {
 			return;
 		}
-		if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
+		// Asks the variant that does NOT treat a prefetch as a bot: this method
+		// emits assets, and the browser reuses prefetched HTML verbatim for the
+		// real navigation (a page cache may reuse it for everyone). Dropping the
+		// capture script and popup here would make them vanish for the visitor
+		// who actually lands on the page. The capture endpoint keeps its own
+		// filter, and an AJAX POST is never a prefetch.
+		if ( function_exists( 'brikpanel_is_bot_request' ) && brikpanel_is_bot_request( false ) ) {
 			return;
 		}
 
@@ -1293,6 +1299,436 @@ class Brikpanel_Cart_Abandonment {
 	}
 
 	// =========================================================================
+	// Outreach columns (BrikMentor only)
+	//
+	// Phone / WhatsApp / reminder count are shown only while BrikMentor is
+	// active. The phone lives in this table and the WhatsApp link is built
+	// here, but the reminder counts belong to BrikMentor, which answers
+	// `brikpanel_cartab_message_stats`. With BrikMentor gone the filter has no
+	// listener, the whole block switches off and the table is exactly what it
+	// was before.
+	// =========================================================================
+
+	/** Is the follow-up plugin on this install? Mirrors the promo notice's probe. */
+	public static function mentor_active() {
+		return defined( 'BRIKMENTOR_VERSION' )
+			|| class_exists( 'Brikmentor_Install', false )
+			|| class_exists( 'Brikmentor_Flows', false );
+	}
+
+	/**
+	 * Resolve, for one page of rows, the two things the WhatsApp link needs:
+	 * a phone number and the country it was written in.
+	 *
+	 * The checkout capture only stores a phone when the shopper typed one
+	 * before leaving, which is the minority of rows, and it never stores a
+	 * country at all. So both are looked up here, from the same two sources
+	 * and in the same pass:
+	 *   1. the account's billing fields, for a row belonging to a user,
+	 *   2. the newest past order under the same address, for everyone else.
+	 *
+	 * Source 2 is what makes the column worth having: a repeat customer who
+	 * abandons as a guest still has a phone on file from the order before.
+	 *
+	 * A row that already has a phone still needs the country lookup unless the
+	 * number is written internationally, because a locally-typed number with
+	 * the wrong country code in front of it is a link to a stranger. Both
+	 * lookups are batched, so the page costs the same at 25 rows as at 1.
+	 *
+	 * @param array[] $rows Formatted rows, by reference.
+	 */
+	private static function resolve_contacts( array &$rows ) {
+		$wanted = [];
+		foreach ( $rows as $i => $row ) {
+			$phone = trim( (string) $row['phone'] );
+			// An international number carries its own country; nothing to find.
+			if ( '' !== $phone && ( 0 === strpos( $phone, '+' ) || 0 === strpos( $phone, '00' ) ) ) {
+				continue;
+			}
+			$wanted[ $i ] = $row;
+		}
+		if ( ! $wanted ) {
+			return;
+		}
+
+		// 1. The account. cache_users() primes the meta cache for the whole
+		//    page in one query, so get_user_meta() below hits memory.
+		$user_ids = array_values( array_unique( array_filter( wp_list_pluck( $wanted, 'user_id' ) ) ) );
+		if ( $user_ids ) {
+			cache_users( $user_ids );
+			foreach ( $wanted as $i => $row ) {
+				$uid = (int) $row['user_id'];
+				if ( ! $uid ) {
+					continue;
+				}
+				$country = (string) get_user_meta( $uid, 'billing_country', true );
+				if ( '' !== trim( $country ) ) {
+					$rows[ $i ]['phone_country'] = $country;
+				}
+				if ( '' !== trim( (string) $rows[ $i ]['phone'] ) ) {
+					// Had a phone already; the country was all this row needed.
+					unset( $wanted[ $i ] );
+					continue;
+				}
+				$phone = (string) get_user_meta( $uid, 'billing_phone', true );
+				if ( '' !== trim( $phone ) ) {
+					$rows[ $i ]['phone']        = $phone;
+					$rows[ $i ]['phone_source'] = 'account';
+					unset( $wanted[ $i ] );
+				}
+			}
+		}
+		if ( ! $wanted ) {
+			return;
+		}
+
+		// 2. The newest past order for the address, read as two flat queries -
+		//    ids first, then the billing columns for exactly those ids. Loading
+		//    order objects instead would be one query per row, which is the only
+		//    part of this screen that would otherwise grow with the page size.
+		$emails = array_values( array_unique( array_filter( array_map(
+			static function ( $row ) {
+				return strtolower( trim( (string) $row['email'] ) );
+			},
+			$wanted
+		) ) ) );
+		if ( ! $emails ) {
+			return;
+		}
+
+		$order_ids = self::latest_order_ids_by_email( $emails );
+		if ( ! $order_ids ) {
+			return;
+		}
+
+		$billing = self::billing_by_order_id( array_values( $order_ids ) );
+
+		foreach ( $wanted as $i => $row ) {
+			$key = strtolower( trim( (string) $row['email'] ) );
+			if ( empty( $order_ids[ $key ] ) ) {
+				continue;
+			}
+			$found = $billing[ (int) $order_ids[ $key ] ] ?? null;
+			if ( ! $found ) {
+				continue;
+			}
+
+			if ( '' !== trim( $found['country'] ) && '' === trim( (string) $rows[ $i ]['phone_country'] ) ) {
+				$rows[ $i ]['phone_country'] = $found['country'];
+			}
+			if ( '' !== trim( (string) $rows[ $i ]['phone'] ) ) {
+				continue;
+			}
+			if ( '' !== trim( $found['phone'] ) ) {
+				$rows[ $i ]['phone']        = $found['phone'];
+				$rows[ $i ]['phone_source'] = 'order';
+			}
+		}
+	}
+
+	/**
+	 * Billing phone + country for a set of order ids, in one query.
+	 *
+	 * Reads the storage directly rather than hydrating order objects: this runs
+	 * once per admin page and the alternative costs a query per row. Only two
+	 * scalar columns are wanted, and an order object would be built and thrown
+	 * away to read them.
+	 *
+	 * @param int[] $order_ids
+	 * @return array order id => { phone, country }
+	 */
+	private static function billing_by_order_id( array $order_ids ) {
+		global $wpdb;
+
+		$order_ids = array_values( array_unique( array_filter( array_map( 'intval', $order_ids ) ) ) );
+		if ( ! $order_ids ) {
+			return [];
+		}
+
+		$in   = implode( ', ', array_fill( 0, count( $order_ids ), '%d' ) );
+		$out  = [];
+		$hpos = class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+
+		if ( $hpos ) {
+			$rows = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+				"SELECT order_id, phone, country
+				   FROM {$wpdb->prefix}wc_order_addresses
+				  WHERE address_type = 'billing' AND order_id IN ({$in})",
+				$order_ids
+			) );
+			foreach ( (array) $rows as $r ) {
+				$out[ (int) $r->order_id ] = [
+					'phone'   => (string) $r->phone,
+					'country' => (string) $r->country,
+				];
+			}
+			return $out;
+		}
+
+		$rows = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			"SELECT post_id, meta_key, meta_value
+			   FROM {$wpdb->postmeta}
+			  WHERE meta_key IN ( '_billing_phone', '_billing_country' )
+			    AND post_id IN ({$in})",
+			$order_ids
+		) );
+		foreach ( (array) $rows as $r ) {
+			$id = (int) $r->post_id;
+			if ( ! isset( $out[ $id ] ) ) {
+				$out[ $id ] = [ 'phone' => '', 'country' => '' ];
+			}
+			$field                = '_billing_phone' === $r->meta_key ? 'phone' : 'country';
+			$out[ $id ][ $field ] = (string) $r->meta_value;
+		}
+		return $out;
+	}
+
+	/**
+	 * Newest order id per billing email. HPOS and legacy post storage keep
+	 * orders in different places, so this is the dual path.
+	 *
+	 * Ordered by id rather than date: on both storages the id is monotonic per
+	 * order and already the primary key, and the caller only wants "the most
+	 * recent one" to read a phone off.
+	 *
+	 * @param string[] $emails Lowercased addresses.
+	 * @return array email => order id
+	 */
+	private static function latest_order_ids_by_email( array $emails ) {
+		global $wpdb;
+
+		$placeholders = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
+		$hpos         = class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+
+		if ( $hpos ) {
+			$sql = "SELECT LOWER(billing_email) AS em, MAX(id) AS oid
+			          FROM {$wpdb->prefix}wc_orders
+			         WHERE type = 'shop_order' AND LOWER(billing_email) IN ({$placeholders})
+			      GROUP BY LOWER(billing_email)";
+		} else {
+			$sql = "SELECT LOWER(pm.meta_value) AS em, MAX(pm.post_id) AS oid
+			          FROM {$wpdb->postmeta} pm
+			    INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+			         WHERE pm.meta_key = '_billing_email'
+			           AND p.post_type = 'shop_order'
+			           AND LOWER(pm.meta_value) IN ({$placeholders})
+			      GROUP BY LOWER(pm.meta_value)";
+		}
+
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $emails ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+		$out = [];
+		foreach ( (array) $rows as $r ) {
+			$out[ (string) $r->em ] = (int) $r->oid;
+		}
+		return $out;
+	}
+
+	/**
+	 * Turn a stored phone number into a wa.me link, or '' when it cannot be
+	 * dialled internationally.
+	 *
+	 * WhatsApp addresses people by full international number and nothing else,
+	 * while checkout fields are typed nationally ("0532 111 22 33"). So a
+	 * number with no country code gets one, from the customer's own billing
+	 * country when known and the store's base country otherwise - and the
+	 * single leading trunk zero that most countries write nationally is
+	 * dropped, because keeping it makes the number undialable everywhere that
+	 * uses one.
+	 *
+	 * Nothing is sent from here: the link opens WhatsApp with the merchant's
+	 * own account and a draft they can still edit or delete.
+	 *
+	 * @param string $phone   Raw stored number.
+	 * @param string $country Two-letter billing country, '' when unknown.
+	 * @return string URL or ''.
+	 */
+	public static function whatsapp_number( $phone, $country = '' ) {
+		$phone = trim( (string) $phone );
+		if ( '' === $phone ) {
+			return '';
+		}
+
+		$has_prefix = ( 0 === strpos( $phone, '+' ) ) || ( 0 === strpos( $phone, '00' ) );
+		$digits     = preg_replace( '/\D+/', '', $phone );
+		if ( '' === $digits ) {
+			return '';
+		}
+
+		if ( 0 === strpos( $phone, '00' ) ) {
+			$digits = substr( $digits, 2 );
+		}
+
+		if ( ! $has_prefix ) {
+			$cc = self::calling_code( $country );
+			if ( '' === $cc ) {
+				return '';
+			}
+			// National trunk prefix: written locally, never dialled from abroad.
+			if ( '0' === substr( $digits, 0, 1 ) ) {
+				$digits = ltrim( $digits, '0' );
+			}
+			$digits = $cc . $digits;
+		}
+
+		// Shortest real E.164 numbers are 7 digits (plus country code); the
+		// standard caps the whole thing at 15. Outside that it is a typo, an
+		// extension or a note, and a wrong wa.me link is worse than none.
+		if ( strlen( $digits ) < 8 || strlen( $digits ) > 15 ) {
+			return '';
+		}
+
+		return $digits;
+	}
+
+	/**
+	 * Digits of a country's calling code ('+90' → '90'), falling back to the
+	 * store's own country. Returns '' when WooCommerce has no code for it.
+	 *
+	 * @param string $country Two-letter code, '' to use the store's.
+	 * @return string
+	 */
+	private static function calling_code( $country ) {
+		$country = strtoupper( trim( (string) $country ) );
+		if ( '' === $country ) {
+			$base    = wc_get_base_location();
+			$country = strtoupper( (string) ( $base['country'] ?? '' ) );
+		}
+		if ( '' === $country || ! function_exists( 'WC' ) || ! WC()->countries ) {
+			return '';
+		}
+		if ( ! method_exists( WC()->countries, 'get_country_calling_code' ) ) {
+			return '';
+		}
+		$code = WC()->countries->get_country_calling_code( $country );
+		// A handful of countries share a code and WooCommerce returns an array.
+		if ( is_array( $code ) ) {
+			$code = reset( $code );
+		}
+		return preg_replace( '/\D+/', '', (string) $code );
+	}
+
+	/**
+	 * The draft message the WhatsApp button opens with.
+	 *
+	 * Deliberately a question and not an offer: it is the merchant typing, in
+	 * their own voice, and a discount pasted in by us would undercut whatever
+	 * the follow-up emails are already offering.
+	 *
+	 * @param array $row Formatted row.
+	 * @return string
+	 */
+	public static function whatsapp_message( array $row ) {
+		$name  = trim( (string) $row['first_name'] );
+		$store = get_bloginfo( 'name' );
+
+		if ( '' !== $name ) {
+			/* translators: 1: customer first name, 2: store name. */
+			$text = sprintf( __( 'Hi %1$s, this is %2$s. You left a few items in your cart - can I help you finish the order?', 'brikpanel' ), $name, $store );
+		} else {
+			/* translators: %s: store name. */
+			$text = sprintf( __( 'Hi, this is %s. You left a few items in your cart - can I help you finish the order?', 'brikpanel' ), $store );
+		}
+
+		/**
+		 * Filter the pre-filled WhatsApp draft for an abandoned cart.
+		 *
+		 * @param string $text
+		 * @param array  $row  Formatted cart row.
+		 */
+		return (string) apply_filters( 'brikpanel_cartab_whatsapp_message', $text, $row );
+	}
+
+	/**
+	 * Attach the BrikMentor-only columns to one page of rows: a usable phone
+	 * number, the WhatsApp draft, and how many reminders this cart has had.
+	 *
+	 * Every user-facing string is composed here rather than in the browser, so
+	 * the plural forms and the date format follow the site's locale instead of
+	 * being glued together from fragments in JS.
+	 *
+	 * @param array[] $items       Rows, by reference.
+	 * @param string  $date_format Site date+time format.
+	 */
+	private function add_outreach( array &$items, $date_format ) {
+		self::resolve_contacts( $items );
+
+		/**
+		 * Filter: how many follow-up emails has each cart row had?
+		 *
+		 * BrikMentor answers this. Providers add
+		 * entry_id => { sent, pending, next, last } with GMT datetimes.
+		 *
+		 * @param array $stats     entry_id => stats.
+		 * @param int[] $entry_ids Cart row ids on the visible page.
+		 */
+		$stats = (array) apply_filters(
+			'brikpanel_cartab_message_stats',
+			[],
+			wp_list_pluck( $items, 'id' )
+		);
+
+		foreach ( $items as &$row ) {
+			$row['wa_number'] = self::whatsapp_number( $row['phone'], $row['phone_country'] );
+			$row['wa_text']   = '' !== $row['wa_number'] ? self::whatsapp_message( $row ) : '';
+
+			// Spell out the number the link will actually dial. A phone typed
+			// without a country code has one guessed for it, and this is where
+			// the merchant sees which one - a shopper abroad at a store whose
+			// customers are mostly local is the one case the guess gets wrong,
+			// and it is theirs to catch, not ours to hide.
+			$row['wa_title'] = '' !== $row['wa_number']
+				? sprintf(
+					/* translators: %s: full international phone number the link opens. */
+					__( 'Message on WhatsApp: +%s', 'brikpanel' ),
+					$row['wa_number']
+				)
+				: '';
+
+			$stat    = $stats[ (int) $row['id'] ] ?? [];
+			$sent    = (int) ( $stat['sent'] ?? 0 );
+			$pending = (int) ( $stat['pending'] ?? 0 );
+
+			$note = '';
+			if ( $pending > 0 && ! empty( $stat['next'] ) ) {
+				$note = sprintf(
+					/* translators: %s: date and time of the next scheduled reminder. */
+					__( 'Next: %s', 'brikpanel' ),
+					wp_date( $date_format, strtotime( $stat['next'] . ' +00:00' ) )
+				);
+			} elseif ( $sent > 0 && ! empty( $stat['last'] ) ) {
+				$note = sprintf(
+					/* translators: %s: date and time of the last reminder sent. */
+					__( 'Last: %s', 'brikpanel' ),
+					wp_date( $date_format, strtotime( $stat['last'] . ' +00:00' ) )
+				);
+			}
+
+			if ( $sent > 0 ) {
+				$text = sprintf(
+					/* translators: %s: number of follow-up emails already sent. */
+					_n( '%s email sent', '%s emails sent', $sent, 'brikpanel' ),
+					number_format_i18n( $sent )
+				);
+			} elseif ( $pending > 0 ) {
+				$text = __( 'Scheduled', 'brikpanel' );
+			} else {
+				$text = '';
+			}
+
+			$row['mail'] = [
+				'sent'    => $sent,
+				'pending' => $pending,
+				'text'    => $text,
+				'note'    => $note,
+			];
+		}
+		unset( $row );
+	}
+
+	// =========================================================================
 	// Admin page
 	// =========================================================================
 
@@ -1330,6 +1766,10 @@ class Brikpanel_Cart_Abandonment {
 		$popup_enabled = get_option( 'brikpanel_cartab_popup_enabled', 'no' ) === 'yes';
 		$collection_on = self::is_enabled();
 		$settings_url  = admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=cart-abandonment' );
+		// Phone / WhatsApp / Follow-ups ride along with BrikMentor; without it
+		// the table keeps its original seven columns.
+		$outreach = self::mentor_active();
+		$columns  = $outreach ? 9 : 7;
 		?>
 		<div class="wrap brikpanel-cartab-wrap" id="brikpanel-cartab">
 			<div class="brikpanel-cartab-header">
@@ -1458,7 +1898,13 @@ class Brikpanel_Cart_Abandonment {
 							<tr>
 								<th><?php esc_html_e( 'Email', 'brikpanel' ); ?></th>
 								<th><?php esc_html_e( 'Name', 'brikpanel' ); ?></th>
+								<?php if ( $outreach ) : ?>
+									<th><?php esc_html_e( 'Phone', 'brikpanel' ); ?></th>
+								<?php endif; ?>
 								<th><?php esc_html_e( 'Cart', 'brikpanel' ); ?></th>
+								<?php if ( $outreach ) : ?>
+									<th><?php esc_html_e( 'Follow-ups', 'brikpanel' ); ?></th>
+								<?php endif; ?>
 								<th><?php esc_html_e( 'Source', 'brikpanel' ); ?></th>
 								<th><?php esc_html_e( 'Status', 'brikpanel' ); ?></th>
 								<th><?php esc_html_e( 'Last activity', 'brikpanel' ); ?></th>
@@ -1466,7 +1912,7 @@ class Brikpanel_Cart_Abandonment {
 							</tr>
 						</thead>
 						<tbody id="brikpanel-cartab-tbody">
-							<tr><td colspan="7" class="brikpanel-cartab-empty"><?php esc_html_e( 'Loading…', 'brikpanel' ); ?></td></tr>
+							<tr><td colspan="<?php echo esc_attr( $columns ); ?>" class="brikpanel-cartab-empty"><?php esc_html_e( 'Loading…', 'brikpanel' ); ?></td></tr>
 						</tbody>
 					</table>
 				</div>
@@ -1484,6 +1930,8 @@ class Brikpanel_Cart_Abandonment {
 			nonce:    <?php echo wp_json_encode( $nonce ); ?>,
 			statuses: <?php echo wp_json_encode( self::status_labels() ); ?>,
 			sources:  <?php echo wp_json_encode( self::source_labels() ); ?>,
+			outreach: <?php echo wp_json_encode( $outreach ); ?>,
+			columns:  <?php echo wp_json_encode( $columns ); ?>,
 			i18n: {
 				error:          <?php echo wp_json_encode( __( 'Something went wrong.', 'brikpanel' ) ); ?>,
 				empty:          <?php echo wp_json_encode( __( 'No emails captured yet.', 'brikpanel' ) ); ?>,
@@ -1497,6 +1945,11 @@ class Brikpanel_Cart_Abandonment {
 				popup_on:       <?php echo wp_json_encode( __( 'Popup enabled.', 'brikpanel' ) ); ?>,
 				popup_off:      <?php echo wp_json_encode( __( 'Popup disabled.', 'brikpanel' ) ); ?>,
 				sku:            <?php echo wp_json_encode( __( 'SKU', 'brikpanel' ) ); ?>,
+				whatsapp:       <?php echo wp_json_encode( __( 'Message on WhatsApp', 'brikpanel' ) ); ?>,
+				no_phone:       <?php echo wp_json_encode( __( 'No phone number on file.', 'brikpanel' ) ); ?>,
+				phone_account:  <?php echo wp_json_encode( __( 'From their account', 'brikpanel' ) ); ?>,
+				phone_order:    <?php echo wp_json_encode( __( 'From a past order', 'brikpanel' ) ); ?>,
+				no_followups:   <?php echo wp_json_encode( __( 'No reminders sent.', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>
@@ -1553,7 +2006,13 @@ class Brikpanel_Cart_Abandonment {
 					: admin_url( 'post.php?post=' . $row['order_id'] . '&action=edit' );
 			}
 			unset( $row['visitor_id'] ); // browser id is server-side detail; not useful in the UI
-			$items[] = $row;
+			$row['phone_source']  = '';
+			$row['phone_country'] = '';
+			$items[]              = $row;
+		}
+
+		if ( self::mentor_active() ) {
+			$this->add_outreach( $items, $date_format );
 		}
 
 		// Status breakdown + cart value per status for the stat cards

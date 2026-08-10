@@ -521,66 +521,84 @@ class Brikpanel_Coupons {
         }
         $this->prime_user_email_cache($all_emails);
 
-        foreach ($query->posts as $post) {
-            $coupon = $coupon_objects[$post->ID];
+        // Publish our local query as the global loop while third-party column
+        // cells render — column callbacks are written for WP_Posts_List_Table
+        // and several of them bulk-prefetch from `global $wp_query`->posts.
+        // See Brikpanel_ASE_Bridge::begin_loop_context(). Skipped when no
+        // plugin contributes columns, and always closed in the finally so a
+        // throw cannot leave a stale loop behind.
+        $loop_published = !empty($extra_columns) && class_exists('Brikpanel_ASE_Bridge')
+            && Brikpanel_ASE_Bridge::begin_loop_context($query);
 
-            $expiry_ts   = $coupon->get_date_expires();
-            $expiry_date = $expiry_ts ? $expiry_ts->date('Y-m-d') : '';
+        try {
+            foreach ($query->posts as $post) {
+                $coupon = $coupon_objects[$post->ID];
 
-            $usage_limit     = $coupon->get_usage_limit();
-            $usage_count     = $coupon->get_usage_count();
-            $coupon_revenue  = $revenue_map[ strtolower( $coupon->get_code() ) ] ?? 0.0;
+                $expiry_ts   = $coupon->get_date_expires();
+                $expiry_date = $expiry_ts ? $expiry_ts->date('Y-m-d') : '';
 
-            $extra_cells = [];
-            if ($extra_columns) {
-                foreach ($extra_columns as $col_id => $col_label) {
-                    $extra_cells[$col_id] = Brikpanel_ASE_Bridge::render_cell('shop_coupon', $col_id, $post->ID);
+                $usage_limit     = $coupon->get_usage_limit();
+                $usage_count     = $coupon->get_usage_count();
+                $coupon_revenue  = $revenue_map[ strtolower( $coupon->get_code() ) ] ?? 0.0;
+
+                $extra_cells = [];
+                if ($extra_columns) {
+                    if ($loop_published) {
+                        Brikpanel_ASE_Bridge::set_loop_post($post);
+                    }
+                    foreach ($extra_columns as $col_id => $col_label) {
+                        $extra_cells[$col_id] = Brikpanel_ASE_Bridge::render_cell('shop_coupon', $col_id, $post->ID);
+                    }
                 }
+
+                $extra_actions = class_exists('Brikpanel_ASE_Bridge')
+                    ? Brikpanel_ASE_Bridge::get_row_actions($post)
+                    : [];
+
+                $product_ids          = array_map('intval', (array) $coupon->get_product_ids());
+                $excluded_product_ids = array_map('intval', (array) $coupon->get_excluded_product_ids());
+                $category_ids         = array_map('intval', (array) $coupon->get_product_categories());
+                $excluded_category_ids = array_map('intval', (array) $coupon->get_excluded_product_categories());
+                $email_restrictions   = (array) $coupon->get_email_restrictions();
+                $limit_items          = $coupon->get_limit_usage_to_x_items();
+
+                $coupons[] = [
+                    'id'                       => $post->ID,
+                    'code'                     => $coupon->get_code() ?? '',
+                    'description'              => $coupon->get_description() ?? '',
+                    'discount_type'            => $coupon->get_discount_type(),
+                    'amount'                   => $coupon->get_amount(),
+                    'free_shipping'            => $coupon->get_free_shipping() ? 'yes' : 'no',
+                    'expiry_date'              => $expiry_date,
+                    'minimum_amount'           => $coupon->get_minimum_amount(),
+                    'maximum_amount'           => $coupon->get_maximum_amount(),
+                    'individual_use'           => $coupon->get_individual_use() ? 'yes' : 'no',
+                    'exclude_sale_items'       => $coupon->get_exclude_sale_items() ? 'yes' : 'no',
+                    'usage_limit'              => $usage_limit ? $usage_limit : '',
+                    'usage_limit_per_user'     => $coupon->get_usage_limit_per_user() ? $coupon->get_usage_limit_per_user() : '',
+                    'usage_count'              => $usage_count,
+                    'revenue'                  => $coupon_revenue,
+                    'revenue_formatted'        => $coupon_revenue > 0 ? wc_price($coupon_revenue) : '',
+                    'status'                   => $post->post_status,
+                    'product_ids'              => $product_ids,
+                    'product_labels'           => $this->build_product_labels($product_ids),
+                    'excluded_product_ids'     => $excluded_product_ids,
+                    'excluded_product_labels'  => $this->build_product_labels($excluded_product_ids),
+                    'category_ids'             => $category_ids,
+                    'category_labels'          => $this->build_category_labels($category_ids),
+                    'excluded_category_ids'    => $excluded_category_ids,
+                    'excluded_category_labels' => $this->build_category_labels($excluded_category_ids),
+                    'email_restrictions'       => implode(', ', $email_restrictions),
+                    'email_labels'             => $this->build_email_labels($email_restrictions),
+                    'limit_usage_to_x_items'   => $limit_items ? (int) $limit_items : '',
+                    'extra_cells'              => (object) $extra_cells,
+                    'extra_actions'            => $extra_actions,
+                ];
             }
-
-            $extra_actions = class_exists('Brikpanel_ASE_Bridge')
-                ? Brikpanel_ASE_Bridge::get_row_actions($post)
-                : [];
-
-            $product_ids          = array_map('intval', (array) $coupon->get_product_ids());
-            $excluded_product_ids = array_map('intval', (array) $coupon->get_excluded_product_ids());
-            $category_ids         = array_map('intval', (array) $coupon->get_product_categories());
-            $excluded_category_ids = array_map('intval', (array) $coupon->get_excluded_product_categories());
-            $email_restrictions   = (array) $coupon->get_email_restrictions();
-            $limit_items          = $coupon->get_limit_usage_to_x_items();
-
-            $coupons[] = [
-                'id'                       => $post->ID,
-                'code'                     => $coupon->get_code() ?? '',
-                'description'              => $coupon->get_description() ?? '',
-                'discount_type'            => $coupon->get_discount_type(),
-                'amount'                   => $coupon->get_amount(),
-                'free_shipping'            => $coupon->get_free_shipping() ? 'yes' : 'no',
-                'expiry_date'              => $expiry_date,
-                'minimum_amount'           => $coupon->get_minimum_amount(),
-                'maximum_amount'           => $coupon->get_maximum_amount(),
-                'individual_use'           => $coupon->get_individual_use() ? 'yes' : 'no',
-                'exclude_sale_items'       => $coupon->get_exclude_sale_items() ? 'yes' : 'no',
-                'usage_limit'              => $usage_limit ? $usage_limit : '',
-                'usage_limit_per_user'     => $coupon->get_usage_limit_per_user() ? $coupon->get_usage_limit_per_user() : '',
-                'usage_count'              => $usage_count,
-                'revenue'                  => $coupon_revenue,
-                'revenue_formatted'        => $coupon_revenue > 0 ? wc_price($coupon_revenue) : '',
-                'status'                   => $post->post_status,
-                'product_ids'              => $product_ids,
-                'product_labels'           => $this->build_product_labels($product_ids),
-                'excluded_product_ids'     => $excluded_product_ids,
-                'excluded_product_labels'  => $this->build_product_labels($excluded_product_ids),
-                'category_ids'             => $category_ids,
-                'category_labels'          => $this->build_category_labels($category_ids),
-                'excluded_category_ids'    => $excluded_category_ids,
-                'excluded_category_labels' => $this->build_category_labels($excluded_category_ids),
-                'email_restrictions'       => implode(', ', $email_restrictions),
-                'email_labels'             => $this->build_email_labels($email_restrictions),
-                'limit_usage_to_x_items'   => $limit_items ? (int) $limit_items : '',
-                'extra_cells'              => (object) $extra_cells,
-                'extra_actions'            => $extra_actions,
-            ];
+        } finally {
+            if ($loop_published) {
+                Brikpanel_ASE_Bridge::end_loop_context();
+            }
         }
 
         // Counts

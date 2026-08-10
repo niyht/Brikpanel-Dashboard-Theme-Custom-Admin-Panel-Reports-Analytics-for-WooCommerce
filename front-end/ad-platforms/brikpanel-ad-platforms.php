@@ -208,7 +208,7 @@ function brikpanel_ads_register_module_setting( $fields ) {
 			'name' => __( 'Ad Platforms integration', 'brikpanel' ),
 			'type' => 'title',
 			'id'   => 'brk_ad_platforms_title',
-			'desc' => __( 'Pull daily ad spend from Google Ads and Meta Ads to calculate true ROAS and Net Profit on the dashboard. Currently in beta. Turn it off below to hide the admin page and stop all background sync jobs. Your connections stay saved.', 'brikpanel' ),
+			'desc' => __( 'Pull daily ad spend from Google Ads and Meta Ads to calculate true ROAS and Net Profit on the dashboard. Turn it off below to hide the admin page and stop all background sync jobs. Your connections stay saved.', 'brikpanel' ),
 		],
 		[
 			'name'    => __( 'Enable Ad Platforms integration', 'brikpanel' ),
@@ -267,69 +267,6 @@ function brikpanel_ads_map_settings_title( $map ) {
 	$map['brk_ad_platforms_title'] = 'integrations';
 	return $map;
 }
-add_filter( 'brikpanel_settings_nav_badges', 'brikpanel_ads_register_nav_badge' );
-function brikpanel_ads_register_nav_badge( $badges ) {
-	if ( ! isset( $badges['integrations'] ) ) {
-		$badges['integrations'] = __( 'Beta', 'brikpanel' );
-	}
-	return $badges;
-}
-
-/**
- * Print the inline CSS for the Beta badge. Loaded admin-wide because the badge
- * is used in the sidebar menu item (which renders on every admin page) and on
- * the BrikPanel WC settings tab title. The rule is tiny enough that a
- * dedicated stylesheet would cost more than it saves.
- */
-add_action( 'admin_head', 'brikpanel_ads_print_beta_badge_styles', 9999 );
-function brikpanel_ads_print_beta_badge_styles() {
-	// Excluded users (access control) get the stock admin with no BrikPanel
-	// menu, so the badge it styles never renders — skip the inline CSS too.
-	if ( function_exists( 'brikpanel_access_should_neutralize' ) && brikpanel_access_should_neutralize() ) {
-		return;
-	}
-	echo '<style id="brikpanel-beta-badge-css">'
-		. '.brikpanel-beta-badge{'
-			. 'display:inline-flex;align-items:center;'
-			. 'margin-left:0.4rem;padding:0.05rem 0.45rem;'
-			. 'background:#f1f1f1;color:#616161;'
-			. 'border:1px solid #e3e3e3;border-radius:999px;'
-			. 'font-size:0.625rem;font-weight:600;letter-spacing:0.04em;'
-			. 'line-height:1.6;text-transform:uppercase;'
-			. 'vertical-align:middle;'
-		. '}'
-		. '#adminmenu .brikpanel-beta-badge{'
-			. 'background:rgba(255,255,255,0.14);color:#fff;'
-			. 'border-color:rgba(255,255,255,0.22);'
-			. 'font-size:0.6rem;padding:0.02rem 0.38rem;line-height:1.5;'
-		. '}'
-		. '.brikpanel-menu-icon-title-container .brikpanel-beta-badge{'
-			. 'background:#fff;color:#303030;border-color:#e3e3e3;'
-		. '}'
-		. '</style>';
-}
-
-/**
- * Add a Beta badge next to the section <h2> in WC settings.
- */
-add_action( 'woocommerce_settings_brk_ad_platforms_title', 'brikpanel_ads_inject_beta_badge_in_settings' );
-function brikpanel_ads_inject_beta_badge_in_settings() {
-	$label = esc_js( __( 'Beta', 'brikpanel' ) );
-	echo "<script>(function(){"
-		. "var d=document.getElementById('brk_ad_platforms_title-description');"
-		// BrikPanel wraps the title + description into a `.bp-settings-card`, so
-		// the <h2> is no longer the description's previousElementSibling. Prefer
-		// the card's heading, then fall back to the legacy DOM shape.
-		. "var c=d?d.closest('.bp-settings-card'):null;"
-		. "var h=c?c.querySelector('h2'):(d?d.previousElementSibling:document.querySelector('h2'));"
-		. "if(!h||h.tagName.toLowerCase()!=='h2'||h.querySelector('.brikpanel-beta-badge'))return;"
-		. "var s=document.createElement('span');"
-		. "s.className='brikpanel-beta-badge';"
-		. "s.textContent='{$label}';"
-		. "h.appendChild(s);"
-		. "})();</script>";
-}
-
 // =============================================================================
 // Hard short-circuit when the integration is disabled.
 //

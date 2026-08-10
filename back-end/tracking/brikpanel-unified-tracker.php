@@ -64,7 +64,8 @@ function brikpanel_ajax_unified_track() {
 
     // 2) Page-view counter (fires on every page view by design).
     if ( ! empty( $_POST['page_id'] ) && function_exists( 'brikpanel_record_page_view' ) ) {
-        brikpanel_record_page_view( intval( $_POST['page_id'] ) );
+        $page_type = isset( $_POST['page_type'] ) ? sanitize_key( wp_unslash( $_POST['page_type'] ) ) : 'post';
+        brikpanel_record_page_view( intval( $_POST['page_id'] ), $page_type );
         $done['pv'] = true;
     }
 
@@ -105,7 +106,14 @@ function brikpanel_unified_tracker_js() {
         return;
     }
     // Skip the script entirely for bots — saves the network round-trip.
-    if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
+    //
+    // Deliberately asks the variant that does NOT treat a prefetch as a bot.
+    // The endpoint above refuses to record a speculative hit, which is the
+    // part that was inflating the counters; the script itself must still be
+    // printed, because the browser serves this very HTML when the visitor
+    // clicks the prefetched link and a page cache may hand it to everyone
+    // else. Omitting it here would silently switch tracking off.
+    if ( function_exists( 'brikpanel_is_bot_request' ) && brikpanel_is_bot_request( false ) ) {
         return;
     }
 
@@ -113,7 +121,14 @@ function brikpanel_unified_tracker_js() {
     $visitor_key      = 'brikpanel_visitor_viewed_' . $day;
     $product_key      = 'brikpanel_product_viewed_' . $day;
     $is_product       = function_exists( 'is_singular' ) && is_singular( 'product' );
-    $page_id          = (int) get_the_ID();
+    // Resolved from the queried object, not from get_the_ID(): in the footer
+    // that returns whatever post the loop stopped on, which credited every
+    // archive view to an arbitrary product listed on it.
+    $view             = function_exists( 'brikpanel_current_view_target' )
+        ? brikpanel_current_view_target()
+        : [ 'id' => (int) get_the_ID(), 'type' => 'post' ];
+    $page_id          = (int) $view['id'];
+    $page_type        = (string) $view['type'];
     $ping_interval_ms = ( function_exists( 'brikpanel_live_ping_interval' ) ? brikpanel_live_ping_interval() : 30 ) * 1000;
     ?>
     <script>
@@ -123,6 +138,7 @@ function brikpanel_unified_tracker_js() {
         var PRODUCT_KEY = "<?php echo esc_js( $product_key ); ?>";
         var isProduct   = <?php echo $is_product ? 'true' : 'false'; ?>;
         var pageId      = <?php echo (int) $page_id; ?>;
+        var pageType    = "<?php echo esc_js( $page_type ); ?>";
 
         function buildLive(fd) {
             fd.append('live', '1');
@@ -135,7 +151,10 @@ function brikpanel_unified_tracker_js() {
             var fd = new FormData();
             fd.append('action', 'brikpanel_unified_track');
             buildLive(fd);
-            if (pageId) fd.append('page_id', pageId);
+            if (pageId) {
+                fd.append('page_id', pageId);
+                fd.append('page_type', pageType);
+            }
             var wantVisitor = false, wantProduct = false;
             try {
                 wantVisitor = !localStorage.getItem(VISITOR_KEY);

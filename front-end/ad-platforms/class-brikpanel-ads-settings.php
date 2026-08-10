@@ -44,15 +44,10 @@ class Brikpanel_Ads_Settings {
 		// sidebar slot — it lives in the WooCommerce menu, which BrikPanel's
 		// modern navigation folds into the "More" group. The dashboard
 		// "Connect ad accounts" CTA is the primary entry point.
-		$menu_title = __( 'Ad Platforms', 'brikpanel' )
-			. ' <span class="brikpanel-beta-badge" aria-label="'
-			. esc_attr__( 'Beta feature', 'brikpanel' )
-			. '">' . esc_html__( 'Beta', 'brikpanel' ) . '</span>';
-
 		$hook = add_submenu_page(
 			'woocommerce',
 			__( 'Ad Platforms', 'brikpanel' ),
-			$menu_title,
+			__( 'Ad Platforms', 'brikpanel' ),
 			'manage_woocommerce',
 			self::PAGE_SLUG,
 			[ $this, 'render_page' ]

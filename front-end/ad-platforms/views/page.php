@@ -287,7 +287,6 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 			<div class="bp-ads-header-left">
 				<h1>
 					<?php esc_html_e( 'Ad Platforms', 'brikpanel' ); ?>
-					<span class="brikpanel-beta-badge" aria-label="<?php esc_attr_e( 'Beta feature', 'brikpanel' ); ?>"><?php esc_html_e( 'Beta', 'brikpanel' ); ?></span>
 				</h1>
 				<p class="bp-ads-subtitle">
 					<?php esc_html_e( 'Connect Google Ads and Meta Ads so BrikPanel can show real ROAS and Net Profit on the dashboard.', 'brikpanel' ); ?>

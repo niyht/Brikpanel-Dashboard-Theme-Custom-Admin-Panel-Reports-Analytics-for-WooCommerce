@@ -42,6 +42,12 @@ class Brikpanel_Dashboard {
     // duplicate hooks needed here.
     const CACHE_TTL = 120; // 2 min with object cache; 10 min without (helper x5)
 
+    // Per-user memory of the last date range picked on the dashboard. Stored
+    // with update_user_option() so it is per user AND per site on multisite:
+    // one admin's "Last 30 Days" habit never leaks into another's screen, and
+    // each store in a network keeps its own preference.
+    const RANGE_PREF_OPTION = 'brikpanel_dash_range';
+
     public function __construct() {
         if ( get_option( 'brikpanel_modern_dashboard', 'yes' ) !== 'yes' ) {
             return;
@@ -72,6 +78,109 @@ class Brikpanel_Dashboard {
         // force-deletes (like variation removal) that skip the trash step.
         add_action( 'transition_post_status', [ $this, 'bust_catalog_counts_on_transition' ], 10, 3 );
         add_action( 'before_delete_post', [ $this, 'bust_catalog_counts_on_delete' ], 10, 1 );
+    }
+
+    /**
+     * Date ranges the dashboard accepts. Anything outside this list is
+     * rejected on both the read and the write side of the preference.
+     *
+     * @return string[]
+     */
+    public static function allowed_ranges() {
+        return [ 'today', 'yesterday', '7days', '30days', '90days', 'custom' ];
+    }
+
+    /**
+     * Is this a real Y-m-d calendar date?
+     *
+     * The shape check alone is not enough: "2026-13-45" matches the pattern
+     * but strtotime() cannot parse it, and the date math then falls back to
+     * the epoch, turning one bad value into a decades-wide table scan. Every
+     * entry point that accepts a custom date (AJAX, export, the stored
+     * preference) goes through here.
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    public static function is_valid_ymd( $value ) {
+        if ( ! is_string( $value ) || ! preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m ) ) {
+            return false;
+        }
+        return checkdate( (int) $m[2], (int) $m[3], (int) $m[1] );
+    }
+
+    /**
+     * The current user's remembered date range.
+     *
+     * Always returns a usable, fully validated shape. A corrupted or
+     * half-written preference silently degrades to "today" rather than
+     * feeding an unchecked value into the query builder.
+     *
+     * @return array{range:string,start:string,end:string}
+     */
+    public static function get_range_preference() {
+        $fallback = [ 'range' => 'today', 'start' => '', 'end' => '' ];
+
+        $user_id = get_current_user_id();
+        if ( ! $user_id ) {
+            return $fallback;
+        }
+
+        $pref = get_user_option( self::RANGE_PREF_OPTION, $user_id );
+        if ( ! is_array( $pref ) ) {
+            return $fallback;
+        }
+
+        $range = isset( $pref['range'] ) ? sanitize_key( $pref['range'] ) : '';
+        if ( ! in_array( $range, self::allowed_ranges(), true ) ) {
+            return $fallback;
+        }
+
+        $start = ( isset( $pref['start'] ) && self::is_valid_ymd( $pref['start'] ) ) ? $pref['start'] : '';
+        $end   = ( isset( $pref['end'] ) && self::is_valid_ymd( $pref['end'] ) ) ? $pref['end'] : '';
+
+        // A remembered custom range is only meaningful with both ends intact.
+        if ( 'custom' === $range && ( '' === $start || '' === $end ) ) {
+            return $fallback;
+        }
+
+        return [ 'range' => $range, 'start' => $start, 'end' => $end ];
+    }
+
+    /**
+     * Remember the range the user just looked at.
+     *
+     * Called from the data endpoint (so every selection is captured on the
+     * request it already makes, with no extra round-trip) and deliberately
+     * skips the write when nothing changed, which is the common case: the
+     * dashboard refetches on every load and on every tab refocus.
+     *
+     * @param string      $range One of allowed_ranges().
+     * @param string|null $start Y-m-d, custom range only.
+     * @param string|null $end   Y-m-d, custom range only.
+     */
+    public static function save_range_preference( $range, $start = null, $end = null ) {
+        $user_id = get_current_user_id();
+        if ( ! $user_id || ! in_array( $range, self::allowed_ranges(), true ) ) {
+            return;
+        }
+
+        $is_custom = ( 'custom' === $range );
+        if ( $is_custom && ( ! self::is_valid_ymd( $start ) || ! self::is_valid_ymd( $end ) ) ) {
+            return; // Nothing worth remembering.
+        }
+
+        $pref = [
+            'range' => $range,
+            'start' => $is_custom ? $start : '',
+            'end'   => $is_custom ? $end : '',
+        ];
+
+        if ( self::get_range_preference() === $pref ) {
+            return;
+        }
+
+        update_user_option( $user_id, self::RANGE_PREF_OPTION, $pref );
     }
 
     /**
@@ -416,7 +525,6 @@ class Brikpanel_Dashboard {
                                         ? esc_html__( 'Ad spend settings', 'brikpanel' )
                                         : esc_html__( 'Connect ad accounts', 'brikpanel' ); ?>
                                 </span>
-                                <span class="brikpanel-beta-badge"><?php esc_html_e( 'Beta', 'brikpanel' ); ?></span>
                             </a>
                         <?php endif; ?>
                     </div>
@@ -427,16 +535,28 @@ class Brikpanel_Dashboard {
                         </span>
                         <span class="brikpanel-dash-export-label"><?php esc_html_e( 'Export Excel', 'brikpanel' ); ?></span>
                     </button>
+                    <?php
+                    // The remembered range decides which preset renders active,
+                    // so the button state matches the data on first paint —
+                    // marking "Today" here and correcting it from JS would flash
+                    // the wrong selection on every load.
+                    $bp_saved_range = self::get_range_preference();
+                    $bp_presets     = [
+                        'today'     => __( 'Today', 'brikpanel' ),
+                        'yesterday' => __( 'Yesterday', 'brikpanel' ),
+                        '7days'     => __( 'Last 7 Days', 'brikpanel' ),
+                        '30days'    => __( 'Last 30 Days', 'brikpanel' ),
+                        '90days'    => __( 'Last 90 Days', 'brikpanel' ),
+                        'custom'    => __( 'Custom', 'brikpanel' ),
+                    ];
+                    ?>
                     <div class="brikpanel-dash-range-wrap">
                         <div class="brikpanel-dash-presets">
-                            <button class="brikpanel-dash-preset active" data-range="today"><?php esc_html_e( 'Today', 'brikpanel' ); ?></button>
-                            <button class="brikpanel-dash-preset" data-range="yesterday"><?php esc_html_e( 'Yesterday', 'brikpanel' ); ?></button>
-                            <button class="brikpanel-dash-preset" data-range="7days"><?php esc_html_e( 'Last 7 Days', 'brikpanel' ); ?></button>
-                            <button class="brikpanel-dash-preset" data-range="30days"><?php esc_html_e( 'Last 30 Days', 'brikpanel' ); ?></button>
-                            <button class="brikpanel-dash-preset" data-range="90days"><?php esc_html_e( 'Last 90 Days', 'brikpanel' ); ?></button>
-                            <button class="brikpanel-dash-preset" data-range="custom"><?php esc_html_e( 'Custom', 'brikpanel' ); ?></button>
+                            <?php foreach ( $bp_presets as $bp_key => $bp_label ) : ?>
+                                <button class="brikpanel-dash-preset<?php echo ( $bp_saved_range['range'] === $bp_key ) ? ' active' : ''; ?>" data-range="<?php echo esc_attr( $bp_key ); ?>"><?php echo esc_html( $bp_label ); ?></button>
+                            <?php endforeach; ?>
                         </div>
-                        <div class="brikpanel-dash-custom-range" style="display:none;">
+                        <div class="brikpanel-dash-custom-range"<?php echo ( 'custom' === $bp_saved_range['range'] ) ? '' : ' style="display:none;"'; ?>>
                             <input type="text" id="brikpanel-dash-datepicker" placeholder="<?php esc_attr_e( 'Select dates', 'brikpanel' ); ?>" readonly>
                         </div>
                     </div>
@@ -1849,9 +1969,15 @@ class Brikpanel_Dashboard {
         if ( 'custom' === $range ) {
             $cs = isset( $_POST['start_date'] ) ? sanitize_text_field( wp_unslash( $_POST['start_date'] ) ) : '';
             $ce = isset( $_POST['end_date'] )   ? sanitize_text_field( wp_unslash( $_POST['end_date'] ) )   : '';
-            $custom_start = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $cs ) ? $cs : null;
-            $custom_end   = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $ce ) ? $ce : null;
+            $custom_start = self::is_valid_ymd( $cs ) ? $cs : null;
+            $custom_end   = self::is_valid_ymd( $ce ) ? $ce : null;
         }
+
+        // Remember the selection so a refresh, or a trip to another screen and
+        // back, returns to this period instead of snapping to "Today". Written
+        // BEFORE the cache check below, because a cached payload short-circuits
+        // the rest of this method and the preference must be captured either way.
+        self::save_range_preference( $range, $custom_start, $custom_end );
 
         // Whole-response cache. The dashboard runs ~28 SQL queries per render
         // (KPIs + funnel + 4 chart sections + LTV + RFM + locations + …), so on
@@ -2227,6 +2353,18 @@ class Brikpanel_Dashboard {
                 $end_str     = $custom_end !== null
                     ? sanitize_text_field( $custom_end )
                     : ( isset( $_POST['end_date'] ) ? sanitize_text_field( wp_unslash( $_POST['end_date'] ) ) : wp_date( 'Y-m-d' ) );
+                // Last line of defence for the date math. A value that looks
+                // like a date but is not one ("2026-13-45") makes strtotime()
+                // return false, which the arithmetic below reads as the epoch
+                // which means a decades-wide scan of every order in the store. Callers
+                // already validate what they pass in; this also covers the
+                // legacy $_POST fallback directly above.
+                if ( ! self::is_valid_ymd( $start_str ) ) {
+                    $start_str = wp_date( 'Y-m-d' );
+                }
+                if ( ! self::is_valid_ymd( $end_str ) ) {
+                    $end_str = wp_date( 'Y-m-d' );
+                }
                 // Guard against an inverted range (end before start).
                 if ( strtotime( $end_str ) < strtotime( $start_str ) ) {
                     $tmp = $start_str; $start_str = $end_str; $end_str = $tmp;
@@ -2469,6 +2607,17 @@ class Brikpanel_Dashboard {
     // MOST VIEWED PAGES
     // =========================================================================
 
+    /**
+     * Number of rows pulled before resolving titles.
+     *
+     * Both "most" cards drop any row whose post or product no longer resolves
+     * (deleted, or moved to the trash). Selecting exactly five and then
+     * filtering meant a card could show three lines and read as "that is all
+     * the traffic there was". Over-fetching and trimming afterwards keeps the
+     * list full whenever there is enough surviving data to fill it.
+     */
+    const MOST_CARD_FETCH = 40;
+
     private function get_most_viewed( $start_local, $end_local ) {
         global $wpdb;
         $table = $wpdb->prefix . 'brikpanel_visited_pages';
@@ -2477,34 +2626,63 @@ class Brikpanel_Dashboard {
         $end_dt   = $end_local . ' 23:59:59';
 
         $results = $wpdb->get_results( $wpdb->prepare(
-            "SELECT page_id, SUM(visit_count) AS total_views
+            "SELECT page_id, object_type, SUM(visit_count) AS total_views
              FROM {$table}
              WHERE date_column >= %s AND date_column <= %s
-             GROUP BY page_id
-             ORDER BY total_views DESC LIMIT 5",
+             GROUP BY page_id, object_type
+             ORDER BY total_views DESC LIMIT %d",
             $start_dt,
-            $end_dt
+            $end_dt,
+            self::MOST_CARD_FETCH
         ) );
 
         if ( empty( $results ) ) {
             return [];
         }
 
-        $page_ids = wp_list_pluck( $results, 'page_id' );
-        _prime_post_caches( $page_ids, false, false );
+        // Rows written before 3.2.41 have no object_type of their own and take
+        // the column default, so anything unrecognised is treated as a post.
+        $post_ids = [];
+        foreach ( $results as $row ) {
+            if ( 'term' !== $row->object_type ) {
+                $post_ids[] = (int) $row->page_id;
+            }
+        }
+        if ( $post_ids ) {
+            _prime_post_caches( $post_ids, false, false );
+        }
 
         $data = [];
         foreach ( $results as $row ) {
-            $title = get_the_title( $row->page_id );
-            if ( $title ) {
-                $permalink = get_permalink( $row->page_id );
-                $data[] = [
-                    'title' => $title,
-                    'views' => (int) $row->total_views,
-                    'id'    => (int) $row->page_id,
-                    'url'   => $permalink ? $permalink : '',
-                ];
+            if ( count( $data ) >= 5 ) {
+                break;
             }
+
+            $id = (int) $row->page_id;
+
+            if ( 'term' === $row->object_type ) {
+                $term = get_term( $id );
+                if ( ! $term || is_wp_error( $term ) ) {
+                    continue;
+                }
+                $title = $term->name;
+                $link  = get_term_link( $term );
+                $url   = is_wp_error( $link ) ? '' : $link;
+            } else {
+                $title = get_the_title( $id );
+                if ( ! $title ) {
+                    continue;
+                }
+                $permalink = get_permalink( $id );
+                $url       = $permalink ? $permalink : '';
+            }
+
+            $data[] = [
+                'title' => $title,
+                'views' => (int) $row->total_views,
+                'id'    => $id,
+                'url'   => $url,
+            ];
         }
         return $data;
     }
@@ -2525,9 +2703,10 @@ class Brikpanel_Dashboard {
              FROM {$table}
              WHERE date_column >= %s AND date_column <= %s
              GROUP BY product_id
-             ORDER BY total_count DESC LIMIT 5",
+             ORDER BY total_count DESC LIMIT %d",
             $start_dt,
-            $end_dt
+            $end_dt,
+            self::MOST_CARD_FETCH
         ) );
 
         if ( empty( $results ) ) {
@@ -2543,6 +2722,9 @@ class Brikpanel_Dashboard {
 
         $data = [];
         foreach ( $results as $row ) {
+            if ( count( $data ) >= 5 ) {
+                break;
+            }
             $product = isset( $products_map[ $row->product_id ] ) ? $products_map[ $row->product_id ] : null;
             if ( $product ) {
                 $permalink = $product->get_permalink();
@@ -3350,19 +3532,15 @@ class Brikpanel_Dashboard {
         }
         check_admin_referer( 'brikpanel_dashboard_export', 'brikpanel_export_nonce' );
 
-        $allowed = [ 'today', 'yesterday', '7days', '30days', '90days', 'custom' ];
-        $range   = isset( $_GET['range'] ) ? sanitize_key( wp_unslash( $_GET['range'] ) ) : 'today';
-        if ( ! in_array( $range, $allowed, true ) ) {
+        $range = isset( $_GET['range'] ) ? sanitize_key( wp_unslash( $_GET['range'] ) ) : 'today';
+        if ( ! in_array( $range, self::allowed_ranges(), true ) ) {
             $range = 'today';
         }
         $custom_start = isset( $_GET['start_date'] ) ? sanitize_text_field( wp_unslash( $_GET['start_date'] ) ) : null;
         $custom_end   = isset( $_GET['end_date'] ) ? sanitize_text_field( wp_unslash( $_GET['end_date'] ) ) : null;
-        // Reject anything that isn't a plain Y-m-d date so it can't reach the
-        // date math as garbage.
-        $valid_date = static function ( $d ) {
-            return is_string( $d ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $d );
-        };
-        if ( $range === 'custom' && ( ! $valid_date( $custom_start ) || ! $valid_date( $custom_end ) ) ) {
+        // Reject anything that isn't a real Y-m-d calendar date so it can't
+        // reach the date math as garbage.
+        if ( $range === 'custom' && ( ! self::is_valid_ymd( $custom_start ) || ! self::is_valid_ymd( $custom_end ) ) ) {
             $range        = 'today';
             $custom_start = null;
             $custom_end   = null;

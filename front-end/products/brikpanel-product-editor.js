@@ -36,7 +36,72 @@
         initBackorderNotify();
         initLinkedProducts();
         initThirdPartyTabLazyLoad();
+        initCogsMirror();
         loadExistingData();
+    }
+
+    /* A cost-of-goods plugin renders its own cost input into WooCommerce's
+       Product data panel, which we embed — so the editor can end up showing
+       two boxes for one number: BrikPanel's Cost field and theirs. They start
+       out disagreeing (theirs renders from its own meta, which may be empty)
+       and only one of them can win the save, so whichever box the merchant
+       happened to edit could silently lose its value.
+
+       Keep them in step both ways instead: typing in either updates the other,
+       so there is only ever one number on screen and the save is unambiguous.
+       Runs only when BrikPanel's own Cost field is on the page — with that
+       section switched off in settings, the plugin's field is the only cost
+       control there is and we leave it strictly alone. */
+    function pairCogsInputs($ours, $theirs) {
+        if (!$ours.length || !$theirs.length) return;
+        var syncing = false;
+        var push = function (from, $to) {
+            if (syncing) return;
+            syncing = true;
+            $to.val(from);
+            syncing = false;
+        };
+        // Adopt BrikPanel's value up front: ours is hydrated from the resolved
+        // cost (their key included), so it is the one that is certainly right.
+        push($ours.val() || '', $theirs);
+        $ours.on('input.bpCogsMirror change.bpCogsMirror', function () { push($(this).val() || '', $theirs); }); // i18n-ignore: jQuery event namespace, not user-facing text
+        $theirs.on('input.bpCogsMirror change.bpCogsMirror', function () { push($(this).val() || '', $ours); }); // i18n-ignore: jQuery event namespace, not user-facing text
+    }
+
+    function initCogsMirror() {
+        var names = (window.brikpanelPE && brikpanelPE.cogs_mirror_inputs) || [];
+        if (!names.length) return;
+        var $ours = $('#bpe-cogs');
+        if (!$ours.length) return;
+        var $theirs = $();
+        for (var i = 0; i < names.length; i++) {
+            $theirs = $theirs.add($('[name="' + names[i] + '"]'));
+        }
+        pairCogsInputs($ours, $theirs);
+    }
+
+    /* Per-variation half of the mirror. The plugin's input lands in the
+       variation's "extras" row — a sibling of the row holding our cost cell,
+       not a parent — so we match on the `data-idx` both rows carry rather than
+       on document order. Called after every renderVarTable() because that
+       rebuilds both rows from scratch. */
+    function syncVariationCogsMirror() {
+        var varNames = (window.brikpanelPE && brikpanelPE.cogs_mirror_variation_inputs) || [];
+        if (!varNames.length) return;
+        var $tb = $('#bpe-var-table-body');
+        if (!$tb.length) return;
+
+        for (var v = 0; v < varNames.length; v++) {
+            $tb.find('[name^="' + varNames[v] + '["]').each(function () {
+                var $theirs = $(this);
+                var idx = $theirs.closest('.var-extras-row').data('idx');
+                if (idx === undefined) return;
+                // No cost cell means the COGS column is switched off in
+                // settings — their field is then the only cost control on the
+                // page and we leave it strictly alone.
+                pairCogsInputs($tb.find('tr[data-idx="' + idx + '"] .var-cogs').first(), $theirs); // i18n-ignore: CSS selector, not user-facing text
+            });
+        }
     }
 
     /* Some 3rd-party WooCommerce product-data tabs only render their saved
@@ -3059,6 +3124,12 @@
                 flatpickr(this, { dateFormat: 'Y-m-d', allowInput: false });
             });
         }
+
+        // Re-pair the cost-plugin inputs: this render rebuilt both the cost
+        // cells and the extras rows they live in, so the previous bindings
+        // point at detached elements and their freshly-rendered value is back
+        // to whatever the server captured.
+        syncVariationCogsMirror();
     }
 
     function buildVarImageCell(images, idx) {
@@ -3590,6 +3661,21 @@
                 try {
                     var adv = rmSel.getAdvancedRobots && rmSel.getAdvancedRobots();
                     if (adv && typeof adv === 'object') data.bpe_rm_advanced_robots = JSON.stringify(adv);
+                } catch (e) {}
+                // SEO score. Rank Math writes this meta from its editor JS
+                // alone (dispatch → REST updateMeta on classic form submit /
+                // Gutenberg save); no PHP path of its own touches it. Without
+                // forwarding it, the score shown in Rank Math's own list column
+                // freezes at whatever the last native-editor save left behind.
+                try {
+                    var rmScore = rmSel.getAnalysisScore && rmSel.getAnalysisScore();
+                    if (rmScore !== undefined && rmScore !== null) data.bpe_rm_seo_score = rmScore;
+                } catch (e) {}
+                // Rank Math stores the inverse of the toggle: 'off' means the
+                // frontend badge IS shown.
+                try {
+                    var rmShow = rmSel.getShowScoreFrontend && rmSel.getShowScoreFrontend();
+                    if (typeof rmShow === 'boolean') data.bpe_rm_dont_show_seo_score = rmShow ? 'off' : 'on';
                 } catch (e) {}
                 data.bpe_rm_active = 1;
             }

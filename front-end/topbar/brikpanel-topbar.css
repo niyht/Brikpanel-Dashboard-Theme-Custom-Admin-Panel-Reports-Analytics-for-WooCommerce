@@ -281,7 +281,7 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     border: 1px solid var(--bp-topbar-border);
     background: #fafafa;
     border-radius: 0.5rem;
-    color: var(--bp-topbar-text-2);
+    color: var(--bp-topbar-text-2, #616161);
     font-size: 0.8125rem;
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease;
@@ -376,7 +376,12 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     box-sizing: border-box;
     border: 1px solid var(--bp-topbar-border);
     background: #ffffff;
-    color: var(--bp-topbar-text);
+    /* Literal fallback, not decoration: the glyph inside is stroked with
+       `currentColor`, so if the custom property ever fails to resolve — a CSS
+       optimiser that drops the `:root` block, a stylesheet that 404s — the icon
+       would inherit whatever colour the page happens to carry and can end up
+       invisible on the white button. Same reason on every `color` below. */
+    color: var(--bp-topbar-text, #303030);
     border-radius: 0.5rem;
     cursor: pointer;
     position: relative;
@@ -385,7 +390,7 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 
 .brikpanel-topbar-icon-btn:hover {
     background: #f1f1f1;
-    color: var(--bp-topbar-text);
+    color: var(--bp-topbar-text, #303030);
     border-color: #cfcfcf;
 }
 
@@ -863,7 +868,7 @@ body.brikpanel-has-topbar .brikpanel-search-overlay {
     height: 40px;
     border: 1px solid var(--bp-topbar-border);
     background: #ffffff;
-    color: var(--bp-topbar-text);
+    color: var(--bp-topbar-text, #303030);
     border-radius: 0.5rem;
     cursor: pointer;
     flex-shrink: 0;
@@ -1046,4 +1051,88 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
     .brikpanel-topbar-menu-btn { width: 36px; height: 36px; }
     .brikpanel-topbar-icon-btn svg { width: 18px; height: 18px; }
     .brikpanel-topbar-brand-mark { width: 28px; height: 28px; }
+}
+
+/* =============================================================================
+   GLYPH INTEGRITY GUARD — keep the top bar icons drawn no matter what else the
+   current screen loads.
+
+   Every top bar glyph is an inline outline SVG painted with the *presentation
+   attributes* `fill="none" stroke="currentColor"`. Presentation attributes sit
+   at the very bottom of the cascade: they lose to ANY author CSS on the page,
+   including a rule that was never meant for us. A single declaration such as
+
+       svg path, svg line, svg circle { fill: #fff; stroke: none; }
+
+   shipped by another plugin's screen-specific stylesheet repaints our strokes
+   away, and the buttons render as empty boxes that still open their menus —
+   the icon is gone, the control is not. Because such stylesheets are usually
+   loaded on one screen only (the WooCommerce order list is a favourite), the
+   symptom looks like "the bells vanish on that one page". Reported on wp.org
+   by iesayi (BrikPanel 3.2.37).
+
+   Restating the drawing model here puts it back on equal footing with the rest
+   of the cascade. The rules are keyed on the attribute the markup actually
+   declares, so an icon that legitimately paints differently (a filled glyph, a
+   child element with its own `fill`/`stroke`) is matched by none of them and is
+   left exactly as authored. Scoped to the top bar, plus the pieces the script
+   relocates to <body> (toasts, mobile sheet), so nothing outside our own chrome
+   is touched. */
+#brikpanel-topbar svg[fill="none"],
+[class*="brikpanel-topbar-"] svg[fill="none"] {
+    fill: none !important;
+}
+
+#brikpanel-topbar svg[stroke="currentColor"],
+[class*="brikpanel-topbar-"] svg[stroke="currentColor"] {
+    stroke: currentColor !important;
+}
+
+#brikpanel-topbar svg[fill="none"] *:not([fill]),
+[class*="brikpanel-topbar-"] svg[fill="none"] *:not([fill]) {
+    fill: none !important;
+}
+
+#brikpanel-topbar svg[stroke="currentColor"] *:not([stroke]),
+[class*="brikpanel-topbar-"] svg[stroke="currentColor"] *:not([stroke]) {
+    stroke: currentColor !important;
+}
+
+/* Same reasoning for the box the glyph is drawn in: a foreign `svg { width:
+   100% }` or `svg { display: none }` would either blow the bar apart or empty
+   it. Keep our own sizing authoritative — including across the responsive step,
+   which is restated here rather than left to the earlier (non-!important)
+   declarations. Each selector repeats the size that surface is *already*
+   authored at (icon buttons 20px from the rule above, the search magnifier 16px
+   from its own `width`/`height` attributes), so this pins the current design
+   rather than changing it. */
+#brikpanel-topbar .brikpanel-topbar-icon-btn svg {
+    display: block !important;
+    width: 20px !important;
+    height: 20px !important;
+    flex: none;
+}
+
+#brikpanel-topbar .brikpanel-topbar-search-btn svg {
+    display: block !important;
+    width: 16px !important;
+    height: 16px !important;
+    flex: none;
+}
+
+@media (max-width: 600px) {
+    #brikpanel-topbar .brikpanel-topbar-icon-btn svg,
+    #brikpanel-topbar .brikpanel-topbar-search-btn svg {
+        width: 18px !important;
+        height: 18px !important;
+    }
+}
+
+/* Cheap ceiling for every other glyph in the bar (master switch, user menu,
+   dropdown items). They keep their authored sizes — nothing in the bar is ever
+   meant to be taller than the bar itself — but a foreign `svg { width: 100% }`
+   can no longer push one of them through the layout. */
+#brikpanel-topbar svg {
+    max-width: 100%;
+    max-height: var(--bp-topbar-height, 52px);
 }

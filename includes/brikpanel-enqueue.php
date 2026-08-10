@@ -211,8 +211,18 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         ],
     ]);
 
+    // The date range this user last looked at. Seeds the JS state so the first
+    // fetch already asks for the remembered period; the matching preset button
+    // is marked active server-side in the dashboard markup.
+    $bp_saved_range = class_exists('Brikpanel_Dashboard')
+        ? Brikpanel_Dashboard::get_range_preference()
+        : ['range' => 'today', 'start' => '', 'end' => ''];
+
     wp_localize_script('brikpanel_dashboard_scripts', 'brikpanelDashboard', [
         'ajax_url' => admin_url('admin-ajax.php'),
+        'saved_range' => $bp_saved_range['range'],
+        'saved_start' => $bp_saved_range['start'],
+        'saved_end'   => $bp_saved_range['end'],
         'nonce'    => wp_create_nonce('brikpanel_dashboard_nonce'),
         'export_url'   => admin_url('admin-post.php'),
         'export_nonce' => wp_create_nonce('brikpanel_dashboard_export'),
@@ -509,17 +519,23 @@ add_action('admin_enqueue_scripts', 'brikpanel_enqueue_customer_analytics_assets
 // GLOBAL ADMIN STYLES & SCRIPTS
 // =============================================================================
 function brikpanel_enqueue_global_assets() {
-    // The admin-bar search and the BrikPanel navigation are only useful to
-    // users who can actually manage WooCommerce. Skipping the enqueue for
-    // shop managers / authors / subscribers saves a JS+CSS round-trip on
-    // every admin page load — meaningful on weak hosts where every avoided
+    // Two assets with two DIFFERENT audiences, so they are gated separately
+    // below rather than behind one shared early return:
+    //
+    //   - brikpanel-navigation.css is admin chrome. It must load for exactly
+    //     the users brikpanel_render_navigation() renders the sidebar for —
+    //     the stylesheet hides the native #adminmenu, so a mismatch leaves the
+    //     user with two stacked menus (see brikpanel_user_can_use_interface).
+    //   - The Cmd+K search palette queries orders, so it stays on
+    //     `manage_woocommerce`, matching the capability its own AJAX handler
+    //     enforces in front-end/search/brikpanel-search.php.
+    //
+    // Skipping each for the users who cannot use it saves a JS+CSS round-trip
+    // on every admin page load — meaningful on weak hosts where every avoided
     // 304 still costs a PHP boot.
-    if ( ! current_user_can( 'manage_woocommerce' ) ) {
-        return;
-    }
-    // brikpanel-navigation.css hides the native #adminmenu so our custom nav
-    // can replace it. Network Admin and User Admin don't render the custom
-    // nav, so loading the CSS there blanks out the super-admin sidebar.
+    //
+    // Network Admin and User Admin don't render the custom nav, so loading the
+    // CSS there blanks out the super-admin sidebar.
     if ( is_network_admin() || is_user_admin() ) {
         return;
     }
@@ -528,6 +544,37 @@ function brikpanel_enqueue_global_assets() {
     // also offsets #wpcontent by the sidebar width, which would orphan inside
     // a chromeless window — so skip these assets entirely here.
     if ( function_exists( 'brikpanel_is_desktop_mode' ) && brikpanel_is_desktop_mode() ) {
+        return;
+    }
+
+    // --- Sidebar chrome -----------------------------------------------------
+    // Mirrors brikpanel_navigation_skip_super_admin_chrome(): the same users who
+    // get the rendered sidebar get the stylesheet that hides the native menu
+    // underneath it.
+    //
+    // Deliberately NOT gated on `brikpanel_modern_navigation`. This one
+    // stylesheet serves all three sidebar modes — modern (custom nav), classic
+    // (`.brikpanel-classic-nav`, native menu re-skinned) and native
+    // (`.brikpanel-native-nav`, which restores `#adminmenu { display: block }`
+    // over the file's own base rule). Skipping it when the modern navigation is
+    // off would strip the classic re-skin and, worse, is the only thing undoing
+    // the base `#adminmenu { display: none }` in native mode.
+    if ( ! function_exists( 'brikpanel_user_can_use_interface' ) || brikpanel_user_can_use_interface() ) {
+        // filemtime version → CSS edits (e.g. the classic-nav re-skin) bust the
+        // browser cache immediately, matching the dashboard/segments assets above.
+        $nav_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/navigation/brikpanel-navigation.css' ) ?: BRIKPANEL_VERSION;
+        wp_enqueue_style(
+            'brikpanel_navigation_styles',
+            BRIKPANEL_URL . 'front-end/navigation/brikpanel-navigation.css',
+            [],
+            $nav_css_ver
+        );
+    }
+
+    // --- Cmd+K search palette ------------------------------------------------
+    // Searches orders, so it keeps the narrower `manage_woocommerce` gate its
+    // own AJAX handler enforces (front-end/search/brikpanel-search.php).
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
         return;
     }
 
@@ -551,16 +598,6 @@ function brikpanel_enqueue_global_assets() {
             'hint_text' => __('You can search orders by customer name, email, phone, order ID, or product SKUs within an order.', 'brikpanel'),
         ],
     ]);
-
-    // filemtime version → CSS edits (e.g. the classic-nav re-skin) bust the
-    // browser cache immediately, matching the dashboard/segments assets above.
-    $nav_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/navigation/brikpanel-navigation.css' ) ?: BRIKPANEL_VERSION;
-    wp_enqueue_style(
-        'brikpanel_navigation_styles',
-        BRIKPANEL_URL . 'front-end/navigation/brikpanel-navigation.css',
-        [],
-        $nav_css_ver
-    );
 
     wp_enqueue_style(
         'brikpanel_search_styles',
@@ -836,9 +873,13 @@ function brikpanel_enqueue_woo_assets($hook) {
     }
 
     // Taxonomy pages (Categories, Tags, Attributes)
+    $taxonomy_screens = class_exists('Brikpanel_Category_Enhancements')
+        ? Brikpanel_Category_Enhancements::supported_taxonomies()
+        : ['product_cat', 'product_tag'];
+
     $is_product_taxonomy = in_array($hook, ['edit-tags.php', 'term.php'], true)
         && isset($_GET['taxonomy'])
-        && in_array(sanitize_key($_GET['taxonomy']), ['product_cat', 'product_tag'], true);
+        && in_array(sanitize_key($_GET['taxonomy']), $taxonomy_screens, true);
     $is_attributes_page = $hook === 'product_page_product_attributes';
 
     // Any product taxonomy term screen (Categories, Tags, Brands, attribute
@@ -860,27 +901,78 @@ function brikpanel_enqueue_woo_assets($hook) {
         );
     }
 
-    // Category enhancements JS (drag-drop nesting, search reposition)
-    if ($is_product_taxonomy) {
+    // Category tree JS (folder tree, drag-drop nesting, instant filter)
+    if ($is_product_taxonomy && 'edit-tags.php' === $hook) {
         $tax = sanitize_key($_GET['taxonomy'] ?? 'product_cat');
+
+        $has_enhancements = class_exists('Brikpanel_Category_Enhancements');
+
+        // Draw the folder tree at all (setting on, hierarchical taxonomy, and
+        // core is not rendering one of its flat search / sorted views).
+        $tree = $has_enhancements && Brikpanel_Category_Enhancements::tree_is_enabled($tax);
+
+        // The whole tree lives on one page, so a branch is never cut in half
+        // by pagination — see Brikpanel_Category_Enhancements::tree_is_active().
+        $full_tree = $has_enhancements && Brikpanel_Category_Enhancements::tree_is_active($tax);
+
+        $ce_js_ver = @filemtime( BRIKPANEL_PATH . 'front-end/products/brikpanel-category-enhancements.js' ) ?: BRIKPANEL_VERSION;
+
         wp_enqueue_script(
             'brikpanel_category_enhancements',
             BRIKPANEL_URL . 'front-end/products/brikpanel-category-enhancements.js',
             ['jquery'],
-            BRIKPANEL_VERSION . '.5',
+            $ce_js_ver,
             true
         );
 
+        // Categories are the screen this was built for, so they get wording
+        // that names them. Other hierarchical product taxonomies (brands and
+        // custom ones) get neutral wording instead of a composed sentence
+        // translators would not be able to inflect.
+        $is_category_screen = ('product_cat' === $tax);
+
+        $ce_i18n = [
+            'drag_to_nest'      => $is_category_screen
+                ? __('Drag onto another category to make it a sub-category', 'brikpanel')
+                : __('Drag onto another item to nest it', 'brikpanel'),
+            'confirm_nest'      => $is_category_screen
+                /* translators: %1$s: category being moved, %2$s: new parent category */
+                ? __('Move "%1$s" as a sub-category of "%2$s"?', 'brikpanel')
+                /* translators: %1$s: item being moved, %2$s: new parent item */
+                : __('Move "%1$s" under "%2$s"?', 'brikpanel'),
+            'toggle_children'   => $is_category_screen
+                ? __('Show or hide sub-categories', 'brikpanel')
+                : __('Show or hide children', 'brikpanel'),
+            'subcategories'     => $is_category_screen
+                ? __('Sub-categories', 'brikpanel')
+                : __('Children', 'brikpanel'),
+            'filter_placeholder' => $is_category_screen
+                ? __('Filter categories', 'brikpanel')
+                : __('Filter list', 'brikpanel'),
+            'no_matches'        => $is_category_screen
+                ? __('No categories match your search.', 'brikpanel')
+                : __('No items match your search.', 'brikpanel'),
+            'drop_to_top_level' => __('Drop here to move to the top level', 'brikpanel'),
+            'expand_all'        => __('Expand all', 'brikpanel'),
+            'collapse_all'      => __('Collapse all', 'brikpanel'),
+            /* translators: %1$s: number of rows currently shown, %2$s: total number of rows */
+            'showing_x_of_y'    => __('Showing %1$s of %2$s', 'brikpanel'),
+            /* translators: %s: parent category name */
+            'adding_under'      => __('Parent set to "%s"', 'brikpanel'),
+            'error'             => __('An error occurred. Please try again.', 'brikpanel'),
+        ];
+
         wp_localize_script('brikpanel_category_enhancements', 'brikpanelCE', [
-            'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce'    => wp_create_nonce('brikpanel_category_nesting'),
-            'taxonomy' => $tax,
-            'i18n'     => [
-                'drag_to_nest'     => __('Drag onto another category to make it a sub-category', 'brikpanel'),
-                'confirm_nest'     => __('Move "%1$s" as a sub-category of "%2$s"?', 'brikpanel'),
-                'make_top_level'   => __('Make top level', 'brikpanel'),
-                'error'            => __('An error occurred. Please try again.', 'brikpanel'),
-            ],
+            'ajax_url'     => admin_url('admin-ajax.php'),
+            'nonce'        => wp_create_nonce('brikpanel_category_nesting'),
+            'taxonomy'     => $tax,
+            'tree'         => $tree,
+            'full_tree'    => $full_tree,
+            // Collapsed branches are remembered per site, per taxonomy and per
+            // user, so two people sharing a browser profile do not fight over
+            // the same tree state.
+            'store_key'    => $tax . '_' . get_current_blog_id() . '_' . get_current_user_id(),
+            'i18n'         => $ce_i18n,
         ]);
     }
 
@@ -1009,6 +1101,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'more_categories'     => __('%d more categories', 'brikpanel'),
                 'plugin_columns'      => __('Plugin columns', 'brikpanel'),
                 'cogs_partial'        => __('%d variations have no cost on file', 'brikpanel'),
+                'profit_partial'      => __('%d variations have no cost or price on file', 'brikpanel'),
                 // Digital product (downloadable) — quick edit drawer
                 'select_file'         => __('Select downloadable file', 'brikpanel'),
                 'select'              => __('Select', 'brikpanel'),
@@ -1057,6 +1150,29 @@ function brikpanel_enqueue_woo_assets($hook) {
         if (!is_array($visible_sections)) {
             $visible_sections = ['images', 'pricing', 'inventory', 'category', 'tags', 'short_desc', 'description', 'digital', 'weight', 'dimensions', 'seo', 'variations'];
         }
+        // The metabox picker now stores its choices as `mb:<id>` slugs inside
+        // the visible-sections list; `brikpanel_pe_selected_metaboxes` is the
+        // legacy option kept for pre-migration installs. Fold the slugs in so a
+        // hand-placed metabox gets the screen-spoof and its assets even when
+        // the `seo` section itself is switched off — without this a picked Rank
+        // Math box rendered as inert markup with no bundle behind it.
+        // ACF groups are skipped here on purpose when "Auto-include ACF field
+        // groups" is off: the editor strips `acf-` picks in that case, so
+        // booting ACF's bundle for a card that will not render would only load
+        // dead assets. Mirrors the same rule in render_page().
+        $acf_auto_on_enq = (get_option('brikpanel_pe_acf_auto', 'yes') === 'yes');
+        foreach ($visible_sections as $vs) {
+            if (!is_string($vs) || strpos($vs, 'mb:') !== 0) {
+                continue;
+            }
+            $mb_slug_id = substr($vs, 3);
+            if (!$acf_auto_on_enq && strpos($mb_slug_id, 'acf-') === 0) {
+                continue;
+            }
+            $selected_metaboxes[] = $mb_slug_id;
+        }
+        $selected_metaboxes = array_values(array_unique($selected_metaboxes));
+
         $seo_auto_rendered = $auto_seo && in_array('seo', $visible_sections, true);
         if ($seo_auto_rendered) {
             // Merge the auto-rendered SEO plugin's metabox IDs into the list
@@ -1417,6 +1533,30 @@ function brikpanel_enqueue_woo_assets($hook) {
             // Whether future-dating a live product promotes it to a scheduled
             // publish. Drives the header's "Publish"/"Schedule" button label.
             'scheduling_enabled' => get_option('brikpanel_pe_enable_scheduling', 'yes') === 'yes' ? '1' : '0',
+            // Input names of any active cost-of-goods plugin's own cost field.
+            // Rendering WooCommerce's Product data panels inline drags those
+            // inputs into our form next to BrikPanel's Cost field, so the JS
+            // keeps the two in step — otherwise a merchant editing whichever
+            // one they found first watches their number get overwritten by the
+            // other on save.
+            'cogs_mirror_inputs' => function_exists('brikpanel_cogs_third_party_sources')
+                ? array_values(array_filter(array_map(
+                    static function ($source) {
+                        return (!empty($source['active']) && !empty($source['post_key'])) ? (string) $source['post_key'] : '';
+                    },
+                    brikpanel_cogs_third_party_sources()
+                )))
+                : [],
+            // Same, for the per-variation input those plugins render into each
+            // variation row.
+            'cogs_mirror_variation_inputs' => function_exists('brikpanel_cogs_third_party_sources')
+                ? array_values(array_filter(array_map(
+                    static function ($source) {
+                        return (!empty($source['active']) && !empty($source['variation_post_key'])) ? (string) $source['variation_post_key'] : '';
+                    },
+                    brikpanel_cogs_third_party_sources()
+                )))
+                : [],
             'i18n'        => [
                 'product_saved'  => __('Product saved!', 'brikpanel'),
                 'fill_required'  => __('Please fill in the required fields', 'brikpanel'),

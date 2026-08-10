@@ -264,9 +264,6 @@ class Brikpanel_Ads_Dashboard {
 			}
 			.brikpanel-dash-ads-cta:hover { background: #f7f7f7; color: #303030; }
 			.brikpanel-dash-ads-cta-icon { display: inline-flex; }
-			.brikpanel-dash-ads-cta .brikpanel-beta-badge {
-				margin-left: 0.1rem;
-			}
 		';
 		wp_register_style( 'brikpanel-ads-inline', false, [], BRIKPANEL_VERSION );
 		wp_enqueue_style( 'brikpanel-ads-inline' );

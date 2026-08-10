@@ -135,7 +135,20 @@ class Brikpanel_Pro_Search {
 	// Admin bar UI
 	// =========================================================================
 
+	/**
+	 * Add the Cmd+K palette trigger to the WordPress admin bar.
+	 *
+	 * Gated on the SAME capability that ships the palette's CSS/JS in
+	 * brikpanel_enqueue_global_assets() and that verify_request() enforces on
+	 * every AJAX call. Without this check the trigger was still printed for
+	 * users below the bar — an unstyled, dead "Search BrikPanel / Ctrl+K" strip
+	 * in the admin bar whose scripts never loaded, visible in the 3.2.36
+	 * non-admin bug report alongside the duplicated menu.
+	 */
 	public function add_search_to_admin_bar( WP_Admin_Bar $admin_bar ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
 		$admin_bar->add_menu(
 			array(
 				'id'    => 'brikpanel-search',

@@ -433,10 +433,14 @@ class Brikpanel_Sheets_Order_Sync {
 		}
 
 		if ( ! empty( $result['more'] ) ) {
-			// More rows pending — keep going. Use 'unique' so a second click
-			// on "Sync now" while the first batch is still draining doesn't
-			// pile up duplicate paging jobs.
-			Brikpanel_Cron::enqueue_async( self::HOOK_BULK_FLUSH, [], [ 'unique' => true ] );
+			// More rows pending, keep going. NOT unique: Action Scheduler's
+			// uniqueness test matches on hook + group and counts the action
+			// that is running right now, so a unique enqueue from inside this
+			// handler always lost to the handler itself and the background
+			// chain stopped after a single batch. Stacking is not a risk:
+			// each run enqueues at most one successor, and the flush lock
+			// keeps two of them from writing at the same time.
+			Brikpanel_Cron::enqueue_async( self::HOOK_BULK_FLUSH, [], [ 'unique' => false ] );
 		}
 		return $result;
 	}

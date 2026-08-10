@@ -1616,15 +1616,22 @@ class Brikpanel_Store_Summary {
 		// product case (cost on parent) and the variable case (cost per
 		// variation) without double-counting because variable parents
 		// usually carry no _stock value.
+		// Cost joins come from the central key list so a store keeping its
+		// costs in a third-party cost plugin is not summarised as zero-cost.
+		$cost      = brikpanel_cogs_sql_join_set( 'sc', 'p.ID' );
+		$cost_keys = brikpanel_cogs_meta_keys();
+		$key_in    = "'" . implode( "','", array_map( 'esc_sql', $cost_keys ) ) . "'";
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$inv_row = $wpdb->get_row(
 			"SELECT
 				COALESCE(SUM(CAST(stock.meta_value AS DECIMAL(20,4))), 0)                                                       AS units,
 				COALESCE(SUM(CAST(stock.meta_value AS DECIMAL(20,4)) * CAST(price.meta_value AS DECIMAL(20,4))), 0)             AS retail_value,
-				COALESCE(SUM(CAST(stock.meta_value AS DECIMAL(20,4)) * CAST(IFNULL(cogs.meta_value,'0') AS DECIMAL(20,4))), 0)  AS cogs_value
+				COALESCE(SUM(CAST(stock.meta_value AS DECIMAL(20,4)) * CAST(IFNULL({$cost['value']},'0') AS DECIMAL(20,4))), 0) AS cogs_value
 			 FROM {$wpdb->posts} p
 			 INNER JOIN {$wpdb->postmeta} stock ON stock.post_id=p.ID AND stock.meta_key='_stock' AND stock.meta_value <> ''
 			 LEFT JOIN  {$wpdb->postmeta} price ON price.post_id=p.ID AND price.meta_key='_price'
-			 LEFT JOIN  {$wpdb->postmeta} cogs  ON cogs.post_id=p.ID  AND cogs.meta_key='_cogs_total_value'
+			 {$cost['joins']}
 			 WHERE p.post_type IN ('product','product_variation') AND p.post_status='publish'"
 		); // phpcs:ignore
 
@@ -1632,8 +1639,9 @@ class Brikpanel_Store_Summary {
 			"SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
 			 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID
 			 WHERE p.post_type IN ('product','product_variation') AND p.post_status='publish'
-			   AND pm.meta_key='_cogs_total_value' AND pm.meta_value <> '' AND CAST(pm.meta_value AS DECIMAL(20,4)) > 0"
+			   AND pm.meta_key IN ({$key_in}) AND pm.meta_value <> '' AND CAST(pm.meta_value AS DECIMAL(20,4)) > 0"
 		); // phpcs:ignore
+		// phpcs:enable
 
 		// Average price per published product (handy proxy for AOV/positioning)
 		$avg_price = (float) $wpdb->get_var(

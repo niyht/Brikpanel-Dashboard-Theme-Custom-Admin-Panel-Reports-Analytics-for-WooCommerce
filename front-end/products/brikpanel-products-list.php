@@ -69,6 +69,7 @@ class Brikpanel_Products_List {
             'global_unique_id' => ['label' => __('GTIN', 'brikpanel'), 'default' => false],
             'price'    => ['label' => __('Price', 'brikpanel'),    'default' => true],
             'cogs'     => ['label' => __('Cost', 'brikpanel'),     'default' => false],
+            'profit'   => ['label' => __('Profit', 'brikpanel'),   'default' => false],
             'stock'    => ['label' => __('Stock', 'brikpanel'),    'default' => true],
             'category' => ['label' => __('Category', 'brikpanel'), 'default' => true],
             'shipping_class' => ['label' => __('Shipping class', 'brikpanel'), 'default' => false],
@@ -343,24 +344,38 @@ class Brikpanel_Products_List {
     }
 
     /**
-     * Build the per-row Cost of goods cell payload. Mirrors the cost
-     * resolution used by the dashboard profit math so the column never
-     * disagrees with Net profit's view of the same product:
-     *   - simple → its own cost (WC native `_cogs_total_value` first, legacy
-     *     `_brikpanel_cogs` fallback)
+     * Builds the per-row Cost of goods and Profit cell payloads in one pass.
+     *
+     * Cost mirrors the resolution used by the dashboard profit math so the
+     * column never disagrees with Net profit's view of the same product:
+     *   - simple → its own cost, taken from the first key on file in
+     *     brikpanel_cogs_meta_keys() (WC native, BrikPanel legacy, then any
+     *     detected third-party cost plugin)
      *   - variable → range across variations that have a cost. Variations
      *     with no cost on file inherit the parent's value (WC native COGS
      *     behaviour), additive variations add theirs on top of the parent's;
      *     when neither side has a cost the row is blank.
      *
-     * Returns a `partial` flag when some variations are missing a cost so
-     * the JS can render a quiet inline warning marker without us hard-coding
-     * markup down here.
+     * Profit is price minus that cost, per variation for variable products so
+     * the range reflects the real spread rather than subtracting one cost from
+     * one price. The prices come out of the SAME IN() query as the costs, so
+     * adding the column costs no extra round-trip.
+     *
+     * Both payloads carry a `partial` flag so the JS can render a quiet inline
+     * warning marker without us hard-coding markup down here. Profit keeps its
+     * own counter: a variation can have a cost but no price, so profit can be
+     * incomplete where cost is not.
+     *
+     * Deliberately raw price minus raw cost — no wc_get_price_to_display().
+     * That keeps the arithmetic consistent with the Cost column and with
+     * brikpanel_profit_cogs(), and tax-adjusting a variable range would mean
+     * instantiating one WC_Product_Variation per variation (N queries a row).
+     * The column header says as much.
      *
      * @param WC_Product $product
-     * @return array{value:string,html:string,partial:bool,missing:int,total:int}
+     * @return array{cogs:array,profit:array}
      */
-    private static function compute_cogs_display($product) {
+    private static function compute_cost_payloads($product) {
         global $wpdb;
         $muted = '<span class="brikpanel-pl-text-muted">&mdash;</span>';
         $blank = [
@@ -370,36 +385,53 @@ class Brikpanel_Products_List {
             'missing' => 0,
             'total'   => 0,
         ];
+        // Profit carries two extra keys, so the empty shape differs slightly.
+        $blank_profit = $blank + ['percent' => '', 'negative' => false];
+        $blank_pair   = ['cogs' => $blank, 'profit' => $blank_profit];
 
         if ($product->is_type('variable')) {
             $children = $product->get_children();
             $total    = count($children);
             if ($total === 0) {
-                return $blank;
+                return $blank_pair;
             }
             $placeholders = implode(',', array_fill(0, $total, '%d'));
-            // One round-trip for all three cost keys: native first, legacy
-            // fallback, plus the additive flag (same resolution as the
-            // profit SQL).
+            // One round-trip for every known cost key (WooCommerce native,
+            // BrikPanel legacy, plus any detected third-party cost plugin),
+            // the additive flag and the price keys the Profit column needs —
+            // same resolution as the profit SQL.
+            $cost_keys    = brikpanel_cogs_meta_keys();
+            $key_list     = $cost_keys;
+            $key_list[]   = '_cogs_value_is_additive';
+            $key_list[]   = '_price';
+            $key_list[]   = '_regular_price';
+            $key_holders  = implode(',', array_fill(0, count($key_list), '%s'));
             // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta}
-                     WHERE meta_key IN ('_cogs_total_value', '_brikpanel_cogs', '_cogs_value_is_additive')
+                     WHERE meta_key IN ($key_holders)
                        AND post_id IN ($placeholders)",
-                    ...$children
+                    ...array_merge($key_list, array_map('intval', $children))
                 )
             );
             // phpcs:enable
-            $native = $legacy = $additive = [];
+            // Per child: the cost each key holds, kept keyed so the priority
+            // order below decides the winner exactly like the accessor does.
+            // Cost keys are matched FIRST: brikpanel_cogs_meta_keys() is a
+            // filter, so a site could in principle name a key that collides
+            // with the price/additive keys we fetch alongside them. Cost is the
+            // contract here, so it wins the row rather than being routed away.
+            $costs = $additive = $prices = [];
             foreach ((array) $rows as $r) {
                 $pid = (int) $r->post_id;
-                if ('_cogs_total_value' === $r->meta_key) {
-                    $native[$pid] = (string) $r->meta_value;
-                } elseif ('_brikpanel_cogs' === $r->meta_key) {
-                    $legacy[$pid] = (string) $r->meta_value;
-                } else {
+                $key = (string) $r->meta_key;
+                if (in_array($key, $cost_keys, true)) {
+                    $costs[$pid][$key] = (string) $r->meta_value;
+                } elseif ('_cogs_value_is_additive' === $key) {
                     $additive[$pid] = (string) $r->meta_value;
+                } elseif ('_price' === $key || '_regular_price' === $key) {
+                    $prices[$pid][$key] = (string) $r->meta_value;
                 }
             }
             // "Set" means the meta row exists. Explicit 0 (free sample, comp
@@ -410,45 +442,145 @@ class Brikpanel_Products_List {
 
             $values  = [];
             $missing = 0;
+            $profit_values  = [];
+            $profit_cost    = [];
+            $profit_missing = 0;
             foreach ($children as $cid) {
                 $cid = (int) $cid;
-                $raw = ($native[$cid] ?? '') !== '' ? $native[$cid] : ($legacy[$cid] ?? '');
+                $raw = '';
+                foreach ($cost_keys as $cost_key) {
+                    if (($costs[$cid][$cost_key] ?? '') !== '') {
+                        $raw = $costs[$cid][$cost_key];
+                        break;
+                    }
+                }
+                // Resolved unit cost for this variation, or null when neither
+                // the variation nor the parent has one on file.
+                $unit_cost = null;
                 if (($additive[$cid] ?? '') === 'yes' && ($raw !== '' || $parent_val !== null)) {
-                    $values[] = (float) $raw + (float) $parent_val;
+                    $unit_cost = (float) $raw + (float) $parent_val;
                 } elseif ($raw !== '') {
-                    $values[] = (float) $raw;
+                    $unit_cost = (float) $raw;
                 } elseif ($parent_val !== null) {
-                    $values[] = $parent_val;
-                } else {
+                    $unit_cost = $parent_val;
+                }
+                if ($unit_cost === null) {
                     $missing++;
+                } else {
+                    $values[] = $unit_cost;
+                }
+
+                // `_price` is WooCommerce's effective (sale-aware) price; fall
+                // back to the regular price for a variation that is not
+                // purchasable yet so a half-configured catalogue still reads.
+                $price_raw = ($prices[$cid]['_price'] ?? '') !== ''
+                    ? $prices[$cid]['_price']
+                    : ($prices[$cid]['_regular_price'] ?? '');
+                if ($unit_cost !== null && $price_raw !== '') {
+                    $profit_values[] = (float) $price_raw - $unit_cost;
+                    $profit_cost[]   = $unit_cost;
+                } else {
+                    $profit_missing++;
                 }
             }
-            if (empty($values)) {
-                return $blank;
-            }
-            $min  = min($values);
-            $max  = max($values);
-            $html = ($min === $max) ? wc_price($min) : (wc_price($min) . ' &ndash; ' . wc_price($max));
-            return [
-                'value'   => (string) $min,
-                'html'    => $html,
+
+            $cogs_payload = empty($values) ? $blank : [
+                'value'   => (string) min($values),
+                'html'    => self::price_range_html(min($values), max($values)),
                 'partial' => $missing > 0,
                 'missing' => $missing,
                 'total'   => $total,
             ];
+
+            $profit_payload = $blank_profit;
+            if (!empty($profit_values)) {
+                $p_min = min($profit_values);
+                $p_max = max($profit_values);
+                // The percentage is only meaningful when BOTH sides collapse
+                // to one figure. Equal profits on unequal costs are different
+                // percentages (20 on 80 is 25%, 20 on 180 is 11%), so printing
+                // one of them would be a guess dressed up as a fact.
+                $pct = ($p_min === $p_max && min($profit_cost) === max($profit_cost))
+                    ? self::profit_percent($p_min, $profit_cost[0])
+                    : '';
+                $profit_payload = [
+                    'value'   => (string) $p_min,
+                    'html'    => self::price_range_html($p_min, $p_max),
+                    'percent' => $pct,
+                    // Flagged as a loss only when the WHOLE range is one. A
+                    // range straddling zero is a mixed catalogue, not a losing
+                    // product, and colouring it red would say otherwise.
+                    'negative' => $p_max < 0,
+                    'partial' => $profit_missing > 0,
+                    'missing' => $profit_missing,
+                    'total'   => $total,
+                ];
+            }
+
+            return ['cogs' => $cogs_payload, 'profit' => $profit_payload];
         }
 
         $raw = brikpanel_product_cogs_raw($product->get_id());
         if ($raw === '') {
-            return $blank;
+            return $blank_pair;
         }
-        return [
+        $cogs_payload = [
             'value'   => $raw,
             'html'    => wc_price($raw),
             'partial' => false,
             'missing' => 0,
             'total'   => 1,
         ];
+
+        $price_raw = (string) $product->get_price();
+        if ($price_raw === '') {
+            $price_raw = (string) $product->get_regular_price();
+        }
+        $profit_payload = $blank_profit;
+        if ($price_raw !== '') {
+            $profit = (float) $price_raw - (float) $raw;
+            $profit_payload = [
+                'value'    => (string) $profit,
+                'html'     => wc_price($profit),
+                'percent'  => self::profit_percent($profit, (float) $raw),
+                'negative' => $profit < 0,
+                'partial'  => false,
+                'missing'  => 0,
+                'total'    => 1,
+            ];
+        }
+
+        return ['cogs' => $cogs_payload, 'profit' => $profit_payload];
+    }
+
+    /**
+     * Formats a min–max pair the way the Cost column always has: a single
+     * price when the range collapses, an en-dash separated pair otherwise.
+     */
+    private static function price_range_html($min, $max) {
+        return ($min === $max)
+            ? wc_price($min)
+            : (wc_price($min) . ' &ndash; ' . wc_price($max));
+    }
+
+    /**
+     * Profit as a percentage of cost (markup), formatted for display.
+     *
+     * Measured against cost rather than price on purpose: that is the figure
+     * merchants recognise from cost-of-goods tooling, and it answers "how much
+     * does this item earn on top of what it cost me". Returns an empty string
+     * when there is no cost to divide by, so the cell simply omits it instead
+     * of printing an infinity.
+     *
+     * @param float $profit
+     * @param float $cost
+     * @return string
+     */
+    private static function profit_percent($profit, $cost) {
+        if (!is_numeric($cost) || (float) $cost == 0.0) {
+            return '';
+        }
+        return number_format_i18n(($profit / (float) $cost) * 100, 2);
     }
 
     /**
@@ -1274,6 +1406,7 @@ class Brikpanel_Products_List {
                                 <?php endif; ?>
                                 <th class="brikpanel-pl-th-price brikpanel-pl-col brikpanel-pl-col-price"><?php esc_html_e('Price', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-cogs brikpanel-pl-col brikpanel-pl-col-cogs"><?php esc_html_e('Cost', 'brikpanel'); ?></th>
+                                <th class="brikpanel-pl-th-profit brikpanel-pl-col brikpanel-pl-col-profit" title="<?php esc_attr_e('Price minus cost of goods, with the percentage measured against cost. Taxes, shipping and fees are not deducted.', 'brikpanel'); ?>"><?php esc_html_e('Profit', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-stock brikpanel-pl-col brikpanel-pl-col-stock"><?php esc_html_e('Stock', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-cat brikpanel-pl-col brikpanel-pl-col-category"><?php esc_html_e('Category', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-shipclass brikpanel-pl-col brikpanel-pl-col-shipping_class"><?php esc_html_e('Shipping class', 'brikpanel'); ?></th>
@@ -1286,7 +1419,7 @@ class Brikpanel_Products_List {
                         </thead>
                         <tbody id="bpl-table-body">
                             <tr class="brikpanel-pl-loading-row">
-                                <td colspan="15">
+                                <td colspan="17">
                                     <div class="brikpanel-pl-spinner"></div>
                                 </td>
                             </tr>
@@ -1905,158 +2038,189 @@ class Brikpanel_Products_List {
         // per request so the per-product loop only iterates over the keys.
         $qe_custom_taxonomies = array_keys(self::get_quick_edit_custom_taxonomies());
 
-        foreach ($query->posts as $post) {
-            $product = wc_get_product($post->ID);
-            if (!$product) continue;
+        // Publish our local query as the global loop while third-party column
+        // cells render. Column callbacks are written for WP_Posts_List_Table,
+        // which renders inside the global loop — Rank Math, for one, reads
+        // `global $wp_query`->posts to bulk-prefetch every visible row's meta
+        // in a single query. Without this its prefetch saw an empty loop and
+        // bailed, so every SEO cell rendered "N/A" and "Keyword: Not Set" no
+        // matter what the product had on file.
+        // Skipped entirely when no plugin contributes columns, which is the
+        // common case, so the globals stay untouched on most stores.
+        $loop_published = !empty($extra_columns) && class_exists('Brikpanel_ASE_Bridge')
+            && Brikpanel_ASE_Bridge::begin_loop_context($query);
 
-            $image_id  = $product->get_image_id();
-            $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'thumbnail') : wc_placeholder_img_src('thumbnail');
+        // finally, not a trailing call: render_cell() only swallows Throwables
+        // raised by the column action itself, so anything else in the body
+        // could escape and leave the global loop pointing at a stale query for
+        // the rest of the request.
+        try {
+            foreach ($query->posts as $post) {
+                $product = wc_get_product($post->ID);
+                if (!$product) continue;
 
-            $stock_info = self::compute_stock_info($product);
-            $stock_qty  = $stock_info['qty'];
+                $image_id  = $product->get_image_id();
+                $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'thumbnail') : wc_placeholder_img_src('thumbnail');
 
-            // get_the_terms() reads the object-term cache primed once by the
-            // WP_Query above (update_post_term_cache), so the per-product term
-            // lookups below resolve from cache instead of issuing a fresh
-            // WP_Term_Query (one DB hit per taxonomy per product). On a 20-row
-            // page that turns ~140 term queries into a handful.
-            $cats = get_the_terms($post->ID, 'product_cat');
-            $cat_names = [];
-            $cat_ids   = [];
-            if (is_array($cats)) {
-                foreach ($cats as $cat) {
-                    // $cat->name is already HTML-encoded by WP's sanitize_term_field()
-                    // (display context). Decode here so JS escHtml() doesn't double-encode it.
-                    $cat_names[] = html_entity_decode($cat->name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                    $cat_ids[]   = (int) $cat->term_id;
+                $stock_info = self::compute_stock_info($product);
+                $stock_qty  = $stock_info['qty'];
+
+                // get_the_terms() reads the object-term cache primed once by the
+                // WP_Query above (update_post_term_cache), so the per-product term
+                // lookups below resolve from cache instead of issuing a fresh
+                // WP_Term_Query (one DB hit per taxonomy per product). On a 20-row
+                // page that turns ~140 term queries into a handful.
+                $cats = get_the_terms($post->ID, 'product_cat');
+                $cat_names = [];
+                $cat_ids   = [];
+                if (is_array($cats)) {
+                    foreach ($cats as $cat) {
+                        // $cat->name is already HTML-encoded by WP's sanitize_term_field()
+                        // (display context). Decode here so JS escHtml() doesn't double-encode it.
+                        $cat_names[] = html_entity_decode($cat->name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                        $cat_ids[]   = (int) $cat->term_id;
+                    }
                 }
-            }
 
-            $tag_terms = get_the_terms($post->ID, 'product_tag');
-            $tag_ids   = [];
-            if (is_array($tag_terms)) {
-                foreach ($tag_terms as $tg) {
-                    $tag_ids[] = (int) $tg->term_id;
+                $tag_terms = get_the_terms($post->ID, 'product_tag');
+                $tag_ids   = [];
+                if (is_array($tag_terms)) {
+                    foreach ($tag_terms as $tg) {
+                        $tag_ids[] = (int) $tg->term_id;
+                    }
                 }
-            }
 
-            // Collect selected term IDs for each opt-in custom taxonomy
-            // (Brands etc.) so the drawer can prime its checkboxes without
-            // a second roundtrip when the user clicks "Edit".
-            $custom_taxonomy_ids = [];
-            if (!empty($qe_custom_taxonomies)) {
-                foreach ($qe_custom_taxonomies as $tax_slug) {
-                    $tax_terms = get_the_terms($post->ID, $tax_slug);
-                    $custom_taxonomy_ids[$tax_slug] = is_array($tax_terms)
-                        ? array_values(array_map(static function ($t) { return (int) $t->term_id; }, $tax_terms))
-                        : [];
+                // Collect selected term IDs for each opt-in custom taxonomy
+                // (Brands etc.) so the drawer can prime its checkboxes without
+                // a second roundtrip when the user clicks "Edit".
+                $custom_taxonomy_ids = [];
+                if (!empty($qe_custom_taxonomies)) {
+                    foreach ($qe_custom_taxonomies as $tax_slug) {
+                        $tax_terms = get_the_terms($post->ID, $tax_slug);
+                        $custom_taxonomy_ids[$tax_slug] = is_array($tax_terms)
+                            ? array_values(array_map(static function ($t) { return (int) $t->term_id; }, $tax_terms))
+                            : [];
+                    }
                 }
-            }
 
-            // Render extra column cells contributed by ASE / other plugins.
-            $extra_cells = [];
-            if ($extra_columns) {
-                foreach ($extra_columns as $col_id => $col_label) {
-                    $extra_cells[$col_id] = Brikpanel_ASE_Bridge::render_cell('product', $col_id, $post->ID);
+                // Render extra column cells contributed by ASE / other plugins.
+                // set_loop_post() mirrors WP_Posts_List_Table::single_row(),
+                // which publishes the row's post before firing the column
+                // action — callbacks that read `global $post` instead of the
+                // id argument depend on it.
+                $extra_cells = [];
+                if ($extra_columns) {
+                    if ($loop_published) {
+                        Brikpanel_ASE_Bridge::set_loop_post($post);
+                    }
+                    foreach ($extra_columns as $col_id => $col_label) {
+                        $extra_cells[$col_id] = Brikpanel_ASE_Bridge::render_cell('product', $col_id, $post->ID);
+                    }
                 }
-            }
 
-            $extra_actions = class_exists('Brikpanel_ASE_Bridge')
-                ? Brikpanel_ASE_Bridge::get_row_actions($post)
-                : [];
+                $extra_actions = class_exists('Brikpanel_ASE_Bridge')
+                    ? Brikpanel_ASE_Bridge::get_row_actions($post)
+                    : [];
 
-            // Always resolve the cell — the cost is one extra postmeta read
-            // for simple products and one short IN query for variables. Keeps
-            // toggling the column on instantly populated without a refetch.
-            $cogs_payload = self::compute_cogs_display($product);
+                // Always resolve the cells — the cost is one extra postmeta read
+                // for simple products and one short IN query for variables, and
+                // Profit rides along in the same query. Keeps toggling either
+                // column on instantly populated without a refetch.
+                $cost_payloads = self::compute_cost_payloads($product);
 
-            // Shipping class (taxonomy term name) and product author. Both are
-            // opt-in columns (default off) but always resolved so toggling them
-            // on populates instantly without a refetch. Author doubles as the
-            // marketplace vendor column under Dokan-style setups where the
-            // product author is the seller.
-            $ship_class_id   = $product->get_shipping_class_id();
-            $ship_class_name = '';
-            if ($ship_class_id) {
-                $ship_term = get_term($ship_class_id, 'product_shipping_class');
-                if ($ship_term && !is_wp_error($ship_term)) {
-                    $ship_class_name = html_entity_decode($ship_term->name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                // Shipping class (taxonomy term name) and product author. Both are
+                // opt-in columns (default off) but always resolved so toggling them
+                // on populates instantly without a refetch. Author doubles as the
+                // marketplace vendor column under Dokan-style setups where the
+                // product author is the seller.
+                $ship_class_id   = $product->get_shipping_class_id();
+                $ship_class_name = '';
+                if ($ship_class_id) {
+                    $ship_term = get_term($ship_class_id, 'product_shipping_class');
+                    if ($ship_term && !is_wp_error($ship_term)) {
+                        $ship_class_name = html_entity_decode($ship_term->name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    }
                 }
-            }
-            $author_id   = (int) $post->post_author;
-            $author_name = $author_id ? get_the_author_meta('display_name', $author_id) : '';
+                $author_id   = (int) $post->post_author;
+                $author_name = $author_id ? get_the_author_meta('display_name', $author_id) : '';
 
-            // Robust sale-price display. WooCommerce's get_price_html() can be
-            // overridden by 3rd-party `woocommerce_get_price_html` filters that
-            // on some stores collapse the struck regular + sale price into a
-            // single figure, hiding the current (sale) price from the list.
-            // For simple products we therefore build the sale display ourselves
-            // from the raw regular/active price so an active WooCommerce sale is
-            // always visible. Tax handling mirrors WooCommerce via
-            // wc_get_price_to_display(); variable/grouped products keep
-            // get_price_html() because their display is a min–max range.
-            $sale_display_html = '';
-            if ($product->is_type('simple') && $product->is_on_sale()) {
-                $regular_raw = $product->get_regular_price();
-                if ($regular_raw !== '' && $regular_raw !== null) {
-                    $reg_disp  = wc_price(wc_get_price_to_display($product, ['price' => $regular_raw]));
-                    $sale_disp = wc_price(wc_get_price_to_display($product, ['price' => $product->get_price()]));
-                    $sale_display_html = '<del aria-hidden="true">' . $reg_disp . '</del> <ins>' . $sale_disp . '</ins>';
+                // Robust sale-price display. WooCommerce's get_price_html() can be
+                // overridden by 3rd-party `woocommerce_get_price_html` filters that
+                // on some stores collapse the struck regular + sale price into a
+                // single figure, hiding the current (sale) price from the list.
+                // For simple products we therefore build the sale display ourselves
+                // from the raw regular/active price so an active WooCommerce sale is
+                // always visible. Tax handling mirrors WooCommerce via
+                // wc_get_price_to_display(); variable/grouped products keep
+                // get_price_html() because their display is a min–max range.
+                $sale_display_html = '';
+                if ($product->is_type('simple') && $product->is_on_sale()) {
+                    $regular_raw = $product->get_regular_price();
+                    if ($regular_raw !== '' && $regular_raw !== null) {
+                        $reg_disp  = wc_price(wc_get_price_to_display($product, ['price' => $regular_raw]));
+                        $sale_disp = wc_price(wc_get_price_to_display($product, ['price' => $product->get_price()]));
+                        $sale_display_html = '<del aria-hidden="true">' . $reg_disp . '</del> <ins>' . $sale_disp . '</ins>';
+                    }
                 }
-            }
 
-            $products[] = [
-                'id'             => $post->ID,
-                'name'           => $product->get_name() ?? '',
-                'sku'            => $product->get_sku() ?? '',
-                'global_unique_id' => self::compute_global_unique_id_display($product),
-                // Product Code (opt-in column, present only when the
-                // "Product Code for WooCommerce" plugin is active).
-                'product_code'   => (function_exists('brikpanel_pcfw_active') && brikpanel_pcfw_active())
-                    ? brikpanel_pcfw_product_code_display($product)
-                    : null,
-                'regular_price'  => $product->get_regular_price(),
-                'sale_price'     => $product->get_sale_price(),
-                'price_html'     => $product->get_price_html(),
-                'sale_display'   => $sale_display_html,
-                'cogs'           => $cogs_payload,
-                'cogs_value'     => brikpanel_product_cogs_raw($post->ID),
-                'stock'          => $stock_qty,
-                'stock_status'   => $product->get_stock_status(),
-                'manage_stock'   => $stock_info['manage_stock'],
-                'backorders'     => $stock_info['backorders'],
-                'status'         => $post->post_status,
-                // Publish date + time in the site timezone/format. Merchants who
-                // order category pages by date rely on seeing (and re-dating)
-                // this; column is opt-in via the Columns picker (default off).
-                'date'           => wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post)),
-                // Tooltip for the "Scheduled" status badge — the moment the
-                // product goes live. Empty for non-scheduled products.
-                'scheduled_label' => $post->post_status === 'future'
-                    ? sprintf(
-                        /* translators: %s: date and time the product publishes */
-                        __('Scheduled for %s', 'brikpanel'),
-                        wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post))
-                    )
-                    : '',
-                'image'          => $image_url,
-                'categories'     => $cat_names,
-                'category_ids'   => $cat_ids,
-                'shipping_class' => $ship_class_name,
-                'author'         => $author_name,
-                'menu_order'     => (int) $post->menu_order,
-                'tag_ids'        => $tag_ids,
-                'custom_taxonomies' => (object) $custom_taxonomy_ids,
-                'type'           => $product->get_type(),
-                'is_featured'    => $product->is_featured(),
-                'is_downloadable' => $product->is_downloadable(),
-                'is_virtual'     => $product->is_virtual(),
-                'downloads'      => self::serialize_downloads($product),
-                'edit_url'       => admin_url('admin.php?page=brikpanel-product-editor&product_id=' . $post->ID),
-                'view_url'       => get_permalink($post->ID),
-                'extra_cells'    => (object) $extra_cells,
-                'extra_actions'  => $extra_actions,
-            ];
+                $products[] = [
+                    'id'             => $post->ID,
+                    'name'           => $product->get_name() ?? '',
+                    'sku'            => $product->get_sku() ?? '',
+                    'global_unique_id' => self::compute_global_unique_id_display($product),
+                    // Product Code (opt-in column, present only when the
+                    // "Product Code for WooCommerce" plugin is active).
+                    'product_code'   => (function_exists('brikpanel_pcfw_active') && brikpanel_pcfw_active())
+                        ? brikpanel_pcfw_product_code_display($product)
+                        : null,
+                    'regular_price'  => $product->get_regular_price(),
+                    'sale_price'     => $product->get_sale_price(),
+                    'price_html'     => $product->get_price_html(),
+                    'sale_display'   => $sale_display_html,
+                    'cogs'           => $cost_payloads['cogs'],
+                    'cogs_value'     => brikpanel_product_cogs_raw($post->ID),
+                    'profit'         => $cost_payloads['profit'],
+                    'stock'          => $stock_qty,
+                    'stock_status'   => $product->get_stock_status(),
+                    'manage_stock'   => $stock_info['manage_stock'],
+                    'backorders'     => $stock_info['backorders'],
+                    'status'         => $post->post_status,
+                    // Publish date + time in the site timezone/format. Merchants who
+                    // order category pages by date rely on seeing (and re-dating)
+                    // this; column is opt-in via the Columns picker (default off).
+                    'date'           => wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post)),
+                    // Tooltip for the "Scheduled" status badge — the moment the
+                    // product goes live. Empty for non-scheduled products.
+                    'scheduled_label' => $post->post_status === 'future'
+                        ? sprintf(
+                            /* translators: %s: date and time the product publishes */
+                            __('Scheduled for %s', 'brikpanel'),
+                            wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post))
+                        )
+                        : '',
+                    'image'          => $image_url,
+                    'categories'     => $cat_names,
+                    'category_ids'   => $cat_ids,
+                    'shipping_class' => $ship_class_name,
+                    'author'         => $author_name,
+                    'menu_order'     => (int) $post->menu_order,
+                    'tag_ids'        => $tag_ids,
+                    'custom_taxonomies' => (object) $custom_taxonomy_ids,
+                    'type'           => $product->get_type(),
+                    'is_featured'    => $product->is_featured(),
+                    'is_downloadable' => $product->is_downloadable(),
+                    'is_virtual'     => $product->is_virtual(),
+                    'downloads'      => self::serialize_downloads($product),
+                    'edit_url'       => admin_url('admin.php?page=brikpanel-product-editor&product_id=' . $post->ID),
+                    'view_url'       => get_permalink($post->ID),
+                    'extra_cells'    => (object) $extra_cells,
+                    'extra_actions'  => $extra_actions,
+                ];
+            }
+        } finally {
+            if ($loop_published) {
+                Brikpanel_ASE_Bridge::end_loop_context();
+            }
         }
 
         // Refresh counts
@@ -2389,12 +2553,7 @@ class Brikpanel_Products_List {
         // the simplified product editor's save logic.
         if (array_key_exists('cogs_value', $_POST)) {
             $cogs_raw     = sanitize_text_field($_POST['cogs_value']);
-            $cogs_decimal = $cogs_raw !== '' ? wc_format_decimal($cogs_raw) : '';
-            if ($cogs_decimal !== '') {
-                update_post_meta($product->get_id(), '_brikpanel_cogs', $cogs_decimal);
-            } else {
-                delete_post_meta($product->get_id(), '_brikpanel_cogs');
-            }
+            $cogs_decimal = brikpanel_set_product_cogs_raw($product->get_id(), $cogs_raw);
             if (method_exists($product, 'set_cogs_value')) {
                 $product->set_cogs_value($cogs_decimal !== '' ? $cogs_decimal : null);
             }
@@ -2486,6 +2645,11 @@ class Brikpanel_Products_List {
 
         $stock_info_qe = self::compute_stock_info($product);
 
+        // Both cost payloads come from one call so the quick-edit row re-render
+        // repaints Profit alongside Cost. Returning only `cogs` would blank the
+        // Profit cell the moment a merchant edited a price.
+        $cost_payloads_qe = self::compute_cost_payloads($product);
+
         wp_send_json_success([
             'message' => __('Product updated!', 'brikpanel'),
             'product' => [
@@ -2495,8 +2659,9 @@ class Brikpanel_Products_List {
                 'regular_price'   => $product->get_regular_price(),
                 'sale_price'      => $product->get_sale_price(),
                 'price_html'      => $product->get_price_html(),
-                'cogs'            => self::compute_cogs_display($product),
+                'cogs'            => $cost_payloads_qe['cogs'],
                 'cogs_value'      => brikpanel_product_cogs_raw($product_id),
+                'profit'          => $cost_payloads_qe['profit'],
                 'stock'           => $stock_info_qe['qty'],
                 'stock_status'    => $product->get_stock_status(),
                 'manage_stock'    => $stock_info_qe['manage_stock'],
@@ -3633,12 +3798,7 @@ class Brikpanel_Products_List {
                 // the single-product / variation save logic. Applies per
                 // variation for variable products (each variation carries its
                 // own cost), just like price.
-                $cogs_decimal = $value === '' ? '' : wc_format_decimal($value);
-                if ($cogs_decimal !== '') {
-                    update_post_meta($product->get_id(), '_brikpanel_cogs', $cogs_decimal);
-                } else {
-                    delete_post_meta($product->get_id(), '_brikpanel_cogs');
-                }
+                $cogs_decimal = brikpanel_set_product_cogs_raw($product->get_id(), $value);
                 if (method_exists($product, 'set_cogs_value')) {
                     $product->set_cogs_value($cogs_decimal !== '' ? $cogs_decimal : null);
                 }
@@ -3796,12 +3956,7 @@ class Brikpanel_Products_List {
         // not wipe the existing cost.
         if (array_key_exists('cogs_value', $_POST)) {
             $cogs_raw     = sanitize_text_field($_POST['cogs_value']);
-            $cogs_decimal = $cogs_raw !== '' ? wc_format_decimal($cogs_raw) : '';
-            if ($cogs_decimal !== '') {
-                update_post_meta($var_id, '_brikpanel_cogs', $cogs_decimal);
-            } else {
-                delete_post_meta($var_id, '_brikpanel_cogs');
-            }
+            $cogs_decimal = brikpanel_set_product_cogs_raw($var_id, $cogs_raw);
             if (method_exists($v, 'set_cogs_value')) {
                 $v->set_cogs_value($cogs_decimal !== '' ? $cogs_decimal : null);
             }

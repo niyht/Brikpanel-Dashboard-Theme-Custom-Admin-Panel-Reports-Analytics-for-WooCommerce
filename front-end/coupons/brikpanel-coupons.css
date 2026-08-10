@@ -1321,12 +1321,32 @@ body.brikpanel-cp-drawer-open {
     font-size: 0.8125rem;
     color: #303030;
     vertical-align: middle;
+    max-width: 17rem;
+    white-space: normal;
 }
 
 .brikpanel-cp-cell-ase .last-modified-timestamp {
     font-size: 0.75rem;
     color: #616161;
     line-height: 1.3;
+}
+
+/* Plugin columns are display-only here — same reasoning as the products list
+   (see brikpanel-products-list.css): the originating plugin binds its handlers
+   at DOM-ready against .wp-list-table rows that this AJAX-rendered table never
+   produces, so every control it emits is inert. */
+.brikpanel-cp-cell-ase input,
+.brikpanel-cp-cell-ase select,
+.brikpanel-cp-cell-ase textarea,
+.brikpanel-cp-cell-ase button,
+.brikpanel-cp-cell-ase a[href="#"],
+.brikpanel-cp-cell-ase a[href=""] {
+    display: none !important;
+}
+
+.brikpanel-cp-cell-ase label {
+    color: #8a8a8a;
+    font-size: 0.75rem;
 }
 
 .brikpanel-cp-row-actions {

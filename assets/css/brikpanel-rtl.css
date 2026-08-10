@@ -573,7 +573,24 @@ body.rtl.taxonomy-product_tag .tablenav-pages .displaying-num {
     margin-left: 0.5rem;
 }
 
-body.rtl .brikpanel-cat-drag-handle { margin-right: 0; margin-left: 0.375rem; }
+/* Folder tree: mirror the indent steps, the elbow connector and the twisty. */
+body.rtl .brikpanel-tree-indent.is-connector::before {
+    left: auto;
+    right: 0.625rem;
+}
+
+body.rtl .brikpanel-tree-indent.is-connector::after {
+    left: 0.25rem;
+    right: 0.625rem;
+}
+
+body.rtl .brikpanel-tree-toggle { transform: rotate(90deg); }
+body.rtl .brikpanel-tree-toggle.is-collapsed { transform: rotate(180deg); }
+body.rtl .brikpanel-tree-toggle.is-leaf { transform: none; }
+
+body.rtl .brikpanel-tree-icon { margin-right: 0; margin-left: 0.25rem; }
+body.rtl .brikpanel-tree-kids { margin-left: 0; margin-right: 0.5rem; }
+body.rtl .brikpanel-tree-tools { margin-left: 0; margin-right: 0.5rem; }
 
 body.rtl .brikpanel-cat-toast-container { right: auto; left: 20px; }
 body.rtl .brikpanel-cat-toast { transform: translateX(-110%); }

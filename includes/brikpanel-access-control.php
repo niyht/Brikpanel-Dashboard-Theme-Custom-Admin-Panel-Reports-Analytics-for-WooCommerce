@@ -503,6 +503,109 @@ function brikpanel_user_is_backoffice( $user = null ) {
 }
 
 /**
+ * Baseline capability gate for the BrikPanel admin *chrome* (the custom sidebar
+ * navigation and the styles that hide the native menu behind it).
+ *
+ * This is the single source of truth shared by the renderer
+ * (brikpanel_render_navigation) and the stylesheet enqueue
+ * (brikpanel_enqueue_global_assets). They MUST agree: the sidebar markup and
+ * brikpanel-navigation.css are two halves of one feature. The CSS carries
+ * `#adminmenu { display: none }`, so rendering the nav without it leaves the
+ * user with BOTH menus stacked — an unstyled BrikPanel list on top of the
+ * native WordPress sidebar. That is exactly the breakage reported for
+ * non-administrator accounts in 3.2.36, where the renderer had no gate at all
+ * while the enqueue required `manage_woocommerce`.
+ *
+ * The capability set is deliberately wider than `manage_woocommerce`, because
+ * WooCommerce itself does not use that capability for its admin menus:
+ *
+ *   - `edit_others_shop_orders`  → the WooCommerce top-level menu
+ *   - `view_woocommerce_reports` → the Analytics menu
+ *   - `edit_products`            → the Products menu
+ *
+ * A custom staff role built with a role editor ("Marketing Dept.", "Order
+ * desk", …) routinely holds those without holding `manage_woocommerce`, so it
+ * saw WooCommerce's menus but was refused BrikPanel's stylesheet. `edit_posts`
+ * is included so editors and authors get the same consistent chrome as the rest
+ * of the back office, matching brikpanel_user_is_backoffice() above.
+ *
+ * Plain shoppers (customer / subscriber, `read` only) never qualify and keep the
+ * untouched native admin. This gate grants no access of its own: the sidebar
+ * only ever renders the entries WordPress already put in that user's own
+ * capability-filtered $menu.
+ *
+ * @since 3.2.37
+ *
+ * @param WP_User|int|null $user Optional user or user ID; defaults to current.
+ * @return bool
+ */
+function brikpanel_user_can_use_interface( $user = null ) {
+	// Per-user memo: this is consulted several times per admin request (the two
+	// footer filters, the admin_head CSS, both menu_order filters and the footer
+	// renderer), and each miss costs a capability walk plus two filter passes.
+	static $cache = [];
+
+	if ( null === $user ) {
+		$user = wp_get_current_user();
+	} elseif ( is_numeric( $user ) ) {
+		$user = get_user_by( 'id', (int) $user );
+	}
+	if ( ! $user instanceof WP_User || ! $user->ID ) {
+		return false;
+	}
+
+	$uid = (int) $user->ID;
+	if ( isset( $cache[ $uid ] ) ) {
+		return $cache[ $uid ];
+	}
+
+	$can = brikpanel_user_is_administrator( $user );
+
+	if ( ! $can ) {
+		/**
+		 * Capabilities that qualify an account as BrikPanel back-office staff.
+		 *
+		 * Holding ANY one of them is enough. Filter this to widen or narrow who
+		 * gets the BrikPanel sidebar without touching the per-role access
+		 * control options.
+		 *
+		 * @since 3.2.37
+		 *
+		 * @param string[]         $caps The qualifying capabilities.
+		 * @param WP_User          $user The user being evaluated.
+		 */
+		$caps = (array) apply_filters(
+			'brikpanel_interface_capabilities',
+			array(
+				'manage_woocommerce',
+				'edit_others_shop_orders',
+				'view_woocommerce_reports',
+				'edit_products',
+				'edit_posts',
+			),
+			$user
+		);
+
+		foreach ( $caps as $cap ) {
+			if ( is_string( $cap ) && '' !== $cap && user_can( $user, $cap ) ) {
+				$can = true;
+				break;
+			}
+		}
+	}
+
+	/**
+	 * Filter the final "may this user get the BrikPanel chrome?" decision.
+	 *
+	 * @since 3.2.37
+	 *
+	 * @param bool    $can  Whether the BrikPanel chrome applies to this user.
+	 * @param WP_User $user The user being evaluated.
+	 */
+	return $cache[ $uid ] = (bool) apply_filters( 'brikpanel_user_can_use_interface', $can, $user );
+}
+
+/**
  * Whether a user may flip the BrikPanel on/off switch for their OWN account.
  *
  * True only when: personal mode is active, the user is a back-office account,

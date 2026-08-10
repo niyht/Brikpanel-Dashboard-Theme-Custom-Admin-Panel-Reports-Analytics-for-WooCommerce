@@ -419,6 +419,34 @@ class Brikpanel_Product_Editor {
         $dim_unit    = get_option('woocommerce_dimension_unit', 'cm');
         $back_url    = $this->get_back_url();
 
+        // Who owns the SEO surface on this page. Resolved once, up here,
+        // because two places downstream must agree on the answer: the SEO card
+        // and the third-party metabox pass that decides which `mb:` picks to
+        // render. When they disagreed, an admin who hand-placed Rank Math's
+        // metabox got BrikPanel's generic fields in the SEO card AND no Rank
+        // Math anywhere, because the metabox pass stripped it as "already
+        // shown above".
+        $active_seo     = self::get_active_seo_plugin();
+        $manual_mb_ids  = [];
+        foreach ($visible as $vslug) {
+            if (strpos($vslug, 'mb:') === 0) {
+                $manual_mb_ids[] = substr($vslug, 3);
+            }
+        }
+        // True when the admin explicitly placed the active plugin's own SEO
+        // metabox in the "Visible editor sections" list. That pick wins: the
+        // metabox renders at its chosen slot and the SEO card stands down
+        // entirely, so there is exactly one SEO surface on the page.
+        $seo_in_manual = false;
+        if ($active_seo) {
+            foreach ($active_seo['metabox_ids'] as $mid) {
+                if (in_array($mid, $manual_mb_ids, true)) {
+                    $seo_in_manual = true;
+                    break;
+                }
+            }
+        }
+
         // Rich-text toolbar — built once and reused by the Short description
         // and Product description editors (JS scopes commands to the closest
         // [data-editor-field] so no per-field ids are needed). Buttons map to
@@ -1809,35 +1837,22 @@ class Brikpanel_Product_Editor {
                 </div>
                 <?php $section_html['shipping_class'] = ob_get_clean(); endif; ?>
 
-                <?php if (in_array('seo', $visible, true)) : ob_start();
-                    // When a supported SEO plugin is active, surface its full
-                    // native metabox inside the BrikPanel SEO card so users
-                    // keep every feature (schema, social, redirects, analysis,
-                    // readability score, etc.) the plugin ships with. When
-                    // no plugin is active, fall back to a unified 5-field form
-                    // whose values write to all four SEO plugins at once —
-                    // future-proofs the data whichever plugin is installed
-                    // later. The admin can also hand-pick the SEO metabox
-                    // in the "Additional fields" settings; in that case we
-                    // skip the SEO card entirely to avoid rendering twice.
-                    $active_seo = self::get_active_seo_plugin();
-                    // The metabox picker now lives inside the "Visible editor
-                    // sections" list as `mb:<id>` slugs. If the admin placed the
-                    // active SEO plugin's own metabox there explicitly, honour
-                    // that and skip the unified SEO card so it never doubles up.
-                    $manual_seo_ids = [];
-                    foreach ($visible as $vslug) {
-                        if (strpos($vslug, 'mb:') === 0) {
-                            $manual_seo_ids[] = substr($vslug, 3);
-                        }
-                    }
-                    $seo_in_manual = false;
-                    if ($active_seo) {
-                        foreach ($active_seo['metabox_ids'] as $mid) {
-                            if (in_array($mid, $manual_seo_ids, true)) { $seo_in_manual = true; break; }
-                        }
-                    }
-                    if ($active_seo && !$seo_in_manual) : ?>
+                <?php // The SEO card has three outcomes, decided by $active_seo
+                      // and $seo_in_manual (both resolved at the top of
+                      // render_page()):
+                      //   plugin active, not hand-placed → its full native
+                      //     metabox inside the card, so users keep every
+                      //     feature it ships with (schema, social, redirects,
+                      //     analysis, readability score)
+                      //   no plugin active → a unified 5-field form that writes
+                      //     to every supported plugin's meta keys at once, so
+                      //     the data survives whichever one is installed later
+                      //   plugin hand-placed in the section picker → nothing at
+                      //     all, because the metabox renders at its chosen slot
+                      //     and a second SEO surface here would only disagree
+                      //     with it
+                if (in_array('seo', $visible, true) && !$seo_in_manual) : ob_start();
+                    if ($active_seo) : ?>
                 <!-- SEO — rendered by active plugin (<?php echo esc_html($active_seo['label']); ?>) -->
                 <div class="brikpanel-pe-card brikpanel-pe-seo-card brikpanel-pe-seo-card--plugin brikpanel-pe-metaboxes-wrap" data-seo-plugin="<?php echo esc_attr($active_seo['slug']); ?>">
                     <label>
@@ -1950,16 +1965,14 @@ class Brikpanel_Product_Editor {
                 // Runs for brand-new products (product_id = 0) too, so users can
                 // prefill marketplace / SEO fields before the first save.
                 // -------------------------------------------------------------
-                $picked_mb_ids = [];
-                foreach ($visible as $vslug) {
-                    if (strpos($vslug, 'mb:') === 0) {
-                        $picked_mb_ids[] = substr($vslug, 3);
-                    }
-                }
-                // When the active SEO plugin's metabox is already surfaced in
-                // the SEO card above, drop its IDs from the inline picks so it
-                // never renders twice.
-                if (in_array('seo', $visible, true) && !empty($active_seo)) {
+                $picked_mb_ids = $manual_mb_ids;
+                // Drop the active SEO plugin's metabox IDs only when the SEO
+                // card above actually rendered them — i.e. the card was shown
+                // AND the admin did not hand-place the metabox. Stripping them
+                // unconditionally was what made a hand-placed pick vanish: the
+                // card stood down for it, then this removed it from the picks,
+                // so Rank Math rendered nowhere at all.
+                if (in_array('seo', $visible, true) && !empty($active_seo) && !$seo_in_manual) {
                     $picked_mb_ids = array_values(array_diff($picked_mb_ids, $active_seo['metabox_ids']));
                 }
                 // ACF groups only ever render while "Auto-include ACF field
@@ -4660,8 +4673,10 @@ class Brikpanel_Product_Editor {
             }
         }
 
-        // SEO data — read from whichever plugin has populated meta.
-        // Priority: Yoast → Rank Math → AIOSEO (_aioseo_*) → SEOPress.
+        // SEO data — read from whichever plugin has populated meta, first
+        // non-empty wins. The installed plugin answers first (see the hoist
+        // below); the rest stay behind it as a fallback chain so a store that
+        // switched plugins still sees its old data.
         $pid = $product->get_id();
         $seo_title     = '';
         $seo_desc      = '';
@@ -4669,7 +4684,7 @@ class Brikpanel_Product_Editor {
         $seo_canonical = '';
         $seo_noindex   = false;
         $seo_sources = [
-            [
+            'yoast' => [
                 'title'     => '_yoast_wpseo_title',
                 'desc'      => '_yoast_wpseo_metadesc',
                 'focus_kw'  => '_yoast_wpseo_focuskw',
@@ -4677,7 +4692,7 @@ class Brikpanel_Product_Editor {
                 'noindex'   => '_yoast_wpseo_meta-robots-noindex', // '1' = noindex
                 'noindex_value' => '1',
             ],
-            [
+            'rank_math' => [
                 'title'     => 'rank_math_title',
                 'desc'      => 'rank_math_description',
                 'focus_kw'  => 'rank_math_focus_keyword',
@@ -4685,7 +4700,7 @@ class Brikpanel_Product_Editor {
                 'noindex'   => 'rank_math_robots', // array containing 'noindex'
                 'noindex_is_array' => true,
             ],
-            [
+            'aioseo' => [
                 'title'     => '_aioseo_title',
                 'desc'      => '_aioseo_description',
                 'focus_kw'  => '_aioseo_keyphrases',
@@ -4693,7 +4708,7 @@ class Brikpanel_Product_Editor {
                 'noindex'   => '_aioseo_robots_noindex',
                 'noindex_value' => '1',
             ],
-            [
+            'seopress' => [
                 'title'     => '_seopress_titles_title',
                 'desc'      => '_seopress_titles_desc',
                 'focus_kw'  => '_seopress_analysis_target_kw',
@@ -4702,6 +4717,28 @@ class Brikpanel_Product_Editor {
                 'noindex_value' => 'yes',
             ],
         ];
+
+        // Hoist the installed plugin to the front. The chain is first-non-empty
+        // wins, and it used to be Yoast-first no matter what — so on a store
+        // migrated from Yoast to Rank Math the leftover `_yoast_wpseo_*` rows
+        // beat the live `rank_math_*` ones, and the Google preview, the unified
+        // fields and the noindex toggle all showed stale text the merchant had
+        // no way to correct from here. Whoever is actually installed answers
+        // first; everyone else keeps their old relative order behind them.
+        $active_seo_read = self::get_active_seo_plugin();
+        $active_seo_slug = $active_seo_read ? $active_seo_read['slug'] : '';
+        if ($active_seo_slug === '') {
+            $unified_read    = self::get_unified_seo_analyzer();
+            $active_seo_slug = $unified_read ? $unified_read['slug'] : '';
+        }
+        // SureRank and SmartCrawl have no entry here — they own the read path
+        // outright below via $unified_owns_seo — so the isset() guard skips
+        // them. `+` on string keys keeps the first occurrence and drops the
+        // duplicate, making this an exact reorder.
+        if ($active_seo_slug !== '' && isset($seo_sources[$active_seo_slug])) {
+            $seo_sources = [$active_seo_slug => $seo_sources[$active_seo_slug]] + $seo_sources;
+        }
+        $seo_sources = array_values($seo_sources);
 
         // SureRank stores its per-post SEO across two meta keys: page title,
         // meta description, canonical URL and focus keyword are sub-keys of a
@@ -4715,7 +4752,14 @@ class Brikpanel_Product_Editor {
         // values stay empty — SureRank falls back to its site-wide template
         // for empty sub-keys, which matches the "leave empty to use default"
         // field hint.
-        $surerank_active = defined('SURERANK_VERSION');
+        // …but only when no inline-metabox plugin is active. Whoever owns the
+        // visible SEO surface owns the read: if Yoast / Rank Math / AIOSEO /
+        // classic SEOPress is installed, the SEO card shows THAT plugin's own
+        // metabox, and letting a popup-only plugin answer the read here made
+        // the Google preview above the metabox contradict the metabox itself.
+        $unified_may_own = ($active_seo_read === null);
+
+        $surerank_active = $unified_may_own && defined('SURERANK_VERSION');
         if ($surerank_active) {
             $sr_general = get_post_meta($pid, 'surerank_settings_general', true);
             if (is_array($sr_general)) {
@@ -4742,7 +4786,7 @@ class Brikpanel_Product_Editor {
         // stale meta a previously used plugin left behind can't shadow it.
         // Precedence below SureRank, above SmartCrawl, matching the order in
         // get_unified_seo_analyzer().
-        $seopress_unified_active = !$surerank_active && self::seopress_uses_universal_metabox();
+        $seopress_unified_active = $unified_may_own && !$surerank_active && self::seopress_uses_universal_metabox();
         if ($seopress_unified_active) {
             $seo_title     = (string) get_post_meta($pid, '_seopress_titles_title', true);
             $seo_desc      = (string) get_post_meta($pid, '_seopress_titles_desc', true);
@@ -4751,7 +4795,7 @@ class Brikpanel_Product_Editor {
             $seo_noindex   = ((string) get_post_meta($pid, '_seopress_robots_index', true) === 'yes');
         }
 
-        $smartcrawl_active = !$surerank_active && !$seopress_unified_active && defined('SMARTCRAWL_VERSION');
+        $smartcrawl_active = $unified_may_own && !$surerank_active && !$seopress_unified_active && defined('SMARTCRAWL_VERSION');
         if ($smartcrawl_active) {
             $seo_title     = (string) get_post_meta($pid, '_wds_title', true);
             $seo_desc      = (string) get_post_meta($pid, '_wds_metadesc', true);
@@ -5583,17 +5627,21 @@ class Brikpanel_Product_Editor {
         // we must leave any existing cost on file alone. Otherwise turning
         // the section off would silently wipe every product's cost on its
         // next save.
+        $cogs_submitted = null;
         if ( array_key_exists( 'cogs_value', $_POST ) ) {
-            $cogs_raw     = sanitize_text_field( $_POST['cogs_value'] );
-            $cogs_decimal = $cogs_raw !== '' ? wc_format_decimal( $cogs_raw ) : '';
-            if ( $cogs_decimal !== '' ) {
-                update_post_meta( $product->get_id(), '_brikpanel_cogs', $cogs_decimal );
-            } else {
-                delete_post_meta( $product->get_id(), '_brikpanel_cogs' );
-            }
+            $cogs_raw       = sanitize_text_field( $_POST['cogs_value'] );
+            $cogs_decimal   = brikpanel_set_product_cogs_raw( $product->get_id(), $cogs_raw );
+            $cogs_submitted = $cogs_decimal;
             if ( method_exists( $product, 'set_cogs_value' ) ) {
                 $product->set_cogs_value( $cogs_decimal !== '' ? $cogs_decimal : null );
             }
+            // A cost plugin's own input rides along in this submission (we
+            // render WooCommerce's Product data panels inline) carrying the
+            // value it rendered with, not what the merchant just typed. Give
+            // it the real number so its save handler stores that instead of
+            // overwriting the cost with a stale 0. See the re-assert after
+            // $refreshed->save() for the plugins we don't know by name.
+            brikpanel_cogs_sync_posted_third_party_inputs( $cogs_decimal );
         }
 
         // Vendor — only persisted when the editor field is enabled. Otherwise
@@ -5728,6 +5776,26 @@ class Brikpanel_Product_Editor {
                         $clean[sanitize_key($k)] = is_numeric($v) ? (int) $v : sanitize_text_field((string) $v);
                     }
                     update_post_meta($saved_id, 'rank_math_advanced_robots', $clean);
+                }
+            }
+            // SEO score. Kept out of $rm_map because it needs a range check
+            // rather than sanitize_text_field: when Rank Math's analyser never
+            // ran in this session (module off, no focus keyword, content not
+            // collected) its store still reports 0, and writing that would wipe
+            // a good score the merchant earned in the native editor. Only a
+            // real score overwrites; 0 leaves the stored value alone, which
+            // matches Rank Math's own column — it renders "N/A" for a product
+            // with no focus keyword whatever the meta holds.
+            if (isset($_POST['bpe_rm_seo_score'])) {
+                $rm_score = (int) wp_unslash($_POST['bpe_rm_seo_score']);
+                if ($rm_score > 0 && $rm_score <= 100) {
+                    update_post_meta($saved_id, 'rank_math_seo_score', $rm_score);
+                }
+            }
+            if (isset($_POST['bpe_rm_dont_show_seo_score'])) {
+                $rm_show = sanitize_key(wp_unslash($_POST['bpe_rm_dont_show_seo_score']));
+                if (in_array($rm_show, ['on', 'off'], true)) {
+                    update_post_meta($saved_id, 'rank_math_dont_show_seo_score', $rm_show);
                 }
             }
         }
@@ -6002,6 +6070,21 @@ class Brikpanel_Product_Editor {
         // WC core's data/image save handlers (see the unhook before save_post).
         if (!empty($_removed['data']))   add_action('woocommerce_process_product_meta', $_wc_data_save, 10, 2);
         if (!empty($_removed['images'])) add_action('woocommerce_process_product_meta', $_wc_img_save, 20, 2);
+
+        // Cost of goods, re-asserted *after* every save handler has run.
+        // Cost plugins hook the product save at the very end of the chain
+        // (WPFactory uses save_post_product at PHP_INT_MAX - 2) and write
+        // their own cost key from the input they injected into WooCommerce's
+        // Product data panel. We already corrected that input above, but a
+        // plugin we don't know by name would still land the last write and
+        // silently replace the merchant's number — its key is read first, so
+        // the typed value would be gone on the next page load. Writing the
+        // whole key set here, last, makes BrikPanel's field authoritative
+        // whatever else is installed. Same reasoning as the stock_status
+        // workaround below.
+        if ($cogs_submitted !== null) {
+            brikpanel_set_product_cogs_raw($saved_id, $cogs_submitted);
+        }
 
         // WC core's validate_props() auto-syncs stock_status from quantity
         // every time save() is called (stock > 0 forces "instock"), which
@@ -6765,17 +6848,19 @@ class Brikpanel_Product_Editor {
             // for this save (JS omits the key entirely when the section is
             // hidden in settings). Otherwise toggling the section off would
             // silently wipe every variation's cost on the parent's next save.
+            $var_cogs_submitted = null;
             if ( array_key_exists( 'cogs_value', $var_data ) ) {
-                $var_cogs_raw     = sanitize_text_field( $var_data['cogs_value'] );
-                $var_cogs_decimal = $var_cogs_raw !== '' ? wc_format_decimal( $var_cogs_raw ) : '';
-                if ( $var_cogs_decimal !== '' ) {
-                    update_post_meta( $variation->get_id(), '_brikpanel_cogs', $var_cogs_decimal );
-                } else {
-                    delete_post_meta( $variation->get_id(), '_brikpanel_cogs' );
-                }
+                $var_cogs_raw       = sanitize_text_field( $var_data['cogs_value'] );
+                $var_cogs_decimal   = brikpanel_set_product_cogs_raw( $variation->get_id(), $var_cogs_raw );
+                $var_cogs_submitted = $var_cogs_decimal;
                 if ( method_exists( $variation, 'set_cogs_value' ) ) {
                     $variation->set_cogs_value( $var_cogs_decimal !== '' ? $var_cogs_decimal : null );
                 }
+                // A cost plugin's per-variation input is re-emitted into $_POST
+                // for the woocommerce_save_product_variation dispatch below,
+                // carrying the value it rendered with rather than what the
+                // merchant typed in our column. Correct it first.
+                brikpanel_cogs_sync_posted_third_party_inputs( $var_cogs_decimal, $loop_index );
             }
 
             // Per-variation vendor override. 0 (or unset) means "inherit
@@ -6871,6 +6956,14 @@ class Brikpanel_Product_Editor {
             // native variation metabox save.
             if ($vid) {
                 do_action('woocommerce_save_product_variation', $vid, $loop_index);
+
+                // Re-assert the cost last: cost plugins persist their own key
+                // from this dispatch, and theirs is read first, so without this
+                // a plugin whose variation input we don't know by name would
+                // replace the merchant's number with whatever it rendered with.
+                if ($var_cogs_submitted !== null) {
+                    brikpanel_set_product_cogs_raw($vid, $var_cogs_submitted);
+                }
             }
         }
 

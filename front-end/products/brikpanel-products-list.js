@@ -746,15 +746,16 @@
      * Used for full-width loading / empty rows.
      */
     function totalColumnCount() {
-        // 1 sort handle (hidden unless sortMode) + 9 native BrikPanel cols
-        // (check, image, name, sku, gtin, price, stock, cat, status) + 1
-        // actions col + N ASE extras. The handle <th>/<td> is always present
-        // in the DOM so colspan calculations stay stable; CSS hides it when
-        // sortMode is off, but it still counts as a real column.
+        // 1 sort handle (hidden unless sortMode) + 15 native BrikPanel cols
+        // (check, image, name, sku, gtin, price, cogs, profit, stock, cat,
+        // shipping class, author, sort order, status, date) + 1 actions col
+        // + N ASE extras. Every native <th>/<td> is always present in the DOM
+        // so colspan calculations stay stable; CSS hides the ones the user
+        // switched off, but they still count as real columns.
         var extras = state.extraColumns ? Object.keys(state.extraColumns).length : 0;
         // +1 for the opt-in Product Code column when its plugin is active (its
         // <th>/<td> are always in the DOM in that case; CSS hides them when off).
-        return 14 + (PL.has_product_code ? 1 : 0) + extras;
+        return 17 + (PL.has_product_code ? 1 : 0) + extras;
     }
 
     /**
@@ -1168,6 +1169,31 @@
             + escAttr(cogsVal) + '">' + inner + '</span>' + flag;
     }
 
+    // Profit cell — read-only for every product type. Profit is derived
+    // (price minus cost), so there is nothing to type here: the merchant edits
+    // the price or the cost and profit follows. No `brikpanel-pl-editable`
+    // wrapper and no `data-field`, so inline edit can never target it.
+    // The server sends pre-formatted wc_price() HTML plus the same `partial`
+    // contract the Cost cell uses; profit keeps its own missing count because a
+    // variation can carry a cost without a price.
+    function renderProfitCell(p) {
+        var profit = p ? p.profit : null;
+        if (!profit || !profit.html) {
+            return '<span class="brikpanel-pl-text-muted">&mdash;</span>';
+        }
+        var negative = profit.negative ? ' is-negative' : '';
+        var out = '<span class="brikpanel-pl-profit-value' + negative + '">' + profit.html + '</span>';
+        if (profit.percent) {
+            out += ' <span class="brikpanel-pl-profit-pct">(' + escHtml(profit.percent) + '%)</span>';
+        }
+        if (profit.partial && profit.missing > 0) {
+            var label = (PL.i18n.profit_partial || '').replace('%d', profit.missing);
+            out += ' <span class="brikpanel-pl-cogs-flag" tabindex="0" role="note" aria-label="'
+                + escAttr(label) + '" title="' + escAttr(label) + '">!</span>';
+        }
+        return out;
+    }
+
     function renderProductRow(p) {
         var checked = state.selected.indexOf(p.id) > -1 ? ' checked' : '';
         var statusClass, statusLabel, statusTitle = PL.i18n.click_to_toggle;
@@ -1377,6 +1403,7 @@
             pcodeCell +
             '<td class="brikpanel-pl-cell-price brikpanel-pl-col brikpanel-pl-col-price">' + priceEditable + '</td>' +
             '<td class="brikpanel-pl-cell-cogs brikpanel-pl-col brikpanel-pl-col-cogs">' + renderCogsCell(p) + '</td>' +
+            '<td class="brikpanel-pl-cell-profit brikpanel-pl-col brikpanel-pl-col-profit">' + renderProfitCell(p) + '</td>' +
             '<td class="brikpanel-pl-cell-stock brikpanel-pl-col brikpanel-pl-col-stock" data-id="' + p.id + '">' + stockCellHtml + '</td>' +
             '<td class="brikpanel-pl-cell-cat brikpanel-pl-col brikpanel-pl-col-category">' + catText + '</td>' +
             '<td class="brikpanel-pl-cell-shipclass brikpanel-pl-col brikpanel-pl-col-shipping_class">' + (p.shipping_class ? escHtml(p.shipping_class) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +

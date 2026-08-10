@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.2.33
+ * Version: 3.2.42
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.2.33');
+define('BRIKPANEL_VERSION', '3.2.42');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -580,6 +580,17 @@ function brikpanel_render_hidden_notices_box($notices_html, $count) {
         .brikpanel-foreign-notices > summary:focus-visible { outline: none; border-color: #303030; box-shadow: 0 0 0 1px #303030; }
         .brikpanel-foreign-notices .brikpanel-fn-bell { flex: 0 0 auto; opacity: .8; }
         .brikpanel-foreign-notices .brikpanel-fn-chevron { flex: 0 0 auto; opacity: .65; transition: transform .2s ease; }
+        /* These two glyphs are outline SVGs drawn with the `fill="none"
+           stroke="currentColor"` presentation attributes, and they render deep
+           inside the page body where another plugins screen stylesheet is most
+           likely to carry a blanket `svg`/`svg path` rule. Presentation
+           attributes lose to any author CSS, so restate the drawing model here
+           or the bell silently paints itself away on that one screen. Mirrors
+           the guard in front-end/topbar/brikpanel-topbar.css. */
+        .brikpanel-foreign-notices svg[fill="none"] { fill: none !important; }
+        .brikpanel-foreign-notices svg[stroke="currentColor"] { stroke: currentColor !important; }
+        .brikpanel-foreign-notices svg[fill="none"] *:not([fill]) { fill: none !important; }
+        .brikpanel-foreign-notices svg[stroke="currentColor"] *:not([stroke]) { stroke: currentColor !important; }
         .brikpanel-foreign-notices[open] > summary { color: #303030; }
         .brikpanel-foreign-notices[open] > summary .brikpanel-fn-chevron { transform: rotate(180deg); }
         .brikpanel-foreign-notices .brikpanel-fn-list { margin-top: .6rem; }
@@ -799,9 +810,19 @@ function brikpanel_create_table() {
         KEY idx_product_date (product_id, date_column)
     ) $charset_collate;";
 
+    // object_type (3.2.41) separates a post ID from a term ID sharing the same
+    // number. Before it, archive views had nowhere to go and were credited to
+    // whichever product the theme's loop stopped on. Existing rows take the
+    // 'post' default, which is what they always were.
+    //
+    // Deliberately NOT indexed: it holds two values, so it is useless as a
+    // leading column, and the recorder's lookup already resolves to a single
+    // row through idx_page_date with object_type applied as a filter on it.
+    // An extra index here would only cost write throughput on every view.
     $sql_visited_pages = "CREATE TABLE $visited_pages_table (
         id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         page_id BIGINT(20) UNSIGNED NOT NULL,
+        object_type VARCHAR(20) NOT NULL DEFAULT 'post',
         visit_count INT DEFAULT 0,
         date_column DATETIME DEFAULT CURRENT_TIMESTAMP,
         KEY page_id (page_id),
@@ -1247,12 +1268,12 @@ add_action('plugins_loaded', 'brikpanel_maybe_upgrade_db', 5);
  * BrikPanel's own `_brikpanel_cogs` meta for products and variations that have
  * a native cost on file but were never saved through BrikPanel.
  *
- * BrikPanel reads cost exclusively from `_brikpanel_cogs` on the dashboard,
- * the product list and Quick Edit; the live mirror in
- * brikpanel_mirror_wc_native_cogs() keeps future native edits in step, but
- * costs entered before this release (or via WooCommerce's own product screen
- * while running an older BrikPanel) need a single catch-up pass so historical
- * data shows up immediately instead of only after the next product save.
+ * The live mirror in brikpanel_mirror_cogs_meta() keeps future native edits in
+ * step, but costs entered before this release (or via WooCommerce's own product
+ * screen while running an older BrikPanel) need a single catch-up pass so
+ * historical data shows up immediately instead of only after the next product
+ * save. (Reads no longer depend on this pass — brikpanel_cogs_meta_keys() walks
+ * every known cost key — but keeping the two in sync stays worthwhile.)
  *
  * Runs once, guarded by its own option so a manual re-edit is never undone:
  * the WHERE clause only touches rows that have NO `_brikpanel_cogs` yet, and

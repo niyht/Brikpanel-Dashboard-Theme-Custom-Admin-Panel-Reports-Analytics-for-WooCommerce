@@ -168,13 +168,16 @@ function brikpanel_pe_get_section_order() {
     $stored = get_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, '');
     $order  = [];
 
-    if (is_string($stored) && $stored !== '') {
-        $decoded = json_decode($stored, true);
-        if (is_array($decoded)) {
-            foreach ($decoded as $slug) {
-                if (brikpanel_pe_is_valid_section_slug($slug, $known) && !in_array($slug, $order, true)) {
-                    $order[] = $slug;
-                }
+    // Normally a JSON-encoded list, but a plain array can reach the option
+    // too (settings import, or a site whose value was written before the
+    // JSON encoding landed). Reading only the string form silently discarded
+    // the whole stored order — including `mb:` metabox slugs, which the
+    // rebuild below cannot recreate because they are not in $known.
+    $decoded = is_array($stored) ? $stored : (is_string($stored) && $stored !== '' ? json_decode($stored, true) : null);
+    if (is_array($decoded)) {
+        foreach ($decoded as $slug) {
+            if (brikpanel_pe_is_valid_section_slug($slug, $known) && !in_array($slug, $order, true)) {
+                $order[] = $slug;
             }
         }
     }
@@ -709,19 +712,20 @@ add_action('admin_init', function () {
             update_option('brikpanel_pe_visible_sections', array_values($visible), false);
         }
         // Order: insert right after the anchor so the card stays where
-        // existing users expect to find it. JSON-encoded list of slugs.
+        // existing users expect to find it. Normally a JSON-encoded list of
+        // slugs, but an imported settings payload can leave a plain array.
         $order_raw = get_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, '');
-        if (is_string($order_raw) && $order_raw !== '') {
-            $decoded = json_decode($order_raw, true);
-            if (is_array($decoded) && !in_array($slug, $decoded, true)) {
-                $idx = array_search($anchor, $decoded, true);
-                if ($idx !== false) {
-                    array_splice($decoded, $idx + 1, 0, $slug);
-                } else {
-                    $decoded[] = $slug;
-                }
-                update_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, wp_json_encode(array_values($decoded)), false);
+        $decoded   = is_array($order_raw)
+            ? $order_raw
+            : (is_string($order_raw) && $order_raw !== '' ? json_decode($order_raw, true) : null);
+        if (is_array($decoded) && !in_array($slug, $decoded, true)) {
+            $idx = array_search($anchor, $decoded, true);
+            if ($idx !== false) {
+                array_splice($decoded, $idx + 1, 0, $slug);
+            } else {
+                $decoded[] = $slug;
             }
+            update_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, wp_json_encode(array_values($decoded)), false);
         }
         update_option($flag, 'yes', false);
     }
@@ -789,11 +793,11 @@ add_action('admin_init', function () {
         // where the boxes rendered before (below every native section).
         $order_raw = get_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, '');
         $order     = [];
-        if (is_string($order_raw) && $order_raw !== '') {
-            $decoded = json_decode($order_raw, true);
-            if (is_array($decoded)) {
-                $order = $decoded;
-            }
+        $decoded   = is_array($order_raw)
+            ? $order_raw
+            : (is_string($order_raw) && $order_raw !== '' ? json_decode($order_raw, true) : null);
+        if (is_array($decoded)) {
+            $order = $decoded;
         }
         if (empty($order)) {
             $order = brikpanel_pe_get_section_order();

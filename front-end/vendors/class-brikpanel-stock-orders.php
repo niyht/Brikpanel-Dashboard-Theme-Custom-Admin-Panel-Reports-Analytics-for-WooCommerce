@@ -1008,8 +1008,8 @@ class Brikpanel_Stock_Orders {
 	}
 
 	/**
-	 * Update the WC native COGS field (and the legacy `_brikpanel_cogs` mirror)
-	 * based on the chosen calculation method.
+	 * Update the WC native COGS field (and every other cost meta key the store
+	 * uses) based on the chosen calculation method.
 	 *
 	 * - `last_cost`: overwrite with the unit cost from this PO.
 	 * - `weighted` : weighted average across `(existing_stock × existing_cost)`
@@ -1044,8 +1044,9 @@ class Brikpanel_Stock_Orders {
 			$product->set_cogs_value( $decimal !== '' ? $decimal : null );
 			$product->save();
 		}
-		// Legacy mirror used by older BrikPanel reports.
-		update_post_meta( $product->get_id(), '_brikpanel_cogs', $decimal );
+		// Write the whole cost-key set (BrikPanel legacy + any third-party cost
+		// plugin in use) so the received cost lands wherever the store reads it.
+		brikpanel_set_product_cogs_raw( $product->get_id(), $decimal );
 	}
 
 	private function get_existing_cost( $product ) {

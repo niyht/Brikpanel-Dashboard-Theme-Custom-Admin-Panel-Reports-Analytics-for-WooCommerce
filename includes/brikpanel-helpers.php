@@ -82,7 +82,7 @@ add_action( 'woocommerce_order_refunded',       'brikpanel_bust_data_caches' );
  * @param string $meta_key   Meta key that changed.
  */
 function brikpanel_bust_data_caches_on_cogs_meta( $meta_id, $object_id, $meta_key ) {
-    if ( '_brikpanel_cogs' === $meta_key || '_cogs_total_value' === $meta_key || '_cogs_value_is_additive' === $meta_key ) {
+    if ( '_cogs_value_is_additive' === $meta_key || in_array( $meta_key, brikpanel_cogs_meta_keys(), true ) ) {
         brikpanel_bust_data_caches();
     }
 }
@@ -91,128 +91,390 @@ add_action( 'updated_post_meta', 'brikpanel_bust_data_caches_on_cogs_meta', 10, 
 add_action( 'deleted_post_meta', 'brikpanel_bust_data_caches_on_cogs_meta', 10, 3 );
 
 /**
- * Keep BrikPanel's own cost meta in lockstep with WooCommerce's native
- * Cost of Goods Sold field (WooCommerce 9.5+).
+ * Third-party cost-of-goods plugins BrikPanel knows how to read from.
  *
- * BrikPanel reads product cost from its own `_brikpanel_cogs` meta on every
- * surface: the dashboard Profit math, the product-list Cost column, Quick
- * Edit and the Google Sheets export. The product editor already mirrors
- * BrikPanel -> WC native on save, but a merchant can instead fill the cost
- * from WooCommerce's own product screen, which writes only `_cogs_total_value`.
- * Without the reverse mirror that cost stays invisible to BrikPanel, so the
- * dashboard COGS reads as empty even though the value is clearly set on the
- * product. This hook closes the gap live for BOTH simple products and
- * variations: WooCommerce stores the per-object value in `_cogs_total_value`
- * and deletes the row when a variation inherits its parent, which is exactly
- * the present/absent semantics `_brikpanel_cogs` already uses, so a straight
- * value copy keeps the two perfectly in step (existing data is backfilled once
- * on upgrade by brikpanel_backfill_native_cogs()).
+ * Plenty of stores filled in their product costs long before they installed
+ * BrikPanel, using a dedicated cost plugin that keeps the value in its own
+ * meta key. Without this registry every one of those costs is invisible:
+ * the product-list Cost column stays blank and the dashboard reports the
+ * whole catalogue as zero-cost, which silently overstates Net profit.
  *
- * Only products and variations are mirrored: WooCommerce also stores
- * `_cogs_total_value` on orders, which must never bleed into product cost meta.
+ * Detection is by class/function signature rather than the plugin file path
+ * so renamed folders and white-labelled builds still resolve, and it stays a
+ * pure in-memory check (no option read, no filesystem hit) because the key
+ * list is consulted on hot paths.
  *
- * @param int    $meta_id    Unused (an array of ids on the delete hook).
- * @param int    $object_id  Product or variation ID whose meta changed.
- * @param string $meta_key   Meta key that changed.
- * @param mixed  $meta_value New value ('' on delete / clear).
+ * Each entry: `key` (meta key holding the unit cost), `post_key` (the name of
+ * the input that plugin injects into WooCommerce's Product data panel, or ''
+ * when it has none), `label` (human name, kept untranslated on purpose — it is
+ * a product name) and `active`.
+ *
+ * `post_key` exists because BrikPanel's editor renders WooCommerce's Product
+ * data panels inline, which drags the cost plugin's OWN cost input into the
+ * form alongside BrikPanel's. That input is never hydrated from what the
+ * merchant types in BrikPanel's Cost field, so on save the plugin persists its
+ * stale value (usually 0) over the real one. Knowing the input name lets the
+ * save handler hand the plugin the correct number instead of fighting it.
+ *
+ * @return array<string,array{key:string,post_key:string,label:string,active:bool}>
  */
-function brikpanel_mirror_wc_native_cogs( $meta_id, $object_id, $meta_key, $meta_value = '' ) {
-    if ( '_cogs_total_value' !== $meta_key ) {
-        return;
-    }
-    if ( ! in_array( get_post_type( $object_id ), array( 'product', 'product_variation' ), true ) ) {
-        return;
-    }
+function brikpanel_cogs_third_party_sources() {
+    $sources = array(
+        // Cost of Goods for WooCommerce (WPFactory, formerly Algoride).
+        // Class renamed WPFCOGS in 4.x; the Alg_* names cover 2.x/3.x.
+        'wpfactory' => array(
+            'key'                => '_alg_wc_cog_cost',
+            'post_key'           => '_alg_wc_cog_cost',
+            'variation_post_key' => 'variable_wpfcogs_cost',
+            'label'              => 'Cost of Goods for WooCommerce',
+            'active'             => class_exists( 'WPFCOGS' )
+                || function_exists( 'wpfcogs' )
+                || class_exists( 'Alg_WC_Cost_of_Goods' )
+                || function_exists( 'alg_wc_cost_of_goods' ),
+        ),
+        // WooCommerce Cost of Goods (SkyVerge / woocommerce.com extension).
+        // No variation input name here: it is unverified, and guessing wrong
+        // would write a cost into an unrelated field. The post-save re-assert
+        // covers the variation case for it.
+        'skyverge' => array(
+            'key'                => '_wc_cog_cost',
+            'post_key'           => '_wc_cog_cost',
+            'variation_post_key' => '',
+            'label'              => 'WooCommerce Cost of Goods',
+            'active'             => class_exists( 'WC_COG' ) || function_exists( 'wc_cost_of_goods' ),
+        ),
+    );
 
-    $native  = (string) $meta_value;
-    $current = (string) get_post_meta( $object_id, '_brikpanel_cogs', true );
-
-    // Cleared on the native side (variation now inherits its parent, or the
-    // merchant emptied the field) -> drop BrikPanel's mirrored copy so the
-    // variation->parent fallback kicks back in instead of a stale cost.
-    if ( '' === $native ) {
-        if ( '' !== $current ) {
-            delete_post_meta( $object_id, '_brikpanel_cogs' );
-        }
-        return;
-    }
-
-    // Normalise both sides through wc_format_decimal so 12.5 and 12.50 do not
-    // ping-pong, and only write on a real change (a no-op update_post_meta
-    // would not fire, but guarding also skips the cache bust for free).
-    $formatted = wc_format_decimal( $native );
-    if ( '' === $current || (float) $current !== (float) $formatted ) {
-        update_post_meta( $object_id, '_brikpanel_cogs', $formatted );
-    }
+    /**
+     * Filter the registry of third-party cost-of-goods plugins.
+     *
+     * Use this to teach BrikPanel about a cost plugin it does not ship
+     * support for; set `active` to true to switch the entry on.
+     *
+     * @param array<string,array{key:string,label:string,active:bool}> $sources
+     */
+    return (array) apply_filters( 'brikpanel_cogs_third_party_sources', $sources );
 }
-add_action( 'added_post_meta',   'brikpanel_mirror_wc_native_cogs', 10, 4 );
-add_action( 'updated_post_meta', 'brikpanel_mirror_wc_native_cogs', 10, 4 );
-add_action( 'deleted_post_meta', 'brikpanel_mirror_wc_native_cogs', 10, 4 );
 
 /**
- * Reverse mirror: propagate BrikPanel's legacy `_brikpanel_cogs` writes into
- * WooCommerce's native `_cogs_total_value`.
+ * The two cost meta keys BrikPanel OWNS — the ones it writes on every save
+ * and keeps mirrored to each other.
  *
- * Every BrikPanel write path pairs its legacy-meta write with
- * WC_Product::set_cogs_value(), but that setter is a silent no-op whenever
- * the WC Cost of Goods feature flag is off — which would leave the native
- * key (the read side's source of truth) stale. Mirroring at the meta layer
- * closes that gap for all writers at once, flag on or off.
+ * Deliberately excludes third-party keys. Those are read-only inputs: a cost
+ * plugin's own screen saves through a WC_Product object, and WooCommerce
+ * rewrites `_cogs_total_value` from that object's (stale) cogs_value prop at
+ * the very end of save(). Mirroring into the native key mid-save therefore
+ * gets clobbered and, worse, the clobbered value propagates straight back out
+ * — reverting the cost the merchant just typed into their own plugin. Reading
+ * their key instead of writing near it keeps BrikPanel out of that fight.
  *
- * No ping-pong with the forward mirror above: both mirrors normalise through
- * wc_format_decimal and only write on a real value change, so the second hop
- * always sees equal values and stops.
+ * @return string[]
+ */
+function brikpanel_cogs_owned_meta_keys() {
+    return array( '_cogs_total_value', '_brikpanel_cogs' );
+}
+
+/**
+ * Every meta key BrikPanel treats as a product's unit cost, in priority
+ * order (first non-empty wins).
+ *
+ * A detected third-party cost plugin leads, because that plugin's own field
+ * is the screen the merchant actually types costs into — it is their source
+ * of truth, and deferring to it is what makes an existing costed catalogue
+ * show up in BrikPanel at all. WooCommerce's native `_cogs_total_value` and
+ * BrikPanel's legacy `_brikpanel_cogs` follow. In practice the ordering
+ * rarely bites: BrikPanel's own save writes the whole set (see
+ * brikpanel_set_product_cogs_raw()), so an edit made here lands in the cost
+ * plugin's field too and the keys stay equal in both directions.
+ *
+ * A store whose cost lives somewhere else entirely can point every BrikPanel
+ * surface — per-product AND the dashboard aggregates — at it in one line:
+ *
+ *     add_filter( 'brikpanel_cogs_meta_keys', function ( $keys ) {
+ *         array_unshift( $keys, '_my_cost_meta' );
+ *         return $keys;
+ *     } );
+ *
+ * @return string[] Ordered, de-duplicated meta keys (never empty).
+ */
+function brikpanel_cogs_meta_keys() {
+    static $cache = null;
+    static $cached_late = false;
+
+    // The list is read per product row, so it is memoised — but only once the
+    // stack is fully up. BrikPanel loads alphabetically before most cost
+    // plugins, and integrators register their filter on plugins_loaded/init,
+    // so caching an early call would freeze a detection result taken before
+    // anyone had a chance to declare themselves.
+    $late = did_action( 'init' ) > 0;
+    if ( null !== $cache && $cached_late && $late ) {
+        return $cache;
+    }
+
+    $keys = array();
+
+    foreach ( brikpanel_cogs_third_party_sources() as $source ) {
+        if ( ! empty( $source['active'] ) && ! empty( $source['key'] ) ) {
+            $keys[] = (string) $source['key'];
+        }
+    }
+
+    $keys = array_merge( $keys, brikpanel_cogs_owned_meta_keys() );
+
+    /**
+     * Filter the ordered list of meta keys BrikPanel reads product cost from.
+     *
+     * @param string[] $keys Meta keys, highest priority first.
+     */
+    $keys = (array) apply_filters( 'brikpanel_cogs_meta_keys', $keys );
+
+    // Harden: these strings are interpolated into SQL by the join builder, so
+    // anything that is not a well-formed meta key is dropped outright rather
+    // than escaped — a filter cannot smuggle SQL in through this list. If a
+    // filter leaves nothing usable we fall back to BrikPanel's own keys, so
+    // the accessors and the aggregates always have something to read.
+    $clean = array();
+    foreach ( $keys as $key ) {
+        $key = is_string( $key ) ? trim( $key ) : '';
+        if ( '' !== $key && preg_match( '/^[A-Za-z0-9_\-]{1,255}$/', $key ) ) {
+            $clean[] = $key;
+        }
+    }
+    $clean = array_values( array_unique( $clean ) );
+    if ( empty( $clean ) ) {
+        $clean = brikpanel_cogs_owned_meta_keys();
+    }
+
+    $cache       = $clean;
+    $cached_late = $late;
+
+    return $cache;
+}
+
+/**
+ * SQL fragments that resolve a product's cost across every known cost meta
+ * key, for the aggregate queries that cannot afford a per-row PHP lookup.
+ *
+ * Returns one LEFT JOIN per key plus a COALESCE expression picking the first
+ * non-empty value in the same priority order brikpanel_product_cogs_raw()
+ * uses, so the dashboard totals and the per-product surfaces can never
+ * disagree. Stores without a third-party cost plugin get exactly the two
+ * joins they always had — the extra cost is opt-in by installation.
+ *
+ * @param string $alias_prefix Short unique alias stem (e.g. 'vc', 'pc').
+ * @param string $post_id_expr SQL expression for the post id to join on.
+ * @param string $extra_on     Optional extra ON condition (already safe SQL).
+ * @return array{joins:string,value:string}
+ */
+function brikpanel_cogs_sql_join_set( $alias_prefix, $post_id_expr, $extra_on = '' ) {
+    global $wpdb;
+
+    $joins  = '';
+    $values = array();
+    $i      = 0;
+
+    foreach ( brikpanel_cogs_meta_keys() as $key ) {
+        $alias   = $alias_prefix . $i;
+        $joins  .= "\n\t\tLEFT JOIN {$wpdb->postmeta} {$alias}"
+            . "\n\t\t\tON {$alias}.post_id = {$post_id_expr}"
+            . "\n\t\t   AND {$alias}.meta_key = '" . esc_sql( $key ) . "'"
+            . ( '' !== $extra_on ? "\n\t\t   AND {$extra_on}" : '' );
+        $values[] = "NULLIF({$alias}.meta_value, '')";
+        $i++;
+    }
+
+    return array(
+        'joins' => $joins,
+        'value' => 'COALESCE(' . implode( ', ', $values ) . ')',
+    );
+}
+
+/**
+ * Keep the cost meta keys BrikPanel owns in lockstep on products and
+ * variations.
+ *
+ * BrikPanel's own `_brikpanel_cogs` and WooCommerce's native
+ * `_cogs_total_value` (WC 9.5+) describe the same number but are written by
+ * different screens — BrikPanel's editor and Quick Edit on one side, the
+ * WooCommerce product screen on the other. Whichever the merchant uses, this
+ * copies the value across so the cost shows up everywhere at once and the
+ * dashboard never reports a costed catalogue as zero-cost. It also covers the
+ * case where WC's Cost of Goods feature flag is off, which makes
+ * WC_Product::set_cogs_value() a silent no-op.
+ *
+ * Scope is deliberately brikpanel_cogs_owned_meta_keys(), NOT every key
+ * BrikPanel can read — see that function for why writing near a third-party
+ * cost plugin's key is harmful.
+ *
+ * Semantics match on both sides: an empty value / deleted row means "no cost
+ * on file" (a variation then inherits its parent), so a clear propagates as a
+ * delete rather than a stored empty string.
+ *
+ * Only products and variations are mirrored: WooCommerce also stores
+ * `_cogs_total_value` on ORDERS, which must never bleed into product cost meta.
+ *
+ * Loop safety comes from a re-entrancy guard plus a real-change test on every
+ * write, so the ring settles in a single pass instead of bouncing.
  *
  * @param int    $meta_id    Unused (an array of ids on the delete hook).
  * @param int    $object_id  Product or variation ID whose meta changed.
  * @param string $meta_key   Meta key that changed.
  * @param mixed  $meta_value New value ('' on delete / clear).
  */
-function brikpanel_mirror_legacy_cogs_to_native( $meta_id, $object_id, $meta_key, $meta_value = '' ) {
-    if ( '_brikpanel_cogs' !== $meta_key ) {
+function brikpanel_mirror_cogs_meta( $meta_id, $object_id, $meta_key, $meta_value = '' ) {
+    static $mirroring = false;
+
+    if ( $mirroring ) {
+        return;
+    }
+
+    $keys = brikpanel_cogs_owned_meta_keys();
+    if ( ! in_array( (string) $meta_key, $keys, true ) ) {
         return;
     }
     if ( ! in_array( get_post_type( $object_id ), array( 'product', 'product_variation' ), true ) ) {
         return;
     }
 
-    $legacy = (string) $meta_value;
-    $native = (string) get_post_meta( $object_id, '_cogs_total_value', true );
+    $source    = (string) $meta_value;
+    $formatted = '' === $source ? '' : wc_format_decimal( $source );
 
-    if ( '' === $legacy ) {
-        if ( '' !== $native ) {
-            delete_post_meta( $object_id, '_cogs_total_value' );
+    $mirroring = true;
+    try {
+        foreach ( $keys as $key ) {
+            if ( $key === $meta_key ) {
+                continue;
+            }
+            $current = (string) get_post_meta( $object_id, $key, true );
+
+            // Cleared on the source side (variation now inherits its parent,
+            // or the merchant emptied the field) -> drop the mirrored copies
+            // so the parent fallback kicks back in instead of a stale cost.
+            if ( '' === $formatted ) {
+                if ( '' !== $current ) {
+                    delete_post_meta( $object_id, $key );
+                }
+                continue;
+            }
+
+            // Compare as floats so 12.5 and 12.50 do not ping-pong, and only
+            // write on a real change (which also skips a cache bust for free).
+            if ( '' === $current || (float) $current !== (float) $formatted ) {
+                update_post_meta( $object_id, $key, $formatted );
+            }
         }
-        return;
-    }
-
-    $formatted = wc_format_decimal( $legacy );
-    if ( '' === $native || (float) $native !== (float) $formatted ) {
-        update_post_meta( $object_id, '_cogs_total_value', $formatted );
+    } finally {
+        $mirroring = false;
     }
 }
-add_action( 'added_post_meta',   'brikpanel_mirror_legacy_cogs_to_native', 10, 4 );
-add_action( 'updated_post_meta', 'brikpanel_mirror_legacy_cogs_to_native', 10, 4 );
-add_action( 'deleted_post_meta', 'brikpanel_mirror_legacy_cogs_to_native', 10, 4 );
+add_action( 'added_post_meta',   'brikpanel_mirror_cogs_meta', 10, 4 );
+add_action( 'updated_post_meta', 'brikpanel_mirror_cogs_meta', 10, 4 );
+add_action( 'deleted_post_meta', 'brikpanel_mirror_cogs_meta', 10, 4 );
 
 /**
  * The cost defined directly on ONE product or variation post — no parent
- * fallback, no additive math. WooCommerce's native `_cogs_total_value` meta
- * is the source of truth; BrikPanel's legacy `_brikpanel_cogs` covers values
- * that only ever existed on the legacy key. Reading the raw meta (instead of
- * WC_Product::get_cogs_value()) keeps this working even when the merchant
- * has switched WooCommerce's Cost of Goods Sold feature off — the data stays
- * in the database either way.
+ * fallback, no additive math. Walks brikpanel_cogs_meta_keys() in priority
+ * order (WooCommerce native, then BrikPanel's legacy key, then any detected
+ * third-party cost plugin) and returns the first value on file. Reading raw
+ * meta instead of WC_Product::get_cogs_value() keeps this working even when
+ * the merchant has switched WooCommerce's Cost of Goods Sold feature off —
+ * the data stays in the database either way.
  *
  * @param int $post_id Product or variation ID.
  * @return string Decimal string, or '' when no cost is on file.
  */
 function brikpanel_product_cogs_raw( $post_id ) {
-    $native = (string) get_post_meta( (int) $post_id, '_cogs_total_value', true );
-    if ( '' !== $native ) {
-        return $native;
+    $post_id = (int) $post_id;
+
+    foreach ( brikpanel_cogs_meta_keys() as $key ) {
+        $value = (string) get_post_meta( $post_id, $key, true );
+        if ( '' !== $value ) {
+            return $value;
+        }
     }
-    return (string) get_post_meta( (int) $post_id, '_brikpanel_cogs', true );
+
+    return '';
+}
+
+/**
+ * Write (or clear) the cost on ONE product or variation post across every
+ * known cost meta key.
+ *
+ * The live mirror already propagates a single write to the other keys, but it
+ * can only react to a write that actually happened: clearing a cost that
+ * exists ONLY in a third-party plugin's key would delete nothing on
+ * BrikPanel's own key, fire no hook, and leave the old cost in place — the
+ * field would helpfully repopulate itself on the next page load. Writing the
+ * whole set explicitly makes "cleared" mean cleared everywhere.
+ *
+ * @param int         $post_id Product or variation ID.
+ * @param string|null $value   Raw user input; '' or null clears the cost.
+ * @return string Normalised decimal actually stored ('' when cleared).
+ */
+function brikpanel_set_product_cogs_raw( $post_id, $value ) {
+    $post_id = (int) $post_id;
+    $decimal = ( null === $value || '' === $value ) ? '' : wc_format_decimal( $value );
+
+    foreach ( brikpanel_cogs_meta_keys() as $key ) {
+        if ( '' === $decimal ) {
+            delete_post_meta( $post_id, $key );
+            continue;
+        }
+        $current = (string) get_post_meta( $post_id, $key, true );
+        if ( '' === $current || (float) $current !== (float) $decimal ) {
+            update_post_meta( $post_id, $key, $decimal );
+        }
+    }
+
+    return $decimal;
+}
+
+/**
+ * Hand any cost plugin whose input is riding along in THIS submission the
+ * value the merchant actually typed into BrikPanel's Cost field.
+ *
+ * BrikPanel's editor renders WooCommerce's Product data panels inline for
+ * compatibility, so a cost plugin's own cost input is submitted with the form
+ * even though the merchant never sees or edits it — it still holds whatever it
+ * rendered with (0 on a product that had no cost in that plugin yet). The
+ * plugin's save handler then writes that stale number over the real one, and
+ * because its key is read first the cost the merchant just typed vanishes on
+ * the next page load.
+ *
+ * Correcting `$_POST` rather than racing the write means the plugin persists
+ * the right number through its OWN pipeline, so its derived fields (profit,
+ * margin) come out right too. Only inputs actually present in the submission
+ * are touched: injecting a key that was never posted would make a plugin save
+ * a cost the merchant did not ask it to.
+ *
+ * Variations work the same way, one level deeper: the plugin reads
+ * `$_POST['<field>'][$loop]`, so pass the loop index the editor is about to
+ * hand `woocommerce_save_product_variation`.
+ *
+ * @param string   $decimal    Normalised cost ('' when the merchant cleared it).
+ * @param int|null $loop_index Variation loop index, or null for the parent/simple product.
+ */
+function brikpanel_cogs_sync_posted_third_party_inputs( $decimal, $loop_index = null ) {
+    foreach ( brikpanel_cogs_third_party_sources() as $source ) {
+        if ( empty( $source['active'] ) ) {
+            continue;
+        }
+
+        if ( null === $loop_index ) {
+            $key = ! empty( $source['post_key'] ) ? $source['post_key'] : '';
+            if ( '' === $key || ! isset( $_POST[ $key ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+                continue;
+            }
+            $_POST[ $key ] = $decimal; // phpcs:ignore WordPress.Security.NonceVerification
+            continue;
+        }
+
+        $key = ! empty( $source['variation_post_key'] ) ? $source['variation_post_key'] : '';
+        if ( '' === $key || ! isset( $_POST[ $key ][ $loop_index ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+            continue;
+        }
+        $_POST[ $key ][ $loop_index ] = $decimal; // phpcs:ignore WordPress.Security.NonceVerification
+    }
 }
 
 /**
@@ -222,11 +484,12 @@ function brikpanel_product_cogs_raw( $post_id ) {
  * cost added on top of the parent's when `_cogs_value_is_additive` is yes).
  *
  * This is the single integration point for cost: the result runs through the
- * `brikpanel_product_cogs` filter, so a store that keeps cost in another
- * plugin's field can point every BrikPanel per-product read at it from one
- * hook. (The dashboard profit aggregates read the same two meta keys in SQL
- * for performance, so a filter-based override only affects per-product
- * surfaces; writing `_cogs_total_value` covers everything.)
+ * `brikpanel_product_cogs` filter, so a store that computes cost rather than
+ * storing it can point every BrikPanel per-product read at its own logic from
+ * one hook. (The dashboard aggregates resolve cost in SQL for performance, so
+ * this filter only reaches per-product surfaces — to move EVERY surface,
+ * including the aggregates, add the meta key to `brikpanel_cogs_meta_keys`
+ * instead.)
  *
  * @param int $product_id   Parent (or simple) product ID.
  * @param int $variation_id Variation ID, 0 for simple products.

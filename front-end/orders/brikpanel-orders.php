@@ -509,10 +509,17 @@ function brikpanel_settings_fields() {
             ],
         ],
         [
+            'name'    => __('Category tree view', 'brikpanel'),
+            'id'      => 'brikpanel_category_tree',
+            'type'    => 'checkbox',
+            'desc'    => __('Show product categories as a folder tree: click a parent to expand or collapse its sub-categories, drag a category onto another to nest it, and filter the whole tree as you type. Up to 300 categories the full hierarchy is kept on a single page, so a branch is never split across pagination; a larger catalogue keeps paging and still gets the tree.', 'brikpanel'),
+            'default' => 'yes',
+        ],
+        [
             'name'              => __('Categories per page', 'brikpanel'),
             'id'                => 'brikpanel_categories_per_page',
             'type'              => 'number',
-            'desc'              => __('Number of categories to display per page', 'brikpanel'),
+            'desc'              => __('Number of categories to display per page. Ignored while the category tree view is on, because the whole tree is shown at once.', 'brikpanel'),
             'default'           => '20',
             'css'               => 'width: 80px;',
             'custom_attributes' => [
@@ -1086,7 +1093,7 @@ function brikpanel_settings_build_search_index() {
 /**
  * Render a single sub-nav link for one section: icon + label + optional
  * badge (modules register badges via the `brikpanel_settings_nav_badges`
- * filter, e.g. "Beta" on Integrations).
+ * filter, e.g. "New" on a section).
  */
 function brikpanel_settings_render_section_link( $id, $label, $current_section, $badges = [] ) {
     $url     = admin_url( 'admin.php?page=wc-settings&tab=brikpanel' . ( $id !== '' ? '&section=' . sanitize_title( $id ) : '' ) );

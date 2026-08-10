@@ -56,6 +56,11 @@ class Brikpanel_Sheets_Products_Sync {
 	const OPT_LAST_PULL     = 'brikpanel_gs_products_last_pull';
 	const OPT_PUSH_QUEUE    = 'brikpanel_gs_products_push_queue';   // {product_id => 1} pending push
 	const OPT_CATEGORIES    = 'brikpanel_gs_products_categories';   // int[] product_cat term IDs; [] = sync everything
+	const OPT_REBUILD       = 'brikpanel_gs_products_rebuild';      // { offset:int, ts:int } in-flight full rebuild cursor
+
+	/** A rebuild cursor older than this is treated as abandoned, so the next
+	 *  "Sync now" starts a clean rebuild instead of resuming a dead run. */
+	const REBUILD_STATE_TTL = 900;
 
 	const BATCH_SIZE        = 250;
 	const PUSH_DEBOUNCE_SEC = 5;
@@ -164,6 +169,99 @@ class Brikpanel_Sheets_Products_Sync {
 			return false;
 		}
 		return (bool) array_intersect( $match_ids, array_map( 'intval', $terms ) );
+	}
+
+	/**
+	 * Cursor of a full rebuild that is still draining, or null when no
+	 * rebuild is in flight.
+	 *
+	 * A rebuild wipes the target tab and re-appends the whole catalogue one
+	 * batch at a time. Those batches are spread over several short requests
+	 * (the browser asks for the next one) and, as a fallback, over background
+	 * jobs. Both paths need to know where the previous batch stopped:
+	 * without that, every pass would wipe the tab and re-push the same first
+	 * batch forever.
+	 *
+	 * The cursor also records WHICH spreadsheet and tab it was paging into. A
+	 * cursor is only ever resumed against that same destination: disconnecting
+	 * Google, picking a different spreadsheet or renaming the target tab all
+	 * point it at a sheet whose contents it never wrote, where resuming would
+	 * skip every product before the stored offset.
+	 *
+	 * @return array{offset:int, ts:int}|null
+	 */
+	public static function rebuild_state() {
+		$state = get_option( self::OPT_REBUILD, null );
+		if ( ! is_array( $state ) || ! isset( $state['offset'], $state['ts'] ) ) {
+			return null;
+		}
+		if ( ( time() - (int) $state['ts'] ) > self::REBUILD_STATE_TTL ) {
+			// Abandoned run (tab closed, worker died). Forget it so the next
+			// manual sync rebuilds from scratch rather than resuming into a
+			// tab whose contents we can no longer reason about.
+			delete_option( self::OPT_REBUILD );
+			return null;
+		}
+		$target = self::resolve_active_target();
+		if ( ! $target
+			|| ! Brikpanel_Sheets_Tokens::is_connected()
+			|| (string) ( $state['sheet'] ?? '' ) !== (string) $target['spreadsheet_id']
+			|| (string) ( $state['tab'] ?? '' ) !== (string) $target['tab'] ) {
+			delete_option( self::OPT_REBUILD );
+			return null;
+		}
+		return [ 'offset' => (int) $state['offset'], 'ts' => (int) $state['ts'] ];
+	}
+
+	private static function set_rebuild_state( $offset ) {
+		$target = self::resolve_active_target();
+		update_option( self::OPT_REBUILD, [
+			'offset' => max( 0, (int) $offset ),
+			'ts'     => time(),
+			'sheet'  => $target ? (string) $target['spreadsheet_id'] : '',
+			'tab'    => $target ? (string) $target['tab'] : '',
+		], false );
+	}
+
+	private static function clear_rebuild_state() {
+		delete_option( self::OPT_REBUILD );
+	}
+
+	/**
+	 * Retire the rebuild cursor once the whole catalogue is in the tab.
+	 *
+	 * Product edits that happened while the rebuild was running were parked in
+	 * the push queue rather than written into a half-built tab, so hand them to
+	 * a normal push now. Without this they would sit in the queue until the
+	 * merchant happened to edit another product, and the sheet would show a
+	 * stale value for exactly the item they had just changed.
+	 */
+	private static function finish_rebuild() {
+		self::clear_rebuild_state();
+		$queue = (array) get_option( self::OPT_PUSH_QUEUE, [] );
+		if ( ! empty( $queue ) && class_exists( 'Brikpanel_Cron' ) ) {
+			Brikpanel_Cron::enqueue_async( self::HOOK_PUSH_FLUSH, [], [ 'unique' => false ] );
+		}
+	}
+
+	/**
+	 * Give up on a rebuild that is still draining, and stop its paging jobs.
+	 *
+	 * Called when something the rebuild depends on changes underneath it (the
+	 * category filter, the column layout, a manual reset). Resuming after such
+	 * a change would fill the rest of the tab with rows built to different
+	 * rules than the ones already in it, so the next "Sync now" has to start
+	 * from a clean tab instead.
+	 */
+	public static function abandon_rebuild() {
+		if ( self::rebuild_state() === null ) {
+			return;
+		}
+		self::clear_rebuild_state();
+		if ( class_exists( 'Brikpanel_Cron' ) && Brikpanel_Cron::is_available() ) {
+			Brikpanel_Cron::cancel( self::HOOK_PUSH_FLUSH );
+		}
+		Brikpanel_Sheets_Logger::log( 'products', 'Settings changed mid-rebuild, the paging cursor was dropped so the next sync rebuilds the tab from scratch.' );
 	}
 
 	public static function resolve_active_target() {
@@ -302,9 +400,22 @@ class Brikpanel_Sheets_Products_Sync {
 			return $empty;
 		}
 
+		// A rebuild takes the lock before it wipes the tab and hands it to us
+		// still held, so no other push can slip rows into the tab between the
+		// wipe and the first append. Re-taking it here would be wrong twice
+		// over: we would refuse our own caller, and the inner release would
+		// free the lock while the rebuild is still writing.
+		if ( ! empty( $args['_lock_held'] ) ) {
+			return $this->push_locked( (array) $args, $config, $empty );
+		}
+
 		if ( get_transient( self::PUSH_LOCK ) ) {
-			Brikpanel_Sheets_Logger::log( 'products', 'Skipping push — another push is in progress.' );
-			return $empty;
+			Brikpanel_Sheets_Logger::log( 'products', 'Skipping push, another push is in progress.' );
+			// Flagged, not silently empty: an interactive drain must be able to
+			// tell "the catalogue is fully synced" apart from "someone else is
+			// holding the lock", or it would stop paging half-way through a
+			// rebuild and report success.
+			return $empty + [ 'locked' => true ];
 		}
 		set_transient( self::PUSH_LOCK, time(), self::LOCK_TTL );
 
@@ -315,7 +426,55 @@ class Brikpanel_Sheets_Products_Sync {
 		}
 	}
 
+	/**
+	 * Claim the next slice of a rebuild and push it.
+	 *
+	 * The offset a rebuild batch works on is taken from the shared cursor
+	 * HERE, inside the push lock, and reserved before any work starts. Two
+	 * runners can legitimately be alive at once (the browser drives the
+	 * interactive drain while a background paging job is still winding down),
+	 * and if both had trusted the offset in their own arguments they would
+	 * append the SAME slice twice, and the sheet then holds duplicate rows for
+	 * every product in it. Claiming under the lock makes that impossible:
+	 * whoever gets the lock second sees the advanced cursor.
+	 */
 	private function push_locked( array $args, array $config, array $empty ) {
+		if ( empty( $args['rebuild'] ) ) {
+			if ( empty( $args['force_all'] ) && self::rebuild_state() !== null ) {
+				// A full rebuild is re-appending the whole catalogue right now,
+				// and the tab is only half built. Pushing a queued product on
+				// top of that would reconcile against an incomplete sheet, not
+				// find the product, and append a row the rebuild is about to
+				// append again. Leave it in the queue: the rebuild drains it
+				// once the tab is whole.
+				return $empty + [ 'deferred' => true ];
+			}
+			return $this->push_slice( $args, $config, $empty );
+		}
+
+		$state = self::rebuild_state();
+		if ( $state === null ) {
+			// The rebuild this batch belongs to already finished (or was
+			// abandoned). Pushing its slice now would append rows a completed
+			// rebuild has already written.
+			return $empty;
+		}
+
+		$offset         = (int) $state['offset'];
+		$args['offset'] = $offset;
+		self::set_rebuild_state( $offset + self::BATCH_SIZE );
+
+		try {
+			return $this->push_slice( $args, $config, $empty );
+		} catch ( \Throwable $e ) {
+			// Hand the slice back so the retry re-pushes it instead of
+			// silently skipping a page of the catalogue.
+			self::set_rebuild_state( $offset );
+			throw $e;
+		}
+	}
+
+	private function push_slice( array $args, array $config, array $empty ) {
 		$client  = new Brikpanel_Sheets_Client();
 		$columns = Brikpanel_Sheets_Mapping::get_columns( 'products' );
 		$headers = Brikpanel_Sheets_Mapping::headers_for( 'products', $columns );
@@ -347,6 +506,12 @@ class Brikpanel_Sheets_Products_Sync {
 		}
 
 		if ( empty( $ids ) ) {
+			// Nothing left to page through: the rebuild is finished (or the
+			// catalogue is empty). Retire the cursor so the next "Sync now"
+			// starts a fresh rebuild instead of resuming past the end.
+			if ( $rebuild ) {
+				self::finish_rebuild();
+			}
 			return $empty;
 		}
 
@@ -496,15 +661,40 @@ class Brikpanel_Sheets_Products_Sync {
 			$more = ! empty( $queue );
 		} else {
 			$more = count( $ids ) >= self::BATCH_SIZE;
+
+			// Record where the next slice starts so the interactive "Sync now"
+			// passes (and any background continuation) resume instead of
+			// restarting the rebuild from the top.
+			if ( $rebuild ) {
+				if ( $more ) {
+					self::set_rebuild_state( $offset + self::BATCH_SIZE );
+				} else {
+					self::finish_rebuild();
+				}
+			}
+
 			// Chain the next slice ourselves so a catalogue larger than one batch
 			// keeps draining instead of stalling after the first page. The offset
 			// advances by a full batch; the rebuild flag rides along so every
 			// page stays append-only and contiguous.
-			if ( $more && class_exists( 'Brikpanel_Cron' ) ) {
+			//
+			// The interactive path drives its own continuation from the browser
+			// and passes defer=false, so a background job cannot race it for the
+			// push lock and write the same slice twice.
+			$defer = ! isset( $args['defer'] ) || ! empty( $args['defer'] );
+			if ( $more && $defer && class_exists( 'Brikpanel_Cron' ) ) {
+				// NOT unique. Action Scheduler's uniqueness test matches on
+				// hook + group only, it ignores args, and it counts the
+				// currently in-progress action. A unique enqueue from inside a
+				// running batch therefore always lost to the batch itself and
+				// the chain died after one page, which is what capped a large
+				// catalogue at a single batch of rows. Runaway is not a risk
+				// here: each run enqueues at most one successor and the offset
+				// strictly increases until a short page ends the chain.
 				Brikpanel_Cron::enqueue_async(
 					self::HOOK_PUSH_FLUSH,
 					[ 'force_all' => true, 'rebuild' => $rebuild, 'offset' => $offset + self::BATCH_SIZE ],
-					[ 'unique' => true ]
+					[ 'unique' => false ]
 				);
 			}
 		}
@@ -592,22 +782,83 @@ class Brikpanel_Sheets_Products_Sync {
 		$args = (array) $args;
 		$args['force_all'] = true;
 
+		$can_rebuild = self::is_enabled()
+			&& Brikpanel_Sheets_Tokens::is_connected()
+			&& self::resolve_active_target();
+
+		if ( ! $can_rebuild ) {
+			return $this->handle_push( $args );
+		}
+
+		// A rebuild that is still draining must be RESUMED, never restarted.
+		// "Sync now" runs in short passes (the browser asks for the next one),
+		// and each pass lands here. Wiping the tab on every pass would throw
+		// away the rows the previous pass just wrote and the sync could never
+		// get past its first batch.
+		$state = self::rebuild_state();
+		if ( $state !== null ) {
+			$args['rebuild'] = true;
+			$args['offset']  = (int) $state['offset'];
+			return $this->handle_push( $args );
+		}
+
+		// Never wipe a tab we are not going to refill. Another push holding the
+		// lock (a background batch, or a stale lock left by a request that was
+		// killed mid-flight) used to be discovered only AFTER the clear: the
+		// merchant was left with an empty sheet and a "0 rows" message, and
+		// every retry inside the lock window wiped it again. Check first, then
+		// HOLD the lock across the wipe and the first slice. Checking without
+		// holding left a window between the wipe and the first append in which
+		// a queued event-driven push could reconcile against the empty tab and
+		// append rows the rebuild was about to append again, so the sheet came
+		// out with every product listed twice.
+		if ( get_transient( self::PUSH_LOCK ) ) {
+			return [ 'appended' => 0, 'updated' => 0, 'more' => true, 'locked' => true ];
+		}
+		set_transient( self::PUSH_LOCK, time(), self::LOCK_TTL );
+
+		try {
+			return $this->start_rebuild( $args );
+		} finally {
+			delete_transient( self::PUSH_LOCK );
+		}
+	}
+
+	/**
+	 * Wipe the target tab and push the first slice of a fresh rebuild.
+	 * Runs with the push lock already held by handle_push_bulk().
+	 *
+	 * @param array $args
+	 * @return array
+	 */
+	private function start_rebuild( array $args ) {
+		// Drop any paging job left over from an earlier run so it cannot append
+		// its old offset into the tab we are about to rebuild.
+		if ( class_exists( 'Brikpanel_Cron' ) ) {
+			Brikpanel_Cron::cancel( self::HOOK_PUSH_FLUSH );
+		}
+
 		// "Sync now" is a full rebuild. Wipe the target tab and forget every
 		// stored row number first, so the push re-appends each product into a
 		// clean, contiguous sheet that reflects the current category filter and
 		// column choice exactly. Without this, products keep the absolute rows
 		// they were given on an earlier (wider) sync, leaving large empty gaps
-		// once the synced set shrinks. Guarded so we never wipe a tab we are not
-		// actually going to repopulate.
-		if ( self::is_enabled() && Brikpanel_Sheets_Tokens::is_connected() && self::resolve_active_target() ) {
-			Brikpanel_Sheets_Settings::clear_products_target_tab();
-			self::clear_row_tracking_meta();
-			delete_option( self::OPT_PUSH_QUEUE );
-			$args['rebuild'] = true;
-			$args['offset']  = 0;
+		// once the synced set shrinks.
+		if ( ! Brikpanel_Sheets_Settings::clear_products_target_tab() ) {
+			// The wipe failed (rate limit, connection). Appending now would
+			// duplicate every row that is still sitting in the tab, so stop.
+			return [ 'appended' => 0, 'updated' => 0, 'more' => false, 'clear_failed' => true ];
 		}
+		self::clear_row_tracking_meta();
+		delete_option( self::OPT_PUSH_QUEUE );
+		$args['rebuild'] = true;
+		$args['offset']  = 0;
+		self::set_rebuild_state( 0 );
 
-		// handle_push() chains its own continuation batches via Action Scheduler.
+		// handle_push() chains its own continuation batches via Action Scheduler
+		// unless the caller drives the paging itself (defer=false). The lock is
+		// ours and stays ours until handle_push_bulk() releases it.
+		$args['_lock_held'] = true;
 		return $this->handle_push( $args );
 	}
 
@@ -945,12 +1196,26 @@ class Brikpanel_Sheets_Products_Sync {
 						}
 
 						if ( ! $skip ) {
-							// Mirror both stores BrikPanel writes everywhere else:
-							// WC-native COGS (when present) and the _brikpanel_cogs meta.
+							// Write the WHOLE cost-key set, exactly like the editor
+							// and Quick Edit do. Writing only BrikPanel's own key
+							// would be silently ignored on a store running a cost
+							// plugin: that plugin's key is read first, so the sheet
+							// edit would appear to save and change nothing.
 							if ( method_exists( $product, 'set_cogs_value' ) ) {
 								$product->set_cogs_value( $store !== '' ? $store : null );
 							}
-							$product->update_meta_data( '_brikpanel_cogs', $store );
+							foreach ( brikpanel_cogs_meta_keys() as $cogs_key ) {
+								// `_cogs_total_value` is a WC_Product PROP, not plain
+								// meta: pushing it through the generic meta API trips
+								// WooCommerce's "doing it wrong" notice on every pulled
+								// row. set_cogs_value() above owns it, and the legacy-key
+								// mirror covers the case where WC's COGS feature flag
+								// makes that setter a no-op.
+								if ( '_cogs_total_value' === $cogs_key ) {
+									continue;
+								}
+								$product->update_meta_data( $cogs_key, $store );
+							}
 							$setter_dirty = true;
 						}
 					}
@@ -1288,6 +1553,11 @@ class Brikpanel_Sheets_Products_Sync {
 		delete_option( self::OPT_LAST_PUSH );
 		delete_option( self::OPT_LAST_PULL );
 		delete_option( self::OPT_PUSH_QUEUE );
+		// The tab this cursor was paging into has just been wiped, so it now
+		// points into empty space. Leaving it would make the next "Sync now"
+		// resume from the middle of a rebuild that no longer exists, skipping
+		// every product before that offset.
+		delete_option( self::OPT_REBUILD );
 		delete_transient( self::PUSH_LOCK );
 		delete_transient( self::PULL_LOCK );
 		Brikpanel_Sheets_Logger::log( 'products', 'Product sync state reset.' );

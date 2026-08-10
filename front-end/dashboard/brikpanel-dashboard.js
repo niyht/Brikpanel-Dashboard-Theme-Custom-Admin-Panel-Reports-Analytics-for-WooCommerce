@@ -14,10 +14,13 @@
     const CFG = window.brikpanelDashboard || {};
     const i18n = CFG.i18n || {};
 
-    // State
-    let currentRange = 'today';
-    let customStartDate = '';
-    let customEndDate = '';
+    // State. The range is seeded from the user's remembered selection (see
+    // Brikpanel_Dashboard::get_range_preference) so a refresh, or leaving the
+    // dashboard and coming back, resumes the period the user actually picked
+    // rather than resetting to "Today". Server-validated; 'today' when unset.
+    let currentRange = CFG.saved_range || 'today';
+    let customStartDate = CFG.saved_start || '';
+    let customEndDate = CFG.saved_end || '';
     let salesChart = null;
     let funnelChart = null;
     let ratesChart = null;
@@ -203,6 +206,13 @@
                 fetchDashboardData();
             }
         });
+
+        // Restore a remembered custom range into the field so it reads the same
+        // as when it was picked. `false` = do not fire onChange, this is state
+        // restoration, not a new selection.
+        if (currentRange === 'custom' && customStartDate && customEndDate) {
+            datepickerInstance.setDate([customStartDate, customEndDate], false);
+        }
     }
 
     // =========================================================================

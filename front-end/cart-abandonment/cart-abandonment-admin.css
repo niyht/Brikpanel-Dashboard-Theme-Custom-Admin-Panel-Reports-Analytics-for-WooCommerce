@@ -341,6 +341,59 @@
 	color: #616161;
 }
 
+/* Phone + WhatsApp (BrikMentor only) */
+.brikpanel-cartab-phone-cell {
+	white-space: nowrap;
+}
+
+.brikpanel-cartab-phone {
+	font-variant-numeric: tabular-nums;
+}
+
+.brikpanel-cartab-wa {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	margin-inline-start: 0.5rem;
+	vertical-align: middle;
+	border-radius: 0.375rem;
+	color: #616161;
+	text-decoration: none;
+	transition: color 0.15s ease, background 0.15s ease;
+}
+
+.brikpanel-cartab-wa svg {
+	width: 1rem;
+	height: 1rem;
+	display: block;
+}
+
+.brikpanel-cartab-wa:hover,
+.brikpanel-cartab-wa:focus {
+	/* The one place brand colour earns its keep: the icon is only recognisable
+	   as WhatsApp in WhatsApp green, and it stays grey until pointed at. */
+	color: #25d366;
+	background: #f7f7f7;
+}
+
+/* Follow-up count (BrikMentor only) */
+.brikpanel-cartab-mail-cell {
+	white-space: nowrap;
+}
+
+.brikpanel-cartab-mail-count {
+	display: block;
+	font-weight: 550;
+}
+
+.brikpanel-cartab-mail-note {
+	display: block;
+	font-size: 0.8125rem;
+	color: #616161;
+}
+
 /* Badges */
 .brikpanel-cartab-badge {
 	display: inline-block;

@@ -260,25 +260,138 @@ function brikpanel_ip_in_cidr( $ip, $cidr ) {
 }
 
 /**
+ * Whether the current request is a speculative fetch rather than a person
+ * opening the page.
+ *
+ * Browsers and link-preload plugins request URLs ahead of the click so the
+ * next navigation feels instant. Nobody is looking at the result, and for a
+ * WooCommerce store it is worse than a wasted hit: the archive templates
+ * render "Add to cart" as plain `?add-to-cart=123` links, and WooCommerce
+ * fills the cart for real when a preloader follows one. Left uncounted for,
+ * a single preloader walking a category page produces one add-to-cart per
+ * product listed on it, which is how a handful of products end up with
+ * near-identical cart totals that outrank their own page views.
+ *
+ * Covers every mechanism in current use: the Speculation Rules API and
+ * Chrome/Safari link prefetch (`Sec-Purpose`), the older Chrome/Edge and
+ * preload-plugin convention (`Purpose` / `X-Purpose`), and Firefox
+ * (`X-Moz: prefetch`).
+ *
+ * IMPORTANT — only ever use this to decide whether to RECORD something, never
+ * to decide whether to PRINT something. A prefetched response is not thrown
+ * away: the browser serves that exact HTML when the visitor then clicks the
+ * link, and a page cache may store it for everyone who follows. Markup left
+ * out here disappears from the page the visitor actually sees, which would
+ * turn "do not count prefetches" into "stop counting altogether". Callers that
+ * emit markup ask brikpanel_is_bot_request( false ) instead.
+ *
+ * @return bool True when the request was issued speculatively.
+ */
+function brikpanel_is_speculative_request() {
+    static $speculative = null;
+    if ( null !== $speculative ) {
+        return $speculative;
+    }
+
+    $speculative = false;
+
+    foreach ( [ 'HTTP_SEC_PURPOSE', 'HTTP_PURPOSE', 'HTTP_X_PURPOSE', 'HTTP_X_MOZ' ] as $header ) {
+        if ( ! isset( $_SERVER[ $header ] ) ) {
+            continue;
+        }
+        $value = strtolower( (string) $_SERVER[ $header ] );
+        if ( false !== strpos( $value, 'prefetch' )
+            || false !== strpos( $value, 'prerender' )
+            || false !== strpos( $value, 'preview' ) ) {
+            $speculative = true;
+            break;
+        }
+    }
+
+    return $speculative;
+}
+
+/**
  * Whether the current request should be excluded from storefront analytics.
  *
  * Decided once per request and cached in a static, because the same request
  * can hit several counters (a page view plus a product view plus a live
  * ping) and re-running the token scan for each is pure waste.
  *
+ * @param bool $count_speculative_as_bot Whether a prefetch/prerender counts as
+ *        a bot. True (the default) is right for anything that RECORDS. Callers
+ *        that decide whether to EMIT markup must pass false — see the warning
+ *        on brikpanel_is_speculative_request().
  * @return bool True when the request is automated traffic or an excluded IP.
  */
-function brikpanel_is_bot_request() {
-    static $decision = null;
-    if ( null !== $decision ) {
-        return $decision;
+function brikpanel_is_bot_request( $count_speculative_as_bot = true ) {
+    // One slot per question, because the two answers genuinely differ and each
+    // is asked several times per request. The scan itself runs only once: the
+    // speculation overlay is applied on top of the cached scan result below.
+    static $decisions = [];
+    static $scan      = null;
+
+    $slot = $count_speculative_as_bot ? 'with_speculative' : 'without_speculative';
+    if ( isset( $decisions[ $slot ] ) ) {
+        return $decisions[ $slot ];
     }
 
-    $ua = isset( $_SERVER['HTTP_USER_AGENT'] ) ? strtolower( (string) $_SERVER['HTTP_USER_AGENT'] ) : '';
+    if ( null !== $scan ) {
+        $ua     = $scan['ua'];
+        $is_bot = $scan['is_bot'];
+    } else {
+        $ua = isset( $_SERVER['HTTP_USER_AGENT'] ) ? strtolower( (string) $_SERVER['HTTP_USER_AGENT'] ) : '';
 
-    // No user agent at all: never a real browser.
-    $is_bot = ( '' === trim( $ua ) );
+        // No user agent at all: never a real browser.
+        $is_bot = ( '' === trim( $ua ) );
 
+        $is_bot = brikpanel_scan_request_for_bot( $ua, $is_bot );
+        $scan   = [ 'ua' => $ua, 'is_bot' => $is_bot ];
+    }
+
+    // A speculative fetch carries a perfectly ordinary browser user agent, so
+    // it has to be caught by intent rather than by name. The device allowlist
+    // inside the scan deliberately does not rescue it: the merchant allowlists
+    // devices they browse from, not requests nobody made.
+    if ( ! $is_bot && $count_speculative_as_bot && brikpanel_is_speculative_request() ) {
+        $is_bot = true;
+    }
+
+    /**
+     * Filter the final bot decision for the current request.
+     *
+     * @param bool   $is_bot Whether BrikPanel will skip analytics for this request.
+     * @param string $ua     Lower-cased user agent (empty when not sent).
+     * @param bool   $count_speculative_as_bot Which of the two questions is being
+     *        asked — see the function docblock.
+     */
+    // Publish the unfiltered answer before running the filter, so a callback
+    // that asks this function again (directly, or via any tracker it touches)
+    // gets that answer instead of recursing forever.
+    $decisions[ $slot ] = $is_bot;
+
+    $decisions[ $slot ] = (bool) apply_filters(
+        'brikpanel_is_bot_request',
+        $is_bot,
+        $ua,
+        $count_speculative_as_bot
+    );
+
+    return $decisions[ $slot ];
+}
+
+/**
+ * The speculation-independent half of the bot decision: user agent tokens,
+ * the merchant's device allowlist and their excluded IP rules.
+ *
+ * Split out so it runs at most once per request even when both variants of
+ * brikpanel_is_bot_request() are asked.
+ *
+ * @param string $ua     Lower-cased user agent.
+ * @param bool   $is_bot Decision so far.
+ * @return bool
+ */
+function brikpanel_scan_request_for_bot( $ua, $is_bot ) {
     // An allowlisted device name exempts the request from the built-in token
     // list only. The merchant's own exclusions below still apply: someone who
     // adds their office IP means it regardless of what they browse from.
@@ -330,15 +443,7 @@ function brikpanel_is_bot_request() {
         }
     }
 
-    /**
-     * Filter the final bot decision for the current request.
-     *
-     * @param bool   $is_bot Whether BrikPanel will skip analytics for this request.
-     * @param string $ua     Lower-cased user agent (empty when not sent).
-     */
-    $decision = (bool) apply_filters( 'brikpanel_is_bot_request', $is_bot, $ua );
-
-    return $decision;
+    return $is_bot;
 }
 
 /**

@@ -161,6 +161,192 @@ class Brikpanel_ASE_Bridge {
     }
 
     /**
+     * Saved globals for each open render pass. A stack (LIFO) rather than a
+     * single slot purely as defence against nesting — the callers below never
+     * nest today.
+     */
+    private static $loop_stack = [];
+
+    /**
+     * Publishes a locally-built WP_Query as the global loop for the duration
+     * of a third-party cell-render pass, then restores every global verbatim.
+     *
+     * WP_Posts_List_Table renders inside the global loop, so column callbacks
+     * are written against it. Rank Math's Post_Columns::get_post_ids() is the
+     * canonical example: it reads `global $wp_query`->posts to bulk-prefetch
+     * every visible row's meta in ONE query. BrikPanel's lists build a LOCAL
+     * WP_Query, so that prefetch used to see an empty loop and bail out before
+     * it ever queried — every SEO cell rendered "N/A" with "Keyword: Not Set",
+     * whatever the product actually had on file.
+     *
+     * `$wp_the_query` is deliberately NOT aliased: that would make
+     * is_main_query() true for a synthetic admin query, which is exactly the
+     * signal front-end plugins use to rewrite queries and issue canonical
+     * redirects. Read-only column callbacks never need it.
+     *
+     * @param WP_Query $query The list's own query.
+     * @return bool True when the context was opened (caller must close it).
+     */
+    public static function begin_loop_context( $query ) {
+        if ( ! $query instanceof WP_Query ) {
+            return false;
+        }
+        self::$loop_stack[] = [
+            'wp_query' => [ array_key_exists( 'wp_query', $GLOBALS ), isset( $GLOBALS['wp_query'] ) ? $GLOBALS['wp_query'] : null ],
+            'posts'    => [ array_key_exists( 'posts', $GLOBALS ),    isset( $GLOBALS['posts'] ) ? $GLOBALS['posts'] : null ],
+            'post'     => [ array_key_exists( 'post', $GLOBALS ),     isset( $GLOBALS['post'] ) ? $GLOBALS['post'] : null ],
+            'per_page' => [ array_key_exists( 'per_page', $GLOBALS ), isset( $GLOBALS['per_page'] ) ? $GLOBALS['per_page'] : null ],
+        ];
+        $GLOBALS['wp_query'] = $query;
+        // Some callbacks read `global $posts` instead of the query object, and
+        // Rank Math reads `global $per_page` on its hierarchical-post branch.
+        $GLOBALS['posts']    = $query->posts;
+        $GLOBALS['per_page'] = (int) $query->get( 'posts_per_page' );
+        return true;
+    }
+
+    /**
+     * Publishes the row currently being rendered, mirroring what
+     * WP_Posts_List_Table::single_row() does before firing the column action.
+     * No-op unless a loop context is open.
+     */
+    public static function set_loop_post( $post ) {
+        if ( ! empty( self::$loop_stack ) ) {
+            $GLOBALS['post'] = $post;
+        }
+    }
+
+    /**
+     * Restores every global exactly as found, including the "was not set at
+     * all" case — assigning null where the key never existed would itself be
+     * a change.
+     */
+    public static function end_loop_context() {
+        if ( empty( self::$loop_stack ) ) {
+            return;
+        }
+        foreach ( array_pop( self::$loop_stack ) as $key => $saved ) {
+            list( $existed, $value ) = $saved;
+            if ( $existed ) {
+                $GLOBALS[ $key ] = $value;
+            } else {
+                unset( $GLOBALS[ $key ] );
+            }
+        }
+    }
+
+    /**
+     * Allowed HTML for a replayed third-party list-table cell.
+     *
+     * wp_kses_post() is the wrong tool here: `input`, `textarea`, `select`,
+     * `option` and `button` are absent from $allowedposttags, so a plugin's
+     * inline-edit field gets stripped while its Save/Cancel <a> links survive.
+     * The cell then renders half a control and lies about what it can do.
+     *
+     * This is an allowlist, not a denylist — wp_kses drops every tag and every
+     * attribute not named below, which is what keeps `on*` handlers, <script>,
+     * <style>, <iframe>, <object>, <embed> and <form> out without enumerating
+     * them. <form> stays out on purpose: a nested form inside BrikPanel's page
+     * is a CSRF and behaviour hazard, and no list cell needs one. `style` is
+     * not granted to the added tags (wp_kses_post's own tags keep their
+     * safecss_filter_attr-checked style attribute). href/src still run through
+     * wp_kses_bad_protocol, so `javascript:` remains blocked.
+     *
+     * The HTML is plugin-authored server output rather than user input, so
+     * this is defence in depth against a plugin echoing unescaped post meta.
+     *
+     * @return array
+     */
+    private static function allowed_cell_html() {
+        static $allowed = null;
+        if ( null !== $allowed ) {
+            return $allowed;
+        }
+
+        $common = [
+            'class'            => true,
+            'id'               => true,
+            'title'            => true,
+            'tabindex'         => true,
+            'hidden'           => true,
+            'dir'              => true,
+            'lang'             => true,
+            'role'             => true,
+            'aria-label'       => true,
+            'aria-labelledby'  => true,
+            'aria-describedby' => true,
+            'aria-hidden'      => true,
+            'aria-expanded'    => true,
+            'aria-live'        => true,
+            'data-*'           => true,
+        ];
+
+        $allowed = wp_kses_allowed_html( 'post' );
+
+        /**
+         * Union, never replace. Some of the tags below (button, label,
+         * textarea) already exist in $allowedposttags with the full global
+         * attribute set — style, xml:lang, the rest of the aria-* family — and
+         * assigning over them would silently NARROW what already worked. Start
+         * from whatever core allows for the tag and only add to it.
+         */
+        $extend = static function ( $tag, array $attrs ) use ( &$allowed, $common ) {
+            $existing = isset( $allowed[ $tag ] ) && is_array( $allowed[ $tag ] ) ? $allowed[ $tag ] : [];
+            $allowed[ $tag ] = $existing + $common + $attrs;
+        };
+
+        $extend( 'input', [
+            'type'         => true,
+            'name'         => true,
+            'value'        => true,
+            'placeholder'  => true,
+            'checked'      => true,
+            'disabled'     => true,
+            'readonly'     => true,
+            'maxlength'    => true,
+            'min'          => true,
+            'max'          => true,
+            'step'         => true,
+            'size'         => true,
+            'list'         => true,
+            'autocomplete' => true,
+        ] );
+        $extend( 'textarea', [
+            'name'        => true,
+            'rows'        => true,
+            'cols'        => true,
+            'placeholder' => true,
+            'disabled'    => true,
+            'readonly'    => true,
+            'maxlength'   => true,
+        ] );
+        $extend( 'select', [
+            'name'     => true,
+            'multiple' => true,
+            'size'     => true,
+            'disabled' => true,
+        ] );
+        $extend( 'option', [
+            'value'    => true,
+            'selected' => true,
+            'disabled' => true,
+        ] );
+        $extend( 'optgroup', [
+            'label'    => true,
+            'disabled' => true,
+        ] );
+        $extend( 'button', [
+            'type'     => true,
+            'name'     => true,
+            'value'    => true,
+            'disabled' => true,
+        ] );
+        $extend( 'label', [ 'for' => true ] );
+
+        return $allowed;
+    }
+
+    /**
      * Captures the HTML emitted by `manage_{post_type}_posts_custom_column`
      * (and the generic `manage_posts_custom_column`) for a single column
      * and post id. Returns sanitised HTML safe for direct insertion.
@@ -197,7 +383,7 @@ class Brikpanel_ASE_Bridge {
             return '';
         }
 
-        return wp_kses_post( $html );
+        return wp_kses( $html, self::allowed_cell_html() );
     }
 
     /**
@@ -313,14 +499,9 @@ class Brikpanel_ASE_Bridge {
         }
         $GLOBALS['typenow'] = $previous_typenow;
 
-        return wp_kses(
-            $html,
-            wp_kses_allowed_html( 'post' ) + [
-                'select' => [ 'name' => true, 'id' => true, 'class' => true, 'multiple' => true ],
-                'option' => [ 'value' => true, 'selected' => true, 'class' => true ],
-                'input'  => [ 'type' => true, 'name' => true, 'id' => true, 'class' => true, 'value' => true, 'placeholder' => true ],
-                'label'  => [ 'for' => true, 'class' => true ],
-            ]
-        );
+        // Same allowlist the replayed cells use — filter-bar handlers emit the
+        // very same form controls, and keeping one list means a tag added for
+        // one surface can never go missing on the other.
+        return wp_kses( $html, self::allowed_cell_html() );
     }
 }

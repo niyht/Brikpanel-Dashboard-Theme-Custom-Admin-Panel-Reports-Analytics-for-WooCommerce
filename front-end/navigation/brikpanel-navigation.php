@@ -11,20 +11,40 @@ if ( ! defined( 'ABSPATH' ) ) {
 // an undefined function.
 
 /**
- * The custom navigation rebuilds the admin sidebar based on each subsite's own
- * $menu / $submenu globals — those globals don't exist (and the link targets
- * don't apply) on the Network Admin or User Admin chrome. Skip the entire
- * navigation override there so super admins see the unmodified core layout.
+ * Whether the whole navigation override must stand down for this request.
+ *
+ * Three independent reasons to leave the native sidebar alone:
+ *
+ *  1. The custom navigation rebuilds the admin sidebar based on each subsite's
+ *     own $menu / $submenu globals — those globals don't exist (and the link
+ *     targets don't apply) on the Network Admin or User Admin chrome, so super
+ *     admins must see the unmodified core layout there.
+ *  2. Desktop Mode: the dock is built from the admin menu and replaces this
+ *     sidebar, and the #wpcontent left margin this nav relies on would orphan
+ *     inside a chromeless window (see includes/brikpanel-desktop-mode-compat.php).
+ *  3. The user is outside BrikPanel's back-office capability baseline. This is
+ *     the same gate brikpanel_enqueue_global_assets() uses for
+ *     brikpanel-navigation.css, and the two MUST stay in lock-step: that
+ *     stylesheet carries `#adminmenu { display: none }`, so rendering this
+ *     sidebar without it stacks an unstyled BrikPanel list on top of the native
+ *     WordPress menu. Before 3.2.37 the renderer had no capability check at all
+ *     while the stylesheet required `manage_woocommerce`, which is exactly how
+ *     custom staff roles ended up with two broken menus.
  */
 function brikpanel_navigation_skip_super_admin_chrome() {
-	// Also stand down under the Desktop Mode shell: the dock is built from
-	// the admin menu and replaces this sidebar, and the #wpcontent left
-	// margin this nav relies on would orphan inside a chromeless window
-	// (see includes/brikpanel-desktop-mode-compat.php).
 	if ( function_exists( 'brikpanel_is_desktop_mode' ) && brikpanel_is_desktop_mode() ) {
 		return true;
 	}
-	return is_network_admin() || is_user_admin();
+	if ( is_network_admin() || is_user_admin() ) {
+		return true;
+	}
+	// function_exists guard: brikpanel_require() is deliberately resilient, so a
+	// missing access-control module must degrade to the native menu rather than
+	// fatal the admin.
+	if ( function_exists( 'brikpanel_user_can_use_interface' ) && ! brikpanel_user_can_use_interface() ) {
+		return true;
+	}
+	return false;
 }
 
 // Clear only WordPress's *own* default admin footer for a cleaner look. We run
@@ -1105,6 +1125,12 @@ if (!empty($sub_item[4])) {
  * Move WooCommerce top menus to the top (for quick access to orders, reports, etc.).
  */
 function brikpanel_move_woocommerce_to_top( $menu_order ) {
+	// Same gate as the rest of the navigation override: a user who keeps the
+	// native sidebar must also keep its native ordering, otherwise BrikPanel
+	// silently reshuffles a menu it is not otherwise touching.
+	if ( brikpanel_navigation_skip_super_admin_chrome() ) {
+		return $menu_order;
+	}
 	if ( is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
 		return $menu_order;
 	}
