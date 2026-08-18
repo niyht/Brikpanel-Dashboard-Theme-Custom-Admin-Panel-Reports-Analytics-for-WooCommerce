@@ -329,6 +329,10 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'exp_saved'             => __('Expense added', 'brikpanel'),
             'exp_error'             => __('Could not save. Please try again.', 'brikpanel'),
             'exp_required'          => __('Enter an amount and a category.', 'brikpanel'),
+            /* translators: %s: name of the expense line being removed. */
+            'exp_del_aria'          => __('Remove %s', 'brikpanel'),
+            'exp_del_working'       => __('Removing…', 'brikpanel'),
+            'exp_del_error'         => __('Could not remove. Please try again.', 'brikpanel'),
             'delta_new'             => __('New', 'brikpanel'),
             'export_button'         => __('Export Excel', 'brikpanel'),
             'export_preparing'      => __('Preparing…', 'brikpanel'),
@@ -1400,6 +1404,29 @@ function brikpanel_enqueue_woo_assets($hook) {
                 brikpanel_bootstrap_acf_assets();
             }
 
+            // Rank Math ships a small bridge that folds ACF field values into
+            // its SEO analysis. It loads whenever Rank Math believes it is on a
+            // post edit screen — which, because we spoof `post.php` above, is
+            // here too — but it never declares ACF's own script as a
+            // dependency: on a real edit screen ACF is always there. With no
+            // ACF section picked we do not load ACF, so the bridge's very first
+            // call (`acf.get_fields()`) throws. That throw escapes Rank Math's
+            // content filter, aborts the whole analysis run before a single
+            // test executes, and the metabox paints "0 / 100" while the saved
+            // score in the products list stays correct.
+            //
+            // With ACF fields on screen the bridge is wanted and works (the
+            // block above loaded ACF for it). Without them it has nothing to
+            // read anyway, so dropping it costs the analysis nothing.
+            if (!$has_acf_selected
+                && wp_script_is('rank-math-acf-post-analysis', 'enqueued')
+                && !wp_script_is('acf-input', 'enqueued')
+                && !wp_script_is('acf', 'enqueued')
+            ) {
+                wp_dequeue_script('rank-math-acf-post-analysis');
+                wp_deregister_script('rank-math-acf-post-analysis');
+            }
+
             // Restore real page context so the rest of our own enqueues and
             // the normal page lifecycle are not affected.
             $current_screen = $saved_screen;
@@ -1597,7 +1624,22 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'select_image'   => __('Select image', 'brikpanel'),
                 'remove_image'   => __('Remove image', 'brikpanel'),
                 'type_enter'     => __('Type and press Enter...', 'brikpanel'),
-                'type_enter_value' => __('Press Enter to add...', 'brikpanel'),
+                'type_enter_value' => __('Press Enter to add, or paste a list separated by | or ,', 'brikpanel'),
+                'error_no_response' => __('Could not save: the server did not reply. The request may have timed out or been blocked by a firewall or security plugin. Please try again.', 'brikpanel'),
+                /* translators: 1: HTTP status the server returned, e.g. "500 Internal Server Error". 2: first readable line of the server's reply, may be empty. */
+                'error_status'   => __('Could not save. The server replied %1$s. %2$s', 'brikpanel'),
+                /* translators: %d: how many attribute values were pasted in. */
+                'values_added'   => __('%d values added', 'brikpanel'),
+                /* translators: %d: how many tags were pasted in. */
+                'tags_added'     => __('%d tags added', 'brikpanel'),
+                /* translators: %s: the value the merchant typed. */
+                'add_new_value'  => __('Add “%s”', 'brikpanel'),
+                /* translators: %d: how many attribute values are not on the product yet. */
+                'select_all_terms' => __('Select all (%d)', 'brikpanel'),
+                'clear_all_terms'  => __('Clear all', 'brikpanel'),
+                /* translators: %s: attribute name, e.g. "Any Color". */
+                'any_attribute'  => __('Any %s', 'brikpanel'),
+                'duplicate_variation' => __('Another variation already uses this combination.', 'brikpanel'),
                 'attribute_name' => __('Attribute name (e.g.: Material)', 'brikpanel'),
                 'add_attribute'  => __('Add', 'brikpanel'),
                 'category_added'   => __('Category added', 'brikpanel'),
@@ -1646,12 +1688,28 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'size'             => __('Size', 'brikpanel'),
                 'color'            => __('Color', 'brikpanel'),
                 'use_for_variations' => __('Use for variations', 'brikpanel'),
+                /* translators: per-attribute switch — whether the attribute appears in the storefront's Additional information table */
+                'show_on_product_page' => __('Show on product page', 'brikpanel'),
                 'need_variation_attr' => __('Switch on “Use for variations” for at least one attribute, then add its values.', 'brikpanel'),
                 'delete_variation' => __('Delete variation', 'brikpanel'),
                 'confirm_delete_variation' => __('Delete this variation? This change is applied when you save the product.', 'brikpanel'),
                 'variation_active' => __('Active', 'brikpanel'),
                 /* translators: %s is the attribute name, a variation slot that matches every value of it, e.g. "Any Color" */
                 'variation_any_value' => __('Any %s', 'brikpanel'),
+                'reorder_variation' => __('Drag to reorder this variation', 'brikpanel'),
+                'variations_reordered' => __('Order updated. Save the product to keep it.', 'brikpanel'),
+                'sort_choose'      => __('Choose how to sort the variations first.', 'brikpanel'),
+                /* translators: %d is the number of variations just added to the list */
+                'variations_generated_one'  => __('%d new variation added at the end of the list.', 'brikpanel'),
+                /* translators: %d is the number of variations just added to the list */
+                'variations_generated_many' => __('%d new variations added at the end of the list.', 'brikpanel'),
+                'variations_generated_none' => __('No new combinations to add — every variation already exists.', 'brikpanel'),
+                /* translators: %d is the number of variations whose combination no longer exists */
+                'variations_orphaned_one'   => __('%d variation no longer matches your attribute values. It is marked in the list and kept until you delete it.', 'brikpanel'),
+                /* translators: %d is the number of variations whose combination no longer exists */
+                'variations_orphaned_many'  => __('%d variations no longer match your attribute values. They are marked in the list and kept until you delete them.', 'brikpanel'),
+                'variation_orphan_badge' => __('Not in your attributes', 'brikpanel'),
+                'variation_orphan_title' => __('This combination is no longer among your attribute values.', 'brikpanel'),
                 'chip_remove'      => __('Remove', 'brikpanel'),
                 'more_fields'      => __('More fields', 'brikpanel'),
                 'analyze'          => __('Re-analyze', 'brikpanel'),

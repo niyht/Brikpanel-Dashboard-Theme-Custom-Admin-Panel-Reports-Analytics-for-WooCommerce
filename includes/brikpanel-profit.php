@@ -713,9 +713,13 @@ function brikpanel_profit_manual_expenses_by_category( $start_local, $end_local 
  * is deliberately no per-expense date or schedule: a percentage applies every
  * period by its nature, which is why the editor hides those fields for it.
  *
+ * The row id travels with each item so a surface that lists these costs can act
+ * on one of them: two commissions can share a title AND a rate, which makes the
+ * label useless as an identifier.
+ *
  * @param string $start_gmt Y-m-d H:i:s (UTC)
  * @param string $end_gmt   Y-m-d H:i:s (UTC)
- * @return array{total:float,items:array<int,array{title:string,rate:float,amount:float}>}
+ * @return array{total:float,items:array<int,array{id:int,title:string,rate:float,amount:float}>}
  */
 function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marketplace = null ) {
 	global $wpdb;
@@ -730,7 +734,7 @@ function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marke
 	}
 
 	$rows = $wpdb->get_results(
-		"SELECT category, amount FROM {$table} WHERE kind = 'percent' ORDER BY amount DESC"
+		"SELECT id, category, amount FROM {$table} WHERE kind = 'percent' ORDER BY amount DESC"
 	); // phpcs:ignore
 	if ( empty( $rows ) ) {
 		return $out;
@@ -761,6 +765,7 @@ function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marke
 			$title = __( 'Commission', 'brikpanel' );
 		}
 		$out['items'][] = [
+			'id'     => (int) $r->id,
 			'title'  => $title,
 			'rate'   => $rate,
 			'amount' => $amount,

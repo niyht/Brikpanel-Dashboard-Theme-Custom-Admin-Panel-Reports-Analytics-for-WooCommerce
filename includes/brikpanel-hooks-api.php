@@ -145,6 +145,20 @@ function brikpanel_get_developer_hooks() {
             'example'     => "add_filter( 'brikpanel_product_editor_boxes', function ( \$boxes, \$product_id, \$product ) {\n    \$boxes[] = [\n        'id'       => 'my-notes-card',\n        'title'    => __( 'Internal notes', 'my-plugin' ),\n        'position' => 'bottom',\n        'priority' => 20,\n        'callback' => function ( \$product_id, \$product ) {\n            \$notes = get_post_meta( \$product_id, '_my_notes', true );\n            echo '<textarea name=\"my_notes\" rows=\"4\" style=\"width:100%\">' . esc_textarea( \$notes ) . '</textarea>';\n        },\n    ];\n    return \$boxes;\n}, 10, 3 );",
         ],
         [
+            'name'        => 'brikpanel_topbar_items',
+            'type'        => 'filter',
+            'signature'   => 'apply_filters( "brikpanel_topbar_items", array $items )',
+            'description' => __( 'Register your own controls in the BrikPanel top bar. Give an item a callback (or just a label and a link) and it renders as a native top bar control. Place it with position (left/right) plus before/after a built-in item, and order it with priority. Valid before/after anchors: brand, live, search, create, notifications, hidden_notices, view_site, custom_link, user. An unrecognised anchor falls back to the default slot instead of erroring. Registered items appear in WooCommerce → Settings → BrikPanel with the same on/off switch and per-role audience rules as the built-in controls, so no extra visibility code is needed; pass \'settings\' => false to opt out of that. One registration is all you need: on screens where the BrikPanel top bar stands down (see brikpanel_topbar_is_rendering) the item is placed in the native WordPress admin bar instead, so do NOT also add your own admin_bar_menu node or it will show twice. Pass \'admin_bar\' => false if you would rather handle the native bar yourself.', 'brikpanel' ),
+            'example'     => "add_filter( 'brikpanel_topbar_items', function ( \$items ) {\n    \$items['my_plugin_status'] = [\n        'label'    => __( 'Sync status', 'my-plugin' ),\n        'position' => 'right',   // 'left' | 'right'\n        'before'   => 'user',    // or 'after' => 'search', …\n        'priority' => 15,\n        'icon'     => '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\"><circle cx=\"12\" cy=\"12\" r=\"9\"/></svg>',\n        'callback' => function ( \$item_id ) {\n            echo '<span class=\"my-plugin-topbar-badge\">' . esc_html__( 'Synced', 'my-plugin' ) . '</span>';\n        },\n    ];\n\n    // Simple shortcut form — no callback needed.\n    \$items['my_plugin_docs'] = [\n        'label' => __( 'Docs', 'my-plugin' ),\n        'href'  => 'https://example.com/docs',\n    ];\n\n    return \$items;\n} );",
+        ],
+        [
+            'name'        => 'brikpanel_topbar_is_rendering',
+            'type'        => 'filter',
+            'signature'   => 'brikpanel_topbar_is_rendering() : bool',
+            'description' => __( 'Not a hook but a public function: whether the BrikPanel top bar is the bar being drawn on this request. It answers correctly from admin_bar_menu onwards, because that hook runs once the current screen is known; an init-time check cannot tell, since the answer depends on the screen. Returns false where the top bar deliberately stands down and the native WordPress admin bar takes over: the block editor (posts, pages, widgets, navigation), the site editor, the customizer, Desktop Mode, Network and User Admin, and users without manage_woocommerce or manage_options. Also false when the store owner switched the top bar off, or turned BrikPanel off for that user. If you registered through brikpanel_topbar_items you do not need this at all, BrikPanel already moves your item to the native bar for you.', 'brikpanel' ),
+            'example'     => "// Only needed when you render into the native admin bar yourself\n// (for example a control BrikPanel's own bar should not carry).\nadd_action( 'admin_bar_menu', function ( \$wp_admin_bar ) {\n    if ( function_exists( 'brikpanel_topbar_is_rendering' ) && brikpanel_topbar_is_rendering() ) {\n        return; // BrikPanel's bar is on screen; the native bar is hidden.\n    }\n    \$wp_admin_bar->add_node( [\n        'id'     => 'my-plugin-node',\n        'parent' => 'top-secondary',\n        'title'  => esc_html__( 'My plugin', 'my-plugin' ),\n        'href'   => admin_url( 'admin.php?page=my-plugin' ),\n    ] );\n}, 100 );",
+        ],
+        [
             'name'        => 'brikpanel_editor_visible_sections',
             'type'        => 'filter',
             'signature'   => 'apply_filters( "brikpanel_editor_visible_sections", array $sections, int $product_id )',
@@ -164,6 +178,13 @@ function brikpanel_get_developer_hooks() {
             'signature'   => 'apply_filters( "brikpanel_products_columns", array $columns, int $user_id )',
             'description' => __( 'Register additional columns in the BrikPanel modern products list. Each column definition accepts an id, label, width and optional render callback.', 'brikpanel' ),
             'example'     => "add_filter( 'brikpanel_products_columns', function ( \$cols, \$user_id ) {\n    \$cols['vendor'] = [\n        'label'  => __( 'Vendor', 'my-plugin' ),\n        'width'  => 120,\n        'render' => function ( \$product ) {\n            return esc_html( get_post_meta( \$product->get_id(), '_vendor', true ) );\n        },\n    ];\n    return \$cols;\n}, 10, 2 );",
+        ],
+        [
+            'name'        => 'brikpanel_product_search_meta_keys',
+            'type'        => 'filter',
+            'signature'   => 'apply_filters( "brikpanel_product_search_meta_keys", array $keys, string $term )',
+            'description' => __( 'Meta keys the BrikPanel product list search scans in addition to the post title and content. Defaults to the WooCommerce SKU key _sku. Add a supplier code, manufacturer part number or EAN key and staff can find a product by typing it. Both a product and its variations are scanned, and a match on a variation returns the parent product, so simple and variable products behave the same. Keys that are not plain meta key names are dropped, and at most 10 keys are scanned.', 'brikpanel' ),
+            'example'     => "add_filter( 'brikpanel_product_search_meta_keys', function ( \$keys, \$term ) {\n    \$keys[] = '_manufacturer_sku';\n    return \$keys;\n}, 10, 2 );",
         ],
         [
             'name'        => 'brikpanel_bulk_batch_size',
@@ -190,8 +211,15 @@ function brikpanel_get_developer_hooks() {
             'name'        => 'brikpanel_cart_recovered',
             'type'        => 'action',
             'signature'   => 'do_action( "brikpanel_cart_recovered", array $entry, int $order_id )',
-            'description' => __( 'Fires when a captured cart converts into an order (matched by billing email or by the visitor cookie). Use it to cancel any queued follow-up emails for that address.', 'brikpanel' ),
+            'description' => __( 'Fires when a captured cart converts into a sale: the matching order (matched by billing email or by the visitor id recorded at checkout) reached a status other than pending, failed, cancelled or draft. It does NOT fire the moment the order is created, so a declined payment never counts. Use it to cancel any queued follow-up emails for that address.', 'brikpanel' ),
             'example'     => "add_action( 'brikpanel_cart_recovered', function ( \$entry, \$order_id ) {\n    my_mailer_cancel_followups( \$entry['email'] );\n}, 10, 2 );",
+        ],
+        [
+            'name'        => 'brikpanel_cart_recovery_reverted',
+            'type'        => 'action',
+            'signature'   => 'do_action( "brikpanel_cart_recovery_reverted", array $entry, int $order_id )',
+            'description' => __( 'Fires when a recovery is withdrawn because its order stopped being a sale: the payment failed on a later attempt, the order was cancelled, or it was deleted. The cart goes back to abandoned (or active) and is open for follow-up again, so this is where you re-queue the sequence you cancelled on brikpanel_cart_recovered.', 'brikpanel' ),
+            'example'     => "add_action( 'brikpanel_cart_recovery_reverted', function ( \$entry, \$order_id ) {\n    my_mailer_requeue_followups( \$entry['email'], \$entry['cart_items'] );\n}, 10, 2 );",
         ],
         [
             'name'        => 'brikpanel_cartab_get_entries',
@@ -199,6 +227,20 @@ function brikpanel_get_developer_hooks() {
             'signature'   => 'brikpanel_cartab_get_entries( array $args = [] ) : array',
             'description' => __( 'Not a hook but a public query function: fetch captured cart-abandonment entries filtered by status (active|abandoned|recovered), source (checkout|popup|account), search, date range or an updated-since timestamp. Runs the abandonment sweep first, so statuses are always current.', 'brikpanel' ),
             'example'     => "\$abandoned = brikpanel_cartab_get_entries( [\n    'status' => 'abandoned',\n    'since'  => gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS ),\n    'limit'  => 100,\n] );\nforeach ( \$abandoned as \$entry ) {\n    my_mailer_queue_abandoned_cart_email( \$entry['email'], \$entry['cart_items'] );\n}",
+        ],
+        [
+            'name'        => 'brikpanel_frontend_tracking_allowed',
+            'type'        => 'filter',
+            'signature'   => 'apply_filters( "brikpanel_frontend_tracking_allowed", bool $allowed, string $context )',
+            'description' => __( 'Decide whether BrikPanel may track the current storefront visitor. The integration point for cookie-consent platforms that do not speak the WordPress Consent API: return false to hold tracking back, true to release it, with no plugin files touched. $context tells you which surface is asking: endpoint (the tracker request), add_to_cart, checkout, or an empty string. Returning true cannot switch tracking back on when the merchant has turned Visitor tracking off entirely, and the filter runs on hot storefront hooks, so keep the callback cheap.', 'brikpanel' ),
+            'example'     => "add_filter( 'brikpanel_frontend_tracking_allowed', function ( \$allowed, \$context ) {\n    // Bridge your own consent platform into BrikPanel.\n    if ( function_exists( 'my_cmp_has_statistics_consent' ) ) {\n        return my_cmp_has_statistics_consent();\n    }\n    return \$allowed;\n}, 10, 2 );",
+        ],
+        [
+            'name'        => 'brikpanel_start_tracking()',
+            'type'        => 'filter',
+            'signature'   => 'window.brikpanel_start_tracking() / window.brikpanel_stop_tracking()',
+            'description' => __( 'Not a hook but a public JavaScript API, available on the storefront while "Wait for cookie consent" is on. Call brikpanel_start_tracking() the moment the visitor allows analytics and BrikPanel begins tracking immediately, with no page reload. Call brikpanel_stop_tracking() when consent is withdrawn: tracking stops at once and BrikPanel deletes its own cookies and browser storage for that visitor. Both are safe to call more than once. Banners that speak the WordPress Consent API (Complianz, CookieYes, Moove GDPR Cookie Compliance, WPConsent, Cookiebot, iubenda, Beautiful Cookie Consent) need neither, because BrikPanel follows their consent events on its own. Use this for the ones that do not, such as CookieAdmin, Real Cookie Banner and Termly: pair the JavaScript below with the brikpanel_frontend_tracking_allowed filter so the server-side add-to-cart and checkout counters see the same decision.', 'brikpanel' ),
+            'example'     => "// Bridge a banner that does not speak the WordPress Consent API.\n// Swap the cookie name and the button ids for your own banner's.\n\n// 1) PHP — so the server-side counters agree with the banner.\nadd_filter( 'brikpanel_frontend_tracking_allowed', function ( \$allowed ) {\n    return isset( \$_COOKIE['my_banner_cookie'] )\n        && \$_COOKIE['my_banner_cookie'] === 'accepted';\n} );\n\n// 2) JavaScript — so a click takes effect without a page reload.\ndocument.addEventListener( 'click', function ( e ) {\n    if ( e.target.closest( '#my-banner-accept' ) && window.brikpanel_start_tracking ) {\n        window.brikpanel_start_tracking();\n    }\n    if ( e.target.closest( '#my-banner-reject' ) && window.brikpanel_stop_tracking ) {\n        window.brikpanel_stop_tracking();\n    }\n}, true );",
         ],
         [
             'name'        => 'brikpanel_pe_active_seo_plugin',

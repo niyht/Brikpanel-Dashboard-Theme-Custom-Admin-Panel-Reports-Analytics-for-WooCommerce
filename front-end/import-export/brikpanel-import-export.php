@@ -194,6 +194,34 @@ function brikpanel_import_export_sanitize_value( $value, $type ) {
 		case 'textarea':
 			return is_scalar( $value ) ? sanitize_textarea_field( (string) $value ) : '';
 
+		case 'brikpanel_whatsapp_status_messages':
+			// Per-order-status WhatsApp drafts: order status slug => on/off plus
+			// the message. A nested shape, so the generic array branch below
+			// would flatten it away; rebuild it key by key instead. Unknown
+			// status slugs are kept: the target site may register them later
+			// (a custom status, a shipping plugin), and BrikPanel only ever
+			// reads the slug the order actually has.
+			if ( ! is_array( $value ) ) {
+				return [];
+			}
+			$out = [];
+			foreach ( $value as $slug => $cfg ) {
+				$slug = sanitize_key( (string) $slug );
+				if ( '' === $slug || ! is_array( $cfg ) ) {
+					continue;
+				}
+				$message = isset( $cfg['message'] ) && is_scalar( $cfg['message'] ) ? (string) $cfg['message'] : '';
+				$out[ $slug ] = [
+					'enabled' => ! empty( $cfg['enabled'] ),
+					// Same cleaner the settings screen uses, so an imported
+					// message can never carry markup a typed one could not.
+					'message' => function_exists( 'brikpanel_whatsapp_clean_message' )
+						? brikpanel_whatsapp_clean_message( $message )
+						: sanitize_textarea_field( $message ),
+				];
+			}
+			return $out;
+
 		case 'json_string':
 			// Stored as a JSON-encoded scalar in the DB. Accept either a
 			// pre-encoded string or a nested array (re-encode it).

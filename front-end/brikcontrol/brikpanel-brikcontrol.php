@@ -170,3 +170,41 @@ Brikpanel_BrikControl::instance();
 // Register Action Scheduler handlers + recurring schedule. Runs on init at
 // priority 20 so Brikpanel_Cron + WC's AS bootstrap have completed.
 add_action( 'init', [ 'Brikpanel_BrikControl_Runner', 'register' ], 20 );
+
+/**
+ * One-time repair for the kickoff pile-up that shipped before 3.2.70.
+ *
+ * Sites that bulk-toggled plugins accumulated one pending scan per plugin
+ * (21 rows on a 20-plugin store), and every one of them ran a full sweep.
+ * Fixing the enqueue path does nothing for a queue that is already full, so
+ * the leftovers are cancelled once here.
+ *
+ * Guarded by its own marker rather than brikpanel_db_version: a site that has
+ * already taken this version still needs the repair, and a version gate would
+ * silently skip exactly the site that needed it. When Action Scheduler is not
+ * ready on this request the marker is not written, so the next request retries.
+ *
+ * init:30 — after the runner registers at 20, and AS is not initialised at
+ * plugins_loaded.
+ */
+add_action( 'init', function () {
+    if ( get_option( 'brikpanel_brikcontrol_scan_pileup_cleaned' ) === '1' ) {
+        return;
+    }
+    // Mirror EVERY precondition cleanup_duplicate_scans() has, not just the
+    // as_* function check. The store classes are a separate requirement, and
+    // when they were missing the pass returned 0 having done nothing while this
+    // callback still stamped the marker — the repair was then permanently
+    // recorded as done on exactly the site that never got it.
+    if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
+        return;
+    }
+    if ( ! class_exists( 'ActionScheduler_Store' ) || ! class_exists( 'ActionScheduler' ) ) {
+        return;
+    }
+    if ( ! class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
+        return;
+    }
+    Brikpanel_BrikControl_Runner::cleanup_duplicate_scans();
+    update_option( 'brikpanel_brikcontrol_scan_pileup_cleaned', '1', true );
+}, 30 );

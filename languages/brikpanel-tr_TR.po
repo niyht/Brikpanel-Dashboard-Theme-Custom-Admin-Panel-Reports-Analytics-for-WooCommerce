@@ -41,7 +41,7 @@ msgstr "https://brksoft.com/"
 
 #: brikpanel.php:87
 msgid "BrikPanel could not load all of its files."
-msgstr ""
+msgstr "BrikPanel dosyalarının tamamını yükleyemedi."
 
 #: brikpanel.php:89
 msgid ""
@@ -50,6 +50,11 @@ msgid ""
 "plugin (deactivate, delete, then install the latest version again) to "
 "restore full functionality. Your settings and data are kept."
 msgstr ""
+"Bazı eklenti dosyaları eksik, büyük olasılıkla yarım kalmış bir güncelleme "
+"veya bir güvenlik taraması nedeniyle. BrikPanel sınırlı bir modda çalışıyor. "
+"Tüm işlevleri geri getirmek için eklentiyi yeniden kurun (devre dışı "
+"bırakın, silin, sonra en son sürümü tekrar kurun). Ayarlarınız ve "
+"verileriniz korunur."
 
 #: brikpanel.php:133
 msgid ""
@@ -88,9 +93,9 @@ msgstr "Reklam Platformları entegrasyonu"
 
 #: front-end/ad-platforms/brikpanel-ad-platforms.php:211
 msgid ""
-"Pull daily ad spend from Google Ads and Meta Ads to calculate true ROAS "
-"and Net Profit on the dashboard. Turn it off below to hide the admin page "
-"and stop all background sync jobs. Your connections stay saved."
+"Pull daily ad spend from Google Ads and Meta Ads to calculate true ROAS and "
+"Net Profit on the dashboard. Turn it off below to hide the admin page and "
+"stop all background sync jobs. Your connections stay saved."
 msgstr ""
 "Kontrol panelinde gerçek ROAS ve Net Kâr hesabı için günlük reklam "
 "harcamalarını Google Ads ve Meta Ads üzerinden çekin. Yönetim sayfasını "
@@ -519,15 +524,15 @@ msgid "Pick a primary account first."
 msgstr "Önce birincil hesabı seçin."
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:155
-#, fuzzy
 msgid "Enter an ad account ID first."
-msgstr "Önce birincil hesabı seçin."
+msgstr "Önce bir reklam hesabı kimliği girin."
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:156
 msgid "Manager"
 msgstr "Yönetici"
 
-#. translators: %1$d = chunks completed, %2$d = total chunks (each chunk is 90 days).
+#. translators: %1$d = chunks completed, %2$d = total chunks (each chunk is 90
+#. days).
 #. translators: 1: completed, 2: total chunks (90 days each)
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:158
 #: front-end/ad-platforms/views/page.php:249
@@ -654,7 +659,7 @@ msgstr "Kaydetmeden önce bir hesap seçin."
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:300
 msgid "That does not look like a valid ad account ID."
-msgstr ""
+msgstr "Bu geçerli bir reklam hesabı kimliğine benzemiyor."
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:329
 msgid ""
@@ -824,9 +829,8 @@ msgid "Save"
 msgstr "Kaydet"
 
 #: front-end/ad-platforms/views/page.php:173
-#, fuzzy
 msgid "Can’t find your account?"
-msgstr "Google hesabınızı bağlayın"
+msgstr "Hesabınızı bulamıyor musunuz?"
 
 #: front-end/ad-platforms/views/page.php:178
 msgid ""
@@ -834,12 +838,17 @@ msgid ""
 "list above. Enter its ID manually. You can find it in Meta Ads Manager, "
 "shown next to the account name."
 msgstr ""
+"Reklam hesabınız bir Business Manager'a aitse yukarıdaki listede "
+"görünmeyebilir. Kimliğini elle girin. Meta Reklam Yöneticisi'nde, hesap "
+"adının yanında bulabilirsiniz."
 
 #: front-end/ad-platforms/views/page.php:180
 msgid ""
 "Enter your Google Ads customer ID manually if it is not listed above. Digits "
 "only, no dashes. You can find it at the top-right of your Google Ads account."
 msgstr ""
+"Yukarıda listelenmiyorsa Google Ads müşteri kimliğinizi elle girin. Yalnızca "
+"rakam, tire olmadan. Google Ads hesabınızın sağ üst köşesinde bulabilirsiniz."
 
 #: front-end/ad-platforms/views/page.php:200
 msgid "Manager (MCC) account ID (optional)"
@@ -1181,7 +1190,8 @@ msgstr "Taranıyor… %1$s / %2$s ürün"
 msgid "No product images found yet."
 msgstr "Henüz ürün görseli bulunamadı."
 
-#. translators: 1: oversize percent, 2: oversize count, 3: total attachments, 4: modern format percent
+#. translators: 1: oversize percent, 2: oversize count, 3: total attachments,
+#. 4: modern format percent
 #: front-end/brikcontrol/checks/class-brikpanel-brikcontrol-image-health-check.php:573
 #, php-format
 msgid "%1$s%% oversized (%2$s of %3$s) · %4$s%% modern format"
@@ -2411,14 +2421,16 @@ msgstr ""
 #, php-format
 msgid "%d item was added to your cart from a shared link."
 msgid_plural "%d items were added to your cart from a shared link."
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "%d ürün paylaşılan bir bağlantıdan sepetinize eklendi."
+msgstr[1] "%d ürün paylaşılan bir bağlantıdan sepetinize eklendi."
 
 #: front-end/cart-share/brikpanel-cart-share.php:275
 msgid ""
 "The shared link could not add any products to your cart. They may be out of "
 "stock or no longer available."
 msgstr ""
+"Paylaşılan bağlantı sepetinize hiçbir ürün ekleyemedi. Ürünler stokta "
+"olmayabilir veya artık satışta olmayabilir."
 
 #: front-end/cart-share/brikpanel-cart-share.php:291
 #: front-end/cart-share/brikpanel-cart-share.php:301
@@ -2426,15 +2438,16 @@ msgstr ""
 #: front-end/cart-share/brikpanel-cart-share.php:573
 #: front-end/cart-share/brikpanel-cart-share.php:603
 #: front-end/cart-share/brikpanel-cart-share.php:609
-#, fuzzy
 msgid "Cart share"
-msgstr "Sepete Ekleme"
+msgstr "Sepet paylaşımı"
 
 #: front-end/cart-share/brikpanel-cart-share.php:314
 msgid ""
 "Pick the products a customer asked for, then send them one link that fills "
 "their cart."
 msgstr ""
+"Müşterinin istediği ürünleri seçin, sonra sepetini dolduran tek bir bağlantı "
+"gönderin."
 
 #: front-end/cart-share/brikpanel-cart-share.php:325
 #: front-end/coupons/brikpanel-coupons.php:333
@@ -2445,21 +2458,19 @@ msgstr "Ürünleri ada veya SKU'ya göre arayın…"
 #: front-end/cart-share/brikpanel-cart-share.php:332
 msgid "No products yet. Search above to add the items your customer requested."
 msgstr ""
+"Henüz ürün yok. Müşterinizin istediği ürünleri eklemek için yukarıdan arayın."
 
 #: front-end/cart-share/brikpanel-cart-share.php:339
-#, fuzzy
 msgid "Share link"
-msgstr "Oran"
+msgstr "Paylaşım bağlantısı"
 
 #: front-end/cart-share/brikpanel-cart-share.php:342
-#, fuzzy
 msgid "Your link appears here once you add a product."
-msgstr "Henüz öğe yok — ürün eklemek için yukarıda arayın."
+msgstr "Bir ürün eklediğinizde bağlantınız burada görünür."
 
 #: front-end/cart-share/brikpanel-cart-share.php:352
-#, fuzzy
 msgid "Share on WhatsApp"
-msgstr "WhatsApp'tan yaz"
+msgstr "WhatsApp'ta paylaş"
 
 #: front-end/cart-share/brikpanel-cart-share.php:356
 #: front-end/cart-share/brikpanel-cart-share.php:547
@@ -2477,31 +2488,31 @@ msgid ""
 "Pick a variation for every variable product so it can be included in the "
 "link."
 msgstr ""
+"Bağlantıya eklenebilmesi için her varyasyonlu üründe bir varyasyon seçin."
 
 #: front-end/cart-share/brikpanel-cart-share.php:362
 msgid ""
 "When the customer opens the link, these products land in their cart and they "
 "go straight to checkout."
 msgstr ""
+"Müşteri bağlantıyı açtığında bu ürünler sepetine eklenir ve doğrudan ödeme "
+"adımına geçer."
 
 #: front-end/cart-share/brikpanel-cart-share.php:454
-#, fuzzy
 msgid "This product has no variations."
-msgstr "Tüm ürünler / varyasyonlar"
+msgstr "Bu ürünün varyasyonu yok."
 
 #: front-end/cart-share/brikpanel-cart-share.php:541
-#, fuzzy
 msgid "Share cart"
-msgstr "Oran"
+msgstr "Sepeti paylaş"
 
 #: front-end/cart-share/brikpanel-cart-share.php:542
-#, fuzzy
 msgid "Share this cart"
-msgstr "Sepetteki değer"
+msgstr "Bu sepeti paylaş"
 
 #: front-end/cart-share/brikpanel-cart-share.php:543
 msgid "Anyone who opens this link gets these items in their cart."
-msgstr ""
+msgstr "Bu bağlantıyı açan herkesin sepetine bu ürünler eklenir."
 
 #: front-end/cart-share/brikpanel-cart-share.php:546
 #: front-end/orders/brikpanel-order-whatsapp.php:280
@@ -2511,11 +2522,11 @@ msgstr "WhatsApp"
 
 #: front-end/cart-share/brikpanel-cart-share.php:549
 msgid "Your cart is empty, so there is nothing to share yet."
-msgstr ""
+msgstr "Sepetiniz boş, henüz paylaşılacak bir şey yok."
 
 #: front-end/cart-share/brikpanel-cart-share.php:550
 msgid "Here is my cart:"
-msgstr ""
+msgstr "Sepetim:"
 
 #: front-end/cart-share/brikpanel-cart-share.php:606
 msgid ""
@@ -2523,27 +2534,36 @@ msgid ""
 "fills their cart, and let customers share their own cart from the store. "
 "Great for orders that come in over Instagram, WhatsApp or Facebook."
 msgstr ""
+"Yönetim panelinde ürünlerden bir sepet oluşturup müşteriye sepetini dolduran "
+"tek bir bağlantı verin; ayrıca müşteriler kendi sepetlerini mağazadan "
+"paylaşabilsin. Instagram, WhatsApp veya Facebook üzerinden gelen siparişler "
+"için birebir."
 
 #: front-end/cart-share/brikpanel-cart-share.php:610
 msgid "Enable shareable cart links and the admin cart builder"
 msgstr ""
+"Paylaşılabilir sepet bağlantılarını ve yönetim panelindeki sepet "
+"oluşturucuyu etkinleştir"
 
 #: front-end/cart-share/brikpanel-cart-share.php:616
-#, fuzzy
 msgid "Storefront share button"
-msgstr "Mağazayı görüntüle düğmesi"
+msgstr "Mağazadaki paylaşım düğmesi"
 
 #: front-end/cart-share/brikpanel-cart-share.php:617
 msgid ""
 "Show a \"Share cart\" button on the store cart page so customers can share "
 "their own cart"
 msgstr ""
+"Müşterilerin kendi sepetlerini paylaşabilmesi için mağaza sepet sayfasında "
+"\"Sepeti paylaş\" düğmesini göster"
 
 #: front-end/cart-share/brikpanel-cart-share.php:618
 msgid ""
 "The button appears on the cart page and copies a link that reproduces the "
 "current cart."
 msgstr ""
+"Düğme sepet sayfasında görünür ve mevcut sepeti yeniden oluşturan bir "
+"bağlantı kopyalar."
 
 #: front-end/coupons/brikpanel-coupons.php:63
 #: front-end/coupons/brikpanel-coupons.php:73
@@ -2863,7 +2883,11 @@ msgid ""
 "list, or type any email address (wildcards like *@example.com work too) and "
 "press Enter. A picked user is matched by their account email, so it works "
 "even if they check out with a different billing address."
-msgstr "Kuponu yalnızca bu müşteriler kullanabilir. Listeden kayıtlı kullanıcıları seçin veya herhangi bir e-posta adresi yazıp Enter'a basın (*@example.com gibi joker adresler de çalışır). Seçilen kullanıcı hesap e-postasıyla eşleştirilir; farklı bir fatura adresiyle ödeme yapsa bile kupon çalışır."
+msgstr ""
+"Kuponu yalnızca bu müşteriler kullanabilir. Listeden kayıtlı kullanıcıları "
+"seçin veya herhangi bir e-posta adresi yazıp Enter'a basın (*@example.com "
+"gibi joker adresler de çalışır). Seçilen kullanıcı hesap e-postasıyla "
+"eşleştirilir; farklı bir fatura adresiyle ödeme yapsa bile kupon çalışır."
 
 #: front-end/coupons/brikpanel-coupons.php:400
 msgid "Usage limits"
@@ -2963,7 +2987,7 @@ msgstr "Kupon kopyalandı!"
 
 #. translators: 1: user display name, 2: username
 #: front-end/coupons/brikpanel-coupons.php:1164
-#, fuzzy, php-format
+#, php-format
 msgctxt "user display name (username)"
 msgid "%1$s (%2$s)"
 msgstr "%1$s (%2$s)"
@@ -3496,7 +3520,7 @@ msgstr "Yeni kupon"
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:281
 #: front-end/dashboard/brikpanel-topbar-items.php:208
 msgid "Cart share link"
-msgstr ""
+msgstr "Sepet paylaşım bağlantısı"
 
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:287
 #: front-end/dashboard/brikpanel-topbar-items.php:211
@@ -4950,7 +4974,6 @@ msgid "Google Sheets integration"
 msgstr "Google Sheets entegrasyonu"
 
 #: front-end/google-sheets/brikpanel-google-sheets.php:68
-#, fuzzy
 msgid ""
 "Sync your orders, customers, and analytics straight to Google Sheets. Turn "
 "it off below to hide the admin page and stop all background sync jobs. Your "
@@ -4958,10 +4981,9 @@ msgid ""
 "everything."
 msgstr ""
 "Sipariş, müşteri ve analitiğinizi doğrudan Google Sheets'e senkronize edin. "
-"Entegrasyon şu an beta aşamasında — aşağıdan kapatarak yönetim sayfasını "
-"gizleyebilir ve arka plan senkronizasyon işlerini durdurabilirsiniz. "
-"Bağlantınız ve akış ayarlarınız kaydedilmiş kalır, tekrar açtığınızda her "
-"şey geri gelir."
+"Yönetim sayfasını gizlemek ve tüm arka plan senkronizasyon işlerini "
+"durdurmak için aşağıdan kapatın. Bağlantınız ve akış ayarlarınız kaydedilmiş "
+"kalır, tekrar açtığınızda her şey geri gelir."
 
 #: front-end/google-sheets/brikpanel-google-sheets.php:71
 msgid "Enable Google Sheets integration"
@@ -5463,18 +5485,20 @@ msgid ""
 "The server ended the request before it finished. Nothing was lost — click "
 "Sync now again to continue where it stopped."
 msgstr ""
+"Sunucu isteği tamamlanmadan sonlandırdı. Hiçbir şey kaybolmadı. Kaldığı "
+"yerden devam etmek için tekrar «Şimdi senkronize et»e tıklayın."
 
 #. translators: 1: orders synced so far, 2: sheet rows written so far.
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:274
-#, fuzzy, php-format
+#, php-format
 msgid "Synced %1$d orders (%2$d rows)…"
-msgstr "%2$d sipariş senkronize edildi (%1$d satır)."
+msgstr "%1$d sipariş senkronize edildi (%2$d satır)…"
 
 #. translators: 1: total orders synced, 2: total sheet rows written.
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:276
-#, fuzzy, php-format
+#, php-format
 msgid "Synced %1$d orders (%2$d rows)."
-msgstr "%2$d sipariş senkronize edildi (%1$d satır)."
+msgstr "%1$d sipariş senkronize edildi (%2$d satır)."
 
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:277
 #, php-format
@@ -5625,12 +5649,17 @@ msgid ""
 "connection issue). Your other settings were saved — wait a minute and try "
 "the layout switch again."
 msgstr ""
+"Satır düzeni değiştirilmedi: hedef sekme temizlenemedi (istek sınırı veya "
+"bağlantı sorunu). Diğer ayarlarınız kaydedildi. Bir dakika bekleyip düzen "
+"değişimini tekrar deneyin."
 
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:826
 msgid ""
 "Row layout changed — the target tab was wiped and all orders will re-export "
 "in the new layout. Click \"Sync now\" to fill it."
 msgstr ""
+"Satır düzeni değişti. Hedef sekme temizlendi ve tüm siparişler yeni düzende "
+"yeniden aktarılacak. Doldurmak için «Şimdi senkronize et»e tıklayın."
 
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:892
 msgid "Unknown settings group."
@@ -5712,7 +5741,8 @@ msgid_plural "Wrote %d expenses to the sheet."
 msgstr[0] "Sayfaya %d gider yazıldı."
 msgstr[1] "Sayfaya %d gider yazıldı."
 
-#. translators: 1: expenses created from the sheet, 2: expenses updated from the sheet
+#. translators: 1: expenses created from the sheet, 2: expenses updated from
+#. the sheet
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1178
 #, php-format
 msgid "Added %1$d and updated %2$d from your edits in the sheet."
@@ -5770,7 +5800,8 @@ msgstr ""
 "Önce giderler için çift yönlü senkronizasyonu açın, Kaydet'e tıklayın, sonra "
 "Şimdi çek'i kullanın."
 
-#. translators: 1: rows read, 2: expenses added, 3: expenses updated, 4: rows skipped
+#. translators: 1: rows read, 2: expenses added, 3: expenses updated, 4: rows
+#. skipped
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1283
 #, php-format
 msgid "Read %1$d rows: added %2$d, updated %3$d, skipped %4$d."
@@ -5782,8 +5813,11 @@ msgstr "%1$d satır okundu: %2$d eklendi, %3$d güncellendi, %4$d atlandı."
 msgid "%d row was changed in both places, so the BrikPanel version was kept."
 msgid_plural ""
 "%d rows were changed in both places, so the BrikPanel versions were kept."
-msgstr[0] "%d satır iki tarafta birden değiştirildiği için BrikPanel'deki hâli korundu."
-msgstr[1] "%d satır iki tarafta birden değiştirildiği için BrikPanel'deki hâlleri korundu."
+msgstr[0] ""
+"%d satır iki tarafta birden değiştirildiği için BrikPanel'deki hâli korundu."
+msgstr[1] ""
+"%d satır iki tarafta birden değiştirildiği için BrikPanel'deki hâlleri "
+"korundu."
 
 #. translators: 1: log message, 2: how many times it repeated.
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1357
@@ -5797,6 +5831,9 @@ msgid ""
 "reset was cancelled to avoid duplicate rows. Nothing was changed — wait a "
 "minute and try again."
 msgstr ""
+"Hedef sekme temizlenemedi (istek sınırı veya bağlantı sorunu), bu yüzden "
+"yinelenen satırları önlemek için sıfırlama iptal edildi. Hiçbir şey "
+"değişmedi. Bir dakika bekleyip tekrar deneyin."
 
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1415
 msgid ""
@@ -5809,7 +5846,8 @@ msgstr ""
 msgid "Two-way columns"
 msgstr "Çift yönlü sütunlar"
 
-#. translators: %s: comma-separated list of column names that sync back to the store.
+#. translators: %s: comma-separated list of column names that sync back to the
+#. store.
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1473
 #, php-format
 msgid ""
@@ -6027,21 +6065,23 @@ msgstr "Hedef sekme adı"
 
 #: front-end/google-sheets/views/page.php:203
 msgid "Row layout"
-msgstr ""
+msgstr "Satır düzeni"
 
 #: front-end/google-sheets/views/page.php:206
 msgid "One row per order (items combined in one cell)"
-msgstr ""
+msgstr "Sipariş başına bir satır (ürünler tek hücrede birleştirilir)"
 
 #: front-end/google-sheets/views/page.php:207
 msgid "One row per line item (detailed)"
-msgstr ""
+msgstr "Sipariş kalemi başına bir satır (ayrıntılı)"
 
 #: front-end/google-sheets/views/page.php:215
 msgid ""
 "Changing the layout wipes the target tab and re-exports every order in the "
 "new format, so rows from the two layouts are never mixed."
 msgstr ""
+"Düzeni değiştirmek hedef sekmeyi temizler ve her siparişi yeni biçimde "
+"yeniden aktarır, böylece iki düzenin satırları asla karışmaz."
 
 #: front-end/google-sheets/views/page.php:219
 msgid "Real-time append on new order"
@@ -6579,13 +6619,12 @@ msgid "You do not have permission to change this."
 msgstr "Bunu değiştirme izniniz yok."
 
 #: front-end/master-switch/brikpanel-master-switch.php:201
-#, fuzzy
 msgid ""
 "BrikPanel is on for your account. Switch off to use the classic WordPress "
 "admin for yourself only."
 msgstr ""
-"BrikPanel tüm mağaza için açık. Klasik WordPress yönetimini kullanmak için "
-"kapatın."
+"BrikPanel hesabınız için açık. Yalnızca kendinize klasik WordPress "
+"yönetimini kullanmak için kapatın."
 
 #: front-end/master-switch/brikpanel-master-switch.php:202
 msgid ""
@@ -6604,15 +6643,13 @@ msgid "BrikPanel off"
 msgstr "BrikPanel kapalı"
 
 #: front-end/master-switch/brikpanel-master-switch.php:250
-#, fuzzy
 msgid ""
 "Switch BrikPanel off for your account and use the classic WordPress admin"
-msgstr "BrikPanel'i kapat ve klasik WordPress yönetimini kullan"
+msgstr "BrikPanel'i hesabınız için kapat ve klasik WordPress yönetimini kullan"
 
 #: front-end/master-switch/brikpanel-master-switch.php:251
-#, fuzzy
 msgid "Switch the BrikPanel interface back on for your account"
-msgstr "BrikPanel arayüzünü tekrar aç"
+msgstr "BrikPanel arayüzünü hesabınız için tekrar aç"
 
 #: front-end/master-switch/brikpanel-master-switch.php:254
 msgid "Switch BrikPanel off and use the classic WordPress admin"
@@ -7324,11 +7361,16 @@ msgid ""
 "targeting the order's billing phone. Shown to everyone who can manage "
 "WooCommerce orders by default."
 msgstr ""
+"Bir müşteriye siparişiyle ilgili tek tıkla ulaşmanız için WhatsApp kısayolu: "
+"sipariş listesinde küçük bir WhatsApp simgesi ve sipariş düzenleme ekranında "
+"fatura adresinin altında bir «WhatsApp'tan yaz» düğmesi. Siparişin fatura "
+"telefonunu hedefleyen bir sohbet açar. Varsayılan olarak WooCommerce "
+"siparişlerini yönetebilen herkese gösterilir."
 
 #: front-end/orders/brikpanel-order-whatsapp.php:495
 #: front-end/orders/brikpanel-order-whatsapp.php:543
 msgid "WhatsApp order shortcut"
-msgstr ""
+msgstr "WhatsApp sipariş kısayolu"
 
 #: front-end/orders/brikpanel-order-whatsapp.php:498
 msgid ""
@@ -7336,11 +7378,13 @@ msgid ""
 "button on the order edit screen. Turn this off to remove both everywhere. On "
 "by default."
 msgstr ""
+"Sipariş listesinde WhatsApp simgesini ve sipariş düzenleme ekranında "
+"«WhatsApp'tan yaz» düğmesini göster. İkisini her yerden kaldırmak için bunu "
+"kapatın. Varsayılan olarak açık."
 
 #: front-end/orders/brikpanel-order-whatsapp.php:502
-#, fuzzy
 msgid "Hide WhatsApp shortcut from roles"
-msgstr "Sipariş analizlerini rollerden gizle"
+msgstr "WhatsApp kısayolunu rollerden gizle"
 
 #: front-end/orders/brikpanel-order-whatsapp.php:506
 msgid ""
@@ -7349,15 +7393,18 @@ msgid ""
 "for their own account from their WordPress profile page. Leave empty to show "
 "it to everyone who can manage WooCommerce orders."
 msgstr ""
+"Seçili rollerden birine sahip kullanıcılar WhatsApp kısayolunu artık görmez, "
+"diğer herkes görmeye devam eder. Bu şekilde gizlenen bir kullanıcı, "
+"WordPress profil sayfasından yalnızca kendi hesabı için tekrar açabilir. "
+"WooCommerce siparişlerini yönetebilen herkese göstermek için boş bırakın."
 
 #: front-end/orders/brikpanel-order-whatsapp.php:546
-#, fuzzy
 msgid "WhatsApp shortcut"
-msgstr "WhatsApp"
+msgstr "WhatsApp kısayolu"
 
 #: front-end/orders/brikpanel-order-whatsapp.php:550
 msgid "Show the WhatsApp order shortcut for my account"
-msgstr ""
+msgstr "WhatsApp sipariş kısayolunu hesabım için göster"
 
 #: front-end/orders/brikpanel-order-whatsapp.php:552
 msgid ""
@@ -7365,6 +7412,9 @@ msgid ""
 "WhatsApp icon on the orders list and the button on the order edit screen for "
 "your account only."
 msgstr ""
+"Rolünüzde WhatsApp sipariş kısayolu kapalı. Sipariş listesindeki WhatsApp "
+"simgesini ve sipariş düzenleme ekranındaki düğmeyi yalnızca kendi hesabınız "
+"için göstermek üzere bunu işaretleyin."
 
 #: front-end/orders/brikpanel-orders.php:9
 msgid "BrikPanel"
@@ -7524,7 +7574,7 @@ msgstr ""
 
 #: front-end/orders/brikpanel-orders.php:439
 msgid "Auto-show fields other plugins add"
-msgstr ""
+msgstr "Diğer eklentilerin eklediği alanları otomatik göster"
 
 #: front-end/orders/brikpanel-orders.php:442
 msgid ""
@@ -7537,13 +7587,21 @@ msgid ""
 "field by name. Per-variation fields added by other plugins are always kept "
 "and saved either way, so saving a product never wipes them."
 msgstr ""
+"Başka bir eklentinin WooCommerce'in yerel «Ürün verisi» sekmelerine eklediği "
+"alanları (dahili ürün kodları, abonelik seçenekleri, rezervasyon ayarları, "
+"ek alanlar ve benzeri) hem basit hem varyasyonlu ürünlerde, hiçbir kurulum "
+"gerekmeden otomatik olarak gösterir ve kaydeder. Kapalıyken (varsayılan), "
+"istediğiniz bölümleri aşağıdaki «Ek ürün verisi bölümleri» seçicisinden "
+"seçin: her seçenek içerdiği alanları listeler, böylece bir eklentinin "
+"alanını adından bulabilirsiniz. Diğer eklentilerin varyasyon başına eklediği "
+"alanlar her iki durumda da her zaman korunur ve kaydedilir, yani bir ürünü "
+"kaydetmek onları asla silmez."
 
 #: front-end/orders/brikpanel-orders.php:446
 msgid "Additional product data sections"
 msgstr "Ek ürün veri bölümleri"
 
 #: front-end/orders/brikpanel-orders.php:450
-#, fuzzy
 msgid ""
 "Only needed when \"Auto-show fields other plugins add\" is off (or to force-"
 "include a section). Pick which sections from WooCommerce's native \"Product "
@@ -7551,11 +7609,12 @@ msgid ""
 "Subscriptions, Memberships, Bookings, swatches, SEO plugins…) should appear "
 "as \"Additional product data\" inside the BrikPanel editor."
 msgstr ""
-"WooCommerce'in yerel \"Ürün verisi\" sekmelerinden (Genel, Envanter, Kargo "
-"ve Abonelikler, Üyelikler, Rezervasyonlar, renk örnekleri, SEO eklentileri "
-"tarafından eklenen özel sekmeler…) hangilerinin BrikPanel düzenleyicisinde "
-"\"Ek ürün verisi\" olarak görüneceğini seçin. Tümünü gizlemek için boş "
-"bırakın — varsayılan olarak gizlidir."
+"Yalnızca «Diğer eklentilerin eklediği alanları otomatik göster» kapalıyken "
+"(veya bir bölümü zorla dahil etmek için) gerekir. WooCommerce'in yerel «Ürün "
+"verisi» sekmelerinden (Genel, Envanter, Kargo ve Abonelikler, Üyelikler, "
+"Rezervasyonlar, renk örnekleri, SEO eklentileri tarafından eklenen özel "
+"sekmeler…) hangilerinin BrikPanel düzenleyicisinde «Ek ürün verisi» olarak "
+"görüneceğini seçin."
 
 #: front-end/orders/brikpanel-orders.php:456
 msgid "Additional product data position"
@@ -7835,9 +7894,8 @@ msgstr ""
 "Varsayılanı korumak için boş bırakın."
 
 #: front-end/orders/brikpanel-orders.php:630
-#, fuzzy
 msgid "Visitor tracking"
-msgstr "Ziyaretçi"
+msgstr "Ziyaretçi takibi"
 
 #: front-end/orders/brikpanel-orders.php:633
 msgid ""
@@ -7847,6 +7905,11 @@ msgid ""
 "or requests to your store pages, and the related dashboard cards will simply "
 "stop receiving new data."
 msgstr ""
+"Mağazanızda ziyaretçileri, sayfa görüntülemelerini, ürün görüntülemelerini, "
+"sepete eklemeleri, ödeme sayfası ziyaretlerini ve canlı ziyaretçileri takip "
+"edin. Zaten ayrı bir analitik aracı kullanıyorsanız bunu kapatın: BrikPanel "
+"mağaza sayfalarınıza artık takip betiği veya isteği eklemez, ilgili panel "
+"kartları da yalnızca yeni veri almayı bırakır."
 
 #: front-end/orders/brikpanel-orders.php:637
 msgid "Excluded user agents"
@@ -7884,13 +7947,12 @@ msgstr ""
 "biçiminde bir adres aralığı girebilirsiniz."
 
 #: front-end/orders/brikpanel-orders.php:655
-#, fuzzy
 msgid "Live visitor refresh interval"
-msgstr "Canlı ziyaretçi sayacı"
+msgstr "Canlı ziyaretçi yenileme aralığı"
 
 #: front-end/orders/brikpanel-orders.php:658
 msgid "seconds"
-msgstr ""
+msgstr "saniye"
 
 #: front-end/orders/brikpanel-orders.php:659
 msgid ""
@@ -7898,11 +7960,14 @@ msgid ""
 "the Live view. Higher values mean fewer requests to your server; the Live "
 "view reacts a little slower. Default is 30 seconds."
 msgstr ""
+"Canlı görünüm için, açık bir mağaza sayfasının ziyaretçisinin hâlâ orada "
+"olduğunu ne sıklıkla bildireceği. Daha yüksek değerler sunucunuza daha az "
+"istek anlamına gelir; canlı görünüm biraz daha yavaş tepki verir. Varsayılan "
+"30 saniyedir."
 
 #: front-end/orders/brikpanel-orders.php:669
-#, fuzzy
 msgid "Customer details in Live view"
-msgstr "Müşteri e-postası"
+msgstr "Canlı görünümde müşteri bilgileri"
 
 #: front-end/orders/brikpanel-orders.php:672
 msgid ""
@@ -7912,6 +7977,11 @@ msgid ""
 "ever kept in a short-lived cache (a couple of minutes) and is never written "
 "to the database permanently."
 msgstr ""
+"Oturum açmış bir müşteri mağazanızda gezinirken adını, e-postasını ve "
+"telefonunu canlı ziyaretçiler panelinde gösterin. Canlı takibi tamamen "
+"anonim tutmak için bunu kapatın: o zaman hiçbir kişisel bilgi önbelleğe "
+"alınmaz. Canlı ziyaretçi verileri yalnızca kısa ömürlü bir önbellekte "
+"(birkaç dakika) tutulur ve veritabanına asla kalıcı olarak yazılmaz."
 
 #: front-end/orders/brikpanel-orders.php:683
 msgid ""
@@ -7987,7 +8057,9 @@ msgstr "Belirli müşterilere ata"
 msgid ""
 "Show a searchable customer picker so you can assign the coupon to one or "
 "more registered users, or to any email address you type."
-msgstr "Kuponu bir veya daha fazla kayıtlı kullanıcıya ya da yazdığınız herhangi bir e-posta adresine atayabilmeniz için aranabilir bir müşteri seçici gösterin."
+msgstr ""
+"Kuponu bir veya daha fazla kayıtlı kullanıcıya ya da yazdığınız herhangi bir "
+"e-posta adresine atayabilmeniz için aranabilir bir müşteri seçici gösterin."
 
 #: front-end/orders/brikpanel-orders.php:731
 msgid ""
@@ -8238,17 +8310,16 @@ msgid "\"%1$s\" moved under \"%2$s\""
 msgstr "\"%1$s\", \"%2$s\" altına taşındı"
 
 #: front-end/products/brikpanel-product-code.php:66
-#, fuzzy
 msgid "Product Code"
-msgstr "Ürün adı"
+msgstr "Ürün kodu"
 
 #. translators: %d: number of distinct variation product codes.
 #: front-end/products/brikpanel-product-code.php:142
-#, fuzzy, php-format
+#, php-format
 msgid "%d code"
 msgid_plural "%d codes"
-msgstr[0] "Kodu kopyala"
-msgstr[1] "Kodu kopyala"
+msgstr[0] "%d kod"
+msgstr[1] "%d kod"
 
 #: front-end/products/brikpanel-product-editor.php:112
 msgid "Invalid product."
@@ -8385,14 +8456,13 @@ msgstr "Ek ürün verisi"
 #: front-end/products/brikpanel-product-editor.php:831
 #: includes/brikpanel-enqueue.php:1502
 msgid "Immediately"
-msgstr ""
+msgstr "Hemen"
 
 #: front-end/products/brikpanel-product-editor.php:834
 #: front-end/products/brikpanel-product-editor.php:839
 #: front-end/products/brikpanel-product-editor.php:840
-#, fuzzy
 msgid "Publish date"
-msgstr "Yayın durumu"
+msgstr "Yayın tarihi"
 
 #: front-end/products/brikpanel-product-editor.php:841
 msgid "Publish date and time"
@@ -9391,9 +9461,8 @@ msgstr ""
 
 #. translators: appended after a truncated list of field names
 #: front-end/products/brikpanel-product-editor.php:3379
-#, fuzzy
 msgid "…"
-msgstr "—"
+msgstr "…"
 
 #: front-end/products/brikpanel-product-editor.php:3676
 msgid "Variation options"
@@ -9480,6 +9549,9 @@ msgid ""
 "the save. Please disable or update that plugin (for example your media "
 "offload or SEO plugin) and try again."
 msgstr ""
+"Kaydetme sırasında başka bir eklenti hata verdiği için ürün kaydedilemedi. "
+"Lütfen o eklentiyi devre dışı bırakın veya güncelleyin (örneğin medya taşıma "
+"ya da SEO eklentiniz) ve tekrar deneyin."
 
 #. translators: %s: the variation SKU the merchant tried to save
 #: front-end/products/brikpanel-product-editor.php:6724
@@ -10240,7 +10312,8 @@ msgstr "Son siparişler"
 msgid "Type to search."
 msgstr "Aramak için yazın."
 
-#. translators: %s: comma-separated list of searchable areas, e.g. "Orders, Products, Customers".
+#. translators: %s: comma-separated list of searchable areas, e.g. "Orders,
+#. Products, Customers".
 #: front-end/search/brikpanel-search.php:249
 #, php-format
 msgid ""
@@ -11372,14 +11445,12 @@ msgid "BrikPanel interface"
 msgstr "BrikPanel arayüzü"
 
 #: includes/brikpanel-access-control.php:567
-#, fuzzy
 msgid "My interface"
-msgstr "Arayüz"
+msgstr "Arayüzüm"
 
 #: includes/brikpanel-access-control.php:571
-#, fuzzy
 msgid "Use the BrikPanel interface for my account"
-msgstr "BrikPanel arayüzünü tekrar aç"
+msgstr "BrikPanel arayüzünü hesabımda kullan"
 
 #: includes/brikpanel-access-control.php:574
 msgid ""
@@ -11387,6 +11458,10 @@ msgid ""
 "own account only. It does not change anything for other users, and you can "
 "turn it back on here or from the on/off switch in the toolbar at any time."
 msgstr ""
+"Yalnızca kendi hesabınızda varsayılan WordPress ve WooCommerce yönetimini "
+"kullanmak için bunu kapatın. Diğer kullanıcılar için hiçbir şey değişmez ve "
+"dilediğiniz zaman buradan ya da araç çubuğundaki aç/kapa anahtarından tekrar "
+"açabilirsiniz."
 
 #: includes/brikpanel-access-control.php:719
 #: includes/brikpanel-network-access.php:544
@@ -11468,7 +11543,7 @@ msgstr ""
 
 #: includes/brikpanel-access-control.php:1036
 msgid "Let each user choose (per-user control)"
-msgstr ""
+msgstr "Her kullanıcı kendi seçsin (kullanıcı bazlı denetim)"
 
 #: includes/brikpanel-access-control.php:1039
 msgid ""
@@ -11478,11 +11553,16 @@ msgid ""
 "\"Roles that start with BrikPanel off\" below to decide what each role "
 "begins with. Off by default."
 msgstr ""
+"Her kullanıcının BrikPanel arayüzünü yalnızca kendi hesabı için üst "
+"çubuktaki (veya WordPress araç çubuğundaki) aç/kapa anahtarından ve profil "
+"sayfasından açıp kapatmasına izin verin. Bir kişinin seçimi başka hiç "
+"kimseyi etkilemez. Her rolün neyle başlayacağına karar vermek için aşağıdaki "
+"«BrikPanel kapalı başlayan roller» ayarını kullanın. Varsayılan olarak "
+"kapalı."
 
 #: includes/brikpanel-access-control.php:1043
-#, fuzzy
 msgid "Roles that start with BrikPanel off"
-msgstr "BrikPanel'i kullanmasına izin verilen roller"
+msgstr "BrikPanel kapalı başlayan roller"
 
 #: includes/brikpanel-access-control.php:1047
 msgid ""
@@ -11493,6 +11573,12 @@ msgid ""
 "and each administrator can opt their own account back in. Leave empty to "
 "start everyone with BrikPanel on."
 msgstr ""
+"Yalnızca kullanıcı bazlı denetim açıkken kullanılır. Seçili rollerden birine "
+"sahip kullanıcılar BrikPanel kapalı başlar ve kendi hesapları için açabilir; "
+"diğer herkes açık başlar. Örneğin Yönetici'yi seçerek yöneticilerin yerel "
+"yönetimde başlamasını, mağaza yöneticilerinin BrikPanel'i korumasını "
+"sağlayabilirsiniz ve her yönetici kendi hesabını tekrar dahil edebilir. "
+"Herkesin BrikPanel açık başlaması için boş bırakın."
 
 #: includes/brikpanel-access-control.php:1053
 msgid "Restrict settings to administrators"
@@ -11612,7 +11698,10 @@ msgstr ""
 "(mağaza yöneticileri, editörler, müşteriler) için kaldırın. Varsayılan "
 "olarak kapalı."
 
-#. translators: first-month promo price in US dollars. Locales that place the symbol after the amount should translate this as "1 $". The space is turned into a non-breaking space automatically, so the amount and its symbol never split across two lines.
+#. translators: first-month promo price in US dollars. Locales that place the
+#. symbol after the amount should translate this as "1 $". The space is turned
+#. into a non-breaking space automatically, so the amount and its symbol never
+#. split across two lines.
 #: includes/brikpanel-brikmentor-promo.php:153
 msgctxt "first-month promo price"
 msgid "$1"
@@ -12923,6 +13012,12 @@ msgstr "Renk"
 msgid "Use for variations"
 msgstr "Varyasyonlarda kullan"
 
+#. translators: per-attribute switch — whether the attribute appears in the
+#. storefront's Additional information table
+#: includes/brikpanel-enqueue.php:1692
+msgid "Show on product page"
+msgstr "Ürün sayfasında göster"
+
 #: includes/brikpanel-enqueue.php:1509
 msgid ""
 "Switch on “Use for variations” for at least one attribute, then add its "
@@ -12941,7 +13036,8 @@ msgid ""
 msgstr ""
 "Bu varyasyon silinsin mi? Bu değişiklik ürünü kaydettiğinizde uygulanır."
 
-#. translators: %s is the attribute name, a variation slot that matches every value of it, e.g. "Any Color"
+#. translators: %s is the attribute name, a variation slot that matches every
+#. value of it, e.g. "Any Color"
 #: includes/brikpanel-enqueue.php:1514
 #, php-format
 msgid "Any %s"
@@ -12975,129 +13071,119 @@ msgstr "%s için varsayılan yok…"
 
 #: includes/brikpanel-enqueue.php:1524
 msgid "Video"
-msgstr ""
+msgstr "Video"
 
 #: includes/brikpanel-enqueue.php:1525
-#, fuzzy
 msgid "Product video"
-msgstr "Ürün görüntülemeleri"
+msgstr "Ürün videosu"
 
 #: includes/brikpanel-enqueue.php:1526
 msgid ""
 "Attach a video to this image. It plays in the product gallery when your "
 "theme supports it."
 msgstr ""
+"Bu görsele bir video ekleyin. Temanız destekliyorsa ürün galerisinde "
+"oynatılır."
 
 #: includes/brikpanel-enqueue.php:1527
-#, fuzzy
 msgid "Video source"
-msgstr "Tüm kaynaklar"
+msgstr "Video kaynağı"
 
 #: includes/brikpanel-enqueue.php:1528
 msgid "YouTube"
-msgstr ""
+msgstr "YouTube"
 
 #: includes/brikpanel-enqueue.php:1529
 msgid "Vimeo"
-msgstr ""
+msgstr "Vimeo"
 
 #: includes/brikpanel-enqueue.php:1530
 msgid "Self-hosted"
-msgstr ""
+msgstr "Kendi sunucunuzda"
 
 #: includes/brikpanel-enqueue.php:1531
 msgid "YouTube URL"
-msgstr ""
+msgstr "YouTube URL'si"
 
 #: includes/brikpanel-enqueue.php:1532
 msgid "Vimeo URL"
-msgstr ""
+msgstr "Vimeo URL'si"
 
 #: includes/brikpanel-enqueue.php:1533
 msgid "https://www.youtube.com/watch?v=…"
-msgstr ""
+msgstr "https://www.youtube.com/watch?v=…"
 
 #: includes/brikpanel-enqueue.php:1534
-#, fuzzy
 msgid "https://vimeo.com/…"
-msgstr "https://brksoft.com/"
+msgstr "https://vimeo.com/…"
 
 #: includes/brikpanel-enqueue.php:1535
-#, fuzzy
 msgid "Choose video"
-msgstr "Dosya seç"
+msgstr "Video seç"
 
 #: includes/brikpanel-enqueue.php:1536
-#, fuzzy
 msgid "Replace video"
-msgstr "Görseli değiştir"
+msgstr "Videoyu değiştir"
 
 #: includes/brikpanel-enqueue.php:1537
-#, fuzzy
 msgid "No video selected"
-msgstr "Görsel seçilmedi"
+msgstr "Video seçilmedi"
 
 #: includes/brikpanel-enqueue.php:1538
 msgid "Playback"
-msgstr ""
+msgstr "Oynatma"
 
 #: includes/brikpanel-enqueue.php:1539
 msgid "Play on click"
-msgstr ""
+msgstr "Tıklayınca oynat"
 
 #: includes/brikpanel-enqueue.php:1540
 msgid "Autoplay (muted)"
-msgstr ""
+msgstr "Otomatik oynat (sessiz)"
 
 #: includes/brikpanel-enqueue.php:1541
 msgid "Play on hover"
-msgstr ""
+msgstr "Üzerine gelince oynat"
 
 #: includes/brikpanel-enqueue.php:1542
 msgid "Loop the video"
-msgstr ""
+msgstr "Videoyu döngüye al"
 
 #: includes/brikpanel-enqueue.php:1543
 msgid "Hide player controls"
-msgstr ""
+msgstr "Oynatıcı denetimlerini gizle"
 
 #: includes/brikpanel-enqueue.php:1544
-#, fuzzy
 msgid "Remove video"
-msgstr "Görseli kaldır"
+msgstr "Videoyu kaldır"
 
 #: includes/brikpanel-enqueue.php:1545
-#, fuzzy
 msgid "Save video"
-msgstr "Kaydedildi."
+msgstr "Videoyu kaydet"
 
 #: includes/brikpanel-enqueue.php:1547
 msgid "Video added to image"
-msgstr ""
+msgstr "Video görsele eklendi"
 
 #: includes/brikpanel-enqueue.php:1548
-#, fuzzy
 msgid "Video removed from image"
-msgstr "Görseli kaldır"
+msgstr "Video görselden kaldırıldı"
 
 #: includes/brikpanel-enqueue.php:1549
-#, fuzzy
 msgid "Please enter a video URL first."
-msgstr "Lütfen geçerli bir e-posta adresi girin."
+msgstr "Lütfen önce bir video URL'si girin."
 
 #: includes/brikpanel-enqueue.php:1550
-#, fuzzy
 msgid "Please choose a video file first."
-msgstr "Lütfen önce bir görsel seçin."
+msgstr "Lütfen önce bir video dosyası seçin."
 
 #: includes/brikpanel-enqueue.php:1551
-#, fuzzy
 msgid "Use this video"
-msgstr "Bu görseli kullan"
+msgstr "Bu videoyu kullan"
 
 #: includes/brikpanel-enqueue.php:1552
 msgid "Has video"
-msgstr ""
+msgstr "Videosu var"
 
 #: includes/brikpanel-enqueue.php:1581
 msgid "No coupons found."
@@ -13157,63 +13243,53 @@ msgstr "Eşleşme bulunamadı."
 
 #. translators: %s: the text that could not be read as an email address
 #: includes/brikpanel-enqueue.php:1616
-#,  php-format
+#, php-format
 msgid "Not a valid email address: %s"
 msgstr "Geçerli bir e-posta adresi değil: %s"
 
 #: includes/brikpanel-enqueue.php:1649
-#, fuzzy
 msgid "Searching…"
-msgstr "Kaydediliyor…"
+msgstr "Aranıyor…"
 
 #: includes/brikpanel-enqueue.php:1650
-#, fuzzy
 msgid "No matching products found."
-msgstr "Ürün bulunamadı."
+msgstr "Eşleşen ürün bulunamadı."
 
 #: includes/brikpanel-enqueue.php:1654
-#, fuzzy
 msgid "Increase quantity"
-msgstr "Miktarı takip et"
+msgstr "Adedi artır"
 
 #: includes/brikpanel-enqueue.php:1655
-#, fuzzy
 msgid "Decrease quantity"
-msgstr "Miktarı takip et"
+msgstr "Adedi azalt"
 
 #: includes/brikpanel-enqueue.php:1656
-#, fuzzy
 msgid "Choose a variation…"
-msgstr "%s varyasyon"
+msgstr "Bir varyasyon seçin…"
 
 #: includes/brikpanel-enqueue.php:1657
-#, fuzzy
 msgid "Loading variations…"
-msgstr "Hesaplar yükleniyor…"
+msgstr "Varyasyonlar yükleniyor…"
 
 #: includes/brikpanel-enqueue.php:1658
-#, fuzzy
 msgid "This product has no variation that can be shared."
-msgstr "Tüm ürünler / varyasyonlar"
+msgstr "Bu ürünün paylaşılabilecek bir varyasyonu yok."
 
 #: includes/brikpanel-enqueue.php:1659
-#, fuzzy
 msgid "Link copied to clipboard."
-msgstr "Panoya kopyalandı!"
+msgstr "Bağlantı panoya kopyalandı."
 
 #: includes/brikpanel-enqueue.php:1660
 msgid "Could not copy. The link is selected, press Ctrl/Cmd+C."
-msgstr ""
+msgstr "Kopyalanamadı. Bağlantı seçili, Ctrl/Cmd+C tuşlarına basın."
 
 #: includes/brikpanel-enqueue.php:1661
-#, fuzzy
 msgid "Here are the products for your order:"
-msgstr "Yeniden sıralanacak ürün yok."
+msgstr "Siparişiniz için ürünler:"
 
 #: includes/brikpanel-enqueue.php:1662
-#, fuzzy
 msgid "Your cart"
-msgstr "Oran"
+msgstr "Sepetiniz"
 
 #: includes/brikpanel-helpers.php:1004 includes/brikpanel-helpers.php:1013
 msgid "Simple product"
@@ -13224,47 +13300,67 @@ msgid ""
 "Fires right before the BrikPanel simplified editor persists a product. Use "
 "it to validate or pre-process submitted data. Runs for both simple and "
 "variable products."
-msgstr "BrikPanel basitleştirilmiş düzenleyicisi bir ürünü kaydetmeden hemen önce tetiklenir. Gönderilen verileri doğrulamak veya ön işlemek için kullanın. Hem basit hem de değişken ürünler için çalışır."
+msgstr ""
+"BrikPanel basitleştirilmiş düzenleyicisi bir ürünü kaydetmeden hemen önce "
+"tetiklenir. Gönderilen verileri doğrulamak veya ön işlemek için kullanın. "
+"Hem basit hem de değişken ürünler için çalışır."
 
 #: includes/brikpanel-hooks-api.php:137
 msgid ""
 "Fires after a product has been fully saved through the BrikPanel editor, "
 "including variations. Ideal for syncing to external systems, audit logs, or "
 "cache invalidation."
-msgstr "Varyasyonlar dahil bir ürün BrikPanel düzenleyicisi aracılığıyla tam olarak kaydedildikten sonra tetiklenir. Harici sistemlerle senkronizasyon, denetim günlükleri veya önbellek geçersiz kılma için idealdir."
+msgstr ""
+"Varyasyonlar dahil bir ürün BrikPanel düzenleyicisi aracılığıyla tam olarak "
+"kaydedildikten sonra tetiklenir. Harici sistemlerle senkronizasyon, denetim "
+"günlükleri veya önbellek geçersiz kılma için idealdir."
 
 #: includes/brikpanel-hooks-api.php:144
 msgid ""
 "Register custom cards inside the BrikPanel product editor. Each box renders "
 "as a native BrikPanel card at the chosen position (top, middle, bottom) and "
 "is sorted by priority."
-msgstr "BrikPanel ürün düzenleyicisine özel kartlar ekleyin. Her kutu seçilen konumda (üst, orta, alt) yerel bir BrikPanel kartı olarak görüntülenir ve önceliğe göre sıralanır."
+msgstr ""
+"BrikPanel ürün düzenleyicisine özel kartlar ekleyin. Her kutu seçilen "
+"konumda (üst, orta, alt) yerel bir BrikPanel kartı olarak görüntülenir ve "
+"önceliğe göre sıralanır."
 
 #: includes/brikpanel-hooks-api.php:151
 msgid ""
 "Filter which built-in BrikPanel editor sections are rendered. Useful for "
 "hiding sections programmatically (e.g. for specific user roles or product "
 "types)."
-msgstr "Hangi yerleşik BrikPanel düzenleyici bölümlerinin oluşturulacağını filtreleyin. Bölümleri programlı olarak gizlemek için kullanışlıdır (örn. belirli kullanıcı rolleri veya ürün türleri için)."
+msgstr ""
+"Hangi yerleşik BrikPanel düzenleyici bölümlerinin oluşturulacağını "
+"filtreleyin. Bölümleri programlı olarak gizlemek için kullanışlıdır (örn. "
+"belirli kullanıcı rolleri veya ürün türleri için)."
 
 #: includes/brikpanel-hooks-api.php:158
 msgid ""
 "Filter the full list of BrikPanel settings fields rendered on the "
 "WooCommerce → Settings → BrikPanel tab. Lets you append your own WC settings "
 "fields (sections, checkboxes, selects…) to the tab."
-msgstr "WooCommerce → Ayarlar → BrikPanel sekmesinde oluşturulan BrikPanel ayar alanlarının tam listesini filtreleyin. Sekmeye kendi WC ayar alanlarınızı (bölümler, onay kutuları, seçimler…) eklemenizi sağlar."
+msgstr ""
+"WooCommerce → Ayarlar → BrikPanel sekmesinde oluşturulan BrikPanel ayar "
+"alanlarının tam listesini filtreleyin. Sekmeye kendi WC ayar alanlarınızı "
+"(bölümler, onay kutuları, seçimler…) eklemenizi sağlar."
 
 #: includes/brikpanel-hooks-api.php:165
 msgid ""
 "Register additional columns in the BrikPanel modern products list. Each "
 "column definition accepts an id, label, width and optional render callback."
-msgstr "BrikPanel modern ürünler listesine ek sütunlar ekleyin. Her sütun tanımı id, etiket, genişlik ve isteğe bağlı render geri çağrısını kabul eder."
+msgstr ""
+"BrikPanel modern ürünler listesine ek sütunlar ekleyin. Her sütun tanımı id, "
+"etiket, genişlik ve isteğe bağlı render geri çağrısını kabul eder."
 
 #: includes/brikpanel-hooks-api.php:172
 msgid ""
 "Tune how many products BrikPanel processes per batch during bulk operations. "
 "Lower for shared hosting, higher on beefy servers."
-msgstr "Toplu işlemler sırasında BrikPanel'in toplu işlem başına kaç ürün işleyeceğini ayarlayın. Paylaşımlı hosting için düşük, güçlü sunucular için yüksek tutun."
+msgstr ""
+"Toplu işlemler sırasında BrikPanel'in toplu işlem başına kaç ürün "
+"işleyeceğini ayarlayın. Paylaşımlı hosting için düşük, güçlü sunucular için "
+"yüksek tutun."
 
 #: includes/brikpanel-hooks-api.php:179
 msgid ""
@@ -13272,7 +13368,11 @@ msgid ""
 "submitted in the signup popup, or auto-captured from a logged-in account). "
 "$entry contains email, name, source, status, the decoded cart snapshot and "
 "timestamps."
-msgstr "Terk edilmiş sepet listesine YENİ bir e-posta düştüğünde tetiklenir (ödeme sırasında yazılmış, kayıt penceresinden gönderilmiş ya da oturum açmış bir hesaptan kendiliğinden yakalanmış olabilir). $entry; e-posta, ad, kaynak, durum, çözülmüş sepet anlık görüntüsü ve zaman damgalarını içerir."
+msgstr ""
+"Terk edilmiş sepet listesine YENİ bir e-posta düştüğünde tetiklenir (ödeme "
+"sırasında yazılmış, kayıt penceresinden gönderilmiş ya da oturum açmış bir "
+"hesaptan kendiliğinden yakalanmış olabilir). $entry; e-posta, ad, kaynak, "
+"durum, çözülmüş sepet anlık görüntüsü ve zaman damgalarını içerir."
 
 #: includes/brikpanel-hooks-api.php:186
 msgid ""
@@ -13280,14 +13380,40 @@ msgid ""
 "configured number of minutes). This is the hook a follow-up email plugin "
 "subscribes to. $entry includes the cart snapshot with per-item variation "
 "attributes."
-msgstr "Yakalanmış bir sepet terk edilmiş olarak işaretlendiğinde tetiklenir (ayarlanan dakika boyunca hareket yok). Takip e-postası eklentilerinin abone olduğu kanca budur. $entry, her ürünün varyasyon özellikleriyle birlikte sepet anlık görüntüsünü içerir."
+msgstr ""
+"Yakalanmış bir sepet terk edilmiş olarak işaretlendiğinde tetiklenir "
+"(ayarlanan dakika boyunca hareket yok). Takip e-postası eklentilerinin abone "
+"olduğu kanca budur. $entry, her ürünün varyasyon özellikleriyle birlikte "
+"sepet anlık görüntüsünü içerir."
 
 #: includes/brikpanel-hooks-api.php:193
 msgid ""
-"Fires when a captured cart converts into an order (matched by billing email "
-"or by the visitor cookie). Use it to cancel any queued follow-up emails for "
-"that address."
-msgstr "Yakalanmış bir sepet siparişe dönüştüğünde tetiklenir (fatura e-postasıyla ya da ziyaretçi çerezi ile eşleştirilir). O adres için sıraya alınmış takip e-postalarını iptal etmek için kullanın."
+"Fires when a captured cart converts into a sale: the matching order (matched "
+"by billing email or by the visitor id recorded at checkout) reached a status "
+"other than pending, failed, cancelled or draft. It does NOT fire the moment "
+"the order is created, so a declined payment never counts. Use it to cancel "
+"any queued follow-up emails for that address."
+msgstr ""
+"Yakalanmış bir sepet satışa dönüştüğünde tetiklenir: eşleşen sipariş (fatura "
+"e-postasıyla ya da ödeme sırasında kaydedilen ziyaretçi kimliğiyle "
+"eşleştirilir) beklemede, başarısız, iptal ya da taslak dışında bir duruma "
+"ulaştığında. Sipariş oluşturulduğu anda tetiklenmez, bu yüzden reddedilen "
+"bir ödeme asla sayılmaz. O adres için sıraya alınmış takip e-postalarını "
+"iptal etmek için kullanın."
+
+#: includes/brikpanel-hooks-api.php:221
+msgid ""
+"Fires when a recovery is withdrawn because its order stopped being a sale: "
+"the payment failed on a later attempt, the order was cancelled, or it was "
+"deleted. The cart goes back to abandoned (or active) and is open for follow-"
+"up again, so this is where you re-queue the sequence you cancelled on "
+"brikpanel_cart_recovered."
+msgstr ""
+"Bir kurtarma, siparişi artık satış olmadığı için geri alındığında "
+"tetiklenir: ödeme sonraki bir denemede başarısız oldu, sipariş iptal edildi "
+"ya da silindi. Sepet yeniden terk edilmiş (veya aktif) duruma döner ve "
+"tekrar takibe açıktır; brikpanel_cart_recovered üzerinde iptal ettiğiniz "
+"seriyi burada yeniden sıraya alın."
 
 #: includes/brikpanel-hooks-api.php:200
 msgid ""
@@ -13295,14 +13421,22 @@ msgid ""
 "entries filtered by status (active|abandoned|recovered), source (checkout|"
 "popup|account), search, date range or an updated-since timestamp. Runs the "
 "abandonment sweep first, so statuses are always current."
-msgstr "Bu bir kanca değil, genel bir sorgu işlevidir: yakalanmış sepet terk etme kayıtlarını duruma (active|abandoned|recovered), kaynağa (checkout|popup|account), arama metnine, tarih aralığına ya da güncellenme zaman damgasına göre süzerek getirir. Önce terk etme taramasını çalıştırır, böylece durumlar her zaman günceldir."
+msgstr ""
+"Bu bir kanca değil, genel bir sorgu işlevidir: yakalanmış sepet terk etme "
+"kayıtlarını duruma (active|abandoned|recovered), kaynağa (checkout|popup|"
+"account), arama metnine, tarih aralığına ya da güncellenme zaman damgasına "
+"göre süzerek getirir. Önce terk etme taramasını çalıştırır, böylece durumlar "
+"her zaman günceldir."
 
 #: includes/brikpanel-hooks-api.php:207
 msgid ""
 "Override which SEO plugin BrikPanel surfaces inside the product editor. "
 "Return an array with keys slug, label, metabox_ids, or null to disable "
 "integration."
-msgstr "BrikPanel'in ürün düzenleyicisinde hangi SEO eklentisini göstereceğini geçersiz kılın. Entegrasyonu devre dışı bırakmak için slug, label, metabox_ids anahtarlarını içeren bir dizi veya null döndürün."
+msgstr ""
+"BrikPanel'in ürün düzenleyicisinde hangi SEO eklentisini göstereceğini "
+"geçersiz kılın. Entegrasyonu devre dışı bırakmak için slug, label, "
+"metabox_ids anahtarlarını içeren bir dizi veya null döndürün."
 
 #: includes/brikpanel-hooks-api.php:227
 msgid "Developer documentation"
@@ -13312,7 +13446,9 @@ msgstr "Geliştirici belgeleri"
 msgid ""
 "BrikPanel exposes hooks and filters so you can extend the product editor, "
 "settings and save flow without modifying the plugin."
-msgstr "BrikPanel, eklentiyi değiştirmeden ürün düzenleyicisini, ayarları ve kaydetme akışını genişletebilmeniz için hook'lar ve filtreler sunar."
+msgstr ""
+"BrikPanel, eklentiyi değiştirmeden ürün düzenleyicisini, ayarları ve "
+"kaydetme akışını genişletebilmeniz için hook'lar ve filtreler sunar."
 
 #: includes/brikpanel-hooks-api.php:235
 msgid "Open developer docs"
@@ -13325,7 +13461,9 @@ msgstr "BrikPanel geliştirici hook'ları"
 #: includes/brikpanel-hooks-api.php:283
 msgid ""
 "Actions and filters you can use from a plugin or your theme's functions.php."
-msgstr "Bir eklentiden veya temanızın functions.php dosyasından kullanabileceğiniz eylemler ve filtreler."
+msgstr ""
+"Bir eklentiden veya temanızın functions.php dosyasından kullanabileceğiniz "
+"eylemler ve filtreler."
 
 #: includes/brikpanel-hooks-api.php:291
 msgid "Search hooks…"
@@ -13386,7 +13524,10 @@ msgid ""
 "By default every subsite administrator and shop manager can use BrikPanel "
 "because they hold the manage_woocommerce capability. Turn this on to "
 "restrict BrikPanel to a specific set of roles across the whole network."
-msgstr "Varsayılan olarak her alt site yöneticisi ve mağaza yöneticisi manage_woocommerce yetkisine sahip olduğu için BrikPanel'i kullanabilir. Tüm ağ genelinde BrikPanel'i belirli rollere kısıtlamak için bunu açın."
+msgstr ""
+"Varsayılan olarak her alt site yöneticisi ve mağaza yöneticisi "
+"manage_woocommerce yetkisine sahip olduğu için BrikPanel'i kullanabilir. Tüm "
+"ağ genelinde BrikPanel'i belirli rollere kısıtlamak için bunu açın."
 
 #: includes/brikpanel-network-access.php:361
 msgid "Restrict BrikPanel access on subsites"
@@ -13397,7 +13538,11 @@ msgid ""
 "When off (default), nothing changes — BrikPanel works for every site admin "
 "and shop manager as usual. When on, only users whose role appears in the "
 "list below see the BrikPanel UI, settings tab, and AJAX endpoints."
-msgstr "Kapalıyken (varsayılan) hiçbir şey değişmez — BrikPanel her site yöneticisi ve mağaza yöneticisi için her zamanki gibi çalışır. Açıkken yalnızca rolü aşağıdaki listede görünen kullanıcılar BrikPanel arayüzünü, ayarlar sekmesini ve AJAX uç noktalarını görür."
+msgstr ""
+"Kapalıyken (varsayılan) hiçbir şey değişmez — BrikPanel her site yöneticisi "
+"ve mağaza yöneticisi için her zamanki gibi çalışır. Açıkken yalnızca rolü "
+"aşağıdaki listede görünen kullanıcılar BrikPanel arayüzünü, ayarlar "
+"sekmesini ve AJAX uç noktalarını görür."
 
 #: includes/brikpanel-network-access.php:375
 msgid "Roles allowed to use BrikPanel"
@@ -13407,7 +13552,9 @@ msgstr "BrikPanel'i kullanmasına izin verilen roller"
 msgid ""
 "Pick the roles whose users may access BrikPanel features on subsites. "
 "Network Super Admins are always allowed, regardless of this list."
-msgstr "Kullanıcıları alt sitelerde BrikPanel özelliklerine erişebilecek rolleri seçin. Ağ Süper Yöneticileri bu listeden bağımsız olarak her zaman izinlidir."
+msgstr ""
+"Kullanıcıları alt sitelerde BrikPanel özelliklerine erişebilecek rolleri "
+"seçin. Ağ Süper Yöneticileri bu listeden bağımsız olarak her zaman izinlidir."
 
 #: includes/brikpanel-network-access.php:399
 msgid "Always on"
@@ -13423,7 +13570,11 @@ msgid ""
 "and coupon tools) but cannot open or change the BrikPanel settings tab. Only "
 "the subsites you grant below — and Network Super Admins — may manage "
 "BrikPanel settings."
-msgstr "Açıkken, alt site sahipleri BrikPanel'i (kontrol paneli, raporlar, ürün ve kupon araçları) yine de kullanabilir, ancak BrikPanel ayarlar sekmesini açamaz veya değiştiremez. BrikPanel ayarlarını yalnızca aşağıda izin verdiğiniz alt siteler ve Ağ Süper Yöneticileri yönetebilir."
+msgstr ""
+"Açıkken, alt site sahipleri BrikPanel'i (kontrol paneli, raporlar, ürün ve "
+"kupon araçları) yine de kullanabilir, ancak BrikPanel ayarlar sekmesini "
+"açamaz veya değiştiremez. BrikPanel ayarlarını yalnızca aşağıda izin "
+"verdiğiniz alt siteler ve Ağ Süper Yöneticileri yönetebilir."
 
 #: includes/brikpanel-network-access.php:417
 msgid "Lock the BrikPanel settings tab on subsites"
@@ -13434,7 +13585,10 @@ msgid ""
 "Off by default — turning this on never affects how BrikPanel works "
 "elsewhere, it only hides and blocks the settings tab for subsites that are "
 "not granted below."
-msgstr "Varsayılan olarak kapalı: bunu açmak BrikPanel'in başka yerlerde nasıl çalıştığını asla etkilemez, yalnızca aşağıda izin verilmeyen alt siteler için ayarlar sekmesini gizler ve engeller."
+msgstr ""
+"Varsayılan olarak kapalı: bunu açmak BrikPanel'in başka yerlerde nasıl "
+"çalıştığını asla etkilemez, yalnızca aşağıda izin verilmeyen alt siteler "
+"için ayarlar sekmesini gizler ve engeller."
 
 #: includes/brikpanel-network-access.php:431
 msgid "Subsites allowed to manage BrikPanel settings"
@@ -13445,7 +13599,11 @@ msgid ""
 "Only used when the lock above is on. Tick a subsite to let its "
 "administrators open and change the BrikPanel settings tab on that site. "
 "Super Admins always have access regardless of this list."
-msgstr "Yalnızca yukarıdaki kilit açıkken kullanılır. Yöneticilerinin o sitede BrikPanel ayarlar sekmesini açıp değiştirmesine izin vermek için bir alt siteyi işaretleyin. Süper Yöneticiler bu listeden bağımsız olarak her zaman erişime sahiptir."
+msgstr ""
+"Yalnızca yukarıdaki kilit açıkken kullanılır. Yöneticilerinin o sitede "
+"BrikPanel ayarlar sekmesini açıp değiştirmesine izin vermek için bir alt "
+"siteyi işaretleyin. Süper Yöneticiler bu listeden bağımsız olarak her zaman "
+"erişime sahiptir."
 
 #. translators: %d: number of sites shown
 #: includes/brikpanel-network-access.php:442
@@ -13453,7 +13611,9 @@ msgstr "Yalnızca yukarıdaki kilit açıkken kullanılır. Yöneticilerinin o s
 msgid ""
 "This network has more sites than can be listed here. Showing the first %d by "
 "site ID."
-msgstr "Bu ağda burada listelenebilecekten daha fazla site var. Site kimliğine göre ilk %d gösteriliyor."
+msgstr ""
+"Bu ağda burada listelenebilecekten daha fazla site var. Site kimliğine göre "
+"ilk %d gösteriliyor."
 
 #: includes/brikpanel-network-access.php:578
 #: includes/brikpanel-network-access.php:585
@@ -13485,7 +13645,12 @@ msgid ""
 "place in your daily routine, would you take 30 seconds to share your "
 "experience in a review? Your honest words mean the world to our small team "
 "and help other store owners discover the plugin."
-msgstr "Görünüşe göre BrikPanel mağazanızı yönetmenize yardımcı oluyor. Günlük rutininizde kendine bir yer edindiyse, deneyiminizi bir değerlendirmede paylaşmak için 30 saniye ayırır mısınız? Dürüst sözleriniz küçük ekibimiz için çok değerli ve diğer mağaza sahiplerinin eklentiyi keşfetmesine yardımcı olur."
+msgstr ""
+"Görünüşe göre BrikPanel mağazanızı yönetmenize yardımcı oluyor. Günlük "
+"rutininizde kendine bir yer edindiyse, deneyiminizi bir değerlendirmede "
+"paylaşmak için 30 saniye ayırır mısınız? Dürüst sözleriniz küçük ekibimiz "
+"için çok değerli ve diğer mağaza sahiplerinin eklentiyi keşfetmesine "
+"yardımcı olur."
 
 #: includes/brikpanel-review-notices.php:120
 msgid "Write a review"
@@ -13511,15 +13676,21 @@ msgstr "Kaynak: WooCommerce siparişleri, tüm durumlar."
 msgid ""
 "Source: BrikPanel daily visitor rollup. Available only after tracking start "
 "date."
-msgstr "Kaynak: BrikPanel günlük ziyaretçi toplamı. Yalnızca takip başlangıç tarihinden sonra mevcuttur."
+msgstr ""
+"Kaynak: BrikPanel günlük ziyaretçi toplamı. Yalnızca takip başlangıç "
+"tarihinden sonra mevcuttur."
 
 #: includes/brikpanel-store-summary.php:563
 msgid "Source: BrikPanel customer_metrics table (recomputed nightly)."
-msgstr "Kaynak: BrikPanel customer_metrics tablosu (gecelik olarak yeniden hesaplanır)."
+msgstr ""
+"Kaynak: BrikPanel customer_metrics tablosu (gecelik olarak yeniden "
+"hesaplanır)."
 
 #: includes/brikpanel-store-summary.php:564
 msgid "Source: BrikPanel cohort_retention table (recomputed nightly)."
-msgstr "Kaynak: BrikPanel cohort_retention tablosu (gecelik olarak yeniden hesaplanır)."
+msgstr ""
+"Kaynak: BrikPanel cohort_retention tablosu (gecelik olarak yeniden "
+"hesaplanır)."
 
 #: includes/brikpanel-store-summary.php:565
 msgid "Source: WooCommerce Order Attribution (introduced in WC 8.5)."
@@ -13533,28 +13704,37 @@ msgstr "Kaynak: WooCommerce Abonelikler eklentisi."
 msgid ""
 "Source: order shipping addresses (HPOS wc_order_addresses or postmeta on "
 "legacy)."
-msgstr "Kaynak: sipariş kargo adresleri (HPOS wc_order_addresses veya eski sürümlerde postmeta)."
+msgstr ""
+"Kaynak: sipariş kargo adresleri (HPOS wc_order_addresses veya eski "
+"sürümlerde postmeta)."
 
 #: includes/brikpanel-store-summary.php:568
 msgid ""
 "Source: HPOS wc_order_operational_data — captures fulfillment timestamps and "
 "origin (created_via)."
-msgstr "Kaynak: HPOS wc_order_operational_data — karşılama zaman damgalarını ve kaynağı yakalar (created_via)."
+msgstr ""
+"Kaynak: HPOS wc_order_operational_data — karşılama zaman damgalarını ve "
+"kaynağı yakalar (created_via)."
 
 #: includes/brikpanel-store-summary.php:569
 msgid "Source: BrikPanel expenses table (manually entered by the merchant)."
-msgstr "Kaynak: BrikPanel giderler tablosu (satıcı tarafından manuel olarak girilir)."
+msgstr ""
+"Kaynak: BrikPanel giderler tablosu (satıcı tarafından manuel olarak girilir)."
 
 #: includes/brikpanel-store-summary.php:570
 msgid ""
 "Source: WooCommerce shop_coupon posts and order line items of type=coupon."
-msgstr "Kaynak: WooCommerce shop_coupon gönderileri ve type=coupon türündeki sipariş satır öğeleri."
+msgstr ""
+"Kaynak: WooCommerce shop_coupon gönderileri ve type=coupon türündeki sipariş "
+"satır öğeleri."
 
 #: includes/brikpanel-store-summary.php:571
 msgid ""
 "Source: WooCommerce Cost of Goods Sold — per-line _cogs_value written when "
 "an order is placed."
-msgstr "Kaynak: WooCommerce Satılan Malların Maliyeti — sipariş verildiğinde yazılan satır bazlı _cogs_value."
+msgstr ""
+"Kaynak: WooCommerce Satılan Malların Maliyeti — sipariş verildiğinde yazılan "
+"satır bazlı _cogs_value."
 
 #: includes/brikpanel-store-summary.php:630
 #, php-format
@@ -13648,7 +13828,9 @@ msgstr "Ücretli siparişlerde aktif para birimleri"
 msgid ""
 "mixed-currency store; per-period tables show each currency separately, no "
 "conversion is applied"
-msgstr "çoklu para birimli mağaza; dönem bazlı tablolar her para birimini ayrı ayrı gösterir, dönüşüm uygulanmaz"
+msgstr ""
+"çoklu para birimli mağaza; dönem bazlı tablolar her para birimini ayrı ayrı "
+"gösterir, dönüşüm uygulanmaz"
 
 #: includes/brikpanel-store-summary.php:680
 msgid "BrikPanel analytics tracking active since"
@@ -13658,7 +13840,9 @@ msgstr "BrikPanel analitik takibi şu tarihten beri aktif"
 msgid ""
 "orders before this date come from WooCommerce only; visitor / funnel / "
 "device metrics apply to this date forward"
-msgstr "bu tarihten önceki siparişler yalnızca WooCommerce'den gelir; ziyaretçi / huni / cihaz metrikleri bu tarihten itibaren geçerlidir"
+msgstr ""
+"bu tarihten önceki siparişler yalnızca WooCommerce'den gelir; ziyaretçi / "
+"huni / cihaz metrikleri bu tarihten itibaren geçerlidir"
 
 #: includes/brikpanel-store-summary.php:682
 msgid "BrikPanel analytics tracking"
@@ -13693,7 +13877,9 @@ msgstr "Döneme Göre Satışlar"
 #: includes/brikpanel-store-summary.php:766
 msgid ""
 "Multi-currency store — revenue and AOV columns list every active currency."
-msgstr "Çoklu para birimli mağaza — gelir ve OOS sütunları tüm aktif para birimlerini listeler."
+msgstr ""
+"Çoklu para birimli mağaza — gelir ve OOS sütunları tüm aktif para "
+"birimlerini listeler."
 
 #: includes/brikpanel-store-summary.php:769
 msgid "Period"
@@ -13730,7 +13916,9 @@ msgstr "%s → %s (%d ay, %d aktif)"
 msgid ""
 "Showing %1$d active month(s) out of %2$d in the recent-12 window — months "
 "with zero revenue and zero orders are hidden."
-msgstr "Son 12 aylık penceredeki %2$d aydan %1$d aktif ay gösteriliyor — sıfır gelir ve sıfır siparişli aylar gizlendi."
+msgstr ""
+"Son 12 aylık penceredeki %2$d aydan %1$d aktif ay gösteriliyor — sıfır gelir "
+"ve sıfır siparişli aylar gizlendi."
 
 #: includes/brikpanel-store-summary.php:1050
 msgid "Order Status Breakdown (all-time)"
@@ -13744,7 +13932,9 @@ msgstr "En İyi Ürünler (son 12 ay)"
 msgid ""
 "Variations are rolled up to their parent product. Sorted by revenue; the "
 "Units column lets you spot volume-vs-value differences."
-msgstr "Varyasyonlar üst ürünlerine toplanır. Gelire göre sıralanır; Birimler sütunu hacim-değer farklılıklarını tespit etmenizi sağlar."
+msgstr ""
+"Varyasyonlar üst ürünlerine toplanır. Gelire göre sıralanır; Birimler sütunu "
+"hacim-değer farklılıklarını tespit etmenizi sağlar."
 
 #: includes/brikpanel-store-summary.php:1120
 msgid "Units"
@@ -13797,7 +13987,10 @@ msgid ""
 "Each row: % of the cohort that placed an order N months after their first "
 "order. M0 is always 100%. The Trend column visualizes the row using Unicode "
 "block characters (▁→0%, █→100%)."
-msgstr "Her satır: İlk siparişinden N ay sonra sipariş veren kohort yüzdesi. M0 her zaman %100'dür. Trend sütunu satırı Unicode blok karakterleri kullanarak görselleştirir (▁→%0, █→%100)."
+msgstr ""
+"Her satır: İlk siparişinden N ay sonra sipariş veren kohort yüzdesi. M0 her "
+"zaman %100'dür. Trend sütunu satırı Unicode blok karakterleri kullanarak "
+"görselleştirir (▁→%0, █→%100)."
 
 #: includes/brikpanel-store-summary.php:1296
 msgid "Trend"
@@ -13810,7 +14003,13 @@ msgid ""
 "orders include WooCommerce-imported orders that may pre-date BrikPanel "
 "tracking; the funnel windows below are clamped to dates after tracking "
 "started so the rates stay meaningful."
-msgstr "Sepete ekle sayısı, bot trafiği, doğrudan sepete ekle bağlantıları, listeleme sayfası takibi ve aynı ürünü yeniden ekleme nedeniyle ürün görüntülemelerini aşabilir. Başarılı siparişler, BrikPanel takibinden önce olabilecek WooCommerce'den içe aktarılan siparişleri içerir; aşağıdaki huni pencereleri, oranların anlamlı kalması için takip başladıktan sonraki tarihlere sabitlendi."
+msgstr ""
+"Sepete ekle sayısı, bot trafiği, doğrudan sepete ekle bağlantıları, "
+"listeleme sayfası takibi ve aynı ürünü yeniden ekleme nedeniyle ürün "
+"görüntülemelerini aşabilir. Başarılı siparişler, BrikPanel takibinden önce "
+"olabilecek WooCommerce'den içe aktarılan siparişleri içerir; aşağıdaki huni "
+"pencereleri, oranların anlamlı kalması için takip başladıktan sonraki "
+"tarihlere sabitlendi."
 
 #: includes/brikpanel-store-summary.php:1370
 #, php-format
@@ -13992,13 +14191,19 @@ msgid ""
 "Gross = Revenue − Refunds − COGS. Net = Gross − Tracked expenses. COGS comes "
 "from per-line `_cogs_value` written by WooCommerce when an order is placed; "
 "products without a configured cost contribute zero."
-msgstr "Brüt = Gelir − İadeler − SMM. Net = Brüt − Takip edilen giderler. SMM, sipariş verildiğinde WooCommerce tarafından yazılan satır bazlı `_cogs_value`'dan gelir; maliyeti yapılandırılmamış ürünler sıfır katkı sağlar."
+msgstr ""
+"Brüt = Gelir − İadeler − SMM. Net = Brüt − Takip edilen giderler. SMM, "
+"sipariş verildiğinde WooCommerce tarafından yazılan satır bazlı "
+"`_cogs_value`'dan gelir; maliyeti yapılandırılmamış ürünler sıfır katkı "
+"sağlar."
 
 #: includes/brikpanel-store-summary.php:1975
 msgid ""
 "COGS not tracked on any line item — Net = Revenue − Refunds − Tracked "
 "expenses (operating contribution, not full P&L)."
-msgstr "Hiçbir satır öğesinde SMM takip edilmiyor — Net = Gelir − İadeler − Takip edilen giderler (işletme katkısı, tam kâr-zarar değil)."
+msgstr ""
+"Hiçbir satır öğesinde SMM takip edilmiyor — Net = Gelir − İadeler − Takip "
+"edilen giderler (işletme katkısı, tam kâr-zarar değil)."
 
 #: includes/brikpanel-store-summary.php:1979
 msgid "Total refunds"
@@ -14049,7 +14254,9 @@ msgstr "Net"
 msgid ""
 "Showing %1$d active month(s) out of %2$d in the 12-month window — months "
 "with zero across every column are hidden."
-msgstr "12 aylık penceredeki %2$d aydan %1$d aktif ay gösteriliyor — her sütunda sıfır olan aylar gizlendi."
+msgstr ""
+"12 aylık penceredeki %2$d aydan %1$d aktif ay gösteriliyor — her sütunda "
+"sıfır olan aylar gizlendi."
 
 #: includes/brikpanel-store-summary.php:2175
 msgid "New vs Returning Revenue (last 12 months)"
@@ -14155,7 +14362,9 @@ msgstr "Başarısız Siparişler (son 12 ay)"
 #: includes/brikpanel-store-summary.php:2361
 #, php-format
 msgid "%1$s orders failed, all via **%2$s**. **%3$s** in revenue at risk."
-msgstr "%1$s sipariş başarısız oldu, tümü **%2$s** aracılığıyla. Risk altındaki gelir: **%3$s**."
+msgstr ""
+"%1$s sipariş başarısız oldu, tümü **%2$s** aracılığıyla. Risk altındaki "
+"gelir: **%3$s**."
 
 #: includes/brikpanel-store-summary.php:2363
 #: includes/brikpanel-store-summary.php:2374
@@ -14176,7 +14385,11 @@ msgid ""
 "WooCommerce does not store a structured failure reason; the table below "
 "groups failures by payment method (the only reliable signal). Look for one "
 "gateway dominating to spot integration issues."
-msgstr "WooCommerce yapılandırılmış bir başarısızlık nedeni depolamaz; aşağıdaki tablo başarısızlıkları ödeme yöntemine göre gruplar (tek güvenilir sinyal). Entegrasyon sorunlarını tespit etmek için bir ağ geçidinin baskın olup olmadığına bakın."
+msgstr ""
+"WooCommerce yapılandırılmış bir başarısızlık nedeni depolamaz; aşağıdaki "
+"tablo başarısızlıkları ödeme yöntemine göre gruplar (tek güvenilir sinyal). "
+"Entegrasyon sorunlarını tespit etmek için bir ağ geçidinin baskın olup "
+"olmadığına bakın."
 
 #: includes/brikpanel-store-summary.php:2456
 msgid "Refund Metrics (last 12 months)"
@@ -14203,7 +14416,11 @@ msgid ""
 "Share of revenue held by top customers — a high number means the business is "
 "fragile to losing a few accounts. We show two windows because all-time and "
 "last-12m can diverge sharply when a SaaS-style customer mix is rotating."
-msgstr "En iyi müşteriler tarafından tutulan gelir payı — yüksek bir rakam işletmenin birkaç hesabı kaybetmeye karşı kırılgan olduğu anlamına gelir. SaaS tarzı müşteri karması dönerken tüm zamanlar ve son 12 ay keskin biçimde ayrışabileceğinden iki pencere gösteriyoruz."
+msgstr ""
+"En iyi müşteriler tarafından tutulan gelir payı — yüksek bir rakam "
+"işletmenin birkaç hesabı kaybetmeye karşı kırılgan olduğu anlamına gelir. "
+"SaaS tarzı müşteri karması dönerken tüm zamanlar ve son 12 ay keskin biçimde "
+"ayrışabileceğinden iki pencere gösteriyoruz."
 
 #: includes/brikpanel-store-summary.php:2497
 msgid "All-time LTV share"
@@ -14233,7 +14450,9 @@ msgstr "Tekrar Satın Alma Oranı"
 msgid ""
 "Customers who placed at least 2 orders. A higher rate means lower "
 "acquisition pressure on growth."
-msgstr "En az 2 sipariş veren müşteriler. Daha yüksek oran büyümede daha düşük edinim baskısı anlamına gelir."
+msgstr ""
+"En az 2 sipariş veren müşteriler. Daha yüksek oran büyümede daha düşük "
+"edinim baskısı anlamına gelir."
 
 #: includes/brikpanel-store-summary.php:2600
 msgid "Time to First Purchase"
@@ -14256,7 +14475,10 @@ msgid ""
 "Limited to customers with a WordPress account. Most stores have many guest "
 "checkouts (user_id = 0) which are excluded — this metric reflects the "
 "registered-account funnel only."
-msgstr "WordPress hesabı olan müşterilerle sınırlıdır. Çoğu mağazada hariç tutulan çok sayıda misafir ödeme (user_id = 0) bulunur — bu metrik yalnızca kayıtlı hesap hunisini yansıtır."
+msgstr ""
+"WordPress hesabı olan müşterilerle sınırlıdır. Çoğu mağazada hariç tutulan "
+"çok sayıda misafir ödeme (user_id = 0) bulunur — bu metrik yalnızca kayıtlı "
+"hesap hunisini yansıtır."
 
 #: includes/brikpanel-store-summary.php:2640
 msgid "Cart Abandonment Rate"
@@ -14271,7 +14493,9 @@ msgstr "Terk oranı"
 msgid ""
 "Window: %s → %s. Abandonment = (checkout reached − successful orders) / "
 "checkout reached."
-msgstr "Pencere: %s → %s. Terk = (ödemeye ulaşıldı − başarılı siparişler) / ödemeye ulaşıldı."
+msgstr ""
+"Pencere: %s → %s. Terk = (ödemeye ulaşıldı − başarılı siparişler) / ödemeye "
+"ulaşıldı."
 
 #: includes/brikpanel-store-summary.php:2749
 msgid "Coupon Performance (last 12 months)"
@@ -14366,7 +14590,10 @@ msgstr "Logo kaybı (12 ay)"
 msgid ""
 "MRR normalized: yearly ÷ 12, weekly × 4.33, daily × 30.4. Revenue churn / "
 "NRR require expansion-revenue tracking BrikPanel does not capture yet."
-msgstr "Normalize edilmiş AYG: yıllık ÷ 12, haftalık × 4.33, günlük × 30.4. Gelir kaybı / NRR, BrikPanel'in henüz yakalamadığı genişleme geliri takibini gerektirir."
+msgstr ""
+"Normalize edilmiş AYG: yıllık ÷ 12, haftalık × 4.33, günlük × 30.4. Gelir "
+"kaybı / NRR, BrikPanel'in henüz yakalamadığı genişleme geliri takibini "
+"gerektirir."
 
 #: includes/brikpanel-store-summary.php:3201
 msgid "Subscriptions (inferred from product names)"
@@ -14378,7 +14605,11 @@ msgid ""
 "period markers in product titles (Yıllık / Aylık / Yearly / Monthly etc.). "
 "Each paid line item is treated as one billing cycle. Numbers are estimates, "
 "not contracts."
-msgstr "WC Abonelikler eklentisi algılanmadı — bu metrikler ürün başlıklarındaki dönem işaretçilerinden çıkarılmıştır (Yıllık / Aylık / Yearly / Monthly vb.). Her ücretli satır öğesi bir fatura dönemi olarak değerlendirilir. Sayılar tahmin, sözleşme değildir."
+msgstr ""
+"WC Abonelikler eklentisi algılanmadı — bu metrikler ürün başlıklarındaki "
+"dönem işaretçilerinden çıkarılmıştır (Yıllık / Aylık / Yearly / Monthly "
+"vb.). Her ücretli satır öğesi bir fatura dönemi olarak değerlendirilir. "
+"Sayılar tahmin, sözleşme değildir."
 
 #: includes/brikpanel-store-summary.php:3204
 #: includes/brikpanel-store-summary.php:3274
@@ -14398,18 +14629,24 @@ msgid ""
 "Renewal rate cannot be computed yet — no prior-year cohort exists (store is "
 "younger than 12 months or has no yearly products purchased before that "
 "window)."
-msgstr "Yenileme oranı henüz hesaplanamıyor — önceki yıl kohortu mevcut değil (mağaza 12 aydan genç veya o pencereden önce satın alınan yıllık ürün yok)."
+msgstr ""
+"Yenileme oranı henüz hesaplanamıyor — önceki yıl kohortu mevcut değil "
+"(mağaza 12 aydan genç veya o pencereden önce satın alınan yıllık ürün yok)."
 
 #: includes/brikpanel-store-summary.php:3212
 msgid ""
 "NRR is intentionally omitted — it requires per-account expansion / "
 "contraction tracking which BrikPanel does not capture."
-msgstr "NRR kasıtlı olarak atlandı — BrikPanel'in yakalamadığı hesap başına genişleme / daralma takibi gerektirir."
+msgstr ""
+"NRR kasıtlı olarak atlandı — BrikPanel'in yakalamadığı hesap başına "
+"genişleme / daralma takibi gerektirir."
 
 #: includes/brikpanel-store-summary.php:3223
 msgid ""
 "Source: paid order line items, period inferred from product title pattern."
-msgstr "Kaynak: ücretli sipariş satır öğeleri, dönem ürün başlığı deseninden çıkarıldı."
+msgstr ""
+"Kaynak: ücretli sipariş satır öğeleri, dönem ürün başlığı deseninden "
+"çıkarıldı."
 
 #: includes/brikpanel-store-summary.php:3243
 msgid "Average Customer Lifespan"
@@ -14434,32 +14671,42 @@ msgstr "2 veya daha fazla siparişi olan müşteriler"
 #: includes/brikpanel-store-summary.php:3245
 msgid ""
 "too small for a confident average; treat as a directional indicator only"
-msgstr "güvenilir bir ortalama için çok küçük; yalnızca yönsel gösterge olarak değerlendirin"
+msgstr ""
+"güvenilir bir ortalama için çok küçük; yalnızca yönsel gösterge olarak "
+"değerlendirin"
 
 #: includes/brikpanel-store-summary.php:3246
 msgid ""
 "For subscription-style stores expect this to converge near 365 days (annual "
 "renewals) once the cohort is mature; an unexpectedly short lifespan suggests "
 "one-and-done buyers dominate."
-msgstr "Abonelik tarzı mağazalar için kohort olgunlaştığında bunun 365 güne (yıllık yenilemeler) yakınsaşmasını bekleyin; beklenmedik şekilde kısa bir ömür, tek seferlik alıcıların baskın olduğuna işaret eder."
+msgstr ""
+"Abonelik tarzı mağazalar için kohort olgunlaştığında bunun 365 güne (yıllık "
+"yenilemeler) yakınsaşmasını bekleyin; beklenmedik şekilde kısa bir ömür, tek "
+"seferlik alıcıların baskın olduğuna işaret eder."
 
 #: includes/brikpanel-store-summary.php:3261
 msgid ""
 "Headline numbers — paste this block alone into an AI prompt for a quick-take "
 "read."
-msgstr "Başlık rakamları — hızlı bir okuma için bu bloğu tek başına bir yapay zeka istemine yapıştırın."
+msgstr ""
+"Başlık rakamları — hızlı bir okuma için bu bloğu tek başına bir yapay zeka "
+"istemine yapıştırın."
 
 #: includes/brikpanel-store-summary.php:3277
 msgid "Yearly renewal rate"
 msgstr "Yıllık yenileme oranı"
 
-#. translators: 1: active count, 2: total tracked, 3: percentage, 4: 30d active
+#. translators: 1: active count, 2: total tracked, 3: percentage, 4: 30d
+#. active
 #: includes/brikpanel-store-summary.php:3306
 #, php-format
 msgid ""
 "%1$s active in last 12m / %2$s tracked all-time (%3$s); %4$s active in last "
 "30d"
-msgstr "Son 12 ayda %1$s aktif / %2$s tüm zamanlarda takip edildi (%3$s); son 30 günde %4$s aktif"
+msgstr ""
+"Son 12 ayda %1$s aktif / %2$s tüm zamanlarda takip edildi (%3$s); son 30 "
+"günde %4$s aktif"
 
 #: includes/brikpanel-store-summary.php:3316
 msgid "Repeat purchase rate"
@@ -14547,7 +14794,8 @@ msgstr "Zamanlanmış Görevler"
 
 #: includes/cron/class-brikpanel-cron-page.php:75
 msgid "Background jobs and recurring tasks running through Action Scheduler."
-msgstr "Action Scheduler üzerinden çalışan arka plan işleri ve tekrarlayan görevler."
+msgstr ""
+"Action Scheduler üzerinden çalışan arka plan işleri ve tekrarlayan görevler."
 
 #: includes/cron/class-brikpanel-cron-page.php:87
 msgid "Action Scheduler not loaded."
@@ -14557,7 +14805,9 @@ msgstr "Action Scheduler yüklenmedi."
 msgid ""
 "Make sure WooCommerce is active. Background tasks are paused until Action "
 "Scheduler is available."
-msgstr "WooCommerce'in aktif olduğundan emin olun. Action Scheduler kullanılabilir olana kadar arka plan görevleri duraklatılır."
+msgstr ""
+"WooCommerce'in aktif olduğundan emin olun. Action Scheduler kullanılabilir "
+"olana kadar arka plan görevleri duraklatılır."
 
 #: includes/cron/class-brikpanel-cron-page.php:99
 #: includes/cron/class-brikpanel-cron-page.php:120
@@ -14672,7 +14922,9 @@ msgstr "Şampiyonlar"
 
 #: includes/cron/customer-analytics-jobs.php:304
 msgid "Bought recently, often, and spend the most. Reward them."
-msgstr "Yakın zamanda, sık sık satın aldılar ve en çok harcıyorlar. Onları ödüllendirin."
+msgstr ""
+"Yakın zamanda, sık sık satın aldılar ve en çok harcıyorlar. Onları "
+"ödüllendirin."
 
 #: includes/cron/customer-analytics-jobs.php:308
 msgid "Loyal Customers"
@@ -14704,7 +14956,8 @@ msgstr "Kaybetmemeli"
 
 #: includes/cron/customer-analytics-jobs.php:324
 msgid "High-value customers who haven't bought in a while. Win them back."
-msgstr "Uzun süredir satın almayan yüksek değerli müşteriler. Onları geri kazanın."
+msgstr ""
+"Uzun süredir satın almayan yüksek değerli müşteriler. Onları geri kazanın."
 
 #: includes/cron/customer-analytics-jobs.php:328
 msgid "At Risk"
@@ -14730,7 +14983,9 @@ msgstr "Dikkat Gerekiyor"
 msgid ""
 "Buy frequently but with a small basket. Raise basket size via cross-sell, "
 "bundles, or higher-tier upgrades."
-msgstr "Sık satın alırlar ama küçük sepetlerle. Çapraz satış, paketler veya üst kademe yükseltmeler yoluyla sepet büyüklüğünü artırın."
+msgstr ""
+"Sık satın alırlar ama küçük sepetlerle. Çapraz satış, paketler veya üst "
+"kademe yükseltmeler yoluyla sepet büyüklüğünü artırın."
 
 #: includes/cron/customer-analytics-jobs.php:343
 msgid "Hibernating"
@@ -14764,7 +15019,6 @@ msgstr "Kohort Elde Tutmayı Yeniden Hesapla"
 msgid "Builds the monthly cohort × period retention matrix."
 msgstr "Aylık kohort × dönem elde tutma matrisini oluşturur."
 
-
 #. translators: %1$d: product rows written to the sheet so far.
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:277
 msgid "Synced %1$d product rows…"
@@ -14776,15 +15030,936 @@ msgid "Synced %1$d product rows."
 msgstr "%1$d ürün satırı senkronize edildi."
 
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1201
-msgid "The target tab could not be wiped, so nothing was re-pushed and your existing rows were left untouched. This is usually a Google rate limit, wait a minute and click \"Sync now\" again."
-msgstr "Hedef sekme temizlenemedi, bu yüzden hiçbir şey yeniden gönderilmedi ve mevcut satırlarınıza dokunulmadı. Bu genellikle bir Google hız sınırıdır, bir dakika bekleyip \"Şimdi senkronize et\" düğmesine tekrar tıklayın."
+msgid ""
+"The target tab could not be wiped, so nothing was re-pushed and your "
+"existing rows were left untouched. This is usually a Google rate limit, wait "
+"a minute and click \"Sync now\" again."
+msgstr ""
+"Hedef sekme temizlenemedi, bu yüzden hiçbir şey yeniden gönderilmedi ve "
+"mevcut satırlarınıza dokunulmadı. Bu genellikle bir Google hız sınırıdır, "
+"bir dakika bekleyip \"Şimdi senkronize et\" düğmesine tekrar tıklayın."
 
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:1203
-msgid "A background sync is already running — it will finish on its own, or click \"Sync now\" again in a moment to watch progress."
-msgstr "Arka planda zaten bir senkronizasyon çalışıyor, kendi kendine tamamlanacak. İlerlemeyi görmek için birazdan \"Şimdi senkronize et\" düğmesine tekrar tıklayabilirsiniz."
+msgid ""
+"A background sync is already running — it will finish on its own, or click "
+"\"Sync now\" again in a moment to watch progress."
+msgstr ""
+"Arka planda zaten bir senkronizasyon çalışıyor, kendi kendine tamamlanacak. "
+"İlerlemeyi görmek için birazdan \"Şimdi senkronize et\" düğmesine tekrar "
+"tıklayabilirsiniz."
 
-msgid "Price minus cost of goods, with the percentage measured against cost. Taxes, shipping and fees are not deducted."
-msgstr "Fiyattan mal maliyeti düşülür, yüzde maliyet üzerinden hesaplanır. Vergi, kargo ve komisyonlar düşülmez."
+msgid ""
+"Price minus cost of goods, with the percentage measured against cost. Taxes, "
+"shipping and fees are not deducted."
+msgstr ""
+"Fiyattan mal maliyeti düşülür, yüzde maliyet üzerinden hesaplanır. Vergi, "
+"kargo ve komisyonlar düşülmez."
 
 msgid "%d variations have no cost or price on file"
 msgstr "%d varyasyonun kayıtlı maliyeti veya fiyatı yok"
+
+msgid "Remove this expense?"
+msgstr "Bu gider kaldırılsın mı?"
+
+msgid "Remove these expenses?"
+msgstr "Bu giderler kaldırılsın mı?"
+
+msgid "What to remove"
+msgstr "Ne kaldırılacak"
+
+msgid "Only this period"
+msgstr "Yalnızca bu dönem"
+
+msgid "The whole repeating expense"
+msgstr "Tekrarlayan giderin tamamı"
+
+msgid ""
+"These figures changed while this dialog was open. Close it and try again."
+msgstr "Bu pencere açıkken rakamlar değişti. Kapatıp yeniden deneyin."
+
+msgid "Nothing to remove here."
+msgstr "Burada kaldırılacak bir şey yok."
+
+msgid "This expense no longer exists."
+msgstr "Bu gider artık mevcut değil."
+
+msgid "Invalid date range."
+msgstr "Geçersiz tarih aralığı."
+
+msgid ""
+"This cost is a percentage of revenue, so removing it affects every period."
+msgstr "Bu maliyet cironun bir yüzdesidir, kaldırmak her dönemi etkiler."
+
+msgid ""
+"These entries were created when stock orders were received. Removing them "
+"does not change the purchase orders."
+msgstr ""
+"Bu kayıtlar stok siparişleri teslim alınırken oluşturuldu. Kaldırmak satın "
+"alma siparişlerini değiştirmez."
+
+msgid ""
+"This period is where %s starts repeating. \"Only this period\" keeps that "
+"first entry. Choose the whole repeating expense to remove it as well."
+msgstr ""
+"%s bu dönemde tekrarlamaya başlıyor. \"Yalnızca bu dönem\" o ilk kaydı "
+"korur. Onu da kaldırmak için tekrarlayan giderin tamamını seçin."
+
+msgid "%s repeats, so removing it also stops every future occurrence."
+msgstr ""
+"%s tekrarlanan bir giderdir, kaldırmak gelecekteki tüm tekrarlarını da "
+"durdurur."
+
+msgid "%1$s: %2$s%% of revenue."
+msgstr "%1$s: ciro üzerinden %%%2$s."
+
+msgid "%1$s · %2$s · %3$s"
+msgstr "%1$s · %2$s · %3$s"
+
+msgid "Remove %s"
+msgstr "Kaldır: %s"
+
+msgid "Removing…"
+msgstr "Kaldırılıyor…"
+
+msgid "Could not remove. Please try again."
+msgstr "Kaldırılamadı. Lütfen tekrar deneyin."
+
+msgid "%d entry removed."
+msgid_plural "%d entries removed."
+msgstr[0] "%d kayıt kaldırıldı."
+msgstr[1] "%d kayıt kaldırıldı."
+
+msgid "Removes %1$d entry · %2$s"
+msgid_plural "Removes %1$d entries · %2$s"
+msgstr[0] "%1$d kayıt kaldırır · %2$s"
+msgstr[1] "%1$d kayıt kaldırır · %2$s"
+
+msgid "Includes %d entry outside this period."
+msgid_plural "Includes %d entries outside this period."
+msgstr[0] "Bu dönemin dışındaki %d kaydı da kapsar."
+msgstr[1] "Bu dönemin dışındaki %d kaydı da kapsar."
+
+msgid "%1$s: %2$d entry, %3$s in this period."
+msgid_plural "%1$s: %2$d entries, %3$s in this period."
+msgstr[0] "%1$s: bu dönemde %2$d kayıt, %3$s."
+msgstr[1] "%1$s: bu dönemde %2$d kayıt, %3$s."
+
+#: includes/brikpanel-hooks-api.php:179
+msgid ""
+"Meta keys the BrikPanel product list search scans in addition to the post "
+"title and content. Defaults to the WooCommerce SKU key _sku. Add a supplier "
+"code, manufacturer part number or EAN key and staff can find a product by "
+"typing it. Both a product and its variations are scanned, and a match on a "
+"variation returns the parent product, so simple and variable products behave "
+"the same. Keys that are not plain meta key names are dropped, and at most 10 "
+"keys are scanned."
+msgstr ""
+"BrikPanel ürün listesi aramasının başlık ve içeriğe ek olarak taradığı meta "
+"anahtarları. Varsayılan olarak WooCommerce SKU anahtarı _sku kullanılır. Bir "
+"tedarikçi kodu, üretici parça numarası veya EAN anahtarı ekleyin; "
+"personeliniz ürünü yazarak bulabilsin. Hem ürünün kendisi hem de "
+"varyasyonları taranır ve bir varyasyondaki eşleşme üst ürünü döndürür, "
+"böylece basit ve varyasyonlu ürünler aynı şekilde davranır. Düz meta anahtar "
+"adı olmayan anahtarlar atılır ve en fazla 10 anahtar taranır."
+
+#: front-end/products/brikpanel-product-editor.php:1063
+msgid ""
+"Some settings for this product type can only be edited in the WooCommerce "
+"product editor. They are left untouched when you save here."
+msgstr ""
+"Bu ürün türüne ait bazı ayarlar yalnızca WooCommerce ürün düzenleyicisinde "
+"değiştirilebilir. Burada kaydettiğinizde bu ayarlara dokunulmaz."
+
+#: front-end/products/brikpanel-product-editor.php:1066
+msgid "Open in WooCommerce"
+msgstr "WooCommerce'de aç"
+
+#: front-end/cart-share/brikpanel-cart-share.php:356
+#: front-end/cart-share/brikpanel-cart-share.php:547
+msgctxt "verb: share the cart link"
+msgid "Share"
+msgstr "Paylaş"
+
+msgid "Sort variations"
+msgstr "Varyasyonları sırala"
+
+msgid "Choose…"
+msgstr "Seçin…"
+
+msgid "Attribute order"
+msgstr "Özellik sırası"
+
+msgid "Name A to Z"
+msgstr "Ad A’dan Z’ye"
+
+msgid "Name Z to A"
+msgstr "Ad Z’den A’ya"
+
+msgid "Drag to reorder this variation"
+msgstr "Bu varyasyonun sırasını değiştirmek için sürükle"
+
+msgid "Order updated. Save the product to keep it."
+msgstr "Sıra güncellendi. Kalıcı olması için ürünü kaydet."
+
+msgid "Choose how to sort the variations first."
+msgstr "Önce varyasyonların nasıl sıralanacağını seç."
+
+msgid "%d new variations added at the end of the list."
+msgstr "Listenin sonuna %d yeni varyasyon eklendi."
+
+msgid "No new combinations to add — every variation already exists."
+msgstr "Eklenecek yeni kombinasyon yok — tüm varyasyonlar zaten var."
+
+msgid ""
+"%d variations no longer match your attribute values. They are marked in the "
+"list and kept until you delete them."
+msgstr ""
+"%d varyasyon artık özellik değerlerinle eşleşmiyor. Listede işaretlendiler "
+"ve sen silene kadar duruyorlar."
+
+msgid "Not in your attributes"
+msgstr "Özelliklerinde yok"
+
+msgid "This combination is no longer among your attribute values."
+msgstr "Bu kombinasyon artık özellik değerlerin arasında değil."
+
+msgid "%d new variation added at the end of the list."
+msgstr "Listenin sonuna %d yeni varyasyon eklendi."
+
+msgid ""
+"%d variation no longer matches your attribute values. It is marked in the "
+"list and kept until you delete it."
+msgstr ""
+"%d varyasyon artık özellik değerlerinle eşleşmiyor. Listede işaretlendi ve "
+"sen silene kadar duruyor."
+
+msgid "Price for every variation"
+msgstr "Her varyasyon için fiyat"
+
+msgid "Sale price for every variation"
+msgstr "Her varyasyon için indirim fiyatı"
+
+msgid "Stock quantity for every variation"
+msgstr "Her varyasyon için stok miktarı"
+
+msgid "Active state for every variation"
+msgstr "Her varyasyon için aktiflik durumu"
+
+msgid "Sort variations…"
+msgstr "Varyasyonları sırala…"
+
+msgctxt "variation tools button that opens the Default Form Values picker"
+msgid "Defaults"
+msgstr "Varsayılanlar"
+
+msgctxt "short placeholder for the bulk sale price field"
+msgid "Sale"
+msgstr "İndirim"
+
+#: includes/brikpanel-early-access.php:793
+msgid ""
+"An AI assistant and email marketing engine for WooCommerce. It will chase "
+"carts like these for you: a reminder first, a coupon only if that is not "
+"enough. Join the private beta list to try it first."
+msgstr ""
+"WooCommerce için bir yapay zeka asistanı ve e-posta pazarlama motoru. Bunun "
+"gibi sepetlerin peşine sizin yerinize düşecek: önce bir hatırlatma, yeterli "
+"olmazsa bir kupon. İlk denemek için özel beta listesine katılın."
+
+#: includes/brikpanel-early-access.php:800
+#: includes/brikpanel-early-access.php:802
+msgid ""
+"An AI assistant and email marketing engine for WooCommerce. It will follow "
+"up after each completed order and win back the buyers who drift away, so "
+"lifetime value keeps growing. Join the private beta list to try it first."
+msgstr ""
+"WooCommerce için bir yapay zeka asistanı ve e-posta pazarlama motoru. "
+"Tamamlanan her siparişin ardından takip edecek ve uzaklaşan alıcıları geri "
+"kazanacak, böylece yaşam boyu değer büyümeye devam edecek. İlk denemek için "
+"özel beta listesine katılın."
+
+#: includes/brikpanel-early-access.php:803
+msgid ""
+"An AI assistant and email marketing engine for WooCommerce. It will read "
+"these segments straight from BrikPanel and re-engage the ones you pick. Join "
+"the private beta list to try it first."
+msgstr ""
+"WooCommerce için bir yapay zeka asistanı ve e-posta pazarlama motoru. Bu "
+"segmentleri doğrudan BrikPanel'den okuyacak ve seçtiklerinizi yeniden "
+"etkileşime geçirecek. İlk denemek için özel beta listesine katılın."
+
+#: includes/brikpanel-early-access.php:804
+msgid ""
+"An AI assistant and email marketing engine for WooCommerce. It will scan "
+"your customers daily and start a win-back series for anyone who has not "
+"ordered in months. Join the private beta list to try it first."
+msgstr ""
+"WooCommerce için bir yapay zeka asistanı ve e-posta pazarlama motoru. "
+"Müşterilerinizi her gün tarayacak ve aylardır sipariş vermeyenler için bir "
+"geri kazanım serisi başlatacak. İlk denemek için özel beta listesine katılın."
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:349
+msgctxt "cart status"
+msgid "Email only"
+msgstr "Yalnızca e-posta"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:353
+msgctxt "cart status"
+msgid "Converted"
+msgstr "Dönüştü"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:461
+msgid "Follow-ups"
+msgstr "Takip e-postaları"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:464
+msgid "Created"
+msgstr "Oluşturuldu"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:573
+msgid "Highest cart value"
+msgstr "En yüksek sepet tutarı"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:574
+msgid "Lowest cart value"
+msgstr "En düşük sepet tutarı"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:575
+msgid "Oldest cart"
+msgstr "En eski sepet"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:576
+msgid "Newest cart"
+msgstr "En yeni sepet"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:2710
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3592
+msgid ""
+"Hi {customer_name}, this is {store_name}. You left a few items in your cart "
+"- can I help you finish the order? {recovery_url}"
+msgstr ""
+"Merhaba {customer_name}, ben {store_name}. Sepetinizde birkaç ürün "
+"bırakmışsınız. Siparişi tamamlamanıza yardımcı olabilir miyim? {recovery_url}"
+
+#. translators: %s: full international phone number the link opens.
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:2805
+#, php-format
+msgid "Message on WhatsApp: +%s (country guessed from your store address)"
+msgstr "WhatsApp'tan yaz: +%s (ülke mağaza adresinizden tahmin edildi)"
+
+#. translators: %s: full international phone number the link opens.
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:2811
+#, php-format
+msgid "Message on WhatsApp: +%s"
+msgstr "WhatsApp'tan yaz: +%s"
+
+#. translators: %s: date and time of the next scheduled reminder.
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:2824
+#, php-format
+msgid "Next: %s"
+msgstr "Sıradaki: %s"
+
+#. translators: %s: date and time of the last reminder sent.
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:2830
+#, php-format
+msgid "Last: %s"
+msgstr "Son: %s"
+
+#. translators: %s: number of follow-up emails already sent.
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:2838
+#, php-format
+msgid "%s email sent"
+msgid_plural "%s emails sent"
+msgstr[0] "%s e-posta gönderildi"
+msgstr[1] "%s e-posta gönderildi"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3021
+msgid "Search email or name…"
+msgstr "E-posta veya ad ara…"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3022
+msgid "Search email or name"
+msgstr "E-posta veya ad ara"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3026
+msgid "Filter by status"
+msgstr "Duruma göre filtrele"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3036
+msgid "Filter by source"
+msgstr "Kaynağa göre filtrele"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3047
+msgid "Filter by date range"
+msgstr "Tarih aralığına göre filtrele"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3057
+msgid "Sort by"
+msgstr "Sırala"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3068
+msgid "Clear"
+msgstr "Temizle"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3080
+msgid "Show, hide and reorder table columns"
+msgstr "Tablo sütunlarını göster, gizle ve yeniden sırala"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3081
+msgid "Drag to reorder, or hold Alt and press the arrow keys."
+msgstr ""
+"Sıralamak için sürükleyin veya Alt tuşunu basılı tutup yön tuşlarını "
+"kullanın."
+
+#. translators: %s: table column name.
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3090
+#, php-format
+msgid "Reorder column: %s"
+msgstr "Sütunu yeniden sırala: %s"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3173
+msgid "No phone number on file."
+msgstr "Kayıtlı telefon numarası yok."
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3174
+msgid "From their account"
+msgstr "Müşteri hesabından"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3175
+msgid "From a past order"
+msgstr "Önceki bir siparişten"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3176
+msgid "No reminders sent."
+msgstr "Hiç hatırlatma gönderilmedi."
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3573
+msgid "Count as recovered within"
+msgstr "Şu süre içinde kurtarılmış say"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3575
+msgid ""
+"An order only counts as a recovery when the matching cart was last active "
+"within this many days. Older carts are left untouched, so a customer coming "
+"back a month later is recorded as a new sale rather than a recovered cart."
+msgstr ""
+"Bir sipariş, ancak eşleşen sepet bu gün sayısı içinde son kez etkin olduysa "
+"kurtarma sayılır. Daha eski sepetlere dokunulmaz, böylece bir ay sonra geri "
+"dönen müşteri kurtarılmış sepet değil yeni bir satış olarak kaydedilir."
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3583
+msgid "WhatsApp message"
+msgstr "WhatsApp mesajı"
+
+#. translators: %s: comma-separated list of placeholder tags, e.g. {customer_name}, {store_name}.
+#. translators: %s: comma-separated list of placeholder tags, e.g. {order_number}, {order_status}.
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3586
+#: front-end/orders/brikpanel-order-whatsapp.php:873
+#, php-format
+msgid "Placeholders: %s"
+msgstr "Yer tutucular: %s"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3589
+msgid ""
+"Opens as an editable draft in WhatsApp, so nothing is sent until you press "
+"send. Write it in any language, and use line breaks freely - they are kept. "
+"{items} lists every product on its own line, so give it a line of its own. "
+"{recovery_url} rebuilds the shopper's cart in one tap; {cart_url} is just "
+"your cart page."
+msgstr ""
+"WhatsApp'ta düzenlenebilir bir taslak olarak açılır, yani siz gönder tuşuna "
+"basana kadar hiçbir şey gönderilmez. Dilediğiniz dilde yazın ve satır "
+"sonlarını rahatça kullanın, korunurlar. {items} her ürünü ayrı bir satırda "
+"listeler, bu yüzden ona kendi satırını verin. {recovery_url} müşterinin "
+"sepetini tek dokunuşla geri kurar, {cart_url} ise yalnızca sepet sayfanızdır."
+
+#: front-end/dashboard/brikpanel-topbar-items.php:794
+msgid "Added by a plugin"
+msgstr "Bir eklenti tarafından eklendi"
+
+#: front-end/orders/brikpanel-order-whatsapp.php:198
+msgid ""
+"Hi {customer_first_name}, this is {site_title} about your order "
+"{order_number}. Its current status is {order_status}."
+msgstr ""
+"Merhaba {customer_first_name}, ben {site_title}, {order_number} numaralı "
+"siparişiniz hakkında yazıyorum. Mevcut durumu: {order_status}."
+
+#: front-end/orders/brikpanel-order-whatsapp.php:876
+msgid ""
+"WhatsApp opens with this text already typed in, so you only have to press "
+"send - nothing goes out on its own. Write it in any language, and use line "
+"breaks freely. {order_items} lists every product on its own line, so give it "
+"a line of its own. Clear this field to go back to opening an empty "
+"conversation."
+msgstr ""
+"WhatsApp bu metin hazır yazılmış olarak açılır, size yalnızca gönder tuşuna "
+"basmak kalır: kendi kendine hiçbir şey gitmez. Dilediğiniz dilde yazın ve "
+"satır sonlarını rahatça kullanın. {order_items} her ürünü ayrı bir satırda "
+"listeler, bu yüzden ona kendi satırını verin. Boş bir sohbet açmaya dönmek "
+"için bu alanı temizleyin."
+
+#: front-end/orders/brikpanel-order-whatsapp.php:915
+msgid "Current status name"
+msgstr "Mevcut durum adı"
+
+#: front-end/orders/brikpanel-order-whatsapp.php:918
+msgid "List of items, one per line"
+msgstr "Ürün listesi, satır başına bir ürün"
+
+#: front-end/orders/brikpanel-order-whatsapp.php:953
+msgid "Message per order status"
+msgstr "Sipariş durumuna göre mesaj"
+
+#: front-end/orders/brikpanel-order-whatsapp.php:954
+msgid ""
+"Say something different depending on where the order stands - one message "
+"while it is being prepared, another while it is still awaiting payment. "
+"Switch a status on and write its message; every status you leave off uses "
+"the general message above."
+msgstr ""
+"Siparişin bulunduğu aşamaya göre farklı bir şey söyleyin: hazırlanırken bir "
+"mesaj, ödeme beklerken başka bir mesaj. Bir durumu açıp mesajını yazın; "
+"kapalı bıraktığınız her durum yukarıdaki genel mesajı kullanır."
+
+#: front-end/orders/brikpanel-order-whatsapp.php:959
+msgid "No order statuses are registered yet."
+msgstr "Henüz kayıtlı bir sipariş durumu yok."
+
+#: front-end/orders/brikpanel-orders.php:329
+msgid ""
+"The WP Consent API plugin is active on this site, so BrikPanel follows "
+"whatever your cookie banner reports for the statistics category."
+msgstr ""
+"Bu sitede WP Consent API eklentisi etkin, bu yüzden BrikPanel istatistik "
+"kategorisi için çerez bandınızın bildirdiği izne uyar."
+
+#: front-end/orders/brikpanel-orders.php:330
+msgid ""
+"No consent plugin was detected on this site. With this on, tracking stays "
+"off until your cookie banner tells BrikPanel that analytics are allowed."
+msgstr ""
+"Bu sitede bir izin eklentisi tespit edilmedi. Bu açıkken, çerez bandınız "
+"BrikPanel'e analitiğin izinli olduğunu bildirene kadar takip kapalı kalır."
+
+#: front-end/orders/brikpanel-orders.php:432
+msgid "Use the full screen width"
+msgstr "Tam ekran genişliğini kullan"
+
+#: front-end/orders/brikpanel-orders.php:435
+msgid ""
+"On a wide monitor, let the variations table and the two description editors "
+"use the extra width instead of staying in the centre column. Everything else "
+"keeps its normal width. Has no effect on screens narrower than about 1360 "
+"pixels."
+msgstr ""
+"Geniş bir ekranda, varyasyon tablosu ile iki açıklama düzenleyicisinin orta "
+"kolonda kalmak yerine fazladan genişliği kullanmasına izin verin. Diğer her "
+"şey normal genişliğini korur. Yaklaşık 1360 pikselden dar ekranlarda etkisi "
+"yoktur."
+
+#: front-end/orders/brikpanel-orders.php:526
+msgid "Category tree view"
+msgstr "Kategori ağacı görünümü"
+
+#: front-end/orders/brikpanel-orders.php:529
+msgid ""
+"Show product categories as a folder tree: click a parent to expand or "
+"collapse its sub-categories, drag a category onto another to nest it, and "
+"filter the whole tree as you type. Up to 300 categories the full hierarchy "
+"is kept on a single page, so a branch is never split across pagination; a "
+"larger catalogue keeps paging and still gets the tree."
+msgstr ""
+"Ürün kategorilerini klasör ağacı olarak gösterir: alt kategorilerini açıp "
+"kapatmak için bir üst kategoriye tıklayın, iç içe almak için bir kategoriyi "
+"başka birinin üzerine sürükleyin ve yazdıkça tüm ağacı filtreleyin. 300 "
+"kategoriye kadar tam hiyerarşi tek sayfada tutulur, böylece bir dal "
+"sayfalama yüzünden asla bölünmez; daha büyük bir katalog sayfalamayı korur "
+"ve ağacı yine alır."
+
+#: front-end/orders/brikpanel-orders.php:536
+msgid ""
+"Number of categories to display per page. Ignored while the category tree "
+"view is on, because the whole tree is shown at once."
+msgstr ""
+"Sayfa başına gösterilecek kategori sayısı. Kategori ağacı görünümü açıkken "
+"yok sayılır, çünkü o zaman tüm ağaç bir kerede gösterilir."
+
+#: front-end/orders/brikpanel-orders.php:560
+msgid "Create global attributes automatically"
+msgstr "Global öznitelikleri otomatik oluştur"
+
+#: front-end/orders/brikpanel-orders.php:563
+msgid ""
+"When you type a new variation attribute name in the product editor, turn it "
+"into a real WooCommerce attribute (Products &rarr; Attributes) instead of "
+"keeping it as a product-only custom attribute. Global attributes are what "
+"colour and size swatch themes, layered navigation and attribute filters "
+"read, so most stores want this on. Attributes are created only when the "
+"product is published, so drafts are left alone, and an attribute that "
+"already exists is reused instead of duplicated. Turning this off later does "
+"not undo attributes that were already created; remove those in Products "
+"&rarr; Attributes."
+msgstr ""
+"Ürün düzenleyicide yeni bir varyasyon özniteliği adı yazdığınızda, bunu "
+"yalnızca o ürüne ait özel bir öznitelik olarak tutmak yerine gerçek bir "
+"WooCommerce özniteliğine (Ürünler &rarr; Öznitelikler) dönüştürür. Renk ve "
+"beden örneği temaları, katmanlı gezinme ve öznitelik filtreleri global "
+"öznitelikleri okur, bu yüzden mağazaların çoğu bunu açık ister. Öznitelikler "
+"yalnızca ürün yayımlandığında oluşturulur, yani taslaklara dokunulmaz ve "
+"halihazırda var olan bir öznitelik çoğaltılmak yerine yeniden kullanılır. "
+"Bunu sonradan kapatmak zaten oluşturulmuş öznitelikleri geri almaz; onları "
+"Ürünler &rarr; Öznitelikler bölümünden kaldırın."
+
+#: front-end/orders/brikpanel-orders.php:665
+msgid "Wait for cookie consent"
+msgstr "Çerez iznini bekle"
+
+#: front-end/orders/brikpanel-orders.php:668
+msgid ""
+"Hold visitor tracking back until the visitor allows analytics: no tracking "
+"cookie, no browser storage and no tracking request is created before then. "
+"BrikPanel accepts consent from the WordPress Consent API (the \"statistics\" "
+"category), from a cookie banner that calls brikpanel_start_tracking(), or "
+"from the brikpanel_frontend_tracking_allowed filter. Consent works without a "
+"page reload, and when it is withdrawn tracking stops at once and BrikPanel "
+"deletes its own tracking cookies and browser storage for that visitor. This "
+"covers analytics only: abandoned-cart email capture is a separate feature "
+"with its own switch, and it never stores anything until a customer types "
+"their email themselves. Leave this off if your store does not need a consent "
+"banner: your analytics keep working exactly as before."
+msgstr ""
+"Ziyaretçi takibini, ziyaretçi analitiğe izin verene kadar bekletir: o ana "
+"kadar takip çerezi, tarayıcı depolaması ve takip isteği oluşturulmaz. "
+"BrikPanel izni WordPress Consent API'den («statistics» kategorisi), "
+"brikpanel_start_tracking() çağıran bir çerez bandından veya "
+"brikpanel_frontend_tracking_allowed filtresinden kabul eder. İzin sayfa "
+"yenilenmeden çalışır ve geri çekildiğinde takip anında durur, BrikPanel o "
+"ziyaretçi için kendi takip çerezlerini ve tarayıcı depolamasını siler. Bu "
+"yalnızca analitiği kapsar: terk edilmiş sepetler için e-posta toplama, kendi "
+"anahtarı olan ayrı bir özelliktir ve müşteri e-postasını kendisi yazana "
+"kadar hiçbir şey saklamaz. Mağazanız bir izin bandına ihtiyaç duymuyorsa "
+"bunu kapalı bırakın: analitiğiniz tam olarak eskisi gibi çalışmaya devam "
+"eder."
+
+#: front-end/products/brikpanel-category-enhancements.php:312
+msgid "Add subcategory"
+msgstr "Alt kategori ekle"
+
+#: front-end/products/brikpanel-category-enhancements.php:313
+msgid "Add child"
+msgstr "Alt öğe ekle"
+
+#: front-end/products/brikpanel-category-enhancements.php:326
+msgid "Move to top level"
+msgstr "En üst seviyeye taşı"
+
+#: front-end/products/brikpanel-category-enhancements.php:445
+msgid "A category cannot be its own parent."
+msgstr "Bir kategori kendi üst kategorisi olamaz."
+
+#: front-end/products/brikpanel-category-enhancements.php:463
+msgid "That category is already in this position."
+msgstr "O kategori zaten bu konumda."
+
+#. translators: %s: category name
+#: front-end/products/brikpanel-category-enhancements.php:485
+#, php-format
+msgid "\"%s\" moved to the top level"
+msgstr "«%s» en üst seviyeye taşındı"
+
+#: front-end/products/brikpanel-product-editor.php:1279
+msgid "Add a single variation and pick its combination yourself"
+msgstr "Tek bir varyasyon ekleyin ve kombinasyonunu kendiniz seçin"
+
+#: front-end/products/brikpanel-product-editor.php:1279
+msgid "Add manually"
+msgstr "Elle ekle"
+
+#: front-end/products/brikpanel-product-editor.php:1801
+msgid "Type and press Enter, or paste a comma-separated list..."
+msgstr "Yazıp Enter'a basın veya virgülle ayrılmış bir liste yapıştırın..."
+
+#: includes/brikpanel-consent.php:519
+msgid "1 year"
+msgstr "1 yıl"
+
+#: includes/brikpanel-consent.php:520
+msgid ""
+"Recognises a returning browser so a visit is counted once instead of once "
+"per page."
+msgstr ""
+"Geri dönen bir tarayıcıyı tanır, böylece bir ziyaret her sayfada bir kez "
+"değil toplamda bir kez sayılır."
+
+#: includes/brikpanel-consent.php:526
+msgid "30 days"
+msgstr "30 gün"
+
+#: includes/brikpanel-consent.php:527
+msgid ""
+"Remembers that this visitor allowed analytics, so the choice survives the "
+"next page load."
+msgstr ""
+"Bu ziyaretçinin analitiğe izin verdiğini hatırlar, böylece seçim bir sonraki "
+"sayfa yüklemesinde de geçerli kalır."
+
+#: includes/brikpanel-consent.php:533 includes/brikpanel-consent.php:540
+msgid "Until midnight"
+msgstr "Gece yarısına kadar"
+
+#: includes/brikpanel-consent.php:534
+msgid ""
+"Counts an add-to-cart once per day per visitor for the conversion funnel."
+msgstr ""
+"Dönüşüm hunisi için sepete eklemeyi ziyaretçi başına günde bir kez sayar."
+
+#: includes/brikpanel-consent.php:541
+msgid ""
+"Counts a checkout visit once per day per visitor for the conversion funnel."
+msgstr ""
+"Dönüşüm hunisi için ödeme sayfası ziyaretini ziyaretçi başına günde bir kez "
+"sayar."
+
+#: includes/brikpanel-consent.php:547 includes/brikpanel-consent.php:558
+msgid "Until cleared"
+msgstr "Temizlenene kadar"
+
+#: includes/brikpanel-consent.php:548
+msgid "Marks that this browser has already been counted as a visitor today."
+msgstr "Bu tarayıcının bugün zaten ziyaretçi olarak sayıldığını işaretler."
+
+#: includes/brikpanel-consent.php:559
+msgid ""
+"Marks that this browser has already been counted as a product viewer today."
+msgstr ""
+"Bu tarayıcının bugün zaten ürün görüntüleyen olarak sayıldığını işaretler."
+
+#: includes/brikpanel-enqueue.php:941
+msgid "Drag onto another item to nest it"
+msgstr "İç içe almak için başka bir öğenin üzerine sürükleyin"
+
+#. translators: %1$s: item being moved, %2$s: new parent item
+#: includes/brikpanel-enqueue.php:946
+#, php-format
+msgid "Move \"%1$s\" under \"%2$s\"?"
+msgstr "«%1$s», «%2$s» altına taşınsın mı?"
+
+#: includes/brikpanel-enqueue.php:948
+msgid "Show or hide sub-categories"
+msgstr "Alt kategorileri göster veya gizle"
+
+#: includes/brikpanel-enqueue.php:949
+msgid "Show or hide children"
+msgstr "Alt öğeleri göster veya gizle"
+
+#: includes/brikpanel-enqueue.php:951
+msgid "Sub-categories"
+msgstr "Alt kategoriler"
+
+#: includes/brikpanel-enqueue.php:952
+msgid "Children"
+msgstr "Alt öğeler"
+
+#: includes/brikpanel-enqueue.php:954
+msgid "Filter categories"
+msgstr "Kategorileri filtrele"
+
+#: includes/brikpanel-enqueue.php:955
+msgid "Filter list"
+msgstr "Listeyi filtrele"
+
+#: includes/brikpanel-enqueue.php:957
+msgid "No categories match your search."
+msgstr "Aramanızla eşleşen kategori yok."
+
+#: includes/brikpanel-enqueue.php:958
+msgid "No items match your search."
+msgstr "Aramanızla eşleşen öğe yok."
+
+#: includes/brikpanel-enqueue.php:959
+msgid "Drop here to move to the top level"
+msgstr "En üst seviyeye taşımak için buraya bırakın"
+
+#: includes/brikpanel-enqueue.php:960
+msgid "Expand all"
+msgstr "Tümünü genişlet"
+
+#: includes/brikpanel-enqueue.php:961
+msgid "Collapse all"
+msgstr "Tümünü daralt"
+
+#. translators: %1$s: number of rows currently shown, %2$s: total number of rows
+#: includes/brikpanel-enqueue.php:963
+#, php-format
+msgid "Showing %1$s of %2$s"
+msgstr "%2$s kaydın %1$s tanesi gösteriliyor"
+
+#. translators: %s: parent category name
+#: includes/brikpanel-enqueue.php:965
+#, php-format
+msgid "Parent set to \"%s\""
+msgstr "Üst kategori «%s» olarak ayarlandı"
+
+#: includes/brikpanel-enqueue.php:1627
+msgid "Press Enter to add, or paste a list separated by | or ,"
+msgstr ""
+"Eklemek için Enter'a basın veya | ya da , ile ayrılmış bir liste yapıştırın"
+
+#: includes/brikpanel-enqueue.php:1628
+msgid ""
+"Could not save: the server did not reply. The request may have timed out or "
+"been blocked by a firewall or security plugin. Please try again."
+msgstr ""
+"Kaydedilemedi: sunucu yanıt vermedi. İstek zaman aşımına uğramış ya da bir "
+"güvenlik duvarı veya güvenlik eklentisi tarafından engellenmiş olabilir. "
+"Lütfen tekrar deneyin."
+
+#. translators: 1: HTTP status the server returned, e.g. "500 Internal Server Error". 2: first readable line of the server's reply, may be empty.
+#: includes/brikpanel-enqueue.php:1630
+#, php-format
+msgid "Could not save. The server replied %1$s. %2$s"
+msgstr "Kaydedilemedi. Sunucu %1$s yanıtını verdi. %2$s"
+
+#. translators: %d: how many attribute values were pasted in.
+#: includes/brikpanel-enqueue.php:1632
+#, php-format
+msgid "%d values added"
+msgstr "%d değer eklendi"
+
+#. translators: %d: how many tags were pasted in.
+#: includes/brikpanel-enqueue.php:1634
+#, php-format
+msgid "%d tags added"
+msgstr "%d etiket eklendi"
+
+#. translators: %s: the value the merchant typed.
+#: includes/brikpanel-enqueue.php:1636
+#, php-format
+msgid "Add “%s”"
+msgstr "«%s» ekle"
+
+#. translators: %d: how many attribute values are not on the product yet.
+#: includes/brikpanel-enqueue.php:1638
+#, php-format
+msgid "Select all (%d)"
+msgstr "Tümünü seç (%d)"
+
+#: includes/brikpanel-enqueue.php:1639
+msgid "Clear all"
+msgstr "Tümünü temizle"
+
+#: includes/brikpanel-enqueue.php:1642
+msgid "Another variation already uses this combination."
+msgstr "Başka bir varyasyon bu kombinasyonu zaten kullanıyor."
+
+#: includes/brikpanel-hooks-api.php:151
+msgid ""
+"Register your own controls in the BrikPanel top bar. Give an item a callback "
+"(or just a label and a link) and it renders as a native top bar control. "
+"Place it with position (left/right) plus before/after a built-in item, and "
+"order it with priority. Valid before/after anchors: brand, live, search, "
+"create, notifications, hidden_notices, view_site, custom_link, user. An "
+"unrecognised anchor falls back to the default slot instead of erroring. "
+"Registered items appear in WooCommerce → Settings → BrikPanel with the same "
+"on/off switch and per-role audience rules as the built-in controls, so no "
+"extra visibility code is needed; pass 'settings' => false to opt out of "
+"that. One registration is all you need: on screens where the BrikPanel top "
+"bar stands down (see brikpanel_topbar_is_rendering) the item is placed in "
+"the native WordPress admin bar instead, so do NOT also add your own "
+"admin_bar_menu node or it will show twice. Pass 'admin_bar' => false if you "
+"would rather handle the native bar yourself."
+msgstr ""
+"BrikPanel üst çubuğuna kendi denetimlerinizi kaydedin. Bir öğeye bir "
+"callback (ya da yalnızca bir etiket ve bir bağlantı) verin, üst çubuğun "
+"yerel denetimi gibi işlenir. Konumunu position (left/right) ve yerleşik bir "
+"öğeye göre before/after ile belirleyin, sırasını priority ile ayarlayın. "
+"Geçerli before/after çapaları: brand, live, search, create, notifications, "
+"hidden_notices, view_site, custom_link, user. Tanınmayan bir çapa hata "
+"vermek yerine varsayılan yuvaya düşer. Kaydedilen öğeler WooCommerce → "
+"Ayarlar → BrikPanel altında, yerleşik denetimlerle aynı aç/kapa anahtarı ve "
+"aynı rol bazlı kitle kurallarıyla görünür, yani ek görünürlük kodu gerekmez; "
+"bunun dışında kalmak için 'settings' => false geçin. Tek bir kayıt "
+"yeterlidir: BrikPanel üst çubuğunun devreden çekildiği ekranlarda (bkz. "
+"brikpanel_topbar_is_rendering) öğe onun yerine yerel WordPress yönetim "
+"çubuğuna yerleştirilir, bu yüzden ayrıca kendi admin_bar_menu düğümünüzü "
+"EKLEMEYİN, yoksa iki kez görünür. Yerel çubuğu kendiniz yönetmeyi tercih "
+"ederseniz 'admin_bar' => false geçin."
+
+#: includes/brikpanel-hooks-api.php:158
+msgid ""
+"Not a hook but a public function: whether the BrikPanel top bar is the bar "
+"being drawn on this request. It answers correctly from admin_bar_menu "
+"onwards, because that hook runs once the current screen is known; an init-"
+"time check cannot tell, since the answer depends on the screen. Returns "
+"false where the top bar deliberately stands down and the native WordPress "
+"admin bar takes over: the block editor (posts, pages, widgets, navigation), "
+"the site editor, the customizer, Desktop Mode, Network and User Admin, and "
+"users without manage_woocommerce or manage_options. Also false when the "
+"store owner switched the top bar off, or turned BrikPanel off for that user. "
+"If you registered through brikpanel_topbar_items you do not need this at "
+"all, BrikPanel already moves your item to the native bar for you."
+msgstr ""
+"Bir kanca değil, herkese açık bir fonksiyon: bu istekte çizilen çubuğun "
+"BrikPanel üst çubuğu olup olmadığını söyler. admin_bar_menu'den itibaren "
+"doğru yanıt verir, çünkü o kanca mevcut ekran bilindikten sonra çalışır; "
+"init zamanındaki bir kontrol bunu bilemez, zira yanıt ekrana bağlıdır. Üst "
+"çubuğun bilinçli olarak devreden çekildiği ve yerel WordPress yönetim "
+"çubuğunun devraldığı yerlerde false döner: blok düzenleyici (yazılar, "
+"sayfalar, bileşenler, gezinme), site düzenleyici, özelleştirici, Masaüstü "
+"Modu, Ağ ve Kullanıcı Yönetimi ve manage_woocommerce ya da manage_options "
+"yetkisi olmayan kullanıcılar. Mağaza sahibi üst çubuğu kapattığında veya o "
+"kullanıcı için BrikPanel'i kapattığında da false döner. "
+"brikpanel_topbar_items üzerinden kayıt yaptıysanız buna hiç ihtiyacınız yok, "
+"BrikPanel öğenizi zaten sizin için yerel çubuğa taşır."
+
+#: includes/brikpanel-hooks-api.php:235
+msgid ""
+"Decide whether BrikPanel may track the current storefront visitor. The "
+"integration point for cookie-consent platforms that do not speak the "
+"WordPress Consent API: return false to hold tracking back, true to release "
+"it, with no plugin files touched. $context tells you which surface is "
+"asking: endpoint (the tracker request), add_to_cart, checkout, or an empty "
+"string. Returning true cannot switch tracking back on when the merchant has "
+"turned Visitor tracking off entirely, and the filter runs on hot storefront "
+"hooks, so keep the callback cheap."
+msgstr ""
+"BrikPanel'in mevcut mağaza ziyaretçisini takip edip edemeyeceğine karar "
+"verin. WordPress Consent API'yi konuşmayan çerez izni platformları için "
+"entegrasyon noktasıdır: takibi bekletmek için false, serbest bırakmak için "
+"true dönün, hiçbir eklenti dosyasına dokunmadan. $context hangi yüzeyin "
+"sorduğunu söyler: endpoint (takipçi isteği), add_to_cart, checkout veya boş "
+"bir dize. Satıcı Ziyaretçi takibini tümüyle kapattığında true dönmek takibi "
+"geri açamaz ve filtre mağazanın yoğun kancalarında çalışır, bu yüzden geri "
+"çağrıyı hafif tutun."
+
+#: includes/brikpanel-hooks-api.php:242
+msgid ""
+"Not a hook but a public JavaScript API, available on the storefront while "
+"\"Wait for cookie consent\" is on. Call brikpanel_start_tracking() the "
+"moment the visitor allows analytics and BrikPanel begins tracking "
+"immediately, with no page reload. Call brikpanel_stop_tracking() when "
+"consent is withdrawn: tracking stops at once and BrikPanel deletes its own "
+"cookies and browser storage for that visitor. Both are safe to call more "
+"than once. Banners that speak the WordPress Consent API (Complianz, "
+"CookieYes, Moove GDPR Cookie Compliance, WPConsent, Cookiebot, iubenda, "
+"Beautiful Cookie Consent) need neither, because BrikPanel follows their "
+"consent events on its own. Use this for the ones that do not, such as "
+"CookieAdmin, Real Cookie Banner and Termly: pair the JavaScript below with "
+"the brikpanel_frontend_tracking_allowed filter so the server-side add-to-"
+"cart and checkout counters see the same decision."
+msgstr ""
+"Bir kanca değil, «Çerez iznini bekle» açıkken mağaza tarafında "
+"kullanılabilen herkese açık bir JavaScript API'si. Ziyaretçi analitiğe izin "
+"verdiği anda brikpanel_start_tracking() çağırın, BrikPanel sayfa "
+"yenilenmeden hemen takibe başlar. İzin geri çekildiğinde "
+"brikpanel_stop_tracking() çağırın: takip anında durur ve BrikPanel o "
+"ziyaretçi için kendi çerezlerini ve tarayıcı depolamasını siler. İkisini de "
+"birden fazla kez çağırmak güvenlidir. WordPress Consent API'yi konuşan "
+"bantlar (Complianz, CookieYes, Moove GDPR Cookie Compliance, WPConsent, "
+"Cookiebot, iubenda, Beautiful Cookie Consent) bunların hiçbirine ihtiyaç "
+"duymaz, çünkü BrikPanel onların izin olaylarını kendisi izler. Bunu "
+"izlemeyenler için kullanın, örneğin CookieAdmin, Real Cookie Banner ve "
+"Termly: aşağıdaki JavaScript'i brikpanel_frontend_tracking_allowed "
+"filtresiyle birlikte kullanın, böylece sunucu tarafındaki sepete ekleme ve "
+"ödeme sayaçları da aynı kararı görür."

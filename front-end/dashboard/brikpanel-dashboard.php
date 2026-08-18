@@ -842,7 +842,7 @@ class Brikpanel_Dashboard {
                         <span class="brikpanel-dash-card-delta" id="delta-profit-net"></span>
                     </div>
                 </div>
-                <?php if ( $show_expenses ) { $this->render_add_expense_modal(); } ?>
+                <?php if ( $show_expenses ) { $this->render_add_expense_modal(); $this->render_remove_expense_modal(); } ?>
             </div>
         <?php
     }
@@ -921,6 +921,41 @@ class Brikpanel_Dashboard {
                 <div class="brikpanel-exp-modal-foot">
                     <button type="button" class="brikpanel-exp-btn brikpanel-exp-btn-secondary" data-exp-close><?php esc_html_e( 'Cancel', 'brikpanel' ); ?></button>
                     <button type="button" class="brikpanel-exp-btn brikpanel-exp-btn-primary" id="brikpanel-exp-save"><?php esc_html_e( 'Save expense', 'brikpanel' ); ?></button>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Confirmation shown by the Remove control on a Profit > Expenses breakdown
+     * line. Deliberately empty: the title, the summary and the choices are all
+     * written by the server, which is the only side that knows whether a line is
+     * one entry or a whole repeating expense. Reuses the quick-add modal's
+     * styling; its own close hook is `data-expdel-close` so the two dialogs
+     * never answer each other's clicks.
+     */
+    private function render_remove_expense_modal() {
+        ?>
+        <div class="brikpanel-exp-modal" id="brikpanel-expdel-modal" hidden>
+            <div class="brikpanel-exp-modal-overlay" data-expdel-close></div>
+            <div class="brikpanel-exp-modal-card brikpanel-expdel-card" role="dialog" aria-modal="true" aria-labelledby="brikpanel-expdel-title">
+                <div class="brikpanel-exp-modal-head">
+                    <h2 id="brikpanel-expdel-title"><?php esc_html_e( 'Remove this expense?', 'brikpanel' ); ?></h2>
+                    <button type="button" class="brikpanel-exp-modal-x" data-expdel-close aria-label="<?php esc_attr_e( 'Close', 'brikpanel' ); ?>">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+                <div class="brikpanel-exp-modal-body">
+                    <p class="brikpanel-expdel-body" id="brikpanel-expdel-body"></p>
+                    <p class="brikpanel-expdel-note" id="brikpanel-expdel-note" hidden></p>
+                    <div class="brikpanel-expdel-scopes" id="brikpanel-expdel-scopes" role="radiogroup"
+                         aria-label="<?php esc_attr_e( 'What to remove', 'brikpanel' ); ?>"></div>
+                    <div class="brikpanel-exp-msg" id="brikpanel-expdel-msg" role="alert" hidden></div>
+                </div>
+                <div class="brikpanel-exp-modal-foot">
+                    <button type="button" class="brikpanel-exp-btn brikpanel-exp-btn-secondary" data-expdel-close><?php esc_html_e( 'Cancel', 'brikpanel' ); ?></button>
+                    <button type="button" class="brikpanel-exp-btn brikpanel-exp-btn-danger" id="brikpanel-expdel-confirm"><?php esc_html_e( 'Remove', 'brikpanel' ); ?></button>
                 </div>
             </div>
         </div>
@@ -1809,6 +1844,11 @@ class Brikpanel_Dashboard {
             ];
         }
 
+        // `del` is an opaque handle the Remove control posts back untouched. It
+        // carries the RAW category, never the label: "Other" and "Supplier /
+        // stock" are display names, and the browser must not have to know how to
+        // translate them back. Rows without a `del` key (ad spend, tax) are
+        // computed from other sources and simply render no Remove control.
         $po_category = (string) get_option( 'brikpanel_po_expense_category', 'Inventory' );
         foreach ( (array) ( $s['expense_categories'] ?? [] ) as $cat => $amount ) {
             $amount = (float) $amount;
@@ -1827,6 +1867,7 @@ class Brikpanel_Dashboard {
                 'label'  => $label,
                 'amount' => wc_price( $amount ),
                 'raw'    => $amount,
+                'del'    => [ 'type' => 'cat', 'cat' => (string) $cat ],
             ];
         }
 
@@ -1838,12 +1879,17 @@ class Brikpanel_Dashboard {
             if ( $amount <= 0 ) {
                 continue;
             }
+            $pe_id = (int) ( $pe['id'] ?? 0 );
+            if ( $pe_id <= 0 ) {
+                continue; // no row to point at — never render a control with no target
+            }
             $rate_str = rtrim( rtrim( number_format( (float) ( $pe['rate'] ?? 0 ), 2, '.', '' ), '0' ), '.' );
             $breakdown[] = [
                 'key'    => 'percent',
                 'label'  => (string) ( $pe['title'] ?? '' ) . ' (' . $rate_str . '%)',
                 'amount' => wc_price( $amount ),
                 'raw'    => $amount,
+                'del'    => [ 'type' => 'percent', 'id' => $pe_id ],
             ];
         }
 
@@ -1931,6 +1977,14 @@ class Brikpanel_Dashboard {
             'expenses_raw'  => $expenses,
             'expenses_pct'  => $expenses_pct,
             'breakdown'     => $breakdown,
+            // The exact window these lines were summed over, echoed back by the
+            // Remove control. Recomputing "last 30 days" in the browser could
+            // land on a different day, and the selected range may have changed
+            // between rendering a line and clicking it.
+            'window'        => [
+                'from' => substr( (string) $start_local, 0, 10 ),
+                'to'   => substr( (string) $end_local, 0, 10 ),
+            ],
             'net'           => wc_price( $net_raw ),
             'net_raw'       => $net_raw,
             'margin'        => $margin,

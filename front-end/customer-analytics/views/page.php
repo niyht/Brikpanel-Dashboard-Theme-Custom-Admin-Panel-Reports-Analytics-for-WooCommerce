@@ -43,6 +43,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 			</div>
 		</div>
 
+		<?php
+		/**
+		 * Fires between the Customer Analytics header and the LTV / RFM / Cohort
+		 * tab bar. Used to render the dismissible BrikMentor early-access card.
+		 *
+		 * @since 3.2.13
+		 */
+		do_action( 'brikpanel_ca_after_header' );
+		?>
+
 		<div class="bp-ca-tabs" role="tablist">
 			<button type="button" class="bp-ca-tab is-active" data-tab="ltv" role="tab" aria-selected="true">
 				<?php esc_html_e( 'Lifetime Value', 'brikpanel' ); ?>

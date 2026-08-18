@@ -56,7 +56,7 @@ class Brikpanel_Sheets_Reports_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK,
 			[ $this, 'handle' ],
-			[ 'label' => __( 'Sheets — reports snapshot', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — reports snapshot', 'brikpanel' ) ]; }
 		);
 		if ( self::is_enabled() ) {
 			Brikpanel_Cron::schedule_recurring( self::HOOK, self::interval_seconds(), [] );

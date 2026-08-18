@@ -14,6 +14,23 @@
     const CFG = window.brikpanelDashboard || {};
     const i18n = CFG.i18n || {};
 
+    // Brief confirmation in the top-right corner. Callers pass text that was
+    // already translated server-side; this only places it.
+    function showToast(msg, type) {
+        if (!msg) return;
+        var t = document.createElement('div');
+        t.className = 'brikpanel-dash-toast brikpanel-dash-toast--' + (type || 'success');
+        t.setAttribute('role', 'status');
+        t.textContent = msg;
+        document.body.appendChild(t);
+        void t.offsetHeight; // force reflow so the transition runs
+        t.classList.add('is-visible');
+        setTimeout(function () {
+            t.classList.remove('is-visible');
+            setTimeout(function () { t.parentNode && t.parentNode.removeChild(t); }, 350);
+        }, 3500);
+    }
+
     // State. The range is seeded from the user's remembered selection (see
     // Brikpanel_Dashboard::get_range_preference) so a refresh, or leaving the
     // dashboard and coming back, resumes the period the user actually picked
@@ -65,6 +82,7 @@
         initRowLinks();
         initProfitBreakdownToggle();
         initAddExpense();
+        initRemoveExpense();
         initHintTooltips();
         fetchDashboardData();
         startLivePolling();
@@ -629,6 +647,8 @@
         }
         if (toggle) toggle.hidden = false;
 
+        var win = (p && p.window) ? p.window : null;
+
         items.forEach(function (b) {
             var pct = Math.round((b.raw / total) * 100);
 
@@ -645,8 +665,55 @@
 
             row.appendChild(k);
             row.appendChild(v);
+
+            // Only lines that map to real expense rows carry `del`; tax and ad
+            // spend come from elsewhere and stay read-only.
+            if (b.del && b.del.type) {
+                row.appendChild(removeButton(b, win));
+            }
+
             box.appendChild(row);
         });
+    }
+
+    // The little × on a breakdown line. Attributes are set through the DOM API
+    // rather than built into a string, so a category containing quotes or angle
+    // brackets can never break out of the markup.
+    function removeButton(item, win) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'brikpanel-dash-bd-x';
+
+        var label = (i18n.exp_del_aria || 'Remove %s').replace('%s', item.label);
+        btn.setAttribute('title', label);
+        btn.setAttribute('aria-label', label);
+        btn.setAttribute('data-del-type', item.del.type);
+        btn.setAttribute('data-del-label', item.label);
+        if (item.del.type === 'percent') {
+            btn.setAttribute('data-del-id', String(item.del.id));
+        } else {
+            btn.setAttribute('data-del-cat', item.del.cat);
+            btn.setAttribute('data-del-from', (win && win.from) ? win.from : '');
+            btn.setAttribute('data-del-to', (win && win.to) ? win.to : '');
+        }
+
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '12');
+        svg.setAttribute('height', '12');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2.5');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('aria-hidden', 'true');
+        [['18','6','6','18'], ['6','6','18','18']].forEach(function (c) {
+            var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', c[0]); line.setAttribute('y1', c[1]);
+            line.setAttribute('x2', c[2]); line.setAttribute('y2', c[3]);
+            svg.appendChild(line);
+        });
+        btn.appendChild(svg);
+        return btn;
     }
 
     // Fill the (collapsed-by-default) breakdown list inside the Revenue card,
@@ -875,6 +942,207 @@
         [amountEl, catEl, descEl].forEach(function (el) {
             if (!el) return;
             el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+        });
+    }
+
+    // =========================================================================
+    // REMOVE AN EXPENSE FROM THE PROFIT BREAKDOWN
+    //
+    // A breakdown line is a grouped total, not one expense, so the browser never
+    // decides what gets deleted. Clicking × asks the server what the line covers
+    // (preview), shows that answer, and sends the chosen option back with the
+    // token the preview issued (commit). Every sentence in the dialog is written
+    // server-side — nothing here composes user-facing text.
+    // =========================================================================
+
+    function initRemoveExpense() {
+        var modal = document.getElementById('brikpanel-expdel-modal');
+        var box   = document.getElementById('profit-expenses-breakdown');
+        if (!modal || !box) return;
+
+        var titleEl   = document.getElementById('brikpanel-expdel-title');
+        var bodyEl    = document.getElementById('brikpanel-expdel-body');
+        var noteEl    = document.getElementById('brikpanel-expdel-note');
+        var scopesEl  = document.getElementById('brikpanel-expdel-scopes');
+        var msgEl     = document.getElementById('brikpanel-expdel-msg');
+        var confirmEl = document.getElementById('brikpanel-expdel-confirm');
+        var cfg       = (CFG.expenses || {});
+        var pending   = null;   // { payload, token }
+        var busy      = false;
+
+        function showMsg(text) {
+            if (!msgEl) return;
+            msgEl.textContent = text;
+            msgEl.className = 'brikpanel-exp-msg is-error';
+            msgEl.hidden = false;
+        }
+        function clearMsg() { if (msgEl) { msgEl.hidden = true; msgEl.textContent = ''; } }
+
+        function openModal() {
+            clearMsg();
+            modal.hidden = false;
+            document.body.classList.add('brikpanel-exp-modal-open');
+            var first = scopesEl.querySelector('input[type="radio"]');
+            setTimeout(function () { (first || confirmEl).focus(); }, 30);
+        }
+        function closeModal() {
+            modal.hidden = true;
+            document.body.classList.remove('brikpanel-exp-modal-open');
+            pending = null;
+        }
+
+        function post(fields) {
+            var fd = new FormData();
+            fd.append('action', 'brikpanel_expense_line_delete');
+            fd.append('_ajax_nonce', cfg.nonce || '');
+            Object.keys(fields).forEach(function (k) { fd.append(k, fields[k]); });
+            return fetch(CFG.ajax_url, { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function (r) { return r.json(); });
+        }
+
+        // Everything the request needs, read straight off the button.
+        function payloadFor(btn) {
+            var type = btn.getAttribute('data-del-type');
+            if (type === 'percent') {
+                return { type: 'percent', id: btn.getAttribute('data-del-id') || '0' };
+            }
+            return {
+                type: 'cat',
+                cat: btn.getAttribute('data-del-cat') || '',
+                date_from: btn.getAttribute('data-del-from') || '',
+                date_to: btn.getAttribute('data-del-to') || ''
+            };
+        }
+
+        function renderScopes(scopes) {
+            scopesEl.innerHTML = '';
+            // One option is not a choice: show it as plain text and let the
+            // Remove button carry it.
+            if (scopes.length < 2) {
+                if (scopes.length === 1 && scopes[0].detail) {
+                    var only = document.createElement('p');
+                    only.className = 'brikpanel-expdel-only';
+                    only.textContent = scopes[0].detail;
+                    scopesEl.appendChild(only);
+                }
+                return;
+            }
+            scopes.forEach(function (s, idx) {
+                var id = 'brikpanel-expdel-scope-' + s.id;
+                var wrap = document.createElement('label');
+                wrap.className = 'brikpanel-expdel-scope';
+                wrap.setAttribute('for', id);
+
+                var radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = 'brikpanel-expdel-scope';
+                radio.id = id;
+                radio.value = s.id;
+                if (idx === 0) radio.checked = true;
+
+                var text = document.createElement('span');
+                var strong = document.createElement('strong');
+                strong.textContent = s.label;
+                text.appendChild(strong);
+                if (s.detail) {
+                    var det = document.createElement('span');
+                    det.className = 'brikpanel-expdel-scope-detail';
+                    det.textContent = s.detail;
+                    text.appendChild(det);
+                }
+
+                wrap.appendChild(radio);
+                wrap.appendChild(text);
+                scopesEl.appendChild(wrap);
+                if (idx === 0) wrap.classList.add('is-selected');
+            });
+
+            // Mirror the checked radio onto the label. The stylesheet also has a
+            // :has() rule, but not every browser in the wild supports it and the
+            // selected option must always be obvious before something is removed.
+            scopesEl.addEventListener('change', function () {
+                scopesEl.querySelectorAll('.brikpanel-expdel-scope').forEach(function (l) {
+                    l.classList.toggle('is-selected', !!l.querySelector('input:checked'));
+                });
+            });
+        }
+
+        function chosenScope() {
+            var checked = scopesEl.querySelector('input[type="radio"]:checked');
+            if (checked) return checked.value;
+            return pending && pending.scopes.length ? pending.scopes[0].id : '';
+        }
+
+        box.addEventListener('click', function (e) {
+            var btn = e.target.closest('.brikpanel-dash-bd-x');
+            if (!btn || busy) return;
+            e.preventDefault();
+            e.stopPropagation();   // the row sits inside a card with its own toggle
+
+            busy = true;
+            btn.classList.add('is-busy');
+            var payload = payloadFor(btn);
+            post(Object.assign({ mode: 'preview' }, payload)).then(function (j) {
+                busy = false;
+                btn.classList.remove('is-busy');
+                if (!j || !j.success) {
+                    showToast((j && j.data && j.data.message) || i18n.exp_del_error || 'Could not remove.', 'error');
+                    return;
+                }
+                pending = { payload: payload, token: j.data.token, scopes: j.data.scopes || [] };
+                titleEl.textContent = j.data.title || '';
+                bodyEl.textContent = j.data.body || '';
+                if (j.data.note) {
+                    noteEl.textContent = j.data.note;
+                    noteEl.hidden = false;
+                } else {
+                    noteEl.hidden = true;
+                    noteEl.textContent = '';
+                }
+                renderScopes(pending.scopes);
+                openModal();
+            }).catch(function () {
+                busy = false;
+                btn.classList.remove('is-busy');
+                showToast(i18n.exp_del_error || 'Could not remove.', 'error');
+            });
+        });
+
+        confirmEl.addEventListener('click', function () {
+            if (!pending || busy) return;
+            busy = true;
+            confirmEl.disabled = true;
+            var original = confirmEl.textContent;
+            confirmEl.textContent = i18n.exp_del_working || 'Removing…';
+            clearMsg();
+
+            post(Object.assign({ mode: 'commit', scope: chosenScope(), token: pending.token }, pending.payload))
+                .then(function (j) {
+                    busy = false;
+                    confirmEl.disabled = false;
+                    confirmEl.textContent = original;
+                    if (!j || !j.success) {
+                        showMsg((j && j.data && j.data.message) || i18n.exp_del_error || 'Could not remove.');
+                        return;
+                    }
+                    closeModal();
+                    showToast(j.data.message || '', 'success');
+                    // The commit busted the dashboard cache server-side.
+                    fetchDashboardData();
+                })
+                .catch(function () {
+                    busy = false;
+                    confirmEl.disabled = false;
+                    confirmEl.textContent = original;
+                    showMsg(i18n.exp_del_error || 'Could not remove.');
+                });
+        });
+
+        modal.addEventListener('click', function (e) {
+            if (e.target.closest('[data-expdel-close]')) { e.preventDefault(); closeModal(); }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !modal.hidden) closeModal();
         });
     }
 
@@ -1134,7 +1402,7 @@
 
         products.forEach(function (p, i) {
             var rowAttr = p.url
-                ? ' class="brikpanel-dash-row-link" data-href="' + escapeHtml(p.url) + '" tabindex="0" role="link"'
+                ? ' class="brikpanel-dash-row-link" data-href="' + escapeAttr(p.url) + '" tabindex="0" role="link"'
                 : '';
             html += '<tr' + rowAttr + '>' +
                 '<td class="rank">' + (i + 1) + '</td>' +
@@ -1206,7 +1474,7 @@
             }
 
             var rowAttr = o.edit_url
-                ? ' class="brikpanel-dash-row-link" data-href="' + escapeHtml(o.edit_url) + '" tabindex="0" role="link"'
+                ? ' class="brikpanel-dash-row-link" data-href="' + escapeAttr(o.edit_url) + '" tabindex="0" role="link"'
                 : '';
 
             html += '<tr' + rowAttr + '>' +
@@ -1239,7 +1507,7 @@
 
         pages.forEach(function (p, i) {
             var rowAttr = p.url
-                ? ' class="brikpanel-dash-row-link" data-href="' + escapeHtml(p.url) + '" tabindex="0" role="link"'
+                ? ' class="brikpanel-dash-row-link" data-href="' + escapeAttr(p.url) + '" tabindex="0" role="link"'
                 : '';
             html += '<tr' + rowAttr + '>' +
                 '<td class="rank">' + (i + 1) + '</td>' +
@@ -1269,7 +1537,7 @@
 
         products.forEach(function (p, i) {
             var rowAttr = p.url
-                ? ' class="brikpanel-dash-row-link" data-href="' + escapeHtml(p.url) + '" tabindex="0" role="link"'
+                ? ' class="brikpanel-dash-row-link" data-href="' + escapeAttr(p.url) + '" tabindex="0" role="link"'
                 : '';
             html += '<tr' + rowAttr + '>' +
                 '<td class="rank">' + (i + 1) + '</td>' +
@@ -1509,7 +1777,7 @@
 
         products.forEach(function (p) {
             var nameCell = p.edit_url
-                ? '<a href="' + escapeHtml(p.edit_url) + '" style="color:#303030;text-decoration:none;font-weight:500;">' + escapeHtml(p.name) + '</a>'
+                ? '<a href="' + escapeAttr(p.edit_url) + '" style="color:#303030;text-decoration:none;font-weight:500;">' + escapeHtml(p.name) + '</a>'
                 : escapeHtml(p.name);
             html += '<tr>' +
                 '<td>' + nameCell + '</td>' +
@@ -2190,6 +2458,48 @@
         .catch(function () {});
     }
 
+    // Device icon for a live visitor row.
+    //
+    // The server stores a three-value keyword (mobile | tablet | desktop), but
+    // it is still whitelisted here rather than interpolated: the markup is
+    // built as a string, so an unexpected value must never reach innerHTML.
+    // Rows written before this feature shipped have no device at all (the
+    // transient lives for up to 120s), and rather than claim "desktop" we emit
+    // an empty span of the same width so the column stays aligned.
+    var LIVE_DEVICE_PATHS = {
+        mobile: '<rect x="7" y="2" width="10" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line>',
+        tablet: '<rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line>',
+        desktop: '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>'
+    };
+
+    function liveDeviceLabel(device) {
+        if (device === 'mobile') return i18n.device_mobile || 'Mobile';
+        if (device === 'tablet') return i18n.device_tablet || 'Tablet';
+        if (device === 'desktop') return i18n.device_desktop || 'Desktop';
+        return '';
+    }
+
+    function liveDeviceIcon(device) {
+        // hasOwnProperty, not a plain lookup: a bare LIVE_DEVICE_PATHS[device]
+        // would happily return an inherited member ("constructor", "toString")
+        // for a value that is not one of ours and splice it into the markup.
+        if (!Object.prototype.hasOwnProperty.call(LIVE_DEVICE_PATHS, device)) {
+            return '<span class="brikpanel-dash-live-device" aria-hidden="true"></span>';
+        }
+
+        // Attribute context: the label comes from a translation file, which is
+        // exactly the kind of string that can carry an unexpected quote.
+        var label = escapeAttr(liveDeviceLabel(device));
+
+        // No title attribute on purpose: the row already carries the card's own
+        // tooltip, and a native one on top of it would show two tooltips at
+        // once. The device label is added to that tooltip instead.
+        return '<span class="brikpanel-dash-live-device" role="img" aria-label="' + label + '">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+            LIVE_DEVICE_PATHS[device] +
+            '</svg></span>';
+    }
+
     function renderLiveVisitors(visitors) {
         var countEl = document.getElementById('live-count');
         var listEl = document.getElementById('live-visitors-list');
@@ -2231,16 +2541,19 @@
 
             // Tooltip data for hover
             var tooltipParts = [];
+            var deviceLabel = liveDeviceLabel(v.device);
+            if (deviceLabel) tooltipParts.push(deviceLabel);
             if (v.customer_email) tooltipParts.push(v.customer_email);
             if (v.customer_phone) tooltipParts.push(v.customer_phone);
             if (v.page_url) tooltipParts.push(v.page_url);
-            var tooltipData = tooltipParts.length > 0 ? ' data-bp-tooltip="' + escapeHtml(tooltipParts.join('\n')) + '"' : '';
+            var tooltipData = tooltipParts.length > 0 ? ' data-bp-tooltip="' + escapeAttr(tooltipParts.join('\n')) + '"' : '';
 
             html += '<div class="brikpanel-dash-live-item"' + tooltipData + '>' +
+                liveDeviceIcon(v.device) +
                 '<div class="brikpanel-dash-live-info">' +
                     '<span class="brikpanel-dash-live-name">' + displayName + '</span>' +
                     (v.customer_name ? ipLabel : '') +
-                    '<span class="brikpanel-dash-live-page" title="' + escapeHtml(v.page_url) + '">' + escapeHtml(pagePath) + '</span>' +
+                    '<span class="brikpanel-dash-live-page" title="' + escapeAttr(v.page_url) + '">' + escapeHtml(pagePath) + '</span>' +
                 '</div>' +
                 '<span class="brikpanel-dash-live-badge ' + badgeClass + '">' + badgeText + '</span>' +
                 '</div>';
@@ -2658,6 +2971,17 @@
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(str));
         return div.innerHTML;
+    }
+
+    // Escape for a value that lands inside a double-quoted HTML attribute.
+    //
+    // escapeHtml() is not enough there: it serialises a text node, which
+    // encodes & < > but deliberately leaves the double quote alone (a quote is
+    // legal text content). In an attribute the quote closes it early and
+    // everything after is parsed as further attributes — an event handler in a
+    // customer-supplied billing phone becomes a real onmouseover on the row.
+    function escapeAttr(str) {
+        return escapeHtml(str).replace(/"/g, '&quot;');
     }
 
 })();

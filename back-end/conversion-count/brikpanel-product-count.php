@@ -32,9 +32,10 @@ function brikpanel_record_product_view() {
  * old inline JS.
  */
 function brikpanel_product_view() {
-    // Master tracking switch — also guards pings from cached pages that still
-    // carry the old tracker JS after the merchant turned tracking off.
-    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+    // Master tracking switch and cookie-consent gate — also guards pings from
+    // cached pages that still carry the old tracker JS after the merchant
+    // turned tracking off or switched the consent gate on.
+    if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'endpoint' ) ) {
         wp_send_json_success();
     }
     if ( brikpanel_is_admin_user() ) {

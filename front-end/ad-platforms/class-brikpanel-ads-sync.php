@@ -69,17 +69,21 @@ class Brikpanel_Ads_Sync {
 
 		Brikpanel_Cron::register_handler( self::HOOK_DAILY, function ( $payload ) {
 			( new self() )->handle_daily( (array) $payload );
-		}, [
-			'label'       => __( 'Ad spend daily sync', 'brikpanel' ),
-			'description' => __( 'Pulls yesterday plus the last 7 days of spend from each connected ad platform.', 'brikpanel' ),
-		] );
+		}, static function () {
+			return [
+				'label'       => __( 'Ad spend daily sync', 'brikpanel' ),
+				'description' => __( 'Pulls yesterday plus the last 7 days of spend from each connected ad platform.', 'brikpanel' ),
+			];
+		} );
 
 		Brikpanel_Cron::register_handler( self::HOOK_BACKFILL, function ( $payload ) {
 			( new self() )->handle_backfill_chunk( (array) $payload );
-		}, [
-			'label'       => __( 'Ad spend backfill chunk', 'brikpanel' ),
-			'description' => __( 'One 90-day slice of the initial historical pull when an ad platform is first connected.', 'brikpanel' ),
-		] );
+		}, static function () {
+			return [
+				'label'       => __( 'Ad spend backfill chunk', 'brikpanel' ),
+				'description' => __( 'One 90-day slice of the initial historical pull when an ad platform is first connected.', 'brikpanel' ),
+			];
+		} );
 	}
 
 	public function schedule_daily() {

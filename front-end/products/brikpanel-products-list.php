@@ -17,7 +17,7 @@ class Brikpanel_Products_List {
 
     /**
      * Holds the active search term while the posts_search filter is attached.
-     * Empty string means the SKU search clause must not be injected.
+     * Empty string means the identifier search clause must not be injected.
      */
     private static $sku_search_term = '';
 
@@ -1749,11 +1749,18 @@ class Brikpanel_Products_List {
      * stores the SKU in the `_sku` post meta, so without this a merchant
      * cannot locate a product by typing its SKU. We OR an additional clause
      * onto core's generated search SQL that matches:
-     *   1. A product whose own `_sku` LIKEs the term, and
-     *   2. A product that has a variation whose `_sku` LIKEs the term
+     *   1. A product whose own identifier meta LIKEs the term, and
+     *   2. A product that has a variation whose identifier meta LIKEs the term
      *      (so variable products surface when a child SKU is searched).
      *
-     * The injected SQL is fully prepared/escaped; the LIKE value is wrapped
+     * The scanned keys come from brikpanel_product_search_meta_keys(), which is
+     * array( '_sku' ) unless the store filters it. Both subqueries read the SAME
+     * list, so a supplier code stored on a variation still returns its parent
+     * product.
+     *
+     * The injected SQL is fully prepared: the keys go in as %s placeholders (and
+     * the getter has already whitelisted them against a meta-key regex, so a
+     * filter cannot smuggle SQL in either way), and the LIKE value is wrapped
      * with $wpdb->esc_like() so user input cannot break out of the pattern.
      *
      * @param string   $search   The core-generated search SQL fragment.
@@ -1768,24 +1775,62 @@ class Brikpanel_Products_List {
             return $search;
         }
 
-        $like = '%' . $wpdb->esc_like($term) . '%';
+        // Only touch the product-list query we attached this filter for. While
+        // it is attached, WP_Query can run again from inside a third-party
+        // pre_get_posts / posts_clauses callback, and without this guard that
+        // foreign query would silently get our identifier clause ORed onto its
+        // own search, widening someone else's result set. Match on both the
+        // post type and the term so a nested product search of a different
+        // term is left alone too.
+        if (!($wp_query instanceof WP_Query)
+            || $wp_query->get('post_type') !== 'product'
+            || (string) $wp_query->get('s') !== $term) {
+            return $search;
+        }
 
+        // Never empty: the getter whitelists, de-duplicates, caps and falls back
+        // to ['_sku'], so `IN ()` can never be emitted below. Guarded anyway
+        // because this is the only thing standing between a third-party filter
+        // and a SQL syntax error on every product search.
+        $keys = brikpanel_product_search_meta_keys($term);
+        if (empty($keys)) {
+            return $search;
+        }
+
+        $like    = '%' . $wpdb->esc_like($term) . '%';
+        $holders = implode(',', array_fill(0, count($keys), '%s'));
+
+        // Placeholders bind left to right, so the argument order is: the parent
+        // subquery's keys, its LIKE, then the variation subquery's own copy of
+        // the keys and its LIKE. Both halves read the SAME list; the variation
+        // half is what makes variable products searchable by a child's
+        // identifier. Kept as two ID IN (...) clauses rather than a single
+        // UNION: both are already uncorrelated and materialised once per
+        // statement, so a UNION would save a temp table, not a scan.
+        // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $sku_clause = $wpdb->prepare(
             "{$wpdb->posts}.ID IN (
                 SELECT pm.post_id FROM {$wpdb->postmeta} pm
-                WHERE pm.meta_key = '_sku' AND pm.meta_value LIKE %s
+                WHERE pm.meta_key IN ($holders) AND pm.meta_value LIKE %s
             ) OR {$wpdb->posts}.ID IN (
                 SELECT v.post_parent FROM {$wpdb->posts} v
                 INNER JOIN {$wpdb->postmeta} vpm ON vpm.post_id = v.ID
                 WHERE v.post_type = 'product_variation'
-                  AND vpm.meta_key = '_sku' AND vpm.meta_value LIKE %s
+                  AND vpm.meta_key IN ($holders) AND vpm.meta_value LIKE %s
             )",
-            $like,
-            $like
+            ...array_merge($keys, [$like], $keys, [$like])
         );
+        // phpcs:enable
+
+        // prepare() returns '' (plus a _doing_it_wrong notice) if the
+        // placeholder count and the argument count ever drift apart. Bail to
+        // the untouched core fragment rather than emitting `OR ()`.
+        if (!is_string($sku_clause) || $sku_clause === '') {
+            return $search;
+        }
 
         // Core builds $search as " AND (( ...title/content... ))". Strip the
-        // leading " AND " and re-wrap so the SKU match is ORed with the
+        // leading " AND " and re-wrap so the identifier match is ORed with the
         // original title/content group rather than ANDed.
         $core = preg_replace('/^\s*AND\s+/', '', $search);
         if ($core === null || $core === '') {
@@ -1829,7 +1874,11 @@ class Brikpanel_Products_List {
 
         $page     = max(1, intval($_POST['page'] ?? 1));
         $per_page = max(1, min(100, intval($_POST['per_page'] ?? 20)));
-        $search   = sanitize_text_field($_POST['search'] ?? '');
+        // wp_unslash before sanitising: WordPress slashes $_POST, and while
+        // WP_Query strips the slashes again for its own title/content half, the
+        // identifier clause below reads this raw term, so without unslashing a
+        // SKU containing an apostrophe could never match.
+        $search   = sanitize_text_field(wp_unslash($_POST['search'] ?? ''));
         $status   = sanitize_key($_POST['status'] ?? 'any');
         $category = intval($_POST['category'] ?? 0);
         $brand        = intval($_POST['brand'] ?? 0);
@@ -1889,8 +1938,10 @@ class Brikpanel_Products_List {
         if ($search) {
             $args['s'] = $search;
             // The default WP_Query `s` only scans title/content/excerpt. Extend
-            // it to also match a product's own SKU and, for variable products,
-            // the SKU of any of its variations (returns the parent product).
+            // it to also match a product's own identifier meta and, for variable
+            // products, the identifier meta of any of its variations (returns
+            // the parent product). Which keys are scanned comes from
+            // brikpanel_product_search_meta_keys(); `_sku` unless filtered.
             self::$sku_search_term = $search;
             add_filter('posts_search', [__CLASS__, 'filter_search_include_sku'], 10, 2);
         }
@@ -2018,12 +2069,19 @@ class Brikpanel_Products_List {
             ];
         }
 
-        $query = new WP_Query($args);
-
-        // Scope the SKU search strictly to the query above.
-        if ($search) {
-            remove_filter('posts_search', [__CLASS__, 'filter_search_include_sku'], 10);
-            self::$sku_search_term = '';
+        // finally, not a trailing call: a third-party pre_get_posts /
+        // posts_clauses callback can throw out of WP_Query, and an escaped
+        // Throwable would leave our posts_search filter attached with a stale
+        // term for the rest of the request, silently widening every other
+        // search query on the page.
+        try {
+            $query = new WP_Query($args);
+        } finally {
+            // Scope the identifier search strictly to the query above.
+            if ($search) {
+                remove_filter('posts_search', [__CLASS__, 'filter_search_include_sku'], 10);
+                self::$sku_search_term = '';
+            }
         }
 
         $products = [];

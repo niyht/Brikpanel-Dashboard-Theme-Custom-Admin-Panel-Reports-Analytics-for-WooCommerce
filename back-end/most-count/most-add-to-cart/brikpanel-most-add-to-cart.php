@@ -81,8 +81,10 @@ function brikpanel_cart_addition_is_new_today( $product_id ) {
  *                              parent, which is what the card ranks.
  */
 function brikpanel_track_cart_addition( $cart_item_key, $product_id ) {
-    // Master tracking switch.
-    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+    // Master tracking switch and cookie-consent gate. Server-side hook, so
+    // the consent state is read from BrikPanel's own consent record cookie
+    // (or the WP Consent API), never from the tracker script.
+    if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'add_to_cart' ) ) {
         return;
     }
     if ( brikpanel_is_admin_user() ) {

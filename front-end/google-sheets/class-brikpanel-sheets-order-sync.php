@@ -316,22 +316,22 @@ class Brikpanel_Sheets_Order_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK_REALTIME_FLUSH,
 			[ $this, 'handle_flush_realtime' ],
-			[ 'label' => __( 'Sheets — flush new orders to Google Sheets', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — flush new orders to Google Sheets', 'brikpanel' ) ]; }
 		);
 		Brikpanel_Cron::register_handler(
 			self::HOOK_BULK_FLUSH,
 			[ $this, 'handle_flush_bulk' ],
-			[ 'label' => __( 'Sheets — scheduled bulk order export', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — scheduled bulk order export', 'brikpanel' ) ]; }
 		);
 		Brikpanel_Cron::register_handler(
 			self::HOOK_UPDATE_ROWS,
 			[ $this, 'handle_update_rows' ],
-			[ 'label' => __( 'Sheets — update changed-status order rows', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — update changed-status order rows', 'brikpanel' ) ]; }
 		);
 		Brikpanel_Cron::register_handler(
 			self::HOOK_PULL,
 			[ $this, 'handle_pull' ],
-			[ 'label' => __( 'Sheets — pull order status changes from Google Sheets', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — pull order status changes from Google Sheets', 'brikpanel' ) ]; }
 		);
 
 		// Schedule recurring bulk export if user picked an interval.

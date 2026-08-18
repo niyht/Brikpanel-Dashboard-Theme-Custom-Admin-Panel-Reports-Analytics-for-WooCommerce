@@ -108,7 +108,12 @@
 			return {
 				first_name: val('#billing_first_name') || val('#billing-first_name'),
 				last_name: val('#billing_last_name') || val('#billing-last_name'),
-				phone: val('#billing_phone') || val('#billing-phone')
+				phone: val('#billing_phone') || val('#billing-phone'),
+				// The country the phone was written in. Without it the WhatsApp
+				// link has to guess a country code later, and a number typed
+				// "90 545..." in a US-based store ends up dialling +1 90 545...
+				// Both fields are <select>, so .value is the two-letter code.
+				phone_country: val('#billing_country') || val('#billing-country')
 			};
 		}
 

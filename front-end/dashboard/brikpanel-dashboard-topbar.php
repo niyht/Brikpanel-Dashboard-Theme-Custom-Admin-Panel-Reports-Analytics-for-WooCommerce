@@ -56,6 +56,29 @@ class Brikpanel_Dashboard_Topbar {
     }
 
     /**
+     * Whether this bar is the one being drawn on the current request — the
+     * setting is on AND the screen is one we render on.
+     *
+     * Public because third parties (and our own native admin-bar fallback in
+     * brikpanel-topbar-items.php) need to know which bar is on screen before
+     * deciding where to put a control. `is_enabled()` alone is not that answer:
+     * it only reports the setting, while the bar deliberately stands down on
+     * block-editor screens, the site editor, Desktop Mode and so on.
+     *
+     * Deliberately not memoized: the answer depends on the current screen, and
+     * an early caller (before `set_current_screen()`) would otherwise freeze a
+     * wrong value for the rest of the request. The checks behind it are option
+     * reads and cheap screen lookups.
+     *
+     * @return bool
+     */
+    public static function is_rendering() {
+        // instance() is safe even when the feature is switched off: the
+        // constructor simply skips hooking anything in that case.
+        return self::is_enabled() && self::instance()->should_render();
+    }
+
+    /**
      * Decide whether the topbar should render on the current admin request.
      * We intentionally skip block-editor screens (Gutenberg post/page editor,
      * site editor, navigation editor, widgets editor) because Gutenberg takes
@@ -203,6 +226,18 @@ class Brikpanel_Dashboard_Topbar {
         $icon_url       = $has_brand_logo ? $brand_logo_url : BRIKPANEL_URL . 'assets/icon.png';
         $mark_class     = $has_brand_logo ? 'brikpanel-topbar-brand-mark has-custom-logo' : 'brikpanel-topbar-brand-mark';
 
+        // Slots for items other plugins registered through the
+        // `brikpanel_topbar_items` filter. Every built-in control exposes a
+        // "before" and an "after" slot; the final `flush` per side emits
+        // anything still unplaced. Guarded so a missing module file degrades to
+        // a bar without third-party items instead of a fatal (see
+        // brikpanel_require() in brikpanel.php).
+        $slot = static function ( $position, $relation = 'flush', $anchor = '' ) {
+            if ( function_exists( 'brikpanel_topbar_render_slot' ) ) {
+                brikpanel_topbar_render_slot( $position, $relation, $anchor );
+            }
+        };
+
         ?>
         <header class="brikpanel-topbar" id="brikpanel-topbar" role="banner">
             <div class="brikpanel-topbar-inner">
@@ -216,6 +251,8 @@ class Brikpanel_Dashboard_Topbar {
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                     </button>
 
+                    <?php $slot( 'left', 'before', 'brand' ); ?>
+
                     <?php if ( brikpanel_topbar_item_is_visible( 'brand' ) ) : ?>
                     <a class="brikpanel-topbar-brand" href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-dashboard' ) ); ?>" aria-label="<?php esc_attr_e( 'BrikPanel dashboard', 'brikpanel' ); ?>">
                         <span class="<?php echo esc_attr( $mark_class ); ?>" aria-hidden="true">
@@ -228,6 +265,9 @@ class Brikpanel_Dashboard_Topbar {
                     </a>
                     <?php endif; ?>
 
+                    <?php $slot( 'left', 'after', 'brand' ); ?>
+                    <?php $slot( 'left', 'before', 'live' ); ?>
+
                     <?php if ( brikpanel_topbar_item_is_visible( 'live' ) ) : ?>
                     <span class="brikpanel-topbar-live-pill is-empty" id="brikpanel-topbar-live" title="<?php esc_attr_e( 'Live visitors right now', 'brikpanel' ); ?>">
                         <span class="brikpanel-topbar-live-dot"></span>
@@ -235,10 +275,15 @@ class Brikpanel_Dashboard_Topbar {
                         <span class="brikpanel-topbar-live-label"><?php esc_html_e( 'live', 'brikpanel' ); ?></span>
                     </span>
                     <?php endif; ?>
+
+                    <?php $slot( 'left', 'after', 'live' ); ?>
+                    <?php $slot( 'left' ); ?>
                 </div>
 
                 <!-- ========== RIGHT ========== -->
                 <div class="brikpanel-topbar-right">
+
+                    <?php $slot( 'right', 'before', 'search' ); ?>
 
                     <!-- Search trigger (opens the existing brikpanel-search overlay) -->
                     <?php if ( brikpanel_topbar_item_is_visible( 'search' ) ) : ?>
@@ -248,6 +293,9 @@ class Brikpanel_Dashboard_Topbar {
                         <span class="brikpanel-topbar-kbd"><span class="brikpanel-topbar-kbd-key" id="brikpanel-topbar-kbd-mod">Ctrl</span><span>+</span><span class="brikpanel-topbar-kbd-key">K</span></span>
                     </button>
                     <?php endif; ?>
+
+                    <?php $slot( 'right', 'after', 'search' ); ?>
+                    <?php $slot( 'right', 'before', 'create' ); ?>
 
                     <!-- Quick create -->
                     <?php if ( brikpanel_topbar_item_is_visible( 'create' ) && brikpanel_topbar_has_visible_create_items() ) : ?>
@@ -290,6 +338,9 @@ class Brikpanel_Dashboard_Topbar {
                         </div>
                     </div>
                     <?php endif; ?>
+
+                    <?php $slot( 'right', 'after', 'create' ); ?>
+                    <?php $slot( 'right', 'before', 'notifications' ); ?>
 
                     <!-- Notifications -->
                     <?php if ( brikpanel_topbar_item_is_visible( 'notifications' ) ) : ?>
@@ -351,6 +402,9 @@ class Brikpanel_Dashboard_Topbar {
                     </div>
                     <?php endif; ?>
 
+                    <?php $slot( 'right', 'after', 'notifications' ); ?>
+                    <?php $slot( 'right', 'before', 'hidden_notices' ); ?>
+
                     <!-- Hidden third-party notices. Starts display:none and is
                          revealed by the script only when suppressed notices are
                          found on the page and relocated into this panel. Has its
@@ -373,6 +427,8 @@ class Brikpanel_Dashboard_Topbar {
                     </div>
                     <?php endif; ?>
 
+                    <?php $slot( 'right', 'after', 'hidden_notices' ); ?>
+
                     <?php
                     if ( class_exists( 'Brikpanel_BrikControl' ) ) {
                         Brikpanel_BrikControl::instance()->render_topbar_button();
@@ -390,6 +446,8 @@ class Brikpanel_Dashboard_Topbar {
 
                     <?php $this->render_cache_clear_button(); ?>
 
+                    <?php $slot( 'right', 'before', 'custom_link' ); ?>
+
                     <!-- Custom shortcut -->
                     <?php
                     $brikpanel_custom_link = brikpanel_topbar_item_is_visible( 'custom_link' ) ? brikpanel_topbar_custom_link() : null;
@@ -404,12 +462,18 @@ class Brikpanel_Dashboard_Topbar {
                     </a>
                     <?php endif; ?>
 
+                    <?php $slot( 'right', 'after', 'custom_link' ); ?>
+                    <?php $slot( 'right', 'before', 'view_site' ); ?>
+
                     <!-- View site -->
                     <?php if ( brikpanel_topbar_item_is_visible( 'view_site' ) ) : ?>
                     <a class="brikpanel-topbar-icon-btn" href="<?php echo esc_url( $site_url ); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e( 'View store', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'View store', 'brikpanel' ); ?>">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     </a>
                     <?php endif; ?>
+
+                    <?php $slot( 'right', 'after', 'view_site' ); ?>
+                    <?php $slot( 'right', 'before', 'user' ); ?>
 
                     <!-- User menu -->
                     <?php if ( brikpanel_topbar_item_is_visible( 'user' ) ) : ?>
@@ -465,6 +529,9 @@ class Brikpanel_Dashboard_Topbar {
                         </div>
                     </div>
                     <?php endif; ?>
+
+                    <?php $slot( 'right', 'after', 'user' ); ?>
+                    <?php $slot( 'right' ); ?>
                 </div>
             </div>
         </header>

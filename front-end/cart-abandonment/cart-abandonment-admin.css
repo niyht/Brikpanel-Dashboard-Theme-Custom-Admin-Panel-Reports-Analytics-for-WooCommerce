@@ -222,54 +222,246 @@
 	color: #303030;
 }
 
-/* Filters */
+/* Filters — one toolbar row; every control applies itself, so no Apply button.
+   Labels live inside the controls ("All statuses"), which keeps the bar to a
+   single line and removes the stack of tiny headings above it. */
+.brikpanel-cartab-filters {
+	padding: 0.75rem 0.875rem;
+}
+
 .brikpanel-cartab-filter-row {
 	display: flex;
-	align-items: flex-end;
-	gap: 0.75rem;
+	align-items: center;
+	gap: 0.5rem;
 	flex-wrap: wrap;
 }
 
-.brikpanel-cartab-field {
-	display: flex;
-	flex-direction: column;
-	gap: 0.375rem;
-}
-
-.brikpanel-cartab-field-grow {
-	flex: 1 1 180px;
-}
-
-.brikpanel-cartab-field label {
+/* Shared control surface */
+.brikpanel-cartab-wrap .brikpanel-cartab-filter-row input[type="search"],
+.brikpanel-cartab-wrap .brikpanel-cartab-filter-row select,
+.brikpanel-cartab-wrap .brikpanel-cartab-custom-range input[type="date"] {
 	font-size: 0.8125rem;
-	font-weight: 600;
-	color: #303030;
-}
-
-.brikpanel-cartab-wrap .brikpanel-cartab-field input,
-.brikpanel-cartab-wrap .brikpanel-cartab-field select {
-	padding: 0.5rem 0.75rem;
-	font-size: 0.875rem;
 	line-height: 1.4;
 	color: #303030;
 	background: #ffffff;
-	border: 1px solid #8a8a8a;
+	border: 1px solid #e3e3e3;
 	border-radius: 0.5rem;
 	min-height: 0;
-	box-shadow: none;
+	height: 2.125rem;
+	box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.brikpanel-cartab-wrap .brikpanel-cartab-field input:focus,
-.brikpanel-cartab-wrap .brikpanel-cartab-field select:focus {
+.brikpanel-cartab-wrap .brikpanel-cartab-filter-row input[type="search"]:hover,
+.brikpanel-cartab-wrap .brikpanel-cartab-filter-row select:hover,
+.brikpanel-cartab-wrap .brikpanel-cartab-custom-range input[type="date"]:hover {
+	border-color: #b5b5b5;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-filter-row input[type="search"]:focus,
+.brikpanel-cartab-wrap .brikpanel-cartab-filter-row select:focus,
+.brikpanel-cartab-wrap .brikpanel-cartab-custom-range input[type="date"]:focus {
 	border-color: #303030;
 	box-shadow: 0 0 0 1px #303030;
 	outline: none;
 }
 
+/* Search field with its magnifier */
+.brikpanel-cartab-search {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: 1 1 15rem;
+	min-width: 11rem;
+}
+
+.brikpanel-cartab-search > svg {
+	position: absolute;
+	left: 0.625rem;
+	color: #8a8a8a;
+	pointer-events: none;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-search input[type="search"] {
+	width: 100%;
+	padding: 0.375rem 0.75rem 0.375rem 2rem;
+}
+
+/* Selects: native arrow replaced by our own so all controls match */
+.brikpanel-cartab-select {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-select select {
+	appearance: none;
+	-webkit-appearance: none;
+	padding: 0.375rem 1.75rem 0.375rem 0.75rem;
+	background-image: none;
+	max-width: 12rem;
+	cursor: pointer;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-select-icon select {
+	padding-left: 2rem;
+}
+
+.brikpanel-cartab-select > svg:first-child {
+	position: absolute;
+	left: 0.625rem;
+	color: #8a8a8a;
+	pointer-events: none;
+}
+
+.brikpanel-cartab-select-arrow {
+	position: absolute;
+	right: 0.625rem;
+	color: #616161;
+	pointer-events: none;
+}
+
+/* Clear: quiet text button, only present while a filter is applied */
+.brikpanel-cartab-clear {
+	padding: 0.375rem 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.4;
+	color: #616161;
+	background: transparent;
+	border: 0;
+	border-radius: 0.375rem;
+	cursor: pointer;
+}
+
+.brikpanel-cartab-clear:hover {
+	color: #303030;
+	background: #f1f1f1;
+}
+
+.brikpanel-cartab-clear[hidden] {
+	display: none;
+}
+
 .brikpanel-cartab-filter-actions {
 	display: flex;
 	gap: 0.5rem;
-	padding-bottom: 1px;
+	/* Pins the actions to the end of the row whether or not the filters wrap,
+	   so the popover below always opens inwards from the card edge. */
+	margin-left: auto;
+}
+
+/* Custom range, revealed only by the matching preset */
+.brikpanel-cartab-custom-range {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-top: 0.625rem;
+	padding-top: 0.625rem;
+	border-top: 1px solid #f1f1f1;
+	flex-wrap: wrap;
+}
+
+.brikpanel-cartab-custom-range[hidden] {
+	display: none;
+}
+
+.brikpanel-cartab-custom-range label {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: #616161;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-custom-range input[type="date"] {
+	padding: 0.375rem 0.625rem;
+}
+
+.brikpanel-cartab-range-sep {
+	color: #8a8a8a;
+}
+
+/* Columns popover: visibility toggles + drag handles */
+.brikpanel-cartab-columns-menu {
+	position: relative;
+}
+
+.brikpanel-cartab-columns-popover {
+	position: absolute;
+	top: calc(100% + 0.375rem);
+	right: 0;
+	z-index: 20;
+	min-width: 15rem;
+	max-height: 26rem;
+	overflow-y: auto;
+	padding: 0.5rem;
+	background: #ffffff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.brikpanel-cartab-columns-popover[hidden] {
+	display: none;
+}
+
+.brikpanel-cartab-columns-hint {
+	margin: 0.125rem 0.5rem 0.5rem;
+	font-size: 0.75rem;
+	line-height: 1.4;
+	color: #8a8a8a;
+}
+
+.brikpanel-cartab-columns-item {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.125rem 0.25rem;
+	border-radius: 0.375rem;
+	cursor: grab;
+	background: #ffffff;
+}
+
+.brikpanel-cartab-columns-item:hover {
+	background: #f7f7f7;
+}
+
+.brikpanel-cartab-columns-item:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 1px #303030;
+}
+
+.brikpanel-cartab-columns-item.is-dragging {
+	opacity: 0.5;
+	cursor: grabbing;
+}
+
+.brikpanel-cartab-columns-handle {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.25rem;
+	color: #8a8a8a;
+	flex: 0 0 auto;
+}
+
+.brikpanel-cartab-columns-label {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex: 1 1 auto;
+	padding: 0.3125rem 0.25rem;
+	font-size: 0.8125rem;
+	color: #303030;
+	cursor: pointer;
+}
+
+.brikpanel-cartab-wrap .brikpanel-cartab-columns-label input[type="checkbox"] {
+	margin: 0;
+	flex: 0 0 auto;
+}
+
+.brikpanel-cartab-columns-item.is-locked .brikpanel-cartab-columns-label {
+	color: #8a8a8a;
+	cursor: default;
 }
 
 /* Table */
@@ -318,6 +510,27 @@
 	color: #616161;
 	font-size: 0.8125rem;
 	white-space: nowrap;
+}
+
+.brikpanel-cartab-total-cell {
+	font-weight: 550;
+	white-space: nowrap;
+}
+
+/* Column visibility. The table carries data-hide-<id> for every column the
+   current user switched off, so toggling one costs a single attribute write
+   instead of a re-render. One rule per column id. */
+.brikpanel-cartab-table[data-hide-email] .brikpanel-cartab-col-email,
+.brikpanel-cartab-table[data-hide-name] .brikpanel-cartab-col-name,
+.brikpanel-cartab-table[data-hide-phone] .brikpanel-cartab-col-phone,
+.brikpanel-cartab-table[data-hide-cart] .brikpanel-cartab-col-cart,
+.brikpanel-cartab-table[data-hide-total] .brikpanel-cartab-col-total,
+.brikpanel-cartab-table[data-hide-mail] .brikpanel-cartab-col-mail,
+.brikpanel-cartab-table[data-hide-source] .brikpanel-cartab-col-source,
+.brikpanel-cartab-table[data-hide-status] .brikpanel-cartab-col-status,
+.brikpanel-cartab-table[data-hide-created] .brikpanel-cartab-col-created,
+.brikpanel-cartab-table[data-hide-updated] .brikpanel-cartab-col-updated {
+	display: none;
 }
 
 .brikpanel-cartab-empty {
@@ -422,6 +635,21 @@
 .brikpanel-cartab-badge-recovered {
 	background: #e4f5e1;
 	color: #1a6b15;
+}
+
+/* An email captured with an empty cart: nothing to recover yet, so it stays
+   muted rather than competing with the states worth acting on. */
+.brikpanel-cartab-badge-email_only {
+	background: #f1f1f1;
+	color: #8a8a8a;
+}
+
+/* Sold, but never abandoned first (or a duplicate row closed alongside the
+   order that got the credit). Green like Recovered because it is still a sale,
+   dialled down because no cart was won back. */
+.brikpanel-cartab-badge-converted {
+	background: #f0f5ef;
+	color: #5c7a58;
 }
 
 /* Row actions */

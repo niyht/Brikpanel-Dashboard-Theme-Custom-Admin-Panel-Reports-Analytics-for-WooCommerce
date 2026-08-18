@@ -365,6 +365,29 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     white-space: nowrap;
 }
 
+/* Wrapper around an item another plugin registered through the
+   `brikpanel_topbar_items` filter. It is a plain flex passthrough so the
+   registered control lines up with the built-in ones on its own; the wrapper
+   exists so third-party markup can never unbalance the bar's own layout and so
+   the item stays addressable (`[data-topbar-item="…"]`) from CSS. */
+.brikpanel-topbar-ext {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: 0;
+}
+
+.brikpanel-topbar-ext .brikpanel-topbar-ext-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.brikpanel-topbar-ext .brikpanel-topbar-ext-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
 /* Icon buttons (bell, external) — sized to match the Create button height so
    every item in the right cluster shares one consistent height. */
 .brikpanel-topbar-icon-btn {

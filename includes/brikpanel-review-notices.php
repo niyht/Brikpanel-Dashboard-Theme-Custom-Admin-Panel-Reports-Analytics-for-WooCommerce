@@ -31,7 +31,7 @@ if ( ! defined( 'BRIKPANEL_REVIEW_URL' ) ) {
 register_activation_hook( BRIKPANEL_PATH . 'brikpanel.php', 'brikpanel_review_on_activate' );
 function brikpanel_review_on_activate() {
     if ( ! get_option( 'brikpanel_activated_at' ) ) {
-        add_option( 'brikpanel_activated_at', time(), '', false );
+        add_option( 'brikpanel_activated_at', time(), '', true );
     }
     if ( false === get_option( 'brikpanel_completed_orders_count', false ) ) {
         add_option( 'brikpanel_completed_orders_count', 0, '', false );
@@ -42,7 +42,7 @@ function brikpanel_review_on_activate() {
 add_action( 'admin_init', 'brikpanel_review_bootstrap' );
 function brikpanel_review_bootstrap() {
     if ( ! get_option( 'brikpanel_activated_at' ) ) {
-        add_option( 'brikpanel_activated_at', time(), '', false );
+        add_option( 'brikpanel_activated_at', time(), '', true );
     }
     if ( false === get_option( 'brikpanel_completed_orders_count', false ) ) {
         add_option( 'brikpanel_completed_orders_count', 0, '', false );
@@ -329,7 +329,7 @@ function brikpanel_review_ajax_handler() {
     switch ( $action ) {
         case 'reviewed':
         case 'already':
-            update_option( 'brikpanel_review_dismissed', 1, false );
+            brikpanel_update_option( 'brikpanel_review_dismissed', 1 );
             delete_option( 'brikpanel_review_snooze_until' );
             break;
 

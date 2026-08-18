@@ -17,12 +17,38 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Brikpanel_Pro_Search {
 
 	/**
-	 * Transient key prefix for the per-user admin navigation index.
-	 * The index is captured on real admin page loads (where $menu /
-	 * $submenu are populated) and read back during the AJAX request,
-	 * because admin-ajax.php never builds the admin menu itself.
+	 * Non-autoloaded option holding the per-user admin navigation index.
+	 * The index is captured on real admin page loads (where $menu / $submenu
+	 * are populated) and read back during the AJAX request, because
+	 * admin-ajax.php never builds the admin menu itself.
+	 *
+	 * Deliberately NOT a transient. The payload is ~30 KB on a plugin-heavy
+	 * store and change detection (see capture_navigation_index) means it is
+	 * only rewritten when the menu actually changes; a TTL on top of that
+	 * would open a window where the signature still matches but the payload
+	 * has already expired, silently killing navigation search until the
+	 * user's menu happened to change. No TTL also means no
+	 * `_transient_timeout_` row, halving both the storage rows and the write
+	 * cost. This is derived per-user cache, not configuration — keep it out
+	 * of the import/export map.
 	 */
-	const NAV_INDEX_PREFIX = 'brikpanel_nav_index_';
+	const NAV_INDEX_OPTION_PREFIX = 'brikpanel_nav_index_';
+
+	/**
+	 * User-meta key holding the hash of the last index written for this blog.
+	 * WordPress primes every meta row for the logged-in user while resolving
+	 * their capabilities, so reading this costs no query — which is the whole
+	 * point: the steady state must be zero SELECTs and zero UPDATEs.
+	 *
+	 * The blog id is part of the key because on multisite options are
+	 * per-blog but user meta is per-NETWORK: one shared signature would make
+	 * every subsite after the first believe its index was already current,
+	 * and each subsite has a completely different admin menu.
+	 */
+	const NAV_INDEX_SIG_META = 'brikpanel_nav_index_sig';
+
+	/** Bump to force every user's index to be rebuilt after a schema change. */
+	const NAV_INDEX_SCHEMA = 'v3';
 
 	public function __construct() {
 		// We also enqueue the scripts for the public side of WordPress because
@@ -34,6 +60,13 @@ class Brikpanel_Pro_Search {
 		// plugin's pages) on normal admin loads so navigation search works
 		// inside admin-ajax, which never runs wp-admin/menu.php.
 		add_action( 'admin_menu', array( $this, 'capture_navigation_index' ), PHP_INT_MAX );
+
+		// The per-user index rows have no TTL, so they are reclaimed
+		// explicitly instead of ageing out. Those hooks are NOT registered
+		// here: this class is only instantiated on admin requests, and the
+		// deletion paths that matter most (`wp user delete`, the REST users
+		// endpoint, a membership plugin's bulk purge) are not admin requests.
+		// See the file-scope registration at the bottom of this file.
 
 		// Settings UI: a dedicated "Search" section with one toggle per
 		// source so the palette scope is fully controllable.
@@ -926,11 +959,231 @@ class Brikpanel_Pro_Search {
 			return;
 		}
 
+		// Gate the WRITE on exactly what gates the READ. Without this the
+		// index was captured for people who can never open the palette — the
+		// read path in source_navigation() needs manage_woocommerce, and the
+		// whole source can be switched off — so an author, an editor or a
+		// subscriber loading profile.php was left with a permanent option row
+		// nothing would ever look at. It has no TTL now, so "written and never
+		// read" means "stored forever".
+		if ( 'no' === get_option( 'brikpanel_search_navigation', 'yes' ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
+
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 ) {
+			return;
+		}
+
 		global $menu, $submenu;
 		if ( empty( $menu ) || ! is_array( $menu ) ) {
 			return;
 		}
 
+		// Pure PHP over globals WordPress has already built — no queries.
+		$index = $this->build_navigation_index( $menu, $submenu );
+		if ( empty( $index ) ) {
+			return;
+		}
+
+		$signature = self::navigation_signature( $index );
+
+		$stored = (string) get_user_meta( $user_id, self::nav_index_sig_key(), true );
+		if ( $stored === $signature ) {
+			// Steady state. Until 3.2.70 this method wrote ~30 KB to
+			// wp_options on EVERY admin page load, plus a timeout row whose
+			// value changed every second, so neither write could ever be
+			// short-circuited by update_option()'s identical-value check.
+			return;
+		}
+
+		// Write the payload FIRST and only claim the signature if it landed.
+		// The signature is the only thing that stops the next page load from
+		// rebuilding, so a signature written next to a failed payload write
+		// (disk full, a pre_update_option filter refusing it) leaves navigation
+		// search permanently dead for that user with nothing to notice it.
+		//
+		// update_option() also returns false when the value did not change,
+		// which is the normal state right after a NAV_INDEX_SCHEMA bump: the
+		// menu is the same, only the fingerprint format moved. Treating that
+		// as a failure would rebuild on every single admin page load, so the
+		// two cases are told apart by reading the row back — one query, and
+		// only on the path that is already not the steady state.
+		if ( ! update_option( self::nav_index_option( $user_id ), $index, false ) ) {
+			$current = get_option( self::nav_index_option( $user_id ), null );
+			if ( $current !== $index ) {
+				return;
+			}
+		}
+		update_user_meta( $user_id, self::nav_index_sig_key(), $signature );
+	}
+
+	/**
+	 * Fingerprint the menu so the payload is only rewritten when it really
+	 * changed.
+	 *
+	 * The signature MUST be context-free — identical on every admin screen —
+	 * or the payload ping-pongs between two values and we are back to writing
+	 * ~30 KB on every navigation. That rules out hashing the entries verbatim,
+	 * because menu URLs are not context-free: plugins build them from the live
+	 * request. Measured on a real store, the same menu produced a different
+	 * index on each screen because of two entries alone:
+	 *
+	 *   - core's Customize link carries `?return=<current admin URL>`
+	 *   - Elementor's "Website Templates" inherits the current screen's query
+	 *     (`&post_type=product` on a product taxonomy screen, and its own
+	 *     `return_to=<current admin URL>`)
+	 *
+	 * Stripping known parameter names does not close this: any plugin can leak
+	 * any request parameter into its own menu URL, and the leaked names differ
+	 * per site. So the query string is excluded from the fingerprint entirely
+	 * and only the label, the parent and the URL *path* are hashed. Those are
+	 * the parts a genuine menu change moves.
+	 *
+	 * The full URL still goes into the stored payload, so navigation is exact.
+	 *
+	 * ONE query parameter is hashed as well, and only one: `page`. On the
+	 * `admin.php?page=<slug>` family that value is not request state at all —
+	 * it is the slug the plugin registered its screen under, fixed at
+	 * registration time, and it is the only thing separating two entries that
+	 * share a path. Without it a plugin renaming `page=old` to `page=new` while
+	 * keeping the label produced no signature change, so the index kept a dead
+	 * link forever: the payload no longer expires, so unlike the old 12-hour
+	 * transient there was nothing left to heal it. Everything else in the query
+	 * string stays excluded, which is what keeps the leaked `return` /
+	 * `return_to` / inherited `post_type` values from re-introducing the churn.
+	 *
+	 * clean_menu_title() has already stripped the update / comment count
+	 * bubbles from the labels, so the fingerprint also stays stable while
+	 * those numbers tick.
+	 *
+	 * @param array $index
+	 * @return string
+	 */
+	private static function navigation_signature( array $index ) {
+		$parts = array();
+
+		foreach ( $index as $entry ) {
+			$url  = isset( $entry['url'] ) ? (string) $entry['url'] : '';
+			$path = '';
+			$page = '';
+			if ( '' !== $url ) {
+				$bits = wp_parse_url( $url );
+				$path = isset( $bits['path'] ) ? $bits['path'] : '';
+				if ( ! empty( $bits['query'] ) ) {
+					$args = array();
+					wp_parse_str( $bits['query'], $args );
+					if ( isset( $args['page'] ) && is_scalar( $args['page'] ) ) {
+						$page = (string) $args['page'];
+					}
+				}
+			}
+
+			$parts[] = ( isset( $entry['label'] ) ? $entry['label'] : '' )
+				. "\x1f" . ( isset( $entry['parent'] ) ? $entry['parent'] : '' )
+				. "\x1f" . $path
+				. "\x1f" . $page;
+		}
+
+		return self::NAV_INDEX_SCHEMA . ':' . md5( implode( "\x1e", $parts ) );
+	}
+
+	/** Option name holding one user's navigation index on this blog. */
+	private static function nav_index_option( $user_id ) {
+		return self::NAV_INDEX_OPTION_PREFIX . (int) $user_id;
+	}
+
+	/** Blog-scoped user-meta key for the navigation index signature. */
+	private static function nav_index_sig_key( $blog_id = 0 ) {
+		$blog_id = $blog_id ?: ( is_multisite() ? get_current_blog_id() : 0 );
+		return self::NAV_INDEX_SIG_META . '_' . (int) $blog_id;
+	}
+
+	/**
+	 * Drop a user's navigation index everywhere it could exist.
+	 *
+	 * The network walk is paginated rather than capped: an earlier revision
+	 * passed `number => 500` under a comment claiming there was no limit, so
+	 * every site past the 500th leaked both the option row and the signature
+	 * meta. delete_user is rare and interactive, so the extra pages are free.
+	 *
+	 * @param int $user_id
+	 */
+	public static function purge_nav_index_for_user( $user_id ) {
+		$user_id = (int) $user_id;
+		if ( $user_id <= 0 ) {
+			return;
+		}
+
+		if ( is_multisite() ) {
+			// Options are per-blog; the row lives on every site the user
+			// could reach wp-admin on. The signature meta is per-network but
+			// blog-scoped by key, so both have to be walked.
+			$page = 0;
+			do {
+				$blog_ids = get_sites( array(
+					'fields' => 'ids',
+					'number' => 250,
+					'offset' => $page * 250,
+				) );
+				foreach ( $blog_ids as $blog_id ) {
+					switch_to_blog( (int) $blog_id );
+					delete_option( self::nav_index_option( $user_id ) );
+					restore_current_blog();
+					delete_user_meta( $user_id, self::nav_index_sig_key( (int) $blog_id ) );
+				}
+				$page++;
+			} while ( count( $blog_ids ) === 250 );
+			return;
+		}
+
+		delete_option( self::nav_index_option( $user_id ) );
+		delete_user_meta( $user_id, self::nav_index_sig_key( 0 ) );
+	}
+
+	/**
+	 * @param int $user_id
+	 * @param int $blog_id
+	 */
+	public static function purge_nav_index_for_blog_user( $user_id, $blog_id ) {
+		$user_id = (int) $user_id;
+		$blog_id = (int) $blog_id;
+		if ( $user_id <= 0 || $blog_id <= 0 ) {
+			return;
+		}
+		switch_to_blog( $blog_id );
+		delete_option( self::nav_index_option( $user_id ) );
+		restore_current_blog();
+		delete_user_meta( $user_id, self::nav_index_sig_key( $blog_id ) );
+	}
+
+	/**
+	 * A deleted subsite takes its own option rows with its tables, but the
+	 * signature meta lives on the shared network user-meta table and would
+	 * otherwise leak one row per user of that subsite.
+	 *
+	 * @param WP_Site $old_site
+	 */
+	public static function purge_nav_index_for_site( $old_site ) {
+		if ( ! is_object( $old_site ) || empty( $old_site->blog_id ) ) {
+			return;
+		}
+		delete_metadata( 'user', 0, self::nav_index_sig_key( (int) $old_site->blog_id ), '', true );
+	}
+
+	/**
+	 * Flatten the resolved admin menu into searchable {label, parent, url}
+	 * entries. Reads only the globals WordPress has already populated, so it
+	 * issues no queries and is safe to run on every admin page load.
+	 *
+	 * @param array $menu
+	 * @param array $submenu
+	 * @return array
+	 */
+	private function build_navigation_index( $menu, $submenu ) {
 		$index = array();
 
 		foreach ( $menu as $top ) {
@@ -953,7 +1206,7 @@ class Brikpanel_Pro_Search {
 				$index[] = array(
 					'label'  => $parent_label,
 					'parent' => '',
-					'url'    => $this->resolve_menu_url( $parent_slug, '' ),
+					'url'    => self::normalize_menu_url( $this->resolve_menu_url( $parent_slug, '' ) ),
 				);
 				continue;
 			}
@@ -970,16 +1223,95 @@ class Brikpanel_Pro_Search {
 					$index[] = array(
 						'label'  => $label,
 						'parent' => $parent_label,
-						'url'    => $this->resolve_menu_url( $sub[2], $parent_slug ),
+						'url'    => self::normalize_menu_url( $this->resolve_menu_url( $sub[2], $parent_slug ) ),
 					);
 				}
 			}
 		}
 
-		// Hard cap keeps the transient small even on plugin-heavy sites.
-		$index = array_slice( $index, 0, 400 );
+		// Hard cap keeps the stored payload small even on plugin-heavy sites.
+		return array_slice( $index, 0, 400 );
+	}
 
-		set_transient( self::NAV_INDEX_PREFIX . get_current_user_id(), $index, 12 * HOUR_IN_SECONDS );
+	/**
+	 * Strip "come back to where I was" parameters out of a stored menu URL.
+	 *
+	 * Some menu entries embed a pointer to the screen the merchant happens to
+	 * be on: core's Customize link carries `?return=<current admin URL>`, and
+	 * Elementor's "Website Templates" carries `&return_to=<current admin URL>`.
+	 * That pointer is only a hint about where "Back" goes, never the
+	 * destination, and the screen it names is whichever one happened to be open
+	 * when the index was captured — arbitrary, and usually not where the
+	 * merchant is when they use the palette. Dropping it makes the stored entry
+	 * honest and slightly tidier.
+	 *
+	 * This is cosmetic, not the churn fix: the fingerprint in
+	 * navigation_signature() already ignores the whole query string, precisely
+	 * because a name-based list like this one can never cover every plugin that
+	 * leaks request state into its menu URL.
+	 *
+	 * Matching is by parameter NAME only. An earlier revision also dropped any
+	 * parameter whose value appeared in the current REQUEST_URI, which ate
+	 * `page=wc-orders` on the Orders screen — the slug is a substring of the
+	 * request — and silently rewrote that entry to a bare admin.php.
+	 *
+	 * @param string $url
+	 * @return string
+	 */
+	private static function normalize_menu_url( $url ) {
+		$url = (string) $url;
+		if ( '' === $url || false === strpos( $url, '?' ) ) {
+			return $url;
+		}
+
+		$parts = wp_parse_url( $url );
+		if ( empty( $parts['query'] ) ) {
+			return $url;
+		}
+
+		$args = array();
+		wp_parse_str( $parts['query'], $args );
+		if ( ! is_array( $args ) || ! $args ) {
+			return $url;
+		}
+
+		$named = array(
+			'return', 'return_to', 'returnurl', 'return_url',
+			'redirect', 'redirect_to', 'wp_http_referer', '_wp_http_referer',
+		);
+
+		$changed = false;
+		foreach ( array_keys( $args ) as $key ) {
+			if ( in_array( (string) $key, $named, true ) ) {
+				unset( $args[ $key ] );
+				$changed = true;
+			}
+		}
+
+		// Rebuilding re-encodes every remaining parameter, so only pay that
+		// cost (and that visible churn) when something was actually removed.
+		if ( ! $changed ) {
+			return $url;
+		}
+
+		$base = '';
+		if ( ! empty( $parts['scheme'] ) && ! empty( $parts['host'] ) ) {
+			$base = $parts['scheme'] . '://' . $parts['host'];
+			if ( ! empty( $parts['port'] ) ) {
+				$base .= ':' . (int) $parts['port'];
+			}
+		}
+		$base .= isset( $parts['path'] ) ? $parts['path'] : '';
+
+		$query = http_build_query( $args );
+		if ( '' !== $query ) {
+			$base .= '?' . $query;
+		}
+		if ( ! empty( $parts['fragment'] ) ) {
+			$base .= '#' . $parts['fragment'];
+		}
+
+		return $base;
 	}
 
 	/**
@@ -1024,8 +1356,18 @@ class Brikpanel_Pro_Search {
 	}
 
 	private function source_navigation( $query ) {
-		$index = get_transient( self::NAV_INDEX_PREFIX . get_current_user_id() );
+		$user_id = get_current_user_id();
+		$index   = get_option( self::nav_index_option( $user_id ), array() );
+
 		if ( empty( $index ) || ! is_array( $index ) ) {
+			// The payload is gone but the signature would keep every future
+			// admin page load from rebuilding it, so navigation search would
+			// stay dead forever rather than for one TTL. Drop the signature so
+			// the next admin page load re-captures. Reachable via a cache /
+			// cleanup plugin, a manual option delete, or a partial restore.
+			if ( $user_id > 0 ) {
+				delete_user_meta( $user_id, self::nav_index_sig_key() );
+			}
 			return '';
 		}
 
@@ -1158,4 +1500,61 @@ class Brikpanel_Pro_Search {
 	}
 }
 
-new Brikpanel_Pro_Search();
+// The palette itself is an admin surface: keep instantiation gated exactly as
+// before so no storefront request pays for its hooks.
+if ( is_admin() ) {
+	new Brikpanel_Pro_Search();
+}
+
+/**
+ * Reclaim the per-user navigation index rows.
+ *
+ * Registered at FILE SCOPE, not in the class constructor, because this file is
+ * required outside the is_admin() gate while the class is only instantiated
+ * inside it. Every deletion path that is not a wp-admin pageview — `wp user
+ * delete`, `wp site delete`, `DELETE /wp/v2/users/<id>`, a membership plugin
+ * purging accounts from a cron job — used to leave the ~30 KB option row and
+ * the signature meta behind permanently, because the payload has no TTL any
+ * more. The callbacks touch nothing but options and user meta, so they are
+ * safe to register on every request.
+ */
+add_action( 'delete_user',           array( 'Brikpanel_Pro_Search', 'purge_nav_index_for_user' ) );
+add_action( 'wpmu_delete_user',      array( 'Brikpanel_Pro_Search', 'purge_nav_index_for_user' ) );
+add_action( 'remove_user_from_blog', array( 'Brikpanel_Pro_Search', 'purge_nav_index_for_blog_user' ), 10, 2 );
+add_action( 'wp_delete_site',        array( 'Brikpanel_Pro_Search', 'purge_nav_index_for_site' ) );
+
+/**
+ * One-time cleanup of the legacy navigation-index transients.
+ *
+ * Until 3.2.70 the index lived in a per-user transient that was rewritten on
+ * EVERY admin page load — a ~30 KB serialized UPDATE plus a timeout-row UPDATE
+ * whose value changed every second, so neither could be short-circuited. On a
+ * store without a persistent object cache that single write was measured at
+ * 1.2 s per admin pageview. The payload now lives in a non-expiring option
+ * written only when the menu actually changes, leaving the old rows orphaned.
+ *
+ * No payload migration: the first admin page load after the upgrade finds no
+ * signature and writes a fresh index. Guarded by its own marker rather than
+ * brikpanel_db_version, because a site already on this version still needs the
+ * sweep and a version gate would skip exactly the site that needed it.
+ */
+function brikpanel_search_migrate_nav_index_transients() {
+	if ( '1' === get_option( 'brikpanel_nav_index_transients_cleared' ) ) {
+		return;
+	}
+
+	global $wpdb;
+
+	// Underscores are LIKE wildcards. Without the escapes this pattern would
+	// match far more than the intended rows.
+	$wpdb->query(
+		"DELETE FROM {$wpdb->options}
+		  WHERE option_name LIKE '\\_transient\\_brikpanel\\_nav\\_index\\_%'
+		     OR option_name LIKE '\\_transient\\_timeout\\_brikpanel\\_nav\\_index\\_%'"
+	);
+
+	// autoload=on: this marker is read on every admin request until it exists,
+	// and it is a single byte.
+	update_option( 'brikpanel_nav_index_transients_cleared', '1', true );
+}
+add_action( 'admin_init', 'brikpanel_search_migrate_nav_index_transients' );

@@ -322,6 +322,13 @@ function brikpanel_settings_fields() {
     // valid-sales and refund buckets the analytics read.
     $order_status_options = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_statuses() : [];
 
+    // Tooltip for the consent gate. Merchants who tick it on a site with no
+    // consent platform at all would otherwise watch their visitor numbers go
+    // to zero with nothing on screen explaining why.
+    $consent_plugin_hint = class_exists( 'WP_Consent_API' )
+        ? __('The WP Consent API plugin is active on this site, so BrikPanel follows whatever your cookie banner reports for the statistics category.', 'brikpanel')
+        : __('No consent plugin was detected on this site. With this on, tracking stays off until your cookie banner tells BrikPanel that analytics are allowed.', 'brikpanel');
+
     $wc_product_data_sections = class_exists('Brikpanel_Product_Editor')
         ? Brikpanel_Product_Editor::collect_wc_product_data_sections()
         : [];
@@ -420,6 +427,13 @@ function brikpanel_settings_fields() {
             'id'       => 'brikpanel_pe_visible_sections_field',
             'type'     => 'brikpanel_section_order',
             'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder — the product editor renders sections in the order shown here. Metaboxes registered by other plugins (Yoast SEO, Rank Math, All in One SEO, SEOPress, custom post types, etc.) appear in this list automatically, tagged "Plugin" — enable and position any you want to edit right inside the BrikPanel editor.', 'brikpanel'),
+        ],
+        [
+            'name'    => __('Use the full screen width', 'brikpanel'),
+            'id'      => 'brikpanel_pe_widescreen',
+            'type'    => 'checkbox',
+            'desc'    => __('On a wide monitor, let the variations table and the two description editors use the extra width instead of staying in the centre column. Everything else keeps its normal width. Has no effect on screens narrower than about 1360 pixels.', 'brikpanel'),
+            'default' => 'no',
         ],
         [
             'name'    => __('Product publish scheduling', 'brikpanel'),
@@ -543,6 +557,13 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'    => __('Create global attributes automatically', 'brikpanel'),
+            'id'      => 'brikpanel_pe_auto_global_attributes',
+            'type'    => 'checkbox',
+            'desc'    => __('When you type a new variation attribute name in the product editor, turn it into a real WooCommerce attribute (Products &rarr; Attributes) instead of keeping it as a product-only custom attribute. Global attributes are what colour and size swatch themes, layered navigation and attribute filters read, so most stores want this on. Attributes are created only when the product is published, so drafts are left alone, and an attribute that already exists is reused instead of duplicated. Turning this off later does not undo attributes that were already created; remove those in Products &rarr; Attributes.', 'brikpanel'),
+            'default' => 'yes',
+        ],
+        [
             'type' => 'sectionend',
             'id'   => 'brk_products_title',
         ],
@@ -639,6 +660,14 @@ function brikpanel_settings_fields() {
             'type'    => 'checkbox',
             'desc'    => __('Track visitors, page views, product views, add-to-carts, checkout visits and live visitors on your storefront. Turn this off if you already use a dedicated analytics tool — BrikPanel will stop adding any tracking scripts or requests to your store pages, and the related dashboard cards will simply stop receiving new data.', 'brikpanel'),
             'default' => 'yes',
+        ],
+        [
+            'name'     => __('Wait for cookie consent', 'brikpanel'),
+            'id'       => 'brikpanel_tracking_require_consent',
+            'type'     => 'checkbox',
+            'desc'     => __('Hold visitor tracking back until the visitor allows analytics: no tracking cookie, no browser storage and no tracking request is created before then. BrikPanel accepts consent from the WordPress Consent API (the "statistics" category), from a cookie banner that calls brikpanel_start_tracking(), or from the brikpanel_frontend_tracking_allowed filter. Consent works without a page reload, and when it is withdrawn tracking stops at once and BrikPanel deletes its own tracking cookies and browser storage for that visitor. This covers analytics only: abandoned-cart email capture is a separate feature with its own switch, and it never stores anything until a customer types their email themselves. Leave this off if your store does not need a consent banner: your analytics keep working exactly as before.', 'brikpanel'),
+            'desc_tip' => $consent_plugin_hint,
+            'default'  => 'no',
         ],
         [
             'name'     => __('Excluded user agents', 'brikpanel'),

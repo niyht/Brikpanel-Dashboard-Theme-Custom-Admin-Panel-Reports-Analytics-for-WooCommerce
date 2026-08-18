@@ -353,7 +353,7 @@ class Brikpanel_Cart_Share {
                         </a>
                         <button type="button" class="brikpanel-cs-btn secondary" id="bpcs-native-share" hidden>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                            <span><?php esc_html_e( 'Share', 'brikpanel' ); ?></span>
+                            <span><?php echo esc_html( _x( 'Share', 'verb: share the cart link', 'brikpanel' ) ); ?></span>
                         </button>
                     </div>
 
@@ -544,7 +544,7 @@ class Brikpanel_Cart_Share {
                 'copy'        => __( 'Copy', 'brikpanel' ),
                 'copied'      => __( 'Copied!', 'brikpanel' ),
                 'whatsapp'    => __( 'WhatsApp', 'brikpanel' ),
-                'share'       => __( 'Share', 'brikpanel' ),
+                'share'       => _x( 'Share', 'verb: share the cart link', 'brikpanel' ),
                 'close'       => __( 'Close', 'brikpanel' ),
                 'empty'       => __( 'Your cart is empty, so there is nothing to share yet.', 'brikpanel' ),
                 'shareText'   => __( 'Here is my cart:', 'brikpanel' ),

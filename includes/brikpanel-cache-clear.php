@@ -338,6 +338,67 @@ class Brikpanel_Cache_Clear {
     }
 
     /**
+     * Run the purge callback of every supplied cache definition.
+     *
+     * Some plugins (notably WP Rocket on broken DB installs) echo wpdberror
+     * HTML or admin notices straight to STDOUT during their purge routine,
+     * which would corrupt a JSON response or a redirect. Every callback is
+     * wrapped in an output buffer that is discarded, and in a Throwable guard
+     * so one broken cache plugin cannot take the request down with it.
+     *
+     * @param array $targets Map of cache id => definition.
+     * @return array{0: string[], 1: string[]} Cleared labels, failed labels.
+     */
+    private static function run_purge( array $targets ) {
+        $cleared = [];
+        $failed  = [];
+
+        foreach ( $targets as $def ) {
+            ob_start();
+            try {
+                $result = call_user_func( $def['clear'] );
+                ob_end_clean();
+                if ( false === $result ) {
+                    $failed[] = $def['label'];
+                } else {
+                    $cleared[] = $def['label'];
+                }
+            } catch ( \Throwable $e ) {
+                ob_end_clean();
+                $failed[] = $def['label'];
+            }
+        }
+
+        return [ $cleared, $failed ];
+    }
+
+    /**
+     * Purge every page cache BrikPanel can detect, without any UI.
+     *
+     * Used when a setting change invalidates already-cached storefront HTML —
+     * the cookie-consent gate decides which shape of the tracker script gets
+     * baked into the page, so flipping it has to reach the cache or the
+     * change silently does nothing until the cache expires on its own.
+     *
+     * @return string[] Labels of the caches that were purged.
+     */
+    public static function purge_all() {
+        $targets = [];
+        foreach ( self::get_supported() as $key => $def ) {
+            if ( call_user_func( $def['detect'] ) ) {
+                $targets[ $key ] = $def;
+            }
+        }
+        if ( empty( $targets ) ) {
+            return [];
+        }
+
+        list( $cleared ) = self::run_purge( $targets );
+
+        return $cleared;
+    }
+
+    /**
      * AJAX: clear one cache by id, or `all` to purge every detected cache.
      */
     public function ajax_clear() {
@@ -375,25 +436,7 @@ class Brikpanel_Cache_Clear {
             wp_send_json_error( [ 'message' => __( 'No active cache plugins detected.', 'brikpanel' ) ], 404 );
         }
 
-        foreach ( $targets as $key => $def ) {
-            // Some plugins (notably WP Rocket on broken DB installs) echo
-            // wpdberror HTML or admin notices straight to STDOUT during their
-            // purge routine, which corrupts our JSON response. Wrap every
-            // callback in a buffer and discard whatever was printed.
-            ob_start();
-            try {
-                $result = call_user_func( $def['clear'] );
-                ob_end_clean();
-                if ( false === $result ) {
-                    $failed[] = $def['label'];
-                } else {
-                    $cleared[] = $def['label'];
-                }
-            } catch ( \Throwable $e ) {
-                ob_end_clean();
-                $failed[] = $def['label'];
-            }
-        }
+        list( $cleared, $failed ) = self::run_purge( $targets );
 
         // For an "all" purge also drop the WP object cache so stale transients
         // and preloaded fragments don't survive.

@@ -155,9 +155,25 @@ function brikpanel_record_live_visitor( $page_url, $is_exit = false ) {
             unset( $visitors[ $visitor_id ] );
         }
     } else {
+        // Device type, derived from the ping's own User-Agent.
+        //
+        // The ping is a real HTTP request made by the visitor's browser, so the
+        // UA header belongs to that visitor: nothing extra has to be sent from
+        // the client and no additional request is opened. Only the derived
+        // keyword is stored (mobile | tablet | desktop) and never the raw UA,
+        // which would be far more identifying than the widget needs.
+        //
+        // Same detector the daily mobile/tablet/desktop counters use, so the
+        // Live card and the Devices breakdown can never disagree. Guarded like
+        // every other cross-module call in this file: a missing module degrades
+        // to no icon, never a fatal. Resolved here rather than above so exit
+        // pings, which only delete a row, skip the UA match entirely.
+        $device = function_exists( 'brikpanel_detect_device_type' ) ? brikpanel_detect_device_type() : '';
+
         $visitors[ $visitor_id ] = [
             'id'             => $visitor_id,
             'ip_address'     => $hashed_ip,
+            'device'         => $device,
             'page_url'       => $page_url,
             'has_cart_item'  => $cart_count > 0 ? 'Yes' : 'No',
             'visitor_status' => $visitor_status,
@@ -201,9 +217,11 @@ function brikpanel_record_live_visitor( $page_url, $is_exit = false ) {
  * rate limit and the hard transient cap inside the record function.
  */
 function brikpanel_track_live_visitor() {
-    // Master tracking switch. Cached storefront pages keep firing the old JS
-    // until the page cache expires — so the endpoint must refuse too.
-    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+    // Master tracking switch plus the cookie-consent gate. Cached storefront
+    // pages keep firing the old JS until the page cache expires — so the
+    // endpoint must refuse too, and it must do so on server-side state
+    // rather than on anything the stale script did or did not send.
+    if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'endpoint' ) ) {
         wp_send_json_success( 'Disabled' );
     }
 

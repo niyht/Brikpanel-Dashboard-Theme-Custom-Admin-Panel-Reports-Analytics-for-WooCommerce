@@ -53,11 +53,25 @@ class Brikpanel_Cron {
 	 * Hooks registered via register_handler() so the admin page can list
 	 * known job types even when no row currently exists in the AS table.
 	 *
-	 * Shape: [ hook_name => [ 'label' => string, 'description' => string ] ]
+	 * Values are stored exactly as the caller passed them — either a literal
+	 * metadata array or a callable that returns one. Callables stay unresolved
+	 * until get_registered_hooks() actually needs the labels, which keeps the
+	 * `__()` calls inside them off every front-end and AJAX request. See
+	 * register_handler() for why that matters.
 	 *
-	 * @var array<string, array{label: string, description: string}>
+	 * Shape: [ hook_name => array|callable ]
+	 *
+	 * @var array<string, array|callable>
 	 */
 	private static $registered_hooks = [];
+
+	/**
+	 * Memoised output of get_registered_hooks(), so lazy metadata callables
+	 * run at most once per request.
+	 *
+	 * @var array<string, array{label: string, description: string}>|null
+	 */
+	private static $resolved_hooks = null;
 
 	// =========================================================================
 	// Availability
@@ -92,28 +106,39 @@ class Brikpanel_Cron {
 	 * the worker request.
 	 *
 	 * The metadata (label/description) is purely cosmetic — it powers the
-	 * "Job type" column on the admin page.
+	 * "Job type" column on the admin page and is read nowhere else.
 	 *
-	 * @param string   $hook        Action hook (must be unique across the plugin; convention: `brikpanel_*`).
-	 * @param callable $callback    Handler. Receives the action args as a single argument.
-	 * @param array    $meta        { Optional metadata for the admin UI.
+	 * Handlers register on every request (a front-end page view can be the one
+	 * that runs the Action Scheduler queue), so anything evaluated here runs on
+	 * every request too. Passing the metadata as a literal array means its
+	 * `__()` calls execute on front-end page loads and public AJAX requests
+	 * that will never render the admin page — wasted work, and translation
+	 * plugins that harvest gettext on the front end (TranslatePress, Loco,
+	 * WPML's String Translation) then record these admin-only strings as if
+	 * they were part of the storefront.
+	 *
+	 * Prefer passing a callable that returns the metadata array. It is invoked
+	 * only when get_registered_hooks() is called — i.e. on the Scheduled Tasks
+	 * admin page. The `__()` literals still sit in the source, so `make-pot`
+	 * extraction is unaffected. Literal arrays remain accepted for
+	 * compatibility.
+	 *
+	 * @param string         $hook     Action hook (must be unique across the plugin; convention: `brikpanel_*`).
+	 * @param callable       $callback Handler. Receives the action args as a single argument.
+	 * @param array|callable $meta     { Optional metadata for the admin UI, or a callable returning it.
 	 *     @type string $label       Human-readable label. Defaults to a humanised hook name.
 	 *     @type string $description One-line description shown on hover/expand.
 	 * }
 	 * @return void
 	 */
-	public static function register_handler( $hook, callable $callback, array $meta = [] ) {
+	public static function register_handler( $hook, callable $callback, $meta = [] ) {
 		$hook = (string) $hook;
 		if ( $hook === '' ) {
 			return;
 		}
 
-		self::$registered_hooks[ $hook ] = [
-			'label'       => isset( $meta['label'] ) && $meta['label'] !== ''
-				? (string) $meta['label']
-				: self::humanise_hook( $hook ),
-			'description' => isset( $meta['description'] ) ? (string) $meta['description'] : '',
-		];
+		self::$registered_hooks[ $hook ] = ( is_array( $meta ) || is_callable( $meta ) ) ? $meta : [];
+		self::$resolved_hooks            = null;
 
 		add_action( $hook, function ( ...$args ) use ( $callback, $hook ) {
 			try {
@@ -147,10 +172,39 @@ class Brikpanel_Cron {
 	/**
 	 * All registered job types, keyed by hook.
 	 *
+	 * Resolves any lazy metadata callables (see register_handler()) and
+	 * memoises the result, so the translation calls inside them run at most
+	 * once per request — and only on requests that actually ask for labels.
+	 *
 	 * @return array<string, array{label: string, description: string}>
 	 */
 	public static function get_registered_hooks() {
-		return self::$registered_hooks;
+		if ( self::$resolved_hooks !== null ) {
+			return self::$resolved_hooks;
+		}
+
+		$resolved = [];
+		foreach ( self::$registered_hooks as $hook => $meta ) {
+			// Test is_array() first, never is_callable() first: PHP reports a
+			// two-element [class, method] array as callable, so a literal meta
+			// array that happened to take that shape would be *invoked* instead
+			// of read. Arrays are always data here; only non-arrays can be lazy.
+			if ( ! is_array( $meta ) && is_callable( $meta ) ) {
+				$meta = call_user_func( $meta );
+			}
+			if ( ! is_array( $meta ) ) {
+				$meta = [];
+			}
+
+			$resolved[ $hook ] = [
+				'label'       => isset( $meta['label'] ) && $meta['label'] !== ''
+					? (string) $meta['label']
+					: self::humanise_hook( $hook ),
+				'description' => isset( $meta['description'] ) ? (string) $meta['description'] : '',
+			];
+		}
+
+		return self::$resolved_hooks = $resolved;
 	}
 
 	// =========================================================================

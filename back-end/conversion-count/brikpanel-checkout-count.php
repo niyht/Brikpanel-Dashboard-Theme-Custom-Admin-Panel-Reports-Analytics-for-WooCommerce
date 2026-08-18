@@ -10,8 +10,10 @@ function brikpanel_checkout_counter() {
         return;
     }
 
-    // Master tracking switch.
-    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+    // Master tracking switch and cookie-consent gate. Server-side hook, so
+    // the consent state is read from BrikPanel's own consent record cookie
+    // (or the WP Consent API), never from the tracker script.
+    if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'checkout' ) ) {
         return;
     }
 

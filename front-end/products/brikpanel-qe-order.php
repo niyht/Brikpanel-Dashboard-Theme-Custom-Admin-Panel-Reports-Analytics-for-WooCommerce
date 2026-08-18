@@ -36,13 +36,47 @@ if (!defined('BRIKPANEL_QE_VISIBLE_OPTION')) {
 // =============================================================================
 
 /**
+ * Canonical slug list for every field the quick-edit drawer knows how to
+ * render, in factory-default display order.
+ *
+ * Callers that only validate or order slugs use this instead of running
+ * array_keys() over brikpanel_qe_field_options(), which would translate every
+ * label on requests that render none — including each Heartbeat AJAX tick.
+ * Besides the wasted work, translation plugins that harvest gettext during
+ * AJAX (TranslatePress, WPML String Translation) would file these admin labels
+ * away as site strings. Must stay in sync with brikpanel_qe_field_options().
+ *
+ * @return string[]
+ */
+function brikpanel_qe_field_slugs() {
+    return [
+        'name',
+        'pricing',
+        'cogs',
+        'inventory',
+        'stock_status',
+        'digital',
+        'status',
+        'categories',
+        'tags',
+        'custom_taxonomies',
+        'featured',
+    ];
+}
+
+/**
  * Canonical slug → label map for every field the quick-edit drawer knows
- * how to render. The order of keys here is the factory-default display order.
+ * how to render.
+ *
+ * Membership and order both come from brikpanel_qe_field_slugs(); this function
+ * only attaches a label to each slug it yields, so the two cannot drift apart.
+ *
+ * Only call this where labels are actually rendered.
  *
  * @return array<string,string>
  */
 function brikpanel_qe_field_options() {
-    return [
+    $labels = [
         'name'              => __('Product name', 'brikpanel'),
         'pricing'           => __('Pricing (regular & sale)', 'brikpanel'),
         'cogs'              => __('Cost of goods (COGS)', 'brikpanel'),
@@ -55,6 +89,15 @@ function brikpanel_qe_field_options() {
         'custom_taxonomies' => __('Custom taxonomies (Brands, etc.)', 'brikpanel'),
         'featured'          => __('Featured product star', 'brikpanel'),
     ];
+
+    $options = [];
+    foreach (brikpanel_qe_field_slugs() as $slug) {
+        if (isset($labels[$slug])) {
+            $options[$slug] = $labels[$slug];
+        }
+    }
+
+    return $options;
 }
 
 /**
@@ -101,7 +144,7 @@ function brikpanel_qe_field_default_hidden() {
  */
 function brikpanel_qe_field_default_visible() {
     return array_values(array_diff(
-        array_keys(brikpanel_qe_field_options()),
+        brikpanel_qe_field_slugs(),
         brikpanel_qe_field_default_hidden()
     ));
 }
@@ -115,7 +158,7 @@ function brikpanel_qe_field_default_visible() {
  * @return string[]
  */
 function brikpanel_qe_get_field_order() {
-    $known  = array_keys(brikpanel_qe_field_options());
+    $known  = brikpanel_qe_field_slugs();
     $stored = get_option(BRIKPANEL_QE_ORDER_OPTION, '');
     $order  = [];
 
@@ -144,7 +187,7 @@ function brikpanel_qe_get_field_order() {
  * @return string[]
  */
 function brikpanel_qe_get_visible_fields_ordered() {
-    $known       = array_keys(brikpanel_qe_field_options());
+    $known       = brikpanel_qe_field_slugs();
     $visible_raw = get_option(BRIKPANEL_QE_VISIBLE_OPTION, null);
     if (!is_array($visible_raw)) {
         $visible_raw = brikpanel_qe_field_default_visible();
@@ -208,7 +251,7 @@ function brikpanel_render_qe_field_order_field($field) {
             <?php echo $tooltip; ?>
         </th>
         <td class="forminp">
-            <div class="brikpanel-qe-order" id="brikpanel-qe-order" data-default-order="<?php echo esc_attr(wp_json_encode(array_keys(brikpanel_qe_field_options()))); ?>" data-default-hidden="<?php echo esc_attr(wp_json_encode(array_values(brikpanel_qe_field_default_hidden()))); ?>">
+            <div class="brikpanel-qe-order" id="brikpanel-qe-order" data-default-order="<?php echo esc_attr(wp_json_encode(brikpanel_qe_field_slugs())); ?>" data-default-hidden="<?php echo esc_attr(wp_json_encode(array_values(brikpanel_qe_field_default_hidden()))); ?>">
                 <?php if ($help !== '') : ?>
                     <p class="brikpanel-qe-order-help"><?php echo esc_html($help); ?></p>
                 <?php endif; ?>
@@ -503,7 +546,7 @@ add_action('woocommerce_update_options_brikpanel', function () {
     if (!isset($_POST['brikpanel_qe_field_order_json'])) {
         return;
     }
-    $known = array_keys(brikpanel_qe_field_options());
+    $known = brikpanel_qe_field_slugs();
 
     $raw     = wp_unslash($_POST['brikpanel_qe_field_order_json']);
     $decoded = json_decode($raw, true);
@@ -572,19 +615,22 @@ add_action('admin_init', function () {
 
     // If the admin already has a saved visibility list, the migration is
     // already done (or was bypassed by direct option writes). Mark and exit.
+    // prime-ignore: unreachable once brikpanel_qe_field_order_migrated_v1 is set, which is primed + autoloaded.
     $existing = get_option(BRIKPANEL_QE_VISIBLE_OPTION, null);
     if (is_array($existing)) {
-        update_option('brikpanel_qe_field_order_migrated_v1', 'yes', false);
+        brikpanel_update_option('brikpanel_qe_field_order_migrated_v1', 'yes');
         return;
     }
 
+    // prime-ignore: same one-shot migration; both reads stop for good once the marker is written.
     $custom_tax_on = get_option('brikpanel_qe_custom_taxonomies', 'no') === 'yes';
+    // prime-ignore: same one-shot migration; both reads stop for good once the marker is written.
     $featured_on   = get_option('brikpanel_show_featured_star', 'no') === 'yes';
 
     // Both legacy options are off → no opt-ins to preserve; the default
     // resolver will return the right answer. Just flag & exit.
     if (!$custom_tax_on && !$featured_on) {
-        update_option('brikpanel_qe_field_order_migrated_v1', 'yes', false);
+        brikpanel_update_option('brikpanel_qe_field_order_migrated_v1', 'yes');
         return;
     }
 
@@ -596,7 +642,7 @@ add_action('admin_init', function () {
         $visible[] = 'featured';
     }
     // Re-project into canonical order.
-    $known   = array_keys(brikpanel_qe_field_options());
+    $known   = brikpanel_qe_field_slugs();
     $set     = array_flip($visible);
     $visible = [];
     foreach ($known as $slug) {
@@ -606,7 +652,7 @@ add_action('admin_init', function () {
     }
 
     update_option(BRIKPANEL_QE_VISIBLE_OPTION, $visible, false);
-    update_option('brikpanel_qe_field_order_migrated_v1', 'yes', false);
+    brikpanel_update_option('brikpanel_qe_field_order_migrated_v1', 'yes');
 });
 
 /**
@@ -631,7 +677,7 @@ add_action('admin_init', function () {
         // so it lands next to the price card.
         'cogs' => 'pricing',
     ];
-    $known = array_keys(brikpanel_qe_field_options());
+    $known = brikpanel_qe_field_slugs();
     foreach ($backfills as $slug => $anchor) {
         $flag = 'brikpanel_qe_field_backfilled_' . $slug;
         if (get_option($flag) === 'yes') {
@@ -666,6 +712,6 @@ add_action('admin_init', function () {
             }
         }
 
-        update_option($flag, 'yes', false);
+        brikpanel_update_option($flag, 'yes');
     }
 });

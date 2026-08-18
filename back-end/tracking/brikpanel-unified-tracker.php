@@ -34,6 +34,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  *   page_id                 — page-view counter for "Most visited pages".
  *   visitor=1, ref, url     — daily visitor + device + traffic-source count.
  *   product=1               — daily product-view counter.
+ *   consent=1               — the visitor has allowed analytics (only sent
+ *                             while the "Wait for cookie consent" setting is
+ *                             on, and only after the site's own consent code
+ *                             said yes).
  *
  * No nonce: this is a public endpoint reachable from any frontend visitor,
  * and nonces printed into cached storefront HTML go stale anyway. Abuse is
@@ -52,6 +56,37 @@ function brikpanel_ajax_unified_track() {
     }
     if ( function_exists( '_brikpanel_is_bot_ua' ) && _brikpanel_is_bot_ua() ) {
         wp_send_json_success( [ 'skipped' => true ] );
+    }
+
+    // Promote an explicit client-side grant into a server-readable record, so
+    // the PHP-only counters (add-to-cart, checkout) can see it too.
+    //
+    // Placed after the admin and bot guards on purpose: a crawler must never
+    // be able to mint a consent record for itself. And a consent platform
+    // that is actively refusing always outranks the flag — a page cached
+    // while the visitor still allowed analytics would otherwise keep
+    // asserting consent after they revoked it.
+    if ( function_exists( 'brikpanel_consent_required' ) && brikpanel_consent_required()
+        && ! empty( $_POST['consent'] )
+        && function_exists( 'brikpanel_consent_record_grant' )
+        && ! ( function_exists( 'brikpanel_consent_api_denies' ) && brikpanel_consent_api_denies() ) ) {
+        brikpanel_consent_record_grant();
+    }
+
+    // Consent gate. Everything below this line can create the brikpanel_vid
+    // cookie (via brikpanel_record_live_visitor), so nothing may run until
+    // the visitor has allowed analytics.
+    //
+    // The answer comes from server-side state, never from "the request did
+    // not carry a consent flag". A page cached BEFORE the merchant enabled
+    // the setting still ships the old unconditional script, which sends no
+    // flag — indistinguishable from a visitor who declined, and both must be
+    // refused. Because the reply then carries no `visitor` / `product` key,
+    // that old script also leaves its localStorage latches unset, so the
+    // visitor is still counted properly once they do consent.
+    if ( function_exists( 'brikpanel_frontend_tracking_allowed' )
+        && ! brikpanel_frontend_tracking_allowed( 'endpoint' ) ) {
+        wp_send_json_success( [ 'consent_required' => true ] );
     }
 
     $done = [];
@@ -94,6 +129,15 @@ add_action( 'wp_ajax_brikpanel_unified_track', 'brikpanel_ajax_unified_track' );
  *
  * Replaces the four separate inline scripts (live ping, page view, visitor
  * view, product view) that each fired their own admin-ajax request.
+ *
+ * Deliberately gated on the master switch and NOT on
+ * brikpanel_frontend_tracking_allowed(): this markup is baked into HTML that
+ * page caches hand to every visitor, so it must never vary with one
+ * visitor's consent state. When the merchant asks BrikPanel to wait for
+ * consent, the script is still printed for everyone — armed, silent, and
+ * carrying no visitor-specific value — and decides for itself, in the
+ * browser, whether it may run. The two values it needs for that are
+ * site-level settings, identical for every visitor of the page.
  */
 function brikpanel_unified_tracker_js() {
     if ( is_admin() || wp_doing_ajax() ) {
@@ -130,6 +174,10 @@ function brikpanel_unified_tracker_js() {
     $page_id          = (int) $view['id'];
     $page_type        = (string) $view['type'];
     $ping_interval_ms = ( function_exists( 'brikpanel_live_ping_interval' ) ? brikpanel_live_ping_interval() : 30 ) * 1000;
+    // Site-level settings, not visitor state — safe to bake into cached HTML.
+    $require_consent  = function_exists( 'brikpanel_consent_required' ) && brikpanel_consent_required();
+    $consent_cat      = function_exists( 'brikpanel_consent_category' ) ? brikpanel_consent_category() : 'statistics';
+    $consent_cookie   = defined( 'BRIKPANEL_CONSENT_COOKIE' ) ? BRIKPANEL_CONSENT_COOKIE : 'brikpanel_consent';
     ?>
     <script>
     (function() {
@@ -140,9 +188,73 @@ function brikpanel_unified_tracker_js() {
         var pageId      = <?php echo (int) $page_id; ?>;
         var pageType    = "<?php echo esc_js( $page_type ); ?>";
 
+        // Consent gate. When false this whole block behaves exactly as it did
+        // before 3.2.48; when true nothing is sent, read or written until the
+        // visitor allows analytics.
+        var REQUIRE_CONSENT = <?php echo $require_consent ? 'true' : 'false'; ?>;
+        var CONSENT_CAT     = "<?php echo esc_js( $consent_cat ); ?>";
+        var CONSENT_COOKIE  = "<?php echo esc_js( $consent_cookie ); ?>";
+
+        var running   = false;
+        var timer     = null;
+        var forgotten = false;
+
         function buildLive(fd) {
             fd.append('live', '1');
             fd.append('page_url', window.location.href);
+            if (REQUIRE_CONSENT) fd.append('consent', '1');
+        }
+
+        function readCookie(name) {
+            var parts = document.cookie ? document.cookie.split(';') : [];
+            for (var i = 0; i < parts.length; i++) {
+                var p = parts[i].trim();
+                if (p.indexOf(name + '=') === 0) return p.slice(name.length + 1);
+            }
+            return '';
+        }
+
+        // Whether a consent platform is actually driving the Consent API.
+        // With the API installed but no banner configured this is empty, and
+        // wp_has_consent() then answers "allow" for everything — its
+        // documented "nobody is asking, so nothing is denied" stance. Mirrors
+        // the same test on the PHP side so the two can never disagree.
+        function consentTypeDefined() {
+            var type = '';
+            try {
+                if (typeof consent_api !== 'undefined' && consent_api && consent_api.consent_type) {
+                    type = consent_api.consent_type;
+                }
+            } catch (e) {}
+            return !!(type || window.wp_consent_type || window.wp_fallback_consent_type);
+        }
+
+        // The Consent API's own decision cookie for our category, or '' when
+        // the banner has not written one yet. Several popular banners set it
+        // from JavaScript without ever declaring a consent type, so it is the
+        // only durable evidence they leave behind.
+        function consentApiCookie() {
+            var prefix = 'wp_consent';
+            try {
+                if (typeof consent_api !== 'undefined' && consent_api && consent_api.cookie_prefix) {
+                    prefix = consent_api.cookie_prefix;
+                }
+            } catch (e) {}
+            return readCookie(prefix + '_' + CONSENT_CAT);
+        }
+
+        // Same order as brikpanel_consent_granted() in PHP: our own record,
+        // then the banner's decision cookie, then the API itself but only
+        // while a real banner is driving it.
+        function consentGranted() {
+            if (readCookie(CONSENT_COOKIE) === '1') return true;
+            if (typeof wp_has_consent !== 'function') return false;
+            var decided = consentApiCookie();
+            if (decided) return decided === 'allow';
+            if (consentTypeDefined()) {
+                try { return !!wp_has_consent(CONSENT_CAT); } catch (e) {}
+            }
+            return false;
         }
 
         // One combined request per page view: live ping + page view + the
@@ -200,12 +312,132 @@ function brikpanel_unified_tracker_js() {
             }).catch(function() {});
         }
 
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', sendCombined);
-        } else {
-            sendCombined();
+        // Whether this browser carries anything of ours worth erasing.
+        //
+        // Several banners (CookieYes among them) announce "deny" for every
+        // category on the very first page load, before the visitor has
+        // touched anything. Treating that as a withdrawal would fire an
+        // erase request on every page view of every non-consenting visitor —
+        // the exact "no requests before consent" promise this feature makes.
+        // A deny with nothing to erase is a no-op.
+        //
+        // brikpanel_vid is HttpOnly and therefore invisible here, but it is
+        // never created without one of the two signals below also being
+        // created, so checking these is equivalent in practice.
+        function hasFootprint() {
+            if (readCookie(CONSENT_COOKIE) === '1') return true;
+            try {
+                for (var i = 0; i < localStorage.length; i++) {
+                    var k = localStorage.key(i);
+                    if (k && /^brikpanel_(visitor|product)_viewed_/.test(k)) return true;
+                }
+            } catch (e) {}
+            return false;
         }
-        setInterval(pingLive, <?php echo (int) $ping_interval_ms; ?>);
+
+        // Drop every latch this browser owns, not just today's: after a
+        // withdrawal nothing BrikPanel wrote may survive.
+        function clearLatches() {
+            try {
+                var keys = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                    var k = localStorage.key(i);
+                    if (k && /^brikpanel_(visitor|product)_viewed_/.test(k)) keys.push(k);
+                }
+                for (var j = 0; j < keys.length; j++) localStorage.removeItem(keys[j]);
+            } catch (e) {}
+        }
+
+        // Ask the server to expire our cookies and drop this browser from the
+        // live-visitor list. It only ever touches identifiers the request
+        // itself carries — the daily totals are anonymous and stay put.
+        function sendForget() {
+            var fd = new FormData();
+            fd.append('action', 'brikpanel_forget');
+            fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: fd,
+                keepalive: true
+            }).catch(function() {});
+        }
+
+        // Idempotent: consent platforms routinely fire their change event more
+        // than once, and the jQuery fallback below can double up with the
+        // native listener.
+        function start() {
+            if (running) return;
+            running   = true;
+            forgotten = false;
+            sendCombined();
+            timer = setInterval(pingLive, <?php echo (int) $ping_interval_ms; ?>);
+        }
+
+        // Clearing the interval is the point: without it a withdrawal would
+        // keep pinging for as long as the tab stays open. The `forgotten`
+        // latch matters just as much — binding both the native and the jQuery
+        // consent event means a single "deny" can arrive twice, and erasing
+        // twice would fire a second pointless request every time.
+        function stop(forget) {
+            if (timer) { clearInterval(timer); timer = null; }
+            var wasRunning = running;
+            running = false;
+            if (!forget || forgotten) return;
+            // Nothing was ever started and nothing of ours is stored: this is
+            // a banner announcing its default state, not a withdrawal.
+            if (!wasRunning && !hasFootprint()) return;
+            forgotten = true;
+            clearLatches();
+            sendForget();
+        }
+
+        /**
+         * Public API for cookie-consent platforms.
+         *
+         * Call brikpanel_start_tracking() once the visitor allows analytics
+         * and brikpanel_stop_tracking() when they withdraw. Both are safe to
+         * call repeatedly and neither needs a page reload.
+         */
+        window.brikpanel_start_tracking = function() { start(); };
+        window.brikpanel_stop_tracking  = function() { stop(true); };
+
+        function onReady(fn) {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', fn);
+            } else {
+                fn();
+            }
+        }
+
+        // The WP Consent API payload is built as an array with a string
+        // property, so hasOwnProperty is the only safe way to test it — a
+        // bare lookup can hit Array.prototype members.
+        function onConsentChange(e, extra) {
+            var detail = (e && e.detail) || extra;
+            if (!detail || !Object.prototype.hasOwnProperty.call(detail, CONSENT_CAT)) return;
+            if (detail[CONSENT_CAT] === 'allow') { start(); } else { stop(true); }
+        }
+
+        if (!REQUIRE_CONSENT) {
+            onReady(start);
+        } else {
+            // Already-consented revisit: start without waiting for an event.
+            onReady(function() { if (consentGranted()) start(); });
+
+            // Fired by the CMP once it knows which regime applies (geo-ip
+            // lookups resolve after page load).
+            document.addEventListener('wp_consent_type_defined', function() {
+                if (consentGranted()) { start(); } else { stop(false); }
+            });
+
+            // Current WP Consent API dispatches a native CustomEvent. Older
+            // and forked builds trigger it through jQuery, which never reaches
+            // addEventListener, so bind both — start()/stop() are idempotent.
+            document.addEventListener('wp_listen_for_consent_change', onConsentChange);
+            if (window.jQuery) {
+                window.jQuery(document).on('wp_listen_for_consent_change', onConsentChange);
+            }
+        }
     })();
     </script>
     <?php

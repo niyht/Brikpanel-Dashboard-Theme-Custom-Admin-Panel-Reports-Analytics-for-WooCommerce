@@ -149,11 +149,16 @@ function brikpanel_status_email_tokens( $order ) {
 	}
 	$items_html = $items ? '<ul style="margin:0 0 0 1em;padding:0;">' . '<li>' . implode( '</li><li>', $items ) . '</li></ul>' : '';
 
+	// Numbers, dates, totals and phone numbers are isolated: their separators
+	// are bidirectionally neutral, so a right-to-left email reorders the pieces
+	// and a total sent as 15.402,50 is read as 50,15.402. WooCommerce guards
+	// against this with <bdi>, which wp_kses_post() strips (core's allowlist has
+	// bdo but not bdi), so the plain-text isolate characters put it back.
 	$tokens = [
-		'{order_number}'        => $order->get_order_number(),
-		'{order_id}'            => (string) $order->get_id(),
-		'{order_date}'          => $order->get_date_created() ? wc_format_datetime( $order->get_date_created() ) : '',
-		'{order_total}'         => wp_kses_post( $order->get_formatted_order_total() ),
+		'{order_number}'        => brikpanel_bidi_isolate_ltr( $order->get_order_number() ),
+		'{order_id}'            => brikpanel_bidi_isolate_ltr( (string) $order->get_id() ),
+		'{order_date}'          => $order->get_date_created() ? brikpanel_bidi_isolate_ltr( wc_format_datetime( $order->get_date_created() ) ) : '',
+		'{order_total}'         => brikpanel_money_text_from_html( wp_kses_post( $order->get_formatted_order_total() ) ),
 		'{order_status}'        => wc_get_order_status_name( $order->get_status() ),
 		'{order_items}'         => $items_html,
 		'{order_view_url}'      => esc_url( $order->get_view_order_url() ),
@@ -161,7 +166,7 @@ function brikpanel_status_email_tokens( $order ) {
 		'{customer_last_name}'  => $order->get_billing_last_name(),
 		'{customer_full_name}'  => $order->get_formatted_billing_full_name(),
 		'{billing_email}'       => $order->get_billing_email(),
-		'{billing_phone}'       => $order->get_billing_phone(),
+		'{billing_phone}'       => brikpanel_bidi_isolate_ltr( $order->get_billing_phone() ),
 		'{site_title}'          => wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES ),
 		'{site_url}'            => home_url(),
 	];
@@ -187,7 +192,10 @@ function brikpanel_status_email_tokens( $order ) {
 function brikpanel_status_email_apply_tokens( $text, $order, $html ) {
 	$text = strtr( (string) $text, brikpanel_status_email_tokens( $order ) );
 	if ( ! $html ) {
-		$text = trim( wp_strip_all_tags( $text ) );
+		// Decode before stripping, not after: {order_total} arrives as price
+		// markup carrying `&#36;`/`&nbsp;`, and stripping first leaves the
+		// entity sitting in the subject line verbatim.
+		$text = brikpanel_plain_text_from_html( $text );
 	}
 	return $text;
 }

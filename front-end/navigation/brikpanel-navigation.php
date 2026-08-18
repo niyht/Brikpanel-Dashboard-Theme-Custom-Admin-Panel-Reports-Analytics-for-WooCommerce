@@ -455,10 +455,63 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					$first   = false;
 				}
 
+				// The "Site management" heading is attached to whichever row the nav
+				// customizer marked as the section anchor (default 'edit.php'). It is
+				// resolved HERE, ahead of every "skip this row" branch below, because
+				// the same string also OPENS the collapsible wrapper
+				// (`<div class="brikpanel-site-management-items">`) that all the items
+				// after it live in. Dropping the anchor row without emitting it would
+				// leave the whole section outside that wrapper: no heading, and a
+				// collapse toggle with nothing to collapse. Every branch that skips a
+				// row therefore emits $heading first.
+				$heading = '';
+				if ( $item_slug === $brikpanel_sitemgmt_anchor && ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+					// Custom heading label (falls back to the translated default).
+					// Fetched only on the anchor row, never for every menu item.
+					$brikpanel_sitemgmt_label = function_exists( 'brikpanel_nav_config_sitemgmt_label' )
+						? brikpanel_nav_config_sitemgmt_label()
+						: __( 'Site management', 'brikpanel' );
+					$heading = '<span class="brikpanel-menu-heading">' . esc_html( $brikpanel_sitemgmt_label ) . '<img class="brikpanel-site-management-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">';
+				}
+
 				$submenu_items = ! empty( $submenu[ $item_slug ] ) ? $submenu[ $item_slug ] : array();
 
 				if ( ! empty( $submenu_items ) ) {
 					$class[] = 'wp-has-submenu';
+				}
+
+				// The WooCommerce top-level is normally a SILENT container: its
+				// Orders / Customers children are rendered as flat top-level rows,
+				// so the row itself deliberately carries no label, padding, hover
+				// or radius (brikpanel-navigation.css excludes
+				// #toplevel_page_woocommerce from those rules) — otherwise that
+				// flat list would sit double-indented.
+				//
+				// When those children are absent the row renders as an ordinary
+				// "WooCommerce" link instead, and the stripped styling left it 8px
+				// to the left of every other item, shorter, and with no hover
+				// state. That is the misalignment non-administrator accounts hit:
+				// Orders needs `edit_others_shop_orders` and Customers needs
+				// `view_woocommerce_reports`, so a staff role without them (or a
+				// store that hid both rows in Navigation settings) sees the bare
+				// row an administrator never does. Flag it so the stylesheet can
+				// style it like any other menu item.
+				//
+				// Better still, drop it: WooCommerce registers the entry with NO
+				// page callback of its own, so with nothing under it the link
+				// pointed at admin.php?page=woocommerce and answered "Cannot load
+				// woocommerce." A row that is both misaligned and dead is worth
+				// removing, not restyling. The class stays for the one case where
+				// the row does lead somewhere — Admin Menu Editor repurposes it,
+				// and a third-party plugin may attach a real callback to the slug.
+				if ( $item_slug === 'woocommerce' && empty( $submenu_items ) ) {
+					$brikpanel_wc_has_page = is_plugin_active( 'admin-menu-editor/menu-editor.php' )
+						|| (bool) get_plugin_page_hook( 'woocommerce', 'admin.php' );
+					if ( ! $brikpanel_wc_has_page ) {
+						$html .= $heading;
+						continue;
+					}
+					$class[] = 'brikpanel-nav-standalone';
 				}
 
 				// The synthetic "More" group is a pure dropdown container — it has
@@ -467,6 +520,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				// emitting a top-level link to the non-existent `woocommerce-more`
 				// screen, which resolves to a 404.
 				if ( $item_slug === 'woocommerce-more' && empty( $submenu_items ) ) {
+					$html .= $heading;
 					continue;
 				}
 
@@ -591,18 +645,46 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			$aria_hidden = ' aria-hidden="true"';
 		}
 
-		// Bazı özel başlıklar (örn: Edit Posts / Pages) için heading ekliyoruz (isteğe bağlı).
-		// The anchor slug is dynamic — set by the nav customizer to the first
-		// item the user has placed in the "Site management" section. Defaults
-		// to 'edit.php' (the legacy hardcoded position) when no config exists.
-		$heading = '';
-		if ( $item_slug === $brikpanel_sitemgmt_anchor && ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
-			// Custom heading label (falls back to the translated default). Fetched
-			// only on the anchor row, never for every menu item.
-			$brikpanel_sitemgmt_label = function_exists( 'brikpanel_nav_config_sitemgmt_label' )
-				? brikpanel_nav_config_sitemgmt_label()
-				: __( 'Site management', 'brikpanel' );
-			$heading = '<span class="brikpanel-menu-heading">' . esc_html( $brikpanel_sitemgmt_label ) . '<img class="brikpanel-site-management-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">';
+		// Bazı özel başlıklar (örn: Edit Posts / Pages) için heading ekliyoruz.
+		// $heading (the "Site management" label plus the opening tag of the
+		// collapsible wrapper) is resolved much earlier in the loop — see the
+		// comment there — so the skip branches above can emit it too.
+
+		// None of the three render branches below produce markup for a row that is
+		// neither a separator, nor a submenu parent, nor a link the current user
+		// may follow — it used to emit a bare `<li></li>`. That happens on real
+		// installs: WordPress keeps a top-level entry alive as long as ONE of its
+		// submenus is accessible, so a staff account that can reach WooCommerce →
+		// Settings but not Orders keeps the WooCommerce row even though its own
+		// capability (`edit_others_shop_orders`) is denied — and BrikPanel has by
+		// then relocated every one of those submenus under "More", leaving nothing
+		// to render. The stray element is invisible today only because that row
+		// happens to be stripped of padding; give it back normal styling and it
+		// becomes a blank gap in the middle of the menu. Skip the row, but still
+		// emit the "Site management" heading when this item was its anchor —
+		// otherwise the section (and the wrapper its collapse toggle opens) would
+		// never be opened.
+		//
+		// A row whose capability slot is missing or is not a plain string (third
+		// party plugins do push short / malformed $menu arrays) is KEPT: WordPress
+		// has already dropped everything the user may not reach, so "unknown" must
+		// never mean "hide". The capability test itself is the same one WordPress
+		// core applies in _wp_menu_output(), so this can never hide a row the
+		// native admin menu would have shown.
+		$brikpanel_row_renders = $is_separator
+			|| ( $submenu_as_parent && ! empty( $submenu_items ) )
+			|| (
+				$item_slug !== ''
+				&& (
+					! isset( $item[1] )
+					|| ! is_string( $item[1] )
+					|| $item[1] === ''
+					|| current_user_can( $item[1] )
+				)
+			);
+		if ( ! $brikpanel_row_renders ) {
+			$html .= $heading;
+			continue;
 		}
 
 		$html .= "

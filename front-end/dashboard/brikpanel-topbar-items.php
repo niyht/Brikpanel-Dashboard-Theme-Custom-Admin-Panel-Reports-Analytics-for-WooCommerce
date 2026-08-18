@@ -104,14 +104,439 @@ function brikpanel_topbar_item_audience_allows( $key ) {
     return true;
 }
 
+// =============================================================================
+// DEVELOPER-REGISTERED ITEMS (`brikpanel_topbar_items` filter)
+// =============================================================================
+
+/**
+ * The built-in control keys a registered item may anchor itself to, and which
+ * a registered item may never overwrite.
+ *
+ * Kept as its own list (rather than reading the label map) because the label
+ * map merges registered items in — reading it here would recurse.
+ *
+ * @return string[]
+ */
+function brikpanel_topbar_builtin_item_keys() {
+    return [
+        'brand',
+        'live',
+        'search',
+        'create',
+        'notifications',
+        'hidden_notices',
+        'view_site',
+        'custom_link',
+        'user',
+    ];
+}
+
+/**
+ * Fallback icon for a registered item that did not supply one. Shown in the
+ * settings list (and in the bar for the simple label+link form).
+ *
+ * @return string
+ */
+function brikpanel_topbar_default_ext_icon() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+}
+
+/**
+ * Sanitize a developer-supplied inline SVG icon. Only shape/structure tags and
+ * presentational attributes survive, so an icon can never smuggle a script
+ * handler into the bar or the settings screen.
+ *
+ * @param mixed $svg Raw markup.
+ * @return string Sanitized markup ('' when nothing usable is left).
+ */
+function brikpanel_topbar_sanitize_icon( $svg ) {
+    $svg = trim( (string) $svg );
+    if ( $svg === '' ) {
+        return '';
+    }
+    $shape_attrs = [
+        'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true,
+        'stroke-linejoin' => true, 'stroke-dasharray' => true, 'stroke-dashoffset' => true,
+        'opacity' => true, 'fill-rule' => true, 'clip-rule' => true, 'transform' => true,
+        'class' => true, 'style' => true,
+    ];
+    $allowed = [
+        'svg'      => $shape_attrs + [
+            'xmlns' => true, 'viewbox' => true, 'width' => true, 'height' => true,
+            'aria-hidden' => true, 'role' => true, 'focusable' => true,
+        ],
+        'g'        => $shape_attrs,
+        'title'    => [],
+        'path'     => $shape_attrs + [ 'd' => true ],
+        'circle'   => $shape_attrs + [ 'cx' => true, 'cy' => true, 'r' => true ],
+        'ellipse'  => $shape_attrs + [ 'cx' => true, 'cy' => true, 'rx' => true, 'ry' => true ],
+        'rect'     => $shape_attrs + [ 'x' => true, 'y' => true, 'width' => true, 'height' => true, 'rx' => true, 'ry' => true ],
+        'line'     => $shape_attrs + [ 'x1' => true, 'y1' => true, 'x2' => true, 'y2' => true ],
+        'polyline' => $shape_attrs + [ 'points' => true ],
+        'polygon'  => $shape_attrs + [ 'points' => true ],
+    ];
+    $clean = wp_kses( $svg, $allowed );
+    return trim( $clean );
+}
+
+/**
+ * Items registered by other plugins through the `brikpanel_topbar_items`
+ * filter, normalized and sorted into render order.
+ *
+ * Accepted keys per item (array key = item id):
+ *   - label      (string)   Name shown in the settings list; also the button
+ *                           text for the simple label+link form. Required.
+ *   - callback   (callable) Echoes the item markup. Receives the item id.
+ *   - href       (string)   Used instead of `callback` to render a plain
+ *                           icon+label button.
+ *   - icon       (string)   Inline SVG markup.
+ *   - position   (string)   'left' | 'right' (default 'right').
+ *   - before /
+ *     after      (string)   A built-in item key to anchor next to. Unanchored
+ *                           items land just before the user menu ('right') or
+ *                           after the live pill ('left').
+ *   - priority   (int)      Order among items sharing a slot (default 10).
+ *   - capability (string)   Extra capability the current user must hold.
+ *   - settings   (bool)     false keeps the item out of the settings list and
+ *                           out of the show/hide + audience system. Defaults to
+ *                           true: the owner controls it like a built-in one.
+ *   - admin_bar  (bool)     false stops the item from falling back to the native
+ *                           WordPress admin bar on screens where the BrikPanel
+ *                           top bar stands down. Defaults to true.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function brikpanel_topbar_registered_items() {
+    static $cache       = null;
+    static $cached_late = false;
+    static $running     = false;
+
+    // Cache only once `init` has fired: before that, a plugin registering its
+    // filter on `init` (the usual place) would be frozen out of an early call.
+    if ( $cache !== null && $cached_late ) {
+        return $cache;
+    }
+
+    // Re-entrancy guard. A registering plugin may perfectly reasonably call
+    // brikpanel_topbar_item_is_visible() (or anything else that walks the item
+    // list) from inside its own filter callback — that path leads back here,
+    // and without this the filter would fire again, and again, hanging the
+    // whole admin. While the registry is being built only the built-in
+    // controls are considered known.
+    if ( $running ) {
+        return [];
+    }
+    $running = true;
+
+    try {
+        $raw = apply_filters( 'brikpanel_topbar_items', [] );
+    } catch ( \Throwable $e ) {
+        // A fatal inside someone else's registration must not take the admin
+        // header down with it.
+        $running = false;
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            error_log( 'BrikPanel: brikpanel_topbar_items filter threw: ' . $e->getMessage() );
+        }
+        $cache       = [];
+        $cached_late = did_action( 'wp_loaded' ) > 0;
+        return $cache;
+    }
+    $running = false;
+    if ( ! is_array( $raw ) ) {
+        $raw = [];
+    }
+
+    $builtin = brikpanel_topbar_builtin_item_keys();
+    $items   = [];
+    $order   = 0;
+
+    foreach ( $raw as $raw_key => $item ) {
+        if ( ! is_array( $item ) ) {
+            continue;
+        }
+        // An explicit `id` wins over the array key, so the same item written
+        // both ways is one item (and a numerically indexed list works at all).
+        $key = ! empty( $item['id'] ) && is_string( $item['id'] )
+            ? $item['id']
+            : ( is_string( $raw_key ) ? $raw_key : '' );
+        $key = sanitize_key( (string) $key );
+        // Never let a registration shadow a built-in control (its toggle,
+        // audience rule and markup are owned by BrikPanel), and keep the first
+        // registration when two plugins pick the same id.
+        if ( $key === '' || in_array( $key, $builtin, true ) || isset( $items[ $key ] ) ) {
+            continue;
+        }
+
+        $callback = ( isset( $item['callback'] ) && is_callable( $item['callback'] ) ) ? $item['callback'] : null;
+        $href     = isset( $item['href'] ) ? brikpanel_topbar_sanitize_link_url( $item['href'] ) : '';
+        if ( $callback === null && $href === '' ) {
+            continue; // Nothing renderable.
+        }
+
+        $label = isset( $item['label'] ) ? sanitize_text_field( (string) $item['label'] ) : '';
+        if ( $label === '' ) {
+            $label = $key;
+        }
+
+        $position = ( isset( $item['position'] ) && $item['position'] === 'left' ) ? 'left' : 'right';
+
+        // Anchor: `before` wins over `after` when both are given. An anchor
+        // naming an unknown key falls back to the side's default slot rather
+        // than dropping the item.
+        $relation = $position === 'left' ? 'after' : 'before';
+        $anchor   = $position === 'left' ? 'live' : 'user';
+        foreach ( [ 'before', 'after' ] as $rel ) {
+            if ( empty( $item[ $rel ] ) ) {
+                continue;
+            }
+            $candidate = sanitize_key( (string) $item[ $rel ] );
+            if ( in_array( $candidate, $builtin, true ) ) {
+                $relation = $rel;
+                $anchor   = $candidate;
+                break;
+            }
+        }
+
+        $items[ $key ] = [
+            'key'        => $key,
+            'label'      => $label,
+            'icon'       => isset( $item['icon'] ) ? brikpanel_topbar_sanitize_icon( $item['icon'] ) : '',
+            'callback'   => $callback,
+            'href'       => $href,
+            'position'   => $position,
+            'relation'   => $relation,
+            'anchor'     => $anchor,
+            'priority'   => isset( $item['priority'] ) ? (int) $item['priority'] : 10,
+            // Not sanitize_key(): that lowercases, and a custom capability may
+            // legitimately carry uppercase (e.g. "manage_MyPlugin"), which
+            // would silently never match.
+            'capability' => isset( $item['capability'] ) ? preg_replace( '/[^A-Za-z0-9_\-]/', '', (string) $item['capability'] ) : '',
+            'settings'   => ! isset( $item['settings'] ) || (bool) $item['settings'],
+            'admin_bar'  => ! isset( $item['admin_bar'] ) || (bool) $item['admin_bar'],
+            'order'      => $order++,
+        ];
+    }
+
+    // Priority first, registration order as the tie-break (uasort is not
+    // guaranteed stable below PHP 8.0).
+    uasort( $items, static function ( $a, $b ) {
+        return $a['priority'] === $b['priority']
+            ? $a['order'] <=> $b['order']
+            : $a['priority'] <=> $b['priority'];
+    } );
+
+    $cache       = $items;
+    $cached_late = did_action( 'wp_loaded' ) > 0;
+
+    return $cache;
+}
+
+/**
+ * Render the developer-registered items that belong in one slot of the bar.
+ *
+ * Every built-in control exposes a "before" and an "after" slot; a final
+ * `flush` call per side emits anything left over so an item can never vanish.
+ * Each item renders at most once per request.
+ *
+ * @param string $position 'left' | 'right'.
+ * @param string $relation 'before' | 'after' | 'flush'.
+ * @param string $anchor   Built-in item key (ignored when flushing).
+ */
+function brikpanel_topbar_render_slot( $position, $relation = 'flush', $anchor = '' ) {
+    static $done = [];
+
+    foreach ( brikpanel_topbar_registered_items() as $key => $item ) {
+        if ( isset( $done[ $key ] ) || $item['position'] !== $position ) {
+            continue;
+        }
+        if ( $relation !== 'flush' && ( $item['relation'] !== $relation || $item['anchor'] !== $anchor ) ) {
+            continue;
+        }
+        $done[ $key ] = true;
+        brikpanel_topbar_render_registered_item( $item );
+    }
+}
+
+/**
+ * Whether a registered item may be shown to the current user at all: its own
+ * capability requirement, plus the owner's show/hide + audience rules unless
+ * the item opted out with `'settings' => false`.
+ *
+ * @param array<string,mixed> $item Normalized item.
+ * @return bool
+ */
+function brikpanel_topbar_item_allowed( $item ) {
+    if ( $item['capability'] !== '' && ! current_user_can( $item['capability'] ) ) {
+        return false;
+    }
+    if ( $item['settings'] && ! brikpanel_topbar_item_is_visible( $item['key'] ) ) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Build a registered item's markup. Shared by the BrikPanel top bar and the
+ * native admin bar fallback, so a throwing callback or unbalanced third-party
+ * markup is handled identically wherever the item ends up.
+ *
+ * @param array<string,mixed> $item Normalized item.
+ * @return string Markup, or '' when there is nothing to show.
+ */
+function brikpanel_topbar_item_markup( $item ) {
+    if ( $item['callback'] === null ) {
+        $icon     = $item['icon'] !== '' ? $item['icon'] : brikpanel_topbar_default_ext_icon();
+        $host     = wp_parse_url( $item['href'], PHP_URL_HOST );
+        $external = ! empty( $host ) && $host !== wp_parse_url( home_url(), PHP_URL_HOST );
+        return sprintf(
+            '<a class="brikpanel-topbar-btn brikpanel-topbar-btn-secondary" href="%1$s"%2$s title="%3$s"><span class="brikpanel-topbar-ext-icon" aria-hidden="true">%4$s</span><span class="brikpanel-topbar-btn-label">%5$s</span></a>',
+            esc_url( $item['href'] ),
+            $external ? ' target="_blank" rel="noopener"' : '',
+            esc_attr( $item['label'] ),
+            $icon,
+            esc_html( $item['label'] )
+        );
+    }
+
+    ob_start();
+    try {
+        call_user_func( $item['callback'], $item['key'] );
+    } catch ( \Throwable $e ) {
+        ob_end_clean();
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            error_log( sprintf( 'BrikPanel top bar item "%s" threw: %s', $item['key'], $e->getMessage() ) );
+        }
+        return '';
+    }
+    $html = (string) ob_get_clean();
+    if ( trim( $html ) === '' ) {
+        return '';
+    }
+    // A single unclosed <div> in a third-party callback would swallow the rest
+    // of the bar (and the admin header with it). Only pay for the repair when
+    // the counts actually disagree.
+    if ( substr_count( $html, '<div' ) !== substr_count( $html, '</div>' ) ) {
+        $html = force_balance_tags( $html );
+    }
+    return $html;
+}
+
+/**
+ * Render a single registered item into the BrikPanel top bar.
+ *
+ * @param array<string,mixed> $item Normalized item.
+ */
+function brikpanel_topbar_render_registered_item( $item ) {
+    if ( ! brikpanel_topbar_item_allowed( $item ) ) {
+        return;
+    }
+
+    $html = brikpanel_topbar_item_markup( $item );
+    if ( $html === '' ) {
+        return;
+    }
+
+    printf(
+        '<div class="brikpanel-topbar-ext" data-topbar-item="%s">%s</div>',
+        esc_attr( $item['key'] ),
+        $html // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- developer-owned markup, balanced above
+    );
+}
+
+/**
+ * Whether the BrikPanel top bar is the bar being drawn on this request.
+ *
+ * Public wrapper other plugins can consult (guard with `function_exists()`), so
+ * they never have to reach for the class or guess. It answers correctly from
+ * `admin_bar_menu` onwards, which is where the decision belongs: that hook runs
+ * inside `wp_admin_bar_render()` on `in_admin_header`, by which point the
+ * current screen is known. An `init`-time check cannot tell, because the answer
+ * depends on which screen is being loaded.
+ *
+ * @return bool
+ */
+function brikpanel_topbar_is_rendering() {
+    return class_exists( 'Brikpanel_Dashboard_Topbar' ) && Brikpanel_Dashboard_Topbar::is_rendering();
+}
+
+/**
+ * Fall back to the native WordPress admin bar for registered items whenever the
+ * BrikPanel top bar is not the bar on screen.
+ *
+ * BrikPanel hides the native bar only while its own is rendering, and it
+ * deliberately stands down on a handful of screens (block editor, site editor,
+ * Desktop Mode, users without WooCommerce capabilities). Without this bridge an
+ * item registered through `brikpanel_topbar_items` would simply vanish there,
+ * which is the trap every "support both bars" recipe keeps falling into. With
+ * it, one registration is enough: exactly one bar carries the item on every
+ * screen.
+ *
+ * Network Admin and User Admin are left out on purpose, mirroring the top bar
+ * itself: those are not per-site contexts.
+ *
+ * @param WP_Admin_Bar $wp_admin_bar
+ */
+function brikpanel_topbar_bridge_to_admin_bar( $wp_admin_bar ) {
+    if ( ! is_admin() || is_network_admin() || is_user_admin() ) {
+        return;
+    }
+    if ( ! is_object( $wp_admin_bar ) || ! method_exists( $wp_admin_bar, 'add_node' ) ) {
+        return;
+    }
+    // Our own bar is drawing: it carries the items, the native bar is hidden.
+    if ( brikpanel_topbar_is_rendering() ) {
+        return;
+    }
+
+    foreach ( brikpanel_topbar_registered_items() as $key => $item ) {
+        if ( ! $item['admin_bar'] || ! brikpanel_topbar_item_allowed( $item ) ) {
+            continue;
+        }
+
+        $node = [
+            // Namespaced so it can collide with neither a node the same plugin
+            // registers itself, nor BrikPanel's own native-bar nodes (the
+            // master switch uses `brikpanel-master`, search `brikpanel-search`;
+            // `master` is not a reserved item key, so a plain `brikpanel-`
+            // prefix could overwrite that control).
+            'id'   => 'brikpanel-item-' . $key,
+            'meta' => [ 'class' => 'brikpanel-topbar-ext-node' ],
+        ];
+        // Top-level nodes sit on the left of the native bar; 'top-secondary'
+        // is its right-hand group.
+        if ( $item['position'] === 'right' ) {
+            $node['parent'] = 'top-secondary';
+        }
+
+        if ( $item['callback'] === null ) {
+            // Simple label + link items are rebuilt as a plain node so they
+            // look native here rather than carrying BrikPanel's button classes
+            // into a bar our stylesheet is not even loaded on.
+            $node['title'] = esc_html( $item['label'] );
+            $node['href']  = $item['href'];
+        } else {
+            $html = brikpanel_topbar_item_markup( $item );
+            if ( $html === '' ) {
+                continue;
+            }
+            $node['title'] = $html;
+        }
+
+        $wp_admin_bar->add_node( $node );
+    }
+}
+add_action( 'admin_bar_menu', 'brikpanel_topbar_bridge_to_admin_bar', 100 );
+
 /**
  * The toggleable top bar controls, in the order they appear in the bar.
  * Each entry carries a translatable label and a static inline SVG icon.
+ * Developer-registered items are appended so the existing show/hide and
+ * audience UI covers them with no extra work on their side.
  *
  * @return array<string,array{label:string,icon:string}>
  */
 function brikpanel_topbar_items_label_map() {
-    return [
+    $map = [
         'brand'         => [
             'label' => __( 'Logo &amp; store name', 'brikpanel' ),
             'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l1-5h16l1 5"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/></svg>',
@@ -149,6 +574,19 @@ function brikpanel_topbar_items_label_map() {
             'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
         ],
     ];
+
+    foreach ( brikpanel_topbar_registered_items() as $key => $item ) {
+        if ( ! $item['settings'] || isset( $map[ $key ] ) ) {
+            continue;
+        }
+        $map[ $key ] = [
+            'label'    => $item['label'],
+            'icon'     => $item['icon'] !== '' ? $item['icon'] : brikpanel_topbar_default_ext_icon(),
+            'external' => true,
+        ];
+    }
+
+    return $map;
 }
 
 /**
@@ -350,7 +788,12 @@ function brikpanel_render_topbar_items_field( $field ) {
                                 <span class="brikpanel-topbar-items-icon" aria-hidden="true"><?php
                                     echo $item['icon']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG markup
                                 ?></span>
-                                <span class="brikpanel-topbar-items-label"><?php echo esc_html( $item['label'] ); ?></span>
+                                <span class="brikpanel-topbar-items-label">
+                                    <?php echo esc_html( $item['label'] ); ?>
+                                    <?php if ( ! empty( $item['external'] ) ) : ?>
+                                        <span class="brikpanel-topbar-items-tag"><?php esc_html_e( 'Added by a plugin', 'brikpanel' ); ?></span>
+                                    <?php endif; ?>
+                                </span>
                                 <label class="brikpanel-topbar-items-switch">
                                     <input type="checkbox" name="brikpanel_topbar_visible_items[]" value="<?php echo esc_attr( $key ); ?>" <?php checked( $is_visible ); ?>>
                                     <span class="brikpanel-topbar-items-track" aria-hidden="true"></span>
@@ -532,6 +975,23 @@ function brikpanel_render_topbar_items_field( $field ) {
                     font-weight: 400;
                     color: #303030;
                     transition: color .15s ease;
+                }
+                /* Marks a row that another plugin registered through the
+                   `brikpanel_topbar_items` filter, so the owner can tell it
+                   apart from a built-in control. */
+                .brikpanel-topbar-items-tag {
+                    display: inline-block;
+                    /* Logical, not physical: this <style> block is inline in the
+                       settings field, so the RTL stylesheet never flips it. */
+                    margin-inline-start: .375rem;
+                    padding: 1px 6px;
+                    font-size: .6875rem;
+                    font-weight: 550;
+                    line-height: 1.5;
+                    color: #616161;
+                    background: #f1f1f1;
+                    border-radius: 10px;
+                    vertical-align: middle;
                 }
                 .brikpanel-topbar-items-row.is-hidden-item .brikpanel-topbar-items-icon {
                     color: #8a8a8a;
@@ -716,7 +1176,16 @@ add_action( 'woocommerce_update_options_brikpanel', function () {
         }
     }
 
-    $hidden = array_values( array_diff( $known, $visible ) );
+    // Keys saved earlier that no registration answers for right now (a plugin
+    // that adds a top bar item is inactive, or registers only on some screens)
+    // are carried over untouched — otherwise saving this tab would quietly
+    // reset a choice the owner made for an item they can't currently see.
+    $stored_hidden = get_option( BRIKPANEL_TOPBAR_HIDDEN_ITEMS_OPTION, [] );
+    $orphan_hidden = is_array( $stored_hidden )
+        ? array_values( array_diff( array_filter( $stored_hidden, 'is_string' ), $known ) )
+        : [];
+
+    $hidden = array_values( array_unique( array_merge( array_diff( $known, $visible ), $orphan_hidden ) ) );
     update_option( BRIKPANEL_TOPBAR_HIDDEN_ITEMS_OPTION, $hidden, false );
 
     // Quick-create dropdown entries — same hidden-list semantics as the bar items.
@@ -751,8 +1220,10 @@ add_action( 'woocommerce_update_options_brikpanel', function () {
     $roles_in      = ( isset( $_POST['brikpanel_topbar_item_roles'] ) && is_array( $_POST['brikpanel_topbar_item_roles'] ) )
         ? wp_unslash( $_POST['brikpanel_topbar_item_roles'] )
         : [];
-    $audience_out  = [];
-    $roles_out     = [];
+    // Same carry-over as the hidden list: rules for keys nothing registered on
+    // this request survive the save.
+    $audience_out = array_diff_key( brikpanel_topbar_item_audience_map(), array_flip( $known ) );
+    $roles_out    = array_diff_key( brikpanel_topbar_item_roles_map(), array_flip( $known ) );
     foreach ( $known as $item_key ) {
         $aud = isset( $audience_in[ $item_key ] ) ? sanitize_key( $audience_in[ $item_key ] ) : 'all';
         if ( ! in_array( $aud, [ 'all', 'admins', 'roles' ], true ) ) {

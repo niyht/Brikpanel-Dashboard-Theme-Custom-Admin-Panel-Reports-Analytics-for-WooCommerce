@@ -243,6 +243,11 @@ body.rtl .brikpanel-pe-editor ul { padding-left: 0; padding-right: 1.5rem; }
 
 body.rtl .brikpanel-pe-attr-term-suggestions { left: 0; right: 0; }
 
+/* "Select all (N)" sits in the attribute row's label line, which is a flex row
+   with space-between. The LTR rule uses margin-right:auto to keep the button
+   next to the label text; mirrored, that would fling it to the far side. */
+body.rtl .brikpanel-pe-attr-selectall { margin-right: 0; margin-left: auto; }
+
 body.rtl .brikpanel-pe-select {
     background-position: left 0.75rem center;
     padding-left: 2rem;
@@ -820,10 +825,15 @@ body.rtl #brikpanel-navigation .wp-submenu.wp-submenu:where(
     padding-right: 1.5rem;
 }
 
+/* This used to mirror a 0.1rem margin on the icon box. That margin is gone in
+   LTR — spacing now comes from the row's flex `gap` alone, so BrikPanel's own
+   icons and third-party `.wp-menu-image` icons reserve an identical slot and
+   every label lines up. Re-adding it on this side would put the ragged left
+   edge straight back for RTL stores, so both sides stay at zero. */
 body.rtl #brikpanel-navigation .wp-menu-image,
 body.rtl #brikpanel-navigation .wp-menu-image img {
     margin-right: 0;
-    margin-left: 0.1rem;
+    margin-left: 0;
 }
 
 body.rtl span.rm-menu-new { margin-left: auto !important; margin-right: 0 !important; }
@@ -875,6 +885,46 @@ body.rtl .bp-order-notify__progress { transform-origin: right center; }
 
 @media (max-width: 600px) {
     body.rtl #brikpanel-order-notify-stack { right: 10px; left: 10px; }
+}
+
+
+/* =============================================================================
+   ABANDONED CARTS — list table + "Columns" popover
+   ============================================================================= */
+body.rtl .brikpanel-cartab-table th { text-align: right; }
+
+body.rtl .brikpanel-cartab-columns-popover { right: auto; left: 0; }
+
+body.rtl .brikpanel-cartab-search > svg,
+body.rtl .brikpanel-cartab-select > svg:first-child { left: auto; right: 0.625rem; }
+
+body.rtl .brikpanel-cartab-select-arrow { right: auto; left: 0.625rem; }
+
+body.rtl .brikpanel-cartab-wrap .brikpanel-cartab-search input[type="search"] {
+    padding-left: 0.75rem;
+    padding-right: 2rem;
+}
+
+body.rtl .brikpanel-cartab-wrap .brikpanel-cartab-select select {
+    padding-left: 1.75rem;
+    padding-right: 0.75rem;
+}
+
+body.rtl .brikpanel-cartab-wrap .brikpanel-cartab-select-icon select {
+    padding-right: 2rem;
+}
+
+body.rtl .brikpanel-cartab-filter-actions { margin-left: 0; margin-right: auto; }
+
+body.rtl .brikpanel-cartab-range-sep { transform: scaleX(-1); display: inline-block; }
+
+body.rtl .brikpanel-cartab-discount-suffix {
+    border-left: 0;
+    border-right: 1px solid #e3e3e3;
+}
+
+body.rtl .brikpanel-cartab-wrap .brikpanel-cartab-discount-group input[type="number"] {
+    text-align: left;
 }
 
 

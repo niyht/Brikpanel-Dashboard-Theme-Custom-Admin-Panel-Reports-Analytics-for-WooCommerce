@@ -275,10 +275,14 @@
 	display: flex;
 	justify-content: space-between;
 }
+/* Count bubbles (Orders / Comments / Payments / plugin badges). `line-height` is
+   pinned so a badge never grows past the 18px icon slot — inheriting the row's
+   line-height made every badged row a pixel taller than its neighbours. */
 #brikpanel-navigation a > span[class*="count"],
 #brikpanel-navigation a > span[class*="awaiting-mod"] {
 	font-size: 0.75rem;
 	font-weight: 500;
+	line-height: 16px;
 	border-radius: 0.5rem;
 	background-color: rgb(0, 0, 0, 0.06);
 	padding: 0 0.5rem;
@@ -307,12 +311,18 @@ WooCommerce submenu which we move out of a submenu visually. */
 .brikpanel-has-open-submenu:not(.wp-not-current-submenu) .brikpanel-menu-chevron {
 	display: none;
 }
+/* Sized to exactly match the 18px icon slot on the other side of the row, so a
+   row with a submenu chevron is not a pixel taller than one without — that 1px
+   difference made the menu's vertical rhythm drift wherever expandable and
+   plain items alternate. The 10x10 glyph keeps a 4px hit-area cushion. */
 .brikpanel-menu-chevron {
-	padding: 0.3rem;
+	box-sizing: border-box;
+	width: 18px;
+	height: 18px;
+	padding: 0.25rem;
 	border-radius: 0.25rem;
 	transition: background-color 0.1s linear;
 	z-index: 1;
-	box-sizing: content-box;
 }
 .brikpanel-menu-chevron:hover {
 	background: #d6d6d6;
@@ -332,15 +342,48 @@ WooCommerce submenu which we move out of a submenu visually. */
 	flex-shrink: 0;
 	vertical-align: middle;
 }
+/* Every menu row must reserve an IDENTICAL icon slot, whichever kind of icon it
+   ends up with: BrikPanel's own icons are a bare 15x18 <img> dropped straight
+   into the flex row, while WordPress/third-party icons arrive wrapped in a
+   `.wp-menu-image` box (a dashicon glyph, a plugin <img>, or a data-URI SVG).
+   The two used to differ — the wrapper carried an extra 0.1rem margin and was
+   3px shorter — so third-party rows sat their label 1.6px to the right of
+   BrikPanel's and stood a pixel taller, leaving a ragged left edge down the
+   sidebar. Non-administrator accounts feel this hardest: their menu is mostly
+   third-party rows, so the stagger repeats the whole way down instead of on the
+   odd row. Horizontal spacing now comes from the container's flex `gap` alone
+   (no per-icon margin), and the slot is 18px tall so every row is the same
+   height. */
 #brikpanel-navigation div.wp-menu-image::before {
 	padding: 0;
 	color: var(--brikpanel-text);
+	/* Core ships dashicons at 20px, which overflowed the 15px slot and made
+	   plugin glyphs read visibly larger than BrikPanel's own icons next to
+	   them. */
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+	line-height: 16px;
 }
-#brikpanel-navigation .wp-menu-image,
+#brikpanel-navigation .wp-menu-image {
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 15px;
+	height: 18px;
+	margin-right: 0;
+	flex-shrink: 0;
+}
 #brikpanel-navigation .wp-menu-image img {
 	width: 15px;
 	height: 15px;
-	margin-right: 0.1rem;
+	margin-right: 0;
+}
+/* Long labels must never squeeze BrikPanel's own icons out of their slot
+   either, or the same rows drift out of line at narrow widths. */
+#brikpanel-navigation .brikpanel-menu-icon-title-container > img {
+	flex-shrink: 0;
 }
 /* Keep the menu-item icon painted ABOVE the full-row click overlay
    (`#brikpanel-navigation a::after`, an absolutely-positioned box that
@@ -394,6 +437,36 @@ li#toplevel_page_woocommerce .wp-menu-image {
 	/* Match the monochrome brand text colour so the Woo mark sits at the same
 	   visual weight as the dashicon glyphs instead of reading as pure black. */
 	background-color: var(--brikpanel-text);
+}
+
+/* In the modern sidebar the Woo mark has to fit BrikPanel's 15x18 icon slot;
+   the 20px mask above is sized for the taller native/classic menu row, where it
+   is also used (see the classic-nav section). Without this the mark is clipped
+   into a dark block. WooCommerce's own light-grey SVG would otherwise paint on
+   top of the mask as a second, lighter logo inside that block — the mask already
+   draws the mark in the brand colour, so the raw <img> is redundant. This is the
+   icon a non-administrator sees whenever the WooCommerce row renders as itself
+   (see .brikpanel-nav-standalone); administrators normally never see it, because
+   for them the row is a silent container for Orders / Customers. */
+#brikpanel-navigation li#toplevel_page_woocommerce .wp-menu-image {
+	-webkit-mask-size: 15px;
+	mask-size: 15px;
+}
+#brikpanel-navigation li#toplevel_page_woocommerce .wp-menu-image img {
+	display: none;
+}
+
+/* WooCommerce rendered as an ordinary menu row rather than as the invisible
+   container for its Orders / Customers children: put back the padding, radius
+   and hover the container-mode rules above deliberately strip, so it lines up
+   with every other item instead of sitting 8px further left. */
+#brikpanel-navigation li#toplevel_page_woocommerce.brikpanel-nav-standalone {
+	padding: var(--brikpanel-nav-item-pad-y, 0.4rem) 0.5rem;
+	border-radius: 0.5rem;
+	transition: background-color 0.15s cubic-bezier(0.19, 0.91, 0.38, 1);
+}
+#brikpanel-navigation li#toplevel_page_woocommerce.brikpanel-nav-standalone:hover:not(.brikpanel-current) {
+	background-color: var(--brikpanel-bg-hover);
 }
 
 /* Compatibility: WPFactory */

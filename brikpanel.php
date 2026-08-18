@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.2.42
+ * Version: 3.2.73
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.2.42');
+define('BRIKPANEL_VERSION', '3.2.73');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -134,6 +134,45 @@ if ( ! is_plugin_active( 'woocommerce/woocommerce.php' ) ) {
             . '</p></div>';
     } );
     return;
+}
+
+// =============================================================================
+// OPTION CACHE PRIMING (must run before the first module require below)
+// =============================================================================
+/**
+ * Collapse BrikPanel's per-request option reads into a single query.
+ *
+ * This has to happen here, at file scope, and not on a hook: the modules
+ * required further down read their gate options WHILE BEING INCLUDED, long
+ * before plugins_loaded fires. It sits after the WooCommerce guard above so a
+ * WC-less multisite subsite (which returns at that guard) never pays for it.
+ *
+ * See includes/brikpanel-option-prime.php for what is primed and why.
+ */
+brikpanel_require('includes/brikpanel-option-prime.php');
+if (function_exists('brikpanel_prime_option_caches')) {
+    brikpanel_prime_option_caches();
+}
+
+/**
+ * Safety net for brikpanel_update_option().
+ *
+ * brikpanel_require() deliberately does NOT fatal when a module file is
+ * missing — it logs, shows an admin notice and lets the rest of the plugin
+ * keep working. The two entry points above respect that with function_exists()
+ * guards, but the thirteen brikpanel_update_option() call sites scattered
+ * across the migrations do not, and the first of them runs on plugins_loaded
+ * during an ordinary admin pageview. Without this fallback a half-finished
+ * upload of one file turns the soft-fail design into a white screen.
+ *
+ * The fallback keeps BrikPanel's default of autoload=off, which is the safe
+ * direction: the worst case is a marker costing one query per request until
+ * the next version bump re-asserts the policy.
+ */
+if (!function_exists('brikpanel_update_option')) {
+    function brikpanel_update_option($option, $value) {
+        return update_option($option, $value, false);
+    }
 }
 
 // =============================================================================
@@ -271,7 +310,9 @@ function brikpanel_init_admin() {
     // when modern navigation is off so admins can pre-configure the layout
     // before flipping the toggle.
     brikpanel_require('front-end/navigation/brikpanel-nav-customizer.php');
-    brikpanel_require('front-end/search/brikpanel-search.php');
+    // Command palette: the module file is required outside this gate (see
+    // below) so its per-user index cleanup hooks exist on WP-CLI / REST user
+    // deletions too. The class itself still only boots on admin requests.
     brikpanel_require('front-end/orders/brikpanel-orders.php');
     // BrikMentor launch surfaces (promo FAB, dashboard/settings CTAs) live in
     // includes/brikpanel-brikmentor-promo.php + includes/brikpanel-early-access.php.
@@ -655,6 +696,38 @@ brikpanel_require('includes/brikpanel-currency.php');
 brikpanel_require('includes/brikpanel-profit.php');
 
 // =============================================================================
+// COOKIE-CONSENT GATE FOR STOREFRONT TRACKING
+//
+// Loaded at file scope, before `init`, for the same reason as the bot filter
+// below: the storefront counters that ask it (add-to-cart, checkout) run on
+// very early hooks, and the WP Consent API compatibility declaration has to
+// be in place before Site Health reads it.
+// =============================================================================
+brikpanel_require('includes/brikpanel-consent.php');
+
+// Safety net for the one case brikpanel_require() cannot cover on its own.
+// Every storefront counter now asks brikpanel_frontend_tracking_allowed() in
+// the codebase's defensive `function_exists( … ) && ! …()` form, which opens
+// the gate when the function is missing. That is the right default for an
+// optional module, but this module also carries the MASTER switch decision:
+// if the file above ever failed to load, "Visitor tracking: off" would
+// silently stop being honoured on eight of the nine gates. So when the real
+// implementation is absent, stand in a minimal one that still respects the
+// master switch and simply skips the consent layer.
+if ( ! function_exists( 'brikpanel_frontend_tracking_allowed' ) ) {
+    /**
+     * Fallback gate used only when includes/brikpanel-consent.php is missing.
+     *
+     * @param string $context Unused here; kept for signature compatibility.
+     * @return bool
+     */
+    function brikpanel_frontend_tracking_allowed( $context = '' ) {
+        return ! function_exists( 'brikpanel_frontend_tracking_enabled' )
+            || brikpanel_frontend_tracking_enabled();
+    }
+}
+
+// =============================================================================
 // BOT / CRAWLER FILTER FOR STOREFRONT ANALYTICS
 //
 // Loaded at file scope, before `init`, because the storefront counters that
@@ -722,6 +795,16 @@ brikpanel_require('includes/cron/customer-analytics-jobs.php');
 // WP-Cron / CLI). Admin menu + AJAX hooks self-gate to admin context.
 // =============================================================================
 brikpanel_require('front-end/brikcontrol/brikpanel-brikcontrol.php');
+
+// =============================================================================
+// COMMAND PALETTE — loaded outside the is_admin gate so the per-user
+// navigation-index cleanup hooks (delete_user, wpmu_delete_user,
+// remove_user_from_blog, wp_delete_site) are registered on WP-CLI and REST
+// requests too. Those rows have no TTL, so a deletion path that misses them
+// leaks ~30 KB per user forever. The palette class itself self-gates to
+// is_admin() at the bottom of that file.
+// =============================================================================
+brikpanel_require('front-end/search/brikpanel-search.php');
 
 // =============================================================================
 // GOOGLE SHEETS — must load outside is_admin so:
@@ -866,6 +949,26 @@ function brikpanel_create_table() {
         KEY idx_recurring_parent (recurring_parent)
     ) $charset_collate;";
 
+    // One row per occurrence the merchant removed from a recurring expense.
+    // Kept OUT of brikpanel_expenses deliberately: an in-table tombstone would
+    // have to be excluded from every unfiltered SUM of that table, and both
+    // "delete the children and rebuild" paths (saving an expense, or the Google
+    // Sheets sync updating one) would wipe it — so editing only a template's
+    // amount would resurrect an occurrence the merchant had deleted.
+    // tpl_created_at pins each skip to the exact template that owned the id:
+    // MariaDB does not persist AUTO_INCREMENT across a restart, so a recycled
+    // id must never inherit another expense's skipped dates.
+    $expense_skips_table = $wpdb->prefix . "brikpanel_expense_skips";
+    $sql_expense_skips = "CREATE TABLE $expense_skips_table (
+        id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        template_id BIGINT(20) UNSIGNED NOT NULL,
+        skip_date DATE NOT NULL,
+        tpl_created_at DATETIME NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_template_date (template_id, skip_date),
+        KEY idx_template (template_id)
+    ) $charset_collate;";
+
     // Cohort retention — monthly cohort × period_offset matrix (populated nightly)
     $cohort_table = $wpdb->prefix . "brikpanel_cohort_retention";
     $sql_cohort = "CREATE TABLE $cohort_table (
@@ -1001,6 +1104,8 @@ function brikpanel_create_table() {
     // placed). Rows are deduped in code on (visitor_id, email, non-recovered)
     // so a recovered row stays as history when the same browser starts a new
     // cart. See front-end/cart-abandonment/.
+    // idx_cart_total backs the "highest / lowest cart value" sort on the list
+    // screen, so hunting the big abandoned carts does not filesort the table.
     $abandoned_carts_table = $wpdb->prefix . "brikpanel_abandoned_carts";
     $sql_abandoned_carts = "CREATE TABLE $abandoned_carts_table (
         id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -1009,6 +1114,7 @@ function brikpanel_create_table() {
         first_name VARCHAR(100) NOT NULL DEFAULT '',
         last_name VARCHAR(100) NOT NULL DEFAULT '',
         phone VARCHAR(40) NOT NULL DEFAULT '',
+        phone_country VARCHAR(2) NOT NULL DEFAULT '',
         user_id BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
         source VARCHAR(20) NOT NULL DEFAULT 'checkout',
         status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -1024,7 +1130,8 @@ function brikpanel_create_table() {
         KEY idx_visitor_email (visitor_id, email),
         KEY idx_email (email),
         KEY idx_status_updated (status, updated_at),
-        KEY idx_created (created_at)
+        KEY idx_created (created_at),
+        KEY idx_cart_total (cart_total)
     ) $charset_collate;";
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -1033,6 +1140,7 @@ function brikpanel_create_table() {
     dbDelta($sql_visited_pages);
     dbDelta($sql_referrers);
     dbDelta($sql_expenses);
+    dbDelta($sql_expense_skips);
     dbDelta($sql_customer_metrics);
     dbDelta($sql_cohort);
     dbDelta($sql_vendors);
@@ -1185,6 +1293,7 @@ function brikpanel_drop_subsite_tables($tables, $blog_id) {
         'brikpanel_cart_tracking',
         'brikpanel_visited_pages',
         'brikpanel_expenses',
+        'brikpanel_expense_skips',
         'brikpanel_cohort_retention',
         'brikpanel_customer_metrics',
         'brikpanel_vendors',
@@ -1246,6 +1355,14 @@ function brikpanel_maybe_upgrade_db() {
     brikpanel_create_table();
     brikpanel_backfill_native_cogs();
     brikpanel_unify_cogs_to_native();
+    brikpanel_cartab_dedupe_recovery_credit();
+    // Re-assert autoload on the write-once markers. Idempotent, and running it
+    // on every version bump means a call site that drifts one back to
+    // autoload=off self-corrects on the next release instead of silently
+    // costing a query per request forever.
+    if (function_exists('brikpanel_apply_option_autoload_policy')) {
+        brikpanel_apply_option_autoload_policy();
+    }
     update_option('brikpanel_db_version', BRIKPANEL_VERSION);
 
     // Trigger an immediate first computation of customer metrics + cohort
@@ -1262,6 +1379,810 @@ function brikpanel_maybe_upgrade_db() {
     }
 }
 add_action('plugins_loaded', 'brikpanel_maybe_upgrade_db', 5);
+// Priority 6: after the upgrade pass above has had its chance to create the
+// table, but registered separately so the version gate inside that function
+// cannot swallow the repair. See brikpanel_cartab_repair_failed_recoveries().
+add_action('plugins_loaded', 'brikpanel_cartab_repair_failed_recoveries', 6);
+
+/**
+ * One-time correction: leave one credited cart row per recovering order.
+ *
+ * Until this release, an order stamped its id on *every* open cart row that
+ * matched the shopper — a popup signup, a checkout capture and an older
+ * abandoned cart could all be credited with the same single sale. The
+ * Abandoned Carts stat cards counted each of those rows and added every one of
+ * their cart totals to the recovered value, so both figures ran high on any
+ * store where shoppers were captured more than once.
+ *
+ * mark_recovered() no longer does that. This pass applies the same rule to the
+ * rows already on disk: the best row per order keeps the credit, its siblings
+ * drop to order_id = 0. Nothing is deleted and no status changes, so the rows
+ * stay in the list (badged "Converted") and outreach stays cancelled.
+ *
+ * Runs once, guarded by brikpanel_cartab_credit_dedupe_done.
+ */
+function brikpanel_cartab_dedupe_recovery_credit() {
+    if (get_option('brikpanel_cartab_credit_dedupe_done') === '1') {
+        return;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'brikpanel_abandoned_carts';
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
+        return; // Cart abandonment tables not installed yet; nothing to correct.
+    }
+
+    // Same precedence mark_recovered() now uses when choosing which row to
+    // credit: a cart with items beats a bare email signup, one that really was
+    // abandoned beats one that never was, most recent wins among equals.
+    $rows = $wpdb->get_results(
+        "SELECT id, order_id FROM {$table}
+         WHERE status = 'recovered' AND order_id > 0
+         ORDER BY order_id ASC,
+                  (item_count > 0) DESC,
+                  (abandoned_at IS NOT NULL) DESC,
+                  updated_at DESC,
+                  id DESC" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    );
+
+    $keeper = [];
+    $losers = [];
+    foreach ((array) $rows as $row) {
+        $order_id = (int) $row->order_id;
+        if (isset($keeper[$order_id])) {
+            $losers[] = (int) $row->id;   // already kept the best row for this order
+            continue;
+        }
+        $keeper[$order_id] = true;
+    }
+
+    // Chunked so a store with a long history does not build one enormous
+    // statement; the id list is integer-cast, never interpolated user input.
+    foreach (array_chunk($losers, 500) as $chunk) {
+        $in = implode(',', array_map('intval', $chunk));
+        $wpdb->query("UPDATE {$table} SET order_id = 0 WHERE id IN ({$in})"); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    }
+
+    update_option('brikpanel_cartab_credit_dedupe_done', '1', true);
+}
+
+/**
+ * One-time correction: take the recovery back off carts whose order never
+ * became a sale.
+ *
+ * Until this release the two checkout hooks marked a cart recovered the instant
+ * WooCommerce wrote the order row — which happens *before* the gateway is asked
+ * for anything, while the order is still `pending`. A declined payment
+ * therefore left the cart permanently stamped "Recovered", inflated the
+ * recovered count and value, and (because upsert() only dedupes against open
+ * rows) let the shopper's next capture ping insert a second row for the very
+ * same cart. Stores saw one customer holding a "Recovered" and an "Abandoned"
+ * row minutes apart, at the same total.
+ *
+ * mark_recovered() now runs only on a status transition that represents a sale,
+ * and unmark_recovered() undoes one when the order stops being a sale. This
+ * pass applies the same rule to the rows already on disk: every cart credited
+ * to an order that is failed, cancelled, drafted, binned or gone is re-opened
+ * (back to `abandoned` when it had been abandoned, otherwise `active`), the
+ * uncredited siblings closed in the same sweep go with it, and any resulting
+ * duplicate open rows for one shopper collapse into one.
+ *
+ * Historical rows fire no hooks: re-queuing months of outreach on upgrade would
+ * be worse than the wrong number it fixes.
+ *
+ * Deliberately NOT called from brikpanel_maybe_upgrade_db(): that function
+ * returns on its first line when brikpanel_db_version already matches
+ * BRIKPANEL_VERSION, so a store updating to a build that ships this repair
+ * without a version bump would never run it. Hanging a data repair off a
+ * version number it does not control is how a fix silently does nothing on the
+ * one site that needed it. It carries its own guard instead and runs on
+ * plugins_loaded; once done, the cost is a single autoloaded option read.
+ *
+ * The guard is versioned rather than a boolean, so an improved pass re-runs on
+ * stores where an earlier one already finished. Re-running is harmless: a row
+ * that is no longer 'recovered' no longer matches.
+ *
+ * A summary lands in brikpanel_cartab_failed_recovery_repair_stats for support.
+ */
+define('BRIKPANEL_CARTAB_REPAIR_PASS', '5');
+
+function brikpanel_cartab_repair_failed_recoveries() {
+    if (get_option('brikpanel_cartab_failed_recovery_repair_done') === BRIKPANEL_CARTAB_REPAIR_PASS) {
+        return;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'brikpanel_abandoned_carts';
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
+        // No table means no legacy rows to correct, now or later: when this
+        // plugin does create it, it creates it empty. Mark the pass done rather
+        // than leaving a SHOW TABLES on every request forever.
+        update_option('brikpanel_cartab_failed_recovery_repair_done', BRIKPANEL_CARTAB_REPAIR_PASS, true);
+        return;
+    }
+
+    // No early return when this comes back empty: the second pass below works on
+    // rows that carry no order id at all, and on most stores those are the
+    // majority of the damage.
+    $credited = (array) $wpdb->get_results(
+        "SELECT id, order_id, email, visitor_id, recovered_at
+           FROM {$table}
+          WHERE status = 'recovered' AND order_id > 0" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    );
+
+    // Statuses that mean the order never was a sale, in the wc- prefixed form
+    // the order tables actually store. This is the same judgement the live
+    // recovery now makes (Brikpanel_Cart_Abandonment::non_sale_statuses()),
+    // applied backwards.
+    //
+    // 'wc-pending' carries most of the damage and is easy to leave out: it is
+    // the status every checkout order is born with, so a shopper who was sent
+    // to a bank page and never came back leaves an order sitting in 'pending'
+    // forever — no failure was ever recorded, yet the cart was stamped
+    // recovered the moment checkout was submitted. Repairing only 'wc-failed'
+    // fixes the orders whose gateway bothered to report the decline and leaves
+    // every silent drop-off behind.
+    //
+    // 'wc-refunded' is NOT here: that order really was a sale before it was
+    // refunded, so the cart genuinely converted.
+    $bad = ['wc-pending', 'wc-failed', 'wc-cancelled', 'wc-checkout-draft', 'trash', 'auto-draft'];
+
+    $order_ids = array_values(array_unique(array_map(static function ($row) {
+        return (int) $row->order_id;
+    }, $credited)));
+
+    // Read order statuses straight from the tables. Two reasons for the raw SQL:
+    // wc_get_orders() ignores post__in/include under HPOS and would hand back the
+    // whole shop, and this pass runs at plugins_loaded priority 5.
+    //
+    // Both tables are consulted rather than picking one via an HPOS check,
+    // because the failure mode of guessing wrong is not a wrong number, it is
+    // reverting every recovery in the store: an HPOS-only order looks deleted
+    // when you read wp_posts. Whichever table knows the order answers, HPOS
+    // first (it is the source of truth wherever it is on, and a synced wp_posts
+    // copy can lag).
+    $hpos_table = $wpdb->prefix . 'wc_orders';
+    $sources    = [];
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->posts)) === $wpdb->posts) {
+        $sources[] = [$wpdb->posts, 'post_status', "AND post_type IN ('shop_order','shop_order_placehold')"];
+    }
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $hpos_table)) === $hpos_table) {
+        $sources[] = [$hpos_table, 'status', ''];   // last wins on conflict
+    }
+
+    // An order the lookup cannot see is treated as deleted, so being unable to
+    // read the order tables at all would re-open every recovery in the store.
+    // Bail without touching a row and without burning the guard; the next
+    // request tries again.
+    if (!$sources) {
+        return;
+    }
+
+    $statuses = [];
+    foreach ($sources as list($table_name, $status_col, $extra)) {
+        foreach (array_chunk($order_ids, 500) as $chunk) {
+            $in    = implode(',', array_map('intval', $chunk));
+            $found = $wpdb->get_results(
+                "SELECT ID AS id, {$status_col} AS status FROM {$table_name} WHERE ID IN ({$in}) {$extra}" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            );
+            foreach ((array) $found as $row) {
+                $statuses[(int) $row->id] = (string) $row->status;
+            }
+        }
+    }
+
+    // Collect the credited rows to re-open, plus the uncredited siblings that
+    // were closed in the same sweep — they all share one recovered_at stamp.
+    $reopen  = [];
+    $touched = [];
+    foreach ($credited as $row) {
+        $order_id = (int) $row->order_id;
+        $status   = $statuses[$order_id] ?? null;
+        // null = the order row is gone entirely.
+        if ($status !== null && !in_array($status, $bad, true)) {
+            continue;
+        }
+
+        $reopen[]  = (int) $row->id;
+        $touched[] = ['email' => (string) $row->email, 'visitor_id' => (string) $row->visitor_id];
+
+        if (empty($row->recovered_at) || $row->recovered_at === '0000-00-00 00:00:00') {
+            continue;
+        }
+        if ((string) $row->email !== '') {
+            $reopen = array_merge($reopen, (array) $wpdb->get_col($wpdb->prepare(
+                "SELECT id FROM {$table}
+                  WHERE email = %s AND status = 'recovered' AND order_id = 0 AND recovered_at = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $row->email,
+                $row->recovered_at
+            )));
+        }
+        if ((string) $row->visitor_id !== '') {
+            $reopen = array_merge($reopen, (array) $wpdb->get_col($wpdb->prepare(
+                "SELECT id FROM {$table}
+                  WHERE visitor_id = %s AND status = 'recovered' AND order_id = 0 AND recovered_at = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $row->visitor_id,
+                $row->recovered_at
+            )));
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Second pass: the uncredited rows.
+    //
+    // Everything above works back from an order id. Most wrongly-recovered rows
+    // do not have one: mark_recovered() stamps the order on a single row and
+    // writes order_id = 0 on every other row it closes, and the older
+    // brikpanel_cartab_dedupe_recovery_credit() pass zeroed still more. On a
+    // real store those outnumber the credited ones (88 of 144 on the site this
+    // was diagnosed against), and 86 of them had no credited row left sharing
+    // their recovered_at, so the sibling lookup above can never reach them.
+    // They are the rows that show as "Converted" for a customer who never
+    // bought anything.
+    //
+    // With no order id to judge, the row is judged by its owner instead: did
+    // that owner actually buy something around the time the row was closed? The
+    // window is the store's own recovery window, the same rule mark_recovered()
+    // applies live.
+    //
+    // "Owner" has to mean what it means to mark_recovered(), which closes rows
+    // by email OR by browser id. Asking about the email alone re-opens every row
+    // a shopper owns under a second address — and the commonest second address
+    // is a half-typed one, captured while they were still writing the first
+    // (see Brikpanel_Cart_Abandonment::supersede_same_shopper_row()). Those
+    // addresses never place an order, so an email-only test reverts exactly the
+    // rows belonging to people who DID buy, and the sweep then restamps them as
+    // freshly abandoned. Two further signals answer for them:
+    //
+    //   1. the browser id, against the _brikpanel_cartab_vid meta checkout
+    //      stamps on the order;
+    //   2. a sibling row — another row closed by the same sweep (same browser
+    //      id AND the same recovered_at) whose own email did buy. This needs no
+    //      order meta at all, so it reaches orders placed before that meta
+    //      existed, which is where most of the damage sits.
+    //
+    // Any one of the three is enough to leave the row closed. Rows with no
+    // email are left alone rather than guessed at.
+    //
+    // Walked in batches by id rather than read in one go. A busy store can hold
+    // six figures of recovered rows, and holding them — plus a sweep map over
+    // them — costs tens of megabytes that land on whichever request happens to
+    // run the pass, typically the first admin page load after an update. Each
+    // batch below carries only its own rows and the lookups they need.
+    $already    = array_flip(array_map('intval', $reopen));
+    $has_hpos   = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $hpos_table)) === $hpos_table;
+    // wp_postmeta has no index on meta_value, so the legacy lookup scans every
+    // _billing_email row it holds. Worth one cheap probe to find out whether
+    // this store has any post-table orders at all: on an HPOS store that never
+    // kept the legacy copies the answer is none, and the scan is skipped
+    // outright rather than repeated per batch.
+    $has_legacy = (bool) $wpdb->get_var(
+        "SELECT ID FROM {$wpdb->posts} WHERE post_type IN ('shop_order','shop_order_placehold') LIMIT 1" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    );
+    $meta_table    = $wpdb->prefix . 'wc_orders_meta';
+    $has_hpos_meta = $has_hpos
+        && $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $meta_table)) === $meta_table;
+
+    // prime-ignore: unreachable once brikpanel_cartab_failed_recovery_repair_done matches the pass, and that marker is primed + autoloaded.
+    $window = max(1, (int) get_option('brikpanel_cartab_recovery_window_days', 7)) * DAY_IN_SECONDS;
+
+    // A DATETIME column read back as a timestamp, or 0 when there is nothing
+    // there. The emptiness has to be tested BEFORE strtotime() sees it:
+    // strtotime(' UTC') is not false, it is the current time, so feeding an
+    // unstamped row straight through would silently judge it against today
+    // instead of leaving it alone.
+    $stamp_of = static function ($value) {
+        $value = trim((string) $value);
+        if ($value === '' || strpos($value, '0000-00-00') === 0) {
+            return 0;
+        }
+        return (int) strtotime($value . ' UTC');
+    };
+
+    // Did anyone this row could belong to buy within the window of the moment
+    // the row was closed?
+    $bought = static function ($stamps, $ts) use ($window) {
+        foreach ((array) $stamps as $sale_ts) {
+            if (abs($sale_ts - $ts) <= $window) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Sales by email, for a bounded list of addresses. One batched lookup per
+    // source, never one query per row.
+    $lookup_sales_by_email = static function (array $emails) use ($wpdb, $hpos_table, $has_hpos, $has_legacy, $bad, $stamp_of) {
+        $out = [];
+        foreach (array_chunk(array_values(array_unique($emails)), 200) as $chunk) {
+            $ph   = implode(',', array_fill(0, count($chunk), '%s'));
+            $rows = [];
+            if ($has_hpos) {
+                $rows = array_merge($rows, (array) $wpdb->get_results($wpdb->prepare(
+                    "SELECT billing_email AS k, status, date_created_gmt AS created
+                       FROM {$hpos_table}
+                      WHERE billing_email IN ({$ph})", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                    $chunk
+                )));
+            }
+            if ($has_legacy) {
+                $rows = array_merge($rows, (array) $wpdb->get_results($wpdb->prepare(
+                    "SELECT pm.meta_value AS k, p.post_status AS status, p.post_date_gmt AS created
+                       FROM {$wpdb->postmeta} pm
+                       JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                      WHERE pm.meta_key = '_billing_email'
+                        AND pm.meta_value IN ({$ph})
+                        AND p.post_type IN ('shop_order','shop_order_placehold')", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                    $chunk
+                )));
+            }
+            foreach ($rows as $row) {
+                // "Not a non-sale" rather than a paid whitelist, so a store's
+                // custom order statuses keep counting as the sales they are.
+                if (in_array((string) $row->status, $bad, true)) {
+                    continue;
+                }
+                $ts = $stamp_of($row->created);
+                if ($ts) {
+                    $out[strtolower((string) $row->k)][] = $ts;
+                }
+            }
+        }
+        return $out;
+    };
+
+    // Signal 1: sales by browser id, keyed on the meta checkout stamps on the
+    // order. Both meta tables are filtered by meta_key first, the indexed
+    // column in each.
+    $lookup_sales_by_visitor = static function (array $vids) use ($wpdb, $hpos_table, $meta_table, $has_hpos_meta, $has_legacy, $bad, $stamp_of) {
+        $out = [];
+        foreach (array_chunk(array_values(array_unique($vids)), 200) as $chunk) {
+            $ph   = implode(',', array_fill(0, count($chunk), '%s'));
+            $rows = [];
+            if ($has_hpos_meta) {
+                $rows = array_merge($rows, (array) $wpdb->get_results($wpdb->prepare(
+                    "SELECT m.meta_value AS k, o.status AS status, o.date_created_gmt AS created
+                       FROM {$meta_table} m
+                       JOIN {$hpos_table} o ON o.id = m.order_id
+                      WHERE m.meta_key = '_brikpanel_cartab_vid'
+                        AND m.meta_value IN ({$ph})", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                    $chunk
+                )));
+            }
+            if ($has_legacy) {
+                $rows = array_merge($rows, (array) $wpdb->get_results($wpdb->prepare(
+                    "SELECT pm.meta_value AS k, p.post_status AS status, p.post_date_gmt AS created
+                       FROM {$wpdb->postmeta} pm
+                       JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                      WHERE pm.meta_key = '_brikpanel_cartab_vid'
+                        AND pm.meta_value IN ({$ph})
+                        AND p.post_type IN ('shop_order','shop_order_placehold')", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                    $chunk
+                )));
+            }
+            foreach ($rows as $row) {
+                if (in_array((string) $row->status, $bad, true)) {
+                    continue;
+                }
+                $ts = $stamp_of($row->created);
+                if ($ts) {
+                    $out[(string) $row->k][] = $ts;
+                }
+            }
+        }
+        return $out;
+    };
+
+    // The UPDATE that acts on $reopen runs after this walk, so the predicate
+    // stays true for rows not yet visited and the cursor cannot skip any.
+    $last_id = 0;
+    while (true) {
+        $batch = (array) $wpdb->get_results($wpdb->prepare(
+            "SELECT id, email, visitor_id, recovered_at
+               FROM {$table}
+              WHERE status = 'recovered' AND order_id = 0 AND email <> '' AND id > %d
+              ORDER BY id ASC
+              LIMIT 1000", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $last_id
+        ));
+        if (!$batch) {
+            break;
+        }
+        $last_id = (int) $batch[count($batch) - 1]->id;
+
+        $uncredited = array_values(array_filter($batch, static function ($row) use ($already) {
+            return !isset($already[(int) $row->id]);
+        }));
+        unset($batch);
+        if (!$uncredited) {
+            continue;
+        }
+
+        // Signal 2: the rows every sweep in this batch closed. Fetched by
+        // visitor id (the leftmost column of idx_visitor_email) and matched on
+        // recovered_at in PHP, so the map never outgrows the batch.
+        $vids = [];
+        foreach ($uncredited as $row) {
+            if ((string) $row->visitor_id !== '') {
+                $vids[(string) $row->visitor_id] = true;
+            }
+        }
+        $sweeps = [];
+        $emails = [];
+        foreach ($uncredited as $row) {
+            $emails[] = strtolower((string) $row->email);
+        }
+        foreach (array_chunk(array_keys($vids), 200) as $chunk) {
+            $ph      = implode(',', array_fill(0, count($chunk), '%s'));
+            $sibs    = (array) $wpdb->get_results($wpdb->prepare(
+                "SELECT id, email, visitor_id, recovered_at, order_id
+                   FROM {$table}
+                  WHERE status = 'recovered' AND visitor_id IN ({$ph})", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                $chunk
+            ));
+            foreach ($sibs as $sib) {
+                if (empty($sib->recovered_at)) {
+                    continue;
+                }
+                $sweeps[(string) $sib->visitor_id . "\0" . (string) $sib->recovered_at][] = $sib;
+                $emails[] = strtolower((string) $sib->email);
+            }
+        }
+
+        $sales_by_email   = $lookup_sales_by_email(array_filter($emails));
+        $sales_by_visitor = $lookup_sales_by_visitor(array_keys($vids));
+        unset($emails, $vids);
+
+        foreach ($uncredited as $row) {
+            $ts = $stamp_of($row->recovered_at);
+            if (!$ts) {
+                continue; // No stamp to reason about; leave it be.
+            }
+
+            // Its own address.
+            if ($bought($sales_by_email[strtolower((string) $row->email)] ?? [], $ts)) {
+                continue;
+            }
+            // The browser it was captured in.
+            if ($bought($sales_by_visitor[(string) $row->visitor_id] ?? [], $ts)) {
+                continue;
+            }
+            // A sibling closed by the same sweep. A credited sibling is proof on
+            // its own: the pass above already judged its order and left it
+            // alone, so it stands for a sale that really happened.
+            $sig     = (string) $row->visitor_id . "\0" . (string) $row->recovered_at;
+            $settled = false;
+            foreach ($sweeps[$sig] ?? [] as $sibling) {
+                if ((int) $sibling->id === (int) $row->id) {
+                    continue;
+                }
+                if ((int) $sibling->order_id > 0 && !isset($already[(int) $sibling->id])) {
+                    $settled = true;
+                    break;
+                }
+                if ($bought($sales_by_email[strtolower((string) $sibling->email)] ?? [], $ts)) {
+                    $settled = true;
+                    break;
+                }
+            }
+            if ($settled) {
+                continue;
+            }
+
+            $reopen[]  = (int) $row->id;
+            $touched[] = ['email' => (string) $row->email, 'visitor_id' => (string) $row->visitor_id];
+        }
+
+        unset($uncredited, $sweeps, $sales_by_email, $sales_by_visitor);
+    }
+
+    // No early return when there is nothing to re-open: the repurchased-row pass
+    // at the end is independent of this one, and on a store that has already had
+    // its recoveries corrected it is the only pass left with work to do.
+    $reopen = array_values(array_unique(array_map('intval', $reopen)));
+
+    $now = current_time('mysql', true);
+
+    // Re-open the row without making an old cart look new. Writing NOW into
+    // updated_at restarts its abandonment clock, so flip_abandoned() picks it up
+    // an hour later, stamps abandoned_at with today and announces a cart that
+    // was really abandoned weeks ago — a follow-up mail on a repair, and a "last
+    // activity" the shopper never had. recovered_at is the moment the sweep
+    // closed the row, which is the closest thing on file to their last real
+    // activity, so the row goes back to that and carries its own abandonment
+    // date from it. It lands in the list already abandoned, at its true date,
+    // and the sweep never has to touch it.
+    // MySQL and MariaDB apply SET left to right, with later clauses reading the
+    // values already assigned. Every clause below is written to give the same
+    // answer either way rather than depending on that: COALESCE(abandoned_at,
+    // recovered_at) is unchanged by having already been assigned that exact
+    // value, and recovered_at is cleared last, after both clauses that read it.
+    foreach (array_chunk($reopen, 500) as $chunk) {
+        $in = implode(',', array_map('intval', $chunk));
+        $wpdb->query(
+            "UPDATE {$table}
+                SET abandoned_at = COALESCE(abandoned_at, recovered_at),
+                    updated_at   = COALESCE(recovered_at, updated_at),
+                    status       = CASE WHEN COALESCE(abandoned_at, recovered_at) IS NOT NULL THEN 'abandoned' ELSE 'active' END,
+                    order_id     = 0,
+                    recovered_at = NULL
+              WHERE id IN ({$in})" // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        );
+    }
+
+    // Re-opening resurrects the duplicate the old behaviour created: the row the
+    // shopper's retry inserted while the first one sat wrongly "recovered".
+    // Keep the best per shopper, on the same precedence mark_recovered() uses.
+    $merged = 0;
+    $seen   = [];
+    foreach ($touched as $key) {
+        $sig = $key['visitor_id'] . "\0" . $key['email'];
+        if (isset($seen[$sig])) {
+            continue;
+        }
+        $seen[$sig] = true;
+
+        $owned = array_map('intval', (array) $wpdb->get_col($wpdb->prepare(
+            "SELECT id FROM {$table}
+              WHERE visitor_id = %s AND email = %s AND status IN ('active','abandoned')
+              ORDER BY (item_count > 0) DESC, (abandoned_at IS NOT NULL) DESC, updated_at DESC, id DESC", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $key['visitor_id'],
+            $key['email']
+        )));
+        if (count($owned) < 2) {
+            continue;
+        }
+        array_shift($owned);
+        $wpdb->query('DELETE FROM ' . $table . ' WHERE id IN (' . implode(',', $owned) . ')'); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $merged += count($owned);
+    }
+
+    // Typos first, while the ghosts are still open rows. Left until after
+    // close_repurchased_rows() they get badged "Converted" on the way past and
+    // stop looking like the open keystrokes they are, so they survive the sweep
+    // that exists to remove them.
+    $typos     = brikpanel_cartab_merge_typo_rows($table);
+    $converted = brikpanel_cartab_close_repurchased_rows($table, $now);
+
+    update_option('brikpanel_cartab_failed_recovery_repair_stats', [
+        'reverted'    => count($reopen),
+        'merged'      => $merged,
+        'converted'   => $converted,
+        'typo_merged' => $typos,
+        'ran_at'      => $now,
+    ], false);
+    update_option('brikpanel_cartab_failed_recovery_repair_done', BRIKPANEL_CARTAB_REPAIR_PASS, true);
+}
+
+/**
+ * Collapse the rows a shopper opened while still typing their address.
+ *
+ * Brikpanel_Cart_Abandonment::supersede_same_shopper_row() stops these being
+ * created from now on; this clears the ones already on disk. Same test it
+ * applies live, run backwards over the open rows: one browser, one local part,
+ * two captures minutes apart is one shopper correcting one address, so the best
+ * row keeps the address they finished on and the keystrokes behind it go.
+ *
+ * The rows removed here are not records of anything — nobody was ever reachable
+ * at "…@gmail.co", it was on screen for three seconds. Left alone they inflate
+ * the abandoned count and sit in the outreach queue waiting to hard-bounce.
+ *
+ * Only checkout rows merge, for the coupon reason spelled out in the live guard.
+ *
+ * @param string $table Cart abandonment table name.
+ * @return int Rows removed.
+ */
+function brikpanel_cartab_merge_typo_rows($table) {
+    global $wpdb;
+
+    $window = (int) apply_filters('brikpanel_cartab_typo_window', 15 * MINUTE_IN_SECONDS);
+    if ($window < 1) {
+        return 0;
+    }
+
+    // Only shoppers who hold several checkout rows under one local part — on any
+    // real store a short list, and it keeps the per-group scan below bounded.
+    // Recovered rows count towards the group: where an earlier pass already
+    // reverted a ghost, the row carrying the truth is the recovered one beside
+    // it, and a group read as open-only would never see it.
+    $keys = (array) $wpdb->get_results(
+        "SELECT visitor_id, SUBSTRING_INDEX(email, '@', 1) AS local
+           FROM {$table}
+          WHERE source = 'checkout' AND visitor_id <> '' AND email <> ''
+          GROUP BY visitor_id, local
+         HAVING COUNT(DISTINCT email) > 1" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    );
+    if (!$keys) {
+        return 0;
+    }
+
+    // Empty first, then strtotime: strtotime(' UTC') answers with the current
+    // time rather than false, which would read an unstamped row as "created
+    // now" and drop it into whatever window it is being compared against.
+    $stamp = static function ($row) {
+        $value = trim((string) $row->created_at);
+        if ($value === '' || strpos($value, '0000-00-00') === 0) {
+            return 0;
+        }
+        return (int) strtotime($value . ' UTC');
+    };
+
+    $removed = 0;
+    foreach ($keys as $key) {
+        $rows = (array) $wpdb->get_results($wpdb->prepare(
+            "SELECT id, email, status, order_id, created_at FROM {$table}
+              WHERE visitor_id = %s AND SUBSTRING_INDEX(email, '@', 1) = %s
+                AND source = 'checkout'
+              ORDER BY (item_count > 0) DESC, (abandoned_at IS NOT NULL) DESC, updated_at DESC, id DESC", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $key->visitor_id,
+            $key->local
+        ));
+        if (count($rows) < 2) {
+            continue;
+        }
+
+        $open      = [];
+        $recovered = [];
+        foreach ($rows as $row) {
+            if ('recovered' === (string) $row->status) {
+                $recovered[] = $row;
+                continue;
+            }
+            // An open row should never carry an order id — unmark_recovered()
+            // zeroes it on the way back out — but a row that claims a sale is
+            // the last thing to delete on a guess, so it is never a candidate.
+            if ((int) $row->order_id > 0) {
+                continue;
+            }
+            $open[] = $row;
+        }
+
+        // The anchor is the row that holds the truth: a converted one when the
+        // shopper turned out to buy, otherwise the best open row.
+        $anchor = $recovered ? $recovered[0] : array_shift($open);
+        if (!$anchor) {
+            continue;
+        }
+
+        $drop = [];
+        foreach ($open as $row) {
+            // Same address is not a typo — two rows under one address are an
+            // ordinary duplicate, and merge_open_duplicates() owns that case.
+            if (strtolower((string) $row->email) === strtolower((string) $anchor->email)) {
+                continue;
+            }
+            // Outside the window this is a shopper genuinely reusing one local
+            // part across inboxes weeks apart, not a correction. Leave it.
+            if (abs($stamp($row) - $stamp($anchor)) > $window) {
+                continue;
+            }
+            // Against a converted anchor the test is directional: a correction
+            // is always typed BEFORE the address that ends up on the order, so
+            // only earlier rows can be keystrokes. A row opened after the sale
+            // is a new cart the shopper started, which is a different question
+            // and one close_repurchased_rows() already answers.
+            if ($recovered && $stamp($row) > $stamp($anchor)) {
+                continue;
+            }
+            $drop[] = $row;
+        }
+        if (!$drop) {
+            continue;
+        }
+
+        // With no converted row to defer to, the surviving open row takes the
+        // address from the LAST capture — the one the shopper settled on. The
+        // anchor was picked for carrying the cart, which is a different question.
+        if (!$recovered) {
+            $final = $anchor;
+            foreach ($drop as $row) {
+                if ($stamp($row) > $stamp($final)) {
+                    $final = $row;
+                }
+            }
+            if ((string) $final->email !== (string) $anchor->email) {
+                $wpdb->update($table, ['email' => (string) $final->email], ['id' => (int) $anchor->id]);
+            }
+        }
+
+        $ids = array_map(static function ($row) {
+            return (int) $row->id;
+        }, $drop);
+        $wpdb->query('DELETE FROM ' . $table . ' WHERE id IN (' . implode(',', $ids) . ')'); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $removed += count($ids);
+    }
+
+    return $removed;
+}
+
+/**
+ * Close the open rows that are really carts the shopper had already paid for.
+ *
+ * Brikpanel_Cart_Abandonment::just_repurchased() stops these being created from
+ * now on, but it cannot help with the ones already on disk: recovery closes
+ * every row a shopper owns, so seconds after an order the shopper owns no OPEN
+ * row, and the next cart mirror opened a brand new one for a cart that had just
+ * been paid for. With an off-site or iframe gateway (PayTR, any 3-D Secure
+ * redirect) the order completes in a server-side callback, so the customer's
+ * session — and the persistent cart WooCommerce keeps for logged-in customers —
+ * still held the items. An hour later the row was sitting in the list as
+ * "Abandoned": the one row a follow-up tool would email to a paying customer.
+ *
+ * These are marked recovered-but-uncredited rather than deleted, so the list
+ * still shows what happened (badged "Converted") while they stop counting as
+ * abandoned and stop being outreach targets. recovered_at is copied from the
+ * row they duplicate, which also groups them with that sale for
+ * unmark_recovered() should the order later fall through.
+ *
+ * Same test as the live guard: identical item count, total and currency, and
+ * the row must have been opened inside the repurchase window after the
+ * recovery. Empty rows are left alone — they carry no cart and never reach a
+ * follow-up.
+ *
+ * @param string $table Cart abandonment table name.
+ * @param string $now   GMT timestamp for updated_at.
+ * @return int Rows closed.
+ */
+function brikpanel_cartab_close_repurchased_rows($table, $now) {
+    global $wpdb;
+
+    $window = (int) apply_filters('brikpanel_cartab_repurchase_window', 6 * HOUR_IN_SECONDS);
+    if ($window < 1) {
+        return 0;
+    }
+
+    $open = $wpdb->get_results(
+        "SELECT id, email, item_count, cart_total, currency, created_at
+           FROM {$table}
+          WHERE status IN ('active','abandoned') AND item_count > 0 AND email <> ''" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    );
+    if (!$open) {
+        return 0;
+    }
+
+    $closed = 0;
+    foreach ((array) $open as $row) {
+        $created = strtotime((string) $row->created_at . ' UTC');
+        if (!$created) {
+            continue;
+        }
+
+        // The recovered row this one duplicates: same shopper, same cart, closed
+        // shortly BEFORE this row was opened.
+        $match = $wpdb->get_var($wpdb->prepare(
+            "SELECT recovered_at FROM {$table}
+              WHERE email = %s AND status = 'recovered'
+                AND item_count = %d AND cart_total = %f AND currency = %s
+                AND recovered_at IS NOT NULL
+                AND recovered_at <= %s
+                AND recovered_at >= %s
+              ORDER BY recovered_at DESC LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $row->email,
+            (int) $row->item_count,
+            (float) $row->cart_total,
+            (string) $row->currency,
+            gmdate('Y-m-d H:i:s', $created),
+            gmdate('Y-m-d H:i:s', $created - $window)
+        ));
+        if (!$match) {
+            continue;
+        }
+
+        $wpdb->update(
+            $table,
+            [
+                'status'       => 'recovered',
+                'order_id'     => 0,
+                'recovered_at' => $match,
+                'updated_at'   => $now,
+            ],
+            ['id' => (int) $row->id]
+        );
+        $closed++;
+    }
+
+    return $closed;
+}
 
 /**
  * One-time backfill: copy WooCommerce's native Cost of Goods Sold values into
@@ -1304,7 +2225,7 @@ function brikpanel_backfill_native_cogs() {
     );
 
     if ( empty( $target_ids ) ) {
-        update_option( 'brikpanel_native_cogs_backfilled', 'yes', false );
+        brikpanel_update_option( 'brikpanel_native_cogs_backfilled', 'yes' );
         return;
     }
 
@@ -1332,7 +2253,7 @@ function brikpanel_backfill_native_cogs() {
         brikpanel_bust_data_caches();
     }
 
-    update_option( 'brikpanel_native_cogs_backfilled', 'yes', false );
+    brikpanel_update_option( 'brikpanel_native_cogs_backfilled', 'yes' );
 }
 
 /**
@@ -1371,7 +2292,7 @@ function brikpanel_unify_cogs_to_native() {
     );
 
     if ( empty( $target_ids ) ) {
-        update_option( 'brikpanel_cogs_unified_native', 'yes', false );
+        brikpanel_update_option( 'brikpanel_cogs_unified_native', 'yes' );
         return;
     }
 
@@ -1413,7 +2334,7 @@ function brikpanel_unify_cogs_to_native() {
         brikpanel_bust_data_caches();
     }
 
-    update_option( 'brikpanel_cogs_unified_native', 'yes', false );
+    brikpanel_update_option( 'brikpanel_cogs_unified_native', 'yes' );
 }
 
 

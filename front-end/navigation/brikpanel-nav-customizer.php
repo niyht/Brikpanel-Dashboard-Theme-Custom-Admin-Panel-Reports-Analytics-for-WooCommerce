@@ -46,19 +46,36 @@ if ( ! defined( 'BRIKPANEL_NAV_CONFIG_OPTION' ) ) {
  * Returns the empty default when no config has been saved yet — empty config
  * means "use the natural order from $menu, everything visible, no custom links".
  *
+ * Memoised. Six call sites read this during a single admin render (sidebar
+ * order, spacing, Site Management label, the customizer UI itself, and the
+ * synthetic-slug redirect), and each one previously cost a get_option() plus a
+ * json_decode() of the stored blob.
+ *
+ * @param bool $refresh Drop the memo and re-read. Callers that have just
+ *                      written the option must pass true, or the rest of the
+ *                      request keeps rendering from the pre-save value.
  * @return array
  */
-function brikpanel_nav_config_get() {
+function brikpanel_nav_config_get( $refresh = false ) {
+	static $config = null;
+
+	if ( $refresh ) {
+		$config = null;
+	}
+	if ( null !== $config ) {
+		return $config;
+	}
+
 	$raw = get_option( BRIKPANEL_NAV_CONFIG_OPTION, '' );
 	if ( empty( $raw ) ) {
-		return [ 'version' => 1, 'items' => [] ];
+		return $config = [ 'version' => 1, 'items' => [] ];
 	}
 	$decoded = is_array( $raw ) ? $raw : json_decode( $raw, true );
 	if ( ! is_array( $decoded ) ) {
-		return [ 'version' => 1, 'items' => [] ];
+		return $config = [ 'version' => 1, 'items' => [] ];
 	}
 	$decoded['items'] = isset( $decoded['items'] ) && is_array( $decoded['items'] ) ? $decoded['items'] : [];
-	return $decoded;
+	return $config = $decoded;
 }
 
 /**
@@ -446,6 +463,12 @@ function brikpanel_nav_config_save( $config ) {
 		'sitemgmt_label' => $sitemgmt_label,
 	];
 	update_option( BRIKPANEL_NAV_CONFIG_OPTION, wp_json_encode( $payload ), false );
+
+	// Drop the memo in brikpanel_nav_config_get() so the rest of this request
+	// renders the sidebar from the value just saved rather than the pre-save
+	// one. Without this the customizer would show stale ordering immediately
+	// after a save.
+	brikpanel_nav_config_get( true );
 }
 
 /**

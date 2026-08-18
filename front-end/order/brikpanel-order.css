@@ -522,7 +522,16 @@ standard WooCommerce ones. */
 
 .brikpanel-order-header {
 	position: fixed;
-	top: 32px;
+	/* --brk-order-header-top is the measured top edge of #wpbody-content,
+	   written by applyHeaderMetrics() in brikpanel-order.js. The 32px fallback
+	   only covers the frames before the script runs. Hardcoding it was wrong in
+	   every context where the admin bar is not showing: core adds the
+	   `wp-toolbar` class (and with it the 32px html padding) only when
+	   is_admin_bar_showing() is true, so a white-label plugin filtering
+	   show_admin_bar to false left the bar floating 32px below a content column
+	   that started at 0 — and the reservation below, which trusts the two to be
+	   equal, came up exactly that much short. */
+	top: var(--brk-order-header-top, 32px);
 	left: 0;
 	right: 0;
 	z-index: 100;
@@ -541,9 +550,34 @@ standard WooCommerce ones. */
 	box-sizing: border-box;
 }
 
-/* Space below the fixed header is reserved dynamically in JS by padding
-   #poststuff (the header's CSS sibling is the hidden original <h1>, so an
-   adjacent-sibling margin would have no effect). */
+/* ---- Vertical reservation for the fixed header ----
+   The bar's `top` is pinned to the top of the content column, which is now
+   MEASURED (--brk-order-header-top) rather than assumed: the four contexts the
+   old comment enumerated — 32px admin bar, 46px below 782px,
+   var(--bp-topbar-height) with the BrikPanel top bar, 0 in Desktop Mode
+   chromeless — were the four we happened to think of, and a hidden admin bar
+   was a fifth that broke the arithmetic silently. With the offset measured, the
+   space to reserve is exactly the bar's own height plus a gap, in every
+   context, with no per-context arithmetic and nothing to keep in sync.
+
+   Reserved on #wpbody-content rather than on #poststuff because every notice
+   this screen can show lives OUTSIDE #poststuff: WooCommerce HPOS prints
+   #message as a direct child of .wrap, before <form id="order">, core's
+   common.js hoists every other .notice to the same place at DOM-ready, and
+   Jetpack's #jp-admin-notices / WooCommerce's #wp__notice-list are children of
+   #wpbody-content itself. Padding the outermost container covers all of them,
+   and drops the #screen-meta panel below the bar as a side effect.
+
+   The old approach measured header.bottom - poststuff.top, which inverted
+   under a notice: the notice pushed #poststuff down, the overlap went
+   negative, the JS reserved nothing, and the notice absorbed the clipping.
+
+   --brk-order-header-h is written by applyHeaderMetrics() in
+   brikpanel-order.js. The fallback covers the frames before the script runs
+   (measured 51.8px in the default desktop layout). */
+.brikpanel-modern-edit #wpbody-content {
+	padding-top: calc(var(--brk-order-header-h, 52px) + 16px);
+}
 
 
 .brikpanel-order-header__left {
@@ -1735,7 +1769,9 @@ standard WooCommerce ones. */
    header down so it is not hidden behind it ---- */
 @media screen and (max-width: 782px) {
 	.brikpanel-order-header {
-		top: 46px;
+		/* Same measured value; only the pre-script fallback changes, because
+		   the admin bar is 46px in this band. */
+		top: var(--brk-order-header-top, 46px);
 		left: 0 !important;
 		padding-left: 16px;
 		padding-right: 16px;
@@ -1914,6 +1950,13 @@ standard WooCommerce ones. */
 		gap: 0.5rem;
 		padding: 0.4375rem 12px;
 		min-height: 44px;
+	}
+
+	/* The header shrinks here, so the pre-JS fallback and the gap follow it.
+	   Once applyHeaderMetrics() runs, --brk-order-header-h carries the real
+	   measured height and the fallback stops mattering. */
+	.brikpanel-modern-edit #wpbody-content {
+		padding-top: calc(var(--brk-order-header-h, 48px) + 12px);
 	}
 
 	/* Back collapses to icon-only — the chevron already reads as "back", so the

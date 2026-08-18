@@ -39,6 +39,39 @@
 /* Content */
 .brikpanel-pe-content{max-width:820px;margin:0 auto;padding:1.5rem 2rem 3rem;display:flex;flex-direction:column;gap:1rem}
 
+/* Product-type note — shown when the product owns a WooCommerce panel this
+   editor cannot render (bundles, composites, bookings). Deliberately quiet:
+   it states a fact, it is not a warning. Literal colour fallbacks because the
+   `--pe-*` tokens live on `.brikpanel-pe` and an unresolved var() would render
+   the note transparent. */
+.brikpanel-pe-typenote{display:flex;align-items:flex-start;gap:.5rem;padding:.75rem 1rem;background:var(--pe-card,#fff);border:1px solid var(--pe-border,#e3e3e3);border-radius:var(--pe-radius-sm,.5rem);box-shadow:var(--pe-shadow,0 1px 3px rgba(0,0,0,.08));font-size:.8125rem;color:var(--pe-text-secondary,#616161)}
+.brikpanel-pe-typenote svg{flex:0 0 auto;margin-top:.125rem;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-typenote a{color:var(--pe-text,#303030);text-decoration:underline}
+.brikpanel-pe-typenote a:hover{color:var(--pe-primary-hover,#1a1a1a)}
+
+/* Widescreen — OPT-IN, off by default (Settings ▸ "Use the full screen width").
+   Everything here hangs off `.brikpanel-pe-widescreen` on the editor root, so
+   with the setting off none of it matches and the layout is the plain centred
+   820px column. When on: a single 820px column is still right for the
+   short-field cards — a price or a SKU gains nothing from a big monitor and
+   long rows are harder to scan — so only the cards that hold genuinely wide
+   content take the extra space. The variations table stops needing a
+   horizontal scrollbar and the description editors get room to breathe. */
+@media screen and (min-width:1360px){
+.brikpanel-pe-widescreen .brikpanel-pe-content{max-width:1240px}
+/* border-box so a card measures the same here as it does below the breakpoint,
+   where it is sized by the column rather than by its own width. */
+.brikpanel-pe-widescreen .brikpanel-pe-content>*{box-sizing:border-box;width:100%;max-width:820px;align-self:center}
+.brikpanel-pe-widescreen .brikpanel-pe-content>.brikpanel-pe-card-wide{max-width:none}
+}
+/* Second tier for a genuinely large monitor. A store with every optional
+   column switched on (GTIN, tax class, shipping class, supplier) still runs
+   past 1240px, and there is room to spare here. Deliberately stops at 1500px:
+   the goal is a table that fits, not a page that sprawls edge to edge. */
+@media screen and (min-width:1800px){
+.brikpanel-pe-widescreen .brikpanel-pe-content{max-width:1500px}
+}
+
 /* Card.
    Literal fallbacks are intentional: a card must NEVER lose its background,
    border or shadow even if it ends up outside the `.brikpanel-pe` cascade root
@@ -67,7 +100,11 @@
 .brikpanel-pe-input-suffix{border-right:none;border-left:1px solid var(--pe-border)}
 .brikpanel-pe-slug-prefix{max-width:60%;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:calc(2.5rem - 2px)}
 .brikpanel-pe-input-group.small{height:2rem}
-.brikpanel-pe-input-group.small input{padding:0 .5rem;font-size:.8125rem}
+/* min-height:0 is the load-bearing part: WP admin forces min-height:40px on
+   text inputs, so inside this 32px group the field stayed 40px tall, spilled
+   past the border and centred its text ~4px BELOW the prefix. Height 100% plus
+   a normal line-height puts both back on the same middle. */
+.brikpanel-pe-input-group.small input{padding:0 .5rem;font-size:.8125rem;height:100%;min-height:0;line-height:normal}
 .brikpanel-pe-input-group.small .brikpanel-pe-input-prefix{padding:0 .5rem;font-size:.8125rem}
 .brikpanel-pe-input.small{height:2rem;padding:0 .5rem!important;font-size:.8125rem!important;width:80px}
 
@@ -346,6 +383,13 @@
 .brikpanel-pe-tag-suggestions{position:relative;z-index:10;display:none;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);box-shadow:0 4px 12px rgba(0,0,0,.1);margin-top:.25rem;max-height:200px;overflow-y:auto}
 .brikpanel-pe-tag-suggestion{padding:.5rem .75rem;font-size:.8125rem;cursor:pointer;transition:background .1s ease;color:var(--pe-text)}
 .brikpanel-pe-tag-suggestion:hover{background:var(--pe-bg)}
+/* "Add <what you typed>" row — a value the attribute does not have yet. Set
+   apart from the real terms below it so it never reads as an existing option. */
+.brikpanel-pe-tag-suggestion-new{font-weight:550;border-bottom:1px solid var(--pe-border)}
+
+/* "Select all (N)" / "Clear all" for a global attribute, in the row's label line. */
+.brikpanel-pe-attr-selectall{margin-right:auto;padding:.125rem .5rem;font-family:inherit;font-size:.75rem;font-weight:550;line-height:1.5;color:var(--pe-text-secondary);background:var(--pe-card);border:1px solid var(--pe-border);border-radius:999px;cursor:pointer;white-space:nowrap;transition:background .15s ease,color .15s ease}
+.brikpanel-pe-attr-selectall:hover{background:var(--pe-bg);color:var(--pe-text)}
 
 /* Attribute term suggestions (absolute positioned) */
 .brikpanel-pe-attr-input-container{position:relative}
@@ -362,7 +406,7 @@
 .brikpanel-pe-attr-row.ui-sortable-helper{opacity:.9;box-shadow:var(--pe-shadow)}
 .brikpanel-pe-attr-row-placeholder{border:1px dashed var(--pe-input-border);border-radius:var(--pe-radius-sm);background:#fafafa;margin-bottom:.5rem;visibility:visible!important}
 .brikpanel-pe-attr-row .brikpanel-pe-tag-group{margin-bottom:.5rem}
-.brikpanel-pe-attr-row .brikpanel-pe-tag-group>label{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.brikpanel-pe-attr-row .brikpanel-pe-tag-group>label{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem}
 .brikpanel-pe-attr-remove{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:transparent;border:1px solid var(--pe-border);border-radius:50%;cursor:pointer;color:var(--pe-text-muted);font-size:14px;line-height:1;padding:0;transition:color .1s ease,border-color .1s ease,background .1s ease;font-weight:400}
 .brikpanel-pe-attr-remove:hover{color:var(--pe-error);border-color:var(--pe-error);background:rgba(215,44,13,.06)}
 
@@ -382,6 +426,13 @@
 .brikpanel-pe-attr-row-controls{display:inline-flex;align-items:center;gap:.625rem;flex-shrink:0}
 .brikpanel-pe-usevar{display:none;align-items:center;gap:.375rem;cursor:pointer;font-size:.75rem;color:var(--pe-text-secondary);user-select:none}
 #bpe-var-card.bpe-variable-on .brikpanel-pe-usevar{display:inline-flex}
+/* "Show on product page" — same switch, but always visible: a simple product's
+   specs need it just as much as a variable product's axes. */
+.brikpanel-pe-showpage{display:inline-flex;align-items:center;gap:.375rem;cursor:pointer;font-size:.75rem;color:var(--pe-text-secondary);user-select:none}
+.brikpanel-pe-showpage input{position:absolute;opacity:0;width:0;height:0}
+.brikpanel-pe-showpage input:checked+.brikpanel-pe-usevar-slider{background:var(--pe-primary)}
+.brikpanel-pe-showpage input:checked+.brikpanel-pe-usevar-slider::before{transform:translateX(14px)}
+.brikpanel-pe-showpage input:focus-visible+.brikpanel-pe-usevar-slider,.brikpanel-pe-usevar input:focus-visible+.brikpanel-pe-usevar-slider{outline:2px solid var(--pe-input-focus);outline-offset:2px}
 .brikpanel-pe-usevar input{position:absolute;opacity:0;width:0;height:0}
 .brikpanel-pe-usevar-slider{position:relative;display:inline-block;width:32px;height:18px;background:#ccc;border-radius:18px;transition:background .15s ease;flex-shrink:0}
 .brikpanel-pe-usevar-slider::before{content:"";position:absolute;width:12px;height:12px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.25)}
@@ -493,6 +544,24 @@
 /* Hide toolbars, WC chrome */
 .brikpanel-pe-wc-fields-content .toolbar,.brikpanel-pe-metabox-content .toolbar{display:none!important}
 .brikpanel-pe-wc-fields-content .panel.hidden{display:none!important}
+
+/* Variation reorder handle — narrow first column, invisible until the row is
+   hovered or the handle is keyboard-focused, so the table reads exactly as
+   before at rest. Matches the attribute-row handle above. */
+.brikpanel-pe-var-table .var-drag-col{width:24px}
+.brikpanel-pe-var-table .var-drag-cell{width:24px;padding:.5rem .125rem;vertical-align:middle;text-align:center}
+.brikpanel-pe-var-table .var-drag-handle{display:inline-flex;align-items:center;justify-content:center;width:1.125rem;height:1.25rem;color:var(--pe-text-muted,#8a8a8a);cursor:grab;opacity:0;transition:opacity .12s ease,color .12s ease;touch-action:none}
+.brikpanel-pe-var-table tr.var-main-row:hover .var-drag-handle,.brikpanel-pe-var-table .var-drag-handle:focus-visible{opacity:1}
+.brikpanel-pe-var-table .var-drag-handle:hover{color:var(--pe-text-secondary,#616161)}
+.brikpanel-pe-var-table .var-drag-handle:active{cursor:grabbing}
+/* Drop target while dragging a variation row */
+tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px dashed var(--pe-input-border,#8a8a8a)}
+/* Row whose combination is no longer produced by the current attribute values */
+.brikpanel-pe-var-table .var-orphan-badge{display:inline-flex;align-items:center;margin-left:.5rem;padding:.0625rem .375rem;border:1px solid var(--pe-border,#e3e3e3);border-radius:999px;background:#f7f7f7;color:var(--pe-text-muted,#8a8a8a);font-size:.6875rem;font-weight:550;white-space:nowrap}
+
+/* Sort control in the variation tools strip — same control metrics as the bulk
+   fields beside it so the whole strip reads as one row of equal boxes. */
+.brikpanel-pe-var-bulk #bpe-var-sort{width:auto;flex:0 1 auto;min-width:0;height:2.125rem;min-height:0;line-height:normal;padding:0 1.6rem 0 .5rem;font-size:.8125rem;background-color:var(--pe-card);border-radius:var(--pe-radius-sm);background-position:right .5rem center}
 
 /* Variation row expander — revealed only when 3rd-party extras exist */
 .brikpanel-pe-var-table .var-expand-col{width:28px}
@@ -815,21 +884,30 @@
    other way for the status select while tracking is on. */
 .brikpanel-pe-var-table .var-stock:disabled,.brikpanel-pe-var-table .var-stock-status:disabled{background:#f1f1f1;color:var(--pe-text-muted);cursor:not-allowed;opacity:.7}
 
-/* Variation tools panel — one quiet gray card, two groups SIDE BY SIDE on a
-   single row (flex-wrap drops the second group below only when space runs out):
-   1) "Apply to all variations" bulk edits: micro-heading, labels ABOVE the
-      inputs (design-system field pattern), Apply on the same input baseline.
-   2) "Default Form Values": vertical-divider-separated group filled by JS —
-      same micro-heading + compact selects. Every control locks to 34px. */
-.brikpanel-pe-var-bulk{display:flex;flex-wrap:wrap;align-items:stretch;gap:.875rem 1.25rem;margin-bottom:1rem;padding:.875rem 1rem 1rem;background:#fafafa;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
-.brikpanel-pe-var-bulk-group{display:flex;flex-direction:column;gap:.625rem}
-.brikpanel-pe-var-bulk-heading{font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--pe-text-muted);white-space:nowrap;cursor:default}
-.brikpanel-pe-var-bulk-fields{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.625rem}
-.brikpanel-pe-var-bulk-item{display:flex;flex-direction:column;gap:.375rem}
-.brikpanel-pe-var-bulk-item label{font-size:.75rem;font-weight:550;color:var(--pe-text-secondary);white-space:nowrap}
-.brikpanel-pe-var-bulk-item .brikpanel-pe-input-group.small{background:var(--pe-card)}
-.brikpanel-pe-var-bulk #bpe-bulk-price,
-.brikpanel-pe-var-bulk #bpe-bulk-sale-price{width:78px}
+/* Variation tools panel — one quiet gray card holding a SINGLE toolbar strip:
+   bulk edits, then sorting + "Default Form Values", side by side on ONE line.
+   Field names live in placeholder + aria-label + title rather than in micro-
+   headings and stacked labels: at this card width (~750px of inner space, and
+   ~630px on a small laptop) those cost more than three rows of height, so the
+   panel is one control tall (34px). Groups are told apart by spacing, not by
+   rules: a vertical divider would orphan itself the moment a row wraps.
+   Only TWO flex items ever share the line (bulk edits, and the sort+defaults
+   cluster), so when a translation is too wide the cluster moves down as a unit
+   and the layout stays deliberate at every width, with no breakpoint guessing
+   which language is being read. */
+.brikpanel-pe-var-bulk{display:flex;flex-wrap:wrap;align-items:center;column-gap:.875rem;row-gap:.5rem;margin-bottom:1rem;padding:.5rem;background:#fafafa;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
+.brikpanel-pe-var-bulk-group{display:flex;flex-direction:row;align-items:center;min-width:0;flex:0 1 auto}
+/* Leftover width goes to the bulk group (its money boxes absorb it) so the
+   strip always spans the card instead of trailing off into dead space. */
+.brikpanel-pe-var-bulk-group:first-child{flex:1 1 auto}
+.brikpanel-pe-var-tools-right{display:flex;flex-direction:row;align-items:center;gap:.875rem;flex:0 0 auto;min-width:0}
+.brikpanel-pe-var-bulk-fields{display:flex;align-items:center;gap:.375rem;min-width:0;flex:1 1 auto}
+/* Every box is as wide as its OWN translated placeholder (--bpe-ph, in ch,
+   written by PHP) plus room to type: a pixel width tuned for "Price" clips
+   "Скидка", and clipped placeholders were the whole reason the labels could be
+   dropped in the first place. max-width caps the growth so a wide card does not
+   turn the money fields into slabs. */
+.brikpanel-pe-var-bulk .brikpanel-pe-input-group.small{background:var(--pe-card);flex:1 1 auto;width:calc(var(--bpe-ph,5) * 1.2ch + 3.25rem);min-width:4rem;max-width:9rem}
 /* Bulk "Active" select — same compact metrics as every other control in the
    row (2.125rem tall, small type) so the five boxes read as one symmetric
    strip; the generic .brikpanel-pe-select padding would make it a tall slab. */
@@ -837,14 +915,31 @@
 /* Every control locks to the input-group's 34px outer height (2rem content +
    1px borders): the stock input fights WP admin's min-height:40px and the
    button's natural 32px — mismatched heights break the shared bottom line. */
-.brikpanel-pe-var-bulk #bpe-bulk-stock{width:60px;height:2.125rem;min-height:0}
+.brikpanel-pe-var-bulk #bpe-bulk-stock{width:calc(var(--bpe-ph,5) * 1.2ch + 1.75rem);height:2.125rem;min-height:0;flex:0 1 auto;min-width:3rem}
 .brikpanel-pe-var-bulk #bpe-apply-bulk{height:2.125rem}
 
-/* Default Form Values group — vertical divider on its left; selects match the
-   bulk controls' height/border/radius (override WP's forced select sizing). */
-.brikpanel-pe-var-defaults{flex:1 1 12rem;min-width:0;flex-direction:column;gap:.625rem;border-left:1px solid var(--pe-border);padding-left:1.25rem}
-.brikpanel-pe-var-defaults-row{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:auto}
-.brikpanel-pe-var-defaults .bpe-var-default{width:auto;min-width:0;max-width:180px;height:2.125rem;min-height:0;line-height:normal;padding:0 1.6rem 0 .5rem;font-size:.8125rem;background:var(--pe-card);border-radius:var(--pe-radius-sm);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .5rem center;cursor:pointer}
+/* Default Form Values — third segment of the strip, collapsed behind one
+   button: it holds one select per variation axis, so inline its width would
+   grow with the product and break the single line. The popover drops below the
+   button; the button wears a dot while any default is set. JS sets display:flex
+   on the wrapper when there is something to show. */
+.brikpanel-pe-var-defaults{position:relative;flex:0 0 auto;min-width:0;flex-direction:row;align-items:center;gap:.375rem}
+/* Two classes on purpose: .brikpanel-pe-btn.small's 2rem height would otherwise
+   win on specificity and leave this button 2px short of the rest of the strip. */
+.brikpanel-pe-var-defaults .brikpanel-pe-var-defaults-toggle{position:relative;display:inline-flex;align-items:center;gap:.375rem;height:2.125rem;white-space:nowrap}
+.brikpanel-pe-var-defaults-toggle svg{flex:0 0 auto;color:var(--pe-text-secondary)}
+/* "A default is set" marker. It keeps its slot when hidden (visibility, not
+   display): an indicator that resizes the button would resize the strip, and
+   the strip only stays one line because nothing in it changes width. */
+.brikpanel-pe-var-defaults-dot{visibility:hidden;flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:var(--pe-primary)}
+.brikpanel-pe-var-defaults.has-default .brikpanel-pe-var-defaults-dot{visibility:visible}
+.brikpanel-pe-var-defaults-toggle[aria-expanded="true"]{background:#f1f1f1}
+.brikpanel-pe-var-defaults-pop{position:absolute;top:calc(100% + .375rem);right:0;z-index:30;min-width:15rem;max-width:min(22rem,80vw);padding:.75rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.brikpanel-pe-var-defaults-pop[hidden]{display:none}
+.brikpanel-pe-var-defaults-title{display:block;font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--pe-text-muted)}
+.brikpanel-pe-var-defaults-help{margin:.25rem 0 .625rem;font-size:.75rem;line-height:1.4;color:var(--pe-text-secondary)}
+.brikpanel-pe-var-defaults-row{display:flex;flex-direction:column;align-items:stretch;gap:.375rem;min-width:0;margin-top:0}
+.brikpanel-pe-var-defaults .bpe-var-default{width:100%;min-width:0;max-width:none;height:2.125rem;min-height:0;line-height:normal;padding:0 1.6rem 0 .5rem;font-size:.8125rem;background:var(--pe-card);border-radius:var(--pe-radius-sm);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .5rem center;cursor:pointer}
 
 /* Variation Table */
 .brikpanel-pe-var-table-wrap{overflow-x:auto;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
@@ -870,9 +965,16 @@
    vertical-align keeps real table layout and centers both pieces. */
 .brikpanel-pe-var-table .var-name .var-enabled-switch{vertical-align:middle;margin-right:.55rem}
 .brikpanel-pe-var-table .var-name-text{vertical-align:middle}
+/* Manually added row: the combination is still being chosen, so the name cell
+   holds one dropdown per axis instead of a derived label. */
+.brikpanel-pe-var-table .var-attr-picks{display:inline-flex;flex-wrap:wrap;gap:.375rem;vertical-align:middle}
+.brikpanel-pe-var-table .var-attr-select{min-width:8.5rem;max-width:14rem;height:2rem;padding:0 1.5rem 0 .5rem;font-size:.8125rem;font-weight:400;color:var(--pe-text);background-color:var(--pe-card);border:1px solid var(--pe-input-border);border-radius:4px}
+/* Same combination twice: WooCommerce can only ever reach the first one. */
+.brikpanel-pe-var-table tr.is-duplicate>td{background:#fdeeec}
+.brikpanel-pe-var-table tr.is-duplicate .var-attr-select{border-color:var(--pe-error)}
 /* Inactive variation: dim its editable cells so its off-state reads at a glance,
    while the Active toggle, expander and delete control stay fully legible. */
-.brikpanel-pe-var-table tr.is-disabled td:not(.var-name):not(.var-expand-cell):not(.var-delete-cell){opacity:.42}
+.brikpanel-pe-var-table tr.is-disabled td:not(.var-name):not(.var-drag-cell):not(.var-expand-cell):not(.var-delete-cell){opacity:.42}
 .brikpanel-pe-var-table tr.is-disabled .var-name-text{color:var(--pe-text-muted)}
 
 /* Variation Image — stacked card effect for multi-image */
@@ -1018,14 +1120,17 @@
 body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe{overflow-x:clip}
 
-/* Tablet band: the editor card narrows (folded/unfolded WP sidebar) below the
-   ~735px the side-by-side variation tools panel needs, so the Default Form
-   Values group would wrap under the bulk group while keeping its now-orphaned
-   vertical divider. Make the wrap deliberate: full-width second row with a
-   horizontal divider. Bulk fields stay on one line (unlike phones). */
-@media screen and (min-width:783px) and (max-width:1180px){
-.brikpanel-pe-var-defaults{flex-basis:100%;border-left:none;padding-left:0;border-top:1px solid var(--pe-border);padding-top:.875rem}
-.brikpanel-pe-var-defaults-row{margin-top:0}
+/* Widescreen, part two — has to sit AFTER the variation-table rules above, which
+   pin the name to one line at the same specificity and would otherwise win on
+   source order. With the wide card the point is to lose the table's horizontal
+   scrollbar, so a long variation name wraps rather than pushing every other
+   column out of view. Below the breakpoint the name stays on one line: the
+   table scrolls there anyway and short rows are worth more than wrapped names.
+   The min-width matters: once the name may wrap, the auto layout is free to
+   squeeze that column down to its longest single word and the names turn into
+   four-line stacks. This floors it at a readable width. */
+@media screen and (min-width:1360px){
+.brikpanel-pe-widescreen .brikpanel-pe-var-table .var-name{white-space:normal;min-width:15rem}
 }
 
 @media screen and (max-width:782px){
@@ -1041,22 +1146,32 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-row{grid-template-columns:1fr}
 .brikpanel-pe-row-3{grid-template-columns:1fr}
 .brikpanel-pe-var-templates{grid-template-columns:1fr}
-/* Stack the whole variation tools panel on narrow phones: groups go vertical
-   (the desktop side-by-side layout with its vertical divider flips to a
-   horizontal one), each label-over-input field and the selects go full width. */
-.brikpanel-pe-var-bulk{flex-direction:column;align-items:stretch}
-.brikpanel-pe-var-bulk-fields{flex-direction:column;align-items:stretch}
-.brikpanel-pe-var-bulk-item label{white-space:normal}
-.brikpanel-pe-var-bulk-item .brikpanel-pe-input-group,
-.brikpanel-pe-var-bulk-item .brikpanel-pe-input,
-.brikpanel-pe-var-bulk-item select,
-.brikpanel-pe-var-bulk-item input{width:100%!important;min-width:0}
-/* flex:auto matters: the desktop rule's flex-basis (12rem) becomes a HEIGHT
-   once the panel flips to a column layout, leaving a tall empty band under
-   the selects on phones. */
-.brikpanel-pe-var-defaults{flex:0 0 auto;border-left:none;padding-left:0;border-top:1px solid var(--pe-border);padding-top:.875rem}
-.brikpanel-pe-var-defaults-row{flex-direction:column;align-items:stretch;margin-top:0}
-.brikpanel-pe-var-defaults .bpe-var-default{width:100%;max-width:none}
+/* Phones: one line is off the table, so the strip becomes a small 2-column grid
+   instead of seven stacked full-width boxes (which read as a form, not as a
+   toolbar, and pushed the table a screenful down). Price sits next to Sale,
+   Stock next to Active, and the two actions that apply to the whole grid span
+   it. Every control keeps a real touch height and its own placeholder, which is
+   what still names it once the row order stops carrying that meaning. */
+.brikpanel-pe-var-bulk{flex-direction:column;align-items:stretch;flex-wrap:nowrap;row-gap:.5rem;padding:.625rem}
+.brikpanel-pe-var-bulk-group,
+.brikpanel-pe-var-bulk-group:first-child,
+.brikpanel-pe-var-tools-right{flex:0 0 auto;flex-direction:column;align-items:stretch;gap:.5rem}
+.brikpanel-pe-var-bulk-fields{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:.5rem;flex:0 0 auto}
+/* The placeholder-derived widths and the desktop growth cap are basis values
+   for a row that no longer exists; clear them so each cell fills its column.
+   The money boxes need their own selector: the desktop max-width rule carries
+   three classes and would otherwise keep them 144px wide in a 245px cell. */
+.brikpanel-pe-var-bulk-fields > *{width:auto!important;min-width:0;max-width:none}
+.brikpanel-pe-var-bulk .brikpanel-pe-input-group.small{width:auto;max-width:none;flex:0 0 auto}
+.brikpanel-pe-var-bulk-fields .brikpanel-pe-btn{grid-column:1 / -1;width:100%!important}
+/* Sort is a single control, so it takes the full width on its own line. */
+.brikpanel-pe-var-sort .brikpanel-pe-var-bulk-fields{grid-template-columns:1fr}
+/* flex:auto matters: any desktop flex-basis becomes a HEIGHT once the panel
+   flips to a column layout, leaving a tall empty band under the button. The
+   popover spans the panel rather than hanging off the button's right edge. */
+.brikpanel-pe-var-defaults{flex:0 0 auto;flex-direction:column;align-items:stretch}
+.brikpanel-pe-var-defaults .brikpanel-pe-var-defaults-toggle{width:100%;justify-content:center}
+.brikpanel-pe-var-defaults-pop{left:0;right:0;min-width:0;max-width:none}
 .brikpanel-pe-card{padding:1rem}
 .brikpanel-pe-field input[type="text"],.brikpanel-pe-field input[type="number"],.brikpanel-pe-field textarea{font-size:1rem;padding:.75rem}
 .brikpanel-pe-gallery-item{width:70px;height:70px}

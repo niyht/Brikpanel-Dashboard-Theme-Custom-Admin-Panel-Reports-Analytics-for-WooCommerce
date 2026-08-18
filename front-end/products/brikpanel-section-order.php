@@ -60,13 +60,72 @@ function brikpanel_pe_brand_taxonomy() {
 }
 
 /**
+ * Canonical slug list for every section the simplified editor knows how to
+ * render, in factory-default display order.
+ *
+ * Most callers only need the slugs — validating a saved order, resolving
+ * visibility, running a backfill. Those run on ordinary admin requests
+ * (including every Heartbeat AJAX tick), so going through
+ * brikpanel_pe_section_options() just to call array_keys() on it would
+ * translate two dozen admin labels on requests that never display one. Worse,
+ * translation plugins that harvest gettext during AJAX (TranslatePress, WPML
+ * String Translation) then record those editor labels as site strings. Slugs
+ * are the cheap path; ask for options() only when you actually render labels.
+ *
+ * @return string[]
+ */
+function brikpanel_pe_section_slugs() {
+    $slugs = [
+        'images',
+        'slug',
+        'variations',
+        'pricing',
+        'cogs',
+        'inventory',
+        'gtin',
+        'tax',
+        'sold_individually',
+        'linked',
+        'advanced',
+        'category',
+        'brand',
+        'tags',
+        'short_desc',
+        'description',
+        'digital',
+        'weight',
+        'dimensions',
+        'shipping_class',
+        'seo',
+        'attributes',
+    ];
+
+    // Brand only exists as a section when a brand taxonomy is registered
+    // (WC 9.6+ native product_brand, or a third-party brand plugin). Mirrors
+    // the same drop in brikpanel_pe_section_options().
+    if (brikpanel_pe_brand_taxonomy() === '') {
+        $slugs = array_values(array_diff($slugs, ['brand']));
+    }
+
+    return $slugs;
+}
+
+/**
  * Canonical slug → label map for every section the simplified editor knows
- * how to render. The order of keys here is the factory-default display order.
+ * how to render.
+ *
+ * Membership and order both come from brikpanel_pe_section_slugs(); this
+ * function only attaches a label to each slug it yields. That way the two
+ * cannot drift apart, and conditional sections (brand) are decided in exactly
+ * one place rather than in two lists that have to be kept in step by hand.
+ *
+ * Only call this where labels are actually rendered — see
+ * brikpanel_pe_section_slugs() for why.
  *
  * @return array<string,string>
  */
 function brikpanel_pe_section_options() {
-    $options = [
+    $labels = [
         'images'      => __('Product images', 'brikpanel'),
         'slug'        => __('Permalink (URL slug)', 'brikpanel'),
         'variations'  => __('Variations (sizes/colors)', 'brikpanel'),
@@ -79,10 +138,6 @@ function brikpanel_pe_section_options() {
         'linked'      => __('Linked products (upsells & cross-sells)', 'brikpanel'),
         'advanced'    => __('Advanced (purchase note, reviews, menu order)', 'brikpanel'),
         'category'    => __('Category', 'brikpanel'),
-        // Brand only exists as a section when a brand taxonomy is registered
-        // (WC 9.6+ native product_brand, or a third-party brand plugin). On
-        // sites without one we omit the slug so it never becomes a dead toggle
-        // in the picker or a phantom entry in the saved order.
         'brand'       => __('Brand', 'brikpanel'),
         'tags'        => __('Tags', 'brikpanel'),
         'short_desc'  => __('Short description', 'brikpanel'),
@@ -95,10 +150,11 @@ function brikpanel_pe_section_options() {
         'attributes'  => __('Product attributes (specs)', 'brikpanel'),
     ];
 
-    // Drop the brand slug entirely on installs with no brand taxonomy so it
-    // never surfaces as an empty section or an un-toggleable picker row.
-    if (brikpanel_pe_brand_taxonomy() === '') {
-        unset($options['brand']);
+    $options = [];
+    foreach (brikpanel_pe_section_slugs() as $slug) {
+        if (isset($labels[$slug])) {
+            $options[$slug] = $labels[$slug];
+        }
     }
 
     return $options;
@@ -123,7 +179,7 @@ function brikpanel_pe_section_default_hidden() {
  */
 function brikpanel_pe_section_default_visible() {
     return array_values(array_diff(
-        array_keys(brikpanel_pe_section_options()),
+        brikpanel_pe_section_slugs(),
         brikpanel_pe_section_default_hidden()
     ));
 }
@@ -164,7 +220,7 @@ function brikpanel_pe_is_valid_section_slug($slug, array $known) {
  * @return string[]
  */
 function brikpanel_pe_get_section_order() {
-    $known  = array_keys(brikpanel_pe_section_options());
+    $known  = brikpanel_pe_section_slugs();
     $stored = get_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, '');
     $order  = [];
 
@@ -209,7 +265,7 @@ function brikpanel_pe_get_section_order() {
  * @return string[]
  */
 function brikpanel_pe_get_visible_sections_ordered() {
-    $known       = array_keys(brikpanel_pe_section_options());
+    $known       = brikpanel_pe_section_slugs();
     $visible_raw = get_option('brikpanel_pe_visible_sections');
     if (!is_array($visible_raw)) {
         $visible_raw = brikpanel_pe_section_default_visible();
@@ -295,7 +351,7 @@ function brikpanel_render_section_order_field($field) {
     // Default order/hidden sets drive the "Reset to default" button. Manual
     // metaboxes reset to hidden (clean native-only baseline); ACF groups reset
     // to visible so a reset keeps the auto-include default intact.
-    $default_order  = array_merge(array_keys(brikpanel_pe_section_options()), $metabox_slugs, $acf_slugs);
+    $default_order  = array_merge(brikpanel_pe_section_slugs(), $metabox_slugs, $acf_slugs);
     $default_hidden = array_merge(array_values(brikpanel_pe_section_default_hidden()), $metabox_slugs);
 
     $title    = !empty($field['name']) ? esc_html($field['name']) : '';
@@ -631,7 +687,7 @@ add_action('woocommerce_update_options_brikpanel', function () {
     if (!isset($_POST['brikpanel_pe_section_order_json'])) {
         return;
     }
-    $known = array_keys(brikpanel_pe_section_options());
+    $known = brikpanel_pe_section_slugs();
 
     $raw     = wp_unslash($_POST['brikpanel_pe_section_order_json']);
     $decoded = json_decode($raw, true);
@@ -694,7 +750,7 @@ add_action('admin_init', function () {
         'cogs'  => 'pricing',
         'brand' => 'category',
     ];
-    $known = array_keys(brikpanel_pe_section_options());
+    $known = brikpanel_pe_section_slugs();
     foreach ($backfills as $slug => $anchor) {
         $flag = 'brikpanel_pe_section_backfilled_' . $slug;
         if (get_option($flag) === 'yes') {
@@ -727,7 +783,7 @@ add_action('admin_init', function () {
             }
             update_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, wp_json_encode(array_values($decoded)), false);
         }
-        update_option($flag, 'yes', false);
+        brikpanel_update_option($flag, 'yes');
     }
 });
 
@@ -756,11 +812,12 @@ add_action('admin_init', function () {
         return;
     }
 
+    // prime-ignore: unreachable once brikpanel_pe_metaboxes_merged is set, which is primed + autoloaded.
     $selected = get_option('brikpanel_pe_selected_metaboxes');
     // Nothing to migrate on a brand-new install (option never written). Flag it
     // done so freshly-detected metaboxes default to hidden, not auto-enabled.
     if ($selected === false) {
-        update_option('brikpanel_pe_metaboxes_merged', 'yes', false);
+        brikpanel_update_option('brikpanel_pe_metaboxes_merged', 'yes');
         return;
     }
     $selected = is_array($selected) ? $selected : [];
@@ -810,5 +867,5 @@ add_action('admin_init', function () {
         update_option(BRIKPANEL_PE_SECTION_ORDER_OPTION, wp_json_encode(array_values($order)), false);
     }
 
-    update_option('brikpanel_pe_metaboxes_merged', 'yes', false);
+    brikpanel_update_option('brikpanel_pe_metaboxes_merged', 'yes');
 });

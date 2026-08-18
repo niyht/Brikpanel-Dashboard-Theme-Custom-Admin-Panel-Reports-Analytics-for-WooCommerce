@@ -22,6 +22,18 @@ class Brikpanel_BrikControl {
     const TOPBAR_HANDLE = 'brikpanel-brikcontrol-topbar';
     const BANNER_HANDLE = 'brikpanel-bc-banner';
 
+    /**
+     * Seconds to wait after a plugin activate/deactivate before scanning, so a
+     * bulk operation is fully applied by the time the worker measures it.
+     */
+    const PLUGIN_CHANGE_DELAY = 90;
+
+    /** Minimum spacing between plugin-change-triggered scans. */
+    const PLUGIN_CHANGE_COOLDOWN = 15 * MINUTE_IN_SECONDS;
+
+    /** Transient backing the cooldown above. */
+    const TRANSIENT_PLUGIN_COOLDOWN = 'brikpanel_brikcontrol_plugin_scan_cooldown';
+
     private static $instance = null;
 
     public static function instance() {
@@ -52,15 +64,63 @@ class Brikpanel_BrikControl {
 
     /**
      * Invalidates the topbar transient so the next pageview reflects the
-     * "stale until rescan" state, then queues a fresh background scan.
+     * "stale until rescan" state, then queues ONE fresh background scan.
+     *
+     * Three independent guards, because this hook is far noisier than it looks:
+     *
+     *  1. Per-request static. WordPress fires activated_plugin /
+     *     deactivated_plugin once PER PLUGIN, so a bulk toggle of 20 plugins
+     *     entered this method 20 times in a single request and enqueued 20
+     *     identical scans (plus 20 transient DELETEs).
+     *  2. Cooldown transient. A third-party plugin whose own admin_init
+     *     dependency check calls deactivate_plugins() re-fires this hook on
+     *     EVERY admin page load; without a floor the queue re-arms as fast as
+     *     the worker can drain it.
+     *  3. The args-aware Action Scheduler dedupe inside trigger_manual_scan().
+     *
+     * The scan is deferred rather than enqueued async because this hook fires
+     * BEFORE the rest of a bulk operation has been processed — running
+     * immediately would measure a half-applied plugin set, which is precisely
+     * the state the scan is supposed to report on.
      */
     public function on_plugin_change() {
+        static $handled = false;
+        if ( $handled ) {
+            return;
+        }
+        $handled = true;
+
         if ( class_exists( 'Brikpanel_BrikControl_Storage' ) ) {
             delete_transient( Brikpanel_BrikControl_Storage::TRANSIENT_TOPBAR );
         }
-        if ( class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
-            Brikpanel_BrikControl_Runner::trigger_manual_scan();
+        if ( ! class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
+            return;
         }
+        if ( get_transient( self::TRANSIENT_PLUGIN_COOLDOWN ) ) {
+            // Inside the cooldown, but this is still a real plugin change. Move
+            // the scan that is already queued out to the new deadline instead of
+            // dropping the change on the floor: the cooldown exists to keep the
+            // QUEUE at one row, not to make Store Health report on a plugin set
+            // that stopped being current ten minutes ago.
+            Brikpanel_BrikControl_Runner::defer_pending_manual_scan( self::PLUGIN_CHANGE_DELAY );
+            return;
+        }
+
+        $queued = Brikpanel_BrikControl_Runner::trigger_manual_scan( self::PLUGIN_CHANGE_DELAY );
+
+        // Arm the cooldown only once a scan is genuinely on the queue. Setting
+        // it first and discarding the return meant that any failure to enqueue
+        // — Action Scheduler not initialised yet, the store refusing the insert
+        // — silently cost the merchant a rescan with no retry path, because
+        // nothing ever deletes this transient before its TTL.
+        if ( false === $queued ) {
+            return;
+        }
+        if ( ! Brikpanel_Cron::is_scheduled( Brikpanel_BrikControl_Runner::HOOK_SCAN, Brikpanel_BrikControl_Runner::SCAN_ARGS_MANUAL ) ) {
+            return;
+        }
+
+        set_transient( self::TRANSIENT_PLUGIN_COOLDOWN, 1, self::PLUGIN_CHANGE_COOLDOWN );
     }
 
     // =========================================================================
@@ -209,6 +269,12 @@ class Brikpanel_BrikControl {
     public function render_page() {
         if ( ! current_user_can( 'manage_woocommerce' ) ) {
             wp_die( esc_html__( 'You do not have permission to access this page.', 'brikpanel' ) );
+        }
+
+        // Revive a scan whose batch chain died between slices before reading
+        // the lock, so the page never opens on a frozen progress bar.
+        if ( class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
+            Brikpanel_BrikControl_Runner::maybe_resume();
         }
 
         $bundle    = Brikpanel_BrikControl_Storage::get_results();
@@ -424,6 +490,10 @@ class Brikpanel_BrikControl {
     public function ajax_data() {
         $this->verify_ajax();
 
+        if ( class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
+            Brikpanel_BrikControl_Runner::maybe_resume();
+        }
+
         $bundle   = Brikpanel_BrikControl_Storage::get_results();
         $progress = Brikpanel_BrikControl_Storage::get_progress();
         $active   = Brikpanel_BrikControl_Storage::is_scan_active();
@@ -452,6 +522,12 @@ class Brikpanel_BrikControl {
     public function ajax_rescan() {
         $this->verify_ajax();
 
+        // A dead chain must not masquerade as a running scan and swallow the
+        // click: revive (or release) it first, then decide.
+        if ( class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
+            Brikpanel_BrikControl_Runner::maybe_resume();
+        }
+
         if ( Brikpanel_BrikControl_Storage::is_scan_active() ) {
             wp_send_json_success( [
                 'queued'   => false,
@@ -467,6 +543,19 @@ class Brikpanel_BrikControl {
             wp_send_json_error( [ 'message' => __( 'Action Scheduler is unavailable.', 'brikpanel' ) ], 500 );
         }
 
+        // is_scan_active() above only knows about a scan the WORKER has already
+        // started — it reads the progress option, which handle_scan() writes.
+        // Between enqueue and pickup it is false, and that window is exactly
+        // where the 5-second progress poll lives, so repeated clicks stacked
+        // rows. Ask Action Scheduler directly: args-aware, PENDING + RUNNING.
+        if ( Brikpanel_Cron::is_scheduled( Brikpanel_BrikControl_Runner::HOOK_SCAN, Brikpanel_BrikControl_Runner::SCAN_ARGS_MANUAL ) ) {
+            wp_send_json_success( [
+                'queued'   => false,
+                'message'  => __( 'A scan is already in the queue.', 'brikpanel' ),
+                'progress' => Brikpanel_BrikControl_Storage::get_progress(),
+            ] );
+        }
+
         $action_id = Brikpanel_BrikControl_Runner::trigger_manual_scan();
 
         wp_send_json_success( [
@@ -480,6 +569,9 @@ class Brikpanel_BrikControl {
 
     public function ajax_progress() {
         $this->verify_ajax();
+        if ( class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
+            Brikpanel_BrikControl_Runner::maybe_resume();
+        }
         wp_send_json_success( [
             'progress'  => Brikpanel_BrikControl_Storage::get_progress(),
             'is_active' => Brikpanel_BrikControl_Storage::is_scan_active(),

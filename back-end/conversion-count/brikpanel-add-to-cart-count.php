@@ -5,8 +5,11 @@ if( ! defined( 'ABSPATH' ) ) exit;
  * Sepete ekleme olayını sayar ve veritabanına kaydeder.
  */
 function brikpanel_add_to_cart_counter() {
-    // Master tracking switch.
-    if ( function_exists( 'brikpanel_frontend_tracking_enabled' ) && ! brikpanel_frontend_tracking_enabled() ) {
+    // Master tracking switch and cookie-consent gate. This counter runs on a
+    // pure PHP hook with no JavaScript involved, so the visitor's consent has
+    // to be readable server-side — that is what BrikPanel's own consent
+    // record cookie is for.
+    if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'add_to_cart' ) ) {
         return;
     }
 

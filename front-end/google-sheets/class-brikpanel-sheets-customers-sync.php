@@ -50,7 +50,7 @@ class Brikpanel_Sheets_Customers_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK,
 			[ $this, 'handle' ],
-			[ 'label' => __( 'Sheets — customers + RFM snapshot', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — customers + RFM snapshot', 'brikpanel' ) ]; }
 		);
 	}
 

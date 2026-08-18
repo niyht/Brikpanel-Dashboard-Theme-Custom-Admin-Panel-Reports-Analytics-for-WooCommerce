@@ -125,57 +125,23 @@ function brikpanel_whatsapp_visible_for_user( $user = null ) {
 }
 
 /**
- * ISO 3166-1 alpha-2 country code → international dialing code (digits only,
- * no leading "+"). Used to complete a local phone number into the E.164-style
- * form WhatsApp needs. Filterable so a store can correct or extend it.
- *
- * @param string $cc Two-letter uppercase country code.
- * @return string Dialing code digits, or '' when unknown.
+ * The ISO country -> dialing code map that used to live here now lives in
+ * includes/brikpanel-helpers.php, next to the shared number normaliser, because
+ * the Abandoned Carts screen needs it too and this file is only loaded inside
+ * wp-admin. The function name and its `brikpanel_country_dialing_code` filter
+ * are unchanged, so anything hooking it keeps working.
  */
-function brikpanel_country_dialing_code( $cc ) {
-	$cc  = strtoupper( (string) $cc );
-	$map = array(
-		'AF' => '93', 'AL' => '355', 'DZ' => '213', 'AS' => '1', 'AD' => '376', 'AO' => '244', 'AI' => '1', 'AG' => '1',
-		'AR' => '54', 'AM' => '374', 'AW' => '297', 'AU' => '61', 'AT' => '43', 'AZ' => '994', 'BS' => '1', 'BH' => '973',
-		'BD' => '880', 'BB' => '1', 'BY' => '375', 'BE' => '32', 'BZ' => '501', 'BJ' => '229', 'BM' => '1', 'BT' => '975',
-		'BO' => '591', 'BA' => '387', 'BW' => '267', 'BR' => '55', 'BN' => '673', 'BG' => '359', 'BF' => '226', 'BI' => '257',
-		'KH' => '855', 'CM' => '237', 'CA' => '1', 'CV' => '238', 'KY' => '1', 'CF' => '236', 'TD' => '235', 'CL' => '56',
-		'CN' => '86', 'CO' => '57', 'KM' => '269', 'CG' => '242', 'CD' => '243', 'CR' => '506', 'CI' => '225', 'HR' => '385',
-		'CU' => '53', 'CY' => '357', 'CZ' => '420', 'DK' => '45', 'DJ' => '253', 'DM' => '1', 'DO' => '1', 'EC' => '593',
-		'EG' => '20', 'SV' => '503', 'GQ' => '240', 'ER' => '291', 'EE' => '372', 'SZ' => '268', 'ET' => '251', 'FJ' => '679',
-		'FI' => '358', 'FR' => '33', 'GF' => '594', 'PF' => '689', 'GA' => '241', 'GM' => '220', 'GE' => '995', 'DE' => '49',
-		'GH' => '233', 'GI' => '350', 'GR' => '30', 'GL' => '299', 'GD' => '1', 'GP' => '590', 'GU' => '1', 'GT' => '502',
-		'GG' => '44', 'GN' => '224', 'GW' => '245', 'GY' => '592', 'HT' => '509', 'HN' => '504', 'HK' => '852', 'HU' => '36',
-		'IS' => '354', 'IN' => '91', 'ID' => '62', 'IR' => '98', 'IQ' => '964', 'IE' => '353', 'IM' => '44', 'IL' => '972',
-		'IT' => '39', 'JM' => '1', 'JP' => '81', 'JE' => '44', 'JO' => '962', 'KZ' => '7', 'KE' => '254', 'KI' => '686',
-		'KW' => '965', 'KG' => '996', 'LA' => '856', 'LV' => '371', 'LB' => '961', 'LS' => '266', 'LR' => '231', 'LY' => '218',
-		'LI' => '423', 'LT' => '370', 'LU' => '352', 'MO' => '853', 'MG' => '261', 'MW' => '265', 'MY' => '60', 'MV' => '960',
-		'ML' => '223', 'MT' => '356', 'MH' => '692', 'MQ' => '596', 'MR' => '222', 'MU' => '230', 'MX' => '52', 'FM' => '691',
-		'MD' => '373', 'MC' => '377', 'MN' => '976', 'ME' => '382', 'MS' => '1', 'MA' => '212', 'MZ' => '258', 'MM' => '95',
-		'NA' => '264', 'NR' => '674', 'NP' => '977', 'NL' => '31', 'NC' => '687', 'NZ' => '64', 'NI' => '505', 'NE' => '227',
-		'NG' => '234', 'MK' => '389', 'NO' => '47', 'OM' => '968', 'PK' => '92', 'PW' => '680', 'PS' => '970', 'PA' => '507',
-		'PG' => '675', 'PY' => '595', 'PE' => '51', 'PH' => '63', 'PL' => '48', 'PT' => '351', 'PR' => '1', 'QA' => '974',
-		'RE' => '262', 'RO' => '40', 'RU' => '7', 'RW' => '250', 'KN' => '1', 'LC' => '1', 'VC' => '1', 'WS' => '685',
-		'SM' => '378', 'ST' => '239', 'SA' => '966', 'SN' => '221', 'RS' => '381', 'SC' => '248', 'SL' => '232', 'SG' => '65',
-		'SK' => '421', 'SI' => '386', 'SB' => '677', 'SO' => '252', 'ZA' => '27', 'KR' => '82', 'SS' => '211', 'ES' => '34',
-		'LK' => '94', 'SD' => '249', 'SR' => '597', 'SE' => '46', 'CH' => '41', 'SY' => '963', 'TW' => '886', 'TJ' => '992',
-		'TZ' => '255', 'TH' => '66', 'TL' => '670', 'TG' => '228', 'TO' => '676', 'TT' => '1', 'TN' => '216', 'TR' => '90',
-		'TM' => '993', 'TC' => '1', 'TV' => '688', 'UG' => '256', 'UA' => '380', 'AE' => '971', 'GB' => '44', 'US' => '1',
-		'UY' => '598', 'UZ' => '998', 'VU' => '678', 'VA' => '39', 'VE' => '58', 'VN' => '84', 'VG' => '1', 'VI' => '1',
-		'YE' => '967', 'ZM' => '260', 'ZW' => '263',
-	);
-	$code = isset( $map[ $cc ] ) ? $map[ $cc ] : '';
-
-	/**
-	 * Filter the dialing code resolved for a country. Return '' to skip
-	 * prepending (the raw digits are then used as-is).
-	 */
-	return (string) apply_filters( 'brikpanel_country_dialing_code', $code, $cc );
-}
 
 /**
  * Normalise an order's billing phone into the international digits WhatsApp
  * expects. Returns '' when the order has no usable phone.
+ *
+ * The work itself is done by the shared normaliser in includes/, which the
+ * Abandoned Carts screen calls too, so the same customer never gets two
+ * different links depending on which screen the shop manager is looking at.
+ *
+ * An order always carries a real billing country, so the normaliser's
+ * "the country is only a guess" branch never applies here.
  *
  * @param WC_Order $order
  * @return string Digits only (no "+"), or ''.
@@ -184,37 +150,12 @@ function brikpanel_order_whatsapp_number( $order ) {
 	if ( ! is_a( $order, 'WC_Order' ) ) {
 		return '';
 	}
-	$raw = trim( (string) $order->get_billing_phone() );
-	if ( $raw === '' ) {
+	if ( ! function_exists( 'brikpanel_phone_to_e164' ) ) {
 		return '';
 	}
 
-	$has_plus   = strpos( $raw, '+' ) === 0;
-	$digits     = preg_replace( '/\D+/', '', $raw );
-	$has_double = strpos( $digits, '00' ) === 0;
-
-	if ( $has_plus ) {
-		// Already international, e.g. "+55 11…".
-		$number = $digits;
-	} elseif ( $has_double ) {
-		// International access prefix "00" — drop it.
-		$number = substr( $digits, 2 );
-	} else {
-		// Local number. Prepend the billing country's dialing code, dropping a
-		// single national trunk "0" first (UK "07…" → 44 7…, and a Brazilian
-		// carrier "0" is harmless to strip). If the customer already typed the
-		// country code, keep it as-is.
-		$number = $digits;
-		$code   = brikpanel_country_dialing_code( $order->get_billing_country() );
-		if ( $code !== '' ) {
-			$local = ( strlen( $digits ) > 1 && $digits[0] === '0' ) ? substr( $digits, 1 ) : $digits;
-			$number = ( strpos( $local, $code ) === 0 ) ? $local : ( $code . $local );
-		}
-	}
-
-	$number = preg_replace( '/\D+/', '', (string) $number );
-	if ( strlen( $number ) < 6 ) {
-		// Too short to be a real dialable number.
+	$number = brikpanel_phone_to_e164( $order->get_billing_phone(), $order->get_billing_country() );
+	if ( '' === $number ) {
 		return '';
 	}
 
@@ -224,8 +165,395 @@ function brikpanel_order_whatsapp_number( $order ) {
 	return (string) apply_filters( 'brikpanel_order_whatsapp_number', $number, $order );
 }
 
+// =============================================================================
+// THE DRAFT MESSAGE — one general template plus per-status overrides
+// =============================================================================
+//
+// Opening an empty chat leaves the whole message to be retyped for every order,
+// so the shortcut carries a draft. It is still only a draft: WhatsApp opens with
+// the text in the input box and nothing is sent until the merchant presses send.
+//
+//   brikpanel_whatsapp_order_message           string — the general template.
+//   brikpanel_whatsapp_order_status_messages   array  — bare status slug =>
+//                                                       [ enabled, message ].
+//
+// A status with an enabled, non-empty override wins; everything else falls back
+// to the general template. An empty general template means no `?text=` at all,
+// i.e. exactly the pre-3.2.62 behaviour of opening a blank conversation.
+
+const BRIKPANEL_WHATSAPP_OPT_ORDER_MESSAGE  = 'brikpanel_whatsapp_order_message';
+const BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES = 'brikpanel_whatsapp_order_status_messages';
+
+/**
+ * The general draft shipped with the plugin, used until a merchant edits it.
+ *
+ * Kept as a __() string (rather than a stored default) so a store that never
+ * opens the setting still gets the message in its own language. Deliberately
+ * free of {order_items}: the orders list renders this for every visible row and
+ * that token is the only one that costs an extra query per order.
+ *
+ * @return string
+ */
+function brikpanel_whatsapp_order_default_message() {
+	return __( 'Hi {customer_first_name}, this is {site_title} about your order {order_number}. Its current status is {order_status}.', 'brikpanel' );
+}
+
+/**
+ * The general template: whatever the merchant wrote, or the built-in default.
+ *
+ * Returns '' only when the merchant deliberately cleared the field, which is
+ * the documented way to go back to opening an empty chat.
+ *
+ * @return string
+ */
+function brikpanel_whatsapp_order_general_message() {
+	$saved = get_option( BRIKPANEL_WHATSAPP_OPT_ORDER_MESSAGE, null );
+	if ( null === $saved ) {
+		// Option was never written — a fresh install gets the built-in draft.
+		return brikpanel_whatsapp_order_default_message();
+	}
+	return brikpanel_whatsapp_normalise_newlines( (string) $saved );
+}
+
+/**
+ * Browsers post textarea line breaks as CRLF; WhatsApp only needs the LF, and a
+ * stray CR survives URL-encoding as a visible %0D in the draft.
+ *
+ * @param string $text
+ * @return string
+ */
+function brikpanel_whatsapp_normalise_newlines( $text ) {
+	return str_replace( array( "\r\n", "\r" ), "\n", (string) $text );
+}
+
+/**
+ * Order statuses a merchant can write a message for, as bare slug => label.
+ *
+ * Every registered status is offered, not just BrikPanel's own: the whole point
+ * is being able to say something different for "Processing" than for "Pending
+ * payment", and third-party statuses (shipping plugins, marketplaces) are just
+ * as worth messaging about. `checkout-draft` is dropped — it is WooCommerce's
+ * internal placeholder for a checkout in progress, never a real order.
+ *
+ * @return array<string,string>
+ */
+function brikpanel_whatsapp_order_statuses() {
+	$out = array();
+	if ( function_exists( 'wc_get_order_statuses' ) ) {
+		foreach ( wc_get_order_statuses() as $key => $label ) {
+			$slug = 'wc-' === substr( $key, 0, 3 ) ? substr( $key, 3 ) : $key;
+			if ( 'checkout-draft' === $slug ) {
+				continue;
+			}
+			$out[ $slug ] = (string) $label;
+		}
+	}
+
+	/**
+	 * Filter the statuses offered in the per-status message list.
+	 *
+	 * @param array<string,string> $out Bare slug => label.
+	 */
+	return (array) apply_filters( 'brikpanel_whatsapp_order_statuses', $out );
+}
+
+/**
+ * The stored per-status overrides, normalised to a predictable shape.
+ *
+ * Cached per request: the orders list calls this once per visible row.
+ *
+ * @param bool $reset Internal — drop the cache after the option changes.
+ * @return array<string,array{enabled:bool,message:string}>
+ */
+function brikpanel_whatsapp_order_status_messages( $reset = false ) {
+	static $cache = null;
+
+	if ( $reset ) {
+		$cache = null;
+		return array();
+	}
+	if ( null !== $cache ) {
+		return $cache;
+	}
+
+	$cache = array();
+	foreach ( (array) get_option( BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES, array() ) as $slug => $cfg ) {
+		$slug = sanitize_key( (string) $slug );
+		if ( '' === $slug || ! is_array( $cfg ) ) {
+			continue;
+		}
+		$cache[ $slug ] = array(
+			'enabled' => ! empty( $cfg['enabled'] ),
+			'message' => isset( $cfg['message'] ) ? brikpanel_whatsapp_normalise_newlines( (string) $cfg['message'] ) : '',
+		);
+	}
+	return $cache;
+}
+
+/**
+ * Flush the per-request cache the moment the option changes, so the post-save
+ * settings render in the same request already reflects what was just stored.
+ */
+$brikpanel_wa_status_reset = static function () {
+	brikpanel_whatsapp_order_status_messages( true );
+};
+add_action( 'add_option_' . BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES, $brikpanel_wa_status_reset );
+add_action( 'update_option_' . BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES, $brikpanel_wa_status_reset );
+add_action( 'delete_option_' . BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES, $brikpanel_wa_status_reset );
+unset( $brikpanel_wa_status_reset );
+
+/**
+ * The template that applies to one order: its status override when that override
+ * is switched on and actually says something, otherwise the general template.
+ *
+ * @param WC_Order $order
+ * @return string
+ */
+function brikpanel_whatsapp_order_template_for( $order ) {
+	$per_status = brikpanel_whatsapp_order_status_messages();
+	$slug       = $order->get_status();
+
+	if ( isset( $per_status[ $slug ] ) && $per_status[ $slug ]['enabled'] && '' !== trim( $per_status[ $slug ]['message'] ) ) {
+		return $per_status[ $slug ]['message'];
+	}
+	return brikpanel_whatsapp_order_general_message();
+}
+
+/**
+ * Reduce a WooCommerce-formatted HTML fragment to the plain text WhatsApp shows.
+ *
+ * Kept as its own name because this module reaches for it on every item name
+ * and every piece of item meta; the reasoning about entity and whitespace
+ * order now lives with the shared helper.
+ *
+ * @param string $html
+ * @return string
+ */
+function brikpanel_whatsapp_plain_text( $html ) {
+	return brikpanel_plain_text_from_html( $html );
+}
+
+/**
+ * The order's line items as plain text, one product per line.
+ *
+ * Simple and variable products go down the same path. The quantity and name
+ * always come from the line item; the variation's attributes are appended from
+ * the item's own meta, which is where WooCommerce records what was actually
+ * bought.
+ *
+ * The one subtlety is that stores disagree about where the attributes live.
+ * Depending on woocommerce_product_variation_title_include_attributes, a
+ * variation's stored name is either the bare parent ("Hoodie") or the parent
+ * with its attributes already spelled out ("Hoodie - Ekru, L"). Appending the
+ * meta blindly produces "Hoodie - Ekru, L (Colour: Ekru, Size: L)" on the second
+ * kind of store, so any attribute the name already states is skipped and only
+ * the genuinely new ones are added.
+ *
+ * @param WC_Order $order
+ * @return string
+ */
+function brikpanel_whatsapp_order_items_text( $order ) {
+	$lines = array();
+
+	foreach ( $order->get_items() as $item ) {
+		$name = brikpanel_whatsapp_plain_text( $item->get_name() );
+		$qty  = method_exists( $item, 'get_quantity' ) ? (int) $item->get_quantity() : 1;
+		$line = $qty . ' × ' . $name;
+
+		$extras = array();
+		if ( method_exists( $item, 'get_formatted_meta_data' ) ) {
+			$folded = function_exists( 'mb_strtolower' ) ? mb_strtolower( $name, 'UTF-8' ) : strtolower( $name );
+			foreach ( $item->get_formatted_meta_data() as $meta ) {
+				$key   = brikpanel_whatsapp_plain_text( $meta->display_key );
+				$value = brikpanel_whatsapp_plain_text( $meta->display_value );
+				if ( '' === $value ) {
+					continue;
+				}
+				$needle = function_exists( 'mb_strtolower' ) ? mb_strtolower( $value, 'UTF-8' ) : strtolower( $value );
+				if ( false !== strpos( $folded, $needle ) ) {
+					// The item name already says this; repeating it reads badly.
+					continue;
+				}
+				$extras[] = '' !== $key ? $key . ': ' . $value : $value;
+			}
+		}
+
+		if ( $extras ) {
+			$line .= ' (' . implode( ', ', $extras ) . ')';
+		}
+		$lines[] = $line;
+	}
+
+	return implode( "\n", $lines );
+}
+
+/**
+ * The {placeholders} a draft understands, resolved for one order.
+ *
+ * The token names match the status-change email placeholders on purpose, so a
+ * merchant learns one vocabulary for both features. The values differ: an email
+ * wants HTML, a WhatsApp draft wants plain text.
+ *
+ * Only the tokens the template actually uses are resolved. That is not a
+ * micro-optimisation: the orders list builds a draft for every visible row, and
+ * {order_items} is the one token that costs a query per order.
+ *
+ * @param WC_Order $order    Order the draft is about.
+ * @param string   $template Template being filled, used to skip unused tokens.
+ * @return array<string,string>
+ */
+function brikpanel_whatsapp_order_tokens( $order, $template ) {
+	$uses = static function ( $token ) use ( $template ) {
+		return false !== strpos( $template, $token );
+	};
+
+	// Numbers, dates and phone numbers are isolated because a right-to-left
+	// message reorders them otherwise: the separators inside them are neutral
+	// characters, and an Arabic paragraph lays the pieces out back to front.
+	$tokens = array(
+		'{order_number}'        => brikpanel_bidi_isolate_ltr( (string) $order->get_order_number() ),
+		'{order_id}'            => brikpanel_bidi_isolate_ltr( (string) $order->get_id() ),
+		'{order_status}'        => function_exists( 'wc_get_order_status_name' ) ? (string) wc_get_order_status_name( $order->get_status() ) : (string) $order->get_status(),
+		'{customer_first_name}' => (string) $order->get_billing_first_name(),
+		'{customer_last_name}'  => (string) $order->get_billing_last_name(),
+		'{customer_full_name}'  => brikpanel_whatsapp_plain_text( $order->get_formatted_billing_full_name() ),
+		'{billing_email}'       => (string) $order->get_billing_email(),
+		'{billing_phone}'       => brikpanel_bidi_isolate_ltr( (string) $order->get_billing_phone() ),
+		'{site_title}'          => wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES ),
+		'{site_url}'            => home_url(),
+	);
+
+	if ( $uses( '{order_date}' ) ) {
+		$created = $order->get_date_created();
+		$tokens['{order_date}'] = $created && function_exists( 'wc_format_datetime' ) ? brikpanel_bidi_isolate_ltr( (string) wc_format_datetime( $created ) ) : '';
+	}
+
+	if ( $uses( '{order_total}' ) ) {
+		// Deliberately not get_formatted_order_total(): that runs the
+		// woocommerce_get_formatted_order_total filter, where third-party
+		// currency plugins have been seen to fatal, and on a refunded order it
+		// returns struck-through-plus-new markup that flattens into two prices
+		// sitting next to each other. The raw total is what a customer expects.
+		$tokens['{order_total}'] = brikpanel_money_text(
+			$order->get_total(),
+			array( 'currency' => $order->get_currency() )
+		);
+	}
+
+	if ( $uses( '{order_view_url}' ) ) {
+		$tokens['{order_view_url}'] = esc_url_raw( (string) $order->get_view_order_url() );
+	}
+
+	if ( $uses( '{order_items}' ) ) {
+		$tokens['{order_items}'] = brikpanel_whatsapp_order_items_text( $order );
+	}
+
+	/**
+	 * Filter the placeholder map for an order's WhatsApp draft.
+	 *
+	 * @param array    $tokens   token => plain-text replacement.
+	 * @param WC_Order $order    Order.
+	 * @param string   $template Template being filled.
+	 */
+	return (array) apply_filters( 'brikpanel_whatsapp_order_tokens', $tokens, $order, $template );
+}
+
+/**
+ * The finished draft for an order, or '' when there is nothing to prefill.
+ *
+ * Wrapped in a Throwable guard because this runs on every orders-list render:
+ * a third-party filter blowing up inside a token must cost the draft, not the
+ * whole screen.
+ *
+ * @param WC_Order $order
+ * @return string
+ */
+function brikpanel_whatsapp_order_message( $order ) {
+	if ( ! is_a( $order, 'WC_Order' ) ) {
+		return '';
+	}
+
+	try {
+		$template = brikpanel_whatsapp_order_template_for( $order );
+		if ( '' === trim( $template ) ) {
+			return '';
+		}
+
+		$tokens = brikpanel_whatsapp_order_tokens( $order, $template );
+
+		// A placeholder given a line of its own — the natural way to write
+		// {order_items} — would leave a blank line behind when it resolves to
+		// nothing. Drop the whole line instead of substituting emptiness into
+		// it. Only a line that is *nothing but* the placeholder is removed, so a
+		// merchant's own blank lines are left alone.
+		foreach ( $tokens as $token => $value ) {
+			if ( '' === $value ) {
+				$template = preg_replace( '/^[ \t]*' . preg_quote( $token, '/' ) . '[ \t]*\R?/m', '', $template );
+			}
+		}
+
+		$text = strtr( $template, $tokens );
+
+		// A sentence written around a placeholder also has to survive that
+		// placeholder being empty mid-line (an order with no billing first
+		// name). Same tidy-up the abandoned-cart draft does: close up the space
+		// before a comma and collapse the run of spaces left behind.
+		if ( in_array( '', $tokens, true ) ) {
+			$text = preg_replace( '/[ \t]+([,،])/u', '$1', $text );
+			$text = preg_replace( '/[ \t]{2,}/', ' ', $text );
+		}
+
+		$text = trim( (string) $text );
+
+		/**
+		 * Maximum characters in a prefilled draft. WhatsApp carries it in the
+		 * URL, so an unbounded order with fifty line items would produce a link
+		 * long enough for a browser or the app to truncate mid-word.
+		 *
+		 * @param int $max
+		 */
+		$max = (int) apply_filters( 'brikpanel_whatsapp_order_message_max_length', 1200 );
+		if ( $max > 0 && function_exists( 'mb_strlen' ) && mb_strlen( $text ) > $max ) {
+			// Cut by characters, not bytes: a byte-wise cut lands mid-character
+			// in Arabic, Turkish or any other non-ASCII text.
+			$text = mb_substr( $text, 0, $max );
+
+			// Prefer to end on a whole line, so a long item list stops after a
+			// product rather than halfway through its name. Only when that keeps
+			// most of the draft — a single very long line would otherwise be cut
+			// back to almost nothing.
+			$break = mb_strrpos( $text, "\n" );
+			if ( false !== $break && $break > (int) ( $max * 0.6 ) ) {
+				$text = mb_substr( $text, 0, $break );
+			}
+			$text = rtrim( $text );
+
+			// The cut can land between an isolate and its terminator, and an
+			// unclosed isolate drags everything after it into the wrong
+			// direction. Repaired before the filter below rather than after,
+			// so text a filter appends is not stranded inside the repair.
+			$text = brikpanel_bidi_close_isolates( $text );
+		}
+
+		/**
+		 * Filter the finished WhatsApp draft for an order.
+		 *
+		 * @param string   $text
+		 * @param WC_Order $order
+		 */
+		return (string) apply_filters( 'brikpanel_whatsapp_order_message', $text, $order );
+	} catch ( \Throwable $e ) {
+		// Fall back to a message-less chat rather than taking the screen down.
+		return '';
+	}
+}
+
 /**
  * Full https://wa.me/ URL for an order, or '' when no phone is available.
+ *
+ * Carries the draft as `?text=` when one resolves. Both surfaces (the orders
+ * list icon and the order-edit button) go through here, so they can never drift
+ * apart.
  *
  * @param WC_Order $order
  * @return string
@@ -235,7 +563,40 @@ function brikpanel_order_whatsapp_url( $order ) {
 	if ( $number === '' ) {
 		return '';
 	}
-	return apply_filters( 'brikpanel_order_whatsapp_url', 'https://wa.me/' . $number, $order );
+
+	$url     = 'https://wa.me/' . $number;
+	$message = brikpanel_whatsapp_order_message( $order );
+	if ( '' !== $message ) {
+		$url .= '?text=' . rawurlencode( $message );
+	}
+
+	return apply_filters( 'brikpanel_order_whatsapp_url', $url, $order );
+}
+
+/**
+ * Escape a WhatsApp URL for an href attribute, keeping the draft's line breaks.
+ *
+ * esc_url() cannot be used here: it strips %0A and %0D outright
+ * (wp-includes/formatting.php, the CRLF guard that stops header injection), so
+ * every line break in the draft would silently vanish and the message would
+ * arrive as one run-on paragraph. That guard protects redirects and headers, not
+ * an anchor's href, where encoded newlines are exactly what WhatsApp expects.
+ *
+ * Rather than skip escaping, the URL is matched against the only shape this
+ * module ever produces — https://wa.me/<digits> with an optional percent-encoded
+ * text parameter — and attribute-escaped when it fits. Anything else (a filter
+ * rewrote it, so we can no longer reason about it) falls back to esc_url and
+ * loses the newlines, which is the safe direction to fail in.
+ *
+ * @param string $url
+ * @return string Escaped for use inside a double-quoted attribute.
+ */
+function brikpanel_whatsapp_esc_url( $url ) {
+	$url = (string) $url;
+	if ( preg_match( '#^https://wa\.me/\d+(\?text=[A-Za-z0-9\-_.~%]*)?$#', $url ) ) {
+		return esc_attr( $url );
+	}
+	return esc_url( $url );
 }
 
 /**
@@ -338,7 +699,7 @@ function brikpanel_wa_render_list_icon( $order ) {
 	$title = __( 'Message the customer on WhatsApp', 'brikpanel' );
 	printf(
 		'<a href="%1$s" target="_blank" rel="noopener" class="brikpanel-wa-list-link" title="%2$s" aria-label="%2$s">%3$s</a>',
-		esc_url( $url ),
+		brikpanel_whatsapp_esc_url( $url ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped inside; esc_url would eat the draft's line breaks.
 		esc_attr( $title ),
 		brikpanel_order_whatsapp_icon_svg( 18 ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static inline SVG.
 	);
@@ -365,7 +726,7 @@ function brikpanel_wa_render_order_screen_button( $order ) {
 	}
 	printf(
 		'<p class="brikpanel-wa-order-screen"><a href="%1$s" target="_blank" rel="noopener" class="button brikpanel-wa-btn">%2$s<span>%3$s</span></a></p>',
-		esc_url( $url ),
+		brikpanel_whatsapp_esc_url( $url ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped inside; esc_url would eat the draft's line breaks.
 		brikpanel_order_whatsapp_icon_svg( 16 ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static inline SVG.
 		esc_html__( 'Message on WhatsApp', 'brikpanel' )
 	);
@@ -509,6 +870,30 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'default'  => [],
 		],
 		[
+			'name'        => __( 'Message', 'brikpanel' ),
+			'id'          => BRIKPANEL_WHATSAPP_OPT_ORDER_MESSAGE,
+			'type'        => 'textarea',
+			'desc'        => sprintf(
+				/* translators: %s: comma-separated list of placeholder tags, e.g. {order_number}, {order_status}. */
+				__( 'Placeholders: %s', 'brikpanel' ),
+				implode( ', ', array_keys( brikpanel_whatsapp_order_placeholder_help() ) )
+			),
+			'desc_tip'    => __( 'WhatsApp opens with this text already typed in, so you only have to press send - nothing goes out on its own. Write it in any language, and use line breaks freely. {order_items} lists every product on its own line, so give it a line of its own. Clear this field to go back to opening an empty conversation.', 'brikpanel' ),
+			'placeholder' => brikpanel_whatsapp_order_default_message(),
+			'default'     => brikpanel_whatsapp_order_default_message(),
+			'css'         => 'width:340px;height:90px;',
+		],
+		[
+			// The id is the option this card writes, not a name of its own, so
+			// the settings export walker picks the per-status messages up with
+			// every other setting. (Nothing is posted under this name — the
+			// card's own inputs are brikpanel_whatsapp_status[<slug>][…] — so
+			// WooCommerce's generic save loop skips it and leaves the option to
+			// the dedicated handler below.)
+			'type' => 'brikpanel_whatsapp_status_messages',
+			'id'   => BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES,
+		],
+		[
 			'type' => 'sectionend',
 			'id'   => 'brk_whatsapp_title',
 		],
@@ -516,6 +901,203 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 
 	return array_merge( $fields, $block );
 }, 8 );
+
+/**
+ * The placeholders offered in the UI helper, as token => human description.
+ *
+ * Intentionally the same vocabulary as the status-change emails helper
+ * (brikpanel_status_email_placeholder_help), so a merchant who has written one
+ * already knows the other. Only the resolved values differ: plain text here,
+ * HTML there.
+ *
+ * @return array<string,string>
+ */
+function brikpanel_whatsapp_order_placeholder_help() {
+	return [
+		'{customer_first_name}' => __( 'Customer first name', 'brikpanel' ),
+		'{customer_full_name}'  => __( 'Customer full name', 'brikpanel' ),
+		'{order_number}'        => __( 'Order number', 'brikpanel' ),
+		'{order_status}'        => __( 'Current status name', 'brikpanel' ),
+		'{order_date}'          => __( 'Order date', 'brikpanel' ),
+		'{order_total}'         => __( 'Order total', 'brikpanel' ),
+		'{order_items}'         => __( 'List of items, one per line', 'brikpanel' ),
+		'{order_view_url}'      => __( 'Order view link', 'brikpanel' ),
+		'{billing_email}'       => __( 'Customer email', 'brikpanel' ),
+		'{site_title}'          => __( 'Store name', 'brikpanel' ),
+	];
+}
+
+/**
+ * Render the "Message per order status" card: one collapsible block per order
+ * status, each with an on/off toggle and its own draft.
+ *
+ * Reuses the card markup and styling of the status-change emails card
+ * (front-end/order-statuses/brikpanel-status-emails.*): the same .bp-cse-*
+ * classes, the same expand/collapse and token-insert behaviour, and the same
+ * "close the table WooCommerce opened, emit the card, reopen an empty one for
+ * the trailing sectionend" dance. Both stylesheets are already enqueued for the
+ * whole BrikPanel settings tab, so nothing extra is loaded for this section.
+ */
+function brikpanel_render_whatsapp_status_messages_field() {
+	$statuses = brikpanel_whatsapp_order_statuses();
+	$saved    = brikpanel_whatsapp_order_status_messages();
+	$help     = brikpanel_whatsapp_order_placeholder_help();
+	$custom   = function_exists( 'brikpanel_get_custom_order_statuses' ) ? brikpanel_get_custom_order_statuses() : [];
+
+	// What an empty box falls back to, shown as the placeholder. Trimmed to one
+	// readable line: the general message can run to a thousand characters.
+	$fallback = trim( preg_replace( '/\s+/u', ' ', brikpanel_whatsapp_order_general_message() ) );
+	if ( function_exists( 'mb_strlen' ) && mb_strlen( $fallback ) > 90 ) {
+		$fallback = rtrim( mb_substr( $fallback, 0, 90 ) ) . '…';
+	}
+	?>
+	</table>
+	<section class="bp-cse-card">
+		<header class="bp-cos-card__head">
+			<div>
+				<h3 class="bp-cos-card__title"><?php esc_html_e( 'Message per order status', 'brikpanel' ); ?></h3>
+				<p class="bp-cos-card__sub"><?php esc_html_e( 'Say something different depending on where the order stands - one message while it is being prepared, another while it is still awaiting payment. Switch a status on and write its message; every status you leave off uses the general message above.', 'brikpanel' ); ?></p>
+			</div>
+		</header>
+
+		<?php if ( ! $statuses ) : ?>
+			<p class="bp-cos-empty"><?php esc_html_e( 'No order statuses are registered yet.', 'brikpanel' ); ?></p>
+		<?php else : ?>
+			<div class="bp-cse-list">
+				<?php foreach ( $statuses as $slug => $label ) :
+					$cfg     = isset( $saved[ $slug ] ) ? $saved[ $slug ] : [];
+					$enabled = ! empty( $cfg['enabled'] );
+					$message = isset( $cfg['message'] ) ? $cfg['message'] : '';
+					// BrikPanel's own statuses carry a colour; core and
+					// third-party ones get a neutral dot rather than a made-up one.
+					$color   = isset( $custom[ $slug ]['color'] ) ? $custom[ $slug ]['color'] : '#8a8a8a';
+					$base    = 'brikpanel_whatsapp_status[' . esc_attr( $slug ) . ']';
+					$field   = 'bp-wam-' . $slug;
+					?>
+					<div class="bp-cse-item<?php echo $enabled ? ' is-on' : ''; ?>" data-cse-item>
+						<div class="bp-cse-head" data-cse-toggle role="button" tabindex="0" aria-expanded="false">
+							<span class="bp-cos-dot" style="background:<?php echo esc_attr( $color ); ?>"></span>
+							<span class="bp-cse-title"><?php echo esc_html( $label ); ?></span>
+							<code class="bp-cos-slug"><?php echo esc_html( $slug ); ?></code>
+							<span class="bp-cse-state" data-cse-state><?php echo $enabled ? esc_html__( 'On', 'brikpanel' ) : esc_html__( 'Off', 'brikpanel' ); ?></span>
+							<label class="bp-cse-switch" data-cse-switch>
+								<input type="hidden" name="<?php echo $base; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped above. ?>[enabled]" value="0">
+								<input type="checkbox" name="<?php echo $base; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped above. ?>[enabled]" value="1" <?php checked( $enabled ); ?> data-cse-enable>
+								<span class="bp-cse-slider"></span>
+							</label>
+							<svg class="bp-cse-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+						</div>
+
+						<div class="bp-cse-body" data-cse-body>
+							<div class="bp-cse-body-inner">
+								<div class="bp-cse-field">
+									<label class="bp-cse-label" for="<?php echo esc_attr( $field ); ?>"><?php esc_html_e( 'Message', 'brikpanel' ); ?></label>
+									<textarea id="<?php echo esc_attr( $field ); ?>" class="bp-cse-textarea" name="<?php echo $base; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped above. ?>[message]" rows="5" data-cse-insertable placeholder="<?php echo esc_attr( $fallback ); ?>"><?php echo esc_textarea( $message ); ?></textarea>
+								</div>
+
+								<div class="bp-cse-field">
+									<span class="bp-cse-label"><?php esc_html_e( 'Insert placeholder', 'brikpanel' ); ?></span>
+									<div class="bp-cse-tokens">
+										<?php foreach ( $help as $token => $desc ) : ?>
+											<button type="button" class="bp-cse-token" data-token="<?php echo esc_attr( $token ); ?>" title="<?php echo esc_attr( $desc ); ?>"><?php echo esc_html( $token ); ?></button>
+										<?php endforeach; ?>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				<?php endforeach; ?>
+			</div>
+		<?php endif; ?>
+	</section>
+	<table class="form-table">
+	<?php
+}
+add_action( 'woocommerce_admin_field_brikpanel_whatsapp_status_messages', 'brikpanel_render_whatsapp_status_messages_field' );
+
+/**
+ * Keep the general message plain, single-purpose text.
+ *
+ * WooCommerce would run a textarea through wp_kses_post, which keeps markup that
+ * WhatsApp would only ever show as literal angle brackets. Mirrors the
+ * abandoned-cart popup sanitiser: strip tags, strip control characters other
+ * than the line breaks we want to preserve, then cut by characters.
+ *
+ * @param mixed  $value     Value WooCommerce resolved.
+ * @param array  $option    Field definition.
+ * @param string $raw_value Raw posted value.
+ * @return string
+ */
+function brikpanel_whatsapp_sanitize_message( $value, $option, $raw_value ) {
+	return brikpanel_whatsapp_clean_message( $raw_value );
+}
+add_filter( 'woocommerce_admin_settings_sanitize_option_' . BRIKPANEL_WHATSAPP_OPT_ORDER_MESSAGE, 'brikpanel_whatsapp_sanitize_message', 10, 3 );
+
+/**
+ * Shared cleaner for both the general message and the per-status ones.
+ *
+ * The control-character class deliberately leaves 0x0A (LF) alone; CR is folded
+ * into LF first so a browser's CRLF does not survive as a stray %0D in the URL.
+ *
+ * @param string $raw
+ * @return string
+ */
+function brikpanel_whatsapp_clean_message( $raw ) {
+	$clean = wp_strip_all_tags( (string) $raw );
+	$clean = brikpanel_whatsapp_normalise_newlines( $clean );
+	$clean = preg_replace( '/[\x00-\x09\x0B-\x1F\x7F]/', '', $clean );
+	$clean = trim( (string) $clean );
+
+	// Count characters, not bytes: a byte-wise cut lands mid-character in
+	// Arabic, Turkish or any other non-ASCII text and corrupts the tail.
+	return function_exists( 'mb_substr' ) ? mb_substr( $clean, 0, 1000 ) : substr( $clean, 0, 1000 );
+}
+
+/**
+ * Persist the per-status messages.
+ *
+ * Runs at priority 12, after WooCommerce has saved the section's regular fields,
+ * and only for the Orders section so posting any other section never touches
+ * this option. Statuses that no longer exist are dropped on the way through.
+ */
+add_action( 'woocommerce_update_options_brikpanel', function () {
+	if ( ! function_exists( 'brikpanel_settings_get_current_section' )
+		|| 'orders' !== brikpanel_settings_get_current_section() ) {
+		return;
+	}
+	if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		return;
+	}
+
+	$posted = isset( $_POST['brikpanel_whatsapp_status'] ) && is_array( $_POST['brikpanel_whatsapp_status'] )
+		? wp_unslash( $_POST['brikpanel_whatsapp_status'] ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- each field sanitised individually below.
+		: [];
+
+	$valid = array_keys( brikpanel_whatsapp_order_statuses() );
+	$clean = [];
+
+	foreach ( $posted as $slug => $cfg ) {
+		$slug = sanitize_key( (string) $slug );
+		if ( '' === $slug || ! is_array( $cfg ) || ! in_array( $slug, $valid, true ) ) {
+			continue;
+		}
+		$message = isset( $cfg['message'] ) ? brikpanel_whatsapp_clean_message( $cfg['message'] ) : '';
+		$enabled = ! empty( $cfg['enabled'] );
+
+		// Nothing written and switched off is the default state; not storing it
+		// keeps the option from growing a row for every status a merchant
+		// merely scrolled past.
+		if ( ! $enabled && '' === $message ) {
+			continue;
+		}
+		$clean[ $slug ] = [
+			'enabled' => $enabled,
+			'message' => $message,
+		];
+	}
+
+	update_option( BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES, $clean );
+}, 12 );
 
 // =============================================================================
 // PER-USER OPT-IN — profile checkbox for a user whose role is hidden by default

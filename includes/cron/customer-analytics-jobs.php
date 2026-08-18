@@ -505,19 +505,23 @@ add_action( 'brikpanel_cron_register', function () {
 	Brikpanel_Cron::register_handler(
 		'brikpanel_recompute_customer_metrics',
 		'brikpanel_recompute_customer_metrics_handler',
-		[
-			'label'       => __( 'Recompute Customer Metrics (LTV + RFM)', 'brikpanel' ),
-			'description' => __( 'Aggregates per-customer LTV totals from order history.', 'brikpanel' ),
-		]
+		static function () {
+			return [
+				'label'       => __( 'Recompute Customer Metrics (LTV + RFM)', 'brikpanel' ),
+				'description' => __( 'Aggregates per-customer LTV totals from order history.', 'brikpanel' ),
+			];
+		}
 	);
 
 	Brikpanel_Cron::register_handler(
 		'brikpanel_recompute_cohort_retention',
 		'brikpanel_recompute_cohort_retention_handler',
-		[
-			'label'       => __( 'Recompute Cohort Retention', 'brikpanel' ),
-			'description' => __( 'Builds the monthly cohort × period retention matrix.', 'brikpanel' ),
-		]
+		static function () {
+			return [
+				'label'       => __( 'Recompute Cohort Retention', 'brikpanel' ),
+				'description' => __( 'Builds the monthly cohort × period retention matrix.', 'brikpanel' ),
+			];
+		}
 	);
 
 	// Schedule the first runs for ~03:00 / 03:30 GMT tomorrow, daily after that.

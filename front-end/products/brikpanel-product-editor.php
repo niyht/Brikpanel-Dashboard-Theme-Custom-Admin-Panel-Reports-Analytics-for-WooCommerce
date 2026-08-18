@@ -25,6 +25,36 @@ class Brikpanel_Product_Editor {
      */
     private $save_warnings = [];
 
+    /**
+     * Global attribute taxonomies this save request created from scratch
+     * (see promote_attribute_to_global()). Non-empty only when the merchant
+     * typed a brand-new attribute name and it was promoted, which is what
+     * tells the AJAX response to hand back a refreshed global-attribute list.
+     *
+     * @var string[]
+     */
+    private $promoted_attributes = [];
+
+    /**
+     * How many global attribute taxonomies this save request has created.
+     * Capped so a malformed or tampered payload cannot spawn a taxonomy per
+     * attribute row in a single request.
+     *
+     * @var int
+     */
+    private $promoted_this_save = 0;
+
+    /**
+     * Axis keys the client posted, mapped to the taxonomy they were promoted
+     * to during this save (e.g. `kleur` => `pa_kleur`). Handed back in the AJAX
+     * response so the editor can re-point its attribute rows without a reload;
+     * pairing on the client's OWN key is exact, where pairing on the attribute
+     * label is not (binding to an existing global can change the label).
+     *
+     * @var array<string,string>
+     */
+    private $promoted_axis_map = [];
+
     public function __construct() {
         // Always register the page slug so WordPress doesn't throw a permission error
         // when someone navigates to the URL while the editor is disabled.
@@ -42,6 +72,7 @@ class Brikpanel_Product_Editor {
         }
         add_action('admin_init', [$this, 'handle_redirects']);
         add_filter('get_edit_post_link', [$this, 'modify_edit_link'], 10, 2);
+        add_filter('redirect_post_location', [$this, 'keep_native_editor_after_save'], 10, 2);
         add_filter('admin_body_class', [$this, 'add_body_class']);
 
         // When our custom product editor page is the current request, lie to
@@ -299,6 +330,20 @@ class Brikpanel_Product_Editor {
             return;
         }
 
+        // Per-request escape hatch. `&brikpanel=0` on a native product URL opens
+        // the WooCommerce editor this once; nothing is stored, so the next
+        // product still opens in BrikPanel. It is what the "Open in WooCommerce"
+        // note links to (native_edit_url()), and without it that note has no
+        // reachable destination at all on a store where everyone works in the
+        // BrikPanel interface. No nonce: this only chooses which screen renders,
+        // changes no state, and every reachable target is already gated by the
+        // edit_products check above. Placed AFTER the BrikPanel-page branch so
+        // the flag can never suppress the auto-draft creation that "Add new
+        // product" depends on.
+        if (self::native_editor_requested()) {
+            return;
+        }
+
         if ($pagenow === 'post-new.php' && isset($_GET['post_type']) && sanitize_key($_GET['post_type']) === 'product') {
             wp_safe_redirect(admin_url('admin.php?page=brikpanel-product-editor'));
             exit;
@@ -336,6 +381,88 @@ class Brikpanel_Product_Editor {
             return admin_url('admin.php?page=brikpanel-product-editor&product_id=' . intval($post_id));
         }
         return $link;
+    }
+
+    /**
+     * URL that opens a product in the native WooCommerce editor, once.
+     *
+     * Two things stand between a merchant and that screen: modify_edit_link()
+     * above rewrites every product edit link to the BrikPanel editor, and
+     * handle_redirects() sends the raw post.php URL back here anyway. The
+     * `brikpanel=0` flag is honoured by handle_redirects() for that single
+     * request only, nothing is stored, so the next product still opens in
+     * BrikPanel, which is what a merchant who lives in this interface expects.
+     *
+     * @param int $product_id Product post ID.
+     * @return string Admin URL.
+     */
+    private static function native_edit_url($product_id) {
+        return admin_url('post.php?post=' . (int) $product_id . '&action=edit&brikpanel=0');
+    }
+
+    /**
+     * Whether this request explicitly asked for the native editor.
+     *
+     * `is_scalar()` before any string function: `?brikpanel[]=0` hands an array
+     * to sanitize_key(), which is a TypeError on PHP 8 and would take down
+     * admin_init for the whole dashboard.
+     *
+     * @return bool
+     */
+    private static function native_editor_requested() {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen selection.
+        $flag = isset($_GET['brikpanel']) ? wp_unslash($_GET['brikpanel']) : null;
+        return is_scalar($flag) && sanitize_key((string) $flag) === '0';
+    }
+
+    /**
+     * Keep the native editor after a save made from it.
+     *
+     * Once the classic editor saves, wp-admin/post.php builds its redirect from
+     * get_edit_post_link(), which modify_edit_link() above rewrites to the
+     * BrikPanel editor. So a merchant who deliberately opened the WooCommerce
+     * editor gets thrown out of it at the exact moment they press Update, and
+     * the type-specific settings they went there for scroll past unconfirmed.
+     *
+     * The submitted form carries `_wp_http_referer`, which still holds the
+     * `brikpanel=0` flag, so when it is there we rebuild the native target and
+     * keep WordPress's own notice argument (`message=1`…) intact. Drop the flag
+     * from the address bar and the next load returns to BrikPanel as usual.
+     *
+     * @param string $location Redirect target.
+     * @param int    $post_id  Post being saved.
+     * @return string
+     */
+    public function keep_native_editor_after_save($location, $post_id) {
+        if (get_post_type($post_id) !== 'product') {
+            return $location;
+        }
+        $referer = wp_get_referer();
+        if (!$referer) {
+            return $location;
+        }
+        $ref_query = (string) wp_parse_url($referer, PHP_URL_QUERY);
+        if ($ref_query === '') {
+            return $location;
+        }
+        $ref_args = [];
+        wp_parse_str($ref_query, $ref_args);
+        $flag = isset($ref_args['brikpanel']) ? $ref_args['brikpanel'] : null;
+        if (!is_scalar($flag) || sanitize_key((string) $flag) !== '0') {
+            return $location;
+        }
+
+        // Carry over whatever WordPress put on the redirect (message, revision…)
+        // except the routing args, which are what sent the user to BrikPanel.
+        $carry = [];
+        $query = (string) wp_parse_url($location, PHP_URL_QUERY);
+        if ($query !== '') {
+            wp_parse_str($query, $carry);
+        }
+        unset($carry['page'], $carry['product_id'], $carry['post'], $carry['action'], $carry['brikpanel']);
+
+        $native = self::native_edit_url($post_id);
+        return $carry ? add_query_arg($carry, $native) : $native;
     }
 
     /**
@@ -632,24 +759,7 @@ class Brikpanel_Product_Editor {
         }
 
         // Global WC attributes for custom variation mode
-        $global_attributes = [];
-        foreach (wc_get_attribute_taxonomies() as $attr) {
-            $taxonomy = wc_attribute_taxonomy_name($attr->attribute_name);
-            $terms = get_terms(['taxonomy' => $taxonomy, 'hide_empty' => false, 'orderby' => 'name']);
-            $term_names = [];
-            if (!is_wp_error($terms)) {
-                foreach ($terms as $term) {
-                    $term_names[] = $term->name;
-                }
-            }
-            $global_attributes[] = [
-                'id'       => (int) $attr->attribute_id,
-                'name'     => $attr->attribute_label ?: $attr->attribute_name,
-                'slug'     => $attr->attribute_name,
-                'taxonomy' => $taxonomy,
-                'terms'    => $term_names,
-            ];
-        }
+        $global_attributes = $this->build_global_attributes_payload();
 
         // All existing product tags for autocomplete
         $all_tags = get_terms(['taxonomy' => 'product_tag', 'hide_empty' => false, 'fields' => 'names']);
@@ -813,6 +923,9 @@ class Brikpanel_Product_Editor {
                 // nothing picked) the nonce is absent, so no third-party handler
                 // runs at all.
                 $wc_meta_nonce_field = wp_nonce_field('woocommerce_save_data', 'woocommerce_meta_nonce', false, false);
+                // Deliberately NOT `brikpanel-pe-card-wide`: the embedded panels
+                // force every control to fill its card, so widening this one
+                // turns a price box into a 1200px-long input.
                 $wc_extras_card = '<div class="brikpanel-pe-card brikpanel-pe-wc-fields">'
                     . '<label>' . esc_html__('Additional product data', 'brikpanel') . '</label>'
                     . '<div class="brikpanel-pe-wc-fields-content">'
@@ -827,8 +940,15 @@ class Brikpanel_Product_Editor {
             }
         }
         ?>
+        <?php
+        // Opt-in wide layout. Off by default: the centred column is the design,
+        // and a merchant who wants the variations table and the descriptions to
+        // spread across a big monitor asks for it in settings. The class is the
+        // only switch — with it absent the widescreen CSS matches nothing.
+        $bpe_widescreen = get_option('brikpanel_pe_widescreen', 'no') === 'yes';
+        ?>
         <div class="wrap">
-        <div class="brikpanel-pe">
+        <div class="brikpanel-pe<?php echo $bpe_widescreen ? ' brikpanel-pe-widescreen' : ''; ?>">
             <input type="hidden" id="bpe-product-id" value="<?php echo esc_attr($product_id); ?>" data-live="<?php echo $is_live ? '1' : '0'; ?>">
 
             <!-- Header -->
@@ -1034,8 +1154,37 @@ class Brikpanel_Product_Editor {
                 </div>
             </div>
 
+            <?php
+            // Product types whose own product-data panel this editor cannot show
+            // (Product Bundles, Composite Products, Bookings…). Their fields are
+            // left completely untouched on save — see unrendered_type_panels() —
+            // so tell the merchant where those settings live instead of leaving
+            // them wondering why the section is missing.
+            $bpe_unrendered_panels = $is_edit ? self::unrendered_type_panels($product) : [];
+            $bpe_thrower_paths     = $is_edit ? self::unrepresented_owner_paths($product) : [];
+            $bpe_unrepresented     = !empty($bpe_unrendered_panels) || !empty($bpe_thrower_paths);
+            // Deliberately NOT get_edit_post_link(): our own modify_edit_link()
+            // filter rewrites every product edit link to this very page, so the
+            // note would link the merchant back to where they already are. The
+            // `brikpanel=0` flag is what makes the native URL survive
+            // handle_redirects() for this one request.
+            $bpe_native_edit_url   = $is_edit ? self::native_edit_url($product_id) : '';
+            ?>
+
             <!-- Content -->
             <div class="brikpanel-pe-content">
+
+                <?php if ($bpe_unrepresented) : ?>
+                <div class="brikpanel-pe-typenote">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <span>
+                        <?php esc_html_e('Some settings for this product type can only be edited in the WooCommerce product editor. They are left untouched when you save here.', 'brikpanel'); ?>
+                        <?php if ($bpe_native_edit_url) : ?>
+                        <a href="<?php echo esc_url($bpe_native_edit_url); ?>"><?php esc_html_e('Open in WooCommerce', 'brikpanel'); ?></a>
+                        <?php endif; ?>
+                    </span>
+                </div>
+                <?php endif; ?>
 
                 <!-- Product Name -->
                 <div class="brikpanel-pe-card">
@@ -1129,7 +1278,7 @@ class Brikpanel_Product_Editor {
                      stay as plain product specs (Brand, Material…). A variable
                      product can carry BOTH at once; a simple product treats every
                      attribute as a spec. The card is always visible. -->
-                <div class="brikpanel-pe-card<?php echo $data['is_variable'] ? ' bpe-variable-on' : ''; ?>" id="bpe-var-card">
+                <div class="brikpanel-pe-card brikpanel-pe-card-wide<?php echo $data['is_variable'] ? ' bpe-variable-on' : ''; ?>" id="bpe-var-card">
 
                     <?php if ($bpe_show_var) : ?>
                     <div class="brikpanel-pe-var-head" id="bpe-var-toggle-row">
@@ -1144,8 +1293,14 @@ class Brikpanel_Product_Editor {
                     </div>
                     <?php else : ?>
                     <?php // Variations hidden by the admin: keep the flag present
-                          // (always simple) so the save path stays consistent. ?>
-                    <input type="checkbox" id="bpe-var-toggle" hidden style="display:none">
+                          // (always simple) so the save path stays consistent.
+                          // `data-section-hidden` tells the payload builder that this
+                          // unchecked box is NOT a merchant decision — the control was
+                          // never rendered — so it must omit `is_variable` entirely
+                          // rather than assert "simple". Asserting it converted every
+                          // variable product to simple on save and hard-deleted all of
+                          // its variations. ?>
+                    <input type="checkbox" id="bpe-var-toggle" data-section-hidden="1" hidden style="display:none">
                     <?php endif; ?>
 
                     <div class="brikpanel-pe-attr-editor">
@@ -1225,54 +1380,114 @@ class Brikpanel_Product_Editor {
                     <!-- Variation builder: visible only while "Variable product" is on -->
                     <div class="brikpanel-pe-var-build" id="bpe-var-build"<?php echo $data['is_variable'] ? '' : ' style="display:none"'; ?>>
                         <button type="button" class="brikpanel-pe-btn primary" id="bpe-generate-vars"><?php esc_html_e('Generate variations', 'brikpanel'); ?></button>
+                        <button type="button" class="brikpanel-pe-btn secondary" id="bpe-add-variation" title="<?php esc_attr_e('Add a single variation and pick its combination yourself', 'brikpanel'); ?>"><?php esc_html_e('Add manually', 'brikpanel'); ?></button>
                         <span class="brikpanel-pe-var-stale-hint" id="bpe-var-stale-hint" hidden><?php esc_html_e('Attributes changed since you generated. Click Generate variations to refresh the list.', 'brikpanel'); ?></span>
 
                         <div class="brikpanel-pe-var-table-section" id="bpe-var-table-section" style="display:none">
-                            <!-- Variation tools panel: two grouped rows sharing one
-                                 quiet gray card. Row 1 = bulk edits pushed to every
-                                 variation (labels ABOVE the inputs, Apply aligned to
-                                 the input baseline). Row 2 = storefront "Default Form
-                                 Values", divider-separated, filled by JS so it always
-                                 mirrors the current variation attributes. -->
+                            <!-- Variation tools panel: ONE compact toolbar strip. Bulk
+                                 edits, sorting and the storefront "Default Form Values"
+                                 sit side by side on a single control-tall line, told
+                                 apart by spacing. The micro-headings and the label-over-
+                                 input stacking are deliberately gone: at this card width
+                                 they cost more than three lines of height, and every
+                                 control already names itself ("Price", "Sort variations…",
+                                 "No default Color…"). Tooltips + aria-labels carry the
+                                 same names to assistive tech. The last group is filled by
+                                 JS so it always mirrors the current variation attributes. -->
+                            <?php
+                            // The three text boxes are sized from their OWN translated
+                            // placeholder, not from a pixel guess: "Price/Sale/Stock" fit a
+                            // 62px box, "Скидка"/"İndirim" do not, and a fixed width clips
+                            // them mid-word. PHP is the only place that knows the string, so
+                            // it hands the character count to CSS, which turns it into a width
+                            // (the CSS factor is above 1ch on purpose: `ch` measures "0", and
+                            // Cyrillic or Greek glyphs are wider than that). Clamped so one
+                            // very long translation cannot eat the strip.
+                            $bpe_ph_price = __('Price', 'brikpanel');
+                            $bpe_ph_sale  = _x('Sale', 'short placeholder for the bulk sale price field', 'brikpanel');
+                            $bpe_ph_stock = __('Stock', 'brikpanel');
+                            $bpe_ph_w = static function ($text) {
+                                $len = function_exists('mb_strlen') ? mb_strlen($text) : strlen($text);
+                                return max(4, min(12, (int) $len));
+                            };
+                            ?>
                             <div class="brikpanel-pe-var-bulk">
                                 <div class="brikpanel-pe-var-bulk-group">
-                                    <span class="brikpanel-pe-var-bulk-heading"><?php esc_html_e('Apply to all variations', 'brikpanel'); ?></span>
                                     <div class="brikpanel-pe-var-bulk-fields">
-                                        <div class="brikpanel-pe-var-bulk-item">
-                                            <label for="bpe-bulk-price"><?php esc_html_e('Price', 'brikpanel'); ?></label>
-                                            <div class="brikpanel-pe-input-group small">
-                                                <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
-                                                <input type="text" id="bpe-bulk-price" data-price="1">
-                                            </div>
+                                        <div class="brikpanel-pe-input-group small brikpanel-pe-var-bulk-item" style="--bpe-ph:<?php echo (int) $bpe_ph_w($bpe_ph_price); ?>">
+                                            <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
+                                            <input type="text" id="bpe-bulk-price" data-price="1" placeholder="<?php echo esc_attr($bpe_ph_price); ?>" aria-label="<?php esc_attr_e('Price', 'brikpanel'); ?>" title="<?php esc_attr_e('Price for every variation', 'brikpanel'); ?>">
                                         </div>
-                                        <div class="brikpanel-pe-var-bulk-item">
-                                            <label for="bpe-bulk-sale-price"><?php esc_html_e('Sale Price', 'brikpanel'); ?></label>
-                                            <div class="brikpanel-pe-input-group small">
-                                                <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
-                                                <input type="text" id="bpe-bulk-sale-price" data-price="1">
-                                            </div>
+                                        <div class="brikpanel-pe-input-group small brikpanel-pe-var-bulk-item" style="--bpe-ph:<?php echo (int) $bpe_ph_w($bpe_ph_sale); ?>">
+                                            <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
+                                            <?php // Short placeholder: "Sale Price" in full overruns this box in
+                                                  // longer languages. The aria-label and the tooltip still carry
+                                                  // the full name. ?>
+                                            <input type="text" id="bpe-bulk-sale-price" data-price="1" placeholder="<?php echo esc_attr($bpe_ph_sale); ?>" aria-label="<?php esc_attr_e('Sale Price', 'brikpanel'); ?>" title="<?php esc_attr_e('Sale price for every variation', 'brikpanel'); ?>">
                                         </div>
-                                        <div class="brikpanel-pe-var-bulk-item">
-                                            <label for="bpe-bulk-stock"><?php esc_html_e('Stock', 'brikpanel'); ?></label>
-                                            <input type="number" id="bpe-bulk-stock" class="brikpanel-pe-input small" min="0">
-                                        </div>
-                                        <div class="brikpanel-pe-var-bulk-item">
-                                            <label for="bpe-bulk-active"><?php esc_html_e('Active', 'brikpanel'); ?></label>
-                                            <select id="bpe-bulk-active" class="brikpanel-pe-select small">
-                                                <option value=""><?php esc_html_e('No change', 'brikpanel'); ?></option>
-                                                <option value="1"><?php esc_html_e('Set active', 'brikpanel'); ?></option>
-                                                <option value="0"><?php esc_html_e('Set inactive', 'brikpanel'); ?></option>
-                                            </select>
-                                        </div>
-                                        <button type="button" class="brikpanel-pe-btn primary small" id="bpe-apply-bulk"><?php esc_html_e('Apply', 'brikpanel'); ?></button>
+                                        <input type="number" id="bpe-bulk-stock" class="brikpanel-pe-input small brikpanel-pe-var-bulk-item" min="0" style="--bpe-ph:<?php echo (int) $bpe_ph_w($bpe_ph_stock); ?>" placeholder="<?php echo esc_attr($bpe_ph_stock); ?>" aria-label="<?php esc_attr_e('Stock', 'brikpanel'); ?>" title="<?php esc_attr_e('Stock quantity for every variation', 'brikpanel'); ?>">
+                                        <select id="bpe-bulk-active" class="brikpanel-pe-select small brikpanel-pe-var-bulk-item" aria-label="<?php esc_attr_e('Active', 'brikpanel'); ?>" title="<?php esc_attr_e('Active state for every variation', 'brikpanel'); ?>">
+                                            <option value=""><?php esc_html_e('No change', 'brikpanel'); ?></option>
+                                            <option value="1"><?php esc_html_e('Set active', 'brikpanel'); ?></option>
+                                            <option value="0"><?php esc_html_e('Set inactive', 'brikpanel'); ?></option>
+                                        </select>
+                                        <button type="button" class="brikpanel-pe-btn primary small" id="bpe-apply-bulk" title="<?php esc_attr_e('Apply to all variations', 'brikpanel'); ?>"><?php esc_html_e('Apply', 'brikpanel'); ?></button>
                                     </div>
                                 </div>
-                                <div class="brikpanel-pe-var-defaults" id="bpe-var-defaults" style="display:none"></div>
+                                <?php // Sorting and defaults share ONE flex item on purpose. With two
+                                      // separate items, flexbox packs greedily: on a card too narrow
+                                      // for all three groups it would keep Sort on line 1 and drop
+                                      // only the Defaults button, which reads like a mistake. Kept
+                                      // together they either both fit beside the bulk edits or both
+                                      // move to a tidy second row, and that decision follows the
+                                      // translated widths by itself, with no breakpoint to guess. ?>
+                                <div class="brikpanel-pe-var-tools-right">
+                                <?php // The select's own placeholder ("Sort variations…") names the
+                                      // control, so no heading is repeated beside it, and picking a
+                                      // mode sorts right away instead of arming a second button —
+                                      // that button was pure width on a one-line strip, and the sort
+                                      // is only a reorder that Save has to confirm anyway. The select
+                                      // snaps back to its placeholder so it keeps reading as an
+                                      // action menu. Dragging is discoverable from the row handle's
+                                      // own tooltip, and the toast after a reorder says the order is
+                                      // kept on save — no help text needed here. ?>
+                                <div class="brikpanel-pe-var-bulk-group brikpanel-pe-var-sort">
+                                    <div class="brikpanel-pe-var-bulk-fields">
+                                        <select id="bpe-var-sort" class="brikpanel-pe-select small" aria-label="<?php esc_attr_e('Sort variations', 'brikpanel'); ?>" title="<?php esc_attr_e('Sort variations', 'brikpanel'); ?>">
+                                            <option value=""><?php esc_html_e('Sort variations…', 'brikpanel'); ?></option>
+                                            <option value="attribute"><?php esc_html_e('Attribute order', 'brikpanel'); ?></option>
+                                            <option value="name-asc"><?php esc_html_e('Name A to Z', 'brikpanel'); ?></option>
+                                            <option value="name-desc"><?php esc_html_e('Name Z to A', 'brikpanel'); ?></option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <?php // Default Form Values collapses behind one button: it holds one
+                                      // select per variation axis, so inline it would be the one group
+                                      // whose width grows with the product and would push the strip
+                                      // onto a second line. The button carries a dot while any default
+                                      // is set, so the collapsed state still reports itself. ?>
+                                <div class="brikpanel-pe-var-defaults" id="bpe-var-defaults" style="display:none">
+                                    <button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-var-defaults-toggle" id="bpe-var-defaults-toggle" aria-expanded="false" aria-controls="bpe-var-defaults-pop" aria-label="<?php esc_attr_e('Default Form Values', 'brikpanel'); ?>" title="<?php esc_attr_e('Choose which options are pre-selected on the product page. Leave blank for no default.', 'brikpanel'); ?>">
+                                        <span class="brikpanel-pe-var-defaults-dot" aria-hidden="true"></span>
+                                        <?php // Short label on purpose: the strip is one line and the full
+                                              // name would be its widest item by far. The popover title, the
+                                              // tooltip and the aria-label all say "Default Form Values". ?>
+                                        <?php echo esc_html(_x('Defaults', 'variation tools button that opens the Default Form Values picker', 'brikpanel')); ?>
+                                        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                                    </button>
+                                    <div class="brikpanel-pe-var-defaults-pop" id="bpe-var-defaults-pop" hidden>
+                                        <span class="brikpanel-pe-var-defaults-title"><?php esc_html_e('Default Form Values', 'brikpanel'); ?></span>
+                                        <p class="brikpanel-pe-var-defaults-help"><?php esc_html_e('Choose which options are pre-selected on the product page. Leave blank for no default.', 'brikpanel'); ?></p>
+                                        <div class="brikpanel-pe-var-defaults-row" id="bpe-var-defaults-row"></div>
+                                    </div>
+                                </div>
+                                </div><!-- /.brikpanel-pe-var-tools-right -->
                             </div>
                             <div class="brikpanel-pe-var-table-wrap">
                                 <table class="brikpanel-pe-var-table" id="bpe-var-table">
                                     <thead>
                                         <tr>
+                                            <th class="var-drag-col" aria-hidden="true"></th>
                                             <th class="var-expand-col" aria-hidden="true"></th>
                                             <th><?php esc_html_e('Variation', 'brikpanel'); ?></th>
                                             <th><?php esc_html_e('Price', 'brikpanel'); ?></th>
@@ -1687,7 +1902,7 @@ class Brikpanel_Product_Editor {
                 <div class="brikpanel-pe-card">
                     <label><?php esc_html_e('Tags', 'brikpanel'); ?></label>
                     <div class="brikpanel-pe-tag-input-wrap" id="bpe-tags-wrap">
-                        <input type="text" id="bpe-tag-input" placeholder="<?php esc_attr_e('Type and press Enter to add a tag...', 'brikpanel'); ?>" autocomplete="off">
+                        <input type="text" id="bpe-tag-input" placeholder="<?php esc_attr_e('Type and press Enter, or paste a comma-separated list...', 'brikpanel'); ?>" autocomplete="off">
                     </div>
                     <div class="brikpanel-pe-tag-suggestions" id="bpe-tag-suggestions"></div>
                 </div>
@@ -1731,7 +1946,7 @@ class Brikpanel_Product_Editor {
                 <?php if (in_array('short_desc', $visible, true)) : ob_start(); ?>
                 <!-- Short Description -->
                 <?php $pe_short_desc_html = self::editor_display_html($data['short_description']); ?>
-                <div class="brikpanel-pe-card">
+                <div class="brikpanel-pe-card brikpanel-pe-card-wide">
                     <div class="brikpanel-pe-field" data-editor-field="short-desc">
                         <label><?php esc_html_e('Short description', 'brikpanel'); ?></label>
                         <?php echo $pe_editor_toolbar; ?>
@@ -1747,7 +1962,7 @@ class Brikpanel_Product_Editor {
                 <?php if (in_array('description', $visible, true)) : ob_start(); ?>
                 <!-- Description -->
                 <?php $pe_desc_html = self::editor_display_html($data['description']); ?>
-                <div class="brikpanel-pe-card">
+                <div class="brikpanel-pe-card brikpanel-pe-card-wide">
                     <div class="brikpanel-pe-field" data-editor-field="description">
                         <label><?php esc_html_e('Product description', 'brikpanel'); ?></label>
                         <?php echo $pe_editor_toolbar; ?>
@@ -2021,6 +2236,18 @@ class Brikpanel_Product_Editor {
                     ? $this->build_third_party_metabox_cards((int) $product_id, $all_mb_ids)
                     : ['html' => [], 'acf' => false];
                 $mb_emitted = [];
+
+                // Hand-placing the SEO plugin's own metabox stands the SEO card
+                // down, and the card is what normally emits the scaffold the
+                // analysers read. Without it the plugin grades an empty product:
+                // no title, body, short description or slug, so every keyword
+                // and length check fails and the score reads near zero on a page
+                // that is actually fine. The scaffold is clipped out of view, so
+                // emitting it here costs nothing visually, and the helper's own
+                // guard keeps it to one copy per page.
+                if ($seo_in_manual) {
+                    self::render_seo_native_bridge(get_post($product_id));
+                }
 
                 // Emit each captured section in the admin-configured order.
                 // Two fixed anchors are still injected mid-flight:
@@ -3048,6 +3275,53 @@ class Brikpanel_Product_Editor {
      * page renders, so third-party metaboxes always get a real post row
      * to read meta from.
      *
+     * Live analysis bridge — native editor field scaffold.
+     *
+     * Every supported SEO plugin (Yoast, Rank Math, AIOSEO, SEOPress)
+     * collects the content it analyses from the *native* post editor DOM:
+     *     #title    — post title          (Yoast/RM/AIOSEO/SEOPress)
+     *     #content  — post body / TinyMCE  (word count, links, images, …)
+     *     #excerpt  — WooCommerce short description (Yoast Woo product desc)
+     *     #editable-post-name-full / #post_name — slug (keyphrase-in-slug)
+     * None of those exist in the BrikPanel editor, so the analysers run
+     * against empty input — that is why scores stay stuck on "write a
+     * short description / text contains 0 words" even after the user has
+     * filled the BrikPanel fields. Emit the scaffold seeded from the real
+     * product and let the JS bridge mirror the BrikPanel fields into it live
+     * (see initSeoAnalysisBridge() in brikpanel-product-editor.js).
+     * The nodes carry no `name` attribute, so they never reach the save
+     * payload and cannot collide with BrikPanel's own form handling.
+     *
+     * Every route that puts an SEO plugin's metabox on the page has to call
+     * this, not just the SEO card: an admin who hand-places the metabox from
+     * the section picker gets it through build_third_party_metabox_cards()
+     * instead, and without the scaffold the plugin grades an empty product —
+     * every keyword and content check fails while the score reads as if the
+     * page were badly written. The ids are unique per document, so the
+     * static guard makes a second call a no-op rather than emitting
+     * duplicates that the analysers would read at random.
+     *
+     * @param WP_Post $post
+     */
+    private static function render_seo_native_bridge($post) {
+        static $printed = false;
+        if ($printed || !$post instanceof \WP_Post) {
+            return;
+        }
+        $printed = true;
+
+        $bridge_slug = $post->post_name !== '' ? $post->post_name : sanitize_title($post->post_title);
+        echo '<div class="brikpanel-pe-seo-native-bridge" aria-hidden="true" '
+            . 'style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">';
+        echo '<input type="text" id="title" tabindex="-1" value="' . esc_attr($post->post_title) . '">';
+        echo '<textarea id="content" tabindex="-1">' . esc_textarea($post->post_content) . '</textarea>';
+        echo '<textarea id="excerpt" tabindex="-1">' . esc_textarea($post->post_excerpt) . '</textarea>';
+        echo '<input type="text" id="post_name" tabindex="-1" value="' . esc_attr($bridge_slug) . '">';
+        echo '<span id="editable-post-name-full">' . esc_html($bridge_slug) . '</span>';
+        echo '</div>';
+    }
+
+    /**
      * @param int   $product_id
      * @param array $active_seo  Output of get_active_seo_plugin().
      */
@@ -3204,31 +3478,7 @@ class Brikpanel_Product_Editor {
             }
         }
 
-        // Live analysis bridge — native editor field scaffold.
-        //
-        // Every supported SEO plugin (Yoast, Rank Math, AIOSEO, SEOPress)
-        // collects the content it analyses from the *native* post editor DOM:
-        //     #title    — post title          (Yoast/RM/AIOSEO/SEOPress)
-        //     #content  — post body / TinyMCE  (word count, links, images, …)
-        //     #excerpt  — WooCommerce short description (Yoast Woo product desc)
-        //     #editable-post-name-full / #post_name — slug (keyphrase-in-slug)
-        // None of those exist in the BrikPanel editor, so the analysers run
-        // against empty input — that is why scores stay stuck on "write a
-        // short description / text contains 0 words" even after the user has
-        // filled the BrikPanel fields. Emit the scaffold here, seeded from the
-        // real product, and let the JS bridge mirror the BrikPanel fields into
-        // it live (see syncSeoNativeFields() in brikpanel-product-editor.js).
-        // The nodes carry no `name` attribute, so they never reach the save
-        // payload and cannot collide with BrikPanel's own form handling.
-        $bridge_slug = $post->post_name !== '' ? $post->post_name : sanitize_title($post->post_title);
-        echo '<div class="brikpanel-pe-seo-native-bridge" aria-hidden="true" '
-            . 'style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">';
-        echo '<input type="text" id="title" tabindex="-1" value="' . esc_attr($post->post_title) . '">';
-        echo '<textarea id="content" tabindex="-1">' . esc_textarea($post->post_content) . '</textarea>';
-        echo '<textarea id="excerpt" tabindex="-1">' . esc_textarea($post->post_excerpt) . '</textarea>';
-        echo '<input type="text" id="post_name" tabindex="-1" value="' . esc_attr($bridge_slug) . '">';
-        echo '<span id="editable-post-name-full">' . esc_html($bridge_slug) . '</span>';
-        echo '</div>';
+        self::render_seo_native_bridge($post);
 
         if ($boxes_html === '') {
             // The plugin is active but refused to register its metabox —
@@ -3493,12 +3743,11 @@ class Brikpanel_Product_Editor {
         $tab_meta = self::collect_custom_tab_meta();
         $target_to_label = $tab_meta['labels'];
         if (has_action('woocommerce_product_data_panels')) {
-            // Buffer-safe fire (see capture_isolated_hook): a custom panel may
-            // assume a saved product OR leave an output buffer open; neither may
-            // take down the settings page.
-            $panels_html = self::capture_isolated_hook('woocommerce_product_data_panels');
-
-            if ($panels_html !== '') {
+            // Buffer-safe, per-callback fire (see capture_hook_chunks): a custom
+            // panel may assume a saved product OR leave an output buffer open;
+            // neither may take down the settings page, and one plugin fataling
+            // must not hide every plugin registered after it.
+            foreach (self::capture_hook_chunks('woocommerce_product_data_panels') as $panels_html) {
                 $core_targets = self::core_panel_targets();
                 $skip_ids = ['marketplace_suggestions'];
                 // Shield <script> blocks so libxml does not eat panels that
@@ -3577,11 +3826,21 @@ class Brikpanel_Product_Editor {
      * their tab hooks) and AFTER the tabs filter is needed — it applies the
      * filter itself. The modern filter wins; legacy only fills gaps.
      *
-     * @return array{labels: array<string,string>, keys: array<string,string>}
+     * The `class` entry each tab carries is harvested too: WooCommerce uses it
+     * to gate a tab to a product type (`show_if_bundle`, `show_if_composite`,
+     * `hide_if_variable`…), and unrendered_type_panels() reads exactly that to
+     * decide whether the editor can represent a given product at all.
+     *
+     * `throwers` lists the plugin paths whose tab callback fataled while we
+     * enumerated; unrepresented_owner_paths() turns that into a save-hook mute.
+     *
+     * @return array{labels: array<string,string>, keys: array<string,string>, classes: array<string,string[]>, throwers: string[]}
      */
     private static function collect_custom_tab_meta() {
-        $labels = [];
-        $keys   = [];
+        $labels   = [];
+        $keys     = [];
+        $classes  = [];
+        $throwers = [];
 
         // Throwable-safe: the render path fires this filter with a real product
         // object, but the settings-page enumeration fires it in a spoofed
@@ -3589,19 +3848,49 @@ class Brikpanel_Product_Editor {
         // source (not our spoofed global $product_object) may get null and
         // dereference it — WooCommerce Composite Products' product_data_tabs
         // callback fatals with "Call to a member function get_id() on null".
-        // That must never take down the wc-settings ▸ brikpanel page: swallow it
-        // exactly as capture_isolated_hook() does for the action hooks, and keep
-        // whatever tabs the surviving callbacks contributed.
+        //
+        // Catching it is not enough on its own: PHP abandons the whole
+        // apply_filters() call, so the tabs every OTHER plugin already
+        // contributed die with it and the callbacks queued behind it never run.
+        // The result was an empty tab list, which reads exactly like "this store
+        // has no third-party product-data tabs": the settings section picker
+        // came up blank and unrendered_type_panels() below could never find the
+        // `show_if_{type}` panel it exists to find, so the data-loss guard was
+        // dead on every store running Composite Products.
+        //
+        // One combined fire stays the primary path: it is what plugins are
+        // written against (a callback may legitimately decorate or remove an
+        // entry another callback added, which a per-callback pass cannot
+        // reproduce), and on a healthy store it costs exactly what it did
+        // before. Only when it fatals do we re-run the filter one callback at a
+        // time to salvage the surviving tabs and to learn WHICH plugin fataled.
+        $isolated = false;
         try {
             $tabs_meta = apply_filters('woocommerce_product_data_tabs', []);
         } catch (\Throwable $e) {
+            $isolated = true;
+        }
+        if ($isolated) {
+            $chunks    = self::filter_chunks('woocommerce_product_data_tabs', []);
+            $throwers  = $chunks['throwers'];
             $tabs_meta = [];
+            foreach ($chunks['results'] as $chunk) {
+                if (is_array($chunk)) $tabs_meta = array_replace($tabs_meta, $chunk);
+            }
         }
         if (is_array($tabs_meta)) {
             foreach ($tabs_meta as $key => $tab) {
+                if (!is_array($tab)) continue;
                 $target = isset($tab['target']) ? (string) $tab['target'] : (string) $key;
                 $labels[$target] = isset($tab['label']) ? (string) $tab['label'] : ucfirst((string) $key);
                 $keys[$target]   = (string) $key;
+                // `class` is an array in WooCommerce core and in every add-on we
+                // know of, but a string is legal too — normalise both.
+                $tab_class = isset($tab['class']) ? $tab['class'] : [];
+                if (is_string($tab_class)) {
+                    $tab_class = preg_split('/\s+/', trim($tab_class), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                }
+                $classes[$target] = is_array($tab_class) ? array_map('strval', $tab_class) : [];
             }
         }
 
@@ -3618,11 +3907,374 @@ class Brikpanel_Product_Editor {
                     if ($label === '') continue;
                     $labels[$target] = $label;
                     $keys[$target]   = $target;
+                    // Legacy markup carries no type gating we can read.
+                    if (!isset($classes[$target])) $classes[$target] = [];
                 }
             }
         }
 
-        return ['labels' => $labels, 'keys' => $keys];
+        return ['labels' => $labels, 'keys' => $keys, 'classes' => $classes, 'throwers' => $throwers];
+    }
+
+    /**
+     * Product-data panels that belong to THIS product's type but that the
+     * editor did not render.
+     *
+     * Why this exists: BrikPanel's simplified editor renders its own form plus
+     * whichever third-party sections the merchant picked in
+     * WooCommerce ▸ Settings ▸ BrikPanel. A panel that WooCommerce gates to a
+     * single product type (`show_if_bundle`, `show_if_composite`,
+     * `show_if_booking`…) can be absent from that form while its plugin still
+     * listens on the save hooks. Those listeners routinely read their fields as
+     * "present means keep, absent means the merchant cleared it" — so firing a
+     * save hook for a form that never contained the fields DELETES the data.
+     * WooCommerce Product Bundles is the reported case: saving a bundle emptied
+     * `bundled_data_items` and reset the bundle's layout/group-mode/cart flags,
+     * because `WC_PB_Meta_Box_Product_Data::process_bundle_data()` takes its
+     * empty branch when `$_POST['bundle_data']` is missing. Composite Products
+     * and Bookings are built the same way.
+     *
+     * Detection is by tab class rather than by a hardcoded list of "unsupported
+     * types": a type list would also silence plugins that render no panel of
+     * their own but legitimately use the save hook (WooCommerce Subscriptions
+     * puts its fields in the native General panel, which BrikPanel does render
+     * and forward). Reading the gate the panel itself declares keeps the guard
+     * exactly as wide as the gap.
+     *
+     * A non-empty return means "the form the merchant just submitted cannot
+     * represent this product" — the caller skips the object save hook and the
+     * editor shows a note pointing at the native WooCommerce editor.
+     *
+     * @param WC_Product|null $product Product being rendered or saved.
+     * @return string[] Panel target ids (e.g. `bundled_product_data`), empty when the form is complete.
+     */
+    /**
+     * Tab metadata for the two type guards below, enumerated once per request.
+     *
+     * unrendered_type_panels() and unrepresented_owner_paths() read two halves
+     * of the same answer and are always called back to back, in the same product
+     * context. The other callers of collect_custom_tab_meta() (the settings
+     * picker, the editor's field capture) deliberately keep their own fires,
+     * each runs inside a different product spoof and a shared snapshot would
+     * change what they see.
+     *
+     * @return array{labels: array<string,string>, keys: array<string,string>, classes: array<string,string[]>, throwers: string[]}
+     */
+    private static function guard_tab_meta() {
+        static $meta = null;
+        if ($meta === null) {
+            $meta = self::collect_custom_tab_meta();
+        }
+        return $meta;
+    }
+
+    private static function unrendered_type_panels($product) {
+        if (!$product || !method_exists($product, 'get_type')) return [];
+
+        $type = (string) $product->get_type();
+        if ($type === '') return [];
+
+        // Types this editor has a first-class form for are never "unrepresented",
+        // whatever panels plugins gate to them. Variation Gallery and Variation
+        // Swatches both register `show_if_variable` panels, for instance, and
+        // treating those as a gap would silence the save hook on every variable
+        // product in the store — the exact regression this guard exists to avoid
+        // causing. Their per-variation data is saved on the variation hooks
+        // BrikPanel already dispatches.
+        $native_types = ['simple', 'variable', 'grouped', 'external'];
+        $is_native    = in_array($type, $native_types, true)
+            || (function_exists('brikpanel_is_variable_product_type') && brikpanel_is_variable_product_type($type));
+        if ($is_native) return [];
+
+        // Same request, same answer: the render path and the save path both ask,
+        // and each answer costs one `woocommerce_product_data_tabs` fire.
+        static $cache = [];
+        if (isset($cache[$type])) return $cache[$type];
+
+        $unrendered = [];
+        try {
+            $tab_meta = self::guard_tab_meta();
+            $gate     = 'show_if_' . $type;
+
+            $candidates = [];
+            foreach ((array) $tab_meta['classes'] as $target => $tab_classes) {
+                if (in_array($gate, (array) $tab_classes, true)) {
+                    $candidates[] = (string) $target;
+                }
+            }
+
+            // Resolve the merchant's section list only when a gated panel exists.
+            // augment_sections_auto() can enumerate every panel in the store, and
+            // no product type should pay for that just to be told it has nothing
+            // gated to it.
+            if ($candidates) {
+                $selected = (array) get_option('brikpanel_pe_wc_tabs_selected', []);
+                $selected = self::augment_sections_for_multicurrency($selected, 'product');
+                $selected = self::augment_sections_auto($selected, 'product');
+
+                foreach ($candidates as $target) {
+                    // Rendered by the editor → its fields are in the POST, so the
+                    // listener sees a complete form and must run as usual.
+                    if (in_array('tab:' . $target, $selected, true)) continue;
+                    $unrendered[] = $target;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Never let tab enumeration break a save or a page render: fall back
+            // to the pre-existing behaviour (fire the hook, render no note).
+            $unrendered = [];
+        }
+
+        /**
+         * Filter the product-data panels BrikPanel considers unrepresentable
+         * for the given product.
+         *
+         * Returning an empty array restores the legacy behaviour of always
+         * firing `woocommerce_admin_process_product_object`.
+         *
+         * @param string[]   $unrendered Panel target ids.
+         * @param WC_Product $product    Product being saved or rendered.
+         * @param string     $type       Product type slug.
+         */
+        $unrendered = (array) apply_filters('brikpanel_pe_unrendered_type_panels', $unrendered, $product, $type);
+
+        $cache[$type] = $unrendered;
+        return $unrendered;
+    }
+
+    /**
+     * Plugins that cannot describe their own product-data tab in BrikPanel's
+     * context, and so must be kept off this product's save hook.
+     *
+     * unrendered_type_panels() finds the gap by reading the `show_if_{type}`
+     * class a plugin declares on its tab. That only works for plugins that
+     * successfully declare one. A plugin whose `woocommerce_product_data_tabs`
+     * callback FATALS here declares nothing at all, and is therefore invisible
+     * to that check while being the most certain case of all: a callback that
+     * cannot survive being asked "what tabs do you add?" outside its own metabox
+     * has definitively not rendered a single field into the form the merchant
+     * just submitted. WooCommerce Composite Products is exactly this, it
+     * dereferences a `$composite_product_object` global that only its own
+     * metabox sets, and it wipes a composite's contents on
+     * `woocommerce_admin_process_product_object` for the same "field absent
+     * means the merchant cleared it" reason Product Bundles does.
+     *
+     * Scope is deliberately narrow. Types the editor has a first-class form for
+     * return early, exactly as unrendered_type_panels() does, so simple and
+     * variable products are never affected however badly a third-party callback
+     * misbehaves. On the remaining types only the fataling plugin's own
+     * callbacks are held back; every other listener saves as usual.
+     *
+     * @param WC_Product|null $product Product being rendered or saved.
+     * @return string[] Plugin directories / files to mute, empty when there are none.
+     */
+    private static function unrepresented_owner_paths($product) {
+        if (!$product || !method_exists($product, 'get_type')) return [];
+
+        $type = (string) $product->get_type();
+        if ($type === '') return [];
+
+        $native_types = ['simple', 'variable', 'grouped', 'external'];
+        $is_native    = in_array($type, $native_types, true)
+            || (function_exists('brikpanel_is_variable_product_type') && brikpanel_is_variable_product_type($type));
+        if ($is_native) return [];
+
+        static $cache = [];
+        if (isset($cache[$type])) return $cache[$type];
+
+        $paths = [];
+        try {
+            $tab_meta = self::guard_tab_meta();
+            $paths    = isset($tab_meta['throwers']) ? (array) $tab_meta['throwers'] : [];
+
+            // Never hold back WooCommerce itself or BrikPanel. Whatever made a
+            // callback in one of those fatal, silencing the platform the save
+            // runs on (or ourselves) is a worse outcome than the empty form
+            // this guard exists to protect against, and neither of them is the
+            // "plugin whose panel we could not render" the mute is meant for.
+            $never_mute = array_filter([
+                defined('WC_PLUGIN_FILE') ? untrailingslashit(dirname(WC_PLUGIN_FILE)) : '',
+                defined('BRIKPANEL_PATH') ? untrailingslashit(BRIKPANEL_PATH) : '',
+            ]);
+            if ($never_mute) {
+                $paths = array_values(array_diff($paths, $never_mute));
+            }
+        } catch (\Throwable $e) {
+            // Never let enumeration break a save or a page render.
+            $paths = [];
+        }
+
+        /**
+         * Filter the plugins BrikPanel mutes because they could not describe
+         * their own product-data tab for this product.
+         *
+         * Returning an empty array restores the legacy behaviour of letting
+         * every listener run on `woocommerce_admin_process_product_object`.
+         *
+         * @param string[]   $paths   Plugin directories / files.
+         * @param WC_Product $product Product being saved or rendered.
+         * @param string     $type    Product type slug.
+         */
+        $paths = (array) apply_filters('brikpanel_pe_unrepresented_owner_paths', $paths, $product, $type);
+
+        $cache[$type] = $paths;
+        return $paths;
+    }
+
+    /**
+     * Absolute paths owning the given product-data tab targets.
+     *
+     * Used to narrow the save-hook guard: only the plugin whose panel the editor
+     * could not render has to be kept quiet, so every other listener on
+     * `woocommerce_admin_process_product_object` (Germanized, brand/SEO/ERP
+     * add-ons…) keeps saving its fields normally on a bundle or composite
+     * product. Attribution works by firing `woocommerce_product_data_tabs` one
+     * callback at a time and asking which callback introduced the target, then
+     * resolving that callback's file to its plugin directory.
+     *
+     * Returning an empty array means "could not attribute" — the caller then
+     * falls back to skipping the hook entirely, which is the safe direction.
+     *
+     * @param string[] $targets Panel target ids.
+     * @return string[] Plugin directories / files owning them.
+     */
+    private static function tab_owner_paths(array $targets) {
+        global $wp_filter;
+
+        $hook  = 'woocommerce_product_data_tabs';
+        $paths = [];
+        if (!$targets || empty($wp_filter[$hook]) || !is_object($wp_filter[$hook])
+            || !isset($wp_filter[$hook]->callbacks) || !is_array($wp_filter[$hook]->callbacks)) {
+            return $paths;
+        }
+
+        $original = $wp_filter[$hook];
+        try {
+            foreach ($original->callbacks as $priority => $entries) {
+                if (!is_array($entries)) continue;
+                foreach ($entries as $entry) {
+                    if (!isset($entry['function'])) continue;
+                    $solo = new \WP_Hook();
+                    $solo->add_filter($hook, $entry['function'], $priority, isset($entry['accepted_args']) ? (int) $entry['accepted_args'] : 1);
+                    $wp_filter[$hook] = $solo;
+                    try {
+                        $tabs = apply_filters($hook, []);
+                    } catch (\Throwable $e) {
+                        continue;
+                    }
+                    if (!is_array($tabs)) continue;
+                    foreach ($tabs as $key => $tab) {
+                        $target = (is_array($tab) && isset($tab['target'])) ? (string) $tab['target'] : (string) $key;
+                        if (!in_array($target, $targets, true)) continue;
+                        $owner = self::callback_owner_path($entry['function']);
+                        if ($owner !== '') $paths[] = $owner;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            $paths = [];
+        } finally {
+            $wp_filter[$hook] = $original;
+        }
+
+        return array_values(array_unique($paths));
+    }
+
+    /**
+     * Fire an action, leaving out the callbacks declared by given paths.
+     *
+     * Only the excluded callbacks are detached, through the normal
+     * remove_action()/add_action() API, and put back afterwards. Swapping in a
+     * rebuilt WP_Hook object would work too, but it would also silently discard
+     * any hook change a listener makes while it runs (plugins that unhook
+     * themselves after processing a product do exactly that). Detaching in
+     * place keeps every other listener's behaviour byte-for-byte identical to a
+     * normal WordPress dispatch. Re-attaching runs in `finally`, so even a
+     * listener that dies cannot leave the hook permanently short of callbacks.
+     * A detached callback comes back at the end of its priority group rather
+     * than its original slot; the hook fires once per save request, so that
+     * ordering only ever applies to callbacks that were held back anyway.
+     *
+     * @param string   $hook      Action to fire.
+     * @param array    $args      Positional args.
+     * @param string[] $skip_paths Plugin dirs/files whose callbacks must not run.
+     * @return void
+     */
+    private static function do_action_excluding_paths($hook, array $args, array $skip_paths) {
+        global $wp_filter;
+
+        if (empty($skip_paths) || empty($wp_filter[$hook]) || !is_object($wp_filter[$hook])
+            || !isset($wp_filter[$hook]->callbacks) || !is_array($wp_filter[$hook]->callbacks)) {
+            do_action_ref_array($hook, $args);
+            return;
+        }
+
+        $detached = [];
+        foreach ($wp_filter[$hook]->callbacks as $priority => $entries) {
+            if (!is_array($entries)) continue;
+            foreach ($entries as $entry) {
+                if (!isset($entry['function'])) continue;
+                $owner = self::callback_owner_path($entry['function']);
+                if ($owner === '' || !in_array($owner, $skip_paths, true)) continue;
+                $detached[] = [
+                    'function'      => $entry['function'],
+                    'priority'      => $priority,
+                    'accepted_args' => isset($entry['accepted_args']) ? (int) $entry['accepted_args'] : 1,
+                ];
+            }
+        }
+
+        // The owner has no listener on this hook: nothing to hold back.
+        if (!$detached) {
+            do_action_ref_array($hook, $args);
+            return;
+        }
+
+        try {
+            foreach ($detached as $cb) {
+                remove_action($hook, $cb['function'], $cb['priority']);
+            }
+            do_action_ref_array($hook, $args);
+        } finally {
+            foreach ($detached as $cb) {
+                add_action($hook, $cb['function'], $cb['priority'], $cb['accepted_args']);
+            }
+        }
+    }
+
+    /**
+     * Resolve a callback to the plugin directory (or file) that declares it.
+     *
+     * @param callable|mixed $function Callback from a WP_Hook entry.
+     * @return string Absolute path, '' when it cannot be determined.
+     */
+    private static function callback_owner_path($function) {
+        try {
+            if (is_string($function) && function_exists($function)) {
+                $ref = new \ReflectionFunction($function);
+            } elseif ($function instanceof \Closure) {
+                $ref = new \ReflectionFunction($function);
+            } elseif (is_array($function) && count($function) === 2) {
+                $ref = new \ReflectionMethod(is_object($function[0]) ? get_class($function[0]) : $function[0], $function[1]);
+            } elseif (is_object($function) && method_exists($function, '__invoke')) {
+                $ref = new \ReflectionMethod($function, '__invoke');
+            } else {
+                return '';
+            }
+            $file = (string) $ref->getFileName();
+        } catch (\Throwable $e) {
+            return '';
+        }
+        if ($file === '') return '';
+
+        // Collapse to the plugin root so every file of that plugin matches.
+        foreach ([defined('WP_PLUGIN_DIR') ? WP_PLUGIN_DIR : '', defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : ''] as $base) {
+            if ($base === '' || strpos($file, $base . '/') !== 0) continue;
+            $rest = substr($file, strlen($base) + 1);
+            $slash = strpos($rest, '/');
+            return $slash === false ? $file : $base . '/' . substr($rest, 0, $slash);
+        }
+        return $file;
     }
 
     /**
@@ -3678,6 +4330,166 @@ class Brikpanel_Product_Editor {
             $html = ob_get_clean() . $html;
         }
         return trim($html);
+    }
+
+    /**
+     * Fire a hook one callback at a time and return what each echoed, separately.
+     *
+     * capture_isolated_hook() already swallows a Throwable, but it fires the
+     * whole hook with a single do_action(): the first callback that fatals ends
+     * that dispatch, so every plugin registered AFTER it never runs. On
+     * `woocommerce_product_data_panels` that is visible damage — a panel that
+     * dereferences a global only set for its own product type (WooCommerce
+     * Product Bundles does exactly this) took every later plugin's panel out of
+     * the settings picker and out of the editor with it.
+     *
+     * Callbacks are invoked through do_action() on a temporarily narrowed hook
+     * rather than called directly, so current_filter()/doing_action() and the
+     * priority order stay exactly as WooCommerce would present them. This is
+     * the same snapshot/restore technique as
+     * render_isolated_multicurrency_fields().
+     *
+     * The chunks are returned one per callback instead of concatenated because
+     * a callback that dies mid-tag leaves unbalanced HTML: parsed together, the
+     * next plugin's panel is swallowed as a CHILD of that unterminated element
+     * and disappears just as surely as it did before. Callers parse each chunk
+     * on its own, so one plugin's broken markup stays that plugin's problem.
+     *
+     * @param string $hook Action hook to fire.
+     * @param array  $args Positional args passed to the hook callbacks.
+     * @return string[] Non-empty output chunks, in hook order.
+     */
+    private static function capture_hook_chunks($hook, array $args = []) {
+        global $wp_filter;
+
+        if (empty($wp_filter[$hook]) || !is_object($wp_filter[$hook])
+            || !isset($wp_filter[$hook]->callbacks) || !is_array($wp_filter[$hook]->callbacks)) {
+            $single = self::capture_isolated_hook($hook, $args);
+            return $single === '' ? [] : [$single];
+        }
+
+        $original  = $wp_filter[$hook];
+        $callbacks = $original->callbacks;
+        $chunks    = [];
+
+        try {
+            foreach ($callbacks as $priority => $entries) {
+                if (!is_array($entries)) continue;
+                foreach ($entries as $entry) {
+                    if (!isset($entry['function'])) continue;
+                    // Build the one-callback hook through add_filter() rather
+                    // than by assigning ->callbacks: WP_Hook keeps a parallel
+                    // ->priorities list that apply_filters() iterates, and a
+                    // hand-built object leaves it empty (PHP warnings, nothing
+                    // runs).
+                    $solo = new \WP_Hook();
+                    $solo->add_filter(
+                        $hook,
+                        $entry['function'],
+                        $priority,
+                        isset($entry['accepted_args']) ? (int) $entry['accepted_args'] : 1
+                    );
+                    $wp_filter[$hook] = $solo;
+
+                    $piece = self::capture_isolated_hook($hook, $args);
+                    if ($piece !== '') $chunks[] = $piece;
+                }
+            }
+        } finally {
+            // Always hand the hook back exactly as we found it — a leaked
+            // single-callback hook would silence every other plugin for the
+            // rest of the request.
+            $wp_filter[$hook] = $original;
+        }
+
+        return $chunks;
+    }
+
+    /**
+     * Apply a filter one callback at a time and return each callback's result
+     * separately, plus the owners of the callbacks that fataled.
+     *
+     * The filter twin of capture_hook_chunks(). A single apply_filters() runs
+     * every callback inside one PHP call, so a Throwable from ANY of them
+     * abandons that call entirely: the contributions of the callbacks that
+     * already ran are lost with it, and the callbacks registered after it never
+     * run. On `woocommerce_product_data_tabs` that is not cosmetic, it is the
+     * difference between BrikPanel knowing a product type has a panel it cannot
+     * render and BrikPanel believing the store has no third-party tabs at all.
+     * WooCommerce Composite Products fatals on that filter in any context but
+     * its own metabox (its `$composite_product_object` global is never set for
+     * us), which silently disabled the whole unrendered-panel guard, and
+     * emptied the settings section picker, on every store that has it.
+     *
+     * Callbacks are dispatched through apply_filters() on a temporarily
+     * narrowed hook rather than called directly, so current_filter() and the
+     * priority order stay exactly as WordPress would present them.
+     *
+     * Each callback receives $initial, NOT the accumulated value: results are
+     * returned separately for the caller to merge. A callback that decorates or
+     * removes another plugin's entry therefore cannot do so here, which is why
+     * callers should treat this as the degraded path and prefer one combined
+     * fire while that still works.
+     *
+     * @param string $hook    Filter hook to apply.
+     * @param mixed  $initial Value handed to every callback.
+     * @return array{results: array[], throwers: string[]} Per-callback results in hook order, and the plugin paths that fataled.
+     */
+    private static function filter_chunks($hook, $initial = []) {
+        global $wp_filter;
+
+        if (empty($wp_filter[$hook]) || !is_object($wp_filter[$hook])
+            || !isset($wp_filter[$hook]->callbacks) || !is_array($wp_filter[$hook]->callbacks)) {
+            try {
+                return ['results' => [apply_filters($hook, $initial)], 'throwers' => []];
+            } catch (\Throwable $e) {
+                return ['results' => [], 'throwers' => []];
+            }
+        }
+
+        $original  = $wp_filter[$hook];
+        $callbacks = $original->callbacks;
+        $results   = [];
+        $throwers  = [];
+
+        try {
+            foreach ($callbacks as $priority => $entries) {
+                if (!is_array($entries)) continue;
+                foreach ($entries as $entry) {
+                    if (!isset($entry['function'])) continue;
+                    // Built through add_filter() rather than by assigning
+                    // ->callbacks: WP_Hook keeps a parallel ->priorities list
+                    // that apply_filters() iterates, and a hand-built object
+                    // leaves it empty (PHP warnings, nothing runs).
+                    $solo = new \WP_Hook();
+                    $solo->add_filter(
+                        $hook,
+                        $entry['function'],
+                        $priority,
+                        isset($entry['accepted_args']) ? (int) $entry['accepted_args'] : 1
+                    );
+                    $wp_filter[$hook] = $solo;
+
+                    try {
+                        $results[] = apply_filters($hook, $initial);
+                    } catch (\Throwable $e) {
+                        // This plugin cannot answer in BrikPanel's context. Its
+                        // own UI is therefore unrenderable here too, record the
+                        // owner so the save path can keep it away from a form it
+                        // never contributed a single field to.
+                        $owner = self::callback_owner_path($entry['function']);
+                        if ($owner !== '') $throwers[] = $owner;
+                    }
+                }
+            }
+        } finally {
+            // Always hand the hook back exactly as we found it, a leaked
+            // single-callback hook would silence every other plugin for the
+            // rest of the request.
+            $wp_filter[$hook] = $original;
+        }
+
+        return ['results' => $results, 'throwers' => array_values(array_unique($throwers))];
     }
 
     /**
@@ -4230,10 +5042,18 @@ class Brikpanel_Product_Editor {
         // render path used to come up empty.)
         $tab_meta = self::collect_custom_tab_meta();
         if (has_action('woocommerce_product_data_panels')) {
-            // Buffer-safe fire — see capture_isolated_hook().
-            $panels_html = self::capture_isolated_hook('woocommerce_product_data_panels');
-
-            if ($panels_html !== '') {
+            // Buffer-safe, per-callback fire — see capture_hook_chunks(). Each
+            // plugin's output is parsed on its own so a panel that dies mid-tag
+            // cannot swallow the panels rendered after it.
+            //
+            // One panel id is rendered once. A plugin that registers its panel
+            // callback lazily from inside the `woocommerce_product_data_tabs`
+            // filter gets registered again every time that filter runs, and on a
+            // store where collect_custom_tab_meta() has to fall back to its
+            // per-callback pass the filter runs twice. Two identical panels mean
+            // two sets of inputs with the same names, so keep the first.
+            $seen_panel_ids = [];
+            foreach (self::capture_hook_chunks('woocommerce_product_data_panels') as $panels_html) {
                 $target_to_label = $tab_meta['labels'];
                 $target_to_key   = $tab_meta['keys'];
 
@@ -4255,6 +5075,7 @@ class Brikpanel_Product_Editor {
 
                             $id = $node->getAttribute('id');
                             if ($id === '' || in_array($id, $core_targets, true) || in_array($id, $skip_ids, true)) continue;
+                            if (isset($seen_panel_ids[$id])) continue;
 
                             $tab_key = 'tab:' . $id;
                             if (!in_array($tab_key, $selected, true)) continue;
@@ -4294,6 +5115,7 @@ class Brikpanel_Product_Editor {
 
                             $panel_html = self::restore_scripts(trim($dom->saveHTML($node)), $script_store);
                             if ($panel_html === '') continue;
+                            $seen_panel_ids[$id] = true;
 
                             $label = $target_to_label[$id] ?? ucfirst(str_replace('_', ' ', $id));
 
@@ -4438,10 +5260,14 @@ class Brikpanel_Product_Editor {
         $blocksy_video = function_exists('brikpanel_blocksy_video_active') && brikpanel_blocksy_video_active();
         $gallery = [];
         $image_id = $product->get_image_id();
+        // Alt text travels with each image so the SEO analysers can assess the
+        // featured image the way they do on the native editor, where they read
+        // it straight out of the featured-image metabox we do not render.
         if ($image_id) {
             $gallery[] = [
                 'id'    => (int) $image_id,
                 'url'   => wp_get_attachment_image_url($image_id, 'thumbnail'),
+                'alt'   => (string) get_post_meta((int) $image_id, '_wp_attachment_image_alt', true),
                 'video' => $blocksy_video ? brikpanel_blocksy_get_video_for_attachment((int) $image_id) : null,
             ];
         }
@@ -4449,6 +5275,7 @@ class Brikpanel_Product_Editor {
             $gallery[] = [
                 'id'    => (int) $gid,
                 'url'   => wp_get_attachment_image_url($gid, 'thumbnail'),
+                'alt'   => (string) get_post_meta((int) $gid, '_wp_attachment_image_alt', true),
                 'video' => $blocksy_video ? brikpanel_blocksy_get_video_for_attachment((int) $gid) : null,
             ];
         }
@@ -4459,7 +5286,7 @@ class Brikpanel_Product_Editor {
         $variations_data           = [];
         $is_variable               = $product->is_type('variable');
 
-        // Build a normalized {name, values, taxonomy} record for any
+        // Build a normalized {name, values, taxonomy, visible} record for any
         // WC_Product_Attribute, resolving taxonomy term slugs/ids to display
         // names so the editor renders consistently for custom and global
         // attributes.
@@ -4492,6 +5319,14 @@ class Brikpanel_Product_Editor {
                 'name'     => $display_name,
                 'values'   => $values,
                 'taxonomy' => $taxonomy,
+                // WooCommerce's own "Visible on the product page" flag: it
+                // decides whether the attribute shows up in the storefront's
+                // Additional information table. The editor used to ignore it
+                // entirely and force it back on with every save, so a merchant
+                // who had hidden an attribute in the WooCommerce screen silently
+                // lost that choice. Carry it to the client so the per-row switch
+                // reflects the stored value.
+                'visible'  => (bool) $attr->get_visible(),
             ];
         };
 
@@ -5105,6 +5940,11 @@ class Brikpanel_Product_Editor {
         // Fresh per-request warning bucket (duplicate SKU/GTIN etc.).
         $this->save_warnings = [];
 
+        // Fresh per-request attribute-promotion state.
+        $this->promoted_attributes = [];
+        $this->promoted_this_save  = 0;
+        $this->promoted_axis_map   = [];
+
         if (!current_user_can('edit_products')) {
             wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
         }
@@ -5184,6 +6024,13 @@ class Brikpanel_Product_Editor {
         ];
 
         $is_variable = !empty($_POST['is_variable']);
+        // Absent is NOT the same as 0. The client omits this key entirely when
+        // the variations section is switched off in settings, because the
+        // "Variable product" toggle it would come from is not on the page — see
+        // the `data-section-hidden` note in the form markup. Treating that
+        // absence as "the merchant chose simple" converted every variable
+        // product to simple on save and hard-deleted all of its variations.
+        $is_variable_posted = array_key_exists('is_variable', $_POST);
         $status      = sanitize_key($_POST['status'] ?? 'draft');
         $post_password = sanitize_text_field($_POST['post_password'] ?? '');
 
@@ -5205,6 +6052,38 @@ class Brikpanel_Product_Editor {
         $product_type = in_array($posted_type, $valid_types, true)
             ? $posted_type
             : ($is_variable ? 'variable' : 'simple');
+        // No type in the payload (the type selector is switched off) must never
+        // mean "convert this product to simple". A store running bundles,
+        // composites or bookings with the selector off would otherwise have the
+        // product's type rewritten on every save from this editor, which breaks
+        // the product far more thoroughly than any single field. Keep whatever
+        // the product already is unless the merchant actually chose a type, and
+        // let the variable branches follow from that.
+        if ($posted_type === '' && $product_id) {
+            $existing_type = '';
+            $existing_for_type = wc_get_product($product_id);
+            if ($existing_for_type && method_exists($existing_for_type, 'get_type')) {
+                $existing_type = (string) $existing_for_type->get_type();
+            }
+            // Only plugin-registered types are protected here. The core base
+            // types are exactly what the legacy `is_variable` checkbox exists to
+            // switch between, so a simple ⇄ variable conversion must still go
+            // through untouched when the selector is off.
+            if ($existing_type !== '' && $existing_type !== $product_type
+                && in_array($existing_type, $valid_types, true)
+                && !in_array($existing_type, ['simple', 'variable', 'grouped', 'external'], true)) {
+                $product_type = $existing_type;
+            }
+            // …unless the merchant was never shown the toggle at all. With the
+            // variations section switched off there is no control that could
+            // express "variable", so the request carries no opinion about the
+            // type and the product must keep the one it already has — including
+            // the core `variable`, which the clause above deliberately excludes.
+            if (!$is_variable_posted && $existing_type !== '' && in_array($existing_type, $valid_types, true)
+                && !in_array($existing_type, ['grouped', 'external'], true)) {
+                $product_type = $existing_type;
+            }
+        }
         $treat_as_variable = function_exists('brikpanel_is_variable_product_type')
             ? brikpanel_is_variable_product_type($product_type)
             : ($product_type === 'variable');
@@ -5538,12 +6417,28 @@ class Brikpanel_Product_Editor {
         $product->set_height($height !== '' ? wc_format_decimal($height) : '');
 
         // Images
-        $image_id = intval($_POST['image_id'] ?? 0);
-        $product->set_image_id($image_id);
+        //
+        // An absent key means "the editor cannot speak for the images", not
+        // "the merchant removed them". The two are very different: the browser
+        // only sends these once the gallery has been hydrated from the saved
+        // product, so a save that fires before that (or after a script error
+        // stopped hydration) would otherwise read as "delete every image" and
+        // silently strip the product's featured image and gallery. Removing
+        // them on purpose still works — that posts an explicit empty value.
+        if (isset($_POST['image_id'])) {
+            $image_id = intval($_POST['image_id']);
+            $product->set_image_id($image_id);
+        } else {
+            $image_id = (int) $product->get_image_id();
+        }
 
-        $gallery_ids_raw = sanitize_text_field($_POST['gallery_ids'] ?? '');
-        $gallery_ids = $gallery_ids_raw ? array_map('intval', explode(',', $gallery_ids_raw)) : [];
-        $product->set_gallery_image_ids($gallery_ids);
+        if (isset($_POST['gallery_ids'])) {
+            $gallery_ids_raw = sanitize_text_field($_POST['gallery_ids']);
+            $gallery_ids = $gallery_ids_raw ? array_map('intval', explode(',', $gallery_ids_raw)) : [];
+            $product->set_gallery_image_ids($gallery_ids);
+        } else {
+            $gallery_ids = array_map('intval', (array) $product->get_gallery_image_ids());
+        }
 
         // Blocksy product videos: attachments carry their own video meta. Only
         // the images the merchant actually touched are posted, so untouched
@@ -6045,25 +6940,80 @@ class Brikpanel_Product_Editor {
         // Attach save handlers that third-party tab plugins only register on
         // non-ajax admin requests (e.g. Pektsekye Product Options).
         self::boot_thirdparty_ajax_save_handlers();
-        do_action('woocommerce_process_product_meta', $saved_id, $post_obj);
-        do_action('woocommerce_process_product_meta_' . $post_type_key, $saved_id);
+        // All guarded: these dispatches run other plugins' save handlers, and
+        // one of them calling wp_die() (typically re-checking the native
+        // metabox nonce we don't carry) would otherwise end the request here,
+        // before variations and the rest of the save. See
+        // dispatch_foreign_hooks().
+        $this->dispatch_foreign_hooks(
+            function () use ($saved_id, $post_obj, $post_type_key) {
+                do_action('woocommerce_process_product_meta', $saved_id, $post_obj);
+                do_action('woocommerce_process_product_meta_' . $post_type_key, $saved_id);
 
-        do_action('save_post', $saved_id, $post_obj, true);
-        do_action('save_post_product', $saved_id, $post_obj, true);
-        do_action('edit_post', $saved_id, $post_obj);
-        do_action('edit_post_product', $saved_id, $post_obj);
-        // Yoast's WPSEO_Metabox::save_postdata() is hooked to wp_insert_post
-        // (not save_post). WC_Product::save() already fires wp_insert_post
-        // internally, but that happens before our globals/$_POST spoof, so
-        // Yoast bails. Re-dispatch the hook now that everything is in place.
-        do_action('wp_insert_post', $saved_id, $post_obj, true);
+                do_action('save_post', $saved_id, $post_obj, true);
+                do_action('save_post_product', $saved_id, $post_obj, true);
+                do_action('edit_post', $saved_id, $post_obj);
+                do_action('edit_post_product', $saved_id, $post_obj);
+                // Yoast's WPSEO_Metabox::save_postdata() is hooked to wp_insert_post
+                // (not save_post). WC_Product::save() already fires wp_insert_post
+                // internally, but that happens before our globals/$_POST spoof, so
+                // Yoast bails. Re-dispatch the hook now that everything is in place.
+                do_action('wp_insert_post', $saved_id, $post_obj, true);
+            },
+            'product meta dispatch'
+        );
 
         // `woocommerce_admin_process_product_object` lets plugins mutate the
         // WC_Product instance itself before the caller persists it. We fetch
         // a fresh product, let listeners mutate, then re-save.
+        //
+        // …with one exception. Listeners on this hook read their own fields out
+        // of $_POST and treat a missing field as "the merchant cleared it". That
+        // is correct for a form that contained the field, and destructive for one
+        // that never rendered it. When the product's type owns a product-data
+        // panel this editor cannot show (see unrendered_type_panels() — Product
+        // Bundles, Composite Products, Bookings…), the submitted form is not a
+        // representation of that product, so we stay silent instead of handing
+        // those listeners an empty form to act on. Skipping the hook can only
+        // leave third-party data untouched; firing it can delete it.
+        //
+        // The silence is kept as narrow as it can be: only the plugin that owns
+        // the missing panel is held back, so everything else on the hook
+        // (Germanized, brand/SEO/ERP add-ons…) still processes a bundle exactly
+        // as it processes a simple product. When the owner cannot be identified
+        // we fall back to skipping the whole hook, because losing a save is
+        // recoverable and losing a bundle's contents is not.
+        //
+        // Second source of the same gap: a plugin whose tab callback FATALS in
+        // our context (unrepresented_owner_paths(), Composite Products) never
+        // declares a panel for us to miss, so the class-based check above cannot
+        // see it. Its own product type would otherwise be left unguarded by the
+        // very listener that empties it. Both sources feed one mute list.
         $refreshed = wc_get_product($saved_id);
         if ($refreshed) {
-            do_action('woocommerce_admin_process_product_object', $refreshed);
+            $unrendered_panels = self::unrendered_type_panels($refreshed);
+            $thrower_paths     = self::unrepresented_owner_paths($refreshed);
+            $muted_paths       = array_values(array_unique(array_merge(
+                $unrendered_panels ? self::tab_owner_paths($unrendered_panels) : [],
+                $thrower_paths
+            )));
+            $unrepresented     = !empty($unrendered_panels) || !empty($thrower_paths);
+            if (!$unrepresented || !empty($muted_paths)) {
+                $this->dispatch_foreign_hooks(
+                    static function () use ($refreshed, $muted_paths) {
+                        if (empty($muted_paths)) {
+                            do_action('woocommerce_admin_process_product_object', $refreshed);
+                            return;
+                        }
+                        self::do_action_excluding_paths(
+                            'woocommerce_admin_process_product_object',
+                            [$refreshed],
+                            $muted_paths
+                        );
+                    },
+                    'woocommerce_admin_process_product_object'
+                );
+            }
             $refreshed->save();
         }
         // Every product-meta dispatch inside the spoof window is done; restore
@@ -6215,6 +7165,27 @@ class Brikpanel_Product_Editor {
                 return isset($v['id']) ? (int) $v['id'] : 0;
             }, $variations);
             $response['variations']       = $variations;
+            // The attribute rows as persisted. An attribute the merchant typed
+            // as a plain name may have just become a real taxonomy, and the
+            // client is still holding the pre-promotion row: its axis key would
+            // stay `kleur` while every variation above now says `pa_kleur`.
+            // Handing back the saved rows lets the editor adopt the taxonomy
+            // (and the canonical term names) without a page reload.
+            $response['attributes'] = isset($fresh['attributes']) ? $fresh['attributes'] : [];
+            // Which posted axis keys became which taxonomy. Nothing else in the
+            // response can express this: an attribute that bound to an existing
+            // global may come back under a different label than the merchant
+            // typed, so the editor cannot pair the rows up by name.
+            if (!empty($this->promoted_axis_map)) {
+                $response['promoted_axes'] = $this->promoted_axis_map;
+            }
+            // Only when a taxonomy was actually created: the client needs the
+            // refreshed list so the new attribute's term typeahead is populated.
+            // Skipped otherwise, since rebuilding it costs a get_terms() per
+            // attribute and nothing changed.
+            if (!empty($this->promoted_attributes)) {
+                $response['global_attributes'] = $this->build_global_attributes_payload();
+            }
             $fresh_extras = $variation_ids
                 ? $this->capture_wc_variation_fields($final_product, $variation_ids)
                 : [];
@@ -6368,7 +7339,12 @@ class Brikpanel_Product_Editor {
                 $attribute->set_options($values);
             }
 
-            $attribute->set_visible(true);
+            // WooCommerce's "Visible on the product page" flag, now driven by
+            // the per-row switch in the attribute editor. A payload without the
+            // key comes from a client older than this build (or a third party
+            // posting the section), so it keeps the previous behaviour of
+            // showing the attribute rather than silently hiding it.
+            $attribute->set_visible(!isset($attr_data['visible']) || (bool) $attr_data['visible']);
             $attribute->set_variation(false);
 
             $attributes[] = $attribute;
@@ -6378,47 +7354,76 @@ class Brikpanel_Product_Editor {
     }
 
     /**
-     * Synonyms used to detect Color / Size attributes by name across English
-     * and Turkish stores. Comparison is always done lowercase.
+     * Every global WC attribute with its terms, in the shape the editor's
+     * attribute picker and term typeahead consume.
+     *
+     * Used both when rendering the page and, after a save that created a new
+     * global attribute, to hand the client a refreshed list so the freshly
+     * promoted attribute's terms are available without a reload.
+     *
+     * @return array[]
      */
-    private function size_color_synonyms() {
-        return [
-            'color' => ['color', 'colour', 'renk'],
-            'size'  => ['size', 'beden'],
-        ];
-    }
-
-    /**
-     * Decide whether the given attribute name matches Color or Size by
-     * synonym. Returns 'color', 'size', or '' (no match).
-     */
-    private function detect_size_color_role($name) {
-        $needle = strtolower(trim((string) $name));
-        if ($needle === '') return '';
-        foreach ($this->size_color_synonyms() as $role => $synonyms) {
-            if (in_array($needle, $synonyms, true)) return $role;
+    private function build_global_attributes_payload() {
+        $global_attributes = [];
+        foreach (wc_get_attribute_taxonomies() as $attr) {
+            $taxonomy = wc_attribute_taxonomy_name($attr->attribute_name);
+            $terms = get_terms(['taxonomy' => $taxonomy, 'hide_empty' => false, 'orderby' => 'name']);
+            $term_names = [];
+            if (!is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $term_names[] = $term->name;
+                }
+            }
+            $global_attributes[] = [
+                'id'       => (int) $attr->attribute_id,
+                'name'     => $attr->attribute_label ?: $attr->attribute_name,
+                'slug'     => $attr->attribute_name,
+                'taxonomy' => $taxonomy,
+                'terms'    => $term_names,
+            ];
         }
-        return '';
+        return $global_attributes;
     }
 
     /**
-     * Find a global WC attribute taxonomy whose slug, label, or full taxonomy
-     * key matches one of the synonyms for the given role. Returns the
-     * taxonomy name (e.g. 'pa_color') or '' if not found.
+     * Find an existing global WC attribute matching a merchant-typed name.
+     *
+     * Matching is case-insensitive across three axes, so the same attribute is
+     * found however the merchant spells it: the attribute's own slug, its
+     * display label, and the slug WooCommerce itself would derive from the
+     * typed name. That last axis is what makes "Kleur " (trailing space) or
+     * "Kleur!" resolve to an existing `pa_kleur` instead of being treated as a
+     * brand-new attribute.
+     *
+     * Deliberately NOT capability-gated: binding a typed name to an attribute
+     * the store already owns is the exact same outcome the editor's attribute
+     * picker already produces for any user who can edit products.
+     *
+     * @param string $name Merchant-typed attribute name.
+     * @return string Taxonomy name (e.g. `pa_kleur`), or '' when not found.
      */
-    private function find_global_taxonomy_for_role($role) {
-        $synonyms_map = $this->size_color_synonyms();
-        if (!isset($synonyms_map[$role])) return '';
-        $synonyms = $synonyms_map[$role];
+    private function find_global_attribute_by_name($name) {
+        $needle = function_exists('mb_strtolower')
+            ? mb_strtolower(trim((string) $name))
+            : strtolower(trim((string) $name));
+        if ($needle === '') {
+            return '';
+        }
+        // WooCommerce derives an attribute's slug with this exact function, so
+        // comparing against it is what keeps us in step with wc_create_attribute().
+        $derived = wc_sanitize_taxonomy_name($name);
 
         foreach (wc_get_attribute_taxonomies() as $attr) {
-            $slug  = strtolower((string) $attr->attribute_name);
-            $label = strtolower((string) ($attr->attribute_label ?: $attr->attribute_name));
-            $tax   = strtolower(wc_attribute_taxonomy_name($attr->attribute_name));
-            if (in_array($slug, $synonyms, true)
-                || in_array($label, $synonyms, true)
-                || $tax === 'pa_' . $role
-            ) {
+            $slug  = (string) $attr->attribute_name;
+            $label = (string) ($attr->attribute_label ?: $attr->attribute_name);
+            if (function_exists('mb_strtolower')) {
+                $slug  = mb_strtolower($slug);
+                $label = mb_strtolower($label);
+            } else {
+                $slug  = strtolower($slug);
+                $label = strtolower($label);
+            }
+            if ($slug === $needle || $label === $needle || ($derived !== '' && $slug === $derived)) {
                 return wc_attribute_taxonomy_name($attr->attribute_name);
             }
         }
@@ -6426,22 +7431,82 @@ class Brikpanel_Product_Editor {
     }
 
     /**
-     * Create a new global WC attribute for `color` or `size`, register the
-     * taxonomy for the current request so wp_insert_term() / taxonomy_exists()
-     * work immediately, and return the taxonomy name (e.g. `pa_color`).
-     * Returns '' on failure.
+     * Decide whether a merchant-typed name may become a BRAND-NEW global
+     * attribute, and return the slug it would use.
+     *
+     * Every rejection here mirrors a failure mode of wc_create_attribute(), so
+     * we never call that function expecting a WP_Error, plus a few guardrails
+     * of our own. A rejected name is not an error: the caller simply leaves the
+     * attribute custom, which is exactly what the merchant typed.
+     *
+     * @param string $name Merchant-typed attribute name.
+     * @return string Slug without the `pa_` prefix, or '' to skip promotion.
      */
-    private function create_global_size_color_taxonomy($role, $display_label) {
-        if ($role !== 'color' && $role !== 'size') return '';
+    private function validate_new_global_attribute_slug($name) {
+        // Creating a site-wide taxonomy is a store-management action.
+        if (!current_user_can('manage_woocommerce')) {
+            return '';
+        }
+        // Creating the taxonomy without being able to create its terms would
+        // leave the attribute with ZERO values and every variation pointing at
+        // a term that does not exist. Staying custom keeps the data intact.
+        if (!$this->can_create_product_terms()) {
+            return '';
+        }
 
-        // Creating a brand-new global attribute taxonomy is a store-management
-        // action. Gate it so a product-only editor can't spawn site-wide
-        // taxonomies; promotion is simply skipped and the attribute stays
-        // custom for users without the capability.
-        if (!current_user_can('manage_woocommerce')) return '';
+        $label = trim((string) $name);
+        $len   = function_exists('mb_strlen') ? mb_strlen($label) : strlen($label);
+        // A single character is a typo, not an axis worth a site-wide taxonomy.
+        if ($len < 2) {
+            return '';
+        }
 
-        $slug = sanitize_title($role);
-        $label = trim((string) $display_label) !== '' ? (string) $display_label : ucfirst($role);
+        $slug = wc_sanitize_taxonomy_name($label);
+        // A name made only of punctuation sanitizes away to nothing.
+        if ($slug === '') {
+            return '';
+        }
+        // WooCommerce measures this limit in BYTES, so match it exactly rather
+        // than being stricter (mb_strlen) and rejecting names WC would accept.
+        if (strlen($slug) > 28) {
+            return '';
+        }
+        if (function_exists('wc_check_if_attribute_name_is_reserved') && wc_check_if_attribute_name_is_reserved($slug)) {
+            return '';
+        }
+        // Already a registered taxonomy. Either find_global_attribute_by_name()
+        // has already bound to it, or it is a taxonomy WooCommerce does not
+        // know about (registered by a third party, or its attribute row was
+        // deleted). In that second case wc_attribute_taxonomy_id_by_name()
+        // returns 0, and an attribute with id 0 but a `pa_` name is not a
+        // taxonomy attribute at all — the product would store a custom
+        // attribute literally named "pa_kleur". Staying custom is correct.
+        if (taxonomy_exists(wc_attribute_taxonomy_name($slug))) {
+            return '';
+        }
+        // "2024" or "42" is an attribute VALUE someone typed in the wrong box.
+        if (ctype_digit($slug)) {
+            return '';
+        }
+
+        return $slug;
+    }
+
+    /**
+     * Create a global WC attribute for an arbitrary merchant-typed name,
+     * register the taxonomy for the current request so wp_insert_term() /
+     * taxonomy_exists() work immediately, and return the taxonomy name
+     * (e.g. `pa_kleur`). Returns '' on any failure.
+     *
+     * @param string $display_label Merchant-typed attribute name.
+     * @return string
+     */
+    private function create_global_attribute_taxonomy($display_label) {
+        $slug = $this->validate_new_global_attribute_slug($display_label);
+        if ($slug === '') {
+            return '';
+        }
+        $label = trim((string) $display_label);
 
         $attribute_id = wc_create_attribute([
             'name'         => $label,
@@ -6451,7 +7516,20 @@ class Brikpanel_Product_Editor {
             'has_archives' => false,
         ]);
 
-        if (is_wp_error($attribute_id) || !$attribute_id) return '';
+        // Belt and braces: validate_new_global_attribute_slug() already ruled
+        // out every documented failure mode, so this only fires on a DB error
+        // or a third-party veto. Log it so a site owner asking "why did my
+        // attribute not become global" has something concrete to look at.
+        if (is_wp_error($attribute_id) || !$attribute_id) {
+            if (function_exists('error_log')) {
+                error_log(sprintf(
+                    '[BrikPanel] Could not create the global attribute "%s": %s',
+                    $label,
+                    is_wp_error($attribute_id) ? $attribute_id->get_error_message() : 'unknown error'
+                ));
+            }
+            return '';
+        }
 
         $taxonomy = wc_attribute_taxonomy_name($slug);
 
@@ -6481,14 +7559,165 @@ class Brikpanel_Product_Editor {
             );
         }
 
+        // Redundant since WooCommerce clears both the transient AND the
+        // `woocommerce-attributes` object-cache group inside wc_create_attribute(),
+        // but harmless and it documents the requirement: without a fresh list,
+        // wc_attribute_taxonomy_id_by_name() below would return 0.
         delete_transient('wc_attribute_taxonomies');
+
+        // register_taxonomy() is not enough on its own. wc_attribute_label()
+        // resolves a label through taxonomy_is_product_attribute(), which tests
+        // the `$wc_product_attributes` global — and WooCommerce fills that once,
+        // on `init`, from the attribute list as it was then. A taxonomy created
+        // mid-request is missing from it, so wc_attribute_label('pa_kleur')
+        // falls through and returns the raw taxonomy key. Everything reading a
+        // label later in this request (the attribute rows echoed back in the
+        // save response, most visibly) would then show "pa_kleur" where the
+        // merchant typed "Kleur". Register the row the same way WooCommerce's
+        // own WC_Post_Types::register_taxonomies() does.
+        $row = null;
+        foreach (wc_get_attribute_taxonomies() as $candidate) {
+            if ((int) $candidate->attribute_id === (int) $attribute_id) {
+                $row = $candidate;
+                break;
+            }
+        }
+        if ($row) {
+            $row->attribute_public = absint(isset($row->attribute_public) ? $row->attribute_public : 0);
+            if (!isset($GLOBALS['wc_product_attributes']) || !is_array($GLOBALS['wc_product_attributes'])) {
+                $GLOBALS['wc_product_attributes'] = [];
+            }
+            $GLOBALS['wc_product_attributes'][$taxonomy] = $row;
+        }
 
         return $taxonomy;
     }
 
+    /**
+     * Turn a merchant-typed attribute name into a global attribute taxonomy:
+     * bind to one the store already has, or create it.
+     *
+     * Returns '' to mean "leave this attribute custom" — for a missing
+     * capability, a name WooCommerce would reject, or the per-save creation
+     * ceiling. Never surfaces an error: a product save must not fail because
+     * an attribute could not be promoted.
+     *
+     * @param string $name Merchant-typed attribute name.
+     * @return string Taxonomy name (e.g. `pa_kleur`), or ''.
+     */
+    private function promote_attribute_to_global($name) {
+        // Only ever promote to a slug that survives WordPress's own
+        // normalisation unchanged. wc_sanitize_taxonomy_name() keeps non-Latin
+        // characters raw while sanitize_title() percent-encodes them, and
+        // WooCommerce uses BOTH: a taxonomy like `pa_renk-🔴` gets its
+        // variation meta written under the raw spelling and read back under
+        // the encoded one, so every variation reports an empty value even
+        // though the database holds the right one. An attribute left custom
+        // keeps working, so that is the safer answer for these names.
+        $derived = wc_sanitize_taxonomy_name($name);
+        if ($derived === '' || sanitize_title($derived) !== $derived) {
+            return '';
+        }
+
+        $matched = $this->find_global_attribute_by_name($name);
+        if ($matched !== '') {
+            // The same rule applies to an attribute we merely bind to: its own
+            // slug can be one the store created by hand, and matching happens
+            // on the label too, so a safe name can still point at an unsafe
+            // taxonomy.
+            $matched_slug = (string) substr($matched, 3);
+            if (sanitize_title($matched_slug) !== $matched_slug) {
+                return '';
+            }
+            return taxonomy_exists($matched) ? $matched : '';
+        }
+
+        /**
+         * Ceiling on how many global attributes a single save may create. Real
+         * products use a handful of axes; a tampered payload would otherwise
+         * spawn one site-wide taxonomy per row.
+         *
+         * @param int $max Maximum new global attributes per save request.
+         */
+        $max_new = (int) apply_filters('brikpanel_pe_max_new_global_attributes', 3);
+        if ($max_new > 0 && $this->promoted_this_save >= $max_new) {
+            return '';
+        }
+
+        $created = $this->create_global_attribute_taxonomy($name);
+        if ($created !== '' && taxonomy_exists($created)) {
+            $this->promoted_this_save++;
+            $this->promoted_attributes[] = $created;
+            return $created;
+        }
+        return '';
+    }
+
+    /**
+     * Run third-party save hooks without letting one of them abort the request.
+     *
+     * Plugins that render their own fields inside WooCommerce's native product
+     * or variation metabox commonly re-verify that metabox's nonce from their
+     * save handler — WooCommerce Product Variation Gallery, for example, calls
+     * `check_ajax_referer()` inside `woocommerce_save_product_variation`. Our
+     * editor posts its own nonce, not theirs, so that check fails and the
+     * plugin calls `wp_die()`.
+     *
+     * `wp_die()` is not a Throwable, so the try/catch that wraps the save body
+     * cannot see it: the request simply ends. Dispatching per-variation hooks
+     * inside a loop makes that especially damaging — the first variation is
+     * written, the request dies on its hook, and every later variation is
+     * silently left unsaved while the editor shows no error.
+     *
+     * For the duration of the dispatch we swap the wp_die handlers for ones
+     * that throw, so a bailing third party loses only its own field write. By
+     * this point everything BrikPanel owns is already persisted; the plugin
+     * that bailed is the only thing that misses out, and it is logged.
+     *
+     * @param callable $dispatch Closure performing the do_action() calls.
+     * @param string   $context  Short label used in the error log.
+     * @return void
+     */
+    private function dispatch_foreign_hooks(callable $dispatch, $context = '') {
+        $to_exception = static function () {
+            return static function ($message = '', $title = '', $args = []) {
+                throw new \RuntimeException(
+                    'wp_die() from a third-party save handler: '
+                    . ( is_scalar($message) ? (string) $message : gettype($message) )
+                );
+            };
+        };
+
+        add_filter('wp_die_ajax_handler', $to_exception, PHP_INT_MAX);
+        add_filter('wp_die_handler',      $to_exception, PHP_INT_MAX);
+
+        try {
+            $dispatch();
+        } catch (\Throwable $e) {
+            error_log(sprintf(
+                '[BrikPanel] Third-party handler aborted during %s: %s',
+                $context !== '' ? $context : 'product save',
+                $e->getMessage()
+            ));
+        } finally {
+            remove_filter('wp_die_ajax_handler', $to_exception, PHP_INT_MAX);
+            remove_filter('wp_die_handler',      $to_exception, PHP_INT_MAX);
+        }
+    }
+
     private function save_variations($product, $post_data) {
+        // The client posts `variations` whenever the table is on the page, even
+        // when it is empty. An absent key therefore means the editor never
+        // rendered the variation table at all (the section is switched off in
+        // settings), which is not a request to delete anything — and the
+        // "delete removed variations" sweep further down would otherwise wipe
+        // every child of the product. Follow the same "section not posted →
+        // leave it alone" convention the description/GTIN fields use.
+        if (!isset($post_data['variations'])) {
+            return;
+        }
         $attributes_json = isset($post_data['attributes']) ? wp_unslash($post_data['attributes']) : '[]';
-        $variations_json = isset($post_data['variations']) ? wp_unslash($post_data['variations']) : '[]';
+        $variations_json = wp_unslash($post_data['variations']);
 
         $attributes_data = json_decode($attributes_json, true);
         $variations_data = json_decode($variations_json, true);
@@ -6539,15 +7768,23 @@ class Brikpanel_Product_Editor {
         // Rebuilt fresh every save: an all-blank selection clears prior defaults.
         $default_attributes = [];
 
-        // Status gate for Color/Size promotion. We never create global
-        // attribute taxonomies or terms while saving a draft — only when the
-        // product is going live. `password` is a virtual status that the
-        // outer handler converts to publish + post_password (see ~line 2233).
+        // Whether a typed-in attribute becomes a real global attribute. Two
+        // gates, both deliberate:
+        //   - the merchant's setting (see WooCommerce → Settings → BrikPanel →
+        //     Products). Default on: global attributes are what swatch themes,
+        //     layered nav and attribute filters read, so most stores want them.
+        //   - status. We never create site-wide taxonomies or terms while
+        //     saving a draft, only when the product is going live. WooCommerce
+        //     has no bulk delete for attributes, so every one created from a
+        //     half-finished draft is a manual cleanup later. `password` is a
+        //     virtual status the outer handler converts to publish +
+        //     post_password (see ~line 2233).
         $current_status = sanitize_key($post_data['status'] ?? 'draft');
-        $promote_size_color = in_array($current_status, ['publish', 'private', 'password'], true);
+        $auto_global = get_option('brikpanel_pe_auto_global_attributes', 'yes') === 'yes'
+            && in_array($current_status, ['publish', 'private', 'password'], true);
 
-        // Maps the variation's old custom slug (e.g. `color`) to the new
-        // taxonomy (`pa_color`) once an attribute is promoted. We rewrite
+        // Maps the variation's old custom slug (e.g. `kleur`) to the new
+        // taxonomy (`pa_kleur`) once an attribute is promoted. We rewrite
         // variation attribute keys with this map below so existing variations
         // re-edited from the editor stay linked to the right attribute.
         $slug_remap = [];
@@ -6565,22 +7802,56 @@ class Brikpanel_Product_Editor {
             if ($dedupe_key === '' || isset($seen_var_names[$dedupe_key])) continue;
             $seen_var_names[$dedupe_key] = true;
 
-            // Promote custom Color/Size attributes to real global taxonomies
-            // when the product is going live. Detection is name-based using
-            // a small EN+TR synonym map, mirroring the Beden+Renk template.
-            // Drafts skip promotion entirely so half-baked attributes don't
-            // leak into the site-wide attribute list.
-            if (empty($taxonomy) && $promote_size_color) {
-                $role = $this->detect_size_color_role($name);
-                if ($role !== '') {
-                    $matched = $this->find_global_taxonomy_for_role($role);
-                    if ($matched === '') {
-                        $matched = $this->create_global_size_color_taxonomy($role, $name);
+            // Promote a typed-in attribute to a real global taxonomy: bind to
+            // one the store already has, or create it. Only reached when the
+            // merchant typed a new name — picking an existing attribute from
+            // the editor's picker already arrives with `taxonomy` filled in.
+            if (empty($taxonomy) && $auto_global) {
+                /**
+                 * Veto auto-promotion of one specific attribute name.
+                 *
+                 * @param bool       $promote Whether to promote this attribute.
+                 * @param string     $name    Merchant-typed attribute name.
+                 * @param WC_Product $product Product being saved.
+                 */
+                if (apply_filters('brikpanel_pe_promote_attribute', true, $name, $product)) {
+                    $matched = $this->promote_attribute_to_global($name);
+                    // Two rows can resolve to the SAME attribute. On a store
+                    // whose attribute label and slug disagree (slug `colour`,
+                    // label `Kleur`), typing either spelling binds to it, and
+                    // the dedupe above cannot see that because it keys on the
+                    // typed names, which differ. So can a row picked from the
+                    // combo plus a typed one that resolves to the same place.
+                    // WC keys attributes by name, so letting both through means
+                    // the second silently takes the first's slot: its values are
+                    // lost and every variation collapses onto one axis. Leave
+                    // the later row custom instead — both axes survive, nothing
+                    // is overwritten, and the product still says what the
+                    // merchant typed.
+                    if ($matched !== '' && isset($seen_var_names[strtolower($matched)])) {
+                        $matched = '';
                     }
-                    if ($matched !== '' && taxonomy_exists($matched)) {
-                        $old_slug = sanitize_title($name);
-                        if ($old_slug !== '' && $old_slug !== $matched) {
-                            $slug_remap[$old_slug] = $matched;
+                    if ($matched !== '') {
+                        $seen_var_names[strtolower($matched)] = true;
+                        // Register BOTH spellings of the old axis key. The
+                        // client derives it with its own slugify(), which
+                        // disagrees with sanitize_title() outside ASCII —
+                        // remove_accents() turns "Größe" into `grosse` while
+                        // the JS produces `gro-e`. Keying on only one of them
+                        // would leave every variation of such an attribute
+                        // unmatched, and the axis would be dropped below.
+                        $old_keys = array_unique(array_filter([
+                            sanitize_title($name),
+                            sanitize_key($attr_data['key'] ?? ''),
+                        ]));
+                        foreach ($old_keys as $old_key) {
+                            if ($old_key !== $matched) {
+                                $slug_remap[$old_key] = $matched;
+                            }
+                            // Same map, but it outlives this function: the AJAX
+                            // response uses it to tell the editor which of its
+                            // rows just became a taxonomy.
+                            $this->promoted_axis_map[$old_key] = $matched;
                         }
                         $taxonomy = $matched;
                     }
@@ -6611,7 +7882,12 @@ class Brikpanel_Product_Editor {
             }
 
             $attribute->set_position($position++);
-            $attribute->set_visible(true);
+            // Same contract as the spec attributes above. A variation axis may
+            // legitimately be hidden from the Additional information table while
+            // still driving the variation dropdowns — that is WooCommerce's own
+            // behaviour, and forcing it back on here used to undo the merchant's
+            // choice on every save.
+            $attribute->set_visible(!isset($attr_data['visible']) || (bool) $attr_data['visible']);
             $attribute->set_variation(true);
 
             $wc_attributes[] = $attribute;
@@ -6638,13 +7914,48 @@ class Brikpanel_Product_Editor {
 
         // Append preserved non-variation attributes after variation ones —
         // positions are renumbered so WC's position-sort stays stable.
+        //
+        // A spec must never land on a key a variation axis already holds.
+        // WC_Product::set_attributes() keys by name, so a spec sharing a key
+        // would replace the axis and, because it is flagged variation=false,
+        // silently stop the product from varying on it. Reachable whenever a
+        // typed axis resolves to the same taxonomy a spec row was picked from.
+        // The variation axis wins: it is the one the variation rows depend on.
+        $taken_attribute_keys = [];
+        foreach ($wc_attributes as $axis_attr) {
+            $axis_name = $axis_attr->get_name();
+            $taken_attribute_keys[strtolower($axis_attr->is_taxonomy() ? $axis_name : sanitize_title($axis_name))] = true;
+        }
         foreach ($existing_non_variation as $preserved) {
+            $preserved_name = $preserved->get_name();
+            $preserved_key  = strtolower($preserved->is_taxonomy() ? $preserved_name : sanitize_title($preserved_name));
+            if ($preserved_key === '' || isset($taken_attribute_keys[$preserved_key])) {
+                continue;
+            }
+            $taken_attribute_keys[$preserved_key] = true;
             $preserved->set_position($position++);
             $wc_attributes[] = $preserved;
         }
 
         $product->set_attributes($wc_attributes);
         $product->save();
+
+        // The axis keys a variation is allowed to carry, keyed exactly the way
+        // the per-variation loop below normalises them. Removing an attribute
+        // row does not rebuild the variation table, so the client keeps posting
+        // the axis it no longer shows — without this the variation kept an
+        // `attribute_<deleted>` meta row forever, dead data that would silently
+        // start matching again if an attribute of that name were ever re-added.
+        // Left empty (so the filter is a no-op) when no variation axis survived,
+        // rather than stripping every attribute off every variation.
+        $allowed_axis_keys = [];
+        foreach ($wc_attributes as $axis_attr) {
+            if (!$axis_attr->get_variation()) {
+                continue;
+            }
+            $axis_name = $axis_attr->get_name();
+            $allowed_axis_keys[$axis_attr->is_taxonomy() ? $axis_name : sanitize_title($axis_name)] = true;
+        }
 
         // Drop term relationships for any pa_* taxonomy the user removed from
         // the attribute set (both variation axes and preserved specs are in
@@ -6720,6 +8031,11 @@ class Brikpanel_Product_Editor {
                     // here so the variation stays attached to the parent.
                     if (isset($slug_remap[$key])) {
                         $key = $slug_remap[$key];
+                    }
+                    // Axis no longer on the product — see $allowed_axis_keys.
+                    $axis_key = (strpos($key, 'pa_') === 0 && taxonomy_exists($key)) ? $key : sanitize_title($key);
+                    if (!empty($allowed_axis_keys) && !isset($allowed_axis_keys[$axis_key])) {
+                        continue;
                     }
                     if (strpos($key, 'pa_') === 0 && taxonomy_exists($key)) {
                         $term = get_term_by('name', $val, $key);
@@ -6902,6 +8218,18 @@ class Brikpanel_Product_Editor {
             }
             $variation->set_image_id(!empty($var_image_ids) ? $var_image_ids[0] : 0);
 
+            // Persist the row order the merchant arranged in the table.
+            // WC_Product_Variable_Data_Store_CPT::read_children() reads children
+            // with `menu_order ASC, ID ASC`, so leaving this unset parked every
+            // variation at 0 and the list silently collapsed to creation order —
+            // there was no way to sort variations at all, and a newly generated
+            // one jumped ahead of a hand-sorted list because 0 sorts first.
+            // $loop_index is the submitted position, which is exactly what the
+            // table shows. Writing it on every save is free when nothing moved:
+            // WC only touches wp_posts when a post-level prop actually changed,
+            // and an identical value registers no change at all.
+            $variation->set_menu_order($loop_index);
+
             $variation->save();
 
             // Enforce the intended Active state at the DB level. WC runs a new
@@ -6955,7 +8283,14 @@ class Brikpanel_Product_Editor {
             // `$_POST['field'][$loop_index]` the same way it does inside WC's
             // native variation metabox save.
             if ($vid) {
-                do_action('woocommerce_save_product_variation', $vid, $loop_index);
+                // Guarded: a plugin bailing out here must not take the rest of
+                // the variation loop down with it. See dispatch_foreign_hooks().
+                $this->dispatch_foreign_hooks(
+                    static function () use ($vid, $loop_index) {
+                        do_action('woocommerce_save_product_variation', $vid, $loop_index);
+                    },
+                    'woocommerce_save_product_variation (variation ' . $vid . ')'
+                );
 
                 // Re-assert the cost last: cost plugins persist their own key
                 // from this dispatch, and theirs is read first, so without this

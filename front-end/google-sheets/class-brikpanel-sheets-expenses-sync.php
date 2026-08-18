@@ -185,12 +185,12 @@ class Brikpanel_Sheets_Expenses_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK_PUSH,
 			[ $this, 'handle_push' ],
-			[ 'label' => __( 'Sheets — push expenses to Google Sheets', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — push expenses to Google Sheets', 'brikpanel' ) ]; }
 		);
 		Brikpanel_Cron::register_handler(
 			self::HOOK_PULL,
 			[ $this, 'handle_pull' ],
-			[ 'label' => __( 'Sheets — pull expenses from Google Sheets', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — pull expenses from Google Sheets', 'brikpanel' ) ]; }
 		);
 
 		// Only the pull runs on a schedule. The push is event-driven (expense

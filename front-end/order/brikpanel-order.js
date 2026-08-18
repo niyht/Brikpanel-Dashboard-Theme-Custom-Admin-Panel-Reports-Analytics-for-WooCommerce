@@ -130,10 +130,9 @@
 		// WP floats #screen-meta-links at the very top of the content — exactly
 		// where this fixed header sits — so the buttons end up hidden behind it.
 		// Moving the whole container here (its native toggle handlers travel with
-		// the node) puts them back within reach beside the order actions; the
-		// slide-down panel (#screen-meta) is nudged below the header in
-		// positionHeader() so it opens fully visible.
-		var screenMeta = document.getElementById('screen-meta');
+		// the node) puts them back within reach beside the order actions. The
+		// slide-down panel (#screen-meta) needs no nudge of its own: it lives
+		// inside #wpbody-content, which now carries the reservation.
 		var screenMetaLinks = document.getElementById('screen-meta-links');
 		if (screenMetaLinks && !screenMetaLinks.closest('.brikpanel-order-header')) {
 			var hasToggle = false;
@@ -146,34 +145,114 @@
 			}
 		}
 
-		// Position header to align with WP content area and reserve vertical
-		// space below the fixed header. The reserve cannot live on the
-		// header's next CSS sibling (it is the hidden original <h1>), so we
-		// measure the actual overlap and pad #poststuff. This self-adjusts
-		// across breakpoints, header heights and translated labels.
+		// Align the fixed header with the WP content column and publish its
+		// height. The vertical reservation itself is a plain CSS rule on
+		// #wpbody-content (see brikpanel-order.css) that consumes the custom
+		// property set here, so it stays correct across every breakpoint and
+		// `top:` override without this function re-running.
+		//
+		// The previous approach padded #poststuff by the measured overlap, and
+		// inverted whenever a notice was on screen: #poststuff lives inside
+		// <form id="order">, below the notices, so a notice pushed it down, the
+		// measured overlap went negative, the code concluded nothing needed
+		// reserving, and the notice absorbed the entire clipping.
+		//
+		// The reservation assumes the bar's `top` equals the top of
+		// #wpbody-content. That is true with WordPress's default chrome, but it
+		// is an assumption the CSS cannot check, and it is false whenever the
+		// admin bar is not showing: core only puts the `wp-toolbar` class on
+		// <html> when is_admin_bar_showing() is true, and it is that class alone
+		// that carries `padding-top: var(--wp-admin--admin-bar--height)`. A
+		// white-label plugin filtering show_admin_bar to false therefore moves
+		// the content column to y=0 while the bar stays pinned at 32px, and the
+		// reservation ends up 32px short — the exact clipping this was meant to
+		// fix. The same goes for anything that redefines
+		// --wp-admin--admin-bar--height, which the hardcoded 32/46 duplicates.
+		//
+		// So measure the invariant instead of trusting it: publish the content
+		// column's own top edge and let the bar sit on it.
 		var poststuff = document.getElementById('poststuff');
-		function positionHeader() {
+		var bodyContent = document.getElementById('wpbody-content');
+		var metricsFrame = 0;
+		var lastHeight = '';
+		var lastTop = '';
+		var lastLeft = '';
+
+		function applyHeaderMetrics() {
+			metricsFrame = 0;
+
 			var wpcontent = document.getElementById('wpcontent');
 			if (wpcontent) {
-				header.style.left = wpcontent.getBoundingClientRect().left + 'px';
+				var left = wpcontent.getBoundingClientRect().left + 'px';
+				if (left !== lastLeft) {
+					lastLeft = left;
+					header.style.left = left;
+				}
 			}
-			if (poststuff) {
-				poststuff.style.paddingTop = '0px';
-				var gap = 16;
-				var overlap = Math.round(
-					header.getBoundingClientRect().bottom - poststuff.getBoundingClientRect().top + gap
-				);
-				poststuff.style.paddingTop = ( overlap > 0 ? overlap : 0 ) + 'px';
+
+			// Written to documentElement rather than as an inline style on a node
+			// inside .wrap, so the observers below can never be re-triggered by
+			// our own write. Both values are compared before writing: the
+			// #wpcontent observer below reacts to the reservation this property
+			// drives, so an unconditional write is a feedback edge, and a
+			// re-write that lands on a scrollbar threshold can oscillate.
+			var height = Math.ceil(header.getBoundingClientRect().height) + 'px';
+			if (height !== lastHeight) {
+				lastHeight = height;
+				document.documentElement.style.setProperty('--brk-order-header-h', height);
 			}
-			// The screen-options panel sits at the very top of the content, under
-			// this fixed header. Nudge it down by the header's height so it opens
-			// just beneath the bar instead of behind it.
-			if (screenMeta) {
-				screenMeta.style.marginTop = Math.round(header.getBoundingClientRect().height + 8) + 'px';
+
+			// The column's border-box top. Our own reservation is padding INSIDE
+			// that box, so measuring it here cannot feed back into itself.
+			if (bodyContent) {
+				var top = Math.max(0, Math.round(
+					bodyContent.getBoundingClientRect().top + (window.pageYOffset || document.documentElement.scrollTop || 0)
+				)) + 'px';
+				if (top !== lastTop) {
+					lastTop = top;
+					document.documentElement.style.setProperty('--brk-order-header-top', top);
+				}
+			}
+
+			// Clear the inline padding a cached copy of the previous script may
+			// have left behind; the reservation is CSS-owned now.
+			if (poststuff && poststuff.style.paddingTop) {
+				poststuff.style.paddingTop = '';
 			}
 		}
-		positionHeader();
-		window.addEventListener('resize', positionHeader);
+
+		function scheduleHeaderMetrics() {
+			if (metricsFrame) return;
+			metricsFrame = window.requestAnimationFrame(applyHeaderMetrics);
+		}
+
+		applyHeaderMetrics();
+		window.addEventListener('resize', scheduleHeaderMetrics);
+
+		// Folding the admin menu changes the content column without changing the
+		// window, so it is invisible to the resize listener. Core announces it on
+		// the jQuery document bus, which is the only signal available when
+		// ResizeObserver is missing — and the observer below coalesces the
+		// duplicate when it is present.
+		if (window.jQuery) {
+			window.jQuery(document).on('wp-collapse-menu wp-menu-state-set wp-window-resized', scheduleHeaderMetrics);
+		}
+
+		if (typeof ResizeObserver === 'function') {
+			// The bar reflows on its own: translated labels wrap, the status badge
+			// changes width after an AJAX status change, and the 782px / 600px
+			// breakpoints change its min-height. Watching the bar is sufficient —
+			// the reservation no longer depends on where the notices sit, so
+			// adding or dismissing one cannot invalidate it.
+			new ResizeObserver(scheduleHeaderMetrics).observe(header);
+
+			// Collapsing / expanding the admin menu moves the content column's
+			// left edge; the bar is fixed, so it does not follow on its own.
+			var contentCol = document.getElementById('wpcontent');
+			if (contentCol) {
+				new ResizeObserver(scheduleHeaderMetrics).observe(contentCol);
+			}
+		}
 
 		// Toggle dropdown
 		badge.addEventListener('click', function (e) {

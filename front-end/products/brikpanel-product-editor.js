@@ -9,7 +9,72 @@
     var PE = brikpanelPE || {};
     var productData = window.brikpanelProductData || {};
 
-    var state = { images: [], saving: false, dirty: false, varTemplate: null, varAttributes: [], variations: [], downloads: [], tags: [], linked: { upsells: [], cross_sells: [] }, varCustomStarted: false, defaultAttributes: {} };
+    // `imagesReady` stays false until the gallery has been hydrated from the
+    // saved product. Until then a save must stay silent about images rather
+    // than claim there are none — see the payload builder in saveProduct().
+    var state = { images: [], imagesReady: false, saving: false, dirty: false, varTemplate: null, varAttributes: [], variations: [], downloads: [], tags: [], linked: { upsells: [], cross_sells: [] }, varCustomStarted: false, defaultAttributes: {}, lastSubmittedVariations: [] };
+
+    /* Every variation field that is backed by a control in the table, i.e. the
+       ones a merchant can still be typing into while a save is in flight. Used
+       to tell a genuine in-flight edit apart from the server's echo. */
+    var VAR_INPUT_FIELDS = ['regular_price', 'sale_price', 'sale_from', 'sale_to', 'manage_stock',
+        'enabled', 'stock_quantity', 'stock_status', 'sku', 'global_unique_id', 'tax_class',
+        'shipping_class', 'cogs_value', 'vendor_id', 'backorders'];
+
+    /* Compare two variation field values across the boolean/int/string spellings
+       the table state and the submitted payload use for the same thing (a
+       checkbox is `true` in state and `1` on the wire). */
+    /* Split a pasted or typed list into clean entries. Blank fragments and
+       repeats within the same paste are dropped, so a trailing separator or a
+       spreadsheet column with empty cells does not create empty values. */
+    function splitDelimited(text, pattern) {
+        var out = [], seen = {};
+        String(text == null ? '' : text).split(pattern).forEach(function (part) {
+            var v = $.trim(part);
+            if (!v) return;
+            var key = v.toLowerCase();
+            if (seen[key]) return;
+            seen[key] = true;
+            out.push(v);
+        });
+        return out;
+    }
+
+    /* Turn a failed save into something a merchant can act on (or paste into a
+       support message). "An error occurred" is a dead end: the interesting part
+       is whether the server 500'd, timed out, or answered with HTML — usually a
+       PHP fatal from another plugin hooking the product save, printed before
+       our JSON. Pull the first readable line out of whatever came back. */
+    function saveFailureDetail(xhr) {
+        var generic = PE.i18n.error || 'An error occurred';
+        if (!xhr) return generic;
+        // status 0 = the browser never got a reply: the request was aborted, the
+        // connection dropped, or a proxy/firewall killed it mid-flight.
+        if (!xhr.status) {
+            return PE.i18n.error_no_response || generic;
+        }
+        var detail = '';
+        var body = (xhr.responseText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (body) {
+            // A PHP fatal names itself in the first sentence — keep that, drop
+            // the rest so the toast stays readable.
+            var m = body.match(/(?:Fatal error|Parse error|Warning|Notice|Uncaught)[^.]{0,200}/i);
+            detail = m ? m[0] : body.slice(0, 200);
+        }
+        return (PE.i18n.error_status || 'Could not save. The server replied %1$s. %2$s')
+            .replace('%1$s', xhr.status + (xhr.statusText ? ' ' + xhr.statusText : ''))
+            .replace('%2$s', detail);
+    }
+
+    function varFieldSame(a, b) {
+        var norm = function (v) {
+            if (v === true) return '1';
+            if (v === false) return '0';
+            if (v === undefined || v === null) return '';
+            return String(v);
+        };
+        return norm(a) === norm(b);
+    }
 
     function init() {
         bindEvents();
@@ -303,7 +368,14 @@
         // turning the product variable in one click.
         $('#bpe-attr-quick-sizecolor').on('click', quickAddSizeColor);
         $('#bpe-generate-vars').on('click', generateVariations);
+        $('#bpe-add-variation').on('click', addVariationManually);
         $('#bpe-apply-bulk').on('click', applyBulk);
+        // The sort select is an action menu: picking a mode sorts immediately
+        // and the select snaps back to its placeholder.
+        $('#bpe-var-sort').on('change', applyVariationSort);
+        // Bound once on the persistent table body: initialising inside
+        // renderVarTable() would stack another sortable instance per render.
+        initVarSortable();
 
         // Default Form Values selects (delegated — rebuilt on every table render).
         $('#bpe-var-defaults').on('change', '.bpe-var-default', function () {
@@ -312,6 +384,20 @@
             if (val) { state.defaultAttributes[key] = val; }
             else { delete state.defaultAttributes[key]; }
             state.dirty = true;
+            markDefaultFormValues();
+        });
+        // Its popover: toggle, close on outside click / Escape.
+        $('#bpe-var-defaults-toggle').on('click', function (e) {
+            e.stopPropagation();
+            toggleDefaultFormValues(!$(this).attr('aria-expanded') || $(this).attr('aria-expanded') === 'false');
+        });
+        $('#bpe-var-defaults-pop').on('click', function (e) { e.stopPropagation(); });
+        $(document).on('click.bpeVarDefaults', function () { toggleDefaultFormValues(false); });
+        $(document).on('keydown.bpeVarDefaults', function (e) {
+            if (e.key === 'Escape' && $('#bpe-var-defaults-toggle').attr('aria-expanded') === 'true') {
+                toggleDefaultFormValues(false);
+                $('#bpe-var-defaults-toggle').trigger('focus');
+            }
         });
 
         // Duplicate (delegated so dynamically injected button still works)
@@ -787,7 +873,7 @@
         frame.on('close', disableClickToToggle);
         frame.on('select', function () {
             frame.state().get('selection').toJSON().forEach(function (att) {
-                addImage(att.id, (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url);
+                addImage(att.id, (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url, null, att.alt);
             });
         });
         frame.open();
@@ -928,9 +1014,16 @@
         return { has: false, source: 'youtube', upload: 0, upload_url: '', upload_name: '', youtube: '', vimeo: '', event: 'click', loop: false, player: false };
     }
 
-    function addImage(id, url, video) {
+    // `alt` is carried purely so the SEO analysers can read the featured
+    // image the way they would on the native editor; it is never saved here.
+    function addImage(id, url, video, alt) {
         if (state.images.some(function (i) { return i.id === id; })) return;
-        state.images.push({ id: id, url: url, video: (video && typeof video === 'object') ? video : defaultVideo() });
+        state.images.push({
+            id: id,
+            url: url,
+            alt: alt ? String(alt) : '',
+            video: (video && typeof video === 'object') ? video : defaultVideo()
+        });
         renderGallery();
     }
 
@@ -961,6 +1054,8 @@
             $g.append($item);
         });
         $g.sortable('refresh');
+        // Whichever image sits first is the featured one the SEO analysers see.
+        if (seoScheduleSync) seoScheduleSync();
     }
 
     function syncImageOrder() {
@@ -2206,8 +2301,11 @@
     }
 
     /* ====== Variation Wizard ====== */
-    /* Synonym lists for the Beden+Renk template. Match what the backend uses
-       in detect_size_color_role() — keep the two in sync. */
+    /* Synonym lists for the "Size + Color" starter template and the quick-add
+       button, used only to pre-fill those two rows from a global attribute the
+       store already has. This is a convenience, not a rule: the server decides
+       whether a typed-in attribute becomes global from the "Create global
+       attributes automatically" setting, for any name in any language. */
     var SIZE_COLOR_SYNONYMS = {
         size:  ['size', 'beden'],
         color: ['color', 'colour', 'renk']
@@ -2265,11 +2363,14 @@
         var $input = $('<input type="text" placeholder="' + (PE.i18n.type_enter_value || 'Press Enter to add...') + '" autocomplete="off">');
         defaults.forEach(function (v) { $wrap.append(createTag(v)); });
 
-        // Find available terms for this attribute from global attributes
+        // Find available terms for this attribute from global attributes.
+        // The taxonomy is the reliable identity — two attributes can share a
+        // label, and only a global attribute has a term list to offer at all.
         var globalAttrs = productData.global_attributes || [];
         var availableTerms = [];
         globalAttrs.forEach(function (a) {
-            if (a.name === name || a.taxonomy === name || a.slug === name) { availableTerms = (a.terms || []).slice(); }
+            var hit = taxonomy ? (a.taxonomy === taxonomy) : (a.name === name || a.taxonomy === name || a.slug === name);
+            if (hit) { availableTerms = (a.terms || []).slice(); }
         });
 
         var $suggestions = $('<div class="brikpanel-pe-tag-suggestions brikpanel-pe-attr-term-suggestions">');
@@ -2283,7 +2384,6 @@
         }
 
         function showTermSuggestions(filter) {
-            if (!availableTerms.length) { $suggestions.hide(); return; }
             var existing = getExistingTags();
             var q = (filter || '').toLowerCase();
             // Cap the rendered rows so a huge taxonomy (hundreds of terms)
@@ -2294,17 +2394,103 @@
             var matches = availableTerms.filter(function (t) {
                 return existing.indexOf(t.toLowerCase()) === -1 && (!q || t.toLowerCase().indexOf(q) !== -1);
             }).slice(0, 50);
-            if (!matches.length) { $suggestions.hide(); return; }
             var html = '';
+            // Typing something the attribute does not have yet? Offer to create
+            // it right here. WooCommerce's own editor lets you add a term to a
+            // global attribute without leaving the product, and the save path
+            // already creates it — this just makes that reachable.
+            var typed = $.trim(filter || '');
+            if (typed && existing.indexOf(typed.toLowerCase()) === -1
+                && !availableTerms.some(function (t) { return t.toLowerCase() === typed.toLowerCase(); })) {
+                var newLabel = (PE.i18n.add_new_value || 'Add “%s”').replace('%s', typed);
+                html += '<div class="brikpanel-pe-tag-suggestion brikpanel-pe-tag-suggestion-new" data-value="' + esc(typed) + '">' + esc(newLabel) + '</div>';
+            }
             matches.forEach(function (t) {
                 html += '<div class="brikpanel-pe-tag-suggestion" data-value="' + esc(t) + '">' + esc(t) + '</div>';
             });
+            if (!html) { $suggestions.hide(); return; }
             $suggestions.html(html).show();
         }
 
+        /* "Select all" for a global attribute: adds every term the attribute
+           owns in one click, instead of picking them one by one out of the
+           dropdown. Only offered where there is a term list to take, and it
+           re-labels itself to "Clear" once everything is already on the row. */
+        var $selectAll = $();
+        if (availableTerms.length) {
+            $selectAll = $('<button type="button" class="brikpanel-pe-attr-selectall"></button>');
+            var refreshSelectAll = function () {
+                var existing = getExistingTags();
+                var remaining = availableTerms.filter(function (t) { return existing.indexOf(t.toLowerCase()) === -1; }).length;
+                $selectAll
+                    .attr('data-mode', remaining ? 'all' : 'none')
+                    .text(remaining
+                        ? (PE.i18n.select_all_terms || 'Select all (%d)').replace('%d', remaining)
+                        : (PE.i18n.clear_all_terms || 'Clear all'));
+            };
+            $selectAll.on('click', function (e) {
+                e.preventDefault();
+                if ($selectAll.attr('data-mode') === 'none') {
+                    $wrap.find('.brikpanel-pe-tag').remove();
+                } else {
+                    var existing = getExistingTags();
+                    availableTerms.forEach(function (t) {
+                        if (existing.indexOf(t.toLowerCase()) === -1) { $input.before(createTag(t)); }
+                    });
+                }
+                refreshSelectAll();
+                showTermSuggestions('');
+                $input.trigger('change');
+            });
+            // The row's tag set changes from several places (typing, pasting,
+            // removing a chip), so recount on any change bubbling out of it.
+            $group.on('change', refreshSelectAll);
+            $group.on('click', '.brikpanel-pe-tag-remove', function () { setTimeout(refreshSelectAll, 0); });
+            refreshSelectAll();
+        }
+
+        /* Add one or many values at once, with the separator chosen by what the
+           text actually contains, most specific first:
+             "|"      WooCommerce's own attribute format — always wins, because a
+                      pipe-separated list may legitimately contain commas
+                      ("Lime, Basil and Mandarin | Vanilla").
+             newline  a spreadsheet column.
+             ","      what people reach for when there is no pipe in sight.
+           Returns how many were added. */
+        function valueSplitPattern(text) {
+            if (text.indexOf('|') !== -1) return /\|+/;
+            if (/[\r\n]/.test(text)) return /[\r\n]+/;
+            return /,+/;
+        }
+
+        function addValues(text) {
+            var added = 0;
+            splitDelimited(text, valueSplitPattern(String(text == null ? '' : text))).forEach(function (v) {
+                if (tagExists($wrap, v)) return;
+                $input.before(createTag(v));
+                added++;
+            });
+            if (added) { $input.val(''); showTermSuggestions(''); $input.trigger('change'); }
+            return added;
+        }
+
         $input.on('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); var v = $.trim(this.value); if (v && !tagExists($wrap, v)) { $input.before(createTag(v)); this.value = ''; showTermSuggestions(''); $(this).trigger('change'); } }
+            if (e.key === 'Enter') { e.preventDefault(); addValues(this.value); }
             if (e.key === 'Backspace' && !this.value) { $wrap.find('.brikpanel-pe-tag:last').remove(); showTermSuggestions(''); $(this).trigger('change'); }
+        });
+
+        // Paste a whole separated list straight out of WooCommerce's own
+        // attribute box (or a spreadsheet column) and get one value per entry
+        // instead of a single tag holding the entire string.
+        $input.on('paste', function (e) {
+            var clip = (e.originalEvent || e).clipboardData;
+            var text = clip ? clip.getData('text') : '';
+            if (!text || !/[|,\r\n]/.test(text)) return; // single value — let the browser paste it
+            e.preventDefault();
+            var n = addValues(text);
+            if (n) {
+                showToast((PE.i18n.values_added || '%d values added').replace('%d', n), 'success');
+            }
         });
 
         $input.on('input', function () { showTermSuggestions($.trim(this.value)); });
@@ -2329,6 +2515,9 @@
         $wrap.on('click', function () { $input.focus(); });
         $inputWrap.append($wrap, $suggestions);
         $group.append($inputWrap);
+        // Sits in the row's label line, left of the "Use for variations" switch
+        // that createAttrRow() appends to the same label.
+        if ($selectAll.length) { $group.find('> label').first().append($selectAll); }
         return $group;
     }
 
@@ -2493,14 +2682,39 @@
         return found;
     }
 
-    /* One attribute row: the tag-group (label + value tags) plus a per-row
-       "Use for variations" switch and a remove button. The switch only shows
-       while the product is Variable (CSS, via #bpe-var-card.bpe-variable-on). */
-    function createAttrRow(name, defaults, taxonomy, useForVar) {
+    /* One attribute row: the tag-group (label + value tags) plus two per-row
+       switches and a remove button.
+
+       "Show on product page" mirrors WooCommerce's own "Visible on the product
+       page" checkbox — it decides whether the attribute appears in the
+       storefront's Additional information table — and is shown for every row,
+       simple and variable alike. A variation axis can legitimately be hidden
+       there while still driving the variation dropdowns, which is exactly what
+       WooCommerce allows.
+
+       "Use for variations" only shows while the product is Variable (CSS, via
+       #bpe-var-card.bpe-variable-on), so it sits to the RIGHT of the visibility
+       switch: that keeps the remove button's position identical between simple
+       and variable products.
+
+       `showOnPage` defaults to true when omitted, matching WooCommerce's own
+       default for a freshly added attribute. */
+    function createAttrRow(name, defaults, taxonomy, useForVar, showOnPage) {
         var $row = $('<div class="brikpanel-pe-attr-row">');
         var $group = createTagGroup(name, defaults || [], taxonomy);
 
         var $controls = $('<span class="brikpanel-pe-attr-row-controls">');
+
+        var $showLabel = $('<label class="brikpanel-pe-showpage">');
+        var $showChk = $('<input type="checkbox" class="brikpanel-pe-showpage-check">');
+        if (showOnPage !== false) { $showChk.prop('checked', true); }
+        $showChk.on('change', function () { state.dirty = true; });
+        $showLabel.append(
+            $showChk,
+            $('<span class="brikpanel-pe-usevar-slider"></span>'),
+            $('<span class="brikpanel-pe-usevar-text"></span>').text(PE.i18n.show_on_product_page || 'Show on product page')
+        );
+
         var $useLabel = $('<label class="brikpanel-pe-usevar">');
         var $useChk = $('<input type="checkbox" class="brikpanel-pe-usevar-check">');
         if (useForVar) { $useChk.prop('checked', true); }
@@ -2520,7 +2734,7 @@
             updateVarStartView();
         });
 
-        $controls.append($useLabel, $remove);
+        $controls.append($showLabel, $useLabel, $remove);
         $group.find('> label').first().append($controls);
 
         // Drag handle (left gutter) for reordering. Attribute order = variation
@@ -2534,7 +2748,11 @@
         return $row;
     }
 
-    /* Read every attribute row into {name, values, taxonomy, useVar}. */
+    /* Read every attribute row into {name, values, taxonomy, useVar, $el}.
+       `$el` is the row's tag-group element, so callers that need to write back
+       to the DOM (see adoptSavedAttributes) get there through the same filter
+       the payload builders use instead of re-walking the list themselves. It is
+       never posted: the collectors below pick their fields explicitly. */
     function collectAttrRows() {
         var rows = [];
         $('#bpe-attr-list .brikpanel-pe-tag-group').each(function () {
@@ -2549,7 +2767,9 @@
                 name: name,
                 values: vals,
                 taxonomy: $g.attr('data-attr-taxonomy') || '',
-                useVar: $g.find('.brikpanel-pe-usevar-check').is(':checked')
+                useVar: $g.find('.brikpanel-pe-usevar-check').is(':checked'),
+                showOnPage: $g.find('.brikpanel-pe-showpage-check').is(':checked'),
+                $el: $g
             });
         });
         return rows;
@@ -2573,7 +2793,17 @@
             var key = attrAxisKey(r);
             if (!key || seen[key]) return;
             seen[key] = true;
-            out.push({ name: r.name, values: r.values, taxonomy: r.taxonomy });
+            // `key` rides along so the server can map this axis onto a taxonomy
+            // it may create during the save. It cannot re-derive the key from
+            // the name: slugify() and PHP's sanitize_title() disagree outside
+            // ASCII (remove_accents turns "Größe" into `grosse`, we produce
+            // `gro-e`), and the variations were keyed with OUR spelling.
+            // `visible` is WooCommerce's "show in the Additional information
+            // table" flag. It deliberately stays out of attrAxisKey() and
+            // variationAttrSignature(): flipping it changes nothing about the
+            // axes, so it must not light up the "attributes changed, regenerate"
+            // hint or invalidate the generated variation table.
+            out.push({ name: r.name, values: r.values, taxonomy: r.taxonomy, key: key, visible: r.showOnPage });
         });
         return out;
     }
@@ -2655,7 +2885,7 @@
             var key = attrAxisKey(r);
             if (!key || seen[key]) return;
             seen[key] = true;
-            out.push({ name: r.name, values: r.values, taxonomy: r.taxonomy });
+            out.push({ name: r.name, values: r.values, taxonomy: r.taxonomy, visible: r.showOnPage });
         });
         return out;
     }
@@ -2686,11 +2916,57 @@
             if ($vship.length) v.shipping_class = $vship.val();
             var $cogs = $row.find('.var-cogs');
             if ($cogs.length) v.cogs_value = parsePrice($cogs.val(), sep);
+            // Manually added rows carry their combination in dropdowns, not in
+            // a derived label — read those back too or a rebuild resets them.
+            // Rebuilt rather than merged: the dropdowns are the current axes, so
+            // an attribute the merchant has since deleted leaves no orphan key
+            // behind to be written back as a phantom `attribute_<gone>`.
+            var $axes = $row.find('.var-attr-select');
+            if ($axes.length) {
+                var picked = {};
+                $axes.each(function () { picked[$(this).attr('data-axis')] = $(this).val() || ''; });
+                v.attributes = picked;
+                v.name = varDisplayName(v);
+            }
             var $vendor = $row.find('.var-vendor');
             if ($vendor.length) v.vendor_id = parseInt($vendor.val(), 10) || 0;
             if (v.stock_status === 'onbackorder') {
                 var $back = $('#bpe-var-table-body tr.var-backorder-row[data-idx="' + idx + '"] input[type="radio"]:checked');
                 if ($back.length) v.backorders = $back.val() === 'notify' ? 'notify' : 'yes';
+            }
+        });
+    }
+
+    /* Third-party per-variation fields live in HTML the server captured once.
+       Every renderVarTable() re-inserts that snapshot verbatim, so anything the
+       merchant typed into another plugin's variation field was wiped by a
+       delete / regenerate / preview-fetch. Snapshot by input NAME: names carry
+       the render-time loop index, so they are unique per variation and stable
+       across re-renders — no row bookkeeping needed. */
+    function captureVarExtraInputs() {
+        var snap = state.varExtraValues || (state.varExtraValues = {});
+        $('#bpe-var-table-body .brikpanel-pe-var-extras :input[name]').each(function () {
+            var $el = $(this), n = $el.attr('name');
+            if (!n) return;
+            if ($el.is(':checkbox') || $el.is(':radio')) {
+                snap[n + ' ' + $el.val()] = $el.is(':checked');
+            } else {
+                snap[n] = $el.val();
+            }
+        });
+    }
+
+    function restoreVarExtraInputs() {
+        var snap = state.varExtraValues;
+        if (!snap) return;
+        $('#bpe-var-table-body .brikpanel-pe-var-extras :input[name]').each(function () {
+            var $el = $(this), n = $el.attr('name');
+            if (!n) return;
+            if ($el.is(':checkbox') || $el.is(':radio')) {
+                var k = n + ' ' + $el.val();
+                if (Object.prototype.hasOwnProperty.call(snap, k)) $el.prop('checked', !!snap[k]);
+            } else if (Object.prototype.hasOwnProperty.call(snap, n)) {
+                $el.val(snap[n]);
             }
         });
     }
@@ -2701,6 +2977,13 @@
             showToast(PE.i18n.need_variation_attr || 'Switch on “Use for variations” for at least one attribute, then add its values.', 'error');
             return;
         }
+        // Regenerating rebuilds every row from state.variations, so anything
+        // typed into the live table since the last load (cost, price, stock,
+        // SKU, sale dates) has to be pulled back into state first. Without
+        // this the table is restored from the last server snapshot and the
+        // merchant watches a screen full of unsaved edits vanish.
+        captureVarTableInputs();
+        captureVarExtraInputs();
         state.varAttributes = attrs;
         var combos = genCombinations(state.varAttributes), baseSKU = $('#bpe-sku').val() || '';
         // Guard the cartesian explosion: a handful of attributes with many
@@ -2711,32 +2994,48 @@
             showToast((PE.i18n.too_many_variations || 'That combination would create more than %d variations. Reduce the number of attribute values, then try again.').replace('%d', MAX_GEN), 'error');
             return;
         }
-        state.variations = combos.map(function (combo) {
-            var ex = findExVar(combo), sp = [baseSKU];
-            Object.keys(combo).forEach(function (k) { sp.push(slugify(combo[k])); });
-            return { id: ex ? ex.id : 0, attributes: combo, name: varDisplayName({ attributes: combo }),
-                regular_price: ex ? ex.regular_price : '', sale_price: ex ? ex.sale_price : '',
-                stock_quantity: ex ? (ex.stock_quantity !== null ? ex.stock_quantity : '') : '',
-                stock_status: ex ? (ex.stock_status || 'instock') : 'instock',
-                // New variations track stock by default (quantity column
-                // active), preserving the prior behavior; existing ones keep
-                // whatever was saved.
-                manage_stock: ex ? !!ex.manage_stock : true,
-                // New variations are Active by default (matches WooCommerce);
-                // regenerating keeps whatever active state an existing row had.
-                enabled: ex ? (ex.enabled === undefined ? true : !!ex.enabled) : true,
-                backorders: ex ? (ex.backorders || 'no') : 'no',
-                sale_from: ex ? (ex.sale_from || '') : '',
-                sale_to:   ex ? (ex.sale_to   || '') : '',
-                sku: ex ? ex.sku : sp.filter(Boolean).join('-').toUpperCase(),
-                global_unique_id: ex ? (ex.global_unique_id || '') : '',
-                tax_class: ex ? (ex.tax_class !== undefined && ex.tax_class !== null ? ex.tax_class : 'parent') : 'parent',
-                shipping_class: ex ? (ex.shipping_class !== undefined && ex.shipping_class !== null ? ex.shipping_class : '') : '',
-                images: ex && ex.images ? ex.images : [],
-                cogs_value: ex ? (ex.cogs_value || '') : '',
-                vendor_id:  ex ? (ex.vendor_id || 0) : 0,
-                vendor_sku: ex ? (ex.vendor_sku || '') : '' };
+        var existing = state.variations || [];
+
+        // Index the table as it stands. First occurrence wins, so a duplicate
+        // row can never claim a second cartesian slot.
+        var slotOf = {};
+        existing.forEach(function (v, i) {
+            var k = comboKey(v.attributes);
+            if (!(k in slotOf)) slotOf[k] = i;
         });
+
+        // Walk the cartesian product. A combination already on screen keeps its
+        // row, and therefore its position — merchants arrange this list
+        // deliberately and regenerating must not shuffle it. Genuinely new
+        // combinations are appended, in cartesian order, after everything that
+        // already exists.
+        var claimed = {}, appended = [];
+        combos.forEach(function (combo) {
+            var k = comboKey(combo);
+            if (k in slotOf) { claimed[slotOf[k]] = true; return; }
+            appended.push(makeVarRow(combo, findExVar(combo), baseSKU));
+        });
+
+        // Rows the cartesian product no longer produces, because the merchant
+        // removed an attribute value or built the row by hand. These used to be
+        // dropped here, and the next save deleted the variation with no warning.
+        // Keep anything that represents real data — a persisted variation, or a
+        // manual row whose axes include "Any" (a valid WooCommerce combination
+        // that is never part of the cartesian set) — flag it, and let the
+        // merchant remove it deliberately with the row's own delete button.
+        var orphans = 0;
+        var kept = existing.filter(function (v, i) {
+            if (claimed[i]) { delete v._orphan; return true; }
+            if (v.manual)   { delete v._orphan; return true; }
+            if (v.id)       { v._orphan = true; orphans++; return true; }
+            return false; // unsaved leftover from an older attribute set
+        });
+
+        state.variations = applyVarDisplayNames(kept.concat(appended));
+        // Regenerating changes the product; without this the tab could be closed
+        // (and the periodic auto-save skipped) with the new rows never written.
+        state.dirty = true;
+
         renderVarTable();
         $('#bpe-var-table-section').show();
         // Snapshot the attribute set this table was built from so later edits
@@ -2744,13 +3043,264 @@
         state.varSignature = variationAttrSignature();
         refreshVarStaleHint();
         fetchVariationPreviews();
+
+        if (appended.length) {
+            var addedMsg = appended.length === 1
+                ? (PE.i18n.variations_generated_one  || '%d new variation added at the end of the list.')
+                : (PE.i18n.variations_generated_many || '%d new variations added at the end of the list.');
+            showToast(addedMsg.replace('%d', appended.length), 'success');
+        } else {
+            showToast(PE.i18n.variations_generated_none || 'No new combinations to add — every variation already exists.', 'success');
+        }
+        if (orphans) {
+            var orphanMsg = orphans === 1
+                ? (PE.i18n.variations_orphaned_one  || '%d variation no longer matches your attribute values. It is marked in the list and kept until you delete it.')
+                : (PE.i18n.variations_orphaned_many || '%d variations no longer match your attribute values. They are marked in the list and kept until you delete them.');
+            showToast(orphanMsg.replace('%d', orphans), 'error', 7000);
+        }
+    }
+
+    /* ---------------------------------------------------------------------
+       Variation order.
+
+       WooCommerce reads a variable product's children with
+       `menu_order ASC, ID ASC`, and the save handler now writes each row's
+       position into menu_order. So the array order of state.variations IS the
+       storefront/admin order, and everything here just permutes that array and
+       re-renders. A full re-render (rather than moving <tr>s around in place)
+       is deliberate: each variation owns up to three sibling rows (main,
+       backorder, extras) and every handler reads `$(this).data('idx')`, which
+       jQuery caches on first read — renumbering attributes in place would leave
+       them all pointing at stale indices.
+       --------------------------------------------------------------------- */
+
+    /* Reorder state.variations from a list of previous indices. */
+    function applyVariationOrder(order) {
+        var src = state.variations || [], out = [];
+        order.forEach(function (i) { if (src[i]) out.push(src[i]); });
+        // Defensive: never drop a row because the DOM and state disagreed.
+        if (out.length !== src.length) return false;
+        state.variations = out;
+        state.dirty = true;
+        return true;
+    }
+
+    function initVarSortable() {
+        var $tb = $('#bpe-var-table-body');
+        if (!$tb.length || typeof $tb.sortable !== 'function') return;
+        $tb.sortable({
+            items: '> tr.var-main-row',
+            handle: '.var-drag-handle',
+            axis: 'y',
+            cursor: 'grabbing',
+            tolerance: 'pointer',
+            forcePlaceholderSize: true,
+            // A cloned <tr> loses its column widths the moment it leaves the
+            // table's layout, so freeze them onto the helper.
+            helper: function (e, $tr) {
+                var $orig = $tr.children(), $helper = $tr.clone();
+                $helper.children().each(function (i) { $(this).width($orig.eq(i).width()); });
+                return $helper;
+            },
+            // The placeholder has to be a real row with a cell or the gap
+            // collapses to nothing while dragging.
+            placeholder: {
+                element: function () {
+                    var cols = $('#bpe-var-table thead th').length;
+                    return $('<tr class="brikpanel-pe-var-row-placeholder"><td colspan="' + cols + '"></td></tr>')[0]; // i18n-ignore: markup, no user-facing text
+                },
+                update: $.noop
+            },
+            start: function (e, ui) {
+                // Pull the live table into state before anything moves — the
+                // drop triggers a full re-render, which would otherwise restore
+                // every row from the last snapshot and wipe in-flight edits.
+                captureVarTableInputs();
+                captureVarExtraInputs();
+                // The backorder and extras rows are siblings of the main row,
+                // not children, so they would stay behind and visually detach
+                // from their variation. Drop them now; `stop` re-renders and
+                // rebuilds them in the new order.
+                $tb.find('tr.var-backorder-row, tr.var-extras-row').remove(); // i18n-ignore: CSS selector, not user-facing text
+                ui.placeholder.height(ui.item.outerHeight());
+            },
+            update: function () {
+                var order = $tb.find('tr.var-main-row').map(function () {
+                    return parseInt($(this).attr('data-idx'), 10);
+                }).get();
+                if (applyVariationOrder(order)) {
+                    showToast(PE.i18n.variations_reordered || 'Order updated. Save the product to keep it.', 'success');
+                }
+            },
+            // Fires on every drop, moved or not, so one render path restores the
+            // companion rows either way.
+            stop: function () { renderVarTable(); }
+        });
+    }
+
+    /* Keyboard reordering from the focused drag handle. Two more buttons per
+       row would widen a table that is already the widest thing on the page. */
+    function moveVariation(from, to) {
+        if (isNaN(from) || to < 0 || to >= (state.variations || []).length || from === to) return false;
+        captureVarTableInputs();
+        captureVarExtraInputs();
+        var order = state.variations.map(function (_, i) { return i; });
+        order.splice(to, 0, order.splice(from, 1)[0]);
+        if (!applyVariationOrder(order)) return false;
+        renderVarTable();
+        $('#bpe-var-table-body tr.var-main-row[data-idx="' + to + '"] .var-drag-handle').trigger('focus'); // i18n-ignore: CSS selector, not user-facing text
+        showToast(PE.i18n.variations_reordered || 'Order updated. Save the product to keep it.', 'success');
+        return true;
+    }
+
+    function applyVariationSort() {
+        var $sel = $('#bpe-var-sort'), mode = $sel.val();
+        // Action menu, not a stored setting: whatever happens below, the select
+        // goes back to its "Sort variations…" placeholder so the same mode can
+        // be picked again after a manual drag.
+        $sel.val('');
+        if (!mode) return;
+        if (!state.variations || state.variations.length < 2) return;
+        captureVarTableInputs();
+        captureVarExtraInputs();
+        sortVariations(mode);
+        renderVarTable();
+        showToast(PE.i18n.variations_reordered || 'Order updated. Save the product to keep it.', 'success');
+    }
+
+    function sortVariations(mode) {
+        var src = applyVarDisplayNames((state.variations || []).slice());
+        // `__s` is the tie-breaker/rank scratch field; stripped before returning
+        // so it can never reach the save payload.
+        if (mode === 'attribute') {
+            // "The order set in the product": the cartesian product of the
+            // current attribute rows, in attribute-row order and value order —
+            // the same sequence Generate would produce. This is a sort, not a
+            // regenerate: no row is added or removed, so a combination outside
+            // the cartesian set (a manual "Any" row, a stranded one) simply
+            // falls to the end keeping its relative order.
+            var rank = {}, n = 0;
+            genCombinations(collectVariationAttributes()).forEach(function (c) {
+                var k = comboKey(c);
+                if (!(k in rank)) { rank[k] = n++; }
+            });
+            var far = n + src.length;
+            src.forEach(function (v, i) {
+                var r = rank[comboKey(v.attributes)];
+                v.__s = (r === undefined) ? (far + i) : r;
+            });
+            src.sort(function (a, b) { return a.__s - b.__s; });
+        } else {
+            var dir = (mode === 'name-desc') ? -1 : 1;
+            src.forEach(function (v, i) { v.__s = i; });
+            src.sort(function (a, b) {
+                // `numeric` so "Size 2" sorts before "Size 10"; `base`
+                // sensitivity so case and accents don't split otherwise equal
+                // labels. Locale comes from the browser, which gets Turkish
+                // i/İ and German umlauts right without a lookup table here.
+                var c = String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' });
+                return c !== 0 ? dir * c : a.__s - b.__s; // stable
+            });
+        }
+        src.forEach(function (v) { delete v.__s; });
+        state.variations = src;
+        state.dirty = true;
+    }
+
+    /* Order- and case-independent signature of a variation's combination. Two
+       rows with the same signature are the same slot as far as WooCommerce is
+       concerned (the storefront can only ever reach the first). An empty value
+       is WC's "Any", which is a combination in its own right. */
+    function comboKey(attrs) {
+        return Object.keys(attrs || {}).sort().map(function (k) {
+            var v = attrs[k];
+            return String(k).toLowerCase() + '=' + String(v === null || v === undefined ? '' : v).toLowerCase();
+        }).join('|');
+    }
+
+    /* One variation row for a cartesian combination, carrying over whatever an
+       already-existing variation with the same combination holds. */
+    function makeVarRow(combo, ex, baseSKU) {
+        var sp = [baseSKU];
+        Object.keys(combo).forEach(function (k) { sp.push(slugify(combo[k])); });
+        return { id: ex ? ex.id : 0, attributes: combo, name: varDisplayName({ attributes: combo }),
+            regular_price: ex ? ex.regular_price : '', sale_price: ex ? ex.sale_price : '',
+            stock_quantity: ex ? (ex.stock_quantity !== null ? ex.stock_quantity : '') : '',
+            stock_status: ex ? (ex.stock_status || 'instock') : 'instock',
+            // New variations track stock by default (quantity column
+            // active), preserving the prior behavior; existing ones keep
+            // whatever was saved.
+            manage_stock: ex ? !!ex.manage_stock : true,
+            // New variations are Active by default (matches WooCommerce);
+            // regenerating keeps whatever active state an existing row had.
+            enabled: ex ? (ex.enabled === undefined ? true : !!ex.enabled) : true,
+            backorders: ex ? (ex.backorders || 'no') : 'no',
+            sale_from: ex ? (ex.sale_from || '') : '',
+            sale_to:   ex ? (ex.sale_to   || '') : '',
+            sku: ex ? ex.sku : sp.filter(Boolean).join('-').toUpperCase(),
+            global_unique_id: ex ? (ex.global_unique_id || '') : '',
+            tax_class: ex ? (ex.tax_class !== undefined && ex.tax_class !== null ? ex.tax_class : 'parent') : 'parent',
+            shipping_class: ex ? (ex.shipping_class !== undefined && ex.shipping_class !== null ? ex.shipping_class : '') : '',
+            images: ex && ex.images ? ex.images : [],
+            cogs_value: ex ? (ex.cogs_value || '') : '',
+            vendor_id:  ex ? (ex.vendor_id || 0) : 0,
+            vendor_sku: ex ? (ex.vendor_sku || '') : '' };
+    }
+
+    /* Add ONE empty variation and let the merchant pick its combination, the
+       way WooCommerce's own "Add manually" does. Generating the full cartesian
+       product is the wrong tool when a catalogue only sells a handful of the
+       possible combinations — nine bundles times two inserts is 18 rows even
+       when only three of them exist. Every axis starts on "Any", which is a
+       valid WooCommerce combination in its own right, and the row's name cell
+       becomes one dropdown per axis until the product is saved. */
+    function addVariationManually() {
+        var attrs = collectVariationAttributes();
+        if (!attrs.length) {
+            showToast(PE.i18n.need_variation_attr || 'Switch on “Use for variations” for at least one attribute, then add its values.', 'error');
+            return;
+        }
+        // The table is about to be rebuilt — keep what is already typed in it.
+        captureVarTableInputs();
+        captureVarExtraInputs();
+        state.varAttributes = attrs;
+        var combo = {};
+        attrs.forEach(function (a) { combo[attrAxisKey(a)] = ''; });
+        state.variations = (state.variations || []).concat([{
+            id: 0,
+            attributes: combo,
+            manual: true,
+            name: varDisplayName({ attributes: combo }),
+            regular_price: '', sale_price: '', sale_from: '', sale_to: '',
+            stock_quantity: '', stock_status: 'instock', manage_stock: true,
+            enabled: true, backorders: 'no', sku: '', global_unique_id: '',
+            tax_class: 'parent', shipping_class: '', images: [],
+            cogs_value: '', vendor_id: 0, vendor_sku: ''
+        }]);
+        renderVarTable();
+        $('#bpe-var-table-section').show();
+        state.dirty = true;
+        // Adding a row does not change which attributes the table was built
+        // from, so the "regenerate" hint must not start crying about drift.
+        if (typeof state.varSignature !== 'string') { state.varSignature = variationAttrSignature(); }
+        refreshVarStaleHint();
+        var $new = $('#bpe-var-table-body tr.var-main-row').last();
+        $new.find('.var-attr-select').first().trigger('focus');
+        if ($new.length && $new[0].scrollIntoView) { $new[0].scrollIntoView({ block: 'center' }); }
     }
 
     /* Stable signature of the current variation-attribute set (names + values +
        taxonomy). Used to detect that the attributes drifted from what the
        generated variation table was built on. */
     function variationAttrSignature() {
-        return JSON.stringify(collectVariationAttributes());
+        // Only the fields that define the axes. `visible` rides along on the
+        // same records but is pure presentation (the storefront's Additional
+        // information table), so including it would make toggling that switch
+        // light up the "attributes changed, regenerate" hint on a table that is
+        // still perfectly in sync.
+        return JSON.stringify(collectVariationAttributes().map(function (a) {
+            return { name: a.name, values: a.values, taxonomy: a.taxonomy, key: a.key };
+        }));
     }
 
     /* Show the "attributes changed, regenerate" hint when a generated table is
@@ -2790,6 +3340,16 @@
             if (state.variations.length !== expectCount) return; // table changed underneath
             if (r && r.success && r.data && r.data.extras && !$.isEmptyObject(r.data.extras)) {
                 state.previewExtras = r.data.extras;
+                // Pin each unsaved row to the preview slot it is about to be
+                // rendered from. That HTML's `name="field[<n>]"` is fixed from
+                // here on, so if the row is later dragged or regenerated it has
+                // to keep pointing at the same slot — otherwise its values would
+                // be read back against a different variation.
+                state.variations.forEach(function (v, i) { if (!v.id) v._previewKey = i; });
+                // This reply can land while the merchant is already filling in
+                // the fresh rows — keep what is on screen before rebuilding.
+                captureVarTableInputs();
+                captureVarExtraInputs();
                 renderVarTable();
             }
         }).fail(function () {
@@ -2817,8 +3377,13 @@
         var pools = [];
         if (state.variations && state.variations.length) pools.push(state.variations);
         if (productData.variations && productData.variations.length) pools.push(productData.variations);
+        var removed = state.removedVariationIds || {};
         function matches(v) {
             if (!v || !v.attributes) return false;
+            // A row the merchant deleted this session is still sitting in the
+            // server-hydrated pool. Reusing it would hand its id back to a new
+            // row and silently cancel the deletion.
+            if (v.id && removed[v.id]) return false;
             return Object.keys(combo).every(function (k) {
                 return (v.attributes[k] || '').toString().toLowerCase() === (combo[k] || '').toString().toLowerCase();
             });
@@ -2828,6 +3393,103 @@
             if (hit) return hit;
         }
         return null;
+    }
+
+    /* The attribute rows that make up the variation axes, as jQuery tag-group
+       elements, filtered and ordered exactly like collectVariationAttributes()
+       so index N here is axis N there. */
+    function variationAttrRowElements() {
+        if (!isVariableOn()) return [];
+        var out = [], seen = {};
+        collectAttrRows().forEach(function (r) {
+            if (!r.useVar || !r.values.length) return;
+            var key = attrAxisKey(r);
+            if (!key || seen[key]) return;
+            seen[key] = true;
+            out.push(r.$el);
+        });
+        return out;
+    }
+
+    /* A save can turn an attribute the merchant simply typed ("Kleur") into a
+       real global attribute ("pa_kleur"), either by creating it or by binding
+       to one the store already had. The client is still holding the row it
+       posted, so its axis key stays `kleur` while every variation the server
+       just returned is keyed `pa_kleur`. Left alone that mismatch is not
+       cosmetic: state.defaultAttributes is keyed the same way, so the Default
+       Form Values dropdown would render empty and the NEXT save would post a
+       blank default and wipe _default_attributes.
+
+       `promotedAxes` maps the posted axis key to the taxonomy it became. It is
+       the only reliable pairing: binding to an existing global can change the
+       label (type "Kleur", get back an attribute labelled "Colour"), so the
+       rows cannot be matched up by name.
+
+       Must run BEFORE adoptSavedVariations(): that reads the axis keys out of
+       the live DOM to name the rows and to reset the "regenerate" baseline. */
+    function adoptSavedAttributes(savedAttrs, savedGlobals, promotedAxes, silent) {
+        promotedAxes = promotedAxes || {};
+        if (!Object.keys(promotedAxes).length) return;
+
+        // The saved rows carry the canonical term names and the resolved
+        // default, both of which may differ in case from what was typed.
+        var byTaxonomy = {};
+        (savedAttrs || []).forEach(function (a) {
+            if (a && a.taxonomy) { byTaxonomy[String(a.taxonomy).toLowerCase()] = a; }
+        });
+
+        // Writing the taxonomy back changes variationAttrSignature(), which
+        // would otherwise light up the "attributes changed, regenerate" hint on
+        // a product that was just saved successfully.
+        var wasInSync = (state.varSignature === variationAttrSignature());
+        var touched = false;
+
+        variationAttrRowElements().forEach(function ($g) {
+            if ($g.attr('data-attr-taxonomy')) return;   // already global
+            var oldKey = attrAxisKey({ name: $g.attr('data-attr-name'), taxonomy: '' });
+            var taxonomy = promotedAxes[oldKey];
+            if (!taxonomy) return;
+
+            var saved = byTaxonomy[String(taxonomy).toLowerCase()];
+            touched = true;
+
+            // Re-key the Default Form Values selection onto the new axis, and
+            // take the value from the server: after binding to an existing
+            // attribute the term's canonical name ("Zwart") can differ from
+            // what was typed ("zwart"), and renderDefaultFormValues() drops a
+            // selection that does not match one of the row's values verbatim.
+            var newKey = String(taxonomy).toLowerCase();
+            delete state.defaultAttributes[oldKey];
+            if (saved && saved['default']) { state.defaultAttributes[newKey] = saved['default']; }
+
+            if (silent || !saved) {
+                // Background auto-save: never rebuild the DOM under the
+                // merchant. Re-pointing the row is invisible and is the part
+                // that actually has to happen, or the next manual "generate"
+                // would fail to recognise any existing variation and orphan
+                // every price and stock value on the table.
+                $g.attr('data-attr-taxonomy', taxonomy);
+                return;
+            }
+
+            // Refresh the global list first: createTagGroup() snapshots the
+            // term suggestions for a row at build time, so a just-created
+            // attribute needs the new list to offer its terms.
+            if (savedGlobals) { productData.global_attributes = savedGlobals; }
+
+            // Rebuild rather than patch. Chips, label, data-attr-name and the
+            // term typeahead all have to follow the canonical values, and
+            // replacing the row makes the post-save DOM identical to a reload.
+            var $row = $g.closest('.brikpanel-pe-attr-row');
+            if (!$row.length) { $g.attr('data-attr-taxonomy', taxonomy); return; }
+            $row.replaceWith(createAttrRow(saved.name, saved.values || [], saved.taxonomy, true, saved.visible !== false));
+        });
+
+        if (!touched) return;
+        if (wasInSync) {
+            state.varSignature = variationAttrSignature();
+            refreshVarStaleHint();
+        }
     }
 
     /* After a successful save the server's variation list is authoritative:
@@ -2842,14 +3504,53 @@
         if (!Array.isArray(savedVars)) return;
         productData.variation_extras = extras || {};
         productData.variations = savedVars;
+        // Everything the payload carried is now persisted, and the server just
+        // echoed freshly-rendered extras HTML whose loop indices match the list
+        // above. Drop the local snapshot rather than replaying it: its keys
+        // reference the PREVIOUS render's loop numbers, so replaying it after a
+        // reorder could put one variation's value on another. Same trade the
+        // main-field merge below makes when the ids no longer line up.
+        state.varExtraValues = null;
+        // Rows that just got a real ID read their extras by ID from now on, so
+        // the preview slot they were pinned to is meaningless (and would shadow
+        // the real HTML on the next render).
+        savedVars.forEach(function (v) { if (v && v.id) { delete v._previewKey; } });
+        (state.variations || []).forEach(function (v) { if (v && v.id) { delete v._previewKey; } });
+        // A save reconciles deletions with the database, so the guard that keeps
+        // a just-deleted row from being resurrected by Generate has done its job.
+        state.removedVariationIds = null;
         // Background auto-save runs behind the user's back — never disturb the
         // live table/state mid-edit. The fresh productData is enough for the
         // next manual render to be correct.
         if (silent) return;
+        // A save is not instant, and on a busy store with dozens of variations
+        // it can take seconds — long enough for the merchant to keep filling in
+        // the next rows. Anything they changed AFTER the payload went out is
+        // newer than the echo the server just sent back, so pull the live table
+        // in first and let those edits survive the rebuild below.
+        captureVarTableInputs();
+        var live = state.variations || [];
+        var sent = state.lastSubmittedVariations || [];
         // The saved list has no display name — derive it, or the Variation
         // column renders blank for every row after a save.
-        state.variations = applyVarDisplayNames(savedVars.map(function (v) {
-            return $.extend(true, {}, v);
+        state.variations = applyVarDisplayNames(savedVars.map(function (v, i) {
+            var merged = $.extend(true, {}, v);
+            var lv = live[i];
+            var sv = sent[i];
+            // Only merge when this really is the same row. The server returns
+            // the product's children in its own order, which need not match the
+            // order they were submitted in, and pairing the wrong rows would
+            // move a merchant's edit onto a different variation.
+            if (!lv || !sv) return merged;
+            if (sv.id && v.id && String(sv.id) !== String(v.id)) return merged;
+            // Only a field that drifted from what was submitted counts as an
+            // in-flight edit. Everything else defers to the server, so values
+            // it normalised or rejected (a duplicate SKU, say) still win.
+            VAR_INPUT_FIELDS.forEach(function (key) {
+                if (lv[key] === undefined) return;
+                if (!varFieldSame(lv[key], sv[key])) { merged[key] = lv[key]; }
+            });
+            return merged;
         }));
         // The freshly-saved table matches the current attribute rows, so reset
         // the drift baseline and clear any stale hint.
@@ -2867,20 +3568,20 @@
        always tracks the current axes/values; the chosen names are kept in
        state.defaultAttributes and round-tripped on save. */
     function renderDefaultFormValues() {
-        var $wrap = $('#bpe-var-defaults');
-        if (!$wrap.length) return;
+        var $wrap = $('#bpe-var-defaults'), $row = $('#bpe-var-defaults-row');
+        if (!$wrap.length || !$row.length) return;
         var attrs = collectVariationAttributes();
-        if (!attrs.length) { $wrap.hide().empty(); return; }
+        if (!attrs.length) { toggleDefaultFormValues(false); $wrap.hide(); $row.empty(); return; }
         var i18n = PE.i18n || {};
 
-        // Second group of the variation tools panel: a micro-heading matching
-        // the bulk group's "Apply to all variations", then one self-describing
-        // select per axis ("No default Color…"). The placeholder names the
-        // attribute, so no per-field labels are needed; help rides as tooltip.
-        var $title = $('<span class="brikpanel-pe-var-bulk-heading"></span>').text(i18n.default_form_values || 'Default Form Values');
-        if (i18n.default_form_values_help) { $title.attr('title', i18n.default_form_values_help); }
+        // Last group of the one-line variation tools strip: the selects live in
+        // a popover behind one button, because there is one per variation axis
+        // and inline they would be the thing that pushes the strip onto a
+        // second line. Each select still names its own axis ("No default
+        // Color…"), so the popover needs no per-field labels.
+        var groupLabel = i18n.default_form_values || 'Default Form Values';
 
-        var $row = $('<div class="brikpanel-pe-var-defaults-row"></div>');
+        $row.empty();
         attrs.forEach(function (a) {
             var key = attrAxisKey(a);
             var cur = state.defaultAttributes[key] || '';
@@ -2889,6 +3590,7 @@
 
             var $sel = $('<select class="brikpanel-pe-select bpe-var-default"></select>').attr('data-key', key);
             var noneLabel = (i18n.no_default_for || 'No default %s…').replace('%s', a.name);
+            $sel.attr('aria-label', groupLabel + ' — ' + a.name);
             $sel.append($('<option value=""></option>').text(noneLabel));
             a.values.forEach(function (val) {
                 var $opt = $('<option></option>').attr('value', val).text(val);
@@ -2899,8 +3601,24 @@
         });
 
         // Explicit flex (not .show(), which would force display:block and lose
-        // the group's column layout).
-        $wrap.empty().append($title).append($row).css('display', 'flex');
+        // the group's row layout).
+        $wrap.css('display', 'flex');
+        markDefaultFormValues();
+    }
+
+    /* Collapsed state has to report itself: the button wears a dot whenever any
+       axis has a default picked, so a merchant can tell without opening it. */
+    function markDefaultFormValues() {
+        var any = false;
+        $('#bpe-var-defaults-row .bpe-var-default').each(function () { if ($(this).val()) { any = true; } });
+        $('#bpe-var-defaults').toggleClass('has-default', any);
+    }
+
+    function toggleDefaultFormValues(open) {
+        var $btn = $('#bpe-var-defaults-toggle'), $pop = $('#bpe-var-defaults-pop');
+        if (!$btn.length) return;
+        $btn.attr('aria-expanded', open ? 'true' : 'false');
+        $pop.prop('hidden', !open);
     }
 
     function renderVarTable() {
@@ -2922,8 +3640,20 @@
         }
         var extras = productData.variation_extras || {};
         var previewExtras = state.previewExtras || {};
-        // colspan for the extras row — main row has 9 base cols + optional gtin + optional tax class + optional cogs + optional vendor + expander + delete
-        var baseCols = 10 + (hasGtin ? 1 : 0) + (hasTax ? 1 : 0) + (hasShipping ? 1 : 0) + (hasCogs ? 1 : 0) + (hasVendor ? 1 : 0) + 2; // 10 base (incl. Track) +1 expander toggle, +1 delete cell
+        // Position of each saved variation inside productData.variations. That
+        // array is exactly what capture_wc_variation_fields() was handed, so its
+        // index IS the <loop> baked into every `name="field[<loop>]"` in the
+        // extras HTML (see the docblock above capture_wc_variation_fields()).
+        // Rows can move afterwards, so the loop travels with the row as
+        // `data-loop` and the save payload re-indexes it to the submit position.
+        var savedLoopById = {};
+        (productData.variations || []).forEach(function (pv, i) {
+            if (pv && pv.id) savedLoopById[pv.id] = i;
+        });
+        // Live axes, for the per-axis dropdowns a manually added row renders.
+        var varAttrRows = collectVariationAttributes();
+        // colspan for the extras row — main row has 9 base cols + optional gtin + optional tax class + optional cogs + optional vendor + drag + expander + delete
+        var baseCols = 10 + (hasGtin ? 1 : 0) + (hasTax ? 1 : 0) + (hasShipping ? 1 : 0) + (hasCogs ? 1 : 0) + (hasVendor ? 1 : 0) + 3; // 10 base (incl. Track) +1 drag handle, +1 expander toggle, +1 delete cell
         state.variations.forEach(function (v, idx) {
             var pv = v.regular_price ? ('' + v.regular_price).replace('.', sep) : '';
             var sv = v.sale_price ? ('' + v.sale_price).replace('.', sep) : '';
@@ -2998,28 +3728,56 @@
             }
             // Saved variations read their real per-variation 3rd-party fields
             // (keyed by variation ID). Variations not yet persisted fall back to
-            // the preview HTML (keyed by row index) so the expander works before
-            // the first save; the loop index matches the save-time mapping.
+            // the preview HTML, keyed by the slot it was fetched for and pinned
+            // to the row as `_previewKey` so a later move keeps pointing at the
+            // same HTML. `extraLoop` is the loop index the HTML's name
+            // attributes were rendered with — NOT the current row position; the
+            // save payload rewrites it to the submit index.
+            var previewKey = (v._previewKey === undefined) ? idx : v._previewKey;
             var extraHtml = (v.id && extras[v.id]) ? extras[v.id]
-                : (!v.id && previewExtras[idx]) ? previewExtras[idx]
+                : (!v.id && previewExtras[previewKey]) ? previewExtras[previewKey]
                 : '';
+            var extraLoop = (v.id && extras[v.id])
+                ? (savedLoopById[v.id] === undefined ? idx : savedLoopById[v.id])
+                : previewKey;
             var hasExtra = !!extraHtml;
             var expanderTd = hasExtra
                 ? '<td class="var-expand-cell"><button type="button" class="var-expand-btn" data-idx="' + idx + '" aria-label="' + esc(PE.i18n.more_fields || 'More fields') + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button></td>'
                 : '<td class="var-expand-cell"></td>';
+            // Reorder handle. Grabbed by the sortable, and focusable so the
+            // order can also be changed from the keyboard with the arrow keys.
+            var varDragLabel = esc(PE.i18n.reorder_variation || 'Drag to reorder this variation');
+            var dragTd = '<td class="var-drag-cell"><span class="var-drag-handle" role="button" tabindex="0" aria-label="' + varDragLabel + '" title="' + varDragLabel + '">' +
+                '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="3" r="1.4"/><circle cx="11" cy="3" r="1.4"/><circle cx="5" cy="8" r="1.4"/><circle cx="11" cy="8" r="1.4"/><circle cx="5" cy="13" r="1.4"/><circle cx="11" cy="13" r="1.4"/></svg>' +
+                '</span></td>';
             var rowClasses = 'var-main-row';
             if (hasExtra) rowClasses += ' has-extra';
             if (hasBackorderNotify && varStatus === 'onbackorder') rowClasses += ' has-backorder';
             if (!varEnabled) rowClasses += ' is-disabled';
+            if (v._orphan) rowClasses += ' is-orphan';
             // "Active" toggle sits at the head of the variation name cell —
             // where WooCommerce's own "Enabled" checkbox lives — so merchants
             // working only in this dashboard can turn a variation on/off.
             var enabledSwitch = '<label class="brikpanel-pe-switch brikpanel-pe-switch-xs var-enabled-switch" title="' + esc(PE.i18n.variation_active || 'Active') + '">' +
                 '<input type="checkbox" class="var-enabled"' + (varEnabled ? ' checked' : '') + ' aria-label="' + esc(PE.i18n.variation_active || 'Active') + '">' +
                 '<span class="brikpanel-pe-slider"></span></label>';
+            // A row added with "Add manually" has no combination yet, so the
+            // name cell turns into one dropdown per axis. Once it is saved the
+            // server returns it like any other row and it reads as text again.
+            var nameCellHtml = v.manual
+                ? buildVarAttrSelects(v, varAttrRows)
+                : '<span class="var-name-text">' + esc(v.name) + '</span>';
+            // Flag rows whose combination is no longer produced by the current
+            // attribute values, so a merchant who removed a value can see which
+            // variations are now stranded instead of losing them silently.
+            var orphanBadge = v._orphan
+                ? '<span class="var-orphan-badge" title="' + esc(PE.i18n.variation_orphan_title || 'This combination is no longer among your attribute values.') + '">' +
+                  esc(PE.i18n.variation_orphan_badge || 'Not in your attributes') + '</span>'
+                : '';
             $tb.append('<tr data-idx="' + idx + '" class="' + rowClasses + '">' +
+                dragTd +
                 expanderTd +
-                '<td class="var-name">' + enabledSwitch + '<span class="var-name-text">' + esc(v.name) + '</span></td>' +
+                '<td class="var-name' + (v.manual ? ' var-name-manual' : '') + '">' + enabledSwitch + nameCellHtml + orphanBadge + '</td>' +
                 '<td><input type="text" class="var-price" value="' + esc(pv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
                 '<td><input type="text" class="var-sale-price" value="' + esc(sv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
                 '<td><input type="text" class="var-sale-from" value="' + esc(v.sale_from || '') + '" placeholder="' + esc(PE.i18n.date_placeholder || 'YYYY-MM-DD') + '" autocomplete="off"></td>' +
@@ -3040,14 +3798,37 @@
                 $tb.append(backorderRow);
             }
             if (hasExtra) {
-                $tb.append('<tr class="var-extras-row" data-idx="' + idx + '" data-variation-id="' + v.id + '" hidden>' +
+                $tb.append('<tr class="var-extras-row" data-idx="' + idx + '" data-loop="' + extraLoop + '" data-variation-id="' + v.id + '" hidden>' +
                     '<td colspan="' + baseCols + '" class="var-extras-cell">' +
                     '<div class="brikpanel-pe-var-extras">' + extraHtml + '</div>' +
                     '</td></tr>');
             }
         });
+        // Per-axis dropdowns on a manually added row: write the pick straight
+        // into state so the save payload carries it even if the merchant never
+        // touches another control on that row.
+        $tb.find('.var-attr-select').on('change', function () {
+            var $sel = $(this);
+            var idx = parseInt($sel.closest('tr.var-main-row').attr('data-idx'), 10);
+            var v = state.variations[idx];
+            if (!v) return;
+            v.attributes = v.attributes || {};
+            v.attributes[$sel.attr('data-axis')] = $sel.val() || '';
+            v.name = varDisplayName(v);
+            state.dirty = true;
+            warnDuplicateVariation(idx);
+        });
         $tb.find('.var-image-btn').on('click', function () { openVarImagePicker($(this).data('idx')); });
         $tb.find('.var-image-remove').on('click', function (e) { e.stopPropagation(); removeVarImage($(this).data('idx')); });
+        // Keyboard reordering: focus a drag handle, then arrow up/down. Gives
+        // the sortable a non-pointer equivalent without adding two buttons to
+        // every row.
+        $tb.find('.var-drag-handle').on('keydown', function (e) {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+            e.preventDefault();
+            var from = parseInt($(this).closest('tr.var-main-row').attr('data-idx'), 10);
+            moveVariation(from, from + (e.key === 'ArrowUp' ? -1 : 1));
+        });
         $tb.find('.var-delete-btn').on('click', function () {
             var idx = $(this).data('idx');
             var confirmMsg = PE.i18n.confirm_delete_variation || 'Delete this variation? This change is applied when you save the product.';
@@ -3058,6 +3839,15 @@
             // from the stale server-hydrated values and the user perceives
             // deleting one variation as wiping data from the others.
             captureVarTableInputs();
+            captureVarExtraInputs();
+            // Remember what was removed. findExVar() also searches the
+            // server-hydrated snapshot, which still holds this row, so without
+            // this a later Generate would re-add it WITH ITS OLD ID and the
+            // save would quietly undo the deletion.
+            var gone = state.variations[idx];
+            if (gone && gone.id) {
+                (state.removedVariationIds || (state.removedVariationIds = {}))[gone.id] = true;
+            }
             state.variations.splice(idx, 1);
             state.dirty = true;
             renderVarTable();
@@ -3125,11 +3915,55 @@
             });
         }
 
+        // The extras rows above were re-inserted from the server's captured
+        // HTML, which knows nothing about edits made since the page loaded.
+        // Put those back before anything else reads them.
+        restoreVarExtraInputs();
+
         // Re-pair the cost-plugin inputs: this render rebuilt both the cost
         // cells and the extras rows they live in, so the previous bindings
         // point at detached elements and their freshly-rendered value is back
         // to whatever the server captured.
         syncVariationCogsMirror();
+    }
+
+    /* One dropdown per variation axis for a manually added row. The empty
+       option is WooCommerce's "Any <attribute>", which is a real combination
+       (it matches every value), so it is offered rather than treated as a
+       blank that has to be filled in. */
+    function buildVarAttrSelects(v, attrRows) {
+        if (!attrRows || !attrRows.length) {
+            return '<span class="var-name-text">' + esc(v.name || '') + '</span>';
+        }
+        var html = '<span class="var-attr-picks">';
+        attrRows.forEach(function (a) {
+            var axis = attrAxisKey(a);
+            var cur = (v.attributes && v.attributes[axis]) ? String(v.attributes[axis]) : '';
+            var anyLabel = (PE.i18n.any_attribute || 'Any %s').replace('%s', a.name);
+            html += '<select class="var-attr-select brikpanel-pe-select" data-axis="' + esc(axis) + '" aria-label="' + esc(a.name) + '">' +
+                '<option value=""' + (cur === '' ? ' selected' : '') + '>' + esc(anyLabel) + '</option>';
+            (a.values || []).forEach(function (val) {
+                html += '<option value="' + esc(val) + '"' + (String(val) === cur ? ' selected' : '') + '>' + esc(val) + '</option>';
+            });
+            html += '</select>';
+        });
+        return html + '</span>';
+    }
+
+    /* Two variations with the same combination are a WooCommerce dead end: the
+       storefront can only ever reach the first one. Flag it as soon as the
+       merchant picks the duplicate rather than at save time. */
+    function warnDuplicateVariation(idx) {
+        var target = state.variations[idx];
+        if (!target || !target.attributes) return;
+        // Same slot definition Generate uses, so "already exists" here and
+        // "keeps its position" there can never disagree.
+        var mine = comboKey(target.attributes);
+        var clash = state.variations.some(function (v, i) { return i !== idx && comboKey(v.attributes) === mine; });
+        $('#bpe-var-table-body tr.var-main-row[data-idx="' + idx + '"]').toggleClass('is-duplicate', clash);
+        if (clash) {
+            showToast(PE.i18n.duplicate_variation || 'Another variation already uses this combination.', 'error');
+        }
     }
 
     function buildVarImageCell(images, idx) {
@@ -3316,12 +4150,21 @@
         var $pub = $('#bpe-publish'), op = $pub.text();
         $pub.prop('disabled', true).text(PE.i18n.saving || 'Saving...');
 
-        var isVar = $('#bpe-var-toggle').is(':checked') && state.variations.length > 0;
+        var $varToggle = $('#bpe-var-toggle');
+        var isVar = $varToggle.is(':checked') && state.variations.length > 0;
         var sep = PE.decimal_sep || ',';
         var data = { action: 'brikpanel_save_product', security: PE.nonce,
             product_id: $('#bpe-product-id').val() || 0, status: status, name: name,
-            sku: $('#bpe-sku').val(),
-            is_variable: isVar ? 1 : 0 };
+            sku: $('#bpe-sku').val() };
+        // Same rule the other opt-in sections follow: send the key only when the
+        // control is actually on the page. With the variations section switched
+        // off the toggle is a permanently-unchecked stand-in, so posting
+        // `is_variable=0` would tell the server the merchant chose "simple" —
+        // which converted every variable product and deleted all its variations.
+        // Omitting the key means "not editable here, leave the type alone".
+        if (!$varToggle.attr('data-section-hidden')) {
+            data.is_variable = isVar ? 1 : 0;
+        }
 
         // Both description fields are opt-in sections, so send a key only when
         // the editor is actually on the page. An always-present key meant a
@@ -3487,7 +4330,14 @@
             data.downloads = '[]';
         }
 
-        if (state.images.length) { data.image_id = state.images[0].id; data.gallery_ids = state.images.slice(1).map(function (i) { return i.id; }).join(','); }
+        // Speak about images only once the gallery has been hydrated. Sending
+        // nothing means "leave them alone"; sending an explicit 0 / empty list
+        // means the merchant really did clear them. Conflating the two is what
+        // let an early or interrupted save wipe a product's whole gallery.
+        if (state.imagesReady) {
+            data.image_id = state.images.length ? state.images[0].id : 0;
+            data.gallery_ids = state.images.slice(1).map(function (i) { return i.id; }).join(',');
+        }
         else { data.image_id = 0; data.gallery_ids = ''; }
 
         // Blocksy per-image videos: only send the images the merchant edited,
@@ -3536,17 +4386,9 @@
         // #acf-form-data is ACF's hidden block (_acf_nonce, _acf_post_id, …).
         // It must travel with the payload so ACF's save_post handler can verify
         // its nonce — wherever on the page acf_form_data() emitted it.
-        $('.brikpanel-pe-metaboxes-wrap :input[name], .brikpanel-pe-wc-fields :input[name], .brikpanel-pe-var-extras :input[name], .brikpanel-pe-ext-card :input[name], #acf-form-data :input[name]').each(function () {
-            var $el = $(this), name = $el.attr('name');
-            if (!name) return;
-            if (($el.is(':checkbox') || $el.is(':radio')) && !$el.is(':checked')) return;
-            var val = $el.val();
-            // A <select multiple> (ACF select with multiple=1, taxonomy
-            // multi_select, any 3rd-party multi-select) returns an ARRAY from
-            // .val() — or null when nothing is selected. Normalise null to an
-            // empty array so the array-spread paths below handle it uniformly
-            // instead of pushing a bare null.
-            if (val === null && $el.is('select[multiple]')) val = [];
+        // Extracted so the per-variation extras pass below can reuse the exact
+        // same bracket-walking rules while supplying a rewritten name.
+        function collectNamedInput(name, val) {
             // Extract bracket groups: name="a[b][c]" → key="a", suffixes=["b","c"].
             var m = /^([^\[]+)((?:\[[^\]]*\])*)$/.exec(name);
             if (!m) return;
@@ -3585,6 +4427,70 @@
             } else {
                 cursor[last] = val;
             }
+        }
+
+        // Normalise an input's value the way the collector expects.
+        function readInputValue($el) {
+            var val = $el.val();
+            // A <select multiple> (ACF select with multiple=1, taxonomy
+            // multi_select, any 3rd-party multi-select) returns an ARRAY from
+            // .val() — or null when nothing is selected. Normalise null to an
+            // empty array so the array-spread paths handle it uniformly
+            // instead of pushing a bare null.
+            if (val === null && $el.is('select[multiple]')) val = [];
+            return val;
+        }
+
+        // Everything EXCEPT the per-variation extras, which need re-indexing
+        // and therefore get their own pass immediately below.
+        $('.brikpanel-pe-metaboxes-wrap :input[name], .brikpanel-pe-wc-fields :input[name], .brikpanel-pe-ext-card :input[name], #acf-form-data :input[name]').each(function () {
+            var $el = $(this), name = $el.attr('name');
+            if (!name) return;
+            if (($el.is(':checkbox') || $el.is(':radio')) && !$el.is(':checked')) return;
+            collectNamedInput(name, readInputValue($el));
+        });
+
+        // Which position each table row will occupy in the `variations` array.
+        // Mirrors the main-row loop further below exactly, including its
+        // `if (!v) return;` skip, so the mapping stays true even if the DOM and
+        // state ever disagree about a row.
+        var varSubmitIndexByDataIdx = {};
+        if (isVar) {
+            var submitPos = 0;
+            $('#bpe-var-table-body tr.var-main-row').each(function (idx) {
+                if (!state.variations[idx]) return;
+                varSubmitIndexByDataIdx[parseInt($(this).attr('data-idx'), 10)] = submitPos++;
+            });
+        }
+
+        // Per-variation third-party fields. Their name attributes carry the
+        // loop index they were RENDERED with (`data-loop`), but the server
+        // dispatches `woocommerce_save_product_variation` with the SUBMITTED
+        // position. Deleting, reordering or regenerating rows makes those two
+        // diverge, which silently writes one variation's values onto another
+        // (and drops the last one). Re-index here so `$_POST['field'][$loop]`
+        // always addresses the variation the merchant actually edited.
+        $('#bpe-var-table-body tr.var-extras-row').each(function () {
+            var $row = $(this);
+            var domIdx = parseInt($row.attr('data-idx'), 10);
+            var submitIdx = varSubmitIndexByDataIdx[domIdx];
+            if (submitIdx === undefined) return; // row has no main row in the payload
+            var origLoop = parseInt($row.attr('data-loop'), 10);
+            $row.find(':input[name]').each(function () {
+                var $el = $(this), name = $el.attr('name');
+                if (!name) return;
+                if (($el.is(':checkbox') || $el.is(':radio')) && !$el.is(':checked')) return;
+                if (!isNaN(origLoop) && origLoop !== submitIdx) {
+                    // Only the FIRST bracket group, and only when it really is
+                    // this row's loop number. A plugin keying on something else
+                    // (`field[sub][<loop>]`, a literal variation id, a string)
+                    // is left exactly as it rendered.
+                    name = name.replace(/^([^\[]+)\[(\d+)\]/, function (whole, base, num) {
+                        return parseInt(num, 10) === origLoop ? base + '[' + submitIdx + ']' : whole;
+                    });
+                }
+                collectNamedInput(name, readInputValue($el));
+            });
         });
         // Flatten nested containers back to URL-encoded bracket notation so
         // URLSearchParams serialises them correctly. `{a: {0: 'x', 1: 'y'}}`
@@ -3775,6 +4681,12 @@
                 tv.push(varObj);
             });
             data.variations = JSON.stringify(tv);
+            // Baseline for the adoption step: whatever the table holds that
+            // differs from this snapshot when the reply lands was typed while
+            // the request was in flight, and must not be overwritten by it.
+            state.lastSubmittedVariations = tv;
+        } else {
+            state.lastSubmittedVariations = [];
         }
 
         // Build FormData so bracketed repeat keys (`field[0]`, `field[1]`…)
@@ -3820,6 +4732,11 @@
                 // fields so the "More fields" expander appears for variations that
                 // were just created (new product, or rows added this session)
                 // without forcing a full page reload.
+                // Order matters: the attribute rows have to carry their new
+                // taxonomies before the variation list is adopted, because
+                // adoptSavedVariations() reads the axis keys back out of the
+                // live DOM to label the rows and to reset the stale-table hint.
+                adoptSavedAttributes(r.data.attributes, r.data.global_attributes, r.data.promoted_axes, silent);
                 if (r.data.variations) { adoptSavedVariations(r.data.variations, r.data.variation_extras || {}, silent); }
                 if (r.data.product_id) {
                     $('#bpe-product-id').val(r.data.product_id);
@@ -3868,8 +4785,18 @@
             state.saving = false; $pub.prop('disabled', false).text(op);
             var msg = (xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message)
                 ? xhr.responseJSON.data.message
-                : (PE.i18n.error || 'An error occurred');
-            showToast(msg, 'error');
+                : saveFailureDetail(xhr);
+            showToast(msg, 'error', 12000);
+            // The toast is short-lived and merchants report "an error occurred"
+            // with nothing else to go on. Put the whole reply in the console so
+            // a support request can carry the real cause.
+            if (window.console && console.error) {
+                console.error('BrikPanel: product save failed', { // i18n-ignore: console diagnostics, not user-facing UI
+                    status: xhr && xhr.status,
+                    statusText: xhr && xhr.statusText,
+                    response: xhr && xhr.responseText ? xhr.responseText.slice(0, 4000) : null
+                });
+            }
         });
     }
 
@@ -3882,20 +4809,41 @@
 
         var allTags = (productData.all_tags || []).slice();
 
+        /* Add one or many tags at once. WordPress separates tags with commas,
+           so both commas and line breaks split here. Returns how many landed. */
+        function addTags(text) {
+            var added = 0;
+            splitDelimited(text, /[,\r\n]+/).forEach(function (v) {
+                if (hasTag(v)) return;
+                addProductTag(v);
+                added++;
+            });
+            if (added) { $input.val(''); $suggestions.hide(); }
+            return added;
+        }
+
         $input.on('keydown', function (e) {
             if (e.key === 'Enter' || e.key === ',') {
                 e.preventDefault();
-                var v = $.trim(this.value.replace(/,/g, ''));
-                if (v && !hasTag(v)) {
-                    addProductTag(v);
-                    this.value = '';
-                    $suggestions.hide();
-                }
+                addTags(this.value);
             }
             if (e.key === 'Backspace' && !this.value && state.tags.length) {
                 state.tags.pop();
                 renderProductTags();
                 state.dirty = true;
+            }
+        });
+
+        // Paste a comma-separated list (the format WordPress itself asks for)
+        // and get one tag per entry rather than a single tag holding them all.
+        $input.on('paste', function (e) {
+            var clip = (e.originalEvent || e).clipboardData;
+            var text = clip ? clip.getData('text') : '';
+            if (!text || !/[,\r\n]/.test(text)) return; // single tag — normal paste
+            e.preventDefault();
+            var n = addTags(text);
+            if (n) {
+                showToast((PE.i18n.tags_added || '%d tags added').replace('%d', n), 'success');
             }
         });
 
@@ -3963,11 +4911,20 @@
     }
 
     function loadExistingData() {
-        if (!productData || !productData.id) return;
+        if (!productData || !productData.id) {
+            // Brand-new product: there are no stored images to lose, and
+            // anything the merchant adds before the first save must still be
+            // sent, so the gallery already speaks for itself.
+            state.imagesReady = true;
+            return;
+        }
         if (productData.gallery && productData.gallery.length) {
-            productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url, video: (i.video && typeof i.video === 'object') ? i.video : defaultVideo() }); });
+            productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url, alt: i.alt ? String(i.alt) : '', video: (i.video && typeof i.video === 'object') ? i.video : defaultVideo() }); });
             renderGallery();
         }
+        // From here the gallery mirrors the saved product, so a save is
+        // entitled to speak for it — including "the merchant removed them all".
+        state.imagesReady = true;
         if (productData.downloads && productData.downloads.length) {
             state.downloads = productData.downloads.slice();
             renderDownloads();
@@ -3986,12 +4943,12 @@
         if ($aList.length) {
             if (productData.is_variable && productData.attributes && productData.attributes.length) {
                 productData.attributes.forEach(function (attr) {
-                    $aList.append(createAttrRow(attr.name, attr.values || [], attr.taxonomy || '', true));
+                    $aList.append(createAttrRow(attr.name, attr.values || [], attr.taxonomy || '', true, attr.visible !== false));
                 });
             }
             if (productData.non_variation_attributes && productData.non_variation_attributes.length) {
                 productData.non_variation_attributes.forEach(function (attr) {
-                    $aList.append(createAttrRow(attr.name, attr.values || [], attr.taxonomy || '', false));
+                    $aList.append(createAttrRow(attr.name, attr.values || [], attr.taxonomy || '', false, attr.visible !== false));
                 });
             }
         }
@@ -4068,6 +5025,90 @@
         });
     }
 
+    /* Set once the SEO bridge is up; lets the gallery ask for a re-analysis
+       without reaching into the bridge's internals. Stays null when no SEO
+       plugin is active. */
+    var seoScheduleSync = null;
+
+    /* Rank Math pushes the post content through a `rank_math_content` filter
+       before every analysis run, and its own integrations (ACF, and whatever
+       else a site has) hook into it. That call sits inside an unguarded loop:
+       if one handler throws, the exception takes the entire run down with it,
+       so not a single check executes and the metabox reports "0 / 100" for a
+       product whose real score is fine — while the products list, which reads
+       the last saved score, keeps showing the right number.
+
+       We cannot make other people's code stop throwing, so make one broken
+       integration cost only itself: wrap every handler so a failure hands the
+       content back untouched and the analysis carries on. */
+    function guardRankMathContentFilter() {
+        var HOOK = 'rank_math_content'; // i18n-ignore: wp.hooks filter name, not user-facing text
+
+        // Only meaningful where Rank Math actually renders. Both routes that
+        // can show it (the SEO card and a hand-placed section) run Rank Math's
+        // own metabox callback server-side, and that callback prints this
+        // wrapper, so it is in the DOM before any of this runs.
+        if (!document.getElementById('rank-math-metabox-wrapper') && !window.rankMath) return;
+
+        function wrapHandlers() {
+            try {
+                var hooks = window.wp && window.wp.hooks;
+                if (!hooks || !hooks.filters || !hooks.filters[HOOK]) return false;
+                var handlers = hooks.filters[HOOK].handlers;
+                if (!handlers || !handlers.length) return false;
+
+                var wrapped = false;
+                handlers.forEach(function (handler) {
+                    var original = handler && handler.callback;
+                    if (typeof original !== 'function' || original.brikpanelGuarded) return;
+                    var guarded = function (content) {
+                        try {
+                            return original.apply(this, arguments);
+                        } catch (e) {
+                            return content;
+                        }
+                    };
+                    guarded.brikpanelGuarded = true;
+                    handler.callback = guarded;
+                    wrapped = true;
+                });
+                return wrapped;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function reanalyse() {
+            try {
+                if (window.rankMathEditor && typeof rankMathEditor.refresh === 'function') {
+                    rankMathEditor.refresh('content'); // i18n-ignore: Rank Math API argument, not user-facing text
+                }
+            } catch (e) {}
+        }
+
+        // Handlers register as their plugins boot, which can be before or after
+        // us, so cover both: wrap what is already there and keep watching.
+        wrapHandlers();
+        try {
+            if (window.wp && window.wp.hooks && typeof window.wp.hooks.addAction === 'function') {
+                // A plugin that re-registers its filter on every analysis would
+                // otherwise have us re-analyse forever, so the recovery pass is
+                // capped. The wrapping itself carries on regardless: it is the
+                // part that keeps the score alive.
+                var rescues = 0;
+                wp.hooks.addAction('hookAdded', 'brikpanel/seo-analysis-guard', function (hookName) { // i18n-ignore: hook + namespace identifiers, not user-facing text
+                    if (hookName !== HOOK) return;
+                    // A run poisoned before we got here left the score at zero;
+                    // recompute now that the handler can no longer take it down.
+                    if (wrapHandlers() && rescues < 5) {
+                        rescues++;
+                        reanalyse();
+                    }
+                });
+            }
+        } catch (e) {}
+    }
+
     /* Live SEO analysis bridge.
      *
      * The active SEO plugin's metabox renders inside the BrikPanel SEO card,
@@ -4079,12 +5120,19 @@
      * like it does on the native WooCommerce product editor — for Yoast,
      * Rank Math, AIO SEO and SEOPress alike, on simple and variable products. */
     function initSeoAnalysisBridge() {
+        // Runs before the bridge check: the analysis can be poisoned on any
+        // page carrying Rank Math's metabox, including the one hand-placed
+        // through the section picker, which ships no bridge scaffold.
+        guardRankMathContentFilter();
+
         var $bridge = $('.brikpanel-pe-seo-native-bridge');
         if (!$bridge.length) return; // no SEO plugin active — nothing to feed
 
-        var nTitle   = document.getElementById('title');
-        var nContent = document.getElementById('content');
-        var nExcerpt = document.getElementById('excerpt');
+        var nTitle    = document.getElementById('title');
+        var nContent  = document.getElementById('content');
+        var nExcerpt  = document.getElementById('excerpt');
+        var nSlug     = document.getElementById('post_name');
+        var nSlugFull = document.getElementById('editable-post-name-full');
 
         function fire(el) {
             if (!el) return;
@@ -4113,15 +5161,58 @@
             // events fired in pushToNative(), so no explicit API call needed.
         }
 
+        /* The analysers read the featured image out of the native
+           featured-image metabox, which this editor does not render, so hand
+           them the first gallery image — the one badged "Featured" — instead.
+           Without it, every "does this page use an image?" check fails on a
+           product whose only image is the featured one, and the score here
+           lands below the one the same product gets on the native editor. */
+        var lastThumbnail = null;
+        function pushFeaturedImage() {
+            try {
+                var img = (state.images && state.images.length) ? state.images[0] : null;
+                var key = img && img.url ? img.url + '\n' + (img.alt || '') : '';
+                if (key === lastThumbnail) return; // unchanged — do not retrigger
+                var collector = window.rankMathEditor
+                    && rankMathEditor.assessor
+                    && rankMathEditor.assessor.dataCollector;
+                if (!collector || typeof collector.assessThumbnail !== 'function') return;
+                lastThumbnail = key;
+                if (!key) return;
+                collector.assessThumbnail({ src: img.url, alt: img.alt || '' });
+            } catch (e) {}
+        }
+
+        /* Only mirror a field this editor actually shows. Description, short
+           description and permalink are each independently switchable in the
+           section picker, and getEditorHtml() hands back an empty string for an
+           editor that is not on the page — so without this check, hiding the
+           Description section would wipe the real product text out of the
+           scaffold ~1.2s after load and the analysers would grade a blank page.
+           PHP already seeded the scaffold with the saved values, so leaving a
+           field alone is exactly right. Matches the save payload, which guards
+           the same way before writing description/short_description. */
         function pushToNative() {
             var title   = $('#bpe-name').val() || '';
             var content = getEditorHtml('bpe-description') || '';
             var excerpt = getEditorHtml('bpe-short-desc') || '';
+            var slug    = $('#bpe-slug').val() || '';
 
+            // #bpe-name is always rendered, so the title needs no guard.
             if (nTitle && nTitle.value !== title) { nTitle.value = title; fire(nTitle); }
-            if (nContent && nContent.value !== content) { nContent.value = content; fire(nContent); }
-            if (nExcerpt && nExcerpt.value !== excerpt) { nExcerpt.value = excerpt; fire(nExcerpt); }
+            if (nContent && $('#bpe-description').length && nContent.value !== content) { nContent.value = content; fire(nContent); }
+            if (nExcerpt && $('#bpe-short-desc').length && nExcerpt.value !== excerpt) { nExcerpt.value = excerpt; fire(nExcerpt); }
 
+            // Keyword-in-URL is scored from the slug nodes, which PHP seeds once
+            // and never updates, so an edited permalink would keep being graded
+            // against the saved one.
+            if (nSlug && $('#bpe-slug').length && nSlug.value !== slug) {
+                nSlug.value = slug;
+                if (nSlugFull) nSlugFull.textContent = slug;
+                fire(nSlug);
+            }
+
+            pushFeaturedImage();
             refreshAnalyzers();
         }
 
@@ -4130,12 +5221,15 @@
             clearTimeout(debounce);
             debounce = setTimeout(pushToNative, 450);
         }
+        // Reordering or replacing images changes which one is featured, so the
+        // gallery reaches the analysers through the same debounce as the text.
+        seoScheduleSync = scheduleSync;
 
         // BrikPanel name + the two rich-text editors (contenteditable, their
         // hidden HTML-source textareas, and paste/keystroke inside them).
         $(document).on(
             'input change keyup paste',
-            '#bpe-name, #bpe-short-desc, #bpe-short-desc-source, #bpe-description, #bpe-description-source',
+            '#bpe-name, #bpe-short-desc, #bpe-short-desc-source, #bpe-description, #bpe-description-source, #bpe-slug',
             scheduleSync
         );
 

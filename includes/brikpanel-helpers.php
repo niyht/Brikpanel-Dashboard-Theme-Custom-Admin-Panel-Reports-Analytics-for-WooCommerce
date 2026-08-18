@@ -252,6 +252,75 @@ function brikpanel_cogs_meta_keys() {
 }
 
 /**
+ * Meta keys the BrikPanel product search scans alongside the post title and
+ * content.
+ *
+ * WooCommerce keeps the SKU in `_sku`, which is all BrikPanel looks at out of
+ * the box. Stores that also stamp a supplier code, a manufacturer part number
+ * or an EAN onto their products can let warehouse staff find a product by any
+ * of them in one line:
+ *
+ *     add_filter( 'brikpanel_product_search_meta_keys', function ( $keys, $term ) {
+ *         $keys[] = '_manufacturer_sku';
+ *         return $keys;
+ *     }, 10, 2 );
+ *
+ * The same list drives BOTH halves of the search clause: a product's own meta
+ * and its variations' meta, where a hit returns the parent product. Simple and
+ * variable products therefore behave identically.
+ *
+ * Not memoised on purpose: this runs once per search query, so a cache would
+ * save nothing, and the $term argument means a site may legitimately return a
+ * different list per term. Do not add a static cache here.
+ *
+ * @param string $term The raw search term being run, so a site can widen the
+ *                     scan only for terms that look like its own identifiers.
+ * @return string[] Ordered, de-duplicated meta keys (never empty, at most 10).
+ */
+function brikpanel_product_search_meta_keys( $term = '' ) {
+    $keys = array( '_sku' );
+
+    /**
+     * Filter the meta keys the BrikPanel product search scans.
+     *
+     * @param string[] $keys Meta keys to scan. Defaults to array( '_sku' ).
+     * @param string   $term The raw search term being run.
+     */
+    $keys = (array) apply_filters( 'brikpanel_product_search_meta_keys', $keys, (string) $term );
+
+    // Harden: these strings reach a meta_key position in the search SQL, so
+    // anything that is not a well-formed meta key is dropped outright rather
+    // than escaped. A filter cannot smuggle SQL in through this list. If a
+    // filter leaves nothing usable we fall back to WooCommerce's own SKU key,
+    // so the caller always has something to build a clause from and `IN ()`
+    // can never be emitted.
+    $clean = array();
+    foreach ( $keys as $key ) {
+        $key = is_string( $key ) ? trim( $key ) : '';
+        if ( '' !== $key && preg_match( '/^[A-Za-z0-9_\-]{1,255}$/', $key ) ) {
+            $clean[] = $key;
+        }
+    }
+    $clean = array_values( array_unique( $clean ) );
+    if ( empty( $clean ) ) {
+        $clean = array( '_sku' );
+    }
+
+    // Hard cap. Every extra key adds its whole meta_key range to a
+    // `LIKE '%term%'` scan that no index can help, and it does so twice (own
+    // meta plus variation meta). Ten covers SKU, supplier code, MPN, EAN and a
+    // handful of legacy fields; beyond that a single filter could turn every
+    // keystroke in the search box into a full postmeta scan. Deliberately not
+    // filterable: a store that needs more identifiers should use the $term
+    // argument to widen the scan only for terms that warrant it.
+    if ( count( $clean ) > 10 ) {
+        $clean = array_slice( $clean, 0, 10 );
+    }
+
+    return $clean;
+}
+
+/**
  * SQL fragments that resolve a product's cost across every known cost meta
  * key, for the aggregate queries that cannot afford a per-row PHP lookup.
  *
@@ -1416,3 +1485,458 @@ function brikpanel_excluded_customer_sql( $customer_id_expr ) {
     $list = implode( ',', array_map( 'absint', $ids ) );
     return " AND ( {$customer_id_expr} ) NOT IN ({$list})";
 }
+
+// =============================================================================
+// PHONE NUMBERS — one normaliser for every WhatsApp link in the plugin
+// =============================================================================
+//
+// Both the Abandoned Carts screen and the Orders screen turn a customer's phone
+// into a wa.me link, and until 3.2.63 each did it with its own copy of the
+// logic, its own country-code source and its own length rules. They disagreed
+// often enough to matter: the same number could open two different chats.
+//
+// This lives in helpers.php because it is needed on the front end too (the
+// Orders module is only loaded inside wp-admin), and helpers.php is required at
+// file scope, outside that gate.
+
+/**
+ * ISO 3166-1 alpha-2 country code → international dialing code (digits only,
+ * no leading "+"). Used to complete a local phone number into the E.164-style
+ * form WhatsApp needs. Filterable so a store can correct or extend it.
+ *
+ * @param string $cc Two-letter uppercase country code.
+ * @return string Dialing code digits, or '' when unknown.
+ */
+function brikpanel_country_dialing_code( $cc ) {
+	$cc  = strtoupper( (string) $cc );
+	$map = array(
+		'AF' => '93', 'AL' => '355', 'DZ' => '213', 'AS' => '1', 'AD' => '376', 'AO' => '244', 'AI' => '1', 'AG' => '1',
+		'AR' => '54', 'AM' => '374', 'AW' => '297', 'AU' => '61', 'AT' => '43', 'AZ' => '994', 'BS' => '1', 'BH' => '973',
+		'BD' => '880', 'BB' => '1', 'BY' => '375', 'BE' => '32', 'BZ' => '501', 'BJ' => '229', 'BM' => '1', 'BT' => '975',
+		'BO' => '591', 'BA' => '387', 'BW' => '267', 'BR' => '55', 'BN' => '673', 'BG' => '359', 'BF' => '226', 'BI' => '257',
+		'KH' => '855', 'CM' => '237', 'CA' => '1', 'CV' => '238', 'KY' => '1', 'CF' => '236', 'TD' => '235', 'CL' => '56',
+		'CN' => '86', 'CO' => '57', 'KM' => '269', 'CG' => '242', 'CD' => '243', 'CR' => '506', 'CI' => '225', 'HR' => '385',
+		'CU' => '53', 'CY' => '357', 'CZ' => '420', 'DK' => '45', 'DJ' => '253', 'DM' => '1', 'DO' => '1', 'EC' => '593',
+		'EG' => '20', 'SV' => '503', 'GQ' => '240', 'ER' => '291', 'EE' => '372', 'SZ' => '268', 'ET' => '251', 'FJ' => '679',
+		'FI' => '358', 'FR' => '33', 'GF' => '594', 'PF' => '689', 'GA' => '241', 'GM' => '220', 'GE' => '995', 'DE' => '49',
+		'GH' => '233', 'GI' => '350', 'GR' => '30', 'GL' => '299', 'GD' => '1', 'GP' => '590', 'GU' => '1', 'GT' => '502',
+		'GG' => '44', 'GN' => '224', 'GW' => '245', 'GY' => '592', 'HT' => '509', 'HN' => '504', 'HK' => '852', 'HU' => '36',
+		'IS' => '354', 'IN' => '91', 'ID' => '62', 'IR' => '98', 'IQ' => '964', 'IE' => '353', 'IM' => '44', 'IL' => '972',
+		'IT' => '39', 'JM' => '1', 'JP' => '81', 'JE' => '44', 'JO' => '962', 'KZ' => '7', 'KE' => '254', 'KI' => '686',
+		'KW' => '965', 'KG' => '996', 'LA' => '856', 'LV' => '371', 'LB' => '961', 'LS' => '266', 'LR' => '231', 'LY' => '218',
+		'LI' => '423', 'LT' => '370', 'LU' => '352', 'MO' => '853', 'MG' => '261', 'MW' => '265', 'MY' => '60', 'MV' => '960',
+		'ML' => '223', 'MT' => '356', 'MH' => '692', 'MQ' => '596', 'MR' => '222', 'MU' => '230', 'MX' => '52', 'FM' => '691',
+		'MD' => '373', 'MC' => '377', 'MN' => '976', 'ME' => '382', 'MS' => '1', 'MA' => '212', 'MZ' => '258', 'MM' => '95',
+		'NA' => '264', 'NR' => '674', 'NP' => '977', 'NL' => '31', 'NC' => '687', 'NZ' => '64', 'NI' => '505', 'NE' => '227',
+		'NG' => '234', 'MK' => '389', 'NO' => '47', 'OM' => '968', 'PK' => '92', 'PW' => '680', 'PS' => '970', 'PA' => '507',
+		'PG' => '675', 'PY' => '595', 'PE' => '51', 'PH' => '63', 'PL' => '48', 'PT' => '351', 'PR' => '1', 'QA' => '974',
+		'RE' => '262', 'RO' => '40', 'RU' => '7', 'RW' => '250', 'KN' => '1', 'LC' => '1', 'VC' => '1', 'WS' => '685',
+		'SM' => '378', 'ST' => '239', 'SA' => '966', 'SN' => '221', 'RS' => '381', 'SC' => '248', 'SL' => '232', 'SG' => '65',
+		'SK' => '421', 'SI' => '386', 'SB' => '677', 'SO' => '252', 'ZA' => '27', 'KR' => '82', 'SS' => '211', 'ES' => '34',
+		'LK' => '94', 'SD' => '249', 'SR' => '597', 'SE' => '46', 'CH' => '41', 'SY' => '963', 'TW' => '886', 'TJ' => '992',
+		'TZ' => '255', 'TH' => '66', 'TL' => '670', 'TG' => '228', 'TO' => '676', 'TT' => '1', 'TN' => '216', 'TR' => '90',
+		'TM' => '993', 'TC' => '1', 'TV' => '688', 'UG' => '256', 'UA' => '380', 'AE' => '971', 'GB' => '44', 'US' => '1',
+		'UY' => '598', 'UZ' => '998', 'VU' => '678', 'VA' => '39', 'VE' => '58', 'VN' => '84', 'VG' => '1', 'VI' => '1',
+		'YE' => '967', 'ZM' => '260', 'ZW' => '263',
+	);
+	$code = isset( $map[ $cc ] ) ? $map[ $cc ] : '';
+
+	/**
+	 * Filter the dialing code resolved for a country. Return '' to skip
+	 * prepending (the raw digits are then used as-is).
+	 */
+	return (string) apply_filters( 'brikpanel_country_dialing_code', $code, $cc );
+}
+
+/**
+ * Every dialing code the map knows, longest first, for prefix detection.
+ *
+ * Codes are one to three digits, so a plain "does the number start with a code"
+ * test has to try the longest match first or "1" would shadow "12" and "123".
+ *
+ * @return array<int,string> Unique codes, sorted longest-first.
+ */
+function brikpanel_known_dialing_codes() {
+	static $codes = null;
+	if ( null !== $codes ) {
+		return $codes;
+	}
+
+	// Reuse the map itself rather than keeping a second list in sync: ask the
+	// resolver for every ISO country WooCommerce knows about.
+	$countries = array();
+	if ( function_exists( 'WC' ) && WC()->countries && method_exists( WC()->countries, 'get_countries' ) ) {
+		$countries = array_keys( (array) WC()->countries->get_countries() );
+	}
+	if ( ! $countries ) {
+		// WooCommerce not ready (cron, early boot). Fall back to the ISO list the
+		// map itself is keyed by, obtained by asking for a code we know exists.
+		$countries = array( 'US', 'GB', 'DE', 'FR', 'TR', 'IN', 'BR', 'RU', 'CN', 'JP' );
+	}
+
+	$out = array();
+	foreach ( $countries as $cc ) {
+		$code = brikpanel_country_dialing_code( $cc );
+		if ( '' !== $code ) {
+			$out[ $code ] = true;
+		}
+	}
+	$out = array_keys( $out );
+	usort( $out, static function ( $a, $b ) {
+		return strlen( $b ) <=> strlen( $a );
+	} );
+
+	$codes = $out;
+	return $codes;
+}
+
+/**
+ * The dialing code a number already starts with, or '' when it starts with none.
+ *
+ * @param string $digits Digits only.
+ * @return string
+ */
+function brikpanel_leading_dialing_code( $digits ) {
+	foreach ( brikpanel_known_dialing_codes() as $code ) {
+		if ( 0 === strpos( $digits, $code ) ) {
+			return $code;
+		}
+	}
+	return '';
+}
+
+/**
+ * Whether a digit string is a plausible international number.
+ *
+ * The shortest real E.164 numbers are 8 digits including the country code and
+ * the standard caps the whole thing at 15. Outside that it is a typo, an
+ * extension or a note, and a wrong wa.me link is worse than none.
+ *
+ * @param string $digits
+ * @return bool
+ */
+function brikpanel_is_dialable_e164( $digits ) {
+	$len = strlen( (string) $digits );
+	return $len >= 8 && $len <= 15;
+}
+
+/**
+ * Turn a customer-typed phone number into the international digits WhatsApp
+ * expects (no "+"), or '' when it cannot be dialled.
+ *
+ * The hard part is not formatting, it is deciding whether a number that does
+ * not start with "+" is a local number needing a country code in front, or an
+ * international number the shopper typed without the plus. Guessing wrong
+ * produces a link to a stranger, so the decision is made from the strongest
+ * evidence available:
+ *
+ *   A. The number already starts with the country's own code. Then it is
+ *      already international; prepending again gives "9090532…".
+ *   B. The country is only a GUESS (nothing was captured for this shopper, so
+ *      we fell back to the store's own country) and the number starts with some
+ *      other country's code. Here the number's own prefix is better evidence
+ *      than the store's address: a Turkish number in a US-based store is a
+ *      customer, not a typo. Deliberately limited to the guessed case — when
+ *      the country is known, a leading digit means very little (a German mobile
+ *      starts with "1", which is also the NANP code).
+ *   C. Prepending would push the number past E.164's 15-digit ceiling, which
+ *      is proof on its own that the code is already there.
+ *
+ * @param string $raw     Number as the customer typed it.
+ * @param string $country Two-letter country the number belongs to, '' when unknown.
+ * @return string Digits only (no "+"), or ''.
+ */
+function brikpanel_phone_to_e164( $raw, $country = '' ) {
+	$raw = trim( (string) $raw );
+	if ( '' === $raw ) {
+		return '';
+	}
+
+	$digits = preg_replace( '/\\D+/', '', $raw );
+	if ( '' === $digits ) {
+		return '';
+	}
+
+	// --- Explicitly international: the shopper already told us -------------
+	// "+" is unambiguous. "00" and the North American "011" are the two dial-out
+	// prefixes in use; both mean "what follows is a full international number".
+	$number = '';
+	if ( 0 === strpos( $raw, '+' ) ) {
+		$number = $digits;
+	} elseif ( 0 === strpos( $digits, '011' ) && strlen( $digits ) > 11 ) {
+		// Length guard: "011…" is only a dial-out prefix when what follows is
+		// long enough to be a whole international number. Otherwise it is a
+		// local number that happens to start 011 (a UK 0113… landline).
+		$number = substr( $digits, 3 );
+	} elseif ( 0 === strpos( $digits, '00' ) ) {
+		$number = substr( $digits, 2 );
+	}
+
+	if ( '' !== $number ) {
+		$number = ltrim( $number, '0' );
+		return brikpanel_is_dialable_e164( $number )
+			? (string) apply_filters( 'brikpanel_phone_to_e164', $number, $raw, $country )
+			: '';
+	}
+
+	// --- Local form: decide whether a country code has to go in front ------
+	$country = strtoupper( trim( (string) $country ) );
+	$guessed = ( '' === $country );
+	if ( $guessed ) {
+		$base    = function_exists( 'wc_get_base_location' ) ? wc_get_base_location() : array();
+		$country = strtoupper( (string) ( $base['country'] ?? '' ) );
+	}
+
+	// A single national trunk zero is written locally and never dialled from
+	// abroad (UK "07…" -> 44 7…). Only one: a number written "00…" already took
+	// the international branch above, so a second zero here is part of the number.
+	$local = ( strlen( $digits ) > 1 && '0' === $digits[0] ) ? substr( $digits, 1 ) : $digits;
+
+	$code = brikpanel_country_dialing_code( $country );
+	if ( '' === $code ) {
+		// No country at all — not the customer's, not even the store's. A
+		// nationally-written number cannot be completed, and using it as typed
+		// would dial whoever owns those digits under some other country's code
+		// ("532 111 22 33" reads as +53 2111 22 33, Cuba). Almost any digit
+		// string begins with some assigned code, so there is nothing to check
+		// against; no link is the only safe answer.
+		return '';
+	}
+
+	if ( 0 === strpos( $local, $code ) && brikpanel_is_dialable_e164( $local ) ) {
+		$number = $local;                                   // rule A
+	} elseif ( $guessed && brikpanel_is_dialable_e164( $local ) && '' !== brikpanel_leading_dialing_code( $local ) ) {
+		$number = $local;                                   // rule B
+	} elseif ( ! brikpanel_is_dialable_e164( $code . $local ) && brikpanel_is_dialable_e164( $local ) ) {
+		$number = $local;                                   // rule C
+	} else {
+		$number = $code . $local;
+	}
+
+	if ( ! brikpanel_is_dialable_e164( $number ) ) {
+		return '';
+	}
+
+	/**
+	 * Filter the final international number (digits only, no "+").
+	 *
+	 * @param string $number  Resolved E.164 digits.
+	 * @param string $raw     Number as the customer typed it.
+	 * @param string $country Two-letter country used to resolve it.
+	 */
+	return (string) apply_filters( 'brikpanel_phone_to_e164', $number, $raw, $country );
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Plain text and bidirectional isolation
+ * ---------------------------------------------------------------------------
+ *
+ * Prices, dates and phone numbers are written left to right even inside a
+ * right-to-left sentence, and the Unicode Bidirectional Algorithm works that
+ * out from the characters alone - until a separator gets in the way. In
+ * "15.402,50 EGP" the comma is a neutral character, and a renderer that does
+ * not resolve it as part of the number treats the amount as two separate runs,
+ * which an Arabic paragraph then lays out in the opposite order: the merchant
+ * sends 15.402,50 and the shopper reads "50,15.402".
+ *
+ * WooCommerce knows this, which is why wc_price() wraps its output in <bdi>.
+ * Every "price as plain text" path throws that wrapper away with
+ * wp_strip_all_tags(), so the isolation has to be put back by hand, as the
+ * characters U+2066 (LRI) and U+2069 (PDI) - the plain-text equivalent of the
+ * <bdi> element, invisible in a left-to-right context and understood by
+ * WhatsApp, e-mail clients and browsers alike.
+ */
+
+/**
+ * Reduce an HTML fragment to the plain text a message or a table cell shows.
+ *
+ * Order matters: wc_price() emits `&#36;`/`&nbsp;` and wc_display_item_meta()
+ * emits `&times;`, so entities are decoded *before* the tags come off.
+ * Stripping first would leave the entity text sitting in the output verbatim.
+ *
+ * The whitespace collapse deliberately spares the no-break spaces. The `u`
+ * modifier turns on PCRE's Unicode properties, where `\S` counts U+00A0 as
+ * whitespace, so the obvious pattern quietly rewrites the no-break space
+ * wc_price() puts between the symbol and the amount into an ordinary one -
+ * and then WhatsApp is free to break the line straight through the price.
+ *
+ * @param string $html
+ * @return string
+ */
+function brikpanel_plain_text_from_html( $html ) {
+	$text = html_entity_decode( (string) $html, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	$text = wp_strip_all_tags( $text );
+	$text = preg_replace( '/[^\S\n\x{00A0}\x{202F}]+/u', ' ', $text );
+
+	return trim( (string) $text );
+}
+
+/**
+ * Strip any bidirectional control character a string arrived with.
+ *
+ * Runs before this file adds its own isolation, for two reasons. A stray
+ * U+2069 in merchant- or filter-supplied text would close our isolate early
+ * and hand the rest of the amount back to the surrounding paragraph, and
+ * U+202E (right-to-left override) reverses everything after it - the trick
+ * used to disguise filenames, and here enough to make a total read as a
+ * different number. Stripping first also guarantees isolates never nest, which
+ * is what lets brikpanel_bidi_close_isolates() count them exactly.
+ *
+ * @param string $text
+ * @return string
+ */
+function brikpanel_bidi_strip_controls( $text ) {
+	static $controls = null;
+
+	if ( null === $controls ) {
+		$controls = array(
+			"\u{200E}" => '', // LRM
+			"\u{200F}" => '', // RLM
+			"\u{202A}" => '', // LRE
+			"\u{202B}" => '', // RLE
+			"\u{202C}" => '', // PDF
+			"\u{202D}" => '', // LRO
+			"\u{202E}" => '', // RLO
+			"\u{2066}" => '', // LRI
+			"\u{2067}" => '', // RLI
+			"\u{2068}" => '', // FSI
+			"\u{2069}" => '', // PDI
+		);
+	}
+
+	return strtr( (string) $text, $controls );
+}
+
+/**
+ * Wrap a whole string in a left-to-right isolate.
+ *
+ * For values that are left-to-right from end to end: a phone number, a
+ * formatted date, an order number. Anything mixing a number with a currency
+ * symbol wants brikpanel_bidi_isolate_numbers() instead, which leaves the
+ * symbol where the merchant configured it.
+ *
+ * An empty string is returned untouched. Both message builders decide whether
+ * to drop a whole line by comparing a token against '', and two invisible
+ * characters would quietly turn every optional line into a permanent one.
+ *
+ * @param string $text
+ * @return string
+ */
+function brikpanel_bidi_isolate_ltr( $text ) {
+	$text = (string) $text;
+
+	if ( '' === trim( $text ) || ( defined( 'BRIKPANEL_NO_BIDI_ISOLATION' ) && BRIKPANEL_NO_BIDI_ISOLATION ) ) {
+		return $text;
+	}
+
+	return "\u{2066}" . brikpanel_bidi_strip_controls( $text ) . "\u{2069}";
+}
+
+/**
+ * Wrap every number inside a string in its own left-to-right isolate.
+ *
+ * Isolating the number rather than the whole price is what keeps the currency
+ * where the merchant put it. Wrapping "ر.س 15.402,50" as one unit fixes the
+ * digits but moves the symbol to the other side of the amount, because the
+ * isolate forces one direction on both; isolating only "15.402,50" leaves the
+ * symbol to the paragraph, which places it exactly as woocommerce_currency_pos
+ * asked. Verified against every position with a Latin code, a "$" and an
+ * Arabic symbol.
+ *
+ * A number is a run of digits plus the separators that appear *between*
+ * digits - the decimal mark, the thousands mark and their Arabic-Indic
+ * equivalents, including the no-break and thin spaces used as group
+ * separators in several locales. A separator with no digit after it is left
+ * outside, so "15.402,50 EGP" isolates the amount and not the trailing code.
+ *
+ * A leading sign joins the number, so a refund reads "-15,00" and not
+ * "15,00-". Only a sign that starts the run counts: the lookbehind keeps the
+ * hyphens of "2026-08-17" from being read as minus signs.
+ *
+ * @param string $text
+ * @return string
+ */
+function brikpanel_bidi_isolate_numbers( $text ) {
+	$text = (string) $text;
+
+	if ( '' === trim( $text ) || ( defined( 'BRIKPANEL_NO_BIDI_ISOLATION' ) && BRIKPANEL_NO_BIDI_ISOLATION ) ) {
+		return $text;
+	}
+
+	$text = brikpanel_bidi_strip_controls( $text );
+
+	$separator = '[.,\'\x{2019}\x{066B}\x{066C}\x{00A0}\x{202F}\x{2009} ]';
+	$number    = '/(?<!\p{Nd})[+\-\x{2212}]?\p{Nd}+(?:' . $separator . '\p{Nd}+)*/u';
+
+	$isolated = preg_replace( $number, "\u{2066}$0\u{2069}", $text );
+
+	return null === $isolated ? $text : $isolated;
+}
+
+/**
+ * A monetary amount as isolated plain text, ready to drop into a message.
+ *
+ * @param float|int|string $amount Amount to format.
+ * @param array            $args   Passed straight to wc_price(), e.g. currency.
+ * @return string
+ */
+function brikpanel_money_text( $amount, $args = array() ) {
+	if ( ! function_exists( 'wc_price' ) ) {
+		return brikpanel_bidi_isolate_numbers( number_format_i18n( (float) $amount, 2 ) );
+	}
+
+	return brikpanel_bidi_isolate_numbers(
+		brikpanel_plain_text_from_html( wc_price( (float) $amount, (array) $args ) )
+	);
+}
+
+/**
+ * The same isolation for a price WooCommerce has already formatted.
+ *
+ * Used where the markup itself carries meaning that reformatting would lose -
+ * a refunded order's struck-through original beside the new total, say. The
+ * markup is kept, so the per-number pass is skipped: an isolate landing inside
+ * `&#36;` or between a tag's angle brackets would corrupt the fragment. The
+ * outer isolate alone is enough there, because an e-mail client renders the
+ * `<del>`/`<ins>` structure with its own directionality anyway.
+ *
+ * @param string $html Price HTML, e.g. from get_formatted_order_total().
+ * @return string
+ */
+function brikpanel_money_text_from_html( $html ) {
+	$html = (string) $html;
+
+	if ( false !== strpbrk( $html, '<&' ) ) {
+		return brikpanel_bidi_isolate_ltr( $html );
+	}
+
+	return brikpanel_bidi_isolate_numbers( $html );
+}
+
+/**
+ * Close any isolate a truncation left open.
+ *
+ * A message cut to a maximum length can land between an LRI and its PDI, and
+ * an unclosed isolate swallows everything after it into the wrong direction.
+ * Only the opening direction can go missing, since every cut takes the tail,
+ * but the closing ones are counted too in case a filter injected its own.
+ *
+ * @param string $text
+ * @return string
+ */
+function brikpanel_bidi_close_isolates( $text ) {
+	$text = (string) $text;
+
+	$unclosed = substr_count( $text, "\u{2066}" )
+		+ substr_count( $text, "\u{2067}" )
+		+ substr_count( $text, "\u{2068}" )
+		- substr_count( $text, "\u{2069}" );
+
+	if ( $unclosed > 0 ) {
+		$text .= str_repeat( "\u{2069}", $unclosed );
+	}
+
+	return $text;
+}
+

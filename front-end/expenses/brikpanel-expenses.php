@@ -19,6 +19,7 @@ class Brikpanel_Expenses {
 	const PAGE_SLUG   = 'brikpanel-expenses';
 	const NONCE_ACTION = 'brikpanel_expenses_nonce';
 	const TABLE       = 'brikpanel_expenses';
+	const SKIPS_TABLE = 'brikpanel_expense_skips';
 
 	public function __construct() {
 		// Priority 11 so this hook runs after Brikpanel_Vendors (10) when the
@@ -28,6 +29,7 @@ class Brikpanel_Expenses {
 		add_action( 'wp_ajax_brikpanel_expenses_list',   [ $this, 'ajax_list' ] );
 		add_action( 'wp_ajax_brikpanel_expenses_save',   [ $this, 'ajax_save' ] );
 		add_action( 'wp_ajax_brikpanel_expenses_delete', [ $this, 'ajax_delete' ] );
+		add_action( 'wp_ajax_brikpanel_expense_line_delete', [ $this, 'ajax_line_delete' ] );
 	}
 
 	// =========================================================================
@@ -457,14 +459,16 @@ class Brikpanel_Expenses {
 		// just cleared above, so this always produces a clean, current series.
 		$materialized = 0;
 		if ( 'none' !== $recurring ) {
-			$materialized = self::materialize_template( (object) [
-				'id'           => $id,
-				'expense_date' => $date,
-				'category'     => $category,
-				'description'  => $description,
-				'amount'       => $amount,
-				'recurring'    => $recurring,
-			] );
+			// Read the row back rather than hand-building it: the materialiser
+			// needs the real created_at to look up which occurrences this
+			// template had removed, and a synthetic object cannot supply it.
+			$saved = $wpdb->get_row( $wpdb->prepare(
+				"SELECT id, expense_date, category, description, amount, recurring, created_at FROM {$table} WHERE id = %d",
+				$id
+			) ); // phpcs:ignore
+			if ( $saved ) {
+				$materialized = self::materialize_template( $saved );
+			}
 		}
 
 		self::bust_dashboard_cache();
@@ -498,11 +502,33 @@ class Brikpanel_Expenses {
 		}
 
 		$table = $wpdb->prefix . self::TABLE;
+		$row   = $wpdb->get_row( $wpdb->prepare(
+			"SELECT id, expense_date, recurring, recurring_parent FROM {$table} WHERE id = %d",
+			$id
+		) ); // phpcs:ignore
+		if ( ! $row ) {
+			wp_send_json_success(); // already gone — deleting twice is not an error
+		}
+
+		// One occurrence of a recurring expense: record the date FIRST. The
+		// materialiser only ever inserts, so a crash between these two steps
+		// leaves a skip for a row that still exists — harmless, and the skip is
+		// kept because that date is still part of the series. The other order
+		// would resurrect the row on the very next read.
+		if ( (int) $row->recurring_parent > 0 ) {
+			self::add_skip( (int) $row->recurring_parent, (string) $row->expense_date );
+		}
+
 		$wpdb->delete( $table, [ 'id' => $id ], [ '%d' ] );
 		// Deleting a recurring template removes its whole materialised series so
 		// the occurrences don't linger as orphans. A no-op for one-off rows /
 		// individual occurrences (nothing references their id as a parent).
 		$wpdb->delete( $table, [ 'recurring_parent' => $id ], [ '%d' ] );
+
+		// The series is gone, so its skipped dates have nothing left to suppress.
+		if ( 'none' !== (string) $row->recurring && 0 === (int) $row->recurring_parent ) {
+			self::clear_skips( $id );
+		}
 
 		self::bust_dashboard_cache();
 
@@ -514,6 +540,379 @@ class Brikpanel_Expenses {
 		do_action( 'brikpanel_expense_deleted', $id );
 
 		wp_send_json_success();
+	}
+
+	// =========================================================================
+	// AJAX: remove one line of the dashboard Profit ▸ Expenses breakdown
+	//
+	// A line on that card is not one expense: manual costs are grouped by title
+	// over the selected dates, so "Cleaning $3,200" can be four rows from a
+	// weekly series. The browser therefore never decides what to delete — it
+	// asks (mode=preview) what a line covers, shows the answer, and sends back
+	// the choice (mode=commit) together with the token the preview issued. If
+	// anything moved in between (another admin, a received purchase order, a new
+	// occurrence) the token stops matching and nothing is removed.
+	// =========================================================================
+
+	public function ajax_line_delete() {
+		$this->check_auth();
+		global $wpdb;
+
+		$mode = sanitize_key( wp_unslash( $_POST['mode'] ?? 'preview' ) );
+		$type = sanitize_key( wp_unslash( $_POST['type'] ?? '' ) );
+		if ( ! in_array( $mode, [ 'preview', 'commit' ], true ) || ! in_array( $type, [ 'cat', 'percent' ], true ) ) {
+			wp_send_json_error( [ 'code' => 'invalid_request', 'message' => __( 'Invalid request.', 'brikpanel' ) ] );
+		}
+
+		$plan = ( 'percent' === $type )
+			? $this->plan_percent_line( absint( $_POST['id'] ?? 0 ) )
+			: $this->plan_category_line(
+				sanitize_text_field( wp_unslash( $_POST['cat'] ?? '' ) ),
+				sanitize_text_field( wp_unslash( $_POST['date_from'] ?? '' ) ),
+				sanitize_text_field( wp_unslash( $_POST['date_to'] ?? '' ) )
+			);
+
+		if ( isset( $plan['error'] ) ) {
+			wp_send_json_error( [ 'code' => $plan['error'], 'message' => $plan['message'] ] );
+		}
+
+		if ( 'preview' === $mode ) {
+			wp_send_json_success( $plan['public'] );
+		}
+
+		// The preview is recomputed from scratch above, so this compares what the
+		// merchant was shown against what is true right now.
+		if ( ! hash_equals( (string) $plan['public']['token'], (string) sanitize_text_field( wp_unslash( $_POST['token'] ?? '' ) ) ) ) {
+			wp_send_json_error( [
+				'code'    => 'stale',
+				'message' => __( 'These figures changed while this dialog was open. Close it and try again.', 'brikpanel' ),
+			] );
+		}
+
+		$scope = sanitize_key( wp_unslash( $_POST['scope'] ?? '' ) );
+		if ( empty( $plan['ids'][ $scope ] ) ) {
+			wp_send_json_error( [ 'code' => 'invalid_scope', 'message' => __( 'Nothing to remove here.', 'brikpanel' ) ] );
+		}
+
+		$table   = $wpdb->prefix . self::TABLE;
+		$ids     = array_map( 'absint', (array) $plan['ids'][ $scope ] );
+		$ids     = array_values( array_filter( $ids ) );
+		$deleted = 0;
+
+		if ( $ids ) {
+			// Skips FIRST. The materialiser only ever inserts, so a skip for a row
+			// that still exists is harmless; a deleted row with no skip is back on
+			// the next read.
+			if ( 'period' === $scope ) {
+				foreach ( (array) $plan['skip_pairs'] as $pair ) {
+					self::add_skip( (int) $pair[0], (string) $pair[1] );
+				}
+			}
+
+			$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+			$deleted      = (int) $wpdb->query( $wpdb->prepare(
+				"DELETE FROM {$table} WHERE id IN ({$placeholders})", // phpcs:ignore
+				$ids
+			) ); // phpcs:ignore
+
+			// Removing whole series: their skipped dates now point at nothing.
+			if ( 'series' === $scope ) {
+				foreach ( (array) $plan['series_ids'] as $tid ) {
+					self::clear_skips( (int) $tid );
+				}
+			}
+		}
+
+		self::bust_dashboard_cache();
+
+		// Fired only after every write, so a listener that reads the table back
+		// (the Google Sheets push does) never sees a half-removed line. Generated
+		// occurrences are not synced anywhere, so only managed rows are announced.
+		foreach ( (array) ( $plan['managed_ids'][ $scope ] ?? [] ) as $mid ) {
+			/** This is the documented per-row delete hook, see ajax_delete(). */
+			do_action( 'brikpanel_expense_deleted', (int) $mid );
+		}
+
+		$removed = _n( '%d entry removed.', '%d entries removed.', $deleted, 'brikpanel' );
+
+		wp_send_json_success( [
+			'deleted' => $deleted,
+			'message' => sprintf( $removed, $deleted ),
+		] );
+	}
+
+	/**
+	 * What removing a percentage cost would do. It is one row, always on, with no
+	 * date window and therefore no choice of scope.
+	 */
+	private function plan_percent_line( int $id ): array {
+		global $wpdb;
+		$table = $wpdb->prefix . self::TABLE;
+
+		$row = $id > 0 ? $wpdb->get_row( $wpdb->prepare(
+			"SELECT id, category, amount FROM {$table} WHERE id = %d AND kind = 'percent'",
+			$id
+		) ) : null; // phpcs:ignore
+
+		if ( ! $row ) {
+			return [ 'error' => 'not_found', 'message' => __( 'This expense no longer exists.', 'brikpanel' ) ];
+		}
+
+		// Same fallback the Profit card uses, so the dialog names the line the
+		// way the card does.
+		$title = trim( (string) $row->category );
+		if ( '' === $title ) {
+			$title = __( 'Commission', 'brikpanel' );
+		}
+		$rate = rtrim( rtrim( number_format( (float) $row->amount, 2, '.', '' ), '0' ), '.' );
+
+		return [
+			'public' => [
+				'token'  => $this->plan_token( [ 'percent', (int) $row->id, (string) $row->amount ] ),
+				'title'  => __( 'Remove this expense?', 'brikpanel' ),
+				/* translators: 1: name of the cost, 2: percentage rate, e.g. 2.9. */
+				'body'   => sprintf( __( '%1$s: %2$s%% of revenue.', 'brikpanel' ), $title, $rate ),
+				'note'   => __( 'This cost is a percentage of revenue, so removing it affects every period.', 'brikpanel' ),
+				'scopes' => [
+					[
+						'id'     => 'period',
+						'label'  => __( 'Remove', 'brikpanel' ),
+						'detail' => '',
+					],
+				],
+			],
+			'ids'         => [ 'period' => [ (int) $row->id ] ],
+			'managed_ids' => [ 'period' => [ (int) $row->id ] ],
+			'skip_pairs'  => [],
+			'series_ids'  => [],
+		];
+	}
+
+	/**
+	 * What removing a grouped expense line would do, for both scopes.
+	 *
+	 * @param string $cat  RAW category as stored (may be ''), never a display label.
+	 * @param string $from Y-m-d window start.
+	 * @param string $to   Y-m-d window end.
+	 */
+	private function plan_category_line( string $cat, string $from, string $to ): array {
+		global $wpdb;
+		$table = $wpdb->prefix . self::TABLE;
+
+		if ( ! self::is_ymd( $from ) || ! self::is_ymd( $to ) ) {
+			// Never fall back to "today": a bad range must not delete a window
+			// nobody asked about.
+			return [ 'error' => 'invalid_range', 'message' => __( 'Invalid date range.', 'brikpanel' ) ];
+		}
+		if ( strtotime( $to ) < strtotime( $from ) ) {
+			[ $from, $to ] = [ $to, $from ];
+		}
+
+		// kind <> 'percent' mirrors how the card groups these lines. Without it a
+		// percentage cost sharing this title — which the card draws as its own
+		// separate line — would be swept up silently.
+		$rows = $wpdb->get_results( $wpdb->prepare(
+			"SELECT id, expense_date, description, category, amount, recurring, recurring_parent
+			   FROM {$table}
+			  WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent' AND COALESCE(category,'') = %s
+			  ORDER BY expense_date ASC, id ASC",
+			$from,
+			$to,
+			$cat
+		) ); // phpcs:ignore
+
+		if ( empty( $rows ) ) {
+			return [ 'error' => 'not_found', 'message' => __( 'This expense no longer exists.', 'brikpanel' ) ];
+		}
+
+		$one_ids    = [];   // standalone entries
+		$inst_ids   = [];   // generated occurrences
+		$skip_pairs = [];   // [template id, date] per occurrence
+		$tpl_ids    = [];   // series whose starting entry sits inside the window
+		$parents    = [];   // series reaching into the window
+		$total      = 0.0;
+		$tpl_total  = 0.0;
+		$one_total  = 0.0;
+
+		foreach ( $rows as $r ) {
+			$total += (float) $r->amount;
+			$parent = (int) $r->recurring_parent;
+			if ( $parent > 0 ) {
+				$inst_ids[]   = (int) $r->id;
+				$skip_pairs[] = [ $parent, substr( (string) $r->expense_date, 0, 10 ) ];
+				$parents[ $parent ] = true;
+			} elseif ( 'none' !== (string) $r->recurring ) {
+				$tpl_ids[]  = (int) $r->id;
+				$tpl_total += (float) $r->amount;
+				$parents[ (int) $r->id ] = true;
+			} else {
+				$one_ids[]  = (int) $r->id;
+				$one_total += (float) $r->amount;
+			}
+		}
+
+		$series_ids = array_map( 'absint', array_keys( $parents ) );
+		sort( $series_ids );
+
+		// Footprint of every series involved — by parentage, NOT by category. An
+		// individual occurrence can be edited on the Expenses page and end up
+		// under a different title, and "the whole series" must still account for
+		// it rather than leave an orphan behind.
+		$series_row_ids = [];
+		$series_total   = 0.0;
+		if ( $series_ids ) {
+			$ph   = implode( ',', array_fill( 0, count( $series_ids ), '%d' ) );
+			$args = array_merge( $series_ids, $series_ids );
+			$srows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT id, amount FROM {$table} WHERE id IN ({$ph}) OR recurring_parent IN ({$ph})", // phpcs:ignore
+				$args
+			) ); // phpcs:ignore
+			foreach ( (array) $srows as $sr ) {
+				$series_row_ids[] = (int) $sr->id;
+				$series_total    += (float) $sr->amount;
+			}
+		}
+
+		$label = $this->line_label( $cat );
+
+		// --- scope: only this period -----------------------------------------
+		// The starting entry of a series is deliberately left out: its date is
+		// what the whole series is derived from, so removing it alone would
+		// either kill the series or silently re-anchor every future occurrence.
+		$period_ids   = array_merge( $one_ids, $inst_ids );
+		$period_total = $total - $tpl_total;
+
+		$scopes  = [];
+		$ids     = [];
+		$managed = [];
+
+		if ( $period_ids ) {
+			$n      = count( $period_ids );
+			$detail = _n( 'Removes %1$d entry · %2$s', 'Removes %1$d entries · %2$s', $n, 'brikpanel' );
+			$scopes[] = [
+				'id'     => 'period',
+				'label'  => $series_ids ? __( 'Only this period', 'brikpanel' ) : __( 'Remove', 'brikpanel' ),
+				'detail' => sprintf( $detail, $n, self::money_text( $period_total ) ),
+			];
+			$ids['period']     = $period_ids;
+			$managed['period'] = $one_ids; // occurrences are not synced anywhere
+		}
+
+		// --- scope: the whole series -----------------------------------------
+		if ( $series_ids ) {
+			$all_ids = array_values( array_unique( array_merge( $one_ids, $series_row_ids ) ) );
+			$n       = count( $all_ids );
+			$detail  = _n( 'Removes %1$d entry · %2$s', 'Removes %1$d entries · %2$s', $n, 'brikpanel' );
+			$detail  = sprintf( $detail, $n, self::money_text( $series_total + $one_total ) );
+
+			$outside = $n - count( array_unique( array_merge( $one_ids, $inst_ids, $tpl_ids ) ) );
+			if ( $outside > 0 ) {
+				/* translators: %d: number of entries dated outside the period on screen. */
+				$extra   = _n( 'Includes %d entry outside this period.', 'Includes %d entries outside this period.', $outside, 'brikpanel' );
+				$detail .= ' ' . sprintf( $extra, $outside );
+			}
+
+			$scopes[] = [
+				'id'     => 'series',
+				'label'  => __( 'The whole repeating expense', 'brikpanel' ),
+				'detail' => $detail,
+			];
+			$ids['series']     = $all_ids;
+			// Only the templates and standalone rows are known to Google Sheets.
+			$managed['series'] = array_values( array_unique( array_merge( $one_ids, $series_ids ) ) );
+		}
+
+		if ( ! $scopes ) {
+			return [ 'error' => 'invalid_scope', 'message' => __( 'Nothing to remove here.', 'brikpanel' ) ];
+		}
+
+		// --- copy -------------------------------------------------------------
+		$count = count( $rows );
+		if ( 1 === $count ) {
+			$r0    = $rows[0];
+			$name  = trim( (string) $r0->description );
+			if ( '' === $name ) {
+				$name = $label;
+			}
+			$title = __( 'Remove this expense?', 'brikpanel' );
+			/* translators: 1: expense name, 2: date, 3: amount. */
+			$body  = sprintf( __( '%1$s · %2$s · %3$s', 'brikpanel' ), $name, self::date_text( (string) $r0->expense_date ), self::money_text( (float) $r0->amount ) );
+		} else {
+			$title = __( 'Remove these expenses?', 'brikpanel' );
+			/* translators: 1: line name, 2: number of entries, 3: total amount. */
+			$many  = _n( '%1$s: %2$d entry, %3$s in this period.', '%1$s: %2$d entries, %3$s in this period.', $count, 'brikpanel' );
+			$body  = sprintf( $many, $label, $count, self::money_text( $total ) );
+		}
+
+		$notes = [];
+		if ( $tpl_ids ) {
+			// Only warn about the starting entry being kept when there is in fact
+			// a choice; when the whole series is the only option, say that plainly
+			// instead of describing an option the dialog is not offering.
+			if ( isset( $ids['period'] ) ) {
+				/* translators: %s: name of the repeating expense. */
+				$notes[] = sprintf( __( 'This period is where %s starts repeating. "Only this period" keeps that first entry. Choose the whole repeating expense to remove it as well.', 'brikpanel' ), $label );
+			} else {
+				/* translators: %s: name of the repeating expense. */
+				$notes[] = sprintf( __( '%s repeats, so removing it also stops every future occurrence.', 'brikpanel' ), $label );
+			}
+		}
+		if ( '' !== $cat && $cat === (string) get_option( 'brikpanel_po_expense_category', 'Inventory' ) ) {
+			$notes[] = __( 'These entries were created when stock orders were received. Removing them does not change the purchase orders.', 'brikpanel' );
+		}
+
+		$fingerprint = array_merge( [ 'cat', $cat, $from, $to, (string) round( $total, 4 ) ], array_map( 'strval', wp_list_pluck( $rows, 'id' ) ) );
+
+		return [
+			'public' => [
+				'token'  => $this->plan_token( $fingerprint ),
+				'title'  => $title,
+				'body'   => $body,
+				'note'   => implode( ' ', $notes ),
+				'scopes' => $scopes,
+			],
+			'ids'         => $ids,
+			'managed_ids' => $managed,
+			'skip_pairs'  => $skip_pairs,
+			'series_ids'  => $series_ids,
+		];
+	}
+
+	/**
+	 * How the Profit card names a stored category, mirrored so the dialog and the
+	 * card always agree.
+	 */
+	private function line_label( string $cat ): string {
+		if ( '' === $cat ) {
+			return __( 'Other', 'brikpanel' );
+		}
+		if ( $cat === (string) get_option( 'brikpanel_po_expense_category', 'Inventory' ) ) {
+			return __( 'Supplier / stock', 'brikpanel' );
+		}
+		return $cat;
+	}
+
+	/** Ties a preview to the exact rows and totals it was built from. */
+	private function plan_token( array $parts ): string {
+		return hash_hmac( 'sha256', implode( '|', $parts ), wp_salt( 'nonce' ) );
+	}
+
+	/** Strict Y-m-d, real calendar date. */
+	private static function is_ymd( $value ): bool {
+		return is_string( $value )
+			&& preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m )
+			&& checkdate( (int) $m[2], (int) $m[3], (int) $m[1] );
+	}
+
+	/** Money as plain text: the dialog writes it with textContent, not as HTML. */
+	private static function money_text( float $amount ): string {
+		return html_entity_decode( wp_strip_all_tags( wc_price( $amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	}
+
+	/** A stored date in the site's format. Midday avoids a timezone day-shift. */
+	private static function date_text( string $ymd ): string {
+		$ts = strtotime( substr( $ymd, 0, 10 ) . ' 12:00:00' );
+		return $ts ? wp_date( (string) get_option( 'date_format' ), $ts ) : substr( $ymd, 0, 10 );
 	}
 
 	// =========================================================================
@@ -539,6 +938,145 @@ class Brikpanel_Expenses {
 		}
 		$rows = $wpdb->get_col( "SELECT DISTINCT category FROM {$table} WHERE category != '' ORDER BY category ASC" ); // phpcs:ignore
 		return $rows ?: [];
+	}
+
+	// =========================================================================
+	// Skipped occurrences
+	//
+	// Deleting one generated occurrence of a recurring expense used to be
+	// impossible: the row went away, but the very next read ran the materialiser,
+	// which saw a period with no row and inserted it again. A skip records "the
+	// merchant removed this date on purpose" so the materialiser leaves it alone.
+	//
+	// The skips live in their own table rather than as a marker row in
+	// brikpanel_expenses, because that table is summed in several places without
+	// any filter, and because BOTH paths that edit a recurring expense (saving it
+	// here, or the Google Sheets sync updating it) delete every child row and
+	// rebuild the series — which would erase an in-table tombstone and resurrect
+	// the occurrence on an amount-only edit.
+	//
+	// Every lookup is keyed by (template id, template created_at). The second
+	// half is what makes a recycled AUTO_INCREMENT id harmless: MariaDB rebuilds
+	// its counter from MAX(id)+1 after a restart, so a fresh expense can be
+	// handed a deleted template's id, and it must not inherit its skipped dates.
+	// =========================================================================
+
+	/**
+	 * Whether the skips table exists. Cached per request: a missing table only
+	 * happens between a plugin update and the next dbDelta run, and every caller
+	 * degrades to "no skips" rather than fataling.
+	 */
+	private static function skips_ready(): bool {
+		static $ready = null;
+		if ( null !== $ready ) {
+			return $ready;
+		}
+		global $wpdb;
+		$table = $wpdb->prefix . self::SKIPS_TABLE;
+		$ready = ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table );
+		return $ready;
+	}
+
+	/**
+	 * Remember that one occurrence of a recurring expense was removed.
+	 *
+	 * @param int    $template_id Recurring template the occurrence belonged to.
+	 * @param string $date        Occurrence date, Y-m-d.
+	 * @return bool True when a skip is now on record.
+	 */
+	public static function add_skip( int $template_id, string $date ): bool {
+		global $wpdb;
+		$date = substr( $date, 0, 10 );
+		if ( $template_id <= 0 || ! self::skips_ready() || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+			return false;
+		}
+
+		// Resolve the owning template. An orphan occurrence (its template was
+		// deleted out of band) needs no skip: with no template there is nothing
+		// left to regenerate it.
+		$created_at = $wpdb->get_var( $wpdb->prepare(
+			"SELECT created_at FROM {$wpdb->prefix}" . self::TABLE . " WHERE id = %d AND recurring_parent = 0 AND recurring <> 'none'",
+			$template_id
+		) ); // phpcs:ignore
+		if ( ! $created_at ) {
+			return false;
+		}
+
+		// INSERT IGNORE against the unique key: two admins clicking at the same
+		// moment can never lose one another's skip.
+		$skips = $wpdb->prefix . self::SKIPS_TABLE;
+		$wpdb->query( $wpdb->prepare(
+			"INSERT IGNORE INTO {$skips} (template_id, skip_date, tpl_created_at) VALUES (%d, %s, %s)",
+			$template_id,
+			$date,
+			$created_at
+		) ); // phpcs:ignore
+
+		return ! $wpdb->last_error;
+	}
+
+	/**
+	 * Drop every skip belonging to a template. Called when the whole series is
+	 * deleted — its skipped dates can no longer mean anything.
+	 *
+	 * @return int Rows removed.
+	 */
+	public static function clear_skips( int $template_id ): int {
+		global $wpdb;
+		if ( $template_id <= 0 || ! self::skips_ready() ) {
+			return 0;
+		}
+		return (int) $wpdb->delete( $wpdb->prefix . self::SKIPS_TABLE, [ 'template_id' => $template_id ], [ '%d' ] );
+	}
+
+	/**
+	 * Dates the merchant removed from one template.
+	 *
+	 * @param string $tpl_created_at The template's created_at, used as the
+	 *                               identity fingerprint against id reuse.
+	 * @return array<string,true> Map of Y-m-d => true.
+	 */
+	private static function skipped_dates( int $template_id, string $tpl_created_at ): array {
+		global $wpdb;
+		if ( $template_id <= 0 || '' === $tpl_created_at || ! self::skips_ready() ) {
+			return [];
+		}
+		$skips = $wpdb->prefix . self::SKIPS_TABLE;
+		$rows  = $wpdb->get_col( $wpdb->prepare(
+			"SELECT skip_date FROM {$skips} WHERE template_id = %d AND tpl_created_at = %s",
+			$template_id,
+			$tpl_created_at
+		) ); // phpcs:ignore
+
+		$out = [];
+		foreach ( (array) $rows as $r ) {
+			$out[ substr( (string) $r, 0, 10 ) ] = true;
+		}
+		return $out;
+	}
+
+	/**
+	 * Remove skips whose template no longer exists — including the case where
+	 * the id still exists but now belongs to a DIFFERENT expense (created_at no
+	 * longer matches), which is exactly what a recycled AUTO_INCREMENT id looks
+	 * like. One statement, run from the materialiser's own throttled sweep.
+	 */
+	private static function gc_skips(): void {
+		global $wpdb;
+		if ( ! self::skips_ready() ) {
+			return;
+		}
+		$skips    = $wpdb->prefix . self::SKIPS_TABLE;
+		$expenses = $wpdb->prefix . self::TABLE;
+		$wpdb->query(
+			"DELETE s FROM {$skips} s
+			 LEFT JOIN {$expenses} e
+			        ON e.id = s.template_id
+			       AND e.recurring_parent = 0
+			       AND e.recurring <> 'none'
+			       AND e.created_at = s.tpl_created_at
+			 WHERE e.id IS NULL"
+		); // phpcs:ignore
 	}
 
 	// =========================================================================
@@ -600,7 +1138,9 @@ class Brikpanel_Expenses {
 	/**
 	 * Fill in any missing occurrence rows for one template, up to today.
 	 *
-	 * @param object $tpl Row with id, expense_date, category, description, amount, recurring.
+	 * @param object $tpl Row with id, expense_date, category, description, amount,
+	 *                    recurring and created_at (the last one identifies the
+	 *                    template when reading its skipped dates).
 	 * @return int Number of instance rows inserted.
 	 */
 	public static function materialize_template( $tpl ): int {
@@ -613,6 +1153,51 @@ class Brikpanel_Expenses {
 		$table = $wpdb->prefix . self::TABLE;
 		$today = current_time( 'Y-m-d' ); // site timezone — matches how expenses are dated
 		$dates = self::occurrence_dates( substr( (string) $tpl->expense_date, 0, 10 ), $recurring, $today );
+
+		// Skips are keyed by (template id, template created_at). A caller that
+		// hand-builds the template object has no created_at to give us, so look
+		// it up rather than treating the series as having no removals: getting
+		// this wrong silently re-creates every occurrence the merchant deleted.
+		$created_at = (string) ( $tpl->created_at ?? '' );
+		if ( '' === $created_at ) {
+			$created_at = (string) $wpdb->get_var( $wpdb->prepare(
+				"SELECT created_at FROM {$table} WHERE id = %d",
+				$tid
+			) ); // phpcs:ignore
+		}
+
+		// Load and tidy the skipped dates BEFORE the early return below, so a
+		// template whose next occurrence has not arrived yet (a yearly one, say)
+		// keeps its skips instead of silently losing them.
+		$skips = self::skipped_dates( $tid, $created_at );
+		if ( $skips ) {
+			// Only prune what is provably obsolete: a date that has already come
+			// round AND falls inside the series we just recomputed AND is no
+			// longer one of its occurrences. Anything in the future, or past the
+			// last date this run produced, is left alone — occurrence_dates()
+			// stops at today and caps at 1200 iterations, so "not in $dates" on
+			// its own would throw away perfectly valid future skips.
+			$last  = $dates ? end( $dates ) : '';
+			$live  = array_flip( $dates );
+			$stale = [];
+			foreach ( array_keys( $skips ) as $d ) {
+				if ( $d <= $today && '' !== $last && $d <= $last && ! isset( $live[ $d ] ) ) {
+					$stale[] = $d;
+				}
+			}
+			if ( $stale ) {
+				$skips_table  = $wpdb->prefix . self::SKIPS_TABLE;
+				$placeholders = implode( ',', array_fill( 0, count( $stale ), '%s' ) );
+				$wpdb->query( $wpdb->prepare(
+					"DELETE FROM {$skips_table} WHERE template_id = %d AND skip_date IN ({$placeholders})", // phpcs:ignore
+					array_merge( [ $tid ], $stale )
+				) ); // phpcs:ignore
+				foreach ( $stale as $d ) {
+					unset( $skips[ $d ] );
+				}
+			}
+		}
+
 		if ( empty( $dates ) ) {
 			return 0;
 		}
@@ -624,6 +1209,11 @@ class Brikpanel_Expenses {
 		$have = [];
 		foreach ( (array) $rows as $r ) {
 			$have[ substr( (string) $r, 0, 10 ) ] = true;
+		}
+		// A removed occurrence counts as "already handled": same effect as the
+		// row still being there, without the row.
+		foreach ( array_keys( $skips ) as $d ) {
+			$have[ $d ] = true;
 		}
 
 		$inserted = 0;
@@ -671,10 +1261,20 @@ class Brikpanel_Expenses {
 			return 0;
 		}
 
+		// Retire skips whose template is gone (or whose id now belongs to a
+		// different expense) while we are already doing the periodic sweep.
+		self::gc_skips();
+
+		// created_at comes along because it identifies the template when reading
+		// its skipped dates. The kind filter keeps a percentage cost out: its
+		// `amount` is a RATE, and materialising it would multiply that rate into
+		// real money rows. ajax_save() forces percent rows to recurring='none',
+		// so this only guards hand-written or legacy data.
 		$since = (string) get_option( 'brikpanel_recurring_engine_since', '' );
-		$sql   = "SELECT id, expense_date, category, description, amount, recurring
+		$sql   = "SELECT id, expense_date, category, description, amount, recurring, created_at
 			FROM {$table}
-			WHERE recurring IN ('monthly','weekly','yearly') AND recurring_parent = 0";
+			WHERE recurring IN ('monthly','weekly','yearly') AND recurring_parent = 0
+			  AND kind <> 'percent'";
 		if ( '' !== $since ) {
 			$sql .= $wpdb->prepare( ' AND created_at >= %s', $since );
 		}

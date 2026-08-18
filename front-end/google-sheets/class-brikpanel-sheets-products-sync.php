@@ -306,12 +306,12 @@ class Brikpanel_Sheets_Products_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK_PUSH_FLUSH,
 			[ $this, 'handle_push' ],
-			[ 'label' => __( 'Sheets — push product changes to Google Sheets', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — push product changes to Google Sheets', 'brikpanel' ) ]; }
 		);
 		Brikpanel_Cron::register_handler(
 			self::HOOK_PULL,
 			[ $this, 'handle_pull' ],
-			[ 'label' => __( 'Sheets — pull product changes from Google Sheets', 'brikpanel' ) ]
+			static function () { return [ 'label' => __( 'Sheets — pull product changes from Google Sheets', 'brikpanel' ) ]; }
 		);
 
 		// Schedule the pull only when both the flow AND the pull half are on.

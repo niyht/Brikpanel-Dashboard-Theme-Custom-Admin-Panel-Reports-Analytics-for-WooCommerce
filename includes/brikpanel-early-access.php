@@ -185,7 +185,12 @@ function brikpanel_ea_render_modal() {
     $milestone_raw  = brikpanel_ea_should_show();
     $milestone      = ( $milestone_raw && brikpanel_ea_is_brikpanel_page() ) ? $milestone_raw : 0;
     $not_subscribed = ! get_option( 'brikpanel_ea_subscribed' );
-    $self_serve_ok  = $not_subscribed && ( ( brikpanel_ea_is_dashboard() && brikpanel_ea_card_available() ) || brikpanel_ea_is_settings_page() );
+    // Every screen carrying a "Join the list" button needs the modal in the DOM,
+    // otherwise its CTA binds to nothing and clicking it does nothing at all:
+    // the dashboard card, the settings row, and the in-page cards on Customer
+    // Analytics / Abandoned Carts.
+    $card_screen_ok = brikpanel_ea_screen_card_slug() && brikpanel_ea_card_available();
+    $self_serve_ok  = $not_subscribed && ( ( brikpanel_ea_is_dashboard() && brikpanel_ea_card_available() ) || brikpanel_ea_is_settings_page() || $card_screen_ok );
     if ( ! $milestone && ! $self_serve_ok ) {
         return;
     }
@@ -579,7 +584,7 @@ function brikpanel_ea_ajax_submit() {
     // Entry point that produced this lead, kept separate so the milestone
     // (high-intent) and self-serve (volume) segments can be nurtured differently.
     $source = isset( $_POST['source'] ) ? sanitize_key( wp_unslash( $_POST['source'] ) ) : 'self_serve';
-    if ( ! in_array( $source, array( 'self_serve', 'settings', 'milestone_100', 'milestone_200' ), true ) ) {
+    if ( ! in_array( $source, array( 'self_serve', 'settings', 'analytics', 'carts', 'milestone_100', 'milestone_200' ), true ) ) {
         $source = 'self_serve';
     }
 
@@ -601,7 +606,7 @@ function brikpanel_ea_ajax_submit() {
     brikpanel_ea_outbox_put( $lead );
 
     // Never ask again.
-    update_option( 'brikpanel_ea_subscribed', 1, false );
+    brikpanel_update_option( 'brikpanel_ea_subscribed', 1 );
 
     // Best-effort immediate delivery; failure just leaves it queued for retry.
     // The result tells the UI whether to offer the WhatsApp fallback.
@@ -690,6 +695,31 @@ function brikpanel_ea_render_card() {
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
     </div>
+    <?php brikpanel_ea_print_card_styles(); ?>
+    <?php
+}
+
+/**
+ * Card styles, shared by every BrikMentor card surface (waitlist and launch,
+ * dashboard and in-page). Printed at most once per request.
+ *
+ * This is the exact union of the two blocks that used to be inlined in
+ * brikpanel_ea_render_card() and brikpanel_ea_render_live_card(). They were
+ * near-identical; only the launch card carried text-decoration/colour rules for
+ * its anchor CTA and the __learn link. Those extras are no-ops on the waitlist
+ * card's <button>, which is why one block can serve both without changing how
+ * either has always looked. Keep it a union: styling one surface here restyles
+ * every other one.
+ *
+ * @return void
+ */
+function brikpanel_ea_print_card_styles() {
+    static $printed = false;
+    if ( $printed ) {
+        return;
+    }
+    $printed = true;
+    ?>
     <style>
         .brikpanel-ea-card {
             display: flex; align-items: center; gap: 1rem;
@@ -698,6 +728,9 @@ function brikpanel_ea_render_card() {
             padding: 1rem 1.25rem; margin: 1rem 0 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
+        /* In-page variant: the card sits above the content it pitches about, so
+           its margin belongs underneath it, not on top. */
+        .brikpanel-ea-card--inline { margin: 0 0 1rem; }
         .brikpanel-ea-card__badge {
             flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%;
             background: #303030; display: flex; align-items: center; justify-content: center;
@@ -706,13 +739,15 @@ function brikpanel_ea_render_card() {
         .brikpanel-ea-card__title { margin: 0 0 0.15rem; padding: 0; font-size: 0.9375rem; font-weight: 600; color: #303030; }
         .brikpanel-ea-card__body { margin: 0; padding: 0; font-size: 0.8125rem; line-height: 1.45; color: #616161; }
         .brikpanel-ea-card__cta {
-            flex-shrink: 0; cursor: pointer; border: none;
+            flex-shrink: 0; cursor: pointer; border: none; text-decoration: none;
             background: #303030; color: #fff; font-weight: 550; font-size: 0.8125rem;
             font-family: inherit; padding: 0.5rem 1rem; border-radius: 0.5rem;
             box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
             transition: background 0.15s ease;
         }
-        .brikpanel-ea-card__cta:hover { background: #1a1a1a; }
+        .brikpanel-ea-card__cta:hover { background: #1a1a1a; color: #fff; }
+        .brikpanel-ea-card__learn { flex-shrink: 0; color: #616161; text-decoration: none; font-size: 0.8125rem; }
+        .brikpanel-ea-card__learn:hover { color: #303030; }
         .brikpanel-ea-card__close {
             flex-shrink: 0; width: 26px; height: 26px; border-radius: 0.375rem;
             background: transparent; border: none; color: #8a8a8a; cursor: pointer;
@@ -726,6 +761,150 @@ function brikpanel_ea_render_card() {
         }
     </style>
     <?php
+}
+
+/* ── In-page waitlist cards (Customer Analytics + Abandoned Carts) ───────────── */
+
+/**
+ * The BrikPanel screens that carry an in-page waitlist card, keyed by page slug.
+ *
+ * These are the two screens where the pitch is not an interruption but an
+ * answer: a merchant reading a retention curve or a list of abandoned carts is
+ * looking at exactly the problem BrikMentor is being built to solve. Each entry
+ * carries its own copy, and Customer Analytics additionally carries one variant
+ * per tab, swapped client-side so the card always talks about the data on
+ * screen.
+ *
+ * The copy is deliberately future tense and claims nothing the product will not
+ * ship: there is no LTV-keyed and no cohort-keyed campaign, so neither is
+ * promised here (the launch copy in brikpanel-brikmentor-promo.php holds the
+ * same line, and the two must not drift apart).
+ *
+ * Adding a screen here means adding its slug to brikpanel_ea_screen_card_slug()
+ * as well, or the card renders with no modal behind its button.
+ *
+ * @return array<string, array>
+ */
+function brikpanel_ea_screen_cards() {
+    return array(
+        'brikpanel-abandoned-carts'    => array(
+            'source' => 'carts',
+            'title'  => __( 'BrikMentor is coming', 'brikpanel' ),
+            'body'   => __( 'An AI assistant and email marketing engine for WooCommerce. It will chase carts like these for you: a reminder first, a coupon only if that is not enough. Join the private beta list to try it first.', 'brikpanel' ),
+        ),
+        'brikpanel-customer-analytics' => array(
+            'source'   => 'analytics',
+            'title'    => __( 'BrikMentor is coming', 'brikpanel' ),
+            // Default body matches the landing tab (LTV); the rest are swapped
+            // in when the merchant changes tabs.
+            'body'     => __( 'An AI assistant and email marketing engine for WooCommerce. It will follow up after each completed order and win back the buyers who drift away, so lifetime value keeps growing. Join the private beta list to try it first.', 'brikpanel' ),
+            'variants' => array(
+                'ltv'    => __( 'An AI assistant and email marketing engine for WooCommerce. It will follow up after each completed order and win back the buyers who drift away, so lifetime value keeps growing. Join the private beta list to try it first.', 'brikpanel' ),
+                'rfm'    => __( 'An AI assistant and email marketing engine for WooCommerce. It will read these segments straight from BrikPanel and re-engage the ones you pick. Join the private beta list to try it first.', 'brikpanel' ),
+                'cohort' => __( 'An AI assistant and email marketing engine for WooCommerce. It will scan your customers daily and start a win-back series for anyone who has not ordered in months. Join the private beta list to try it first.', 'brikpanel' ),
+            ),
+        ),
+    );
+}
+
+/**
+ * Is the current request on a screen that carries an in-page waitlist card?
+ *
+ * Shared by the renderers and by the modal gate, so the card and the modal it
+ * opens can never disagree about which screens they belong on.
+ *
+ * Matches against a key-only list on purpose. The modal gate calls this in the
+ * admin footer of EVERY admin page, and reading the keys off
+ * brikpanel_ea_screen_cards() would translate five marketing paragraphs on each
+ * one just to answer a yes/no screen question. The two lists are adjacent in
+ * this file and must be kept in step.
+ *
+ * @return string The page slug, or '' when this is not one of those screens.
+ */
+function brikpanel_ea_screen_card_slug() {
+    if ( ! isset( $_GET['page'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen check.
+        return '';
+    }
+    $page = sanitize_key( wp_unslash( $_GET['page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    $slugs = array( 'brikpanel-abandoned-carts', 'brikpanel-customer-analytics' );
+
+    return in_array( $page, $slugs, true ) ? $page : '';
+}
+
+/**
+ * Render the in-page waitlist card for one screen.
+ *
+ * Dismissal is deliberately the same brikpanel_ea_card_dismissed flag the
+ * dashboard card uses: a merchant who has said "not interested" once has said
+ * it for the whole waitlist, not for one screen.
+ *
+ * @param string $slug Page slug from brikpanel_ea_screen_cards().
+ * @return void
+ */
+function brikpanel_ea_render_screen_card( $slug ) {
+    // manage_options, not manage_woocommerce: it is the capability every
+    // early-access AJAX handler enforces, so a shop manager offered this card
+    // could never complete the join.
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    // Launched or installed: the waitlist retires. In launch mode these two
+    // screens get the floating CTA from brikpanel-brikmentor-promo.php instead.
+    if ( brikpanel_ea_waitlist_suppressed() || ! brikpanel_ea_card_available() ) {
+        return;
+    }
+    $cards = brikpanel_ea_screen_cards();
+    if ( ! isset( $cards[ $slug ] ) ) {
+        return;
+    }
+    $card     = $cards[ $slug ];
+    $variants = isset( $card['variants'] ) ? $card['variants'] : array();
+    ?>
+    <div class="brikpanel-ea-card brikpanel-ea-card--inline" data-ea-card>
+        <div class="brikpanel-ea-card__badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" fill="#fff"/></svg>
+        </div>
+        <div class="brikpanel-ea-card__text">
+            <p class="brikpanel-ea-card__title"><?php echo esc_html( $card['title'] ); ?></p>
+            <p class="brikpanel-ea-card__body" data-ea-card-body><?php echo esc_html( $card['body'] ); ?></p>
+        </div>
+        <button type="button" class="brikpanel-ea-card__cta" data-ea-open data-ea-source="<?php echo esc_attr( $card['source'] ); ?>"><?php esc_html_e( 'Join the list', 'brikpanel' ); ?></button>
+        <button type="button" class="brikpanel-ea-card__close" data-ea-card-dismiss aria-label="<?php esc_attr_e( 'Dismiss', 'brikpanel' ); ?>">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+    </div>
+    <?php brikpanel_ea_print_card_styles(); ?>
+    <?php if ( $variants ) : ?>
+    <script>
+    (function () {
+        var body = document.querySelector('[data-ea-card-body]');
+        if (!body) return;
+        // Copy is translated in PHP and only ever crosses into JS as encoded
+        // data, never as a literal in this file.
+        var variants = <?php echo wp_json_encode( $variants ); ?>;
+        // Follow the LTV / RFM / Cohort tabs so the pitch always talks about
+        // the data on screen. Delegated: the tab bar is server-rendered, but
+        // this script may run before it in source order.
+        document.addEventListener('click', function (e) {
+            var tab = e.target && e.target.closest ? e.target.closest('.bp-ca-tab') : null;
+            if (!tab) return;
+            var key = tab.getAttribute('data-tab');
+            if (key && variants[key]) body.textContent = variants[key];
+        });
+    })();
+    </script>
+    <?php endif; ?>
+    <?php
+}
+
+add_action( 'brikpanel_ca_after_header', 'brikpanel_ea_render_analytics_card' );
+function brikpanel_ea_render_analytics_card() {
+    brikpanel_ea_render_screen_card( 'brikpanel-customer-analytics' );
+}
+
+add_action( 'brikpanel_cartab_after_header', 'brikpanel_ea_render_carts_card' );
+function brikpanel_ea_render_carts_card() {
+    brikpanel_ea_render_screen_card( 'brikpanel-abandoned-carts' );
 }
 
 /* ── Launch-mode dashboard card ("BrikMentor is live", first month $1) ────────── */
@@ -773,43 +952,7 @@ function brikpanel_ea_render_live_card() {
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
     </div>
-    <style>
-        .brikpanel-ea-card {
-            display: flex; align-items: center; gap: 1rem;
-            background: #fff; border: 1px solid #e3e3e3; border-radius: 0.75rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            padding: 1rem 1.25rem; margin: 1rem 0 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-        .brikpanel-ea-card__badge {
-            flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%;
-            background: #303030; display: flex; align-items: center; justify-content: center;
-        }
-        .brikpanel-ea-card__text { flex: 1 1 auto; min-width: 0; }
-        .brikpanel-ea-card__title { margin: 0 0 0.15rem; padding: 0; font-size: 0.9375rem; font-weight: 600; color: #303030; }
-        .brikpanel-ea-card__body { margin: 0; padding: 0; font-size: 0.8125rem; line-height: 1.45; color: #616161; }
-        .brikpanel-ea-card__cta {
-            flex-shrink: 0; cursor: pointer; border: none; text-decoration: none;
-            background: #303030; color: #fff; font-weight: 550; font-size: 0.8125rem;
-            font-family: inherit; padding: 0.5rem 1rem; border-radius: 0.5rem;
-            box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
-            transition: background 0.15s ease;
-        }
-        .brikpanel-ea-card__cta:hover { background: #1a1a1a; color: #fff; }
-        .brikpanel-ea-card__learn { flex-shrink: 0; color: #616161; text-decoration: none; font-size: 0.8125rem; }
-        .brikpanel-ea-card__learn:hover { color: #303030; }
-        .brikpanel-ea-card__close {
-            flex-shrink: 0; width: 26px; height: 26px; border-radius: 0.375rem;
-            background: transparent; border: none; color: #8a8a8a; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; padding: 0;
-            transition: background 0.15s ease, color 0.15s ease;
-        }
-        .brikpanel-ea-card__close:hover { background: #f7f7f7; color: #303030; }
-        @media (max-width: 600px) {
-            .brikpanel-ea-card { flex-wrap: wrap; }
-            .brikpanel-ea-card__text { flex-basis: 100%; order: 2; }
-        }
-    </style>
+    <?php brikpanel_ea_print_card_styles(); ?>
     <script>
     (function () {
         var card = document.querySelector('[data-bm-live-card]');

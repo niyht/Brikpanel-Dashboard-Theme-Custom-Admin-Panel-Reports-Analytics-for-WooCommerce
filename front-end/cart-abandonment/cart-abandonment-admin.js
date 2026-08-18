@@ -10,20 +10,66 @@
 		return;
 	}
 
-	var state = { page: 1, pages: 1 };
+	// items is kept so a column reorder can repaint the table without asking
+	// the server for the same page again.
+	var state = { page: 1, pages: 1, items: [] };
+
+	// Incremented per list request; only the newest response is allowed to
+	// paint. See load().
+	var loadToken = 0;
 
 	function $(id) {
 		return document.getElementById(id);
 	}
 
 	function filters() {
+		var range = $('brikpanel-cartab-range').value;
+		var custom = range === 'custom';
 		return {
 			search: $('brikpanel-cartab-search').value.trim(),
 			status: $('brikpanel-cartab-status').value,
 			source: $('brikpanel-cartab-source').value,
-			from: $('brikpanel-cartab-from').value,
-			to: $('brikpanel-cartab-to').value
+			range: range,
+			// The two dates only mean anything under "Custom range"; sending
+			// them otherwise would be ignored server-side anyway, but keeping
+			// them empty makes the export URL honest about what was applied.
+			from: custom ? $('brikpanel-cartab-from').value : '',
+			to: custom ? $('brikpanel-cartab-to').value : '',
+			sort: $('brikpanel-cartab-sort').value
 		};
+	}
+
+	/** True when anything other than the untouched default state is applied. */
+	function hasActiveFilters() {
+		var f = filters();
+		return !!(f.search || f.status || f.source || f.range || f.from || f.to ||
+			f.sort !== cfg.defaultSort);
+	}
+
+	function columnOrder() {
+		return Array.isArray(cfg.columnOrder) ? cfg.columnOrder : [];
+	}
+
+	function isVisible(colId) {
+		return !!(cfg.columnVisible && cfg.columnVisible[colId]);
+	}
+
+	/** Width of a full-row cell: every visible column plus the actions column. */
+	function fullColSpan() {
+		var span = 1;
+		columnOrder().forEach(function (id) {
+			if (isVisible(id)) {
+				span++;
+			}
+		});
+		return span;
+	}
+
+	/** A <td> already tagged with the class its column's hide rule targets. */
+	function colCell(colId, extraClass) {
+		var td = document.createElement('td');
+		td.className = 'brikpanel-cartab-col-' + colId + (extraClass ? ' ' + extraClass : '');
+		return td;
 	}
 
 	function post(action, data) {
@@ -45,7 +91,7 @@
 	}
 
 	function renderCartCell(row) {
-		var cell = document.createElement('td');
+		var cell = colCell('cart');
 		if (row.item_count > 0) {
 			var count = document.createElement('span');
 			count.className = 'brikpanel-cartab-cart-count';
@@ -88,8 +134,7 @@
 	}
 
 	function renderPhoneCell(row) {
-		var cell = document.createElement('td');
-		cell.className = 'brikpanel-cartab-phone-cell';
+		var cell = colCell('phone', 'brikpanel-cartab-phone-cell');
 
 		if (!row.phone) {
 			cell.appendChild(muted('—'));
@@ -127,8 +172,7 @@
 	}
 
 	function renderMailCell(row) {
-		var cell = document.createElement('td');
-		cell.className = 'brikpanel-cartab-mail-cell';
+		var cell = colCell('mail', 'brikpanel-cartab-mail-cell');
 		var mail = row.mail || {};
 
 		if (!mail.text) {
@@ -152,12 +196,60 @@
 		return cell;
 	}
 
+	// One builder per column id. Whatever is missing here is simply skipped,
+	// so a column contributed through the PHP filter cannot break the table.
+	var CELLS = {
+		email: function (row) {
+			var td = colCell('email', 'brikpanel-cartab-email-cell');
+			td.textContent = row.email;
+			return td;
+		},
+		name: function (row) {
+			var td = colCell('name');
+			td.textContent = (row.first_name + ' ' + row.last_name).trim() || '—';
+			return td;
+		},
+		phone: renderPhoneCell,
+		cart: renderCartCell,
+		total: function (row) {
+			var td = colCell('total', 'brikpanel-cartab-total-cell');
+			// Pre-formatted and entity-decoded server-side.
+			td.textContent = row.item_count > 0 ? row.total_h : '—';
+			return td;
+		},
+		mail: renderMailCell,
+		source: function (row) {
+			var td = colCell('source');
+			td.appendChild(badge(cfg.sources[row.source] || row.source, 'source'));
+			return td;
+		},
+		status: function (row) {
+			var td = colCell('status');
+			// display_status, not the stored status: the badge has to agree
+			// with the stat cards, which count "Active" as carts holding items
+			// and "Recovered" as carts that were abandoned before they sold.
+			var key = row.display_status || row.status;
+			td.appendChild(badge(cfg.statuses[key] || key, key));
+			return td;
+		},
+		created: function (row) {
+			var td = colCell('created', 'brikpanel-cartab-date-cell');
+			td.textContent = row.created_h || '—';
+			return td;
+		},
+		updated: function (row) {
+			var td = colCell('updated', 'brikpanel-cartab-date-cell');
+			td.textContent = row.updated_h || '—';
+			return td;
+		}
+	};
+
 	function renderDetailsRow(row) {
 		var tr = document.createElement('tr');
 		tr.className = 'brikpanel-cartab-details-row';
 		tr.hidden = true;
 		var td = document.createElement('td');
-		td.colSpan = cfg.columns || 7;
+		td.colSpan = fullColSpan();
 
 		var box = document.createElement('div');
 		box.className = 'brikpanel-cartab-details';
@@ -218,7 +310,7 @@
 		if (!items.length) {
 			var tr = document.createElement('tr');
 			var td = document.createElement('td');
-			td.colSpan = cfg.columns || 7;
+			td.colSpan = fullColSpan();
 			td.className = 'brikpanel-cartab-empty';
 			td.textContent = cfg.i18n.empty;
 			tr.appendChild(td);
@@ -229,37 +321,13 @@
 		items.forEach(function (row) {
 			var tr = document.createElement('tr');
 
-			var emailTd = document.createElement('td');
-			emailTd.className = 'brikpanel-cartab-email-cell';
-			emailTd.textContent = row.email;
-			tr.appendChild(emailTd);
-
-			var nameTd = document.createElement('td');
-			nameTd.textContent = (row.first_name + ' ' + row.last_name).trim() || '—';
-			tr.appendChild(nameTd);
-
-			if (cfg.outreach) {
-				tr.appendChild(renderPhoneCell(row));
-			}
-
-			tr.appendChild(renderCartCell(row));
-
-			if (cfg.outreach) {
-				tr.appendChild(renderMailCell(row));
-			}
-
-			var sourceTd = document.createElement('td');
-			sourceTd.appendChild(badge(cfg.sources[row.source] || row.source, 'source'));
-			tr.appendChild(sourceTd);
-
-			var statusTd = document.createElement('td');
-			statusTd.appendChild(badge(cfg.statuses[row.status] || row.status, row.status));
-			tr.appendChild(statusTd);
-
-			var dateTd = document.createElement('td');
-			dateTd.className = 'brikpanel-cartab-date-cell';
-			dateTd.textContent = row.updated_h;
-			tr.appendChild(dateTd);
+			// Cells follow the user's column order; hiding is left to CSS so a
+			// toggle never has to rebuild the table.
+			columnOrder().forEach(function (colId) {
+				if (CELLS[colId]) {
+					tr.appendChild(CELLS[colId](row));
+				}
+			});
 
 			var actionsTd = document.createElement('td');
 			actionsTd.className = 'brikpanel-cartab-actions-cell';
@@ -305,14 +373,26 @@
 	function load() {
 		var data = filters();
 		data.page = state.page;
+
+		// Filters apply themselves as you type and click, so several requests
+		// can be in flight at once and they do not necessarily come back in
+		// the order they were sent. Only the newest one may paint, otherwise a
+		// slow response for "t" can land after the one for "tztest" and show
+		// the wrong rows for the filters currently on screen.
+		var token = ++loadToken;
+
 		post('brikpanel_cartab_list', data).then(function (json) {
+			if (token !== loadToken) {
+				return;
+			}
 			if (!json || !json.success) {
 				window.alert(cfg.i18n.error);
 				return;
 			}
 			var d = json.data;
 			state.pages = d.pages;
-			render(d.items);
+			state.items = d.items || [];
+			render(state.items);
 
 			$('brikpanel-cartab-stat-total').textContent = d.counts.total;
 			$('brikpanel-cartab-stat-active').textContent = d.counts.active;
@@ -345,22 +425,245 @@
 			search: f.search,
 			status: f.status,
 			source: f.source,
+			range: f.range,
 			from: f.from,
-			to: f.to
+			to: f.to,
+			sort: f.sort
 		});
 		return cfg.ajax_url + '?' + params.toString();
 	}
 
-	// Wire up
-	$('brikpanel-cartab-apply').addEventListener('click', function () {
+	// =====================================================================
+	// Columns popover: visibility toggles + drag / keyboard reordering
+	// =====================================================================
+
+	var colsBtn     = $('brikpanel-cartab-columns-btn');
+	var colsPopover = $('brikpanel-cartab-columns-popover');
+	var colsList    = $('brikpanel-cartab-columns-list');
+	var table       = $('brikpanel-cartab-table');
+	var theadRow    = $('brikpanel-cartab-thead-row');
+	var colsSaveTimer = null;
+	var dragItem = null;
+
+	/** Column ids in the order the popover currently shows them. */
+	function popoverOrder() {
+		return Array.prototype.map.call(
+			colsList.querySelectorAll('.brikpanel-cartab-columns-item'),
+			function (item) { return item.getAttribute('data-col'); }
+		);
+	}
+
+	function saveColumns() {
+		window.clearTimeout(colsSaveTimer);
+		colsSaveTimer = window.setTimeout(function () {
+			var body = new FormData();
+			body.append('action', 'brikpanel_cartab_save_columns');
+			body.append('_ajax_nonce', cfg.nonce);
+			popoverOrder().forEach(function (colId) {
+				body.append('order[]', colId);
+				body.append('visible[' + colId + ']', isVisible(colId) ? '1' : '0');
+			});
+			fetch(cfg.ajax_url, { method: 'POST', credentials: 'same-origin', body: body })
+				.catch(function () { /* a lost preference is not worth interrupting the page */ });
+		}, 400);
+	}
+
+	function applyColumnVisibility(colId, visible) {
+		cfg.columnVisible[colId] = !!visible;
+		if (visible) {
+			table.removeAttribute('data-hide-' + colId);
+		} else {
+			table.setAttribute('data-hide-' + colId, '1');
+		}
+	}
+
+	/** Push the popover's order onto the header and repaint the cached rows. */
+	function applyColumnOrder() {
+		cfg.columnOrder = popoverOrder();
+		var actionsTh = theadRow.querySelector('.brikpanel-cartab-actions-th');
+		cfg.columnOrder.forEach(function (colId) {
+			var th = theadRow.querySelector('th[data-col="' + colId + '"]');
+			if (th) {
+				theadRow.appendChild(th);
+			}
+		});
+		if (actionsTh) {
+			theadRow.appendChild(actionsTh); // stays pinned to the end
+		}
+		render(state.items);
+		saveColumns();
+	}
+
+	function closePopover() {
+		if (!colsPopover.hidden) {
+			colsPopover.hidden = true;
+			colsBtn.setAttribute('aria-expanded', 'false');
+		}
+	}
+
+	colsBtn.addEventListener('click', function (e) {
+		e.stopPropagation();
+		var willOpen = colsPopover.hidden;
+		colsPopover.hidden = !willOpen;
+		colsBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+	});
+
+	colsPopover.addEventListener('click', function (e) {
+		e.stopPropagation();
+	});
+
+	colsList.addEventListener('change', function (e) {
+		var input = e.target;
+		if (!input || input.type !== 'checkbox' || !input.hasAttribute('data-col')) {
+			return;
+		}
+		applyColumnVisibility(input.getAttribute('data-col'), input.checked);
+		render(state.items); // colSpan of the details / empty rows depends on it
+		saveColumns();
+	});
+
+	// Drag and drop. setData is required or Firefox refuses to start a drag.
+	colsList.addEventListener('dragstart', function (e) {
+		var item = e.target.closest ? e.target.closest('.brikpanel-cartab-columns-item') : null;
+		if (!item) {
+			return;
+		}
+		dragItem = item;
+		item.classList.add('is-dragging');
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', item.getAttribute('data-col') || '');
+		}
+	});
+
+	colsList.addEventListener('dragover', function (e) {
+		if (!dragItem) {
+			return;
+		}
+		e.preventDefault();
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = 'move';
+		}
+		var over = e.target.closest ? e.target.closest('.brikpanel-cartab-columns-item') : null;
+		if (!over || over === dragItem) {
+			return;
+		}
+		var box = over.getBoundingClientRect();
+		var after = e.clientY > box.top + box.height / 2;
+		colsList.insertBefore(dragItem, after ? over.nextSibling : over);
+	});
+
+	colsList.addEventListener('drop', function (e) {
+		e.preventDefault();
+	});
+
+	colsList.addEventListener('dragend', function () {
+		if (!dragItem) {
+			return;
+		}
+		dragItem.classList.remove('is-dragging');
+		dragItem = null;
+		applyColumnOrder();
+	});
+
+	// Keyboard equivalent: Alt + arrows move the focused column.
+	colsList.addEventListener('keydown', function (e) {
+		if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) {
+			return;
+		}
+		var item = e.target.closest ? e.target.closest('.brikpanel-cartab-columns-item') : null;
+		if (!item) {
+			return;
+		}
+		e.preventDefault();
+		if (e.key === 'ArrowUp' && item.previousElementSibling) {
+			colsList.insertBefore(item, item.previousElementSibling);
+		} else if (e.key === 'ArrowDown' && item.nextElementSibling) {
+			colsList.insertBefore(item.nextElementSibling, item);
+		} else {
+			return;
+		}
+		item.focus();
+		applyColumnOrder();
+	});
+
+	document.addEventListener('click', closePopover);
+	document.addEventListener('keydown', function (e) {
+		if (e.key === 'Escape') {
+			closePopover();
+		}
+	});
+
+	// =====================================================================
+	// Filters: every control applies itself, so there is no Apply button
+	// =====================================================================
+
+	var customRange = $('brikpanel-cartab-custom-range');
+	var rangeSelect = $('brikpanel-cartab-range');
+	var clearBtn    = $('brikpanel-cartab-clear');
+	var searchTimer = null;
+
+	function syncClearButton() {
+		clearBtn.hidden = !hasActiveFilters();
+	}
+
+	/** Reload from page one; used by every filter control. */
+	function reload() {
 		state.page = 1;
+		syncClearButton();
 		load();
+	}
+
+	function syncCustomRange() {
+		var custom = rangeSelect.value === 'custom';
+		customRange.hidden = !custom;
+		if (!custom) {
+			// Leaving the custom range empties the inputs so reopening it
+			// later does not silently re-apply a range from a past session.
+			$('brikpanel-cartab-from').value = '';
+			$('brikpanel-cartab-to').value = '';
+		}
+		return custom;
+	}
+
+	rangeSelect.addEventListener('change', function () {
+		var custom = syncCustomRange();
+		// Switching *to* the custom range changes nothing until a date is
+		// picked, so only reload when an actual bound went away or applied.
+		if (custom) {
+			syncClearButton();
+			$('brikpanel-cartab-from').focus();
+			return;
+		}
+		reload();
+	});
+
+	['brikpanel-cartab-status', 'brikpanel-cartab-source', 'brikpanel-cartab-sort',
+		'brikpanel-cartab-from', 'brikpanel-cartab-to'].forEach(function (id) {
+		$(id).addEventListener('change', reload);
+	});
+
+	// Typing reloads once the user pauses; Enter skips the wait.
+	$('brikpanel-cartab-search').addEventListener('input', function () {
+		window.clearTimeout(searchTimer);
+		searchTimer = window.setTimeout(reload, 400);
 	});
 	$('brikpanel-cartab-search').addEventListener('keydown', function (e) {
 		if (e.key === 'Enter') {
-			state.page = 1;
-			load();
+			e.preventDefault();
+			window.clearTimeout(searchTimer);
+			reload();
 		}
+	});
+
+	clearBtn.addEventListener('click', function () {
+		$('brikpanel-cartab-search').value = '';
+		$('brikpanel-cartab-status').value = '';
+		$('brikpanel-cartab-source').value = '';
+		rangeSelect.value = '';
+		$('brikpanel-cartab-sort').value = cfg.defaultSort;
+		syncCustomRange();
+		reload();
 	});
 	$('brikpanel-cartab-prev').addEventListener('click', function () {
 		if (state.page > 1) {
