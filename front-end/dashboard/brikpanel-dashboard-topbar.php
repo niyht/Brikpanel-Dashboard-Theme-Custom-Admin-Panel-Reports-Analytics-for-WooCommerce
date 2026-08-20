@@ -342,6 +342,11 @@ class Brikpanel_Dashboard_Topbar {
                     <?php $slot( 'right', 'after', 'create' ); ?>
                     <?php $slot( 'right', 'before', 'notifications' ); ?>
 
+                    <!-- Dark mode toggle -->
+                    <button type="button" class="brikpanel-topbar-icon-btn" id="brikpanel-topbar-darkmode" aria-label="<?php esc_attr_e( 'Toggle dark mode', 'brikpanel' ); ?>">
+                        <svg viewBox="0 0 24 24" fill="none" class="brikpanel-moon-icon" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    </button>
+
                     <!-- Notifications -->
                     <?php if ( brikpanel_topbar_item_is_visible( 'notifications' ) ) : ?>
                     <div class="brikpanel-topbar-menu" data-topbar-menu="notifications">
