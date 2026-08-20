@@ -112,6 +112,7 @@ function brikpanel_prime_keys_always() {
 		'brikpanel_db_version',
 		'brikpanel_cogs_default_applied',
 		'brikpanel_cartab_failed_recovery_repair_done',
+		'brikpanel_cartab_zeroed_repair_done',
 		'brikpanel_cos_legacy_migrated',
 		// init:30, and front-end/brikcontrol/brikpanel-brikcontrol.php is
 		// required OUTSIDE the is_admin() gate — this was in the admin list.

@@ -655,6 +655,14 @@ function brikpanel_settings_fields() {
             'default'  => brikpanel_default_refunded_statuses(),
         ],
         [
+            'name'     => __('Subtract shipping cost from Net profit', 'brikpanel'),
+            'id'       => 'brikpanel_shipping_cost_enabled',
+            'type'     => 'checkbox',
+            'desc'     => __('Treat what you charge for shipping as a cost as well as revenue, so it stops inflating your Net profit. WooCommerce only records what the customer was charged for delivery, never what you paid the courier, so that charge is what gets deducted. When you know the real figure for an order, enter it in the Shipping cost box on that order and it is used instead. That is also the only way to account for an order you shipped free of charge, where nothing was charged and so nothing would be deducted. Turning this on changes past periods too, the same way filling in a product cost does.', 'brikpanel'),
+            'desc_tip' => true,
+            'default'  => 'no',
+        ],
+        [
             'name'    => __('Visitor tracking', 'brikpanel'),
             'id'      => 'brikpanel_frontend_tracking',
             'type'    => 'checkbox',

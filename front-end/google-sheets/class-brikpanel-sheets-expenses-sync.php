@@ -365,7 +365,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 		global $wpdb;
 		$table = self::table();
 		return (array) $wpdb->get_results( $wpdb->prepare(
-			"SELECT id, expense_date, category, description, amount, recurring, kind, created_at
+			"SELECT id, expense_date, category, parent_category, description, amount, recurring, kind, created_at
 			   FROM {$table}
 			  WHERE recurring_parent = 0
 			  ORDER BY expense_date DESC, id DESC
@@ -379,7 +379,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 		global $wpdb;
 		$table = self::table();
 		return $wpdb->get_row( $wpdb->prepare(
-			"SELECT id, expense_date, category, description, amount, recurring, kind, created_at
+			"SELECT id, expense_date, category, parent_category, description, amount, recurring, kind, created_at
 			   FROM {$table} WHERE id = %d AND recurring_parent = 0",
 			(int) $id
 		) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -405,6 +405,9 @@ class Brikpanel_Sheets_Expenses_Sync {
 					break;
 				case 'title':
 					$row[] = (string) $e->category;
+					break;
+				case 'category':
+					$row[] = (string) ( $e->parent_category ?? '' );
 					break;
 				case 'description':
 					$row[] = (string) ( $e->description ?? '' );
@@ -708,6 +711,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 		}
 
 		$category  = sanitize_text_field( (string) $cell( 'title' ) );
+		$parent    = trim( sanitize_text_field( (string) $cell( 'category' ) ) );
 		$amount    = self::parse_amount_cell( $cell( 'amount' ) );
 		$recurring = self::resolve_recurring( $cell( 'repeats' ) );
 		if ( null === $recurring ) {
@@ -726,6 +730,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 			'valid'       => $valid,
 			'date'        => $date,
 			'category'    => $category,
+			'parent_category' => $parent,
 			'description' => sanitize_textarea_field( (string) $cell( 'description' ) ),
 			'amount'      => $amount === null ? 0.0 : (float) $amount,
 			'kind'        => $kind,
@@ -738,14 +743,15 @@ class Brikpanel_Sheets_Expenses_Sync {
 		$wpdb->insert(
 			self::table(),
 			[
-				'expense_date' => $f['date'],
-				'category'     => $f['category'],
-				'description'  => $f['description'],
-				'amount'       => $f['amount'],
-				'recurring'    => $f['recurring'],
-				'kind'         => $f['kind'],
+				'expense_date'    => $f['date'],
+				'category'        => $f['category'],
+				'parent_category' => (string) ( $f['parent_category'] ?? '' ),
+				'description'     => $f['description'],
+				'amount'          => $f['amount'],
+				'recurring'       => $f['recurring'],
+				'kind'            => $f['kind'],
 			],
-			[ '%s', '%s', '%s', '%f', '%s', '%s' ]
+			[ '%s', '%s', '%s', '%s', '%f', '%s', '%s' ]
 		);
 		if ( $wpdb->last_error ) {
 			Brikpanel_Sheets_Logger::log( 'expenses', 'insert failed: ' . $wpdb->last_error );
@@ -764,6 +770,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 		$columns = [
 			'date'        => [ 'expense_date', '%s' ],
 			'category'    => [ 'category',     '%s' ],
+			'parent_category' => [ 'parent_category', '%s' ],
 			'description' => [ 'description',  '%s' ],
 			'amount'      => [ 'amount',       '%f' ],
 			'recurring'   => [ 'recurring',    '%s' ],
@@ -789,10 +796,27 @@ class Brikpanel_Sheets_Expenses_Sync {
 			return false;
 		}
 
+		// Costs filed under this one point at its TITLE, so a rename has to carry
+		// them across. Read the old title first: after the update it is gone, and
+		// the children would be stranded under a name no expense answers to.
+		$old_title = isset( $data['category'] )
+			? (string) $wpdb->get_var( $wpdb->prepare( "SELECT category FROM {$table} WHERE id = %d", (int) $id ) ) // phpcs:ignore
+			: '';
+
 		$wpdb->update( $table, $data, [ 'id' => (int) $id ], $format, [ '%d' ] );
 		if ( $wpdb->last_error ) {
 			Brikpanel_Sheets_Logger::log( 'expenses', 'update failed for #' . (int) $id . ': ' . $wpdb->last_error );
 			return false;
+		}
+		$new_title = isset( $data['category'] ) ? (string) $data['category'] : '';
+		if ( '' !== $old_title && '' !== $new_title && $old_title !== $new_title ) {
+			$wpdb->update(
+				$table,
+				[ 'parent_category' => $new_title ],
+				[ 'parent_category' => $old_title ],
+				[ '%s' ],
+				[ '%s' ]
+			);
 		}
 		// The generated copies of a recurring template are derived from the
 		// values we just changed, so drop them; materialize_due() rebuilds the
@@ -1175,6 +1199,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 		return [
 			'date'        => substr( (string) $e->expense_date, 0, 10 ),
 			'category'    => (string) $e->category,
+			'parent_category' => (string) ( $e->parent_category ?? '' ),
 			'description' => (string) ( $e->description ?? '' ),
 			'amount'      => (float) $e->amount,
 			'kind'        => $kind,
@@ -1199,6 +1224,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 		$map = [
 			'date'        => 'date',
 			'category'    => 'title',
+			'parent_category' => 'category',
 			'amount'      => 'amount',
 			'description' => 'description',
 			'kind'        => 'type',

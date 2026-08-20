@@ -224,6 +224,12 @@ class Brikpanel_Expenses {
 										<?php endforeach; ?>
 									</datalist>
 								</div>
+								<?php // Naming the cost comes first, then what it belongs to: the second question only makes sense once the first is answered. ?>
+								<div class="brikpanel-ex-field">
+									<label for="brikpanel-ex-parent-category"><?php echo esc_html( _x( 'Part of', 'the expense this cost is filed under', 'brikpanel' ) ); ?> <span class="brikpanel-ex-optional"><?php esc_html_e( 'optional', 'brikpanel' ); ?></span></label>
+									<?php self::render_parent_category_picker( 'brikpanel-ex-parent-category' ); ?>
+									<p class="brikpanel-ex-hint" id="brikpanel-ex-parent-hint"><?php esc_html_e( 'Shows this cost under one you already have. Amounts stay separate.', 'brikpanel' ); ?></p>
+								</div>
 								<div class="brikpanel-ex-field">
 									<label for="brikpanel-ex-recurring"><?php esc_html_e( 'Recurring', 'brikpanel' ); ?></label>
 									<select id="brikpanel-ex-recurring">
@@ -259,6 +265,10 @@ class Brikpanel_Expenses {
 			currency: <?php echo wp_json_encode( $currency ); ?>,
 			i18n: {
 				confirm_delete: <?php echo wp_json_encode( __( 'Delete this expense?', 'brikpanel' ) ); ?>,
+				confirm_delete_parent: <?php echo wp_json_encode( __( 'Delete this expense and everything filed under it?', 'brikpanel' ) ); ?>,
+				parent_hint:    <?php echo wp_json_encode( __( 'Shows this cost under one you already have. Amounts stay separate.', 'brikpanel' ) ); ?>,
+				parent_has_children: <?php echo wp_json_encode( __( 'Other costs are filed under this one, so it cannot go under another.', 'brikpanel' ) ); ?>,
+				filed_under:    <?php echo wp_json_encode( __( 'Part of %s', 'brikpanel' ) ); ?>,
 				error:          <?php echo wp_json_encode( __( 'Something went wrong.', 'brikpanel' ) ); ?>,
 				no_expenses:    <?php echo wp_json_encode( __( 'No expenses found.', 'brikpanel' ) ); ?>,
 				edit_title:     <?php echo wp_json_encode( __( 'Edit expense', 'brikpanel' ) ); ?>,
@@ -273,6 +283,7 @@ class Brikpanel_Expenses {
 				delete:            <?php echo wp_json_encode( __( 'Delete', 'brikpanel' ) ); ?>,
 				csv_date:          <?php echo wp_json_encode( __( 'Date', 'brikpanel' ) ); ?>,
 				csv_category:      <?php echo wp_json_encode( __( 'Title', 'brikpanel' ) ); ?>,
+				csv_parent_category: <?php echo wp_json_encode( _x( 'Part of', 'the expense this cost is filed under', 'brikpanel' ) ); ?>,
 				csv_description:   <?php echo wp_json_encode( __( 'Description', 'brikpanel' ) ); ?>,
 				csv_recurring:     <?php echo wp_json_encode( __( 'Recurring', 'brikpanel' ) ); ?>,
 				csv_amount:        <?php echo wp_json_encode( _x( 'Amount', 'money value of an expense', 'brikpanel' ) ); ?>,
@@ -343,6 +354,15 @@ class Brikpanel_Expenses {
 		$list_params = array_merge( $params, [ $per_page, $offset ] );
 		$rows = $wpdb->get_results( $wpdb->prepare( $list_sql, $list_params ) ); // phpcs:ignore
 
+		// Which titles have costs filed under them. One indexed query for the
+		// whole page rather than one per row, so the editor can close off the
+		// "Part of" picker for a parent and the delete confirmation can say how
+		// many rows it is really about to take.
+		$parent_names = [];
+		foreach ( (array) $wpdb->get_col( "SELECT DISTINCT parent_category FROM {$table} WHERE parent_category <> ''" ) as $p ) { // phpcs:ignore
+			$parent_names[ self::fold_title( (string) $p ) ] = true;
+		}
+
 		$items = [];
 		foreach ( $rows as $r ) {
 			$kind   = isset( $r->kind ) ? (string) $r->kind : 'fixed';
@@ -352,10 +372,12 @@ class Brikpanel_Expenses {
 				? rtrim( rtrim( number_format( $amount, 2, '.', '' ), '0' ), '.' ) . '%'
 				: html_entity_decode( wp_strip_all_tags( wc_price( $amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 			$items[] = [
-				'id'           => (int) $r->id,
-				'date'         => $r->expense_date,
-				'category'     => $r->category,
-				'description'  => $r->description,
+				'id'              => (int) $r->id,
+				'date'            => $r->expense_date,
+				'category'        => $r->category,
+				'parent_category' => (string) ( $r->parent_category ?? '' ),
+				'has_children'    => isset( $parent_names[ self::fold_title( (string) $r->category ) ] ),
+				'description'     => $r->description,
 				'amount'       => $amount,
 				'amount_fmt'   => $amount_fmt,
 				'recurring'    => $r->recurring,
@@ -384,6 +406,9 @@ class Brikpanel_Expenses {
 		$id          = absint( $_POST['id']          ?? 0 );
 		$date        = sanitize_text_field( wp_unslash( $_POST['expense_date'] ?? '' ) );
 		$category    = sanitize_text_field( wp_unslash( $_POST['category']     ?? '' ) );
+		// The expense this one is filed under. Trimmed so a stray space cannot
+		// create a second, visually identical parent in the breakdown.
+		$parent      = trim( sanitize_text_field( wp_unslash( $_POST['parent_category'] ?? '' ) ) );
 		$description = sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) );
 		$amount_raw  = sanitize_text_field( wp_unslash( $_POST['amount']       ?? '' ) );
 		$recurring   = sanitize_key( $_POST['recurring'] ?? 'none' );
@@ -424,18 +449,76 @@ class Brikpanel_Expenses {
 		}
 
 		$table = $wpdb->prefix . self::TABLE;
+
+		// ── What this cost is filed under ────────────────────────────────────
+		// The picker offers nothing but real, top-level expenses, so validating
+		// against that same list is what turns "two levels, no cycles" from a UI
+		// convention into a rule. A forged request cannot get past it.
+		if ( '' !== $parent ) {
+			$canonical = null;
+			foreach ( self::parent_expense_options() as $option ) {
+				if ( self::fold_title( $option ) === self::fold_title( $parent ) ) {
+					$canonical = $option;
+					break;
+				}
+			}
+			if ( null === $canonical ) {
+				wp_send_json_error( [ 'message' => __( 'Pick an expense you already have, or leave this empty.', 'brikpanel' ) ] );
+			}
+			// Store the spelling the rest of the store already uses, so two
+			// casings of the same name never split into two lines.
+			$parent = $canonical;
+
+			if ( self::fold_title( $parent ) === self::fold_title( $category ) ) {
+				wp_send_json_error( [ 'message' => __( 'An expense cannot be filed under itself.', 'brikpanel' ) ] );
+			}
+
+			// Something already sits under this one, so it is a parent and
+			// cannot become a child as well.
+			$has_children = $wpdb->get_var( $wpdb->prepare(
+				"SELECT 1 FROM {$table} WHERE parent_category = %s LIMIT 1",
+				$category
+			) ); // phpcs:ignore
+			if ( $has_children ) {
+				wp_send_json_error( [ 'message' => __( 'Other costs are filed under this one, so it cannot go under another.', 'brikpanel' ) ] );
+			}
+		}
+
+		// Renaming a parent has to carry its children with it: they point at the
+		// title, so leaving them behind would silently strand them under a name
+		// that no longer belongs to any expense.
+		$old_category = '';
+		if ( $id > 0 ) {
+			$old_category = (string) $wpdb->get_var( $wpdb->prepare(
+				"SELECT category FROM {$table} WHERE id = %d",
+				$id
+			) ); // phpcs:ignore
+		}
 		$data  = [
-			'expense_date' => $date,
-			'category'     => $category,
-			'description'  => $description,
-			'amount'       => $amount,
-			'recurring'    => $recurring,
-			'kind'         => $kind,
+			'expense_date'    => $date,
+			'category'        => $category,
+			'parent_category' => $parent,
+			'description'     => $description,
+			'amount'          => $amount,
+			'recurring'       => $recurring,
+			'kind'            => $kind,
 		];
-		$format = [ '%s', '%s', '%s', '%f', '%s', '%s' ];
+		$format = [ '%s', '%s', '%s', '%s', '%f', '%s', '%s' ];
 
 		if ( $id > 0 ) {
 			$wpdb->update( $table, $data, [ 'id' => $id ], $format, [ '%d' ] );
+			// Carry the children over to the new title. Done before the series
+			// rebuild below so the occurrences this template regenerates are
+			// filed consistently with them.
+			if ( '' !== $old_category && '' !== $category && $old_category !== $category ) {
+				$wpdb->update(
+					$table,
+					[ 'parent_category' => $category ],
+					[ 'parent_category' => $old_category ],
+					[ '%s' ],
+					[ '%s' ]
+				);
+			}
 			// This row may previously have been a recurring template with its own
 			// materialised occurrence rows. Clear them so the series is rebuilt
 			// from scratch below: an edited start date, a changed frequency, a
@@ -463,7 +546,7 @@ class Brikpanel_Expenses {
 			// needs the real created_at to look up which occurrences this
 			// template had removed, and a synthetic object cannot supply it.
 			$saved = $wpdb->get_row( $wpdb->prepare(
-				"SELECT id, expense_date, category, description, amount, recurring, created_at FROM {$table} WHERE id = %d",
+				"SELECT id, expense_date, category, parent_category, description, amount, recurring, created_at FROM {$table} WHERE id = %d",
 				$id
 			) ); // phpcs:ignore
 			if ( $saved ) {
@@ -503,7 +586,7 @@ class Brikpanel_Expenses {
 
 		$table = $wpdb->prefix . self::TABLE;
 		$row   = $wpdb->get_row( $wpdb->prepare(
-			"SELECT id, expense_date, recurring, recurring_parent FROM {$table} WHERE id = %d",
+			"SELECT id, expense_date, category, parent_category, recurring, recurring_parent FROM {$table} WHERE id = %d",
 			$id
 		) ); // phpcs:ignore
 		if ( ! $row ) {
@@ -525,6 +608,23 @@ class Brikpanel_Expenses {
 		// individual occurrences (nothing references their id as a parent).
 		$wpdb->delete( $table, [ 'recurring_parent' => $id ], [ '%d' ] );
 
+		// Costs filed under this one go with it. They point at its title, so
+		// leaving them would strand them under a name no expense answers to any
+		// more; the browser names the count in the confirmation first, so this is
+		// never a surprise. Only for a top-level row: an occurrence of a
+		// recurring series shares its parent's title and must not take the whole
+		// family down with it.
+		$children_removed = 0;
+		$own_title        = trim( (string) ( $row->category ?? '' ) );
+		if ( '' !== $own_title
+			&& '' === trim( (string) ( $row->parent_category ?? '' ) )
+			&& 0 === (int) $row->recurring_parent ) {
+			$children_removed = (int) $wpdb->query( $wpdb->prepare(
+				"DELETE FROM {$table} WHERE parent_category = %s",
+				$own_title
+			) ); // phpcs:ignore
+		}
+
 		// The series is gone, so its skipped dates have nothing left to suppress.
 		if ( 'none' !== (string) $row->recurring && 0 === (int) $row->recurring_parent ) {
 			self::clear_skips( $id );
@@ -539,7 +639,7 @@ class Brikpanel_Expenses {
 		 */
 		do_action( 'brikpanel_expense_deleted', $id );
 
-		wp_send_json_success();
+		wp_send_json_success( [ 'children_removed' => $children_removed ] );
 	}
 
 	// =========================================================================
@@ -560,17 +660,33 @@ class Brikpanel_Expenses {
 
 		$mode = sanitize_key( wp_unslash( $_POST['mode'] ?? 'preview' ) );
 		$type = sanitize_key( wp_unslash( $_POST['type'] ?? '' ) );
-		if ( ! in_array( $mode, [ 'preview', 'commit' ], true ) || ! in_array( $type, [ 'cat', 'percent' ], true ) ) {
+		if ( ! in_array( $mode, [ 'preview', 'commit' ], true ) || ! in_array( $type, [ 'cat', 'percent', 'group' ], true ) ) {
 			wp_send_json_error( [ 'code' => 'invalid_request', 'message' => __( 'Invalid request.', 'brikpanel' ) ] );
 		}
 
-		$plan = ( 'percent' === $type )
-			? $this->plan_percent_line( absint( $_POST['id'] ?? 0 ) )
-			: $this->plan_category_line(
-				sanitize_text_field( wp_unslash( $_POST['cat'] ?? '' ) ),
-				sanitize_text_field( wp_unslash( $_POST['date_from'] ?? '' ) ),
-				sanitize_text_field( wp_unslash( $_POST['date_to'] ?? '' ) )
+		$from = sanitize_text_field( wp_unslash( $_POST['date_from'] ?? '' ) );
+		$to   = sanitize_text_field( wp_unslash( $_POST['date_to'] ?? '' ) );
+
+		if ( 'percent' === $type ) {
+			$plan = $this->plan_percent_line( absint( $_POST['id'] ?? 0 ) );
+		} elseif ( 'group' === $type ) {
+			$plan = $this->plan_group_line(
+				sanitize_text_field( wp_unslash( $_POST['group'] ?? '' ) ),
+				$from,
+				$to
 			);
+		} else {
+			// A nested title carries its group so the removal stays inside it;
+			// a flat line sends none and matches on the title alone, exactly as
+			// it did before groups existed.
+			$has_group = isset( $_POST['group'] ) && '' !== (string) wp_unslash( $_POST['group'] );
+			$plan      = $this->plan_category_line(
+				sanitize_text_field( wp_unslash( $_POST['cat'] ?? '' ) ),
+				$from,
+				$to,
+				$has_group ? sanitize_text_field( wp_unslash( $_POST['group'] ) ) : null
+			);
+		}
 
 		if ( isset( $plan['error'] ) ) {
 			wp_send_json_error( [ 'code' => $plan['error'], 'message' => $plan['message'] ] );
@@ -689,13 +805,90 @@ class Brikpanel_Expenses {
 	}
 
 	/**
-	 * What removing a grouped expense line would do, for both scopes.
+	 * What removing one title line would do, for both scopes.
 	 *
-	 * @param string $cat  RAW category as stored (may be ''), never a display label.
-	 * @param string $from Y-m-d window start.
-	 * @param string $to   Y-m-d window end.
+	 * @param string      $cat   RAW category as stored (may be ''), never a display label.
+	 * @param string      $from  Y-m-d window start.
+	 * @param string      $to    Y-m-d window end.
+	 * @param string|null $group RAW parent category to scope to, or null for the
+	 *                           ungrouped/flat card where the title is unique on
+	 *                           its own. Two groups may legitimately share a
+	 *                           title, so a nested line must not match the other.
 	 */
-	private function plan_category_line( string $cat, string $from, string $to ): array {
+	private function plan_category_line( string $cat, string $from, string $to, ?string $group = null ): array {
+		if ( null !== $group ) {
+			// A line drawn under another one: match inside that parent only. Two
+			// parents may legitimately hold the same title ("Fees" under
+			// Marketing and under Banking) and removing one must not take the
+			// other with it.
+			$where = [ "COALESCE(category,'') = %s", "COALESCE(parent_category,'') = %s" ];
+			$args  = [ $cat, $group ];
+		} else {
+			// A top-level line, which is exactly what the card draws it as: the
+			// expense itself plus everything filed under it. Leaving the children
+			// behind would strand them under a title no expense answers to, and
+			// the card would keep drawing them under a heading that is now empty.
+			// plan_expense_line() shows the resulting count and total before
+			// anything is removed, so the wider scope is always disclosed.
+			$where = [ "( ( COALESCE(category,'') = %s AND COALESCE(parent_category,'') = '' ) OR COALESCE(parent_category,'') = %s )" ];
+			$args  = [ $cat, $cat ];
+		}
+		return $this->plan_expense_line(
+			$where,
+			$args,
+			$this->line_label( $cat ),
+			[ 'cat', $cat, (string) $group ],
+			$from,
+			$to
+		);
+	}
+
+	/**
+	 * What removing a name-only heading would do: every expense filed under it,
+	 * whatever its title. Same machinery as a single title line, only the row
+	 * selection is wider.
+	 *
+	 * This is only ever a legacy grouping name — one inherited from before
+	 * expenses could be filed under each other, which has no expense of its own.
+	 * A heading that IS an expense is drawn as that expense and removed through
+	 * plan_category_line(), which takes the children with it.
+	 *
+	 * @param string $group RAW parent category as stored (never a display label).
+	 * @param string $from  Y-m-d window start.
+	 * @param string $to    Y-m-d window end.
+	 */
+	private function plan_group_line( string $group, string $from, string $to ): array {
+		if ( '' === $group ) {
+			// Standalone costs are not drawn under a heading — they are their own
+			// lines — so this can only be a malformed request.
+			return [ 'error' => 'invalid_request', 'message' => __( 'Invalid request.', 'brikpanel' ) ];
+		}
+		return $this->plan_expense_line(
+			[ "COALESCE(parent_category,'') = %s" ],
+			[ $group ],
+			$group,
+			[ 'group', $group ],
+			$from,
+			$to
+		);
+	}
+
+	/**
+	 * Shared planner behind both a title line and a group line.
+	 *
+	 * Everything except which rows are selected is identical between the two —
+	 * the repeating-series footprint, the two scopes, the confirmation copy and
+	 * the staleness token — so they share one implementation rather than two
+	 * copies of the tricky part.
+	 *
+	 * @param string[] $where_extra SQL fragments ANDed onto the row selection.
+	 * @param array    $where_args  Values for those fragments, in order.
+	 * @param string   $label       Display name of the line being removed.
+	 * @param array    $fp_prefix   Fingerprint seed identifying this line kind.
+	 * @param string   $from        Y-m-d window start.
+	 * @param string   $to          Y-m-d window end.
+	 */
+	private function plan_expense_line( array $where_extra, array $where_args, string $label, array $fp_prefix, string $from, string $to ): array {
 		global $wpdb;
 		$table = $wpdb->prefix . self::TABLE;
 
@@ -711,14 +904,13 @@ class Brikpanel_Expenses {
 		// kind <> 'percent' mirrors how the card groups these lines. Without it a
 		// percentage cost sharing this title — which the card draws as its own
 		// separate line — would be swept up silently.
+		$extra_sql = $where_extra ? ' AND ' . implode( ' AND ', $where_extra ) : '';
 		$rows = $wpdb->get_results( $wpdb->prepare(
 			"SELECT id, expense_date, description, category, amount, recurring, recurring_parent
 			   FROM {$table}
-			  WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent' AND COALESCE(category,'') = %s
-			  ORDER BY expense_date ASC, id ASC",
-			$from,
-			$to,
-			$cat
+			  WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent'{$extra_sql}
+			  ORDER BY expense_date ASC, id ASC", // phpcs:ignore
+			array_merge( [ $from, $to ], $where_args )
 		) ); // phpcs:ignore
 
 		if ( empty( $rows ) ) {
@@ -772,8 +964,6 @@ class Brikpanel_Expenses {
 				$series_total    += (float) $sr->amount;
 			}
 		}
-
-		$label = $this->line_label( $cat );
 
 		// --- scope: only this period -----------------------------------------
 		// The starting entry of a series is deliberately left out: its date is
@@ -857,11 +1047,18 @@ class Brikpanel_Expenses {
 				$notes[] = sprintf( __( '%s repeats, so removing it also stops every future occurrence.', 'brikpanel' ), $label );
 			}
 		}
-		if ( '' !== $cat && $cat === (string) get_option( 'brikpanel_po_expense_category', 'Inventory' ) ) {
-			$notes[] = __( 'These entries were created when stock orders were received. Removing them does not change the purchase orders.', 'brikpanel' );
+		// Derived from the rows rather than from the line's own name, so the
+		// warning also appears when supplier costs are only PART of what is
+		// being removed — which is exactly the case for a whole group.
+		$po_category = (string) get_option( 'brikpanel_po_expense_category', 'Inventory' );
+		foreach ( $rows as $r ) {
+			if ( '' !== $po_category && (string) $r->category === $po_category ) {
+				$notes[] = __( 'These entries were created when stock orders were received. Removing them does not change the purchase orders.', 'brikpanel' );
+				break;
+			}
 		}
 
-		$fingerprint = array_merge( [ 'cat', $cat, $from, $to, (string) round( $total, 4 ) ], array_map( 'strval', wp_list_pluck( $rows, 'id' ) ) );
+		$fingerprint = array_merge( $fp_prefix, [ $from, $to, (string) round( $total, 4 ) ], array_map( 'strval', wp_list_pluck( $rows, 'id' ) ) );
 
 		return [
 			'public' => [
@@ -938,6 +1135,131 @@ class Brikpanel_Expenses {
 		}
 		$rows = $wpdb->get_col( "SELECT DISTINCT category FROM {$table} WHERE category != '' ORDER BY category ASC" ); // phpcs:ignore
 		return $rows ?: [];
+	}
+
+	/**
+	 * Case-insensitive comparison key for an expense title. One helper so the
+	 * picker, the save-path guards and the breakdown all agree on when two
+	 * spellings are the same expense.
+	 *
+	 * @param string $title
+	 * @return string
+	 */
+	public static function fold_title( string $title ): string {
+		$title = trim( $title );
+		return function_exists( 'mb_strtolower' ) ? mb_strtolower( $title ) : strtolower( $title );
+	}
+
+	/**
+	 * Titles of the expenses something can be filed under: every expense that
+	 * is not itself filed under another one.
+	 *
+	 * There is no notion of a category here. The picker offers the merchant's
+	 * own expenses and nothing else, which is what caps the nesting at two
+	 * levels: a title only reaches this list while parent_category is empty, so
+	 * a child can never become a parent.
+	 *
+	 * Percentage costs are included — filing one expense under another is a
+	 * display convenience, not an accounting operation, so there is no reason a
+	 * commission cannot sit under "Payment fees" or hold children of its own.
+	 *
+	 * @return string[]
+	 */
+	public static function parent_expense_titles(): array {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::TABLE;
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			return [];
+		}
+		$col = $wpdb->get_col( "SHOW COLUMNS FROM {$table} LIKE 'parent_category'" ); // phpcs:ignore
+		if ( empty( $col ) ) {
+			return []; // schema not upgraded yet
+		}
+		// parent_category is NOT NULL DEFAULT '', so the equality is sargable on
+		// idx_parent_category — no COALESCE wrapper.
+		return $wpdb->get_col( "SELECT DISTINCT category FROM {$table} WHERE parent_category = '' AND category <> '' ORDER BY category ASC" ) ?: []; // phpcs:ignore
+	}
+
+	/**
+	 * Grouping names inherited from before expenses could be filed under each
+	 * other, when this column held a free-text category. They are kept in the
+	 * picker so no existing row is stranded under a name that can no longer be
+	 * chosen; they carry no expense of their own and fade out naturally as the
+	 * merchant refiles them.
+	 *
+	 * @return string[]
+	 */
+	public static function used_parent_categories(): array {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::TABLE;
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			return [];
+		}
+		$col = $wpdb->get_col( "SHOW COLUMNS FROM {$table} LIKE 'parent_category'" ); // phpcs:ignore
+		if ( empty( $col ) ) {
+			return []; // schema not upgraded yet
+		}
+		return $wpdb->get_col( "SELECT DISTINCT parent_category FROM {$table} WHERE parent_category != '' ORDER BY parent_category ASC" ) ?: []; // phpcs:ignore
+	}
+
+	/**
+	 * Everything the picker may offer: the merchant's own top-level expenses
+	 * first (alphabetical, so the dropdown is predictable), then any legacy
+	 * grouping name that no longer matches an expense. Compared case-
+	 * insensitively so "Marketing" and "marketing" collapse into one entry, with
+	 * the live expense's spelling winning.
+	 *
+	 * This list is also the allowlist the save path validates against, which is
+	 * what makes "the parent must be a real, top-level expense" a rule rather
+	 * than a hope.
+	 *
+	 * @return string[]
+	 */
+	public static function parent_expense_options(): array {
+		$out  = [];
+		$seen = [];
+		foreach ( [ self::parent_expense_titles(), self::used_parent_categories() ] as $source ) {
+			foreach ( $source as $name ) {
+				$name = trim( (string) $name );
+				$key  = self::fold_title( $name );
+				if ( '' === $name || isset( $seen[ $key ] ) ) {
+					continue;
+				}
+				$seen[ $key ] = true;
+				$out[]        = $name;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Render the "Part of" picker: a real <select> listing the expenses this
+	 * one can be filed under.
+	 *
+	 * A plain <input list="…"> was tried first and is why this exists: browsers
+	 * draw a dropdown arrow on it but clicking that arrow does nothing useful,
+	 * so the control looked broken and gave no way to see what already existed.
+	 *
+	 * There is deliberately no way to type a name that is not already an
+	 * expense: filing a cost under another cost is a display convenience, so the
+	 * thing it is filed under has to be a cost the merchant actually has.
+	 *
+	 * @param string $id_prefix Element id prefix, so the two modals (Expenses
+	 *                          page, dashboard quick-add) never collide.
+	 */
+	public static function render_parent_category_picker( string $id_prefix ): void {
+		$options = self::parent_expense_options();
+		?>
+		<select id="<?php echo esc_attr( $id_prefix ); ?>" class="brikpanel-ex-group-select">
+			<option value=""><?php esc_html_e( 'Nothing — a cost on its own', 'brikpanel' ); ?></option>
+			<?php foreach ( $options as $title ) : ?>
+				<?php // data-key lets the browser exclude the expense being edited without re-folding unicode itself. ?>
+				<option value="<?php echo esc_attr( $title ); ?>" data-key="<?php echo esc_attr( self::fold_title( $title ) ); ?>"><?php echo esc_html( $title ); ?></option>
+			<?php endforeach; ?>
+		</select>
+		<?php
 	}
 
 	// =========================================================================
@@ -1226,12 +1548,16 @@ class Brikpanel_Expenses {
 				[
 					'expense_date'     => $d,
 					'category'         => (string) $tpl->category,
+					// Must travel with the template: without it every generated
+					// occurrence of a recurring expense would be born ungrouped
+					// and drop out of its category in the breakdown.
+					'parent_category'  => (string) ( $tpl->parent_category ?? '' ),
 					'description'      => (string) $tpl->description,
 					'amount'           => (float) $tpl->amount,
 					'recurring'        => 'none',
 					'recurring_parent' => $tid,
 				],
-				[ '%s', '%s', '%s', '%f', '%s', '%d' ]
+				[ '%s', '%s', '%s', '%s', '%f', '%s', '%d' ]
 			);
 			if ( ! $wpdb->last_error ) {
 				$inserted++;
@@ -1271,7 +1597,7 @@ class Brikpanel_Expenses {
 		// real money rows. ajax_save() forces percent rows to recurring='none',
 		// so this only guards hand-written or legacy data.
 		$since = (string) get_option( 'brikpanel_recurring_engine_since', '' );
-		$sql   = "SELECT id, expense_date, category, description, amount, recurring, created_at
+		$sql   = "SELECT id, expense_date, category, parent_category, description, amount, recurring, created_at
 			FROM {$table}
 			WHERE recurring IN ('monthly','weekly','yearly') AND recurring_parent = 0
 			  AND kind <> 'percent'";

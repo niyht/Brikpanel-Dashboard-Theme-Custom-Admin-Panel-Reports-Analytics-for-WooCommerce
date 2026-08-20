@@ -16040,3 +16040,9 @@ msgstr ""
 "przykład CookieAdmin, Real Cookie Banner i Termly: połącz poniższy "
 "JavaScript z filtrem brikpanel_frontend_tracking_allowed, aby serwerowe "
 "liczniki dodania do koszyka i kasy widziały tę samą decyzję."
+
+#. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php
+#, php-format
+msgid "Not chased: %s"
+msgstr "Bez przypomnienia: %s"

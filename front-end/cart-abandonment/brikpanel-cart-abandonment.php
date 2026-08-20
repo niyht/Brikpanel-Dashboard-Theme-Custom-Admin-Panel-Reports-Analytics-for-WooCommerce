@@ -1659,19 +1659,51 @@ class Brikpanel_Cart_Abandonment {
 		}
 
 		if ( $ids ) {
-			// A returning visitor resets the abandonment clock: back to active.
-			$in = implode( ',', $ids );
-			$wpdb->query( $wpdb->prepare(
-				"UPDATE {$table}
-				 SET cart_items = %s, item_count = %d, cart_total = %f, currency = %s,
-				     status = 'active', updated_at = %s
-				 WHERE id IN ({$in})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				wp_json_encode( $snapshot['items'] ),
-				$snapshot['count'],
-				$snapshot['total'],
-				$snapshot['currency'],
-				current_time( 'mysql', true )
-			) );
+			$in  = implode( ',', $ids );
+			$now = current_time( 'mysql', true );
+
+			if ( $snapshot['count'] > 0 ) {
+				// A returning visitor resets the abandonment clock: back to active.
+				$wpdb->query( $wpdb->prepare(
+					"UPDATE {$table}
+					 SET cart_items = %s, item_count = %d, cart_total = %f, currency = %s,
+					     status = 'active', updated_at = %s
+					 WHERE id IN ({$in})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					wp_json_encode( $snapshot['items'] ),
+					$snapshot['count'],
+					$snapshot['total'],
+					$snapshot['currency'],
+					$now
+				) );
+			} else {
+				// An empty cart may NOT blank a row that has already been
+				// announced as abandoned. That announcement fires once per row
+				// and never again (flip_abandoned() only tells subscribers about
+				// rows whose abandoned_at was NULL, and nothing ever clears it),
+				// so zeroing one here retires it from every follow-up there will
+				// ever be - while leaving abandoned_at behind, which makes the
+				// row read as "Email only": a bare signup that never had a cart,
+				// the opposite of what happened. The cart it is about is also
+				// gone for good, because this is the only copy anybody kept.
+				//
+				// Rows that were never announced stay blankable: nothing has been
+				// spent on them, and refilling the cart makes them announceable
+				// again.
+				//
+				// The predicate is deliberately IN THE STATEMENT, not in PHP.
+				// One visitor's id set routinely mixes announced and unannounced
+				// rows, and an all-or-nothing decision out here would have to
+				// pick one of them to be wrong about.
+				$wpdb->query( $wpdb->prepare(
+					"UPDATE {$table}
+					 SET cart_items = %s, item_count = 0, cart_total = 0, currency = %s,
+					     status = 'active', updated_at = %s
+					 WHERE id IN ({$in}) AND abandoned_at IS NULL", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					wp_json_encode( [] ),
+					$snapshot['currency'],
+					$now
+				) );
+			}
 		} elseif ( $user_email !== '' && $snapshot['count'] > 0 && is_email( $user_email ) ) {
 			// No row yet — a logged-in customer with a real cart is capturable
 			// immediately (source: account). Guests without a captured email
@@ -2083,18 +2115,87 @@ class Brikpanel_Cart_Abandonment {
 	// =========================================================================
 
 	/**
+	 * The cart a row is holding right now, as one comparable value.
+	 *
+	 * Contents, money and currency together, so a shopper who swaps one product
+	 * for another at the same price is still a changed cart. Built from the
+	 * stored column values verbatim rather than from re-decoded PHP, so reading
+	 * the same row twice can never produce two different signatures.
+	 *
+	 * @param object $row Row carrying cart_items, cart_total and currency.
+	 * @return string 32-char hash.
+	 */
+	private static function cart_signature( $row ) {
+		return md5(
+			(string) $row->cart_items . '|' . (string) $row->cart_total . '|' . (string) $row->currency
+		);
+	}
+
+	/**
+	 * Whether this install has the announcement bookkeeping columns yet.
+	 *
+	 * dbDelta adds them on upgrade, but the file that needs them ships in the
+	 * same release that adds them, and the sweep can run on a request that
+	 * reaches this code before brikpanel_maybe_upgrade_db() has done its work
+	 * (or on an install where the ALTER failed outright). Asking first costs one
+	 * memoized query; not asking would turn a missing column into a SQL error on
+	 * the SELECT below, which is the query the entire abandonment feature stands
+	 * on. Missing columns simply mean the old once-per-row behaviour.
+	 *
+	 * @return bool
+	 */
+	private static function has_announce_columns() {
+		static $has = null;
+		if ( null !== $has ) {
+			return $has;
+		}
+		global $wpdb;
+		$table = self::table();
+		$has   = (bool) $wpdb->get_var( $wpdb->prepare(
+			"SHOW COLUMNS FROM {$table} LIKE %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			'announced_sig'
+		) );
+		return $has;
+	}
+
+	/**
 	 * Flip stale active rows (with items, no activity for the configured
 	 * number of minutes) to abandoned and fire brikpanel_cart_abandoned for
 	 * each. Idempotent; cheap when nothing qualifies (one indexed SELECT).
 	 *
 	 * A row can reach here more than once: unmark_recovered() re-opens a cart
-	 * whose order later failed, and the repair pass re-opens one that was
-	 * wrongly closed. Only the FIRST abandonment is a fact about the shopper,
-	 * so abandoned_at is never overwritten and the announcement fires only for
-	 * rows that had none. Without that, a cart abandoned weeks ago is restamped
-	 * with today's date and every subscriber is told it was abandoned again —
-	 * a follow-up mail to someone who has long since moved on, and on a stale
-	 * row, to an address that will hard-bounce.
+	 * whose order later failed, the repair pass re-opens one that was wrongly
+	 * closed, and — the ordinary case — a shopper comes back weeks later, fills
+	 * a different cart and leaves again. Only the FIRST abandonment is a fact
+	 * about the shopper, so abandoned_at is never overwritten.
+	 *
+	 * The ANNOUNCEMENT is a separate question, and until this release the two
+	 * were the same question: the action fired only for rows whose abandoned_at
+	 * was NULL, so a row was announced once in its life and never again. That
+	 * cost real money in two ways. A subscriber that dropped one notification —
+	 * because it was switched off, still being set up, or simply not loaded that
+	 * minute — could never be told about that cart again. And a returning
+	 * shopper's second, entirely different cart was never announced at all.
+	 *
+	 * So announcement now has bookkeeping of its own, and abandoned_at keeps
+	 * meaning exactly what it meant. A row is announced when:
+	 *
+	 *   - it has never been abandoned before (unchanged), or
+	 *   - the cart is NOT the one we last announced, AND the last announcement
+	 *     is older than the cooldown.
+	 *
+	 * Both conditions are load-bearing. Without the signature, every 10-minute
+	 * sweep of a cart the shopper keeps reviving is an announcement. Without the
+	 * cooldown, a shopper adjusting quantities over a week gets a fresh series
+	 * every day, because mirror_cart() rewrites the snapshot on every single
+	 * cart change. Filter brikpanel_cartab_reannounce_hours to 0 to switch
+	 * re-announcement off and get the old behaviour back exactly.
+	 *
+	 * A row abandoned BEFORE this release carries abandoned_at but no
+	 * announcement stamp. It is adopted silently — stamped, not announced —
+	 * because on upgrade day every already-abandoned cart in the store would
+	 * otherwise look like a cart that changed, and the whole backlog would go
+	 * out at once. It becomes eligible from its next genuine change onward.
 	 *
 	 * @param int $limit Max rows per sweep.
 	 * @return int Rows flipped.
@@ -2107,11 +2208,15 @@ class Brikpanel_Cart_Abandonment {
 		$table   = self::table();
 		$minutes = max( 5, (int) get_option( 'brikpanel_cartab_abandon_minutes', 60 ) );
 		$cutoff  = gmdate( 'Y-m-d H:i:s', time() - $minutes * MINUTE_IN_SECONDS );
+		$track   = self::has_announce_columns();
+		$columns = $track
+			? 'id, abandoned_at, announced_at, announced_sig, cart_items, cart_total, currency'
+			: 'id, abandoned_at';
 
 		$rows = $wpdb->get_results( $wpdb->prepare(
-			"SELECT id, abandoned_at FROM {$table}
+			"SELECT {$columns} FROM {$table}
 			 WHERE status = 'active' AND item_count > 0 AND updated_at < %s
-			 ORDER BY updated_at ASC LIMIT %d",
+			 ORDER BY updated_at ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$cutoff,
 			max( 1, (int) $limit )
 		) );
@@ -2119,16 +2224,55 @@ class Brikpanel_Cart_Abandonment {
 			return 0;
 		}
 
+		$now = current_time( 'mysql', true );
+
+		/**
+		 * Hours that must pass before the same cart row may be announced again.
+		 *
+		 * @param int $hours 0 disables re-announcement entirely.
+		 */
+		$cooldown = (int) apply_filters( 'brikpanel_cartab_reannounce_hours', 24 );
+
 		// Read BEFORE the write: afterwards every row carries a stamp and there
 		// is no way left to tell a first abandonment from a repeat one.
-		$ids   = [];
-		$fresh = [];
+		$ids      = [];
+		$announce = [];
+		$stamp    = [];   // id => signature, for every row whose bookkeeping moves
 		foreach ( $rows as $row ) {
-			$ids[] = (int) $row->id;
-			$had   = (string) $row->abandoned_at;
-			if ( '' === $had || '0000-00-00 00:00:00' === $had ) {
-				$fresh[] = (int) $row->id;
+			$id    = (int) $row->id;
+			$ids[] = $id;
+
+			if ( ! self::has_datetime( $row->abandoned_at ) ) {
+				$announce[] = $id;
+				if ( $track ) {
+					$stamp[ $id ] = self::cart_signature( $row );
+				}
+				continue;
 			}
+
+			if ( ! $track ) {
+				continue;
+			}
+
+			if ( ! self::has_datetime( $row->announced_at ) ) {
+				// Abandoned before this release. Adopt, do not announce.
+				$stamp[ $id ] = self::cart_signature( $row );
+				continue;
+			}
+
+			if ( $cooldown <= 0 ) {
+				continue;
+			}
+			$signature = self::cart_signature( $row );
+			if ( $signature === (string) $row->announced_sig ) {
+				continue;   // same cart we already told everyone about
+			}
+			if ( strtotime( $row->announced_at . ' UTC' ) > time() - $cooldown * HOUR_IN_SECONDS ) {
+				continue;   // changed, but too soon to say so again
+			}
+
+			$announce[]   = $id;
+			$stamp[ $id ] = $signature;
 		}
 
 		$in = implode( ',', $ids );
@@ -2136,15 +2280,39 @@ class Brikpanel_Cart_Abandonment {
 			"UPDATE {$table}
 			 SET status = 'abandoned', abandoned_at = COALESCE(abandoned_at, %s)
 			 WHERE id IN ({$in}) AND status = 'active'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			current_time( 'mysql', true )
+			$now
 		) );
 
-		foreach ( $fresh as $row_id ) {
+		// One statement for every signature, rather than one statement per row:
+		// the adoption pass on a busy store's first sweep after upgrade can be
+		// the whole batch at once.
+		if ( $stamp ) {
+			$case = '';
+			$args = [];
+			foreach ( $stamp as $stamp_id => $signature ) {
+				$case  .= ' WHEN %d THEN %s';
+				$args[] = $stamp_id;
+				$args[] = $signature;
+			}
+			$args[]   = $now;
+			$stamp_in = implode( ',', array_map( 'intval', array_keys( $stamp ) ) );
+			$wpdb->query( $wpdb->prepare(
+				"UPDATE {$table}
+				 SET announced_sig = CASE id{$case} END, announced_at = %s
+				 WHERE id IN ({$stamp_in})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$args
+			) );
+		}
+
+		foreach ( $announce as $row_id ) {
 			/**
 			 * Fires when a cart with a known email is marked abandoned.
 			 *
-			 * Fires once per row, on its first abandonment only.
-			 * BrikMentor subscribes here to queue follow-up emails.
+			 * Fires on a row's first abandonment, and again when it is left
+			 * holding a DIFFERENT cart after the re-announcement cooldown.
+			 * BrikMentor subscribes here to queue follow-up emails; its series
+			 * are keyed per cart cycle, so a second announcement continues the
+			 * shopper's series rather than restarting it.
 			 *
 			 * @param array $entry Formatted row (status 'abandoned').
 			 */
@@ -2881,6 +3049,17 @@ class Brikpanel_Cart_Abandonment {
 				);
 			} elseif ( $pending > 0 ) {
 				$text = __( 'Scheduled', 'brikpanel' );
+			} elseif ( ! empty( $stat['why_text'] ) ) {
+				// A cart with no follow-up and no explanation reads as a fault in
+				// the product rather than a setting the merchant can change. The
+				// provider knows why and says so in its own words; the framing is
+				// ours. Providers that do not answer this leave the cell exactly
+				// as it was.
+				$text = sprintf(
+					/* translators: %s: reason no follow-up was sent, e.g. "Flow switched off". */
+					__( 'Not chased: %s', 'brikpanel' ),
+					(string) $stat['why_text']
+				);
 			} else {
 				$text = '';
 			}

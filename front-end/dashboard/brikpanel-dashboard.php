@@ -856,6 +856,8 @@ class Brikpanel_Dashboard {
      */
     private function render_add_expense_modal() {
         $cats     = class_exists( 'Brikpanel_Expenses' ) ? Brikpanel_Expenses::categories() : [];
+        $can_group = class_exists( 'Brikpanel_Expenses' )
+            && method_exists( 'Brikpanel_Expenses', 'render_parent_category_picker' );
         $currency = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol() : '';
         $today    = current_time( 'Y-m-d' );
         ?>
@@ -892,6 +894,14 @@ class Brikpanel_Dashboard {
                             <?php foreach ( $cats as $c ) : ?><option value="<?php echo esc_attr( $c ); ?>"></option><?php endforeach; ?>
                         </datalist>
                     </div>
+                    <?php // Naming the cost comes first, then what it belongs to: the second question only makes sense once the first is answered. ?>
+                    <?php if ( $can_group ) : ?>
+                    <div class="brikpanel-exp-field">
+                        <label for="brikpanel-exp-parent-category"><?php echo esc_html( _x( 'Part of', 'the expense this cost is filed under', 'brikpanel' ) ); ?> <span class="brikpanel-exp-optional"><?php esc_html_e( 'optional', 'brikpanel' ); ?></span></label>
+                        <?php Brikpanel_Expenses::render_parent_category_picker( 'brikpanel-exp-parent-category' ); ?>
+                        <p class="brikpanel-exp-hint"><?php esc_html_e( 'Shows this cost under one you already have. Amounts stay separate.', 'brikpanel' ); ?></p>
+                    </div>
+                    <?php endif; ?>
                     <div class="brikpanel-exp-row2" id="brikpanel-exp-row2">
                         <div class="brikpanel-exp-field">
                             <label for="brikpanel-exp-date" id="brikpanel-exp-date-label"><?php esc_html_e( 'Date', 'brikpanel' ); ?></label>
@@ -1816,6 +1826,102 @@ class Brikpanel_Dashboard {
      *
      * @return array
      */
+    /**
+     * Order expense lines into the two-level list the card draws: every
+     * top-level line followed immediately by the lines filed under it.
+     *
+     * Nothing is summed. The parent line keeps its own amount and the children
+     * keep theirs, which is the whole point — filing one expense under another
+     * is a visual convenience, not an accounting operation. The lines therefore
+     * still add up to the Expenses figure exactly once.
+     *
+     * Titles are matched case-insensitively so "Marketing" and "marketing" are
+     * the same parent, mirroring the picker's own de-duplication.
+     *
+     * A child whose parent is not itself a line in this window (an expense from
+     * before this feature was filed under a plain grouping name, or a parent
+     * dated outside the range) is not dropped: its parent name is emitted as a
+     * label-only row with no amount, so the child is never orphaned or silently
+     * promoted to top level.
+     *
+     * @param array<int,array{title:string,parent:string,row:array}> $flat Lines in display order.
+     * @return array<int,array> Breakdown rows, `depth` 0 or 1.
+     */
+    private static function nest_expense_lines( array $flat ): array {
+        $fold = static function ( $s ) {
+            $s = trim( (string) $s );
+            return function_exists( 'mb_strtolower' ) ? mb_strtolower( $s ) : strtolower( $s );
+        };
+
+        // Which folded titles exist as a top-level line here — the only things a
+        // child can actually attach to.
+        $tops = [];
+        foreach ( $flat as $line ) {
+            if ( '' === trim( (string) $line['parent'] ) ) {
+                $tops[ $fold( $line['title'] ) ] = true;
+            }
+        }
+
+        // Children bucketed under the parent they name; anything naming a
+        // non-existent parent lands in $orphans under its raw stored spelling.
+        $children = [];
+        $orphans  = [];
+        foreach ( $flat as $line ) {
+            $parent = trim( (string) $line['parent'] );
+            if ( '' === $parent || $fold( $parent ) === $fold( $line['title'] ) ) {
+                continue; // top level, or a legacy row filed under itself
+            }
+            $row = $line['row'];
+            // Scope the Remove handle to this parent as STORED: two parents may
+            // legitimately hold the same title ("Fees" under Marketing and under
+            // Banking) and removing one must not take the other with it.
+            if ( isset( $row['del']['type'] ) && 'cat' === $row['del']['type'] ) {
+                $row['del']['group'] = $parent;
+            }
+            $row['depth'] = 1;
+            if ( isset( $tops[ $fold( $parent ) ] ) ) {
+                $children[ $fold( $parent ) ][] = $row;
+            } else {
+                $orphans[ $parent ][] = $row;
+            }
+        }
+
+        $out = [];
+        foreach ( $flat as $line ) {
+            if ( '' !== trim( (string) $line['parent'] ) && $fold( $line['parent'] ) !== $fold( $line['title'] ) ) {
+                continue; // drawn under its parent below
+            }
+            $row          = $line['row'];
+            $row['depth'] = 0;
+            $out[]        = $row;
+            $key          = $fold( $line['title'] );
+            if ( ! empty( $children[ $key ] ) ) {
+                foreach ( $children[ $key ] as $child ) {
+                    $out[] = $child;
+                }
+                unset( $children[ $key ] );
+            }
+        }
+
+        // Label-only headers for parents that have no line of their own here.
+        // `raw` 0 and no `amount` tell the browser to draw the name alone, so it
+        // never contributes to the percentages.
+        foreach ( $orphans as $name => $rows ) {
+            $out[] = [
+                'key'    => 'label',
+                'label'  => (string) $name,
+                'raw'    => 0.0,
+                'depth'  => 0,
+                'del'    => [ 'type' => 'group', 'group' => (string) $name ],
+            ];
+            foreach ( $rows as $child ) {
+                $out[] = $child;
+            }
+        }
+
+        return $out;
+    }
+
     private function build_profit_block( $revenue, $start_gmt, $end_gmt, $start_local, $end_local, $exclude_marketplace = false ) {
         $s = brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local, $exclude_marketplace );
 
@@ -1830,6 +1936,15 @@ class Brikpanel_Dashboard {
             'meta_ads'   => __( 'Meta Ads', 'brikpanel' ),
             'tax'        => __( 'Tax', 'brikpanel' ),
         ];
+        // Shipping is opt-in and gated on the setting HERE as well as in
+        // brikpanel_profit_shipping_cost(). Not redundant: this whole payload is
+        // served from a transient, so an amount computed while the feature was
+        // on can outlive the toggle and would otherwise still draw a row the
+        // merchant has switched off. Like Tax and ad spend it is computed, not a
+        // stored expense row, so it renders without a Remove control.
+        if ( function_exists( 'brikpanel_shipping_cost_enabled' ) && brikpanel_shipping_cost_enabled() ) {
+            $fixed_labels['shipping'] = __( 'Shipping cost', 'brikpanel' );
+        }
         $breakdown = [];
         foreach ( $fixed_labels as $key => $label ) {
             $amount = (float) ( $s['breakdown'][ $key ] ?? 0 );
@@ -1850,25 +1965,72 @@ class Brikpanel_Dashboard {
         // translate them back. Rows without a `del` key (ad spend, tax) are
         // computed from other sources and simply render no Remove control.
         $po_category = (string) get_option( 'brikpanel_po_expense_category', 'Inventory' );
-        foreach ( (array) ( $s['expense_categories'] ?? [] ) as $cat => $amount ) {
-            $amount = (float) $amount;
-            if ( $amount <= 0 ) {
-                continue;
-            }
+
+        // Label for one stored title. Kept as a closure because both the flat
+        // and the nested path below need exactly the same rules.
+        $cat_label = function ( $cat ) use ( $po_category ) {
             if ( '' === $cat ) {
-                $label = __( 'Other', 'brikpanel' );
-            } elseif ( $cat === $po_category ) {
-                $label = __( 'Supplier / stock', 'brikpanel' );
-            } else {
-                $label = $cat; // user-defined category name, shown as stored
+                return __( 'Other', 'brikpanel' );
             }
-            $breakdown[] = [
-                'key'    => 'cat',
-                'label'  => $label,
-                'amount' => wc_price( $amount ),
-                'raw'    => $amount,
-                'del'    => [ 'type' => 'cat', 'cat' => (string) $cat ],
-            ];
+            if ( $cat === $po_category ) {
+                return __( 'Supplier / stock', 'brikpanel' );
+            }
+            return $cat; // user-defined title, shown as stored
+        };
+
+        // Manual and percentage expenses, drawn as a two-level list: an expense
+        // filed under another one renders indented directly beneath it.
+        //
+        // Nesting is presentation ONLY. Nothing is subtotalled or merged: every
+        // line, parent or child, shows its own amount and its own share of
+        // revenue, so the lines still sum to the Expenses figure exactly once.
+        // A parent is simply an ordinary expense that other expenses name.
+        //
+        // `expense_lines` is empty on an install whose schema has not been
+        // upgraded yet, in which case the old flat category map is the fallback.
+        $lines = (array) ( $s['expense_lines'] ?? [] );
+
+        // One entry per line to be drawn, in the order the card shows them:
+        // manual titles by amount desc, then percentage costs by amount desc —
+        // the order the card has always used, so nesting reshuffles nothing.
+        $flat = [];
+        if ( ! empty( $lines ) ) {
+            foreach ( $lines as $line ) {
+                $amount = (float) ( $line['amount'] ?? 0 );
+                if ( $amount <= 0 ) {
+                    continue;
+                }
+                $title = (string) ( $line['title'] ?? '' );
+                $flat[] = [
+                    'title'  => $title,
+                    'parent' => (string) ( $line['parent'] ?? '' ),
+                    'row'    => [
+                        'key'    => 'cat',
+                        'label'  => $cat_label( $title ),
+                        'amount' => wc_price( $amount ),
+                        'raw'    => $amount,
+                        'del'    => [ 'type' => 'cat', 'cat' => $title ],
+                    ],
+                ];
+            }
+        } else {
+            foreach ( (array) ( $s['expense_categories'] ?? [] ) as $cat => $amount ) {
+                $amount = (float) $amount;
+                if ( $amount <= 0 ) {
+                    continue;
+                }
+                $flat[] = [
+                    'title'  => (string) $cat,
+                    'parent' => '',
+                    'row'    => [
+                        'key'    => 'cat',
+                        'label'  => $cat_label( (string) $cat ),
+                        'amount' => wc_price( $amount ),
+                        'raw'    => $amount,
+                        'del'    => [ 'type' => 'cat', 'cat' => (string) $cat ],
+                    ],
+                ];
+            }
         }
 
         // Percentage-based costs (card commission etc.). The rate is shown in
@@ -1884,14 +2046,20 @@ class Brikpanel_Dashboard {
                 continue; // no row to point at — never render a control with no target
             }
             $rate_str = rtrim( rtrim( number_format( (float) ( $pe['rate'] ?? 0 ), 2, '.', '' ), '0' ), '.' );
-            $breakdown[] = [
-                'key'    => 'percent',
-                'label'  => (string) ( $pe['title'] ?? '' ) . ' (' . $rate_str . '%)',
-                'amount' => wc_price( $amount ),
-                'raw'    => $amount,
-                'del'    => [ 'type' => 'percent', 'id' => $pe_id ],
+            $flat[] = [
+                'title'  => (string) ( $pe['title'] ?? '' ),
+                'parent' => (string) ( $pe['parent'] ?? '' ),
+                'row'    => [
+                    'key'    => 'percent',
+                    'label'  => (string) ( $pe['title'] ?? '' ) . ' (' . $rate_str . '%)',
+                    'amount' => wc_price( $amount ),
+                    'raw'    => $amount,
+                    'del'    => [ 'type' => 'percent', 'id' => $pe_id ],
+                ],
             ];
         }
+
+        $breakdown = array_merge( $breakdown, self::nest_expense_lines( $flat ) );
 
         // Per-field display preferences (BrikPanel ▸ Settings ▸ Dashboard).
         // Returns is the only toggle that also changes the math: because it
@@ -1976,6 +2144,9 @@ class Brikpanel_Dashboard {
             'expenses'      => wc_price( $expenses ),
             'expenses_raw'  => $expenses,
             'expenses_pct'  => $expenses_pct,
+            // A component of `expenses_raw`, not an extra deduction. Surfaced
+            // on its own so the Excel export can spell it out.
+            'shipping_cost_raw' => (float) ( $s['shipping_cost_raw'] ?? 0 ),
             'breakdown'     => $breakdown,
             // The exact window these lines were summed over, echoed back by the
             // Remove control. Recomputing "last 30 days" in the browser could
@@ -2049,7 +2220,14 @@ class Brikpanel_Dashboard {
         $range_key = ( 'custom' === $range )
             ? 'custom_' . (string) $custom_start . '_' . (string) $custom_end
             : $range;
-        $cache_key = 'bp_dash_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key;
+        // The shipping-cost setting changes Net profit, Expenses and the margin,
+        // so it belongs in the cache identity. Its update_option hook busts the
+        // caches, but only the Analytics settings section ever posts it — a
+        // WP-CLI write, an importer or another section's save would leave a
+        // payload from the opposite setting in place for the full TTL, which
+        // reads as "the setting does nothing".
+        $shipping_for_key = ( function_exists( 'brikpanel_shipping_cost_enabled' ) && brikpanel_shipping_cost_enabled() ) ? 1 : 0;
+        $cache_key = 'bp_dash_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key . '_sc' . $shipping_for_key;
         $cached    = get_transient( $cache_key );
         if ( false !== $cached ) {
             wp_send_json_success( $cached );
@@ -3683,6 +3861,13 @@ class Brikpanel_Dashboard {
             [ __( 'Cost of Goods', 'brikpanel' ), $money( $profit['cogs_raw'] ), sprintf( __( '%s%% of revenue', 'brikpanel' ), $profit['cogs_pct'] ) ],
             /* translators: %s: percentage of revenue. */
             [ __( 'Expenses', 'brikpanel' ), $money( $profit['expenses_raw'] ), sprintf( __( '%s%% of revenue', 'brikpanel' ), $profit['expenses_pct'] ) ],
+            // Called out separately because it is already inside Expenses above:
+            // without this line the total simply grows with no visible reason.
+            // Omitted entirely on stores that never enabled shipping costs, so
+            // the sheet does not carry a permanent zero row.
+            ...( ( (float) ( $profit['shipping_cost_raw'] ?? 0 ) ) > 0
+                ? [ [ __( 'of which Shipping Cost', 'brikpanel' ), $money( $profit['shipping_cost_raw'] ), __( 'Included in Expenses', 'brikpanel' ) ] ]
+                : [] ),
             /* translators: %s: profit margin percentage. */
             [ __( 'Net Profit', 'brikpanel' ), $money( $profit['net_raw'] ), sprintf( __( '%s%% margin', 'brikpanel' ), $profit['margin'] ) ],
             [],

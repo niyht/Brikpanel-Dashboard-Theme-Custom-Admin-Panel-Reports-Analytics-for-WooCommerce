@@ -16072,3 +16072,9 @@ msgstr ""
 "JavaScript hieronder met de filter brikpanel_frontend_tracking_allowed zodat "
 "de serverzijdige tellers voor toevoegen aan winkelwagen en afrekenen "
 "dezelfde beslissing zien."
+
+#. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php
+#, php-format
+msgid "Not chased: %s"
+msgstr "Geen herinnering: %s"

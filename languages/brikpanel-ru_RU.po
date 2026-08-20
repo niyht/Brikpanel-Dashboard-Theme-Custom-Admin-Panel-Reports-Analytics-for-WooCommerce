@@ -16038,3 +16038,9 @@ msgstr ""
 "соедините JavaScript ниже с фильтром brikpanel_frontend_tracking_allowed, "
 "чтобы серверные счётчики добавления в корзину и оформления видели то же "
 "решение."
+
+#. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php
+#, php-format
+msgid "Not chased: %s"
+msgstr "Без напоминания: %s"

@@ -549,6 +549,66 @@
     line-height: 1.4;
 }
 
+/* Expenses filed under another one. Both lines carry their own amount because
+   nesting never merges money, so the ONLY job of this styling is to make the
+   belonging obvious — indentation alone was too quiet to read at this size, so
+   the children hang off a connector drawn down their left edge, ending in a
+   short tick into each label. The literal fallbacks matter because an
+   unresolved var() computes to nothing, which would erase the colour. */
+.brikpanel-dash-bd-row.is-parent {
+    margin-top: 0.4375rem;
+}
+
+.brikpanel-dash-bd-row.is-parent:first-child {
+    margin-top: 0;
+}
+
+.brikpanel-dash-bd-row.is-parent .brikpanel-dash-bd-k {
+    color: var(--bp-text, #303030);
+    font-weight: 600;
+}
+
+.brikpanel-dash-bd-row.is-child .brikpanel-dash-bd-k {
+    position: relative;
+    padding-inline-start: 1rem;
+    color: var(--bp-text-muted, #8a8a8a);
+    font-weight: 400;
+}
+
+/* The spine. It starts above the row so it bridges the list's row gap and meets
+   the line above, and runs to the bottom so consecutive children share one
+   unbroken rule. */
+.brikpanel-dash-bd-row.is-child .brikpanel-dash-bd-k::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0.25rem;
+    top: -0.5rem;
+    bottom: 0;
+    border-inline-start: 1px solid var(--bp-border, #e3e3e3);
+}
+
+/* Last of a run: stop the spine at the tick instead of letting it dangle. */
+.brikpanel-dash-bd-row.is-child-last .brikpanel-dash-bd-k::before {
+    bottom: 50%;
+}
+
+/* The tick from the spine into the label. */
+.brikpanel-dash-bd-row.is-child .brikpanel-dash-bd-k::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0.25rem;
+    top: 50%;
+    width: 0.375rem;
+    border-top: 1px solid var(--bp-border, #e3e3e3);
+}
+
+/* A parent name that has no expense of its own in the viewed window: a heading
+   with nothing to show on the right. Muted so it never reads as a zero cost. */
+.brikpanel-dash-bd-row.is-label .brikpanel-dash-bd-k {
+    color: var(--bp-text-muted, #8a8a8a);
+    font-weight: 600;
+}
+
 .brikpanel-dash-bd-k {
     color: var(--bp-text-secondary);
     font-weight: 550;
@@ -726,6 +786,21 @@
     border: 1px solid var(--bp-input-border, #8a8a8a);
     border-radius: 0.5rem;
     line-height: 1.4;
+}
+/* One quiet line under the "Part of" picker. It carries the only thing the
+   label cannot say on its own — that filing a cost under another one does not
+   merge the two amounts. */
+.brikpanel-exp-hint {
+    margin: 0.375rem 0 0;
+    color: var(--bp-text-muted, #8a8a8a);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.4;
+}
+.brikpanel-exp-optional {
+    color: var(--bp-text-muted, #8a8a8a);
+    font-size: 0.6875rem;
+    font-weight: 400;
 }
 .brikpanel-exp-field input:focus,
 .brikpanel-exp-field select:focus {

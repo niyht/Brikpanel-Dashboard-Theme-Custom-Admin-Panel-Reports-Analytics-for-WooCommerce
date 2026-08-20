@@ -16177,3 +16177,9 @@ msgstr ""
 "Termly : associez le JavaScript ci-dessous au filtre "
 "brikpanel_frontend_tracking_allowed afin que les compteurs côté serveur "
 "d'ajout au panier et de commande voient la même décision."
+
+#. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php
+#, php-format
+msgid "Not chased: %s"
+msgstr "Pas de relance : %s"

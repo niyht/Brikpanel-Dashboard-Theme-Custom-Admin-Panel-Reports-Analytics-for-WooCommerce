@@ -16096,3 +16096,9 @@ msgstr ""
 "Banner y Termly: combina el JavaScript de abajo con el filtro "
 "brikpanel_frontend_tracking_allowed para que los contadores de añadido al "
 "carrito y de pago del lado del servidor vean la misma decisión."
+
+#. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php
+#, php-format
+msgid "Not chased: %s"
+msgstr "Sin seguimiento: %s"

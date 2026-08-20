@@ -16066,3 +16066,9 @@ msgstr ""
 "abbina il JavaScript qui sotto al filtro brikpanel_frontend_tracking_allowed "
 "così che i contatori lato server di aggiunta al carrello e checkout vedano "
 "la stessa decisione."
+
+#. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php
+#, php-format
+msgid "Not chased: %s"
+msgstr "Nessun sollecito: %s"

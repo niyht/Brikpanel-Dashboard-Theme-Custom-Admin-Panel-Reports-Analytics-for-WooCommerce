@@ -328,7 +328,7 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'exp_saving'            => __('Saving…', 'brikpanel'),
             'exp_saved'             => __('Expense added', 'brikpanel'),
             'exp_error'             => __('Could not save. Please try again.', 'brikpanel'),
-            'exp_required'          => __('Enter an amount and a category.', 'brikpanel'),
+            'exp_required'          => __('Enter an amount and a title.', 'brikpanel'),
             /* translators: %s: name of the expense line being removed. */
             'exp_del_aria'          => __('Remove %s', 'brikpanel'),
             'exp_del_working'       => __('Removing…', 'brikpanel'),

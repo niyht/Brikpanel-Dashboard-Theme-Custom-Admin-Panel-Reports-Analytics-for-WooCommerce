@@ -159,6 +159,13 @@ class Brikpanel_Sheets_Mapping {
 			'expenses' => [
 				'expense_id'  => [ 'label' => __( 'Expense ID',  'brikpanel' ), 'mandatory' => true, 'default' => true ],
 				'date'        => [ 'label' => __( 'Date',        'brikpanel' ), 'mandatory' => true, 'default' => true, 'writable' => true ],
+				// Sheet column 'category' names the expense this cost is filed
+				// under; it maps to the `parent_category` DB column, because the
+				// legacy `category` column is what 'title' already carries. The
+				// KEY stays 'category' whatever the label says — it is persisted
+				// in every merchant's saved column mapping, so renaming it would
+				// silently unmap their sheet.
+				'category'    => [ 'label' => _x( 'Part of', 'the expense this cost is filed under', 'brikpanel' ), 'default' => true, 'writable' => true ],
 				'title'       => [ 'label' => __( 'Title',       'brikpanel' ), 'mandatory' => true, 'default' => true, 'writable' => true ],
 				'amount'      => [ 'label' => _x( 'Amount', 'money value of an expense', 'brikpanel' ), 'mandatory' => true, 'default' => true, 'writable' => true ],
 				'type'        => [ 'label' => __( 'Type',        'brikpanel' ), 'default' => true, 'writable' => true ],

@@ -497,6 +497,7 @@
         var expDelta = document.getElementById('delta-profit-expenses');
         if (expDelta) {
             expDelta.textContent = p.expenses_pct + '% ' + ofRev;
+            expDelta.className = 'brikpanel-dash-card-delta brikpanel-dash-card-delta-static';
         }
         renderExpenseBreakdown(p);
 
@@ -649,22 +650,40 @@
 
         var win = (p && p.window) ? p.window : null;
 
-        items.forEach(function (b) {
-            var pct = Math.round((b.raw / total) * 100);
-
+        items.forEach(function (b, i) {
             var row = document.createElement('div');
-            row.className = 'brikpanel-dash-bd-row';
+            // depth 1 = an expense filed under another one, drawn indented right
+            // beneath it. Both lines carry their own amount: nesting is visual,
+            // nothing is subtotalled. A `label` line is a name with no expense
+            // of its own (a parent that has no line in this window).
+            var isLabel = b.key === 'label';
+            var isChild = Number(b.depth) === 1;
+            // The connector drawn down the left of a nested run has to know
+            // where that run starts and ends, and CSS cannot see it: `is-child`
+            // rows are siblings of everything else, not wrapped in anything. So
+            // mark the head of the run and its final line here.
+            var next    = items[i + 1];
+            var isParent = !isChild && next && Number(next.depth) === 1;
+            var isLastChild = isChild && !(next && Number(next.depth) === 1);
+            row.className = 'brikpanel-dash-bd-row'
+                + (isLabel ? ' is-label' : '')
+                + (isParent ? ' is-parent' : '')
+                + (isChild ? ' is-child' : '')
+                + (isLastChild ? ' is-child-last' : '');
 
             var k = document.createElement('span');
             k.className = 'brikpanel-dash-bd-k';
             k.textContent = b.label;
 
-            var v = document.createElement('span');
-            v.className = 'brikpanel-dash-bd-v';
-            v.innerHTML = b.amount + ' <span class="brikpanel-dash-bd-pct">' + pct + '%</span>';
-
             row.appendChild(k);
-            row.appendChild(v);
+
+            if (!isLabel) {
+                var pct = Math.round((b.raw / total) * 100);
+                var v = document.createElement('span');
+                v.className = 'brikpanel-dash-bd-v';
+                v.innerHTML = b.amount + ' <span class="brikpanel-dash-bd-pct">' + pct + '%</span>';
+                row.appendChild(v);
+            }
 
             // Only lines that map to real expense rows carry `del`; tax and ad
             // spend come from elsewhere and stay read-only.
@@ -692,7 +711,10 @@
         if (item.del.type === 'percent') {
             btn.setAttribute('data-del-id', String(item.del.id));
         } else {
-            btn.setAttribute('data-del-cat', item.del.cat);
+            btn.setAttribute('data-del-cat', item.del.cat || '');
+            // Present on a nested title (scopes the removal to its group) and
+            // on a group row (names the group itself). Absent on flat lines.
+            btn.setAttribute('data-del-group', item.del.group || '');
             btn.setAttribute('data-del-from', (win && win.from) ? win.from : '');
             btn.setAttribute('data-del-to', (win && win.to) ? win.to : '');
         }
@@ -812,6 +834,50 @@
         var saveBtn   = document.getElementById('brikpanel-exp-save');
         var amountEl  = document.getElementById('brikpanel-exp-amount');
         var catEl     = document.getElementById('brikpanel-exp-category');
+        var pcatEl    = document.getElementById('brikpanel-exp-parent-category');
+
+        // The "Part of" picker lists the expenses this one can be filed under.
+        // There is no free-text path: a cost can only sit under a cost that
+        // already exists.
+        function groupValue() { return pcatEl ? pcatEl.value : ''; }
+
+        // An expense can never be filed under itself, so grey that option out as
+        // the title is typed.
+        //
+        // It must NEVER clear the current selection: a title is typed one letter
+        // at a time and passes through names on the way to its own. "ahmo 2"
+        // filed under "ahmo" spends one keystroke looking exactly like its own
+        // parent, and clearing there silently unfiled the expense with nothing
+        // on screen to show for it. Disabling alone is safe — a disabled option
+        // that is already selected still submits, and the server rejects a real
+        // collision with a message the merchant can read.
+        function syncSelfExclusion() {
+            if (!pcatEl) return;
+            var self = (catEl ? catEl.value : '').trim().toLowerCase();
+            Array.prototype.slice.call(pcatEl.options).forEach(function (o) {
+                if (!o.value) { return; }
+                o.disabled = self !== '' && o.getAttribute('data-key') === self
+                    && pcatEl.value !== o.value;
+            });
+        }
+        if (catEl) catEl.addEventListener('input', syncSelfExclusion);
+
+        // Offer a just-saved expense as a parent straight away. Only top-level
+        // ones qualify — nesting stops at two levels — and only if the picker
+        // does not already list that title.
+        function addParentOption(title, parent) {
+            title = (title || '').trim();
+            if (!pcatEl || title === '' || (parent || '').trim() !== '') return;
+            var key = title.toLowerCase();
+            var exists = Array.prototype.slice.call(pcatEl.options)
+                .some(function (o) { return o.getAttribute('data-key') === key; });
+            if (exists) return;
+            var opt = document.createElement('option');
+            opt.value = title;
+            opt.textContent = title;
+            opt.setAttribute('data-key', key);
+            pcatEl.appendChild(opt);
+        }
         var dateEl    = document.getElementById('brikpanel-exp-date');
         var recEl     = document.getElementById('brikpanel-exp-recurring');
         var descEl    = document.getElementById('brikpanel-exp-desc');
@@ -887,7 +953,7 @@
             var category = catEl ? catEl.value.trim() : '';
             var pct = isPercent();
             if (!(amount >= 0) || isNaN(amount) || category === '' || (pct && amount > 100)) {
-                showMsg(i18n.exp_required || 'Enter an amount and a category.', true);
+                showMsg(i18n.exp_required || 'Enter an amount and a title.', true);
                 return;
             }
             saving = true;
@@ -896,6 +962,9 @@
             saveBtn.textContent = i18n.exp_saving || 'Saving…';
             clearMsg();
 
+            var savedTitle  = category;
+            var savedParent = groupValue();
+
             var fd = new FormData();
             fd.append('action', cfg.action || 'brikpanel_expenses_save');
             fd.append('_ajax_nonce', cfg.nonce || '');
@@ -903,6 +972,7 @@
             fd.append('kind', pct ? 'percent' : 'fixed');
             fd.append('amount', String(amount));
             fd.append('category', category);
+            fd.append('parent_category', savedParent);
             fd.append('expense_date', dateEl ? dateEl.value : '');
             fd.append('recurring', (pct || !recEl) ? 'none' : recEl.value);
             fd.append('description', descEl ? descEl.value : '');
@@ -917,6 +987,11 @@
                         closeModal();
                         // Reset for next time.
                         if (amountEl) amountEl.value = '';
+                        // The expense just saved is itself something the next
+                        // one can go under, and the picker is rendered once with
+                        // the page — so offer it now instead of after a reload.
+                        addParentOption(savedTitle, savedParent);
+                        if (pcatEl) pcatEl.value = '';
                         if (catEl) catEl.value = '';
                         if (descEl) descEl.value = '';
                         if (recEl) recEl.value = 'none';
@@ -1007,8 +1082,9 @@
                 return { type: 'percent', id: btn.getAttribute('data-del-id') || '0' };
             }
             return {
-                type: 'cat',
+                type: type === 'group' ? 'group' : 'cat',
                 cat: btn.getAttribute('data-del-cat') || '',
+                group: btn.getAttribute('data-del-group') || '',
                 date_from: btn.getAttribute('data-del-from') || '',
                 date_to: btn.getAttribute('data-del-to') || ''
             };

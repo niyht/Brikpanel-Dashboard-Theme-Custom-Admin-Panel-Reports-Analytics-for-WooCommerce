@@ -611,6 +611,200 @@ function brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace = fals
 }
 
 /**
+ * Order meta key holding a per-order shipping cost that overrides the amount
+ * charged to the customer. Absent/empty means "no override"; a stored 0 is a
+ * real value ("this one cost me nothing to ship") and is honoured.
+ */
+const BRIKPANEL_SHIPPING_COST_META = '_brikpanel_shipping_cost';
+
+/**
+ * Whether Net profit should be reduced by a shipping cost at all.
+ *
+ * Off by default: switching it on changes the Net profit figure of every
+ * existing store, so it has to be a deliberate choice rather than something an
+ * update does to a merchant behind their back.
+ *
+ * @return bool
+ */
+function brikpanel_shipping_cost_enabled() {
+	return 'yes' === get_option( 'brikpanel_shipping_cost_enabled', 'no' );
+}
+
+/**
+ * Option name behind brikpanel_shipping_cost_enabled().
+ */
+const BRIKPANEL_SHIPPING_COST_OPTION = 'brikpanel_shipping_cost_enabled';
+
+// Flipping this switch changes Net profit, Expenses and the margin, but the
+// dashboard serves a whole-response transient that is only invalidated by order
+// events. Without this the merchant turns the setting off, returns to the
+// dashboard and still sees the shipping cost deducted until the cache expires,
+// which reads as "the setting does nothing". Mirrors how the paid/refunded
+// status buckets invalidate on change (includes/brikpanel-helpers.php).
+add_action( 'update_option_' . BRIKPANEL_SHIPPING_COST_OPTION, 'brikpanel_bust_data_caches' );
+add_action( 'add_option_' . BRIKPANEL_SHIPPING_COST_OPTION, 'brikpanel_bust_data_caches' );
+
+/**
+ * Shipping cost for paid orders inside [$start_gmt, $end_gmt].
+ *
+ * WooCommerce has no field for what the merchant paid the courier — the only
+ * shipping figure it stores is what was CHARGED to the customer. So that amount
+ * is what we treat as the cost, which makes shipping profit-neutral by default
+ * (it is added to Revenue and taken straight back out here). A merchant who
+ * knows the real figure for an order can put it in the per-order override
+ * (BRIKPANEL_SHIPPING_COST_META), which is the only way to account for an order
+ * shipped free of charge: nothing was charged, so nothing would be deducted.
+ *
+ * Refunds deliberately do NOT reduce this: the courier was paid whether or not
+ * the customer was later given their money back.
+ *
+ * Works identically for simple and variable products — shipping lives on the
+ * order, not the line item.
+ *
+ * Uses the same paid-status set, admin-order exclusion and marketplace basis as
+ * every other Profit component, so it measures exactly the orders the Revenue
+ * card measures.
+ *
+ * @param string $start_gmt           Y-m-d H:i:s (UTC)
+ * @param string $end_gmt             Y-m-d H:i:s (UTC)
+ * @param bool   $exclude_marketplace Match the order basis of the revenue figure.
+ * @return float
+ */
+function brikpanel_profit_shipping_cost( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
+	global $wpdb;
+
+	if ( ! brikpanel_shipping_cost_enabled() ) {
+		return 0.0; // not a single query on stores that never turned this on
+	}
+
+	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+	$statuses = brikpanel_paid_order_statuses();
+	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+	$ovr_key  = BRIKPANEL_SHIPPING_COST_META;
+	// The multi-currency module may not be loaded in every context that reads a
+	// snapshot (e.g. the Sheets sync bootstraps profit.php on its own), so fall
+	// back to the literal key rather than relying on the constant being defined.
+	$fx_key   = defined( 'BRIKPANEL_BASE_TOTAL_META' ) ? BRIKPANEL_BASE_TOTAL_META : '_brikpanel_base_total';
+
+	if ( $is_hpos ) {
+		// COALESCE order matters: an override wins over the charged amount, and
+		// NULLIF lets an empty-string meta fall through while a stored '0' does
+		// not.
+		$cost  = "CAST(COALESCE(NULLIF(ovr.meta_value, ''), od.shipping_total_amount, '0') AS DECIMAL(20,4))";
+		$total = 'o.total_amount';
+		$sql   = "SELECT COALESCE(SUM(%COST_EXPR%), 0)
+			FROM {$wpdb->prefix}wc_orders o
+			LEFT JOIN {$wpdb->prefix}wc_order_operational_data od ON od.order_id = o.id
+			LEFT JOIN {$wpdb->prefix}wc_orders_meta ovr ON ovr.order_id = o.id AND ovr.meta_key = %s
+			LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s
+			WHERE o.type = 'shop_order' AND o.status IN ($sp)
+			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
+		$args  = array_merge( [ $ovr_key, $fx_key ], $statuses, [ $start_gmt, $end_gmt ] );
+		$excl  = brikpanel_admin_order_exclusion_sql( true );
+	} else {
+		$cost  = "CAST(COALESCE(NULLIF(ovr.meta_value, ''), sh.meta_value, '0') AS DECIMAL(20,4))";
+		$total = "CAST(COALESCE(tot.meta_value, '0') AS DECIMAL(20,4))";
+		$sql   = "SELECT COALESCE(SUM(%COST_EXPR%), 0)
+			FROM {$wpdb->posts} p
+			LEFT JOIN {$wpdb->postmeta} sh   ON sh.post_id   = p.ID AND sh.meta_key   = '_order_shipping'
+			LEFT JOIN {$wpdb->postmeta} tot  ON tot.post_id  = p.ID AND tot.meta_key  = '_order_total'
+			LEFT JOIN {$wpdb->postmeta} ovr  ON ovr.post_id  = p.ID AND ovr.meta_key  = %s
+			LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = p.ID AND bpfx.meta_key = %s
+			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
+			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
+		$args  = array_merge( [ $ovr_key, $fx_key ], $statuses, [ $start_gmt, $end_gmt ] );
+		$excl  = brikpanel_admin_order_exclusion_sql( false, 'p.ID' );
+	}
+
+	// Multi-currency: the store keeps the base-currency equivalent of the whole
+	// order total, not an exchange rate, so the order's own effective rate is
+	// derived as base_total / total and applied to the shipping component. The
+	// meta only exists on orders that needed converting, so a single-currency
+	// store always takes the ELSE branch and is numerically untouched.
+	$cost_expr = "CASE
+			WHEN bpfx.meta_value IS NOT NULL AND bpfx.meta_value <> '' AND {$total} > 0
+			THEN {$cost} * ( CAST(bpfx.meta_value AS DECIMAL(20,4)) / {$total} )
+			ELSE {$cost}
+		END";
+	$sql = str_replace( '%COST_EXPR%', $cost_expr, $sql );
+
+	if ( ! empty( $excl['sql'] ) ) {
+		$sql .= $excl['sql'];
+		$args = array_merge( $args, $excl['args'] );
+	}
+
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
+	}
+
+	$shipping = (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+
+	/**
+	 * Filter the shipping cost that nets down Net profit.
+	 *
+	 * The natural place for an integration that DOES know the real carrier
+	 * charge (a label-printing plugin, a 3PL feed) to replace the estimate.
+	 *
+	 * @param float  $shipping  Shipping cost for the window.
+	 * @param string $start_gmt Y-m-d H:i:s (UTC)
+	 * @param string $end_gmt   Y-m-d H:i:s (UTC)
+	 */
+	return (float) apply_filters( 'brikpanel_profit_shipping_cost', $shipping, $start_gmt, $end_gmt );
+}
+
+/**
+ * Shipping revenue (what customers were charged) for paid orders in the window.
+ *
+ * Not part of the Net profit maths — it is already inside Revenue. Kept as a
+ * public helper for surfaces that want to report delivery income on its own; it
+ * has no caller inside the plugin, so nothing pays for it unless it is used.
+ *
+ * @param string $start_gmt Y-m-d H:i:s (UTC)
+ * @param string $end_gmt   Y-m-d H:i:s (UTC)
+ * @return float
+ */
+function brikpanel_profit_shipping_revenue( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
+	global $wpdb;
+
+	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+	$statuses = brikpanel_paid_order_statuses();
+	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+
+	if ( $is_hpos ) {
+		$sql  = "SELECT COALESCE(SUM(od.shipping_total_amount), 0)
+			FROM {$wpdb->prefix}wc_orders o
+			LEFT JOIN {$wpdb->prefix}wc_order_operational_data od ON od.order_id = o.id
+			WHERE o.type = 'shop_order' AND o.status IN ($sp)
+			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
+		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$excl = brikpanel_admin_order_exclusion_sql( true );
+	} else {
+		$sql  = "SELECT COALESCE(SUM(CAST(COALESCE(sh.meta_value, '0') AS DECIMAL(20,4))), 0)
+			FROM {$wpdb->posts} p
+			LEFT JOIN {$wpdb->postmeta} sh ON sh.post_id = p.ID AND sh.meta_key = '_order_shipping'
+			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
+			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
+		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$excl = brikpanel_admin_order_exclusion_sql( false, 'p.ID' );
+	}
+
+	if ( ! empty( $excl['sql'] ) ) {
+		$sql .= $excl['sql'];
+		$args = array_merge( $args, $excl['args'] );
+	}
+
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
+	}
+
+	return (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+}
+
+/**
  * Manual expenses inside a local date range, split into the
  * vendor/inventory category (auto-created from received POs) and everything
  * else. Returns [ total, inventory, other ]. All zeros when the Expenses
@@ -703,6 +897,68 @@ function brikpanel_profit_manual_expenses_by_category( $start_local, $end_local 
 }
 
 /**
+ * The same manual expenses as brikpanel_profit_manual_expenses_by_category(),
+ * one line per title, each carrying the title of the expense it is filed under
+ * (its `parent`, '' when it stands alone).
+ *
+ * Deliberately NOT aggregated into groups: filing one expense under another is
+ * a purely visual convenience, so every line keeps its own amount and nothing
+ * is ever subtotalled or merged. A parent is itself an ordinary expense line;
+ * the caller simply draws the lines that name it directly beneath it.
+ *
+ * Purely a display decomposition: these amounts sum to exactly the figure
+ * brikpanel_profit_manual_expenses() returns, so Net profit is untouched.
+ * Ordered by amount desc so the biggest costs lead.
+ *
+ * @param string $start_local Y-m-d H:i:s
+ * @param string $end_local   Y-m-d H:i:s
+ * @return array<int,array{title:string,parent:string,amount:float}>
+ */
+function brikpanel_profit_manual_expense_lines( $start_local, $end_local ) {
+	global $wpdb;
+
+	$table = $wpdb->prefix . 'brikpanel_expenses';
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+		return [];
+	}
+
+	// Installs that have not run the schema upgrade yet have no parent column;
+	// returning empty makes the caller fall back to the flat category list.
+	$has_column = $wpdb->get_var( $wpdb->prepare(
+		"SHOW COLUMNS FROM {$table} LIKE %s",
+		'parent_category'
+	) ); // phpcs:ignore
+	if ( ! $has_column ) {
+		return [];
+	}
+
+	$start_date = substr( (string) $start_local, 0, 10 );
+	$end_date   = substr( (string) $end_local, 0, 10 );
+
+	$rows = $wpdb->get_results( $wpdb->prepare(
+		"SELECT COALESCE(parent_category, '') AS parent, COALESCE(category, '') AS category, SUM(amount) AS total
+		 FROM {$table}
+		 WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent'
+		 GROUP BY COALESCE(parent_category, ''), COALESCE(category, '')
+		 HAVING total <> 0
+		 ORDER BY total DESC",
+		$start_date,
+		$end_date
+	) ); // phpcs:ignore
+
+	$out = [];
+	foreach ( (array) $rows as $r ) {
+		$out[] = [
+			'title'  => (string) $r->category,
+			'parent' => (string) $r->parent,
+			'amount' => (float) $r->total,
+		];
+	}
+
+	return $out;
+}
+
+/**
  * Percentage-based expenses (e.g. Stripe / credit-card commission) for the window.
  *
  * Each such expense is a RATE (stored in the `amount` column) applied to the
@@ -719,7 +975,7 @@ function brikpanel_profit_manual_expenses_by_category( $start_local, $end_local 
  *
  * @param string $start_gmt Y-m-d H:i:s (UTC)
  * @param string $end_gmt   Y-m-d H:i:s (UTC)
- * @return array{total:float,items:array<int,array{id:int,title:string,rate:float,amount:float}>}
+ * @return array{total:float,items:array<int,array{id:int,title:string,parent:string,rate:float,amount:float}>}
  */
 function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marketplace = null ) {
 	global $wpdb;
@@ -733,8 +989,17 @@ function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marke
 		return $out; // revenue source not loaded (e.g. pure front-end context)
 	}
 
+	// parent_category rides along so the caller can draw this line under the
+	// expense it is filed under. It never changes the maths — a percentage cost
+	// is computed from revenue whether or not it is nested. Selected defensively
+	// so an install whose schema predates the column still works.
+	$has_parent_col = (bool) $wpdb->get_var( $wpdb->prepare(
+		"SHOW COLUMNS FROM {$table} LIKE %s",
+		'parent_category'
+	) ); // phpcs:ignore
+	$parent_select = $has_parent_col ? "COALESCE(parent_category, '')" : "''";
 	$rows = $wpdb->get_results(
-		"SELECT id, category, amount FROM {$table} WHERE kind = 'percent' ORDER BY amount DESC"
+		"SELECT id, category, amount, {$parent_select} AS parent FROM {$table} WHERE kind = 'percent' ORDER BY amount DESC"
 	); // phpcs:ignore
 	if ( empty( $rows ) ) {
 		return $out;
@@ -767,6 +1032,7 @@ function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marke
 		$out['items'][] = [
 			'id'     => (int) $r->id,
 			'title'  => $title,
+			'parent' => trim( (string) ( $r->parent ?? '' ) ),
 			'rate'   => $rate,
 			'amount' => $amount,
 		];
@@ -872,6 +1138,7 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		? brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, 20, $exclude_marketplace )
 		: [];
 	$tax      = brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace );
+	$shipping = brikpanel_profit_shipping_cost( $start_gmt, $end_gmt, $exclude_marketplace );
 	$returns  = brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace );
 	$coupons  = brikpanel_profit_coupons( $start_gmt, $end_gmt, $exclude_marketplace );
 	$ads_by   = brikpanel_profit_ad_spend_by_platform( $start_local, $end_local );
@@ -879,6 +1146,7 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 
 	list( $exp_manual, $exp_inventory, $exp_other ) = brikpanel_profit_manual_expenses( $start_local, $end_local );
 	$exp_by_category = brikpanel_profit_manual_expenses_by_category( $start_local, $end_local );
+	$exp_lines       = brikpanel_profit_manual_expense_lines( $start_local, $end_local );
 	$percent         = brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marketplace );
 
 	// Net revenue = gross sales minus what was handed back to customers. This
@@ -890,7 +1158,11 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 	$revenue_net    = $revenue - $returns;
 	// manual already includes inventory; percent (commission-style) costs scale
 	// with revenue and are computed in brikpanel_profit_percent_expenses().
-	$expenses_total = $tax + $ads + $exp_manual + $percent['total'];
+	// Shipping cost joins the composite rather than becoming its own deduction
+	// on purpose: every surface that already reports "Expenses" or "Net profit"
+	// (the Excel export, the Sheets Profit tab) then stays correct without
+	// knowing this component exists. It is 0 unless the merchant opted in.
+	$expenses_total = $tax + $ads + $exp_manual + $percent['total'] + $shipping;
 	$net            = $revenue_net - $cogs - $expenses_total;
 
 	// Percentages are share-of-net-revenue so they line up with the Revenue
@@ -906,6 +1178,7 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		'coupons_raw'        => $coupons,
 		'cogs_raw'           => $cogs,
 		'tax_raw'            => $tax,
+		'shipping_cost_raw'  => $shipping,
 		'ad_spend_raw'       => $ads,
 		'exp_manual_raw'     => $exp_manual,
 		'exp_inventory_raw'  => $exp_inventory,
@@ -933,6 +1206,7 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 			'google_ads' => $ads_by['google_ads'],
 			'meta_ads'   => $ads_by['meta_ads'],
 			'tax'        => $tax,
+			'shipping'   => $shipping,
 			'inventory'  => $exp_inventory,
 			'other'      => $exp_other,
 		],
@@ -941,6 +1215,10 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		// these equals exp_manual; the inventory + other split above is kept for
 		// the Sheets snapshot columns.
 		'expense_categories' => $exp_by_category,
+		// The same money as `expense_categories`, one line per title, each
+		// naming the expense it is filed under. Kept alongside rather than
+		// replacing it: the flat map is part of the published snapshot shape.
+		'expense_lines'      => $exp_lines,
 		// Percentage-based costs (card commission etc.): each item is
 		// {title, rate, amount} where amount = rate% × applicable gross revenue.
 		'percent_expenses'   => $percent['items'],

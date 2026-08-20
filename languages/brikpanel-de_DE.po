@@ -16192,3 +16192,9 @@ msgstr ""
 "Sie das JavaScript unten mit dem Filter brikpanel_frontend_tracking_allowed, "
 "damit die serverseitigen Zähler für Warenkorb-Hinzufügung und Kasse dieselbe "
 "Entscheidung sehen."
+
+#. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php
+#, php-format
+msgid "Not chased: %s"
+msgstr "Nicht nachgefasst: %s"

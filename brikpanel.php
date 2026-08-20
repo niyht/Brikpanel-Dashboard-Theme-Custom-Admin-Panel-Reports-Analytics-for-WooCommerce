@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.2.73
+ * Version: 3.2.75
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.2.73');
+define('BRIKPANEL_VERSION', '3.2.75');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -323,6 +323,7 @@ function brikpanel_init_admin() {
     brikpanel_require('front-end/orders/brikpanel-orders-stats.php');
     brikpanel_require('front-end/currency/brikpanel-currency-settings.php');
     brikpanel_require('front-end/order/brikpanel-order-fields.php');
+    brikpanel_require('front-end/order/brikpanel-order-shipping-cost.php');
     brikpanel_require('front-end/import-export/brikpanel-import-export.php');
     brikpanel_require('front-end/products/brikpanel-section-order.php');
     brikpanel_require('front-end/products/brikpanel-qe-order.php');
@@ -933,10 +934,16 @@ function brikpanel_create_table() {
     // template (0 = a standalone entry or the template itself). The materialiser
     // turns one "monthly/weekly/yearly" template into concrete dated rows so the
     // profit aggregation (which just sums rows by date) stays unchanged.
+    // Naming, because the pair reads oddly: `category` is the legacy column and
+    // is what the UI calls the expense "Title" ("Rent", "Salaries"). The later
+    // `parent_category` is the optional grouping ABOVE it ("Operations"), which
+    // is what the UI calls "Category". Rows written before it existed keep ''
+    // and render exactly as they always did — a flat line in the breakdown.
     $sql_expenses = "CREATE TABLE $expenses_table (
         id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         expense_date DATE NOT NULL,
         category VARCHAR(100) NOT NULL DEFAULT '',
+        parent_category VARCHAR(100) NOT NULL DEFAULT '',
         description TEXT,
         amount DECIMAL(20,4) NOT NULL DEFAULT 0,
         recurring VARCHAR(20) NOT NULL DEFAULT 'none',
@@ -946,6 +953,7 @@ function brikpanel_create_table() {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         KEY idx_date (expense_date),
         KEY idx_category (category),
+        KEY idx_parent_category (parent_category),
         KEY idx_recurring_parent (recurring_parent)
     ) $charset_collate;";
 
@@ -1127,6 +1135,8 @@ function brikpanel_create_table() {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         abandoned_at DATETIME NULL DEFAULT NULL,
         recovered_at DATETIME NULL DEFAULT NULL,
+        announced_sig CHAR(32) NULL DEFAULT NULL,
+        announced_at DATETIME NULL DEFAULT NULL,
         KEY idx_visitor_email (visitor_id, email),
         KEY idx_email (email),
         KEY idx_status_updated (status, updated_at),
@@ -1383,6 +1393,10 @@ add_action('plugins_loaded', 'brikpanel_maybe_upgrade_db', 5);
 // table, but registered separately so the version gate inside that function
 // cannot swallow the repair. See brikpanel_cartab_repair_failed_recoveries().
 add_action('plugins_loaded', 'brikpanel_cartab_repair_failed_recoveries', 6);
+// Priority 7: after the revert pass above, which puts rows back to 'abandoned'
+// on its own terms. Running first would make this one judge rows that pass is
+// about to move anyway.
+add_action('plugins_loaded', 'brikpanel_cartab_repair_zeroed_rows', 7);
 
 /**
  * One-time correction: leave one credited cart row per recovering order.
@@ -1952,6 +1966,70 @@ function brikpanel_cartab_repair_failed_recoveries() {
         'ran_at'      => $now,
     ], false);
     update_option('brikpanel_cartab_failed_recovery_repair_done', BRIKPANEL_CARTAB_REPAIR_PASS, true);
+}
+
+/**
+ * One-time correction: put the abandoned carts a stale mirror blanked back
+ * where they belong.
+ *
+ * Until this release Brikpanel_Cart_Abandonment::mirror_cart() wrote an empty
+ * snapshot over ANY open row whenever the browser turned up with an empty cart
+ * — an expired WooCommerce session, a cart cleared by a third party, an order
+ * placed under an identity recovery could not tie back. On a row that had
+ * already been announced abandoned that was fatal three times over: the only
+ * copy of the cart was overwritten, the row dropped out of flip_abandoned()'s
+ * reach for good (it wants item_count > 0), and it started reading as "Email
+ * only" — a bare signup that never had a cart — while its own abandoned_at
+ * said the opposite.
+ *
+ * The cart contents cannot come back; nobody else kept them. What can be put
+ * right is the label, and the row still carries the fact it needs: it WAS
+ * abandoned. Moving it back to 'abandoned' is one UPDATE and needs no change to
+ * the status derivation, the list filters, the stat-card grouping or a single
+ * shipped translation.
+ *
+ * Deliberately narrow. `abandoned_at IS NOT NULL` is the whole point: without
+ * it this would relabel every genuine email-only signup in the store as an
+ * abandoned cart. Rows a shopper truly emptied after being announced are caught
+ * too and cannot be told apart after the fact — but abandoned_at says the row
+ * was abandoned, so of the two labels available that is the honest one.
+ *
+ * Fires no hooks, for the same reason the repair above does not: re-announcing
+ * historical carts on upgrade would mail people who left months ago.
+ *
+ * Carries its own guard rather than riding brikpanel_maybe_upgrade_db(), for
+ * the reason spelled out on that function: a repair gated on a version number
+ * it does not control silently does nothing on a build that ships without a
+ * bump.
+ */
+define('BRIKPANEL_CARTAB_ZEROED_PASS', '1');
+
+function brikpanel_cartab_repair_zeroed_rows() {
+    if (get_option('brikpanel_cartab_zeroed_repair_done') === BRIKPANEL_CARTAB_ZEROED_PASS) {
+        return;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'brikpanel_abandoned_carts';
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
+        // Nothing to correct now or later: this plugin creates that table empty.
+        update_option('brikpanel_cartab_zeroed_repair_done', BRIKPANEL_CARTAB_ZEROED_PASS, true);
+        return;
+    }
+
+    $moved = (int) $wpdb->query(
+        "UPDATE {$table}
+            SET status = 'abandoned'
+          WHERE status = 'active'
+            AND item_count = 0
+            AND abandoned_at IS NOT NULL" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    );
+
+    update_option('brikpanel_cartab_zeroed_repair_stats', [
+        'moved'  => $moved,
+        'ran_at' => current_time('mysql', true),
+    ], false);
+    update_option('brikpanel_cartab_zeroed_repair_done', BRIKPANEL_CARTAB_ZEROED_PASS, true);
 }
 
 /**

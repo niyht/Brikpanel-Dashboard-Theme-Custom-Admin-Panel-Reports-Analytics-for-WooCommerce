@@ -38,6 +38,8 @@
     var $date        = el('brikpanel-ex-date');
     var $amount      = el('brikpanel-ex-amount');
     var $category    = el('brikpanel-ex-category');
+    var $parentCat   = el('brikpanel-ex-parent-category');
+    var $parentHint  = el('brikpanel-ex-parent-hint');
     var $recurring   = el('brikpanel-ex-recurring');
     var $description = el('brikpanel-ex-description');
     var $submitBtn   = el('brikpanel-ex-submit-btn');
@@ -60,6 +62,75 @@
         });
         // A hidden required date would block form submit in some browsers.
         if ($date) $date.required = !pct;
+    }
+
+
+    // ── "Part of" picker ──────────────────────────────────────────────────────
+    // The <select> lists the expenses this one can be filed under. There is no
+    // free-text path on purpose: you can only file a cost under a cost you have.
+
+    function foldTitle(s) { return (s || '').trim().toLowerCase(); }
+
+    function groupValue() {
+        return $parentCat ? $parentCat.value : '';
+    }
+
+    // Put a stored value back into the picker. If it no longer matches an
+    // option — the parent was renamed or deleted from somewhere else — add it
+    // back as an option rather than silently resetting the field, so opening an
+    // expense to change its amount cannot quietly unfile it.
+    function setGroupValue(val) {
+        if (!$parentCat) return;
+        val = (val || '').trim();
+        if (val === '') { $parentCat.value = ''; return; }
+        var match = Array.prototype.slice.call($parentCat.options)
+            .some(function (o) { return o.value === val; });
+        if (!match) {
+            var opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = val;
+            opt.setAttribute('data-key', foldTitle(val));
+            opt.setAttribute('data-transient', '1');
+            $parentCat.appendChild(opt);
+        }
+        $parentCat.value = val;
+    }
+
+    // Offer a just-saved expense as a parent straight away. Only top-level ones
+    // qualify — nesting stops at two levels — and only if the picker does not
+    // already list that title.
+    function addParentOption(title, parent) {
+        title = (title || '').trim();
+        if (!$parentCat || title === '' || (parent || '').trim() !== '') return;
+        var key = foldTitle(title);
+        var exists = Array.prototype.slice.call($parentCat.options)
+            .some(function (o) { return o.getAttribute('data-key') === key; });
+        if (exists) return;
+        var opt = document.createElement('option');
+        opt.value = title;
+        opt.textContent = title;
+        opt.setAttribute('data-key', key);
+        $parentCat.appendChild(opt);
+    }
+
+    // An expense can never be filed under itself, so grey that option out as the
+    // title is typed.
+    //
+    // It must NEVER clear the current selection: a title is typed one letter at
+    // a time and passes through names on the way to its own. "ahmo 2" filed
+    // under "ahmo" spends one keystroke looking exactly like its own parent, and
+    // clearing there silently unfiled the expense with nothing on screen to show
+    // for it. Disabling alone is safe — a disabled option that is already
+    // selected still submits, and the server rejects a real collision with a
+    // message the merchant can read.
+    function syncSelfExclusion() {
+        if (!$parentCat) return;
+        var self = foldTitle($category ? $category.value : '');
+        Array.prototype.slice.call($parentCat.options).forEach(function (o) {
+            if (!o.value) { return; }
+            o.disabled = self !== '' && o.getAttribute('data-key') === self
+                && $parentCat.value !== o.value;
+        });
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -153,7 +224,16 @@
             // Percentage costs are always-on, so they have no single date and no
             // repeat schedule — show "Ongoing" and a dash instead.
             html += '<td class="brikpanel-ex-date-cell">' + escHtml(isPct ? (i18n.ongoing || 'Ongoing') : item.date) + '</td>';
-            html += '<td><span class="brikpanel-ex-cat-badge">' + escHtml(item.category) + '</span></td>';
+            // What this cost is filed under sits above the title as a quiet line
+            // rather than claiming a whole column, so the table keeps its six
+            // columns and standalone rows look exactly as they always did.
+            html += '<td>';
+            if (item.parent_category) {
+                html += '<span class="brikpanel-ex-parent-cat">'
+                    + escHtml((i18n.filed_under || 'Part of %s').replace('%s', item.parent_category))
+                    + '</span>';
+            }
+            html += '<span class="brikpanel-ex-cat-badge">' + escHtml(item.category) + '</span></td>';
             html += '<td class="brikpanel-ex-desc-cell">' + escHtml(item.description || '—') + '</td>';
             html += isPct
                 ? '<td>—</td>'
@@ -188,6 +268,12 @@
 
     function openModal(editData) {
         state.editId = editData ? editData.id : 0;
+        // Drop any option a previous edit had to add back by hand, so a name
+        // that no longer exists cannot leak into the next expense's choices.
+        if ($parentCat) {
+            Array.prototype.slice.call($parentCat.querySelectorAll('option[data-transient]'))
+                .forEach(function (o) { o.remove(); });
+        }
         if ($editId)    $editId.value    = state.editId || '';
         if ($modalTitle) $modalTitle.textContent = editData ? (i18n.edit_title || 'Edit expense') : (i18n.add_title || 'Add expense');
 
@@ -195,6 +281,7 @@
             if ($date)        $date.value        = editData.date || '';
             if ($amount)      $amount.value      = editData.amount || '';
             if ($category)    $category.value    = editData.category || '';
+            setGroupValue(editData.parent_category || '');
             if ($recurring)   $recurring.value   = editData.recurring || 'none';
             if ($description) $description.value = editData.description || '';
             if ($kind)        $kind.value        = editData.kind || 'fixed';
@@ -208,8 +295,22 @@
             if ($date) $date.value = y + '-' + m + '-' + d;
             if ($recurring) $recurring.value = 'none';
             if ($kind) $kind.value = 'fixed';
+            setGroupValue('');
         }
         syncKind();
+        // An expense that already has costs filed under it cannot itself be
+        // filed under another one — nesting stops at two levels, so the picker
+        // is closed off rather than offering a choice the server would refuse.
+        if ($parentCat) {
+            var hasKids = !!(editData && editData.has_children);
+            $parentCat.disabled = hasKids;
+            if ($parentHint) {
+                $parentHint.textContent = hasKids
+                    ? (i18n.parent_has_children || 'Other costs are filed under this one, so it cannot go under another.')
+                    : (i18n.parent_hint || '');
+            }
+        }
+        syncSelfExclusion();
 
         $overlay.hidden = false;
         document.body.classList.add('brikpanel-ex-modal-open');
@@ -231,14 +332,17 @@
             $submitBtn.textContent = '…';
         }
 
-        var isPct = $kind && $kind.value === 'percent';
+        var isPct  = $kind && $kind.value === 'percent';
+        var title  = $category ? $category.value.trim() : '';
+        var parent = groupValue();
         ajax({
             action:       'brikpanel_expenses_save',
             id:           $editId ? $editId.value : '',
             kind:         isPct ? 'percent' : 'fixed',
             expense_date: $date        ? $date.value        : '',
             amount:       $amount      ? $amount.value      : '',
-            category:     $category    ? $category.value    : '',
+            category:     title,
+            parent_category: parent,
             recurring:    ( isPct || !$recurring ) ? 'none' : $recurring.value,
             description:  $description ? $description.value : '',
         }, function (err, res) {
@@ -251,6 +355,10 @@
                 showToast(msg, 'error');
                 return;
             }
+            // The expense just saved is itself something the next one can go
+            // under, and the picker is rendered once with the page — so offer it
+            // now rather than only after a reload.
+            addParentOption(title, parent);
             closeModal();
             fetchList(1);
         });
@@ -259,7 +367,16 @@
     // ── Delete ───────────────────────────────────────────────────────────────
 
     function deleteExpense(id) {
-        if (!window.confirm(i18n.confirm_delete || 'Delete this expense?')) return;
+        // Removing a parent takes everything filed under it, so say so before
+        // asking — the merchant must never learn that from the result.
+        var item = null;
+        for (var i = 0; i < state.items.length; i++) {
+            if (state.items[i].id === id) { item = state.items[i]; break; }
+        }
+        var question = (item && item.has_children)
+            ? (i18n.confirm_delete_parent || 'Delete this expense and everything filed under it?')
+            : (i18n.confirm_delete || 'Delete this expense?');
+        if (!window.confirm(question)) return;
         ajax({ action: 'brikpanel_expenses_delete', id: id }, function (err, res) {
             if (err || !res || !res.success) {
                 showToast(i18n.error || 'Something went wrong.', 'error');
@@ -302,6 +419,7 @@
             }
             var rows = [[
                 i18n.csv_date        || 'Date',
+                i18n.csv_parent_category || 'Part of',
                 i18n.csv_category    || 'Title',
                 i18n.csv_description || 'Description',
                 i18n.csv_recurring   || 'Recurring',
@@ -310,6 +428,7 @@
             items.forEach(function (item) {
                 rows.push([
                     item.date,
+                    '"' + (item.parent_category || '').replace(/"/g, '""') + '"',
                     item.category,
                     '"' + (item.description || '').replace(/"/g, '""') + '"',
                     recurringLabel(item.recurring),
@@ -347,6 +466,9 @@
         // Form submit (save)
         if ($form) $form.addEventListener('submit', saveExpense);
         if ($kind) $kind.addEventListener('change', syncKind);
+        // Typing a title that matches an offered parent must take that option
+        // out of play immediately, not only when the form is submitted.
+        if ($category) $category.addEventListener('input', syncSelfExclusion);
 
         // Close modal buttons
         var closeBtn = el('brikpanel-ex-modal-close');

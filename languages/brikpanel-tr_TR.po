@@ -15963,3 +15963,9 @@ msgstr ""
 "Termly: aşağıdaki JavaScript'i brikpanel_frontend_tracking_allowed "
 "filtresiyle birlikte kullanın, böylece sunucu tarafındaki sepete ekleme ve "
 "ödeme sayaçları da aynı kararı görür."
+
+#. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php
+#, php-format
+msgid "Not chased: %s"
+msgstr "Kovalanmadı: %s"
