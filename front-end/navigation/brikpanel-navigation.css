@@ -8,13 +8,15 @@
 }
 
 /* Brikpanel açma kapama butonu */
-.brikpanel-site-management-toggle {
+.brikpanel-site-management-toggle,
+.brikpanel-menu-group-toggle {
     cursor: pointer;
     margin-left: 10px;
     transition: transform 0.3s ease;
     transform: rotate(0deg); /* Varsayılan durum */
 }
-.brikpanel-site-management-toggle.collapsed {
+.brikpanel-site-management-toggle.collapsed,
+.brikpanel-menu-group-toggle.collapsed {
     transform: rotate(-90deg); /* Kapalı durum */
 }
 .brikpanel-site-management-collapsed .brikpanel-site-management-items {
@@ -62,17 +64,28 @@
 		width: 190px;
 		z-index: 100;
 	}
-	/* Sidebar backdrop overlay on content area */
+	/* Sidebar backdrop overlay on content area. This is the native path (WP's
+	   own `wp-responsive-open` flow, i.e. the BrikPanel top bar is off), so it
+	   must start below WP's admin bar — and that bar is 32px here, growing to
+	   46px only below 782px. A flat 46px across this whole block left a 14px
+	   gap of un-dimmed content at 783-960px. The top bar path uses
+	   .brikpanel-topbar-mobile-backdrop instead, which keys off
+	   --bp-topbar-height. */
 	.wp-responsive-open #wpcontent::before {
 		content: '';
 		position: fixed;
-		top: 46px;
+		top: 32px;
 		left: 0;
 		right: 0;
 		bottom: 0;
 		background: rgba(0, 0, 0, 0.35);
 		z-index: 99;
 		animation: brikpanel-fade-in 0.2s ease;
+	}
+	@media screen and (max-width: 782px) {
+		.wp-responsive-open #wpcontent::before {
+			top: 46px;
+		}
 	}
 	@keyframes brikpanel-fade-in {
 		from { opacity: 0; }
@@ -337,10 +350,34 @@ WooCommerce submenu which we move out of a submenu visually. */
 	margin: 2.5rem 0 0.5rem 0;
 	padding: 0;
 }
-.brikpanel-menu-heading .brikpanel-site-management-toggle {
+.brikpanel-menu-heading .brikpanel-site-management-toggle,
+.brikpanel-menu-heading .brikpanel-menu-group-toggle {
 	display: block;
 	flex-shrink: 0;
 	vertical-align: middle;
+}
+/* User-created group headings (nav customizer "Add heading"). The whole label is
+   the collapse control, unlike the built-in "Site management" heading where only
+   the chevron is clickable, so it needs a pointer, a focus ring and enough room
+   for a long name to wrap without pushing the chevron out of the sidebar. */
+.brikpanel-menu-group-heading {
+	/* Tighter than the 2.5rem above a section boundary: a group heading sits
+	   between rows, not at the top of a whole section. */
+	margin-top: 1.25rem;
+	cursor: pointer;
+	border-radius: 6px;
+	/* Keeps the label aligned with the icon column of the rows beneath it. */
+	padding: 2px 4px;
+	margin-left: -4px;
+	margin-right: -4px;
+	overflow-wrap: anywhere;
+}
+.brikpanel-menu-group-heading:hover {
+	background: var(--brikpanel-bg-hover);
+}
+.brikpanel-menu-group-heading:focus-visible {
+	outline: 2px solid var(--brikpanel-text);
+	outline-offset: -2px;
 }
 /* Every menu row must reserve an IDENTICAL icon slot, whichever kind of icon it
    ends up with: BrikPanel's own icons are a bare 15x18 <img> dropped straight

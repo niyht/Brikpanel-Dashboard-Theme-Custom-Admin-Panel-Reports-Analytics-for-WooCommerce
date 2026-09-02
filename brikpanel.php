@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.2.75
+ * Version: 3.2.93
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.2.75');
+define('BRIKPANEL_VERSION', '3.2.93');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -91,6 +91,17 @@ function brikpanel_missing_modules_notice() {
         . implode('</code>, <code>', array_map('esc_html', $missing))
         . '</code></p></div>';
 }
+
+// =============================================================================
+// MULTIBYTE-SAFE STRING HELPERS
+//
+// First module in, before anything that could touch a term name, a product
+// title or an admin label. `mbstring` is an optional PHP extension that
+// WordPress and WooCommerce both run without, so a bare mb_* call is a fatal
+// waiting for the first store on a build that lacks it. See the file header
+// for the wp.org report this closes.
+// =============================================================================
+brikpanel_require('includes/brikpanel-str.php');
 
 // =============================================================================
 // NETWORK ACCESS RULES (multisite-only Super Admin gate)
@@ -697,6 +708,18 @@ brikpanel_require('includes/brikpanel-currency.php');
 brikpanel_require('includes/brikpanel-profit.php');
 
 // =============================================================================
+// WOOCOMMERCE PRODUCT LOOKUP GUARD
+//
+// Loaded at file scope, before `init`, for two reasons. Its `deleted_post`
+// listener has to be registered before anything can delete a product, and cron,
+// WP-CLI and the REST API all delete on hooks that fire long before
+// brikpanel_init_admin() runs. And brikpanel_sku_guard_track_ids() has to exist
+// by the time the products list module (which calls it from fast delete) is
+// required on `init`.
+// =============================================================================
+brikpanel_require('includes/brikpanel-sku-lookup-guard.php');
+
+// =============================================================================
 // COOKIE-CONSENT GATE FOR STOREFRONT TRACKING
 //
 // Loaded at file scope, before `init`, for the same reason as the bot filter
@@ -750,6 +773,11 @@ brikpanel_require('includes/brikpanel-access-control.php');
 // THIRD-PARTY COMPATIBILITY: ASE (Admin and Site Enhancements) bridge
 // =============================================================================
 brikpanel_require('includes/brikpanel-ase-bridge.php');
+
+// =============================================================================
+// THIRD-PARTY COMPATIBILITY: Admin Columns bridge
+// =============================================================================
+brikpanel_require('includes/brikpanel-admin-columns-bridge.php');
 
 // =============================================================================
 // ENQUEUE SCRIPTS & STYLES
@@ -939,6 +967,11 @@ function brikpanel_create_table() {
     // `parent_category` is the optional grouping ABOVE it ("Operations"), which
     // is what the UI calls "Category". Rows written before it existed keep ''
     // and render exactly as they always did — a flat line in the breakdown.
+    // `scope` only ever carries a value on kind='per_order' rows and answers
+    // "which orders is this charged on": '' (every order), 'free_shipping', or
+    // 'shipping_class:<term_id>'. One opaque token rather than a type/value pair
+    // because the value space is closed and tiny, and it is already exactly what
+    // the "Applies to" <select> emits.
     $sql_expenses = "CREATE TABLE $expenses_table (
         id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         expense_date DATE NOT NULL,
@@ -949,6 +982,7 @@ function brikpanel_create_table() {
         recurring VARCHAR(20) NOT NULL DEFAULT 'none',
         recurring_parent BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
         kind VARCHAR(10) NOT NULL DEFAULT 'fixed',
+        scope VARCHAR(64) NOT NULL DEFAULT '',
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         KEY idx_date (expense_date),
@@ -1187,6 +1221,62 @@ function brikpanel_enable_cogs_default() {
 }
 
 /**
+ * Turn "Subtract shipping cost from Net profit" on by default.
+ *
+ * The setting originally shipped off because switching it on moves every
+ * store's Net profit. In practice that caution had the opposite effect: an
+ * order shipped free deducts nothing for the courier, so Net profit was
+ * reported HIGHER than it really is, and almost nobody ever found the switch.
+ * On by default is the honest number.
+ *
+ * Only ever writes when the option has NO row at all. A store already holding
+ * 'no' decided (or had it decided by saving the Analytics section) and is left
+ * exactly as it is. The one-shot marker makes this run once per site whatever
+ * route brought it here, so a merchant who turns the feature back off can never
+ * have that undone by a later upgrade or a reactivation.
+ *
+ * Mirrors brikpanel_enable_cogs_default() above.
+ */
+function brikpanel_enable_shipping_cost_default() {
+    if (get_option('brikpanel_shipping_cost_default_applied') === 'yes') {
+        return;
+    }
+    // add_option(), not update_option(): it is a no-op when a row already
+    // exists, which IS the "an existing 'no' keeps 'no'" rule, in one query with
+    // no read-then-write race. It also fires
+    // add_option_brikpanel_shipping_cost_enabled, already wired to
+    // brikpanel_bust_data_caches() in includes/brikpanel-profit.php, so the
+    // stale _sc0 dashboard payloads and bp_rev_* transients are invalidated BY
+    // THE WRITE ITSELF. Autoloaded, matching what WooCommerce's own checkbox
+    // handler writes.
+    add_option('brikpanel_shipping_cost_enabled', 'yes', '', true);
+    update_option('brikpanel_shipping_cost_default_applied', 'yes', false);
+}
+
+/**
+ * Turn "Count payment processing fees as an expense" on by default.
+ *
+ * The fee Stripe/PayPal deducted is already sitting on the order; leaving it
+ * unread reports Net profit HIGHER than it really is. Off by default would mean
+ * the number stays wrong for everyone who never finds the switch, which is the
+ * same mistake shipping cost made above.
+ *
+ * Same one-shot mechanics as brikpanel_enable_shipping_cost_default(): add_option()
+ * is a no-op when a row exists, so a merchant who turned this off keeps it off,
+ * and the marker means neither an upgrade nor a reactivation can undo that
+ * decision. add_option_brikpanel_payment_fees_enabled is wired to
+ * brikpanel_bust_data_caches() in includes/brikpanel-profit.php, so the stale
+ * _pf0 dashboard payloads are invalidated by the write itself.
+ */
+function brikpanel_enable_payment_fees_default() {
+    if (get_option('brikpanel_payment_fees_default_applied') === 'yes') {
+        return;
+    }
+    add_option('brikpanel_payment_fees_enabled', 'yes', '', true);
+    update_option('brikpanel_payment_fees_default_applied', 'yes', false);
+}
+
+/**
  * Run the per-site bootstrap work (create tables, set defaults, stamp
  * db_version). Called from both single-site activation and the per-blog loop
  * during network activation, as well as from `wp_initialize_site` when a new
@@ -1199,6 +1289,8 @@ function brikpanel_provision_site() {
 
     brikpanel_create_table();
     brikpanel_enable_cogs_default();
+    brikpanel_enable_shipping_cost_default();
+    brikpanel_enable_payment_fees_default();
     // Stores that already had WooCommerce's native Cost of Goods populated
     // before installing BrikPanel need the catch-up pass here too: stamping
     // db_version below makes brikpanel_maybe_upgrade_db() return early on
@@ -1327,6 +1419,17 @@ add_filter('wpmu_drop_tables', 'brikpanel_drop_subsite_tables', 10, 2);
 add_action('plugins_loaded', 'brikpanel_enable_cogs_default', 20);
 
 /**
+ * Same safety net for the shipping-cost default. This is the path that reaches
+ * existing installs on upgrade; brikpanel_maybe_upgrade_db() (priority 5) is
+ * the wrong host because it early-returns as soon as db_version matches, which
+ * is the state of every store that has already run the upgrade.
+ *
+ * Deliberately not gated on is_admin(): the marker is one autoloaded read once
+ * written, and a cron or REST request applying it first is perfectly fine.
+ */
+add_action('plugins_loaded', 'brikpanel_enable_shipping_cost_default', 20);
+
+/**
  * Safety net for the native COGS backfill. The version-transition path in
  * brikpanel_maybe_upgrade_db() is skipped whenever brikpanel_db_version
  * already equals the current version — which is exactly the state a fresh
@@ -1365,6 +1468,10 @@ function brikpanel_maybe_upgrade_db() {
     brikpanel_create_table();
     brikpanel_backfill_native_cogs();
     brikpanel_unify_cogs_to_native();
+    // Existing installs never run brikpanel_provision_site() again, so a new
+    // default that must reach them has to be seeded here too. The one-shot
+    // marker inside makes running it from both call sites harmless.
+    brikpanel_enable_payment_fees_default();
     brikpanel_cartab_dedupe_recovery_credit();
     // Re-assert autoload on the write-once markers. Idempotent, and running it
     // on every version bump means a call site that drifts one back to

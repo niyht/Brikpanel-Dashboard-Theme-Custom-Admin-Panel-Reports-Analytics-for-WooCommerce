@@ -796,6 +796,23 @@ function brikpanel_brand_logo_print_admin_styles() {
 		. 'height:100%;'
 		. 'max-width:100%;'
 		. 'object-fit:contain;'
+		. '}'
+		// Tablets and small laptop windows: 160px of logo plus the store name
+		// pushes the left side past what is left over from the action cluster,
+		// which is flex-shrink:0 — so the overflow is clipped straight through
+		// the logo (and the store name is squeezed to zero width first).
+		// Measured with a 480x108 logo: 36px of the mark cut off at 784px, 18px
+		// at 800px. The 960px ceiling is where the cluster stops being the wide
+		// variant — between 783 and 960 it still carries the Create button and
+		// its text labels, which is exactly why that band is the tight one.
+		// Phones need no rule: the whole brand is hidden below 600px in
+		// brikpanel-topbar.css.
+		//
+		// This lives in the same inline block on purpose — it prints on
+		// admin_head 10000, i.e. after every enqueued stylesheet, so an override
+		// written in a .css file would lose the cascade at equal specificity.
+		. '@media (max-width:960px){'
+		. '.brikpanel-topbar-brand-mark.has-custom-logo{max-width:96px;height:28px;}'
 		. '}';
 	echo '<style id="brikpanel-brand-logo-admin">' . $css . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- no dynamic input.
 }

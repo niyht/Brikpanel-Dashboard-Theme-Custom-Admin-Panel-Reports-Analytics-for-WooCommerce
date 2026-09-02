@@ -648,12 +648,15 @@ class Brikpanel_Sheets_Order_Sync {
 		//   - The dropdown writes bare keys, so "processing" MUST resolve to
 		//     processing. A custom status labelled "Processing" would otherwise
 		//     claim that slot and silently set orders to the wrong status.
-		//   - mb_strtolower, not strtolower: strtolower is byte-wise, so the
-		//     Turkish "İşleniyor" or Cyrillic "ЗАКАЗ" never match what a merchant
-		//     actually types, and the pull rejects a perfectly valid status.
+		//   - brikpanel_strtolower(), not strtolower(): strtolower() is
+		//     byte-wise, so the Turkish "İşleniyor" or Cyrillic "ЗАКАЗ" never
+		//     match what a merchant actually types, and the pull rejects a
+		//     perfectly valid status. The helper uses mbstring where the host
+		//     has it and a Latin+Cyrillic fallback map where it does not,
+		//     because mbstring is an optional extension.
 		$status_lookup = [];
 		$fold          = function ( $s ) {
-			return function_exists( 'mb_strtolower' ) ? mb_strtolower( (string) $s, 'UTF-8' ) : strtolower( (string) $s );
+			return brikpanel_strtolower( $s );
 		};
 		foreach ( $valid_statuses as $wc_key => $label ) {
 			$bare = preg_replace( '/^wc-/', '', (string) $wc_key );
@@ -1602,6 +1605,115 @@ class Brikpanel_Sheets_Order_Sync {
 				wp_cache_delete( $order_id, 'post_meta' );
 			}
 		}
+
+		self::verify_sync_meta( $pending, $keys, $table, $id_col );
+	}
+
+	/**
+	 * Confirm the direct write above is actually visible, and repair it if not.
+	 *
+	 * The flush picks its work with `META_SYNCED_AT NOT EXISTS`, so a write that
+	 * silently lands somewhere that query cannot see does not just lose a flag —
+	 * it makes the whole export stand still. Every pass re-selects the same
+	 * orders, finds their rows already in the sheet, "adopts" them, writes the
+	 * flag nowhere useful and finishes with 0 rows and more=false, so it even
+	 * reports success. A merchant hit exactly this: the same "Adopted 200
+	 * order(s)" line 298 times in a row and "last successful sync" three weeks
+	 * stale, with nothing in the log to say anything was wrong.
+	 *
+	 * The direct write cannot self-diagnose, because $wpdb reports a perfectly
+	 * successful INSERT into the wrong table — reproduced locally by pointing it
+	 * at the other storage engine's table. So read it back through the same
+	 * table the selector reads, and repair anything missing via the data store,
+	 * which resolves storage on its own and is correct by construction.
+	 *
+	 * Only the flags that GATE re-selection are worth checking: losing a row map
+	 * costs one re-read, losing the synced flag costs the export.
+	 *
+	 * @param array         $pending order_id => [ meta_key => value ].
+	 * @param string[]      $keys    Keys this write covered.
+	 * @param string        $table   Table the direct write targeted.
+	 * @param string        $id_col  Its order-id column.
+	 * @return void
+	 */
+	private static function verify_sync_meta( array $pending, array $keys, $table, $id_col ) {
+		global $wpdb;
+
+		$gates = array_values( array_intersect( [ self::META_SYNCED_AT, self::META_SKIPPED ], $keys ) );
+		if ( empty( $gates ) ) {
+			return;
+		}
+
+		$order_ids = array_map( 'intval', array_keys( $pending ) );
+		$seen      = [];
+		foreach ( array_chunk( $order_ids, 500 ) as $chunk ) {
+			$id_ph  = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+			$key_ph = implode( ',', array_fill( 0, count( $gates ), '%s' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders built from counts, values bound below.
+			$found  = $wpdb->get_col( $wpdb->prepare(
+				"SELECT DISTINCT {$id_col} FROM {$table} WHERE meta_key IN ({$key_ph}) AND {$id_col} IN ({$id_ph})",
+				array_merge( $gates, $chunk )
+			) );
+			foreach ( (array) $found as $f ) {
+				$seen[ (int) $f ] = true;
+			}
+		}
+
+		$missing = [];
+		foreach ( $order_ids as $oid ) {
+			// $order_ids is intval()'d, so a non-numeric key would collapse to 0
+			// and miss here. This runs only when something is already wrong; it
+			// must not add a PHP warning on top.
+			if ( ! isset( $pending[ $oid ] ) ) {
+				continue;
+			}
+			// Only orders whose own payload carried a gate key are expected back.
+			if ( empty( array_intersect( array_keys( (array) $pending[ $oid ] ), $gates ) ) ) {
+				continue;
+			}
+			if ( empty( $seen[ $oid ] ) ) {
+				$missing[] = $oid;
+			}
+		}
+		if ( empty( $missing ) ) {
+			return;
+		}
+
+		$repaired = 0;
+		foreach ( $missing as $oid ) {
+			$order = wc_get_order( $oid );
+			if ( ! $order ) {
+				continue;
+			}
+			foreach ( (array) $pending[ $oid ] as $mk => $mv ) {
+				// Re-stamp rather than replay the captured value. save() below
+				// sets _date_modified to NOW, and the reverse pull calls it a
+				// conflict when _date_modified runs more than 10s past
+				// META_SYNCED_AT. Replaying a stamp taken before a 250-order
+				// batch and a sheet read would clear that bar for every repaired
+				// order at once — a burst of false "Woo modified after last
+				// push" conflicts and a re-push job each. Now is also simply the
+				// truth: now is when this order got marked.
+				if ( $mk === self::META_SYNCED_AT ) {
+					$mv = current_time( 'mysql', true );
+				}
+				$order->update_meta_data( $mk, $mv );
+			}
+			try {
+				$order->save();
+				$repaired++;
+			} catch ( \Throwable $e ) {
+				// Keep going: one unsaveable order must not strand the batch.
+				continue;
+			}
+		}
+
+		Brikpanel_Sheets_Logger::log(
+			'orders',
+			'Sync flags for ' . count( $missing ) . ' order(s) did not persist on the direct write and were re-saved through WooCommerce ('
+				. $repaired . ' repaired). If this repeats, the order meta storage the export writes to is not the one it reads from.',
+			$repaired === count( $missing ) ? 0 : 500
+		);
 	}
 
 	// =========================================================================
@@ -1740,9 +1852,7 @@ class Brikpanel_Sheets_Order_Sync {
 						// — which usually looks ugly when the user typed it
 						// in lowercase. Title-case as a sensible default.
 						if ( $label === '' || $label === $raw_name ) {
-							$label = function_exists( 'mb_convert_case' )
-								? mb_convert_case( $raw_name, MB_CASE_TITLE, 'UTF-8' )
-								: ucfirst( $raw_name );
+							$label = brikpanel_title_case( $raw_name );
 						}
 						$attrs[] = $label . ': ' . (string) $v;
 					}

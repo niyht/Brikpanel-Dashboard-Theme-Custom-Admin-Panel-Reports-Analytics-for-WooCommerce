@@ -1371,7 +1371,7 @@ class Brikpanel_Pro_Search {
 			return '';
 		}
 
-		$needle = function_exists( 'mb_strtolower' ) ? mb_strtolower( $query ) : strtolower( $query );
+		$needle = brikpanel_strtolower( $query );
 		$items  = array();
 
 		foreach ( $index as $entry ) {
@@ -1380,7 +1380,7 @@ class Brikpanel_Pro_Search {
 			}
 
 			$haystack = $entry['label'] . ' ' . ( isset( $entry['parent'] ) ? $entry['parent'] : '' );
-			$haystack = function_exists( 'mb_strtolower' ) ? mb_strtolower( $haystack ) : strtolower( $haystack );
+			$haystack = brikpanel_strtolower( $haystack );
 
 			if ( false === strpos( $haystack, $needle ) ) {
 				continue;

@@ -159,4 +159,55 @@
         fd.append('key', 'dashboard_banner');
         fetch(cfg.ajax_url, { method: 'POST', credentials: 'same-origin', body: fd }).catch(function () {});
     });
+
+    // Per-check repair action. The button only exists for checks that opted in
+    // via supports_fix() and that currently have something to clean.
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-bc-fix]');
+        if (!btn || btn.disabled) return;
+        e.preventDefault();
+
+        var i18n     = cfg.i18n || {};
+        var checkId  = btn.getAttribute('data-bc-fix');
+        var count    = parseInt(btn.getAttribute('data-bc-fix-count'), 10) || 0;
+        var labelEl  = btn.querySelector('[data-bc-fix-label]');
+        var resultEl = btn.parentNode ? btn.parentNode.querySelector('[data-bc-fix-result]') : null;
+        // Captured from the DOM, never a hard-coded English string: the server
+        // rendered it through the check's translated get_fix_label().
+        var original = labelEl ? labelEl.textContent : '';
+
+        if (!window.confirm((i18n.fix_confirm || '').replace('{count}', count))) return;
+
+        btn.disabled = true;
+        if (labelEl) labelEl.textContent = i18n.fix_running || '';
+        if (resultEl) resultEl.textContent = '';
+
+        var restore = function (message) {
+            btn.disabled = false;
+            if (labelEl) labelEl.textContent = original;
+            if (resultEl) resultEl.textContent = message;
+        };
+
+        var fd = new FormData();
+        fd.append('action', 'brikpanel_brikcontrol_fix');
+        fd.append('security', cfg.nonce);
+        fd.append('check_id', checkId);
+
+        fetch(cfg.ajax_url, { method: 'POST', credentials: 'same-origin', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+                if (json && json.success && json.data) {
+                    var msg = (i18n.fix_done || '').replace('{count}', json.data.removed);
+                    if (json.data.has_more) msg += ' ' + (i18n.fix_more || '');
+                    if (resultEl) resultEl.textContent = msg;
+                    // Reload so the card re-renders from the freshly saved result.
+                    setTimeout(function () { window.location.reload(); }, 1200);
+                    return;
+                }
+                restore((json && json.data && json.data.message) || i18n.fix_failed || '');
+            })
+            .catch(function () {
+                restore(i18n.fix_failed || '');
+            });
+    });
 })();

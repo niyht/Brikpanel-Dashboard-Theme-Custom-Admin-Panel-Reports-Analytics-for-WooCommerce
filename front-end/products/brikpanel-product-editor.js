@@ -101,8 +101,66 @@
         initBackorderNotify();
         initLinkedProducts();
         initThirdPartyTabLazyLoad();
+        initThirdPartyHint();
         initCogsMirror();
         loadExistingData();
+    }
+
+    /* Discovery card shown when other plugins add fields to this product but
+       the setting that surfaces them is off. Enabling reloads rather than
+       injecting the panels over AJAX: those panels come with their own scripts,
+       styles and DOM ancestors, and a reload is the one way to guarantee they
+       initialise exactly as they do on a normal load. */
+    function initThirdPartyHint() {
+        bindToggle('.brikpanel-pe-wc-fields', '.brikpanel-pe-wc-fields__hide',
+            'brikpanel_pe_disable_thirdparty_fields', 'tp_hide_working');
+        bindToggle('.brikpanel-pe-tp-hint', '.brikpanel-pe-tp-hint__enable',
+            'brikpanel_pe_enable_thirdparty_fields', 'tp_hint_working');
+
+        function bindToggle(cardSel, btnSel, action, busyKey) {
+            var $card = $(cardSel);
+            if (!$card.length) return;
+
+            $card.on('click', btnSel, function () {
+                var $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                var label = $btn.text();
+                $btn.prop('disabled', true).text((PE.i18n && PE.i18n[busyKey]) || label);
+                $.post(PE.ajax_url, { action: action, security: PE.nonce })
+                    .done(function (res) {
+                        if (res && res.success) {
+                            // `state.dirty` is deliberately NOT cleared here.
+                            // The panels come with their own scripts, so the
+                            // only reliable way to add or remove them is a
+                            // reload — but a reload throws away anything typed
+                            // and not yet saved. Leaving the guard armed lets
+                            // the browser ask first, which is the merchant's
+                            // call to make, not ours.
+                            window.location.reload();
+                            return;
+                        }
+                        fail($card, $btn, label, res);
+                    })
+                    .fail(function () { fail($card, $btn, label); });
+            });
+        }
+
+        /* Put the button back the way it was and say what went wrong next to
+           it. A button relabelled with an error message is not a button anyone
+           knows how to press again, and a failure with no message at all reads
+           as "nothing happened". */
+        function fail($card, $btn, label, res) {
+            $btn.prop('disabled', false).text(label);
+            var message = (res && res.data && res.data.message)
+                ? res.data.message
+                : ((PE.i18n && PE.i18n.error) || '');
+            if (!message) return;
+            var $note = $card.find('.brikpanel-pe-tp-msg');
+            if (!$note.length) {
+                $note = $('<p class="brikpanel-pe-tp-msg" aria-live="polite"></p>').appendTo($card);
+            }
+            $note.text(message);
+        }
     }
 
     /* A cost-of-goods plugin renders its own cost input into WooCommerce's
@@ -369,6 +427,7 @@
         $('#bpe-attr-quick-sizecolor').on('click', quickAddSizeColor);
         $('#bpe-generate-vars').on('click', generateVariations);
         $('#bpe-add-variation').on('click', addVariationManually);
+        $('#bpe-clear-vars').on('click', clearAllVariations);
         $('#bpe-apply-bulk').on('click', applyBulk);
         // The sort select is an action menu: picking a mode sorts immediately
         // and the select snaps back to its placeholder.
@@ -2368,9 +2427,12 @@
         // label, and only a global attribute has a term list to offer at all.
         var globalAttrs = productData.global_attributes || [];
         var availableTerms = [];
+        // WooCommerce only honours the per-term order we save when the
+        // attribute is set to "Custom ordering" (menu_order).
+        var attrOrderby = 'menu_order';
         globalAttrs.forEach(function (a) {
             var hit = taxonomy ? (a.taxonomy === taxonomy) : (a.name === name || a.taxonomy === name || a.slug === name);
-            if (hit) { availableTerms = (a.terms || []).slice(); }
+            if (hit) { availableTerms = (a.terms || []).slice(); attrOrderby = a.orderby || 'menu_order'; }
         });
 
         var $suggestions = $('<div class="brikpanel-pe-tag-suggestions brikpanel-pe-attr-term-suggestions">');
@@ -2513,16 +2575,62 @@
 
         $wrap.append($input);
         $wrap.on('click', function () { $input.focus(); });
+        initTagSortable($wrap, $input);
         $inputWrap.append($wrap, $suggestions);
         $group.append($inputWrap);
+        // Dragging values only reaches the storefront when the attribute uses
+        // "Custom ordering". Say so rather than let a drag look broken.
+        if (taxonomy && attrOrderby !== 'menu_order') {
+            $group.append($('<p class="brikpanel-pe-attr-order-note">').text(
+                String(PE.i18n.attr_order_ignored || '%s').replace('%s', name)
+            ));
+        }
         // Sits in the row's label line, left of the "Use for variations" switch
         // that createAttrRow() appends to the same label.
         if ($selectAll.length) { $group.find('> label').first().append($selectAll); }
         return $group;
     }
 
+    /* Drag-to-reorder the VALUES of one attribute.
+
+       This order is not cosmetic: for a global attribute WooCommerce builds the
+       storefront dropdown from the terms, ordered by their `order` term meta,
+       and the save handler writes that meta from the order collected here (see
+       sync_attribute_term_order() in brikpanel-product-editor.php). Without a
+       way to arrange the values, a merchant who wanted 6, 12, 24, 50, 100 got
+       them back alphabetised as 100, 12, 24, 50, 6.
+
+       collectAttrRows() reads `.brikpanel-pe-tag` in DOM order, so reordering
+       the DOM is all that is needed — no parallel state to keep in sync. */
+    function initTagSortable($wrap, $input) {
+        if (typeof $wrap.sortable !== 'function') return;
+        $wrap.sortable({
+            items: '> .brikpanel-pe-tag',
+            // The × is a button: dragging from it would swallow the click that
+            // removes the value.
+            cancel: '.brikpanel-pe-tag-remove, input',
+            tolerance: 'pointer',
+            cursor: 'grabbing',
+            containment: 'parent',
+            forcePlaceholderSize: true,
+            placeholder: 'brikpanel-pe-tag-placeholder',
+            update: function () {
+                // The text input is a sibling of the tags, not a sortable item,
+                // so a tag dropped at the end can land after it. Put it back.
+                if ($input && $input.length) { $wrap.append($input); }
+                state.dirty = true;
+                var $list = $wrap.closest('#bpe-attr-list');
+                if ($list.length) { $list.trigger('change'); }
+                showToast(PE.i18n.attr_values_reordered, 'success');
+            }
+        });
+    }
+
     function createTag(value) {
+        // Title set via .attr(), not interpolated: esc() escapes &, < and > but
+        // not quotes, and a translated string is free to contain one.
         var $tag = $('<span class="brikpanel-pe-tag">' + esc(value) + '</span>');
+        if (PE.i18n.reorder_attr_value) { $tag.attr('title', PE.i18n.reorder_attr_value); }
         var $rm = $('<button type="button" class="brikpanel-pe-tag-remove">&times;</button>');
         $rm.on('click', function () {
             // Removing a value changes the attribute set — notify the list so the
@@ -2949,7 +3057,7 @@
             var $el = $(this), n = $el.attr('name');
             if (!n) return;
             if ($el.is(':checkbox') || $el.is(':radio')) {
-                snap[n + ' ' + $el.val()] = $el.is(':checked');
+                snap[n + '\u0000' + $el.val()] = $el.is(':checked');
             } else {
                 snap[n] = $el.val();
             }
@@ -2963,7 +3071,7 @@
             var $el = $(this), n = $el.attr('name');
             if (!n) return;
             if ($el.is(':checkbox') || $el.is(':radio')) {
-                var k = n + ' ' + $el.val();
+                var k = n + '\u0000' + $el.val();
                 if (Object.prototype.hasOwnProperty.call(snap, k)) $el.prop('checked', !!snap[k]);
             } else if (Object.prototype.hasOwnProperty.call(snap, n)) {
                 $el.val(snap[n]);
@@ -3289,6 +3397,113 @@
         if ($new.length && $new[0].scrollIntoView) { $new[0].scrollIntoView({ block: 'center' }); }
     }
 
+    /* Drop every variation of the product in one action.
+       Unlike the per-row delete this does NOT wait for a save: on a matrix of
+       hundreds of rows the round-trip payload is the slow, fragile part, and
+       "start this over" is not a change anyone wants to stage. The server
+       deletes the children and keeps the parent variable with its attributes
+       intact, so the very next click can be "Generate variations". */
+    function clearAllVariations() {
+        var n = (state.variations || []).length;
+        if (!n) return;
+        var confirmMsg = PE.i18n.confirm_clear_variations
+            || 'Delete all %d variations? They are removed immediately and this cannot be undone. The product stays a variable product and its attributes are kept.';
+        if (!window.confirm(confirmMsg.replace('%d', n))) return;
+
+        var pid = parseInt($('#bpe-product-id').val() || 0, 10) || 0;
+        if (!pid) {
+            // Never saved — the rows exist only in this tab, so there is
+            // nothing to delete server-side. Deliberately no keepVariableEmpty
+            // here: a brand-new product must not be published as a variable
+            // product with an empty matrix just because the list was cleared.
+            resetVariationState();
+            state.dirty = true;
+            showToast(PE.i18n.variations_cleared_local || 'Variation list cleared.', 'success');
+            return;
+        }
+
+        var $btn = $('#bpe-clear-vars'), label = $btn.text();
+        var busy = PE.i18n.clearing_variations || 'Deleting…';
+        $btn.prop('disabled', true).text(busy);
+
+        var totalDeleted = 0;
+        var release = function () { $btn.prop('disabled', false).text(label); };
+        var failed = function (msg) {
+            release();
+            showToast(msg || PE.i18n.clear_variations_failed || 'Could not delete the variations. Please try again.', 'error');
+        };
+
+        // The server deletes in bounded batches so a huge matrix cannot run
+        // past max_execution_time, and answers with how many are left. Keep
+        // asking until it says it is done.
+        var runBatch = function () {
+            $.post(PE.ajax_url, {
+                action: 'brikpanel_pe_clear_variations',
+                security: PE.nonce,
+                product_id: pid
+            }).done(function (r) {
+                if (!r || !r.success) {
+                    failed(r && r.data && r.data.message);
+                    return;
+                }
+                var batch = (r.data && typeof r.data.deleted === 'number') ? r.data.deleted : 0;
+                totalDeleted += batch;
+                var remaining = (r.data && typeof r.data.remaining === 'number') ? r.data.remaining : 0;
+
+                if (remaining > 0) {
+                    // A batch that removes nothing while claiming rows are left
+                    // would loop forever (a variation some plugin refuses to
+                    // delete). Stop and say so instead of hanging the button.
+                    if (batch < 1) { failed(); return; }
+                    $btn.text((PE.i18n.clearing_variations_left || 'Deleting… %d left').replace('%d', remaining));
+                    runBatch();
+                    return;
+                }
+
+                // Only a real deletion earns the override. When nothing was
+                // persisted there is no "the database already lost them" fact
+                // to protect, so an empty table keeps meaning what it always
+                // did and the product falls back to simple on save.
+                if (totalDeleted > 0) { state.keepVariableEmpty = true; }
+                resetVariationState();
+                // "0 variations deleted." reads like the click did nothing —
+                // a table of freshly generated, never-saved rows legitimately
+                // reports 0, so say what actually happened instead.
+                var doneMsg;
+                if (!totalDeleted) {
+                    doneMsg = PE.i18n.variations_cleared_local || 'Variation list cleared.';
+                } else {
+                    doneMsg = (totalDeleted === 1
+                        ? (PE.i18n.variations_cleared_one  || '%d variation deleted.')
+                        : (PE.i18n.variations_cleared_many || '%d variations deleted.')
+                    ).replace('%d', totalDeleted);
+                }
+                showToast(doneMsg, 'success');
+                release();
+            }).fail(function () { failed(); });
+        };
+        runBatch();
+    }
+
+    /* Put the variation half of the editor back to "no variations yet".
+       productData.variations is the line that cannot be skipped: findExVar()
+       searches that server-hydrated snapshot, so leaving it populated would let
+       the next Generate re-create every row WITH ITS OLD ID — and the save
+       would then quietly resurrect variations the user just deleted. */
+    function resetVariationState() {
+        state.variations = [];
+        state.varExtraValues = null;
+        state.previewExtras = null;
+        state.removedVariationIds = null;
+        state.lastSubmittedVariations = [];
+        productData.variations = [];
+        productData.variation_extras = {};
+        renderVarTable();
+        $('#bpe-var-table-section').hide();
+        $('#bpe-clear-vars').prop('hidden', true);
+        refreshVarStaleHint();
+    }
+
     /* Stable signature of the current variation-attribute set (names + values +
        taxonomy). Used to detect that the attributes drifted from what the
        generated variation table was built on. */
@@ -3519,6 +3734,12 @@
         // A save reconciles deletions with the database, so the guard that keeps
         // a just-deleted row from being resurrected by Generate has done its job.
         state.removedVariationIds = null;
+        // NOTE: state.keepVariableEmpty is deliberately NOT cleared here. It is
+        // not a one-shot for the next save — a merchant who clears the matrix
+        // and then saves twice must not have the second save convert the
+        // product to simple. The flag is inert the moment a row exists again
+        // (the length check in saveProduct() short-circuits it), and unticking
+        // the "Variable product" toggle still wins over it.
         // Background auto-save runs behind the user's back — never disturb the
         // live table/state mid-edit. The fresh productData is enough for the
         // next manual render to be correct.
@@ -3925,6 +4146,11 @@
         // point at detached elements and their freshly-rendered value is back
         // to whatever the server captured.
         syncVariationCogsMirror();
+
+        // "Clear all" only means something while there is something to clear.
+        // Driven from here rather than from each caller because every path
+        // that changes the row count ends in a render.
+        $('#bpe-clear-vars').prop('hidden', !state.variations.length);
     }
 
     /* One dropdown per variation axis for a manually added row. The empty
@@ -4151,7 +4377,16 @@
         $pub.prop('disabled', true).text(PE.i18n.saving || 'Saving...');
 
         var $varToggle = $('#bpe-var-toggle');
-        var isVar = $varToggle.is(':checked') && state.variations.length > 0;
+        // An empty table normally means "not a variable product after all", so
+        // the server is told `simple` and drops the leftover children. That is
+        // wrong after "Clear all": the variations are already gone from the
+        // database and the product was deliberately left variable with its
+        // attributes, so posting `simple` here would undo exactly what the
+        // merchant just asked for. The flag is set ONLY by a server-side clear
+        // — ticking the toggle without generating anything still behaves as
+        // before.
+        var isVar = $varToggle.is(':checked')
+            && (state.variations.length > 0 || state.keepVariableEmpty === true);
         var sep = PE.decimal_sep || ',';
         var data = { action: 'brikpanel_save_product', security: PE.nonce,
             product_id: $('#bpe-product-id').val() || 0, status: status, name: name,
@@ -4164,6 +4399,14 @@
         // Omitting the key means "not editable here, leave the type alone".
         if (!$varToggle.attr('data-section-hidden')) {
             data.is_variable = isVar ? 1 : 0;
+            // How many variations the editor actually loaded. `is_variable` is
+            // derived from the table being non-empty, and an empty table does
+            // not always mean the merchant wants a simple product: WooCommerce
+            // hides variations whose parent axis was rewritten by an import, so
+            // a product with children can load with none. The server uses this
+            // to tell "the merchant switched the type" apart from "the editor
+            // never saw them" instead of deleting the children on a guess.
+            data.variations_loaded = state.variations.length;
         }
 
         // Both description fields are opt-in sections, so send a key only when
@@ -4629,6 +4872,23 @@
             // Attach each axis's Default Form Values selection (display name,
             // '' = none) so the server can persist _default_attributes.
             var varAttrs = collectVariationAttributes();
+            // That collector drops an axis with no values, because nothing
+            // downstream can build a combination out of one. The save still has
+            // to hear about it: an import can empty a parent's option list
+            // while every variation keeps its value, and a server that never
+            // learns the axis exists takes it off the product altogether —
+            // leaving a variable product with children and no attributes. Send
+            // it with an empty list and let the server decide what that means
+            // (see the empty-values branch in save_variations()).
+            var seenAxisKeys = {};
+            varAttrs.forEach(function (a) { seenAxisKeys[attrAxisKey(a)] = true; });
+            collectAttrRows().forEach(function (r) {
+                if (!r.useVar || r.values.length) return;
+                var emptyKey = attrAxisKey(r);
+                if (!emptyKey || seenAxisKeys[emptyKey]) return;
+                seenAxisKeys[emptyKey] = true;
+                varAttrs.push({ name: r.name, values: [], taxonomy: r.taxonomy, key: emptyKey, visible: r.showOnPage });
+            });
             varAttrs.forEach(function (a) {
                 a['default'] = state.defaultAttributes[attrAxisKey(a)] || '';
             });
@@ -4952,8 +5212,18 @@
                 });
             }
         }
-        if (productData.is_variable && productData.attributes && productData.attributes.length) {
-            state.varAttributes = productData.attributes;
+        // Load the variation table whenever the product is variable and has
+        // variations. It used to require the parent to expose axes too, which
+        // looks equivalent and is not: WooCommerce hides a variation's values
+        // when the parent axis loses its "used for variations" flag or its
+        // option list, so a product rewritten by an import loads with axes
+        // missing but children intact. Skipping the table there left
+        // state.variations empty, the save then posted "simple", and every
+        // variation was deleted.
+        if (productData.is_variable
+            && ((productData.attributes && productData.attributes.length)
+                || (productData.variations && productData.variations.length))) {
+            state.varAttributes = productData.attributes || [];
             // Seed the Default Form Values selection map from each variation
             // attribute's stored default (a display name resolved server-side).
             state.defaultAttributes = {};

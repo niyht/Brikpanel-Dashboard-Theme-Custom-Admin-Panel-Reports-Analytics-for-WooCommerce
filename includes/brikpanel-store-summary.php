@@ -1510,19 +1510,26 @@ class Brikpanel_Store_Summary {
 
 		$start = gmdate( 'Y-m-d', strtotime( '-12 months', current_time( 'timestamp', true ) ) );
 
+		// Money rows only. A percentage row's `amount` holds a RATE and a
+		// per-order row's a UNIT PRICE; summing either turned a 2.9% commission
+		// into £2.90 of reported spend. The COUNT(*) probe above deliberately
+		// keeps them — a store whose only expense is a commission HAS used the
+		// module.
+		$kinds = brikpanel_expense_money_kinds_sql();
+
 		$total_12m = (float) $wpdb->get_var( $wpdb->prepare(
-			"SELECT COALESCE(SUM(amount),0) FROM {$tbl} WHERE expense_date >= %s",
+			"SELECT COALESCE(SUM(amount),0) FROM {$tbl} WHERE expense_date >= %s{$kinds}",
 			$start
 		) ); // phpcs:ignore
 
-		$total_all = (float) $wpdb->get_var( "SELECT COALESCE(SUM(amount),0) FROM {$tbl}" ); // phpcs:ignore
+		$total_all = (float) $wpdb->get_var( "SELECT COALESCE(SUM(amount),0) FROM {$tbl} WHERE 1=1{$kinds}" ); // phpcs:ignore
 
 		$by_cat = $wpdb->get_results( $wpdb->prepare(
 			"SELECT IF(category='', 'uncategorized', category) AS category,
 					COALESCE(SUM(amount),0) AS total,
 					COUNT(*) AS entries
 			 FROM {$tbl}
-			 WHERE expense_date >= %s
+			 WHERE expense_date >= %s{$kinds}
 			 GROUP BY category
 			 ORDER BY total DESC",
 			$start
@@ -1948,11 +1955,14 @@ class Brikpanel_Store_Summary {
 			) ); // phpcs:ignore
 		}
 
-		$exp_rows = $wpdb->get_results( $wpdb->prepare(
+		// Money rows only: a percentage rate or a per-order unit price is not a
+		// monthly total and must not be plotted as one.
+		$exp_kinds = brikpanel_expense_money_kinds_sql();
+		$exp_rows  = $wpdb->get_results( $wpdb->prepare(
 			"SELECT DATE_FORMAT(expense_date, '%%Y-%%m') AS ym,
 			        SUM(amount) AS expenses
 			 FROM {$wpdb->prefix}brikpanel_expenses
-			 WHERE expense_date >= %s
+			 WHERE expense_date >= %s{$exp_kinds}
 			 GROUP BY ym",
 			gmdate( 'Y-m-d', strtotime( $start_dt ) )
 		) ); // phpcs:ignore

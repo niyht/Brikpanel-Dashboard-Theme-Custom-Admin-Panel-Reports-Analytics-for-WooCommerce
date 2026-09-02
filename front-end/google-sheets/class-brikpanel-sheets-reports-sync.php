@@ -220,7 +220,16 @@ class Brikpanel_Sheets_Reports_Sync {
 			__( 'COGS %',          'brikpanel' ),
 			__( 'Ad spend',        'brikpanel' ),
 			__( 'Tax',             'brikpanel' ),
+			// Position must match the row array below exactly; the two are
+			// mirrored positionally, so inserting here without inserting there
+			// silently shifts every column to the right.
+			__( 'Payment fees',    'brikpanel' ),
 			__( 'Shipping cost',   'brikpanel' ),
+			// Without this column the components stop summing to Total expenses
+			// for any store using per-order costs, the same reason Shipping cost
+			// was added here. This tab is cleared and rewritten in full on every
+			// sync (write_tab), so a new column needs no migration.
+			__( 'Per-order costs', 'brikpanel' ),
 			__( 'Supplier / stock',  'brikpanel' ),
 			__( 'Other expenses',  'brikpanel' ),
 			__( 'Total expenses',  'brikpanel' ),
@@ -268,7 +277,9 @@ class Brikpanel_Sheets_Reports_Sync {
 				$s['cogs_pct'],
 				round( $s['ad_spend_raw'], 2 ),
 				round( $s['tax_raw'], 2 ),
+				round( (float) ( $s['payment_fees_raw'] ?? 0 ), 2 ),
 				round( (float) ( $s['shipping_cost_raw'] ?? 0 ), 2 ),
+				round( (float) ( $s['per_order_total_raw'] ?? 0 ), 2 ),
 				round( $s['exp_inventory_raw'], 2 ),
 				round( $s['exp_other_raw'], 2 ),
 				round( $s['expenses_total_raw'], 2 ),

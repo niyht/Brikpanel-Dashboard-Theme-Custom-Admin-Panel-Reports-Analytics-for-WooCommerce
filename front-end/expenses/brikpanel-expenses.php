@@ -30,6 +30,7 @@ class Brikpanel_Expenses {
 		add_action( 'wp_ajax_brikpanel_expenses_save',   [ $this, 'ajax_save' ] );
 		add_action( 'wp_ajax_brikpanel_expenses_delete', [ $this, 'ajax_delete' ] );
 		add_action( 'wp_ajax_brikpanel_expense_line_delete', [ $this, 'ajax_line_delete' ] );
+		add_action( 'wp_ajax_brikpanel_payment_fees_toggle', [ $this, 'ajax_payment_fees_toggle' ] );
 	}
 
 	// =========================================================================
@@ -93,6 +94,125 @@ class Brikpanel_Expenses {
 	}
 
 	// =========================================================================
+	// Payment fees toggle
+	// =========================================================================
+
+	/**
+	 * Turn the gateway-fee expense component on or off.
+	 *
+	 * Writes the same option the Profit component and the dashboard cache key
+	 * read, so the update_option hook registered in includes/brikpanel-profit.php
+	 * invalidates the stale payload as part of this write.
+	 *
+	 * @return void
+	 */
+	public function ajax_payment_fees_toggle() {
+		$this->check_auth();
+
+		$enabled = ! empty( $_POST['enabled'] ) && 'false' !== $_POST['enabled'] && '0' !== (string) $_POST['enabled'];
+		$option  = defined( 'BRIKPANEL_PAYMENT_FEES_OPTION' ) ? BRIKPANEL_PAYMENT_FEES_OPTION : 'brikpanel_payment_fees_enabled';
+		update_option( $option, $enabled ? 'yes' : 'no' );
+
+		wp_send_json_success( [
+			'enabled' => $enabled,
+			'message' => $enabled
+				? __( 'Payment fees are now counted as an expense.', 'brikpanel' )
+				: __( 'Payment fees are no longer counted as an expense.', 'brikpanel' ),
+		] );
+	}
+
+	// =========================================================================
+	// Per-order costs: schema probe, scope options, scope validation
+	// =========================================================================
+
+	/**
+	 * Whether the `scope` column exists yet.
+	 *
+	 * Installs between the plugin update and the dbDelta run have no column, and
+	 * selecting it would be a fatal query. Mirrors the parent_category probe in
+	 * brikpanel_profit_percent_expenses().
+	 *
+	 * @return bool
+	 */
+	public static function has_scope_column() {
+		static $has = null;
+		if ( null !== $has ) {
+			return $has;
+		}
+		global $wpdb;
+		$table = $wpdb->prefix . self::TABLE;
+		$has   = (bool) $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", 'scope' ) ); // phpcs:ignore
+		return $has;
+	}
+
+	/**
+	 * term_id => name for every shipping class, for the "Applies to" picker.
+	 *
+	 * Empty on a store that uses no shipping classes, in which case the caller
+	 * simply omits the optgroup, so no empty group and no nag.
+	 *
+	 * @return array<int,string>
+	 */
+	public static function shipping_class_options() {
+		if ( ! function_exists( 'get_terms' ) ) {
+			return [];
+		}
+		$terms = get_terms( [ 'taxonomy' => 'product_shipping_class', 'hide_empty' => false ] );
+		if ( is_wp_error( $terms ) ) {
+			return [];
+		}
+		$out = [];
+		foreach ( (array) $terms as $term ) {
+			$out[ (int) $term->term_id ] = (string) $term->name;
+		}
+		return $out;
+	}
+
+	/**
+	 * Normalise a submitted "Applies to" token.
+	 *
+	 * Returns '' for anything unrecognised. The caller must treat an
+	 * unresolvable `shipping_class:` token as an ERROR rather than accepting
+	 * this ''. '' means "every order", which is a BIGGER charge, so silently
+	 * downgrading would fail in the expensive direction.
+	 *
+	 * @param string $raw
+	 * @return string '' | 'free_shipping' | 'shipping_class:<term_id>'
+	 */
+	public static function sanitize_scope( $raw ) {
+		$raw = trim( (string) $raw );
+		if ( '' === $raw || 'all' === $raw ) {
+			return '';
+		}
+		if ( 'free_shipping' === $raw ) {
+			return 'free_shipping';
+		}
+		if ( 0 === strpos( $raw, 'shipping_class:' ) ) {
+			$tid = absint( substr( $raw, 15 ) );
+			if ( $tid > 0 && get_term( $tid, 'product_shipping_class' ) instanceof WP_Term ) {
+				return 'shipping_class:' . $tid;
+			}
+		}
+		return '';
+	}
+
+	/**
+	 * Translated label for an expense kind, for the CSV export.
+	 *
+	 * @param string $kind
+	 * @return string
+	 */
+	public static function kind_display_label( $kind ) {
+		if ( 'percent' === $kind ) {
+			return __( 'Percentage of revenue', 'brikpanel' );
+		}
+		if ( 'per_order' === $kind ) {
+			return __( 'Cost per order', 'brikpanel' );
+		}
+		return __( 'Fixed amount', 'brikpanel' );
+	}
+
+	// =========================================================================
 	// Render page
 	// =========================================================================
 
@@ -114,6 +234,31 @@ class Brikpanel_Expenses {
 						+ <?php esc_html_e( 'Add expense', 'brikpanel' ); ?>
 					</button>
 				</div>
+			</div>
+
+			<!-- Payment fees: real gateway processing costs, read straight off the
+			     orders. Lives here rather than in WooCommerce settings because it
+			     is an expense component and this is the expenses screen. -->
+			<div class="brikpanel-ex-card brikpanel-ex-setting">
+				<div class="brikpanel-ex-setting-main">
+					<div class="brikpanel-ex-setting-text">
+						<label class="brikpanel-ex-setting-title" for="brikpanel-ex-pf-toggle">
+							<?php esc_html_e( 'Payment fees', 'brikpanel' ); ?>
+						</label>
+						<p class="brikpanel-ex-setting-desc">
+							<?php esc_html_e( 'Count the processing fee your payment provider charged on each order as an expense. The amount is read from the order itself, so no estimate is needed. It works with gateways that record their fee on the order, including Stripe, PayPal and WooPayments. Gateways that store no fee, and orders paid by bank transfer or cash, simply have none.', 'brikpanel' ); ?>
+						</p>
+					</div>
+					<label class="brikpanel-ex-switch">
+						<input type="checkbox" id="brikpanel-ex-pf-toggle"
+							<?php checked( function_exists( 'brikpanel_payment_fees_enabled' ) && brikpanel_payment_fees_enabled() ); ?> />
+						<span class="brikpanel-ex-switch-slider"></span>
+						<span class="screen-reader-text"><?php esc_html_e( 'Count payment fees as an expense', 'brikpanel' ); ?></span>
+					</label>
+				</div>
+				<!-- Revealed by JS only when a percentage-based cost exists, since
+				     that is almost always a hand-made estimate of this very fee. -->
+				<p class="brikpanel-ex-note is-warning" id="brikpanel-ex-pf-warning" hidden></p>
 			</div>
 
 			<!-- Summary bar -->
@@ -205,6 +350,7 @@ class Brikpanel_Expenses {
 										<select id="brikpanel-ex-kind">
 											<option value="fixed"><?php esc_html_e( 'Fixed amount', 'brikpanel' ); ?></option>
 											<option value="percent"><?php esc_html_e( 'Percentage of revenue', 'brikpanel' ); ?></option>
+											<option value="per_order"><?php esc_html_e( 'Cost per order', 'brikpanel' ); ?></option>
 										</select>
 									</div>
 									<div class="brikpanel-ex-field">
@@ -214,6 +360,31 @@ class Brikpanel_Expenses {
 										<input type="number" id="brikpanel-ex-amount" min="0" step="0.01" placeholder="0.00" required />
 											<span class="brikpanel-ex-prefix brikpanel-ex-suffix" id="brikpanel-ex-suffix" hidden>%</span>
 									</div>
+								</div>
+								<?php
+								// Which orders a per-order cost is charged on. Rendered for every
+								// kind and hidden by syncKind() rather than injected on demand:
+								// the option list needs the shipping-class terms, and building it
+								// in PHP once is both cheaper and safer than shipping term names
+								// to JS and composing markup there. Sits right after Amount
+								// because it qualifies it: "£2.40 … per which orders?" is one
+								// sentence, and Title in between would break it.
+								$shipping_classes = self::shipping_class_options();
+								?>
+								<div class="brikpanel-ex-field" id="brikpanel-ex-scope-field" hidden>
+									<label for="brikpanel-ex-scope"><?php echo esc_html( _x( 'Applies to', 'which orders a per-order cost is charged on', 'brikpanel' ) ); ?></label>
+									<select id="brikpanel-ex-scope">
+										<option value=""><?php esc_html_e( 'Every order', 'brikpanel' ); ?></option>
+										<option value="free_shipping"><?php esc_html_e( 'Orders shipped free', 'brikpanel' ); ?></option>
+										<?php if ( $shipping_classes ) : ?>
+											<optgroup label="<?php esc_attr_e( 'Shipping class', 'brikpanel' ); ?>">
+												<?php foreach ( $shipping_classes as $sc_id => $sc_name ) : ?>
+													<option value="shipping_class:<?php echo (int) $sc_id; ?>"><?php echo esc_html( $sc_name ); ?></option>
+												<?php endforeach; ?>
+											</optgroup>
+										<?php endif; ?>
+									</select>
+									<p class="brikpanel-ex-hint"><?php esc_html_e( 'Charged once for every matching order in the period you are viewing.', 'brikpanel' ); ?></p>
 								</div>
 								<div class="brikpanel-ex-field">
 									<label for="brikpanel-ex-category"><?php esc_html_e( 'Title', 'brikpanel' ); ?></label>
@@ -287,6 +458,17 @@ class Brikpanel_Expenses {
 				csv_description:   <?php echo wp_json_encode( __( 'Description', 'brikpanel' ) ); ?>,
 				csv_recurring:     <?php echo wp_json_encode( __( 'Recurring', 'brikpanel' ) ); ?>,
 				csv_amount:        <?php echo wp_json_encode( _x( 'Amount', 'money value of an expense', 'brikpanel' ) ); ?>,
+				csv_type:          <?php echo wp_json_encode( __( 'Type', 'brikpanel' ) ); ?>,
+				csv_scope:         <?php echo wp_json_encode( _x( 'Applies to', 'which orders a per-order cost is charged on', 'brikpanel' ) ); ?>,
+				// Shown in the "Applies to" select when the stored shipping class
+				// has since been deleted, so reopening the row to fix its amount
+				// cannot silently re-scope it to every order.
+				scope_missing_class: <?php echo wp_json_encode( __( 'Shipping class (removed)', 'brikpanel' ) ); ?>,
+				// A percentage cost is nearly always a hand-made estimate of the
+				// very fee we now read for real, so both would be deducted.
+				pf_double_count: <?php echo wp_json_encode( __( 'You have a percentage-based cost below. If it was your estimate of card commission, it is now being deducted on top of the real fees. Delete or edit it to avoid counting the same cost twice.', 'brikpanel' ) ); ?>,
+				pf_saved_on:     <?php echo wp_json_encode( __( 'Payment fees are now counted as an expense.', 'brikpanel' ) ); ?>,
+				pf_saved_off:    <?php echo wp_json_encode( __( 'Payment fees are no longer counted as an expense.', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>
@@ -315,9 +497,10 @@ class Brikpanel_Expenses {
 		$where  = [];
 		$params = [];
 
-		// Percentage costs (commission) are always-on, so they bypass the date
-		// filter and stay visible whatever period is selected; fixed rows honour
-		// the From/To range as before.
+		// Percentage costs (commission) and per-order costs (packaging) are
+		// always-on, so they bypass the date filter and stay visible whatever
+		// period is selected; fixed rows honour the From/To range as before.
+		$ongoing_kinds = "'" . implode( "','", array_map( 'esc_sql', brikpanel_expense_non_money_kinds() ) ) . "'";
 		$date_conds  = [];
 		$date_params = [];
 		if ( $date_from !== '' ) {
@@ -329,7 +512,7 @@ class Brikpanel_Expenses {
 			$date_params[] = $date_to;
 		}
 		if ( $date_conds ) {
-			$where[]  = '( ( ' . implode( ' AND ', $date_conds ) . " ) OR kind = 'percent' )";
+			$where[]  = '( ( ' . implode( ' AND ', $date_conds ) . " ) OR kind IN ({$ongoing_kinds}) )";
 			$params   = array_merge( $params, $date_params );
 		}
 		if ( $category !== '' ) {
@@ -339,9 +522,10 @@ class Brikpanel_Expenses {
 
 		$where_sql = $where ? 'WHERE ' . implode( ' AND ', $where ) : '';
 
-		// The filtered total is money only: percentage rows store a rate, not an
-		// amount, so they are left out of the sum (still counted as entries).
-		$count_sql = "SELECT COUNT(*), COALESCE(SUM(CASE WHEN kind <> 'percent' THEN amount ELSE 0 END), 0) AS total FROM {$table} {$where_sql}";
+		// The filtered total is money only: a percentage row stores a rate and a
+		// per-order row a unit price, neither of which is a period total, so both
+		// are left out of the sum (still counted as entries).
+		$count_sql = "SELECT COUNT(*), COALESCE(SUM(CASE WHEN kind NOT IN ({$ongoing_kinds}) THEN amount ELSE 0 END), 0) AS total FROM {$table} {$where_sql}";
 		$count_row = $params
 			? $wpdb->get_row( $wpdb->prepare( $count_sql, $params ) ) // phpcs:ignore
 			: $wpdb->get_row( $count_sql ); // phpcs:ignore
@@ -371,22 +555,49 @@ class Brikpanel_Expenses {
 			$amount_fmt = ( 'percent' === $kind )
 				? rtrim( rtrim( number_format( $amount, 2, '.', '' ), '0' ), '.' ) . '%'
 				: html_entity_decode( wp_strip_all_tags( wc_price( $amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			if ( 'per_order' === $kind ) {
+				// Composed HERE, not in JS: renderRows() prints amount_fmt
+				// verbatim, so a single server-side sprintf keeps the string out
+				// of the .js file AND lets a translator move "/ order" to either
+				// side of the number.
+				/* translators: %s: money amount, e.g. £2.40. Shown in the Amount column of a per-order cost. */
+				$amount_fmt = sprintf( __( '%s / order', 'brikpanel' ), $amount_fmt );
+			}
+			$scope = (string) ( $r->scope ?? '' );
 			$items[] = [
 				'id'              => (int) $r->id,
 				'date'            => $r->expense_date,
 				'category'        => $r->category,
 				'parent_category' => (string) ( $r->parent_category ?? '' ),
+				// What the merchant reads. For a computed card line the stored
+				// value is a stable key, so the raw column must never be printed.
+				'parent_label'    => self::parent_display_label( (string) ( $r->parent_category ?? '' ) ),
 				'has_children'    => isset( $parent_names[ self::fold_title( (string) $r->category ) ] ),
 				'description'     => $r->description,
 				'amount'       => $amount,
 				'amount_fmt'   => $amount_fmt,
 				'recurring'    => $r->recurring,
 				'kind'         => $kind,
+				'kind_label'   => self::kind_display_label( $kind ),
+				'scope'        => $scope,
+				// Two per-order rows both titled "Packaging", one every-order and
+				// one bulky-only, would otherwise be indistinguishable in the list.
+				'scope_label'  => ( 'per_order' === $kind && function_exists( 'brikpanel_per_order_scope_label' ) )
+					? brikpanel_per_order_scope_label( $scope )
+					: '',
 			];
 		}
 
+		// Whether ANY percentage cost exists, not just one on this page: the list
+		// is paginated, so deciding the double-count warning from `items` alone
+		// would hide it whenever the estimate row happens to sit on page 2.
+		$has_percent = (bool) $wpdb->get_var(
+			"SELECT 1 FROM {$table} WHERE kind = 'percent' LIMIT 1" // phpcs:ignore
+		);
+
 		wp_send_json_success( [
 			'items'        => $items,
+			'has_percent'  => $has_percent,
 			'total_count'  => $total_count,
 			'total_amount' => $total_amount,
 			'total_fmt'    => html_entity_decode( wp_strip_all_tags( wc_price( $total_amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
@@ -413,14 +624,29 @@ class Brikpanel_Expenses {
 		$amount_raw  = sanitize_text_field( wp_unslash( $_POST['amount']       ?? '' ) );
 		$recurring   = sanitize_key( $_POST['recurring'] ?? 'none' );
 		$kind        = sanitize_key( $_POST['kind'] ?? 'fixed' );
-		if ( ! in_array( $kind, [ 'fixed', 'percent' ], true ) ) {
+		if ( ! in_array( $kind, [ 'fixed', 'percent', 'per_order' ], true ) ) {
 			$kind = 'fixed';
 		}
 
-		// A percentage cost has no meaningful single date (it applies every
-		// period), so the editor hides the date field. Stamp today just so the
-		// row has a created marker; the profit math ignores it for percent.
-		if ( 'percent' === $kind && $date === '' ) {
+		// Which orders a per-order cost is charged on. An unresolvable shipping
+		// class is REJECTED, never downgraded: sanitize_scope() returns '' for
+		// anything it cannot read, and '' means "every order", a BIGGER charge.
+		// Silently widening a cost from one class to the whole store is a
+		// money-changing mutation the merchant never asked for and would not see.
+		$scope = '';
+		if ( 'per_order' === $kind ) {
+			$scope_raw = sanitize_text_field( wp_unslash( $_POST['scope'] ?? '' ) );
+			$scope     = self::sanitize_scope( $scope_raw );
+			if ( 0 === strpos( $scope_raw, 'shipping_class:' ) && '' === $scope ) {
+				wp_send_json_error( [ 'message' => __( 'That shipping class no longer exists. Pick another one.', 'brikpanel' ) ] );
+			}
+		}
+
+		// Neither a percentage cost nor a per-order cost has a meaningful single
+		// date (each applies every period), so the editor hides the date field.
+		// Stamp today just so the row has a created marker; the profit math
+		// ignores it for both.
+		if ( in_array( $kind, brikpanel_expense_non_money_kinds(), true ) && $date === '' ) {
 			$date = current_time( 'Y-m-d' );
 		}
 
@@ -435,11 +661,18 @@ class Brikpanel_Expenses {
 
 		// A percentage cost (e.g. card commission) stores a RATE in `amount`.
 		// It applies to revenue every period from its date, so "recurring" is
-		// meaningless for it (it never materialises into fixed dated rows).
+		// meaningless for it (it never materialises into fixed dated rows). The
+		// 0-100 ceiling is percent-only: a per-order cost is money, and a pallet
+		// legitimately costs more than 100.
 		if ( 'percent' === $kind ) {
 			if ( $amount > 100 ) {
 				wp_send_json_error( [ 'message' => __( 'A percentage must be between 0 and 100.', 'brikpanel' ) ] );
 			}
+			$recurring = 'none';
+		}
+		// A per-order cost stores a UNIT PRICE and is charged once per matching
+		// order in every period, so it never repeats on a schedule either.
+		if ( 'per_order' === $kind ) {
 			$recurring = 'none';
 		}
 
@@ -504,6 +737,12 @@ class Brikpanel_Expenses {
 			'kind'            => $kind,
 		];
 		$format = [ '%s', '%s', '%s', '%s', '%f', '%s', '%s' ];
+		// Gated so a store between the plugin update and the dbDelta run can
+		// still save a fixed expense instead of erroring on a missing column.
+		if ( self::has_scope_column() ) {
+			$data['scope'] = $scope;
+			$format[]      = '%s';
+		}
 
 		if ( $id > 0 ) {
 			$wpdb->update( $table, $data, [ 'id' => $id ], $format, [ '%d' ] );
@@ -660,7 +899,7 @@ class Brikpanel_Expenses {
 
 		$mode = sanitize_key( wp_unslash( $_POST['mode'] ?? 'preview' ) );
 		$type = sanitize_key( wp_unslash( $_POST['type'] ?? '' ) );
-		if ( ! in_array( $mode, [ 'preview', 'commit' ], true ) || ! in_array( $type, [ 'cat', 'percent', 'group' ], true ) ) {
+		if ( ! in_array( $mode, [ 'preview', 'commit' ], true ) || ! in_array( $type, [ 'cat', 'percent', 'per_order', 'group' ], true ) ) {
 			wp_send_json_error( [ 'code' => 'invalid_request', 'message' => __( 'Invalid request.', 'brikpanel' ) ] );
 		}
 
@@ -669,6 +908,8 @@ class Brikpanel_Expenses {
 
 		if ( 'percent' === $type ) {
 			$plan = $this->plan_percent_line( absint( $_POST['id'] ?? 0 ) );
+		} elseif ( 'per_order' === $type ) {
+			$plan = $this->plan_per_order_line( absint( $_POST['id'] ?? 0 ) );
 		} elseif ( 'group' === $type ) {
 			$plan = $this->plan_group_line(
 				sanitize_text_field( wp_unslash( $_POST['group'] ?? '' ) ),
@@ -805,6 +1046,71 @@ class Brikpanel_Expenses {
 	}
 
 	/**
+	 * What removing a per-order cost would do. Like a percentage cost it is one
+	 * row, always on, with no date window and therefore no choice of scope.
+	 */
+	private function plan_per_order_line( int $id ): array {
+		global $wpdb;
+		$table = $wpdb->prefix . self::TABLE;
+
+		$scope_select = self::has_scope_column() ? "COALESCE(scope, '')" : "''";
+		$row = $id > 0 ? $wpdb->get_row( $wpdb->prepare(
+			"SELECT id, category, amount, {$scope_select} AS scope FROM {$table} WHERE id = %d AND kind = 'per_order'",
+			$id
+		) ) : null; // phpcs:ignore
+
+		if ( ! $row ) {
+			return [ 'error' => 'not_found', 'message' => __( 'This expense no longer exists.', 'brikpanel' ) ];
+		}
+
+		// Same fallback the Profit card uses, so the dialog names the line the
+		// way the card does.
+		$title = trim( (string) $row->category );
+		if ( '' === $title ) {
+			$title = __( 'Cost per order', 'brikpanel' );
+		}
+		$money = html_entity_decode( wp_strip_all_tags( wc_price( (float) $row->amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$scope = (string) $row->scope;
+
+		// Three whole sentences rather than one sentence with a noun slotted in:
+		// "on every <noun>" does not survive translation into languages with
+		// grammatical case, and a shipping-class name is a proper noun on top.
+		if ( 'free_shipping' === $scope ) {
+			/* translators: 1: name of the cost, 2: money amount, e.g. £4.50. */
+			$body = sprintf( __( '%1$s: %2$s on every order you shipped free.', 'brikpanel' ), $title, $money );
+		} elseif ( 0 === strpos( $scope, 'shipping_class:' ) ) {
+			/* translators: 1: name of the cost, 2: money amount, 3: shipping class name. */
+			$body = sprintf( __( '%1$s: %2$s on every order containing a %3$s item.', 'brikpanel' ), $title, $money, brikpanel_per_order_scope_label( $scope ) );
+		} else {
+			/* translators: 1: name of the cost, 2: money amount, e.g. £2.40. */
+			$body = sprintf( __( '%1$s: %2$s on every order.', 'brikpanel' ), $title, $money );
+		}
+
+		return [
+			'public' => [
+				// scope rides in the seed alongside the amount: re-scoping the row
+				// between preview and commit changes what is being removed just as
+				// much as re-pricing it does, and must read as stale.
+				'token'  => $this->plan_token( [ 'per_order', (int) $row->id, (string) $row->amount, $scope ] ),
+				'title'  => __( 'Remove this expense?', 'brikpanel' ),
+				'body'   => $body,
+				'note'   => __( 'This cost is charged per order, so removing it affects every period.', 'brikpanel' ),
+				'scopes' => [
+					[
+						'id'     => 'period',
+						'label'  => __( 'Remove', 'brikpanel' ),
+						'detail' => '',
+					],
+				],
+			],
+			'ids'         => [ 'period' => [ (int) $row->id ] ],
+			'managed_ids' => [ 'period' => [ (int) $row->id ] ],
+			'skip_pairs'  => [],
+			'series_ids'  => [],
+		];
+	}
+
+	/**
 	 * What removing one title line would do, for both scopes.
 	 *
 	 * @param string      $cat   RAW category as stored (may be ''), never a display label.
@@ -866,7 +1172,11 @@ class Brikpanel_Expenses {
 		return $this->plan_expense_line(
 			[ "COALESCE(parent_category,'') = %s" ],
 			[ $group ],
-			$group,
+			// Matched on the STORED value, shown by its display name. A computed
+			// line never draws a heading of its own, so this should not be
+			// reachable with one, but a raw "__brikpanel:tax" in a confirmation
+			// dialog is not a failure worth risking for one function call.
+			self::parent_display_label( $group ),
 			[ 'group', $group ],
 			$from,
 			$to
@@ -901,14 +1211,15 @@ class Brikpanel_Expenses {
 			[ $from, $to ] = [ $to, $from ];
 		}
 
-		// kind <> 'percent' mirrors how the card groups these lines. Without it a
-		// percentage cost sharing this title — which the card draws as its own
-		// separate line — would be swept up silently.
+		// Money kinds only, mirroring how the card groups these lines. Without it
+		// a percentage or per-order cost sharing this title, which the card
+		// draws as its own separate line — would be swept up silently.
 		$extra_sql = $where_extra ? ' AND ' . implode( ' AND ', $where_extra ) : '';
+		$kinds_sql = brikpanel_expense_money_kinds_sql();
 		$rows = $wpdb->get_results( $wpdb->prepare(
 			"SELECT id, expense_date, description, category, amount, recurring, recurring_parent
 			   FROM {$table}
-			  WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent'{$extra_sql}
+			  WHERE expense_date BETWEEN %s AND %s{$kinds_sql}{$extra_sql}
 			  ORDER BY expense_date ASC, id ASC", // phpcs:ignore
 			array_merge( [ $from, $to ], $where_args )
 		) ); // phpcs:ignore
@@ -1147,7 +1458,88 @@ class Brikpanel_Expenses {
 	 */
 	public static function fold_title( string $title ): string {
 		$title = trim( $title );
-		return function_exists( 'mb_strtolower' ) ? mb_strtolower( $title ) : strtolower( $title );
+		return brikpanel_strtolower( $title );
+	}
+
+	/**
+	 * Prefix marking a `parent_category` value as one of the Profit card's own
+	 * computed lines rather than an expense the merchant created.
+	 *
+	 * A STABLE KEY is stored, never the visible label. The label is translated,
+	 * so storing it would silently break every nesting the day a merchant
+	 * switches admin language: "Kargo maliyeti" would stop matching "Shipping
+	 * cost" and the children would quietly detach.
+	 */
+	const BUILTIN_PARENT_PREFIX = '__brikpanel:';
+
+	/**
+	 * Whether a stored parent value names one of the card's computed lines.
+	 *
+	 * @param string $parent
+	 * @return bool
+	 */
+	public static function is_builtin_parent( $parent ) {
+		return 0 === strpos( (string) $parent, self::BUILTIN_PARENT_PREFIX );
+	}
+
+	/**
+	 * The computed Profit-card lines an expense may be filed under, as
+	 * stable key => translated label.
+	 *
+	 * Each entry is gated on the same condition that lets its row appear on the
+	 * card, so the picker never offers a parent the merchant could not possibly
+	 * see. The labels MUST stay identical to the ones build_profit_block() uses
+	 * for the rows themselves, or the picker and the card would name the same
+	 * thing differently.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function builtin_parents() {
+		$out = [];
+
+		if ( function_exists( 'brikpanel_payment_fees_enabled' ) && brikpanel_payment_fees_enabled() ) {
+			$out[ self::BUILTIN_PARENT_PREFIX . 'payment_fees' ] = __( 'Payment fees', 'brikpanel' );
+		}
+		if ( function_exists( 'brikpanel_shipping_cost_enabled' ) && brikpanel_shipping_cost_enabled() ) {
+			$out[ self::BUILTIN_PARENT_PREFIX . 'shipping' ] = __( 'Shipping cost', 'brikpanel' );
+		}
+		$out[ self::BUILTIN_PARENT_PREFIX . 'tax' ] = __( 'Tax', 'brikpanel' );
+		if ( class_exists( 'Brikpanel_Ads_Store' ) ) {
+			$out[ self::BUILTIN_PARENT_PREFIX . 'google_ads' ] = __( 'Google Ads', 'brikpanel' );
+			$out[ self::BUILTIN_PARENT_PREFIX . 'meta_ads' ]   = __( 'Meta Ads', 'brikpanel' );
+		}
+		return $out;
+	}
+
+	/**
+	 * Display name for any stored parent value.
+	 *
+	 * Everything the merchant reads goes through here, so a raw
+	 * `__brikpanel:shipping` can never reach a screen, a CSV or a spreadsheet.
+	 * A key whose line is currently gated off (ad platforms removed, shipping
+	 * costs switched back off) still resolves, via the ungated fallback map, so
+	 * an existing row keeps reading sensibly instead of showing its key.
+	 *
+	 * @param string $parent
+	 * @return string
+	 */
+	public static function parent_display_label( $parent ) {
+		$parent = (string) $parent;
+		if ( ! self::is_builtin_parent( $parent ) ) {
+			return $parent;
+		}
+		$known = self::builtin_parents();
+		if ( isset( $known[ $parent ] ) ) {
+			return $known[ $parent ];
+		}
+		switch ( substr( $parent, strlen( self::BUILTIN_PARENT_PREFIX ) ) ) {
+			case 'payment_fees': return __( 'Payment fees', 'brikpanel' );
+			case 'shipping':   return __( 'Shipping cost', 'brikpanel' );
+			case 'tax':        return __( 'Tax', 'brikpanel' );
+			case 'google_ads': return __( 'Google Ads', 'brikpanel' );
+			case 'meta_ads':   return __( 'Meta Ads', 'brikpanel' );
+		}
+		return $parent;
 	}
 
 	/**
@@ -1201,7 +1593,15 @@ class Brikpanel_Expenses {
 		if ( empty( $col ) ) {
 			return []; // schema not upgraded yet
 		}
-		return $wpdb->get_col( "SELECT DISTINCT parent_category FROM {$table} WHERE parent_category != '' ORDER BY parent_category ASC" ) ?: []; // phpcs:ignore
+		$rows = $wpdb->get_col( "SELECT DISTINCT parent_category FROM {$table} WHERE parent_category != '' ORDER BY parent_category ASC" ) ?: []; // phpcs:ignore
+
+		// Drop the computed-line keys. They come back out of this query the
+		// moment anything is filed under one, and without this the picker would
+		// grow a second, raw "__brikpanel:shipping" entry beside the proper
+		// translated option — the easiest thing in this feature to miss.
+		return array_values( array_filter( $rows, static function ( $name ) {
+			return ! self::is_builtin_parent( $name );
+		} ) );
 	}
 
 	/**
@@ -1220,7 +1620,10 @@ class Brikpanel_Expenses {
 	public static function parent_expense_options(): array {
 		$out  = [];
 		$seen = [];
-		foreach ( [ self::parent_expense_titles(), self::used_parent_categories() ] as $source ) {
+		// The computed card lines come first: they are the store's own fixed
+		// costs, and this list doubles as the save-path allowlist, so they have
+		// to be in it for a merchant to be able to pick one at all.
+		foreach ( [ array_keys( self::builtin_parents() ), self::parent_expense_titles(), self::used_parent_categories() ] as $source ) {
 			foreach ( $source as $name ) {
 				$name = trim( (string) $name );
 				$key  = self::fold_title( $name );
@@ -1250,10 +1653,31 @@ class Brikpanel_Expenses {
 	 *                          page, dashboard quick-add) never collide.
 	 */
 	public static function render_parent_category_picker( string $id_prefix ): void {
-		$options = self::parent_expense_options();
+		$builtin = self::builtin_parents();
+		// The merchant's own expenses only. The computed lines are listed
+		// separately above them, so they must not appear twice.
+		$options = array_values( array_filter(
+			self::parent_expense_options(),
+			static function ( $name ) {
+				return ! self::is_builtin_parent( $name );
+			}
+		) );
 		?>
 		<select id="<?php echo esc_attr( $id_prefix ); ?>" class="brikpanel-ex-group-select">
 			<option value=""><?php esc_html_e( 'Nothing — a cost on its own', 'brikpanel' ); ?></option>
+			<?php if ( $builtin ) : ?>
+				<?php
+				// The card's own computed lines. They carry NO data-key on
+				// purpose: syncSelfExclusion() hides the option matching the
+				// expense being edited, and a computed line is never that
+				// expense, so it must never be a candidate for hiding.
+				?>
+				<optgroup label="<?php esc_attr_e( 'Store costs', 'brikpanel' ); ?>">
+					<?php foreach ( $builtin as $key => $label ) : ?>
+						<option value="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $label ); ?></option>
+					<?php endforeach; ?>
+				</optgroup>
+			<?php endif; ?>
 			<?php foreach ( $options as $title ) : ?>
 				<?php // data-key lets the browser exclude the expense being edited without re-folding unicode itself. ?>
 				<option value="<?php echo esc_attr( $title ); ?>" data-key="<?php echo esc_attr( self::fold_title( $title ) ); ?>"><?php echo esc_html( $title ); ?></option>
@@ -1592,15 +2016,16 @@ class Brikpanel_Expenses {
 		self::gc_skips();
 
 		// created_at comes along because it identifies the template when reading
-		// its skipped dates. The kind filter keeps a percentage cost out: its
-		// `amount` is a RATE, and materialising it would multiply that rate into
-		// real money rows. ajax_save() forces percent rows to recurring='none',
-		// so this only guards hand-written or legacy data.
+		// its skipped dates. The kind filter keeps the non-money kinds out: a
+		// percentage row's `amount` is a RATE and a per-order row's is a UNIT
+		// PRICE, and materialising either would multiply it into real money rows.
+		// ajax_save() forces both to recurring='none', so this only guards
+		// hand-written, imported or legacy data.
 		$since = (string) get_option( 'brikpanel_recurring_engine_since', '' );
 		$sql   = "SELECT id, expense_date, category, parent_category, description, amount, recurring, created_at
 			FROM {$table}
-			WHERE recurring IN ('monthly','weekly','yearly') AND recurring_parent = 0
-			  AND kind <> 'percent'";
+			WHERE recurring IN ('monthly','weekly','yearly') AND recurring_parent = 0"
+			. brikpanel_expense_money_kinds_sql();
 		if ( '' !== $since ) {
 			$sql .= $wpdb->prepare( ' AND created_at >= %s', $since );
 		}

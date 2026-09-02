@@ -346,6 +346,16 @@ function brikpanel_import_export_handle_import() {
 	$applied = 0;
 	$skipped = 0;
 
+	// Several exportable keys are unbounded (the sidebar config grows with the
+	// menu, the section-order lists with the screens) and their own save paths
+	// deliberately write them with autoload off. A plain update_option() here
+	// would create them autoloaded on a target site that never saved them,
+	// putting multi-KB blobs on every page load. Reuse the canonical denylist
+	// instead of restating the keys.
+	$no_autoload = function_exists( 'brikpanel_option_autoload_denylist' )
+		? brikpanel_option_autoload_denylist()
+		: [];
+
 	foreach ( $incoming as $key => $value ) {
 		if ( ! is_string( $key ) || ! isset( $map[ $key ] ) ) {
 			$skipped++;
@@ -353,7 +363,11 @@ function brikpanel_import_export_handle_import() {
 		}
 		$type      = isset( $map[ $key ]['type'] ) ? (string) $map[ $key ]['type'] : '';
 		$sanitized = brikpanel_import_export_sanitize_value( $value, $type );
-		update_option( $key, $sanitized );
+		if ( isset( $no_autoload[ $key ] ) ) {
+			update_option( $key, $sanitized, false );
+		} else {
+			update_option( $key, $sanitized );
+		}
 		$applied++;
 	}
 

@@ -104,6 +104,125 @@
     margin-bottom: 1rem;
 }
 
+/* ── Setting card (payment fees) ─────────────────────────────────────────────── */
+.brikpanel-ex-setting {
+    padding: 1.125rem 1.25rem;
+}
+
+.brikpanel-ex-setting-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+}
+
+.brikpanel-ex-setting-text {
+    min-width: 0; /* lets the description wrap instead of pushing the switch off */
+}
+
+.brikpanel-ex-setting-title {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ex-text);
+    cursor: pointer;
+}
+
+.brikpanel-ex-setting-desc {
+    margin: 0.25rem 0 0;
+    max-width: 62ch;
+    color: var(--ex-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+/* 40x22 switch, monochrome like every other control on this screen. */
+.brikpanel-ex-switch {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    margin-top: 0.125rem;
+}
+
+.brikpanel-ex-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+}
+
+.brikpanel-ex-switch-slider {
+    position: absolute;
+    inset: 0;
+    background: #ccc;
+    border-radius: 22px;
+    transition: background 0.15s ease;
+    pointer-events: none;
+}
+
+.brikpanel-ex-switch-slider::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: transform 0.15s ease;
+}
+
+.brikpanel-ex-switch input:checked + .brikpanel-ex-switch-slider {
+    background: var(--ex-primary);
+}
+
+.brikpanel-ex-switch input:checked + .brikpanel-ex-switch-slider::before {
+    transform: translateX(18px);
+}
+
+.brikpanel-ex-switch input:focus-visible + .brikpanel-ex-switch-slider {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ex-input-focus);
+}
+
+.brikpanel-ex-switch input:disabled {
+    cursor: default;
+}
+
+.brikpanel-ex-switch input:disabled + .brikpanel-ex-switch-slider {
+    opacity: 0.6;
+}
+
+/* Persistent, not a toast: it stays until the merchant resolves the conflict. */
+.brikpanel-ex-note {
+    margin: 0.875rem 0 0;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--ex-radius);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.brikpanel-ex-note.is-warning {
+    background: #fdf5e6;
+    border: 1px solid #e8d5a8;
+    color: #7a5a12;
+}
+
+.brikpanel-ex-note[hidden] {
+    display: none;
+}
+
+@media (max-width: 600px) {
+    .brikpanel-ex-setting-main {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+}
+
 /* ── Filters ─────────────────────────────────────────────────────────────────── */
 .brikpanel-ex-filters {
     padding: 1.125rem 1.25rem;

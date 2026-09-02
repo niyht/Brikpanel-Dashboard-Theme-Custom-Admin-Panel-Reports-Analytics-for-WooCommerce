@@ -39,6 +39,40 @@ class Brikpanel_Cron {
 	/** Group used to isolate BrikPanel actions from other AS clients. */
 	const GROUP = 'brikpanel';
 
+	/**
+	 * Every Action Scheduler function this class calls WITHOUT a fallback.
+	 *
+	 * THE RULE THIS LIST ENFORCES: a new as_* call either joins this list or
+	 * ships with a fallback of its own. Nothing else is allowed, because the
+	 * failure mode is not a broken feature — it is a fatal on `init`, which
+	 * takes the whole site down and locks the merchant out of WP-CLI too.
+	 *
+	 * `as_has_scheduled_action` is deliberately ABSENT: it does not exist on
+	 * the Action Scheduler that this plugin's own declared WooCommerce floor
+	 * ships, and has_scheduled() answers the question without it. Listing it
+	 * here would close the gate on those stores instead of serving them.
+	 *
+	 * @since 3.2.82
+	 */
+	const REQUIRED_FUNCTIONS = [
+		'as_enqueue_async_action',
+		'as_schedule_single_action',
+		'as_schedule_recurring_action',
+		'as_get_scheduled_actions',
+		'as_unschedule_action',
+	];
+
+	/**
+	 * The two statuses that mean "this job still has work to do". Written as
+	 * literals rather than as ActionScheduler_Store constants because this
+	 * array is read in has_scheduled(), which runs precisely when the store
+	 * class may not be the one we expect. The values are frozen in the AS
+	 * schema and have not changed across any version this plugin supports.
+	 *
+	 * @since 3.2.82
+	 */
+	const LIVE_STATUSES = [ 'pending', 'in-progress' ];
+
 	/** Default per-action retry budget (Action Scheduler is unaware of this; we
 	 * track it ourselves via last_error logging — AS itself retries
 	 * indefinitely on Throwable, so we cap by tracking attempts). */
@@ -85,12 +119,158 @@ class Brikpanel_Cron {
 	 * later — calling these methods before AS bootstraps is a no-op that
 	 * returns false.
 	 *
+	 * The list is what matters here, not the check. This used to name three
+	 * functions and the class called seven; the four it did not name were the
+	 * whole bug (see has_scheduled()). REQUIRED_FUNCTIONS now carries every
+	 * one of them that has no fallback, so the next as_* call added to this
+	 * class is a one-line entry rather than another outage.
+	 *
 	 * @return bool
 	 */
 	public static function is_available() {
-		return function_exists( 'as_enqueue_async_action' )
-			&& function_exists( 'as_schedule_single_action' )
-			&& function_exists( 'as_schedule_recurring_action' );
+		foreach ( self::REQUIRED_FUNCTIONS as $function ) {
+			if ( ! function_exists( $function ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Whether a job is pending OR in progress for this hook + args, asked in a
+	 * way that works on every Action Scheduler this plugin claims to support.
+	 *
+	 * WHY THIS WRAPPER EXISTS. `as_has_scheduled_action()` arrived in Action
+	 * Scheduler 3.3.0. This plugin's header declares `WC requires at least:
+	 * 4.0`, and WooCommerce 4.0 ships Action Scheduler 3.1.2, where the
+	 * function does not exist. Calling it unguarded from a hook that runs on
+	 * `init` took the whole SITE down with a fatal — not the plugin, the site —
+	 * and because the fatal fired before WP-CLI could load WordPress, the
+	 * merchant could not even switch the plugin off. Measured on WP 5.8.3 /
+	 * WC 4.0.0 / PHP 7.4: front page HTTP 500, and `wp plugin deactivate`
+	 * died with the same error. The only way out was deleting the folder
+	 * over FTP.
+	 *
+	 * is_available() did not catch it because it checked three as_* functions
+	 * and all three exist in 3.1.2. That is the shape of the bug worth
+	 * remembering: the gate was not wrong, it was INCOMPLETE.
+	 *
+	 * ANSWERING "true" ON A THROW IS DELIBERATE. A store that cannot answer
+	 * the question is a store we must not pile work onto: schedule_recurring()
+	 * treats true as "already there, leave it alone" and runs again on the
+	 * next request (these registrations live on `init`), while is_scheduled()
+	 * treats true as "one is already queued", which is the safe answer for the
+	 * one job in this plugin that duplicates badly (the BrikControl manual
+	 * scan). This matches how the rest of the plugin already fails —
+	 * recurring_interval_matches() below and the runner's has_live_action().
+	 *
+	 * @since 3.2.82
+	 * @param string     $hook
+	 * @param array|null $args Already wrapped by the caller, as AS expects, or
+	 *                         null to match the hook regardless of args.
+	 * @return bool
+	 */
+	private static function has_scheduled( $hook, $args ) {
+		try {
+			if ( function_exists( 'as_has_scheduled_action' ) ) {
+				return (bool) as_has_scheduled_action( $hook, $args, self::GROUP );
+			}
+			return self::has_scheduled_fallback( $hook, $args );
+		} catch ( \Throwable $e ) {
+			return true;
+		}
+	}
+
+	/**
+	 * The same question, answered without as_has_scheduled_action().
+	 *
+	 * Split out rather than inlined above so it can be exercised on a modern
+	 * Action Scheduler, where the dispatcher would never reach it. A fallback
+	 * only the oldest supported store ever runs is a fallback nobody tests, and
+	 * that is how it comes to be broken on the day it is needed. See
+	 * tools/test-as-floor.php, which calls this method directly.
+	 *
+	 * A status filter is not optional. Asking without one also matches
+	 * COMPLETE and FAILED rows, which would report a finished job as still
+	 * scheduled and stop the recurring registration from ever renewing.
+	 *
+	 * @since 3.2.82
+	 * @param string     $hook
+	 * @param array|null $args
+	 * @return bool
+	 */
+	private static function has_scheduled_fallback( $hook, $args ) {
+		if ( function_exists( 'as_get_scheduled_actions' ) ) {
+			// ONE STATUS PER CALL. Action Scheduler 3.1.2 throws
+			// InvalidArgumentException on an array of statuses ("Invalid action
+			// status: \"Array\""), measured, so the obvious single query would
+			// have swapped one fatal for another on the same stores.
+			foreach ( self::LIVE_STATUSES as $status ) {
+				$query = [
+					'hook'     => $hook,
+					'group'    => self::GROUP,
+					'status'   => $status,
+					'per_page' => 1,
+					'return'   => 'ids',
+				];
+				// Omitted rather than passed as null: "any args" is expressed
+				// by the key being absent, and 3.1.2 does not read null the
+				// way the modern function does.
+				if ( $args !== null ) {
+					$query['args'] = $args;
+				}
+				$found = as_get_scheduled_actions( $query );
+				if ( ! empty( $found ) ) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		// Last resort, and unreachable through every public entry point on this
+		// class: as_get_scheduled_actions is in REQUIRED_FUNCTIONS, so if it is
+		// missing then is_available() already returned false and no caller got
+		// this far. It stays because it costs nothing and it is the honest
+		// answer if a future caller ever asks without the gate. Note what it
+		// gives up: it sees PENDING only, so a recurring job that is mid-run
+		// reads as absent and could be registered twice.
+		if ( function_exists( 'as_next_scheduled_action' ) ) {
+			return false !== as_next_scheduled_action( $hook, $args, self::GROUP );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Run an Action Scheduler write and turn a THROW into "not scheduled".
+	 *
+	 * The gate above answers "can Action Scheduler take work", and it is right
+	 * as far as it goes — but it cannot see one state, and that state fatals.
+	 * On a store whose AS is mid-migration between its post store and its table
+	 * store, ActionScheduler_HybridStore raises
+	 * `RuntimeException: Error saving action: Incorrect table name ''`.
+	 * Measured in the WC 4.0 container: during that window Action Scheduler
+	 * cannot even schedule its OWN migration action, so this is genuinely its
+	 * bootstrap and not a defect of ours. What IS ours is that the exception
+	 * travelled up through `init` and took the request with it — HTTP 500 on
+	 * every page of a brand new store, for something that resolves itself
+	 * seconds later.
+	 *
+	 * Returning false is the honest answer and one every caller already
+	 * handles: it is what the gate itself returns when AS cannot take work.
+	 * The job is picked up by the next request, because these registrations are
+	 * idempotent and run on `init`.
+	 *
+	 * @since 3.2.82
+	 * @param callable $write
+	 * @return int|false
+	 */
+	private static function guarded( callable $write ) {
+		try {
+			return $write();
+		} catch ( \Throwable $e ) {
+			return false;
+		}
 	}
 
 	// =========================================================================
@@ -232,7 +412,9 @@ class Brikpanel_Cron {
 		$priority = isset( $opts['priority'] ) ? (int) $opts['priority'] : 10;
 		// AS expects args wrapped as a positional list; we always pass a
 		// single payload so handlers can use `function( $payload )`.
-		return (int) as_enqueue_async_action( $hook, [ $args ], self::GROUP, $unique, $priority );
+		return self::guarded( static function () use ( $hook, $args, $unique, $priority ) {
+			return (int) as_enqueue_async_action( $hook, [ $args ], self::GROUP, $unique, $priority );
+		} );
 	}
 
 	/**
@@ -250,7 +432,9 @@ class Brikpanel_Cron {
 		}
 		$unique   = ! empty( $opts['unique'] );
 		$priority = isset( $opts['priority'] ) ? (int) $opts['priority'] : 10;
-		return (int) as_schedule_single_action( (int) $timestamp, $hook, [ $args ], self::GROUP, $unique, $priority );
+		return self::guarded( static function () use ( $timestamp, $hook, $args, $unique, $priority ) {
+			return (int) as_schedule_single_action( (int) $timestamp, $hook, [ $args ], self::GROUP, $unique, $priority );
+		} );
 	}
 
 	/**
@@ -273,7 +457,7 @@ class Brikpanel_Cron {
 			return false;
 		}
 		$interval = max( 60, (int) $interval_seconds );
-		if ( as_has_scheduled_action( $hook, [ $args ], self::GROUP ) ) {
+		if ( self::has_scheduled( $hook, [ $args ] ) ) {
 			// as_has_scheduled_action matches on hook + args + group only — the
 			// recurrence is NOT part of that identity. Returning early on a
 			// match therefore pinned the cadence forever: a merchant moving a
@@ -286,7 +470,9 @@ class Brikpanel_Cron {
 			self::cancel( $hook, $args );
 		}
 		$first_run = time() + ( $start_offset !== null ? (int) $start_offset : $interval );
-		return (int) as_schedule_recurring_action( $first_run, $interval, $hook, [ $args ], self::GROUP, false, 10 );
+		return self::guarded( static function () use ( $first_run, $interval, $hook, $args ) {
+			return (int) as_schedule_recurring_action( $first_run, $interval, $hook, [ $args ], self::GROUP, false, 10 );
+		} );
 	}
 
 	/**
@@ -304,16 +490,24 @@ class Brikpanel_Cron {
 		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
 			return true;
 		}
-		$actions = as_get_scheduled_actions(
-			[
-				'hook'     => $hook,
-				'args'     => [ $args ],
-				'group'    => self::GROUP,
-				'status'   => 'pending',
-				'per_page' => 1,
-			],
-			OBJECT
-		);
+		// Guarded for the same reason the writes are: this runs on `init`, and a
+		// store mid-migration throws rather than answers. "Cannot tell" already
+		// means "leave it alone" everywhere else in this method, so a throw
+		// joins that path instead of taking the request down.
+		try {
+			$actions = as_get_scheduled_actions(
+				[
+					'hook'     => $hook,
+					'args'     => [ $args ],
+					'group'    => self::GROUP,
+					'status'   => 'pending',
+					'per_page' => 1,
+				],
+				OBJECT
+			);
+		} catch ( \Throwable $e ) {
+			return true;
+		}
 		if ( empty( $actions ) || ! is_array( $actions ) ) {
 			return true;
 		}
@@ -347,12 +541,18 @@ class Brikpanel_Cron {
 		$count   = 0;
 		// as_unschedule_all_actions returns no count, so we query first to
 		// produce a useful number for callers/tests.
+		// 'pending' as a literal, not ActionScheduler_Store::STATUS_PENDING:
+		// cancel() is reachable from front-end `init` (every disabled Sheets
+		// sync calls it) and only the function gate stands in front of it, so
+		// it must not depend on a class reference resolving. Same constant
+		// value in every AS release. See LIVE_STATUSES.
 		$pending = self::query( [
 			'hook'     => $hook,
-			'status'   => ActionScheduler_Store::STATUS_PENDING,
+			'status'   => 'pending',
 			'per_page' => 200,
 		] );
 		foreach ( $pending as $action_id => $_action ) {
+			$row_args = null;
 			if ( $payload !== null ) {
 				// Skip rows whose args don't match.
 				$row_args = self::get_action_args( $action_id );
@@ -360,7 +560,15 @@ class Brikpanel_Cron {
 					continue;
 				}
 			}
-			as_unschedule_action( $hook, $row_args ?? null, self::GROUP );
+			$unscheduled = self::guarded( static function () use ( $hook, $row_args ) {
+				as_unschedule_action( $hook, $row_args ?? null, self::GROUP );
+				return 1;
+			} );
+			if ( $unscheduled === false ) {
+				// A store that cannot delete is a store mid-migration; the next
+				// request finds the row still pending and tries again.
+				continue;
+			}
 			$count++;
 		}
 		return $count;
@@ -377,7 +585,29 @@ class Brikpanel_Cron {
 		if ( ! self::is_available() ) {
 			return false;
 		}
-		return (bool) as_has_scheduled_action( $hook, [ $args ], self::GROUP );
+		return self::has_scheduled( $hook, [ $args ] );
+	}
+
+	/**
+	 * Whether ANY job is pending or in progress for this hook, whatever its
+	 * args.
+	 *
+	 * The args-blind counterpart to is_scheduled(). Exists because a caller
+	 * that is sweeping a hook away does not know — and must not have to know —
+	 * which payloads are sitting in the queue. Its one caller today is the
+	 * Google Sheets module's disabled-path sweep, which used to ask Action
+	 * Scheduler directly and was one of the three calls that took a WC 4.0
+	 * store offline.
+	 *
+	 * @since 3.2.82
+	 * @param string $hook
+	 * @return bool
+	 */
+	public static function has_any_scheduled( $hook ) {
+		if ( ! self::is_available() ) {
+			return false;
+		}
+		return self::has_scheduled( $hook, null );
 	}
 
 	// =========================================================================
@@ -389,6 +619,15 @@ class Brikpanel_Cron {
 	 *
 	 * Wraps `as_get_scheduled_actions` with `group => self::GROUP` pre-set so
 	 * we can never accidentally surface unrelated WC actions in the UI.
+	 *
+	 * PASS A `status`. On the Action Scheduler bundled with WooCommerce 4.0
+	 * (3.1.2) a CANCELLED row has no schedule date, and hydrating it throws
+	 * `TypeError: Argument 1 passed to ActionScheduler_Abstract_Schedule::
+	 * __construct() must be an instance of DateTime, null given` — measured,
+	 * five of nineteen rows on a store that had switched one sync off. An
+	 * unfiltered query returns those rows and therefore throws. Every caller
+	 * in this plugin filters (all of them on `pending`), which is why no
+	 * shipped path hits it; a new caller that does not, would.
 	 *
 	 * @param array $args See as_get_scheduled_actions(). Anything passed
 	 *                    overrides the defaults except `group`, which is
@@ -403,7 +642,15 @@ class Brikpanel_Cron {
 		if ( ! isset( $args['per_page'] ) ) {
 			$args['per_page'] = 50;
 		}
-		return as_get_scheduled_actions( $args );
+		// cancel() calls this on front-end `init` for every switched-off Google
+		// Sheets sync, so a store that throws instead of answering would take
+		// the page with it. An empty result is what every caller already gets
+		// when Action Scheduler cannot be reached at all.
+		try {
+			return as_get_scheduled_actions( $args );
+		} catch ( \Throwable $e ) {
+			return [];
+		}
 	}
 
 	/**

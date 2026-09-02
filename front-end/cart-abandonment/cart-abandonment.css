@@ -1439,3 +1439,62 @@
 .brikpanel-cartab-teaser .brikpanel-cartab-teaser-close:hover {
 	color: #d72c0d !important;
 }
+
+/* ==========================================================================
+ * Saved code: the tab in "you already have a code" mode, and the small panel
+ * it reopens. The signup card sells; these two only hand something back, so
+ * they are quieter than the invitation in every respect.
+ * ========================================================================== */
+
+/* The wiggle is an attention-getter for an offer not yet taken. A code the
+ * visitor already owns has no reason to fidget. */
+.brikpanel-cartab-teaser.is-coupon .brikpanel-cartab-teaser-ticket {
+	animation: none !important;
+}
+
+/* Echoes the code chip's typeface so the tab reads as "your code" at a glance. */
+.brikpanel-cartab-teaser.is-coupon .brikpanel-cartab-teaser-label {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+	letter-spacing: 0.04em !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup--code {
+	max-width: 380px !important;
+	padding: 2rem 1.5rem 1.5rem !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup--code .brikpanel-cartab-popup-title {
+	font-size: 1rem !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup--code .brikpanel-cartab-coupon {
+	margin-top: 1rem !important;
+}
+
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-saved {
+	margin-top: 0.375rem !important;
+	font-size: 0.75rem !important;
+	color: #8a8a8a !important;
+}
+
+/* Collapse: the card flies into the tab it is about to become, so the visitor
+ * sees where their code went instead of watching it vanish. */
+.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup.is-collapsing {
+	transform-origin: bottom left;
+	animation: brikpanel-cartab-collapse 0.4s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes brikpanel-cartab-collapse {
+	to {
+		transform: translate(-18vw, 34vh) scale(0.2);
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-cartab-popup-overlay .brikpanel-cartab-popup.is-collapsing {
+		animation: none !important;
+		opacity: 0;
+		transition: opacity 0.25s ease;
+	}
+}

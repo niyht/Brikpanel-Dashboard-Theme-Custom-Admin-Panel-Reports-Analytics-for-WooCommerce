@@ -86,6 +86,52 @@ abstract class Brikpanel_BrikControl_Check {
     abstract public function run( array $state = [] );
 
     /**
+     * Whether this check can repair what it reports.
+     *
+     * Non-abstract with a false default on purpose: every check that existed
+     * before this contract, and any third-party check registered through the
+     * `brikpanel_brikcontrol_checks` filter, keeps working untouched. Consumers
+     * still probe with method_exists() before calling, so a check built against
+     * the older abstract cannot fatal either.
+     *
+     * @since 3.2.76
+     * @return bool
+     */
+    public function supports_fix() {
+        return false;
+    }
+
+    /**
+     * Translatable label for the repair button.
+     *
+     * @since 3.2.76
+     * @return string
+     */
+    public function get_fix_label() {
+        return __( 'Clean up', 'brikpanel' );
+    }
+
+    /**
+     * Perform the repair.
+     *
+     * Implementations must be idempotent and bounded: cap the work at whatever
+     * fits comfortably in one request and report `has_more` so the caller can
+     * invoke it again instead of risking a timeout.
+     *
+     * @since 3.2.76
+     *
+     * @param array $args Optional caller arguments.
+     * @return array { removed: int, has_more: bool, message: string }
+     */
+    public function run_fix( array $args = [] ) {
+        return [
+            'removed'  => 0,
+            'has_more' => false,
+            'message'  => '',
+        ];
+    }
+
+    /**
      * Helper: build a CheckResult skeleton with the check's static metadata
      * already populated. Concrete checks fill status / score / summary /
      * recommendations / metadata.

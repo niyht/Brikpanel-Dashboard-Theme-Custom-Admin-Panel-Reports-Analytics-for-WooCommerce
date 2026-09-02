@@ -1037,13 +1037,23 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
     .brikpanel-fn-panel { width: auto; }
 }
 
-/* Phones: the right-hand action cluster (search + notifications + master
-   switch + user) is a fixed ~290px and, with the hamburger and brand, no
-   longer leaves room for the store name — it spilled across the gap and the
-   logo/name overlapped the search button. Drop to a logo-only brand here; the
-   mark still links home and the name reappears on wider screens. */
+/* Phones: drop the brand entirely — mark and all.
+   `.brikpanel-topbar-right` is flex-shrink:0 by design (icons stay full tap
+   targets), so every pixel the bar is short of is taken out of the *left*
+   side, which is `overflow: hidden`. The overflow therefore never wraps or
+   scales: it slices the logo down its middle. Measured with the default seven
+   controls (search, notifications, hidden notices, BrikControl, master switch,
+   view store, user = 244px): at 360px the mark lost 11px — a visibly halved
+   logo — and at 320px it was clipped away completely while still consuming
+   layout. A store with the cache-clear button, a custom shortcut, or any
+   third-party `brikpanel_topbar_items` entry hits the same edge at 390-430px.
+   Hiding the whole brand is what makes the bar fit by construction instead of
+   by luck. Nothing is lost: the hamburger sits in the very same corner and the
+   panel is one tap away, and the name+mark both return at 601px. An admin who
+   wants the brand gone on every screen already has the `brand` top bar item
+   toggle. */
 @media (max-width: 600px) {
-    .brikpanel-topbar-brand-text { display: none; }
+    .brikpanel-topbar-brand { display: none; }
 
     /* Compact the action cluster so all seven controls (search, notifications,
        notices, BrikControl, master switch, store link, user) plus the logo and
@@ -1066,14 +1076,48 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
     .brikpanel-topbar-search-btn svg { width: 18px; height: 18px; }
     .brikpanel-topbar-user-btn img { width: 24px; height: 24px; }
     .brikpanel-topbar-user-caret { display: none; }
+
+    /* ---- Last-resort overflow guard ----
+       The two rules above size the *known* cluster to fit a phone, but the bar
+       is extensible: the cache-clear button, a custom shortcut and any
+       third-party `brikpanel_topbar_items` entry all land in the same row, and
+       no arithmetic here can cover every store. Without a guard the overflow
+       goes somewhere silently harmful — measured on this bar: at 280px (fold
+       cover screens) the hamburger itself was clipped away and the navigation
+       became unreachable; at 320px with two extra controls the user avatar sat
+       23px past the viewport edge, un-tappable, with no page scrollbar to
+       reveal it.
+
+       So: pin the hamburger (it is the only nav entry point at this width and
+       must never shrink), and let the action cluster become a horizontally
+       scrollable strip when — and only when — its contents genuinely do not
+       fit. No overflow, no visual change whatsoever. The padding/negative
+       margin pair carves out room for the badges' -5px overhang so making this
+       a scroll container cannot crop a count bubble; the dropdowns are
+       `position: fixed` at this breakpoint, so they are not clipped by it. */
+    .brikpanel-topbar-left { flex: 0 0 auto; }
+
+    .brikpanel-topbar-right {
+        flex: 0 1 auto;
+        min-width: 0;
+        padding: 6px 6px 6px 0;
+        margin: -6px -6px -6px 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .brikpanel-topbar-right::-webkit-scrollbar { display: none; }
 }
 
-/* Very small phones: keep the hamburger a comfortable tap target; the icon
-   buttons already match the compact 32px desktop size. */
+/* Very small phones. The hamburger used to be squeezed to 36px and the brand
+   mark to 28px here, both to buy back room the brand was eating; with the
+   brand gone below 600px that room already exists, so the hamburger keeps its
+   full 40px tap target and the mark rule is dropped as dead (the element it
+   targets is display:none across this whole range). */
 @media (max-width: 380px) {
-    .brikpanel-topbar-menu-btn { width: 36px; height: 36px; }
     .brikpanel-topbar-icon-btn svg { width: 18px; height: 18px; }
-    .brikpanel-topbar-brand-mark { width: 28px; height: 28px; }
 }
 
 /* =============================================================================

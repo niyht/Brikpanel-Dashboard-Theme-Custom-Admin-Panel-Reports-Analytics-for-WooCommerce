@@ -458,6 +458,61 @@
 	max-width: 9.5rem;
 }
 
+/* ----- Group heading row ----- */
+.brikpanel-navc-item.is-heading {
+	background: #f7f7f7;
+}
+.brikpanel-navc-item.is-heading .brikpanel-navc-row {
+	padding: 0.375rem 0.5rem;
+}
+.brikpanel-navc-heading-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	flex: 0 0 auto;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	color: var(--text-secondary);
+}
+.brikpanel-navc-heading-badge svg {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+}
+.brikpanel-navc-heading-input {
+	flex: 1;
+	min-width: 0;
+	padding: 0.3125rem 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--text);
+	border: 1px solid var(--input-border);
+	border-radius: 0.375rem;
+	background: #fff;
+}
+.brikpanel-navc-heading-input:focus {
+	outline: none;
+	border-color: var(--input-focus);
+	box-shadow: 0 0 0 1px var(--input-focus);
+}
+/* Rows that follow a heading, up to the next one. Purely a reading aid so the
+   owner can see which group a row lands in while dragging; the grouping itself
+   is positional and lives in the saved order. */
+.brikpanel-navc-item.is-in-group {
+	position: relative;
+}
+.brikpanel-navc-item.is-in-group .brikpanel-navc-row {
+	padding-left: 1.5rem;
+}
+.brikpanel-navc-item.is-in-group::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0.6rem;
+	width: 2px;
+	background: var(--border);
+}
+
 /* "New" badge on newly-detected, not-yet-reviewed menu items. */
 .brikpanel-navc-new-badge {
 	display: inline-block;
@@ -470,6 +525,48 @@
 	background: var(--primary);
 	border-radius: 0.75rem;
 	vertical-align: middle;
+}
+
+/* Saved item whose slug no longer resolves to a live admin menu entry: the
+   plugin/CPT that registered it is gone, or the config came from another site.
+   Muted so it reads as leftover config rather than a working menu item. */
+.brikpanel-navc-item.is-unavailable .brikpanel-navc-icon,
+.brikpanel-navc-item.is-unavailable .brikpanel-navc-label-text {
+	color: var(--text-muted);
+}
+/* A live row's label is a short menu title, so clipping it to one line is fine.
+   This row's label is a raw slug followed by the badge that explains why it is
+   here, and a nowrap+ellipsis line hides the badge entirely once the column
+   narrows. Let both wrap instead. */
+.brikpanel-navc-item.is-unavailable .brikpanel-navc-label-text {
+	white-space: normal;
+	overflow: visible;
+	text-overflow: clip;
+	overflow-wrap: anywhere;
+}
+/* The meta slot normally holds a custom link's URL, where a single clipped line
+   is right. Here it holds a sentence, so let it wrap instead of losing its end
+   to an ellipsis on narrower screens. */
+.brikpanel-navc-item.is-unavailable .brikpanel-navc-label-meta {
+	white-space: normal;
+	overflow: visible;
+	text-overflow: clip;
+}
+.brikpanel-navc-missing-badge {
+	display: inline-block;
+	margin-left: 0.375rem;
+	padding: 0.05rem 0.375rem;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	line-height: 1.4;
+	color: var(--error);
+	background: #fce9e6;
+	border-radius: 0.75rem;
+	vertical-align: middle;
+	/* Deliberately wrappable: the label column gets narrow between the WP
+	   sidebar's fold points, and a nowrap pill would overflow its clipping
+	   parent and vanish exactly when the row most needs explaining. */
+	white-space: normal;
 }
 
 /* ----- Primary / secondary buttons ----- */

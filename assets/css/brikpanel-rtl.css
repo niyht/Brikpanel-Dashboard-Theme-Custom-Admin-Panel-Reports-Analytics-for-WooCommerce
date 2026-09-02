@@ -663,9 +663,14 @@ body.rtl .brikpanel-topbar { left: 0; right: 0; }
    sidebar opens. On RTL desktop sessions some browsers still let the
    invisible layer interfere with wheel scrolling near the bottom of the
    page. Hide it outright on viewports wider than the mobile breakpoint —
-   the real activation rule below restores it on small screens. */
+   the real activation rule below restores it on small screens.
+
+   The breakpoint is 960px, matching the LTR reveal in brikpanel-topbar.css.
+   It used to be 782px, which meant that between 783 and 960px the off-canvas
+   sheet opened (LTR rule) with no backdrop underneath it: tapping outside
+   could not close the menu. */
 body.rtl .brikpanel-topbar-mobile-backdrop { display: none; }
-@media (max-width: 782px) {
+@media (max-width: 960px) {
     body.rtl .brikpanel-topbar-mobile-backdrop { display: block; }
 }
 
@@ -686,7 +691,15 @@ body.rtl .brikpanel-topbar-toast.is-visible { transform: translateX(0); }
 
 body.rtl .brikpanel-topbar-cache-item { text-align: right; }
 
-@media (max-width: 782px) {
+/* Mirror of the LTR off-canvas sidebar, and it must mirror it at the SAME
+   breakpoint. The LTR rules in brikpanel-topbar.css park the sheet off-screen
+   with `translateX(-100%)` from 960px down; these RTL counterparts stopped at
+   782px, so between 783 and 960px an RTL store got the LTR transform applied
+   to a sidebar that RTL had already docked to `right: 0` — instead of sliding
+   off the right edge the closed menu slid 240px *inward*, sitting permanently
+   on top of the content column, and (with the backdrop still hidden) could not
+   be dismissed. Everything that pairs with a 960px LTR rule belongs here. */
+@media (max-width: 960px) {
     body.rtl.brikpanel-has-topbar #adminmenuback,
     body.rtl.brikpanel-has-topbar #adminmenuwrap { transform: translateX(100%); }
 
@@ -698,7 +711,11 @@ body.rtl .brikpanel-topbar-cache-item { text-align: right; }
         margin-left: auto !important;
         margin-right: 0 !important;
     }
+}
 
+/* Phone-only, and deliberately left at 782px: this pairs with the LTR rule
+   that turns the dropdowns into full-width sheets, which is also 782px. */
+@media (max-width: 782px) {
     body.rtl .brikpanel-topbar-dropdown,
     body.rtl .brikpanel-topbar-dropdown-wide,
     body.rtl .brikpanel-topbar-dropdown-user { left: 8px; right: 8px; }
@@ -784,8 +801,18 @@ body.rtl #brikpanelDateSelectOrderRates {
 /* =============================================================================
    FILE: front-end/navigation/brikpanel-navigation.css
    ============================================================================= */
-body.rtl .brikpanel-site-management-toggle { margin-left: 0; margin-right: 10px; }
-body.rtl .brikpanel-site-management-toggle.collapsed { transform: rotate(90deg); }
+body.rtl .brikpanel-site-management-toggle,
+body.rtl .brikpanel-menu-group-toggle { margin-left: 0; margin-right: 10px; }
+body.rtl .brikpanel-site-management-toggle.collapsed,
+body.rtl .brikpanel-menu-group-toggle.collapsed { transform: rotate(90deg); }
+body.rtl .brikpanel-navc-item.is-in-group .brikpanel-navc-row {
+    padding-left: 0.5rem;
+    padding-right: 1.5rem;
+}
+body.rtl .brikpanel-navc-item.is-in-group::before {
+    left: auto;
+    right: 0.6rem;
+}
 
 body.rtl #wpcontent {
     margin-left: 0;

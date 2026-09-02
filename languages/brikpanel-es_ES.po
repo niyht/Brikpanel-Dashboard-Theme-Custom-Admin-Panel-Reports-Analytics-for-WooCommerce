@@ -9806,6 +9806,11 @@ msgstr "Buscar %s..."
 msgid "No categories found."
 msgstr "No se encontraron categorías."
 
+#: front-end/products/brikpanel-product-editor.php:2004
+#: front-end/products/brikpanel-product-editor.php:8970
+msgid "No brands found."
+msgstr "No se encontraron marcas."
+
 #: front-end/products/brikpanel-products-list.php:834
 #: includes/brikpanel-enqueue.php:980
 msgid "Availability"

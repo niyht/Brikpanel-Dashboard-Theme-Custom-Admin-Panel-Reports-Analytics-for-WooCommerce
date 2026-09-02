@@ -377,7 +377,24 @@ class Brikpanel_ASE_Bridge {
             ob_end_clean();
             return '';
         }
-        $html = ob_get_clean();
+        return self::kses_cell( ob_get_clean() );
+    }
+
+    /**
+     * Sanitises one list-table cell against the same allowlist the replayed
+     * third-party cells use.
+     *
+     * Public so the products list can put the output of a
+     * `brikpanel_products_columns` render callback through the identical
+     * filter. The allowlist array itself stays private: it is memoised and
+     * shared by every cell in the request, so handing a caller a reference to
+     * it would let one column widen what every other column may emit.
+     *
+     * @param string $html Raw cell HTML.
+     * @return string Sanitised HTML, or '' when the cell is blank.
+     */
+    public static function kses_cell( $html ) {
+        $html = (string) $html;
 
         if ( '' === trim( $html ) ) {
             return '';

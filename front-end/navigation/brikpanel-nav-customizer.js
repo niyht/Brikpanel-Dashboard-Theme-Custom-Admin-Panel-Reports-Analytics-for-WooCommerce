@@ -131,6 +131,24 @@
 		const spacingSelect = root.querySelector('[data-navc-spacing]');
 		const sitemgmtLabelInput = root.querySelector('[data-navc-sitemgmt-label]');
 
+		// Visual only: mark every row that follows a heading (up to the next
+		// heading) so the editor shows at a glance which group it belongs to.
+		// Grouping itself is positional and lives in the serialized order, so
+		// this class is never read back on save.
+		function markGroupMembers() {
+			lists.forEach(function (ul) {
+				let inGroup = false;
+				ul.querySelectorAll(':scope > .brikpanel-navc-item').forEach(function (li) { // i18n-ignore: CSS selector
+					if (li.getAttribute('data-type') === 'heading') {
+						inGroup = true;
+						li.classList.remove('is-in-group');
+						return;
+					}
+					li.classList.toggle('is-in-group', inGroup);
+				});
+			});
+		}
+
 		function serialize() {
 			const items = [];
 			lists.forEach(function (ul) {
@@ -143,6 +161,16 @@
 							type: 'spacer',
 							id: li.getAttribute('data-id') || '',
 							variant: li.getAttribute('data-variant') === 'line' ? 'line' : 'space',
+							section: section,
+						});
+						return;
+					}
+					if (type === 'heading') {
+						const labelInput = li.querySelector('[data-navc-heading-label]'); // i18n-ignore: CSS selector
+						items.push({
+							type: 'heading',
+							id: li.getAttribute('data-id') || '',
+							label: labelInput ? labelInput.value.trim().slice(0, 60) : '',
 							section: section,
 						});
 						return;
@@ -224,7 +252,7 @@
 				tolerance: 'pointer',
 				cursor: 'grabbing',
 				forcePlaceholderSize: true,
-				update: function () { serialize(); },
+				update: function () { markGroupMembers(); serialize(); },
 			}).disableSelection();
 		}
 
@@ -236,6 +264,14 @@
 		if (sitemgmtLabelInput) {
 			sitemgmtLabelInput.addEventListener('input', serialize);
 		}
+
+		// Same for every group-heading label: capture each keystroke so a save
+		// without blurring still stores the typed name.
+		root.addEventListener('input', function (e) {
+			if (e.target.closest('[data-navc-heading-label]')) {
+				serialize();
+			}
+		});
 
 		root.addEventListener('change', function (e) {
 			const spacerVariant = e.target.closest('[data-navc-spacer-variant]');
@@ -328,14 +364,42 @@
 				serialize();
 				return;
 			}
+			if (action === 'add-heading') {
+				e.preventDefault();
+				const section = actionEl.closest('.brikpanel-navc-section').getAttribute('data-section');
+				const ul = root.querySelector('.brikpanel-navc-list[data-section="' + section + '"]'); // i18n-ignore: CSS selector
+				if (!ul) return;
+				const li = createHeadingRow({
+					id: 'h' + Math.random().toString(36).slice(2, 12),
+					label: i18n.headingDefault || 'New section',
+				});
+				ul.appendChild(li);
+				markGroupMembers();
+				serialize();
+				// Drop the user straight into the label so naming the new section
+				// is one keystroke away instead of a second click.
+				const input = li.querySelector('[data-navc-heading-label]'); // i18n-ignore: CSS selector
+				if (input) {
+					input.focus();
+					input.select();
+				}
+				return;
+			}
 			if (action === 'delete') {
 				e.preventDefault();
 				const li = actionEl.closest('.brikpanel-navc-item');
-				const isSpacer = li && li.getAttribute('data-type') === 'spacer';
-				// Spacers are trivial/decorative — remove without a confirm prompt.
-				if (!isSpacer && i18n.confirmDelete && !window.confirm(i18n.confirmDelete)) return;
+				const rowType = li ? li.getAttribute('data-type') : '';
+				// Spacers and headings are decorative — removing one moves no menu
+				// item, so skip the confirm prompt for both.
+				const isDecorative = rowType === 'spacer' || rowType === 'heading';
+				// Stale system rows (slug has no live menu counterpart) get their own
+				// wording: nothing on screen disappears, only the leftover setting.
+				const isMissing = li && li.getAttribute('data-unavailable') === '1';
+				const confirmText = isMissing ? i18n.confirmDeleteMissing : i18n.confirmDelete;
+				if (!isDecorative && confirmText && !window.confirm(confirmText)) return;
 				if (li && li.parentNode) {
 					li.parentNode.removeChild(li);
+					markGroupMembers();
 					serialize();
 				}
 				return;
@@ -396,7 +460,9 @@
 				if (spacingSelect) spacingSelect.value = 'comfortable';
 				if (sitemgmtLabelInput) sitemgmtLabelInput.value = '';
 				lists.forEach(function (ul) {
-					ul.querySelectorAll('.brikpanel-navc-item.is-custom, .brikpanel-navc-item.is-spacer').forEach(function (li) { li.parentNode.removeChild(li); });
+					// Stale rows go too: a reset that left them in the DOM would see
+					// them re-serialized into the config on the next interaction.
+					ul.querySelectorAll('.brikpanel-navc-item.is-custom, .brikpanel-navc-item.is-spacer, .brikpanel-navc-item.is-heading, .brikpanel-navc-item.is-unavailable').forEach(function (li) { li.parentNode.removeChild(li); });
 					ul.querySelectorAll('.brikpanel-navc-item.is-hidden').forEach(function (li) {
 						li.classList.remove('is-hidden');
 						const cb = li.querySelector(':scope > .brikpanel-navc-row > [data-navc-toggle]');
@@ -425,6 +491,9 @@
 						panel.setAttribute('hidden', '');
 					});
 				});
+				// Every heading was just removed, so no row is inside a group any
+				// more — drop the indent markers with them.
+				markGroupMembers();
 				return;
 			}
 		});
@@ -706,6 +775,35 @@
 			return li;
 		}
 
+		// Build a group-heading row. Mirrors the PHP-rendered markup so it
+		// serializes identically. The label lives in an inline text input; the
+		// rows that follow it in the same list become its collapsible group in
+		// the live sidebar.
+		function createHeadingRow(data) {
+			const li = document.createElement('li');
+			li.className = 'brikpanel-navc-item is-heading';
+			li.setAttribute('data-type', 'heading');
+			li.setAttribute('data-id', data.id);
+			li.innerHTML =
+				'<div class="brikpanel-navc-row">' +
+					'<span class="brikpanel-navc-drag" aria-hidden="true">' +
+						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>' +
+					'</span>' +
+					'<span class="brikpanel-navc-heading-badge">' +
+						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="13" y2="18"/></svg>' +
+						'<span>' + escapeAttr(i18n.heading || 'Heading') + '</span>' +
+					'</span>' +
+					'<input type="text" class="brikpanel-navc-heading-input" data-navc-heading-label maxlength="60"' +
+						' value="' + escapeAttr(data.label || '') + '"' +
+						' placeholder="' + escapeAttr(i18n.headingExample || 'e.g. Site content') + '"' +
+						' aria-label="' + escapeAttr(i18n.headingText || 'Heading text') + '">' +
+					'<button type="button" class="brikpanel-navc-iconbtn brikpanel-navc-iconbtn-danger" data-navc-action="delete" aria-label="' + escapeAttr(i18n.removeHeading || 'Remove heading') + '">' +
+						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>' +
+					'</button>' +
+				'</div>';
+			return li;
+		}
+
 		function isValidUrl(value) {
 			if (!value) return false;
 			// Accept absolute http(s)/mailto, or admin-relative paths.
@@ -732,6 +830,7 @@
 		});
 
 		// Initial serialize so the hidden field reflects DOM state from PHP-render.
+		markGroupMembers();
 		serialize();
 	});
 })();

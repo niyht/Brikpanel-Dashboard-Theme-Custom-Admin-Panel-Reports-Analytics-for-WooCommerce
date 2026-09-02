@@ -60,6 +60,60 @@ function brikpanel_data_cache_ver() {
 }
 
 /**
+ * Expense kinds whose `amount` column does NOT hold a period total.
+ *
+ * 'percent'   stores a RATE applied to the period's revenue.
+ * 'per_order' stores a UNIT PRICE charged once per matching order.
+ *
+ * Summing either as if it were money inflates Expenses and understates Net
+ * profit. This list is the single source of truth for that distinction so the
+ * next kind cannot drift out of one of the dozen queries that read the table.
+ *
+ * @return string[]
+ */
+function brikpanel_expense_non_money_kinds() {
+    return [ 'percent', 'per_order' ];
+}
+
+/**
+ * Ready-to-append SQL restricting a brikpanel_expenses query to money rows.
+ *
+ * Returns '' when the table has no `kind` column at all (a schema predating the
+ * kinds feature), so a caller can append it unconditionally without risking a
+ * fatal query on an un-upgraded install. At most one SHOW COLUMNS per request,
+ * and only on requests that read expenses.
+ *
+ * Contains no user input, the kind list is a hard-coded literal set, so it is
+ * safe to interpolate into an otherwise-prepared query.
+ *
+ * @param string $alias Table alias WITH trailing dot, e.g. 'e.'. '' for none.
+ * @return string e.g. " AND kind NOT IN ('percent','per_order')"
+ */
+function brikpanel_expense_money_kinds_sql( $alias = '' ) {
+    static $has_kind = null;
+    global $wpdb;
+
+    if ( null === $has_kind ) {
+        $table  = $wpdb->prefix . 'brikpanel_expenses';
+        $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
+        // Only memoise a definitive answer. On an activation request the table
+        // is created part-way through, and caching "no kind column" from a probe
+        // taken before dbDelta ran would drop the filter for the rest of that
+        // request, silently summing a rate as money.
+        if ( ! $exists ) {
+            return '';
+        }
+        $has_kind = (bool) $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", 'kind' ) ); // phpcs:ignore WordPress.DB
+    }
+    if ( ! $has_kind ) {
+        return '';
+    }
+
+    $list = "'" . implode( "','", array_map( 'esc_sql', brikpanel_expense_non_money_kinds() ) ) . "'";
+    return " AND {$alias}kind NOT IN ({$list})";
+}
+
+/**
  * Invalidate every order-derived cache by bumping the shared version.
  * Hooked to woocommerce_new_order / status_changed / refunded so dashboard
  * KPIs stay live without manual cache wiring per metric.
@@ -1940,3 +1994,45 @@ function brikpanel_bidi_close_isolates( $text ) {
 	return $text;
 }
 
+
+if ( ! function_exists( 'brikpanel_index_terms_by_parent' ) ) {
+	/**
+	 * Group a flat list of terms by parent, ready for a hierarchical renderer.
+	 *
+	 * The term checklists (product categories in the editor's Category and Brand
+	 * boxes, and in the products list Quick Edit drawer) used to find each node's
+	 * children by rescanning the WHOLE term array at every level of the
+	 * recursion. With N terms and no `number` limit on the `get_terms()` that
+	 * feeds them, that is N comparisons per node over N nodes: fine for the
+	 * twenty categories a small store has, quadratic for a catalogue with
+	 * thousands, where the page hits the memory limit or the execution timeout
+	 * and the store owner gets "There has been a critical error on this website"
+	 * with nothing to explain it. Indexing once turns each walker into a single
+	 * pass over the tree.
+	 *
+	 * Parents are cast to int on the way in. `WP_Term` already stores `parent`
+	 * as an int, but a `get_terms` / `terms_clauses` filter (WPML, Polylang, some
+	 * object-cache layers) can hand back plain rows whose `parent` is the string
+	 * the database returned, and a strict comparison against int 0 then matches
+	 * nothing and silently renders an empty box.
+	 *
+	 * @param iterable $terms Terms with `term_id` and `parent` properties.
+	 * @return array<int,array> parent term id => list of child terms, source order kept.
+	 */
+	function brikpanel_index_terms_by_parent( $terms ) {
+		$by_parent = array();
+	
+		if ( ! is_array( $terms ) && ! ( $terms instanceof Traversable ) ) {
+			return $by_parent;
+		}
+	
+		foreach ( $terms as $term ) {
+			if ( ! is_object( $term ) || ! isset( $term->parent ) ) {
+				continue;
+			}
+			$by_parent[ (int) $term->parent ][] = $term;
+		}
+	
+		return $by_parent;
+	}
+}

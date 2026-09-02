@@ -305,8 +305,20 @@ class Brikpanel_Cron_Page {
 		$dt_fmt  = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
 
 		foreach ( (array) $action_ids as $aid ) {
-			$aid    = (int) $aid;
-			$action = $store->fetch_action( $aid );
+			$aid = (int) $aid;
+			try {
+				$action = $store->fetch_action( $aid );
+			} catch ( \Throwable $e ) {
+				// The Action Scheduler bundled with WooCommerce 4.0 (3.1.2)
+				// cannot rebuild a CANCELLED action: the row has no schedule
+				// date and its factory type-errors on the null. Measured on
+				// WP 5.8.3 / WC 4.0.0 / PHP 7.4 — five of nineteen rows, which
+				// is what a store looks like the first time someone switches a
+				// Google Sheets sync off. Unguarded, one such row took the
+				// whole Scheduled Tasks screen with it. A row we cannot draw is
+				// a row we leave out, not a page we lose.
+				continue;
+			}
 			if ( ! $action ) {
 				continue;
 			}

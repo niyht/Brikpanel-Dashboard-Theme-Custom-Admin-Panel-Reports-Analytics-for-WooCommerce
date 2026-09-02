@@ -250,6 +250,32 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 			break;
 		}
 	}
+
+	// Cart share registers a hidden admin page (no menu parent), so before this
+	// it was only reachable from the topbar "Create" dropdown. Surface it inside
+	// the "More" group so the screen has a real home in the navigation — and do
+	// it here, in the shared relocation truth, so the live sidebar and the nav
+	// customizer (where it can be renamed, reordered or hidden) agree.
+	if ( class_exists( 'Brikpanel_Cart_Share' ) && Brikpanel_Cart_Share::is_enabled() ) {
+		$cart_share_target = 'admin.php?page=brikpanel-cart-share';
+		$has_cart_share    = false;
+		if ( ! empty( $submenu['woocommerce-more'] ) && is_array( $submenu['woocommerce-more'] ) ) {
+			foreach ( $submenu['woocommerce-more'] as $more_row ) {
+				if ( isset( $more_row[2] ) && $cart_share_target === $more_row[2] ) {
+					$has_cart_share = true;
+					break;
+				}
+			}
+		}
+		if ( ! $has_cart_share ) {
+			$submenu['woocommerce-more'][] = array(
+				__( 'Cart share', 'brikpanel' ),
+				'manage_woocommerce',
+				$cart_share_target,
+				__( 'Cart share', 'brikpanel' ),
+			);
+		}
+	}
 }
 
 /**
@@ -321,6 +347,57 @@ function brikpanel_render_navigation() {
                         itemsContainer.style.display = "none";
                         toggleButton.classList.add("collapsed");
                         localStorage.setItem("brikpanelSiteManagementCollapsed", "true");
+                    }
+                });
+            }
+
+            // User-created group headings (nav customizer "Add heading"). Same
+            // collapse behaviour as the built-in "Site management" heading, but
+            // one per heading and DEFAULT OPEN: a heading the owner just added
+            // must show what is under it, otherwise the rows look deleted.
+            const groupHeadings = document.querySelectorAll(".brikpanel-menu-group-heading");
+            for (const groupHeading of groupHeadings) {
+                const groupItems = groupHeading.nextElementSibling;
+                if (!groupItems || !groupItems.classList.contains("brikpanel-menu-group-items")) {
+                    continue;
+                }
+                const groupToggle = groupHeading.querySelector(".brikpanel-menu-group-toggle");
+                // The group id rides in a class (brikpanel-navgroup-<id>) because
+                // wp_kses() strips data-* attributes from the sidebar markup.
+                let groupId = "";
+                for (const cls of groupHeading.classList) {
+                    if (cls.indexOf("brikpanel-navgroup-") === 0) {
+                        groupId = cls.slice("brikpanel-navgroup-".length);
+                        break;
+                    }
+                }
+                if (!groupId) {
+                    continue;
+                }
+                const storageKey = "brikpanelNavGroup:" + groupId;
+                // wp_kses() drops tabindex from the sidebar markup, so the
+                // heading only becomes keyboard-reachable here.
+                groupHeading.setAttribute("tabindex", "0");
+                const setCollapsed = function (collapsed) {
+                    groupItems.style.display = collapsed ? "none" : "";
+                    groupHeading.setAttribute("aria-expanded", collapsed ? "false" : "true");
+                    if (groupToggle) {
+                        groupToggle.classList.toggle("collapsed", collapsed);
+                    }
+                };
+                // Only an explicit "true" collapses, so a brand new group (no
+                // stored preference yet) renders open.
+                setCollapsed(localStorage.getItem(storageKey) === "true");
+                const toggleGroup = function (event) {
+                    event.preventDefault();
+                    const nowCollapsed = groupItems.style.display !== "none";
+                    setCollapsed(nowCollapsed);
+                    localStorage.setItem(storageKey, nowCollapsed ? "true" : "false");
+                };
+                groupHeading.addEventListener("click", toggleGroup);
+                groupHeading.addEventListener("keydown", function (event) {
+                    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+                        toggleGroup(event);
                     }
                 });
             }
@@ -425,6 +502,38 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 			$first = true;
 
+			// State for user-created group headings (nav customizer "Add heading").
+			// A heading opens a collapsible wrapper that stays open until the next
+			// heading or the end of the menu, so the loop has to remember whether
+			// one is currently open.
+			//   $brikpanel_group_open   — a wrapper <div> is waiting to be closed
+			//   $brikpanel_group_offset — strlen($html) right BEFORE the heading was
+			//                             appended, so an empty group can be undone
+			//   $brikpanel_group_rows   — rows emitted since the heading opened
+			$brikpanel_group_open   = false;
+			$brikpanel_group_offset = 0;
+			$brikpanel_group_rows   = 0;
+
+			// Close the currently open heading group, dropping the heading entirely
+			// when nothing rendered under it. An empty group happens for real: every
+			// row inside it can be capability- or role-filtered away for the current
+			// user, and a lone heading with a toggle that opens nothing is worse than
+			// no heading at all.
+			$brikpanel_close_group = function () use ( &$html, &$brikpanel_group_open, &$brikpanel_group_offset, &$brikpanel_group_rows ) {
+				if ( ! $brikpanel_group_open ) {
+					return;
+				}
+				if ( $brikpanel_group_rows === 0 ) {
+					// Nothing was appended after the heading, so truncating back to
+					// the recorded offset removes exactly the heading + wrapper.
+					$html = substr( $html, 0, $brikpanel_group_offset );
+				} else {
+					$html .= '</div>';
+				}
+				$brikpanel_group_open = false;
+				$brikpanel_group_rows = 0;
+			};
+
 			// Loop through each top-level menu and build HTML.
 			foreach ( $menu as $key => $item ) {
 				// Third-party plugins can leave a non-array (scalar) entry in the
@@ -472,6 +581,13 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 						? brikpanel_nav_config_sitemgmt_label()
 						: __( 'Site management', 'brikpanel' );
 					$heading = '<span class="brikpanel-menu-heading">' . esc_html( $brikpanel_sitemgmt_label ) . '<img class="brikpanel-site-management-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">';
+					// A user-created group that is still open must end BEFORE the
+					// "Site management" wrapper starts, otherwise Site management
+					// would nest inside it and collapsing the user's group would
+					// take Site management down with it. Doing this here — where
+					// $heading is computed, ahead of every skip branch — covers all
+					// the places further down that emit $heading.
+					$brikpanel_close_group();
 				}
 
 				$submenu_items = ! empty( $submenu[ $item_slug ] ) ? $submenu[ $item_slug ] : array();
@@ -685,6 +801,38 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		if ( ! $brikpanel_row_renders ) {
 			$html .= $heading;
 			continue;
+		}
+
+		// User-created group heading injected by the nav customizer. Like the
+		// built-in "Site management" heading it is NOT a list row: it emits a
+		// label plus the opening tag of the collapsible wrapper the rows after
+		// it live in, then bows out before any <li> is written.
+		if ( isset( $item[7] ) && is_array( $item[7] ) && ! empty( $item[7]['is_heading'] ) ) {
+			$brikpanel_close_group();
+			$html .= $heading;
+			$brikpanel_group_label = isset( $item[7]['label'] ) ? (string) $item[7]['label'] : '';
+			$brikpanel_group_id    = isset( $item[7]['id'] ) ? preg_replace( '/[^a-zA-Z0-9_]/', '', (string) $item[7]['id'] ) : '';
+			if ( $brikpanel_group_label === '' || $brikpanel_group_id === '' ) {
+				continue;
+			}
+			// The group id travels in a CLASS, not a data-* attribute: the whole
+			// sidebar is filtered through wp_kses() with the 'post' allowlist,
+			// which drops data-* attributes but keeps class.
+			$brikpanel_group_class  = 'brikpanel-navgroup-' . $brikpanel_group_id;
+			$brikpanel_group_offset = strlen( $html );
+			$brikpanel_group_rows   = 0;
+			$brikpanel_group_open   = true;
+			// `role` survives wp_kses()'s global-attribute list; `tabindex` does
+			// not, so the collapse script adds it at runtime instead.
+			$html .= '<span class="brikpanel-menu-heading brikpanel-menu-group-heading ' . esc_attr( $brikpanel_group_class ) . '" role="button">'
+				. esc_html( $brikpanel_group_label )
+				. '<img class="brikpanel-menu-group-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10">'
+				. '</span><div class="brikpanel-menu-group-items ' . esc_attr( $brikpanel_group_class ) . '">';
+			continue;
+		}
+
+		if ( $brikpanel_group_open ) {
+			$brikpanel_group_rows++;
 		}
 
 		$html .= "
@@ -1192,6 +1340,11 @@ if (!empty($sub_item[4])) {
 
 		$html .= '</li>';
 	}
+
+	// Last user-created group never met a following heading, so close it here.
+	// (The built-in "Site management" wrapper is deliberately left open — the
+	// browser closes it at </ul>, exactly as it always has.)
+	$brikpanel_close_group();
 
 	if ( is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
 		global $wp_menu_editor;

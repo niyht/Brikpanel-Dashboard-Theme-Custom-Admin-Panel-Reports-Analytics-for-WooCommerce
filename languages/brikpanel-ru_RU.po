@@ -9785,6 +9785,11 @@ msgstr "Поиск %s..."
 msgid "No categories found."
 msgstr "Категории не найдены."
 
+#: front-end/products/brikpanel-product-editor.php:2004
+#: front-end/products/brikpanel-product-editor.php:8970
+msgid "No brands found."
+msgstr "Бренды не найдены."
+
 #: front-end/products/brikpanel-products-list.php:834
 #: includes/brikpanel-enqueue.php:980
 msgid "Availability"

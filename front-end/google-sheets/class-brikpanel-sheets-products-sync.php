@@ -1452,9 +1452,7 @@ class Brikpanel_Sheets_Products_Sync {
 						$raw_name = str_replace( 'attribute_', '', $k );
 						$label    = wc_attribute_label( $raw_name );
 						if ( $label === '' || $label === $raw_name ) {
-							$label = function_exists( 'mb_convert_case' )
-								? mb_convert_case( $raw_name, MB_CASE_TITLE, 'UTF-8' )
-								: ucfirst( $raw_name );
+							$label = brikpanel_title_case( $raw_name );
 						}
 						$attrs[] = $label . ': ' . (string) $v;
 					}

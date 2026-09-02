@@ -104,7 +104,52 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
         </ul>
     <?php endif; ?>
 
-    <?php if ( ! empty( $meta['totals'] ) ) :
+    <?php
+    // Repair action. Checks opt in via supports_fix(); `fixable` is the count
+    // the button offers to clear, so a healthy card shows no button at all.
+    $check_obj = class_exists( 'Brikpanel_BrikControl_Registry' )
+        ? Brikpanel_BrikControl_Registry::get( $check_id )
+        : null;
+    $fixable = isset( $meta['fixable'] ) ? (int) $meta['fixable'] : 0;
+    $can_fix = $check_obj
+        && method_exists( $check_obj, 'supports_fix' )
+        && $check_obj->supports_fix()
+        && $fixable > 0
+        && current_user_can( 'manage_woocommerce' );
+    ?>
+    <?php if ( $can_fix ) : ?>
+        <div class="brikpanel-bc-card-actions">
+            <button type="button"
+                    class="brikpanel-bc-button brikpanel-bc-button-primary"
+                    data-bc-fix="<?php echo esc_attr( $check_id ); ?>"
+                    data-bc-fix-count="<?php echo esc_attr( $fixable ); ?>">
+                <span data-bc-fix-label><?php echo esc_html( $check_obj->get_fix_label() ); ?></span>
+            </button>
+            <span class="brikpanel-bc-fix-result" data-bc-fix-result role="status" aria-live="polite"></span>
+        </div>
+    <?php endif; ?>
+
+    <?php
+    // Generic stats grid. Kept as an if/elseif so the image check's hard-coded
+    // block below stays exactly as it was and no empty container is emitted for
+    // a check whose totals use different keys.
+    ?>
+    <?php if ( ! empty( $meta['stats'] ) && is_array( $meta['stats'] ) ) : ?>
+        <div class="brikpanel-bc-stats">
+            <?php
+            foreach ( $meta['stats'] as $stat ) :
+                $tone       = isset( $stat['tone'] ) ? (string) $stat['tone'] : '';
+                $tone_class = in_array( $tone, [ 'warn', 'good', 'error' ], true )
+                    ? ' brikpanel-bc-stat-' . $tone
+                    : '';
+                ?>
+                <div class="brikpanel-bc-stat<?php echo esc_attr( $tone_class ); ?>">
+                    <span class="brikpanel-bc-stat-num"><?php echo esc_html( number_format_i18n( (float) ( $stat['value'] ?? 0 ) ) ); ?></span>
+                    <span class="brikpanel-bc-stat-label"><?php echo esc_html( (string) ( $stat['label'] ?? '' ) ); ?></span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php elseif ( ! empty( $meta['totals'] ) ) :
         $totals = $meta['totals'];
         ?>
         <div class="brikpanel-bc-stats">
@@ -139,6 +184,42 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
                 </div>
             <?php endif; ?>
         </div>
+    <?php endif; ?>
+
+    <?php
+    // Generic sample table: a check hands over plain rows plus its own column
+    // headings, all translated server-side.
+    if ( ! empty( $meta['samples'] ) && is_array( $meta['samples'] ) ) :
+        $sample_cols  = ( ! empty( $meta['samples_cols'] ) && is_array( $meta['samples_cols'] ) )
+            ? $meta['samples_cols']
+            : [];
+        $sample_title = ! empty( $meta['samples_title'] )
+            ? (string) $meta['samples_title']
+            : __( 'Details', 'brikpanel' );
+        ?>
+        <details class="brikpanel-bc-details">
+            <summary><?php echo esc_html( $sample_title ); ?></summary>
+            <table class="brikpanel-bc-largest-table">
+                <?php if ( ! empty( $sample_cols ) ) : ?>
+                    <thead>
+                        <tr>
+                            <?php foreach ( $sample_cols as $col ) : ?>
+                                <th><?php echo esc_html( (string) $col ); ?></th>
+                            <?php endforeach; ?>
+                        </tr>
+                    </thead>
+                <?php endif; ?>
+                <tbody>
+                    <?php foreach ( $meta['samples'] as $sample_row ) : ?>
+                        <tr>
+                            <?php foreach ( (array) $sample_row as $cell ) : ?>
+                                <td><?php echo esc_html( (string) $cell ); ?></td>
+                            <?php endforeach; ?>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
     <?php endif; ?>
 
     <?php if ( ! empty( $largest ) ) : ?>

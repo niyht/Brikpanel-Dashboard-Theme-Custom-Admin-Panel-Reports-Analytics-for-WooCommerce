@@ -92,6 +92,7 @@
 
         initCacheClear();
         initHiddenNotices(topbar);
+        initActionOverflow(topbar);
 
         fetchTopbarStats();
         startTopbarPolling();
@@ -365,6 +366,36 @@
                 if (toast.parentElement) toast.parentElement.removeChild(toast);
             }, 300);
         }
+    }
+
+    /**
+     * Keep the end of the action cluster in view when it overflows.
+     *
+     * Below 600px `.brikpanel-topbar-right` becomes a horizontally scrollable
+     * strip (see brikpanel-topbar.css) so that a store carrying more controls
+     * than a narrow phone can hold — the cache-clear button, a custom shortcut,
+     * a third-party `brikpanel_topbar_items` entry — never pushes one of them
+     * off-screen where it cannot be tapped at all. A scroll container starts at
+     * scrollLeft 0, i.e. showing its *first* items, which would leave the user
+     * menu (profile, log out) hidden behind a swipe nobody knows to make. The
+     * cluster reads right-to-left in importance, so park it at the end instead;
+     * the earlier icons are the ones a swipe then reveals.
+     *
+     * Purely corrective: when nothing overflows, scrollWidth === clientWidth
+     * and this is a no-op.
+     */
+    function initActionOverflow(topbar) {
+        var right = topbar.querySelector('.brikpanel-topbar-right');
+        if (!right) return;
+
+        var pin = function () {
+            if (right.scrollWidth > right.clientWidth) {
+                right.scrollLeft = right.scrollWidth;
+            }
+        };
+
+        pin();
+        window.addEventListener('resize', pin);
     }
 
     /**

@@ -43,25 +43,55 @@
     var $recurring   = el('brikpanel-ex-recurring');
     var $description = el('brikpanel-ex-description');
     var $submitBtn   = el('brikpanel-ex-submit-btn');
+    var $pfToggle    = el('brikpanel-ex-pf-toggle');
+    var $pfWarning   = el('brikpanel-ex-pf-warning');
     var $kind        = el('brikpanel-ex-kind');
     var $prefix      = el('brikpanel-ex-prefix');
     var $suffix      = el('brikpanel-ex-suffix');
+    var $scope       = el('brikpanel-ex-scope');
+    var $scopeField  = el('brikpanel-ex-scope-field');
 
-    // A percentage cost is a rate of revenue, always on: show "%" instead of the
-    // currency and hide BOTH the Date and Recurring fields (a percentage has no
-    // meaningful single date and applies every period by nature).
+    // Two of the three kinds are not a single dated payment, so both hide Date
+    // and Repeats: a percentage is a rate of revenue and a per-order cost is a
+    // unit price, and each applies in every period by its nature. Only the
+    // percentage swaps the currency prefix for a "%" suffix and caps the input
+    // at 100; a per-order cost is still money (a pallet legitimately costs more
+    // than 100). "Applies to" belongs to the per-order kind alone.
     function syncKind() {
-        var pct = $kind && $kind.value === 'percent';
+        var kind   = $kind ? $kind.value : 'fixed';
+        var pct    = kind === 'percent';
+        var perOrd = kind === 'per_order';
+        var ongoing = pct || perOrd;
         if ($prefix) $prefix.hidden = pct;
         if ($suffix) $suffix.hidden = !pct;
         if ($amount) $amount.max = pct ? '100' : '';
         [$recurring, $date].forEach(function (input) {
             if (!input || !input.closest) return;
             var field = input.closest('.brikpanel-ex-field');
-            if (field) field.hidden = pct;
+            if (field) field.hidden = ongoing;
         });
+        if ($scopeField) $scopeField.hidden = !perOrd;
         // A hidden required date would block form submit in some browsers.
-        if ($date) $date.required = !pct;
+        if ($date) $date.required = !ongoing;
+    }
+
+    // Re-select a stored scope, re-adding it as a transient option when it names
+    // a shipping class that has since been deleted. Without this, opening the row
+    // just to correct its amount would silently re-scope the cost to "Every
+    // order", a bigger charge the merchant never asked for.
+    function setScopeValue(value) {
+        if (!$scope) return;
+        var wanted = value || '';
+        var i;
+        for (i = 0; i < $scope.options.length; i++) {
+            if ($scope.options[i].value === wanted) { $scope.value = wanted; return; }
+        }
+        var opt = document.createElement('option');
+        opt.value = wanted;
+        opt.textContent = i18n.scope_missing_class || '';
+        opt.setAttribute('data-transient', '1');
+        $scope.appendChild(opt);
+        $scope.value = wanted;
     }
 
 
@@ -180,6 +210,43 @@
         .catch(function (err) { cb(err, null); });
     }
 
+    // ── Payment fees toggle ───────────────────────────────────────────────────
+
+    // A percentage-of-revenue cost is almost always the merchant's hand-made
+    // estimate of card commission. Once the real fee is read off each order both
+    // are deducted, so say so — but only warn. The row is their data and stays
+    // exactly as they left it; deciding what to do with it is their call.
+    function syncPaymentFeesWarning() {
+        if (!$pfWarning) return;
+        var show = !!(state.hasPercent && $pfToggle && $pfToggle.checked);
+        $pfWarning.textContent = show
+            ? (i18n.pf_double_count
+                || 'You have a percentage-based cost below. If it was your estimate of card commission, it is now being deducted on top of the real fees. Delete or edit it to avoid counting the same cost twice.')
+            : '';
+        $pfWarning.hidden = !show;
+    }
+
+    if ($pfToggle) {
+        $pfToggle.addEventListener('change', function () {
+            var on = $pfToggle.checked;
+            $pfToggle.disabled = true;
+            ajax({ action: 'brikpanel_payment_fees_toggle', enabled: on ? '1' : '0' }, function (err, res) {
+                $pfToggle.disabled = false;
+                if (err || !res || !res.success) {
+                    $pfToggle.checked = !on; // put the switch back; nothing was saved
+                    showToast(i18n.error || 'Something went wrong.', 'error');
+                    return;
+                }
+                showToast(
+                    on ? (i18n.pf_saved_on  || 'Payment fees are now counted as an expense.')
+                       : (i18n.pf_saved_off || 'Payment fees are no longer counted as an expense.'),
+                    'success'
+                );
+                syncPaymentFeesWarning();
+            });
+        });
+    }
+
     // ── List ──────────────────────────────────────────────────────────────────
 
     function fetchList(page) {
@@ -207,6 +274,9 @@
             if ($total) $total.textContent = d.total_fmt || CURRENCY + '0';
             if ($count) $count.textContent = d.total_count || '0';
 
+            state.hasPercent = !!d.has_percent;
+            syncPaymentFeesWarning();
+
             renderRows(state.items);
             renderPagination(d.page, d.pages);
         });
@@ -219,23 +289,32 @@
         }
         var html = '';
         items.forEach(function (item) {
-            var isPct = item.kind === 'percent';
+            // Percentage and per-order costs are both always-on, so neither has a
+            // single date or a repeat schedule.
+            var isOngoing = item.kind === 'percent' || item.kind === 'per_order';
             html += '<tr data-id="' + item.id + '">';
-            // Percentage costs are always-on, so they have no single date and no
-            // repeat schedule — show "Ongoing" and a dash instead.
-            html += '<td class="brikpanel-ex-date-cell">' + escHtml(isPct ? (i18n.ongoing || 'Ongoing') : item.date) + '</td>';
+            html += '<td class="brikpanel-ex-date-cell">' + escHtml(isOngoing ? (i18n.ongoing || 'Ongoing') : item.date) + '</td>';
             // What this cost is filed under sits above the title as a quiet line
             // rather than claiming a whole column, so the table keeps its six
-            // columns and standalone rows look exactly as they always did.
+            // columns and standalone rows look exactly as they always did. A
+            // per-order cost's scope shares that slot: two rows both titled
+            // "Packaging", one every-order and one bulky-only, are otherwise
+            // indistinguishable. The label is composed server-side.
             html += '<td>';
             if (item.parent_category) {
+                // parent_label, never parent_category: a cost filed under one of
+                // the card's computed lines stores a stable key, and the key must
+                // not reach the screen.
                 html += '<span class="brikpanel-ex-parent-cat">'
-                    + escHtml((i18n.filed_under || 'Part of %s').replace('%s', item.parent_category))
+                    + escHtml((i18n.filed_under || 'Part of %s').replace('%s', item.parent_label || item.parent_category))
                     + '</span>';
+            }
+            if (item.scope_label) {
+                html += '<span class="brikpanel-ex-parent-cat">' + escHtml(item.scope_label) + '</span>';
             }
             html += '<span class="brikpanel-ex-cat-badge">' + escHtml(item.category) + '</span></td>';
             html += '<td class="brikpanel-ex-desc-cell">' + escHtml(item.description || '—') + '</td>';
-            html += isPct
+            html += isOngoing
                 ? '<td>—</td>'
                 : '<td><span class="brikpanel-ex-rec-badge brikpanel-ex-rec-' + escHtml(item.recurring) + '">' + escHtml(recurringLabel(item.recurring)) + '</span></td>';
             html += '<td class="brikpanel-ex-num">' + escHtml(item.amount_fmt) + '</td>';
@@ -274,6 +353,12 @@
             Array.prototype.slice.call($parentCat.querySelectorAll('option[data-transient]'))
                 .forEach(function (o) { o.remove(); });
         }
+        // Same sweep for the "Applies to" picker: a deleted shipping class that
+        // one edit had to re-add must not linger into the next expense.
+        if ($scope) {
+            Array.prototype.slice.call($scope.querySelectorAll('option[data-transient]'))
+                .forEach(function (o) { o.remove(); });
+        }
         if ($editId)    $editId.value    = state.editId || '';
         if ($modalTitle) $modalTitle.textContent = editData ? (i18n.edit_title || 'Edit expense') : (i18n.add_title || 'Add expense');
 
@@ -285,6 +370,7 @@
             if ($recurring)   $recurring.value   = editData.recurring || 'none';
             if ($description) $description.value = editData.description || '';
             if ($kind)        $kind.value        = editData.kind || 'fixed';
+            setScopeValue(editData.scope || '');
         } else {
             if ($form) $form.reset();
             // Set today as default date
@@ -295,6 +381,7 @@
             if ($date) $date.value = y + '-' + m + '-' + d;
             if ($recurring) $recurring.value = 'none';
             if ($kind) $kind.value = 'fixed';
+            if ($scope) $scope.value = '';
             setGroupValue('');
         }
         syncKind();
@@ -332,18 +419,21 @@
             $submitBtn.textContent = '…';
         }
 
-        var isPct  = $kind && $kind.value === 'percent';
-        var title  = $category ? $category.value.trim() : '';
-        var parent = groupValue();
+        var kind    = $kind ? $kind.value : 'fixed';
+        var perOrd  = kind === 'per_order';
+        var ongoing = perOrd || kind === 'percent';
+        var title   = $category ? $category.value.trim() : '';
+        var parent  = groupValue();
         ajax({
             action:       'brikpanel_expenses_save',
             id:           $editId ? $editId.value : '',
-            kind:         isPct ? 'percent' : 'fixed',
+            kind:         kind,
+            scope:        ( perOrd && $scope ) ? $scope.value : '',
             expense_date: $date        ? $date.value        : '',
             amount:       $amount      ? $amount.value      : '',
             category:     title,
             parent_category: parent,
-            recurring:    ( isPct || !$recurring ) ? 'none' : $recurring.value,
+            recurring:    ( ongoing || !$recurring ) ? 'none' : $recurring.value,
             description:  $description ? $description.value : '',
         }, function (err, res) {
             if ($submitBtn) {
@@ -417,21 +507,31 @@
                 showToast(i18n.no_expenses || 'No expenses found.', 'error');
                 return;
             }
+            // Type and Applies to are load-bearing, not decoration: without them
+            // a per-order row exports a bare "2.4" next to "One-time", which
+            // reads as a £2.40 one-off payment rather than a unit price. Both
+            // labels are composed server-side and arrive on the item.
             var rows = [[
                 i18n.csv_date        || 'Date',
                 i18n.csv_parent_category || 'Part of',
                 i18n.csv_category    || 'Title',
                 i18n.csv_description || 'Description',
                 i18n.csv_recurring   || 'Recurring',
+                i18n.csv_type        || 'Type',
+                i18n.csv_scope       || 'Applies to',
                 i18n.csv_amount      || 'Amount',
             ]];
+            function q(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
             items.forEach(function (item) {
+                var ongoing = item.kind === 'percent' || item.kind === 'per_order';
                 rows.push([
                     item.date,
-                    '"' + (item.parent_category || '').replace(/"/g, '""') + '"',
+                    q(item.parent_label || item.parent_category || ''),
                     item.category,
-                    '"' + (item.description || '').replace(/"/g, '""') + '"',
-                    recurringLabel(item.recurring),
+                    q(item.description || ''),
+                    ongoing ? q(i18n.ongoing || '') : q(recurringLabel(item.recurring)),
+                    q(item.kind_label || ''),
+                    q(item.scope_label || ''),
                     item.amount,
                 ]);
             });

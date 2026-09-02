@@ -44,6 +44,13 @@ class Brikpanel_Cart_Abandonment {
 	const COOKIE       = 'brikpanel_vid'; // shared with the live-visitors tracker on purpose: one browser = one id across features.
 
 	/**
+	 * WC session slot holding a popup coupon that still has to reach the cart.
+	 * Deliberately its own namespace: a companion plugin parks its coupon under
+	 * its own key, and the two must never read or clear each other's record.
+	 */
+	const PENDING_SESSION = 'brikpanel_cartab_pending_coupon';
+
+	/**
 	 * Order meta holding the shopper's browser id, stamped at checkout. The
 	 * cookie itself is only readable on that one front-end request; recovery
 	 * happens later (gateway callback, admin status change) on a request that
@@ -109,6 +116,19 @@ class Brikpanel_Cart_Abandonment {
 		// (popup or checkout sourced) without relying on any front-end JS.
 		add_action( 'woocommerce_cart_updated', [ $this, 'on_cart_updated' ] );
 
+		// Put a parked popup coupon on the cart once there is a cart for it.
+		//
+		// NOT woocommerce_before_calculate_totals: a companion plugin already
+		// owns that hook and calls apply_coupon() from inside it, so a second
+		// apply there would nest one calculate_totals() inside another.
+		// wp_loaded @20 runs once per request, right after WC_Cart_Session
+		// restores the cart on the same hook at @10 — the cart is ready and no
+		// totals pass is in flight. woocommerce_add_to_cart @20 closes the only
+		// gap that leaves: on the AJAX add-to-cart request, wp_loaded already
+		// ran while the cart was still empty.
+		add_action( 'wp_loaded',               [ $this, 'maybe_apply_parked_coupon' ], 20 );
+		add_action( 'woocommerce_add_to_cart', [ $this, 'maybe_apply_parked_coupon' ], 20 );
+
 		// Checkout submitted: record who the shopper is on the order. This is
 		// not the recovery — the gateway has not run yet (see
 		// stamp_checkout_visitor).
@@ -157,6 +177,28 @@ class Brikpanel_Cart_Abandonment {
 	 */
 	public static function popup_enabled() {
 		return get_option( 'brikpanel_cartab_popup_enabled', 'no' ) === 'yes';
+	}
+
+	/**
+	 * Whether a popup coupon is put on the visitor's cart for them instead of
+	 * being left for them to copy. Split out from popup_config() for the same
+	 * reason popup_enabled() is.
+	 *
+	 * @return bool
+	 */
+	public static function popup_autoapply() {
+		/**
+		 * Opt out of applying the popup coupon to the cart.
+		 *
+		 * Named apart from the option id on purpose, so a call site can never
+		 * confuse it with WordPress' own option_{$id} filter.
+		 *
+		 * @param bool $enabled Whether the coupon is applied for the visitor.
+		 */
+		return (bool) apply_filters(
+			'brikpanel_cartab_popup_autoapply_enabled',
+			get_option( 'brikpanel_cartab_popup_autoapply', 'yes' ) === 'yes'
+		);
 	}
 
 	/** Popup configuration with translatable fallbacks for unset options. */
@@ -213,7 +255,7 @@ class Brikpanel_Cart_Abandonment {
 		$clean = trim( $clean );
 		// Count characters, not bytes: a byte-wise cut lands mid-character in
 		// Arabic, Turkish or any other non-ASCII text and corrupts the tail.
-		return function_exists( 'mb_substr' ) ? mb_substr( $clean, 0, $max ) : substr( $clean, 0, $max );
+		return brikpanel_substr( $clean, 0, $max );
 	}
 
 	private static function table() {
@@ -465,11 +507,23 @@ class Brikpanel_Cart_Abandonment {
 			'updated' => [ 'label' => __( 'Last activity', 'brikpanel' ), 'default' => true ],
 		];
 
-		// Phone / WhatsApp and the follow-up counter ride along with BrikMentor;
-		// without it there is nothing to put in those cells, so they must not
-		// reach the table or the Columns popover at all.
+		// Two columns, two different questions - they used to share one answer
+		// and that was the bug.
+		//
+		// Phone / WhatsApp is built here, out of this table's own data. All it
+		// needs is for BrikMentor to be the reason we bother resolving contacts
+		// at all, so the existence check is the right one.
 		if ( ! self::mentor_active() ) {
-			unset( $defs['phone'], $defs['mail'] );
+			unset( $defs['phone'] );
+		}
+		// Follow-ups is somebody else's number. Asking whether BrikMentor is
+		// INSTALLED gets a yes from a version that predates the filter, from one
+		// halted by its own dependency guard, and from one sitting behind an
+		// inactive WooCommerce - all three define BRIKMENTOR_VERSION before they
+		// stop. The column was then drawn with an empty cell on every row, and an
+		// empty column reads as broken, not as "nothing to report".
+		if ( ! self::mentor_stats_available() ) {
+			unset( $defs['mail'] );
 		}
 
 		$defs = apply_filters( 'brikpanel_cartab_columns', $defs, get_current_user_id() );
@@ -808,8 +862,12 @@ class Brikpanel_Cart_Abandonment {
 		if ( $popup_here ) {
 			$popup = self::popup_config();
 
+			// Nothing visitor-specific goes in here: this payload is baked into
+			// page-cached HTML, so the code itself and the cart's state live in
+			// localStorage and the WC session, never in the localize array.
 			$data['popup'] = [
 				'enabled'     => 1,
+				'autoapply'   => self::popup_autoapply() ? 1 : 0,
 				'delay'       => $popup['delay'],
 				'cooldown'    => $popup['cooldown'],
 				'discount'    => $popup['discount'],
@@ -828,7 +886,14 @@ class Brikpanel_Cart_Abandonment {
 				'close'        => __( 'Close', 'brikpanel' ),
 				'emailLabel'   => __( 'Email address', 'brikpanel' ),
 				'couponIntro'  => __( 'Your discount code', 'brikpanel' ),
-				'couponHint'   => __( 'Apply it at checkout. Valid for 30 days.', 'brikpanel' ),
+				// Used only when the coupon is NOT applied for the visitor, so
+				// this stays accurate; the two below cover the other cases.
+				'couponHint'        => __( 'Apply it at checkout. Valid for 30 days.', 'brikpanel' ),
+				'couponHintApplied' => __( 'Already on your cart, the discount is in your total.', 'brikpanel' ),
+				'couponHintAuto'    => __( 'Saved. It goes on your cart automatically, and you can still type it in at checkout.', 'brikpanel' ),
+				'couponSaved'       => __( 'Your code is saved. Reopen it any time from the tab at the bottom of the page.', 'brikpanel' ),
+				'couponTeaser'      => __( 'Your code', 'brikpanel' ),
+				'couponTeaserLabel' => __( 'Show your discount code', 'brikpanel' ),
 				/* translators: %s: the visitor's email address */
 				'couponEmailed'     => __( 'We sent your discount code to %s', 'brikpanel' ),
 				'couponEmailedHint' => __( 'Check your inbox — if it landed in the Promotions tab, drag it to Primary so you never miss it.', 'brikpanel' ),
@@ -1035,7 +1100,7 @@ class Brikpanel_Cart_Abandonment {
 	 *
 	 * @param string $email Validated, lowercased email.
 	 * @param int    $id    Cart-abandonment entry id.
-	 * @return array{coupon?:string,discount?:int,coupon_emailed?:bool,email?:string}
+	 * @return array{coupon?:string,discount?:int,expires?:int,autoapply?:bool,applied?:bool,coupon_emailed?:bool,email?:string}
 	 */
 	private static function deliver_popup_coupon( $email, $id ) {
 		// A popup coupon only exists while the merchant actually runs the
@@ -1080,7 +1145,280 @@ class Brikpanel_Cart_Abandonment {
 			return [ 'coupon_emailed' => true, 'email' => $email ];
 		}
 
-		return [ 'coupon' => $coupon['code'], 'discount' => $coupon['amount'] ];
+		// Auto-apply lives HERE, on the inline path, and nowhere else. When a
+		// companion plugin took delivery over above, this line is unreachable —
+		// its email carries the code and its own one-click apply link, and a
+		// coupon quietly sitting on the cart would contradict both the email and
+		// the "check your inbox" the popup is showing.
+		return array_merge(
+			[
+				'coupon'   => $coupon['code'],
+				'discount' => $coupon['amount'],
+				'expires'  => isset( $coupon['expires'] ) ? (int) $coupon['expires'] : 0,
+			],
+			self::autoapply_popup_coupon( $coupon, $email )
+		);
+	}
+
+	/**
+	 * Put the freshly delivered coupon on the visitor's cart, or park it until
+	 * there is a cart worth applying it to. Inline delivery only.
+	 *
+	 * @param array  $coupon {code, amount, expires}.
+	 * @param string $email  Validated, lowercased email.
+	 * @return array{autoapply:bool,applied:bool}
+	 */
+	private static function autoapply_popup_coupon( $coupon, $email ) {
+		$off = [ 'autoapply' => false, 'applied' => false ];
+
+		if ( ! self::popup_autoapply() || ! function_exists( 'WC' ) ) {
+			return $off;
+		}
+
+		// This runs on admin-ajax, where WooCommerce does not always have a cart
+		// yet. Same guard the cart-share restore uses.
+		if ( is_null( WC()->cart ) && function_exists( 'wc_load_cart' ) ) {
+			wc_load_cart();
+		}
+		if ( is_null( WC()->cart ) || ! function_exists( 'wc_coupons_enabled' ) || ! wc_coupons_enabled() ) {
+			return $off;
+		}
+
+		// A signed-in shopper who typed a different address can never hold this
+		// coupon (see email_matches_customer). Park nothing, promise nothing —
+		// the popup then shows the honest "type it in at checkout" hint.
+		if ( ! self::email_matches_customer( $email ) ) {
+			return $off;
+		}
+
+		self::park_coupon( [
+			'code'  => (string) $coupon['code'],
+			'email' => $email,
+			'exp'   => isset( $coupon['expires'] ) ? (int) $coupon['expires'] : 0,
+			'n'     => 0,
+		] );
+
+		// Deliberately the same worker the hooks use, so "signed up with a full
+		// cart" and "signed up empty, added later" are one code path.
+		return [ 'autoapply' => true, 'applied' => self::apply_parked_coupon() ];
+	}
+
+	/**
+	 * Whether WooCommerce would accept this email as the coupon's owner.
+	 *
+	 * WC_Discounts::validate_coupon_allowed_emails() checks the account address
+	 * and the session customer's billing address as a union, with no filter and
+	 * no way in. remember_customer_email() deliberately refuses to overwrite a
+	 * signed-in customer's address, so a signed-in shopper who typed something
+	 * else in the popup simply cannot use the coupon — better to say so than to
+	 * retry an apply that can only ever fail.
+	 *
+	 * @param string $email Validated, lowercased email.
+	 * @return bool
+	 */
+	private static function email_matches_customer( $email ) {
+		$known = [];
+		if ( is_user_logged_in() ) {
+			$user = wp_get_current_user();
+			if ( $user && $user->user_email ) {
+				$known[] = strtolower( (string) $user->user_email );
+			}
+		}
+		if ( function_exists( 'WC' ) && WC()->customer ) {
+			$billing = strtolower( (string) WC()->customer->get_billing_email() );
+			if ( $billing !== '' ) {
+				$known[] = $billing;
+			}
+		}
+
+		return in_array( $email, $known, true );
+	}
+
+	// -------------------------------------------------------------------------
+	// Parked popup coupon
+	//
+	// The record lives in the WC session and nowhere else. A durable copy
+	// (transient/cookie) would buy only one scenario — a visitor returning after
+	// their 48h guest session lapsed — at the cost of an extra option read on
+	// page loads that mostly have nothing parked. That visitor still has the
+	// code on their floating tab and can type it in, so the trade is not worth
+	// the query.
+	// -------------------------------------------------------------------------
+
+	/**
+	 * @param array $record {code, email, exp, n}.
+	 */
+	private static function park_coupon( $record ) {
+		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+			return;
+		}
+		// A guest browsing content pages may still have no session cookie. The
+		// capture path forces one in remember_customer_email(), but the hooked
+		// re-park below can run anywhere.
+		if ( is_callable( [ WC()->session, 'set_customer_session_cookie' ] ) && ! headers_sent() ) {
+			WC()->session->set_customer_session_cookie( true );
+		}
+		WC()->session->set( self::PENDING_SESSION, $record );
+	}
+
+	/** @return array|null */
+	private static function parked_coupon() {
+		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+			return null;
+		}
+		$record = WC()->session->get( self::PENDING_SESSION, null );
+
+		return ( is_array( $record ) && ! empty( $record['code'] ) ) ? $record : null;
+	}
+
+	private static function forget_parked_coupon() {
+		if ( function_exists( 'WC' ) && WC()->session ) {
+			WC()->session->set( self::PENDING_SESSION, null );
+		}
+	}
+
+	/**
+	 * Hooked entry point for the parked coupon. Kept deliberately thin so the
+	 * overwhelmingly common case — nothing parked — costs one session array
+	 * read and no queries at all.
+	 */
+	public function maybe_apply_parked_coupon() {
+		// Re-entrancy only, NOT once-per-request: wp_loaded may run while the
+		// cart is still empty, and woocommerce_add_to_cart must still get a turn
+		// in that same request.
+		static $busy = false;
+
+		if ( $busy || ( is_admin() && ! wp_doing_ajax() ) ) {
+			return;
+		}
+		if ( ! function_exists( 'WC' ) || ! WC()->session || is_null( WC()->cart ) ) {
+			return;
+		}
+		if ( null === WC()->session->get( self::PENDING_SESSION, null ) ) {
+			return;
+		}
+
+		$busy = true;
+		try {
+			self::apply_parked_coupon();
+		} catch ( Throwable $e ) {
+			// A coupon is a courtesy; it never gets to break a page load.
+			self::forget_parked_coupon();
+		}
+		$busy = false;
+	}
+
+	/**
+	 * Resolve the parked coupon. The record is deleted on every terminal
+	 * verdict — applied, expired, deleted, or ten fruitless passes — and the
+	 * only outcomes that keep it cost a session array read. That is what stops
+	 * this from ever becoming a retry that runs for the life of a session.
+	 *
+	 * @return bool Whether the code is on the cart now.
+	 */
+	private static function apply_parked_coupon() {
+		$record = self::parked_coupon();
+		if ( ! $record ) {
+			return false;
+		}
+
+		// The merchant switched auto-apply off after this was parked.
+		if ( ! self::popup_autoapply() ) {
+			self::forget_parked_coupon();
+			return false;
+		}
+
+		if ( ! empty( $record['exp'] ) && time() > (int) $record['exp'] ) {
+			self::forget_parked_coupon();
+			return false;
+		}
+
+		if ( ! function_exists( 'wc_coupons_enabled' ) || ! wc_coupons_enabled() || is_null( WC()->cart ) ) {
+			return false; // Temporary; costs nothing and must not burn a pass.
+		}
+
+		if ( WC()->cart->has_discount( $record['code'] ) ) {
+			self::forget_parked_coupon();
+			return true;
+		}
+
+		// Neither of these is an attempt, so neither burns a pass: the visitor
+		// has simply not given us a cart to work with yet.
+		if ( WC()->cart->is_empty() || ! self::email_matches_customer( (string) $record['email'] ) ) {
+			return false;
+		}
+
+		$record['n'] = (int) $record['n'] + 1;
+		self::park_coupon( $record );
+		if ( $record['n'] > 10 ) {
+			self::forget_parked_coupon();
+			return false;
+		}
+
+		if ( ! function_exists( 'wc_get_coupon_id_by_code' ) || ! wc_get_coupon_id_by_code( $record['code'] ) ) {
+			self::forget_parked_coupon(); // Merchant deleted it.
+			return false;
+		}
+
+		$applied = self::silent_apply( (string) $record['code'] );
+		if ( $applied ) {
+			self::forget_parked_coupon();
+		}
+
+		return $applied;
+	}
+
+	/**
+	 * Apply a coupon without ever making WooCommerce complain about a code the
+	 * shopper did not type.
+	 *
+	 * Silence here comes from pre-answering, not from suppressing. Every branch
+	 * of WC_Cart::apply_coupon() that calls wc_add_notice()/add_coupon_message()
+	 * is checked first, with the same WC_Coupon::is_valid() the apply itself
+	 * calls against the same cart: wrong-code (wc_is_same_coupon), invalid
+	 * (is_valid), already-applied (has_discount) and blocked-by-an-individual-
+	 * use-coupon. By the time apply_coupon() runs it has no failure path left
+	 * that can speak.
+	 *
+	 * A blanket woocommerce_add_error mute was tried here and removed: it also
+	 * cancelled errors raised by OTHER plugins inside the same call (a QA canary
+	 * on woocommerce_before_calculate_totals was measurably swallowed), which is
+	 * a real cost for a case the checks above already cover. If a third-party
+	 * validator ever rejects at apply time anyway, one honest notice is the
+	 * right outcome — the same one a shopper typing the code would see.
+	 *
+	 * @param string $code Coupon code.
+	 * @return bool
+	 */
+	private static function silent_apply( $code ) {
+		if ( ! class_exists( 'WC_Coupon' ) ) {
+			return false;
+		}
+
+		$coupon = new WC_Coupon( $code );
+		// Refuse post-ID lookups the same way WC_Cart::apply_coupon() does.
+		if ( ! function_exists( 'wc_is_same_coupon' ) || ! wc_is_same_coupon( $coupon->get_code(), wc_format_coupon_code( $code ) ) ) {
+			return false;
+		}
+		if ( ! $coupon->is_valid() ) {
+			return false;
+		}
+
+		// An individual-use coupon already on the cart would reject ours with an
+		// error notice. Leave it parked instead: if the shopper removes that
+		// coupon, ours still lands.
+		foreach ( WC()->cart->get_applied_coupons() as $applied_code ) {
+			$applied = new WC_Coupon( $applied_code );
+			if ( $applied->get_individual_use() ) {
+				return false;
+			}
+		}
+
+		WC()->cart->apply_coupon( $code );
+
+		// apply_coupon()'s return value is not a statement about the cart's
+		// final state. Ask the cart.
+		return (bool) WC()->cart->has_discount( $code );
 	}
 
 	/**
@@ -1192,7 +1530,8 @@ class Brikpanel_Cart_Abandonment {
 	 * generated when the previous one was used or expired.
 	 *
 	 * @param string $email Validated, lowercased email.
-	 * @return array{code:string,amount:int}|null
+	 * @return array{code:string,amount:int,expires:int}|null `expires` is a UTC
+	 *         timestamp, 0 when the coupon never expires.
 	 */
 	private static function get_or_create_popup_coupon( $email ) {
 		$discount = self::popup_discount();
@@ -1220,7 +1559,11 @@ class Brikpanel_Cart_Abandonment {
 			$usable  = $coupon->get_usage_count() < max( 1, (int) $coupon->get_usage_limit() )
 				&& ( ! $expires || $expires->getTimestamp() > time() );
 			if ( $usable ) {
-				return [ 'code' => $coupon->get_code(), 'amount' => (int) $coupon->get_amount() ];
+				return [
+					'code'    => $coupon->get_code(),
+					'amount'  => (int) $coupon->get_amount(),
+					'expires' => $expires ? $expires->getTimestamp() : 0,
+				];
 			}
 		}
 
@@ -1237,6 +1580,11 @@ class Brikpanel_Cart_Abandonment {
 			return null;
 		}
 
+		// Kept in a local so the caller can be told when the code dies without
+		// re-reading the coupon. Never set_individual_use(): that would let this
+		// coupon evict, or be evicted by, a companion plugin's own coupon.
+		$expires_at = time() + 30 * DAY_IN_SECONDS;
+
 		try {
 			$coupon = new WC_Coupon();
 			$coupon->set_code( $code );
@@ -1245,7 +1593,7 @@ class Brikpanel_Cart_Abandonment {
 			$coupon->set_usage_limit( 1 );
 			$coupon->set_usage_limit_per_user( 1 );
 			$coupon->set_email_restrictions( [ $email ] );
-			$coupon->set_date_expires( time() + 30 * DAY_IN_SECONDS );
+			$coupon->set_date_expires( $expires_at );
 			$coupon->set_description( __( 'Signup popup coupon (BrikPanel cart abandonment)', 'brikpanel' ) );
 			$coupon->save();
 			update_post_meta( $coupon->get_id(), '_brikpanel_cartab_email', $email );
@@ -1253,7 +1601,7 @@ class Brikpanel_Cart_Abandonment {
 			return null;
 		}
 
-		return [ 'code' => $code, 'amount' => $discount ];
+		return [ 'code' => $code, 'amount' => $discount, 'expires' => $expires_at ];
 	}
 
 	/**
@@ -2597,6 +2945,27 @@ class Brikpanel_Cart_Abandonment {
 	}
 
 	/**
+	 * Is anyone actually able to ANSWER the follow-up counter?
+	 *
+	 * Installed is not the same as able, and the difference is a column full of
+	 * empty cells. Every one of these passes mentor_active() and answers nothing:
+	 * a BrikMentor older than the filter itself, one that halted in its own
+	 * dependency guard, one sitting behind a deactivated WooCommerce. All of them
+	 * define BRIKMENTOR_VERSION before they stop, because the constant is set
+	 * ahead of the guards.
+	 *
+	 * So this asks the only question that has the right answer in all three: is
+	 * there a listener on the filter. Note that BrikMentor registers it for every
+	 * flow whether or not the flow is switched on, which is what keeps the column
+	 * alive - and explaining - for a merchant who has simply turned cart
+	 * abandonment off; that case is meant to show "Not chased: ..." rather than
+	 * nothing at all.
+	 */
+	public static function mentor_stats_available() {
+		return self::mentor_active() && false !== has_filter( 'brikpanel_cartab_message_stats' );
+	}
+
+	/**
 	 * Resolve, for one page of rows, the two things the WhatsApp link needs:
 	 * a phone number and the country it was written in.
 	 *
@@ -2984,7 +3353,16 @@ class Brikpanel_Cart_Abandonment {
 		 * Filter: how many follow-up emails has each cart row had?
 		 *
 		 * BrikMentor answers this. Providers add
-		 * entry_id => { sent, pending, next, last } with GMT datetimes.
+		 * entry_id => { sent, pending, next, last } with GMT datetimes, and may
+		 * add `why_text`: a short translated fragment naming the reason a row got
+		 * no follow-up, read only when both sent and pending are zero and shown
+		 * as "Not chased: <why_text>".
+		 *
+		 * Whether this filter has a listener at all is what decides if the
+		 * Follow-ups column is drawn - see mentor_stats_available(). A provider
+		 * that registers here is promising to keep registering unconditionally;
+		 * one that stops answering makes the column disappear rather than go
+		 * blank, which is the intended failure.
 		 *
 		 * @param array $stats     entry_id => stats.
 		 * @param int[] $entry_ids Cart row ids on the visible page.
@@ -3825,6 +4203,14 @@ class Brikpanel_Cart_Abandonment {
 			'default'           => '10',
 			'custom_attributes' => [ 'min' => 0, 'max' => 100, 'step' => 1 ],
 			'css'               => 'width:90px;',
+		];
+		$fields[] = [
+			'title'    => __( 'Apply automatically', 'brikpanel' ),
+			'desc'     => __( 'Add the signup coupon to the visitor\'s cart for them', 'brikpanel' ),
+			'desc_tip' => __( 'The visitor never has to copy the code down. If their cart is empty when they sign up, the code waits and goes on as soon as they add something. They can still type it in at checkout either way. Ignored while a companion plugin delivers the coupon by email.', 'brikpanel' ),
+			'id'       => 'brikpanel_cartab_popup_autoapply',
+			'type'     => 'checkbox',
+			'default'  => 'yes',
 		];
 		$fields[] = [
 			'title'    => __( 'Offer animation', 'brikpanel' ),

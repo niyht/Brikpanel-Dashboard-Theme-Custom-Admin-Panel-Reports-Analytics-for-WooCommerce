@@ -285,6 +285,33 @@ class Brikpanel_Sheets_Tokens {
 	}
 
 	/**
+	 * Transient set when a refresh failed for a reason on OUR side (proxy down,
+	 * 5xx, unreachable) rather than a revoked grant. Short-lived on purpose: it
+	 * only has to outlive the request that shows the message.
+	 */
+	const OUTAGE_FLAG = 'brikpanel_gs_refresh_outage';
+
+	/**
+	 * Record that token refresh failed because the BrikPanel proxy was
+	 * unavailable, so the UI can tell "try again shortly" apart from
+	 * "reconnect your Google account".
+	 *
+	 * @return void
+	 */
+	private static function flag_service_outage() {
+		set_transient( self::OUTAGE_FLAG, 1, 15 * MINUTE_IN_SECONDS );
+	}
+
+	/**
+	 * Whether the most recent refresh failure was a BrikPanel-side outage.
+	 *
+	 * @return bool
+	 */
+	public static function had_service_outage() {
+		return (bool) get_transient( self::OUTAGE_FLAG );
+	}
+
+	/**
 	 * Force a refresh via the brksoft.com proxy. Updates storage and cache.
 	 *
 	 * @return array|false New token payload or false on failure.
@@ -309,6 +336,7 @@ class Brikpanel_Sheets_Tokens {
 		$open = Brikpanel_Sheets_Proxy::open( $resp, 'token refresh' );
 		if ( $open['wp_error'] ) {
 			Brikpanel_Sheets_Logger::log_request_error( 'oauth', 'token refresh', $resp );
+			self::flag_service_outage();
 			return false;
 		}
 		$code = (int) $open['code'];
@@ -321,10 +349,22 @@ class Brikpanel_Sheets_Tokens {
 				$err = is_array( $body ) ? (string) ( $body['error'] ?? '' ) : '';
 				if ( $err === 'invalid_grant' || $err === 'unauthorized_client' ) {
 					self::clear();
+					delete_transient( self::OUTAGE_FLAG );
+					return false;
 				}
+			}
+			// Anything else (5xx, an HTML error page, a proxy hiccup) is OUR end
+			// being temporarily unavailable, not a broken grant. A merchant hit
+			// this for weeks and was told only "Not connected to Google Sheets",
+			// which reads as "your connection is gone" — they went and blamed
+			// their own host's request filtering. Remember it so the message the
+			// UI shows can say "retry", not "reconnect".
+			if ( $code === 0 || $code >= 500 ) {
+				self::flag_service_outage();
 			}
 			return false;
 		}
+		delete_transient( self::OUTAGE_FLAG );
 
 		// Merge: keep refresh_token + connected_email if proxy omits.
 		$tokens['access_token'] = (string) $body['access_token'];

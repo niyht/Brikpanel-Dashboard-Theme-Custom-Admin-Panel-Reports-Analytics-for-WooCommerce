@@ -111,6 +111,7 @@ function brikpanel_prime_keys_always() {
 		// listing them only covers the window where they cost something.
 		'brikpanel_db_version',
 		'brikpanel_cogs_default_applied',
+		'brikpanel_shipping_cost_default_applied',
 		'brikpanel_cartab_failed_recovery_repair_done',
 		'brikpanel_cartab_zeroed_repair_done',
 		'brikpanel_cos_legacy_migrated',
@@ -188,6 +189,18 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_topbar_custom_link_url',
 		'brikpanel_topbar_item_audience',
 		'brikpanel_topbar_item_hide_roles',
+
+		// Profit: gates the shipping-cost deduction, the per-order Shipping cost
+		// metabox, the Expenses breakdown row AND the dashboard transient key, so
+		// it is read several times per admin request. Admin-only on purpose:
+		// every read point is wp-admin or admin-ajax, so priming it in the
+		// always list would move bytes onto storefront hits for nothing.
+		'brikpanel_shipping_cost_enabled',
+
+		// Profit: gates the gateway-fee component, its Expenses breakdown row,
+		// the Expenses page toggle AND the dashboard transient key. Read on the
+		// same admin-only paths as the shipping-cost gate above.
+		'brikpanel_payment_fees_enabled',
 
 		// Dashboard widget access + layout.
 		'brikpanel_dashboard_widget_audience',

@@ -658,9 +658,9 @@ function brikpanel_settings_fields() {
             'name'     => __('Subtract shipping cost from Net profit', 'brikpanel'),
             'id'       => 'brikpanel_shipping_cost_enabled',
             'type'     => 'checkbox',
-            'desc'     => __('Treat what you charge for shipping as a cost as well as revenue, so it stops inflating your Net profit. WooCommerce only records what the customer was charged for delivery, never what you paid the courier, so that charge is what gets deducted. When you know the real figure for an order, enter it in the Shipping cost box on that order and it is used instead. That is also the only way to account for an order you shipped free of charge, where nothing was charged and so nothing would be deducted. Turning this on changes past periods too, the same way filling in a product cost does.', 'brikpanel'),
+            'desc'     => __('On by default. What you charge for shipping is treated as a cost as well as revenue, so it stops inflating your Net profit. WooCommerce only records what the customer was charged for delivery, never what you paid the courier, so that charge is what gets deducted. When you know the real figure for an order, enter it in the Shipping cost box on that order and it is used instead. For orders you ship free of charge nothing was charged, so nothing is deducted here, so add a "Cost per order" expense set to "Orders shipped free" to cover the courier on those. Turning this off raises your Net profit in past periods too.', 'brikpanel'),
             'desc_tip' => true,
-            'default'  => 'no',
+            'default'  => 'yes',
         ],
         [
             'name'    => __('Visitor tracking', 'brikpanel'),
@@ -1114,7 +1114,7 @@ function brikpanel_settings_build_search_index() {
             continue;
         }
         $desc = isset( $field['desc'] ) ? wp_strip_all_tags( (string) $field['desc'] ) : '';
-        $desc = function_exists( 'mb_strtolower' ) ? mb_strtolower( mb_substr( $desc, 0, 160 ) ) : strtolower( substr( $desc, 0, 160 ) );
+        $desc = brikpanel_strtolower( brikpanel_substr( $desc, 0, 160 ) );
 
         $index[] = [
             'label'        => $label,

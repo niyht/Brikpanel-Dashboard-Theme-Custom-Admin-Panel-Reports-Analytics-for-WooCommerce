@@ -193,6 +193,9 @@
 .brikpanel-pe-cat-search:focus{background:var(--pe-card)}
 .brikpanel-pe-cat-list{max-height:200px;overflow-y:auto;padding:.5rem}
 .brikpanel-pe-cat-tree{list-style:none;margin:0;padding:0}
+/* Shown instead of the tree when the taxonomy has no terms at all, so an
+   empty Category or Brand box reads as "nothing here yet" rather than broken. */
+.brikpanel-pe-cat-empty{margin:0;padding:.5rem .25rem;font-size:.8125rem;color:var(--pe-text-muted,#8a8a8a)}
 .brikpanel-pe-cat-children{list-style:none;margin:0;padding:0 0 0 1rem;border-left:1px solid var(--pe-border);margin-left:.625rem}
 .brikpanel-pe-cat-tree li{margin:0;padding:0}
 .brikpanel-pe-cat-tree label{display:flex;align-items:center;gap:.375rem;font-size:.8125rem;padding:.25rem .375rem;border-radius:4px;cursor:pointer;transition:background .1s ease;color:var(--pe-text);font-weight:400!important;margin:0}
@@ -379,6 +382,25 @@
 .brikpanel-pe-tag-remove:hover{color:var(--pe-error);background:rgba(215,44,13,.1)}
 .brikpanel-pe-tag-input-wrap input{flex:1;min-width:80px;border:none;outline:none;font-size:.8125rem;padding:.125rem 0;background:transparent;color:var(--pe-text)}
 
+/* Drag-to-reorder attribute values. Not cosmetic: this order becomes the term
+   order WooCommerce uses for the storefront dropdown, so the tags advertise
+   themselves as draggable. The helper drops the entry animation, which would
+   otherwise replay on every pickup. */
+/* float has NO layout effect on a flex item (CSS Flexbox §3), so this is inert
+   visually — verified by comparing every tag's box before and after. It exists
+   solely because jQuery UI decides a sortable list is horizontal via
+   _isFloating(), which tests `float` and `display` (wp-includes/js/jquery/ui/
+   sortable.js:87). Our tags are authored `display:inline-flex`, but a flex item
+   gets its display blockified to `flex`, so that test failed, sortable assumed
+   a VERTICAL list, compared only Y — identical for every tag on a row — and
+   never found an intersection: dragging did nothing at all. The computed value
+   of `float` survives blockification, so this restores the correct detection. */
+.brikpanel-pe-tag{cursor:grab;float:left}
+.brikpanel-pe-tag:active{cursor:grabbing}
+.brikpanel-pe-tag.ui-sortable-helper{animation:none;cursor:grabbing;opacity:.95;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.brikpanel-pe-tag-placeholder{display:inline-flex;align-items:center;min-width:48px;height:26px;border:1px dashed var(--pe-input-border);border-radius:4px;background:var(--pe-bg);visibility:visible!important}
+.brikpanel-pe-attr-order-note{margin:.375rem 0 0;font-size:.75rem;line-height:1.5;color:var(--pe-text-muted)}
+
 /* Tag Suggestions dropdown */
 .brikpanel-pe-tag-suggestions{position:relative;z-index:10;display:none;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);box-shadow:0 4px 12px rgba(0,0,0,.1);margin-top:.25rem;max-height:200px;overflow-y:auto}
 .brikpanel-pe-tag-suggestion{padding:.5rem .75rem;font-size:.8125rem;cursor:pointer;transition:background .1s ease;color:var(--pe-text)}
@@ -442,8 +464,21 @@
 
 /* Variation builder (Generate + table), only shown while Variable is on */
 .brikpanel-pe-var-build{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--pe-border)}
+/* Build actions row. The wrapper exists because .brikpanel-pe-var-build also
+   holds the variation table, so it cannot be the flex row itself. `gap` is the
+   only spacing here — the stale hint drops its own margin inside this row. */
+.brikpanel-pe-var-build-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.brikpanel-pe-var-build-actions #bpe-clear-vars{margin-left:auto}
+.brikpanel-pe-var-build-actions #bpe-clear-vars[hidden]{display:none}
 .brikpanel-pe-var-stale-hint{display:inline-block;margin-left:.625rem;font-size:.75rem;font-weight:550;color:var(--pe-error);vertical-align:middle}
+.brikpanel-pe-var-build-actions .brikpanel-pe-var-stale-hint{margin-left:0}
 .brikpanel-pe-var-stale-hint[hidden]{display:none}
+/* Destructive secondary button — same palette as the per-row variation delete:
+   monochrome at rest so it never shouts from the corner of the strip, red only
+   once the pointer commits to it. */
+.brikpanel-pe-btn.brikpanel-pe-btn-danger:hover{background:#fce4e4;color:var(--pe-error,#d72c0d);box-shadow:inset 0 0 0 1px #f1b0b0,0 1px 0 rgba(0,0,0,.05)}
+.brikpanel-pe-btn.brikpanel-pe-btn-danger:disabled{opacity:.6;cursor:default}
+.brikpanel-pe-btn.brikpanel-pe-btn-danger:disabled:hover{background:#fff;color:var(--pe-text)}
 .brikpanel-pe-var-table-section{margin-top:1rem}
 
 /* Select styling */
@@ -715,6 +750,105 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-seo-plugin-inner #aioseo-post-settings-metabox{margin:0!important}
 /* SEOPress: its tabbed metabox — normalize spacing so it sits inside our card. */
 .brikpanel-pe-seo-plugin-inner #seopress_cpt_fields{padding:0!important;margin:0!important;border:none!important}
+
+/* SEOPress 9.9+ "universal metabox": the React panel we mount inside the SEO
+   card (and, when hand-placed from the section picker, inside a metabox card).
+   Scope on the mount node's id so both placements are covered.
+
+   SEOPress derives its whole palette from CSS custom properties it scopes to
+   that same id, and those in turn fall back to the WP admin accent (a bright
+   #3858E9 blue). Rather than fight individual rules, re-point the variables at
+   BrikPanel's monochrome tokens, so everything downstream (tabs, buttons,
+   links, focus rings) follows from that. Specificity beats SEOPress's own
+   `body :is(#…,#…)` block (id+class vs id+type), so no !important is needed
+   for the variables. Semantic alert/warning/success colours are deliberately
+   left alone: those carry meaning, and the design system keeps colour for
+   exactly that. */
+.brikpanel-pe #seopress-js-module-seo-metabox-embed{
+  --wp-components-color-accent:var(--pe-primary);
+  --wp-admin-theme-color:var(--pe-primary);
+  --primaryColor:var(--pe-primary);
+  --backgroundPrimary:var(--pe-primary);
+  --backgroundPrimaryHover:var(--pe-primary-hover);
+  --spWPDefaultColor:var(--pe-primary);
+  --colorP:var(--pe-text);
+  --colorDark:var(--pe-text);
+  --titleColor:var(--pe-text);
+  --color:var(--pe-text-secondary);
+  --paragraphColor:var(--pe-text-secondary);
+  --borderColor:var(--pe-input-border);
+  --borderColorLight:var(--pe-border);
+  --borderColorCard:var(--pe-border);
+  --borderColorTab:var(--pe-border);
+  --backgroundSecondaryHover:var(--pe-bg);
+}
+/* Controls: SEOPress ships wp-components' 2px radius, which reads as a
+   different form language next to BrikPanel's .5rem fields. */
+.brikpanel-pe #seopress-js-module-seo-metabox-embed input:not([type=checkbox]):not([type=radio]),
+.brikpanel-pe #seopress-js-module-seo-metabox-embed select,
+.brikpanel-pe #seopress-js-module-seo-metabox-embed textarea,
+.brikpanel-pe #seopress-js-module-seo-metabox-embed .components-button{border-radius:var(--pe-radius-sm)}
+/* Primary buttons pick up the same bevel as BrikPanel's own primary button so
+   the panel's Save does not read as a foreign control. */
+.brikpanel-pe #seopress-js-module-seo-metabox-embed .components-button.is-primary{
+  box-shadow:inset 0 -1px 0 rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.1);
+  font-weight:550;
+}
+/* The panel is already `--embedded` (static, no shadow); drop the leftover
+   card chrome so it sits flush inside ours instead of framing itself again. */
+.brikpanel-pe #seopress-js-module-seo-metabox-embed .sp-seo-metabox{border:none;background:transparent}
+
+/* ---- Layout: SEOPress sizes by viewport, we give it a container ----------
+   SEOPress lays the panel out as tab sidebar + form + Google preview and sizes
+   those columns as PERCENTAGES of the panel (`.sp-tabs{width:15%}`,
+   `.sp-main{width:85%}`, `.w-6/12{width:50%}`), while its breakpoints key off
+   the VIEWPORT (782/960/1400px in metaboxe.css). That pairing works on
+   post.php, where the panel is about as wide as the window. Inside BrikPanel
+   the window is wide but the container is the 820px card, so the desktop
+   percentages get applied to a box that cannot carry them.
+
+   It only became visible with SEOPress Pro: its filters switch on one more top
+   tab and four more sub-tabs (Schemas, Google News, Video Sitemap, Inspect
+   URL, Internal Linking), and at 15% of 770px the sidebar is 108px, so every
+   one of the twelve labels wrapped onto two or three lines.
+
+   Below 600px SEOPress's own ruleset turns the sidebar into a full-width
+   wrapping row, which is the right call on a phone, so this is gated to match
+   that breakpoint exactly (measured: the `.sp-tabs{width:100%;display:flex;
+   flex-wrap:wrap}` override lives in metaboxe.css's `max-width:600px` block,
+   NOT the 782px one). Without the gate our `width:auto` outranks their
+   `width:100%` (id+class beats id+type) and a 380px phone would carry a 176px
+   sidebar beside a 200px form. SEOPress keys that switch to the viewport, so
+   the gate is a viewport media query too, not a container query. */
+@media only screen and (min-width: 601px){
+  .brikpanel-pe #seopress-js-module-seo-metabox-embed .sp-tabs{
+    flex:0 0 auto;
+    width:auto;
+    min-width:11rem;
+  }
+  /* `min-width:0` is load-bearing: without it the form pane refuses to shrink
+     below its content's intrinsic width and pushes the sidebar back out. */
+  .brikpanel-pe #seopress-js-module-seo-metabox-embed .sp-main{
+    flex:1 1 auto;
+    width:auto;
+    min-width:0;
+  }
+}
+
+/* Stack the Google preview under the form when the PANE (not the window) is
+   narrow. A container query is the right tool precisely because the mismatch
+   is container-vs-viewport: one rule then behaves correctly at the default
+   820px card, at the 1240px widescreen column, and inside a hand-placed
+   metabox card, without any of them needing their own number. Browsers
+   without container query support simply keep SEOPress's 50/50, which is
+   today's behaviour rather than a broken one. */
+.brikpanel-pe #seopress-js-module-seo-metabox-embed{container-type:inline-size}
+@container (max-width: 60rem){
+  /* The row has to be allowed to wrap, or two 100% children just shrink back
+     to 50% each and nothing changes. */
+  .brikpanel-pe #seopress-js-module-seo-metabox-embed .sp-main .flex:has(> .w-6\/12){flex-wrap:wrap}
+  .brikpanel-pe #seopress-js-module-seo-metabox-embed .sp-main .flex > .w-6\/12{width:100%}
+}
 
 /* ACF field containers — flatten padding + borders so fields align with the
    outer card edge and stack with consistent BrikPanel spacing. */
@@ -1137,7 +1271,13 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 /* Compact two-row sticky header: row 1 = back + product title (left), the
    action cluster wraps onto row 2 (right-aligned). The secondary nav actions
    collapse into the kebab menu below, so the header stays ~2 rows instead of 3. */
-.brikpanel-pe-header{top:46px;padding:.5rem .875rem;gap:.5rem;flex-wrap:wrap}
+/* `top` must stay keyed to the bar that is actually above it. Hardcoding WP's
+   46px mobile admin-bar height parked the sticky header 46px down while the
+   BrikPanel top bar occupies 0-52px, so its first 6-7px sat underneath the bar
+   (and under its shadow) on every phone. The variable resolves to 52px when
+   the top bar is on; the 46px fallback covers the top-bar-off case, where WP's
+   own admin bar really is 46px at this breakpoint. */
+.brikpanel-pe-header{top:var(--bp-topbar-height,46px);padding:.5rem .875rem;gap:.5rem;flex-wrap:wrap}
 .brikpanel-pe-header-left{flex:1 1 100%;min-width:0;gap:.375rem}
 .brikpanel-pe-header-left .brikpanel-pe-back{flex-shrink:0;padding:.25rem .375rem}
 .brikpanel-pe-header-left h1{font-size:1.0625rem;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1152,6 +1292,14 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
    Stock next to Active, and the two actions that apply to the whole grid span
    it. Every control keeps a real touch height and its own placeholder, which is
    what still names it once the row order stops carrying that meaning. */
+/* Build actions stack. `margin-left:auto` on a wrapped flex item leaves the
+   button alone and right-aligned on its own line, which reads as a layout
+   fault rather than as distance from the other two; on a phone the row is
+   already one control per line, so full width is both tidier and a real touch
+   target. */
+.brikpanel-pe-var-build-actions{flex-direction:column;align-items:stretch}
+.brikpanel-pe-var-build-actions > .brikpanel-pe-btn{width:100%}
+.brikpanel-pe-var-build-actions #bpe-clear-vars{margin-left:0}
 .brikpanel-pe-var-bulk{flex-direction:column;align-items:stretch;flex-wrap:nowrap;row-gap:.5rem;padding:.625rem}
 .brikpanel-pe-var-bulk-group,
 .brikpanel-pe-var-bulk-group:first-child,
@@ -1411,3 +1559,19 @@ ul.ui-autocomplete.wp-tags-autocomplete .ui-menu-item-wrapper:hover{background:#
 /* Media previews (carousel / single-product ad) -> capped so a large or broken
    image can't blow the panel height open. */
 .brikpanel-pe-wc-fields-content .image-preview img{max-width:120px!important;max-height:120px!important;width:auto!important;height:auto!important;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);object-fit:cover}
+
+/* Discovery card: other plugins add fields to this product but the setting
+   that surfaces them is off. Sits in the slot those fields will occupy once
+   enabled, so the promise and the payoff share a place on the page.
+   Deliberately quiet — this is an offer, not a warning. */
+.brikpanel-pe-tp-hint__lead{margin:0;font-size:.8125rem;color:var(--pe-text-secondary,#616161);line-height:1.5}
+.brikpanel-pe-tp-hint__names{margin:.375rem 0 0;font-size:.8125rem;color:var(--pe-text,#303030);font-weight:550}
+.brikpanel-pe-tp-hint__actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.875rem}
+.brikpanel-pe-tp-msg{margin:.75rem 0 0;font-size:.75rem;color:var(--pe-error,#d72c0d)}
+
+/* Header row for the third-party fields card: title on the left, the undo on
+   the right. The card's own `>label:first-child` rule no longer matches now
+   that the label sits in this wrapper, so its styling is restated here. */
+.brikpanel-pe-wc-fields-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.75rem}
+.brikpanel-pe-wc-fields-head>label{display:block;font-size:.8125rem;font-weight:600;color:var(--pe-text,#303030);margin:0}
+.brikpanel-pe-wc-fields-head .brikpanel-pe-wc-fields__hide{flex:0 0 auto}

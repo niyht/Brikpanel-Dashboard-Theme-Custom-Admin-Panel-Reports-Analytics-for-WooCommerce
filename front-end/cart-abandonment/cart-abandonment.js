@@ -172,6 +172,12 @@
 		var LS_DONE = 'brikpanel_cartab_done';
 		var LS_DISMISS = 'brikpanel_cartab_dismissed';
 		var LS_TEASER_HIDDEN = 'brikpanel_cartab_teaser_hidden';
+		var LS_COUPON = 'brikpanel_cartab_coupon';
+		var SS_CODE_TAB = 'brikpanel_cartab_code_tab_hidden';
+		// Not an XSS guard (every code is written with textContent) — it stops a
+		// corrupt or hand-edited record from being painted into the tab.
+		var CODE_RE = /^[A-Z0-9][A-Z0-9_-]{2,31}$/;
+		var DAY_MS = 86400000;
 
 		var storage;
 		try {
@@ -182,10 +188,19 @@
 			storage = null;
 		}
 
+		var session;
+		try {
+			session = window.sessionStorage;
+			session.setItem('brikpanel_cartab_probe', '1');
+			session.removeItem('brikpanel_cartab_probe');
+		} catch (err2) {
+			session = null;
+		}
+
 		var teaserEl = null;
 		var overlayEl = null;
 		var discount = Math.max(0, Number(cfg.popup.discount) || 0);
-		var cooldownMs = Math.max(1, Number(cfg.popup.cooldown) || 7) * 86400000;
+		var cooldownMs = Math.max(1, Number(cfg.popup.cooldown) || 7) * DAY_MS;
 
 		function lsGet(key) {
 			return storage ? storage.getItem(key) : null;
@@ -195,9 +210,72 @@
 				storage.setItem(key, value);
 			}
 		}
+		function ssGet(key) {
+			return session ? session.getItem(key) : null;
+		}
+		function ssSet(key, value) {
+			if (session) {
+				session.setItem(key, value);
+			}
+		}
 
 		function isDone() {
 			return !!lsGet(LS_DONE);
+		}
+
+		/* ---------------- Saved coupon ---------------- */
+
+		// The code the visitor was given, kept for as long as it is worth
+		// something. Without this the code exists on screen once and is gone the
+		// moment the popup closes.
+		var couponCache;
+
+		function savedCoupon() {
+			if (couponCache !== undefined) {
+				return couponCache;
+			}
+			couponCache = null;
+
+			var raw = lsGet(LS_COUPON);
+			if (!raw) {
+				return couponCache;
+			}
+			try {
+				var rec = JSON.parse(raw);
+				if (rec && rec.v === 1 && typeof rec.code === 'string'
+					&& CODE_RE.test(rec.code) && Number(rec.exp) > Date.now()) {
+					couponCache = rec;
+				} else if (storage) {
+					storage.removeItem(LS_COUPON); // Expired or foreign shape.
+				}
+			} catch (err3) {
+				if (storage) {
+					storage.removeItem(LS_COUPON);
+				}
+			}
+			return couponCache;
+		}
+
+		function saveCoupon(data) {
+			if (!storage || !data || typeof data.coupon !== 'string' || !CODE_RE.test(data.coupon)) {
+				return null;
+			}
+			// The percentage is stored as it was ISSUED: a merchant who later
+			// moves 10% to 20% must not make an old visitor's tab lie.
+			var rec = {
+				v: 1,
+				code: data.coupon,
+				pct: Math.max(0, Number(data.discount) || 0),
+				exp: Number(data.expires) > 0 ? Number(data.expires) * 1000 : Date.now() + 30 * DAY_MS,
+				auto: data.autoapply ? 1 : 0
+			};
+			try {
+				storage.setItem(LS_COUPON, JSON.stringify(rec));
+			} catch (err4) {
+				return null;
+			}
+			couponCache = rec;
+			return rec;
 		}
 
 		function teaserHidden() {
@@ -230,18 +308,31 @@
 		}
 
 		function showTeaser() {
-			if (teaserEl || isDone() || teaserHidden()) {
+			if (teaserEl) {
 				return;
 			}
+
+			// Two modes share one tab. With a saved code it is the way back to
+			// that code, so "done" and the signup cooldown no longer apply — they
+			// are about the invitation, not about something the visitor owns.
+			var rec = savedCoupon();
+			if (rec) {
+				if (ssGet(SS_CODE_TAB)) {
+					return;
+				}
+			} else if (isDone() || teaserHidden()) {
+				return;
+			}
+
 			teaserEl = document.createElement('div');
-			teaserEl.className = 'brikpanel-cartab-teaser';
+			teaserEl.className = rec ? 'brikpanel-cartab-teaser is-coupon' : 'brikpanel-cartab-teaser';
 
 			var open = document.createElement('button');
 			open.type = 'button';
 			open.className = 'brikpanel-cartab-teaser-btn';
-			open.setAttribute('aria-label', cfg.popup.title);
+			open.setAttribute('aria-label', rec ? cfg.i18n.couponTeaserLabel : cfg.popup.title);
 
-			if (discount > 0) {
+			if (rec ? rec.pct > 0 : discount > 0) {
 				var mini = document.createElement('span');
 				mini.className = 'brikpanel-cartab-teaser-ticket';
 				mini.textContent = '%';
@@ -250,7 +341,7 @@
 
 			var label = document.createElement('span');
 			label.className = 'brikpanel-cartab-teaser-label';
-			label.textContent = cfg.popup.teaser;
+			label.textContent = rec ? cfg.i18n.couponTeaser : cfg.popup.teaser;
 			open.appendChild(label);
 
 			var close = document.createElement('button');
@@ -260,11 +351,22 @@
 			close.textContent = '×';
 
 			open.addEventListener('click', function () {
-				openPopup();
+				if (rec) {
+					openCodePanel(rec);
+				} else {
+					openPopup();
+				}
 			});
 			close.addEventListener('click', function (e) {
 				e.stopPropagation();
-				lsSet(LS_TEASER_HIDDEN, String(Date.now()));
+				if (rec) {
+					// Session-scoped on purpose. LS_TEASER_HIDDEN is the
+					// don't-nag-me cooldown (days); hiding a visitor's own code
+					// for a week would recreate the very bug this fixes.
+					ssSet(SS_CODE_TAB, '1');
+				} else {
+					lsSet(LS_TEASER_HIDDEN, String(Date.now()));
+				}
 				removeTeaser();
 			});
 
@@ -386,40 +488,51 @@
 
 		/* ---------------- Popup ---------------- */
 
-		function closePopup(permanent) {
+		// mode: false = dismissed by the visitor, true = gone for good,
+		// 'collapse' = shrink into the tab it becomes (nothing was dismissed and
+		// nothing is lost, so neither flag is written).
+		function closePopup(mode) {
 			if (!overlayEl) {
 				return;
 			}
 			var el = overlayEl;
+			var collapsing = mode === 'collapse';
 			overlayEl = null;
+			if (collapsing) {
+				el.classList.add('is-collapsing');
+			}
 			el.classList.remove('is-open');
 			window.setTimeout(function () {
 				if (el.parentNode) {
 					el.parentNode.removeChild(el);
 				}
-			}, 250);
-			if (permanent) {
-				removeTeaser();
-			} else {
-				lsSet(LS_DISMISS, String(Date.now()));
-				showTeaser(); // collapse into the floating tab, Klaviyo-style
-			}
-		}
+			}, collapsing ? 420 : 250);
 
-		function openPopup() {
-			if (overlayEl || isDone()) {
+			if (mode === true) {
+				removeTeaser();
 				return;
 			}
-			removeTeaser(); // no floating tab behind the open popup
+			if (!collapsing) {
+				lsSet(LS_DISMISS, String(Date.now()));
+			}
+			showTeaser(); // collapse into the floating tab, Klaviyo-style
+		}
+
+		/* ---------------- Shared modal shell ---------------- */
+
+		// Overlay + card + close button + the background/Escape handlers, shared
+		// by the signup popup and the code panel so there is one copy of the
+		// dismissal plumbing.
+		function buildShell(ariaLabel, extraClass, onClose) {
 			var overlay = document.createElement('div');
 			overlay.className = 'brikpanel-cartab-popup-overlay';
 			overlay.setAttribute('role', 'presentation');
 
 			var modal = document.createElement('div');
-			modal.className = 'brikpanel-cartab-popup';
+			modal.className = extraClass ? 'brikpanel-cartab-popup ' + extraClass : 'brikpanel-cartab-popup';
 			modal.setAttribute('role', 'dialog');
 			modal.setAttribute('aria-modal', 'true');
-			modal.setAttribute('aria-label', cfg.popup.title);
+			modal.setAttribute('aria-label', ariaLabel);
 
 			var close = document.createElement('button');
 			close.type = 'button';
@@ -427,6 +540,123 @@
 			close.setAttribute('aria-label', cfg.i18n.close);
 			close.textContent = '×';
 			modal.appendChild(close);
+
+			close.addEventListener('click', onClose);
+			overlay.addEventListener('click', function (e) {
+				if (e.target === overlay) {
+					onClose();
+				}
+			});
+			// Self-detaching: an auto-closed or collapsed card leaves this
+			// listener bound to a node that is no longer in the document, so the
+			// first key after that unbinds it. Without this, reopening the code
+			// panel repeatedly would stack a dead listener each time.
+			document.addEventListener('keydown', function onKey(e) {
+				if (!overlay.parentNode) {
+					document.removeEventListener('keydown', onKey);
+					return;
+				}
+				if (e.key === 'Escape') {
+					document.removeEventListener('keydown', onKey);
+					onClose();
+				}
+			});
+
+			overlay.appendChild(modal);
+			return { overlay: overlay, modal: modal, close: close };
+		}
+
+		/* ---------------- Code panel ---------------- */
+
+		// The way back to a code the visitor already earned. Deliberately not the
+		// signup popup: there is nothing left to sign up for, so no form, no
+		// offer animation, no confetti and no auto-close.
+		function openCodePanel(rec) {
+			if (overlayEl || !rec) {
+				return;
+			}
+			removeTeaser();
+
+			// 'collapse', not false: closing a code panel is not dismissing the
+			// signup invitation, so it must not write LS_DISMISS. It also sends
+			// the card back into the tab it came from.
+			var shell = buildShell(cfg.i18n.couponTeaserLabel, 'brikpanel-cartab-popup--code', function () {
+				closePopup('collapse');
+			});
+
+			var title = document.createElement('h2');
+			title.className = 'brikpanel-cartab-popup-title';
+			title.textContent = cfg.i18n.couponIntro;
+			shell.modal.appendChild(title);
+
+			var box = document.createElement('div');
+			box.className = 'brikpanel-cartab-coupon';
+			box.appendChild(buildCouponRow(rec.code));
+
+			var hint = document.createElement('div');
+			hint.className = 'brikpanel-cartab-coupon-hint';
+			hint.textContent = rec.auto ? cfg.i18n.couponHintAuto : cfg.i18n.couponHint;
+			box.appendChild(hint);
+			shell.modal.appendChild(box);
+
+			overlayEl = shell.overlay;
+			document.body.appendChild(shell.overlay);
+			window.requestAnimationFrame(function () {
+				shell.overlay.classList.add('is-open');
+				var copyBtn = shell.modal.querySelector('.brikpanel-cartab-coupon-copy');
+				if (copyBtn) {
+					copyBtn.focus({ preventScroll: true });
+				}
+			});
+		}
+
+		/* ---------------- Coupon code row ---------------- */
+
+		// One builder for both surfaces, so the code chip, the clipboard
+		// fallback and the "Copied!" state can never drift apart.
+		function buildCouponRow(code) {
+			var codeRow = document.createElement('div');
+			codeRow.className = 'brikpanel-cartab-coupon-row';
+
+			var codeEl = document.createElement('span');
+			codeEl.className = 'brikpanel-cartab-coupon-code';
+			codeEl.textContent = code;
+
+			var copy = document.createElement('button');
+			copy.type = 'button';
+			copy.className = 'brikpanel-cartab-coupon-copy';
+			copy.textContent = cfg.i18n.copy;
+			copy.addEventListener('click', function () {
+				var mark = function () {
+					copy.textContent = cfg.i18n.copied;
+					copy.classList.add('is-copied');
+				};
+				if (navigator.clipboard && navigator.clipboard.writeText) {
+					navigator.clipboard.writeText(code).then(mark).catch(mark);
+				} else {
+					var tmp = document.createElement('textarea');
+					tmp.value = code;
+					document.body.appendChild(tmp);
+					tmp.select();
+					try { document.execCommand('copy'); } catch (e) { /* noop */ }
+					document.body.removeChild(tmp);
+					mark();
+				}
+			});
+
+			codeRow.appendChild(codeEl);
+			codeRow.appendChild(copy);
+			return codeRow;
+		}
+
+		function openPopup() {
+			if (overlayEl || isDone()) {
+				return;
+			}
+			removeTeaser(); // no floating tab behind the open popup
+			var shell = buildShell(cfg.popup.title, '', function () { closePopup(false); });
+			var overlay = shell.overlay;
+			var modal = shell.modal;
 
 			// Animated offer visual — the reveal hook for the discount.
 			if (discount > 0) {
@@ -490,20 +720,6 @@
 			form.appendChild(button);
 			modal.appendChild(form);
 			modal.appendChild(note);
-			overlay.appendChild(modal);
-
-			close.addEventListener('click', function () { closePopup(false); });
-			overlay.addEventListener('click', function (e) {
-				if (e.target === overlay) {
-					closePopup(false);
-				}
-			});
-			document.addEventListener('keydown', function onKey(e) {
-				if (e.key === 'Escape' && overlay.parentNode) {
-					closePopup(false);
-					document.removeEventListener('keydown', onKey);
-				}
-			});
 
 			var autoClose = null;
 
@@ -651,6 +867,10 @@
 				}
 
 				var hasCoupon = data && data.coupon;
+				// Keep the code past this one screen. Nothing is stored on the
+				// emailed path: there is no code in the payload, and the inbox is
+				// where that visitor is being sent.
+				var stored = hasCoupon ? saveCoupon(data) : null;
 				if (hasCoupon) {
 					var couponBox = document.createElement('div');
 					couponBox.className = 'brikpanel-cartab-coupon';
@@ -659,45 +879,24 @@
 					intro.className = 'brikpanel-cartab-coupon-intro';
 					intro.textContent = cfg.i18n.couponIntro;
 
-					var codeRow = document.createElement('div');
-					codeRow.className = 'brikpanel-cartab-coupon-row';
-
-					var code = document.createElement('span');
-					code.className = 'brikpanel-cartab-coupon-code';
-					code.textContent = data.coupon;
-
-					var copy = document.createElement('button');
-					copy.type = 'button';
-					copy.className = 'brikpanel-cartab-coupon-copy';
-					copy.textContent = cfg.i18n.copy;
-					copy.addEventListener('click', function () {
-						var value = data.coupon;
-						var mark = function () {
-							copy.textContent = cfg.i18n.copied;
-							copy.classList.add('is-copied');
-						};
-						if (navigator.clipboard && navigator.clipboard.writeText) {
-							navigator.clipboard.writeText(value).then(mark).catch(mark);
-						} else {
-							var tmp = document.createElement('textarea');
-							tmp.value = value;
-							document.body.appendChild(tmp);
-							tmp.select();
-							try { document.execCommand('copy'); } catch (e) { /* noop */ }
-							document.body.removeChild(tmp);
-							mark();
-						}
-					});
-
 					var hint = document.createElement('div');
 					hint.className = 'brikpanel-cartab-coupon-hint';
-					hint.textContent = cfg.i18n.couponHint;
+					hint.textContent = data.applied ? cfg.i18n.couponHintApplied
+						: (data.autoapply ? cfg.i18n.couponHintAuto : cfg.i18n.couponHint);
 
-					codeRow.appendChild(code);
-					codeRow.appendChild(copy);
 					couponBox.appendChild(intro);
-					couponBox.appendChild(codeRow);
+					couponBox.appendChild(buildCouponRow(data.coupon));
 					couponBox.appendChild(hint);
+
+					// Only promised when it actually happened — with storage
+					// blocked there is no tab to come back to.
+					if (stored) {
+						var savedNote = document.createElement('div');
+						savedNote.className = 'brikpanel-cartab-coupon-saved';
+						savedNote.textContent = cfg.i18n.couponSaved;
+						couponBox.appendChild(savedNote);
+					}
+
 					modal.appendChild(couponBox);
 				}
 
@@ -705,7 +904,9 @@
 				// notice) is on screen so the visitor has time to read it.
 				// Stored so the edit-email flow can defer it while correcting.
 				autoClose = window.setTimeout(function () {
-					closePopup(true);
+					// With a code saved the popup shrinks into the tab that now
+					// holds it. Everything else keeps closing for good.
+					closePopup(stored ? 'collapse' : true);
 				}, (hasCoupon || emailedCoupon) ? 9000 : 2500);
 			}
 
@@ -738,7 +939,11 @@
 
 		/* ---------------- Entry flow ---------------- */
 
-		if (!isDone() && !teaserHidden()) {
+		if (savedCoupon()) {
+			// The visitor owns an unexpired code, so "done" is no longer the end
+			// of the road: the tab is how they get back to it.
+			showTeaser();
+		} else if (!isDone() && !teaserHidden()) {
 			if (wasDismissed()) {
 				// Popup was closed before — stay collapsed as the floating tab.
 				showTeaser();

@@ -501,6 +501,35 @@
         }
         renderExpenseBreakdown(p);
 
+        // Payment fees are read per order, so the total can be built from only
+        // part of them. Flag that on the Expenses card rather than in its delta
+        // line, which already carries the share-of-revenue figure.
+        var expCard = document.getElementById('profit-expenses-card');
+        if (expCard) {
+            var feeTip = '';
+            if (p.payment_fees_unconverted > 0) {
+                // Actionable: those fees exist and are NOT in the total, so the
+                // figure understates. Ranked above the merely-missing case.
+                feeTip = (i18n.profit_fees_unconverted
+                    || 'Processing fees on %d orders are in a currency with no exchange rate, so they are not counted. Add a rate to include them.')
+                    .replace('%d', p.payment_fees_unconverted);
+            } else if (p.payment_fees_missing > 0 && p.payment_fees_raw > 0) {
+                // Some fees WERE found, so the total is real but partial.
+                feeTip = (i18n.profit_fees_partial
+                    || '%d orders have no payment fee recorded, so processing costs are only counted on the rest.')
+                    .replace('%d', p.payment_fees_missing);
+            } else if (p.payment_fees_missing > 0) {
+                // Nothing found at all. payment_fees_missing is only non-zero
+                // when the setting is ON and the period had orders, so this is
+                // exactly "enabled but the gateway records no fee" — the case
+                // that used to render as a silently absent row and read as the
+                // feature being broken. Say it instead of hiding it.
+                feeTip = i18n.profit_fees_none
+                    || 'Payment fees are turned on, but none of the orders in this period record a processing fee. Your payment gateway may not store one, so this cost is not included.';
+            }
+            setEstimateFlag(expCard, !!feeTip, feeTip);
+        }
+
         // Net profit: colour green/red and show the margin %.
         var netCard = document.querySelector('.brikpanel-dash-card[data-metric="profit_net"]');
         if (netCard) {
@@ -708,7 +737,9 @@
         btn.setAttribute('aria-label', label);
         btn.setAttribute('data-del-type', item.del.type);
         btn.setAttribute('data-del-label', item.label);
-        if (item.del.type === 'percent') {
+        // Both always-on kinds address one row by id and have no date window;
+        // everything else is matched by title inside the viewed period.
+        if (item.del.type === 'percent' || item.del.type === 'per_order') {
             btn.setAttribute('data-del-id', String(item.del.id));
         } else {
             btn.setAttribute('data-del-cat', item.del.cat || '');
@@ -889,10 +920,14 @@
         var recField  = document.getElementById('brikpanel-exp-recurring-field');
         var row2El    = document.getElementById('brikpanel-exp-row2');
         var pctHintEl = document.getElementById('brikpanel-exp-percent-hint');
+        var poHintEl  = document.getElementById('brikpanel-exp-per-order-hint');
+        var scopeEl   = document.getElementById('brikpanel-exp-scope');
+        var scopeFld  = document.getElementById('brikpanel-exp-scope-field');
         var cfg       = (CFG.expenses || {});
         var saving    = false;
 
-        function isPercent() { return kindEl && kindEl.value === 'percent'; }
+        function isPercent()  { return kindEl && kindEl.value === 'percent'; }
+        function isPerOrder() { return kindEl && kindEl.value === 'per_order'; }
 
         function showMsg(text, isError) {
             if (!msgEl) return;
@@ -924,23 +959,31 @@
         });
 
         // Reveal the "counts every period" hint only for repeating expenses.
+        // Both always-on kinds suppress it: without the isPerOrder() arm,
+        // switching a Monthly fixed row to a per-order cost would leave "counted
+        // automatically in every period" hanging under a now-hidden Repeats.
         function syncHint() {
-            if (hintEl) hintEl.hidden = isPercent() || !recEl || recEl.value === 'none';
+            if (hintEl) hintEl.hidden = isPercent() || isPerOrder() || !recEl || recEl.value === 'none';
         }
         if (recEl) recEl.addEventListener('change', syncHint);
 
-        // A percentage cost is a rate of revenue, always on. Show "%" instead of
-        // the currency and drop BOTH the Date and Repeats row: a percentage has
-        // no meaningful single date and applies every period by nature. A short
-        // hint explains the behaviour. Fixed amounts get the normal money input
-        // plus the date/repeat controls.
+        // A percentage cost is a rate of revenue and a per-order cost is a unit
+        // price: both are always on, so both drop the Date and Repeats row (that
+        // one wrapper holds the pair here, unlike the Expenses page where the two
+        // fields are hidden separately). Only the percentage swaps the currency
+        // for "%" and caps the input at 100, since a per-order cost is still money.
+        // "Applies to" belongs to the per-order kind alone.
         function syncType() {
-            var pct = isPercent();
+            var pct     = isPercent();
+            var perOrd  = isPerOrder();
+            var ongoing = pct || perOrd;
             if (prefixEl) prefixEl.hidden = pct;
             if (suffixEl) suffixEl.hidden = !pct;
-            if (row2El) row2El.hidden = pct;          // hides Date + Repeats together
+            if (row2El) row2El.hidden = ongoing;      // hides Date + Repeats together
             if (recField) recField.hidden = false;    // restored for the fixed case
             if (pctHintEl) pctHintEl.hidden = !pct;
+            if (poHintEl) poHintEl.hidden = !perOrd;
+            if (scopeFld) scopeFld.hidden = !perOrd;
             if (amountEl) amountEl.max = pct ? '100' : '';
             syncHint();
         }
@@ -952,6 +995,7 @@
             var amount = amountEl ? parseFloat(amountEl.value) : NaN;
             var category = catEl ? catEl.value.trim() : '';
             var pct = isPercent();
+            // The 0-100 ceiling is percent-only: a per-order cost is money.
             if (!(amount >= 0) || isNaN(amount) || category === '' || (pct && amount > 100)) {
                 showMsg(i18n.exp_required || 'Enter an amount and a title.', true);
                 return;
@@ -969,12 +1013,13 @@
             fd.append('action', cfg.action || 'brikpanel_expenses_save');
             fd.append('_ajax_nonce', cfg.nonce || '');
             fd.append('id', '0');
-            fd.append('kind', pct ? 'percent' : 'fixed');
+            fd.append('kind', kindEl ? kindEl.value : 'fixed');
+            fd.append('scope', (isPerOrder() && scopeEl) ? scopeEl.value : '');
             fd.append('amount', String(amount));
             fd.append('category', category);
             fd.append('parent_category', savedParent);
             fd.append('expense_date', dateEl ? dateEl.value : '');
-            fd.append('recurring', (pct || !recEl) ? 'none' : recEl.value);
+            fd.append('recurring', (pct || isPerOrder() || !recEl) ? 'none' : recEl.value);
             fd.append('description', descEl ? descEl.value : '');
 
             fetch(CFG.ajax_url, { method: 'POST', body: fd, credentials: 'same-origin' })
@@ -996,6 +1041,7 @@
                         if (descEl) descEl.value = '';
                         if (recEl) recEl.value = 'none';
                         if (kindEl) kindEl.value = 'fixed';
+                        if (scopeEl) scopeEl.value = '';
                         syncType();
                         // The save busted the dashboard cache server-side, so a
                         // refetch returns figures that already include this expense.
@@ -1078,8 +1124,8 @@
         // Everything the request needs, read straight off the button.
         function payloadFor(btn) {
             var type = btn.getAttribute('data-del-type');
-            if (type === 'percent') {
-                return { type: 'percent', id: btn.getAttribute('data-del-id') || '0' };
+            if (type === 'percent' || type === 'per_order') {
+                return { type: type, id: btn.getAttribute('data-del-id') || '0' };
             }
             return {
                 type: type === 'group' ? 'group' : 'cat',
@@ -1234,10 +1280,21 @@
         var revenue = data.map(function (d) { return d.revenue; });
         var orders = data.map(function (d) { return d.orders; });
 
+        // A one-day range is a single bucket, and Chart.js draws no line segment
+        // for one point — with the dotless style the Orders series would vanish
+        // entirely. Force a visible dot in that case. Revenue thins its dots out
+        // on long ranges where they would smear into the line.
+        var revRadius = data.length === 1 ? 4 : (data.length > 30 ? 0 : 3);
+        var ordRadius = data.length === 1 ? 4 : 0;
+
         if (salesChart) {
             salesChart.data.labels = labels;
             salesChart.data.datasets[0].data = revenue;
             salesChart.data.datasets[1].data = orders;
+            // Recompute with the new point count: switching from "Last 30 days"
+            // to "Today" otherwise kept the old radii and hid the single point.
+            salesChart.data.datasets[0].pointRadius = revRadius;
+            salesChart.data.datasets[1].pointRadius = ordRadius;
             salesChart.update();
             return;
         }
@@ -1255,7 +1312,7 @@
                         fill: true,
                         tension: 0.3,
                         borderWidth: 2,
-                        pointRadius: data.length > 30 ? 0 : 3,
+                        pointRadius: revRadius,
                         pointHoverRadius: 5,
                         yAxisID: 'y'
                     },
@@ -1268,7 +1325,7 @@
                         tension: 0.3,
                         borderWidth: 1.5,
                         borderDash: [4, 4],
-                        pointRadius: 0,
+                        pointRadius: ordRadius,
                         pointHoverRadius: 4,
                         yAxisID: 'y1'
                     }

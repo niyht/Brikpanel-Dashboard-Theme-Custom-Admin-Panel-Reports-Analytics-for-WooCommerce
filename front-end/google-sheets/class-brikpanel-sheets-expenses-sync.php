@@ -393,7 +393,9 @@ class Brikpanel_Sheets_Expenses_Sync {
 	 * @return array
 	 */
 	private function build_row( $e, array $columns ) {
-		$kind = isset( $e->kind ) && $e->kind === 'percent' ? 'percent' : 'fixed';
+		$kind = ( isset( $e->kind ) && in_array( (string) $e->kind, [ 'percent', 'per_order' ], true ) )
+			? (string) $e->kind
+			: 'fixed';
 		$row  = [];
 		foreach ( $columns as $col ) {
 			switch ( $col ) {
@@ -407,7 +409,12 @@ class Brikpanel_Sheets_Expenses_Sync {
 					$row[] = (string) $e->category;
 					break;
 				case 'category':
-					$row[] = (string) ( $e->parent_category ?? '' );
+					// A cost filed under one of the Profit card's computed lines
+					// stores a stable key, not the visible name. The sheet gets
+					// the readable label; resolve_parent() turns it back into the
+					// key on the way in, so the round trip is lossless and the
+					// merchant never sees "__brikpanel:shipping" in a cell.
+					$row[] = self::parent_label( (string) ( $e->parent_category ?? '' ) );
 					break;
 				case 'description':
 					$row[] = (string) ( $e->description ?? '' );
@@ -694,7 +701,9 @@ class Brikpanel_Sheets_Expenses_Sync {
 		// commission rate into a flat fee.
 		$kind = self::resolve_kind( $cell( 'type' ) );
 		if ( null === $kind ) {
-			$kind = $existing && 'percent' === $existing->kind ? 'percent' : 'fixed';
+			$kind = ( $existing && in_array( (string) $existing->kind, [ 'percent', 'per_order' ], true ) )
+				? (string) $existing->kind
+				: 'fixed';
 		}
 
 		$date = self::parse_date_cell( $cell( 'date' ) );
@@ -703,25 +712,27 @@ class Brikpanel_Sheets_Expenses_Sync {
 			// edits on the row (or silently re-dating it to today).
 			$date = substr( (string) $existing->expense_date, 0, 10 );
 		}
-		// A percentage cost applies every period and has no meaningful single
-		// date, so the Expenses screen stamps today when one is created
-		// without it. Mirror that here instead of rejecting the row.
-		if ( $date === '' && 'percent' === $kind ) {
+		// A percentage cost and a per-order cost both apply every period and have
+		// no meaningful single date, so the Expenses screen stamps today when one
+		// is created without it. Mirror that here instead of rejecting the row.
+		if ( $date === '' && in_array( $kind, [ 'percent', 'per_order' ], true ) ) {
 			$date = current_time( 'Y-m-d' );
 		}
 
 		$category  = sanitize_text_field( (string) $cell( 'title' ) );
-		$parent    = trim( sanitize_text_field( (string) $cell( 'category' ) ) );
+		$parent    = self::resolve_parent( trim( sanitize_text_field( (string) $cell( 'category' ) ) ) );
 		$amount    = self::parse_amount_cell( $cell( 'amount' ) );
 		$recurring = self::resolve_recurring( $cell( 'repeats' ) );
 		if ( null === $recurring ) {
 			$recurring = $existing ? (string) ( $existing->recurring ?? 'none' ) : 'none';
 		}
-		if ( 'percent' === $kind ) {
+		if ( in_array( $kind, [ 'percent', 'per_order' ], true ) ) {
 			$recurring = 'none';
 		}
 
 		$valid = ( $date !== '' && $category !== '' && $amount !== null && $amount >= 0 );
+		// The 0-100 ceiling is percent-only. A per-order cost of 250 is legal,
+		// and rejecting it here would silently drop the merchant's whole row.
 		if ( $valid && 'percent' === $kind && $amount > 100 ) {
 			$valid = false;
 		}
@@ -786,9 +797,10 @@ class Brikpanel_Sheets_Expenses_Sync {
 			$data[ $columns[ $field ][0] ] = $f[ $field ];
 			$format[]                      = $columns[ $field ][1];
 		}
-		// A percentage cost never repeats — the rate applies every period. Keep
-		// that true even when the Repeats column is not in the sheet.
-		if ( in_array( 'kind', $fields, true ) && 'percent' === $f['kind'] && ! isset( $data['recurring'] ) ) {
+		// Neither always-on kind ever repeats: a rate applies every period and so
+		// does a per-order unit price. Keep that true even when the Repeats column
+		// is not in the sheet.
+		if ( in_array( 'kind', $fields, true ) && in_array( $f['kind'], [ 'percent', 'per_order' ], true ) && ! isset( $data['recurring'] ) ) {
 			$data['recurring'] = 'none';
 			$format[]          = '%s';
 		}
@@ -956,8 +968,12 @@ class Brikpanel_Sheets_Expenses_Sync {
 	public static function kind_labels() {
 		return self::in_site_locale( static function () {
 			return [
-				'fixed'   => __( 'Fixed amount', 'brikpanel' ),
-				'percent' => __( 'Percentage of revenue', 'brikpanel' ),
+				'fixed'     => __( 'Fixed amount', 'brikpanel' ),
+				'percent'   => __( 'Percentage of revenue', 'brikpanel' ),
+				// Must stay the SAME English source string as both expense-editor
+				// Type options, or the English-source arm of resolve_kind() stops
+				// matching for merchants on a translated site.
+				'per_order' => __( 'Cost per order', 'brikpanel' ),
 			];
 		} );
 	}
@@ -965,6 +981,82 @@ class Brikpanel_Sheets_Expenses_Sync {
 	public static function kind_label( $kind ) {
 		$labels = self::kind_labels();
 		return isset( $labels[ $kind ] ) ? $labels[ $kind ] : $labels['fixed'];
+	}
+
+	/**
+	 * Stable key => label for the Profit card's computed lines, in the SITE
+	 * language, ungated.
+	 *
+	 * Ungated on purpose, unlike the picker's own list: a row filed under Google
+	 * Ads must keep round-tripping after the ad module is removed, and a sheet
+	 * written while shipping costs were on must keep reading after they are
+	 * switched off. Gating here would turn either into a raw key in a cell.
+	 *
+	 * @return array<string,string>
+	 */
+	private static function builtin_parent_labels() {
+		return self::in_site_locale( static function () {
+			$p = class_exists( 'Brikpanel_Expenses' ) ? Brikpanel_Expenses::BUILTIN_PARENT_PREFIX : '__brikpanel:';
+			return [
+				$p . 'shipping'   => __( 'Shipping cost', 'brikpanel' ),
+				$p . 'tax'        => __( 'Tax', 'brikpanel' ),
+				$p . 'google_ads' => __( 'Google Ads', 'brikpanel' ),
+				$p . 'meta_ads'   => __( 'Meta Ads', 'brikpanel' ),
+			];
+		} );
+	}
+
+	/**
+	 * What the sheet should show for a stored parent value.
+	 *
+	 * @param string $parent
+	 * @return string
+	 */
+	public static function parent_label( $parent ) {
+		$labels = self::builtin_parent_labels();
+		return isset( $labels[ $parent ] ) ? $labels[ $parent ] : (string) $parent;
+	}
+
+	/**
+	 * Turn a "Part of" cell back into what should be stored.
+	 *
+	 * A computed-line label maps back to its stable key; anything else is the
+	 * merchant's own text and is kept verbatim. Matching covers the site
+	 * language, the English source (so a translated site still recognises a cell
+	 * written in English) and the key itself, exactly like resolve_kind().
+	 *
+	 * There is no null "unreadable" case here: unlike Type, an unrecognised
+	 * value is a perfectly valid parent name, not a failure to understand.
+	 *
+	 * Known ambiguity, resolved in favour of the computed line: a merchant whose
+	 * OWN expense is titled exactly "Tax" cannot file a cost under it by typing
+	 * "Tax" in this cell, they get the card's Tax line instead. The rule is fixed
+	 * rather than "prefer whichever expense happens to exist", because a rule
+	 * that reads the database would make the same cell text mean different
+	 * things on different days. The expenses screen has no such ambiguity: its
+	 * picker stores the key, and the two entries sit in different groups.
+	 *
+	 * @param string $value Raw cell value, already sanitised.
+	 * @return string
+	 */
+	public static function resolve_parent( $value ) {
+		$v = self::fold( $value );
+		if ( '' === $v ) {
+			return '';
+		}
+		$p      = class_exists( 'Brikpanel_Expenses' ) ? Brikpanel_Expenses::BUILTIN_PARENT_PREFIX : '__brikpanel:';
+		$source = [
+			$p . 'shipping'   => 'Shipping cost',
+			$p . 'tax'        => 'Tax',
+			$p . 'google_ads' => 'Google Ads',
+			$p . 'meta_ads'   => 'Meta Ads',
+		];
+		foreach ( self::builtin_parent_labels() as $key => $label ) {
+			if ( $v === self::fold( $label ) || $v === self::fold( $key ) || $v === self::fold( $source[ $key ] ) ) {
+				return $key;
+			}
+		}
+		return (string) $value;
 	}
 
 	/**
@@ -1003,7 +1095,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 	 * quietly rewriting every recurring cost as one-time.
 	 *
 	 * @param mixed $value Raw cell value.
-	 * @return string|null 'fixed' | 'percent' | null when not understood.
+	 * @return string|null 'fixed' | 'percent' | 'per_order' | null when not understood.
 	 *                     An empty cell resolves to 'fixed' — blank is a
 	 *                     deliberate "nothing special", not an unknown.
 	 */
@@ -1013,8 +1105,9 @@ class Brikpanel_Sheets_Expenses_Sync {
 			return 'fixed';
 		}
 		$source = [
-			'fixed'   => 'Fixed amount',
-			'percent' => 'Percentage of revenue',
+			'fixed'     => 'Fixed amount',
+			'percent'   => 'Percentage of revenue',
+			'per_order' => 'Cost per order',
 		];
 		foreach ( self::kind_labels() as $key => $label ) {
 			if ( $v === self::fold( $label ) || $v === $key || $v === self::fold( $source[ $key ] ) ) {
@@ -1023,6 +1116,11 @@ class Brikpanel_Sheets_Expenses_Sync {
 		}
 		if ( in_array( $v, [ 'percent', 'percentage', '%', 'rate' ], true ) ) {
 			return 'percent';
+		}
+		// No bare 'order' alias: far too generic to be a safe guess for a value
+		// that decides whether a number is money or a unit price.
+		if ( in_array( $v, [ 'per order', 'per_order', 'per-order', 'cost per order' ], true ) ) {
+			return 'per_order';
 		}
 		if ( in_array( $v, [ 'fixed', 'amount', 'flat' ], true ) ) {
 			return 'fixed';
@@ -1082,7 +1180,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 		if ( $v === '' ) {
 			return '';
 		}
-		$v = function_exists( 'mb_strtolower' ) ? mb_strtolower( $v, 'UTF-8' ) : strtolower( $v );
+		$v = brikpanel_strtolower( $v );
 		$v = str_replace( [ '-', '_' ], ' ', $v );
 		return trim( preg_replace( '/\s+/u', ' ', $v ) );
 	}
@@ -1195,7 +1293,13 @@ class Brikpanel_Sheets_Expenses_Sync {
 	 * @return array
 	 */
 	private static function fields_of( $e ) {
-		$kind = isset( $e->kind ) && $e->kind === 'percent' ? 'percent' : 'fixed';
+		// Must recognise EXACTLY the kinds build_row() writes. If this collapsed a
+		// per_order row to 'fixed' while build_row() wrote "Cost per order", every
+		// push would see a phantom diff and every pull would rewrite the row as
+		// fixed, silently turning a unit price into a one-off payment.
+		$kind = ( isset( $e->kind ) && in_array( (string) $e->kind, [ 'percent', 'per_order' ], true ) )
+			? (string) $e->kind
+			: 'fixed';
 		return [
 			'date'        => substr( (string) $e->expense_date, 0, 10 ),
 			'category'    => (string) $e->category,
@@ -1203,7 +1307,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 			'description' => (string) ( $e->description ?? '' ),
 			'amount'      => (float) $e->amount,
 			'kind'        => $kind,
-			'recurring'   => 'percent' === $kind ? 'none' : (string) ( $e->recurring ?? 'none' ),
+			'recurring'   => in_array( $kind, [ 'percent', 'per_order' ], true ) ? 'none' : (string) ( $e->recurring ?? 'none' ),
 		];
 	}
 

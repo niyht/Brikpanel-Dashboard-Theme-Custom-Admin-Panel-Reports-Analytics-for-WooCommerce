@@ -729,8 +729,6 @@ class Brikpanel_Sheets_Mapping {
 		if ( $key === '' ) {
 			return __( 'Custom field', 'brikpanel' );
 		}
-		return function_exists( 'mb_convert_case' )
-			? mb_convert_case( $key, MB_CASE_TITLE, 'UTF-8' )
-			: ucwords( $key );
+		return brikpanel_title_case( $key );
 	}
 }

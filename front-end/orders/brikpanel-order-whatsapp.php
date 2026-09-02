@@ -362,14 +362,14 @@ function brikpanel_whatsapp_order_items_text( $order ) {
 
 		$extras = array();
 		if ( method_exists( $item, 'get_formatted_meta_data' ) ) {
-			$folded = function_exists( 'mb_strtolower' ) ? mb_strtolower( $name, 'UTF-8' ) : strtolower( $name );
+			$folded = brikpanel_strtolower( $name );
 			foreach ( $item->get_formatted_meta_data() as $meta ) {
 				$key   = brikpanel_whatsapp_plain_text( $meta->display_key );
 				$value = brikpanel_whatsapp_plain_text( $meta->display_value );
 				if ( '' === $value ) {
 					continue;
 				}
-				$needle = function_exists( 'mb_strtolower' ) ? mb_strtolower( $value, 'UTF-8' ) : strtolower( $value );
+				$needle = brikpanel_strtolower( $value );
 				if ( false !== strpos( $folded, $needle ) ) {
 					// The item name already says this; repeating it reads badly.
 					continue;
@@ -513,18 +513,18 @@ function brikpanel_whatsapp_order_message( $order ) {
 		 * @param int $max
 		 */
 		$max = (int) apply_filters( 'brikpanel_whatsapp_order_message_max_length', 1200 );
-		if ( $max > 0 && function_exists( 'mb_strlen' ) && mb_strlen( $text ) > $max ) {
+		if ( $max > 0 && brikpanel_strlen( $text ) > $max ) {
 			// Cut by characters, not bytes: a byte-wise cut lands mid-character
 			// in Arabic, Turkish or any other non-ASCII text.
-			$text = mb_substr( $text, 0, $max );
+			$text = brikpanel_substr( $text, 0, $max );
 
 			// Prefer to end on a whole line, so a long item list stops after a
 			// product rather than halfway through its name. Only when that keeps
 			// most of the draft — a single very long line would otherwise be cut
 			// back to almost nothing.
-			$break = mb_strrpos( $text, "\n" );
+			$break = brikpanel_strrpos( $text, "\n" );
 			if ( false !== $break && $break > (int) ( $max * 0.6 ) ) {
-				$text = mb_substr( $text, 0, $break );
+				$text = brikpanel_substr( $text, 0, $break );
 			}
 			$text = rtrim( $text );
 
@@ -947,8 +947,8 @@ function brikpanel_render_whatsapp_status_messages_field() {
 	// What an empty box falls back to, shown as the placeholder. Trimmed to one
 	// readable line: the general message can run to a thousand characters.
 	$fallback = trim( preg_replace( '/\s+/u', ' ', brikpanel_whatsapp_order_general_message() ) );
-	if ( function_exists( 'mb_strlen' ) && mb_strlen( $fallback ) > 90 ) {
-		$fallback = rtrim( mb_substr( $fallback, 0, 90 ) ) . '…';
+	if ( brikpanel_strlen( $fallback ) > 90 ) {
+		$fallback = rtrim( brikpanel_substr( $fallback, 0, 90 ) ) . '…';
 	}
 	?>
 	</table>
@@ -1050,7 +1050,7 @@ function brikpanel_whatsapp_clean_message( $raw ) {
 
 	// Count characters, not bytes: a byte-wise cut lands mid-character in
 	// Arabic, Turkish or any other non-ASCII text and corrupts the tail.
-	return function_exists( 'mb_substr' ) ? mb_substr( $clean, 0, 1000 ) : substr( $clean, 0, 1000 );
+	return brikpanel_substr( $clean, 0, 1000 );
 }
 
 /**

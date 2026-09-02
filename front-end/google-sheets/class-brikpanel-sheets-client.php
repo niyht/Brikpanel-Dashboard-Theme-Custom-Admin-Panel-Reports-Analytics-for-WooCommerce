@@ -145,7 +145,7 @@ class Brikpanel_Sheets_Client {
 				// Truncate over-long strings regardless of input mode — both RAW
 				// and USER_ENTERED reject cells > 50k chars.
 				if ( strlen( $cell ) > $max_len ) {
-					$cell = mb_strimwidth( $cell, 0, $max_len, '…', 'UTF-8' );
+					$cell = brikpanel_strimwidth( $cell, 0, $max_len, '…' );
 					$rows[ $r ][ $c ] = $cell;
 				}
 				if ( ! $is_user_entered ) {
@@ -509,6 +509,17 @@ class Brikpanel_Sheets_Client {
 		while ( $attempt < self::MAX_ATTEMPTS ) {
 			$token = Brikpanel_Sheets_Tokens::get_access_token();
 			if ( $token === null ) {
+				// Same symptom, two very different causes. Saying "not connected"
+				// for a temporary outage on our side sends merchants off
+				// reconnecting Google or suspecting their host, neither of which
+				// is the problem — and the connection is still perfectly valid.
+				if ( Brikpanel_Sheets_Tokens::had_service_outage() ) {
+					throw new Brikpanel_Sheets_Exception(
+						__( 'The BrikPanel service that renews your Google session is temporarily unreachable, so this sync was skipped. Your connection is still in place — it will resume on its own, or you can click Sync now again in a few minutes.', 'brikpanel' ),
+						0,
+						'service_unavailable'
+					);
+				}
 				throw new Brikpanel_Sheets_Exception( __( 'Not connected to Google Sheets.', 'brikpanel' ), 0, 'not_connected' );
 			}
 

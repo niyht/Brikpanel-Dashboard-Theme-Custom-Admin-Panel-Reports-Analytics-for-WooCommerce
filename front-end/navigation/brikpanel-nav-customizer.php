@@ -110,14 +110,16 @@ function brikpanel_nav_redirect_synthetic_slug() {
 	if ( $page === '' ) {
 		return;
 	}
-	$is_custom = strpos( $page, 'brikpanel_custom__' ) === 0;
-	$is_spacer = strpos( $page, 'brikpanel_spacer__' ) === 0;
-	if ( ! $is_custom && ! $is_spacer ) {
+	$is_custom  = strpos( $page, 'brikpanel_custom__' ) === 0;
+	$is_spacer  = strpos( $page, 'brikpanel_spacer__' ) === 0;
+	$is_heading = strpos( $page, 'brikpanel_heading__' ) === 0;
+	if ( ! $is_custom && ! $is_spacer && ! $is_heading ) {
 		return;
 	}
 
-	// Spacers are decorative; there is nothing to open. Send the user home.
-	if ( $is_spacer ) {
+	// Spacers and section headings are decorative; there is nothing to open.
+	// Send the user home.
+	if ( $is_spacer || $is_heading ) {
 		wp_safe_redirect( admin_url() );
 		exit;
 	}
@@ -321,6 +323,34 @@ function brikpanel_nav_config_save( $config ) {
 			continue;
 		}
 
+		if ( $type === 'heading' ) {
+			// User-created group heading. Like a spacer it is decorative — no
+			// link, no icon, no audience rule — but it carries a label and the
+			// rows that follow it (up to the next heading) render inside its
+			// collapsible group. Grouping is positional; nothing is nested in
+			// the stored config.
+			$id = isset( $item['id'] ) ? preg_replace( '/[^a-zA-Z0-9_]/', '', (string) $item['id'] ) : '';
+			if ( $id === '' ) {
+				$id = 'h' . wp_generate_password( 10, false, false );
+			}
+			// Same treatment as the "Site management" label below: markup
+			// stripped, whitespace collapsed, capped so it stays a heading.
+			$label = isset( $item['label'] ) ? wp_strip_all_tags( (string) $item['label'] ) : '';
+			$label = trim( preg_replace( '/\s+/', ' ', $label ) );
+			if ( $label === '' ) {
+				// A heading with no text would render as an empty, unlabelled
+				// toggle nobody could identify. Drop it instead of storing it.
+				continue;
+			}
+			$cleaned[] = [
+				'type'    => 'heading',
+				'id'      => $id,
+				'section' => $section,
+				'label'   => brikpanel_substr( $label, 0, 60 ),
+			];
+			continue;
+		}
+
 		if ( $type === 'system' ) {
 			$slug = isset( $item['slug'] ) ? wp_unslash( $item['slug'] ) : '';
 			$slug = is_string( $slug ) ? trim( $slug ) : '';
@@ -366,9 +396,7 @@ function brikpanel_nav_config_save( $config ) {
 				$label_override = wp_strip_all_tags( wp_unslash( (string) $item['label_override'] ) );
 				$label_override = trim( preg_replace( '/\s+/', ' ', $label_override ) );
 				if ( $label_override !== '' ) {
-					$row['label_override'] = function_exists( 'mb_substr' )
-						? mb_substr( $label_override, 0, 120 )
-						: substr( $label_override, 0, 120 );
+					$row['label_override'] = brikpanel_substr( $label_override, 0, 120 );
 				}
 			}
 
@@ -451,9 +479,7 @@ function brikpanel_nav_config_save( $config ) {
 	$sitemgmt_label = isset( $config['sitemgmt_label'] ) ? wp_strip_all_tags( (string) $config['sitemgmt_label'] ) : '';
 	$sitemgmt_label = trim( preg_replace( '/\s+/', ' ', $sitemgmt_label ) );
 	if ( $sitemgmt_label !== '' ) {
-		$sitemgmt_label = function_exists( 'mb_substr' )
-			? mb_substr( $sitemgmt_label, 0, 60 )
-			: substr( $sitemgmt_label, 0, 60 );
+		$sitemgmt_label = brikpanel_substr( $sitemgmt_label, 0, 60 );
 	}
 
 	$payload = [
@@ -1048,6 +1074,50 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 			continue;
 		}
 
+		if ( $cfg['type'] === 'heading' ) {
+			// Group headings share the spacer's constraints: decorative, and
+			// meaningless inside the "More" dropdown (there is nothing to group
+			// there), so skip them in that section.
+			if ( $raw_section === 'more' ) {
+				continue;
+			}
+			$id    = isset( $cfg['id'] ) ? (string) $cfg['id'] : '';
+			$label = isset( $cfg['label'] ) ? trim( (string) $cfg['label'] ) : '';
+			if ( $id === '' || $label === '' ) {
+				continue;
+			}
+			$slug = 'brikpanel_heading__' . $id;
+			// A heading dropped at the very TOP of the Site management section
+			// must become the anchor, otherwise the built-in "Site management"
+			// heading would be emitted on the row below it — closing this group
+			// before a single item landed in it, which silently deletes the
+			// user's heading. Anchoring here makes the built-in heading print
+			// first and this group nest inside it, which is what the ordering
+			// in the editor shows.
+			if ( $section === 'site_management' && $first_sitemgmt === '' ) {
+				$first_sitemgmt = $slug;
+			}
+			// Synthetic $menu row: index 7 carries a sentinel the renderer reads
+			// to emit a heading plus the opening tag of its collapsible group
+			// instead of a normal <li>. It never becomes the site-management
+			// anchor, so the built-in "Site management" heading is untouched.
+			$new_menu[] = [
+				'',
+				'read',
+				$slug,
+				'',
+				'menu-top brikpanel-nav-heading-item',
+				'menu-' . $slug,
+				'div',
+				[
+					'is_heading' => true,
+					'id'         => $id,
+					'label'      => $label,
+				],
+			];
+			continue;
+		}
+
 		if ( $cfg['type'] === 'system' ) {
 			$slug = isset( $cfg['slug'] ) ? (string) $cfg['slug'] : '';
 			if ( $slug === '' || ! isset( $by_slug[ $slug ] ) ) {
@@ -1352,6 +1422,13 @@ function brikpanel_render_nav_customizer_field( $value ) {
 				'variant' => ( isset( $cfg['variant'] ) && $cfg['variant'] === 'line' ) ? 'line' : 'space',
 				'section' => isset( $cfg['section'] ) ? $cfg['section'] : 'store',
 			];
+		} elseif ( $cfg['type'] === 'heading' ) {
+			$rows[] = [
+				'type'    => 'heading',
+				'id'      => isset( $cfg['id'] ) ? (string) $cfg['id'] : '',
+				'label'   => isset( $cfg['label'] ) ? (string) $cfg['label'] : '',
+				'section' => isset( $cfg['section'] ) ? $cfg['section'] : 'store',
+			];
 		} elseif ( $cfg['type'] === 'custom' ) {
 			$rows[] = [
 				'type'       => 'custom',
@@ -1546,6 +1623,38 @@ function brikpanel_render_nav_customizer_field( $value ) {
 										<?php
 										continue;
 									}
+									// Group heading rows are decorative too, but they own a
+									// label the user edits inline. Everything below one
+									// (until the next heading) renders inside its collapsible
+									// group in the live sidebar.
+									if ( isset( $row['type'] ) && $row['type'] === 'heading' ) {
+										?>
+										<li class="brikpanel-navc-item is-heading"
+										    data-type="heading"
+										    data-id="<?php echo esc_attr( isset( $row['id'] ) ? $row['id'] : '' ); ?>">
+											<div class="brikpanel-navc-row">
+												<span class="brikpanel-navc-drag" aria-hidden="true">
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>
+												</span>
+												<span class="brikpanel-navc-heading-badge">
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="13" y2="18"/></svg>
+													<span><?php esc_html_e( 'Heading', 'brikpanel' ); ?></span>
+												</span>
+												<input type="text"
+												       class="brikpanel-navc-heading-input"
+												       data-navc-heading-label
+												       maxlength="60"
+												       value="<?php echo esc_attr( isset( $row['label'] ) ? $row['label'] : '' ); ?>"
+												       placeholder="<?php esc_attr_e( 'e.g. Site content', 'brikpanel' ); ?>"
+												       aria-label="<?php esc_attr_e( 'Heading text', 'brikpanel' ); ?>">
+												<button type="button" class="brikpanel-navc-iconbtn brikpanel-navc-iconbtn-danger" data-navc-action="delete" title="<?php esc_attr_e( 'Remove heading', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Remove heading', 'brikpanel' ); ?>">
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+												</button>
+											</div>
+										</li>
+										<?php
+										continue;
+									}
 									$is_custom      = ( $row['type'] === 'custom' );
 									$icon_slug      = $is_custom ? ( $row['icon'] ?: 'default' ) : '';
 									$icon_url       = $is_custom ? brikpanel_nav_icon_src( $icon_slug ) : '';
@@ -1555,9 +1664,21 @@ function brikpanel_render_nav_customizer_field( $value ) {
 									$override_url   = $icon_override !== '' ? brikpanel_nav_icon_src( $icon_override ) : '';
 									$label_override = $is_custom ? '' : ( isset( $row['label_override'] ) ? (string) $row['label_override'] : '' );
 									$display_label  = $is_custom ? $row['label'] : ( $label_override !== '' ? $label_override : $row['title'] );
+									// A saved system entry whose slug has no counterpart in the
+									// live admin menu: the plugin/CPT that registered it is gone,
+									// or the config was imported from another site. The live
+									// sidebar already skips it, but it would otherwise sit here
+									// forever labelled with its raw slug and with no way out
+									// short of a full reset. Flag it so the row can be styled as
+									// stale and given a delete button below.
+									$is_unavailable = ! $is_custom && isset( $row['available'] ) && ! $row['available'];
+									$unavailable_hint = __( 'This menu item does not exist on this site. It was most likely imported from another site, or the plugin that added it is no longer active.', 'brikpanel' );
 									?>
-									<li class="brikpanel-navc-item <?php echo $is_custom ? 'is-custom' : 'is-system'; ?> <?php echo ! empty( $row['hidden'] ) ? 'is-hidden' : ''; ?>"
+									<li class="brikpanel-navc-item <?php echo $is_custom ? 'is-custom' : 'is-system'; ?> <?php echo $is_unavailable ? 'is-unavailable' : ''; ?> <?php echo ! empty( $row['hidden'] ) ? 'is-hidden' : ''; ?>"
 									    data-type="<?php echo esc_attr( $row['type'] ); ?>"
+									    <?php if ( $is_unavailable ) : ?>
+									    data-unavailable="1"
+									    <?php endif; ?>
 									    data-icon-svg="<?php echo esc_attr( $icon_svg ); ?>"
 									    <?php if ( $is_custom ) : ?>
 									    data-id="<?php echo esc_attr( $row['id'] ); ?>"
@@ -1592,7 +1713,13 @@ function brikpanel_render_nav_customizer_field( $value ) {
 													<?php if ( ! empty( $row['is_new'] ) ) : ?>
 														<span class="brikpanel-navc-new-badge" title="<?php esc_attr_e( 'Newly detected — not yet reviewed', 'brikpanel' ); ?>"><?php esc_html_e( 'New', 'brikpanel' ); ?></span>
 													<?php endif; ?>
+													<?php if ( $is_unavailable ) : ?>
+														<span class="brikpanel-navc-missing-badge" title="<?php echo esc_attr( $unavailable_hint ); ?>"><?php esc_html_e( 'Not available on this site', 'brikpanel' ); ?></span>
+													<?php endif; ?>
 												</span>
+												<?php if ( $is_unavailable ) : ?>
+													<span class="brikpanel-navc-label-meta"><?php esc_html_e( 'Nothing on this site matches this item. Removing it is safe.', 'brikpanel' ); ?></span>
+												<?php endif; ?>
 												<?php if ( $is_custom ) : ?>
 													<span class="brikpanel-navc-label-meta"><?php echo esc_html( $row['url'] ); ?></span>
 												<?php endif; ?>
@@ -1609,6 +1736,13 @@ function brikpanel_render_nav_customizer_field( $value ) {
 													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
 												</button>
 												<button type="button" class="brikpanel-navc-iconbtn brikpanel-navc-iconbtn-danger" data-navc-action="delete" title="<?php esc_attr_e( 'Delete link', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Delete link', 'brikpanel' ); ?>">
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+												</button>
+											<?php elseif ( $is_unavailable ) : ?>
+												<?php // Renaming or re-iconing an item that does not exist would only
+												// add more dead config, so a stale row gets a delete button in
+												// place of the usual edit control. ?>
+												<button type="button" class="brikpanel-navc-iconbtn brikpanel-navc-iconbtn-danger" data-navc-action="delete" title="<?php esc_attr_e( 'Remove this menu item', 'brikpanel' ); ?>" aria-label="<?php esc_attr_e( 'Remove this menu item', 'brikpanel' ); ?>">
 													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
 												</button>
 											<?php else : ?>
@@ -1657,6 +1791,10 @@ function brikpanel_render_nav_customizer_field( $value ) {
 									<button type="button" class="brikpanel-navc-add" data-navc-action="add-spacer">
 										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="8 8 4 12 8 16"/><polyline points="16 8 20 12 16 16"/></svg>
 										<?php esc_html_e( 'Add spacer', 'brikpanel' ); ?>
+									</button>
+									<button type="button" class="brikpanel-navc-add" data-navc-action="add-heading">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="13" y2="18"/></svg>
+										<?php esc_html_e( 'Add heading', 'brikpanel' ); ?>
 									</button>
 								<?php endif; ?>
 							</div>
@@ -1795,6 +1933,7 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 			'invalidSvg'    => __( 'That SVG could not be read. Paste valid SVG code or a data:image/svg+xml URI.', 'brikpanel' ),
 			'confirmReset'  => __( 'Reset sidebar navigation to its defaults? This clears all customizations and removes custom links.', 'brikpanel' ),
 			'confirmDelete' => __( 'Remove this custom link?', 'brikpanel' ),
+			'confirmDeleteMissing' => __( 'Remove this menu item? It does not exist on this site, so removing it only clears the leftover setting.', 'brikpanel' ),
 			'invalidUrl'    => __( 'Please enter a valid URL (starting with http:// or https://) or an admin path.', 'brikpanel' ),
 			'invalidLabel'  => __( 'Please enter a label.', 'brikpanel' ),
 			'edit'          => __( 'Edit', 'brikpanel' ),
@@ -1809,6 +1948,11 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 			'spacerSpace'   => __( 'Blank space', 'brikpanel' ),
 			'spacerLine'    => __( 'Divider line', 'brikpanel' ),
 			'removeSpacer'  => __( 'Remove spacer', 'brikpanel' ),
+			'heading'          => __( 'Heading', 'brikpanel' ),
+			'headingText'      => __( 'Heading text', 'brikpanel' ),
+			'headingExample'   => __( 'e.g. Site content', 'brikpanel' ),
+			'headingDefault'   => __( 'New section', 'brikpanel' ),
+			'removeHeading'    => __( 'Remove heading', 'brikpanel' ),
 		],
 	] );
 } );

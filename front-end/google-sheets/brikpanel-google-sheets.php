@@ -151,7 +151,11 @@ function brikpanel_gs_unschedule_when_disabled() {
 		'brikpanel_gs_reports_snapshot',
 	];
 	foreach ( $hooks as $hook ) {
-		if ( as_has_scheduled_action( $hook, null, Brikpanel_Cron::GROUP ) ) {
+		// Asked through the wrapper, never as_has_scheduled_action() directly:
+		// that function arrived in Action Scheduler 3.3.0 and this plugin's
+		// declared floor (WooCommerce 4.0) ships 3.1.2, where calling it from
+		// this `init` hook was a fatal on every front-end page view.
+		if ( Brikpanel_Cron::has_any_scheduled( $hook ) ) {
 			Brikpanel_Cron::cancel( $hook );
 		}
 	}

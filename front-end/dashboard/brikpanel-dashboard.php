@@ -806,7 +806,7 @@ class Brikpanel_Dashboard {
                         <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Expenses', 'brikpanel' ); ?><?php
                             $this->render_hint(
                                 __( 'What Expenses includes', 'brikpanel' ),
-                                __( 'Operating costs for the period: order tax, ad spend from connected ad platforms (store currency only), supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Open the breakdown to see each part.', 'brikpanel' )
+                                __( 'Operating costs for the period: order tax, ad spend from connected ad platforms (store currency only), payment processing fees charged by the gateway, supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Open the breakdown to see each part.', 'brikpanel' )
                             ); ?></span>
                         <span class="brikpanel-dash-card-value" id="card-profit-expenses">--</span>
                         <span class="brikpanel-dash-card-delta brikpanel-dash-card-delta-static" id="delta-profit-expenses"></span>
@@ -876,6 +876,8 @@ class Brikpanel_Dashboard {
                         <select id="brikpanel-exp-kind">
                             <option value="fixed"><?php esc_html_e( 'Fixed amount', 'brikpanel' ); ?></option>
                             <option value="percent"><?php esc_html_e( 'Percentage of revenue', 'brikpanel' ); ?></option>
+                            <?php // Same English source string as the Expenses page on purpose: the Sheets resolve_kind() English arm matches on it. ?>
+                            <option value="per_order"><?php esc_html_e( 'Cost per order', 'brikpanel' ); ?></option>
                         </select>
                     </div>
                     <div class="brikpanel-exp-field">
@@ -886,6 +888,30 @@ class Brikpanel_Dashboard {
                             <span class="brikpanel-exp-suffix" id="brikpanel-exp-suffix" hidden>%</span>
                         </div>
                     </div>
+                    <?php
+                    // "Applies to" sits right after Amount because it qualifies it.
+                    // Guarded like $can_group above: when the Expenses class is not
+                    // loaded the field is omitted entirely and the quick-add simply
+                    // degrades to fixed/percent rather than offering a control the
+                    // server could not read back.
+                    if ( class_exists( 'Brikpanel_Expenses' ) && method_exists( 'Brikpanel_Expenses', 'shipping_class_options' ) ) :
+                        $exp_shipping_classes = Brikpanel_Expenses::shipping_class_options();
+                    ?>
+                    <div class="brikpanel-exp-field" id="brikpanel-exp-scope-field" hidden>
+                        <label for="brikpanel-exp-scope"><?php echo esc_html( _x( 'Applies to', 'which orders a per-order cost is charged on', 'brikpanel' ) ); ?></label>
+                        <select id="brikpanel-exp-scope">
+                            <option value=""><?php esc_html_e( 'Every order', 'brikpanel' ); ?></option>
+                            <option value="free_shipping"><?php esc_html_e( 'Orders shipped free', 'brikpanel' ); ?></option>
+                            <?php if ( $exp_shipping_classes ) : ?>
+                                <optgroup label="<?php esc_attr_e( 'Shipping class', 'brikpanel' ); ?>">
+                                    <?php foreach ( $exp_shipping_classes as $sc_id => $sc_name ) : ?>
+                                        <option value="shipping_class:<?php echo (int) $sc_id; ?>"><?php echo esc_html( $sc_name ); ?></option>
+                                    <?php endforeach; ?>
+                                </optgroup>
+                            <?php endif; ?>
+                        </select>
+                    </div>
+                    <?php endif; ?>
                     <div class="brikpanel-exp-field">
                         <label for="brikpanel-exp-category"><?php esc_html_e( 'Title', 'brikpanel' ); ?></label>
                         <input type="text" id="brikpanel-exp-category" list="brikpanel-exp-cats" autocomplete="off"
@@ -926,6 +952,8 @@ class Brikpanel_Dashboard {
                         esc_html_e( 'A repeating expense is counted automatically in every period from this date onward.', 'brikpanel' ); ?></p>
                     <p class="brikpanel-exp-recurring-hint" id="brikpanel-exp-percent-hint" hidden><?php
                         esc_html_e( 'A percentage cost is applied to your revenue in every period from this date onward (great for card or marketplace commission).', 'brikpanel' ); ?></p>
+                    <p class="brikpanel-exp-recurring-hint" id="brikpanel-exp-per-order-hint" hidden><?php
+                        esc_html_e( 'A per-order cost is charged once for every matching order in the period you are viewing (great for packaging, or the courier fee on orders you ship free).', 'brikpanel' ); ?></p>
                     <div class="brikpanel-exp-msg" id="brikpanel-exp-msg" role="alert" hidden></div>
                 </div>
                 <div class="brikpanel-exp-modal-foot">
@@ -1850,7 +1878,7 @@ class Brikpanel_Dashboard {
     private static function nest_expense_lines( array $flat ): array {
         $fold = static function ( $s ) {
             $s = trim( (string) $s );
-            return function_exists( 'mb_strtolower' ) ? mb_strtolower( $s ) : strtolower( $s );
+            return brikpanel_strtolower( $s );
         };
 
         // Which folded titles exist as a top-level line here — the only things a
@@ -1866,6 +1894,9 @@ class Brikpanel_Dashboard {
         // non-existent parent lands in $orphans under its raw stored spelling.
         $children = [];
         $orphans  = [];
+        // Costs whose computed parent is absent this period; drawn flat, after
+        // everything that did find its place.
+        $stray    = [];
         foreach ( $flat as $line ) {
             $parent = trim( (string) $line['parent'] );
             if ( '' === $parent || $fold( $parent ) === $fold( $line['title'] ) ) {
@@ -1881,9 +1912,26 @@ class Brikpanel_Dashboard {
             $row['depth'] = 1;
             if ( isset( $tops[ $fold( $parent ) ] ) ) {
                 $children[ $fold( $parent ) ][] = $row;
-            } else {
-                $orphans[ $parent ][] = $row;
+                continue;
             }
+            // A computed line the merchant filed this under is simply not on the
+            // card this period: shipping costs switched off, or no tax / no ad
+            // spend in the window. Draw the cost as an ordinary top-level line
+            // rather than inventing a heading for a figure that is not there.
+            // Its amount is in Net profit either way; only the grouping is lost.
+            // A parent the merchant TYPED still gets the heading below, so an
+            // expense filed under a name that no longer exists stays visible as
+            // a group instead of quietly flattening.
+            if ( class_exists( 'Brikpanel_Expenses' ) && Brikpanel_Expenses::is_builtin_parent( $parent ) ) {
+                // Depth only. The `del` handle KEEPS its group: two costs can
+                // share a title under different parents, and drawing one of them
+                // flat must not turn its Remove control into "delete every row
+                // called this". Only the indent is lost, never the scope.
+                $row['depth'] = 0;
+                $stray[]      = $row;
+                continue;
+            }
+            $orphans[ $parent ][] = $row;
         }
 
         $out = [];
@@ -1901,6 +1949,11 @@ class Brikpanel_Dashboard {
                 }
                 unset( $children[ $key ] );
             }
+        }
+
+        // Costs whose computed parent is not on the card this period.
+        foreach ( $stray as $row ) {
+            $out[] = $row;
         }
 
         // Label-only headers for parents that have no line of their own here.
@@ -1942,20 +1995,38 @@ class Brikpanel_Dashboard {
         // on can outlive the toggle and would otherwise still draw a row the
         // merchant has switched off. Like Tax and ad spend it is computed, not a
         // stored expense row, so it renders without a Remove control.
+        // Payment fees sit between Tax and Shipping cost, matching the order the
+        // snapshot's `breakdown` declares. Gated on the same setting the
+        // component itself checks, and for the same reason as shipping below.
+        if ( function_exists( 'brikpanel_payment_fees_enabled' ) && brikpanel_payment_fees_enabled() ) {
+            $fixed_labels['payment_fees'] = __( 'Payment fees', 'brikpanel' );
+        }
         if ( function_exists( 'brikpanel_shipping_cost_enabled' ) && brikpanel_shipping_cost_enabled() ) {
             $fixed_labels['shipping'] = __( 'Shipping cost', 'brikpanel' );
         }
-        $breakdown = [];
+        // The computed lines go through the SAME nesting pass as the stored
+        // expenses rather than being printed ahead of it, which is what lets a
+        // merchant file "Bulky box" under "Shipping cost". Their `title` is the
+        // stable key an expense's parent_category holds, never the translated
+        // label, so the link survives a change of admin language. Order is
+        // unchanged: nest_expense_lines() walks $flat in order and these are
+        // first. No `del`, so they still render without a Remove control.
+        $bp_key = class_exists( 'Brikpanel_Expenses' ) ? Brikpanel_Expenses::BUILTIN_PARENT_PREFIX : '__brikpanel:';
+        $flat   = [];
         foreach ( $fixed_labels as $key => $label ) {
             $amount = (float) ( $s['breakdown'][ $key ] ?? 0 );
             if ( $amount <= 0 ) {
                 continue; // hide empty components to keep the card clean
             }
-            $breakdown[] = [
-                'key'    => $key,
-                'label'  => $label,
-                'amount' => wc_price( $amount ),
-                'raw'    => $amount,
+            $flat[] = [
+                'title'  => $bp_key . $key,
+                'parent' => '',
+                'row'    => [
+                    'key'    => $key,
+                    'label'  => $label,
+                    'amount' => wc_price( $amount ),
+                    'raw'    => $amount,
+                ],
             ];
         }
 
@@ -1991,9 +2062,11 @@ class Brikpanel_Dashboard {
         $lines = (array) ( $s['expense_lines'] ?? [] );
 
         // One entry per line to be drawn, in the order the card shows them:
-        // manual titles by amount desc, then percentage costs by amount desc —
-        // the order the card has always used, so nesting reshuffles nothing.
-        $flat = [];
+        // the computed lines seeded above, then manual titles by amount desc,
+        // then percentage and per-order costs — the order the card has always
+        // used, so nesting reshuffles nothing. NOT reset here: the computed
+        // lines are already in $flat and dropping them would take every
+        // "filed under Shipping cost" grouping with them.
         if ( ! empty( $lines ) ) {
             foreach ( $lines as $line ) {
                 $amount = (float) ( $line['amount'] ?? 0 );
@@ -2043,7 +2116,7 @@ class Brikpanel_Dashboard {
             }
             $pe_id = (int) ( $pe['id'] ?? 0 );
             if ( $pe_id <= 0 ) {
-                continue; // no row to point at — never render a control with no target
+                continue; // no row to point at, never render a control with no target
             }
             $rate_str = rtrim( rtrim( number_format( (float) ( $pe['rate'] ?? 0 ), 2, '.', '' ), '0' ), '.' );
             $flat[] = [
@@ -2059,7 +2132,50 @@ class Brikpanel_Dashboard {
             ];
         }
 
-        $breakdown = array_merge( $breakdown, self::nest_expense_lines( $flat ) );
+        // Per-order costs (packaging, a courier's flat fee on free-shipped
+        // orders, a bulky surcharge). The label carries the unit price AND the
+        // order count so the figure explains itself: 2.40 × 137 = 328.80 is
+        // auditable at a glance, which the percentage line cannot manage because
+        // revenue is not on the card. The scope is deliberately NOT in the
+        // label, because it would roughly double the longest line on a ~260px card, and
+        // scope_label is already in the payload if that changes.
+        foreach ( (array) ( $s['per_order_expenses'] ?? [] ) as $po ) {
+            $amount = (float) ( $po['amount'] ?? 0 );
+            if ( $amount <= 0 ) {
+                continue;
+            }
+            $po_id = (int) ( $po['id'] ?? 0 );
+            if ( $po_id <= 0 ) {
+                continue; // no row to point at, never render a control with no target
+            }
+            $po_orders = (int) ( $po['orders'] ?? 0 );
+            // wc_price() returns HTML with entities (&pound;), and the browser
+            // writes this label with textContent, so it MUST be decoded to plain
+            // text here or the merchant reads "&pound;2.40". The `amount` key
+            // below is a different story: that one is rendered with innerHTML, so
+            // it keeps its markup exactly like every other row.
+            $po_unit = html_entity_decode( wp_strip_all_tags( wc_price( (float) ( $po['unit'] ?? 0 ) ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+            /* translators: 1: name of the cost, 2: money amount charged per order, 3: number of orders it was charged on. */
+            $po_label = sprintf(
+                _n( '%1$s (%2$s × %3$d order)', '%1$s (%2$s × %3$d orders)', $po_orders, 'brikpanel' ),
+                (string) ( $po['title'] ?? '' ),
+                $po_unit,
+                $po_orders
+            );
+            $flat[] = [
+                'title'  => (string) ( $po['title'] ?? '' ),
+                'parent' => (string) ( $po['parent'] ?? '' ),
+                'row'    => [
+                    'key'    => 'per_order',
+                    'label'  => $po_label,
+                    'amount' => wc_price( $amount ),
+                    'raw'    => $amount,
+                    'del'    => [ 'type' => 'per_order', 'id' => $po_id ],
+                ],
+            ];
+        }
+
+        $breakdown = self::nest_expense_lines( $flat );
 
         // Per-field display preferences (BrikPanel ▸ Settings ▸ Dashboard).
         // Returns is the only toggle that also changes the math: because it
@@ -2147,6 +2263,17 @@ class Brikpanel_Dashboard {
             // A component of `expenses_raw`, not an extra deduction. Surfaced
             // on its own so the Excel export can spell it out.
             'shipping_cost_raw' => (float) ( $s['shipping_cost_raw'] ?? 0 ),
+            // Likewise a component of `expenses_raw`, surfaced for the same reason.
+            'per_order_total_raw' => (float) ( $s['per_order_total_raw'] ?? 0 ),
+            // Same again for the real gateway fees, plus the two data-quality
+            // counts behind them. `missing` is expected and harmless (an order
+            // paid by bank transfer has no processor and no fee); `unconverted`
+            // means fees exist that could NOT be converted to the store currency
+            // and are therefore absent from the total, so the figure understates.
+            'payment_fees_raw'          => (float) ( $s['payment_fees_raw'] ?? 0 ),
+            'payment_fees_missing'      => (int) ( $s['payment_fees_missing'] ?? 0 ),
+            'payment_fees_unconverted'  => (int) ( $s['payment_fees_unconverted'] ?? 0 ),
+            'payment_fees_coverage_pct' => (float) ( $s['payment_fees_coverage_pct'] ?? 0 ),
             'breakdown'     => $breakdown,
             // The exact window these lines were summed over, echoed back by the
             // Remove control. Recomputing "last 30 days" in the browser could
@@ -2227,7 +2354,10 @@ class Brikpanel_Dashboard {
         // payload from the opposite setting in place for the full TTL, which
         // reads as "the setting does nothing".
         $shipping_for_key = ( function_exists( 'brikpanel_shipping_cost_enabled' ) && brikpanel_shipping_cost_enabled() ) ? 1 : 0;
-        $cache_key = 'bp_dash_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key . '_sc' . $shipping_for_key;
+        // The payment-fees toggle moves the same three figures, so it earns a
+        // segment of its own for exactly the reason spelled out above.
+        $fees_for_key = ( function_exists( 'brikpanel_payment_fees_enabled' ) && brikpanel_payment_fees_enabled() ) ? 1 : 0;
+        $cache_key = 'bp_dash_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key . '_sc' . $shipping_for_key . '_pf' . $fees_for_key;
         $cached    = get_transient( $cache_key );
         if ( false !== $cached ) {
             wp_send_json_success( $cached );
@@ -2558,20 +2688,25 @@ class Brikpanel_Dashboard {
                 $days_span   = 1;
                 break;
 
+            // N-1, not N: the window ENDS at the end of today, so today is already
+            // one of the N days. Going back a full N landed on N+1 calendar days
+            // ("Last 7 Days" covered 8), which both inflated every total and
+            // compared an 8-day current window against the 7-day previous one
+            // built from $days_span below, biasing every delta on the page.
             case '7days':
-                $start_local = wp_date( 'Y-m-d 00:00:00', strtotime( '-7 days', $now_ts ) );
+                $start_local = wp_date( 'Y-m-d 00:00:00', strtotime( '-6 days', $now_ts ) );
                 $end_local   = wp_date( 'Y-m-d 23:59:59' );
                 $days_span   = 7;
                 break;
 
             case '30days':
-                $start_local = wp_date( 'Y-m-d 00:00:00', strtotime( '-30 days', $now_ts ) );
+                $start_local = wp_date( 'Y-m-d 00:00:00', strtotime( '-29 days', $now_ts ) );
                 $end_local   = wp_date( 'Y-m-d 23:59:59' );
                 $days_span   = 30;
                 break;
 
             case '90days':
-                $start_local = wp_date( 'Y-m-d 00:00:00', strtotime( '-90 days', $now_ts ) );
+                $start_local = wp_date( 'Y-m-d 00:00:00', strtotime( '-89 days', $now_ts ) );
                 $end_local   = wp_date( 'Y-m-d 23:59:59' );
                 $days_span   = 90;
                 break;
@@ -2987,27 +3122,51 @@ class Brikpanel_Dashboard {
             ? brikpanel_marketplace_order_exclusion_sql( $is_hpos, $is_hpos ? 'id' : 'p.ID' )
             : [ 'sql' => '', 'args' => [] ];
 
+        // The stored column is UTC but the selected window is a LOCAL day range,
+        // so grouping by DATE(date_created_gmt) splits one local day across two
+        // UTC dates: a single-day selection drew TWO points, the first stamped
+        // with yesterday. The KPI cards were right all along — only these labels
+        // were wrong — which reads as "the card is showing two days of data".
+        //
+        // MySQL cannot do the conversion for us: CONVERT_TZ() with a named zone
+        // needs the mysql.time_zone_* tables, which are empty on most hosts and
+        // make it return NULL — that would blank the chart instead of shifting
+        // it. A single fixed offset would be wrong across a DST change.
+        //
+        // So bucket at 15 minutes here (pure string formatting of the stored UTC
+        // value, no timezone involved) and fold those buckets into local days in
+        // PHP below. Every real UTC offset is a whole multiple of 15 minutes, so
+        // a bucket can never straddle a local midnight — this is exact for
+        // whole-hour, half-hour (+05:30) and quarter-hour (+05:45) zones alike,
+        // and DST-correct because each bucket is converted on its own timestamp.
+        //
+        // The %% are deliberate: these strings go through $wpdb->prepare(), which
+        // consumes a single % as a placeholder and would mangle DATE_FORMAT's
+        // %Y/%m/%d/%H into nothing.
+        $bucket_hpos   = "CONCAT(DATE_FORMAT(date_created_gmt, '%%Y-%%m-%%d %%H:'), LPAD(FLOOR(MINUTE(date_created_gmt)/15)*15, 2, '0'))";
+        $bucket_legacy = "CONCAT(DATE_FORMAT(p.post_date_gmt, '%%Y-%%m-%%d %%H:'), LPAD(FLOOR(MINUTE(p.post_date_gmt)/15)*15, 2, '0'))";
+
         if ( $is_hpos ) {
             $admin_sql  = $exclusion['sql'];
             $fx         = brikpanel_base_total_sql( true, "{$wpdb->prefix}wc_orders.id", 'total_amount' );
             $query_args = array_merge( $include_statuses, $exclusion['args'], $mp_excl['args'], [ $start_gmt, $end_gmt ] );
             $query = $wpdb->prepare(
-                "SELECT DATE(date_created_gmt) AS order_date,
+                "SELECT {$bucket_hpos} AS bucket_utc,
                         SUM({$fx['expr']}) AS revenue,
                         COUNT({$wpdb->prefix}wc_orders.id) AS orders
                  FROM {$wpdb->prefix}wc_orders{$fx['join']}
                  WHERE type = 'shop_order'
                  AND status IN ({$status_placeholders}){$admin_sql}{$mp_excl['sql']}
                  AND date_created_gmt >= %s AND date_created_gmt <= %s
-                 GROUP BY DATE(date_created_gmt)
-                 ORDER BY order_date ASC",
+                 GROUP BY bucket_utc
+                 ORDER BY bucket_utc ASC",
                 $query_args
             );
         } else {
             $fx         = brikpanel_base_total_sql( false, 'p.ID', 'pm.meta_value' );
             $query_args = array_merge( $include_statuses, $exclusion['args'], $mp_excl['args'], [ $start_gmt, $end_gmt ] );
             $query = $wpdb->prepare(
-                "SELECT DATE(p.post_date_gmt) AS order_date,
+                "SELECT {$bucket_legacy} AS bucket_utc,
                         SUM({$fx['expr']}) AS revenue,
                         COUNT(p.ID) AS orders
                  FROM {$wpdb->posts} AS p
@@ -3016,19 +3175,38 @@ class Brikpanel_Dashboard {
                  AND pm.meta_key = '_order_total'
                  AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}{$mp_excl['sql']}
                  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s
-                 GROUP BY DATE(p.post_date_gmt)
-                 ORDER BY order_date ASC",
+                 GROUP BY bucket_utc
+                 ORDER BY bucket_utc ASC",
                 $query_args
             );
         }
 
         $results = $wpdb->get_results( $query );
-        $data    = [];
+
+        $utc   = new DateTimeZone( 'UTC' );
+        $local = wp_timezone();
+        $by_day = [];
         foreach ( $results as $row ) {
+            try {
+                $when = new DateTimeImmutable( (string) $row->bucket_utc, $utc );
+            } catch ( Exception $e ) {
+                continue; // unparseable stamp: drop the bucket rather than the chart
+            }
+            $day = $when->setTimezone( $local )->format( 'Y-m-d' );
+            if ( ! isset( $by_day[ $day ] ) ) {
+                $by_day[ $day ] = [ 'revenue' => 0.0, 'orders' => 0 ];
+            }
+            $by_day[ $day ]['revenue'] += (float) $row->revenue;
+            $by_day[ $day ]['orders']  += (int) $row->orders;
+        }
+        ksort( $by_day ); // Y-m-d sorts chronologically as a string
+
+        $data = [];
+        foreach ( $by_day as $day => $totals ) {
             $data[] = [
-                'date'    => $row->order_date,
-                'revenue' => (float) $row->revenue,
-                'orders'  => (int) $row->orders,
+                'date'    => $day,
+                'revenue' => $totals['revenue'],
+                'orders'  => $totals['orders'],
             ];
         }
         return $data;
@@ -3867,6 +4045,15 @@ class Brikpanel_Dashboard {
             // the sheet does not carry a permanent zero row.
             ...( ( (float) ( $profit['shipping_cost_raw'] ?? 0 ) ) > 0
                 ? [ [ __( 'of which Shipping Cost', 'brikpanel' ), $money( $profit['shipping_cost_raw'] ), __( 'Included in Expenses', 'brikpanel' ) ] ]
+                : [] ),
+            // Same reasoning: already inside Expenses, omitted when unused.
+            ...( ( (float) ( $profit['per_order_total_raw'] ?? 0 ) ) > 0
+                ? [ [ __( 'of which Cost per order', 'brikpanel' ), $money( $profit['per_order_total_raw'] ), __( 'Included in Expenses', 'brikpanel' ) ] ]
+                : [] ),
+            // Same reasoning again. Absent on stores whose gateway records no
+            // fee, rather than sitting there as a permanent zero.
+            ...( ( (float) ( $profit['payment_fees_raw'] ?? 0 ) ) > 0
+                ? [ [ __( 'of which Payment fees', 'brikpanel' ), $money( $profit['payment_fees_raw'] ), __( 'Included in Expenses', 'brikpanel' ) ] ]
                 : [] ),
             /* translators: %s: profit margin percentage. */
             [ __( 'Net Profit', 'brikpanel' ), $money( $profit['net_raw'] ), sprintf( __( '%s%% margin', 'brikpanel' ), $profit['margin'] ) ],

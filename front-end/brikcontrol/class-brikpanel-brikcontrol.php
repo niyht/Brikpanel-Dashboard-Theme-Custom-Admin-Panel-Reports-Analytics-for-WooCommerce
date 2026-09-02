@@ -52,6 +52,7 @@ class Brikpanel_BrikControl {
         add_action( 'wp_ajax_brikpanel_brikcontrol_rescan',   [ $this, 'ajax_rescan' ] );
         add_action( 'wp_ajax_brikpanel_brikcontrol_progress', [ $this, 'ajax_progress' ] );
         add_action( 'wp_ajax_brikpanel_brikcontrol_dismiss',  [ $this, 'ajax_dismiss' ] );
+        add_action( 'wp_ajax_brikpanel_brikcontrol_fix',      [ $this, 'ajax_fix' ] );
 
         // Plugin activation / deactivation invalidates the cached health
         // verdict because the active optimizer set is what gates how we
@@ -176,6 +177,11 @@ class Brikpanel_BrikControl {
                 'scan_in_progress'   => __( 'Scanning in background…', 'brikpanel' ),
                 'just_now'           => __( 'just now', 'brikpanel' ),
                 'scanning_progress'  => __( 'Scanning {cursor} / {total} products…', 'brikpanel' ),
+                'fix_confirm'        => __( 'Remove {count} leftover index rows? Products in your catalogue are not affected.', 'brikpanel' ),
+                'fix_running'        => __( 'Cleaning up…', 'brikpanel' ),
+                'fix_done'           => __( '{count} rows removed.', 'brikpanel' ),
+                'fix_more'           => __( 'More rows remain — run the cleanup again.', 'brikpanel' ),
+                'fix_failed'         => __( 'Cleanup failed. Please try again.', 'brikpanel' ),
             ],
         ] );
     }
@@ -588,6 +594,60 @@ class Brikpanel_BrikControl {
         }
         Brikpanel_BrikControl_Storage::dismiss( $key );
         wp_send_json_success( [ 'dismissed' => $key ] );
+    }
+
+    /**
+     * AJAX: run a check's repair action.
+     *
+     * Checks opt in by overriding supports_fix() / run_fix(); everything is
+     * probed with method_exists() so a check written against the older abstract
+     * contract can never fatal here.
+     *
+     * @return void
+     */
+    public function ajax_fix() {
+        $this->verify_ajax();
+
+        $check_id = isset( $_POST['check_id'] ) ? sanitize_key( wp_unslash( $_POST['check_id'] ) ) : '';
+        if ( $check_id === '' ) {
+            wp_send_json_error( [ 'message' => __( 'Missing check id.', 'brikpanel' ) ], 400 );
+        }
+
+        // Resolved through the registry, so the posted value never reaches a
+        // query — an unknown id simply has no check.
+        $check = Brikpanel_BrikControl_Registry::get( $check_id );
+        if ( ! $check || ! method_exists( $check, 'supports_fix' ) || ! $check->supports_fix() ) {
+            wp_send_json_error( [ 'message' => __( 'This check has no automatic fix.', 'brikpanel' ) ], 400 );
+        }
+
+        // Destructive endpoint: one run at a time per check, so a double click
+        // or a wedged tab cannot stack concurrent delete loops.
+        $lock = 'brikpanel_bc_fix_' . $check_id;
+        if ( get_transient( $lock ) ) {
+            wp_send_json_error( [ 'message' => __( 'A cleanup is already running for this check.', 'brikpanel' ) ], 409 );
+        }
+        set_transient( $lock, 1, 2 * MINUTE_IN_SECONDS );
+
+        try {
+            $outcome = $check->run_fix();
+        } catch ( \Throwable $e ) {
+            delete_transient( $lock );
+            wp_send_json_error( [ 'message' => __( 'The cleanup could not be completed.', 'brikpanel' ) ], 500 );
+        }
+
+        delete_transient( $lock );
+
+        // Re-run the check so the card the page reloads into is truthful.
+        // Batched checks cannot be re-run inline; they wait for the next scan.
+        if ( ! $check->supports_batching() ) {
+            Brikpanel_BrikControl_Storage::save_check_result( $check_id, $check->run( [] ) );
+        }
+
+        wp_send_json_success( [
+            'check_id' => $check_id,
+            'removed'  => (int) ( $outcome['removed'] ?? 0 ),
+            'has_more' => ! empty( $outcome['has_more'] ),
+        ] );
     }
 
     private function verify_ajax() {

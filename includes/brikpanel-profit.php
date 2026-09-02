@@ -755,6 +755,426 @@ function brikpanel_profit_shipping_cost( $start_gmt, $end_gmt, $exclude_marketpl
 }
 
 /**
+ * Order meta keys the payment gateways already write their own transaction fee
+ * into. Reading these is the whole integration: no API key, no HTTP call, no
+ * per-gateway adapter — the number is on the order by the time we look.
+ *
+ * Two of the four keys are shared by more than one plugin, which is why this
+ * list stays short: `_stripe_fee` is written by both the official WooCommerce
+ * Stripe Gateway and Payment Plugins' Stripe, and `PayPal Transaction Fee` by
+ * both the official PayPal Payments plugin and WooCommerce's own built-in
+ * PayPal Standard IPN/PDT handler. `Stripe Fee` is the legacy key still sitting
+ * on orders taken by older versions of the official plugin.
+ *
+ * Gateways that store no fee at all (Mollie, Square, Klarna) simply contribute
+ * nothing; the component degrades to zero rather than guessing.
+ *
+ * @return string[]
+ */
+function brikpanel_payment_fee_meta_keys() {
+	/**
+	 * Filter the order meta keys scanned for a payment processing fee.
+	 *
+	 * The seam for a gateway BrikPanel does not know about: a single added key
+	 * is all it takes, which is what stops this from ever becoming a per-plugin
+	 * integration surface. Keys are read in order and the first non-empty one
+	 * wins per order, so put the more specific key first.
+	 *
+	 * @param string[] $keys Order meta keys holding a processing fee.
+	 */
+	return (array) apply_filters(
+		'brikpanel_payment_fee_meta_keys',
+		[
+			'_stripe_fee',
+			'Stripe Fee',
+			'_fkwcs_stripe_fee',
+			'PayPal Transaction Fee',
+			'_paypal_fee',
+			'_wcpay_transaction_fee',
+		]
+	);
+}
+
+/**
+ * Order meta key holding the currency a Stripe fee is denominated in. This is
+ * the STRIPE ACCOUNT's currency, not the order's — the two differ for any
+ * merchant selling in a currency their Stripe account does not settle in.
+ *
+ * Kept for back-compat: it is the currency key for the OFFICIAL Stripe gateway
+ * only. The authoritative per-key map is
+ * brikpanel_payment_fee_currency_meta_keys().
+ */
+const BRIKPANEL_PAYMENT_FEE_CURRENCY_META = '_stripe_currency';
+
+/**
+ * Which currency meta key describes each fee meta key.
+ *
+ * A fee is only comparable to the order total when the two are denominated in
+ * the same currency, and each gateway records that differently — the official
+ * Stripe gateway writes `_stripe_currency`, FunnelKit's writes its own
+ * `_fkwcs_stripe_currency`, and the PayPal plugins write none at all because
+ * they settle the fee in the order's own currency. Reading one global key for
+ * every gateway (what this used to do) silently compared a FunnelKit fee
+ * against the OFFICIAL Stripe plugin's currency meta — absent on those stores,
+ * so every fee was treated as "same currency" whether it was or not.
+ *
+ * A fee key absent from this map, or mapped to '', is taken as already being in
+ * the order's currency. That is the correct default: it is what a gateway with
+ * no currency meta means, and it keeps single-currency stores at zero cost.
+ *
+ * @return array<string,string> fee meta key => currency meta key ('' = order currency).
+ */
+function brikpanel_payment_fee_currency_meta_keys() {
+	/**
+	 * Filter the fee-key => currency-key map.
+	 *
+	 * Pair this with brikpanel_payment_fee_meta_keys when the gateway you are
+	 * adding settles its fee in an account currency of its own.
+	 *
+	 * @param array<string,string> $map Fee meta key => currency meta key.
+	 */
+	return (array) apply_filters(
+		'brikpanel_payment_fee_currency_meta_keys',
+		[
+			'_stripe_fee'            => BRIKPANEL_PAYMENT_FEE_CURRENCY_META,
+			'Stripe Fee'             => BRIKPANEL_PAYMENT_FEE_CURRENCY_META,
+			'_fkwcs_stripe_fee'      => '_fkwcs_stripe_currency',
+			'PayPal Transaction Fee' => '',
+			'_paypal_fee'            => '',
+			'_wcpay_transaction_fee' => '',
+		]
+	);
+}
+
+/**
+ * Option name behind brikpanel_payment_fees_enabled().
+ */
+const BRIKPANEL_PAYMENT_FEES_OPTION = 'brikpanel_payment_fees_enabled';
+
+/**
+ * Whether real gateway transaction fees are counted as an expense.
+ *
+ * The stored default is written on upgrade (brikpanel_enable_payment_fees_default
+ * in brikpanel.php) rather than being a fallback here: a fallback would silently
+ * re-enable the component for a merchant who deliberately turned it off, which
+ * is exactly what an option row exists to prevent.
+ *
+ * @return bool
+ */
+function brikpanel_payment_fees_enabled() {
+	return 'yes' === get_option( BRIKPANEL_PAYMENT_FEES_OPTION, 'no' );
+}
+
+// Flipping this changes Expenses, Net profit and the margin, but the dashboard
+// serves a whole-response transient that only order events invalidate. Same
+// reasoning as the shipping-cost toggle above.
+add_action( 'update_option_' . BRIKPANEL_PAYMENT_FEES_OPTION, 'brikpanel_bust_data_caches' );
+add_action( 'add_option_' . BRIKPANEL_PAYMENT_FEES_OPTION, 'brikpanel_bust_data_caches' );
+
+/**
+ * Invalidate the cached dashboard payload when a gateway writes its fee onto an
+ * order after the fact.
+ *
+ * Stripe resolves the fee from a balance transaction asynchronously, so it lands
+ * minutes to hours AFTER checkout — long after woocommerce_new_order and the
+ * status transition have already busted the caches. HPOS fires no *_order_meta
+ * action at all (only woocommerce_update_order, which the legacy store fires
+ * too), so this is the one hook that covers both storage engines.
+ *
+ * Deliberately narrow: an unguarded bust here would fire on every order edit and
+ * defeat the cache entirely. A fee can only be written to a recent order, and an
+ * older order's edits already bust through the status hooks.
+ *
+ * @param int           $order_id
+ * @param WC_Order|null $order
+ * @return void
+ */
+function brikpanel_bust_data_caches_on_fee_meta( $order_id, $order = null ) {
+	if ( ! function_exists( 'brikpanel_bust_data_caches' ) ) {
+		return;
+	}
+	if ( ! $order instanceof WC_Order ) {
+		$order = function_exists( 'wc_get_order' ) ? wc_get_order( $order_id ) : null;
+	}
+	if ( ! $order instanceof WC_Order ) {
+		return;
+	}
+	$created = $order->get_date_created();
+	if ( ! $created || ( time() - $created->getTimestamp() ) > 7 * DAY_IN_SECONDS ) {
+		return;
+	}
+	// No DB read: the caller already hydrated this object.
+	foreach ( brikpanel_payment_fee_meta_keys() as $key ) {
+		if ( '' !== (string) $order->get_meta( $key ) ) {
+			brikpanel_bust_data_caches();
+			return;
+		}
+	}
+}
+add_action( 'woocommerce_update_order', 'brikpanel_bust_data_caches_on_fee_meta', 99, 2 );
+
+/**
+ * Payment processing fees actually charged by the gateway on paid orders inside
+ * [$start_gmt, $end_gmt].
+ *
+ * Unlike a percentage-of-revenue expense row (the only way to account for card
+ * commission before this existed) these are the real per-order amounts Stripe,
+ * PayPal or WooPayments deducted, so foreign-card surcharges, currency spreads
+ * and refund adjustments are all already baked in.
+ *
+ * Uses the same paid-status set, admin-order exclusion and marketplace basis as
+ * every other Profit component, so it measures exactly the orders the Revenue
+ * card measures.
+ *
+ * Multi-currency is the subtle part, and it is why the fee currency is inspected
+ * at all rather than the amount being summed at face value:
+ *
+ *   - No fee-currency meta, or it matches the ORDER's currency (PayPal always,
+ *     and Stripe whenever the account settles in the sale currency): the amount
+ *     is in the order's currency, so the same base_total/total ratio
+ *     brikpanel_profit_shipping_cost() uses converts it correctly.
+ *   - The fee currency is a THIRD currency (Stripe account settling in GBP on a
+ *     store selling EUR): the order's own ratio is the wrong factor by
+ *     construction — it is literally total_base/total_order — so those rows are
+ *     pulled out and converted per currency from the merchant's rate table.
+ *   - No rate available for that currency: the fee is EXCLUDED and counted in
+ *     `unconverted_orders`. Leaving it raw would add pounds to a euro total,
+ *     which is not a smaller error than omitting it, it is a wrong number. The
+ *     count is surfaced so the shortfall is disclosed rather than silent.
+ *
+ * A single-currency store never reaches the second query and is numerically
+ * identical to summing the raw meta.
+ *
+ * Works identically for simple and variable products: a processing fee is
+ * charged on the order, not on the line item.
+ *
+ * @param string $start_gmt           Y-m-d H:i:s (UTC)
+ * @param string $end_gmt             Y-m-d H:i:s (UTC)
+ * @param bool   $exclude_marketplace Match the order basis of the revenue figure.
+ * @return array{total:float,orders:int,orders_with_fee:int,unconverted_orders:int,coverage_pct:float}
+ */
+function brikpanel_profit_payment_fees( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
+	global $wpdb;
+
+	$out = [
+		'total'              => 0.0,
+		'orders'             => 0,
+		'orders_with_fee'    => 0,
+		'unconverted_orders' => 0,
+		'coverage_pct'       => 0.0,
+	];
+
+	if ( ! brikpanel_payment_fees_enabled() ) {
+		return $out; // not a single query on stores that turned this off
+	}
+
+	$keys = array_values( array_filter( array_map( 'strval', brikpanel_payment_fee_meta_keys() ) ) );
+	if ( empty( $keys ) ) {
+		return $out;
+	}
+
+	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+	$statuses = brikpanel_paid_order_statuses();
+	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+	// The multi-currency module may not be loaded in every context that reads a
+	// snapshot (the Sheets sync bootstraps profit.php on its own), so fall back
+	// to the literal key rather than relying on the constant being defined.
+	$fx_key   = defined( 'BRIKPANEL_BASE_TOTAL_META' ) ? BRIKPANEL_BASE_TOTAL_META : '_brikpanel_base_total';
+
+	// Currency meta is per gateway, not global — see
+	// brikpanel_payment_fee_currency_meta_keys(). Join each DISTINCT currency key
+	// once and remember which alias serves which fee key, so a store running two
+	// Stripe plugins does not join `_stripe_currency` twice.
+	$cur_map     = brikpanel_payment_fee_currency_meta_keys();
+	$cur_keys    = [];        // ordered list of distinct currency meta keys
+	$cur_alias   = [];        // fee key index => currency alias, or '' when none
+	foreach ( $keys as $i => $fee_key ) {
+		$ck = isset( $cur_map[ $fee_key ] ) ? (string) $cur_map[ $fee_key ] : '';
+		if ( '' === $ck ) {
+			$cur_alias[ $i ] = '';
+			continue;
+		}
+		$pos = array_search( $ck, $cur_keys, true );
+		if ( false === $pos ) {
+			$cur_keys[] = $ck;
+			$pos        = count( $cur_keys ) - 1;
+		}
+		$cur_alias[ $i ] = 'fc' . $pos;
+	}
+
+	// One JOIN alias PER KEY. A single alias with `meta_key IN (...)` looks
+	// tidier and is wrong: an order carrying both `_stripe_fee` and the legacy
+	// `Stripe Fee` would fan out to two rows and its fee would be counted twice.
+	$joins = '';
+	foreach ( $keys as $i => $unused_key ) {
+		$joins .= $is_hpos
+			? " LEFT JOIN {$wpdb->prefix}wc_orders_meta f{$i} ON f{$i}.order_id = o.id AND f{$i}.meta_key = %s"
+			: " LEFT JOIN {$wpdb->postmeta} f{$i} ON f{$i}.post_id = p.ID AND f{$i}.meta_key = %s";
+	}
+
+	$coalesce = [];
+	$present  = [];
+	foreach ( array_keys( $keys ) as $i ) {
+		// NULLIF lets an empty-string meta fall through to the next key while a
+		// stored '0' does not — a gateway that genuinely charged nothing is
+		// covered data, not missing data.
+		$coalesce[] = "NULLIF(f{$i}.meta_value, '')";
+		$present[]  = "f{$i}.meta_value IS NOT NULL";
+	}
+	$raw_fee = 'COALESCE(' . implode( ', ', $coalesce ) . ", '0')";
+	$has_fee = '(' . implode( ' OR ', $present ) . ')';
+
+	// The currency that belongs to whichever key actually supplied the fee. Walks
+	// the keys in the SAME priority order as the COALESCE above, so the currency
+	// can never come from a different gateway than the amount did. A key with no
+	// currency meta yields NULL, which $own_cur reads as "order currency".
+	$cur_when = '';
+	foreach ( array_keys( $keys ) as $i ) {
+		$expr      = '' !== $cur_alias[ $i ] ? "{$cur_alias[ $i ]}.meta_value" : 'NULL';
+		$cur_when .= " WHEN NULLIF(f{$i}.meta_value, '') IS NOT NULL THEN {$expr}";
+	}
+	$fee_cur = "CASE{$cur_when} ELSE NULL END";
+	// ABS because several gateways store the deduction as a negative number (the
+	// order screen renders it as "-0.55"). An expense component must be positive
+	// or it would ADD to Net profit.
+	$fee_amt = "ABS(CAST({$raw_fee} AS DECIMAL(20,4)))";
+
+	$cur_joins = '';
+	foreach ( array_keys( $cur_keys ) as $ci ) {
+		$cur_joins .= $is_hpos
+			? " LEFT JOIN {$wpdb->prefix}wc_orders_meta fc{$ci} ON fc{$ci}.order_id = o.id AND fc{$ci}.meta_key = %s"
+			: " LEFT JOIN {$wpdb->postmeta} fc{$ci} ON fc{$ci}.post_id = p.ID AND fc{$ci}.meta_key = %s";
+	}
+
+	if ( $is_hpos ) {
+		$total    = 'o.total_amount';
+		$order_cur = 'o.currency';
+		$from     = "FROM {$wpdb->prefix}wc_orders o"
+			. $joins
+			. $cur_joins
+			. " LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s";
+		$where    = " WHERE o.type = 'shop_order' AND o.status IN ($sp)"
+			. ' AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s';
+		$excl     = brikpanel_admin_order_exclusion_sql( true );
+	} else {
+		$total     = "CAST(COALESCE(tot.meta_value, '0') AS DECIMAL(20,4))";
+		$order_cur = 'ocur.meta_value';
+		$from      = "FROM {$wpdb->posts} p"
+			. $joins
+			. $cur_joins
+			. " LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = p.ID AND bpfx.meta_key = %s"
+			. " LEFT JOIN {$wpdb->postmeta} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total'"
+			. " LEFT JOIN {$wpdb->postmeta} ocur ON ocur.post_id = p.ID AND ocur.meta_key = '_order_currency'";
+		$where     = " WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)"
+			. ' AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s';
+		$excl      = brikpanel_admin_order_exclusion_sql( false, 'p.ID' );
+	}
+
+	// True when the fee is denominated in the order's own currency, which is the
+	// case the order-level base_total/total ratio is valid for. Never NULL: the
+	// IS NULL test short-circuits the OR before the comparison can go unknown.
+	$own_cur = "({$fee_cur} IS NULL OR {$fee_cur} = '' OR UPPER({$fee_cur}) = UPPER({$order_cur}))";
+	// Same conversion shape as brikpanel_profit_shipping_cost(): the store keeps
+	// the base-currency equivalent of the whole order total, not a rate, so the
+	// order's effective rate is derived as base_total/total. The meta only exists
+	// on orders that needed converting, so a single-currency store always takes
+	// the ELSE branch and is numerically untouched.
+	$fee_expr = "CASE
+			WHEN bpfx.meta_value IS NOT NULL AND bpfx.meta_value <> '' AND {$total} > 0
+			THEN {$fee_amt} * ( CAST(bpfx.meta_value AS DECIMAL(20,4)) / {$total} )
+			ELSE {$fee_amt}
+		END";
+
+	// $wpdb->prepare() binds POSITIONALLY in the order the % tokens appear in the
+	// string. The SELECT list carries none, so the JOIN meta keys come first.
+	$meta_args = array_merge( $keys, $cur_keys, [ $fx_key ] );
+	$args      = array_merge( $meta_args, $statuses, [ $start_gmt, $end_gmt ] );
+
+	$sql = "SELECT COUNT(*) AS orders,
+			COALESCE(SUM(CASE WHEN {$has_fee} THEN 1 ELSE 0 END), 0) AS orders_with_fee,
+			COALESCE(SUM(CASE WHEN {$has_fee} AND {$own_cur} THEN {$fee_expr} ELSE 0 END), 0) AS fee_total,
+			COALESCE(SUM(CASE WHEN {$has_fee} AND NOT {$own_cur} THEN 1 ELSE 0 END), 0) AS foreign_orders
+		{$from}{$where}";
+
+	if ( ! empty( $excl['sql'] ) ) {
+		$sql   = $sql . $excl['sql'];
+		$args  = array_merge( $args, $excl['args'] );
+	}
+
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql  .= $mp['sql'];
+		$args  = array_merge( $args, $mp['args'] );
+	}
+
+	$row = $wpdb->get_row( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+	if ( $row ) {
+		$out['total']           = (float) $row->fee_total;
+		$out['orders']          = (int) $row->orders;
+		$out['orders_with_fee'] = (int) $row->orders_with_fee;
+	}
+
+	// Second pass, only for fees denominated in neither the order currency nor
+	// (necessarily) the store's. Grouped by currency so one rate lookup covers
+	// every order settled in it.
+	if ( $row && (int) $row->foreign_orders > 0 ) {
+		$g_sql  = "SELECT UPPER({$fee_cur}) AS fee_currency,
+				COALESCE(SUM({$fee_amt}), 0) AS fee_total,
+				COUNT(*) AS orders
+			{$from}{$where} AND {$has_fee} AND NOT {$own_cur}";
+		$g_args = array_merge( $meta_args, $statuses, [ $start_gmt, $end_gmt ] );
+		if ( ! empty( $excl['sql'] ) ) {
+			$g_sql  .= $excl['sql'];
+			$g_args  = array_merge( $g_args, $excl['args'] );
+		}
+		if ( ! empty( $mp['sql'] ) ) {
+			$g_sql  .= $mp['sql'];
+			$g_args  = array_merge( $g_args, $mp['args'] );
+		}
+		$g_sql .= " GROUP BY UPPER({$fee_cur})";
+
+		$base  = function_exists( 'brikpanel_base_currency' )
+			? strtoupper( (string) brikpanel_base_currency() )
+			: strtoupper( (string) get_option( 'woocommerce_currency' ) );
+		$groups = (array) $wpdb->get_results( $wpdb->prepare( $g_sql, $g_args ) ); // phpcs:ignore
+
+		foreach ( $groups as $g ) {
+			$code   = strtoupper( (string) $g->fee_currency );
+			$amount = (float) $g->fee_total;
+			if ( $code === $base ) {
+				$out['total'] += $amount; // already the reporting currency
+				continue;
+			}
+			$factor = function_exists( 'brikpanel_manual_fx_factor' )
+				? (float) brikpanel_manual_fx_factor( $code )
+				: 0.0;
+			if ( $factor > 0 ) {
+				$out['total'] += $amount * $factor;
+			} else {
+				$out['unconverted_orders'] += (int) $g->orders;
+			}
+		}
+	}
+
+	$out['coverage_pct'] = $out['orders'] > 0
+		? round( ( $out['orders_with_fee'] / $out['orders'] ) * 100, 1 )
+		: 0.0;
+
+	/**
+	 * Filter the payment processing fees that net down Net profit.
+	 *
+	 * Receives the whole result, not just the total, so an integration that
+	 * knows better can correct the coverage counts alongside the money instead
+	 * of leaving the disclosure disagreeing with the figure.
+	 *
+	 * @param array  $out       Fee total plus coverage counts.
+	 * @param string $start_gmt Y-m-d H:i:s (UTC)
+	 * @param string $end_gmt   Y-m-d H:i:s (UTC)
+	 */
+	return (array) apply_filters( 'brikpanel_profit_payment_fees', $out, $start_gmt, $end_gmt );
+}
+
+/**
  * Shipping revenue (what customers were charged) for paid orders in the window.
  *
  * Not part of the Net profit maths — it is already inside Revenue. Kept as a
@@ -826,18 +1246,20 @@ function brikpanel_profit_manual_expenses( $start_local, $end_local ) {
 	$end_date   = substr( (string) $end_local, 0, 10 );
 	$inv_cat    = (string) get_option( 'brikpanel_po_expense_category', 'Inventory' );
 
-	// kind != 'percent' so percentage-based costs (e.g. card commission) are
-	// excluded here — their `amount` column holds a RATE, not money, and they
-	// are computed separately in brikpanel_profit_percent_expenses().
+	// Money rows only. A percentage cost stores a RATE and a per-order cost
+	// stores a UNIT PRICE, neither of which is a period total; both are computed
+	// separately (brikpanel_profit_percent_expenses / _per_order_expenses).
+	$kinds = brikpanel_expense_money_kinds_sql();
+
 	$total = (float) $wpdb->get_var( $wpdb->prepare(
-		"SELECT COALESCE(SUM(amount), 0) FROM {$table} WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent'",
+		"SELECT COALESCE(SUM(amount), 0) FROM {$table} WHERE expense_date BETWEEN %s AND %s{$kinds}",
 		$start_date,
 		$end_date
 	) ); // phpcs:ignore
 
 	$inventory = (float) $wpdb->get_var( $wpdb->prepare(
 		"SELECT COALESCE(SUM(amount), 0) FROM {$table}
-		 WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent' AND category = %s",
+		 WHERE expense_date BETWEEN %s AND %s{$kinds} AND category = %s",
 		$start_date,
 		$end_date,
 		$inv_cat
@@ -878,10 +1300,11 @@ function brikpanel_profit_manual_expenses_by_category( $start_local, $end_local 
 	$start_date = substr( (string) $start_local, 0, 10 );
 	$end_date   = substr( (string) $end_local, 0, 10 );
 
-	$rows = $wpdb->get_results( $wpdb->prepare(
+	$kinds = brikpanel_expense_money_kinds_sql();
+	$rows  = $wpdb->get_results( $wpdb->prepare(
 		"SELECT COALESCE(category, '') AS category, SUM(amount) AS total
 		 FROM {$table}
-		 WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent'
+		 WHERE expense_date BETWEEN %s AND %s{$kinds}
 		 GROUP BY COALESCE(category, '')
 		 HAVING total <> 0
 		 ORDER BY total DESC",
@@ -935,10 +1358,11 @@ function brikpanel_profit_manual_expense_lines( $start_local, $end_local ) {
 	$start_date = substr( (string) $start_local, 0, 10 );
 	$end_date   = substr( (string) $end_local, 0, 10 );
 
-	$rows = $wpdb->get_results( $wpdb->prepare(
+	$kinds = brikpanel_expense_money_kinds_sql();
+	$rows  = $wpdb->get_results( $wpdb->prepare(
 		"SELECT COALESCE(parent_category, '') AS parent, COALESCE(category, '') AS category, SUM(amount) AS total
 		 FROM {$table}
-		 WHERE expense_date BETWEEN %s AND %s AND kind <> 'percent'
+		 WHERE expense_date BETWEEN %s AND %s{$kinds}
 		 GROUP BY COALESCE(parent_category, ''), COALESCE(category, '')
 		 HAVING total <> 0
 		 ORDER BY total DESC",
@@ -1042,6 +1466,422 @@ function brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marke
 }
 
 /**
+ * term_id => term_taxonomy_id for every product_shipping_class term, memoised.
+ *
+ * The relationship joins below are constrained to this set so each side can
+ * match AT MOST one row: a product carries product_cat and product_tag
+ * relationships too, and without the constraint the COALESCE that implements
+ * "the variation's own class overrides the parent's" would be choosing between
+ * whichever unrelated terms the join happened to line up.
+ *
+ * @return array<int,int>
+ */
+function brikpanel_shipping_class_ttid_map() {
+	static $map = null;
+	if ( null !== $map ) {
+		return $map;
+	}
+	global $wpdb;
+	$map  = [];
+	$rows = $wpdb->get_results(
+		"SELECT term_id, term_taxonomy_id FROM {$wpdb->term_taxonomy} WHERE taxonomy = 'product_shipping_class'"
+	); // phpcs:ignore
+	foreach ( (array) $rows as $r ) {
+		$map[ (int) $r->term_id ] = (int) $r->term_taxonomy_id;
+	}
+	return $map;
+}
+
+/**
+ * Integer-only comma list of shipping-class term_taxonomy_ids, safe to
+ * interpolate. '' on a store with no shipping classes at all.
+ *
+ * @return string
+ */
+function brikpanel_shipping_class_ttid_list() {
+	$map = brikpanel_shipping_class_ttid_map();
+	return $map ? implode( ',', array_map( 'absint', array_values( $map ) ) ) : '';
+}
+
+/**
+ * Bust the order-count caches when the shipping-class term set changes.
+ *
+ * Deleting a class is not just "that one cost stops charging": the id list above
+ * is a JOIN constraint, so removing a class can change which term the
+ * variation-over-parent COALESCE resolves to for a DIFFERENT class, and every
+ * bp_poc_* count computed before the change is then wrong. Adding or renaming
+ * one is harmless, but the hook set is cheap and a merchant edits these roughly
+ * never, so it covers all three rather than reasoning about each.
+ */
+function brikpanel_bust_caches_on_shipping_class( $term_id, $tt_id = 0, $taxonomy = '' ) {
+	if ( 'product_shipping_class' !== $taxonomy ) {
+		return;
+	}
+	if ( function_exists( 'brikpanel_bust_data_caches' ) ) {
+		brikpanel_bust_data_caches();
+	}
+}
+add_action( 'created_term', 'brikpanel_bust_caches_on_shipping_class', 10, 3 );
+add_action( 'edited_term',  'brikpanel_bust_caches_on_shipping_class', 10, 3 );
+add_action( 'delete_term',  'brikpanel_bust_caches_on_shipping_class', 10, 3 );
+
+/**
+ * Correlated EXISTS body matching an order that contains at least one line item
+ * whose EFFECTIVE shipping class is the given term_taxonomy_id (bound as %d).
+ *
+ * Effective class = the variation's own class when it has one, otherwise the
+ * parent product's. WooCommerce's variation shipping-class control offers "Same
+ * as parent" plus the class list and has no "none" option, so an absent
+ * variation relationship means "inherit", which is exactly COALESCE. Simple
+ * products fall out of the same expression for free: their _variation_id is 0,
+ * no term_relationships row has object_id 0, so the variation side is NULL and
+ * the parent side wins. Same shape as the variation-first COGS fallback in
+ * brikpanel_profit_cogs().
+ *
+ * HPOS-agnostic on purpose: woocommerce_order_items.order_id is the order id
+ * under BOTH storage engines, so only the OUTER orders table branches.
+ *
+ * @param string $oid   'o.id' (HPOS) or 'p.ID' (legacy).
+ * @param string $alias Unique prefix so several copies can coexist in one query.
+ * @return string '' when the store has no shipping classes (caller must skip).
+ */
+function brikpanel_profit_shipping_class_exists_sql( $oid, $alias ) {
+	global $wpdb;
+
+	$all = brikpanel_shipping_class_ttid_list();
+	if ( '' === $all ) {
+		return '';
+	}
+	$a = preg_replace( '/[^a-z0-9_]/', '', (string) $alias );
+
+	return "EXISTS (
+			SELECT 1
+			  FROM {$wpdb->prefix}woocommerce_order_items {$a}li
+			  JOIN {$wpdb->prefix}woocommerce_order_itemmeta {$a}pid
+			    ON {$a}pid.order_item_id = {$a}li.order_item_id AND {$a}pid.meta_key = '_product_id'
+			  LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta {$a}vid
+			    ON {$a}vid.order_item_id = {$a}li.order_item_id AND {$a}vid.meta_key = '_variation_id'
+			  LEFT JOIN {$wpdb->term_relationships} {$a}vtr
+			    ON {$a}vtr.object_id = CAST({$a}vid.meta_value AS UNSIGNED)
+			   AND {$a}vtr.term_taxonomy_id IN ({$all})
+			  LEFT JOIN {$wpdb->term_relationships} {$a}ptr
+			    ON {$a}ptr.object_id = CAST({$a}pid.meta_value AS UNSIGNED)
+			   AND {$a}ptr.term_taxonomy_id IN ({$all})
+			 WHERE {$a}li.order_id = {$oid}
+			   AND {$a}li.order_item_type = 'line_item'
+			   AND COALESCE({$a}vtr.term_taxonomy_id, {$a}ptr.term_taxonomy_id) = %d
+		)";
+}
+
+/**
+ * How many paid orders in [$start_gmt, $end_gmt] a per-order cost is charged on.
+ *
+ * Uses the same paid-status set, admin-order exclusion, marketplace basis and
+ * inclusive GMT bounds as every other Profit component, so it counts exactly the
+ * orders the Revenue card measures.
+ *
+ * Two rules keep the admin exclusion correct and must not be broken:
+ *  1. brikpanel_admin_order_exclusion_sql( true ) emits a BARE
+ *     "AND customer_id NOT IN (...)". That is unambiguous only because the outer
+ *     FROM is wc_orders alone and none of the tables the EXISTS subqueries
+ *     introduce has a customer_id column. NEVER add wc_order_stats or
+ *     wc_order_product_lookup to this query.
+ *  2. NEVER move the orders table into a derived table, because customer_id would fall
+ *     out of scope for that clause entirely. (That is why the single ranked
+ *     query, which would replace the N-pass below with one pass, is not used
+ *     here; if profiling ever demands it, it must qualify the exclusion itself.)
+ *
+ * @param string $scope        '' (every order) | 'free_shipping' | 'shipping_class:<term_id>'
+ * @param string $start_gmt    Y-m-d H:i:s (UTC)
+ * @param string $end_gmt      Y-m-d H:i:s (UTC)
+ * @param bool   $exclude_marketplace Match the order basis of the revenue figure.
+ * @param int[]  $beaten_ttids term_taxonomy_ids of HIGHER-amount shipping-class
+ *                             rows that already claimed the order: one parcel
+ *                             gets one box surcharge, the largest one.
+ * @return int
+ */
+function brikpanel_profit_scoped_order_count( $scope, $start_gmt, $end_gmt, $exclude_marketplace = false, array $beaten_ttids = [] ) {
+	global $wpdb;
+
+	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
+	$statuses = brikpanel_paid_order_statuses();
+	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+	$oid      = $is_hpos ? 'o.id' : 'p.ID';
+
+	$preds = [];
+	$pargs = [];
+
+	if ( 'free_shipping' === $scope ) {
+		// An order that HAS a shipping line whose cost is 0, never "an order
+		// with no shipping line". On the reference store 1387 of 1464 paid
+		// orders carry no shipping item at all (virtual products, pickup,
+		// imported orders), so an INNER JOIN or a NOT EXISTS would sweep 95% of
+		// the store into this bucket.
+		//
+		// The signal is `cost` (NO leading underscore on shipping items), not
+		// method_id: 82 of 90 shipping lines on the reference store have an
+		// EMPTY method_id. method_id IS used to drop local_pickup, which also
+		// books a zero-cost shipping line but cost the merchant no courier.
+		//
+		// SUBSTRING_INDEX because the stored form is not stable across the
+		// WooCommerce versions a shop's order history spans: current WC writes a
+		// bare 'local_pickup', older releases and several importers write
+		// 'local_pickup:3' (method:instance). Comparing the whole string would
+		// quietly count every legacy pickup order as a free-shipped one.
+		$preds[] = "EXISTS (
+			SELECT 1
+			  FROM {$wpdb->prefix}woocommerce_order_items bpsh
+			  JOIN {$wpdb->prefix}woocommerce_order_itemmeta bpshc
+			    ON bpshc.order_item_id = bpsh.order_item_id AND bpshc.meta_key = 'cost'
+			  LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta bpshm
+			    ON bpshm.order_item_id = bpsh.order_item_id AND bpshm.meta_key = 'method_id'
+			 WHERE bpsh.order_id = {$oid}
+			   AND bpsh.order_item_type = 'shipping'
+			   AND CAST(COALESCE(NULLIF(bpshc.meta_value, ''), '0') AS DECIMAL(20,4)) = 0
+			   AND SUBSTRING_INDEX(COALESCE(bpshm.meta_value, ''), ':', 1) <> 'local_pickup'
+		)";
+	} elseif ( 0 === strpos( (string) $scope, 'shipping_class:' ) ) {
+		$map  = brikpanel_shipping_class_ttid_map();
+		$ttid = (int) ( $map[ (int) substr( (string) $scope, 15 ) ] ?? 0 );
+		if ( ! $ttid ) {
+			return 0; // term deleted → this cost charges nothing
+		}
+		$mine = brikpanel_profit_shipping_class_exists_sql( $oid, 'bpc' );
+		if ( '' === $mine ) {
+			return 0; // store has no shipping classes at all
+		}
+		$preds[] = $mine;
+		$pargs[] = $ttid;
+		foreach ( array_values( array_unique( array_map( 'absint', $beaten_ttids ) ) ) as $i => $bt ) {
+			$preds[] = 'NOT ' . brikpanel_profit_shipping_class_exists_sql( $oid, 'bpx' . $i );
+			$pargs[] = $bt;
+		}
+	}
+	// '' (every order) adds no predicate at all.
+
+	// Cache the COUNT, never the money: the merchant can edit the unit price
+	// without touching a single order. Mirrors the bp_rev_* key including the
+	// status set, which is part of the identity. The beaten list is in the key
+	// because the same scope yields a different count depending on which rows
+	// outrank it. Deliberately NOT in the key, both bounded and both already
+	// true of bp_rev_*: the admin-user id list (itself cached) and the
+	// shipping-class term set.
+	$ck = 'bp_poc_' . brikpanel_data_cache_ver() . '_' . md5(
+		$start_gmt . '|' . $end_gmt . '|' . (string) $scope . '|' . implode( ',', $pargs )
+		. '|' . ( $exclude_marketplace ? 'nomp' : '' ) . '|' . implode( ',', $statuses )
+	);
+	$hit = get_transient( $ck );
+	if ( false !== $hit ) {
+		return (int) $hit;
+	}
+
+	if ( $is_hpos ) {
+		$sql  = "SELECT COUNT(*) FROM {$wpdb->prefix}wc_orders o
+			WHERE o.type = 'shop_order' AND o.status IN ($sp)
+			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
+		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$excl = brikpanel_admin_order_exclusion_sql( true );
+	} else {
+		$sql  = "SELECT COUNT(*) FROM {$wpdb->posts} p
+			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
+			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
+		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$excl = brikpanel_admin_order_exclusion_sql( false, 'p.ID' );
+	}
+
+	// Placeholder ORDER is the contract: prepare() binds positionally in the
+	// order the %-tokens appear IN THE STRING. Scope predicates are appended
+	// after the status/date tokens so their args follow, and the two exclusion
+	// fragments are appended last so their args go last.
+	foreach ( $preds as $pred ) {
+		$sql .= "\n\t\t\t  AND {$pred}";
+	}
+	$args = array_merge( $args, $pargs );
+
+	if ( ! empty( $excl['sql'] ) ) {
+		$sql .= $excl['sql'];
+		$args = array_merge( $args, $excl['args'] );
+	}
+
+	// 'o.id' / 'p.ID', NEVER a bare 'id'. On HPOS an unqualified id binds to
+	// the subquery's OWN column and excludes nothing.
+	$mp = brikpanel_profit_marketplace_excl( $exclude_marketplace, $is_hpos, $is_hpos ? 'o.id' : 'p.ID' );
+	if ( ! empty( $mp['sql'] ) ) {
+		$sql .= $mp['sql'];
+		$args = array_merge( $args, $mp['args'] );
+	}
+
+	$count = (int) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+	set_transient( $ck, $count, brikpanel_cache_ttl( 60 ) );
+	return $count;
+}
+
+/**
+ * Translated name for a per-order cost's "Applies to" scope.
+ *
+ * @param string $scope '' | 'free_shipping' | 'shipping_class:<term_id>'
+ * @return string
+ */
+function brikpanel_per_order_scope_label( $scope ) {
+	if ( 'free_shipping' === $scope ) {
+		return __( 'Orders shipped free', 'brikpanel' );
+	}
+	if ( 0 === strpos( (string) $scope, 'shipping_class:' ) ) {
+		$term = get_term( (int) substr( (string) $scope, 15 ), 'product_shipping_class' );
+		return ( $term instanceof WP_Term ) ? $term->name : __( 'Shipping class (removed)', 'brikpanel' );
+	}
+	return __( 'Every order', 'brikpanel' );
+}
+
+/**
+ * Per-order expenses (packaging, a courier's flat fee on free-shipped orders, a
+ * surcharge for a bulky shipping class) for the window.
+ *
+ * Each such expense stores a UNIT PRICE in the `amount` column and is charged
+ * once per MATCHING ORDER in whatever period is being viewed. Like a percentage
+ * cost there is deliberately no per-expense date or schedule: a box costs what a
+ * box costs, every period, which is why the editor hides those fields for it.
+ * The consequence mirrors percent exactly and is worth stating plainly: adding
+ * a packaging cost today also reduces last year's Net profit when last year is
+ * viewed.
+ *
+ * Only ONE shipping-class cost may charge a given order: a parcel gets one box,
+ * and the largest applicable surcharge is the one that describes it. Rows are
+ * therefore ranked by amount and each one counts only the orders no
+ * higher-ranked class row already claimed. "Every order" and "Orders shipped
+ * free" costs stack on top independently, because a free-shipping courier fee and a
+ * bulky box are two different real costs on the same parcel.
+ *
+ * Multi-currency: NO conversion is applied, and this is the one place the
+ * treatment differs from brikpanel_profit_shipping_cost(). That figure reads a
+ * value STORED ON THE ORDER (the charged shipping, or the per-order override),
+ * denominated in the ORDER's currency, hence the base_total/total ratio it
+ * applies. A per-order expense is a number the merchant typed into the Expenses
+ * module, which has no currency field and has always been store currency for
+ * every other kind. A box costs what it costs whatever currency the customer
+ * paid in, so count × amount is already store currency.
+ *
+ * Refunds deliberately do NOT reduce this: the box was used and the courier paid
+ * whether or not the customer was later given their money back, the same
+ * reasoning as brikpanel_profit_shipping_cost(). (An order moved to a refunded
+ * STATUS drops out of brikpanel_paid_order_statuses() and therefore out of the
+ * count; that is a pre-existing property of every Profit component.)
+ *
+ * Works identically for simple and variable products: the shipping-class scope
+ * resolves a variation's own class first and falls back to the parent's.
+ *
+ * @param string $start_gmt Y-m-d H:i:s (UTC)
+ * @param string $end_gmt   Y-m-d H:i:s (UTC)
+ * @param bool|null $exclude_marketplace null = decide from BrikMarket being active.
+ * @return array{total:float,items:array<int,array{id:int,title:string,parent:string,unit:float,orders:int,scope:string,scope_label:string,amount:float}>}
+ */
+function brikpanel_profit_per_order_expenses( $start_gmt, $end_gmt, $exclude_marketplace = null ) {
+	global $wpdb;
+	$out = [ 'total' => 0.0, 'items' => [] ];
+
+	$table = $wpdb->prefix . 'brikpanel_expenses';
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+		return $out;
+	}
+
+	// No scope column means a schema older than this feature, on which no
+	// per_order row can exist. Bail before touching anything else.
+	$has_scope = (bool) $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", 'scope' ) ); // phpcs:ignore
+	if ( ! $has_scope ) {
+		return $out;
+	}
+
+	$has_parent_col = (bool) $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", 'parent_category' ) ); // phpcs:ignore
+	$parent_select  = $has_parent_col ? "COALESCE(parent_category, '')" : "''";
+
+	// amount DESC, id ASC. The id tie-break is load-bearing: two equal-amount
+	// shipping-class rows would otherwise have their winner decided by MySQL row
+	// order and the breakdown would flip between renders.
+	$rows = $wpdb->get_results(
+		"SELECT id, category, amount, COALESCE(scope, '') AS scope, {$parent_select} AS parent
+		   FROM {$table} WHERE kind = 'per_order' ORDER BY amount DESC, id ASC"
+	); // phpcs:ignore
+	if ( empty( $rows ) ) {
+		return $out;
+	}
+
+	$exclude_mp = ( null === $exclude_marketplace )
+		? ( function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active() )
+		: (bool) $exclude_marketplace;
+
+	$class_map = brikpanel_shipping_class_ttid_map();
+	$beaten    = []; // ttids already claimed by a higher-amount shipping-class row
+
+	foreach ( $rows as $r ) {
+		$unit = (float) $r->amount;
+		// Dropped BEFORE ranking: a zero-amount row must never consume an order
+		// from a lower-but-positive one.
+		if ( $unit <= 0 ) {
+			continue;
+		}
+
+		$scope    = (string) $r->scope;
+		$is_class = ( 0 === strpos( $scope, 'shipping_class:' ) );
+		$ttid     = 0;
+		if ( $is_class ) {
+			$ttid = (int) ( $class_map[ (int) substr( $scope, 15 ) ] ?? 0 );
+			if ( ! $ttid ) {
+				continue; // class deleted → charges nothing, and does not rank
+			}
+		}
+
+		$orders = brikpanel_profit_scoped_order_count(
+			$scope,
+			$start_gmt,
+			$end_gmt,
+			$exclude_mp,
+			$is_class ? $beaten : [] // only class rows beat class rows
+		);
+		if ( $is_class ) {
+			$beaten[] = $ttid;
+		}
+		if ( $orders <= 0 ) {
+			continue;
+		}
+
+		$title = trim( (string) $r->category );
+		if ( '' === $title ) {
+			$title = __( 'Cost per order', 'brikpanel' );
+		}
+
+		$out['items'][] = [
+			'id'          => (int) $r->id,
+			'title'       => $title,
+			'parent'      => trim( (string) ( $r->parent ?? '' ) ),
+			'unit'        => $unit,
+			'orders'      => $orders,
+			'scope'       => $scope,
+			'scope_label' => brikpanel_per_order_scope_label( $scope ),
+			'amount'      => $unit * $orders,
+		];
+	}
+
+	/**
+	 * Filter the per-order costs that net down Net profit.
+	 *
+	 * Receives the ITEMS, not the total, and the total is re-derived below, so
+	 * the figure and the breakdown lines that explain it can never disagree.
+	 * (brikpanel_profit_shipping_cost filters a bare float because it has no
+	 * lines to keep in step.)
+	 *
+	 * @param array  $items     Per-order cost lines for the window.
+	 * @param string $start_gmt Y-m-d H:i:s (UTC)
+	 * @param string $end_gmt   Y-m-d H:i:s (UTC)
+	 */
+	$out['items'] = (array) apply_filters( 'brikpanel_profit_per_order_expenses', $out['items'], $start_gmt, $end_gmt );
+
+	foreach ( $out['items'] as $item ) {
+		$out['total'] += (float) ( $item['amount'] ?? 0 );
+	}
+	return $out;
+}
+
+/**
  * Store-currency ad spend split per platform for a local date range. Foreign-
  * currency spend is ignored (can't be converted reliably). Every known platform
  * key is always present (0.0 when absent) so callers can rely on the shape.
@@ -1139,6 +1979,7 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		: [];
 	$tax      = brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace );
 	$shipping = brikpanel_profit_shipping_cost( $start_gmt, $end_gmt, $exclude_marketplace );
+	$fees     = brikpanel_profit_payment_fees( $start_gmt, $end_gmt, $exclude_marketplace );
 	$returns  = brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace );
 	$coupons  = brikpanel_profit_coupons( $start_gmt, $end_gmt, $exclude_marketplace );
 	$ads_by   = brikpanel_profit_ad_spend_by_platform( $start_local, $end_local );
@@ -1148,6 +1989,7 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 	$exp_by_category = brikpanel_profit_manual_expenses_by_category( $start_local, $end_local );
 	$exp_lines       = brikpanel_profit_manual_expense_lines( $start_local, $end_local );
 	$percent         = brikpanel_profit_percent_expenses( $start_gmt, $end_gmt, $exclude_marketplace );
+	$per_order       = brikpanel_profit_per_order_expenses( $start_gmt, $end_gmt, $exclude_marketplace );
 
 	// Net revenue = gross sales minus what was handed back to customers. This
 	// is the figure the dashboard's Revenue card shows and the basis for every
@@ -1157,12 +1999,15 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 	// column) keep showing gross.
 	$revenue_net    = $revenue - $returns;
 	// manual already includes inventory; percent (commission-style) costs scale
-	// with revenue and are computed in brikpanel_profit_percent_expenses().
+	// with revenue and per-order costs (packaging, a courier fee on free-shipped
+	// orders) scale with the order count, each computed in its own function.
 	// Shipping cost joins the composite rather than becoming its own deduction
 	// on purpose: every surface that already reports "Expenses" or "Net profit"
 	// (the Excel export, the Sheets Profit tab) then stays correct without
-	// knowing this component exists. It is 0 unless the merchant opted in.
-	$expenses_total = $tax + $ads + $exp_manual + $percent['total'] + $shipping;
+	// knowing this component exists. Payment fees join for the same reason: the
+	// real gateway deduction is an operating cost like any other, and adding it
+	// to the composite keeps every "Expenses"/"Net profit" surface correct.
+	$expenses_total = $tax + $ads + $exp_manual + $percent['total'] + $per_order['total'] + $shipping + $fees['total'];
 	$net            = $revenue_net - $cogs - $expenses_total;
 
 	// Percentages are share-of-net-revenue so they line up with the Revenue
@@ -1179,6 +2024,13 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		'cogs_raw'           => $cogs,
 		'tax_raw'            => $tax,
 		'shipping_cost_raw'  => $shipping,
+		// Scalar alongside the items below because the Excel export and the
+		// Sheets Profit tab read scalars, not lines — the same reason
+		// shipping_cost_raw exists.
+		'per_order_total_raw' => $per_order['total'],
+		// Same reason as the two scalars above: the Excel export and the Sheets
+		// Profit tab read scalars, not breakdown lines.
+		'payment_fees_raw'   => $fees['total'],
 		'ad_spend_raw'       => $ads,
 		'exp_manual_raw'     => $exp_manual,
 		'exp_inventory_raw'  => $exp_inventory,
@@ -1193,6 +2045,15 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		'cogs_missing_lines'   => $coverage['missing_lines'],
 		'cogs_incomplete'      => ( $revenue > 0 && $coverage['missing_lines'] > 0 && $coverage['coverage_pct'] < 99.5 ),
 		'cogs_missing_products' => $missing_products,
+		// Same contract as the COGS signals above, for the same reason: a fee
+		// total drawn from only part of the orders must never read as fact.
+		// `missing` is the expected-and-harmless case (bank transfer, cash on
+		// delivery: no processor, no fee). `unconverted` is the actionable one —
+		// those fees exist, could not be converted, and are therefore NOT in the
+		// total, so the expense is understated until a rate is entered.
+		'payment_fees_coverage_pct' => $fees['coverage_pct'],
+		'payment_fees_missing'      => max( 0, $fees['orders'] - $fees['orders_with_fee'] ),
+		'payment_fees_unconverted'  => $fees['unconverted_orders'],
 		'cogs_pct'           => $pct( $cogs ),
 		'expenses_pct'       => $pct( $expenses_total ),
 		'margin'             => $pct( $net ),
@@ -1206,6 +2067,9 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 			'google_ads' => $ads_by['google_ads'],
 			'meta_ads'   => $ads_by['meta_ads'],
 			'tax'        => $tax,
+			// Position is the source of truth for row order on every surface
+			// downstream (dashboard breakdown, Sheets column). Keep it here.
+			'payment_fees' => $fees['total'],
 			'shipping'   => $shipping,
 			'inventory'  => $exp_inventory,
 			'other'      => $exp_other,
@@ -1221,6 +2085,13 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		'expense_lines'      => $exp_lines,
 		// Percentage-based costs (card commission etc.): each item is
 		// {title, rate, amount} where amount = rate% × applicable gross revenue.
+		// Deliberately absent from `breakdown` above, which is the mutually
+		// exclusive component split Sheets and Excel consume — the same reason
+		// per_order_expenses is not there either.
 		'percent_expenses'   => $percent['items'],
+		// Per-order costs (packaging, free-shipping courier fee, bulky
+		// surcharge): each item is {title, unit, orders, scope, amount} where
+		// amount = unit × the number of matching paid orders in the window.
+		'per_order_expenses' => $per_order['items'],
 	];
 }

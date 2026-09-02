@@ -271,11 +271,7 @@ class Brikpanel_XLSX_Writer {
 		// Excel forbids : \ / ? * [ ] in tab names and caps them at 31 chars.
 		$name = str_replace( [ ':', '\\', '/', '?', '*', '[', ']' ], ' ', $name );
 		$name = trim( preg_replace( '/\s+/', ' ', $name ) );
-		if ( function_exists( 'mb_substr' ) ) {
-			$name = mb_substr( $name, 0, 31 );
-		} else {
-			$name = substr( $name, 0, 31 );
-		}
+		$name = brikpanel_substr( $name, 0, 31 );
 		return $name !== '' ? $name : ( 'Sheet' . $fallback_index );
 	}
 }

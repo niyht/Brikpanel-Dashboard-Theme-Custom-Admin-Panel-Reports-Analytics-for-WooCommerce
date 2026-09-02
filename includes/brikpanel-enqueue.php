@@ -321,6 +321,11 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'profit_cogs_missing_aria'  => __('%d products are missing a cost', 'brikpanel'),
             'profit_cogs_missing_unlinked' => __('no longer in catalog', 'brikpanel'),
             'profit_estimate_tip'   => __('%d sold items have no cost set. Add their “Cost of goods” so Net profit is accurate.', 'brikpanel'),
+            /* translators: %d: number of orders with no payment fee recorded. */
+            'profit_fees_partial'   => __('%d orders have no payment fee recorded, so processing costs are only counted on the rest.', 'brikpanel'),
+            /* translators: %d: number of orders whose payment fee could not be converted. */
+            'profit_fees_unconverted' => __('Processing fees on %d orders are in a currency with no exchange rate, so they are not counted. Add a rate to include them.', 'brikpanel'),
+            'profit_fees_none'      => __('Payment fees are turned on, but none of the orders in this period record a processing fee. Your payment gateway may not store one, so this cost is not included.', 'brikpanel'),
             'profit_revenue_note'   => __('Same as Total Sales', 'brikpanel'),
             'profit_revenue_net_note' => __('Net of returns', 'brikpanel'),
             'profit_net_revenue'    => __('Net revenue', 'brikpanel'),
@@ -1034,6 +1039,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'trashed'             => __('Trash', 'brikpanel'),
                 'trashed_tab'         => __('Trash', 'brikpanel'),
                 'variable'            => __('Variable', 'brikpanel'),
+                /* translators: %d: number of variations on the product. */
+                'variations_count'    => __('%d variations', 'brikpanel'),
                 'quick_edit'          => __('Quick edit', 'brikpanel'),
                 'duplicate'           => __('Duplicate', 'brikpanel'),
                 'duplicating'         => __('Duplicating...', 'brikpanel'),
@@ -1061,6 +1068,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'bulk_select_cat'     => __('Please select a category.', 'brikpanel'),
                 'bulk_no_selection'   => __('No products selected. Select products from the table first.', 'brikpanel'),
                 'bulk_select_terms'   => __('Please select at least one item to add.', 'brikpanel'),
+                'bulk_select_terms_remove' => __('Please select at least one item to remove.', 'brikpanel'),
                 'bulk_selected_count' => __('%d products selected', 'brikpanel'),
                 'applying'            => __('Applying...', 'brikpanel'),
                 'apply'               => __('Apply', 'brikpanel'),
@@ -1324,10 +1332,50 @@ function brikpanel_enqueue_woo_assets($hook) {
                 }
             }
 
+            // SEOPress's universal metabox is ~1.5 MB of React + wp-components
+            // that only does anything when its mount node
+            // (`#seopress-js-module-seo-metabox-embed`) is on the page. It
+            // hooks admin_enqueue_scripts itself and only gates on the hook
+            // suffix, so the re-fire below loads the whole bundle even on a
+            // render where no SEO surface exists at all — the SEO section
+            // switched off, and no hand-placed SEOPress metabox. With nothing
+            // to mount into, metaboxe.js appends an empty `<div
+            // id="seopress-js-module-seo-metabox">` to the body and renders
+            // nothing into it (the floating beacon is frontend-only), so the
+            // payload is pure waste.
+            //
+            // Suppress it for exactly that case, via SEOPress's own filter.
+            // Scoped as tightly as possible around the re-fire: the same filter
+            // feeds EnqueueModuleMetabox::canEnqueue(), which is what
+            // Brikpanel_Product_Editor::seopress_uses_universal_metabox() reads
+            // to choose between the universal and classic metabox ids. Left in
+            // place it would flip that answer for the rest of the request and
+            // make render_page() look for the pre-9.9 `seopress_cpt` box.
+            $bp_suppress_seopress = false;
+            if ((defined('SEOPRESS_VERSION') || function_exists('seopress_get_service'))
+                && class_exists('Brikpanel_Product_Editor')
+                && Brikpanel_Product_Editor::seopress_uses_universal_metabox()
+            ) {
+                $bp_seopress_node_rendered = ($seo_auto_rendered && isset($auto_seo['slug']) && $auto_seo['slug'] === 'seopress')
+                    || in_array('seopress_metabox_opener', $selected_metaboxes, true);
+                $bp_suppress_seopress = !$bp_seopress_node_rendered;
+            }
+            // Own closure rather than '__return_false': remove_filter() matches
+            // on callback identity, so a shared built-in at the same priority
+            // would let us tear down somebody else's filter instead of ours.
+            $bp_seopress_suppressor = static function () { return false; };
+            if ($bp_suppress_seopress) {
+                add_filter('seopress_can_enqueue_universal_metabox', $bp_seopress_suppressor, PHP_INT_MAX);
+            }
+
             try {
                 do_action('admin_enqueue_scripts', 'post.php');
             } catch (\Throwable $aes_fire_e) {
                 error_log('[BrikPanel] admin_enqueue_scripts re-fire halted: ' . $aes_fire_e->getMessage());
+            }
+
+            if ($bp_suppress_seopress) {
+                remove_filter('seopress_can_enqueue_universal_metabox', $bp_seopress_suppressor, PHP_INT_MAX);
             }
 
             // Restore detached callbacks so any later do_action consumers
@@ -1425,6 +1473,40 @@ function brikpanel_enqueue_woo_assets($hook) {
             ) {
                 wp_dequeue_script('rank-math-acf-post-analysis');
                 wp_deregister_script('rank-math-acf-post-analysis');
+            }
+
+            // SEOPress: `seopress-pre-publish-checklist` is a block-editor
+            // panel whose whole body is a `wp.plugins.registerPlugin()` call,
+            // and SEOPress enqueues it with an EMPTY dependency array. Nothing
+            // therefore orders it after `wp-plugins`: WordPress prints it
+            // wherever it happens to sit in the queue, and here that is before
+            // `wp-plugins`, so it runs while `wp.plugins` is still undefined
+            // and throws "Cannot read properties of undefined (reading
+            // 'registerPlugin')" on every load. (On the native post.php editor
+            // the queue order happens to come out the other way, which is why
+            // the bug is invisible there.)
+            //
+            // Declare the dependency it is missing so it prints after
+            // wp-plugins. If wp-plugins is not on this page at all the panel
+            // can never work, so drop it rather than pull a whole block-editor
+            // package in for a panel that cannot render outside Gutenberg.
+            // Same shape as the Rank Math bridge above.
+            if (wp_script_is('seopress-pre-publish-checklist', 'enqueued')) {
+                $bp_scripts = wp_scripts();
+                $bp_checklist = isset($bp_scripts->registered['seopress-pre-publish-checklist'])
+                    ? $bp_scripts->registered['seopress-pre-publish-checklist']
+                    : null;
+                if ($bp_checklist && wp_script_is('wp-plugins', 'enqueued')) {
+                    if (!is_array($bp_checklist->deps)) {
+                        $bp_checklist->deps = [];
+                    }
+                    if (!in_array('wp-plugins', $bp_checklist->deps, true)) {
+                        $bp_checklist->deps[] = 'wp-plugins';
+                    }
+                } else {
+                    wp_dequeue_script('seopress-pre-publish-checklist');
+                    wp_deregister_script('seopress-pre-publish-checklist');
+                }
             }
 
             // Restore real page context so the rest of our own enqueues and
@@ -1586,6 +1668,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 : [],
             'i18n'        => [
                 'product_saved'  => __('Product saved!', 'brikpanel'),
+                'tp_hint_working' => __('Turning on…', 'brikpanel'),
+                'tp_hide_working' => __('Hiding…', 'brikpanel'),
                 'fill_required'  => __('Please fill in the required fields', 'brikpanel'),
                 'fill_name'      => __('Please fill in the product name', 'brikpanel'),
                 'fill_price'     => __('Please fill in the price field', 'brikpanel'),
@@ -1672,6 +1756,10 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'too_many_variations' => __('That combination would create more than %d variations. Reduce the number of attribute values, then try again.', 'brikpanel'),
                 'preview_failed'   => __('Could not load extra variation fields. Saving still works.', 'brikpanel'),
                 'reorder_attribute' => __('Drag to reorder', 'brikpanel'),
+                'reorder_attr_value' => __('Drag to reorder. This is the order shoppers see on the product page.', 'brikpanel'),
+                'attr_values_reordered' => __('Value order updated. Save the product to keep it.', 'brikpanel'),
+                /* translators: %s is the attribute name, e.g. "Pack Size" */
+                'attr_order_ignored' => __('“%s” is set to sort its values automatically, so this order will not show on the product page. Change it to “Custom ordering” under Products → Attributes.', 'brikpanel'),
                 'cost_of_goods'    => __('Cost of goods', 'brikpanel'),
                 'cogs'             => __('COGS', 'brikpanel'),
                 'inherit_parent'        => __('(parent)', 'brikpanel'),
@@ -1693,6 +1781,17 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'need_variation_attr' => __('Switch on “Use for variations” for at least one attribute, then add its values.', 'brikpanel'),
                 'delete_variation' => __('Delete variation', 'brikpanel'),
                 'confirm_delete_variation' => __('Delete this variation? This change is applied when you save the product.', 'brikpanel'),
+                /* translators: %d is the number of variations that will be deleted */
+                'confirm_clear_variations' => __('Delete all %d variations? They are removed immediately and this cannot be undone. The product stays a variable product and its attributes are kept.', 'brikpanel'),
+                'clearing_variations'      => __('Deleting…', 'brikpanel'),
+                /* translators: %d is how many variations are still waiting to be deleted */
+                'clearing_variations_left' => __('Deleting… %d left', 'brikpanel'),
+                /* translators: %d is the number of variations that were deleted */
+                'variations_cleared_one'   => __('%d variation deleted.', 'brikpanel'),
+                /* translators: %d is the number of variations that were deleted */
+                'variations_cleared_many'  => __('%d variations deleted.', 'brikpanel'),
+                'variations_cleared_local' => __('Variation list cleared.', 'brikpanel'),
+                'clear_variations_failed'  => __('Could not delete the variations. Please try again.', 'brikpanel'),
                 'variation_active' => __('Active', 'brikpanel'),
                 /* translators: %s is the attribute name, a variation slot that matches every value of it, e.g. "Any Color" */
                 'variation_any_value' => __('Any %s', 'brikpanel'),
@@ -2019,11 +2118,15 @@ function brikpanel_enqueue_rtl_overrides() {
     if ( ! current_user_can( 'manage_woocommerce' ) ) {
         return;
     }
+    // Versioned by file mtime like every other BrikPanel stylesheet. It used to
+    // carry a hand-incremented `.r3` suffix, which meant any edit that shipped
+    // without someone remembering to bump the suffix was served from cache.
+    $rtl_css_ver = @filemtime( BRIKPANEL_PATH . 'assets/css/brikpanel-rtl.css' ) ?: BRIKPANEL_VERSION; // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
     wp_enqueue_style(
         'brikpanel_rtl_overrides',
         BRIKPANEL_URL . 'assets/css/brikpanel-rtl.css',
         [],
-        BRIKPANEL_VERSION . '.r3'
+        $rtl_css_ver
     );
 }
 add_action( 'admin_enqueue_scripts', 'brikpanel_enqueue_rtl_overrides', 999 );

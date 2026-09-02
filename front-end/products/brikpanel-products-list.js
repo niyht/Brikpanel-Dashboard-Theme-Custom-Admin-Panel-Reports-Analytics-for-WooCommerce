@@ -34,6 +34,12 @@
         // can't because their IDs are dynamic, so we toggle a class on each
         // <th>/<td> instead.
         extraHidden: {},
+        // Map of dynamic column id → { width: '120px'|'', kind: 'plugin'|'custom' }.
+        // 'plugin' cells are markup replayed from a foreign list table, so the
+        // stylesheet neutralises the controls inside them; 'custom' cells were
+        // written for this table by a brikpanel_products_columns callback and
+        // are left alone.
+        extraMeta: {},
         // Quick-edit drawer's working copy of the product's downloadable
         // files. Re-seeded from product.downloads on openDrawer; serialized
         // back to JSON on saveDrawer.
@@ -205,6 +211,11 @@
     // =========================================================================
     // INIT
     // =========================================================================
+
+    // Every badge that opens the floating list popover on hover/focus. Each
+    // one carries its items as a JSON array in `data-others`: the category
+    // "+N" chip and the Variation SKUs count.
+    var HOVER_LIST_SELECTOR = '.brikpanel-pl-cat-more, .brikpanel-pl-varskus-more';
 
     function bindEvents() {
         // Search
@@ -425,6 +436,13 @@
             $('.brikpanel-pl-row-check').prop('checked', false);
             $('#bpl-check-all').prop('checked', false);
             updateBulkBar();
+        });
+
+        // Category / tag shortcuts: jump straight into the bulk-update modal on the
+        // "Selected products" tab with the matching "Add to ..." action preselected,
+        // so the feature is reachable from the selection bar people actually look at.
+        $('#bpl-bulk-cats, #bpl-bulk-tags').on('click', function () {
+            openBulkModalForTaxonomy($(this).data('taxonomy'));
         });
 
         $('#bpl-bulk-publish').on('click', function () { bulkAction('publish', $(this)); });
@@ -661,16 +679,17 @@
             }
         });
 
-        // Category "+N" hover/focus popover — floating on <body> so it
-        // escapes the table wrapper's overflow clipping. A short close grace
-        // period lets the cursor travel from the badge into the popover so the
-        // list stays open and can be scrolled/read.
+        // Hover/focus popover, shared by the category "+N" chip and the
+        // Variation SKUs badge — floating on <body> so it escapes the table
+        // wrapper's overflow clipping. A short close grace period lets the
+        // cursor travel from the badge into the popover so the list stays open
+        // and can be scrolled/read.
         $(document)
-            .on('mouseenter focusin', '.brikpanel-pl-cat-more', function () {
+            .on('mouseenter focusin', HOVER_LIST_SELECTOR, function () {
                 cancelCatMoreClose();
                 showCatMorePopover(this);
             })
-            .on('mouseleave focusout', '.brikpanel-pl-cat-more', function () {
+            .on('mouseleave focusout', HOVER_LIST_SELECTOR, function () {
                 scheduleCatMoreClose();
             });
         $(window).on('scroll resize', hideCatMorePopover);
@@ -746,16 +765,20 @@
      * Used for full-width loading / empty rows.
      */
     function totalColumnCount() {
-        // 1 sort handle (hidden unless sortMode) + 15 native BrikPanel cols
-        // (check, image, name, sku, gtin, price, cogs, profit, stock, cat,
-        // shipping class, author, sort order, status, date) + 1 actions col
-        // + N ASE extras. Every native <th>/<td> is always present in the DOM
-        // so colspan calculations stay stable; CSS hides the ones the user
+        // 1 sort handle (hidden unless sortMode) + 16 native BrikPanel cols
+        // (check, image, name, sku, variation skus, gtin, price, cogs, profit,
+        // stock, cat, shipping class, author, sort order, status, date)
+        // + 1 actions col
+        // + N dynamic columns. Every native <th>/<td> is always present in the
+        // DOM so colspan calculations stay stable; CSS hides the ones the user
         // switched off, but they still count as real columns.
+        // The dynamic count covers both sources — columns replayed from other
+        // plugins and columns a brikpanel_products_columns callback drew —
+        // because the server hands both back in extra_columns.
         var extras = state.extraColumns ? Object.keys(state.extraColumns).length : 0;
         // +1 for the opt-in Product Code column when its plugin is active (its
         // <th>/<td> are always in the DOM in that case; CSS hides them when off).
-        return 17 + (PL.has_product_code ? 1 : 0) + extras;
+        return 18 + (PL.has_product_code ? 1 : 0) + extras;
     }
 
     /**
@@ -827,6 +850,22 @@
         }
     }
 
+    function extraColMeta(colId) {
+        return (state.extraMeta && state.extraMeta[colId]) || {};
+    }
+
+    // The width is validated server-side against a CSS-length pattern before
+    // it ever reaches here; escAttr is the second line of defence so an
+    // unexpected value cannot break out of the attribute.
+    function extraColStyleAttr(colId) {
+        var w = extraColMeta(colId).width;
+        return w ? ' style="width:' + escAttr(w) + ';min-width:' + escAttr(w) + '"' : '';
+    }
+
+    function extraColKindClass(colId) {
+        return extraColMeta(colId).kind === 'custom' ? ' brikpanel-pl-cell-custom' : '';
+    }
+
     function syncAseHeaders() {
         var $headerRow = $('#bpl-table thead tr');
         if (!$headerRow.length) return;
@@ -844,7 +883,7 @@
             var colId = ids[i];
             var label = cols[colId];
             var hiddenCls = (state.extraHidden && state.extraHidden[colId]) ? ' bpl-col-hidden' : '';
-            var $th = $('<th class="brikpanel-pl-th-ase column-' + escAttr(colId) + hiddenCls + '" data-ase-col="' + escAttr(colId) + '"></th>')
+            var $th = $('<th class="brikpanel-pl-th-ase column-' + escAttr(colId) + hiddenCls + '" data-ase-col="' + escAttr(colId) + '"' + extraColStyleAttr(colId) + '></th>')
                 .text(label);
             if ($actionsTh.length) {
                 $actionsTh.before($th);
@@ -852,6 +891,30 @@
                 $headerRow.append($th);
             }
         }
+    }
+
+    /**
+     * Replace the table body with a single explanatory row.
+     *
+     * The one and only way the loading spinner leaves the screen when a fetch
+     * does not end in rendered rows. Shared by every failure path so none of
+     * them can forget to clear it.
+     *
+     * @param {jQuery} $body   The table body.
+     * @param {string} message Already-unescaped text to show.
+     */
+    function paintErrorRow($body, message) {
+        // The colspan is a nicety; clearing the spinner is not. totalColumnCount()
+        // reads state.extraColumns, which is exactly the value a malformed
+        // payload may have poisoned on the way here, so a throw from it must not
+        // be what stops the row from being drawn.
+        var span = 18;
+        try {
+            span = totalColumnCount();
+        } catch (e) {}
+
+        $body.html('<tr><td colspan="' + span + '" class="brikpanel-pl-empty">' +
+            escHtml(message || PL.i18n.error) + '</td></tr>');
     }
 
     function fetchProducts(silent) {
@@ -911,39 +974,81 @@
                 var i = raw.indexOf('{');
                 return i > 0 ? raw.slice(i) : raw;
             },
+            // Without this the request never settles when the connection is
+            // held open by a proxy or the PHP worker is killed mid-response:
+            // neither success nor error fires, and the loading row below stays
+            // on screen forever with nothing to explain it.
+            //
+            // Two minutes, not thirty seconds. This is a rescue for a request
+            // that will NEVER come back, not a performance budget: a shop with
+            // 100 rows a page and several third-party columns can legitimately
+            // take a while on slow shared hosting, and cutting a request short
+            // that would have succeeded is its own bug. Almost every host kills
+            // the PHP process long before this fires.
+            timeout: 120000,
             success: function (res) {
                 currentFetchXhr = null;
                 state.loading = false;
                 hideProgress();
-                if (!res.success) {
-                    $body.html('<tr><td colspan="' + totalColumnCount() + '" class="brikpanel-pl-empty">' + escHtml(res.data.message || PL.i18n.error) + '</td></tr>');
-                    return;
+
+                // Everything from here down runs inside try/catch on purpose.
+                // hideProgress() only touches the slim top progress bar — the
+                // spinner ROW is replaced by renderProducts() at the very end,
+                // so ANY throw before that point (a payload that is not the
+                // envelope we expect, a third-party column definition that
+                // trips syncAseHeaders) would leave the table spinning with no
+                // error and no way out but a page reload. jQuery does not route
+                // a throw inside success() to error(), so it has to be caught
+                // here.
+                try {
+                    // A response can be valid JSON and still not be our
+                    // envelope: admin-ajax.php answers an unhandled action with
+                    // a bare `0` at HTTP 200, and security plugins, CDNs and
+                    // WAFs do the same with `0` or `null`. JSON.parse accepts
+                    // all of those, so test the shape rather than trusting it.
+                    if (!res || res.success !== true || !res.data) {
+                        var failMsg = (res && res.data && res.data.message) || PL.i18n.error;
+                        paintErrorRow($body, failMsg);
+                        return;
+                    }
+
+                    state.products = res.data.products || [];
+                    state.total = res.data.total;
+                    state.pages = res.data.pages;
+                    state.extraColumns = res.data.extra_columns || {};
+                    state.extraMeta = res.data.extra_columns_meta || {};
+
+                    // Refresh extras-hidden state from server-resolved
+                    // visibility (some 3rd-party plugins only register columns
+                    // during AJAX, so the source of truth lives here).
+                    var extraState = res.data.extra_columns_state || {};
+                    Object.keys(state.extraColumns).forEach(function (colId) {
+                        state.extraHidden[colId] = !extraState[colId];
+                    });
+
+                    syncExtraColumnsPopover();
+
+                    // Update counts
+                    updateCounts(res.data.counts);
+                    syncAseHeaders();
+                    renderProducts();
+                    renderPagination();
+                    updateBulkBar();
+
+                    // Reset check-all
+                    $('#bpl-check-all').prop('checked', false);
+                } catch (e) {
+                    if (window.console && window.console.error) {
+                        window.console.error('BrikPanel: products list render failed', e);
+                    }
+                    // Drop whatever came out of the failed payload before
+                    // drawing the error row: the recovery path reads this state
+                    // too, and re-reading a poisoned value would throw again and
+                    // put us right back where we started, spinner and all.
+                    state.extraColumns = {};
+                    state.extraMeta = {};
+                    paintErrorRow($body, PL.i18n.error);
                 }
-
-                state.products = res.data.products;
-                state.total = res.data.total;
-                state.pages = res.data.pages;
-                state.extraColumns = res.data.extra_columns || {};
-
-                // Refresh extras-hidden state from server-resolved
-                // visibility (some 3rd-party plugins only register columns
-                // during AJAX, so the source of truth lives here).
-                var extraState = res.data.extra_columns_state || {};
-                Object.keys(state.extraColumns).forEach(function (colId) {
-                    state.extraHidden[colId] = !extraState[colId];
-                });
-
-                syncExtraColumnsPopover();
-
-                // Update counts
-                updateCounts(res.data.counts);
-                syncAseHeaders();
-                renderProducts();
-                renderPagination();
-                updateBulkBar();
-
-                // Reset check-all
-                $('#bpl-check-all').prop('checked', false);
             },
             error: function (xhr, textStatus) {
                 // Aborted by a follow-up fetchProducts() — the new request
@@ -952,7 +1057,7 @@
                 currentFetchXhr = null;
                 state.loading = false;
                 hideProgress();
-                $body.html('<tr><td colspan="' + totalColumnCount() + '" class="brikpanel-pl-empty">' + escHtml(PL.i18n.error) + '</td></tr>');
+                paintErrorRow($body, PL.i18n.error);
             }
         });
     }
@@ -1290,7 +1395,19 @@
 
         var typeLabel = '';
         if (isVariable) {
-            typeLabel = '<span class="brikpanel-pl-type-badge">' + escHtml(PL.i18n.variable) + '</span>';
+            // The count sits INSIDE the badge, not next to it: the mobile rule
+            // turns the badge into a block, so a sibling span would drop onto
+            // its own line. A <span> and not a <button> because jQuery UI
+            // Sortable's default `cancel` selector includes `button` and would
+            // swallow drags that start on it.
+            var vCount = parseInt(p.variation_count, 10);
+            var vBadge = '';
+            if (vCount > 0) {
+                var vTitle = String(PL.i18n.variations_count || '').replace('%d', vCount);
+                vBadge = '<span class="brikpanel-pl-type-count" title="' + escAttr(vTitle) +
+                    '" aria-label="' + escAttr(vTitle) + '">' + escHtml(String(vCount)) + '</span>';
+            }
+            typeLabel = '<span class="brikpanel-pl-type-badge">' + escHtml(PL.i18n.variable) + vBadge + '</span>';
         }
 
         var trashActions = '';
@@ -1314,7 +1431,7 @@
                 var aseColId = extraIds[ci];
                 var aseHtml  = (typeof p.extra_cells[aseColId] !== 'undefined') ? p.extra_cells[aseColId] : '';
                 var aseHiddenCls = (state.extraHidden && state.extraHidden[aseColId]) ? ' bpl-col-hidden' : '';
-                aseCellsHtml += '<td class="brikpanel-pl-cell-ase column-' + escAttr(aseColId) + aseHiddenCls + '" data-ase-col="' + escAttr(aseColId) + '">' + aseHtml + '</td>';
+                aseCellsHtml += '<td class="brikpanel-pl-cell-ase' + extraColKindClass(aseColId) + ' column-' + escAttr(aseColId) + aseHiddenCls + '" data-ase-col="' + escAttr(aseColId) + '"' + extraColStyleAttr(aseColId) + '>' + aseHtml + '</td>';
             }
         }
 
@@ -1347,6 +1464,25 @@
                     '</svg>' +
                 '</button>';
         }
+
+        // Variation SKUs cell. Hidden by default. The codes are printed in
+        // full rather than collapsed behind a hover: reading them at a glance
+        // is the entire point of the column. The server caps the list and
+        // reports the remainder as a count.
+        var vsk = p.variation_skus || { value: '', list: [], multi: false };
+        var vskInner;
+        if (!vsk.value) {
+            vskInner = '<span class="brikpanel-pl-text-muted">—</span>';
+        } else if (vsk.multi) {
+            // Compact badge; the codes themselves live in the hover popover,
+            // which is the same floating list the category "+N" chip opens.
+            vskInner = '<span class="brikpanel-pl-varskus-more" data-others="' +
+                escAttr(JSON.stringify(vsk.list)) + '" tabindex="0" aria-label="' +
+                escAttr(vsk.value) + '">' + escHtml(vsk.value) + '</span>';
+        } else {
+            vskInner = escHtml(vsk.value);
+        }
+        var varSkusCell = '<td class="brikpanel-pl-cell-varskus brikpanel-pl-col brikpanel-pl-col-variation_skus">' + vskInner + '</td>';
 
         // Global Unique ID (GTIN/UPC/EAN/ISBN) cell. Hidden by default; the
         // value object is built server-side and already accounts for variable
@@ -1399,6 +1535,7 @@
             '<td class="brikpanel-pl-cell-image brikpanel-pl-col brikpanel-pl-col-image"><img src="' + escAttr(p.image) + '" alt="" class="brikpanel-pl-thumb" loading="lazy"></td>' +
             '<td class="brikpanel-pl-cell-name brikpanel-pl-col brikpanel-pl-col-name"><span class="brikpanel-pl-name-id" title="' + escAttr(PL.i18n.product_id || '') + '">#' + p.id + '</span>' + featuredStarHtml + '<a href="' + escAttr(editHref) + '" class="brikpanel-pl-product-name-link"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text">' + escHtml(p.name) + '</span></a>' + typeLabel + aseActionsHtml + '</td>' +
             '<td class="brikpanel-pl-cell-sku brikpanel-pl-col brikpanel-pl-col-sku"><span class="brikpanel-pl-editable brikpanel-pl-sku-cell" data-field="sku" data-value="' + escAttr(p.sku || '') + '">' + (p.sku ? escHtml(p.sku) : '<span class="brikpanel-pl-text-muted">—</span>') + '</span></td>' +
+            varSkusCell +
             '<td class="brikpanel-pl-cell-guid brikpanel-pl-col brikpanel-pl-col-global_unique_id">' + gidInner + '</td>' +
             pcodeCell +
             '<td class="brikpanel-pl-cell-price brikpanel-pl-col brikpanel-pl-col-price">' + priceEditable + '</td>' +
@@ -1587,9 +1724,9 @@
             data: data,
             success: function (res) {
                 if (res.success) {
-                    updateProductInState(res.data.product);
+                    var merged = updateProductInState(res.data.product);
                     var $row = $cell.closest('tr');
-                    refreshRow($row, res.data.product);
+                    refreshRow($row, merged);
                     closeStockPopover();
                     showToast(PL.i18n.saved, 'success');
                 } else {
@@ -1707,8 +1844,8 @@
             data: data,
             success: function (res) {
                 if (res.success) {
-                    updateProductInState(res.data.product);
-                    refreshRow($cell.closest('tr'), res.data.product);
+                    var merged = updateProductInState(res.data.product);
+                    refreshRow($cell.closest('tr'), merged);
                     closePricePopover();
                     showToast(PL.i18n.saved, 'success');
                 } else {
@@ -1767,9 +1904,9 @@
                 $el.removeClass('saving');
                 if (res.success) {
                     // Update the row with new data
-                    updateProductInState(res.data.product);
+                    var merged = updateProductInState(res.data.product);
                     var $row = $el.closest('tr');
-                    refreshRow($row, res.data.product);
+                    refreshRow($row, merged);
                     showToast(PL.i18n.saved, 'success');
                 } else {
                     cancelInlineEdit($input);
@@ -1797,13 +1934,23 @@
         $row.replaceWith(newRow);
     }
 
+    // Merges a quick-edit / inline-edit response into the cached row and
+    // returns the merged object.
+    //
+    // Merge, never replace: the quick-edit payload is a strict subset of the
+    // list payload, so assigning it wholesale drops every key it does not
+    // carry — the plugin column cells, GTIN, Product Code, shipping class,
+    // author, the featured star, the row actions. refreshRow() re-runs the
+    // same renderer against that object, and the three inline-edit paths never
+    // re-fetch afterwards, so those cells would blank out permanently.
     function updateProductInState(product) {
         for (var i = 0; i < state.products.length; i++) {
             if (state.products[i].id === product.id) {
-                state.products[i] = product;
-                break;
+                state.products[i] = $.extend({}, state.products[i], product);
+                return state.products[i];
             }
         }
+        return product;
     }
 
     // =========================================================================
@@ -2163,9 +2310,9 @@
 
                 if (!isVariable) {
                     $btn.prop('disabled', false).text(PL.i18n.save_changes);
-                    updateProductInState(res.data.product);
+                    var merged = updateProductInState(res.data.product);
                     var $row = $('#bpl-table-body tr[data-id="' + id + '"]');
-                    refreshRow($row, res.data.product);
+                    refreshRow($row, merged);
                     closeDrawer();
                     showToast(res.data.message, 'success');
                     fetchProducts();
@@ -3150,6 +3297,13 @@
 
     var bulkState = { attributes: [] };
 
+    // Taxonomy bulk actions are encoded server-side as `tax_<set|add|remove>__<slug>`.
+    function isTaxAction(action) {
+        return action.indexOf('tax_set__') === 0 ||
+               action.indexOf('tax_add__') === 0 ||
+               action.indexOf('tax_remove__') === 0;
+    }
+
     function openBulkModal() {
         // Update selected count info
         var count = state.selected.length;
@@ -3165,7 +3319,12 @@
         // Reset taxonomy term pickers so stale selections never carry over.
         $('.bpl-bulk-term-cb').prop('checked', false);
         $('.bpl-bulk-term-search').val('');
+        $('.bpl-bulk-term-new').val('');
         $('.bpl-bulk-term-list').find('li, .brikpanel-pl-qe-term-item').show();
+
+        // Open on the tab that matches reality: with rows checked the user means
+        // "these products", so land there instead of making them find the tab.
+        activateBulkTab(count > 0 ? 'bpl-bulk-tab-sel' : 'bpl-bulk-tab-cat');
 
         // Sync the value control to the currently selected action.
         refreshBulkValueUI();
@@ -3175,6 +3334,49 @@
 
         $('#bpl-bulk-modal-overlay').addClass('open');
         $('body').addClass('brikpanel-pl-drawer-open');
+    }
+
+    // Switches the bulk modal to a tab programmatically. Routed through the same
+    // click handler the tab strip uses so active classes and refreshBulkValueUI()
+    // stay in one place.
+    function activateBulkTab(tabId) {
+        var $tab = $('.brikpanel-pl-modal-tab[data-tab="' + tabId + '"]'); // i18n-ignore: CSS selector
+        if ($tab.length && !$tab.hasClass('active')) {
+            $tab.trigger('click');
+        }
+    }
+
+    // Appends freshly created terms to a taxonomy's checkbox list, matching the
+    // markup render_qe_taxonomy_checklist() emits for flat taxonomies (the only
+    // ones that can create terms inline). Skips terms already listed.
+    function addTermsToBulkPicker(taxonomy, terms) {
+        if (!taxonomy || !terms || !terms.length) { return; }
+        var $list = $('#bpl-bulk-term-region .bpl-bulk-term-picker[data-taxonomy="' + taxonomy + '"] .bpl-bulk-term-list'); // i18n-ignore: CSS selector
+        if (!$list.length) { return; }
+        $list.find('.brikpanel-pl-qe-term-empty').remove();
+
+        for (var i = 0; i < terms.length; i++) {
+            var id = parseInt(terms[i].id, 10);
+            var name = terms[i].name || '';
+            if (!id || $list.find('.bpl-bulk-term-cb[value="' + id + '"]').length) { continue; } // i18n-ignore: CSS selector
+            $list.append(
+                '<label class="brikpanel-pl-qe-term-item" data-name="' + escAttr(name.toLowerCase()) + '">' +
+                '<input type="checkbox" class="bpl-bulk-term-cb" value="' + escAttr(id) + '"> ' +
+                escHtml(name) + '</label>'
+            );
+        }
+    }
+
+    // Opens the bulk modal ready to add terms of one taxonomy to the checked rows.
+    function openBulkModalForTaxonomy(taxonomy) {
+        if (!taxonomy) { return; }
+        if (!state.selected.length) {
+            showToast(PL.i18n.bulk_no_selection, 'error');
+            return;
+        }
+        openBulkModal();
+        activateBulkTab('bpl-bulk-tab-sel');
+        $('#bpl-bulk-action-sel').val('tax_add__' + taxonomy).trigger('change');
     }
 
     function closeBulkModal() {
@@ -3263,7 +3465,7 @@
         var $opt    = $action.find('option:selected');
         var $valWrap = $('#bpl-bulk-value-' + which + '-wrap');
 
-        var isTax = action.indexOf('tax_set__') === 0 || action.indexOf('tax_add__') === 0;
+        var isTax = isTaxAction(action);
         var isShipping = action === 'set_weight' || action === 'set_length' ||
                          action === 'set_width' || action === 'set_height';
         // Maintenance actions need no value: they recompute from existing data.
@@ -3289,7 +3491,10 @@
             var taxonomy = action.split('__')[1];
             var $region = $('#bpl-bulk-term-region').show();
             $region.find('.bpl-bulk-term-picker').hide();
-            $region.find('.bpl-bulk-term-picker[data-taxonomy="' + taxonomy + '"]').show();
+            var $picker = $region.find('.bpl-bulk-term-picker[data-taxonomy="' + taxonomy + '"]').show(); // i18n-ignore: CSS selector
+            // Removing only ever targets terms that already exist, so the
+            // create-as-you-type box has no meaning there.
+            $picker.find('.bpl-bulk-term-new').toggle(action.indexOf('tax_remove__') !== 0);
             $('#bpl-bulk-term-label').text($opt.text().replace(/\s+/g, ' ').trim());
         } else {
             $('#bpl-bulk-term-region').hide();
@@ -3308,16 +3513,25 @@
         var activeTab = $('.brikpanel-pl-modal-tab.active').data('tab');
         var which   = activeTab === 'bpl-bulk-tab-sel' ? 'sel' : 'cat';
         var action  = $('#bpl-bulk-action-' + which).val() || '';
-        var isTax   = action.indexOf('tax_set__') === 0 || action.indexOf('tax_add__') === 0;
+        var isTax   = isTaxAction(action);
 
-        // Collect taxonomy term IDs from the visible picker when a tax action runs.
-        var termIds = '';
+        // Collect taxonomy term IDs from the visible picker when a tax action runs,
+        // plus any brand-new names typed into the free-text box beside it.
+        var termIds  = '';
+        var newTerms = '';
         if (isTax) {
             var taxonomy = action.split('__')[1];
-            var termSel = '#bpl-bulk-term-region .bpl-bulk-term-picker[data-taxonomy="' + taxonomy + '"] .bpl-bulk-term-cb:checked'; // i18n-ignore: CSS selector
-            var ids = $(termSel).map(function () { return parseInt(this.value, 10); }).get();
-            if (action.indexOf('tax_add__') === 0 && !ids.length) {
-                showToast(PL.i18n.bulk_select_terms, 'error');
+            var pickerSel = '#bpl-bulk-term-region .bpl-bulk-term-picker[data-taxonomy="' + taxonomy + '"]'; // i18n-ignore: CSS selector
+            var ids = $(pickerSel + ' .bpl-bulk-term-cb:checked').map(function () { // i18n-ignore: CSS selector
+                return parseInt(this.value, 10);
+            }).get();
+            var isRemove = action.indexOf('tax_remove__') === 0;
+            newTerms = isRemove ? '' : ($(pickerSel + ' .bpl-bulk-term-new').val() || '').trim(); // i18n-ignore: CSS selector
+
+            // "Set" may legitimately run empty (that clears the taxonomy); add and
+            // remove cannot — they need something to act on.
+            if (!ids.length && !newTerms && action.indexOf('tax_set__') !== 0) {
+                showToast(isRemove ? PL.i18n.bulk_select_terms_remove : PL.i18n.bulk_select_terms, 'error');
                 return;
             }
             termIds = ids.join(',');
@@ -3341,6 +3555,7 @@
                 value: isRound ? ($('#bpl-bulk-round-digits').val() || '2') : $('#bpl-bulk-value-cat').val(),
                 round_mode: roundMode,
                 term_ids: termIds,
+                new_terms: newTerms,
                 attr_key: isTax ? '' : ($('#bpl-bulk-attr-key').val() || ''),
                 attr_val: isTax ? '' : ($('#bpl-bulk-attr-val').val() || '')
             };
@@ -3353,7 +3568,8 @@
                 bulk_action: action,
                 value: isRound ? ($('#bpl-bulk-round-digits').val() || '2') : $('#bpl-bulk-value-sel').val(),
                 round_mode: roundMode,
-                term_ids: termIds
+                term_ids: termIds,
+                new_terms: newTerms
             };
         }
 
@@ -3501,6 +3717,10 @@
             }
             bulkJob.id = res.data.job_id;
             bulkJob.total = res.data.total;
+            // Terms the server just created from the free-text box do not exist in
+            // the picker, which is rendered once with the page. Fold them in now so
+            // a follow-up "Remove from ..." can see them without a full reload.
+            addTermsToBulkPicker(res.data.created_tax, res.data.created_terms);
             updateProgressModal(0, bulkJob.total);
             processNextBatch(jobType, 0, 0, 0);
         }).fail(function () {

@@ -119,7 +119,15 @@ class Brikpanel_Ads_Dashboard {
 			}
 			$cogs        = self::compute_cogs( $window );
 			$expenses    = self::compute_manual_expenses( $start_date, $end_date );
-			$net_profit  = (float) $total_sales - $cogs - $same_currency_spend - $expenses;
+			// Real gateway processing fees are part of Expenses on the Profit
+			// card, so they have to be part of this figure too or the two would
+			// quietly disagree about the same period. Read from the profit block
+			// the dashboard already built for THIS window rather than re-querying:
+			// same basis by construction, and no second pass over the orders.
+			$fees        = isset( $payload['profit']['payment_fees_raw'] )
+				? (float) $payload['profit']['payment_fees_raw']
+				: 0.0;
+			$net_profit  = (float) $total_sales - $cogs - $same_currency_spend - $expenses - $fees;
 		}
 
 		$payload['ad_spend'] = [
@@ -176,6 +184,16 @@ class Brikpanel_Ads_Dashboard {
 		if ( $start === '' || $end === '' ) {
 			return 0.0;
 		}
+
+		// $window carries SITE-LOCAL dates, usually already truncated to Y-m-d,
+		// but the columns below are UTC datetimes. Feeding a bare local date
+		// straight in made MySQL read it as local-midnight-as-UTC: the window
+		// started late, ended ~a day short, and for a single-day range start and
+		// end collapsed to the same instant so this returned 0. Widen to the full
+		// local day first, then convert to GMT the same way calculate_dates()
+		// does, so this matches the COGS the KPI card reports.
+		$start = get_gmt_from_date( substr( $start, 0, 10 ) . ' 00:00:00' );
+		$end   = get_gmt_from_date( substr( $end, 0, 10 ) . ' 23:59:59' );
 		$is_hpos = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
 		$paid    = brikpanel_paid_order_statuses();
 		$placeholders = implode( ',', array_fill( 0, count( $paid ), '%s' ) );
@@ -205,12 +223,17 @@ class Brikpanel_Ads_Dashboard {
 
 	/**
 	 * Sum the manual `wp_brikpanel_expenses` table inside the date range.
+	 *
+	 * Money rows only. A percentage row's `amount` holds a RATE and a per-order
+	 * row's a UNIT PRICE. Summing either here reported a 2.9% commission as
+	 * £2.90 of ad-adjacent spend.
 	 */
 	private static function compute_manual_expenses( $start_date, $end_date ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'brikpanel_expenses';
+		$kinds = function_exists( 'brikpanel_expense_money_kinds_sql' ) ? brikpanel_expense_money_kinds_sql() : '';
 		$val = $wpdb->get_var( $wpdb->prepare(
-			"SELECT COALESCE(SUM(amount), 0) FROM {$table} WHERE expense_date BETWEEN %s AND %s",
+			"SELECT COALESCE(SUM(amount), 0) FROM {$table} WHERE expense_date BETWEEN %s AND %s{$kinds}",
 			$start_date,
 			$end_date
 		) );

@@ -406,6 +406,20 @@
 .brikpanel-bc-stat-good .brikpanel-bc-stat-num { color: #1a8917; }
 .brikpanel-bc-stat-error .brikpanel-bc-stat-num { color: #d72c0d; }
 
+/* Per-check repair action */
+.brikpanel-bc-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.875rem;
+}
+
+.brikpanel-bc-fix-result {
+    font-size: 0.75rem;
+    color: #616161;
+}
+
 /* Largest images table */
 .brikpanel-bc-details {
     margin-top: 0.875rem;
