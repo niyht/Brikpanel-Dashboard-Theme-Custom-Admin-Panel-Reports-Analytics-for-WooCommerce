@@ -912,6 +912,7 @@ class Brikpanel_Product_Editor {
         $js_data = wp_json_encode([
             'id'                => $product_id,
             'is_variable'       => $data['is_variable'],
+            'variation_count'   => isset($data['variation_count']) ? (int) $data['variation_count'] : 0,
             'product_type'      => $product_type_current,
             'type_selector'     => $product_type_selector_enabled,
             'attributes'        => $data['attributes'],
@@ -1298,6 +1299,27 @@ class Brikpanel_Product_Editor {
 
             <!-- Content -->
             <div class="brikpanel-pe-content">
+            <?php // Two columns, WordPress-style: long-form content flows down the
+            // main column, short setting cards down a narrow side column. Each
+            // column flows on its own, which is the whole point — an earlier
+            // revision split the SAME list into two equal halves row by row, so
+            // whichever cards happened to be adjacent got married (Permalink
+            // beside Product images) and every odd card left the other half of
+            // its row empty.
+            //
+            // Emitted ONLY when the widescreen setting is on. Splitting the list
+            // into two wrappers necessarily puts the side cards after the main
+            // ones in source order, and below the layout's breakpoint the
+            // wrappers collapse to `display:contents` — so with the setting OFF
+            // this markup would quietly reorder the single column, moving Price
+            // and Category below the SEO card. Merchants who never touch the
+            // setting must get byte-identical markup, so they do.
+            //
+            // With the setting ON and a window under the breakpoint, the side
+            // column stacks below the main one. That is what every main+sidebar
+            // layout does when it runs out of room, WordPress's own post editor
+            // included. ?>
+            <?php if ($bpe_widescreen) : ?><div class="brikpanel-pe-col-main"><?php endif; ?>
 
                 <?php if ($bpe_unrepresented) : ?>
                 <div class="brikpanel-pe-typenote">
@@ -1380,7 +1402,11 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-field">
                         <label for="bpe-slug"><?php esc_html_e('Permalink (URL slug)', 'brikpanel'); ?></label>
                         <?php if ($bpe_url_prefix !== '') : ?>
-                        <div class="brikpanel-pe-input-group">
+                        <?php // brikpanel-pe-slug-group opts this group OUT of the
+                        // widescreen short-field cap: the read-only prefix is a whole
+                        // store URL, so squeezing the pair into a price-sized box
+                        // ellipsises the prefix and leaves ~140px for the slug. ?>
+                        <div class="brikpanel-pe-input-group brikpanel-pe-slug-group">
                             <span class="brikpanel-pe-input-prefix brikpanel-pe-slug-prefix"><?php echo esc_html($bpe_url_prefix); ?></span>
                             <input type="text" id="bpe-slug" value="<?php echo esc_attr($data['slug']); ?>" placeholder="<?php esc_attr_e('auto-generated-from-name', 'brikpanel'); ?>" spellcheck="false">
                         </div>
@@ -2217,8 +2243,17 @@ class Brikpanel_Product_Editor {
                       // seopress_owns_seo_card() rather than $active_seo: the
                       // Yoast / Rank Math / All in One SEO cards are short-field
                       // forms that read worse over long lines.
+                      //
+                      // The marker used to be `brikpanel-pe-card-wide`, back when
+                      // widescreen widened only opt-in cards. Every card takes the
+                      // full column now, so the question this answers has changed:
+                      // it is no longer "should this card be wide" but "does this
+                      // panel bring its own wide layout". SEOPress does — three
+                      // columns tuned in 3.2.92 — so its body is left alone, while
+                      // the short-field panels keep the narrower measure they were
+                      // designed and tested at. Same condition, honest name.
                       $bpe_seo_card_classes = 'brikpanel-pe-card brikpanel-pe-seo-card brikpanel-pe-seo-card--plugin brikpanel-pe-metaboxes-wrap';
-                      if (self::seopress_owns_seo_card()) { $bpe_seo_card_classes .= ' brikpanel-pe-card-wide'; } ?>
+                      if (self::seopress_owns_seo_card()) { $bpe_seo_card_classes .= ' brikpanel-pe-seo-panel-native'; } ?>
                 <div class="<?php echo esc_attr($bpe_seo_card_classes); ?>" data-seo-plugin="<?php echo esc_attr($active_seo['slug']); ?>">
                     <label>
                         <?php esc_html_e('SEO', 'brikpanel'); ?>
@@ -2420,9 +2455,26 @@ class Brikpanel_Product_Editor {
                 // The Cost of goods card is now a regular section (slug `cogs`)
                 // and obeys the picker's order/visibility like any other.
                 // `mb:<id>` slugs echo their pre-built third-party card inline.
+                // Cards that hold a handful of short settings go to the side
+                // column; everything else — the title, the permalink under it,
+                // images, variations, both description editors, the SEO card and
+                // any embedded third-party panel — stays in the main column,
+                // because their content is what asked for the width in the first
+                // place. The merchant's own order is preserved WITHIN each
+                // column: this splits the list, it never reorders it.
+                $bpe_side_slugs = [
+                    'pricing', 'cogs', 'inventory', 'gtin', 'tax', 'sold_individually',
+                    'category', 'brand', 'tags', 'digital', 'weight', 'dimensions',
+                    'shipping_class', 'linked', 'advanced',
+                ];
+                $bpe_side_html = '';
                 foreach ($visible as $rendered_slug) {
                     if (isset($section_html[$rendered_slug]) && $section_html[$rendered_slug] !== '') {
-                        echo $section_html[$rendered_slug];
+                        if ($bpe_widescreen && in_array($rendered_slug, $bpe_side_slugs, true)) {
+                            $bpe_side_html .= $section_html[$rendered_slug];
+                        } else {
+                            echo $section_html[$rendered_slug];
+                        }
                     } elseif (strpos($rendered_slug, 'mb:') === 0) {
                         $mb_id = substr($rendered_slug, 3);
                         if (!empty($mb_cards['html'][$mb_id]) && empty($mb_emitted[$mb_id])) {
@@ -2475,6 +2527,13 @@ class Brikpanel_Product_Editor {
                     brikpanel_render_editor_boxes('bottom', (int) $product_id, $product);
                 }
                 ?>
+            <?php if ($bpe_widescreen) : ?>
+            </div><!-- .brikpanel-pe-col-main -->
+            <?php // Kept even when empty: an empty flex column takes no space, and
+            // dropping it would make the grid track collapse differently
+            // depending on which sections the merchant enabled. ?>
+            <div class="brikpanel-pe-col-side"><?php echo $bpe_side_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-rendered section markup, escaped at build time. ?></div>
+            <?php endif; ?>
 
             </div><!-- .brikpanel-pe-content -->
         </div><!-- .brikpanel-pe -->
@@ -2618,6 +2677,10 @@ class Brikpanel_Product_Editor {
             'boxes'     => isset($wp_meta_boxes['product']) ? $wp_meta_boxes['product'] : null,
         ];
         set_current_screen('product');
+        // Before any add_meta_boxes fires: this surface renders metaboxes, so
+        // the spoofed screen must not claim to be a block editor. See
+        // brikpanel_mark_screen_classic().
+        brikpanel_mark_screen_classic();
         $GLOBALS['post']      = $post;
         $GLOBALS['post_type'] = 'product';
         $GLOBALS['typenow']   = 'product';
@@ -3655,6 +3718,10 @@ class Brikpanel_Product_Editor {
             'boxes'     => isset($wp_meta_boxes['product']) ? $wp_meta_boxes['product'] : null,
         ];
         set_current_screen('product');
+        // Before any add_meta_boxes fires: this surface renders metaboxes, so
+        // the spoofed screen must not claim to be a block editor. See
+        // brikpanel_mark_screen_classic().
+        brikpanel_mark_screen_classic();
         $GLOBALS['post']      = $post;
         $GLOBALS['post_type'] = 'product';
         $GLOBALS['typenow']   = 'product';
@@ -5839,6 +5906,7 @@ class Brikpanel_Product_Editor {
             'brand_ids'         => [],
             'status'            => 'publish',
             'is_variable'       => false,
+            'variation_count'   => 0,
             'product_type'      => 'simple',
             'attributes'        => [],
             'non_variation_attributes' => [],
@@ -6349,6 +6417,15 @@ class Brikpanel_Product_Editor {
             // the save path accepts.
             'status'            => ($product->get_status() === 'auto-draft') ? 'publish' : $product->get_status(),
             'is_variable'       => $is_variable,
+            // How many variations the product ACTUALLY has in the database, which
+            // is not always how many rows the table renders: WooCommerce hides a
+            // variation whose parent axis lost its "used for variations" flag or
+            // its option list, so an imported product can load with children but
+            // an empty table. The editor warns before a variable -> simple
+            // conversion deletes them, and that warning has to count the real
+            // children or it would silently say "0" on exactly the products that
+            // stand to lose the most.
+            'variation_count'   => count($product->get_children()),
             'product_type'      => (string) $product->get_type(),
             'attributes'        => $attributes_data,
             'non_variation_attributes' => $non_variation_attributes,
@@ -6919,6 +6996,16 @@ class Brikpanel_Product_Editor {
             $status = 'draft';
         }
 
+        // Variations orphaned by a variable -> simple conversion. They are
+        // collected here but NOT deleted until the parent has actually been
+        // saved (see "Delete the variations orphaned by a type change" below).
+        // `delete(true)` is a permanent, un-trashable removal, and this handler
+        // can still bail out after this point — on an empty product name, or on
+        // any Throwable a third-party hook raises during the save. Deleting up
+        // front meant those merchants were told "the product could not be
+        // saved" while every variation had already been destroyed.
+        $orphaned_variation_ids = [];
+
         // If editing existing product, handle type changes
         if ($product_id) {
             $existing = wc_get_product($product_id);
@@ -6961,10 +7048,7 @@ class Brikpanel_Product_Editor {
                     $treat_as_variable = true;
                     $is_variable       = true;
                 } else {
-                    foreach ($existing_children as $child_id) {
-                        $child = wc_get_product($child_id);
-                        if ($child) $child->delete(true);
-                    }
+                    $orphaned_variation_ids = $existing_children;
                 }
             }
         }
@@ -6981,20 +7065,36 @@ class Brikpanel_Product_Editor {
         }
         $product = $product_id ? new $classname($product_id) : new $classname();
 
+        // Basic data
+        $name = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
+        if (empty($name)) {
+            $this->send_clean_json(false, ['message' => __('Product name is required.', 'brikpanel')]);
+        }
+
         // WC_Product::save() persists the `product_type` taxonomy term via
         // the data store, but only for types it recognises natively. Force-
         // set the term after save() so plugin-registered types always end
         // up on the object. We do it here as a pre-save safety net too — if
         // the product already exists and the type changes, the term needs
         // to flip *before* downstream hooks fire their own type-aware logic.
+        // It sits *below* the product-name check on purpose: a save that
+        // answers with an error must not have flipped the product's type on
+        // its way out. Everything between here and $product->save() is
+        // setter calls on the in-memory object, so the term still lands
+        // before the first hook runs.
+        //
+        // $type_term_rollback remembers what the term was, because "before the
+        // first hook runs" also means before a hook can THROW. The catch at the
+        // bottom of this handler tells the merchant the product was not saved;
+        // if the save really did not complete, the type must not have silently
+        // changed underneath that message either.
+        $type_term_rollback = null;
         if ($product_id) {
+            $previous_type = $existing instanceof WC_Product ? $existing->get_type() : '';
+            if ($previous_type !== '' && $previous_type !== $product_type) {
+                $type_term_rollback = $previous_type;
+            }
             wp_set_object_terms($product_id, $product_type, 'product_type', false);
-        }
-
-        // Basic data
-        $name = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
-        if (empty($name)) {
-            $this->send_clean_json(false, ['message' => __('Product name is required.', 'brikpanel')]);
         }
         $product->set_name($name);
         $product->set_status($status);
@@ -7322,6 +7422,20 @@ class Brikpanel_Product_Editor {
         // Save parent product
         $product->save();
         $saved_id = $product->get_id();
+        $type_term_rollback = null;
+
+        // Delete the variations orphaned by a type change. This runs *after*
+        // the parent is persisted, so a request that answers with an error has
+        // changed nothing: the removal is permanent (`force_delete`, no trash)
+        // and every earlier bail-out — the empty-name check and the Throwable
+        // catch that reports "another plugin raised an error" — would otherwise
+        // have destroyed them and then told the merchant nothing was saved.
+        // The editor also confirms before the conversion; this is the second
+        // half of that guarantee.
+        foreach ($orphaned_variation_ids as $child_id) {
+            $child = wc_get_product($child_id);
+            if ($child) $child->delete(true);
+        }
 
         // "Primary category" — mirrored into every active SEO plugin's own meta
         // key (SEOPress / Yoast / Rank Math). Saved in our own pipeline because
@@ -7919,6 +8033,12 @@ class Brikpanel_Product_Editor {
             // de-duplicated (e.g. appended -2) or auto-generated from the title.
             'slug'       => get_post_field('post_name', $saved_id),
             'message'    => __('Product saved!', 'brikpanel'),
+            // Authoritative variation count after this save. The editor warns
+            // before a variable -> simple conversion and names the number; that
+            // number came from the page load, so without this it goes stale the
+            // moment anything changes it — after "Clear all" the warning would
+            // still promise to destroy variations that are already gone.
+            'variation_count' => $final_product ? count($final_product->get_children()) : 0,
         ];
 
         // Non-fatal issues (duplicate SKU/GTIN…): the product saved, but some
@@ -7978,6 +8098,15 @@ class Brikpanel_Product_Editor {
             // nothing safe we can add here — surface a clean, translatable error
             // so the editor reports it instead of a raw 500, and log the detail
             // for the site owner to diagnose which plugin is responsible.
+            //
+            // One thing we CAN undo: the product_type term is written before the
+            // parent is saved, so a throw in between would leave the product
+            // reading as a different type than it is while the merchant is told
+            // nothing was saved. Put it back. (The variations a conversion drops
+            // are deleted only after the save succeeds, so they are still here.)
+            if (!empty($type_term_rollback) && !empty($product_id)) {
+                wp_set_object_terms($product_id, $type_term_rollback, 'product_type', false);
+            }
             if (function_exists('error_log')) {
                 error_log('[BrikPanel] Product save aborted by an exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
             }

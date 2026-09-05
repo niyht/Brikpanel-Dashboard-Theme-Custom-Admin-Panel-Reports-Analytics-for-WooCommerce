@@ -80,54 +80,95 @@ class Brikpanel_Store_Summary {
 
 		// Two-pass: render every other section first so they can register
 		// TL;DR inputs, then prepend a freshly formatted TL;DR.
-		$parts = [
-			'identity'                  => $this->section_identity(),
-			'catalog'                   => $this->section_catalog_composition(),
-			'sales_periods'             => $this->section_sales_periods(),
-			'yearly'                    => $this->section_yearly_sales(),
-			'monthly'                   => $this->section_monthly_sales(),
-			'new_vs_returning'          => $this->section_new_vs_returning(),
-			'best_worst_times'          => $this->section_best_worst_times(),
-			'order_status'              => $this->section_order_status(),
-			'failed_orders'             => $this->section_failed_orders(),
-			'refund_metrics'            => $this->section_refund_metrics(),
-			'top_products'              => $this->section_top_products(),
-			'top_customers'             => $this->section_top_customers(),
-			'customer_concentration'    => $this->section_customer_concentration(),
-			'repeat_purchase_rate'      => $this->section_repeat_purchase_rate(),
-			'time_to_first_purchase'    => $this->section_time_to_first_purchase(),
-			'rfm'                       => $this->section_rfm_segments(),
-			'cohort'                    => $this->section_cohort_retention(),
-			'funnel'                    => $this->section_funnel(),
-			'cart_abandonment'          => $this->section_cart_abandonment(),
-			'devices'                   => $this->section_devices(),
-			'geography'                 => $this->section_geography(),
-			'shipping'                  => $this->section_shipping(),
-			'order_attribution'         => $this->section_order_attribution(),
-			'coupons'                   => $this->section_coupons(),
-			'coupon_performance'        => $this->section_coupon_performance(),
-			'expenses'                  => $this->section_expenses(),
-			'profitability'             => $this->section_profitability(),
-			'subscriptions'             => $this->section_subscriptions(),
-			'customer_lifespan'         => $this->section_customer_lifespan(),
-			'modules'                   => $this->section_modules(),
+		//
+		// The list is in FINAL DISPLAY ORDER — TL;DR is the only thing spliced
+		// in afterwards. Sections run through safe_section(): a store where one
+		// subsystem is broken or missing still gets every other section instead
+		// of a failed copy with nothing in the clipboard.
+		$section_methods = [
+			'identity'                  => 'section_identity',
+			'data_quality'              => 'section_data_quality',
+			'catalog'                   => 'section_catalog_composition',
+			'sales_periods'             => 'section_sales_periods',
+			'yearly'                    => 'section_yearly_sales',
+			'monthly'                   => 'section_monthly_sales',
+			'new_vs_returning'          => 'section_new_vs_returning',
+			'best_worst_times'          => 'section_best_worst_times',
+			'order_status'              => 'section_order_status',
+			'failed_orders'             => 'section_failed_orders',
+			'refund_metrics'            => 'section_refund_metrics',
+			'top_products'              => 'section_top_products',
+			'category_profit'           => 'section_category_profit',
+			'top_customers'             => 'section_top_customers',
+			'customer_concentration'    => 'section_customer_concentration',
+			'repeat_purchase_rate'      => 'section_repeat_purchase_rate',
+			'time_to_first_purchase'    => 'section_time_to_first_purchase',
+			'rfm'                       => 'section_rfm_segments',
+			'cohort'                    => 'section_cohort_retention',
+			'funnel'                    => 'section_funnel',
+			'cart_abandonment'          => 'section_cart_abandonment',
+			'devices'                   => 'section_devices',
+			'geography'                 => 'section_geography',
+			'shipping'                  => 'section_shipping',
+			'order_attribution'         => 'section_order_attribution',
+			'coupons'                   => 'section_coupons',
+			'coupon_performance'        => 'section_coupon_performance',
+			'ad_spend'                  => 'section_ad_spend',
+			'expenses'                  => 'section_expenses',
+			'profitability'             => 'section_profitability',
+			'subscriptions'             => 'section_subscriptions',
+			'customer_lifespan'         => 'section_customer_lifespan',
+			'modules'                   => 'section_modules',
 		];
+
+		$parts = [];
+		foreach ( $section_methods as $key => $method ) {
+			$parts[ $key ] = $this->safe_section( $method );
+		}
 
 		// TL;DR is computed last (so every register_tldr() has fired) but
 		// inserted right after the identity card so the reader sees the
 		// headline numbers immediately.
-		$tldr = $this->section_tldr();
+		$tldr = $this->safe_section( 'section_tldr' );
 		$ordered = [];
 		foreach ( $parts as $key => $body ) {
-			$ordered[ $key ] = $body;
-			if ( 'identity' === $key && $tldr !== '' ) {
+			if ( 'data_quality' === $key && $tldr !== '' ) {
 				$ordered['tldr'] = $tldr;
 			}
+			$ordered[ $key ] = $body;
+		}
+		if ( ! isset( $ordered['tldr'] ) && $tldr !== '' ) {
+			$ordered['tldr'] = $tldr;
 		}
 
 		// Filter empty sections, join with blank line.
 		$ordered = array_filter( $ordered, function ( $p ) { return is_string( $p ) && $p !== ''; } );
 		return implode( "\n\n", $ordered ) . "\n";
+	}
+
+	/**
+	 * Run one section, swallowing anything it throws.
+	 *
+	 * This report reaches into a dozen optional subsystems (ad platforms,
+	 * expenses, subscriptions, the tracking tables, third-party cost plugins).
+	 * Before this guard a single missing function anywhere in that surface
+	 * turned the whole "Copy everything" click into "Failed — try again" and
+	 * the merchant got an empty clipboard, losing thirty working sections to
+	 * one broken one.
+	 *
+	 * @param string $method Private section method name.
+	 * @return string Markdown, or '' when the section failed or had no data.
+	 */
+	private function safe_section( $method ) {
+		try {
+			$body = $this->{$method}();
+			return is_string( $body ) ? $body : '';
+		} catch ( Throwable $e ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				error_log( '[BrikPanel] Store summary section ' . $method . ' failed: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			}
+			return '';
+		}
 	}
 
 	// =========================================================================
@@ -170,9 +211,16 @@ class Brikpanel_Store_Summary {
 		return number_format_i18n( ( (float) $part / $whole ) * 100, $decimals ) . '%';
 	}
 
-	/** Escape pipe characters that would break Markdown table cells. */
+	/**
+	 * Escape pipe characters that would break Markdown table cells.
+	 *
+	 * Values also get their HTML entities decoded first: term names, product
+	 * titles and coupon codes are stored encoded ("Home &amp; Living"), and
+	 * this report is plain text, so the raw entity would be read literally by
+	 * whoever (or whatever) the Markdown is pasted into.
+	 */
 	private function md_cell( $value ) {
-		$value = (string) $value;
+		$value = html_entity_decode( (string) $value, ENT_QUOTES, 'UTF-8' );
 		$value = str_replace( [ "\n", "\r", "|" ], [ ' ', '', '\\|' ], $value );
 		return trim( $value );
 	}
@@ -568,7 +616,8 @@ class Brikpanel_Store_Summary {
 				'wc_op_data'       => __( 'Source: HPOS wc_order_operational_data — captures fulfillment timestamps and origin (created_via).', 'brikpanel' ),
 				'bp_expenses'      => __( 'Source: BrikPanel expenses table (manually entered by the merchant).', 'brikpanel' ),
 				'wc_coupons'       => __( 'Source: WooCommerce shop_coupon posts and order line items of type=coupon.', 'brikpanel' ),
-				'wc_cogs'          => __( 'Source: WooCommerce Cost of Goods Sold — per-line _cogs_value written when an order is placed.', 'brikpanel' ),
+				'bp_cogs'          => __( 'Source: product cost of goods — WooCommerce native COGS, BrikPanel\'s own cost field, or a detected third-party cost plugin. Resolved per line as the variation\'s cost with a fallback to the parent product, the same way the Dashboard profit card resolves it.', 'brikpanel' ),
+				'bp_ads'           => __( 'Source: BrikPanel Ad Platforms — daily spend imported from the connected Google Ads / Meta Ads accounts. Account-level only: no campaign, ad-set, keyword or product breakdown is imported.', 'brikpanel' ),
 			];
 		}
 		$msg = $map[ $key ] ?? '';
@@ -1069,73 +1118,265 @@ class Brikpanel_Store_Summary {
 	// SECTION: TOP PRODUCTS (last 12 months) — handles variations correctly
 	// =========================================================================
 
-	private function section_top_products() {
+	/**
+	 * Per-product sales and cost for the report window, computed once.
+	 *
+	 * Both the Top Products table and the per-category profit table need the
+	 * same thing — revenue, units and resolved cost per product — and each
+	 * cost-resolving join over the period's order lines costs about half a
+	 * second on a mid-size store. Running it once and pivoting in PHP halves
+	 * that, and guarantees the two tables can never disagree.
+	 *
+	 * Rows are ordered by revenue descending. `costed_revenue` is the slice of
+	 * the product's revenue whose line had a cost on file, which is what lets
+	 * a caller tell "zero cost" apart from "no cost recorded".
+	 *
+	 * Capped at five thousand products by revenue: the whole set is held in
+	 * PHP to be pivoted by category, and a catalogue that sold more distinct
+	 * SKUs than that in a year has a tail no reader of this report will act on.
+	 *
+	 * @return array<int, object>|null Null when cost resolution is unavailable.
+	 */
+	private function product_profit_rows() {
 		global $wpdb;
 
-		$start_dt = $this->months_ago_gmt( 12 );
-
-		// Order items live in {prefix}woocommerce_order_items + {prefix}woocommerce_order_itemmeta.
-		// On HPOS, order_items.order_id references {prefix}wc_orders.id; on legacy,
-		// it references {prefix}posts.ID. The product_id meta on a variation line
-		// item is the PARENT product id — grouping by it correctly rolls up
-		// variations into their parent for "top products" rankings.
-		$items_tbl   = $wpdb->prefix . 'woocommerce_order_items';
-		$itemmeta    = $wpdb->prefix . 'woocommerce_order_itemmeta';
-
-		if ( $this->is_hpos() ) {
-			$orders_tbl = $wpdb->prefix . 'wc_orders';
-			$join_status = "INNER JOIN {$orders_tbl} o ON o.id = oi.order_id AND o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ") AND o.date_created_gmt >= %s";
-		} else {
-			$join_status = "INNER JOIN {$wpdb->posts} o ON o.ID = oi.order_id AND o.post_type='shop_order' AND o.post_status IN (" . brikpanel_paid_statuses_sql() . ") AND o.post_date_gmt >= %s";
+		static $rows = null;
+		if ( null !== $rows ) {
+			return false === $rows ? null : $rows;
 		}
 
+		$cost = $this->cogs_line_sql();
+		if ( null === $cost ) {
+			$rows = false;
+			return null;
+		}
+
+		$w    = $this->profit_window();
+		$pred = $this->paid_order_predicate( 'o' );
+		$ord  = $this->is_hpos() ? "{$wpdb->prefix}wc_orders" : $wpdb->posts;
+		$oid  = $this->is_hpos() ? 'o.id' : 'o.ID';
+
+		// The `_product_id` meta on a variation line is the PARENT product id,
+		// so grouping by it rolls variations up into their parent — while the
+		// cost joins still resolve each line against its own variation. That
+		// pairing is what makes the margin right on a variable product whose
+		// variations carry different costs.
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$sql = "SELECT
-					CAST(im_pid.meta_value AS UNSIGNED) AS product_id,
-					SUM(CAST(im_qty.meta_value AS DECIMAL(20,4))) AS qty,
-					SUM(CAST(im_total.meta_value AS DECIMAL(20,4))) AS revenue
-				FROM {$items_tbl} oi
-				{$join_status}
-				INNER JOIN {$itemmeta} im_pid   ON im_pid.order_item_id = oi.order_item_id   AND im_pid.meta_key='_product_id'
-				INNER JOIN {$itemmeta} im_qty   ON im_qty.order_item_id = oi.order_item_id   AND im_qty.meta_key='_qty'
-				INNER JOIN {$itemmeta} im_total ON im_total.order_item_id = oi.order_item_id AND im_total.meta_key='_line_total'
+					CAST(pid.meta_value AS UNSIGNED) AS product_id,
+					SUM(CAST(qtym.meta_value AS DECIMAL(20,4))) AS qty,
+					SUM(CAST(totm.meta_value AS DECIMAL(20,4))) AS revenue,
+					SUM(CAST(qtym.meta_value AS DECIMAL(20,4)) * ({$cost['unit']})) AS cogs,
+					SUM(CASE WHEN {$cost['has_cost']} THEN CAST(totm.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS costed_revenue
+				FROM {$wpdb->prefix}woocommerce_order_items oi
+				INNER JOIN {$ord} o ON {$oid} = oi.order_id
+				INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta qtym
+						ON qtym.order_item_id = oi.order_item_id AND qtym.meta_key = '_qty'
+				INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta totm
+						ON totm.order_item_id = oi.order_item_id AND totm.meta_key = '_line_total'
+				{$cost['joins']}
 				WHERE oi.order_item_type = 'line_item'
+				  AND CAST(pid.meta_value AS UNSIGNED) > 0
+				  AND {$pred['where']}
+				  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
 				GROUP BY product_id
 				HAVING revenue > 0
 				ORDER BY revenue DESC
-				LIMIT 10";
+				LIMIT 5000";
+		$args = array_merge( $pred['args'], [ $w['start_gmt'], $w['end_gmt'] ] );
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+		// phpcs:enable
 
-		// One query, ordered by revenue DESC. Units shown alongside in the
-		// same table (the user requested merging the previous two-table
-		// layout — same data, half the visual noise).
-		$rows_rev = $wpdb->get_results( $wpdb->prepare( $sql, $start_dt ) ); // phpcs:ignore
+		return $rows;
+	}
 
-		if ( empty( $rows_rev ) ) {
+	/**
+	 * Titles and SKUs for a set of product ids, in one query.
+	 *
+	 * wc_get_product() per row costs a full product load each; the report only
+	 * needs a name and a SKU, and asks for up to fifty of them.
+	 *
+	 * @param int[] $ids
+	 * @return array<int, array{name:string,sku:string}>
+	 */
+	private function product_labels( array $ids ) {
+		global $wpdb;
+
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+		if ( empty( $ids ) ) {
+			return [];
+		}
+		$in = implode( ',', $ids );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results(
+			"SELECT p.ID, p.post_title, sku.meta_value AS sku
+			 FROM {$wpdb->posts} p
+			 LEFT JOIN {$wpdb->postmeta} sku ON sku.post_id = p.ID AND sku.meta_key = '_sku'
+			 WHERE p.ID IN ({$in})"
+		); // phpcs:ignore
+		// phpcs:enable
+
+		$out = [];
+		foreach ( (array) $rows as $r ) {
+			$out[ (int) $r->ID ] = [
+				'name' => (string) $r->post_title,
+				'sku'  => (string) $r->sku,
+			];
+		}
+		return $out;
+	}
+
+	private function section_top_products() {
+		$rows = $this->product_profit_rows();
+		$has_cost_column = ( null !== $rows );
+
+		// Cost resolution unavailable (a very old install, or the helper file
+		// missing): fall back to the sales-only shape rather than the section
+		// disappearing.
+		if ( null === $rows ) {
+			$rows = $this->product_sales_rows_no_cost();
+		}
+		if ( empty( $rows ) ) {
 			return '';
 		}
 
-		$out = [];
-		$out[] = '## ' . __( 'Top Products (last 12 months)', 'brikpanel' );
-		$out[] = '*' . __( 'Variations are rolled up to their parent product. Sorted by revenue; the Units column lets you spot volume-vs-value differences.', 'brikpanel' ) . '*';
-		$out[] = '';
-		$out[] = '| # | ' . __( 'Product', 'brikpanel' ) . ' | ' . __( 'SKU', 'brikpanel' ) . ' | ' . __( 'Units', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Avg Price', 'brikpanel' ) . ' |';
-		$out[] = '|---:|---|---|---:|---:|---:|';
-		$i = 1;
-		foreach ( $rows_rev as $r ) {
+		// Fifty is the working set: ten are printed, and the lowest-margin
+		// table below picks from the same window of real sellers rather than
+		// from the long tail where a single unit distorts the margin.
+		$rows   = array_slice( $rows, 0, 50 );
+		$ids    = [];
+		foreach ( $rows as $r ) { $ids[] = (int) $r->product_id; }
+		$labels = $this->product_labels( $ids );
+
+		$enriched = [];
+		foreach ( $rows as $r ) {
 			$pid  = (int) $r->product_id;
-			$prod = $pid ? wc_get_product( $pid ) : null;
-			$name = $prod ? $prod->get_name() : sprintf( __( '(deleted #%d)', 'brikpanel' ), $pid );
-			$sku  = $prod ? $prod->get_sku() : '';
 			$qty  = (float) $r->qty;
 			$rev  = (float) $r->revenue;
-			$avg  = $qty > 0 ? $rev / $qty : 0;
-			$out[] = '| ' . $i . ' | ' . $this->md_cell( $name ) . ' | ' . $this->md_cell( $sku ?: '—' ) . ' | ' . number_format_i18n( $qty ) . ' | ' . $this->money( $rev ) . ' | ' . $this->money( $avg ) . ' |';
+			$cogs = $has_cost_column ? (float) $r->cogs : 0.0;
+			$cov  = $has_cost_column ? (float) $r->costed_revenue : 0.0;
+
+			$enriched[] = [
+				'name'      => isset( $labels[ $pid ] ) && '' !== $labels[ $pid ]['name']
+					? $labels[ $pid ]['name']
+					: sprintf( __( '(deleted #%d)', 'brikpanel' ), $pid ),
+				'sku'       => isset( $labels[ $pid ] ) ? $labels[ $pid ]['sku'] : '',
+				'qty'       => $qty,
+				'revenue'   => $rev,
+				'cogs'      => $cogs,
+				'gross'     => $rev - $cogs,
+				'margin'    => $rev > 0 ? ( ( $rev - $cogs ) / $rev ) : 0.0,
+				'has_cost'  => $cov > 0,
+				// "Complete" allows half a cent of rounding: line totals are
+				// stored to four decimals and the sum of the costed slice will
+				// not land exactly on the revenue total.
+				'full_cost' => $rev > 0 && $cov >= ( $rev - 0.005 ),
+			];
+		}
+
+		$out   = [];
+		$out[] = '## ' . __( 'Top Products (last 12 months)', 'brikpanel' );
+		$out[] = '*' . __( 'Variations are rolled up to their parent product, while cost is resolved per variation. Sorted by revenue; the Units column lets you spot volume-vs-value differences.', 'brikpanel' ) . '*';
+		$out[] = '';
+
+		if ( $has_cost_column ) {
+			$out[] = '| # | ' . __( 'Product', 'brikpanel' ) . ' | ' . __( 'SKU', 'brikpanel' ) . ' | ' . __( 'Units', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Avg Price', 'brikpanel' ) . ' | ' . __( 'COGS', 'brikpanel' ) . ' | ' . __( 'Gross profit', 'brikpanel' ) . ' | ' . __( 'Margin', 'brikpanel' ) . ' | ' . __( 'Cost on file', 'brikpanel' ) . ' |';
+			$out[] = '|---:|---|---|---:|---:|---:|---:|---:|---:|---|';
+		} else {
+			$out[] = '| # | ' . __( 'Product', 'brikpanel' ) . ' | ' . __( 'SKU', 'brikpanel' ) . ' | ' . __( 'Units', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Avg Price', 'brikpanel' ) . ' |';
+			$out[] = '|---:|---|---|---:|---:|---:|';
+		}
+
+		$i = 1;
+		foreach ( array_slice( $enriched, 0, 10 ) as $p ) {
+			$avg = $p['qty'] > 0 ? $p['revenue'] / $p['qty'] : 0;
+			$row = '| ' . $i . ' | ' . $this->md_cell( $p['name'] ) . ' | ' . $this->md_cell( '' !== $p['sku'] ? $p['sku'] : '—' )
+				. ' | ' . number_format_i18n( $p['qty'] )
+				. ' | ' . $this->money( $p['revenue'] )
+				. ' | ' . $this->money( $avg );
+			if ( $has_cost_column ) {
+				// The honesty column: a product with no cost on file shows a
+				// 100% margin that is an artefact of the gap, not a result.
+				$flag = $p['full_cost']
+					? __( 'yes', 'brikpanel' )
+					: ( $p['has_cost'] ? __( 'partial', 'brikpanel' ) : __( 'NO', 'brikpanel' ) );
+				$row .= ' | ' . ( $p['has_cost'] ? $this->money( $p['cogs'] ) : '—' )
+					. ' | ' . ( $p['has_cost'] ? $this->money( $p['gross'] ) : '—' )
+					. ' | ' . ( $p['has_cost'] ? number_format_i18n( $p['margin'] * 100, 1 ) . '%' : '—' )
+					. ' | ' . $flag;
+			}
+			$out[] = $row . ' |';
 			$i++;
 		}
 
-		$fn = $this->footnote( 'wc_orders' );
+		// Lowest-margin sellers — the most actionable table in the report, and
+		// only meaningful where the cost is complete.
+		if ( $has_cost_column ) {
+			$costed = array_values( array_filter( $enriched, function ( $p ) {
+				return $p['full_cost'] && $p['revenue'] > 0;
+			} ) );
+			if ( count( $costed ) >= 3 ) {
+				usort( $costed, function ( $a, $b ) { return $a['margin'] <=> $b['margin']; } );
+
+				$out[] = '';
+				$out[] = '### ' . __( 'Lowest-Margin Sellers', 'brikpanel' );
+				$out[] = '*' . __( 'Among the period\'s 50 biggest sellers that have a complete cost on file. A negative margin means the product is sold below its recorded cost.', 'brikpanel' ) . '*';
+				$out[] = '| ' . __( 'Product', 'brikpanel' ) . ' | ' . __( 'SKU', 'brikpanel' ) . ' | ' . __( 'Units', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'COGS', 'brikpanel' ) . ' | ' . __( 'Gross profit', 'brikpanel' ) . ' | ' . __( 'Margin', 'brikpanel' ) . ' |';
+				$out[] = '|---|---|---:|---:|---:|---:|---:|';
+				foreach ( array_slice( $costed, 0, 5 ) as $p ) {
+					$out[] = '| ' . $this->md_cell( $p['name'] ) . ' | ' . $this->md_cell( '' !== $p['sku'] ? $p['sku'] : '—' )
+						. ' | ' . number_format_i18n( $p['qty'] )
+						. ' | ' . $this->money( $p['revenue'] )
+						. ' | ' . $this->money( $p['cogs'] )
+						. ' | ' . $this->money( $p['gross'] )
+						. ' | ' . number_format_i18n( $p['margin'] * 100, 1 ) . '% |';
+				}
+			}
+		}
+
+		$fn = $this->footnote( $has_cost_column ? 'bp_cogs' : 'wc_orders' );
 		if ( $fn ) { $out[] = ''; $out[] = $fn; }
 
 		return implode( "\n", $out );
+	}
+
+	/**
+	 * Units and revenue per product with no cost columns — the fallback shape
+	 * for an install where cost resolution is unavailable.
+	 *
+	 * @return array<int, object>
+	 */
+	private function product_sales_rows_no_cost() {
+		global $wpdb;
+
+		$w    = $this->profit_window();
+		$pred = $this->paid_order_predicate( 'o' );
+		$ord  = $this->is_hpos() ? "{$wpdb->prefix}wc_orders" : $wpdb->posts;
+		$oid  = $this->is_hpos() ? 'o.id' : 'o.ID';
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$sql = "SELECT CAST(pid.meta_value AS UNSIGNED) AS product_id,
+					SUM(CAST(qtym.meta_value AS DECIMAL(20,4))) AS qty,
+					SUM(CAST(totm.meta_value AS DECIMAL(20,4))) AS revenue
+				FROM {$wpdb->prefix}woocommerce_order_items oi
+				INNER JOIN {$ord} o ON {$oid} = oi.order_id
+				INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta qtym
+						ON qtym.order_item_id = oi.order_item_id AND qtym.meta_key = '_qty'
+				INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta totm
+						ON totm.order_item_id = oi.order_item_id AND totm.meta_key = '_line_total'
+				INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta pid
+						ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
+				WHERE oi.order_item_type = 'line_item'
+				  AND {$pred['where']}
+				  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
+				GROUP BY product_id
+				HAVING revenue > 0
+				ORDER BY revenue DESC
+				LIMIT 50";
+		$args = array_merge( $pred['args'], [ $w['start_gmt'], $w['end_gmt'] ] );
+		return (array) $wpdb->get_results( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+		// phpcs:enable
 	}
 
 	// =========================================================================
@@ -1358,7 +1599,7 @@ class Brikpanel_Store_Summary {
 
 		$start_gmt = $start_date . ' 00:00:00';
 		$end_gmt   = $this->now_gmt();
-		$success   = brikpanel_get_successful_order_count( $start_gmt, $end_gmt );
+		$success   = function_exists( 'brikpanel_get_successful_order_count' ) ? (int) brikpanel_get_successful_order_count( $start_gmt, $end_gmt ) : 0;
 
 		if ( ( $visitors + $products + $add_cart + $checkout + $success ) === 0 ) {
 			return '';
@@ -1495,6 +1736,635 @@ class Brikpanel_Store_Summary {
 	}
 
 	// =========================================================================
+	// PROFIT / COST / ADS HELPERS
+	//
+	// Everything money-related in this report goes through the plugin's own
+	// profit engine (includes/brikpanel-profit.php) rather than bespoke SQL.
+	// The report used to hand-roll its own COGS and expense queries and ended
+	// up contradicting the Dashboard by a factor of a hundred on real stores:
+	// it read the frozen `_cogs_value` line snapshot (only ever written when
+	// WooCommerce's native COGS feature is on at checkout time) and dropped
+	// ad spend, payment fees, shipping cost, percentage and per-order costs
+	// entirely, then presented the result as a net margin. An LLM reading that
+	// gives advice built on a number that is not the merchant's.
+	// =========================================================================
+
+	/**
+	 * The single 12-month window every money section shares.
+	 *
+	 * brikpanel_profit_snapshot() needs BOTH bases: order-derived components
+	 * (COGS, tax, fees, returns) are queried against UTC datetimes, while
+	 * expenses and ad spend are stored as site-local dates. Deriving all four
+	 * strings from one instant keeps them describing the same period.
+	 *
+	 * @return array{start_gmt:string,end_gmt:string,start_local:string,end_local:string,start_date:string,end_date:string}
+	 */
+	private function profit_window() {
+		static $w = null;
+		if ( null === $w ) {
+			$ts_local    = current_time( 'timestamp' );
+			$start_local = gmdate( 'Y-m-d 00:00:00', strtotime( '-12 months', $ts_local ) );
+			$end_local   = gmdate( 'Y-m-d H:i:s', $ts_local );
+			$w = [
+				'start_local' => $start_local,
+				'end_local'   => $end_local,
+				'start_gmt'   => get_gmt_from_date( $start_local ),
+				'end_gmt'     => get_gmt_from_date( $end_local ),
+				'start_date'  => substr( $start_local, 0, 10 ),
+				'end_date'    => substr( $end_local, 0, 10 ),
+			];
+		}
+		return $w;
+	}
+
+	/**
+	 * Memoised full profit snapshot for the 12-month window — the same call
+	 * the Dashboard profit card makes, with the same arguments, so the two
+	 * surfaces can never disagree.
+	 *
+	 * `$exclude_marketplace` is false to match Brikpanel_Dashboard: the
+	 * revenue handed in already includes marketplace orders, so netting it
+	 * against a site-only cost would manufacture a permanent loss.
+	 *
+	 * @return array|null Null when the profit engine is not loaded.
+	 */
+	private function profit_snapshot() {
+		static $snap = null;
+		if ( null !== $snap ) {
+			return false === $snap ? null : $snap;
+		}
+		if ( ! function_exists( 'brikpanel_profit_snapshot' ) || ! function_exists( 'brikpanel_get_total_revenue' ) ) {
+			$snap = false;
+			return null;
+		}
+
+		// Recurring expense templates are materialised into real dated rows
+		// lazily. Without this the current month's rent/salary occurrence may
+		// not exist yet and every expense total in the report is short by it.
+		if ( class_exists( 'Brikpanel_Expenses' ) && method_exists( 'Brikpanel_Expenses', 'materialize_due' ) ) {
+			try {
+				Brikpanel_Expenses::materialize_due();
+			} catch ( Throwable $e ) {
+				// A stale materialisation is a wrong total, not a broken
+				// report — carry on with what is already in the table.
+				unset( $e );
+			}
+		}
+
+		$w       = $this->profit_window();
+		$revenue = (float) brikpanel_get_total_revenue( $w['start_gmt'], $w['end_gmt'], false );
+		$snap    = brikpanel_profit_snapshot(
+			$revenue,
+			$w['start_gmt'],
+			$w['end_gmt'],
+			$w['start_local'],
+			$w['end_local'],
+			false
+		);
+
+		return $snap;
+	}
+
+	/**
+	 * Order-line cost resolution as SQL, identical to brikpanel_profit_cogs().
+	 *
+	 * Copied in shape rather than value because this report needs the cost
+	 * broken down per product and per category, which the scalar helper
+	 * cannot express. The rules that matter are the ones that make variable
+	 * products correct: read the VARIATION's cost first, fall back to the
+	 * parent product when the variation has none, and when WooCommerce's
+	 * `_cogs_value_is_additive` flag is set add the two instead of replacing.
+	 * Cost meta keys come from brikpanel_cogs_meta_keys() via the shared join
+	 * builder, so a store keeping costs in a third-party cost plugin is not
+	 * reported as zero-cost.
+	 *
+	 * Expects the caller's query to expose the order-items alias as `oi`.
+	 *
+	 * @return array{joins:string,unit:string,has_cost:string}|null Null when helpers are missing.
+	 */
+	private function cogs_line_sql() {
+		global $wpdb;
+
+		static $set = null;
+		if ( null !== $set ) {
+			return false === $set ? null : $set;
+		}
+		if ( ! function_exists( 'brikpanel_cogs_sql_join_set' ) ) {
+			$set = false;
+			return null;
+		}
+
+		$vcost = brikpanel_cogs_sql_join_set( 'vc', 'CAST(vid.meta_value AS UNSIGNED)', 'CAST(vid.meta_value AS UNSIGNED) > 0' );
+		$pcost = brikpanel_cogs_sql_join_set( 'pc', 'CAST(pid.meta_value AS UNSIGNED)' );
+		$vval  = $vcost['value'];
+		$pval  = $pcost['value'];
+
+		$set = [
+			'joins' => "
+				LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta pid
+						ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
+				LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta vid
+						ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'
+				LEFT JOIN {$wpdb->postmeta} vadd
+						ON vadd.post_id = CAST(vid.meta_value AS UNSIGNED)
+					   AND vadd.meta_key = '_cogs_value_is_additive'
+					   AND CAST(vid.meta_value AS UNSIGNED) > 0" . $vcost['joins'] . $pcost['joins'],
+			'unit' => "CASE WHEN vadd.meta_value = 'yes'
+					THEN CAST(COALESCE({$vval}, '0') AS DECIMAL(20,4)) + CAST(COALESCE({$pval}, '0') AS DECIMAL(20,4))
+					ELSE CAST(COALESCE({$vval}, {$pval}, '0') AS DECIMAL(20,4)) END",
+			// Distinguishes "cost is zero" from "no cost on file" — the report
+			// must never present an uncosted product as a 100% margin.
+			'has_cost' => "COALESCE({$vval}, {$pval}) IS NOT NULL",
+		];
+
+		return $set;
+	}
+
+	/**
+	 * Paid-order predicate shared by the per-product and per-category profit
+	 * queries, matching the basis brikpanel_profit_cogs() uses so their
+	 * numbers add up to the headline: paid statuses, admin-placed orders
+	 * excluded, marketplace orders kept (combined basis).
+	 *
+	 * @param string $alias Order table alias.
+	 * @return array{where:string,args:array,date_col:string}
+	 */
+	private function paid_order_predicate( $alias = 'o' ) {
+		$is_hpos  = $this->is_hpos();
+		$statuses = function_exists( 'brikpanel_paid_order_statuses' ) ? brikpanel_paid_order_statuses() : [ 'wc-processing', 'wc-completed' ];
+		$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+		$date_col = $is_hpos ? "{$alias}.date_created_gmt" : "{$alias}.post_date_gmt";
+
+		if ( $is_hpos ) {
+			$where = "{$alias}.type = 'shop_order' AND {$alias}.status IN ({$sp})";
+		} else {
+			$where = "{$alias}.post_type = 'shop_order' AND {$alias}.post_status IN ({$sp})";
+		}
+		$args = $statuses;
+
+		if ( function_exists( 'brikpanel_admin_order_exclusion_sql' ) ) {
+			$excl = $is_hpos
+				? brikpanel_admin_order_exclusion_sql( true )
+				: brikpanel_admin_order_exclusion_sql( false, "{$alias}.ID" );
+			if ( ! empty( $excl['sql'] ) ) {
+				// The HPOS helper emits a bare `customer_id`; qualify it so a
+				// query joining two order-ish tables stays unambiguous.
+				$where .= $is_hpos ? str_replace( 'customer_id', "{$alias}.customer_id", $excl['sql'] ) : $excl['sql'];
+				$args   = array_merge( $args, $excl['args'] );
+			}
+		}
+
+		return [ 'where' => $where, 'args' => $args, 'date_col' => $date_col ];
+	}
+
+	/**
+	 * Store-currency ad spend rolled up per month for the report window.
+	 * Foreign-currency rows are dropped rather than converted, exactly as
+	 * brikpanel_profit_ad_spend_by_platform() does; the count of dropped rows
+	 * is reported back so the caveat section can disclose it.
+	 *
+	 * @return array{months:array<string,array<string,float>>,foreign:array<string,float>,platforms:string[],first:string,last:string}
+	 */
+	private function ads_monthly() {
+		static $out = null;
+		if ( null !== $out ) {
+			return $out;
+		}
+
+		$out = [ 'months' => [], 'foreign' => [], 'platforms' => [], 'first' => '', 'last' => '' ];
+		if ( ! class_exists( 'Brikpanel_Ads_Store' ) ) {
+			return $out;
+		}
+
+		$w         = $this->profit_window();
+		$store_cur = $this->currency_code();
+		$rows      = Brikpanel_Ads_Store::daily_breakdown( $w['start_date'], $w['end_date'] );
+
+		foreach ( (array) $rows as $r ) {
+			$date     = isset( $r['date'] ) ? (string) $r['date'] : '';
+			$platform = isset( $r['platform'] ) ? (string) $r['platform'] : '';
+			$cur      = isset( $r['currency'] ) && '' !== $r['currency'] ? (string) $r['currency'] : $store_cur;
+			$spend    = isset( $r['spend'] ) ? (float) $r['spend'] : 0.0;
+			if ( '' === $date || '' === $platform ) {
+				continue;
+			}
+			if ( $cur !== $store_cur ) {
+				if ( ! isset( $out['foreign'][ $cur ] ) ) {
+					$out['foreign'][ $cur ] = 0.0;
+				}
+				$out['foreign'][ $cur ] += $spend;
+				continue;
+			}
+			$ym = substr( $date, 0, 7 );
+			if ( ! isset( $out['months'][ $ym ] ) ) {
+				$out['months'][ $ym ] = [];
+			}
+			if ( ! isset( $out['months'][ $ym ][ $platform ] ) ) {
+				$out['months'][ $ym ][ $platform ] = 0.0;
+			}
+			$out['months'][ $ym ][ $platform ] += $spend;
+			if ( ! in_array( $platform, $out['platforms'], true ) ) {
+				$out['platforms'][] = $platform;
+			}
+			if ( '' === $out['first'] || $date < $out['first'] ) {
+				$out['first'] = $date;
+			}
+			if ( '' === $out['last'] || $date > $out['last'] ) {
+				$out['last'] = $date;
+			}
+		}
+
+		return $out;
+	}
+
+	/** Human label for an ad platform slug, matching the Dashboard profit card. */
+	private function ad_platform_label( $slug ) {
+		$map = [
+			'google_ads' => __( 'Google Ads', 'brikpanel' ),
+			'meta_ads'   => __( 'Meta Ads', 'brikpanel' ),
+		];
+		return isset( $map[ $slug ] ) ? $map[ $slug ] : ucwords( str_replace( '_', ' ', (string) $slug ) );
+	}
+
+	/**
+	 * Render a ratio as "N.Nx", or an em dash when the denominator is unusable.
+	 */
+	private function ratio( $numerator, $denominator, $decimals = 2 ) {
+		$denominator = (float) $denominator;
+		if ( $denominator <= 0 ) {
+			return '—';
+		}
+		return number_format_i18n( (float) $numerator / $denominator, $decimals ) . 'x';
+	}
+
+	// =========================================================================
+	// SECTION: DATA QUALITY & CAVEATS
+	//
+	// Sits directly under the TL;DR on purpose. Every number below it is
+	// computed from what the merchant has actually filled in, and the gaps are
+	// silent by nature: a product with no cost contributes zero COGS, an order
+	// paid by bank transfer carries no processor fee, ad spend billed in a
+	// foreign currency is dropped rather than converted. Stated plainly here,
+	// those become caveats a reader can reason about; left implicit, they read
+	// as a healthy margin.
+	// =========================================================================
+
+	private function section_data_quality() {
+		$lines = [];
+		$notes = [];
+
+		$snap = $this->profit_snapshot();
+
+		if ( is_array( $snap ) ) {
+			// --- Cost of goods coverage ---
+			$coverage = isset( $snap['cogs_coverage_pct'] ) ? (float) $snap['cogs_coverage_pct'] : 0.0;
+			$missing  = isset( $snap['cogs_missing_lines'] ) ? (int) $snap['cogs_missing_lines'] : 0;
+			$any_cogs = isset( $snap['cogs_raw'] ) && (float) $snap['cogs_raw'] > 0;
+			// "Incomplete" only describes a store that HAS costs and is missing
+			// some. A store with none at all needs the blunter wording below,
+			// or the reader is told a 100% margin is merely "overstated".
+			if ( $any_cogs && $missing > 0 ) {
+				$notes[] = '- **' . __( 'Cost of goods is incomplete', 'brikpanel' ) . ':** ' . sprintf(
+					/* translators: 1: coverage percentage, 2: number of order lines with no cost */
+					__( 'only %1$s of the period\'s revenue has a product cost on file (%2$s order line(s) have none). Lines without a cost count as zero, so the reported COGS is a FLOOR and gross margin is overstated.', 'brikpanel' ),
+					number_format_i18n( $coverage, 1 ) . '%',
+					number_format_i18n( $missing )
+				);
+				$missing_products = isset( $snap['cogs_missing_products'] ) && is_array( $snap['cogs_missing_products'] )
+					? array_slice( $snap['cogs_missing_products'], 0, 10 )
+					: [];
+				if ( ! empty( $missing_products ) ) {
+					$names = [];
+					foreach ( $missing_products as $p ) {
+						$names[] = $this->md_cell( isset( $p['name'] ) ? $p['name'] : '' );
+					}
+					$notes[] = '  - ' . __( 'Biggest uncosted sellers', 'brikpanel' ) . ': ' . implode( '; ', array_filter( $names ) );
+				}
+			} elseif ( $any_cogs ) {
+				$notes[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . __( 'every sold line has a cost on file — margins below are complete.', 'brikpanel' );
+			} else {
+				$notes[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . __( 'no product has a cost on file, so COGS is zero and every margin below is really a revenue figure. Treat gross margin as unknown, not as 100%.', 'brikpanel' );
+			}
+
+			// --- Payment processing fees ---
+			if ( function_exists( 'brikpanel_payment_fees_enabled' ) && ! brikpanel_payment_fees_enabled() ) {
+				$notes[] = '- **' . __( 'Payment fees', 'brikpanel' ) . ':** ' . __( 'not tracked (the setting is off), so gateway commission is NOT deducted anywhere in this report.', 'brikpanel' );
+			} else {
+				$fee_missing = isset( $snap['payment_fees_missing'] ) ? (int) $snap['payment_fees_missing'] : 0;
+				$fee_unconv  = isset( $snap['payment_fees_unconverted'] ) ? (int) $snap['payment_fees_unconverted'] : 0;
+				if ( $fee_unconv > 0 ) {
+					$notes[] = '- **' . __( 'Payment fees are understated', 'brikpanel' ) . ':** ' . sprintf(
+						/* translators: %s: number of orders */
+						__( '%s order(s) carry a fee in a currency with no conversion rate on file, so those fees are missing from the total.', 'brikpanel' ),
+						number_format_i18n( $fee_unconv )
+					);
+				}
+				if ( $fee_missing > 0 ) {
+					$notes[] = '- ' . sprintf(
+						/* translators: 1: number of orders, 2: coverage percentage */
+						__( 'Payment fees: %1$s order(s) carry no processor fee (normal for bank transfer / cash on delivery). Coverage %2$s.', 'brikpanel' ),
+						number_format_i18n( $fee_missing ),
+						number_format_i18n( isset( $snap['payment_fees_coverage_pct'] ) ? (float) $snap['payment_fees_coverage_pct'] : 0, 1 ) . '%'
+					);
+				}
+			}
+
+			// --- Shipping cost ---
+			if ( function_exists( 'brikpanel_shipping_cost_enabled' ) && ! brikpanel_shipping_cost_enabled() ) {
+				$notes[] = '- **' . __( 'Shipping cost', 'brikpanel' ) . ':** ' . __( 'not tracked (the setting is off). WooCommerce stores what the customer was CHARGED, never what the courier billed, so shipping is treated as profit-neutral here.', 'brikpanel' );
+			}
+		} else {
+			$notes[] = '- **' . __( 'Profit engine unavailable', 'brikpanel' ) . ':** ' . __( 'cost and expense figures could not be computed for this report.', 'brikpanel' );
+		}
+
+		// --- Advertising ---
+		if ( class_exists( 'Brikpanel_Ads_Store' ) ) {
+			$ads = $this->ads_monthly();
+			if ( '' !== $ads['first'] ) {
+				$notes[] = '- **' . __( 'Ad spend window', 'brikpanel' ) . ':** ' . sprintf(
+					/* translators: 1: first date, 2: last date */
+					__( 'imported spend covers %1$s to %2$s only. Months outside that range show zero advertising cost because nothing was imported, not because nothing was spent.', 'brikpanel' ),
+					$ads['first'],
+					$ads['last']
+				);
+			}
+			if ( ! empty( $ads['foreign'] ) ) {
+				$parts = [];
+				foreach ( $ads['foreign'] as $cur => $amount ) {
+					$parts[] = number_format_i18n( $amount, 2 ) . ' ' . $this->md_cell( $cur );
+				}
+				$notes[] = '- **' . __( 'Foreign-currency ad spend is excluded', 'brikpanel' ) . ':** ' . sprintf(
+					/* translators: 1: list of amounts and currencies, 2: store currency code */
+					__( '%1$s was billed in a currency other than the store currency (%2$s) and is NOT converted or counted. Real advertising cost is higher than reported.', 'brikpanel' ),
+					implode( ' + ', $parts ),
+					$this->currency_code()
+				);
+			}
+			// Only worth saying when spend was actually imported — on a store
+			// with the module on but nothing connected it is pure noise.
+			if ( '' !== $ads['first'] ) {
+				$notes[] = '- ' . __( 'Ad spend is imported at account level per day. There is no campaign, ad-set, keyword or product breakdown, and no click-to-order attribution — any cost-per-order below is blended, not attributed.', 'brikpanel' );
+			}
+		}
+
+		// --- Expenses ---
+		$notes[] = '- ' . __( 'Percentage-based costs (card commission) and per-order costs (packaging, courier surcharge) are stored as a RATE and a UNIT PRICE, not as money. They are excluded from the expense money totals and listed in their own tables; the profit headline already includes their computed amounts.', 'brikpanel' );
+
+		// --- Timezone basis ---
+		$notes[] = '- ' . __( 'Basis note: expenses and ad spend are keyed on site-local dates, while order-derived figures are queried in UTC. The same "last 12 months" therefore differs by up to a day at each edge.', 'brikpanel' );
+
+		if ( count( $notes ) < 1 ) {
+			return '';
+		}
+
+		$lines[] = '## ' . __( 'Data Quality & Caveats', 'brikpanel' );
+		$lines[] = '*' . __( 'Read this before drawing conclusions from the money sections — these are the gaps that are otherwise silent.', 'brikpanel' ) . '*';
+		$lines[] = '';
+		foreach ( $notes as $n ) {
+			$lines[] = $n;
+		}
+
+		return implode( "\n", $lines );
+	}
+
+	// =========================================================================
+	// SECTION: ADVERTISING (last 12 months)
+	// =========================================================================
+
+	private function section_ad_spend() {
+		if ( ! class_exists( 'Brikpanel_Ads_Store' ) ) {
+			return '';
+		}
+
+		$w    = $this->profit_window();
+		$rows = Brikpanel_Ads_Store::totals_for_range( $w['start_date'], $w['end_date'] );
+		if ( empty( $rows ) ) {
+			return '';
+		}
+
+		$store_cur   = $this->currency_code();
+		$total_store = 0.0;
+		$currencies  = [];
+
+		$lines   = [];
+		$lines[] = '## ' . __( 'Advertising (last 12 months)', 'brikpanel' );
+		$lines[] = '';
+		$lines[] = '### ' . __( 'By Platform', 'brikpanel' );
+		$lines[] = '| ' . __( 'Platform', 'brikpanel' ) . ' | ' . __( 'Currency', 'brikpanel' ) . ' | ' . __( 'Spend', 'brikpanel' ) . ' | ' . __( 'Impressions', 'brikpanel' ) . ' | ' . __( 'Clicks', 'brikpanel' ) . ' | ' . __( 'CTR', 'brikpanel' ) . ' | ' . __( 'CPC', 'brikpanel' ) . ' | ' . __( 'CPM', 'brikpanel' ) . ' |';
+		$lines[] = '|---|---|---:|---:|---:|---:|---:|---:|';
+
+		foreach ( $rows as $r ) {
+			$cur    = '' !== $r['currency'] ? $r['currency'] : $store_cur;
+			$spend  = (float) $r['spend'];
+			$imp    = (int) $r['impressions'];
+			$clicks = (int) $r['clicks'];
+			$ctr    = $imp > 0 ? number_format_i18n( ( $clicks / $imp ) * 100, 2 ) . '%' : '—';
+			$cpc    = $clicks > 0 ? number_format_i18n( $spend / $clicks, 2 ) . ' ' . $cur : '—';
+			$cpm    = $imp > 0 ? number_format_i18n( ( $spend / $imp ) * 1000, 2 ) . ' ' . $cur : '—';
+
+			$currencies[ $cur ] = true;
+			if ( $cur === $store_cur ) {
+				$total_store += $spend;
+			}
+
+			$lines[] = '| ' . $this->md_cell( $this->ad_platform_label( $r['platform'] ) )
+				. ' | ' . $this->md_cell( $cur )
+				. ' | ' . number_format_i18n( $spend, 2 )
+				. ' | ' . number_format_i18n( $imp )
+				. ' | ' . number_format_i18n( $clicks )
+				. ' | ' . $ctr . ' | ' . $cpc . ' | ' . $cpm . ' |';
+		}
+
+		// Revenue and blended efficiency. ROAS only when every imported row is
+		// billed in the store currency — mixing an unconverted USD spend into a
+		// TRY revenue would produce a confident, wrong ratio.
+		$single_currency = ( 1 === count( $currencies ) && isset( $currencies[ $store_cur ] ) );
+		$revenue         = function_exists( 'brikpanel_get_total_revenue' )
+			? (float) brikpanel_get_total_revenue( $w['start_gmt'], $w['end_gmt'], false )
+			: 0.0;
+		$orders = function_exists( 'brikpanel_get_successful_order_count' )
+			? (int) brikpanel_get_successful_order_count( $w['start_gmt'], $w['end_gmt'], false )
+			: 0;
+
+		$lines[] = '';
+		$lines[] = '- **' . __( 'Total ad spend (store currency)', 'brikpanel' ) . ':** ' . $this->money( $total_store );
+		if ( $single_currency ) {
+			$lines[] = '- **' . __( 'ROAS (blended)', 'brikpanel' ) . ':** ' . $this->ratio( $revenue, $total_store )
+				. ' — *' . __( 'total revenue divided by total ad spend across the whole store, not attributed to ads.', 'brikpanel' ) . '*';
+			$lines[] = '- **' . __( 'Ad cost as share of revenue', 'brikpanel' ) . ':** ' . $this->pct( $total_store, $revenue );
+			if ( $orders > 0 ) {
+				$lines[] = '- **' . __( 'Ad spend per paid order (blended)', 'brikpanel' ) . ':** ' . $this->money( $total_store / $orders )
+					. ' — *' . __( 'this is NOT cost per acquisition: no click-to-order attribution is imported.', 'brikpanel' ) . '*';
+			}
+		} else {
+			$lines[] = '- **' . __( 'ROAS', 'brikpanel' ) . ':** — *' . sprintf(
+				/* translators: %s: store currency code */
+				__( 'not calculated: spend is billed in more than one currency, or in a currency other than the store currency (%s), and BrikPanel does not convert ad spend.', 'brikpanel' ),
+				$this->currency_code()
+			) . '*';
+		}
+
+		// Monthly trend, store-currency rows only.
+		$ads = $this->ads_monthly();
+		if ( ! empty( $ads['months'] ) ) {
+			$platforms = $ads['platforms'];
+			sort( $platforms );
+
+			$header = '| ' . __( 'Month', 'brikpanel' );
+			foreach ( $platforms as $p ) {
+				$header .= ' | ' . $this->md_cell( $this->ad_platform_label( $p ) );
+			}
+			$header .= ' | ' . __( 'Total', 'brikpanel' ) . ' |';
+			$divider = '|---' . str_repeat( '|---:', count( $platforms ) + 1 ) . '|';
+
+			$lines[] = '';
+			$lines[] = '### ' . __( 'Monthly Ad Spend', 'brikpanel' );
+			$lines[] = $header;
+			$lines[] = $divider;
+
+			$months = array_keys( $ads['months'] );
+			sort( $months );
+			foreach ( $months as $ym ) {
+				$row   = '| ' . $ym;
+				$total = 0.0;
+				foreach ( $platforms as $p ) {
+					$v      = isset( $ads['months'][ $ym ][ $p ] ) ? (float) $ads['months'][ $ym ][ $p ] : 0.0;
+					$total += $v;
+					$row   .= ' | ' . $this->money( $v );
+				}
+				$row .= ' | ' . $this->money( $total ) . ' |';
+				$lines[] = $row;
+			}
+		}
+
+		$this->register_tldr( 'ad_spend_12m', $total_store );
+		if ( $single_currency && $total_store > 0 ) {
+			$this->register_tldr( 'roas_12m', $revenue / $total_store );
+		}
+
+		$fn = $this->footnote( 'bp_ads' );
+		if ( $fn ) { $lines[] = ''; $lines[] = $fn; }
+
+		return implode( "\n", $lines );
+	}
+
+	// =========================================================================
+	// SECTION: PROFIT BY PRODUCT CATEGORY (last 12 months)
+	// =========================================================================
+
+	private function section_category_profit() {
+		global $wpdb;
+
+		$rows = $this->product_profit_rows();
+		if ( empty( $rows ) ) {
+			return '';
+		}
+
+		$ids = [];
+		foreach ( $rows as $r ) {
+			$ids[] = (int) $r->product_id;
+		}
+		$ids = array_values( array_unique( array_filter( $ids ) ) );
+		if ( empty( $ids ) ) {
+			return '';
+		}
+		$in = implode( ',', $ids );
+
+		// Term lookup only — the sales and cost aggregation already happened
+		// once in product_profit_rows(). Re-running the cost joins with the
+		// taxonomy tables bolted on was the single slowest query in the report.
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$terms = $wpdb->get_results(
+			"SELECT tr.object_id AS product_id, t.name AS category
+			 FROM {$wpdb->term_relationships} tr
+			 INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_cat'
+			 INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+			 WHERE tr.object_id IN ({$in})"
+		); // phpcs:ignore
+		// phpcs:enable
+		if ( empty( $terms ) ) {
+			return '';
+		}
+
+		$by_product = [];
+		foreach ( $rows as $r ) {
+			$by_product[ (int) $r->product_id ] = $r;
+		}
+
+		$totals        = [];
+		$total_revenue = 0.0;
+		foreach ( $terms as $t ) {
+			$pid = (int) $t->product_id;
+			if ( ! isset( $by_product[ $pid ] ) ) {
+				continue;
+			}
+			$r   = $by_product[ $pid ];
+			$cat = (string) $t->category;
+			if ( ! isset( $totals[ $cat ] ) ) {
+				$totals[ $cat ] = [ 'units' => 0.0, 'revenue' => 0.0, 'cogs' => 0.0, 'costed' => 0.0 ];
+			}
+			$totals[ $cat ]['units']   += (float) $r->qty;
+			$totals[ $cat ]['revenue'] += (float) $r->revenue;
+			$totals[ $cat ]['cogs']    += (float) $r->cogs;
+			$totals[ $cat ]['costed']  += (float) $r->costed_revenue;
+		}
+		if ( empty( $totals ) ) {
+			return '';
+		}
+
+		// A product filed under several categories counts in each of them, so
+		// the share denominator is the sum of the category rows rather than
+		// store revenue — otherwise the column would silently exceed 100%
+		// without saying why.
+		uasort( $totals, function ( $a, $b ) { return $b['revenue'] <=> $a['revenue']; } );
+		foreach ( $totals as $t ) {
+			$total_revenue += $t['revenue'];
+		}
+
+		$lines   = [];
+		$lines[] = '## ' . __( 'Profit by Product Category (last 12 months)', 'brikpanel' );
+		$lines[] = '*' . __( 'A product filed under several categories contributes its full revenue to each of them, so these rows overlap and their sum exceeds store revenue. Margin is blank where no product in the category has a cost on file.', 'brikpanel' ) . '*';
+		$lines[] = '';
+		$lines[] = '| ' . __( 'Category', 'brikpanel' ) . ' | ' . __( 'Units', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' | ' . __( 'COGS', 'brikpanel' ) . ' | ' . __( 'Gross profit', 'brikpanel' ) . ' | ' . __( 'Margin', 'brikpanel' ) . ' | ' . __( 'Cost coverage', 'brikpanel' ) . ' |';
+		$lines[] = '|---|---:|---:|---:|---:|---:|---:|---:|';
+
+		$shown = 0;
+		foreach ( $totals as $cat => $t ) {
+			if ( $shown >= 15 ) {
+				break;
+			}
+			$revenue  = $t['revenue'];
+			$gross    = $revenue - $t['cogs'];
+			$has_cost = $t['costed'] > 0;
+
+			$lines[] = '| ' . $this->md_cell( $cat )
+				. ' | ' . number_format_i18n( $t['units'] )
+				. ' | ' . $this->money( $revenue )
+				. ' | ' . $this->pct( $revenue, $total_revenue )
+				. ' | ' . ( $has_cost ? $this->money( $t['cogs'] ) : '—' )
+				. ' | ' . ( $has_cost ? $this->money( $gross ) : '—' )
+				. ' | ' . ( $has_cost && $revenue > 0 ? $this->pct( $gross, $revenue ) : '—' )
+				. ' | ' . $this->pct( $t['costed'], $revenue ) . ' |';
+			$shown++;
+		}
+
+		if ( count( $totals ) > $shown ) {
+			$lines[] = '';
+			$lines[] = '*' . sprintf(
+				/* translators: 1: categories shown, 2: total categories with sales */
+				__( 'Showing the top %1$d of %2$d categories with sales in the period.', 'brikpanel' ),
+				$shown,
+				count( $totals )
+			) . '*';
+		}
+
+		$fn = $this->footnote( 'bp_cogs' );
+		if ( $fn ) { $lines[] = ''; $lines[] = $fn; }
+
+		return implode( "\n", $lines );
+	}
+
+	// =========================================================================
 	// SECTION: EXPENSES (last 12 months by category + monthly)
 	// =========================================================================
 
@@ -1508,13 +2378,25 @@ class Brikpanel_Store_Summary {
 			return '';
 		}
 
-		$start = gmdate( 'Y-m-d', strtotime( '-12 months', current_time( 'timestamp', true ) ) );
+		// Materialise any due recurring occurrence before reading. Without it
+		// the current month's rent/salary row may not exist yet and every
+		// total below is short by it.
+		if ( class_exists( 'Brikpanel_Expenses' ) && method_exists( 'Brikpanel_Expenses', 'materialize_due' ) ) {
+			try {
+				Brikpanel_Expenses::materialize_due();
+			} catch ( Throwable $e ) {
+				unset( $e );
+			}
+		}
+
+		$w     = $this->profit_window();
+		$start = $w['start_date'];
 
 		// Money rows only. A percentage row's `amount` holds a RATE and a
 		// per-order row's a UNIT PRICE; summing either turned a 2.9% commission
 		// into £2.90 of reported spend. The COUNT(*) probe above deliberately
 		// keeps them — a store whose only expense is a commission HAS used the
-		// module.
+		// module. Both kinds get their own tables further down.
 		$kinds = brikpanel_expense_money_kinds_sql();
 
 		$total_12m = (float) $wpdb->get_var( $wpdb->prepare(
@@ -1537,16 +2419,161 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Expenses', 'brikpanel' );
+		$lines[] = '*' . __( 'Recorded money expenses only. Percentage-based and per-order costs are stored as a rate and a unit price, so they are listed separately below and never summed into these totals.', 'brikpanel' ) . '*';
+		$lines[] = '';
 		$lines[] = '- **' . __( 'Last 12 months total', 'brikpanel' ) . ':** ' . $this->money( $total_12m );
 		$lines[] = '- **' . __( 'All-time recorded total', 'brikpanel' ) . ':** ' . $this->money( $total_all );
 
 		if ( ! empty( $by_cat ) ) {
 			$lines[] = '';
-			$lines[] = '### ' . __( 'By Category (last 12 months)', 'brikpanel' );
-			$lines[] = '| ' . __( 'Category', 'brikpanel' ) . ' | ' . __( 'Entries', 'brikpanel' ) . ' | ' . __( 'Total', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' |';
+			$lines[] = '### ' . __( 'By Title (last 12 months)', 'brikpanel' );
+			$lines[] = '| ' . __( 'Title', 'brikpanel' ) . ' | ' . __( 'Entries', 'brikpanel' ) . ' | ' . __( 'Total', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' |';
 			$lines[] = '|---|---:|---:|---:|';
 			foreach ( $by_cat as $r ) {
 				$lines[] = '| ' . $this->md_cell( $r->category ) . ' | ' . number_format_i18n( $r->entries ) . ' | ' . $this->money( $r->total ) . ' | ' . $this->pct( $r->total, $total_12m ) . ' |';
+			}
+		}
+
+		// --- Grouped by parent category ------------------------------------
+		// The `parent_category` column can hold a stable internal key such as
+		// `__brikpanel:shipping` (an expense filed under a COMPUTED profit
+		// line). Rendering it raw leaks the key into the report, so every
+		// value goes through the module's own display-label resolver.
+		if ( function_exists( 'brikpanel_profit_manual_expense_lines' ) ) {
+			$expense_lines = brikpanel_profit_manual_expense_lines( $w['start_local'], $w['end_local'] );
+			if ( ! empty( $expense_lines ) ) {
+				$by_parent = [];
+				foreach ( $expense_lines as $l ) {
+					$parent = isset( $l['parent'] ) ? (string) $l['parent'] : '';
+					$label  = ( '' !== $parent && class_exists( 'Brikpanel_Expenses' ) && method_exists( 'Brikpanel_Expenses', 'parent_display_label' ) )
+						? (string) Brikpanel_Expenses::parent_display_label( $parent )
+						: $parent;
+					if ( '' === $label ) {
+						$label = __( 'Ungrouped', 'brikpanel' );
+					}
+					if ( ! isset( $by_parent[ $label ] ) ) {
+						$by_parent[ $label ] = 0.0;
+					}
+					$by_parent[ $label ] += isset( $l['amount'] ) ? (float) $l['amount'] : 0.0;
+				}
+				arsort( $by_parent );
+
+				$lines[] = '';
+				$lines[] = '### ' . __( 'By Category Group (last 12 months)', 'brikpanel' );
+				$lines[] = '| ' . __( 'Group', 'brikpanel' ) . ' | ' . __( 'Total', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' |';
+				$lines[] = '|---|---:|---:|';
+				foreach ( $by_parent as $label => $amount ) {
+					$lines[] = '| ' . $this->md_cell( $label ) . ' | ' . $this->money( $amount ) . ' | ' . $this->pct( $amount, $total_12m ) . ' |';
+				}
+
+				// Line-level detail, capped so a store with hundreds of rows
+				// does not push the report past what an LLM will read.
+				$detail = $expense_lines;
+				usort( $detail, function ( $a, $b ) {
+					$av = isset( $a['amount'] ) ? (float) $a['amount'] : 0.0;
+					$bv = isset( $b['amount'] ) ? (float) $b['amount'] : 0.0;
+					return $bv <=> $av;
+				} );
+				$shown = array_slice( $detail, 0, 25 );
+
+				$lines[] = '';
+				$lines[] = '### ' . __( 'Expense Lines (last 12 months)', 'brikpanel' );
+				$lines[] = '| ' . __( 'Title', 'brikpanel' ) . ' | ' . __( 'Group', 'brikpanel' ) . ' | ' . __( 'Total', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' |';
+				$lines[] = '|---|---|---:|---:|';
+				foreach ( $shown as $l ) {
+					$parent = isset( $l['parent'] ) ? (string) $l['parent'] : '';
+					$label  = ( '' !== $parent && class_exists( 'Brikpanel_Expenses' ) && method_exists( 'Brikpanel_Expenses', 'parent_display_label' ) )
+						? (string) Brikpanel_Expenses::parent_display_label( $parent )
+						: $parent;
+					$amount = isset( $l['amount'] ) ? (float) $l['amount'] : 0.0;
+					$lines[] = '| ' . $this->md_cell( isset( $l['title'] ) ? $l['title'] : '' )
+						. ' | ' . $this->md_cell( '' !== $label ? $label : '—' )
+						. ' | ' . $this->money( $amount )
+						. ' | ' . $this->pct( $amount, $total_12m ) . ' |';
+				}
+				$remaining = count( $detail ) - count( $shown );
+				if ( $remaining > 0 ) {
+					$lines[] = '';
+					$lines[] = '*' . sprintf(
+						/* translators: %s: number of expense lines not listed */
+						__( '%s further expense line(s) not listed — they are included in every total above.', 'brikpanel' ),
+						number_format_i18n( $remaining )
+					) . '*';
+				}
+			}
+		}
+
+		// --- Percentage-based costs ----------------------------------------
+		// Read off the memoised snapshot rather than re-querying: that is the
+		// same array the Profitability section prints its total from, so the
+		// two sections cannot drift apart on a store whose marketplace basis
+		// would change the answer — and it saves the repeated schema probes
+		// these helpers do on every call.
+		$snap = $this->profit_snapshot();
+		if ( is_array( $snap ) ) {
+			$percent = [
+				'items' => (array) ( $snap['percent_expenses'] ?? [] ),
+				'total' => 0.0,
+			];
+			foreach ( $percent['items'] as $item ) {
+				$percent['total'] += isset( $item['amount'] ) ? (float) $item['amount'] : 0.0;
+			}
+			if ( ! empty( $percent['items'] ) ) {
+				$lines[] = '';
+				$lines[] = '### ' . __( 'Percentage-Based Costs (card commission etc.)', 'brikpanel' );
+				$lines[] = '*' . __( 'These carry no date of their own: the rate applies to every period, and the amount is that rate applied to the period\'s revenue.', 'brikpanel' ) . '*';
+				$lines[] = '| ' . __( 'Title', 'brikpanel' ) . ' | ' . __( 'Rate', 'brikpanel' ) . ' | ' . __( 'Amount (last 12 months)', 'brikpanel' ) . ' |';
+				$lines[] = '|---|---:|---:|';
+				foreach ( $percent['items'] as $item ) {
+					$lines[] = '| ' . $this->md_cell( isset( $item['title'] ) ? $item['title'] : '' )
+						. ' | ' . number_format_i18n( isset( $item['rate'] ) ? (float) $item['rate'] : 0, 2 ) . '%'
+						. ' | ' . $this->money( isset( $item['amount'] ) ? $item['amount'] : 0 ) . ' |';
+				}
+				$lines[] = '| **' . __( 'Total', 'brikpanel' ) . '** | | **' . $this->money( isset( $percent['total'] ) ? $percent['total'] : 0 ) . '** |';
+			}
+		}
+
+		// --- Per-order costs ------------------------------------------------
+		// Same reasoning as the percentage table above.
+		if ( is_array( $snap ) ) {
+			$per_order = [
+				'items' => (array) ( $snap['per_order_expenses'] ?? [] ),
+				'total' => (float) ( $snap['per_order_total_raw'] ?? 0 ),
+			];
+			if ( ! empty( $per_order['items'] ) ) {
+				$lines[] = '';
+				$lines[] = '### ' . __( 'Per-Order Costs (packaging, courier surcharge etc.)', 'brikpanel' );
+				$lines[] = '*' . __( 'Amount is the unit price multiplied by the number of matching paid orders. Each order is claimed by at most one scoped rule, so these rows cannot be re-derived by multiplying independently.', 'brikpanel' ) . '*';
+				$lines[] = '| ' . __( 'Title', 'brikpanel' ) . ' | ' . __( 'Applies to', 'brikpanel' ) . ' | ' . __( 'Unit', 'brikpanel' ) . ' | ' . __( 'Orders', 'brikpanel' ) . ' | ' . __( 'Amount (last 12 months)', 'brikpanel' ) . ' |';
+				$lines[] = '|---|---|---:|---:|---:|';
+				foreach ( $per_order['items'] as $item ) {
+					$lines[] = '| ' . $this->md_cell( isset( $item['title'] ) ? $item['title'] : '' )
+						. ' | ' . $this->md_cell( isset( $item['scope_label'] ) && '' !== $item['scope_label'] ? $item['scope_label'] : __( 'Every order', 'brikpanel' ) )
+						. ' | ' . $this->money( isset( $item['unit'] ) ? $item['unit'] : 0 )
+						. ' | ' . number_format_i18n( isset( $item['orders'] ) ? (int) $item['orders'] : 0 )
+						. ' | ' . $this->money( isset( $item['amount'] ) ? $item['amount'] : 0 ) . ' |';
+				}
+				$lines[] = '| **' . __( 'Total', 'brikpanel' ) . '** | | | | **' . $this->money( isset( $per_order['total'] ) ? $per_order['total'] : 0 ) . '** |';
+			}
+		}
+
+		// --- Monthly trend ---------------------------------------------------
+		$monthly = $wpdb->get_results( $wpdb->prepare(
+			"SELECT DATE_FORMAT(expense_date, '%%Y-%%m') AS ym, COALESCE(SUM(amount),0) AS total
+			 FROM {$tbl}
+			 WHERE expense_date >= %s{$kinds}
+			 GROUP BY ym
+			 ORDER BY ym ASC",
+			$start
+		) ); // phpcs:ignore
+
+		if ( ! empty( $monthly ) ) {
+			$lines[] = '';
+			$lines[] = '### ' . __( 'Monthly Expenses (last 12 months)', 'brikpanel' );
+			$lines[] = '| ' . __( 'Month', 'brikpanel' ) . ' | ' . __( 'Total', 'brikpanel' ) . ' |';
+			$lines[] = '|---|---:|';
+			foreach ( $monthly as $r ) {
+				$lines[] = '| ' . $this->md_cell( $r->ym ) . ' | ' . $this->money( $r->total ) . ' |';
 			}
 		}
 
@@ -1697,7 +2724,7 @@ class Brikpanel_Store_Summary {
 			$lines[] = '- *' . __( 'COGS not configured for any product — sell-through margin cannot be inferred.', 'brikpanel' ) . '*';
 		}
 
-		$fn = $this->footnote( 'wc_cogs' );
+		$fn = $this->footnote( 'bp_cogs' );
 		if ( $fn ) { $lines[] = ''; $lines[] = $fn; }
 
 		return implode( "\n", $lines );
@@ -1878,184 +2905,284 @@ class Brikpanel_Store_Summary {
 	// SECTION: PROFITABILITY (revenue − refunds − COGS − expenses, last 12 months)
 	// =========================================================================
 
-	private function section_profitability() {
+	/**
+	 * Month-by-month trend for the components that group cleanly by calendar
+	 * month. Deliberately NOT twelve brikpanel_profit_snapshot() calls: that
+	 * would be a hundred-plus queries for a table, and the exact totals are
+	 * already in the headline block above it.
+	 *
+	 * Bases match the headline so the columns reconcile: revenue uses the KPI
+	 * status set with multi-currency conversion (as brikpanel_get_total_revenue
+	 * does), refunds are attributed to the PARENT order's month (as
+	 * brikpanel_profit_returns does, not the refund's own date), and COGS
+	 * resolves cost from the product exactly as brikpanel_profit_cogs does.
+	 *
+	 * @return array<string, array{rev:float,ref:float,cogs:float,ads:float,exp:float}>
+	 */
+	private function monthly_profit_axis() {
 		global $wpdb;
 
-		$start_dt = $this->months_ago_gmt( 12 );
+		$w       = $this->profit_window();
+		$is_hpos = $this->is_hpos();
 
-		// Monthly revenue
-		if ( $this->is_hpos() ) {
-			$rev_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(date_created_gmt, '%%Y-%%m') AS ym,
-				        SUM(total_amount) AS revenue
-				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order'
-				   AND status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND date_created_gmt >= %s
-				 GROUP BY ym",
-				$start_dt
-			) ); // phpcs:ignore
-
-			$ref_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(date_created_gmt, '%%Y-%%m') AS ym,
-				        SUM(ABS(total_amount)) AS refunds
-				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order_refund'
-				   AND date_created_gmt >= %s
-				 GROUP BY ym",
-				$start_dt
-			) ); // phpcs:ignore
-
-			// Monthly COGS — sum line-item _cogs_value across processing/completed orders.
-			$cogs_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym,
-				        COALESCE(SUM(CAST(im.meta_value AS DECIMAL(20,4))),0) AS cogs
-				 FROM {$wpdb->prefix}wc_orders o
-				 INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON oi.order_id=o.id AND oi.order_item_type='line_item'
-				 INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta im ON im.order_item_id=oi.order_item_id AND im.meta_key='_cogs_value'
-				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND o.date_created_gmt >= %s
-				 GROUP BY ym",
-				$start_dt
-			) ); // phpcs:ignore
-		} else {
-			$rev_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
-				        SUM(pm.meta_value) AS revenue
-				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
-				 WHERE p.post_type='shop_order'
-				   AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND p.post_date_gmt >= %s
-				 GROUP BY ym",
-				$start_dt
-			) ); // phpcs:ignore
-
-			$ref_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
-				        SUM(ABS(pm.meta_value)) AS refunds
-				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
-				 WHERE p.post_type='shop_order_refund'
-				   AND p.post_date_gmt >= %s
-				 GROUP BY ym",
-				$start_dt
-			) ); // phpcs:ignore
-
-			$cogs_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
-				        COALESCE(SUM(CAST(im.meta_value AS DECIMAL(20,4))),0) AS cogs
-				 FROM {$wpdb->posts} p
-				 INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON oi.order_id=p.ID AND oi.order_item_type='line_item'
-				 INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta im ON im.order_item_id=oi.order_item_id AND im.meta_key='_cogs_value'
-				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND p.post_date_gmt >= %s
-				 GROUP BY ym",
-				$start_dt
-			) ); // phpcs:ignore
-		}
-
-		// Money rows only: a percentage rate or a per-order unit price is not a
-		// monthly total and must not be plotted as one.
-		$exp_kinds = brikpanel_expense_money_kinds_sql();
-		$exp_rows  = $wpdb->get_results( $wpdb->prepare(
-			"SELECT DATE_FORMAT(expense_date, '%%Y-%%m') AS ym,
-			        SUM(amount) AS expenses
-			 FROM {$wpdb->prefix}brikpanel_expenses
-			 WHERE expense_date >= %s{$exp_kinds}
-			 GROUP BY ym",
-			gmdate( 'Y-m-d', strtotime( $start_dt ) )
-		) ); // phpcs:ignore
-
-		// Build a 12-month axis
 		$axis = [];
 		for ( $i = 11; $i >= 0; $i-- ) {
-			$key = gmdate( 'Y-m', strtotime( '-' . $i . ' months', current_time( 'timestamp', true ) ) );
-			$axis[ $key ] = [ 'rev' => 0.0, 'ref' => 0.0, 'cogs' => 0.0, 'exp' => 0.0 ];
+			$key = gmdate( 'Y-m', strtotime( '-' . $i . ' months', current_time( 'timestamp' ) ) );
+			$axis[ $key ] = [ 'rev' => 0.0, 'ref' => 0.0, 'cogs' => 0.0, 'ads' => 0.0, 'exp' => 0.0 ];
 		}
-		foreach ( $rev_rows as $r )  { if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['rev']  = (float) $r->revenue; } }
-		foreach ( $ref_rows as $r )  { if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['ref']  = (float) $r->refunds; } }
-		foreach ( $cogs_rows as $r ) { if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['cogs'] = (float) $r->cogs; } }
-		foreach ( $exp_rows as $r )  { if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['exp']  = (float) $r->expenses; } }
 
-		$tot_rev = 0.0; $tot_ref = 0.0; $tot_cogs = 0.0; $tot_exp = 0.0;
-		foreach ( $axis as $r ) { $tot_rev += $r['rev']; $tot_ref += $r['ref']; $tot_cogs += $r['cogs']; $tot_exp += $r['exp']; }
-		$has_cogs = $tot_cogs > 0;
-		$net_rev  = $tot_rev - $tot_ref;
-		$gross    = $net_rev - $tot_cogs;
-		$net      = $gross - $tot_exp;
+		$kpi_statuses = function_exists( 'brikpanel_kpi_revenue_statuses' )
+			? brikpanel_kpi_revenue_statuses()
+			: [ 'wc-processing', 'wc-completed' ];
+		$kpi_sp = implode( ', ', array_fill( 0, count( $kpi_statuses ), '%s' ) );
 
-		$lines = [];
-		$lines[] = '## ' . __( 'Profitability (last 12 months)', 'brikpanel' );
-		if ( $has_cogs ) {
-			$lines[] = '*' . __( 'Gross = Revenue − Refunds − COGS. Net = Gross − Tracked expenses. COGS comes from per-line `_cogs_value` written by WooCommerce when an order is placed; products without a configured cost contribute zero.', 'brikpanel' ) . '*';
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// --- Revenue -------------------------------------------------------
+		if ( $is_hpos ) {
+			$fx  = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount' );
+			$sql = "SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym, COALESCE(SUM({$fx['expr']}),0) AS v
+					FROM {$wpdb->prefix}wc_orders o{$fx['join']}
+					WHERE o.type='shop_order' AND o.status IN ({$kpi_sp})
+					  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
+			$excl = brikpanel_admin_order_exclusion_sql( true );
+			if ( ! empty( $excl['sql'] ) ) {
+				$sql .= str_replace( 'customer_id', 'o.customer_id', $excl['sql'] );
+			}
 		} else {
-			$lines[] = '*' . __( 'COGS not tracked on any line item — Net = Revenue − Refunds − Tracked expenses (operating contribution, not full P&L).', 'brikpanel' ) . '*';
+			$fx  = brikpanel_base_total_sql( false, 'o.ID', 'pm.meta_value' );
+			$sql = "SELECT DATE_FORMAT(o.post_date_gmt, '%%Y-%%m') AS ym, COALESCE(SUM({$fx['expr']}),0) AS v
+					FROM {$wpdb->posts} o
+					LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=o.ID AND pm.meta_key='_order_total'{$fx['join']}
+					WHERE o.post_type='shop_order' AND o.post_status IN ({$kpi_sp})
+					  AND o.post_date_gmt >= %s AND o.post_date_gmt <= %s";
+			$excl = brikpanel_admin_order_exclusion_sql( false, 'o.ID' );
+			if ( ! empty( $excl['sql'] ) ) {
+				$sql .= $excl['sql'];
+			}
 		}
+		$args = array_merge( $kpi_statuses, [ $w['start_gmt'], $w['end_gmt'] ], empty( $excl['sql'] ) ? [] : $excl['args'] );
+		foreach ( (array) $wpdb->get_results( $wpdb->prepare( $sql . ' GROUP BY ym', $args ) ) as $r ) { // phpcs:ignore
+			if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['rev'] = (float) $r->v; }
+		}
+
+		// --- Refunds (bucketed by the parent order's month) ------------------
+		$pred = $this->paid_order_predicate( 'o' );
+		if ( $is_hpos ) {
+			$sql = "SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym, COALESCE(SUM(ABS(r.total_amount)),0) AS v
+					FROM {$wpdb->prefix}wc_orders r
+					INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = r.parent_order_id
+					WHERE r.type='shop_order_refund' AND {$pred['where']}
+					  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
+					GROUP BY ym";
+		} else {
+			$sql = "SELECT DATE_FORMAT(o.post_date_gmt, '%%Y-%%m') AS ym, COALESCE(SUM(CAST(IFNULL(ra.meta_value,'0') AS DECIMAL(20,4))),0) AS v
+					FROM {$wpdb->posts} r
+					INNER JOIN {$wpdb->posts} o ON o.ID = r.post_parent
+					LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key='_refund_amount'
+					WHERE r.post_type='shop_order_refund' AND {$pred['where']}
+					  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
+					GROUP BY ym";
+		}
+		$args = array_merge( $pred['args'], [ $w['start_gmt'], $w['end_gmt'] ] );
+		foreach ( (array) $wpdb->get_results( $wpdb->prepare( $sql, $args ) ) as $r ) { // phpcs:ignore
+			if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['ref'] = (float) $r->v; }
+		}
+
+		// --- COGS ------------------------------------------------------------
+		$cost = $this->cogs_line_sql();
+		if ( null !== $cost ) {
+			$ord = $is_hpos ? "{$wpdb->prefix}wc_orders" : $wpdb->posts;
+			$oid = $is_hpos ? 'o.id' : 'o.ID';
+			$sql = "SELECT DATE_FORMAT({$pred['date_col']}, '%%Y-%%m') AS ym,
+						COALESCE(SUM(CAST(qtym.meta_value AS DECIMAL(20,4)) * ({$cost['unit']})),0) AS v
+					FROM {$wpdb->prefix}woocommerce_order_items oi
+					INNER JOIN {$ord} o ON {$oid} = oi.order_id
+					INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta qtym
+							ON qtym.order_item_id = oi.order_item_id AND qtym.meta_key='_qty'
+					{$cost['joins']}
+					WHERE oi.order_item_type='line_item' AND {$pred['where']}
+					  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
+					GROUP BY ym";
+			$args = array_merge( $pred['args'], [ $w['start_gmt'], $w['end_gmt'] ] );
+			foreach ( (array) $wpdb->get_results( $wpdb->prepare( $sql, $args ) ) as $r ) { // phpcs:ignore
+				if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['cogs'] = (float) $r->v; }
+			}
+		}
+		// phpcs:enable
+
+		// --- Recorded money expenses -----------------------------------------
+		if ( function_exists( 'brikpanel_expense_money_kinds_sql' ) ) {
+			$kinds = brikpanel_expense_money_kinds_sql();
+			$rows  = $wpdb->get_results( $wpdb->prepare(
+				"SELECT DATE_FORMAT(expense_date, '%%Y-%%m') AS ym, COALESCE(SUM(amount),0) AS v
+				 FROM {$wpdb->prefix}brikpanel_expenses
+				 WHERE expense_date >= %s{$kinds}
+				 GROUP BY ym",
+				$w['start_date']
+			) ); // phpcs:ignore
+			foreach ( (array) $rows as $r ) {
+				if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['exp'] = (float) $r->v; }
+			}
+		}
+
+		// --- Ad spend (store currency only) ----------------------------------
+		$ads = $this->ads_monthly();
+		foreach ( $ads['months'] as $ym => $per_platform ) {
+			if ( isset( $axis[ $ym ] ) ) {
+				$axis[ $ym ]['ads'] = (float) array_sum( $per_platform );
+			}
+		}
+
+		return $axis;
+	}
+
+	private function section_profitability() {
+		$snap = $this->profit_snapshot();
+		if ( ! is_array( $snap ) ) {
+			return '';
+		}
+
+		$revenue      = (float) ( $snap['revenue_raw'] ?? 0 );
+		$revenue_net  = (float) ( $snap['revenue_net_raw'] ?? 0 );
+		$returns      = (float) ( $snap['returns_raw'] ?? 0 );
+		$cogs         = (float) ( $snap['cogs_raw'] ?? 0 );
+		$expenses     = (float) ( $snap['expenses_total_raw'] ?? 0 );
+		$net          = (float) ( $snap['net_raw'] ?? 0 );
+		$ads          = (float) ( $snap['ad_spend_raw'] ?? 0 );
+		$gross        = $revenue_net - $cogs;
+		$has_cogs     = ! empty( $snap['has_cogs'] );
+
+		$lines   = [];
+		$lines[] = '## ' . __( 'Profitability (last 12 months)', 'brikpanel' );
+		$lines[] = '*' . __( 'These are the same figures the BrikPanel Dashboard profit card shows. Net = Revenue − Refunds − Cost of goods − every tracked cost (advertising, tax, payment fees, shipping cost, recorded expenses, percentage and per-order costs).', 'brikpanel' ) . '*';
 		$lines[] = '';
-		$lines[] = '- **' . __( 'Total revenue', 'brikpanel' ) . ':** ' . $this->money( $tot_rev );
-		$lines[] = '- **' . __( 'Total refunds', 'brikpanel' ) . ':** ' . $this->money( $tot_ref );
+		$lines[] = '- **' . __( 'Gross sales', 'brikpanel' ) . ':** ' . $this->money( $revenue );
+		$lines[] = '- **' . __( 'Refunds', 'brikpanel' ) . ':** ' . $this->money( $returns );
+		$lines[] = '- **' . __( 'Net revenue', 'brikpanel' ) . ':** ' . $this->money( $revenue_net );
 		if ( $has_cogs ) {
-			$lines[] = '- **' . __( 'Total COGS', 'brikpanel' ) . ':** ' . $this->money( $tot_cogs ) . ( $net_rev > 0 ? ' (' . number_format_i18n( ( $tot_cogs / $net_rev ) * 100, 1 ) . '% ' . __( 'of net revenue', 'brikpanel' ) . ')' : '' );
-			$lines[] = '- **' . __( 'Gross profit', 'brikpanel' ) . ':** ' . $this->money( $gross ) . ( $net_rev > 0 ? ' (' . __( 'gross margin', 'brikpanel' ) . ' ' . number_format_i18n( ( $gross / $net_rev ) * 100, 1 ) . '%)' : '' );
+			$lines[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . $this->money( $cogs ) . ' (' . $this->pct( $cogs, $revenue_net ) . ' ' . __( 'of net revenue', 'brikpanel' ) . ')';
+			$lines[] = '- **' . __( 'Gross profit', 'brikpanel' ) . ':** ' . $this->money( $gross ) . ' (' . __( 'gross margin', 'brikpanel' ) . ' ' . $this->pct( $gross, $revenue_net ) . ')';
+		} else {
+			$lines[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . __( 'not available — no sold product has a cost on file, so gross margin cannot be stated.', 'brikpanel' );
 		}
-		$lines[] = '- **' . __( 'Total expenses', 'brikpanel' ) . ':** ' . $this->money( $tot_exp );
-		$lines[] = '- **' . __( 'Net contribution', 'brikpanel' ) . ':** ' . $this->money( $net ) . ( $tot_rev > 0 ? ' (' . __( 'net margin', 'brikpanel' ) . ' ' . number_format_i18n( ( $net / $tot_rev ) * 100, 1 ) . '%)' : '' );
-		$lines[] = '';
+		$lines[] = '- **' . __( 'Total costs', 'brikpanel' ) . ':** ' . $this->money( $expenses ) . ' (' . $this->pct( $expenses, $revenue_net ) . ' ' . __( 'of net revenue', 'brikpanel' ) . ')';
+		$lines[] = '- **' . __( 'Net profit', 'brikpanel' ) . ':** ' . $this->money( $net ) . ' (' . __( 'net margin', 'brikpanel' ) . ' ' . $this->pct( $net, $revenue_net ) . ')';
+
+		$this->register_tldr( 'net_profit_12m', $net );
+		$this->register_tldr( 'net_margin_12m', $revenue_net > 0 ? $net / $revenue_net : 0.0 );
+		// Registered unconditionally: a store with NO costs on file is exactly
+		// the one whose TL;DR net margin most needs the caveat attached, and
+		// gating this on has_cogs dropped it precisely there.
+		$this->register_tldr( 'cogs_coverage_pct', (float) ( $snap['cogs_coverage_pct'] ?? 0 ) );
+
+		// --- Cost breakdown --------------------------------------------------
+		// `breakdown` is the mutually exclusive component split. Percentage and
+		// per-order costs are deliberately NOT in it (they are separate keys on
+		// the snapshot), so they are appended as their own rows rather than
+		// being folded in twice.
+		$fixed_labels = [
+			'google_ads'   => __( 'Google Ads', 'brikpanel' ),
+			'meta_ads'     => __( 'Meta Ads', 'brikpanel' ),
+			'tax'          => __( 'Tax', 'brikpanel' ),
+			'payment_fees' => __( 'Payment fees', 'brikpanel' ),
+			'shipping'     => __( 'Shipping cost', 'brikpanel' ),
+			'inventory'    => __( 'Supplier / stock', 'brikpanel' ),
+			'other'        => __( 'Other recorded expenses', 'brikpanel' ),
+		];
+
+		$rows = [];
+		foreach ( (array) ( $snap['breakdown'] ?? [] ) as $key => $amount ) {
+			$amount = (float) $amount;
+			if ( $amount <= 0 ) {
+				continue;
+			}
+			$rows[] = [ isset( $fixed_labels[ $key ] ) ? $fixed_labels[ $key ] : $key, $amount ];
+		}
+		$percent_total = 0.0;
+		foreach ( (array) ( $snap['percent_expenses'] ?? [] ) as $item ) {
+			$percent_total += isset( $item['amount'] ) ? (float) $item['amount'] : 0.0;
+		}
+		if ( $percent_total > 0 ) {
+			$rows[] = [ __( 'Percentage-based costs', 'brikpanel' ), $percent_total ];
+		}
+		$per_order_total = (float) ( $snap['per_order_total_raw'] ?? 0 );
+		if ( $per_order_total > 0 ) {
+			$rows[] = [ __( 'Per-order costs', 'brikpanel' ), $per_order_total ];
+		}
+
+		if ( ! empty( $rows ) ) {
+			usort( $rows, function ( $a, $b ) { return $b[1] <=> $a[1]; } );
+			$lines[] = '';
+			$lines[] = '### ' . __( 'Where the money went (last 12 months)', 'brikpanel' );
+			$lines[] = '| ' . __( 'Cost', 'brikpanel' ) . ' | ' . __( 'Amount', 'brikpanel' ) . ' | ' . __( 'Share of costs', 'brikpanel' ) . ' | ' . __( 'Share of net revenue', 'brikpanel' ) . ' |';
+			$lines[] = '|---|---:|---:|---:|';
+			foreach ( $rows as $row ) {
+				$lines[] = '| ' . $this->md_cell( $row[0] ) . ' | ' . $this->money( $row[1] ) . ' | ' . $this->pct( $row[1], $expenses ) . ' | ' . $this->pct( $row[1], $revenue_net ) . ' |';
+			}
+		}
+
+		// Recorded expenses split by their own category, so a reader sees
+		// "Salaries / Rent / Ads agency" rather than one "Other" lump.
+		$by_category = (array) ( $snap['expense_categories'] ?? [] );
+		if ( ! empty( $by_category ) ) {
+			$lines[] = '';
+			$lines[] = '### ' . __( 'Recorded expenses by category', 'brikpanel' );
+			$lines[] = '| ' . __( 'Category', 'brikpanel' ) . ' | ' . __( 'Amount', 'brikpanel' ) . ' |';
+			$lines[] = '|---|---:|';
+			foreach ( $by_category as $label => $amount ) {
+				$lines[] = '| ' . $this->md_cell( $label ) . ' | ' . $this->money( $amount ) . ' |';
+			}
+		}
+
+		// --- Monthly trend ---------------------------------------------------
+		$axis = $this->monthly_profit_axis();
 
 		// Strict collapse: drop EVERY all-zero month, leading or interior.
-		// The earlier "leading-only" rule produced inconsistent tables
-		// (some interior zero months hidden, others kept depending on
-		// where they sat). All-or-nothing is easier to explain and
-		// matches the behaviour of section_monthly_sales().
-		$active_ym  = [];
-		$silent_run = 0;
+		$active_ym = [];
 		foreach ( $axis as $ym => $r ) {
-			if ( $this->is_zero_row( [ $r['rev'], $r['ref'], $r['cogs'], $r['exp'] ] ) ) {
-				$silent_run++;
+			if ( $this->is_zero_row( [ $r['rev'], $r['ref'], $r['cogs'], $r['ads'], $r['exp'] ] ) ) {
 				continue;
 			}
 			$active_ym[ $ym ] = $r;
 		}
-		// Fully-dormant store: keep the most recent month so the reader
-		// at least sees the table structure.
 		if ( empty( $active_ym ) && ! empty( $axis ) ) {
 			$last_key = array_key_last( $axis );
 			$active_ym[ $last_key ] = $axis[ $last_key ];
 		}
 
-		if ( $has_cogs ) {
-			$lines[] = '| ' . __( 'Month', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Refunds', 'brikpanel' ) . ' | ' . __( 'COGS', 'brikpanel' ) . ' | ' . __( 'Gross', 'brikpanel' ) . ' | ' . __( 'Expenses', 'brikpanel' ) . ' | ' . __( 'Net', 'brikpanel' ) . ' |';
-			$lines[] = '|---|---:|---:|---:|---:|---:|---:|';
+		if ( ! empty( $active_ym ) ) {
+			$lines[] = '';
+			$lines[] = '### ' . __( 'Monthly Trend', 'brikpanel' );
+			$lines[] = '*' . __( 'Trend only. Costs that are computed for the period as a whole — percentage-based costs, per-order costs, payment fees, shipping cost and tax — are not split per month, so the monthly Net is higher than the true one. The headline figures above are the complete ones.', 'brikpanel' ) . '*';
+			$lines[] = '| ' . __( 'Month', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Refunds', 'brikpanel' ) . ' | ' . __( 'COGS', 'brikpanel' ) . ' | ' . __( 'Ad spend', 'brikpanel' ) . ' | ' . __( 'Expenses', 'brikpanel' ) . ' | ' . __( 'Gross', 'brikpanel' ) . ' | ' . __( 'Net (partial)', 'brikpanel' ) . ' |';
+			$lines[] = '|---|---:|---:|---:|---:|---:|---:|---:|';
 			foreach ( $active_ym as $ym => $r ) {
 				$g = $r['rev'] - $r['ref'] - $r['cogs'];
-				$n = $g - $r['exp'];
-				$lines[] = '| ' . $ym . ' | ' . $this->money( $r['rev'] ) . ' | ' . $this->money( $r['ref'] ) . ' | ' . $this->money( $r['cogs'] ) . ' | ' . $this->money( $g ) . ' | ' . $this->money( $r['exp'] ) . ' | ' . $this->money( $n ) . ' |';
+				$n = $g - $r['ads'] - $r['exp'];
+				$lines[] = '| ' . $ym
+					. ' | ' . $this->money( $r['rev'] )
+					. ' | ' . $this->money( $r['ref'] )
+					. ' | ' . $this->money( $r['cogs'] )
+					. ' | ' . $this->money( $r['ads'] )
+					. ' | ' . $this->money( $r['exp'] )
+					. ' | ' . $this->money( $g )
+					. ' | ' . $this->money( $n ) . ' |';
 			}
-		} else {
-			$lines[] = '| ' . __( 'Month', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Refunds', 'brikpanel' ) . ' | ' . __( 'Expenses', 'brikpanel' ) . ' | ' . __( 'Net', 'brikpanel' ) . ' |';
-			$lines[] = '|---|---:|---:|---:|---:|';
-			foreach ( $active_ym as $ym => $r ) {
-				$n = $r['rev'] - $r['ref'] - $r['exp'];
-				$lines[] = '| ' . $ym . ' | ' . $this->money( $r['rev'] ) . ' | ' . $this->money( $r['ref'] ) . ' | ' . $this->money( $r['exp'] ) . ' | ' . $this->money( $n ) . ' |';
+
+			$shown        = count( $active_ym );
+			$total_months = count( $axis );
+			if ( $shown < $total_months ) {
+				$lines[] = '';
+				$lines[] = '*' . sprintf(
+					/* translators: 1: months shown, 2: total months in window */
+					__( 'Showing %1$d active month(s) out of %2$d in the 12-month window — months with zero across every column are hidden.', 'brikpanel' ),
+					$shown,
+					$total_months
+				) . '*';
 			}
 		}
 
-		// Tell the reader how many months were collapsed so they can
-		// reconstruct the timeline without showing the empty rows.
-		$shown = count( $active_ym );
-		$total_months = count( $axis );
-		if ( $shown < $total_months ) {
-			$lines[] = '';
-			$lines[] = '*' . sprintf(
-				/* translators: 1: months shown, 2: total months in window */
-				__( 'Showing %1$d active month(s) out of %2$d in the 12-month window — months with zero across every column are hidden.', 'brikpanel' ),
-				$shown,
-				$total_months
-			) . '*';
-		}
-
-		$fn_cogs = $has_cogs ? $this->footnote( 'wc_cogs' ) : '';
+		$fn_cogs = $has_cogs ? $this->footnote( 'bp_cogs' ) : '';
 		$fn_exp  = $this->footnote( 'bp_expenses' );
 		if ( $fn_cogs || $fn_exp ) {
 			$lines[] = '';
@@ -3354,6 +4481,32 @@ class Brikpanel_Store_Summary {
 
 		if ( isset( $this->tldr_inputs['refund_rate_12m'] ) && $this->tldr_inputs['refund_rate_12m'] > 0 ) {
 			$bullet( __( 'Refund rate (12m)', 'brikpanel' ), number_format_i18n( $this->tldr_inputs['refund_rate_12m'] * 100, 1 ) . '%' );
+		}
+
+		// Money lines last so the reader ends on the bottom line. Net profit is
+		// the whole point of pasting this into an AI, and it must never appear
+		// without the caveat that uncosted products are counted as free.
+		if ( isset( $this->tldr_inputs['ad_spend_12m'] ) && $this->tldr_inputs['ad_spend_12m'] > 0 ) {
+			$ads_line = $this->money( $this->tldr_inputs['ad_spend_12m'] );
+			if ( isset( $this->tldr_inputs['roas_12m'] ) ) {
+				$ads_line .= ' (' . __( 'blended ROAS', 'brikpanel' ) . ' ' . number_format_i18n( $this->tldr_inputs['roas_12m'], 2 ) . 'x)';
+			}
+			$bullet( __( 'Ad spend (12m)', 'brikpanel' ), $ads_line );
+		}
+
+		if ( isset( $this->tldr_inputs['net_profit_12m'] ) ) {
+			$net_line = $this->money( $this->tldr_inputs['net_profit_12m'] );
+			if ( isset( $this->tldr_inputs['net_margin_12m'] ) ) {
+				$net_line .= ' (' . __( 'net margin', 'brikpanel' ) . ' ' . number_format_i18n( $this->tldr_inputs['net_margin_12m'] * 100, 1 ) . '%)';
+			}
+			if ( isset( $this->tldr_inputs['cogs_coverage_pct'] ) && $this->tldr_inputs['cogs_coverage_pct'] < 99.5 ) {
+				$net_line .= ' — ' . sprintf(
+					/* translators: %s: percentage of revenue with a product cost on file */
+					__( 'overstated: only %s of revenue has a product cost on file', 'brikpanel' ),
+					number_format_i18n( $this->tldr_inputs['cogs_coverage_pct'], 1 ) . '%'
+				);
+			}
+			$bullet( __( 'Net profit (12m)', 'brikpanel' ), $net_line );
 		}
 
 		// Need at least the headline revenue line to render meaningfully.

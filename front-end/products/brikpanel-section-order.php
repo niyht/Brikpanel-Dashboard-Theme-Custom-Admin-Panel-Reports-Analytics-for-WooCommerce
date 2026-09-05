@@ -76,8 +76,15 @@ function brikpanel_pe_brand_taxonomy() {
  */
 function brikpanel_pe_section_slugs() {
     $slugs = [
-        'images',
+        // `slug` leads even though it ships hidden (see
+        // brikpanel_pe_section_default_hidden). The order and the visibility are
+        // two separate questions: the section is off out of the box, but the
+        // moment someone switches it on it should land directly under the
+        // Product name card — the editor renders that card first and then these
+        // sections in order, so position 0 is exactly where WordPress puts the
+        // permalink, and where anyone editing a URL for SEO looks for it.
         'slug',
+        'images',
         'variations',
         'pricing',
         'cogs',

@@ -227,6 +227,7 @@ function brikpanel_prime_keys_admin() {
 
 		// Misc screen gates measured hitting the DB.
 		'brikpanel_orders_enhancements',
+		'brikpanel_order_merge',
 		'brikpanel_modern_segments',
 		'brikpanel_whatsapp_order_message',
 		'brikpanel_whatsapp_order_status_messages',

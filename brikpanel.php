@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.2.93
+ * Version: 3.2.97
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.2.93');
+define('BRIKPANEL_VERSION', '3.2.97');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -332,6 +332,7 @@ function brikpanel_init_admin() {
     // never pushed from inside wp-admin (keeps BrikPanel within wp.org Guideline 8).
     brikpanel_require('front-end/orders/brikpanel-order-whatsapp.php');
     brikpanel_require('front-end/orders/brikpanel-orders-stats.php');
+    brikpanel_require('front-end/orders/brikpanel-order-merge.php');
     brikpanel_require('front-end/currency/brikpanel-currency-settings.php');
     brikpanel_require('front-end/order/brikpanel-order-fields.php');
     brikpanel_require('front-end/order/brikpanel-order-shipping-cost.php');

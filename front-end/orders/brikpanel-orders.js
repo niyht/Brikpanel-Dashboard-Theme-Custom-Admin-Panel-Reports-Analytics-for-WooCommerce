@@ -749,6 +749,10 @@ function brikpanelBulkActions(actions) {
 	$bulkActions.querySelector('#bulk-action-selector-bottom').style.display = "none";
 	$bulkActions.querySelector('#doaction2').style.display = "none";
 
+	/* Merging needs at least two orders, so its button stays disabled until two
+	   rows are ticked. Nothing else here cares how many are selected. */
+	let $mergeButton = null;
+
 	actions.forEach(({ value, innerHTML }) => {
 		const $bulkAction = makeElement('button', { value: value }, { innerHTML: innerHTML }, [{
 			event: 'click', handler: (event) => {
@@ -757,8 +761,28 @@ function brikpanelBulkActions(actions) {
 				document.querySelector('#doaction2').click();
 			}
 		}]);
+		if (value === 'brikpanel_merge_orders') {
+			$mergeButton = $bulkAction;
+		}
 		$bulkActions.append($bulkAction);
 	});
+
+	/* Counted live off the DOM rather than off the `checked` array below: WP
+	   core's shift-click range select flips the boxes with jQuery, which never
+	   fires a native change event, so the array would under-report. */
+	function brikpanelSelectedRowCount() {
+		return document.querySelectorAll(
+			'.check-column input[name="post[]"]:checked, .check-column input[name="id[]"]:checked'
+		).length;
+	}
+
+	function updateMergeState() {
+		if (!$mergeButton) return;
+		const enough = brikpanelSelectedRowCount() >= 2;
+		$mergeButton.disabled = !enough;
+		$mergeButton.classList.toggle('is-disabled', !enough);
+		$mergeButton.title = enough ? '' : (_ordersI18n.merge_needs_two || '');
+	}
 
 	// Move hidden form elements to bulk actions space (so it's inside form)
 	const $bulkActionsBg = makeElement('div', { class: 'bulkactions-bg' });
@@ -784,7 +808,13 @@ function brikpanelBulkActions(actions) {
 				document.querySelector('.brikpanel-bulk-actions')?.classList.remove('show');
 				document.querySelector('.bulkactions-bg')?.classList.remove('show');
 			}
+			updateMergeState();
 		});
+	});
+
+	/* Catches the selections that never fire `change` — shift-click ranges. */
+	document.querySelector('#the-list')?.addEventListener('click', () => {
+		window.requestAnimationFrame(updateMergeState);
 	});
 	document.querySelector('#cb-select-all-1').addEventListener('change', (event) => {
 		const $checkbox = event.currentTarget;
@@ -797,6 +827,7 @@ function brikpanelBulkActions(actions) {
 			});
 			document.querySelector('.brikpanel-bulk-actions')?.classList.add('show');
 			document.querySelector('.bulkactions-bg')?.classList.add('show');
+			updateMergeState();
 		} else {
 			document.querySelectorAll('.check-column input[name="post[]"], .check-column input[name="id[]"]').forEach($cb => {
 				$cb.checked = false;
@@ -805,7 +836,10 @@ function brikpanelBulkActions(actions) {
 			document.querySelector('.brikpanel-bulk-actions')?.classList.remove('show');
 			document.querySelector('.bulkactions-bg')?.classList.remove('show');
 		}
+		updateMergeState();
 	});
+
+	updateMergeState();
 }
 
 /**

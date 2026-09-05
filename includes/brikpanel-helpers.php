@@ -2036,3 +2036,48 @@ if ( ! function_exists( 'brikpanel_index_terms_by_parent' ) ) {
 		return $by_parent;
 	}
 }
+
+if ( ! function_exists( 'brikpanel_mark_screen_classic' ) ) {
+	/**
+	 * Tell the current (spoofed) screen it is a classic editor screen.
+	 *
+	 * BrikPanel renders a product by spoofing `set_current_screen('product')`
+	 * and then firing `add_meta_boxes`, so it collects the same metaboxes the
+	 * classic editor would. WP_Screen decides `is_block_editor()` from
+	 * `use_block_editor_for_post_type()`, and plenty of sites turn the block
+	 * editor on for products — WooCommerce says no, but a theme or plugin can
+	 * filter that back to yes (Shoptimizer ships it on by default).
+	 *
+	 * On those sites the spoofed screen reported itself as a block editor, and
+	 * every plugin that serves Gutenberg through a sidebar panel instead of a
+	 * metabox simply registered nothing. SEOPress is the clearest case: its
+	 * universal metabox opener returns early on a block-editor screen
+	 * (src/Actions/Admin/ModuleMetabox.php) and the classic `seopress_cpt`
+	 * fallback only registers when the universal module is off, so BrikPanel's
+	 * SEO card ended up empty and printed "did not register its SEO fields",
+	 * blaming a plugin setting that was not the cause.
+	 *
+	 * BrikPanel's editor is a classic surface: it renders metaboxes, it has no
+	 * block canvas. Saying so is a statement of fact, not a workaround, and it
+	 * is scoped to the spoofed screen — the real WooCommerce product editor is
+	 * untouched and keeps whatever mode the site chose for it.
+	 *
+	 * `WP_Screen::is_block_editor( $set = null )` is core's own setter
+	 * (wp-admin/includes/class-wp-screen.php). Guarded because WP_Screen only
+	 * grew it in 5.0 and the method may be absent on a very old install.
+	 *
+	 * Call directly after `set_current_screen()` and before anything that
+	 * registers metaboxes or enqueues editor assets.
+	 *
+	 * @return void
+	 */
+	function brikpanel_mark_screen_classic() {
+		if ( ! function_exists( 'get_current_screen' ) ) {
+			return;
+		}
+		$screen = get_current_screen();
+		if ( $screen && method_exists( $screen, 'is_block_editor' ) ) {
+			$screen->is_block_editor( false );
+		}
+	}
+}

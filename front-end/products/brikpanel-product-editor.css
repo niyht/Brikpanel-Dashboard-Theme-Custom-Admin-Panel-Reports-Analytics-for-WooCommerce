@@ -2,7 +2,7 @@
    BrikPanel – Simplified Product Editor
    ========================================================================== */
 
-.brikpanel-pe{--pe-bg:#f1f1f1;--pe-card:#fff;--pe-text:#303030;--pe-text-secondary:#616161;--pe-text-muted:#8a8a8a;--pe-border:#e3e3e3;--pe-input-border:#8a8a8a;--pe-input-focus:#303030;--pe-primary:#303030;--pe-primary-hover:#1a1a1a;--pe-success:#1a8917;--pe-error:#d72c0d;--pe-radius-sm:.5rem;--pe-radius:.75rem;--pe-transition:all .2s ease;--pe-shadow:0 1px 3px rgba(0,0,0,.08);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;color:var(--pe-text);line-height:1.5}
+.brikpanel-pe{--pe-bg:#f1f1f1;--pe-card:#fff;--pe-text:#303030;--pe-text-secondary:#616161;--pe-text-muted:#8a8a8a;--pe-border:#e3e3e3;--pe-input-border:#8a8a8a;--pe-input-focus:#303030;--pe-primary:#303030;--pe-primary-hover:#1a1a1a;--pe-success:#1a8917;--pe-error:#d72c0d;--pe-radius-sm:.5rem;--pe-radius:.75rem;--pe-transition:all .2s ease;--pe-shadow:0 1px 3px rgba(0,0,0,.08);--pe-field-max:22rem;--pe-panel-max:34rem;--pe-prose-max:48rem;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;color:var(--pe-text);line-height:1.5}
 
 .brikpanel-product-editor-page #wpcontent{padding-left:0}
 .brikpanel-product-editor-page #wpbody-content{padding-bottom:0;margin-top:0!important}
@@ -52,26 +52,179 @@
 /* Widescreen — OPT-IN, off by default (Settings ▸ "Use the full screen width").
    Everything here hangs off `.brikpanel-pe-widescreen` on the editor root, so
    with the setting off none of it matches and the layout is the plain centred
-   820px column. When on: a single 820px column is still right for the
-   short-field cards — a price or a SKU gains nothing from a big monitor and
-   long rows are harder to scan — so only the cards that hold genuinely wide
-   content take the extra space. The variations table stops needing a
-   horizontal scrollbar and the description editors get room to breathe. */
+   820px column, exactly as it has always been.
+
+   When on, two things change together, and they only make sense together.
+
+   WIDTH IS A PERCENTAGE, NOT PIXELS. This used to step 820 → 1240 → 1500px and
+   stop. A merchant on a ~3000px monitor still saw a 1500px editor marooned in
+   the middle with 750px of empty page on each side, which is the complaint that
+   started this: "it looks small on a very big screen". A percentage has no such
+   ceiling — the editor is always 90% of the space it is given, so it grows with
+   the monitor instead of ignoring it.
+
+   THE COLUMN SPLITS IN TWO. Percentage width alone would make it worse, not
+   better: a Cost of goods card holding one price box has no use for 2700px, and
+   a row of them reads as a stack of near-empty bars. So the flex column becomes
+   a two-column grid. Short cards pair up; cards whose content genuinely wants
+   the room — the variations table, the description editors, embedded
+   third-party panels — take the whole row via `.brikpanel-pe-card-wide` below.
+
+   Two columns at every size above the breakpoint, not `auto-fill`: three or four
+   columns of form fields stop reading as a form and start reading as a
+   dashboard, and the eye loses the top-to-bottom order the merchant arranged. */
 @media screen and (min-width:1360px){
-.brikpanel-pe-widescreen .brikpanel-pe-content{max-width:1240px}
+.brikpanel-pe-widescreen .brikpanel-pe-content{max-width:90%}
 /* border-box so a card measures the same here as it does below the breakpoint,
-   where it is sized by the column rather than by its own width. */
-.brikpanel-pe-widescreen .brikpanel-pe-content>*{box-sizing:border-box;width:100%;max-width:820px;align-self:center}
-.brikpanel-pe-widescreen .brikpanel-pe-content>.brikpanel-pe-card-wide{max-width:none}
-}
-/* Second tier for a genuinely large monitor. A store with every optional
-   column switched on (GTIN, tax class, shipping class, supplier) still runs
-   past 1240px, and there is room to spare here. Deliberately stops at 1500px:
-   the goal is a table that fits, not a page that sprawls edge to edge. */
-@media screen and (min-width:1800px){
-.brikpanel-pe-widescreen .brikpanel-pe-content{max-width:1500px}
+   where it is sized by the column rather than by its own width. The grid track
+   already sets the width, so no width:100% is needed. */
+.brikpanel-pe-widescreen .brikpanel-pe-content *{box-sizing:border-box}
+
+
+/* Short-value controls keep a readable measure instead of stretching across a
+   1500px card. A price box 700px wide is no more usable than a 320px one, and
+   it parks the value far from its own label. Long-form controls — the title,
+   the description editors, the variations table, the image dropzone, embedded
+   third-party metaboxes — are deliberately NOT capped here: those are the ones
+   that actually earn the extra width, and they are why the setting exists.
+   justify-content:start keeps the capped columns packed to the left instead of
+   spreading them across the card with gaps between. */
+.brikpanel-pe-widescreen .brikpanel-pe-row{grid-template-columns:repeat(2,minmax(0,var(--pe-field-max)));justify-content:start}
+.brikpanel-pe-widescreen .brikpanel-pe-row-3{grid-template-columns:repeat(3,minmax(0,var(--pe-field-max)));justify-content:start}
+/* Search-plus-list pickers (Category, Brand, Upsells, Cross-sells) get their
+   own slightly roomier cap: a term tree needs more than a price box, but a
+   1450px-wide "Search categories..." field with checkboxes hugging the far
+   left is the single worst-looking control on a large monitor. Capping the
+   WRAPPER rather than the input keeps the search field, the term list and the
+   absolutely-positioned results dropdown on the same edge. */
+.brikpanel-pe-widescreen .brikpanel-pe-cat-wrap,
+.brikpanel-pe-widescreen .brikpanel-pe-linked{max-width:var(--pe-panel-max)}
+/* Same cap for the fields WooCommerce and other plugins render INSIDE our
+   cards ("Additional product data", "Fields from your other plugins"). The
+   base rule above forces width:100%!important on those so a foreign field
+   inherits this editor's look; at 1500px that turned a Regular Price box into
+   a 1450px trough. Needs !important to beat that rule, and the extra
+   `.brikpanel-pe-widescreen` gives it the specificity to win.
+   textarea and input[type=url] are left out on purpose: a purchase note or a
+   download URL is genuinely long-form and does want the room. */
+.brikpanel-pe-widescreen .brikpanel-pe-wc-fields-content input[type="text"],
+.brikpanel-pe-widescreen .brikpanel-pe-wc-fields-content input[type="number"],
+.brikpanel-pe-widescreen .brikpanel-pe-wc-fields-content input[type="email"],
+.brikpanel-pe-widescreen .brikpanel-pe-wc-fields-content input[type="search"],
+.brikpanel-pe-widescreen .brikpanel-pe-wc-fields-content input[type="tel"],
+.brikpanel-pe-widescreen .brikpanel-pe-wc-fields-content input[type="date"],
+.brikpanel-pe-widescreen .brikpanel-pe-wc-fields-content select,
+.brikpanel-pe-widescreen .brikpanel-pe-metabox-content input[type="text"],
+.brikpanel-pe-widescreen .brikpanel-pe-metabox-content input[type="number"],
+.brikpanel-pe-widescreen .brikpanel-pe-metabox-content input[type="email"],
+.brikpanel-pe-widescreen .brikpanel-pe-metabox-content input[type="search"],
+.brikpanel-pe-widescreen .brikpanel-pe-metabox-content input[type="tel"],
+.brikpanel-pe-widescreen .brikpanel-pe-metabox-content input[type="date"],
+.brikpanel-pe-widescreen .brikpanel-pe-metabox-content select,
+.brikpanel-pe-widescreen .brikpanel-pe-var-extras input[type="text"],
+.brikpanel-pe-widescreen .brikpanel-pe-var-extras input[type="number"],
+.brikpanel-pe-widescreen .brikpanel-pe-var-extras input[type="email"],
+.brikpanel-pe-widescreen .brikpanel-pe-var-extras input[type="search"],
+.brikpanel-pe-widescreen .brikpanel-pe-var-extras input[type="tel"],
+.brikpanel-pe-widescreen .brikpanel-pe-var-extras input[type="date"],
+.brikpanel-pe-widescreen .brikpanel-pe-var-extras select{max-width:var(--pe-field-max)!important}
+
+/* BrikPanel's own lone short fields. These sit directly in a card rather than
+   in a two-up row, so nothing else was holding them back: Menu order and
+   Weight were rendering 1450px wide. The slug group opts out by class — its
+   prefix is a whole store URL and needs the room. Token fields (tags,
+   attribute terms) and the product title are untouched on purpose: they hold
+   many values or a long one, and the width is the point. */
+.brikpanel-pe-widescreen .brikpanel-pe-field > input[type="number"],
+.brikpanel-pe-widescreen .brikpanel-pe-field > .brikpanel-pe-input-group:not(.brikpanel-pe-slug-group){max-width:var(--pe-field-max)}
+/* "+ Add new category/brand" opens under the picker; lining the two up keeps
+   the card from growing a second, wider left edge. */
+.brikpanel-pe-widescreen .brikpanel-pe-inline-form{max-width:var(--pe-panel-max)}
+
+/* SEO card: the CARD lines up with the rest, its BODY keeps the measure it was
+   designed at. Two different things live behind this one card. BrikPanel's own
+   SEO form is a meta title (70 chars) and a meta description (160) sitting under
+   a Google snippet preview — stretched to 1450px the preview stops resembling a
+   search result and the counters drift far from the text they count. A foreign
+   SEO panel (Yoast, Rank Math, All in One SEO) is a short-field form that 3.2.92
+   deliberately kept narrow for the same reason. Both get the old ~820px card's
+   inner width, so nothing inside them moved; only the card edge did.
+   SEOPress is the exception and says so with .brikpanel-pe-seo-panel-native: its
+   panel is a three-column layout tuned and measured at the full width in 3.2.92,
+   and squeezing it back would undo that work. */
+.brikpanel-pe-widescreen .brikpanel-pe-seo-card:not(.brikpanel-pe-seo-panel-native) > *{max-width:var(--pe-prose-max)}
+
+/* A textarea sitting on its own in a card is prose, not a document: the
+   purchase note is a couple of sentences mailed to the buyer, and at 1450px it
+   was the widest thing on the page, wedged between two 352px fields. Same
+   measure as the SEO body, so the two read as one system. The description
+   editors are contenteditable divs, not textareas, and keep the full width —
+   they are the reason someone switches this setting on. */
+.brikpanel-pe-widescreen .brikpanel-pe-field > textarea{max-width:var(--pe-prose-max)}
 }
 
+/* The two column wrappers are inert until widescreen turns them on.
+   `display:contents` removes the wrapper box entirely and hands its children
+   straight to `.brikpanel-pe-content`, so with the setting off — or on a narrow
+   screen — the cards are flex items of the same single column they have always
+   been, byte for byte the old layout. */
+.brikpanel-pe-col-main,.brikpanel-pe-col-side{display:contents}
+
+/* TWO COLUMNS — main + side, the WordPress/WooCommerce shape.
+
+   An earlier revision made this an even 2×1fr grid over the flat card list.
+   It measured fine and looked terrible: pairing was decided by whatever two
+   cards happened to be adjacent in the merchant's order, so Permalink (139px
+   tall) sat beside Product images (272px) with a 133px hole under it, and any
+   odd card — Price, Brand, the Digital toggles — left the whole other half of
+   its row empty. Four empty half-rows on one product.
+
+   A main column and a side column fix that by construction: each column flows
+   independently, so a short card is simply followed by the next short card and
+   no hole can open. Which column a card lands in is decided in PHP by what the
+   card HOLDS (see $bpe_side_slugs), not by where it happens to sit in the list.
+
+   The side track is proportional with a floor and a ceiling: ~256px on a 1440px
+   laptop, growing to 24rem and stopping there. 22% rather than a rounder 25%
+   because the variations table is the widest thing in the main column and every
+   percent taken by the sidebar comes straight out of it — at 24% the table was
+   7px short of fitting on a 1920px screen and fell back to its scrollbar. Fixed pixels would eat the main
+   column on small laptops (a 22rem side leaves main at 716px, narrower than the
+   820px you get with the setting off), and an uncapped fraction would give a
+   3000px monitor a 700px sidebar of one-line fields. clamp() keeps main at or
+   above its old width at every size. */
+@media screen and (min-width:1360px){
+.brikpanel-pe-widescreen .brikpanel-pe-content{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) clamp(16rem,22%,24rem);
+  /* align-items:start so a short column does not stretch to the tall one. */
+  align-items:start;
+}
+.brikpanel-pe-widescreen .brikpanel-pe-col-main,
+.brikpanel-pe-widescreen .brikpanel-pe-col-side{
+  display:flex;
+  flex-direction:column;
+  gap:1rem;
+  min-width:0;
+}
+/* The side column is narrow by design, so the field caps that keep a price box
+   readable in a wide card would otherwise leave it floating in a column barely
+   wider than itself. Inside the sidebar every control simply fills it. */
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-row,
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-row-3{grid-template-columns:minmax(0,1fr)}
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-cat-wrap,
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-linked,
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-inline-form,
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-field>input[type="number"],
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-field>.brikpanel-pe-input-group,
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-field>textarea{max-width:none}
+/* "+ Add new category/brand" is a name + parent + button on one line. That line
+   needs ~500px; the sidebar is 260px on a laptop, so it used to push the parent
+   dropdown clean out of the column. Stack it instead — same treatment the phone
+   breakpoint already gives it. */
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-inline-form{flex-wrap:wrap}
+.brikpanel-pe-widescreen .brikpanel-pe-col-side .brikpanel-pe-inline-form>*{flex:1 1 100%}
+}
 /* Card.
    Literal fallbacks are intentional: a card must NEVER lose its background,
    border or shadow even if it ends up outside the `.brikpanel-pe` cascade root
@@ -86,7 +239,7 @@
 .brikpanel-pe-field{margin-bottom:.75rem}
 .brikpanel-pe-field:last-child{margin-bottom:0}
 .brikpanel-pe-field label{display:block;font-size:.8125rem;font-weight:600;color:var(--pe-text);margin-bottom:.375rem}
-.brikpanel-pe-field input[type="text"],.brikpanel-pe-field input[type="number"],.brikpanel-pe-field textarea,.brikpanel-pe-field select{width:100%;padding:.625rem .75rem;font-size:.875rem;color:var(--pe-text);background:var(--pe-card);border:1px solid var(--pe-input-border);border-radius:var(--pe-radius-sm);outline:none;transition:border-color .15s ease,box-shadow .15s ease;box-sizing:border-box;line-height:1.5}
+.brikpanel-pe-field input[type="text"],.brikpanel-pe-field input[type="number"],.brikpanel-pe-field input[type="url"],.brikpanel-pe-field textarea,.brikpanel-pe-field select{width:100%;padding:.625rem .75rem;font-size:.875rem;color:var(--pe-text);background:var(--pe-card);border:1px solid var(--pe-input-border);border-radius:var(--pe-radius-sm);outline:none;transition:border-color .15s ease,box-shadow .15s ease;box-sizing:border-box;line-height:1.5}
 .brikpanel-pe-field input:focus,.brikpanel-pe-field textarea:focus,.brikpanel-pe-field select:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-field input::placeholder,.brikpanel-pe-field textarea::placeholder{color:var(--pe-text-muted)}
 .brikpanel-pe-field input.has-error,.brikpanel-pe-field textarea.has-error{border-color:var(--pe-error);box-shadow:0 0 0 1px var(--pe-error)}

@@ -837,6 +837,54 @@
         $('#bpe-var-toggle').on('change', syncVariableMode);
         syncVariableMode();
 
+        /* Turning a variable product into a simple one makes the save delete
+           every variation permanently — they do not go to the trash and cannot
+           be restored. "Clear all" and the per-row delete both confirm first,
+           and both are less destructive than this, so the conversion asks too.
+           Returns true when it is safe to proceed. */
+        function confirmVariableLoss() {
+            // Only an EXISTING product can lose stored variations. A brand-new
+            // one has nothing on the server yet, so there is nothing to warn
+            // about even if the table has unsaved rows in it.
+            if (!(parseInt(productData.id || 0, 10) > 0)) return true;
+            // `variation_count` is what the product really had in the database
+            // when the page loaded, which the rendered table does not always
+            // match: WooCommerce hides a variation whose parent axis was
+            // rewritten by an import, so a damaged product shows fewer rows than
+            // it owns. Generating variations goes the other way — it writes them
+            // immediately, before any Save — so the table can also be ahead.
+            // Take the larger, but only count rows that carry an id: a blank row
+            // the merchant added and never saved is not something a conversion
+            // can destroy, and warning about it would be a lie.
+            var stored = parseInt(productData.variation_count || 0, 10) || 0;
+            var local  = (state.variations || []).filter(function (v) { return v && v.id; }).length;
+            var n = Math.max(stored, local);
+            if (n < 1) return true;
+            var msg = PE.i18n.confirm_convert_to_simple
+                || 'This product has %d variations. Changing it to a simple product deletes them permanently and this cannot be undone.';
+            return window.confirm(msg.replace('%d', n));
+        }
+
+        // Bound to `click`, not `change`, on purpose: the editor flips this
+        // checkbox programmatically in several places (hydrate, the attribute
+        // "use for variations" switch, the product-type selector below) with
+        // .prop('checked', …).trigger('change'), and jQuery's trigger does not
+        // fire a click. Listening for the real click keeps the prompt on the
+        // one path that is an actual merchant decision. preventDefault() on a
+        // checkbox click restores its previous state, so declining leaves the
+        // product variable and fires no change event.
+        $('#bpe-var-toggle').on('click', function (e) {
+            if (this.checked) return;            // switching variations ON is harmless
+            // With the product-type selector on the page the dropdown is what
+            // the save posts, and a posted type always wins server-side — so
+            // unticking this toggle alone converts nothing and destroys nothing.
+            // Asking there would be a warning about something that will not
+            // happen. The selector's own handler below covers that route.
+            if ($('#bpe-product-type').length) return;
+            if (confirmVariableLoss()) return;
+            e.preventDefault();
+        });
+
         // Product type selector (enabled via "Product type selector" setting).
         // The dropdown is the canonical source of truth for which WC product
         // type the editor is creating. For backward compatibility, we keep
@@ -858,7 +906,36 @@
                     $vt.prop('checked', shouldBeVariable).trigger('change');
                 }
             }
-            $productType.on('change', syncProductType);
+            // The dropdown is the second route into the same permanent deletion,
+            // so it asks the same question. The confirm lives only in the change
+            // handler — never in syncProductType(), which also runs on load —
+            // and the previous value is remembered so declining can put the
+            // select back. The toggle's own prompt cannot double up here:
+            // syncProductType() flips it with .trigger('change'), which fires no
+            // click, and the click handler above is the only thing that asks.
+            var lastProductType = $productType.val();
+            $productType.on('change', function () {
+                var next = $productType.val();
+                if (isVariableType(lastProductType) && !isVariableType(next) && !confirmVariableLoss()) {
+                    // Put the select back, then re-announce the restored value.
+                    // A <select> fires `change` only after its value has already
+                    // moved, so listeners registered ahead of this one have
+                    // already seen the declined value — the Yoast shim printed
+                    // inline by brikpanel-product-editor.php mirrors it into its
+                    // hidden #product-type — and silently rewinding the box would
+                    // leave them out of step. Dispatched natively, not with
+                    // jQuery's .trigger(): jQuery only runs handlers bound
+                    // through jQuery, so a plain addEventListener like the shim's
+                    // would never hear it. Re-firing cannot loop, because `next`
+                    // is then the value already held in lastProductType and the
+                    // branch above is false the second time through.
+                    $productType.val(lastProductType);
+                    $productType[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    return;
+                }
+                lastProductType = next;
+                syncProductType();
+            });
             syncProductType();
         }
 
@@ -3492,6 +3569,9 @@
        would then quietly resurrect variations the user just deleted. */
     function resetVariationState() {
         state.variations = [];
+        // The server side of this reset is a real deletion, so the count the
+        // conversion warning reads has to come down with it.
+        productData.variation_count = 0;
         state.varExtraValues = null;
         state.previewExtras = null;
         state.removedVariationIds = null;
@@ -4996,6 +5076,12 @@
                 // taxonomies before the variation list is adopted, because
                 // adoptSavedVariations() reads the axis keys back out of the
                 // live DOM to label the rows and to reset the stale-table hint.
+                // Keep the count the conversion warning reads in step with what
+                // the product now actually has. Sent on every successful save,
+                // including one that just converted the product to simple.
+                if (typeof r.data.variation_count === 'number') {
+                    productData.variation_count = r.data.variation_count;
+                }
                 adoptSavedAttributes(r.data.attributes, r.data.global_attributes, r.data.promoted_axes, silent);
                 if (r.data.variations) { adoptSavedVariations(r.data.variations, r.data.variation_extras || {}, silent); }
                 if (r.data.product_id) {

@@ -77,6 +77,15 @@ function brikpanel_order_fields_is_internal_key( $key ) {
 		return true;
 	}
 
+	// BrikPanel's own merge bookkeeping. `_brikpanel_merge_pending` only exists
+	// while a merge is half-finished and holds an id list plus a timestamp, so it
+	// is noise in the picker and gibberish on the card. The merge result keys
+	// (`_brikpanel_merged_into`, `_brikpanel_merged_from_numbers`) are left
+	// selectable on purpose: a merchant may well want them on the order.
+	if ( '_brikpanel_merge_pending' === $key || '_brikpanel_merged_from' === $key ) {
+		return true;
+	}
+
 	$prefixes = [ '_wc_order_attribution', '_wp_', '_woocommerce_', '_wcpay', '_stripe_' ];
 	foreach ( $prefixes as $prefix ) {
 		if ( strpos( $key, $prefix ) === 0 ) {

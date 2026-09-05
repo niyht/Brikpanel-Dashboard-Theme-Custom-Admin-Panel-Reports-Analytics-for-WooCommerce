@@ -1749,3 +1749,15 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	display: none !important;
 }
 
+
+/* Bulk action that needs more than one row selected (order merging). Disabled
+   rather than hidden so the merchant can see the action exists and read why it
+   is not available yet from the button's title. */
+.brikpanel-bulk-actions button[disabled] {
+	opacity: .45;
+	cursor: not-allowed;
+}
+
+.brikpanel-bulk-actions button[disabled]:hover {
+	background: #fff;
+}

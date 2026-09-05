@@ -866,6 +866,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                     'clear_filters'     => __( 'Clear filters', 'brikpanel' ),
                     'filter_order_tag'  => __( 'order tag', 'brikpanel' ),
                     'filter_shipping_method' => __( 'shipping method', 'brikpanel' ),
+                    'merge_needs_two'   => __( 'Select at least two orders to merge.', 'brikpanel' ),
                 ],
             ] );
         }
@@ -1221,6 +1222,12 @@ function brikpanel_enqueue_woo_assets($hook) {
             $saved_typenow   = $typenow;
             $saved_pagenow   = $pagenow;
             set_current_screen('product');
+            // Must run before the enqueue hooks are re-fired below. A plugin
+            // that serves the block editor asks the screen, not the request:
+            // SEOPress hands a block-editor screen its `seopress-sidebar-panel`
+            // bundle (a Gutenberg PluginSidebar that can never mount here) and
+            // skips the metabox assets the editor actually needs.
+            brikpanel_mark_screen_classic();
             $spoof_product_id = isset($_GET['product_id']) ? absint($_GET['product_id']) : 0;
             if ($spoof_product_id) {
                 $spoof_post = get_post($spoof_product_id);
@@ -1783,6 +1790,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'confirm_delete_variation' => __('Delete this variation? This change is applied when you save the product.', 'brikpanel'),
                 /* translators: %d is the number of variations that will be deleted */
                 'confirm_clear_variations' => __('Delete all %d variations? They are removed immediately and this cannot be undone. The product stays a variable product and its attributes are kept.', 'brikpanel'),
+                /* translators: %d is the number of variations that will be deleted */
+                'confirm_convert_to_simple' => __('This product has %d variations. Changing it to a simple product deletes them permanently and this cannot be undone.', 'brikpanel'),
                 'clearing_variations'      => __('Deleting…', 'brikpanel'),
                 /* translators: %d is how many variations are still waiting to be deleted */
                 'clearing_variations_left' => __('Deleting… %d left', 'brikpanel'),

@@ -338,8 +338,15 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 	// single entry instead of spamming the tooltip with one row per order.
 	// The two cases share a column shape so the caller can iterate uniformly.
 	$group_key  = "COALESCE(NULLIF(pp.post_title, ''), oi.order_item_name)";
+	// Every non-aggregate is wrapped, product_id included. The grouping key is
+	// the product TITLE, so a bare `pid.meta_value` is not functionally
+	// dependent on it and a host running ONLY_FULL_GROUP_BY (common on managed
+	// WordPress hosting) rejected the whole query — which silently emptied the
+	// "products with no cost on file" list on the dashboard profit card. Rows
+	// in one group are the same product, so MAX() picks the same id the bare
+	// column used to return, and skips the NULLs an unlinked line item leaves.
 	$select     = "
-		CAST(pid.meta_value AS UNSIGNED) AS product_id,
+		MAX(CAST(pid.meta_value AS UNSIGNED)) AS product_id,
 		MAX(pp.post_title)               AS product_title,
 		MAX(oi.order_item_name)          AS item_name,
 		COALESCE(SUM(CAST(qty.meta_value AS DECIMAL(20,4))), 0) AS missing_units,

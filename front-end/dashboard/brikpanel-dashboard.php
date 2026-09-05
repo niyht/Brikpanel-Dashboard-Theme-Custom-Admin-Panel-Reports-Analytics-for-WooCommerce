@@ -503,7 +503,7 @@ class Brikpanel_Dashboard {
                             </svg>
                             <span class="brikpanel-dash-copy-help-tip" role="tooltip">
                                 <span class="brikpanel-dash-copy-help-title"><?php esc_html_e( 'Copy everything', 'brikpanel' ); ?></span>
-                                <span class="brikpanel-dash-copy-help-body"><?php esc_html_e( 'Bundles your store’s key data — KPIs, top products, recent orders, customers and settings — into a single Markdown report and copies it to your clipboard. Paste it into ChatGPT, Claude or any AI tool to get instant analysis, insights and recommendations about your store.', 'brikpanel' ); ?></span>
+                                <span class="brikpanel-dash-copy-help-body"><?php esc_html_e( 'Bundles your store’s key data — KPIs, profit and margins, cost of goods, ad spend, expenses, top products and categories, customers and settings — into a single Markdown report and copies it to your clipboard. Paste it into ChatGPT, Claude or any AI tool to get instant analysis, insights and recommendations about your store.', 'brikpanel' ); ?></span>
                             </span>
                         </span>
                         <?php

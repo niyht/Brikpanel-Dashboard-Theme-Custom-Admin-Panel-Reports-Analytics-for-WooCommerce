@@ -183,6 +183,10 @@ function brikpanel_collect_product_metaboxes() {
     $saved_post_type = isset($GLOBALS['post_type']) ? $GLOBALS['post_type'] : null;
 
     set_current_screen('product');
+    // Same classic marking as the editor itself, so this probe discovers the
+    // exact set of boxes the editor will later render. Without it the picker
+    // could omit a section the editor is perfectly able to show.
+    brikpanel_mark_screen_classic();
 
     // Pick any real product so 3rd-party plugins get a post they can inspect.
     $probe = get_posts([
@@ -384,6 +388,13 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'    => __('Merge orders', 'brikpanel'),
+            'id'      => 'brikpanel_order_merge',
+            'type'    => 'checkbox',
+            'desc'    => __('Select two or more orders in the list and combine them into one. Items move to the order you pick as the main one; the others are cancelled with a note pointing to it, never deleted. A preview screen shows what will change before anything is written.', 'brikpanel'),
+            'default' => 'yes',
+        ],
+        [
             'type' => 'sectionend',
             'id'   => 'brk_orders_title',
         ],
@@ -432,7 +443,7 @@ function brikpanel_settings_fields() {
             'name'    => __('Use the full screen width', 'brikpanel'),
             'id'      => 'brikpanel_pe_widescreen',
             'type'    => 'checkbox',
-            'desc'    => __('On a wide monitor, let the variations table and the two description editors use the extra width instead of staying in the centre column. Everything else keeps its normal width. Has no effect on screens narrower than about 1360 pixels.', 'brikpanel'),
+            'desc'    => __('On a wide monitor, let the editor use the extra width instead of staying in a narrow centre column. It keeps growing with the screen rather than stopping at a fixed size, and the short setting cards move into a side column, the way the standard WordPress editor arranges them. Has no effect on screens narrower than about 1360 pixels.', 'brikpanel'),
             'default' => 'no',
         ],
         [

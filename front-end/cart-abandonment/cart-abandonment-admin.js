@@ -126,6 +126,49 @@
 		return svg;
 	}
 
+	// A padlock, drawn the same way and at the same size as the WhatsApp mark so
+	// the cell keeps its rhythm when a store's subscription lapses.
+	// i18n-ignore: SVG path data, not text. WA_PATH above escapes the audit's
+	// heuristic only because its coordinates happen to look less word-like.
+	var LOCK_PATH = 'M12 1.5A4.5 4.5 0 0 0 7.5 6v3H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-.5V6A4.5 4.5 0 0 0 12 1.5Zm0 2A2.5 2.5 0 0 1 14.5 6v3h-5V6A2.5 2.5 0 0 1 12 3.5Zm0 10a1.75 1.75 0 0 1 .75 3.33V19a.75.75 0 0 1-1.5 0v-2.17A1.75 1.75 0 0 1 12 13.5Z';
+
+	function lockIcon() {
+		var ns = 'http://www.w3.org/2000/svg';
+		var svg = document.createElementNS(ns, 'svg');
+		svg.setAttribute('viewBox', '0 0 24 24');
+		svg.setAttribute('aria-hidden', 'true');
+		svg.setAttribute('focusable', 'false');
+		var path = document.createElementNS(ns, 'path');
+		path.setAttribute('d', LOCK_PATH);
+		path.setAttribute('fill', 'currentColor');
+		svg.appendChild(path);
+		return svg;
+	}
+
+	// The locked stand-in for a feature BrikMentor unlocks. Every string comes
+	// from the localized config: cfg.i18n.locked is ours, cfg.lockText is
+	// BrikMentor's own already-translated sentence, added on a second line only
+	// when it is there.
+	function lockBadge() {
+		var text = cfg.i18n.locked;
+		if (cfg.lockText) {
+			text += '\n' + cfg.lockText;
+		}
+		// Without a usable URL this must not be a link: href="" reloads the
+		// admin page, which is worse than not being clickable.
+		var el = document.createElement(cfg.lockUrl ? 'a' : 'span');
+		el.className = 'brikpanel-cartab-lock';
+		if (cfg.lockUrl) {
+			el.href = cfg.lockUrl;
+			el.target = '_blank';
+			el.rel = 'noopener noreferrer';
+		}
+		el.title = text;
+		el.setAttribute('aria-label', cfg.i18n.locked);
+		el.appendChild(lockIcon());
+		return el;
+	}
+
 	function muted(text) {
 		var el = document.createElement('span');
 		el.className = 'brikpanel-cartab-muted';
@@ -133,8 +176,25 @@
 		return el;
 	}
 
+	// The open count pinned to the WhatsApp button. A number only, so nothing
+	// here needs translating; the sentence it belongs to is composed in PHP and
+	// goes on the link's own aria-label, because a label there replaces
+	// whatever the badge might have said for itself.
+	function waCountBadge(count) {
+		var el = document.createElement('span');
+		el.className = 'brikpanel-cartab-wa-count';
+		el.setAttribute('aria-hidden', 'true');
+		el.textContent = String(count); // i18n-ignore: a numeral, not text
+		return el;
+	}
+
 	function renderPhoneCell(row) {
 		var cell = colCell('phone', 'brikpanel-cartab-phone-cell');
+
+		if (row.wa_locked) {
+			cell.appendChild(lockBadge());
+			return cell;
+		}
 
 		if (!row.phone) {
 			cell.appendChild(muted('—'));
@@ -160,11 +220,71 @@
 			link.href = 'https://wa.me/' + row.wa_number + '?text=' + encodeURIComponent(row.wa_text || '');
 			link.target = '_blank';
 			link.rel = 'noopener noreferrer';
-			// wa_title spells out the number that will be dialled; both strings
-			// are translated in PHP, so neither is an English fallback.
-			link.title = row.wa_title || cfg.i18n.whatsapp;
-			link.setAttribute('aria-label', cfg.i18n.whatsapp);
+			link.setAttribute('data-cartab-id', String(row.id));
 			link.appendChild(whatsappIcon());
+
+			// How many times this draft has been opened, answered in PHP by
+			// whoever counts it (BrikMentor). Zero draws no badge: an old
+			// BrikMentor that cannot count shows the plain button, never a "0".
+			var opens = parseInt(row.wa_opens, 10) || 0;
+			var badge = null;
+			if (opens > 0) {
+				badge = waCountBadge(opens);
+				link.appendChild(badge);
+			}
+			// An aria-label on a link REPLACES everything inside it, so the
+			// count has to be written into the label or a screen reader never
+			// hears it - which is also why the badge itself is aria-hidden
+			// rather than left to be read twice. Both halves are composed and
+			// translated in PHP: wa_title spells out the number that will be
+			// dialled, wa_opens_title how often the draft was opened. Neither
+			// is an English fallback.
+			link.setAttribute('aria-label', [cfg.i18n.whatsapp, row.wa_opens_title || ''].filter(Boolean).join(' — '));
+			link.title = [row.wa_title || cfg.i18n.whatsapp, row.wa_opens_title || ''].filter(Boolean).join('\n');
+
+			// Nothing is sent from this page, but opening the draft is worth
+			// counting - it is the only trace this channel leaves. The tab
+			// opens whether or not the beacon lands; keepalive lets the
+			// request finish even if the merchant navigates away.
+			link.addEventListener('click', function () {
+				var body = new FormData();
+				body.append('action', 'brikpanel_cartab_outreach_click');
+				body.append('_ajax_nonce', cfg.nonce);
+				body.append('id', String(row.id));
+				body.append('channel', 'whatsapp');
+				fetch(cfg.ajax_url, { method: 'POST', credentials: 'same-origin', body: body, keepalive: true })
+					.then(function (res) { return res.json(); })
+					.then(function (json) {
+						// THE SERVER'S COUNT, NOT A GUESS. Incrementing here
+						// looked simpler and was wrong: repeat opens of the same
+						// cart are folded together for ten minutes, so a badge
+						// that moved on every click would show a number the
+						// database does not hold - and would show it too high,
+						// which is the one direction a figure we also report to
+						// ourselves may not err. A null means nobody is
+						// counting; the badge is then left exactly as drawn.
+						var n = json && json.success && json.data ? json.data.opens : null;
+						if (typeof n !== 'number' || n <= 0) {
+							return;
+						}
+						opens = n;
+						if (!badge) {
+							badge = waCountBadge(opens);
+							link.appendChild(badge);
+						} else {
+							badge.textContent = String(opens);
+						}
+					})
+					.catch(function () { /* an uncounted open is not worth interrupting the merchant */ });
+
+				// The sentence behind the count names a date that is about to be
+				// stale, and there is no composing its replacement here without
+				// shipping plural rules into JS. Drop it rather than announce
+				// something untrue; the control keeps its own name and the full
+				// sentence comes back on the next load.
+				link.title = row.wa_title || cfg.i18n.whatsapp;
+				link.setAttribute('aria-label', cfg.i18n.whatsapp);
+			});
 			cell.appendChild(link);
 		}
 
@@ -174,6 +294,11 @@
 	function renderMailCell(row) {
 		var cell = colCell('mail', 'brikpanel-cartab-mail-cell');
 		var mail = row.mail || {};
+
+		if (mail.locked) {
+			cell.appendChild(lockBadge());
+			return cell;
+		}
 
 		if (!mail.text) {
 			cell.appendChild(muted('—'));

@@ -707,6 +707,9 @@ class Brikpanel_Sheets_Mapping {
 				'_customer_ip_address', '_customer_user_agent', '_order_total', '_order_tax',
 				'_order_shipping', '_order_shipping_tax', '_cart_discount', '_cart_discount_tax',
 				'is_vat_exempt',
+				// BrikPanel merge bookkeeping: an id array and a half-finished-merge
+				// breadcrumb. Neither exports as anything readable.
+				'_brikpanel_merged_from', '_brikpanel_merge_pending',
 				'shipping_fee_recipient', 'tax_fee_recipient', 'shipping_tax_fee_recipient',
 			] );
 		}

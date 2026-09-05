@@ -1,0 +1,286 @@
+/**
+ * BrikPanel — Order merge preview screen.
+ *
+ * Monochrome by design: colour is reserved for the two states that must not be
+ * missed, a blocking error and a warning worth reading before an irreversible
+ * click. Everything else is greyscale.
+ */
+
+.brikpanel-merge {
+	--bpm-bg: #f1f1f1;
+	--bpm-card: #fff;
+	--bpm-text: #303030;
+	--bpm-text-2: #616161;
+	--bpm-muted: #8a8a8a;
+	--bpm-border: #e3e3e3;
+	--bpm-success: #1a8917;
+	--bpm-error: #d72c0d;
+
+	max-width: 820px;
+	margin-inline: auto;
+	padding-block-end: 2rem;
+	font-size: 0.875rem;
+	line-height: 1.5;
+	color: var(--bpm-text);
+}
+
+.brikpanel-merge .bpm-title {
+	margin: 1rem 0 0.25rem;
+	padding: 0;
+	font-size: 1.125rem;
+	font-weight: 600;
+	color: var(--bpm-text);
+}
+
+.brikpanel-merge .bpm-lede {
+	margin: 0 0 1rem;
+	color: var(--bpm-text-2);
+	max-width: 62ch;
+}
+
+.brikpanel-merge .bpm-form {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+/* ---------------------------------------------------------------- cards -- */
+.brikpanel-merge .bpm-card {
+	background: var(--bpm-card);
+	border: 1px solid var(--bpm-border);
+	border-radius: 0.75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	padding: 1.25rem 1.5rem;
+}
+
+.brikpanel-merge .bpm-card h2 {
+	margin: 0 0 0.25rem;
+	padding: 0;
+	font-size: 0.9375rem;
+	font-weight: 600;
+	color: var(--bpm-text);
+}
+
+.brikpanel-merge .bpm-hint {
+	margin: 0 0 0.875rem;
+	font-size: 0.8125rem;
+	color: var(--bpm-muted);
+	max-width: 62ch;
+}
+
+.brikpanel-merge .bpm-card--error {
+	border-color: #f1b0b0;
+	background: #fce4e4;
+	color: #8f2413;
+}
+
+.brikpanel-merge .bpm-card--error h2 {
+	color: #8f2413;
+}
+
+.brikpanel-merge .bpm-card--warn {
+	border-color: #e8d48a;
+	background: #fdf7e3;
+}
+
+.brikpanel-merge .bpm-card--error ul,
+.brikpanel-merge .bpm-card--warn ul {
+	margin: 0;
+	padding-inline-start: 1.1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+}
+
+.brikpanel-merge .bpm-card--warn ul {
+	color: #6b5a17;
+}
+
+/* --------------------------------------------------------- order picker -- */
+.brikpanel-merge .bpm-orders,
+.brikpanel-merge .bpm-choices {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.brikpanel-merge .bpm-order > label,
+.brikpanel-merge .bpm-choices > li > label {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.75rem;
+	border: 1px solid var(--bpm-border);
+	border-radius: 0.5rem;
+	cursor: pointer;
+	transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.brikpanel-merge .bpm-order > label:hover,
+.brikpanel-merge .bpm-choices > li > label:hover {
+	background: #fafafa;
+}
+
+.brikpanel-merge .bpm-order.is-main > label {
+	border-color: var(--bpm-text);
+	box-shadow: 0 0 0 1px var(--bpm-text);
+}
+
+.brikpanel-merge .bpm-order input[type="radio"],
+.brikpanel-merge .bpm-choices input[type="radio"] {
+	margin: 0;
+	flex: none;
+}
+
+.brikpanel-merge .bpm-order-main {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.brikpanel-merge .bpm-order-num {
+	font-weight: 600;
+}
+
+.brikpanel-merge .bpm-order-meta {
+	font-size: 0.75rem;
+	color: var(--bpm-muted);
+}
+
+.brikpanel-merge .bpm-order-total {
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.brikpanel-merge .bpm-badge {
+	flex: none;
+	font-size: 0.6875rem;
+	font-weight: 550;
+	padding: 0.125rem 0.5rem;
+	border-radius: 1rem;
+	background: #e4f5e1;
+	color: #14620f;
+	white-space: nowrap;
+}
+
+/* Keep the layout from collapsing into the order number on a narrow screen. */
+@media (max-width: 600px) {
+	.brikpanel-merge .bpm-order > label {
+		flex-wrap: wrap;
+	}
+	.brikpanel-merge .bpm-order-total {
+		margin-inline-start: auto;
+	}
+}
+
+/* --------------------------------------------------------------- choices -- */
+.brikpanel-merge .bpm-choices > li > label > span {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+}
+
+.brikpanel-merge .bpm-choices em {
+	font-style: normal;
+	font-size: 0.75rem;
+	color: var(--bpm-muted);
+}
+
+.brikpanel-merge .bpm-check {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
+	margin-top: 0.875rem;
+	padding-top: 0.875rem;
+	border-top: 1px solid #e8d48a;
+	font-size: 0.8125rem;
+	cursor: pointer;
+}
+
+/* --------------------------------------------------------------- summary -- */
+.brikpanel-merge .bpm-summary {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+	gap: 0.875rem 1.25rem;
+	margin: 0 0 0.875rem;
+}
+
+.brikpanel-merge .bpm-summary dt {
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: var(--bpm-muted);
+	margin: 0 0 0.125rem;
+}
+
+.brikpanel-merge .bpm-summary dd {
+	margin: 0;
+	font-weight: 600;
+}
+
+.brikpanel-merge .bpm-summary .bpm-big {
+	font-size: 1.0625rem;
+}
+
+/* --------------------------------------------------------------- buttons -- */
+.brikpanel-merge .bpm-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.brikpanel-merge .bpm-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.5rem 1rem;
+	border: 0;
+	border-radius: 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.4;
+	cursor: pointer;
+	text-decoration: none;
+	transition: background 0.15s ease;
+}
+
+.brikpanel-merge .bpm-btn--pri {
+	background: var(--bpm-text);
+	color: #fff;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-merge .bpm-btn--pri:hover,
+.brikpanel-merge .bpm-btn--pri:focus {
+	background: #1a1a1a;
+	color: #fff;
+}
+
+.brikpanel-merge .bpm-btn--sec {
+	background: #fff;
+	color: var(--bpm-text);
+	box-shadow: inset 0 0 0 1px var(--bpm-border), 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.brikpanel-merge .bpm-btn--sec:hover,
+.brikpanel-merge .bpm-btn--sec:focus {
+	background: #f7f7f7;
+	color: var(--bpm-text);
+}
+
+.brikpanel-merge .bpm-btn:focus-visible {
+	outline: 2px solid var(--bpm-text);
+	outline-offset: 2px;
+}
+
+/* .bpm-btn sets display:inline-flex, which outranks the browser's own
+   [hidden]{display:none} on specificity. Without this the "Update preview"
+   fallback button stays on screen after scripting hides it. */
+.brikpanel-merge [hidden] {
+	display: none !important;
+}
