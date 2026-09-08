@@ -1284,8 +1284,12 @@
 }
 
 /* ---------- Hide WP Admin defaults ---------- */
+/* Red errors stay on screen. Both flavours must be named: WordPress core and
+   WooCommerce still emit the legacy `error` class alongside `notice`
+   (`<div id="woocommerce_errors" class="error notice">`), so guarding only
+   `.notice-error` swallowed those with no trace. */
 body.admin_page_brikpanel-coupons .screen-meta-links,
-body.admin_page_brikpanel-coupons .notice:not(.brikpanel-notice):not(.notice-error),
+body.admin_page_brikpanel-coupons .notice:not(.brikpanel-notice):not(.notice-error):not(.error),
 body.admin_page_brikpanel-coupons #screen-meta {
     display: none;
 }

@@ -169,6 +169,58 @@
 		return el;
 	}
 
+	// The WhatsApp mark with a padlock stamped on it: the locked stand-in for
+	// the button itself, used in the Phone cell. It stays recognisably WhatsApp
+	// on purpose - a bare padlock says something is locked without saying what,
+	// and this column's whole promise is the conversation it opens.
+	//
+	// The stamp goes on the BOTTOM-end corner. Top-end is where this screen puts
+	// a count (waCountBadge), so a padlock in the counter's slot would be read
+	// as a number by anyone who has seen the live button; and the inline-start
+	// side is out because the button carries margin-inline-start and anything
+	// there would ride over the phone digits.
+	function waLockBadge() {
+		var text = cfg.i18n.locked;
+		if (cfg.lockText) {
+			text += '\n' + cfg.lockText;
+		}
+		// Same reasoning as lockBadge(): with no usable URL this must not be a
+		// link, because href="" reloads the admin page.
+		var el = document.createElement(cfg.lockUrl ? 'a' : 'span');
+		el.className = 'brikpanel-cartab-wa brikpanel-cartab-wa-locked';
+		if (cfg.lockUrl) {
+			el.href = cfg.lockUrl;
+			el.target = '_blank';
+			el.rel = 'noopener noreferrer';
+			// Opens the launch pitch instead of navigating - but only where the
+			// server said this store may be pitched at all, which a store that
+			// already owns BrikMentor never is. The promo module owns the
+			// listener; where it does not render, nothing intercepts the click
+			// and the href is simply followed. No fallback to get wrong.
+			if (cfg.lockPitch) {
+				el.setAttribute('data-bm-open', '');
+				// Which pitch to show: the one that answers the WhatsApp mark
+				// that was actually clicked, not the screen's general one.
+				el.setAttribute('data-bm-variant', 'lock');
+			}
+		}
+		el.title = text;
+		// Same accessible name as the plain padlock next door: an aria-label on
+		// a link replaces everything inside it, and "Included with BrikMentor"
+		// is both what this control is and what it does. The WhatsApp mark and
+		// the tooltip carry the rest.
+		el.setAttribute('aria-label', cfg.i18n.locked);
+		el.appendChild(whatsappIcon());
+
+		var stamp = document.createElement('span');
+		stamp.className = 'brikpanel-cartab-wa-lock';
+		stamp.setAttribute('aria-hidden', 'true');
+		stamp.appendChild(lockIcon());
+		el.appendChild(stamp);
+
+		return el;
+	}
+
 	function muted(text) {
 		var el = document.createElement('span');
 		el.className = 'brikpanel-cartab-muted';
@@ -192,7 +244,7 @@
 		var cell = colCell('phone', 'brikpanel-cartab-phone-cell');
 
 		if (row.wa_locked) {
-			cell.appendChild(lockBadge());
+			cell.appendChild(waLockBadge());
 			return cell;
 		}
 

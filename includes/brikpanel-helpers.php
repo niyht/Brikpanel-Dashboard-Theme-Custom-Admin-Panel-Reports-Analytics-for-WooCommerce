@@ -2081,3 +2081,90 @@ if ( ! function_exists( 'brikpanel_mark_screen_classic' ) ) {
 		}
 	}
 }
+
+if ( ! function_exists( 'brikpanel_csv_safe_cell' ) ) {
+	/**
+	 * OWASP CSV / formula-injection guard for one exported cell.
+	 *
+	 * Spreadsheet apps treat a cell whose first character is `=`, `+`, `-`,
+	 * `@`, TAB or CR as a formula rather than as text. Every BrikPanel CSV
+	 * export carries wording a customer typed at checkout, so a billing name
+	 * of `=HYPERLINK("https://evil","Refund")` opens as a live phishing link
+	 * in the merchant's spreadsheet, and `=cmd|'/C calc'!A0` asks Excel to run
+	 * a command over DDE. The attacker needs no account: placing a guest order
+	 * is enough, and the payload fires on the merchant's own machine.
+	 *
+	 * Mitigation: prefix the value with a single quote, which every spreadsheet
+	 * reads as "this cell is literal text" and hides from the displayed value.
+	 * Same fix WooCommerce core uses (WC_CSV_Exporter::escape_data) and the
+	 * same one this plugin already applies to the Google Sheets push
+	 * (Brikpanel_Sheets_Client::neutralise_formula_injection).
+	 *
+	 * Plain decimal numbers pass through untouched: a number cannot form a
+	 * formula, and quoting one turns a sortable column into text. That test is
+	 * deliberately looser than core's is_int/is_float, because rows here are
+	 * already stringified — number_format() and WC_Product::get_regular_price()
+	 * both return strings, and a backordered stock level of -5 or a
+	 * refund-negative total of -12.50 has to stay a number in the sheet.
+	 *
+	 * The test is a regex and NOT is_numeric(), which would undo the one guard
+	 * this plugin already shipped: is_numeric( '+905551112233' ) is true, and
+	 * an international phone is the one real column that starts with `+`.
+	 * Excel evaluates such a cell and silently eats the `+`. is_numeric() also
+	 * accepts a leading TAB and trailing whitespace, and its whitespace rules
+	 * changed in PHP 8.0 — none of which belongs in a security guard.
+	 *
+	 * ASCII byte comparisons only, no mb_* calls: every trigger character is
+	 * ASCII, so the first byte is the first character for this purpose.
+	 *
+	 * @param mixed $value Raw cell value.
+	 * @return mixed Safe value. Non-strings and plain numbers are returned as-is.
+	 */
+	function brikpanel_csv_safe_cell( $value ) {
+		// int / float / null / bool: fputcsv stringifies these itself, and the
+		// only one that can lead with a trigger character is a negative number,
+		// which is not a formula. Returning them untouched keeps output identical.
+		if ( ! is_string( $value ) || $value === '' ) {
+			return $value;
+		}
+
+		// Plain decimal number, optionally negative. No exponent, no leading
+		// `+`, no surrounding whitespace — anything fuzzier gets the quote.
+		if ( preg_match( '/^-?[0-9]+(\.[0-9]+)?$/', $value ) ) {
+			return $value;
+		}
+
+		// Check the true first byte (catches TAB / CR) and the first
+		// non-whitespace byte (catches " =1+1", which a consumer that trims
+		// would still evaluate).
+		$trimmed = ltrim( $value );
+		if ( in_array( $value[0], [ '=', '+', '-', '@', "\t", "\r" ], true )
+			|| ( $trimmed !== '' && in_array( $trimmed[0], [ '=', '+', '-', '@' ], true ) ) ) {
+			return "'" . $value;
+		}
+
+		return $value;
+	}
+}
+
+if ( ! function_exists( 'brikpanel_csv_safe_row' ) ) {
+	/**
+	 * Run every cell of one export row through brikpanel_csv_safe_cell().
+	 *
+	 * Applied to the whole row rather than to hand-picked columns on purpose:
+	 * picking columns is how the original bug happened — the phone column was
+	 * guarded and the billing name sitting right next to it was not. Wrapping
+	 * the row means a column added later is covered by default instead of
+	 * being one more thing to remember.
+	 *
+	 * Header rows are deliberately NOT passed through this. They are
+	 * plugin-controlled translated strings, and in the products export they
+	 * are WooCommerce importer column names that have to round-trip exactly.
+	 *
+	 * @param array $row One CSV row.
+	 * @return array Same row, same keys, every cell neutralised.
+	 */
+	function brikpanel_csv_safe_row( array $row ) {
+		return array_map( 'brikpanel_csv_safe_cell', $row );
+	}
+}

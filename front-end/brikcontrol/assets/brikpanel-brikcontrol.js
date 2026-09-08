@@ -144,21 +144,9 @@
         startPolling();
     }
 
-    // Banner dismiss handler — works wherever the banner is rendered. Keeps
-    // the dashboard render path simple (no extra script needed there).
-    document.addEventListener('click', function (e) {
-        var btn = e.target.closest('[data-bc-dismiss]');
-        if (!btn) return;
-        e.preventDefault();
-        var banner = btn.closest('[data-bc-banner]');
-        if (banner) banner.style.display = 'none';
-
-        var fd = new FormData();
-        fd.append('action', 'brikpanel_brikcontrol_dismiss');
-        fd.append('security', cfg.nonce);
-        fd.append('key', 'dashboard_banner');
-        fetch(cfg.ajax_url, { method: 'POST', credentials: 'same-origin', body: fd }).catch(function () {});
-    });
+    // No banner dismiss handler here: the banner renders on the dashboard, not
+    // on this page, so the copy that used to sit here was dead code. Its owner
+    // is brikpanel-bc-banner.js.
 
     // Per-check repair action. The button only exists for checks that opted in
     // via supports_fix() and that currently have something to clean.

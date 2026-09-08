@@ -511,10 +511,11 @@ class Brikpanel_Cart_Abandonment {
 		// Two columns, two different questions - they used to share one answer
 		// and that was the bug.
 		//
-		// Phone / WhatsApp is built here, out of this table's own data. All it
-		// needs is for BrikMentor to be the reason we bother resolving contacts
-		// at all, so the existence check is the right one.
-		if ( ! self::mentor_active() ) {
+		// Phone / WhatsApp is built here, out of this table's own data, so this
+		// column is BrikPanel's own and is the default on every store. What
+		// BrikMentor gates is the ACTION inside the cell, and a gated action is
+		// still drawable - that is what the padlock is for.
+		if ( ! self::outreach_column_available() ) {
 			unset( $defs['phone'] );
 		}
 		// Follow-ups is somebody else's number. Asking whether BrikMentor is
@@ -523,6 +524,12 @@ class Brikpanel_Cart_Abandonment {
 		// inactive WooCommerce - all three define BRIKMENTOR_VERSION before they
 		// stop. The column was then drawn with an empty cell on every row, and an
 		// empty column reads as broken, not as "nothing to report".
+		//
+		// The asymmetry with Phone above is deliberate, not an oversight: a
+		// locked Phone cell still shows something true (there IS an action here,
+		// behind a door), while a Follow-ups cell with no answerer has literally
+		// nothing to draw. Locking an empty box teaches nobody anything, and one
+		// padlock per row is the honest amount of the same message.
 		if ( ! self::mentor_stats_available() ) {
 			unset( $defs['mail'] );
 		}
@@ -3031,6 +3038,83 @@ class Brikpanel_Cart_Abandonment {
 	}
 
 	/**
+	 * Should the outreach cells be drawn as a closed door?
+	 *
+	 * A different question from mentor_locked(), which is why it is a different
+	 * function rather than a widening of that one. mentor_locked() answers "did
+	 * BrikMentor tell us this store has lapsed", and its fail-open direction is
+	 * the thing BrikMentor's own suite exists to defend: silence there must
+	 * never read as locked. This one answers "should this cell show a padlock
+	 * instead of an action", and for THAT question a BrikMentor which is not
+	 * installed at all is a closed door. Two questions, two functions, so
+	 * neither can rot the other.
+	 *
+	 * @return bool
+	 */
+	public static function outreach_locked() {
+		return ! self::mentor_active() || self::mentor_locked();
+	}
+
+	/**
+	 * Should the Phone / WhatsApp column exist on this screen at all?
+	 *
+	 * mentor_active() comes first and unconditionally, because a lapsed store's
+	 * padlock is BrikMentor's own message about its own licence, not a BrikPanel
+	 * promotion - the promo kill switch must never be able to silence it.
+	 *
+	 * brikpanel_brikmentor_is_live() and deliberately NOT promo_active(): the
+	 * latter is is_live() && ! installed(), which is false for a lapsed store
+	 * and would delete the column from precisely the store that needs it. A
+	 * merchant who has switched the launch flag off, and never installed
+	 * BrikMentor, gets the screen exactly as it was - a padlock reading
+	 * "Included with BrikMentor" is promotion whether or not it is clickable.
+	 *
+	 * @return bool
+	 */
+	public static function outreach_column_available() {
+		if ( self::mentor_active() ) {
+			return true;
+		}
+
+		return function_exists( 'brikpanel_brikmentor_is_live' ) && brikpanel_brikmentor_is_live();
+	}
+
+	/**
+	 * Where the padlock points, and whether the launch pitch is the right
+	 * destination for this store.
+	 *
+	 * `pitch` is decided here rather than client-side from "is the panel in the
+	 * DOM", because a store that HAS BrikMentor must never be shown the launch
+	 * pitch. BrikMentor's entitlement payload distinguishes three locked shapes
+	 * and two of them - credentials unreadable, key not pasted yet - belong to a
+	 * store that is already paying; sending either to a first-month offer sells
+	 * it a second subscription, which is how a support ticket becomes a
+	 * chargeback. So whenever BrikMentor is here, the padlock follows the URL
+	 * BrikMentor itself chose and nothing else.
+	 *
+	 * @return array{url:string,text:string,pitch:bool}
+	 */
+	public static function outreach_lock() {
+		if ( self::mentor_active() ) {
+			$entitlement = self::mentor_entitlement();
+
+			return [
+				'url'   => is_array( $entitlement ) ? (string) $entitlement['url'] : '',
+				'text'  => is_array( $entitlement ) ? (string) $entitlement['text'] : '',
+				'pitch' => false,
+			];
+		}
+
+		return [
+			'url'   => function_exists( 'brikpanel_brikmentor_url' ) ? brikpanel_brikmentor_url() : '',
+			// Nothing to quote: with BrikMentor absent there is no second
+			// sentence in its own domain to put under our label.
+			'text'  => '',
+			'pitch' => function_exists( 'brikpanel_brikmentor_promo_active' ) && brikpanel_brikmentor_promo_active(),
+		];
+	}
+
+	/**
 	 * Resolve, for one page of rows, the two things the WhatsApp link needs:
 	 * a phone number and the country it was written in.
 	 *
@@ -3435,7 +3519,7 @@ class Brikpanel_Cart_Abandonment {
 		// a real number sitting beside a padlock reads as half-broken rather
 		// than as locked. The CSV/XLSX export still writes the raw Phone column
 		// either way, so no data is actually lost.
-		if ( self::mentor_locked() ) {
+		if ( self::outreach_locked() ) {
 			foreach ( $items as &$locked_row ) {
 				$locked_row['phone']        = '';
 				$locked_row['phone_source'] = '';
@@ -3644,14 +3728,12 @@ class Brikpanel_Cart_Abandonment {
 		$popup_enabled = get_option( 'brikpanel_cartab_popup_enabled', 'no' ) === 'yes';
 		$collection_on = self::is_enabled();
 		$settings_url  = admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=cart-abandonment' );
-		// Phone / WhatsApp / Follow-ups ride along with BrikMentor; without it
-		// those columns are not defined at all.
+		// Follow-ups rides along with BrikMentor; Phone / WhatsApp is our own
+		// column and is drawn locked when BrikMentor cannot unlock it.
 		$outreach = self::mentor_active();
 		// Page-level, not per-row: one URL in the config beats the same URL
 		// repeated in twenty-five row payloads.
-		$lock_entitlement = self::mentor_entitlement();
-		$lock_url         = is_array( $lock_entitlement ) ? (string) $lock_entitlement['url'] : '';
-		$lock_text        = is_array( $lock_entitlement ) ? (string) $lock_entitlement['text'] : '';
+		$lock = self::outreach_lock();
 
 		// Column definition plus this user's saved order and visibility. The
 		// header is rendered from the resolved order; the body is rendered by
@@ -3719,8 +3801,8 @@ class Brikpanel_Cart_Abandonment {
 
 			<?php
 			/**
-			 * Fires directly under the Abandoned Carts header. Used to render the
-			 * dismissible BrikMentor early-access card.
+			 * Fires directly under the Abandoned Carts header. Nothing hooks it in
+			 * core today; it stays as an extension point.
 			 *
 			 * @since 3.2.13
 			 */
@@ -3907,10 +3989,14 @@ class Brikpanel_Cart_Abandonment {
 			statuses: <?php echo wp_json_encode( self::display_status_labels() ); ?>,
 			sources:  <?php echo wp_json_encode( self::source_labels() ); ?>,
 			outreach: <?php echo wp_json_encode( $outreach ); ?>,
-			lockUrl:  <?php echo wp_json_encode( $lock_url ); ?>,
+			lockUrl:  <?php echo wp_json_encode( $lock['url'] ); ?>,
 			// BrikMentor's own sentence, already translated in its own domain.
 			// Shown underneath our label so each plugin keeps its vocabulary.
-			lockText: <?php echo wp_json_encode( $lock_text ); ?>,
+			lockText: <?php echo wp_json_encode( $lock['text'] ); ?>,
+			// Does the padlock open the launch pitch, or just follow its URL?
+			// Server-side, because a store that already has BrikMentor is never
+			// pitched - see outreach_lock().
+			lockPitch: <?php echo wp_json_encode( (bool) $lock['pitch'] ); ?>,
 			// Resolved column order + visibility for this user. The body cells
 			// are built from columnOrder, so the header and the rows always
 			// agree, including after a drag-and-drop reorder.
@@ -4002,7 +4088,7 @@ class Brikpanel_Cart_Abandonment {
 			$items[]              = $row;
 		}
 
-		if ( self::mentor_active() ) {
+		if ( self::outreach_column_available() ) {
 			$this->add_outreach( $items, $date_format );
 		}
 
@@ -4266,7 +4352,15 @@ class Brikpanel_Cart_Abandonment {
 			do {
 				$rows = self::query_entries( array_merge( $args, [ 'limit' => 500, 'offset' => $offset ] ) );
 				foreach ( $rows as $row ) {
-					fputcsv( $out, $to_line( $row ) );
+					// CSV only, on purpose — do NOT move this into $to_line().
+					// Every value here is typed by an anonymous storefront
+					// visitor, so a name of `=HYPERLINK(...)` would run as a
+					// formula the moment the merchant opens the file. The XLSX
+					// branch below shares $to_line but is not vulnerable: the
+					// writer emits text cells as t="inlineStr", which Excel
+					// never evaluates, so guarding there would only stamp a
+					// stray apostrophe onto every phone number in the workbook.
+					fputcsv( $out, brikpanel_csv_safe_row( $to_line( $row ) ) );
 				}
 				$offset += 500;
 			} while ( count( $rows ) === 500 );

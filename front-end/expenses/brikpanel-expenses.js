@@ -521,22 +521,39 @@
                 i18n.csv_scope       || 'Applies to',
                 i18n.csv_amount      || 'Amount',
             ]];
-            function q(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+            // Quote every cell (RFC 4180) and neutralise CSV formula injection.
+            // Mirrors brikpanel_csv_safe_cell() in includes/brikpanel-helpers.php:
+            // a value starting with = + - @ TAB or CR is run as a formula by
+            // Excel and Sheets, so it gets an apostrophe that marks it literal.
+            // Plain decimal numbers are exempt so amounts stay sortable, and a
+            // leading + is deliberately NOT treated as numeric.
+            function q(v) {
+                var s = String(v == null ? '' : v);
+                if (s !== '' && !/^-?[0-9]+(\.[0-9]+)?$/.test(s) && (/^[\t\r]/.test(s) || /^\s*[=+\-@]/.test(s))) {
+                    s = "'" + s;
+                }
+                return '"' + s.replace(/"/g, '""') + '"';
+            }
             items.forEach(function (item) {
                 var ongoing = item.kind === 'percent' || item.kind === 'per_order';
                 rows.push([
                     item.date,
-                    q(item.parent_label || item.parent_category || ''),
+                    item.parent_label || item.parent_category || '',
                     item.category,
-                    q(item.description || ''),
-                    ongoing ? q(i18n.ongoing || '') : q(recurringLabel(item.recurring)),
-                    q(item.kind_label || ''),
-                    q(item.scope_label || ''),
+                    item.description || '',
+                    ongoing ? (i18n.ongoing || '') : recurringLabel(item.recurring),
+                    item.kind_label || '',
+                    item.scope_label || '',
                     item.amount,
                 ]);
             });
-            var csv = rows.map(function (r) { return r.join(','); }).join('\n');
-            var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            // Quoting happens here rather than per-cell above so no column can
+            // be forgotten: date, title and amount used to go out unquoted, so
+            // an expense title containing a comma shifted every later column.
+            var csv = rows.map(function (r) { return r.map(q).join(','); }).join('\n');
+            // UTF-8 BOM so Excel renders Turkish characters correctly, matching
+            // the four server-side CSV exports.
+            var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
             var url  = URL.createObjectURL(blob);
             var a    = document.createElement('a');
             a.href     = url;

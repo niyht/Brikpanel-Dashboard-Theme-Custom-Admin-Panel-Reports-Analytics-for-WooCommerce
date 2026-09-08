@@ -333,24 +333,6 @@ class Brikpanel_Customer_Analytics {
 		return html_entity_decode( wp_strip_all_tags( wc_price( (float) $amount ) ), ENT_QUOTES, 'UTF-8' );
 	}
 
-	/**
-	 * Neutralise CSV formula injection. Spreadsheet apps treat a cell that
-	 * starts with =, +, -, @ (or a control char) as a formula. Phone numbers
-	 * legitimately start with "+", so prefix such values with an apostrophe —
-	 * the standard, non-destructive guard recommended by OWASP. Static so it
-	 * can be passed as a callable from the export methods.
-	 *
-	 * @param string $value Raw cell value.
-	 * @return string Safe cell value.
-	 */
-	public static function csv_safe_cell( $value ) {
-		$value = (string) $value;
-		if ( $value !== '' && in_array( $value[0], [ '=', '+', '-', '@', "\t", "\r" ], true ) ) {
-			return "'" . $value;
-		}
-		return $value;
-	}
-
 	// =========================================================================
 	// AJAX: CSV export (top customers by LTV)
 	// =========================================================================
@@ -388,7 +370,6 @@ class Brikpanel_Customer_Analytics {
 			__( 'Last order', 'brikpanel' ),
 		] );
 
-		$csv_safe = [ $this, 'csv_safe_cell' ];
 
 		$batch_size = 1000;
 		$offset = 0;
@@ -414,18 +395,18 @@ class Brikpanel_Customer_Analytics {
 				if ( $name === '' ) {
 					$name = (string) $r->display_name;
 				}
-				fputcsv( $out, [
+				fputcsv( $out, brikpanel_csv_safe_row( [
 					(int) $r->user_id,
 					$name,
 					(string) $r->customer_email,
-					$csv_safe( (string) ( $r->customer_phone ?: $r->billing_phone ) ),
+					(string) ( $r->customer_phone ?: $r->billing_phone ),
 					(int) $r->order_count,
 					number_format( (float) $r->total_spent, 2, '.', '' ),
 					number_format( (float) $r->aov, 2, '.', '' ),
 					$r->recency_days !== null ? (int) $r->recency_days : '',
 					(string) $r->first_order_date,
 					(string) $r->last_order_date,
-				] );
+				] ) );
 			}
 			$offset += $batch_size;
 		} while ( count( $rows ) === $batch_size );
@@ -621,7 +602,6 @@ class Brikpanel_Customer_Analytics {
 			__( 'Last order', 'brikpanel' ),
 		] );
 
-		$csv_safe = [ $this, 'csv_safe_cell' ];
 
 		$labels = brikpanel_ca_rfm_segment_labels();
 		$batch_size = 1000;
@@ -650,11 +630,11 @@ class Brikpanel_Customer_Analytics {
 					$name = (string) $r->display_name;
 				}
 				$seg_label = isset( $labels[ $r->rfm_segment ] ) ? $labels[ $r->rfm_segment ]['label'] : $r->rfm_segment;
-				fputcsv( $out, [
+				fputcsv( $out, brikpanel_csv_safe_row( [
 					(int) $r->user_id,
 					$name,
 					(string) $r->customer_email,
-					$csv_safe( (string) ( $r->customer_phone ?: $r->billing_phone ) ),
+					(string) ( $r->customer_phone ?: $r->billing_phone ),
 					$seg_label,
 					(int) $r->r_score,
 					(int) $r->f_score,
@@ -663,7 +643,7 @@ class Brikpanel_Customer_Analytics {
 					number_format( (float) $r->total_spent, 2, '.', '' ),
 					$r->recency_days !== null ? (int) $r->recency_days : '',
 					(string) $r->last_order_date,
-				] );
+				] ) );
 			}
 			$offset += $batch_size;
 		} while ( count( $rows ) === $batch_size );
@@ -771,13 +751,13 @@ class Brikpanel_Customer_Analytics {
 
 		$rows = $wpdb->get_results( "SELECT cohort_month, period_offset, cohort_size, retained_customers, retention_rate FROM {$tbl} ORDER BY cohort_month ASC, period_offset ASC" ); // phpcs:ignore
 		foreach ( $rows as $r ) {
-			fputcsv( $out, [
+			fputcsv( $out, brikpanel_csv_safe_row( [
 				(string) $r->cohort_month,
 				(int) $r->period_offset,
 				(int) $r->cohort_size,
 				(int) $r->retained_customers,
 				number_format( (float) $r->retention_rate, 2, '.', '' ),
-			] );
+			] ) );
 		}
 		fclose( $out );
 		exit;

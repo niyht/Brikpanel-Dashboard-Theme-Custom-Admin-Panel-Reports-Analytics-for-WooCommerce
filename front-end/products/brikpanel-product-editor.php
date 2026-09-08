@@ -2442,8 +2442,15 @@ class Brikpanel_Product_Editor {
                 // that is actually fine. The scaffold is clipped out of view, so
                 // emitting it here costs nothing visually, and the helper's own
                 // guard keeps it to one copy per page.
+                // Yoast's own metabox reaches this route the same way, and the
+                // Yoast WooCommerce collector it feeds crashes without the
+                // hidden #product-type node the SEO card normally emits — see
+                // render_yoast_woo_compat_shim(). Both helpers guard themselves,
+                // so calling them here can never double up with the card.
                 if ($seo_in_manual) {
-                    self::render_seo_native_bridge(get_post($product_id));
+                    $seo_manual_post = get_post($product_id);
+                    self::render_yoast_woo_compat_shim($seo_manual_post);
+                    self::render_seo_native_bridge($seo_manual_post);
                 }
 
                 // Emit each captured section in the admin-configured order.
@@ -3694,6 +3701,85 @@ class Brikpanel_Product_Editor {
     }
 
     /**
+     * Yoast WooCommerce SEO compatibility shim.
+     *
+     * Yoast SEO: WooCommerce ships an analysis collector
+     * (yoastseo-woo-identifiers) that runs on every Yoast analysis pass and
+     * unconditionally calls:
+     *     document.querySelector("select#product-type").value
+     *     document.querySelector("input#_sku")           (null-guarded)
+     *     #yoast_identifier_*                             (null-guarded)
+     * Those nodes only exist on WooCommerce's *native* product editor. Inside
+     * the BrikPanel editor `select#product-type` is absent, so the collector
+     * throws "Cannot read properties of null (reading 'value')" from inside
+     * YoastSEO.analysis.collectData on every pass, which aborts the whole
+     * pipeline: the score badge never updates and "Analysis results" stays
+     * empty, i.e. the analysis reads as permanently stuck (the cascade behind
+     * the SyntaxError / `$(...).pointer` reports on some setups too).
+     *
+     * Emit the exact hidden nodes the collector reads, mirrored from the real
+     * product, so Yoast WooCommerce analysis runs cleanly for BOTH simple and
+     * variable products instead of crashing.
+     *
+     * Every route that puts Yoast's metabox on the page has to call this, not
+     * just the SEO card — the same rule render_seo_native_bridge() documents.
+     * An admin who hand-places `wpseo_meta` from the section picker gets the
+     * box through build_third_party_metabox_cards() instead, and that route
+     * shipped without the shim: with Yoast WooCommerce SEO active it threw on
+     * every analysis pass while the SEO-card route was fine. The ids are
+     * unique per document, so the static guard makes a second call a no-op
+     * rather than emitting a duplicate #product-type the collector would then
+     * read at random.
+     *
+     * @param WP_Post $post
+     */
+    private static function render_yoast_woo_compat_shim($post) {
+        static $printed = false;
+        if ($printed || !$post instanceof \WP_Post) {
+            return;
+        }
+        if (!defined('WPSEO_WOO_VERSION')) {
+            return;
+        }
+        $active_seo = self::get_active_seo_plugin();
+        if (empty($active_seo['slug']) || $active_seo['slug'] !== 'yoast') {
+            return;
+        }
+        $compat_product = function_exists('wc_get_product') ? wc_get_product($post->ID) : null;
+        if (!$compat_product) {
+            return;
+        }
+        $printed = true;
+
+        $compat_type = (string) $compat_product->get_type();
+        $compat_sku  = (string) $compat_product->get_sku();
+        $type_keys   = function_exists('wc_get_product_types')
+            ? array_keys((array) wc_get_product_types())
+            : ['simple', 'variable', 'grouped', 'external'];
+        if (!in_array($compat_type, $type_keys, true) && $compat_type !== '') {
+            $type_keys[] = $compat_type;
+        }
+        echo '<div class="brikpanel-pe-yoast-woo-compat" aria-hidden="true" style="display:none">';
+        echo '<select id="product-type">';
+        foreach ($type_keys as $tk) {
+            echo '<option value="' . esc_attr($tk) . '"' . selected($compat_type, $tk, false) . '>'
+                . esc_html($tk) . '</option>';
+        }
+        echo '</select>';
+        echo '<input type="hidden" id="_sku" value="' . esc_attr($compat_sku) . '">';
+        echo '</div>';
+        // Keep the shim's product type in sync if the admin flips the
+        // BrikPanel type selector, so Yoast re-analyses against the
+        // correct (simple vs variable) ruleset without a reload.
+        wp_print_inline_script_tag(
+            '(function(){var s=document.getElementById("bpe-product-type"),'
+            . 't=document.getElementById("product-type");if(!s||!t)return;'
+            . 's.addEventListener("change",function(){t.value=s.value;'
+            . 'try{if(window.YoastSEO&&YoastSEO.app&&YoastSEO.app.refresh)YoastSEO.app.refresh();}catch(e){}});})();'
+        );
+    }
+
+    /**
      * @param int   $product_id
      * @param array $active_seo  Output of get_active_seo_plugin().
      */
@@ -3803,56 +3889,10 @@ class Brikpanel_Product_Editor {
         $GLOBALS['typenow']   = $saved['typenow'];
         $GLOBALS['pagenow']   = $saved['pagenow'];
 
-        // Yoast WooCommerce SEO compatibility shim.
-        //
-        // Yoast SEO: WooCommerce ships an analysis collector
-        // (yoastseo-woo-identifiers) that runs on every Yoast analysis pass
-        // and unconditionally calls:
-        //     document.querySelector("select#product-type").value
-        //     document.querySelector("input#_sku")           (null-guarded)
-        //     #yoast_identifier_*                             (null-guarded)
-        // Those nodes only exist on WooCommerce's *native* product editor.
-        // Inside the BrikPanel editor `select#product-type` is absent, so the
-        // collector throws "Cannot read properties of null (reading 'value')"
-        // on every keystroke, which aborts Yoast's analysis pipeline (the
-        // visible "Yoast SEO WooCommerce errors out" symptom, and the cascade
-        // behind the SyntaxError / `$(...).pointer` reports on some setups).
-        //
-        // Emit the exact hidden nodes the collector reads, mirrored from the
-        // real product, so Yoast WooCommerce analysis runs cleanly for BOTH
-        // simple and variable products instead of crashing. Done before the
-        // empty-boxes early return so the message-only path is covered too.
-        if ($active_seo['slug'] === 'yoast' && defined('WPSEO_WOO_VERSION')) {
-            $wc_compat_product = function_exists('wc_get_product') ? wc_get_product($post->ID) : null;
-            if ($wc_compat_product) {
-                $compat_type = (string) $wc_compat_product->get_type();
-                $compat_sku  = (string) $wc_compat_product->get_sku();
-                $type_keys   = function_exists('wc_get_product_types')
-                    ? array_keys((array) wc_get_product_types())
-                    : ['simple', 'variable', 'grouped', 'external'];
-                if (!in_array($compat_type, $type_keys, true) && $compat_type !== '') {
-                    $type_keys[] = $compat_type;
-                }
-                echo '<div class="brikpanel-pe-yoast-woo-compat" aria-hidden="true" style="display:none">';
-                echo '<select id="product-type">';
-                foreach ($type_keys as $tk) {
-                    echo '<option value="' . esc_attr($tk) . '"' . selected($compat_type, $tk, false) . '>'
-                        . esc_html($tk) . '</option>';
-                }
-                echo '</select>';
-                echo '<input type="hidden" id="_sku" value="' . esc_attr($compat_sku) . '">';
-                echo '</div>';
-                // Keep the shim's product type in sync if the admin flips the
-                // BrikPanel type selector, so Yoast re-analyses against the
-                // correct (simple vs variable) ruleset without a reload.
-                wp_print_inline_script_tag(
-                    '(function(){var s=document.getElementById("bpe-product-type"),'
-                    . 't=document.getElementById("product-type");if(!s||!t)return;'
-                    . 's.addEventListener("change",function(){t.value=s.value;'
-                    . 'try{if(window.YoastSEO&&YoastSEO.app&&YoastSEO.app.refresh)YoastSEO.app.refresh();}catch(e){}});})();'
-                );
-            }
-        }
+        // Yoast WooCommerce SEO compatibility shim. Emitted before the
+        // empty-boxes early return below so the message-only path is covered
+        // too. See render_yoast_woo_compat_shim() for why it is required.
+        self::render_yoast_woo_compat_shim($post);
 
         self::render_seo_native_bridge($post);
 

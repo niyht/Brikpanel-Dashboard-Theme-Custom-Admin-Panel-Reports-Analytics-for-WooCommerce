@@ -7,8 +7,12 @@
 .brikpanel-product-editor-page #wpcontent{padding-left:0}
 .brikpanel-product-editor-page #wpbody-content{padding-bottom:0;margin-top:0!important}
 .brikpanel-product-editor-page #wpbody-content>.wrap{margin:0;padding:0}
-.brikpanel-product-editor-page .notice:not(.brikpanel-pe-notice):not(.notice-error),
-.brikpanel-product-editor-page .updated:not(.brikpanel-pe-notice),
+/* Red errors stay on screen. Both flavours must be named: WordPress core and
+   WooCommerce still emit the legacy `error` class alongside `notice`
+   (`<div id="woocommerce_errors" class="error notice">`), so guarding only
+   `.notice-error` swallowed those with no trace. */
+.brikpanel-product-editor-page .notice:not(.brikpanel-pe-notice):not(.notice-error):not(.error),
+.brikpanel-product-editor-page .updated:not(.brikpanel-pe-notice):not(.notice-error):not(.error),
 .brikpanel-product-editor-page .update-nag{display:none!important;margin:0!important;padding:0!important;height:0!important;border:0!important}
 .brikpanel-pe{max-width:100%;min-height:100vh;background:var(--pe-bg)}
 
@@ -671,7 +675,14 @@
 .brikpanel-pe-metabox-content label,.brikpanel-pe-wc-fields-content label{display:block!important;float:none!important;width:auto!important;font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text)!important;margin:0 0 .375rem!important;padding:0!important;line-height:1.5!important}
 /* Restore plugin-owned hidden labels (ACF icon picker accessibility labels,
    etc.) — our blanket label rule above otherwise unhides them. */
-.brikpanel-pe-metabox-content .acf-icon-picker-list-icon label,.brikpanel-pe-wc-fields-content .acf-icon-picker-list-icon label,.brikpanel-pe-metabox-content .screen-reader-text,.brikpanel-pe-wc-fields-content .screen-reader-text{display:none!important;clip:rect(1px,1px,1px,1px);position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important}
+.brikpanel-pe-metabox-content .acf-icon-picker-list-icon label,.brikpanel-pe-wc-fields-content .acf-icon-picker-list-icon label{display:none!important;clip:rect(1px,1px,1px,1px);position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important}
+/* `.screen-reader-text` is WordPress's "visually hidden but still announced"
+   class, so it has to stay off-screen rather than out of the accessibility
+   tree. `display:none` here also silenced it for screen readers, and in Yoast's
+   metabox that label is the ONLY text form of the coloured score bullet ("OK",
+   "Needs improvement"), so the analysis score became unreadable. Hide it the
+   way core does instead: clipped to 1px, never display:none. */
+.brikpanel-pe-metabox-content .screen-reader-text,.brikpanel-pe-wc-fields-content .screen-reader-text{clip:rect(1px,1px,1px,1px)!important;clip-path:inset(50%)!important;position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;margin:-1px!important;padding:0!important;border:0!important;white-space:nowrap!important}
 /* Inline labels for checkboxes/radios */
 .brikpanel-pe-metabox-content label input[type="checkbox"],.brikpanel-pe-metabox-content label input[type="radio"],.brikpanel-pe-wc-fields-content label input[type="checkbox"],.brikpanel-pe-wc-fields-content label input[type="radio"]{width:auto!important;height:auto!important;margin:0 .375rem 0 0!important;padding:0!important;border:revert!important;border-radius:revert!important}
 .brikpanel-pe-metabox-content label:has(input[type="checkbox"]),.brikpanel-pe-metabox-content label:has(input[type="radio"]),.brikpanel-pe-wc-fields-content label:has(input[type="checkbox"]),.brikpanel-pe-wc-fields-content label:has(input[type="radio"]){display:inline-flex!important;align-items:center!important;font-weight:400!important;cursor:pointer}

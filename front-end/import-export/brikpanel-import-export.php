@@ -56,7 +56,7 @@ function brikpanel_import_export_get_option_map() {
 				continue;
 			}
 			$type = (string) $field['type'];
-			if ( in_array( $type, [ 'title', 'sectionend', 'brikpanel_dev_docs', 'brikpanel_nav_customizer', 'brikpanel_section_order', 'brikpanel_early_access' ], true ) ) {
+			if ( in_array( $type, [ 'title', 'sectionend', 'brikpanel_dev_docs', 'brikpanel_nav_customizer', 'brikpanel_section_order', 'brikpanel_early_access', 'brikpanel_brikmentor_promo' ], true ) ) {
 				continue;
 			}
 			// Brand logo references an attachment id that does not transfer

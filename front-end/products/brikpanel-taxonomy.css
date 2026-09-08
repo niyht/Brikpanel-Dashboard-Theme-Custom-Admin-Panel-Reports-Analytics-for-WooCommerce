@@ -102,8 +102,11 @@ body.brikpanel-tax #contextual-help-link-wrap {
     white-space: nowrap;
 }
 
-/* Hide WP inline notice (but keep red error notices visible) */
-body.brikpanel-tax .notice:not(.brikpanel-notice):not(.notice-error) {
+/* Hide WP inline notice (but keep red error notices visible).
+   Both error flavours must be named: WordPress core and WooCommerce still emit
+   the legacy `error` class alongside `notice` (`<div class="notice error">`),
+   so guarding only `.notice-error` swallowed those with no trace. */
+body.brikpanel-tax .notice:not(.brikpanel-notice):not(.notice-error):not(.error) {
     display: none;
 }
 

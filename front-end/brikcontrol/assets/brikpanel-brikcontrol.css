@@ -676,6 +676,14 @@
     font-size: 0.75rem;
 }
 
+/* Shown only when the dismiss request failed, so the user is not left
+   believing a dismissal was stored. Wins over the generic span rule above. */
+.brikpanel-bc-banner-text span.brikpanel-bc-banner-error {
+    color: #d72c0d;
+    font-weight: 600;
+    margin-top: 0.25rem;
+}
+
 .brikpanel-bc-banner-actions {
     display: flex;
     align-items: center;

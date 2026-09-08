@@ -3756,7 +3756,13 @@ class Brikpanel_Products_List {
                     implode(', ', $image_urls),
                 ];
 
-                fputcsv($output, $row);
+                // Neutralise CSV formula injection across the whole row: a
+                // product name, SKU or description beginning with = + - @ is
+                // treated as a formula by Excel and Sheets. Plain numbers are
+                // left alone by the guard, so a backordered stock of -5 stays
+                // a number. The header row above is untouched on purpose — it
+                // is WooCommerce's importer column names and must round-trip.
+                fputcsv($output, brikpanel_csv_safe_row($row));
             }
 
             // Free memory between chunks

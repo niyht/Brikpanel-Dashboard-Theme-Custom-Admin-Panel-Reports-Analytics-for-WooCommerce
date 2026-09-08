@@ -2,18 +2,20 @@
 /**
  * BrikPanel — BrikMentor Launch Surfaces
  *
- * Once BrikMentor is publicly available, the waitlist funnel flips into a
- * launch funnel. Everything here sits behind a single kill-switch option
- * (brikpanel_brikmentor_live, default OFF):
+ * BrikMentor is publicly available, so the waitlist funnel is now a launch
+ * funnel. Everything here sits behind a single kill-switch option
+ * (brikpanel_brikmentor_live, default ON):
  *
- *   - Flag OFF  → this module renders nothing; the early-access waitlist
- *                 (includes/brikpanel-early-access.php) behaves exactly as
- *                 before.
  *   - Flag ON   → a floating BrikMentor button appears on the
  *                 Abandoned Carts and Customer Analytics screens with a
  *                 context-aware pitch panel, and the existing waitlist
  *                 surfaces turn into "BrikMentor is live" CTAs (handled in
  *                 brikpanel-early-access.php via the helpers below).
+ *   - Flag OFF  → this module renders nothing and the early-access waitlist
+ *                 (includes/brikpanel-early-access.php) behaves as it did
+ *                 before launch. Nothing writes this value: it exists so a
+ *                 store that does not want the promotion can set the option
+ *                 to 'no' and be left alone.
  *   - BrikMentor plugin installed → every promotional surface auto-hides,
  *                 regardless of the flag.
  *
@@ -32,12 +34,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Is the BrikMentor product publicly launched? Single source of truth for the
- * launch flag. Default off: nothing changes until the option is flipped.
+ * launch flag.
+ *
+ * Defaults ON, and the default is what actually ships the promotion: nothing
+ * in the plugin ever writes this option, there is no remote flag behind it and
+ * no upgrade routine sets it, so a default of 'no' would mean no store ever
+ * sees a launch surface. Reading it as an option at all is only so a merchant
+ * who does not want the promotion can silence it with a single 'no'.
  *
  * @return bool
  */
 function brikpanel_brikmentor_is_live() {
-    $value = get_option( 'brikpanel_brikmentor_live', 'no' );
+    $value = get_option( 'brikpanel_brikmentor_live', 'yes' );
     return in_array( $value, array( 'yes', '1', 1, true ), true );
 }
 
@@ -253,7 +261,15 @@ function brikpanel_brikmentor_fab_screens() {
             'title'   => __( 'Recover these carts on autopilot', 'brikpanel' ),
             // The price never lives inside the pitch copy: it is printed on its
             // own line below, where it cannot wrap or fight the sentence.
-            'body'    => __( 'Sending cart recovery emails consistently, with the right strategy, directly lifts a store\'s total revenue by 15-25% on average. Across the industry, roughly 70 of every 100 shoppers leave without completing checkout, which makes this automation the highest-ROI marketing channel there is. Don\'t leave that money on the table.', 'brikpanel' ),
+            'body'    => __( 'Roughly 70 of every 100 shoppers leave without completing checkout. Well-timed cart recovery emails bring back 5-10% of total revenue in a store that runs them properly. It is the one sales channel you set up once and that never asks for your time again. Don\'t leave that money on the table.', 'brikpanel' ),
+            'variants' => array(
+                // Opened from the padlock in the Phone column rather than from
+                // the floating button. It has to answer what was actually
+                // clicked, and answer it honestly: the WhatsApp draft is opened
+                // by hand, one cart at a time. Only the email is automatic, and
+                // promising otherwise here would sell the wrong product.
+                'lock' => __( 'Unlocking gives you the phone number behind each cart and a ready-made WhatsApp message to open with one click. The reminder emails then go out on their own, and they bring back 5-10% of total revenue in a store that runs them properly.', 'brikpanel' ),
+            ),
         ),
         'brikpanel-customer-analytics' => array(
             'context'  => 'analytics',
@@ -310,6 +326,10 @@ function brikpanel_brikmentor_render_fab() {
 
     $cta_url      = brikpanel_brikmentor_url();
     $checkout_url = function_exists( 'brikpanel_brikmentor_checkout_url' ) ? brikpanel_brikmentor_checkout_url() : $cta_url;
+    // The one objection every merchant on this screen already has, pointed at
+    // the section of the landing page that answers it at length. Appended only
+    // when the campaign URL does not carry a fragment of its own.
+    $why_url      = ( false === strpos( $cta_url, '#' ) ) ? $cta_url . '#bm-free' : $cta_url;
     $variants     = isset( $screen['variants'] ) ? $screen['variants'] : array();
     ?>
     <div class="brikpanel-bm-fab-root" id="brikpanel-bm-fab">
@@ -334,8 +354,8 @@ function brikpanel_brikmentor_render_fab() {
                     <?php esc_html_e( 'Try BrikMentor', 'brikpanel' ); ?>
                 </a>
                 <div class="brikpanel-bm-panel__links">
+                    <a class="brikpanel-bm-panel__ghost" href="<?php echo esc_url( $why_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Wouldn\'t a free plugin be enough?', 'brikpanel' ); ?></a>
                     <a class="brikpanel-bm-panel__ghost" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
-                    <button type="button" class="brikpanel-bm-panel__ghost" data-bm-panel-close><?php esc_html_e( 'Not now', 'brikpanel' ); ?></button>
                 </div>
             </div>
         </div>
@@ -344,6 +364,7 @@ function brikpanel_brikmentor_render_fab() {
             <svg class="brikpanel-bm-fab__star" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" fill="#fff"/></svg>
         </button>
     </div>
+    <?php brikpanel_brikmentor_print_star_motion(); ?>
     <style>
         .brikpanel-bm-fab-root {
             position: fixed; right: 24px; bottom: 24px; z-index: 9991;
@@ -369,28 +390,9 @@ function brikpanel_brikmentor_render_fab() {
             0%, 100% { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), 0 0 0 0 rgba(48, 48, 48, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
             50%      { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), 0 0 0 9px rgba(48, 48, 48, 0),   inset 0 1px 0 rgba(255, 255, 255, 0.12); }
         }
-        /* Acrobatic routine: wind-up → overshoot spin → bounce-settle →
-           squash-and-hop → coin flip → wiggle → rest. Ends on rotate(720deg)
-           (visually identical to 0deg) so the loop is seamless. */
-        @keyframes brikpanel-bm-acrobat {
-            0%   { transform: rotate(0deg) scale(1); }
-            6%   { transform: rotate(-38deg) scale(0.85); }
-            16%  { transform: rotate(410deg) scale(1.22); }
-            21%  { transform: rotate(338deg) scale(0.94); }
-            25%  { transform: rotate(360deg) scale(1); }
-            33%  { transform: rotate(360deg) translateY(-7px) scale(1.1); }
-            38%  { transform: rotate(360deg) translateY(1px) scale(1.18, 0.8); }
-            42%  { transform: rotate(360deg) translateY(-3px) scale(0.96, 1.06); }
-            46%  { transform: rotate(360deg) translateY(0) scale(1); }
-            54%  { transform: rotate(360deg) rotateY(200deg) scale(1.08); }
-            62%  { transform: rotate(360deg) rotateY(360deg) scale(1); }
-            70%  { transform: rotate(384deg) scale(1.06); }
-            76%  { transform: rotate(338deg) scale(1.03); }
-            81%  { transform: rotate(368deg) scale(1.01); }
-            85%  { transform: rotate(357deg) scale(1); }
-            88%  { transform: rotate(360deg) scale(1); }
-            100% { transform: rotate(720deg) scale(1); }
-        }
+        /* The acrobat routine itself is printed by
+           brikpanel_brikmentor_print_star_motion(), because the launch
+           announcement reuses it on screens this <style> never reaches. */
         /* The show is over once the merchant clicks: while the panel is open
            the button sits still (upright star, no pulse) and resumes when the
            panel closes. */
@@ -461,10 +463,17 @@ function brikpanel_brikmentor_render_fab() {
         }
         .brikpanel-bm-panel__cta:hover { background: #1a1a1a; color: #fff; }
         .brikpanel-bm-panel__cta:focus { outline: none; box-shadow: 0 0 0 2px #303030; color: #fff; }
+        /* Two links of very different lengths, in a fixed-width panel, in nine
+           languages: es, fr and pl do not fit them on one line and were pushing
+           past the panel edge. They wrap to a second line instead, so the row
+           grows rather than overflowing, and the seven languages that do fit
+           keep the single row. nowrap keeps each link whole, so what wraps is
+           the pair and never the phrase. */
         .brikpanel-bm-panel__links {
-            display: flex; align-items: center; justify-content: space-between;
-            gap: 0.5rem; margin: 0 -0.5rem;
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 0 0.25rem; margin: 0 -0.5rem;
         }
+        .brikpanel-bm-panel__links .brikpanel-bm-panel__ghost { white-space: nowrap; }
         .brikpanel-bm-panel__ghost {
             background: transparent; border: none; cursor: pointer; text-decoration: none;
             padding: 0.375rem 0.5rem; border-radius: 0.375rem;
@@ -487,12 +496,59 @@ function brikpanel_brikmentor_render_fab() {
         // Tab-specific pitch copy (Customer Analytics). Empty object elsewhere.
         var variants = <?php echo wp_json_encode( $variants ); ?>;
 
+        // The pitch this screen loaded with, so an opener that names no variant
+        // can put it back. Without it, opening once from the padlock would leave
+        // its copy behind for every later open from the floating button.
+        var defaultBody = body ? body.textContent : '';
+        // The tab-driven variant in force, if any (Customer Analytics). It wins
+        // over the default so the floating button keeps talking about the data
+        // on screen, and loses to an opener that names its own variant.
+        var screenKey = null;
+
+        function pitchFor(key) {
+            if (!body) { return; }
+            if (key && variants[key]) { body.textContent = variants[key]; return; }
+            if (screenKey && variants[screenKey]) { body.textContent = variants[screenKey]; return; }
+            body.textContent = defaultBody;
+        }
+
+        // Whatever opened the panel, so focus can be handed back on close. The
+        // panel is role="dialog": opened from a control deep in a table without
+        // moving focus, it leaves a keyboard user stranded behind it.
+        var opener = null;
+
         function setOpen(open) {
             panel.hidden = !open;
             fab.setAttribute('aria-expanded', open ? 'true' : 'false');
             root.classList.toggle('is-open', open);
+            if (open) {
+                var close = panel.querySelector('[data-bm-panel-close]');
+                if (close) { close.focus(); }
+            } else if (opener) {
+                opener.focus();
+                opener = null;
+            }
         }
-        fab.addEventListener('click', function () { setOpen(panel.hidden); });
+        fab.addEventListener('click', function () {
+            if (panel.hidden) { pitchFor(null); }
+            opener = fab;
+            setOpen(panel.hidden);
+        });
+
+        // Anything anywhere on the page opens this panel by carrying
+        // [data-bm-open]. Delegated, so a control built later by fetch - the
+        // padlock in the Abandoned Carts table - needs no wiring and no global,
+        // and setOpen() stays the single place the panel's state changes. The
+        // listener only exists when the panel does, so a screen without it
+        // never calls preventDefault() and the control's own href is followed.
+        document.addEventListener('click', function (e) {
+            var el = e.target && e.target.closest ? e.target.closest('[data-bm-open]') : null;
+            if (!el) { return; }
+            e.preventDefault();
+            pitchFor(el.getAttribute('data-bm-variant'));
+            opener = el;
+            setOpen(true);
+        });
         root.querySelectorAll('[data-bm-panel-close]').forEach(function (el) {
             el.addEventListener('click', function () { setOpen(false); });
         });
@@ -500,6 +556,10 @@ function brikpanel_brikmentor_render_fab() {
             if (e.key === 'Escape' && !panel.hidden) setOpen(false);
         });
         document.addEventListener('mousedown', function (e) {
+            // An opener outside the panel is not "outside" for this purpose:
+            // closing here on mousedown and reopening on the click that follows
+            // replays the rise animation for a frame and reads as a flicker.
+            if (e.target && e.target.closest && e.target.closest('[data-bm-open]')) { return; }
             if (!panel.hidden && !root.contains(e.target)) setOpen(false);
         });
 
@@ -510,7 +570,7 @@ function brikpanel_brikmentor_render_fab() {
                 var tab = e.target && e.target.closest ? e.target.closest('.bp-ca-tab') : null;
                 if (!tab) return;
                 var key = tab.getAttribute('data-tab');
-                if (key && variants[key]) body.textContent = variants[key];
+                if (key && variants[key]) { screenKey = key; body.textContent = variants[key]; }
             });
         }
     })();
@@ -526,5 +586,474 @@ function brikpanel_bm_ajax_card_dismiss() {
         wp_send_json_error( array( 'reason' => 'forbidden' ), 403 );
     }
     update_option( 'brikpanel_bm_live_card_dismissed', 1, false );
+    wp_send_json_success();
+}
+
+/* ── Settings-page row (BrikPanel General settings) ─────────────────────────── */
+
+/**
+ * Add the BrikMentor launch section to the BrikPanel General settings.
+ *
+ * The promo_active() test wraps the whole push, not just the renderer: a
+ * section whose renderer prints nothing still emits `<h2>…</h2><table
+ * class="form-table"></table>`, which the settings-card wrapper in
+ * front-end/orders/brikpanel-orders.php happily turns into a visible empty
+ * card.
+ *
+ * Priority 998 puts this above the newsletter section (999) in
+ * brikpanel-early-access.php. Do not give both the same priority: they would
+ * then order by file-load order rather than by intent.
+ *
+ * @param array $fields
+ * @return array
+ */
+add_filter( 'brikpanel_settings_fields', 'brikpanel_brikmentor_settings_field', 998 );
+function brikpanel_brikmentor_settings_field( $fields ) {
+    if ( ! brikpanel_brikmentor_promo_active() ) {
+        return $fields;
+    }
+    $fields[] = array(
+        'type'  => 'title',
+        'id'    => 'brk_brikmentor_title',
+        'title' => __( 'BrikMentor', 'brikpanel' ),
+    );
+    $fields[] = array(
+        // Pseudo-field: it stores nothing, so it is excluded from the
+        // import/export option map (see brikpanel-import-export.php).
+        'type' => 'brikpanel_brikmentor_promo',
+        'id'   => 'brikpanel_brikmentor_promo_field',
+    );
+    $fields[] = array(
+        'type' => 'sectionend',
+        'id'   => 'brk_brikmentor_title',
+    );
+    return $fields;
+}
+
+/**
+ * Render the BrikMentor launch settings row.
+ *
+ * @param array $field Unused; WooCommerce passes the field definition.
+ * @return void
+ */
+add_action( 'woocommerce_admin_field_brikpanel_brikmentor_promo', 'brikpanel_brikmentor_render_settings_field' );
+function brikpanel_brikmentor_render_settings_field( $field ) {
+    $cta_url      = brikpanel_brikmentor_url();
+    $checkout_url = brikpanel_brikmentor_checkout_url();
+    ?>
+    <tr valign="top">
+        <th scope="row" class="titledesc">
+            <label><?php esc_html_e( 'BrikMentor is live', 'brikpanel' ); ?></label>
+        </th>
+        <td class="forminp">
+            <p class="brikpanel-bm-settings-desc">
+                <?php
+                // Price is injected, never baked into the copy, so it stays one
+                // unbreakable token in every locale.
+                echo esc_html(
+                    brikpanel_brikmentor_price_text( __( 'BrikMentor, the AI assistant and email marketing engine for your store data, is out now: automated cart recovery, win-back and segment campaigns inside WooCommerce. First month just %s.', 'brikpanel' ) )
+                );
+                ?>
+            </p>
+            <a class="button button-primary brikpanel-bm-settings-btn" href="<?php echo esc_url( $checkout_url ); ?>" target="_blank" rel="noopener noreferrer">
+                <?php echo esc_html( brikpanel_brikmentor_price_text( __( 'Try BrikMentor for %s', 'brikpanel' ) ) ); ?>
+            </a>
+            <a class="brikpanel-bm-settings-learn" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
+            <style>
+                .brikpanel-bm-settings-desc { max-width: 640px; color: #616161; margin: 0 0 0.75rem; }
+                .brikpanel-bm-settings-btn { display: inline-flex; align-items: center; }
+                .brikpanel-bm-settings-learn { margin-inline-start: 0.75rem; color: #616161; text-decoration: none; font-size: 0.8125rem; }
+                .brikpanel-bm-settings-learn:hover { color: #303030; }
+            </style>
+        </td>
+    </tr>
+    <?php
+}
+
+/* ── Shared star motion ─────────────────────────────────────────────────────── */
+
+/**
+ * Print the acrobatic star keyframes, at most once per request.
+ *
+ * WHY THIS IS NOT INLINE ANY MORE. The routine used to live inside
+ * brikpanel_brikmentor_render_fab()'s own <style>, which prints on exactly two
+ * screens. The launch announcement reuses it on every BrikPanel screen, and a
+ * @keyframes name that resolves on one screen and not on another fails in the
+ * quietest way CSS can: the element simply sits still, with no error anywhere.
+ * Printing it from one guarded place is what keeps the two surfaces honest.
+ *
+ * Only the star's routine is shared. Each surface keeps its own pulse: the
+ * floating button's ring carries that button's drop shadow and inset highlight,
+ * which would be wrong on a flat badge inside a white card.
+ *
+ * @return void
+ */
+function brikpanel_brikmentor_print_star_motion() {
+    static $printed = false;
+    if ( $printed ) {
+        return;
+    }
+    $printed = true;
+    ?>
+    <style>
+        /* Acrobatic routine: wind-up → overshoot spin → bounce-settle →
+           squash-and-hop → coin flip → wiggle → rest. Ends on rotate(720deg)
+           (visually identical to 0deg) so the loop is seamless. */
+        @keyframes brikpanel-bm-acrobat {
+            0%   { transform: rotate(0deg) scale(1); }
+            6%   { transform: rotate(-38deg) scale(0.85); }
+            16%  { transform: rotate(410deg) scale(1.22); }
+            21%  { transform: rotate(338deg) scale(0.94); }
+            25%  { transform: rotate(360deg) scale(1); }
+            33%  { transform: rotate(360deg) translateY(-7px) scale(1.1); }
+            38%  { transform: rotate(360deg) translateY(1px) scale(1.18, 0.8); }
+            42%  { transform: rotate(360deg) translateY(-3px) scale(0.96, 1.06); }
+            46%  { transform: rotate(360deg) translateY(0) scale(1); }
+            54%  { transform: rotate(360deg) rotateY(200deg) scale(1.08); }
+            62%  { transform: rotate(360deg) rotateY(360deg) scale(1); }
+            70%  { transform: rotate(384deg) scale(1.06); }
+            76%  { transform: rotate(338deg) scale(1.03); }
+            81%  { transform: rotate(368deg) scale(1.01); }
+            85%  { transform: rotate(357deg) scale(1); }
+            88%  { transform: rotate(360deg) scale(1); }
+            100% { transform: rotate(720deg) scale(1); }
+        }
+    </style>
+    <?php
+}
+
+/* ── Launch announcement popup ──────────────────────────────────────────────── */
+
+/**
+ * Campaign id stamped on a user who has already been shown the announcement.
+ *
+ * A campaign string rather than a bare 1: a later announcement only has to
+ * change this value to reach everyone again, with no migration and without
+ * losing the record that this one was delivered. (BrikMentor's own update
+ * notice keys its per-user watermark the same way.)
+ */
+if ( ! defined( 'BRIKPANEL_BM_ANNOUNCE_CAMPAIGN' ) ) {
+    define( 'BRIKPANEL_BM_ANNOUNCE_CAMPAIGN', 'launch-1' );
+}
+
+/** User meta holding the campaign id this user has been shown. */
+if ( ! defined( 'BRIKPANEL_BM_ANNOUNCE_META' ) ) {
+    define( 'BRIKPANEL_BM_ANNOUNCE_META', '_brikpanel_bm_announce_dismissed' );
+}
+
+/** Days a fresh install is left alone before the announcement may appear. */
+if ( ! defined( 'BRIKPANEL_BM_ANNOUNCE_GRACE_DAYS' ) ) {
+    define( 'BRIKPANEL_BM_ANNOUNCE_GRACE_DAYS', 3 );
+}
+
+/**
+ * True on one of BrikPanel's own admin pages.
+ *
+ * A pure $_GET read, like brikpanel_ea_is_dashboard(), so the footer of every
+ * other admin screen leaves before an option or a user meta is touched.
+ *
+ * WooCommerce ▸ Settings ▸ BrikPanel is deliberately NOT included even though
+ * it is a BrikPanel screen: the newsletter modal and the developer-docs modal
+ * both live there, and that screen already carries its own BrikMentor row.
+ * Leaving it out removes the only two places where a second dialog could be on
+ * screen at the same moment.
+ *
+ * @return bool
+ */
+function brikpanel_brikmentor_announce_is_panel_screen() {
+    if ( ! isset( $_GET['page'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen check.
+        return false;
+    }
+    $page = sanitize_key( wp_unslash( $_GET['page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    return 0 === strpos( $page, 'brikpanel-' );
+}
+
+/**
+ * Should the launch announcement render on this request?
+ *
+ * Six gates, cheapest first. Any one of them failing means the markup is never
+ * printed at all — nothing is rendered hidden and toggled later, so a merchant
+ * this does not apply to pays nothing for it.
+ *
+ * @return bool
+ */
+function brikpanel_brikmentor_announce_should_render() {
+    if ( ! brikpanel_brikmentor_announce_is_panel_screen() ) {
+        return false;
+    }
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        return false;
+    }
+    // The gate every launch surface shares: kill switch off, or BrikMentor
+    // already installed here, and nothing promotional renders.
+    if ( ! brikpanel_brikmentor_promo_active() ) {
+        return false;
+    }
+
+    // NEVER on top of the welcome tour.
+    //
+    // The tour (front-end/welcome/brikpanel-welcome.php) renders in the footer
+    // of EVERY admin screen, with no screen restriction, and keeps rendering
+    // until the user closes it. Nothing in the plugin sequences popups: there
+    // is no queue, no latch and no shared registry. Without this test a
+    // first-time installer meets two dialogs at once on their very first
+    // pageview. Read-only — the tour keeps sole ownership of its own meta.
+    if ( function_exists( 'brikpanel_should_show_welcome' ) && brikpanel_should_show_welcome() ) {
+        return false;
+    }
+
+    // A store that installed BrikPanel minutes ago has just been walked through
+    // the tour; pitching a paid add-on in the same sitting reads as two popups
+    // back to back even when they never overlap. An existing store's timestamp
+    // is already old, so the audience this is actually written for sees it on
+    // the first pageview after the update.
+    //
+    // A very old install that never had the option gets today's stamp from the
+    // admin_init backfill in includes/brikpanel-review-notices.php and waits
+    // three days. That is a delay, not a fault, and it is not worth a second
+    // piece of state to avoid.
+    $installed_at = (int) get_option( 'brikpanel_activated_at' );
+    if ( $installed_at > 0
+        && ( time() - $installed_at ) < ( BRIKPANEL_BM_ANNOUNCE_GRACE_DAYS * DAY_IN_SECONDS ) ) {
+        return false;
+    }
+
+    $seen = get_user_meta( get_current_user_id(), BRIKPANEL_BM_ANNOUNCE_META, true );
+    return BRIKPANEL_BM_ANNOUNCE_CAMPAIGN !== $seen;
+}
+
+add_action( 'admin_footer', 'brikpanel_brikmentor_render_announce' );
+/**
+ * Render the one-time "BrikMentor is live" announcement.
+ *
+ * Every string here is one the plugin already ships and already has translated
+ * in all nine catalogues, which is why the announcement is worded the way it
+ * is: a new sentence would mean nine hand translations.
+ *
+ * @return void
+ */
+function brikpanel_brikmentor_render_announce() {
+    if ( ! brikpanel_brikmentor_announce_should_render() ) {
+        return;
+    }
+
+    $cta_url      = brikpanel_brikmentor_url();
+    $checkout_url = brikpanel_brikmentor_checkout_url();
+    // The one objection a merchant reading this already has, pointed at the
+    // section of the landing page that answers it at length. Same treatment as
+    // the floating panel: appended only when the campaign URL carries no
+    // fragment of its own.
+    $why_url      = ( false === strpos( $cta_url, '#' ) ) ? $cta_url . '#bm-free' : $cta_url;
+    // Price is injected, never baked into the copy, so it stays one unbreakable
+    // token in every locale (see brikpanel_brikmentor_price()).
+    $title        = brikpanel_brikmentor_price_text( __( 'BrikMentor is live: first month %s', 'brikpanel' ) );
+    $cta_label    = brikpanel_brikmentor_price_text( __( 'Try BrikMentor for %s', 'brikpanel' ) );
+    $nonce        = wp_create_nonce( 'brikpanel_bm_announce_nonce' );
+    ?>
+    <div class="brikpanel-bm-ann" id="brikpanel-bm-ann" data-nonce="<?php echo esc_attr( $nonce ); ?>" role="dialog" aria-modal="true" aria-labelledby="brikpanel-bm-ann-title">
+        <div class="brikpanel-bm-ann__card" role="document">
+            <button type="button" class="brikpanel-bm-ann__close" data-bm-ann-close aria-label="<?php esc_attr_e( 'Close', 'brikpanel' ); ?>">
+                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </button>
+
+            <div class="brikpanel-bm-ann__badge" aria-hidden="true">
+                <svg class="brikpanel-bm-ann__star" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" fill="#fff"/></svg>
+            </div>
+
+            <span class="brikpanel-bm-ann__kicker"><?php esc_html_e( 'BrikMentor is live', 'brikpanel' ); ?></span>
+            <h2 class="brikpanel-bm-ann__title" id="brikpanel-bm-ann-title"><?php echo esc_html( $title ); ?></h2>
+            <p class="brikpanel-bm-ann__body"><?php esc_html_e( 'The AI assistant and email marketing engine for your store data is out now. Automated cart recovery, win-back and segment campaigns, running inside WooCommerce.', 'brikpanel' ); ?></p>
+
+            <a class="brikpanel-bm-ann__cta" href="<?php echo esc_url( $checkout_url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $cta_label ); ?></a>
+
+            <div class="brikpanel-bm-ann__links">
+                <a class="brikpanel-bm-ann__ghost" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
+                <button type="button" class="brikpanel-bm-ann__ghost" data-bm-ann-close><?php esc_html_e( 'Not now', 'brikpanel' ); ?></button>
+            </div>
+
+            <div class="brikpanel-bm-ann__why">
+                <a href="<?php echo esc_url( $why_url ); ?>" target="_blank" rel="noopener noreferrer">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="9.25" stroke-width="1.5"/><path d="M9.5 9.4a2.55 2.55 0 114.45 1.65c-.72.8-1.95 1.2-1.95 2.45" stroke-width="1.7"/><circle cx="12" cy="16.9" r=".95" fill="currentColor" stroke="none"/></svg>
+                    <span><?php esc_html_e( 'Wouldn\'t a free plugin be enough?', 'brikpanel' ); ?></span>
+                </a>
+            </div>
+        </div>
+    </div>
+    <?php brikpanel_brikmentor_print_star_motion(); ?>
+    <style>
+        /* Sits above every BrikPanel surface (dev docs 100050, newsletter 99999,
+           floating button 9991) and below the welcome tour and the new-order
+           toast, both 999999. The welcome-tour gate already makes an overlap
+           impossible; this ordering is the second line of defence. */
+        .brikpanel-bm-ann {
+            position: fixed; inset: 0; z-index: 999990;
+            display: flex; align-items: center; justify-content: center;
+            /* wp-admin does not apply border-box globally, so both boxes have to
+               ask for it: without this the card renders 490px wide, not 440. */
+            box-sizing: border-box;
+            padding: 24px; overflow-y: auto;
+            background: rgba(20, 20, 20, 0.45);
+            -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        .brikpanel-bm-ann__card {
+            position: relative;
+            box-sizing: border-box;
+            width: 440px; max-width: 100%;
+            background: #fff; border: 1px solid #e3e3e3; border-radius: 0.75rem;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+            padding: 1.5rem 1.5rem 1.25rem;
+            text-align: start;
+            animation: brikpanel-bm-ann-rise 0.22s cubic-bezier(.2,.7,.3,1);
+        }
+        @keyframes brikpanel-bm-ann-rise { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .brikpanel-bm-ann__close {
+            position: absolute; inset-block-start: 0.625rem; inset-inline-end: 0.625rem;
+            width: 28px; height: 28px; border-radius: 0.375rem;
+            background: transparent; border: none; color: #8a8a8a; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; padding: 0;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .brikpanel-bm-ann__close:hover { background: #f7f7f7; color: #303030; }
+        .brikpanel-bm-ann__close:focus { outline: none; box-shadow: 0 0 0 2px #303030; }
+        /* The badge keeps its own pulse: a plain ring, with none of the floating
+           button's drop shadow, which would read as dirt on a white card. */
+        .brikpanel-bm-ann__badge {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: #303030; display: flex; align-items: center; justify-content: center;
+            margin-block-end: 0.875rem;
+            animation: brikpanel-bm-ann-breathe 3.2s ease-in-out infinite;
+        }
+        @keyframes brikpanel-bm-ann-breathe {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(48, 48, 48, 0.30); }
+            50%      { box-shadow: 0 0 0 9px rgba(48, 48, 48, 0); }
+        }
+        .brikpanel-bm-ann__star {
+            display: block;
+            transform-origin: 50% 52%;
+            animation: brikpanel-bm-acrobat 7s cubic-bezier(.34,.06,.36,.96) infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .brikpanel-bm-ann__card,
+            .brikpanel-bm-ann__badge,
+            .brikpanel-bm-ann__star { animation: none; }
+        }
+        .brikpanel-bm-ann__kicker {
+            display: block;
+            font-size: 0.75rem; font-weight: 550; color: #1a8917;
+            text-transform: uppercase; letter-spacing: 0.04em;
+            margin-block-end: 0.3rem;
+        }
+        .brikpanel-bm-ann__title {
+            margin: 0 0 0.5rem; padding: 0;
+            font-size: 1.0625rem; font-weight: 600; line-height: 1.32; color: #303030;
+        }
+        .brikpanel-bm-ann__body {
+            margin: 0 0 1.125rem; padding: 0;
+            font-size: 0.875rem; line-height: 1.55; color: #616161;
+        }
+        .brikpanel-bm-ann__cta {
+            display: flex; align-items: center; justify-content: center; text-align: center;
+            padding: 0.625rem 1rem; border-radius: 0.5rem;
+            background: #303030; color: #fff; text-decoration: none;
+            font-size: 0.875rem; font-weight: 550; line-height: 1.2;
+            box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+            transition: background 0.15s ease;
+        }
+        .brikpanel-bm-ann__cta:hover { background: #1a1a1a; color: #fff; }
+        .brikpanel-bm-ann__cta:focus { outline: none; box-shadow: 0 0 0 2px #303030; color: #fff; }
+        .brikpanel-bm-ann__links {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 0.5rem; margin: 0.375rem -0.5rem 0;
+        }
+        .brikpanel-bm-ann__ghost {
+            background: transparent; border: none; cursor: pointer; text-decoration: none;
+            padding: 0.375rem 0.5rem; border-radius: 0.375rem;
+            font-size: 0.8125rem; font-weight: 550; font-family: inherit; color: #8a8a8a;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .brikpanel-bm-ann__ghost:hover { background: #f7f7f7; color: #303030; text-decoration: none; }
+        .brikpanel-bm-ann__ghost:focus { outline: none; box-shadow: 0 0 0 2px #303030; color: #303030; }
+        /* The objection gets a line of its own. Three ghost links across 440px
+           read as one grey smudge; alone under a rule this one is legible and,
+           being the only thing there, actually gets noticed. */
+        .brikpanel-bm-ann__why {
+            display: flex; justify-content: center;
+            margin-block-start: 0.875rem; padding-block-start: 0.75rem;
+            border-block-start: 1px solid #e3e3e3;
+        }
+        .brikpanel-bm-ann__why a {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            font-size: 0.8125rem; font-weight: 500; color: #616161; text-decoration: none;
+            padding: 0.3rem 0.5rem; border-radius: 0.375rem;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .brikpanel-bm-ann__why a:hover { background: #f7f7f7; color: #303030; }
+        .brikpanel-bm-ann__why a:focus { outline: none; box-shadow: 0 0 0 2px #303030; color: #303030; }
+        .brikpanel-bm-ann__why svg { flex: 0 0 15px; opacity: 0.7; transition: opacity 0.15s ease; }
+        .brikpanel-bm-ann__why a:hover svg { opacity: 1; }
+    </style>
+    <script>
+    (function () {
+        var root = document.getElementById('brikpanel-bm-ann');
+        if (!root) { return; }
+        var card   = root.querySelector('.brikpanel-bm-ann__card');
+        // Whatever had focus when the dialog appeared, so it can be handed back.
+        var opener = document.activeElement;
+        var stamped = false;
+
+        // Every way out writes the stamp, including following a link. Anything
+        // less and a merchant who ignores the dialog meets it again on the next
+        // BrikPanel page, and the one on every page after that.
+        function stamp() {
+            if (stamped) { return; }
+            stamped = true;
+            var fd = new FormData();
+            fd.append('action', 'brikpanel_bm_announce_dismiss');
+            fd.append('_ajax_nonce', root.getAttribute('data-nonce'));
+            fetch(<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>, {
+                method: 'POST', body: fd, credentials: 'same-origin', keepalive: true
+            });
+        }
+
+        function close() {
+            stamp();
+            document.removeEventListener('keydown', onKey);
+            if (root.parentNode) { root.parentNode.removeChild(root); }
+            if (opener && opener.focus) { opener.focus(); }
+        }
+
+        function onKey(e) {
+            if (e.key === 'Escape') { close(); }
+        }
+
+        root.querySelectorAll('[data-bm-ann-close]').forEach(function (el) {
+            el.addEventListener('click', close);
+        });
+        // The CTA and the two links open in a new tab, so the dialog would still
+        // be sitting here when the merchant comes back. Stamp and clear it.
+        card.querySelectorAll('a[href]').forEach(function (el) {
+            el.addEventListener('click', function () { close(); });
+        });
+        root.addEventListener('mousedown', function (e) {
+            if (e.target === root) { close(); }
+        });
+        document.addEventListener('keydown', onKey);
+
+        var first = root.querySelector('[data-bm-ann-close]');
+        if (first) { first.focus(); }
+    })();
+    </script>
+    <?php
+}
+
+/* ── AJAX: stamp the announcement as seen ───────────────────────────────────── */
+add_action( 'wp_ajax_brikpanel_bm_announce_dismiss', 'brikpanel_bm_ajax_announce_dismiss' );
+function brikpanel_bm_ajax_announce_dismiss() {
+    check_ajax_referer( 'brikpanel_bm_announce_nonce' );
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        wp_send_json_error( array( 'reason' => 'forbidden' ), 403 );
+    }
+    update_user_meta( get_current_user_id(), BRIKPANEL_BM_ANNOUNCE_META, BRIKPANEL_BM_ANNOUNCE_CAMPAIGN );
     wp_send_json_success();
 }

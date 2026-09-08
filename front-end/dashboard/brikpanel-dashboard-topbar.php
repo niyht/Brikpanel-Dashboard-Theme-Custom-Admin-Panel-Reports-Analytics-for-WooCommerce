@@ -388,9 +388,53 @@ class Brikpanel_Dashboard_Topbar {
                             // Customers report rather than the WordPress Users list. Fall
                             // back to the Users list only when Analytics is unavailable,
                             // mirroring the count's own fallback in the AJAX handler.
+                            // Analytics is read through FeaturesUtil, not through the older
+                            // WC Admin feature-flag shim: WooCommerce 11.1.0 retired the
+                            // `analytics` flag on Features::is_enabled(), so every admin
+                            // page load on 11.1+ pushed a deprecation line into the error
+                            // log (and into error_log() outright on ajax/REST requests).
+                            // FeaturesUtil reads the very same option and filter without
+                            // the notice. The old call stays as the fallback for the
+                            // WooCommerce versions that predate the features engine (or
+                            // that ship it without an `analytics` entry, WC 7.0-7.4),
+                            // where the shim is not deprecated either. The presence check
+                            // matters: feature_is_enabled() answers false for a feature it
+                            // does not know, which would silently mislink the row.
                             $brikpanel_customers_url = admin_url( 'users.php?role=customer' );
-                            if ( class_exists( '\Automattic\WooCommerce\Admin\Features\Features' )
-                                && \Automattic\WooCommerce\Admin\Features\Features::is_enabled( 'analytics' ) ) {
+                            $brikpanel_analytics_on  = null;
+
+                            /**
+                             * Filter allowing WooCommerce Admin features to be disabled.
+                             *
+                             * Checked first and on its own: only WooCommerce 11.1+ folds it
+                             * into the features engine, so on older releases FeaturesUtil
+                             * would answer "enabled" for a store where the whole wc-admin
+                             * app, Customers report included, is switched off.
+                             *
+                             * @param bool $disabled False.
+                             */
+                            if ( apply_filters( 'woocommerce_admin_disabled', false ) ) {
+                                $brikpanel_analytics_on = false;
+                            }
+
+                            if ( null === $brikpanel_analytics_on
+                                && function_exists( 'wc_get_container' )
+                                && class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' )
+                                && method_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil', 'feature_is_enabled' ) ) {
+                                try {
+                                    $brikpanel_wc_features = \Automattic\WooCommerce\Utilities\FeaturesUtil::get_features( true );
+                                    if ( is_array( $brikpanel_wc_features ) && isset( $brikpanel_wc_features['analytics'] ) ) {
+                                        $brikpanel_analytics_on = (bool) \Automattic\WooCommerce\Utilities\FeaturesUtil::feature_is_enabled( 'analytics' );
+                                    }
+                                } catch ( \Throwable $e ) {
+                                    $brikpanel_analytics_on = null;
+                                }
+                            }
+                            if ( null === $brikpanel_analytics_on
+                                && class_exists( '\Automattic\WooCommerce\Admin\Features\Features' ) ) {
+                                $brikpanel_analytics_on = (bool) \Automattic\WooCommerce\Admin\Features\Features::is_enabled( 'analytics' );
+                            }
+                            if ( $brikpanel_analytics_on ) {
                                 $brikpanel_customers_url = admin_url( 'admin.php?page=wc-admin&path=/customers' );
                             }
                             ?>

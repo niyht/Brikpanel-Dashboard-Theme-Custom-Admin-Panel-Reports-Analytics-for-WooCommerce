@@ -46,7 +46,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<?php
 		/**
 		 * Fires between the Customer Analytics header and the LTV / RFM / Cohort
-		 * tab bar. Used to render the dismissible BrikMentor early-access card.
+		 * tab bar. Nothing hooks it in core today; it stays as an extension point.
 		 *
 		 * @since 3.2.13
 		 */

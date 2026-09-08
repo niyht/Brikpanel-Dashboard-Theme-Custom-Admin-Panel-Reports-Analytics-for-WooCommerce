@@ -1037,17 +1037,12 @@ class Brikpanel_Segments {
 		// UTF-8 BOM so Excel opens non-ASCII characters cleanly.
 		fwrite( $out, "\xEF\xBB\xBF" );
 
-		// Neutralise CSV formula injection. Phone numbers legitimately start
-		// with "+", which spreadsheet apps treat as a formula; prefix such
-		// values with an apostrophe (OWASP-recommended, non-destructive guard).
-		$csv_safe = static function ( $value ) {
-			$value = (string) $value;
-			if ( $value !== '' && in_array( $value[0], [ '=', '+', '-', '@', "\t", "\r" ], true ) ) {
-				return "'" . $value;
-			}
-			return $value;
-		};
-
+		// Every data row below goes through brikpanel_csv_safe_row(), which
+		// neutralises CSV formula injection across the whole row. This used to
+		// guard the phone column alone, which left the billing name, email,
+		// city and payment title beside it — all of them typed by whoever
+		// placed the order, guest checkout included — free to carry a formula
+		// into the merchant's spreadsheet.
 		if ( $tab === 'orders' ) {
 			$result = $this->query_orders( $filters );
 			fputcsv( $out, [
@@ -1063,18 +1058,18 @@ class Brikpanel_Segments {
 				__( 'Total', 'brikpanel' ),
 			] );
 			foreach ( $result['items'] as $item ) {
-				fputcsv( $out, [
+				fputcsv( $out, brikpanel_csv_safe_row( [
 					$item['id'],
 					$item['date_iso'],
 					$item['status_label'],
 					$item['name'],
 					$item['email'],
-					$csv_safe( $item['phone'] ),
+					$item['phone'],
 					$item['country'],
 					$item['city'],
 					$item['payment'],
 					$item['total'],
-				] );
+				] ) );
 			}
 		} else {
 			$result = $this->query_customers( $filters );
@@ -1091,18 +1086,18 @@ class Brikpanel_Segments {
 				__( 'Last order', 'brikpanel' ),
 			] );
 			foreach ( $result['items'] as $item ) {
-				fputcsv( $out, [
+				fputcsv( $out, brikpanel_csv_safe_row( [
 					$item['user_id'] ?: '',
 					$item['name'],
 					$item['email'],
-					$csv_safe( $item['phone'] ),
+					$item['phone'],
 					$item['registered_iso'],
 					$item['order_count'],
 					$item['total_spent'],
 					$item['aov'],
 					$item['first_order'],
 					$item['last_order_iso'],
-				] );
+				] ) );
 			}
 		}
 

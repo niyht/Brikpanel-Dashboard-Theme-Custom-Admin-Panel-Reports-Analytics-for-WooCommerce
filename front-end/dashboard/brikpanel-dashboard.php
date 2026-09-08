@@ -583,7 +583,7 @@ class Brikpanel_Dashboard {
 
             /**
              * Fires after all dashboard sections, at the bottom of the dashboard
-             * content. Used to render the dismissible BrikMentor early-access card.
+             * content. Used to render the dismissible promo and newsletter cards.
              *
              * @since 3.1.28
              */

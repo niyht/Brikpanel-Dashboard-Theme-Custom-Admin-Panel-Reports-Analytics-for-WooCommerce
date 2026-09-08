@@ -620,8 +620,54 @@
 	background: #f7f7f7;
 }
 
-/* Locked stand-in, shown in the Phone and Follow-ups cells while the store has
-   no active BrikMentor subscription. Same box as the WhatsApp mark so the row
+
+/* The locked WhatsApp mark. It reuses .brikpanel-cartab-wa for its box, radius,
+   inline offset and 1rem glyph, so the locked and unlocked cells cannot drift
+   apart in size; only the colour differs. Grey at rest and #303030 on hover,
+   the same pair as the plain padlock - the green belongs to a button that
+   actually opens a conversation, and this one does not. */
+.brikpanel-cartab-wa-locked {
+	color: #8a8a8a;
+	cursor: pointer;
+}
+
+.brikpanel-cartab-wa-locked:hover,
+.brikpanel-cartab-wa-locked:focus {
+	color: #303030;
+	background: #f7f7f7;
+}
+
+/* The padlock stamp, built as a sibling of .brikpanel-cartab-wa-count: same
+   pill, same #303030, same white ring, same pointer-events so the whole 1.75rem
+   box stays one hit target. Bottom-end rather than the count's top-end, because
+   that slot already means "a number" on this screen. Logical offsets only, so
+   it mirrors under RTL by itself. */
+.brikpanel-cartab-wa-lock {
+	position: absolute;
+	inset-block-end: -0.25rem;
+	inset-inline-end: -0.25rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 0.875rem;
+	height: 0.875rem;
+	box-sizing: border-box;
+	border-radius: 999px;
+	background: #303030;
+	color: #fff;
+	box-shadow: 0 0 0 2px #fff;
+	pointer-events: none;
+}
+
+/* Specific enough to beat `.brikpanel-cartab-wa svg { width: 1rem }` above. */
+.brikpanel-cartab-wa .brikpanel-cartab-wa-lock svg {
+	width: 0.625rem;
+	height: 0.625rem;
+	display: block;
+}
+
+/* Locked stand-in, shown in the Follow-ups cell while the store has
+   no BrikMentor able to answer it. Same box as the WhatsApp mark so the row
    height and rhythm do not change; muted, because it is a closed door and not a
    call to action. No physical-direction properties, so it mirrors under RTL on
    its own. */

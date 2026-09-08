@@ -1582,10 +1582,14 @@ html:has(body.admin_page_brikpanel-products) {
 /* ---------- Hide WP Admin defaults ---------- */
 /* Also strip .updated / .error / .update-nag so they collapse completely,
    and zero out the 10px .wrap margin WP leaves as a notice slot — together
-   this removes any visible gap above the page header. */
+   this removes any visible gap above the page header.
+   Red errors are the exception and stay on screen. Both flavours must be
+   named: WordPress core and WooCommerce still emit the legacy `error` class
+   alongside `notice` (`<div id="woocommerce_errors" class="error notice">`),
+   so guarding only `.notice-error` swallowed those with no trace. */
 body.admin_page_brikpanel-products .screen-meta-links,
-body.admin_page_brikpanel-products .notice:not(.brikpanel-notice):not(.notice-error),
-body.admin_page_brikpanel-products .updated:not(.brikpanel-notice),
+body.admin_page_brikpanel-products .notice:not(.brikpanel-notice):not(.notice-error):not(.error),
+body.admin_page_brikpanel-products .updated:not(.brikpanel-notice):not(.notice-error):not(.error),
 body.admin_page_brikpanel-products .update-nag,
 body.admin_page_brikpanel-products #screen-meta {
     display: none !important;

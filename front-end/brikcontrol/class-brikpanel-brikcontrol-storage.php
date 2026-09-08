@@ -11,7 +11,9 @@
  *   - results       (option, autoload=no): full per-check report bundle.
  *   - topbar cache  (transient, 5 min):    lean payload the topbar JS reads.
  *   - progress      (option, autoload=no): in-flight scan cursor / total.
- *   - dismissed     (user meta):           per-user banner dismissal map.
+ *   - dismissed     (user meta):           per-user dismissal map, each entry
+ *                                          { at: timestamp, ids: [check ids
+ *                                          that were failing when dismissed] }.
  *
  * @package BrikPanel
  * @since   3.1.1
@@ -29,7 +31,6 @@ class Brikpanel_BrikControl_Storage {
     const USER_META_KEY    = 'brikpanel_brikcontrol_dismissed';
 
     const TRANSIENT_TTL    = 300;        // 5 minutes
-    const DISMISS_TTL      = 7 * DAY_IN_SECONDS;
 
     // =========================================================================
     // RESULTS
@@ -210,44 +211,157 @@ class Brikpanel_BrikControl_Storage {
     }
 
     // =========================================================================
-    // DISMISSALS (per-user, 7 day TTL)
+    // DISMISSALS (per-user, permanent, scoped to what was failing)
     // =========================================================================
 
     /**
+     * Sorted ids of every check currently reporting "critical". This is the
+     * scope a dashboard-banner dismissal is recorded against: the merchant is
+     * saying "I know about these", not "hide this banner forever".
+     *
+     * @param array|null $bundle Result bundle, to save callers that already
+     *                           hold one a second option read.
+     * @return string[]
+     */
+    public static function critical_check_ids( array $bundle = null ) {
+        if ( $bundle === null ) {
+            $bundle = self::get_results();
+        }
+        $ids = [];
+        foreach ( (array) ( isset( $bundle['checks'] ) ? $bundle['checks'] : [] ) as $check_id => $result ) {
+            $status = isset( $result['status'] ) ? (string) $result['status'] : '';
+            if ( $status === 'critical' ) {
+                $ids[] = (string) $check_id;
+            }
+        }
+        sort( $ids );
+        return $ids;
+    }
+
+    /**
+     * User meta key for the CURRENT site.
+     *
+     * User meta is global on multisite, so a single shared key meant that
+     * dismissing the banner on one store silenced it on every other store in
+     * the network — even though each store has its own products and therefore
+     * its own critical findings. Prefixing per blog (the same convention core
+     * uses for capabilities) keeps each store's dismissals to itself.
+     *
+     * Single-site installs keep the original unprefixed key, so nothing there
+     * has to migrate.
+     *
+     * @return string
+     */
+    private static function meta_key() {
+        if ( ! is_multisite() ) {
+            return self::USER_META_KEY;
+        }
+        global $wpdb;
+        return $wpdb->get_blog_prefix() . self::USER_META_KEY;
+    }
+
+    /**
      * @param int|null $user_id Defaults to current user.
-     * @return array<string, int> check_id => unix timestamp
+     * @return array<string, array{at:int, ids:string[]}|int> Legacy rows are
+     *         still plain ints; callers must tolerate both shapes.
      */
     public static function get_dismissals( $user_id = null ) {
         $user_id = $user_id ?: get_current_user_id();
         if ( $user_id <= 0 ) {
             return [];
         }
-        $stored = get_user_meta( $user_id, self::USER_META_KEY, true );
-        return is_array( $stored ) ? $stored : [];
+
+        $stored = get_user_meta( $user_id, self::meta_key(), true );
+        if ( is_array( $stored ) ) {
+            return $stored;
+        }
+
+        // Network installs that dismissed under the old shared key: hand that
+        // value to the main site only. Adopting it everywhere would just
+        // recreate the cross-store bleed this prefix exists to stop.
+        if ( is_multisite() && is_main_site() ) {
+            $legacy = get_user_meta( $user_id, self::USER_META_KEY, true );
+            if ( is_array( $legacy ) ) {
+                return $legacy;
+            }
+        }
+
+        return [];
     }
 
-    public static function dismiss( $check_id, $user_id = null ) {
+    /**
+     * Record a dismissal permanently.
+     *
+     * The scope ids are UNIONed with whatever was already stored rather than
+     * replacing it. Union is what makes the banner stay quiet in the two cases
+     * merchants actually hit: an issue that gets fixed and later regresses is
+     * not a new problem, and a background scan that lands between the render
+     * and the click must not silently widen the set the user thought they were
+     * dismissing.
+     *
+     * @param string   $check_id  Dismissal key (e.g. 'dashboard_banner').
+     * @param string[] $scope_ids Check ids that were failing at dismiss time.
+     * @param int|null $user_id
+     * @return void
+     */
+    public static function dismiss( $check_id, array $scope_ids = [], $user_id = null ) {
         $user_id = $user_id ?: get_current_user_id();
         if ( $user_id <= 0 ) {
             return;
         }
-        $stored                       = self::get_dismissals( $user_id );
-        $stored[ (string) $check_id ] = time();
-        update_user_meta( $user_id, self::USER_META_KEY, $stored );
+
+        $check_id = (string) $check_id;
+        $stored   = self::get_dismissals( $user_id );
+        $existing = isset( $stored[ $check_id ] ) ? $stored[ $check_id ] : null;
+
+        $ids = [];
+        if ( is_array( $existing ) && isset( $existing['ids'] ) && is_array( $existing['ids'] ) ) {
+            $ids = array_map( 'strval', $existing['ids'] );
+        }
+        $ids = array_values( array_unique( array_merge( $ids, array_map( 'strval', $scope_ids ) ) ) );
+        sort( $ids );
+
+        $stored[ $check_id ] = [
+            'at'  => time(),
+            'ids' => $ids,
+        ];
+        update_user_meta( $user_id, self::meta_key(), $stored );
     }
 
     /**
-     * Whether a dismissal is still inside the 7-day suppression window.
+     * Whether a dismissal still suppresses the notice.
      *
-     * @param string   $check_id
-     * @param int|null $user_id
+     * Dismissals no longer expire. Suppression lifts only when something the
+     * user has never dismissed shows up: if every id in $scope_ids is already
+     * covered by the stored set, stay hidden.
+     *
+     * @param string        $check_id
+     * @param string[]|null $scope_ids Current failing ids. Null means the
+     *                                 caller has no scope, so any stored
+     *                                 dismissal suppresses unconditionally.
+     * @param int|null      $user_id
      * @return bool
      */
-    public static function is_dismissed( $check_id, $user_id = null ) {
+    public static function is_dismissed( $check_id, array $scope_ids = null, $user_id = null ) {
         $stored = self::get_dismissals( $user_id );
         if ( ! isset( $stored[ $check_id ] ) ) {
             return false;
         }
-        return ( time() - (int) $stored[ $check_id ] ) < self::DISMISS_TTL;
+        if ( $scope_ids === null ) {
+            return true;
+        }
+
+        $entry = $stored[ $check_id ];
+
+        // Legacy rows are a bare timestamp with no record of what was wrong at
+        // the time. The user did click the X, so honour that — adopt today's
+        // scope so a genuinely new problem can still surface later.
+        if ( ! is_array( $entry ) ) {
+            self::dismiss( $check_id, $scope_ids, $user_id );
+            return true;
+        }
+
+        $known = ( isset( $entry['ids'] ) && is_array( $entry['ids'] ) ) ? array_map( 'strval', $entry['ids'] ) : [];
+        return array_diff( array_map( 'strval', $scope_ids ), $known ) === [];
     }
 }

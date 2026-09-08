@@ -202,20 +202,8 @@
     // First refresh on load (in case server-rendered cache was stale).
     setTimeout(fetchStatus, 800);
 
-    // Dashboard banner dismiss handler — the banner renders on the dashboard
-    // (not on the BrikControl page), where only the topbar JS is loaded, so
-    // we need to handle the click here too.
-    document.addEventListener('click', function (e) {
-        var dismissBtn = e.target.closest('[data-bc-dismiss]');
-        if (!dismissBtn) return;
-        e.preventDefault();
-        var banner = dismissBtn.closest('[data-bc-banner]');
-        if (banner) banner.style.display = 'none';
-
-        var fd = new FormData();
-        fd.append('action', 'brikpanel_brikcontrol_dismiss');
-        fd.append('security', cfg.nonce);
-        fd.append('key', 'dashboard_banner');
-        fetch(cfg.ajax_url, { method: 'POST', credentials: 'same-origin', body: fd }).catch(function () {});
-    });
+    // The dashboard banner's dismiss handler deliberately does NOT live here.
+    // Everything above is behind an early return that fires when the shield
+    // element is missing, which silently killed the banner's X. It now lives
+    // in brikpanel-bc-banner.js, enqueued on the dashboard on its own.
 })();

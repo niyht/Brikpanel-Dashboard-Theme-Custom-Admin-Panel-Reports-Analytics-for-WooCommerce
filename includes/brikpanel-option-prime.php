@@ -170,7 +170,7 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_var_stock_fix2_done',
 		'brikpanel_var_stock_fix2_cursor',
 
-		// Review / early-access nags.
+		// Review nag + newsletter capture.
 		'brikpanel_activated_at',
 		'brikpanel_completed_orders_count',
 		'brikpanel_review_dismissed',
@@ -178,8 +178,7 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_ea_outbox',
 		'brikpanel_ea_last_flush',
 		'brikpanel_ea_subscribed',
-		'brikpanel_ea_card_dismissed',
-		'brikpanel_ea_dismissed_upto',
+		'brikpanel_newsletter_card_dismissed',
 		'brikpanel_bm_live_card_dismissed',
 
 		// Topbar rendering (in_admin_header on every admin screen).
@@ -355,7 +354,6 @@ function brikpanel_option_autoload_denylist() {
 		'brikpanel_ca_cache_ver'                        => 'write-hot',
 		'brikpanel_ads_cache_version'                   => 'write-hot',
 		'brikpanel_completed_orders_count'              => 'write-hot',
-		'brikpanel_ea_orders_count'                     => 'write-hot',
 		'brikpanel_ea_last_flush'                       => 'write-hot',
 		'brikpanel_order_notify_latest_id'              => 'write-hot',
 		'brikpanel_brikcontrol_progress'                => 'write-hot during a scan',

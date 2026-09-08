@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: BrikPanel\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/brikpanel\n"
-"POT-Creation-Date: 2026-09-05T11:29:01+00:00\n"
+"POT-Creation-Date: 2026-09-07T17:10:09+00:00\n"
 "PO-Revision-Date: 2026-05-23\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -65,14 +65,14 @@ msgstr ""
 "desativados aqui. Ative o WooCommerce para habilitar o BrikPanel."
 
 #. translators: %d: number of hidden third-party admin notices
-#: brikpanel.php:609
+#: brikpanel.php:623
 #, php-format
 msgid "%d hidden notice"
 msgid_plural "%d hidden notices"
 msgstr[0] "%d aviso oculto"
 msgstr[1] "%d avisos ocultos"
 
-#: brikpanel.php:612
+#: brikpanel.php:626
 msgid ""
 "Other plugins and themes posted these notices. BrikPanel keeps them hidden, "
 "click to show."
@@ -80,8 +80,8 @@ msgstr ""
 "Outros plugins e temas publicaram esses avisos. O BrikPanel os mantém "
 "ocultos, clique para exibir."
 
-#: brikpanel.php:2682
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3715
+#: brikpanel.php:2696
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3797
 #: front-end/navigation/brikpanel-nav-customizer.php:566
 #: front-end/vendors/class-brikpanel-vendor-settings.php:241
 msgid "Settings"
@@ -271,9 +271,9 @@ msgstr ""
 #: front-end/ad-platforms/class-brikpanel-ads-oauth.php:77
 #: front-end/ad-platforms/class-brikpanel-ads-oauth.php:166
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:193
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:658
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3637
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4182
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:676
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3721
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4280
 #: front-end/cart-share/brikpanel-cart-share.php:381
 #: front-end/cart-share/brikpanel-cart-share.php:447
 #: front-end/coupons/brikpanel-coupons.php:450
@@ -285,9 +285,9 @@ msgstr ""
 #: front-end/coupons/brikpanel-coupons.php:988
 #: front-end/coupons/brikpanel-coupons.php:1031
 #: front-end/customer-analytics/brikpanel-customer-analytics.php:118
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:364
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:584
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:751
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:346
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:565
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:731
 #: front-end/expenses/brikpanel-expenses.php:92
 #: front-end/google-sheets/class-brikpanel-sheets-oauth.php:65
 #: front-end/google-sheets/class-brikpanel-sheets-oauth.php:128
@@ -298,17 +298,17 @@ msgstr ""
 #: front-end/products/brikpanel-product-editor.php:199
 #: front-end/products/brikpanel-product-editor.php:226
 #: front-end/products/brikpanel-product-editor.php:325
-#: front-end/products/brikpanel-product-editor.php:5440
-#: front-end/products/brikpanel-product-editor.php:5456
-#: front-end/products/brikpanel-product-editor.php:5498
-#: front-end/products/brikpanel-product-editor.php:5512
-#: front-end/products/brikpanel-product-editor.php:6724
-#: front-end/products/brikpanel-product-editor.php:6753
-#: front-end/products/brikpanel-product-editor.php:9596
-#: front-end/products/brikpanel-product-editor.php:9660
-#: front-end/products/brikpanel-product-editor.php:9718
-#: front-end/products/brikpanel-product-editor.php:9749
-#: front-end/products/brikpanel-product-editor.php:9809
+#: front-end/products/brikpanel-product-editor.php:5480
+#: front-end/products/brikpanel-product-editor.php:5496
+#: front-end/products/brikpanel-product-editor.php:5538
+#: front-end/products/brikpanel-product-editor.php:5552
+#: front-end/products/brikpanel-product-editor.php:6764
+#: front-end/products/brikpanel-product-editor.php:6793
+#: front-end/products/brikpanel-product-editor.php:9636
+#: front-end/products/brikpanel-product-editor.php:9700
+#: front-end/products/brikpanel-product-editor.php:9758
+#: front-end/products/brikpanel-product-editor.php:9789
+#: front-end/products/brikpanel-product-editor.php:9849
 #: front-end/products/brikpanel-products-list.php:237
 #: front-end/products/brikpanel-products-list.php:2157
 #: front-end/products/brikpanel-products-list.php:2685
@@ -322,9 +322,9 @@ msgstr ""
 #: front-end/products/brikpanel-products-list.php:3529
 #: front-end/products/brikpanel-products-list.php:3535
 #: front-end/products/brikpanel-products-list.php:3637
-#: front-end/products/brikpanel-products-list.php:4572
-#: front-end/products/brikpanel-products-list.php:4632
-#: front-end/products/brikpanel-products-list.php:4732
+#: front-end/products/brikpanel-products-list.php:4578
+#: front-end/products/brikpanel-products-list.php:4638
+#: front-end/products/brikpanel-products-list.php:4738
 #: front-end/segments/brikpanel-segments.php:93
 #: front-end/segments/brikpanel-segments.php:1024
 #: front-end/vendors/class-brikpanel-stock-orders.php:110
@@ -489,7 +489,7 @@ msgid "No ad accounts found for this connection."
 msgstr "Nenhuma conta de anúncios encontrada para esta conexão."
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:145
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:886
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:893
 #: front-end/google-sheets/class-brikpanel-sheets-settings.php:277
 msgid "Something went wrong. Please try again."
 msgstr "Algo deu errado. Tente novamente."
@@ -653,7 +653,7 @@ msgid "Days"
 msgstr "Dias"
 
 #: front-end/ad-platforms/class-brikpanel-ads-settings.php:179
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:665
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:672
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:199
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:274
 msgid "All time"
@@ -1163,7 +1163,7 @@ msgstr "Usar esta imagem"
 #: front-end/brikcontrol/brikpanel-brikcontrol.php:91
 #: front-end/brikcontrol/class-brikpanel-brikcontrol.php:134
 #: front-end/brikcontrol/class-brikpanel-brikcontrol.php:148
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:372
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:377
 #: front-end/brikcontrol/views/page.php:42
 msgid "Store Health"
 msgstr "Saúde da Loja"
@@ -1382,14 +1382,14 @@ msgid "Product ID"
 msgstr "ID do produto"
 
 #: front-end/brikcontrol/checks/class-brikpanel-brikcontrol-product-lookup-check.php:221
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3932
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4018
 #: front-end/dashboard/brikpanel-dashboard.php:4192
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:99
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:116
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:359
 #: front-end/products/brikpanel-product-editor.php:1665
 #: front-end/products/brikpanel-product-editor.php:1829
-#: front-end/products/brikpanel-product-editor.php:9847
+#: front-end/products/brikpanel-product-editor.php:9887
 #: front-end/products/brikpanel-products-list.php:73
 #: front-end/products/brikpanel-products-list.php:1217
 #: front-end/products/brikpanel-products-list.php:1690
@@ -1445,7 +1445,7 @@ msgstr ""
 "Processa um único lote de uma verificação BrikControl de longa duração."
 
 #: front-end/brikcontrol/class-brikpanel-brikcontrol.php:173
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:388
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:393
 msgid "Rescan now"
 msgstr "Verificar novamente"
 
@@ -1458,10 +1458,10 @@ msgid "Could not start scan."
 msgstr "Não foi possível iniciar a verificação."
 
 #: front-end/brikcontrol/class-brikpanel-brikcontrol.php:176
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:261
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:378
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:515
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:675
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:266
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:383
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:525
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:693
 msgid "Not scanned yet"
 msgstr "Ainda não verificado"
 
@@ -1470,8 +1470,8 @@ msgid "Scanning in background…"
 msgstr "Verificando em segundo plano…"
 
 #: front-end/brikcontrol/class-brikpanel-brikcontrol.php:178
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:263
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:679
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:268
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:697
 msgid "just now"
 msgstr "agora mesmo"
 
@@ -1501,25 +1501,29 @@ msgstr ""
 msgid "Cleanup failed. Please try again."
 msgstr ""
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:258
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:239
+msgid "Could not dismiss. Please try again."
+msgstr "Não foi possível dispensar. Tente novamente."
+
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:263
 msgid "All checks passing"
 msgstr "Todas as verificações aprovadas"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:259
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:264
 msgid "Open Store Health"
 msgstr "Abrir Saúde da Loja"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:260
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:265
 msgid "Last scan"
 msgstr "Última verificação"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:262
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:267
 msgid "Scanning…"
 msgstr "Verificando…"
 
 #. translators: %s: minutes
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:264
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:684
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:269
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:702
 #, php-format
 msgid "%s min ago"
 msgid_plural "%s min ago"
@@ -1527,8 +1531,8 @@ msgstr[0] "%s min atrás"
 msgstr[1] "%s min atrás"
 
 #. translators: %s: hours
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:265
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:689
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:270
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:707
 #, php-format
 msgid "%s h ago"
 msgid_plural "%s h ago"
@@ -1536,24 +1540,24 @@ msgstr[0] "%s h atrás"
 msgstr[1] "%s h atrás"
 
 #. translators: %s: days
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:266
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:693
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:271
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:711
 #, php-format
 msgid "%s d ago"
 msgid_plural "%s d ago"
 msgstr[0] "%s d atrás"
 msgstr[1] "%s d atrás"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:277
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:282
 msgid "You do not have permission to access this page."
 msgstr "Você não tem permissão para acessar esta página."
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:301
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:306
 msgid "Not scanned yet — run a scan to see results."
 msgstr "Ainda não verificado, execute uma verificação para ver os resultados."
 
 #. translators: %s: critical issue count
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:338
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:343
 #, php-format
 msgid "%s critical store health issue"
 msgid_plural "%s critical store health issues"
@@ -1561,86 +1565,90 @@ msgstr[0] "%s problema crítico de saúde da loja"
 msgstr[1] "%s problemas críticos de saúde da loja"
 
 #. translators: %s: warning count
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:346
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:351
 #, php-format
 msgid "%s store health warning"
 msgid_plural "%s store health warnings"
 msgstr[0] "%s aviso de saúde da loja"
 msgstr[1] "%s avisos de saúde da loja"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:352
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:357
 msgid "Store health: all checks passing"
 msgstr "Saúde da loja: todas as verificações aprovadas"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:391
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:396
 msgid "Open full report"
 msgstr "Abrir relatório completo"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:405
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:410
 msgid "Run a scan to see store health checks."
 msgstr "Execute uma verificação para ver as verificações de saúde da loja."
 
 #. translators: %s: critical issue count
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:468
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:478
 #, php-format
 msgid "%s critical store health issue detected"
 msgid_plural "%s critical store health issues detected"
 msgstr[0] "%s problema crítico de saúde da loja detectado"
 msgstr[1] "%s problemas críticos de saúde da loja detectados"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:478
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:488
 msgid ""
 "Open the BrikControl report to see what to fix and which plugins can help."
 msgstr ""
 "Abra o relatório do BrikControl para ver o que corrigir e quais plugins "
 "podem ajudar."
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:482
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:492
 msgid "View report"
 msgstr "Ver relatório"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:484
-msgid "Dismiss for 7 days"
-msgstr "Dispensar por 7 dias"
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:494
+#: front-end/sound/brikpanel-sound.php:152
+#: includes/brikpanel-early-access.php:557
+#: includes/brikpanel-early-access.php:671
+#: includes/brikpanel-review-notices.php:137
+msgid "Dismiss"
+msgstr "Dispensar"
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:540
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:550
 msgid "A scan is already running."
 msgstr "Uma verificação já está em execução."
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:549
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:559
 msgid "Action Scheduler is unavailable."
 msgstr "O Action Scheduler está indisponível."
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:560
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:572
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:570
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:582
 msgid "A scan is already in the queue."
 msgstr "Uma verificação já está na fila."
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:571
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:581
 msgid "Scan queued."
 msgstr "Verificação enfileirada."
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:593
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:603
 msgid "Missing dismiss target."
 msgstr "Destino de dispensa ausente."
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:613
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:631
 msgid "Missing check id."
 msgstr ""
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:620
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:638
 msgid "This check has no automatic fix."
 msgstr ""
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:627
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:645
 msgid "A cleanup is already running for this check."
 msgstr ""
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:635
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:653
 msgid "The cleanup could not be completed."
 msgstr ""
 
-#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:655
+#: front-end/brikcontrol/class-brikpanel-brikcontrol.php:673
 msgid "Invalid nonce."
 msgstr "Nonce inválido."
 
@@ -1660,7 +1668,7 @@ msgstr "Verificar agora"
 
 #: front-end/brikcontrol/views/page.php:56
 #: front-end/brikcontrol/views/partials/check-card.php:28
-#: front-end/products/brikpanel-product-editor.php:3256
+#: front-end/products/brikpanel-product-editor.php:3263
 msgid "Critical"
 msgstr "Crítico"
 
@@ -1694,7 +1702,7 @@ msgstr ""
 "terminar, você verá os resultados aqui."
 
 #: front-end/brikcontrol/views/partials/check-card.php:27
-#: front-end/products/brikpanel-product-editor.php:3257
+#: front-end/products/brikpanel-product-editor.php:3264
 msgid "Warning"
 msgstr "Aviso"
 
@@ -1734,7 +1742,7 @@ msgid "Missing files"
 msgstr "Arquivos ausentes"
 
 #: front-end/brikcontrol/views/partials/check-card.php:198
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3925
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4011
 msgid "Details"
 msgstr "Detalhes"
 
@@ -1744,7 +1752,7 @@ msgstr "Maiores imagens (top 10)"
 
 #: front-end/brikcontrol/views/partials/check-card.php:231
 #: front-end/products/brikpanel-product-editor.php:1669
-#: front-end/products/brikpanel-product-editor.php:9845
+#: front-end/products/brikpanel-product-editor.php:9885
 #: front-end/products/brikpanel-products-list.php:71
 msgid "Image"
 msgstr "Imagem"
@@ -1794,7 +1802,7 @@ msgstr "Verificado %s"
 #: front-end/navigation/brikpanel-nav-customizer.php:558
 #: front-end/orders/brikpanel-orders.php:944
 #: front-end/search/brikpanel-search.php:121
-#: front-end/segments/brikpanel-segments.php:1087
+#: front-end/segments/brikpanel-segments.php:1082
 #: front-end/segments/views/page.php:35 includes/brikpanel-enqueue.php:239
 #: includes/brikpanel-enqueue.php:303 includes/brikpanel-enqueue.php:402
 #: includes/brikpanel-enqueue.php:497 includes/brikpanel-enqueue.php:801
@@ -1836,7 +1844,7 @@ msgid "Analytics"
 msgstr "Analytics"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:213
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4436
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4542
 msgid "Subscribe to get special offers and updates."
 msgstr "Assine para receber ofertas especiais e novidades."
 
@@ -1848,13 +1856,13 @@ msgstr "Cadastre-se e ganhe %d%% de desconto"
 
 #. translators: %d: discount percentage
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:220
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4466
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4572
 #, php-format
 msgid "Get %d%% off"
 msgstr "Ganhe %d%% de desconto"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:222
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4429
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4535
 msgid "Sign up and save"
 msgstr "Cadastre-se e economize"
 
@@ -1863,17 +1871,20 @@ msgid "Special offer"
 msgstr "Oferta especial"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:233
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4443
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4549
+#: includes/brikpanel-early-access.php:176
+#: includes/brikpanel-early-access.php:556
+#: includes/brikpanel-early-access.php:903
 msgid "Subscribe"
 msgstr "Assinar"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:234
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4450
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4556
 msgid "Enter your email"
 msgstr "Digite o seu e-mail"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:235
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4457
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4563
 msgid "Thanks for subscribing!"
 msgstr "Obrigado por se cadastrar!"
 
@@ -1887,12 +1898,12 @@ msgid "Active"
 msgstr "Ativo"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:346
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3755
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3837
 msgid "Abandoned"
 msgstr "Abandonado"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:347
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3763
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3845
 msgid "Recovered"
 msgstr "Recuperado"
 
@@ -1925,13 +1936,13 @@ msgid "Converted"
 msgstr "Convertido"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:496
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4207
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:381
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:612
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4305
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:363
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:593
 #: front-end/dashboard/brikpanel-dashboard.php:4217
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:141
-#: front-end/segments/brikpanel-segments.php:1058
-#: front-end/segments/brikpanel-segments.php:1084
+#: front-end/segments/brikpanel-segments.php:1053
+#: front-end/segments/brikpanel-segments.php:1079
 #: front-end/vendors/class-brikpanel-vendors.php:224
 #: front-end/vendors/class-brikpanel-vendors.php:498
 #: includes/brikpanel-enqueue.php:285 includes/brikpanel-enqueue.php:396
@@ -1940,21 +1951,21 @@ msgid "Email"
 msgstr "E-mail"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:497
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:380
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:611
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:362
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:592
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:117
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:140
-#: front-end/segments/brikpanel-segments.php:1083
+#: front-end/segments/brikpanel-segments.php:1078
 #: includes/brikpanel-store-summary.php:684
 msgid "Name"
 msgstr "Nome"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:498
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4210
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:382
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:613
-#: front-end/segments/brikpanel-segments.php:1059
-#: front-end/segments/brikpanel-segments.php:1085
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4308
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:364
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:594
+#: front-end/segments/brikpanel-segments.php:1054
+#: front-end/segments/brikpanel-segments.php:1080
 #: front-end/vendors/class-brikpanel-vendors.php:228
 #: front-end/vendors/class-brikpanel-vendors.php:502
 #: includes/brikpanel-enqueue.php:397
@@ -1967,7 +1978,7 @@ msgid "Cart"
 msgstr "Carrinho"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:503
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4214
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4312
 msgid "Cart total"
 msgstr "Total do carrinho"
 
@@ -1976,25 +1987,25 @@ msgid "Follow-ups"
 msgstr "Follow-ups"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:505
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4211
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4309
 #: front-end/dashboard/brikpanel-dashboard.php:4221
 #: includes/brikpanel-enqueue.php:255
 msgid "Source"
 msgstr "Origem"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:506
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4212
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4310
 #: front-end/coupons/brikpanel-coupons.php:199
 #: front-end/dashboard/brikpanel-dashboard.php:4089
 #: front-end/dashboard/brikpanel-dashboard.php:4204
 #: front-end/dashboard/brikpanel-dashboard.php:4218
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:133
 #: front-end/products/brikpanel-product-editor.php:1662
-#: front-end/products/brikpanel-product-editor.php:9852
+#: front-end/products/brikpanel-product-editor.php:9892
 #: front-end/products/brikpanel-products-list.php:84
 #: front-end/products/brikpanel-products-list.php:1283
 #: front-end/products/brikpanel-products-list.php:1704
-#: front-end/segments/brikpanel-segments.php:1056
+#: front-end/segments/brikpanel-segments.php:1051
 #: front-end/vendors/class-brikpanel-stock-orders.php:175
 #: front-end/vendors/class-brikpanel-stock-orders.php:204
 #: front-end/vendors/class-brikpanel-vendors.php:168
@@ -2012,27 +2023,27 @@ msgid "Created"
 msgstr "Criado"
 
 #: front-end/cart-abandonment/brikpanel-cart-abandonment.php:508
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:627
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:634
 msgid "Last activity"
 msgstr "Última atividade"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:628
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:635
 msgid "Highest cart value"
 msgstr "Carrinho de maior valor"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:629
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:636
 msgid "Lowest cart value"
 msgstr "Carrinho de menor valor"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:630
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:637
 msgid "Oldest cart"
 msgstr "Carrinho mais antigo"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:631
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:638
 msgid "Newest cart"
 msgstr "Carrinho mais recente"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:666
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:673
 #: front-end/dashboard/brikpanel-dashboard.php:545
 #: front-end/dashboard/brikpanel-dashboard.php:2803
 #: includes/brikpanel-enqueue.php:407 includes/brikpanel-enqueue.php:490
@@ -2040,13 +2051,13 @@ msgstr "Carrinho mais recente"
 msgid "Today"
 msgstr "Hoje"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:667
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:674
 #: includes/brikpanel-enqueue.php:408 includes/brikpanel-enqueue.php:847
 #: includes/brikpanel-store-summary.php:802
 msgid "Last 7 days"
 msgstr "Últimos 7 dias"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:668
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:675
 #: includes/brikpanel-enqueue.php:409 includes/brikpanel-enqueue.php:848
 #: includes/brikpanel-store-summary.php:803
 #: includes/brikpanel-store-summary.php:1572
@@ -2054,24 +2065,24 @@ msgstr "Últimos 7 dias"
 msgid "Last 30 days"
 msgstr "Últimos 30 dias"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:669
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:676
 #: includes/brikpanel-enqueue.php:410 includes/brikpanel-store-summary.php:804
 msgid "Last 90 days"
 msgstr "Últimos 90 dias"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:670
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:677
 #: front-end/dashboard/brikpanel-dashboard.php:2808
 msgid "Custom range"
 msgstr "Período personalizado"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:885
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:936
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1444
-#: includes/brikpanel-early-access.php:242
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:892
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:943
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1451
+#: includes/brikpanel-early-access.php:167
 msgid "Please enter a valid email address."
 msgstr "Por favor, insira um endereço de e-mail válido."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:887
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:894
 #: front-end/cart-share/brikpanel-cart-share.php:548
 #: front-end/customer-analytics/views/page.php:255
 #: front-end/dashboard/brikpanel-dashboard-topbar.php:199
@@ -2084,57 +2095,57 @@ msgstr "Por favor, insira um endereço de e-mail válido."
 #: front-end/vendors/class-brikpanel-vendors.php:209
 #: front-end/vendors/class-brikpanel-vendors.php:483
 #: front-end/welcome/brikpanel-welcome.php:266
-#: includes/brikpanel-brikmentor-promo.php:317
-#: includes/brikpanel-early-access.php:227
-#: includes/brikpanel-early-access.php:287 includes/brikpanel-enqueue.php:1133
+#: includes/brikpanel-brikmentor-promo.php:325
+#: includes/brikpanel-early-access.php:152
+#: includes/brikpanel-early-access.php:191 includes/brikpanel-enqueue.php:1133
 #: includes/brikpanel-hooks-api.php:327
 #: includes/cron/class-brikpanel-cron-page.php:176
 msgid "Close"
 msgstr "Fechar"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:888
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:895
 msgid "Email address"
 msgstr "Endereço de e-mail"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:889
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:896
 msgid "Your discount code"
 msgstr "Seu código de desconto"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:892
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:899
 msgid "Apply it at checkout. Valid for 30 days."
 msgstr "Use no checkout. Válido por 30 dias."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:893
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:900
 msgid "Already on your cart, the discount is in your total."
 msgstr ""
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:894
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:901
 msgid ""
 "Saved. It goes on your cart automatically, and you can still type it in at "
 "checkout."
 msgstr ""
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:895
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:902
 msgid ""
 "Your code is saved. Reopen it any time from the tab at the bottom of the "
 "page."
 msgstr ""
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:896
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:903
 msgid "Your code"
 msgstr ""
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:897
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:904
 msgid "Show your discount code"
 msgstr ""
 
 #. translators: %s: the visitor's email address
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:899
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:906
 #, php-format
 msgid "We sent your discount code to %s"
 msgstr "Enviamos o seu código de desconto para %s"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:900
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:907
 msgid ""
 "Check your inbox — if it landed in the Promotions tab, drag it to Primary so "
 "you never miss it."
@@ -2142,15 +2153,15 @@ msgstr ""
 "Confira a sua caixa de entrada. Se a mensagem caiu na aba Promoções, arraste-"
 "a para a aba Principal para não perdê-la."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:901
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:908
 msgid "Wrong address? Edit it"
 msgstr "Endereço errado? Edite-o"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:902
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:909
 msgid "Update & resend"
 msgstr "Atualizar e reenviar"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:903
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:910
 #: front-end/coupons/brikpanel-coupons.php:429
 #: front-end/customer-analytics/views/page.php:276
 #: front-end/dashboard/brikpanel-dashboard.php:960
@@ -2171,52 +2182,52 @@ msgstr "Atualizar e reenviar"
 msgid "Cancel"
 msgstr "Cancelar"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:904
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:911
 msgid "Sent to your new address"
 msgstr "Enviado para o seu novo endereço"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:905
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:912
 #: front-end/cart-share/brikpanel-cart-share.php:345
 #: front-end/cart-share/brikpanel-cart-share.php:544
-#: front-end/products/brikpanel-product-editor.php:9760
+#: front-end/products/brikpanel-product-editor.php:9800
 #: includes/brikpanel-enqueue.php:803
 msgid "Copy"
 msgstr "Copiar"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:906
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:913
 #: front-end/cart-share/brikpanel-cart-share.php:545
 #: includes/brikpanel-enqueue.php:804 includes/brikpanel-hooks-api.php:734
 msgid "Copied!"
 msgstr "Copiado!"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:907
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:914
 msgid "OFF"
 msgstr "DE DESCONTO"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:908
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:915
 msgid "Scratch me"
 msgstr "Raspe aqui"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1438
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1451
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1465
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1445
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1458
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1472
 msgid "Editing is not available right now."
 msgstr "A edição não está disponível no momento."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1472
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1479
 msgid "Please wait a moment before trying again."
 msgstr "Aguarde um momento antes de tentar novamente."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1478
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1485
 msgid "You have changed the address too many times. Please try later."
 msgstr "Você alterou o endereço muitas vezes. Tente novamente mais tarde."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1598
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:1605
 msgid "Signup popup coupon (BrikPanel cart abandonment)"
 msgstr "Cupom do pop-up de cadastro (abandono de carrinho do BrikPanel)"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3365
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4380
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3449
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4486
 msgid ""
 "Hi {customer_name}, this is {store_name}. You left a few items in your cart "
 "- can I help you finish the order? {recovery_url}"
@@ -2225,19 +2236,19 @@ msgstr ""
 "carrinho. Posso te ajudar a finalizar o pedido? {recovery_url}"
 
 #. translators: %s: full international phone number the link opens.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3517
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3601
 #, php-format
 msgid "Message on WhatsApp: +%s (country guessed from your store address)"
 msgstr "Falar no WhatsApp: +%s (país estimado pelo endereço da sua loja)"
 
 #. translators: %s: full international phone number the link opens.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3523
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3607
 #, php-format
 msgid "Message on WhatsApp: +%s"
 msgstr "Falar no WhatsApp: +%s"
 
 #. translators: 1: how many times the WhatsApp draft was opened, 2: date and time of the last time.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3545
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3629
 #, php-format
 msgid "WhatsApp draft opened %1$s time · last %2$s"
 msgid_plural "WhatsApp draft opened %1$s times · last %2$s"
@@ -2245,7 +2256,7 @@ msgstr[0] "Rascunho do WhatsApp aberto %1$s vez · último %2$s"
 msgstr[1] "Rascunho do WhatsApp aberto %1$s vezes · último %2$s"
 
 #. translators: %s: how many times the WhatsApp draft was opened.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3551
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3635
 #, php-format
 msgid "WhatsApp draft opened %s time"
 msgid_plural "WhatsApp draft opened %s times"
@@ -2253,26 +2264,26 @@ msgstr[0] "Rascunho do WhatsApp aberto %s vez"
 msgstr[1] "Rascunho do WhatsApp aberto %s vezes"
 
 #. translators: %s: date and time of the next scheduled reminder.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3565
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3649
 #, php-format
 msgid "Next: %s"
 msgstr "Próximo: %s"
 
 #. translators: %s: date and time of the last reminder sent.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3571
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3655
 #, php-format
 msgid "Last: %s"
 msgstr "Último: %s"
 
 #. translators: %s: number of follow-up emails already sent.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3579
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3663
 #, php-format
 msgid "%s email sent"
 msgid_plural "%s emails sent"
 msgstr[0] "%s e-mail enviado"
 msgstr[1] "%s e-mails enviados"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3583
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3667
 #: front-end/products/brikpanel-product-editor.php:1183
 #: front-end/products/brikpanel-product-editor.php:1206
 #: front-end/products/brikpanel-products-list.php:1289
@@ -2283,19 +2294,19 @@ msgid "Scheduled"
 msgstr "Agendado"
 
 #. translators: %s: reason no follow-up was sent, e.g. "Flow switched off".
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3592
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3676
 #, php-format
 msgid "Not chased: %s"
 msgstr "Sem lembrete: %s"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3618
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3619
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3629
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3687
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3702
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3703
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3713
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3769
 msgid "Abandoned Carts"
 msgstr "Carrinhos abandonados"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3688
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3770
 msgid ""
 "Emails collected from checkout and the signup popup, with a live snapshot of "
 "each cart."
@@ -2303,16 +2314,16 @@ msgstr ""
 "E-mails coletados no checkout e no pop-up de cadastro, com um retrato ao "
 "vivo de cada carrinho."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3691
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3773
 msgid "Show an email signup popup to store visitors."
 msgstr "Mostrar um pop-up de cadastro por e-mail aos visitantes da loja."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3692
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4384
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3774
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4490
 msgid "Email popup"
 msgstr "Pop-up de e-mail"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3699
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3781
 msgid ""
 "Discount percentage for the coupon each popup signup receives. 0 disables "
 "the coupon."
@@ -2320,24 +2331,24 @@ msgstr ""
 "Percentual de desconto do cupom que cada cadastro pelo pop-up recebe. 0 "
 "desativa o cupom."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3701
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3783
 msgid "Coupon"
 msgstr "Cupom"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3709
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3791
 #: front-end/customer-analytics/views/page.php:41
 #: front-end/expenses/brikpanel-expenses.php:301
 #: front-end/segments/views/page.php:28
 msgid "Export CSV"
 msgstr "Exportar CSV"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3712
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3794
 #: front-end/dashboard/brikpanel-dashboard.php:536
 #: includes/brikpanel-enqueue.php:342
 msgid "Export Excel"
 msgstr "Exportar Excel"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3732
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3814
 msgid ""
 "Email collection is currently turned off, so no new emails are being "
 "captured. You can re-enable it in the settings."
@@ -2345,101 +2356,101 @@ msgstr ""
 "A coleta de e-mails está desativada no momento, então nenhum novo endereço "
 "está sendo capturado. Você pode reativá-la nas configurações."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3739
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3821
 msgid "Emails collected"
 msgstr "E-mails coletados"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3742
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3824
 msgid "Total cart value"
 msgstr "Valor total dos carrinhos"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3747
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3829
 msgid "Active carts"
 msgstr "Carrinhos ativos"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3750
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3832
 msgid "Value in cart"
 msgstr "Valor no carrinho"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3758
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3840
 msgid "Recoverable value"
 msgstr "Valor recuperável"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3766
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3848
 msgid "Recovered value"
 msgstr "Valor recuperado"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3778
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3860
 msgid "Search email or name…"
 msgstr "Buscar e-mail ou nome…"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3779
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3861
 msgid "Search email or name"
 msgstr "Buscar e-mail ou nome"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3783
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3865
 msgid "Filter by status"
 msgstr "Filtrar por status"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3784
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3866
 #: includes/cron/class-brikpanel-cron-page.php:118
 msgid "All statuses"
 msgstr "Todos os status"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3793
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3875
 msgid "Filter by source"
 msgstr "Filtrar por origem"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3794
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3876
 msgid "All sources"
 msgstr "Todas as origens"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3804
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3886
 msgid "Filter by date range"
 msgstr "Filtrar por período"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3814
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3896
 msgid "Sort by"
 msgstr "Ordenar por"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3825
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3907
 msgid "Clear"
 msgstr "Limpar"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3834
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3916
 #: front-end/products/brikpanel-products-list.php:1588
 msgid "Columns"
 msgstr "Colunas"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3837
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3919
 msgid "Show, hide and reorder table columns"
 msgstr "Exibir, ocultar e reordenar as colunas da tabela"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3838
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3920
 msgid "Drag to reorder, or hold Alt and press the arrow keys."
 msgstr "Arraste para reordenar, ou mantenha Alt pressionado e use as setas."
 
 #. translators: %s: table column name.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3847
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3929
 #, php-format
 msgid "Reorder column: %s"
 msgstr "Reordenar coluna: %s"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3868
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3950
 #: front-end/dashboard/brikpanel-dashboard.php:4016
 #: front-end/expenses/brikpanel-expenses.php:280
 #: front-end/vendors/class-brikpanel-stock-orders.php:186
 msgid "From"
 msgstr "De"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3871
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3953
 #: front-end/dashboard/brikpanel-dashboard.php:4017
 #: front-end/expenses/brikpanel-expenses.php:284
 #: front-end/vendors/class-brikpanel-stock-orders.php:190
 msgid "To"
 msgstr "Até"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3891
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3973
 #: front-end/customer-analytics/views/page.php:130
 #: front-end/customer-analytics/views/page.php:154
 #: front-end/customer-analytics/views/page.php:225
@@ -2456,7 +2467,7 @@ msgstr "Até"
 msgid "Loading…"
 msgstr "Carregando…"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3896
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3978
 #: front-end/customer-analytics/views/page.php:135
 #: front-end/customer-analytics/views/page.php:194
 #: front-end/expenses/brikpanel-expenses.php:327
@@ -2469,7 +2480,7 @@ msgstr "Carregando…"
 msgid "Previous"
 msgstr "Anterior"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3898
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3980
 #: front-end/customer-analytics/views/page.php:137
 #: front-end/customer-analytics/views/page.php:196
 #: front-end/expenses/brikpanel-expenses.php:329
@@ -2482,7 +2493,7 @@ msgstr "Anterior"
 msgid "Next"
 msgstr "Próximo"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3921
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4007
 #: front-end/expenses/brikpanel-expenses.php:443
 #: front-end/vendors/class-brikpanel-stock-orders.php:235
 #: front-end/vendors/class-brikpanel-stock-orders.php:441
@@ -2493,15 +2504,15 @@ msgstr "Próximo"
 msgid "Something went wrong."
 msgstr "Algo deu errado."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3922
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4008
 msgid "No emails captured yet."
 msgstr "Nenhum e-mail capturado ainda."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3923
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4009
 msgid "Delete this entry?"
 msgstr "Excluir este registro?"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3924
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4010
 #: front-end/expenses/brikpanel-expenses.php:454
 #: front-end/navigation/brikpanel-nav-customizer.php:1940
 #: front-end/vendors/class-brikpanel-stock-orders.php:242
@@ -2509,75 +2520,75 @@ msgstr "Excluir este registro?"
 msgid "Delete"
 msgstr "Excluir"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3926
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4012
 msgid "No cart items recorded."
 msgstr "Nenhum item de carrinho registrado."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3927
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4013
 #: includes/brikpanel-enqueue.php:173 includes/brikpanel-enqueue.php:253
 #: includes/brikpanel-enqueue.php:392
 msgid "Order"
 msgstr "Pedido"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3928
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4014
 msgid "item"
 msgstr "item"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3929
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4015
 msgid "items"
 msgstr "itens"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3930
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4016
 msgid "Popup enabled."
 msgstr "Pop-up ativado."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3931
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4017
 msgid "Popup disabled."
 msgstr "Pop-up desativado."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3933
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4019
 #: front-end/orders/brikpanel-order-whatsapp.php:731
 msgid "Message on WhatsApp"
 msgstr "Falar no WhatsApp"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3934
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4020
 msgid "No phone number on file."
 msgstr "Nenhum telefone cadastrado."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3935
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4021
 msgid "From their account"
 msgstr "Da conta do cliente"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3936
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4022
 msgid "From a past order"
 msgstr "De um pedido anterior"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3937
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4023
 msgid "No reminders sent."
 msgstr "Nenhum lembrete enviado."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:3938
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4024
 msgid "Included with BrikMentor"
 msgstr "Incluído no BrikMentor"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4072
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4093
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4158
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4179
 msgid "Invalid entry."
 msgstr "Registro inválido."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4179
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4277
 msgid "Link expired. Refresh the page and try again."
 msgstr "O link expirou. Atualize a página e tente novamente."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4208
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4306
 msgid "First name"
 msgstr "Nome"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4209
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4307
 msgid "Last name"
 msgstr "Sobrenome"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4213
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4311
 #: front-end/dashboard/brikpanel-dashboard.php:4182
 #: front-end/dashboard/brikpanel-dashboard.php:4219
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:95
@@ -2587,7 +2598,7 @@ msgstr "Sobrenome"
 msgid "Items"
 msgstr "Itens"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4215
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4313
 #: front-end/currency/brikpanel-currency-settings.php:27
 #: front-end/currency/brikpanel-currency-settings.php:31
 #: front-end/currency/brikpanel-currency-settings.php:68
@@ -2598,50 +2609,50 @@ msgstr "Itens"
 msgid "Currency"
 msgstr "Moeda"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4216
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4314
 msgid "Cart contents"
 msgstr "Conteúdo do carrinho"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4217
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4315
 msgid "Created (UTC)"
 msgstr "Criado em (UTC)"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4218
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4316
 msgid "Last activity (UTC)"
 msgstr "Última atividade (UTC)"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4219
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4317
 msgid "Abandoned at (UTC)"
 msgstr "Abandonado em (UTC)"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4220
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4318
 msgid "Recovered at (UTC)"
 msgstr "Recuperado em (UTC)"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4221
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4319
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:49
-#: front-end/segments/brikpanel-segments.php:1054
+#: front-end/segments/brikpanel-segments.php:1049
 msgid "Order ID"
 msgstr "ID do pedido"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4268
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4374
 msgid "Export engine unavailable."
 msgstr "Mecanismo de exportação indisponível."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4284
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4390
 msgid "Abandoned carts"
 msgstr "Carrinhos abandonados"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4291
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4397
 msgid "Could not generate the Excel file."
 msgstr "Não foi possível gerar o arquivo do Excel."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4309
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4338
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4415
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4444
 msgid "Cart abandonment"
 msgstr "Abandono de carrinho"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4341
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4447
 msgid ""
 "Collect customer emails from the checkout page and an optional signup popup, "
 "so abandoned carts can be followed up. Collected emails are listed on the "
@@ -2651,11 +2662,11 @@ msgstr ""
 "cadastro opcional, para que os carrinhos abandonados possam ser trabalhados "
 "depois. Os e-mails coletados aparecem na página Carrinhos abandonados."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4344
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4450
 msgid "Email collection"
 msgstr "Coleta de e-mails"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4345
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4451
 msgid ""
 "Capture emails typed at checkout (and from the popup) together with a cart "
 "snapshot"
@@ -2663,15 +2674,15 @@ msgstr ""
 "Capturar os e-mails digitados no checkout (e os do pop-up) junto com um "
 "retrato do carrinho"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4351
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4457
 msgid "Mark cart as abandoned after"
 msgstr "Marcar o carrinho como abandonado após"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4352
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4458
 msgid "minutes of inactivity"
 msgstr "minutos de inatividade"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4353
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4459
 msgid ""
 "A cart with a known email and no activity for this long is marked as "
 "abandoned."
@@ -2679,18 +2690,18 @@ msgstr ""
 "Um carrinho com e-mail conhecido e sem atividade por esse tempo é marcado "
 "como abandonado."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4361
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4467
 msgid "Count as recovered within"
 msgstr "Contar como recuperado em até"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4362
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4468
 #: includes/brikpanel-store-summary.php:2872
 #: includes/brikpanel-store-summary.php:3746
 #: includes/brikpanel-store-summary.php:4389
 msgid "days"
 msgstr "dias"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4363
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4469
 msgid ""
 "An order only counts as a recovery when the matching cart was last active "
 "within this many days. Older carts are left untouched, so a customer coming "
@@ -2701,19 +2712,19 @@ msgstr ""
 "ficam intactos, então um cliente que volta um mês depois é registrado como "
 "uma nova venda, e não como um carrinho recuperado."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4371
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4477
 msgid "WhatsApp message"
 msgstr "Mensagem do WhatsApp"
 
 #. translators: %s: comma-separated list of placeholder tags, e.g. {customer_name}, {store_name}.
 #. translators: %s: comma-separated list of placeholder tags, e.g. {order_number}, {order_status}.
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4374
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4480
 #: front-end/orders/brikpanel-order-whatsapp.php:878
 #, php-format
 msgid "Placeholders: %s"
 msgstr "Marcadores: %s"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4377
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4483
 msgid ""
 "Opens as an editable draft in WhatsApp, so nothing is sent until you press "
 "send. Write it in any language, and use line breaks freely - they are kept. "
@@ -2727,13 +2738,13 @@ msgstr ""
 "própria, então dê a ele uma linha só sua. {recovery_url} remonta o carrinho "
 "do cliente com um toque; {cart_url} é apenas a página do seu carrinho."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4385
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4491
 msgid "Show a signup popup to store visitors (not shown on the checkout page)"
 msgstr ""
 "Mostrar um pop-up de cadastro aos visitantes da loja (não aparece na página "
 "de checkout)"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4386
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4492
 msgid ""
 "Visitors who leave their email here are matched with their cart later, even "
 "if they never type an email at checkout. After closing, the popup stays "
@@ -2743,15 +2754,15 @@ msgstr ""
 "depois, mesmo que nunca digitem um e-mail no checkout. Após ser fechado, o "
 "pop-up continua disponível como uma pequena aba flutuante."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4392
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4498
 msgid "Popup discount"
 msgstr "Desconto do pop-up"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4393
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4499
 msgid "% off coupon for popup signups"
 msgstr "% de desconto do cupom para cadastros pelo pop-up"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4394
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4500
 msgid ""
 "Each signup gets a personal single-use percentage coupon restricted to their "
 "email, valid for 30 days. Set to 0 to collect emails without a coupon."
@@ -2759,15 +2770,15 @@ msgstr ""
 "Cada cadastro recebe um cupom percentual pessoal de uso único, restrito ao "
 "seu e-mail e válido por 30 dias. Defina 0 para coletar e-mails sem cupom."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4402
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4508
 msgid "Apply automatically"
 msgstr ""
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4403
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4509
 msgid "Add the signup coupon to the visitor's cart for them"
 msgstr ""
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4404
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4510
 msgid ""
 "The visitor never has to copy the code down. If their cart is empty when "
 "they sign up, the code waits and goes on as soon as they add something. They "
@@ -2775,11 +2786,11 @@ msgid ""
 "plugin delivers the coupon by email."
 msgstr ""
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4410
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4516
 msgid "Offer animation"
 msgstr "Animação da oferta"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4411
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4517
 msgid ""
 "Visual style of the animated discount badge at the top of the popup. Only "
 "shown while a popup discount is set."
@@ -2787,55 +2798,55 @@ msgstr ""
 "Estilo visual do selo animado de desconto no topo do pop-up. Só aparece "
 "enquanto houver um desconto de pop-up definido."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4416
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4522
 msgid "Sealed envelope: the seal pops and the coupon rises"
 msgstr "Envelope lacrado: o lacre estoura e o cupom sobe"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4417
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4523
 msgid "Pocket card: coupon springs out of a pocket"
 msgstr "Cartão de bolso: o cupom salta de um bolso"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4418
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4524
 msgid "Scratch card: a coin scratches the foil away"
 msgstr "Raspadinha: uma moeda raspa a película"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4419
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4525
 msgid "Slot machine: reels spin and land on the discount"
 msgstr "Caça-níquel: os rolos giram e param no desconto"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4420
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4526
 msgid "Magnetic assembly: pieces fly in and form the coupon"
 msgstr "Montagem magnética: as peças chegam voando e formam o cupom"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4421
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4527
 msgid "Classic ticket: floating coupon with a shine sweep"
 msgstr "Bilhete clássico: cupom flutuante com um efeito de brilho"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4426
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4532
 msgid "Popup title"
 msgstr "Título do pop-up"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4433
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4539
 msgid "Popup message"
 msgstr "Mensagem do pop-up"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4440
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4546
 msgid "Popup button text"
 msgstr "Texto do botão do pop-up"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4447
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4553
 msgid "Email placeholder"
 msgstr "Texto de exemplo do campo de e-mail"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4454
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4560
 msgid "Success message"
 msgstr "Mensagem de sucesso"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4461
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4567
 msgid "Floating tab text"
 msgstr "Texto da aba flutuante"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4462
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4568
 msgid ""
 "Shown on the small tab that stays on the left edge after the popup is "
 "closed. Leave empty to use the discount-based default."
@@ -2843,23 +2854,23 @@ msgstr ""
 "Aparece na pequena aba que fica na borda esquerda depois que o pop-up é "
 "fechado. Deixe em branco para usar o texto padrão baseado no desconto."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4470
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4576
 msgid "Popup delay"
 msgstr "Atraso do pop-up"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4471
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4577
 msgid "seconds after the page loads"
 msgstr "segundos após o carregamento da página"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4479
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4585
 msgid "Do not show again for"
 msgstr "Não mostrar novamente por"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4480
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4586
 msgid "days after a visitor closes the floating tab"
 msgstr "dias depois que um visitante fecha a aba flutuante"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4481
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4587
 msgid ""
 "Closing the popup itself only collapses it into the floating tab; this "
 "cooldown applies when the visitor dismisses the tab too."
@@ -2867,11 +2878,11 @@ msgstr ""
 "Fechar o pop-up apenas o recolhe para a aba flutuante; esse intervalo se "
 "aplica quando o visitante também dispensa a aba."
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4529
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4635
 msgid "Mark abandoned carts"
 msgstr "Marcar carrinhos abandonados"
 
-#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4530
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:4636
 msgid "Flips inactive captured carts to abandoned and notifies integrations."
 msgstr ""
 "Passa para abandonados os carrinhos capturados que estão inativos e avisa as "
@@ -3055,7 +3066,7 @@ msgstr "Todos"
 #: front-end/coupons/brikpanel-coupons.php:854
 #: front-end/products/brikpanel-product-editor.php:1182
 #: front-end/products/brikpanel-product-editor.php:1198
-#: front-end/products/brikpanel-product-editor.php:9875
+#: front-end/products/brikpanel-product-editor.php:9915
 #: front-end/products/brikpanel-products-list.php:1285
 #: front-end/products/brikpanel-products-list.php:1498
 #: front-end/products/brikpanel-products-list.php:3239
@@ -3068,7 +3079,7 @@ msgstr "Publicado"
 #: front-end/products/brikpanel-product-editor.php:1184
 #: front-end/products/brikpanel-product-editor.php:1188
 #: front-end/products/brikpanel-product-editor.php:1214
-#: front-end/products/brikpanel-product-editor.php:9875
+#: front-end/products/brikpanel-product-editor.php:9915
 #: front-end/products/brikpanel-products-list.php:1290
 #: front-end/products/brikpanel-products-list.php:1508
 #: front-end/products/brikpanel-products-list.php:3239
@@ -3216,7 +3227,7 @@ msgstr "Editar cupom"
 
 #: front-end/coupons/brikpanel-coupons.php:233
 #: front-end/orders/brikpanel-orders.php:939
-#: front-end/products/brikpanel-product-editor.php:5631
+#: front-end/products/brikpanel-product-editor.php:5671
 msgid "General"
 msgstr "Geral"
 
@@ -3527,9 +3538,9 @@ msgstr ""
 msgid "Customer Analytics"
 msgstr "Análise de Clientes"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:361
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:581
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:748
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:343
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:562
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:728
 #: front-end/expenses/brikpanel-expenses.php:903
 #: front-end/expenses/brikpanel-expenses.php:1170
 #: front-end/orders/brikpanel-orders.php:2586
@@ -3540,109 +3551,109 @@ msgstr "Análise de Clientes"
 msgid "Invalid request."
 msgstr "Solicitação inválida."
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:379
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:610
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:361
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:591
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:139
-#: front-end/segments/brikpanel-segments.php:1082
+#: front-end/segments/brikpanel-segments.php:1077
 msgid "User ID"
 msgstr "ID do usuário"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:383
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:618
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:365
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:599
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:144
 #: front-end/segments/views/page.php:111
 msgid "Order count"
 msgstr "Total de pedidos"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:384
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:619
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:366
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:600
 msgid "Total spent (LTV)"
 msgstr "Total gasto (LTV)"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:385
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:367
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:146
-#: front-end/segments/brikpanel-segments.php:1089
+#: front-end/segments/brikpanel-segments.php:1084
 #: front-end/segments/views/page.php:177
 msgid "Average order value"
 msgstr "Valor médio do pedido"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:386
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:620
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:368
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:601
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:147
 msgid "Recency (days)"
 msgstr "Recência (dias)"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:387
-#: front-end/segments/brikpanel-segments.php:1090
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:369
+#: front-end/segments/brikpanel-segments.php:1085
 #: includes/brikpanel-store-summary.php:704
 msgid "First order"
 msgstr "Primeiro pedido"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:388
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:621
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:370
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:602
 #: front-end/customer-analytics/views/page.php:125
 #: front-end/customer-analytics/views/page.php:184
-#: front-end/segments/brikpanel-segments.php:1091
+#: front-end/segments/brikpanel-segments.php:1086
 #: includes/brikpanel-enqueue.php:405 includes/brikpanel-store-summary.php:704
 msgid "Last order"
 msgstr "Último pedido"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:510
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:491
 msgid "Invalid segment."
 msgstr "Segmento inválido."
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:614
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:595
 #: front-end/dashboard/brikpanel-dashboard.php:4120
 #: includes/brikpanel-store-summary.php:1478
 msgid "Segment"
 msgstr "Segmento"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:615
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:596
 msgid "R"
 msgstr "R"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:616
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:597
 msgid "F"
 msgstr "F"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:617
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:598
 msgid "M"
 msgstr "M"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:765
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:745
 msgid "Cohort month"
 msgstr "Mês da coorte"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:766
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:746
 msgid "Period offset (months)"
 msgstr "Deslocamento do período (meses)"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:767
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:747
 msgid "Cohort size"
 msgstr "Tamanho da coorte"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:768
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:748
 msgid "Retained customers"
 msgstr "Clientes retidos"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:769
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:749
 msgid "Retention rate (%)"
 msgstr "Taxa de retenção (%)"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:793
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:773
 msgid "Action Scheduler is not available."
 msgstr "O Action Scheduler não está disponível."
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:803
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:783
 msgid "Customer metrics recomputed."
 msgstr "Métricas de clientes recalculadas."
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:829
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:809
 #, php-format
 msgid "User #%d"
 msgstr "Usuário #%d"
 
-#: front-end/customer-analytics/brikpanel-customer-analytics.php:914
+#: front-end/customer-analytics/brikpanel-customer-analytics.php:894
 msgid "Exclusions saved."
 msgstr "Exclusões salvas."
 
@@ -3735,7 +3746,7 @@ msgstr ""
 #: front-end/customer-analytics/views/page.php:179
 #: front-end/dashboard/brikpanel-dashboard.php:4216
 #: front-end/order-statuses/brikpanel-status-emails.php:584
-#: front-end/segments/brikpanel-segments.php:1057
+#: front-end/segments/brikpanel-segments.php:1052
 #: front-end/sound/brikpanel-sound.php:149 includes/brikpanel-enqueue.php:254
 #: includes/brikpanel-enqueue.php:395 includes/brikpanel-store-summary.php:1415
 msgid "Customer"
@@ -4044,55 +4055,55 @@ msgstr "Em espera"
 msgid "Out of stock"
 msgstr "Fora de estoque"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:398
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:442
 msgid "New customers today"
 msgstr "Novos clientes hoje"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:416
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:460
 msgid "Hidden notices from other plugins"
 msgstr "Avisos ocultos de outros plugins"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:422
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:466
 msgid "Hidden notices"
 msgstr "Avisos ocultos"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:423
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:467
 msgid "From other plugins &amp; themes"
 msgstr "De outros plugins &amp; temas"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:470
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:514
 msgid "View store"
 msgstr "Ver loja"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:496
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:540
 msgid "Your profile"
 msgstr "Seu perfil"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:509
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:553
 msgid "BrikPanel settings"
 msgstr "Configurações do BrikPanel"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:521
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:565
 msgid "Network Admin"
 msgstr "Administração da rede"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:527
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:571
 msgid "Log out"
 msgstr "Sair"
 
 #. translators: %s: cache plugin name (e.g. "WP Rocket")
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:577
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:621
 #, php-format
 msgid "Purge %s"
 msgstr "Limpar %s"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:599
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:600
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:606
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:643
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:644
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:650
 msgid "Clear cache"
 msgstr "Limpar cache"
 
-#: front-end/dashboard/brikpanel-dashboard-topbar.php:613
+#: front-end/dashboard/brikpanel-dashboard-topbar.php:657
 msgid "Clear all caches"
 msgstr "Limpar todos os caches"
 
@@ -4609,7 +4620,7 @@ msgstr ""
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:434
 #: front-end/products/brikpanel-products-list.php:85
 #: front-end/products/brikpanel-products-list.php:1705
-#: front-end/segments/brikpanel-segments.php:1055
+#: front-end/segments/brikpanel-segments.php:1050
 #: includes/brikpanel-enqueue.php:393
 msgid "Date"
 msgstr "Data"
@@ -4937,7 +4948,7 @@ msgstr "Cancelamento pendente"
 #: front-end/expenses/brikpanel-expenses.php:1538
 #: front-end/google-sheets/class-brikpanel-sheets-expenses-sync.php:1002
 #: front-end/google-sheets/class-brikpanel-sheets-reports-sync.php:222
-#: front-end/products/brikpanel-product-editor.php:5051
+#: front-end/products/brikpanel-product-editor.php:5091
 #: front-end/vendors/class-brikpanel-stock-orders.php:365
 #: front-end/vendors/class-brikpanel-stock-orders.php:414
 #: includes/brikpanel-store-summary.php:3086
@@ -4967,7 +4978,6 @@ msgstr ""
 
 #: front-end/dashboard/brikpanel-dashboard.php:2044
 #: front-end/expenses/brikpanel-expenses.php:1395
-#: includes/brikpanel-early-access.php:222
 msgid "Other"
 msgstr "Outros"
 
@@ -5264,7 +5274,7 @@ msgid "Tablet"
 msgstr "Tablet"
 
 #: front-end/dashboard/brikpanel-dashboard.php:4106
-#: front-end/segments/brikpanel-segments.php:1063
+#: front-end/segments/brikpanel-segments.php:1058
 #: front-end/sound/brikpanel-sound.php:147
 #: front-end/vendors/class-brikpanel-stock-orders.php:208
 #: front-end/vendors/class-brikpanel-stock-orders.php:415
@@ -5303,7 +5313,7 @@ msgstr "As métricas de clientes aparecerão após o recálculo noturno."
 #: front-end/dashboard/brikpanel-dashboard.php:4141
 #: front-end/dashboard/brikpanel-dashboard.php:4151
 #: front-end/dashboard/brikpanel-dashboard.php:4192
-#: front-end/products/brikpanel-product-editor.php:9846
+#: front-end/products/brikpanel-product-editor.php:9886
 #: front-end/products/brikpanel-products-list.php:72
 #: front-end/products/brikpanel-products-list.php:1689
 #: front-end/vendors/class-brikpanel-stock-orders.php:395
@@ -5348,7 +5358,7 @@ msgstr "Receita (%s)"
 
 #: front-end/dashboard/brikpanel-dashboard.php:4172
 #: front-end/dashboard/brikpanel-dashboard.php:4182
-#: front-end/segments/brikpanel-segments.php:1060
+#: front-end/segments/brikpanel-segments.php:1055
 #: front-end/segments/views/page.php:73 includes/brikpanel-enqueue.php:258
 #: includes/brikpanel-store-summary.php:2889
 #: includes/brikpanel-store-summary.php:3987
@@ -5356,7 +5366,7 @@ msgid "Country"
 msgstr "País"
 
 #: front-end/dashboard/brikpanel-dashboard.php:4182
-#: front-end/segments/brikpanel-segments.php:1061
+#: front-end/segments/brikpanel-segments.php:1056
 #: front-end/segments/views/page.php:78 includes/brikpanel-enqueue.php:259
 #: includes/brikpanel-store-summary.php:3987
 msgid "City"
@@ -6082,7 +6092,7 @@ msgstr "Descrição curta"
 #: front-end/products/brikpanel-product-editor.php:1582
 #: front-end/products/brikpanel-product-editor.php:1656
 #: front-end/products/brikpanel-product-editor.php:1698
-#: front-end/products/brikpanel-product-editor.php:9849
+#: front-end/products/brikpanel-product-editor.php:9889
 #: front-end/products/brikpanel-products-list.php:76
 #: front-end/products/brikpanel-products-list.php:1007
 #: front-end/products/brikpanel-products-list.php:1179
@@ -6110,7 +6120,7 @@ msgstr "Custo (COGS)"
 #: front-end/products/brikpanel-product-editor.php:1571
 #: front-end/products/brikpanel-product-editor.php:1591
 #: front-end/products/brikpanel-product-editor.php:1661
-#: front-end/products/brikpanel-product-editor.php:9850
+#: front-end/products/brikpanel-product-editor.php:9890
 #: front-end/products/brikpanel-products-list.php:79
 #: front-end/products/brikpanel-products-list.php:1016
 #: front-end/products/brikpanel-products-list.php:1699
@@ -6141,7 +6151,7 @@ msgid "Last order date"
 msgstr "Data do último pedido"
 
 #: front-end/google-sheets/class-brikpanel-sheets-mapping.php:145
-#: front-end/segments/brikpanel-segments.php:1088
+#: front-end/segments/brikpanel-segments.php:1083
 #: front-end/segments/views/page.php:97 includes/brikpanel-enqueue.php:391
 #: includes/brikpanel-enqueue.php:403
 msgid "Total spent"
@@ -9857,10 +9867,10 @@ msgid "Product Editor"
 msgstr "Editor de Produto"
 
 #: front-end/products/brikpanel-product-editor.php:624
-#: front-end/products/brikpanel-product-editor.php:5517
-#: front-end/products/brikpanel-product-editor.php:7013
-#: front-end/products/brikpanel-product-editor.php:9755
-#: front-end/products/brikpanel-product-editor.php:9818
+#: front-end/products/brikpanel-product-editor.php:5557
+#: front-end/products/brikpanel-product-editor.php:7053
+#: front-end/products/brikpanel-product-editor.php:9795
+#: front-end/products/brikpanel-product-editor.php:9858
 #: front-end/products/brikpanel-products-list.php:2777
 #: front-end/products/brikpanel-products-list.php:3268
 msgid "Product not found."
@@ -10393,7 +10403,7 @@ msgid "Supplier"
 msgstr "Fornecedor"
 
 #: front-end/products/brikpanel-product-editor.php:1666
-#: front-end/products/brikpanel-product-editor.php:9848
+#: front-end/products/brikpanel-product-editor.php:9888
 #: front-end/products/brikpanel-products-list.php:75
 #: front-end/products/brikpanel-products-list.php:1692
 msgid "GTIN"
@@ -10633,7 +10643,7 @@ msgid "Menu order"
 msgstr "Ordem do menu"
 
 #: front-end/products/brikpanel-product-editor.php:1976
-#: front-end/products/brikpanel-product-editor.php:9851
+#: front-end/products/brikpanel-product-editor.php:9891
 #: front-end/products/brikpanel-products-list.php:80
 #: front-end/products/brikpanel-products-list.php:1700
 #: front-end/products/brikpanel-products-list.php:1813
@@ -10689,7 +10699,7 @@ msgid "Search brands..."
 msgstr "Pesquisar marcas..."
 
 #: front-end/products/brikpanel-product-editor.php:2040
-#: front-end/products/brikpanel-product-editor.php:9691
+#: front-end/products/brikpanel-product-editor.php:9731
 msgid "No brands found."
 msgstr "Nenhuma marca encontrada."
 
@@ -10862,35 +10872,35 @@ msgstr "Análise de SEO"
 msgid "Re-analyze"
 msgstr "Reanalisar"
 
-#: front-end/products/brikpanel-product-editor.php:2782
+#: front-end/products/brikpanel-product-editor.php:2789
 msgid "Metabox failed to load."
 msgstr "Falha ao carregar o metabox."
 
-#: front-end/products/brikpanel-product-editor.php:2839
+#: front-end/products/brikpanel-product-editor.php:2846
 msgid "Yoast SEO"
 msgstr "Yoast SEO"
 
-#: front-end/products/brikpanel-product-editor.php:2845
+#: front-end/products/brikpanel-product-editor.php:2852
 msgid "Rank Math SEO"
 msgstr "Rank Math SEO"
 
-#: front-end/products/brikpanel-product-editor.php:2851
+#: front-end/products/brikpanel-product-editor.php:2858
 msgid "All in One SEO"
 msgstr "All in One SEO"
 
-#: front-end/products/brikpanel-product-editor.php:2880
+#: front-end/products/brikpanel-product-editor.php:2887
 msgid "SEOPress"
 msgstr "SEOPress"
 
-#: front-end/products/brikpanel-product-editor.php:3102
+#: front-end/products/brikpanel-product-editor.php:3109
 msgid "SureRank"
 msgstr "SureRank"
 
-#: front-end/products/brikpanel-product-editor.php:3104
+#: front-end/products/brikpanel-product-editor.php:3111
 msgid "SmartCrawl"
 msgstr "SmartCrawl"
 
-#: front-end/products/brikpanel-product-editor.php:3192
+#: front-end/products/brikpanel-product-editor.php:3199
 msgid ""
 "No focus keyword set. Add one to analyze the title, description, URL and "
 "content."
@@ -10898,18 +10908,18 @@ msgstr ""
 "Nenhuma palavra-chave de foco definida. Adicione uma para analisar o título, "
 "a descrição, a URL e o conteúdo."
 
-#: front-end/products/brikpanel-product-editor.php:3258
-#: front-end/products/brikpanel-product-editor.php:3551
+#: front-end/products/brikpanel-product-editor.php:3265
+#: front-end/products/brikpanel-product-editor.php:3558
 msgid "Suggestion"
 msgstr "Sugestão"
 
-#: front-end/products/brikpanel-product-editor.php:3259
-#: front-end/products/brikpanel-product-editor.php:3552
+#: front-end/products/brikpanel-product-editor.php:3266
+#: front-end/products/brikpanel-product-editor.php:3559
 msgid "Passed"
 msgstr "Aprovado"
 
 #. translators: %d: number of critical SEO issues
-#: front-end/products/brikpanel-product-editor.php:3287
+#: front-end/products/brikpanel-product-editor.php:3294
 #, php-format
 msgid "%d critical"
 msgid_plural "%d critical"
@@ -10917,7 +10927,7 @@ msgstr[0] "%d crítico"
 msgstr[1] "%d críticos"
 
 #. translators: %d: number of SEO warnings
-#: front-end/products/brikpanel-product-editor.php:3292
+#: front-end/products/brikpanel-product-editor.php:3299
 #, php-format
 msgid "%d warning"
 msgid_plural "%d warnings"
@@ -10925,8 +10935,8 @@ msgstr[0] "%d aviso"
 msgstr[1] "%d avisos"
 
 #. translators: %d: number of SEO suggestions
-#: front-end/products/brikpanel-product-editor.php:3297
-#: front-end/products/brikpanel-product-editor.php:3609
+#: front-end/products/brikpanel-product-editor.php:3304
+#: front-end/products/brikpanel-product-editor.php:3616
 #, php-format
 msgid "%d suggestion"
 msgid_plural "%d suggestions"
@@ -10934,97 +10944,97 @@ msgstr[0] "%d sugestão"
 msgstr[1] "%d sugestões"
 
 #. translators: %d: number of passed SEO checks
-#: front-end/products/brikpanel-product-editor.php:3301
-#: front-end/products/brikpanel-product-editor.php:3613
+#: front-end/products/brikpanel-product-editor.php:3308
+#: front-end/products/brikpanel-product-editor.php:3620
 #, php-format
 msgid "%d passed"
 msgid_plural "%d passed"
 msgstr[0] "%d aprovado"
 msgstr[1] "%d aprovados"
 
-#: front-end/products/brikpanel-product-editor.php:3304
-#: front-end/products/brikpanel-product-editor.php:3616
+#: front-end/products/brikpanel-product-editor.php:3311
+#: front-end/products/brikpanel-product-editor.php:3623
 msgid "Page checks"
 msgstr "Verificações da página"
 
-#: front-end/products/brikpanel-product-editor.php:3305
+#: front-end/products/brikpanel-product-editor.php:3312
 msgid "Keyword checks"
 msgstr "Verificações de palavra-chave"
 
-#: front-end/products/brikpanel-product-editor.php:3323
+#: front-end/products/brikpanel-product-editor.php:3330
 msgid "SEO title length is within the recommended range"
 msgstr "O comprimento do título de SEO está dentro do intervalo recomendado"
 
-#: front-end/products/brikpanel-product-editor.php:3324
+#: front-end/products/brikpanel-product-editor.php:3331
 msgid "Meta description length is within the recommended range"
 msgstr "O comprimento da meta descrição está dentro do intervalo recomendado"
 
-#: front-end/products/brikpanel-product-editor.php:3325
+#: front-end/products/brikpanel-product-editor.php:3332
 msgid "Meta description is hand-written, not auto-generated"
 msgstr "A meta descrição é escrita à mão, não gerada automaticamente"
 
-#: front-end/products/brikpanel-product-editor.php:3326
+#: front-end/products/brikpanel-product-editor.php:3333
 msgid "URL slug uses hyphens instead of underscores"
 msgstr "O slug da URL usa hifens em vez de sublinhados"
 
-#: front-end/products/brikpanel-product-editor.php:3327
+#: front-end/products/brikpanel-product-editor.php:3334
 msgid "Focus keyword appears in the SEO title"
 msgstr "A palavra-chave de foco aparece no título de SEO"
 
-#: front-end/products/brikpanel-product-editor.php:3328
+#: front-end/products/brikpanel-product-editor.php:3335
 msgid "Focus keyword appears in the meta description"
 msgstr "A palavra-chave de foco aparece na meta descrição"
 
-#: front-end/products/brikpanel-product-editor.php:3329
+#: front-end/products/brikpanel-product-editor.php:3336
 msgid "Focus keyword appears in the URL slug"
 msgstr "A palavra-chave de foco aparece no slug da URL"
 
-#: front-end/products/brikpanel-product-editor.php:3330
+#: front-end/products/brikpanel-product-editor.php:3337
 msgid "Focus keyword does not consist only of stop words"
 msgstr "A palavra-chave de foco não consiste apenas de palavras vazias"
 
-#: front-end/products/brikpanel-product-editor.php:3331
+#: front-end/products/brikpanel-product-editor.php:3338
 msgid "Focus keyword has not been used on another product"
 msgstr "A palavra-chave de foco não foi usada em outro produto"
 
-#: front-end/products/brikpanel-product-editor.php:3332
+#: front-end/products/brikpanel-product-editor.php:3339
 msgid "Secondary keyword appears in the SEO title"
 msgstr "A palavra-chave secundária aparece no título de SEO"
 
-#: front-end/products/brikpanel-product-editor.php:3334
+#: front-end/products/brikpanel-product-editor.php:3341
 msgid "Content is long enough"
 msgstr "O conteúdo é longo o suficiente"
 
-#: front-end/products/brikpanel-product-editor.php:3335
+#: front-end/products/brikpanel-product-editor.php:3342
 msgid "Content contains at least one link"
 msgstr "O conteúdo contém pelo menos um link"
 
-#: front-end/products/brikpanel-product-editor.php:3336
+#: front-end/products/brikpanel-product-editor.php:3343
 msgid "Outbound links are followed where appropriate"
 msgstr "Os links externos são seguidos quando apropriado"
 
-#: front-end/products/brikpanel-product-editor.php:3337
+#: front-end/products/brikpanel-product-editor.php:3344
 msgid "Focus keyword density is within the recommended range"
 msgstr ""
 "A densidade da palavra-chave de foco está dentro do intervalo recomendado"
 
-#: front-end/products/brikpanel-product-editor.php:3338
+#: front-end/products/brikpanel-product-editor.php:3345
 msgid "Focus keyword appears in the first paragraph"
 msgstr "A palavra-chave de foco aparece no primeiro parágrafo"
 
-#: front-end/products/brikpanel-product-editor.php:3339
+#: front-end/products/brikpanel-product-editor.php:3346
 msgid "Focus keyword appears in a subheading"
 msgstr "A palavra-chave de foco aparece em um subtítulo"
 
-#: front-end/products/brikpanel-product-editor.php:3340
+#: front-end/products/brikpanel-product-editor.php:3347
 msgid "Focus keyword appears in an image alt text"
 msgstr "A palavra-chave de foco aparece no texto alternativo de uma imagem"
 
-#: front-end/products/brikpanel-product-editor.php:3341
+#: front-end/products/brikpanel-product-editor.php:3348
 msgid "Focus keyword is emphasized somewhere in the content"
 msgstr "A palavra-chave de foco é destacada em algum lugar do conteúdo"
 
-#: front-end/products/brikpanel-product-editor.php:3507
+#: front-end/products/brikpanel-product-editor.php:3514
 msgid ""
 "No focus keyword set. Add one to check the title, description, URL and "
 "content against it."
@@ -11032,22 +11042,22 @@ msgstr ""
 "Nenhuma palavra-chave de foco definida. Adicione uma para verificar o "
 "título, a descrição, a URL e o conteúdo em relação a ela."
 
-#: front-end/products/brikpanel-product-editor.php:3550
+#: front-end/products/brikpanel-product-editor.php:3557
 msgid "Needs work"
 msgstr "Precisa de melhorias"
 
 #. translators: %d: SEO score out of 100
-#: front-end/products/brikpanel-product-editor.php:3590
+#: front-end/products/brikpanel-product-editor.php:3597
 #, php-format
 msgid "SEO score: %d out of 100"
 msgstr "Pontuação de SEO: %d de 100"
 
-#: front-end/products/brikpanel-product-editor.php:3594
+#: front-end/products/brikpanel-product-editor.php:3601
 msgid "SEO score"
 msgstr "Pontuação de SEO"
 
 #. translators: %d: number of passed SEO checks
-#: front-end/products/brikpanel-product-editor.php:3597
+#: front-end/products/brikpanel-product-editor.php:3604
 #, php-format
 msgid "%d check passed"
 msgid_plural "%d checks passed"
@@ -11055,23 +11065,23 @@ msgstr[0] "%d verificação aprovada"
 msgstr[1] "%d verificações aprovadas"
 
 #. translators: %d: number of SEO checks that need work
-#: front-end/products/brikpanel-product-editor.php:3604
+#: front-end/products/brikpanel-product-editor.php:3611
 #, php-format
 msgid "%d to improve"
 msgid_plural "%d to improve"
 msgstr[0] "%d a melhorar"
 msgstr[1] "%d a melhorar"
 
-#: front-end/products/brikpanel-product-editor.php:3617
+#: front-end/products/brikpanel-product-editor.php:3624
 msgid "Content checks"
 msgstr "Verificações de conteúdo"
 
-#: front-end/products/brikpanel-product-editor.php:3780
+#: front-end/products/brikpanel-product-editor.php:3866
 msgid "SEO metabox failed to load."
 msgstr "Falha ao carregar o metabox SEO."
 
 #. translators: %s: SEO plugin name
-#: front-end/products/brikpanel-product-editor.php:3867
+#: front-end/products/brikpanel-product-editor.php:3907
 #, php-format
 msgid ""
 "%s is installed but did not register its SEO fields for products. Enable SEO "
@@ -11081,24 +11091,24 @@ msgstr ""
 "o SEO para o tipo de post Produto nas configurações do plugin."
 
 #. translators: appended after a truncated list of field names
-#: front-end/products/brikpanel-product-editor.php:4018
+#: front-end/products/brikpanel-product-editor.php:4058
 msgid "…"
 msgstr "…"
 
 #. translators: %d: how many further field groups are not listed by name
-#: front-end/products/brikpanel-product-editor.php:4059
+#: front-end/products/brikpanel-product-editor.php:4099
 #, php-format
 msgid "and %d more"
 msgid_plural "and %d more"
 msgstr[0] ""
 msgstr[1] ""
 
-#: front-end/products/brikpanel-product-editor.php:4069
+#: front-end/products/brikpanel-product-editor.php:4109
 msgid "Fields from your other plugins"
 msgstr ""
 
 #. translators: %d: number of field groups other plugins add to this product
-#: front-end/products/brikpanel-product-editor.php:4072
+#: front-end/products/brikpanel-product-editor.php:4112
 #, php-format
 msgid "%d group of fields from another plugin is not being shown here."
 msgid_plural ""
@@ -11106,71 +11116,71 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: front-end/products/brikpanel-product-editor.php:4083
+#: front-end/products/brikpanel-product-editor.php:4123
 msgid "Show these fields"
 msgstr ""
 
-#: front-end/products/brikpanel-product-editor.php:5046
+#: front-end/products/brikpanel-product-editor.php:5086
 msgid "Variation options"
 msgstr "Opções de variação"
 
-#: front-end/products/brikpanel-product-editor.php:5047
+#: front-end/products/brikpanel-product-editor.php:5087
 #: front-end/products/brikpanel-section-order.php:139
 msgid "Pricing"
 msgstr "Preços"
 
-#: front-end/products/brikpanel-product-editor.php:5048
-#: front-end/products/brikpanel-product-editor.php:5636
+#: front-end/products/brikpanel-product-editor.php:5088
+#: front-end/products/brikpanel-product-editor.php:5676
 msgid "Inventory"
 msgstr "Inventário"
 
-#: front-end/products/brikpanel-product-editor.php:5049
+#: front-end/products/brikpanel-product-editor.php:5089
 msgid "Shipping & dimensions"
 msgstr "Frete e dimensões"
 
-#: front-end/products/brikpanel-product-editor.php:5050
+#: front-end/products/brikpanel-product-editor.php:5090
 msgid "Downloadable"
 msgstr "Baixável"
 
-#: front-end/products/brikpanel-product-editor.php:5052
+#: front-end/products/brikpanel-product-editor.php:5092
 msgid "After attributes"
 msgstr "Após os atributos"
 
-#: front-end/products/brikpanel-product-editor.php:5637
+#: front-end/products/brikpanel-product-editor.php:5677
 #: front-end/products/brikpanel-products-list.php:1023
 #: front-end/vendors/class-brikpanel-stock-orders.php:413
 #: front-end/vendors/class-brikpanel-vendors.php:303
 msgid "Shipping"
 msgstr "Frete"
 
-#: front-end/products/brikpanel-product-editor.php:5638
+#: front-end/products/brikpanel-product-editor.php:5678
 msgid "Linked Products"
 msgstr "Produtos Vinculados"
 
-#: front-end/products/brikpanel-product-editor.php:5642
+#: front-end/products/brikpanel-product-editor.php:5682
 #: front-end/products/brikpanel-products-list.php:1960
 msgid "Attributes"
 msgstr "Atributos"
 
-#: front-end/products/brikpanel-product-editor.php:5643
+#: front-end/products/brikpanel-product-editor.php:5683
 msgid "Advanced"
 msgstr "Avançado"
 
-#: front-end/products/brikpanel-product-editor.php:5687
+#: front-end/products/brikpanel-product-editor.php:5727
 msgid "Multi-currency prices"
 msgstr "Preços em várias moedas"
 
-#: front-end/products/brikpanel-product-editor.php:6600
+#: front-end/products/brikpanel-product-editor.php:6640
 #: front-end/products/brikpanel-products-list.php:1129
 msgid "No categories found."
 msgstr "Nenhuma categoria encontrada."
 
-#: front-end/products/brikpanel-product-editor.php:7071
+#: front-end/products/brikpanel-product-editor.php:7111
 msgid "Product name is required."
 msgstr "O nome do produto é obrigatório."
 
 #. translators: %s: the SKU the merchant tried to save
-#: front-end/products/brikpanel-product-editor.php:7209
+#: front-end/products/brikpanel-product-editor.php:7249
 #, php-format
 msgid ""
 "The SKU \"%s\" was not saved because it is already used by another product. "
@@ -11180,7 +11190,7 @@ msgstr ""
 "precisam ser únicos."
 
 #. translators: %s: the GTIN/UPC/EAN/ISBN the merchant tried to save
-#: front-end/products/brikpanel-product-editor.php:7228
+#: front-end/products/brikpanel-product-editor.php:7268
 #, php-format
 msgid ""
 "The GTIN \"%s\" was not saved because it is already used by another product "
@@ -11189,12 +11199,12 @@ msgstr ""
 "O GTIN \"%s\" não foi salvo porque já é usado por outro produto ou é "
 "inválido."
 
-#: front-end/products/brikpanel-product-editor.php:8035
+#: front-end/products/brikpanel-product-editor.php:8075
 #: includes/brikpanel-enqueue.php:1677
 msgid "Product saved!"
 msgstr "Produto salvo!"
 
-#: front-end/products/brikpanel-product-editor.php:8114
+#: front-end/products/brikpanel-product-editor.php:8154
 msgid ""
 "The product could not be saved because another plugin raised an error during "
 "the save. Please disable or update that plugin (for example your media "
@@ -11205,7 +11215,7 @@ msgstr ""
 "offload de mídia ou de SEO) e tente novamente."
 
 #. translators: %s: the variation SKU the merchant tried to save
-#: front-end/products/brikpanel-product-editor.php:9347
+#: front-end/products/brikpanel-product-editor.php:9387
 #, php-format
 msgid ""
 "The variation SKU \"%s\" was not saved because it is already used by another "
@@ -11215,7 +11225,7 @@ msgstr ""
 "Os SKUs precisam ser únicos."
 
 #. translators: %s: the variation GTIN/UPC/EAN/ISBN the merchant tried to save
-#: front-end/products/brikpanel-product-editor.php:9365
+#: front-end/products/brikpanel-product-editor.php:9405
 #, php-format
 msgid ""
 "The variation GTIN \"%s\" was not saved because it is already used by "
@@ -11224,37 +11234,37 @@ msgstr ""
 "O GTIN da variação \"%s\" não foi salvo porque já é usado por outro produto "
 "ou é inválido."
 
-#: front-end/products/brikpanel-product-editor.php:9603
+#: front-end/products/brikpanel-product-editor.php:9643
 msgid "Category name is required."
 msgstr "O nome da categoria é obrigatório."
 
-#: front-end/products/brikpanel-product-editor.php:9654
+#: front-end/products/brikpanel-product-editor.php:9694
 msgid "Brands are not available on this site."
 msgstr "As marcas não estão disponíveis neste site."
 
-#: front-end/products/brikpanel-product-editor.php:9667
+#: front-end/products/brikpanel-product-editor.php:9707
 msgid "Brand name is required."
 msgstr "O nome da marca é obrigatório."
 
-#: front-end/products/brikpanel-product-editor.php:9722
+#: front-end/products/brikpanel-product-editor.php:9762
 msgid "No file uploaded."
 msgstr "Nenhum arquivo enviado."
 
-#: front-end/products/brikpanel-product-editor.php:9797
+#: front-end/products/brikpanel-product-editor.php:9837
 #: includes/brikpanel-enqueue.php:1048
 msgid "Product duplicated!"
 msgstr "Produto duplicado!"
 
-#: front-end/products/brikpanel-product-editor.php:9831
+#: front-end/products/brikpanel-product-editor.php:9871
 msgid "Invalid field."
 msgstr "Campo inválido."
 
-#: front-end/products/brikpanel-product-editor.php:9835
+#: front-end/products/brikpanel-product-editor.php:9875
 msgid "Updated"
 msgstr "Atualizado"
 
 #. translators: %d: number of distinct variation GTINs.
-#: front-end/products/brikpanel-product-editor.php:9916
+#: front-end/products/brikpanel-product-editor.php:9956
 #: front-end/products/brikpanel-products-list.php:839
 #, php-format
 msgid "%d GTIN"
@@ -11756,7 +11766,7 @@ msgid "Processing..."
 msgstr "Processando..."
 
 #: front-end/products/brikpanel-products-list.php:2017
-#: includes/brikpanel-early-access.php:274 includes/brikpanel-enqueue.php:1105
+#: includes/brikpanel-enqueue.php:1105
 #: includes/cron/class-brikpanel-cron-page.php:121
 #: includes/cron/class-brikpanel-cron.php:895
 msgid "Done"
@@ -11866,19 +11876,19 @@ msgstr "Job não encontrado ou expirado."
 msgid "Invalid security token."
 msgstr "Token de segurança inválido."
 
-#: front-end/products/brikpanel-products-list.php:4579
+#: front-end/products/brikpanel-products-list.php:4585
 msgid "Not a variable product."
 msgstr "Não é um produto variável."
 
-#: front-end/products/brikpanel-products-list.php:4590
+#: front-end/products/brikpanel-products-list.php:4596
 msgid "Any"
 msgstr "Qualquer"
 
-#: front-end/products/brikpanel-products-list.php:4639
+#: front-end/products/brikpanel-products-list.php:4645
 msgid "Variation not found."
 msgstr "Variação não encontrada."
 
-#: front-end/products/brikpanel-products-list.php:4711
+#: front-end/products/brikpanel-products-list.php:4717
 msgid "Variation updated!"
 msgstr "Variação atualizada!"
 
@@ -12090,12 +12100,12 @@ msgstr ""
 msgid "Segments"
 msgstr "Segmentos"
 
-#: front-end/segments/brikpanel-segments.php:1062
+#: front-end/segments/brikpanel-segments.php:1057
 #: front-end/sound/brikpanel-sound.php:150 includes/brikpanel-enqueue.php:399
 msgid "Payment"
 msgstr "Pagamento"
 
-#: front-end/segments/brikpanel-segments.php:1086
+#: front-end/segments/brikpanel-segments.php:1081
 #: includes/brikpanel-enqueue.php:401
 msgid "Registered"
 msgstr "Registrado"
@@ -12178,14 +12188,6 @@ msgstr "Pedido #%number%"
 #: front-end/sound/brikpanel-sound.php:151
 msgid "View order"
 msgstr "Ver pedido"
-
-#: front-end/sound/brikpanel-sound.php:152
-#: includes/brikpanel-early-access.php:694
-#: includes/brikpanel-early-access.php:872
-#: includes/brikpanel-early-access.php:951
-#: includes/brikpanel-review-notices.php:137
-msgid "Dismiss"
-msgstr "Dispensar"
 
 #: front-end/sound/brikpanel-sound.php:153
 msgid "1 item"
@@ -13391,35 +13393,25 @@ msgstr ""
 "padrão."
 
 #. translators: first-month promo price in US dollars. Locales that place the symbol after the amount should translate this as "1 $". The space is turned into a non-breaking space automatically, so the amount and its symbol never split across two lines.
-#: includes/brikpanel-brikmentor-promo.php:187
+#: includes/brikpanel-brikmentor-promo.php:195
 msgctxt "first-month promo price"
 msgid "$1"
 msgstr "1 $"
 
-#: includes/brikpanel-brikmentor-promo.php:253
+#: includes/brikpanel-brikmentor-promo.php:261
 msgid "Recover these carts on autopilot"
 msgstr "Recupere esses carrinhos no piloto automático"
 
-#: includes/brikpanel-brikmentor-promo.php:256
-msgid ""
-"Sending cart recovery emails consistently, with the right strategy, directly "
-"lifts a store's total revenue by 15-25% on average. Across the industry, "
-"roughly 70 of every 100 shoppers leave without completing checkout, which "
-"makes this automation the highest-ROI marketing channel there is. Don't "
-"leave that money on the table."
-msgstr ""
-"Enviar e-mails de recuperação de carrinho com consistência e com a "
-"estratégia certa aumenta diretamente a receita total de uma loja em 15% a "
-"25%, em média. No setor como um todo, cerca de 70 de cada 100 compradores "
-"saem sem concluir o checkout, o que torna essa automação o canal de "
-"marketing com o maior retorno que existe. Não deixe dinheiro na mesa."
+#: includes/brikpanel-brikmentor-promo.php:264
+msgid "Roughly 70 of every 100 shoppers leave without completing checkout. Well-timed cart recovery emails bring back 5-10% of total revenue in a store that runs them properly. It is the one sales channel you set up once and that never asks for your time again. Don't leave that money on the table."
+msgstr "Cerca de 70 de cada 100 compradores saem sem concluir a compra. E-mails de recuperação de carrinho bem programados trazem de volta 5% a 10% da receita total em uma loja que os configurou direito. É o único canal de vendas que você configura uma vez e que nunca mais pede seu tempo. Não deixe esse dinheiro na mesa."
 
-#: includes/brikpanel-brikmentor-promo.php:260
+#: includes/brikpanel-brikmentor-promo.php:268
 msgid "Turn this data into revenue"
 msgstr "Transforme esses dados em receita"
 
-#: includes/brikpanel-brikmentor-promo.php:268
-#: includes/brikpanel-brikmentor-promo.php:270
+#: includes/brikpanel-brikmentor-promo.php:276
+#: includes/brikpanel-brikmentor-promo.php:278
 msgid ""
 "Lifetime value grows one repeat order at a time. BrikMentor follows up a few "
 "days after each completed order with the products other customers bought "
@@ -13430,7 +13422,7 @@ msgstr ""
 "compraram junto, e inicia uma série de reconquista para os compradores que "
 "se afastam."
 
-#: includes/brikpanel-brikmentor-promo.php:271
+#: includes/brikpanel-brikmentor-promo.php:279
 msgid ""
 "These segments are ready-made audiences. BrikMentor reads them straight from "
 "BrikPanel: pick the ones to re-engage (At Risk, Can't Lose Them and "
@@ -13442,7 +13434,7 @@ msgstr ""
 "Perdê-los e Hibernando) e ele envia primeiro um lembrete e um cupom só se "
 "isso não bastar."
 
-#: includes/brikpanel-brikmentor-promo.php:272
+#: includes/brikpanel-brikmentor-promo.php:280
 msgid ""
 "A retention curve that flattens out is repeat revenue leaking away. "
 "BrikMentor scans your customers daily, starts a win-back series for anyone "
@@ -13453,33 +13445,55 @@ msgstr ""
 "para quem está há meses sem pedir e a cancela assim que a pessoa compra de "
 "novo."
 
-#: includes/brikpanel-brikmentor-promo.php:324
-#: includes/brikpanel-early-access.php:1166
+#: includes/brikpanel-brikmentor-promo.php:332
+#: includes/brikpanel-brikmentor-promo.php:624
 msgid "BrikMentor is live"
 msgstr "O BrikMentor está disponível"
 
-#: includes/brikpanel-brikmentor-promo.php:329
+#: includes/brikpanel-brikmentor-promo.php:337
 msgid "First month"
 msgstr "Primeiro mês"
 
-#: includes/brikpanel-brikmentor-promo.php:334
+#: includes/brikpanel-brikmentor-promo.php:342
 msgid "Try BrikMentor"
 msgstr "Experimente o BrikMentor"
 
-#: includes/brikpanel-brikmentor-promo.php:337
-#: includes/brikpanel-early-access.php:950
-#: includes/brikpanel-early-access.php:1179
+#: includes/brikpanel-brikmentor-promo.php:345
+#: includes/brikpanel-brikmentor-promo.php:639
+#: includes/brikpanel-early-access.php:670
 msgid "Learn more"
 msgstr "Saiba mais"
 
-#: includes/brikpanel-brikmentor-promo.php:338
-#: includes/brikpanel-early-access.php:252
+#: includes/brikpanel-brikmentor-promo.php:346
+#: includes/brikpanel-early-access.php:177
 msgid "Not now"
 msgstr "Agora não"
 
-#: includes/brikpanel-brikmentor-promo.php:343
+#: includes/brikpanel-brikmentor-promo.php:351
 msgid "Open the BrikMentor panel"
 msgstr "Abrir o painel do BrikMentor"
+
+#: includes/brikpanel-brikmentor-promo.php:596
+msgid "BrikMentor"
+msgstr "BrikMentor"
+
+#: includes/brikpanel-brikmentor-promo.php:632
+#, php-format
+msgid ""
+"BrikMentor, the AI assistant and email marketing engine for your store data, "
+"is out now: automated cart recovery, win-back and segment campaigns inside "
+"WooCommerce. First month just %s."
+msgstr ""
+"O BrikMentor, o assistente de IA e motor de e-mail marketing para os dados "
+"da sua loja, já está disponível: recuperação automática de carrinhos, "
+"campanhas de reconquista e de segmentos dentro do WooCommerce. Primeiro mês "
+"por apenas %s."
+
+#: includes/brikpanel-brikmentor-promo.php:637
+#: includes/brikpanel-early-access.php:659
+#, php-format
+msgid "Try BrikMentor for %s"
+msgstr "Experimente o BrikMentor por %s"
 
 #: includes/brikpanel-cache-clear.php:406
 msgid "Security check failed."
@@ -13569,203 +13583,92 @@ msgid ""
 msgstr ""
 "Marca que este navegador já foi contado como visitante de produto hoje."
 
-#. translators: %d: number of completed orders reached (100 or 200).
-#: includes/brikpanel-early-access.php:204
-#, php-format
-msgid "%d orders in. Want first access to BrikMentor?"
-msgstr "%d pedidos concluídos. Quer acesso prioritário ao BrikMentor?"
+#: includes/brikpanel-early-access.php:161
+msgid "Stay up to date"
+msgstr "Fique por dentro"
 
-#: includes/brikpanel-early-access.php:206
-msgid "Get early access to BrikMentor"
-msgstr "Obtenha acesso antecipado ao BrikMentor"
 
-#: includes/brikpanel-early-access.php:209
+#: includes/brikpanel-early-access.php:162
 msgid ""
-"We're building BrikMentor: an AI assistant that reads your store data, spots "
-"what is driving (and leaking) revenue, and turns it into action, from smart "
-"suggestions to email and marketing automation that reaches the right "
-"customers, all inside WooCommerce. Your store now has enough data to get "
-"real value from it. Join the private beta list and we'll invite you the "
-"moment it opens."
-msgstr ""
-"Estamos construindo o BrikMentor: um assistente de IA que lê os dados da sua "
-"loja, identifica o que está impulsionando (e drenando) a receita e o "
-"transforma em ação, de sugestões inteligentes a automação de e-mail e "
-"marketing que alcança os clientes certos, tudo dentro do WooCommerce. Sua "
-"loja agora tem dados suficientes para obter valor real dele. Entre na lista "
-"do beta privado e nós o convidaremos no momento em que ele abrir."
+"Get an occasional email about new BrikPanel and BrikMentor features, "
+"WooCommerce tips and ideas for growing your store. Short emails, only when "
+"there is something worth knowing."
+msgstr "Receba de vez em quando um e-mail sobre os novos recursos do BrikPanel e do BrikMentor, dicas de WooCommerce e ideias para fazer sua loja crescer. E-mails curtos, só quando há algo que vale a pena saber."
 
-#: includes/brikpanel-early-access.php:214
-msgid "Select an option"
-msgstr "Selecione uma opção"
 
-#: includes/brikpanel-early-access.php:215
-msgid "None yet"
-msgstr "Nenhuma ainda"
-
-#: includes/brikpanel-early-access.php:240
+#: includes/brikpanel-early-access.php:165
 msgid "Your email"
 msgstr "Seu e-mail"
 
-#: includes/brikpanel-early-access.php:241
+#: includes/brikpanel-early-access.php:166
 msgid "you@store.com"
 msgstr "voce@loja.com"
 
-#: includes/brikpanel-early-access.php:246
+#: includes/brikpanel-early-access.php:171
 msgid ""
-"Email me about the BrikMentor beta and occasional BrikPanel tips. I can "
+"Email me BrikPanel product news and occasional WooCommerce tips. I can "
 "unsubscribe at any time."
-msgstr ""
-"Envie-me e-mails sobre o beta do BrikMentor e dicas ocasionais do BrikPanel. "
-"Posso cancelar a inscrição a qualquer momento."
+msgstr "Quero receber novidades do produto BrikPanel e dicas ocasionais sobre WooCommerce. Posso cancelar a qualquer momento."
 
-#: includes/brikpanel-early-access.php:248
-msgid "Please tick the box so we can email you the invite."
-msgstr ""
-"Por favor, marque a caixa para que possamos enviar o convite por e-mail."
 
-#: includes/brikpanel-early-access.php:251
-#: includes/brikpanel-early-access.php:1196
-#: includes/brikpanel-early-access.php:1211
-msgid "Join the early access list"
-msgstr "Entre na lista de acesso antecipado"
+#: includes/brikpanel-early-access.php:173
+msgid "Please tick the box so we can email you."
+msgstr "Marque a caixa para que possamos enviar e-mails para você."
 
-#: includes/brikpanel-early-access.php:254
-msgid "No spam. Just the beta invite and the occasional heads-up."
-msgstr "Sem spam. Apenas o convite do beta e um aviso ocasional."
 
-#: includes/brikpanel-early-access.php:263
-msgid "You're on the list."
-msgstr "Você está na lista."
+#: includes/brikpanel-early-access.php:179
+msgid "No spam. Unsubscribe with one click, any time."
+msgstr "Sem spam. Cancele com um clique, quando quiser."
 
-#: includes/brikpanel-early-access.php:264
-msgid ""
-"One quick question, totally optional: which email or marketing tool do you "
-"use today? It helps us build the right thing."
-msgstr ""
-"Uma pergunta rápida, totalmente opcional: qual ferramenta de e-mail ou "
-"marketing você usa hoje? Isso nos ajuda a construir a coisa certa."
 
-#: includes/brikpanel-early-access.php:266
-msgid "Email / marketing tool"
-msgstr "Ferramenta de e-mail / marketing"
+#: includes/brikpanel-early-access.php:188
+msgid "You're subscribed."
+msgstr "Assinatura confirmada."
 
-#: includes/brikpanel-early-access.php:275
-msgid "Skip"
-msgstr "Pular"
 
-#: includes/brikpanel-early-access.php:284
-msgid "Thank you."
-msgstr "Obrigado."
+#: includes/brikpanel-early-access.php:189
+msgid "Thanks. We'll email you when there is something worth knowing."
+msgstr "Obrigado. Vamos escrever quando houver algo que vale a pena saber."
 
-#: includes/brikpanel-early-access.php:285
-msgid ""
-"We'll email you the moment the BrikMentor beta opens. Thanks for helping "
-"shape it."
-msgstr ""
-"Enviaremos um e-mail no momento em que o beta do BrikMentor abrir. Obrigado "
-"por ajudar a moldá-lo."
 
-#: includes/brikpanel-early-access.php:294
+#: includes/brikpanel-early-access.php:198
 msgid ""
 "Heads up: we could not reach our server from your site (some hosts block "
 "outbound connections). We saved your request and will keep trying, but to be "
-"safe you can message us on WhatsApp and we'll add you to the list by hand."
-msgstr ""
-"Atenção: não conseguimos alcançar nosso servidor a partir do seu site "
-"(alguns provedores bloqueiam conexões de saída). Salvamos sua solicitação e "
-"continuaremos tentando, mas, para garantir, você pode nos enviar uma "
-"mensagem no WhatsApp e nós o adicionaremos à lista manualmente."
+"safe you can message us on WhatsApp and we'll subscribe you by hand."
+msgstr "Atenção: não conseguimos alcançar nosso servidor a partir do seu site (alguns provedores bloqueiam conexões de saída). Salvamos sua solicitação e vamos continuar tentando, mas, por segurança, você pode nos chamar no WhatsApp que fazemos sua inscrição manualmente."
 
-#: includes/brikpanel-early-access.php:297
-msgid "Request access on WhatsApp"
-msgstr "Solicitar acesso pelo WhatsApp"
 
-#: includes/brikpanel-early-access.php:314
+#: includes/brikpanel-early-access.php:201
+msgid "Subscribe on WhatsApp"
+msgstr "Assinar pelo WhatsApp"
+
+
+#: includes/brikpanel-early-access.php:217
 msgid ""
-"Hello, I would like early access to BrikMentor. My email is {EMAIL} and my "
-"store is {SITE}."
-msgstr ""
-"Olá, gostaria de ter acesso antecipado ao BrikMentor. Meu e-mail é {EMAIL} e "
-"minha loja é {SITE}."
+"Hello, please subscribe me to the BrikPanel newsletter. My email is {EMAIL} "
+"and my store is {SITE}."
+msgstr "Olá, quero assinar a newsletter do BrikPanel. Meu e-mail é {EMAIL} e minha loja é {SITE}."
 
-#: includes/brikpanel-early-access.php:690
-#: includes/brikpanel-early-access.php:792
-#: includes/brikpanel-early-access.php:797
-msgid "BrikMentor is coming"
-msgstr "O BrikMentor está chegando"
 
-#: includes/brikpanel-early-access.php:691
+#: includes/brikpanel-early-access.php:553
+msgid "Product news and store tips"
+msgstr "Novidades do produto e dicas para a loja"
+
+
+#: includes/brikpanel-early-access.php:554
 msgid ""
-"An AI assistant that reads your store data and turns it into action, "
-"including email and marketing automation. Join the early access list to try "
-"it first."
-msgstr ""
-"Um assistente de IA que lê os dados da sua loja e os transforma em ação, "
-"incluindo automação de e-mail e marketing. Entre na lista de acesso "
-"antecipado para experimentá-lo primeiro."
+"New features, WooCommerce tips and ideas for growing your store, in a short "
+"email now and then. Unsubscribe any time."
+msgstr "Novos recursos, dicas de WooCommerce e ideias para fazer sua loja crescer, em um e-mail curto de vez em quando. Cancele quando quiser."
 
-#: includes/brikpanel-early-access.php:693
-#: includes/brikpanel-early-access.php:871
-msgid "Join the list"
-msgstr "Entrar na lista"
 
-#: includes/brikpanel-early-access.php:793
-msgid ""
-"An AI assistant and email marketing engine for WooCommerce. It will chase "
-"carts like these for you: a reminder first, a coupon only if that is not "
-"enough. Join the private beta list to try it first."
-msgstr ""
-"Um assistente de IA e um motor de e-mail marketing para WooCommerce. Ele vai "
-"atrás de carrinhos como estes por você: primeiro um lembrete e um cupom só "
-"se isso não for suficiente. Entre na lista de beta privado para experimentá-"
-"lo primeiro."
-
-#: includes/brikpanel-early-access.php:800
-#: includes/brikpanel-early-access.php:802
-msgid ""
-"An AI assistant and email marketing engine for WooCommerce. It will follow "
-"up after each completed order and win back the buyers who drift away, so "
-"lifetime value keeps growing. Join the private beta list to try it first."
-msgstr ""
-"Um assistente de IA e um motor de e-mail marketing para WooCommerce. Ele "
-"fará o acompanhamento após cada pedido concluído e reconquistará os "
-"compradores que se afastam, para que o valor do cliente continue crescendo. "
-"Entre na lista de beta privado para experimentá-lo primeiro."
-
-#: includes/brikpanel-early-access.php:803
-msgid ""
-"An AI assistant and email marketing engine for WooCommerce. It will read "
-"these segments straight from BrikPanel and re-engage the ones you pick. Join "
-"the private beta list to try it first."
-msgstr ""
-"Um assistente de IA e um motor de e-mail marketing para WooCommerce. Ele "
-"lerá esses segmentos direto do BrikPanel e reengajará os que você escolher. "
-"Entre na lista de beta privado para experimentá-lo primeiro."
-
-#: includes/brikpanel-early-access.php:804
-msgid ""
-"An AI assistant and email marketing engine for WooCommerce. It will scan "
-"your customers daily and start a win-back series for anyone who has not "
-"ordered in months. Join the private beta list to try it first."
-msgstr ""
-"Um assistente de IA e um motor de e-mail marketing para WooCommerce. Ele "
-"analisará seus clientes diariamente e iniciará uma série de reconquista para "
-"quem não compra há meses. Entre na lista de beta privado para experimentá-lo "
-"primeiro."
-
-#: includes/brikpanel-early-access.php:938
+#: includes/brikpanel-early-access.php:658
 #, php-format
 msgid "BrikMentor is live: first month %s"
 msgstr "O BrikMentor está disponível: primeiro mês por %s"
 
-#: includes/brikpanel-early-access.php:939
-#: includes/brikpanel-early-access.php:1177
-#, php-format
-msgid "Try BrikMentor for %s"
-msgstr "Experimente o BrikMentor por %s"
-
-#: includes/brikpanel-early-access.php:947
+#: includes/brikpanel-early-access.php:667
 msgid ""
 "The AI assistant and email marketing engine for your store data is out now. "
 "Automated cart recovery, win-back and segment campaigns, running inside "
@@ -13775,43 +13678,29 @@ msgstr ""
 "já estão disponíveis. Recuperação automática de carrinhos, campanhas de "
 "reconquista e de segmentos, rodando dentro do WooCommerce."
 
-#: includes/brikpanel-early-access.php:1143
-msgid "BrikMentor"
-msgstr "BrikMentor"
+#: includes/brikpanel-early-access.php:868
+msgid "Newsletter"
+msgstr "Newsletter"
 
-#: includes/brikpanel-early-access.php:1143
-msgid "BrikMentor early access"
-msgstr "Acesso antecipado ao BrikMentor"
 
-#: includes/brikpanel-early-access.php:1172
-#, php-format
+#: includes/brikpanel-early-access.php:888
+msgid "Product news and tips"
+msgstr "Novidades e dicas"
+
+
+#: includes/brikpanel-early-access.php:896
 msgid ""
-"BrikMentor, the AI assistant and email marketing engine for your store data, "
-"is out now: automated cart recovery, win-back and segment campaigns inside "
-"WooCommerce. First month just %s."
-msgstr ""
-"O BrikMentor, o assistente de IA e motor de e-mail marketing para os dados "
-"da sua loja, já está disponível: recuperação automática de carrinhos, "
-"campanhas de reconquista e de segmentos dentro do WooCommerce. Primeiro mês "
-"por apenas %s."
+"You're subscribed to our newsletter. You can unsubscribe from any email we "
+"send."
+msgstr "Você assina nossa newsletter. Pode cancelar a assinatura em qualquer e-mail que enviarmos."
 
-#: includes/brikpanel-early-access.php:1204
-msgid ""
-"You're on the BrikMentor early access list. We'll email you when the beta "
-"opens."
-msgstr ""
-"Você está na lista de acesso antecipado do BrikMentor. Enviaremos um e-mail "
-"quando o beta abrir."
 
-#: includes/brikpanel-early-access.php:1208
+#: includes/brikpanel-early-access.php:900
 msgid ""
-"BrikMentor is an upcoming AI assistant and email marketing platform that "
-"reads your store data and helps you act on it. Join the private beta list to "
-"try it first."
-msgstr ""
-"O BrikMentor é um assistente de IA e plataforma de e-mail marketing que está "
-"por vir, que lê os dados da sua loja e ajuda você a agir sobre eles. Entre "
-"na lista do beta privado para experimentá-lo primeiro."
+"New BrikPanel and BrikMentor features, WooCommerce tips and store growth "
+"ideas, straight to your inbox. Unsubscribe any time."
+msgstr "Novos recursos do BrikPanel e do BrikMentor, dicas de WooCommerce e ideias de crescimento, direto na sua caixa de entrada. Cancele quando quiser."
+
 
 #: includes/brikpanel-enqueue.php:169
 msgid "Visitor"
@@ -17580,6 +17469,175 @@ msgstr "Recalcular Retenção de Coortes"
 msgid "Builds the monthly cohort × period retention matrix."
 msgstr "Constrói a matriz de retenção mensal coorte × período."
 
+#~ msgid "Dismiss for 7 days"
+#~ msgstr "Dispensar por 7 dias"
+
+#, php-format
+#~ msgid "%d orders in. Want first access to BrikMentor?"
+#~ msgstr "%d pedidos concluídos. Quer acesso prioritário ao BrikMentor?"
+
+#~ msgid "Get early access to BrikMentor"
+#~ msgstr "Obtenha acesso antecipado ao BrikMentor"
+
+#~ msgid ""
+#~ "We're building BrikMentor: an AI assistant that reads your store data, "
+#~ "spots what is driving (and leaking) revenue, and turns it into action, "
+#~ "from smart suggestions to email and marketing automation that reaches the "
+#~ "right customers, all inside WooCommerce. Your store now has enough data "
+#~ "to get real value from it. Join the private beta list and we'll invite "
+#~ "you the moment it opens."
+#~ msgstr ""
+#~ "Estamos construindo o BrikMentor: um assistente de IA que lê os dados da "
+#~ "sua loja, identifica o que está impulsionando (e drenando) a receita e o "
+#~ "transforma em ação, de sugestões inteligentes a automação de e-mail e "
+#~ "marketing que alcança os clientes certos, tudo dentro do WooCommerce. Sua "
+#~ "loja agora tem dados suficientes para obter valor real dele. Entre na "
+#~ "lista do beta privado e nós o convidaremos no momento em que ele abrir."
+
+#~ msgid "Select an option"
+#~ msgstr "Selecione uma opção"
+
+#~ msgid "None yet"
+#~ msgstr "Nenhuma ainda"
+
+#~ msgid ""
+#~ "Email me about the BrikMentor beta and occasional BrikPanel tips. I can "
+#~ "unsubscribe at any time."
+#~ msgstr ""
+#~ "Envie-me e-mails sobre o beta do BrikMentor e dicas ocasionais do "
+#~ "BrikPanel. Posso cancelar a inscrição a qualquer momento."
+
+#~ msgid "Please tick the box so we can email you the invite."
+#~ msgstr ""
+#~ "Por favor, marque a caixa para que possamos enviar o convite por e-mail."
+
+#~ msgid "Join the early access list"
+#~ msgstr "Entre na lista de acesso antecipado"
+
+#~ msgid "No spam. Just the beta invite and the occasional heads-up."
+#~ msgstr "Sem spam. Apenas o convite do beta e um aviso ocasional."
+
+#~ msgid "You're on the list."
+#~ msgstr "Você está na lista."
+
+#~ msgid ""
+#~ "One quick question, totally optional: which email or marketing tool do "
+#~ "you use today? It helps us build the right thing."
+#~ msgstr ""
+#~ "Uma pergunta rápida, totalmente opcional: qual ferramenta de e-mail ou "
+#~ "marketing você usa hoje? Isso nos ajuda a construir a coisa certa."
+
+#~ msgid "Email / marketing tool"
+#~ msgstr "Ferramenta de e-mail / marketing"
+
+#~ msgid "Skip"
+#~ msgstr "Pular"
+
+#~ msgid "Thank you."
+#~ msgstr "Obrigado."
+
+#~ msgid ""
+#~ "We'll email you the moment the BrikMentor beta opens. Thanks for helping "
+#~ "shape it."
+#~ msgstr ""
+#~ "Enviaremos um e-mail no momento em que o beta do BrikMentor abrir. "
+#~ "Obrigado por ajudar a moldá-lo."
+
+#~ msgid ""
+#~ "Heads up: we could not reach our server from your site (some hosts block "
+#~ "outbound connections). We saved your request and will keep trying, but to "
+#~ "be safe you can message us on WhatsApp and we'll add you to the list by "
+#~ "hand."
+#~ msgstr ""
+#~ "Atenção: não conseguimos alcançar nosso servidor a partir do seu site "
+#~ "(alguns provedores bloqueiam conexões de saída). Salvamos sua solicitação "
+#~ "e continuaremos tentando, mas, para garantir, você pode nos enviar uma "
+#~ "mensagem no WhatsApp e nós o adicionaremos à lista manualmente."
+
+#~ msgid "Request access on WhatsApp"
+#~ msgstr "Solicitar acesso pelo WhatsApp"
+
+#~ msgid ""
+#~ "Hello, I would like early access to BrikMentor. My email is {EMAIL} and "
+#~ "my store is {SITE}."
+#~ msgstr ""
+#~ "Olá, gostaria de ter acesso antecipado ao BrikMentor. Meu e-mail é "
+#~ "{EMAIL} e minha loja é {SITE}."
+
+#~ msgid "BrikMentor is coming"
+#~ msgstr "O BrikMentor está chegando"
+
+#~ msgid ""
+#~ "An AI assistant that reads your store data and turns it into action, "
+#~ "including email and marketing automation. Join the early access list to "
+#~ "try it first."
+#~ msgstr ""
+#~ "Um assistente de IA que lê os dados da sua loja e os transforma em ação, "
+#~ "incluindo automação de e-mail e marketing. Entre na lista de acesso "
+#~ "antecipado para experimentá-lo primeiro."
+
+#~ msgid "Join the list"
+#~ msgstr "Entrar na lista"
+
+#~ msgid ""
+#~ "An AI assistant and email marketing engine for WooCommerce. It will chase "
+#~ "carts like these for you: a reminder first, a coupon only if that is not "
+#~ "enough. Join the private beta list to try it first."
+#~ msgstr ""
+#~ "Um assistente de IA e um motor de e-mail marketing para WooCommerce. Ele "
+#~ "vai atrás de carrinhos como estes por você: primeiro um lembrete e um "
+#~ "cupom só se isso não for suficiente. Entre na lista de beta privado para "
+#~ "experimentá-lo primeiro."
+
+#~ msgid ""
+#~ "An AI assistant and email marketing engine for WooCommerce. It will "
+#~ "follow up after each completed order and win back the buyers who drift "
+#~ "away, so lifetime value keeps growing. Join the private beta list to try "
+#~ "it first."
+#~ msgstr ""
+#~ "Um assistente de IA e um motor de e-mail marketing para WooCommerce. Ele "
+#~ "fará o acompanhamento após cada pedido concluído e reconquistará os "
+#~ "compradores que se afastam, para que o valor do cliente continue "
+#~ "crescendo. Entre na lista de beta privado para experimentá-lo primeiro."
+
+#~ msgid ""
+#~ "An AI assistant and email marketing engine for WooCommerce. It will read "
+#~ "these segments straight from BrikPanel and re-engage the ones you pick. "
+#~ "Join the private beta list to try it first."
+#~ msgstr ""
+#~ "Um assistente de IA e um motor de e-mail marketing para WooCommerce. Ele "
+#~ "lerá esses segmentos direto do BrikPanel e reengajará os que você "
+#~ "escolher. Entre na lista de beta privado para experimentá-lo primeiro."
+
+#~ msgid ""
+#~ "An AI assistant and email marketing engine for WooCommerce. It will scan "
+#~ "your customers daily and start a win-back series for anyone who has not "
+#~ "ordered in months. Join the private beta list to try it first."
+#~ msgstr ""
+#~ "Um assistente de IA e um motor de e-mail marketing para WooCommerce. Ele "
+#~ "analisará seus clientes diariamente e iniciará uma série de reconquista "
+#~ "para quem não compra há meses. Entre na lista de beta privado para "
+#~ "experimentá-lo primeiro."
+
+#~ msgid "BrikMentor early access"
+#~ msgstr "Acesso antecipado ao BrikMentor"
+
+#~ msgid ""
+#~ "You're on the BrikMentor early access list. We'll email you when the beta "
+#~ "opens."
+#~ msgstr ""
+#~ "Você está na lista de acesso antecipado do BrikMentor. Enviaremos um e-"
+#~ "mail quando o beta abrir."
+
+#~ msgid ""
+#~ "BrikMentor is an upcoming AI assistant and email marketing platform that "
+#~ "reads your store data and helps you act on it. Join the private beta list "
+#~ "to try it first."
+#~ msgstr ""
+#~ "O BrikMentor é um assistente de IA e plataforma de e-mail marketing que "
+#~ "está por vir, que lê os dados da sua loja e ajuda você a agir sobre eles. "
+#~ "Entre na lista do beta privado para experimentá-lo primeiro."
+
 #~ msgid ""
 #~ "Source: WooCommerce Cost of Goods Sold — per-line _cogs_value written "
 #~ "when an order is placed."
@@ -17673,3 +17731,10 @@ msgstr "Constrói a matriz de retenção mensal coorte × período."
 #~ msgid "Choose…"
 #~ msgstr "Escolher…"
 
+#: includes/brikpanel-brikmentor-promo.php
+msgid "Unlocking gives you the phone number behind each cart and a ready-made WhatsApp message to open with one click. The reminder emails then go out on their own, and they bring back 5-10% of total revenue in a store that runs them properly."
+msgstr "Ao desbloquear, você vê o número de telefone por trás de cada carrinho e abre com um clique uma mensagem de WhatsApp já pronta. Os e-mails de lembrete saem sozinhos e trazem de volta 5% a 10% da receita total em uma loja que os configurou direito."
+
+#: includes/brikpanel-brikmentor-promo.php
+msgid "Wouldn't a free plugin be enough?"
+msgstr "Um plugin gratuito não basta?"
