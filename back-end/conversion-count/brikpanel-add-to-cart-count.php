@@ -27,11 +27,21 @@ function brikpanel_add_to_cart_counter() {
         return;
     }
 
-    // Backstop for crawlers whose user agent looks like a browser. The cookie
-    // above caps a real shopper at one add-to-cart per day; a cookieless
-    // client would otherwise be counted once per `?add-to-cart=` URL it
-    // follows, so apply the same daily cap keyed on its address instead.
-    if ( function_exists( 'brikpanel_cookieless_daily_gate' ) && ! brikpanel_cookieless_daily_gate( 'atc' ) ) {
+    // Reaching this line means the client did not present our daily cookie, so
+    // as far as this counter can tell it remembers nothing about today. That is
+    // either a real shopper's first add — counted, exactly as before — or a
+    // client that discards its memory between turns, which would otherwise be
+    // counted once per `?add-to-cart=` URL it follows. A server-side lock keyed
+    // on its address applies the same one-per-day cap the cookie gives everyone
+    // else. Holding cookies is not proof of memory, so this no longer waves a
+    // client through just because it sent some.
+    //
+    // Signed-in customers are exempt: their identity is durable and their
+    // cookie demonstrably works, so guessing at an address would only make two
+    // colleagues behind one office IP cancel each other out.
+    if ( ! is_user_logged_in()
+        && function_exists( 'brikpanel_client_daily_lock' )
+        && ! brikpanel_client_daily_lock( 'atc' ) ) {
         return;
     }
 

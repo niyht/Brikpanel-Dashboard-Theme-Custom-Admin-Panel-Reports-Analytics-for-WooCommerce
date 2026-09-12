@@ -56,7 +56,7 @@ function brikpanel_import_export_get_option_map() {
 				continue;
 			}
 			$type = (string) $field['type'];
-			if ( in_array( $type, [ 'title', 'sectionend', 'brikpanel_dev_docs', 'brikpanel_nav_customizer', 'brikpanel_section_order', 'brikpanel_early_access', 'brikpanel_brikmentor_promo' ], true ) ) {
+			if ( in_array( $type, [ 'title', 'sectionend', 'brikpanel_dev_docs', 'brikpanel_nav_customizer', 'brikpanel_section_order', 'brikpanel_early_access', 'brikpanel_brikmentor_promo', 'brikpanel_cartab_popup_i18n' ], true ) ) {
 				continue;
 			}
 			// Brand logo references an attachment id that does not transfer
@@ -89,6 +89,11 @@ function brikpanel_import_export_get_option_map() {
 		// fields the source admin enabled, so the drawer config arrives half
 		// applied. Stored as a flat array of visible slugs → multiselect.
 		'brikpanel_qe_visible_fields'    => [ 'type' => 'multiselect' ],
+		// The signup popup's wording in the store's other languages. Its
+		// settings field renders its own inputs, so it is skipped by the walk
+		// above and has to be named here or a multilingual store's export
+		// would carry the popup's default-language text and nothing else.
+		'brikpanel_cartab_popup_i18n'    => [ 'type' => 'brikpanel_cartab_popup_i18n' ],
 	];
 	foreach ( $extras as $key => $meta ) {
 		if ( ! isset( $map[ $key ] ) ) {
@@ -219,6 +224,47 @@ function brikpanel_import_export_sanitize_value( $value, $type ) {
 						? brikpanel_whatsapp_clean_message( $message )
 						: sanitize_textarea_field( $message ),
 				];
+			}
+			return $out;
+
+		case 'brikpanel_cartab_popup_i18n':
+			// The signup popup's wording per language: locale => slot => text.
+			// Nested, so the generic array branch below would flatten it into a
+			// list of strings. Locales are kept even when the target site does
+			// not speak them yet — the merchant may add the language after the
+			// import, and the wording should already be waiting for it.
+			if ( ! is_array( $value ) ) {
+				return [];
+			}
+			$slots = class_exists( 'Brikpanel_Cart_Abandonment' )
+				? array_flip( Brikpanel_Cart_Abandonment::popup_i18n_slots() )
+				: [];
+			$out = [];
+			foreach ( $value as $locale => $texts ) {
+				// Locale keys, not option keys: 'pt_BR' and 'zh-Hant' both have
+				// to survive, and sanitize_key() would lowercase them apart.
+				$locale = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $locale );
+				if ( '' === $locale || ! is_array( $texts ) ) {
+					continue;
+				}
+				$bucket = [];
+				foreach ( $texts as $slot => $text ) {
+					$slot = (string) $slot;
+					if ( ( $slots && ! isset( $slots[ $slot ] ) ) || ! is_scalar( $text ) ) {
+						continue;
+					}
+					// Same cleaner the settings screen uses, so imported
+					// wording can never carry markup a typed one could not.
+					$clean = class_exists( 'Brikpanel_Cart_Abandonment' )
+						? Brikpanel_Cart_Abandonment::sanitize_popup_text( null, [ 'id' => 'brikpanel_cartab_popup_i18n' ], (string) $text )
+						: sanitize_textarea_field( (string) $text );
+					if ( '' !== $clean ) {
+						$bucket[ $slot ] = $clean;
+					}
+				}
+				if ( $bucket ) {
+					$out[ $locale ] = $bucket;
+				}
 			}
 			return $out;
 

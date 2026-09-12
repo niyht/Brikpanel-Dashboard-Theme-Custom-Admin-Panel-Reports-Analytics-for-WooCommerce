@@ -99,6 +99,14 @@ class Brikpanel_Cart_Abandonment {
 		add_filter( 'brikpanel_settings_section_icons',        [ $this, 'settings_icon' ] );
 		add_filter( 'brikpanel_settings_fields',               [ $this, 'settings_fields' ] );
 
+		// Per-language popup wording. Registered only in the admin: the field,
+		// its assets and its save handler have no front-end job at all.
+		if ( is_admin() ) {
+			add_action( 'woocommerce_admin_field_brikpanel_cartab_popup_i18n', [ $this, 'render_popup_i18n_field' ] );
+			add_action( 'woocommerce_update_options_brikpanel', [ __CLASS__, 'save_popup_i18n' ] );
+			add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_settings_assets' ] );
+		}
+
 		if ( ! self::is_enabled() ) {
 			return;
 		}
@@ -204,37 +212,240 @@ class Brikpanel_Cart_Abandonment {
 
 	/** Popup configuration with translatable fallbacks for unset options. */
 	public static function popup_config() {
-		$text = static function ( $key, $default ) {
+		$lang = self::popup_language_texts();
+		// Resolution order for every visible word, in one place: what the
+		// merchant wrote for THIS language, then what they wrote for the store's
+		// own language, then the plugin's translatable default.
+		$text = static function ( $key, $slot, $default ) use ( $lang ) {
+			if ( isset( $lang[ $slot ] ) && '' !== $lang[ $slot ] ) {
+				return (string) $lang[ $slot ];
+			}
 			$v = get_option( $key, false );
 			return ( $v === false || $v === '' ) ? $default : (string) $v;
 		};
 		$message = $text(
 			'brikpanel_cartab_popup_message',
+			'message',
 			__( 'Subscribe to get special offers and updates.', 'brikpanel' )
 		);
-		$discount = self::popup_discount();
-		if ( $discount > 0 ) {
-			/* translators: %d: discount percentage */
-			$default_title = sprintf( __( 'Sign up and get %d%% off', 'brikpanel' ), $discount );
-			/* translators: %d: discount percentage */
-			$default_teaser = sprintf( __( 'Get %d%% off', 'brikpanel' ), $discount );
-		} else {
-			$default_title  = __( 'Sign up and save', 'brikpanel' );
-			$default_teaser = __( 'Special offer', 'brikpanel' );
-		}
+		$discount  = self::popup_discount();
+		$defaults  = self::popup_text_defaults( $discount );
 		return [
 			'enabled'     => get_option( 'brikpanel_cartab_popup_enabled', 'no' ) === 'yes',
 			'delay'       => max( 0, (int) get_option( 'brikpanel_cartab_popup_delay', 5 ) ),
 			'cooldown'    => max( 1, (int) get_option( 'brikpanel_cartab_popup_cooldown', 7 ) ),
 			'discount'    => $discount,
 			'style'       => self::popup_style(),
-			'title'       => $text( 'brikpanel_cartab_popup_title', $default_title ),
+			'title'       => $text( 'brikpanel_cartab_popup_title', 'title', $defaults['title'] ),
 			'message'     => (string) $message,
-			'button'      => $text( 'brikpanel_cartab_popup_button', __( 'Subscribe', 'brikpanel' ) ),
-			'placeholder' => $text( 'brikpanel_cartab_popup_placeholder', __( 'Enter your email', 'brikpanel' ) ),
-			'success'     => $text( 'brikpanel_cartab_popup_success', __( 'Thanks for subscribing!', 'brikpanel' ) ),
-			'teaser'      => $text( 'brikpanel_cartab_popup_teaser', $default_teaser ),
+			'button'      => $text( 'brikpanel_cartab_popup_button', 'button', $defaults['button'] ),
+			'placeholder' => $text( 'brikpanel_cartab_popup_placeholder', 'placeholder', $defaults['placeholder'] ),
+			'success'     => $text( 'brikpanel_cartab_popup_success', 'success', $defaults['success'] ),
+			'teaser'      => $text( 'brikpanel_cartab_popup_teaser', 'teaser', $defaults['teaser'] ),
 		];
+	}
+
+	// =========================================================================
+	// Popup wording, per language
+	//
+	// A multilingual store serves one popup to shoppers reading two different
+	// languages. The six merchant fields and the strings the plugin writes
+	// itself both have to follow the page, so both are stored per language in
+	// ONE option — brikpanel_cartab_popup_i18n, shaped [ locale => [ slot =>
+	// text ] ].
+	//
+	// The store's OWN language deliberately keeps living in the flat options it
+	// always lived in. That is what makes this addition free: a single-language
+	// store stores nothing new, reads nothing new and shows no new field, and
+	// an existing merchant's wording is exactly where it was.
+	// =========================================================================
+
+	/** Where the per-language wording is stored. */
+	const POPUP_I18N_OPTION = 'brikpanel_cartab_popup_i18n';
+
+	/**
+	 * The six merchant-written slots, and the option each one falls back to.
+	 *
+	 * @return array<string,string> slot => option key.
+	 */
+	public static function popup_text_options() {
+		return [
+			'title'       => 'brikpanel_cartab_popup_title',
+			'message'     => 'brikpanel_cartab_popup_message',
+			'button'      => 'brikpanel_cartab_popup_button',
+			'placeholder' => 'brikpanel_cartab_popup_placeholder',
+			'success'     => 'brikpanel_cartab_popup_success',
+			'teaser'      => 'brikpanel_cartab_popup_teaser',
+		];
+	}
+
+	/**
+	 * Translatable defaults for the six merchant slots. Two of them read the
+	 * discount, so it is passed in rather than re-read.
+	 *
+	 * @param int|null $discount
+	 * @return array<string,string>
+	 */
+	public static function popup_text_defaults( $discount = null ) {
+		$discount = null === $discount ? self::popup_discount() : (int) $discount;
+		if ( $discount > 0 ) {
+			/* translators: %d: discount percentage */
+			$title  = sprintf( __( 'Sign up and get %d%% off', 'brikpanel' ), $discount );
+			/* translators: %d: discount percentage */
+			$teaser = sprintf( __( 'Get %d%% off', 'brikpanel' ), $discount );
+		} else {
+			$title  = __( 'Sign up and save', 'brikpanel' );
+			$teaser = __( 'Special offer', 'brikpanel' );
+		}
+		return [
+			'title'       => $title,
+			'message'     => __( 'Subscribe to get special offers and updates.', 'brikpanel' ),
+			'button'      => __( 'Subscribe', 'brikpanel' ),
+			'placeholder' => __( 'Enter your email', 'brikpanel' ),
+			'success'     => __( 'Thanks for subscribing!', 'brikpanel' ),
+			'teaser'      => $teaser,
+		];
+	}
+
+	/**
+	 * The strings the popup writes itself, as slot => translatable default.
+	 *
+	 * These follow the site's .mo file on a single-language store, which is
+	 * right there and wrong on a multilingual one: BrikPanel ships a catalogue
+	 * for nine languages, so an Estonian or Finnish shopper would read an
+	 * English coupon panel under a perfectly Estonian headline. Every string a
+	 * shopper actually reads is therefore overridable per language too.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function popup_system_defaults() {
+		return [
+			'invalidEmail'      => __( 'Please enter a valid email address.', 'brikpanel' ),
+			'error'             => __( 'Something went wrong. Please try again.', 'brikpanel' ),
+			'close'             => __( 'Close', 'brikpanel' ),
+			'emailLabel'        => __( 'Email address', 'brikpanel' ),
+			'couponIntro'       => __( 'Your discount code', 'brikpanel' ),
+			// Used only when the coupon is NOT applied for the visitor, so
+			// this stays accurate; the two below cover the other cases.
+			'couponHint'        => __( 'Apply it at checkout. Valid for 30 days.', 'brikpanel' ),
+			'couponHintApplied' => __( 'Already on your cart, the discount is in your total.', 'brikpanel' ),
+			'couponHintAuto'    => __( 'Saved. It goes on your cart automatically, and you can still type it in at checkout.', 'brikpanel' ),
+			'couponSaved'       => __( 'Your code is saved. Reopen it any time from the tab at the bottom of the page.', 'brikpanel' ),
+			'couponTeaser'      => __( 'Your code', 'brikpanel' ),
+			'couponTeaserLabel' => __( 'Show your discount code', 'brikpanel' ),
+			/* translators: %s: the visitor's email address */
+			'couponEmailed'     => __( 'We sent your discount code to %s', 'brikpanel' ),
+			'couponEmailedHint' => __( 'Check your inbox — if it landed in the Promotions tab, drag it to Primary so you never miss it.', 'brikpanel' ),
+			'editEmail'         => __( 'Wrong address? Edit it', 'brikpanel' ),
+			'editSave'          => __( 'Update & resend', 'brikpanel' ),
+			'editCancel'        => __( 'Cancel', 'brikpanel' ),
+			'editDone'          => __( 'Sent to your new address', 'brikpanel' ),
+			'copy'              => __( 'Copy', 'brikpanel' ),
+			'copied'            => __( 'Copied!', 'brikpanel' ),
+			'offBadge'          => __( 'OFF', 'brikpanel' ),
+			'scratchMe'         => __( 'Scratch me', 'brikpanel' ),
+		];
+	}
+
+	/**
+	 * The popup's own strings for the language being rendered, each falling
+	 * back to its translatable default.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function popup_system_strings() {
+		$lang = self::popup_language_texts();
+		$out  = [];
+		foreach ( self::popup_system_defaults() as $slot => $default ) {
+			$out[ $slot ] = ( isset( $lang[ $slot ] ) && '' !== $lang[ $slot ] ) ? (string) $lang[ $slot ] : $default;
+		}
+		return $out;
+	}
+
+	/**
+	 * Every slot that can be given its own wording per language.
+	 *
+	 * @return string[]
+	 */
+	public static function popup_i18n_slots() {
+		return array_merge(
+			array_keys( self::popup_text_options() ),
+			array_keys( self::popup_system_defaults() )
+		);
+	}
+
+	/**
+	 * The whole stored map, pruned to slots this version knows.
+	 *
+	 * @return array<string,array<string,string>>
+	 */
+	public static function popup_i18n_all() {
+		$stored = get_option( self::POPUP_I18N_OPTION, [] );
+		if ( ! is_array( $stored ) ) {
+			return [];
+		}
+		$slots = array_flip( self::popup_i18n_slots() );
+		$out   = [];
+		foreach ( $stored as $locale => $texts ) {
+			if ( ! is_array( $texts ) ) {
+				continue;
+			}
+			$clean = [];
+			foreach ( $texts as $slot => $text ) {
+				if ( isset( $slots[ $slot ] ) && is_string( $text ) && '' !== $text ) {
+					$clean[ $slot ] = $text;
+				}
+			}
+			if ( $clean ) {
+				$out[ (string) $locale ] = $clean;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * The wording stored for one language, exactly as saved — no fallback to a
+	 * sibling dialect and no defaults. This is what the settings screen edits.
+	 *
+	 * @param string $locale
+	 * @return array<string,string>
+	 */
+	public static function popup_i18n_for( $locale ) {
+		$all = self::popup_i18n_all();
+		return isset( $all[ $locale ] ) ? $all[ $locale ] : [];
+	}
+
+	/**
+	 * The overrides that apply to the language THIS request is being rendered
+	 * in — empty on a single-language store and empty for the store's own
+	 * language, where the flat options are already the right answer.
+	 *
+	 * Memoised because both callers (the config and the system strings) ask on
+	 * the same request, and the answer cannot change inside one page load.
+	 *
+	 * @return array<string,string>
+	 */
+	private static function popup_language_texts() {
+		static $memo = null;
+		if ( null !== $memo ) {
+			return $memo;
+		}
+		$memo = [];
+		if ( ! class_exists( 'Brikpanel_Languages' ) ) {
+			return $memo;
+		}
+		$locale = Brikpanel_Languages::current_locale();
+		if ( '' === $locale ) {
+			return $memo;
+		}
+		// The store's own language reads a bucket too, and only ever finds the
+		// popup's own strings in it - the six merchant fields are not offered
+		// for that language, because they ARE the fields above. Without this
+		// the default language would be the one language whose coupon panel
+		// could not be translated, which on an Estonian store means an Estonian
+		// headline over an English "Your discount code".
+		$memo = self::popup_i18n_for( $locale );
+		return $memo;
 	}
 
 	/**
@@ -268,10 +479,17 @@ class Brikpanel_Cart_Abandonment {
 	 * Resolve (and lazily create) the per-browser visitor id cookie. Returns
 	 * an empty string when the cookie cannot be set (headers already sent) —
 	 * rows then dedupe on email alone, so nothing is lost.
+	 *
+	 * A cookie value this plugin never issued (see
+	 * brikpanel_visitor_id_is_valid()) counts as no cookie at all and is
+	 * overwritten with a freshly minted id. Since 3.3.2: before that a client
+	 * could pick its own id, and with it its own dedupe key and rate-limit
+	 * bucket, on every request.
 	 */
 	private static function visitor_id() {
-		if ( isset( $_COOKIE[ self::COOKIE ] ) ) {
-			return substr( sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ) ), 0, 64 );
+		$known = self::existing_visitor_id();
+		if ( '' !== $known ) {
+			return $known;
 		}
 		$new_id = uniqid( 'bp_', true );
 		if ( headers_sent() ) {
@@ -282,8 +500,14 @@ class Brikpanel_Cart_Abandonment {
 		return $new_id;
 	}
 
-	/** Cookie value if it already exists — never creates one (read-only paths). */
+	/**
+	 * Cookie value if it already exists — never creates one (read-only paths).
+	 * '' when the request sent no cookie, or sent one this plugin never minted.
+	 */
 	private static function existing_visitor_id() {
+		if ( function_exists( 'brikpanel_visitor_id_from_cookie' ) ) {
+			return brikpanel_visitor_id_from_cookie();
+		}
 		return isset( $_COOKIE[ self::COOKIE ] )
 			? substr( sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ) ), 0, 64 )
 			: '';
@@ -888,32 +1112,9 @@ class Brikpanel_Cart_Abandonment {
 				'teaser'      => $popup['teaser'],
 			];
 
-			$data['i18n'] = [
-				'invalidEmail' => __( 'Please enter a valid email address.', 'brikpanel' ),
-				'error'        => __( 'Something went wrong. Please try again.', 'brikpanel' ),
-				'close'        => __( 'Close', 'brikpanel' ),
-				'emailLabel'   => __( 'Email address', 'brikpanel' ),
-				'couponIntro'  => __( 'Your discount code', 'brikpanel' ),
-				// Used only when the coupon is NOT applied for the visitor, so
-				// this stays accurate; the two below cover the other cases.
-				'couponHint'        => __( 'Apply it at checkout. Valid for 30 days.', 'brikpanel' ),
-				'couponHintApplied' => __( 'Already on your cart, the discount is in your total.', 'brikpanel' ),
-				'couponHintAuto'    => __( 'Saved. It goes on your cart automatically, and you can still type it in at checkout.', 'brikpanel' ),
-				'couponSaved'       => __( 'Your code is saved. Reopen it any time from the tab at the bottom of the page.', 'brikpanel' ),
-				'couponTeaser'      => __( 'Your code', 'brikpanel' ),
-				'couponTeaserLabel' => __( 'Show your discount code', 'brikpanel' ),
-				/* translators: %s: the visitor's email address */
-				'couponEmailed'     => __( 'We sent your discount code to %s', 'brikpanel' ),
-				'couponEmailedHint' => __( 'Check your inbox — if it landed in the Promotions tab, drag it to Primary so you never miss it.', 'brikpanel' ),
-				'editEmail'    => __( 'Wrong address? Edit it', 'brikpanel' ),
-				'editSave'     => __( 'Update & resend', 'brikpanel' ),
-				'editCancel'   => __( 'Cancel', 'brikpanel' ),
-				'editDone'     => __( 'Sent to your new address', 'brikpanel' ),
-				'copy'         => __( 'Copy', 'brikpanel' ),
-				'copied'       => __( 'Copied!', 'brikpanel' ),
-				'offBadge'     => __( 'OFF', 'brikpanel' ),
-				'scratchMe'    => __( 'Scratch me', 'brikpanel' ),
-			];
+			// Same per-language resolution as the merchant's own fields: what
+			// this language was given, else the site's translation catalogue.
+			$data['i18n'] = self::popup_system_strings();
 		}
 
 		wp_localize_script( 'brikpanel_cartab_scripts', 'brikpanelCartAb', $data );
@@ -927,8 +1128,12 @@ class Brikpanel_Cart_Abandonment {
 	 * Public (nopriv) capture endpoint. No nonce on purpose — the endpoint is
 	 * reachable by cached pages / logged-out visitors where nonces go stale.
 	 * Defenses instead: bot UA filter, strict email validation, tight length
-	 * caps, and a per-visitor rate limit. Cart data is NEVER read from the
-	 * request; the snapshot comes from the server-side session cart.
+	 * caps, a per-visitor rate limit and, since 3.3.2, a per-client burst lock
+	 * keyed on address + request headers (brikpanel_client_bucket_key()) so a
+	 * client that rotates its cookie is still one client; a visitor id this
+	 * plugin never minted is replaced rather than adopted. Cart data is NEVER
+	 * read from the request; the snapshot comes from the server-side session
+	 * cart.
 	 */
 	public function ajax_capture() {
 		if ( ! self::is_enabled() || self::is_staff() ) {
@@ -963,13 +1168,25 @@ class Brikpanel_Cart_Abandonment {
 		// exempt from rate limiting as such: they get their own, stricter
 		// bucket below, because the popup branch is the expensive one (it mints
 		// a coupon and, with a companion plugin installed, sends mail).
-		$rl_id  = $visitor !== '' ? $visitor : ( isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : 'unknown' );
-		$rl_key = 'bp_cartab_rl_' . md5( $rl_id );
+		$rl_id   = $visitor !== '' ? $visitor : ( isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : 'unknown' );
+		$rl_keys = [ 'bp_cartab_rl_' . md5( $rl_id ) ];
+		// Second bucket on the client's address + headers: the bucket above is
+		// keyed on a value the client chooses, so a client that sends a new cookie
+		// with every request is never in it twice. Every bucket is read before any
+		// is written, so a rejected request leaves no row behind.
+		$net_key = function_exists( 'brikpanel_client_bucket_key' ) ? brikpanel_client_bucket_key( 'cartab_rl' ) : '';
+		if ( '' !== $net_key ) {
+			$rl_keys[] = $net_key;
+		}
 		if ( 'popup' !== $source ) {
-			if ( get_transient( $rl_key ) ) {
-				wp_send_json_success( [ 'throttled' => true ] );
+			foreach ( $rl_keys as $rl_key ) {
+				if ( get_transient( $rl_key ) ) {
+					wp_send_json_success( [ 'throttled' => true ] );
+				}
 			}
-			set_transient( $rl_key, 1, 2 );
+			foreach ( $rl_keys as $rl_key ) {
+				set_transient( $rl_key, 1, 2 );
+			}
 		} elseif ( self::popup_capture_throttled( $known_visitor ) ) {
 			// Answer exactly like the checkout throttle does: the visitor still
 			// gets the popup's thank-you state, just without a coupon. Telling
@@ -1021,8 +1238,13 @@ class Brikpanel_Cart_Abandonment {
 	 *   exact shape of an automated spray.
 	 * - The burst brake prefers the cookie and only falls back to the IP. Real
 	 *   browsers each carry their own id, so two genuine shoppers behind one
-	 *   office NAT never throttle each other; a cookie-less client lands in the
-	 *   shared IP bucket, which is where it belongs.
+	 *   office NAT do not share that bucket; a cookie-less client lands in the
+	 *   shared IP bucket, which is where it belongs. Since 3.3.2 a second brake
+	 *   sits beside it, keyed on address + request headers regardless of the
+	 *   cookie (a client that rotates its cookie is never in the first bucket
+	 *   twice). That one is an allowance of two per window rather than a lock,
+	 *   so two shoppers who do share an address and a browser build can still
+	 *   both sign up within ten seconds of each other.
 	 *
 	 * A store-wide ceiling sits on top for the same spray arriving from
 	 * rotating addresses. All three limits are sized so a real signup rate
@@ -1048,7 +1270,20 @@ class Brikpanel_Cart_Abandonment {
 		if ( get_transient( $burst ) ) {
 			return true;
 		}
+
+		// Cookie-blind companion: two submits per ten seconds per address and
+		// browser build. Checked before either bucket is written so a dropped
+		// request leaves nothing behind.
+		$net_key  = function_exists( 'brikpanel_client_bucket_key' ) ? brikpanel_client_bucket_key( 'cartab_pop' ) : '';
+		$net_hits = ( '' !== $net_key ) ? (int) get_transient( $net_key ) : 0;
+		if ( $net_hits >= 2 ) {
+			return true;
+		}
+
 		set_transient( $burst, 1, 10 );
+		if ( '' !== $net_key ) {
+			set_transient( $net_key, $net_hits + 1, 10 );
+		}
 
 		/**
 		 * Popup signups accepted per hour from a single address. 0 disables it.
@@ -4439,6 +4674,397 @@ class Brikpanel_Cart_Abandonment {
 		return $paths;
 	}
 
+	// =========================================================================
+	// Settings screen: popup wording per language
+	// =========================================================================
+
+	/**
+	 * Which slots get an input on the settings screen, in render order.
+	 *
+	 * Only the strings the CURRENT settings can actually put on screen are
+	 * offered. A store with no popup discount has no coupon panel, and drawing
+	 * eleven boxes for wording nobody will ever read turns a two-minute job
+	 * into a wall of empty fields — the surest way to make a merchant leave the
+	 * whole thing untranslated.
+	 *
+	 * @return array<string,array{label:string,type:string,group:string}>
+	 */
+	public static function popup_i18n_fields() {
+		$fields = [
+			'title'       => [ 'label' => __( 'Popup title', 'brikpanel' ),      'type' => 'text',     'group' => 'main' ],
+			'message'     => [ 'label' => __( 'Popup message', 'brikpanel' ),    'type' => 'textarea', 'group' => 'main' ],
+			'button'      => [ 'label' => __( 'Popup button text', 'brikpanel' ),'type' => 'text',     'group' => 'main' ],
+			'placeholder' => [ 'label' => __( 'Email placeholder', 'brikpanel' ),'type' => 'text',     'group' => 'main' ],
+			'success'     => [ 'label' => __( 'Success message', 'brikpanel' ),  'type' => 'text',     'group' => 'main' ],
+			'teaser'      => [ 'label' => __( 'Floating tab text', 'brikpanel' ),'type' => 'text',     'group' => 'main' ],
+			'invalidEmail'=> [ 'label' => __( 'Invalid email warning', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ],
+			'error'       => [ 'label' => __( 'Error message', 'brikpanel' ),    'type' => 'text',     'group' => 'system' ],
+		];
+
+		// Everything below only exists once the popup hands out a coupon.
+		if ( self::popup_discount() > 0 ) {
+			$fields['couponIntro'] = [ 'label' => __( 'Coupon heading', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			if ( self::popup_autoapply() ) {
+				$fields['couponHintAuto']    = [ 'label' => __( 'Coupon note (saved for the cart)', 'brikpanel' ), 'type' => 'textarea', 'group' => 'system' ];
+				$fields['couponHintApplied'] = [ 'label' => __( 'Coupon note (already on the cart)', 'brikpanel' ), 'type' => 'textarea', 'group' => 'system' ];
+			} else {
+				$fields['couponHint'] = [ 'label' => __( 'Coupon note', 'brikpanel' ), 'type' => 'textarea', 'group' => 'system' ];
+			}
+			$fields['couponSaved']  = [ 'label' => __( 'Reopen note', 'brikpanel' ),        'type' => 'textarea', 'group' => 'system' ];
+			$fields['couponTeaser'] = [ 'label' => __( 'Floating tab after signup', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			$fields['copy']         = [ 'label' => __( 'Copy button', 'brikpanel' ),        'type' => 'text', 'group' => 'system' ];
+			$fields['copied']       = [ 'label' => __( 'Copy button, once copied', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			$fields['offBadge']     = [ 'label' => __( 'Discount badge word', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			if ( 'scratch' === self::popup_style() ) {
+				$fields['scratchMe'] = [ 'label' => __( 'Scratch card label', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			}
+		}
+
+		// The "check your inbox" half of the popup only appears while a
+		// companion plugin is delivering the coupon by email. Asked as "can
+		// anything answer that filter", never as "is a plugin installed": an
+		// installed-but-older companion passes an existence check and then
+		// leaves the merchant staring at boxes for text nobody will ever see.
+		if ( self::popup_discount() > 0 && has_filter( 'brikpanel_cartab_popup_coupon_delivery' ) ) {
+			$fields['couponEmailed']     = [ 'label' => __( 'Emailed confirmation', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			$fields['couponEmailedHint'] = [ 'label' => __( 'Emailed confirmation note', 'brikpanel' ), 'type' => 'textarea', 'group' => 'system' ];
+			$fields['editEmail']         = [ 'label' => __( 'Edit address link', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			$fields['editSave']          = [ 'label' => __( 'Edit address, save button', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			$fields['editCancel']        = [ 'label' => __( 'Edit address, cancel button', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			$fields['editDone']          = [ 'label' => __( 'Edit address, done', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+		}
+
+		return $fields;
+	}
+
+	/**
+	 * What each slot shows when its box is left empty — the store's own
+	 * wording, which is what the shopper reads today. Shown as the input's
+	 * placeholder so "leave it empty" is a visible, informed choice rather
+	 * than a guess.
+	 *
+	 * @return array<string,string>
+	 */
+	private static function popup_i18n_placeholders() {
+		$out      = self::popup_text_defaults();
+		$defaults = $out;
+		foreach ( self::popup_text_options() as $slot => $key ) {
+			$v = get_option( $key, '' );
+			$out[ $slot ] = ( '' === $v || false === $v ) ? $defaults[ $slot ] : (string) $v;
+		}
+		return array_merge( $out, self::popup_system_defaults() );
+	}
+
+	/**
+	 * The languages that get their own tab: all of them, the store's own
+	 * language first. That language shows only the popup's own strings - its
+	 * six merchant fields are the ones already rendered above.
+	 *
+	 * @return array[]
+	 */
+	private static function popup_i18n_languages() {
+		if ( ! class_exists( 'Brikpanel_Languages' ) || ! Brikpanel_Languages::is_multilingual() ) {
+			return [];
+		}
+		$default = [];
+		$rest    = [];
+		foreach ( Brikpanel_Languages::languages() as $lang ) {
+			if ( ! empty( $lang['is_default'] ) ) {
+				$default[] = $lang;
+			} else {
+				$rest[] = $lang;
+			}
+		}
+		return array_merge( $default, $rest );
+	}
+
+	/**
+	 * Which groups of slots a given language is asked for.
+	 *
+	 * @param bool $is_default
+	 * @return string[]
+	 */
+	private static function popup_i18n_groups( $is_default ) {
+		return $is_default ? [ 'system' ] : [ 'main', 'system' ];
+	}
+
+	/**
+	 * Render the per-language wording card.
+	 *
+	 * Follows the settings screen's form-table dance: close the table
+	 * WooCommerce opened, emit the card, reopen an empty one for the trailing
+	 * sectionend.
+	 *
+	 * @return void
+	 */
+	public function render_popup_i18n_field() {
+		$languages = self::popup_i18n_languages();
+		if ( ! $languages ) {
+			return;
+		}
+		$fields       = self::popup_i18n_fields();
+		$placeholders = self::popup_i18n_placeholders();
+		$stored       = self::popup_i18n_all();
+		$default_name = Brikpanel_Languages::language_name( Brikpanel_Languages::default_locale() );
+		?>
+		</table>
+		<section class="bp-cpl-card">
+			<header class="bp-cpl-head">
+				<h3 class="bp-cpl-title"><?php esc_html_e( 'Popup text per language', 'brikpanel' ); ?></h3>
+				<p class="bp-cpl-sub">
+					<?php
+					printf(
+						/* translators: %s: the store's default language, e.g. "Eesti". */
+						esc_html__( 'The fields above are what shoppers reading %s see. Write the same popup here for each of your other languages. Anything you leave empty falls back to the wording above.', 'brikpanel' ),
+						'<strong>' . esc_html( $default_name ) . '</strong>'
+					);
+					?>
+				</p>
+			</header>
+
+			<div class="bp-cpl-tabs" role="tablist">
+				<?php foreach ( $languages as $i => $lang ) : ?>
+					<button type="button"
+						class="bp-cpl-tab<?php echo 0 === $i ? ' is-active' : ''; ?>"
+						role="tab"
+						aria-selected="<?php echo 0 === $i ? 'true' : 'false'; ?>"
+						data-cpl-locale="<?php echo esc_attr( $lang['locale'] ); ?>">
+						<?php echo esc_html( $lang['name'] ); ?>
+						<?php if ( ! empty( $stored[ $lang['locale'] ] ) ) : ?>
+							<span class="bp-cpl-dot" aria-hidden="true"></span>
+						<?php endif; ?>
+					</button>
+				<?php endforeach; ?>
+			</div>
+
+			<?php foreach ( $languages as $i => $lang ) :
+				$locale = (string) $lang['locale'];
+				$values = isset( $stored[ $locale ] ) ? $stored[ $locale ] : [];
+				$base   = self::POPUP_I18N_OPTION . '[' . esc_attr( $locale ) . ']';
+				?>
+				<div class="bp-cpl-panel" data-cpl-panel="<?php echo esc_attr( $locale ); ?>" <?php echo 0 === $i ? '' : 'hidden'; ?>>
+					<?php if ( ! empty( $lang['is_default'] ) ) : ?>
+						<p class="bp-cpl-note">
+							<?php
+							printf(
+								/* translators: %s: the store's default language, e.g. "Eesti". */
+								esc_html__( 'The popup itself is already written in %s in the fields above. What is left here is the wording the popup writes on its own, which follows your site language. Translate it if your language is not one BrikPanel ships a translation for.', 'brikpanel' ),
+								'<strong>' . esc_html( $lang['name'] ) . '</strong>'
+							);
+							?>
+						</p>
+					<?php endif; ?>
+					<?php
+					foreach ( self::popup_i18n_groups( ! empty( $lang['is_default'] ) ) as $group ) :
+						$in_group = array_filter( $fields, static function ( $f ) use ( $group ) {
+							return $f['group'] === $group;
+						} );
+						if ( ! $in_group ) {
+							continue;
+						}
+						// Sixteen inputs a merchant will mostly leave alone, folded
+						// away behind one line. Unfolded they read as a wall, and
+						// a wall is what makes someone close the screen and leave
+						// the whole popup untranslated.
+						$fold = 'system' === $group;
+						if ( $fold ) :
+							?>
+							<details class="bp-cpl-more">
+								<summary class="bp-cpl-more-head">
+									<span><?php esc_html_e( 'Coupon panel and messages', 'brikpanel' ); ?></span>
+									<span class="bp-cpl-more-hint"><?php esc_html_e( 'Written by the popup itself. Translate these too, or leave them to your site language.', 'brikpanel' ); ?></span>
+								</summary>
+								<div class="bp-cpl-more-body">
+							<?php
+						endif;
+
+						foreach ( $in_group as $slot => $field ) :
+							$id    = 'bp-cpl-' . sanitize_html_class( $locale . '-' . $slot );
+							$value = isset( $values[ $slot ] ) ? (string) $values[ $slot ] : '';
+							$hint  = isset( $placeholders[ $slot ] ) ? (string) $placeholders[ $slot ] : '';
+							?>
+							<div class="bp-cpl-field">
+								<label class="bp-cpl-label" for="<?php echo esc_attr( $id ); ?>"><?php echo esc_html( $field['label'] ); ?></label>
+								<?php if ( 'textarea' === $field['type'] ) : ?>
+									<textarea id="<?php echo esc_attr( $id ); ?>"
+										class="bp-cpl-input bp-cpl-textarea"
+										name="<?php echo esc_attr( $base ) . '[' . esc_attr( $slot ) . ']'; ?>"
+										rows="2"
+										maxlength="500"
+										placeholder="<?php echo esc_attr( $hint ); ?>"><?php echo esc_textarea( $value ); ?></textarea>
+								<?php else : ?>
+									<input type="text"
+										id="<?php echo esc_attr( $id ); ?>"
+										class="bp-cpl-input"
+										name="<?php echo esc_attr( $base ) . '[' . esc_attr( $slot ) . ']'; ?>"
+										value="<?php echo esc_attr( $value ); ?>"
+										maxlength="500"
+										placeholder="<?php echo esc_attr( $hint ); ?>"
+										autocomplete="off">
+								<?php endif; ?>
+							</div>
+							<?php
+						endforeach;
+
+						if ( $fold ) :
+							?>
+								</div>
+							</details>
+							<?php
+						endif;
+					endforeach;
+					?>
+				</div>
+			<?php endforeach; ?>
+		</section>
+		<table class="form-table">
+		<?php
+	}
+
+	/**
+	 * Persist the per-language wording.
+	 *
+	 * Runs on the same hook as the rest of the section's save. Unknown locales
+	 * and unknown slots are dropped rather than stored: the map is read on
+	 * every front-end request that shows the popup, so it may only ever contain
+	 * keys this plugin put there.
+	 *
+	 * @return void
+	 */
+	public static function save_popup_i18n() {
+		if ( ! function_exists( 'brikpanel_settings_get_current_section' )
+			|| 'cart-abandonment' !== brikpanel_settings_get_current_section() ) {
+			return;
+		}
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
+		$languages = self::popup_i18n_languages();
+		if ( ! $languages ) {
+			// Nothing was rendered, so nothing may be written — a monolingual
+			// store must never have this option appear behind its back.
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WC verified the settings nonce before firing this hook.
+		$posted = isset( $_POST[ self::POPUP_I18N_OPTION ] ) && is_array( $_POST[ self::POPUP_I18N_OPTION ] )
+			? wp_unslash( $_POST[ self::POPUP_I18N_OPTION ] ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- every value is sanitised below.
+			: [];
+
+		$fields   = self::popup_i18n_fields();
+		$existing = self::popup_i18n_all();
+		$clean    = [];
+
+		// Which slots each language is allowed to send, mirroring exactly what
+		// was rendered for it. The store's own language may only send the
+		// popup's own strings: its six merchant fields live in the flat options
+		// this section already saves, and letting a post reach them here would
+		// give one screen two ways to write the same setting.
+		$allowed = [];
+		foreach ( $languages as $lang ) {
+			$groups = self::popup_i18n_groups( ! empty( $lang['is_default'] ) );
+			$slots  = [];
+			foreach ( $fields as $slot => $field ) {
+				if ( in_array( $field['group'], $groups, true ) ) {
+					$slots[ $slot ] = true;
+				}
+			}
+			$allowed[ (string) $lang['locale'] ] = $slots;
+		}
+
+		// START FROM WHAT IS STORED and let the post edit it, rather than
+		// rebuilding each bucket from the post alone. Only a box that was
+		// actually rendered, posted and left blank means "delete this wording";
+		// a slot the form never carried means nothing at all.
+		//
+		// The difference is wording the merchant loses. The screen's field list
+		// depends on the current settings, so the form a merchant posts FROM
+		// and the field list this save computes are not always the same set:
+		// take the discount to 0 and back to 10 and the coupon boxes are absent
+		// from the post but present in the list. Rebuilt-from-post, every
+		// coupon translation for every language disappears on that save, with
+		// nothing on screen to say so. The same gap swallows a whole language
+		// whenever its inputs do not reach the server at all.
+		$clean = $existing;
+
+		foreach ( $posted as $locale => $texts ) {
+			$locale = (string) $locale;
+			if ( ! isset( $allowed[ $locale ] ) || ! is_array( $texts ) ) {
+				continue;
+			}
+			$allowed_slots = $allowed[ $locale ];
+			$bucket        = isset( $clean[ $locale ] ) ? $clean[ $locale ] : [];
+			foreach ( $texts as $slot => $text ) {
+				$slot = (string) $slot;
+				if ( ! isset( $allowed_slots[ $slot ] ) ) {
+					continue;
+				}
+				// A text field posts a string. Anything else is a crafted post,
+				// and casting it would store the word "Array" as the merchant's
+				// wording; ignore the slot instead of writing nonsense into it.
+				if ( ! is_string( $text ) ) {
+					continue;
+				}
+				$value = self::sanitize_popup_text( null, [ 'id' => self::POPUP_I18N_OPTION ], $text );
+				if ( '' === $value ) {
+					unset( $bucket[ $slot ] );
+				} else {
+					$bucket[ $slot ] = $value;
+				}
+			}
+			if ( $bucket ) {
+				$clean[ $locale ] = $bucket;
+			} else {
+				unset( $clean[ $locale ] );
+			}
+		}
+
+		if ( $clean ) {
+			update_option( self::POPUP_I18N_OPTION, $clean );
+		} else {
+			delete_option( self::POPUP_I18N_OPTION );
+		}
+	}
+
+	/**
+	 * Styles + tab switching for the card above. Loaded only on the settings
+	 * screen's own section, and only when there is a second language to show.
+	 *
+	 * @param string $hook
+	 * @return void
+	 */
+	public function enqueue_settings_assets( $hook ) {
+		if ( 'woocommerce_page_wc-settings' !== $hook ) {
+			return;
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- reading which screen is open, not acting on it.
+		if ( ! isset( $_GET['tab'] ) || 'brikpanel' !== sanitize_key( wp_unslash( $_GET['tab'] ) ) ) {
+			return;
+		}
+		if ( ! function_exists( 'brikpanel_settings_get_current_section' )
+			|| 'cart-abandonment' !== brikpanel_settings_get_current_section() ) {
+			return;
+		}
+		if ( ! self::popup_i18n_languages() ) {
+			return;
+		}
+		$dir = plugin_dir_path( __FILE__ );
+		$url = plugin_dir_url( __FILE__ );
+		wp_enqueue_style(
+			'brikpanel-cartab-settings',
+			$url . 'cart-abandonment-settings.css',
+			[],
+			file_exists( $dir . 'cart-abandonment-settings.css' ) ? (string) filemtime( $dir . 'cart-abandonment-settings.css' ) : BRIKPANEL_VERSION
+		);
+		wp_enqueue_script(
+			'brikpanel-cartab-settings',
+			$url . 'cart-abandonment-settings.js',
+			[],
+			file_exists( $dir . 'cart-abandonment-settings.js' ) ? (string) filemtime( $dir . 'cart-abandonment-settings.js' ) : BRIKPANEL_VERSION,
+			true
+		);
+	}
+
 	public function settings_fields( $fields ) {
 		$fields[] = [
 			'title' => __( 'Cart abandonment', 'brikpanel' ),
@@ -4572,6 +5198,17 @@ class Brikpanel_Cart_Abandonment {
 			'placeholder' => sprintf( __( 'Get %d%% off', 'brikpanel' ), 10 ),
 			'css'         => 'width:340px;',
 		];
+		// Only on a store that really speaks more than one language. On every
+		// other store the section looks exactly as it always has.
+		if ( self::popup_i18n_languages() ) {
+			$fields[] = [
+				'type'      => 'brikpanel_cartab_popup_i18n',
+				'id'        => 'brikpanel_cartab_popup_i18n_field',
+				// Not an option: it renders its own inputs and saves them
+				// itself, so WooCommerce must not write a row for the field id.
+				'is_option' => false,
+			];
+		}
 		$fields[] = [
 			'title'             => __( 'Popup delay', 'brikpanel' ),
 			'desc'              => __( 'seconds after the page loads', 'brikpanel' ),

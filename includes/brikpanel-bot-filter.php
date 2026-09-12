@@ -459,31 +459,220 @@ function _brikpanel_is_bot_ua() {
 }
 
 /**
- * One-per-day gate for clients that do not keep cookies.
+ * Passive client identity used to key the daily lock below.
  *
- * The add-to-cart counters cap a normal shopper at one recorded event per
- * day using a cookie. A crawler discards cookies, so before this gate every
- * single `?add-to-cart=` URL it followed counted as another add-to-cart —
- * which is what lets one crawl outweigh a month of real shoppers even when
- * its user agent is unknown to the token list above.
+ * The user agent on its own collides too readily to be the whole key: two
+ * people in one office share an exit address and, on a managed fleet, often
+ * the exact same browser build. Accept-Language and Accept-Encoding are
+ * stable for a given browser and differ between real devices, so folding
+ * them in separates those two people without asking the shopper for anything
+ * or storing an identifier of our own.
  *
- * This applies the same daily cap to cookieless clients, keyed on a hashed
- * address + user agent instead of a cookie.
+ * Deliberately weak as a fingerprint. It exists to rate-limit a loop that
+ * repeats itself, not to recognise a person across visits, and nothing here
+ * is ever stored: it only reaches a salted hash that expires at midnight.
  *
- * Real shoppers are barely touched by it. A returning visitor carries
- * cookies, so the gate never runs for them at all; only a brand-new visitor
- * whose very first request to the store is the add-to-cart itself arrives
- * cookieless, and that one is counted. Including the user agent in the key
- * is what keeps two different shoppers behind one office IP from cancelling
- * each other out — they browse from different devices, a crawler does not.
+ * @since 3.3.1
+ *
+ * @return string
+ */
+function brikpanel_client_fingerprint() {
+    $parts = [];
+
+    foreach ( [ 'HTTP_USER_AGENT', 'HTTP_ACCEPT_LANGUAGE', 'HTTP_ACCEPT_ENCODING' ] as $header ) {
+        $parts[] = isset( $_SERVER[ $header ] ) ? (string) $_SERVER[ $header ] : '';
+    }
+
+    /**
+     * Filters the passive identity used to key BrikPanel's daily counter locks.
+     *
+     * Narrow it on a store whose visitors sit behind one address with identical
+     * browsers; widen it if a crawler is caught rotating one of these headers.
+     *
+     * @since 3.3.1
+     *
+     * @param string   $fingerprint Joined header values.
+     * @param string[] $parts       The individual header values.
+     */
+    return (string) apply_filters( 'brikpanel_client_fingerprint', implode( '|', $parts ), $parts );
+}
+
+/**
+ * One-shot daily lock for a client whose own memory cannot be trusted.
+ *
+ * The counters cap a visitor at one recorded event per day using something the
+ * client carries: a cookie for the store-wide figures, the WooCommerce session
+ * for the per-product card. That holds right up until the client arrives with
+ * no memory at all — and then there is no cap, because the thing being asked
+ * has just been born and answers "no, never seen this" every time.
+ *
+ * That is not a rare edge. WooCommerce 10.3+ destroys a guest session the
+ * moment the cart goes empty (WC_Session_Handler::destroy_session_if_empty()),
+ * so a script that adds a product and removes it again is handed a brand-new,
+ * memoryless session on its next turn, and on every turn after that. A client
+ * that simply discards its cookie jar between turns lands in the same place.
+ * Measured on one store: 13,053 recorded add-to-carts in a month against a
+ * real baseline of 4-7 a day.
+ *
+ * So when the client keeps no memory, the server keeps one for it: a salted
+ * hash of its address plus its passive identity, held until midnight. Note
+ * what this does NOT do — it does not drop a first event. A real shopper's
+ * first add of the day is not a repeat, so it is recorded exactly as before;
+ * only the second identical one from a client that claims to have forgotten
+ * the first is refused.
+ *
+ * Not a security boundary. A client that rotates its address defeats it, the
+ * same way a spoofed user agent defeats the token list above. It is a
+ * data-quality cap.
+ *
+ * @since 3.3.1
+ *
+ * @param string $bucket Namespace so separate counters do not share a lock.
+ * @return bool True when the caller may record; false when already recorded today.
+ */
+function brikpanel_client_daily_lock( $bucket ) {
+    $ip = brikpanel_client_ip();
+    if ( '' === $ip ) {
+        // Unidentifiable and memoryless: nothing to rate-limit against, and
+        // counting it would be the exact inflation this lock exists to stop.
+        return false;
+    }
+
+    $key = 'bp_cd_' . substr(
+        hash_hmac(
+            'sha256',
+            $bucket . '|' . $ip . '|' . brikpanel_client_fingerprint(),
+            wp_salt( 'brikpanel_bot_gate' )
+        ),
+        0,
+        24
+    );
+
+    // Transients ride a persistent object cache when the store has one, so
+    // this is one Redis round trip there and one autoload=no option row where
+    // there is none. Either way it expires at midnight and WordPress's daily
+    // delete_expired_transients() sweeps the row.
+    //
+    // Read-then-write, so two requests that arrive inside the same millisecond
+    // can both see a miss and both be counted. Measured rather than assumed:
+    // 10 simultaneous requests from one identity produced 1, 30 produced 2, 60
+    // produced 2, 120 produced 1 — the window is one database round trip wide,
+    // so piling on more concurrency does not widen it and an attacker cannot
+    // multiply the count by parallelising. The ceiling is 2 where it should be
+    // 1, against the thousands this gate exists to stop.
+    //
+    // Closing it needs an atomic claim. wp_cache_add() is one on Redis and
+    // Memcached, but add_option() is not — WordPress writes it as
+    // INSERT ... ON DUPLICATE KEY UPDATE, so the loser of the race is never
+    // told it lost — and hand-rolling INSERT IGNORE against wp_options means
+    // owning the autoload value (which changed representation in 6.6) and the
+    // option-cache coherence that add_option() normally handles. That is a
+    // larger risk than the two it would save, and it cannot be verified on a
+    // host with no persistent object cache to race against.
+    if ( get_transient( $key ) ) {
+        return false;
+    }
+
+    $seconds_until_midnight = strtotime( 'tomorrow', current_time( 'timestamp' ) ) - current_time( 'timestamp' );
+    set_transient( $key, 1, max( 60, $seconds_until_midnight ) );
+
+    return true;
+}
+
+/**
+ * Whether a browser id has the shape this plugin mints.
+ *
+ * Both minters (the cart-abandonment module and the live-visitors module)
+ * write uniqid( 'bp_', true ): `bp_`, thirteen lowercase hex digits, one or
+ * two decimal digits, a dot and eight decimal digits. Nothing else ever sets
+ * the cookie (it is HttpOnly, so page scripts cannot), which means a value of
+ * any other shape was typed by the client, not issued to it. An endpoint that
+ * adopted it would be keying its dedupe and its rate limit on a string the
+ * caller picks fresh for every request.
+ *
+ * @since 3.3.2
+ *
+ * @param mixed $value Raw cookie value.
+ * @return bool
+ */
+function brikpanel_visitor_id_is_valid( $value ) {
+    return is_string( $value ) && 1 === preg_match( '/^bp_[0-9a-f]{13}[0-9]{1,2}\.[0-9]{8}$/D', $value );
+}
+
+/**
+ * The browser id the current request carries, or '' when it sent none or
+ * sent one this plugin never issued. Treating a foreign value as "no cookie"
+ * is what makes every reader mint a fresh id instead of adopting the
+ * client's.
+ *
+ * @since 3.3.2
+ *
+ * @return string
+ */
+function brikpanel_visitor_id_from_cookie() {
+    if ( ! isset( $_COOKIE['brikpanel_vid'] ) ) {
+        return '';
+    }
+    $raw = substr( sanitize_text_field( wp_unslash( $_COOKIE['brikpanel_vid'] ) ), 0, 64 );
+
+    return brikpanel_visitor_id_is_valid( $raw ) ? $raw : '';
+}
+
+/**
+ * Transient key for a short burst lock on the client's passive identity.
+ *
+ * Companion to brikpanel_client_daily_lock() for endpoints that already keep
+ * a per-browser bucket: that bucket is keyed on a cookie the client chooses,
+ * so a client that rotates the cookie is never in the same bucket twice. This
+ * key ignores the cookie and is built the way the daily lock builds its own:
+ * address plus the passive request headers, HMAC-ed with the site salt, never
+ * stored raw.
+ *
+ * Same limit as every other address-keyed brake here: the address comes from
+ * brikpanel_client_ip(), which trusts the proxy headers WooCommerce trusts,
+ * so a direct-connect client that forges them still rotates its way through.
+ * The rotation this closes is the cookie one.
+ *
+ * @since 3.3.2
+ *
+ * @param string $bucket Namespace so separate endpoints do not share a lock.
+ * @return string Transient name, or '' when the client cannot be identified.
+ */
+function brikpanel_client_bucket_key( $bucket ) {
+    $ip = brikpanel_client_ip();
+    if ( '' === $ip ) {
+        return '';
+    }
+
+    return 'bp_cb_' . substr(
+        hash_hmac(
+            'sha256',
+            $bucket . '|' . $ip . '|' . brikpanel_client_fingerprint(),
+            wp_salt( 'brikpanel_bot_gate' )
+        ),
+        0,
+        24
+    );
+}
+
+/**
+ * One-per-day gate for clients that send no cookies at all.
+ *
+ * Superseded by brikpanel_client_daily_lock() and kept because third-party
+ * code may call it. Every BrikPanel counter now calls the lock directly.
+ *
+ * The reason it was not enough on its own is the early return below: holding
+ * cookies was read as proof that the client remembers yesterday, and it is
+ * not. A script that browses a product page, adds to cart with the cookies it
+ * just picked up, then starts over with an empty jar sends cookies on every
+ * request that matters and still remembers nothing between turns.
+ *
+ * @since 3.2.30
  *
  * @param string $bucket Namespace so separate counters do not share a gate.
  * @return bool True when the caller may record; false when already recorded today.
  */
 function brikpanel_cookieless_daily_gate( $bucket ) {
-    // Any cookie at all means the client keeps state; the caller's own
-    // cookie check already governs it.
-    //
     // Read the raw request header rather than $_COOKIE: WooCommerce starts a
     // customer session during add-to-cart and writes the new cookie straight
     // into $_COOKIE so the rest of the request can see it, which would make
@@ -494,21 +683,5 @@ function brikpanel_cookieless_daily_gate( $bucket ) {
         return true;
     }
 
-    $ip = brikpanel_client_ip();
-    if ( '' === $ip ) {
-        // Unidentifiable and cookieless: nothing to rate-limit against, and
-        // counting it would be the exact inflation this gate exists to stop.
-        return false;
-    }
-
-    $ua  = isset( $_SERVER['HTTP_USER_AGENT'] ) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
-    $key = 'bp_cg_' . substr( hash_hmac( 'sha256', $bucket . '|' . $ip . '|' . $ua, wp_salt( 'brikpanel_bot_gate' ) ), 0, 24 );
-    if ( get_transient( $key ) ) {
-        return false;
-    }
-
-    $seconds_until_midnight = strtotime( 'tomorrow', current_time( 'timestamp' ) ) - current_time( 'timestamp' );
-    set_transient( $key, 1, max( 60, $seconds_until_midnight ) );
-
-    return true;
+    return brikpanel_client_daily_lock( $bucket );
 }

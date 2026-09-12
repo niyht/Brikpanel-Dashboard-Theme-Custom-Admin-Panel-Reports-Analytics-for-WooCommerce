@@ -44,7 +44,15 @@ function _brikpanel_get_visitor_id() {
         return false; 
     }
     $cookie_name = 'brikpanel_vid';
-    if ( isset( $_COOKIE[ $cookie_name ] ) ) {
+    // A value this plugin never minted counts as no cookie: it is overwritten
+    // below instead of becoming a transient key the client chose (since
+    // 3.3.2; see brikpanel_visitor_id_is_valid()).
+    if ( function_exists( 'brikpanel_visitor_id_from_cookie' ) ) {
+        $known = brikpanel_visitor_id_from_cookie();
+        if ( '' !== $known ) {
+            return $known;
+        }
+    } elseif ( isset( $_COOKIE[ $cookie_name ] ) ) {
         return sanitize_text_field( wp_unslash( $_COOKIE[ $cookie_name ] ) );
     }
     $new_id = uniqid( 'bp_', true );

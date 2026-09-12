@@ -427,9 +427,11 @@ function brikpanel_tracking_cookie_names() {
  * @return void
  */
 function brikpanel_ajax_consent_forget() {
-    $vid = isset( $_COOKIE['brikpanel_vid'] )
-        ? substr( sanitize_text_field( wp_unslash( $_COOKIE['brikpanel_vid'] ) ), 0, 64 )
-        : '';
+    $vid = function_exists( 'brikpanel_visitor_id_from_cookie' )
+        ? brikpanel_visitor_id_from_cookie()
+        : ( isset( $_COOKIE['brikpanel_vid'] )
+            ? substr( sanitize_text_field( wp_unslash( $_COOKIE['brikpanel_vid'] ) ), 0, 64 )
+            : '' );
 
     // Free and always safe: expire whatever the caller sent us.
     foreach ( brikpanel_tracking_cookie_names() as $cookie ) {

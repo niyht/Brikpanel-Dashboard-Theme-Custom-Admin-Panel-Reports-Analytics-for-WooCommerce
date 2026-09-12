@@ -111,20 +111,55 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
         ? Brikpanel_BrikControl_Registry::get( $check_id )
         : null;
     $fixable = isset( $meta['fixable'] ) ? (int) $meta['fixable'] : 0;
+    $can_manage = current_user_can( 'manage_woocommerce' );
     $can_fix = $check_obj
         && method_exists( $check_obj, 'supports_fix' )
         && $check_obj->supports_fix()
         && $fixable > 0
-        && current_user_can( 'manage_woocommerce' );
+        && $can_manage;
+
+    // A check whose repair rewrites data rather than deleting dead rows can
+    // hand over its own confirmation sentence; the shared one in the localize
+    // array talks about index rows and would be a lie here.
+    $fix_confirm = isset( $meta['fix_confirm'] ) ? (string) $meta['fix_confirm'] : '';
+
+    // Undo is offered whenever the check kept a restore point, independently of
+    // whether anything is currently flagged: after a successful correction
+    // there is by definition nothing left to fix, and that is exactly the
+    // moment the merchant is most likely to want the old figures back.
+    $undoable = isset( $meta['undoable'] ) ? (int) $meta['undoable'] : 0;
+    $can_undo = $check_obj
+        && method_exists( $check_obj, 'run_undo' )
+        && $undoable > 0
+        && $can_manage;
+    $undo_at  = isset( $meta['undo_at'] ) ? (int) $meta['undo_at'] : 0;
     ?>
-    <?php if ( $can_fix ) : ?>
+    <?php if ( $can_fix || $can_undo ) : ?>
         <div class="brikpanel-bc-card-actions">
-            <button type="button"
-                    class="brikpanel-bc-button brikpanel-bc-button-primary"
-                    data-bc-fix="<?php echo esc_attr( $check_id ); ?>"
-                    data-bc-fix-count="<?php echo esc_attr( $fixable ); ?>">
-                <span data-bc-fix-label><?php echo esc_html( $check_obj->get_fix_label() ); ?></span>
-            </button>
+            <?php if ( $can_fix ) : ?>
+                <button type="button"
+                        class="brikpanel-bc-button brikpanel-bc-button-primary"
+                        data-bc-fix="<?php echo esc_attr( $check_id ); ?>"
+                        data-bc-fix-count="<?php echo esc_attr( $fixable ); ?>"
+                        <?php if ( $fix_confirm !== '' ) : ?>data-bc-fix-confirm="<?php echo esc_attr( $fix_confirm ); ?>"<?php endif; ?>>
+                    <span data-bc-fix-label><?php echo esc_html( $check_obj->get_fix_label() ); ?></span>
+                </button>
+            <?php endif; ?>
+            <?php if ( $can_undo ) : ?>
+                <button type="button"
+                        class="brikpanel-bc-button"
+                        data-bc-undo="<?php echo esc_attr( $check_id ); ?>"
+                        data-bc-undo-count="<?php echo esc_attr( $undoable ); ?>"
+                        <?php if ( $undo_at > 0 ) : ?>title="<?php
+                            printf(
+                                /* translators: %s: human-readable date/time of the last correction. */
+                                esc_attr__( 'Corrected %s', 'brikpanel' ),
+                                esc_attr( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $undo_at ) )
+                            );
+                        ?>"<?php endif; ?>>
+                    <span data-bc-undo-label><?php esc_html_e( 'Undo last correction', 'brikpanel' ); ?></span>
+                </button>
+            <?php endif; ?>
             <span class="brikpanel-bc-fix-result" data-bc-fix-result role="status" aria-live="polite"></span>
         </div>
     <?php endif; ?>

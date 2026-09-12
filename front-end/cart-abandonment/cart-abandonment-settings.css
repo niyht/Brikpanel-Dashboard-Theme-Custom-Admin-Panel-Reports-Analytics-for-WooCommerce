@@ -1,0 +1,238 @@
+/*
+ * Per-language popup wording, on the Cart abandonment settings section.
+ *
+ * Physical directions are avoided throughout (margin-inline-*, inset-inline-*)
+ * so the card mirrors itself in Arabic without a second stylesheet.
+ */
+
+.bp-cpl-card {
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.08 );
+	padding: 1.25rem 1.5rem 1.5rem;
+	margin: 0 0 1rem;
+}
+
+.bp-cpl-head {
+	margin-bottom: 1rem;
+}
+
+.bp-cpl-title {
+	margin: 0 0 0.25rem;
+	font-size: 1rem;
+	font-weight: 600;
+	color: #303030;
+	line-height: 1.5;
+}
+
+.bp-cpl-sub {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: #616161;
+	line-height: 1.5;
+	max-width: 60ch;
+}
+
+/* Language tabs ---------------------------------------------------------- */
+
+.bp-cpl-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.375rem;
+	border-bottom: 1px solid #e3e3e3;
+	padding-bottom: 0.75rem;
+	margin-bottom: 1rem;
+}
+
+.bp-cpl-card button.bp-cpl-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	background: #fff;
+	color: #303030;
+	border: 0;
+	border-radius: 0.5rem;
+	padding: 0.5rem 0.875rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.2;
+	cursor: pointer;
+	box-shadow: inset 0 0 0 1px #e3e3e3;
+	transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bp-cpl-card button.bp-cpl-tab:hover {
+	background: #f7f7f7;
+}
+
+.bp-cpl-card button.bp-cpl-tab:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 1px;
+}
+
+.bp-cpl-card button.bp-cpl-tab.is-active {
+	background: #303030;
+	color: #fff;
+	box-shadow: inset 0 -1px 0 rgba( 0, 0, 0, 0.2 ), inset 0 1px 0 rgba( 255, 255, 255, 0.1 );
+}
+
+/* Marks a language that already has wording saved. */
+.bp-cpl-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #1a8917;
+	flex: none;
+}
+
+/* The same green on the active tab's near-black is barely a mark; lift it so
+   "this language has wording" stays readable whichever tab is open. */
+.bp-cpl-card button.bp-cpl-tab.is-active .bp-cpl-dot {
+	background: #4caf50;
+}
+
+/* A line of context at the top of the store's own language panel. */
+.bp-cpl-note {
+	margin: 0 0 1rem;
+	padding: 0.625rem 0.75rem;
+	background: #f7f7f7;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: #616161;
+	max-width: 60ch;
+}
+
+/* Fields ----------------------------------------------------------------- */
+
+.bp-cpl-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	margin-bottom: 0.75rem;
+}
+
+.bp-cpl-label {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: #303030;
+	line-height: 1.4;
+}
+
+/*
+ * Scoped under the card, and the element type is named, purely to outrank
+ * wp-admin's own `input[type="text"]` / `textarea` rules — without that the
+ * fields inherit WordPress' 2px radius and grey, and stop matching every other
+ * BrikPanel input on the page.
+ */
+.bp-cpl-card input.bp-cpl-input,
+.bp-cpl-card textarea.bp-cpl-input {
+	width: 100%;
+	max-width: 420px;
+	box-sizing: border-box;
+	padding: 0.625rem 0.75rem;
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 400;
+	line-height: 1.5;
+	min-height: 0;
+	color: #303030;
+	background: #fff;
+	border: 1px solid #8a8a8a;
+	border-radius: 0.5rem;
+	box-shadow: none;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bp-cpl-card input.bp-cpl-input::placeholder,
+.bp-cpl-card textarea.bp-cpl-input::placeholder {
+	color: #8a8a8a;
+	opacity: 1;
+}
+
+.bp-cpl-card input.bp-cpl-input:focus,
+.bp-cpl-card textarea.bp-cpl-input:focus {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+	outline: none;
+}
+
+.bp-cpl-card textarea.bp-cpl-textarea {
+	min-height: 3.75rem;
+	resize: vertical;
+}
+
+/* Collapsible group ------------------------------------------------------ */
+
+.bp-cpl-more {
+	border-top: 1px solid #e3e3e3;
+	margin-top: 1rem;
+	padding-top: 0.875rem;
+}
+
+.bp-cpl-more-head {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	cursor: pointer;
+	list-style: none;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: #303030;
+	padding-inline-start: 1.25rem;
+	position: relative;
+}
+
+.bp-cpl-more-head::-webkit-details-marker {
+	display: none;
+}
+
+/* Disclosure triangle, drawn so it can point without a physical property. */
+.bp-cpl-more-head::before {
+	content: "";
+	position: absolute;
+	inset-inline-start: 0;
+	top: 0.3125rem;
+	width: 0;
+	height: 0;
+	border-block-start: 5px solid transparent;
+	border-block-end: 5px solid transparent;
+	border-inline-start: 6px solid #616161;
+	transition: transform 0.15s ease;
+}
+
+.bp-cpl-more[open] .bp-cpl-more-head::before {
+	transform: rotate( 90deg );
+}
+
+[dir="rtl"] .bp-cpl-more-head::before {
+	transform: rotate( 180deg );
+}
+
+[dir="rtl"] .bp-cpl-more[open] .bp-cpl-more-head::before {
+	transform: rotate( 90deg );
+}
+
+.bp-cpl-more-hint {
+	font-size: 0.75rem;
+	font-weight: 400;
+	color: #8a8a8a;
+	line-height: 1.5;
+}
+
+.bp-cpl-more-body {
+	padding-top: 0.875rem;
+}
+
+@media screen and ( max-width: 782px ) {
+	.bp-cpl-card {
+		padding: 1rem;
+	}
+
+	.bp-cpl-card input.bp-cpl-input,
+	.bp-cpl-card textarea.bp-cpl-input {
+		max-width: 100%;
+	}
+}

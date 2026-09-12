@@ -53,6 +53,7 @@ class Brikpanel_BrikControl {
         add_action( 'wp_ajax_brikpanel_brikcontrol_progress', [ $this, 'ajax_progress' ] );
         add_action( 'wp_ajax_brikpanel_brikcontrol_dismiss',  [ $this, 'ajax_dismiss' ] );
         add_action( 'wp_ajax_brikpanel_brikcontrol_fix',      [ $this, 'ajax_fix' ] );
+        add_action( 'wp_ajax_brikpanel_brikcontrol_undo',     [ $this, 'ajax_undo' ] );
 
         // Plugin activation / deactivation invalidates the cached health
         // verdict because the active optimizer set is what gates how we
@@ -182,6 +183,10 @@ class Brikpanel_BrikControl {
                 'fix_done'           => __( '{count} rows removed.', 'brikpanel' ),
                 'fix_more'           => __( 'More rows remain — run the cleanup again.', 'brikpanel' ),
                 'fix_failed'         => __( 'Cleanup failed. Please try again.', 'brikpanel' ),
+                'undo_confirm'       => __( 'Put the previous figures back? This restores {count} row(s) exactly as they were before the last correction.', 'brikpanel' ),
+                'undo_running'       => __( 'Restoring…', 'brikpanel' ),
+                'undo_done'          => __( '{count} row(s) restored.', 'brikpanel' ),
+                'undo_failed'        => __( 'Could not restore. Please try again.', 'brikpanel' ),
             ],
         ] );
     }
@@ -665,6 +670,61 @@ class Brikpanel_BrikControl {
             'check_id' => $check_id,
             'removed'  => (int) ( $outcome['removed'] ?? 0 ),
             'has_more' => ! empty( $outcome['has_more'] ),
+        ] );
+    }
+
+    /**
+     * Put a cleanup back the way it was.
+     *
+     * Separate endpoint rather than a flag on ajax_fix() because the two have
+     * opposite risk profiles and must not share a lock: undo is the escape
+     * hatch, and it has to stay reachable even while a fix is mid-flight on
+     * another tab.
+     *
+     * Checks opt in by defining run_undo(); everything is probed with
+     * method_exists() so a check written against the older contract cannot
+     * fatal here.
+     *
+     * @since 3.3.1
+     *
+     * @return void
+     */
+    public function ajax_undo() {
+        $this->verify_ajax();
+
+        $check_id = isset( $_POST['check_id'] ) ? sanitize_key( wp_unslash( $_POST['check_id'] ) ) : '';
+        if ( $check_id === '' ) {
+            wp_send_json_error( [ 'message' => __( 'Missing check id.', 'brikpanel' ) ], 400 );
+        }
+
+        $check = Brikpanel_BrikControl_Registry::get( $check_id );
+        if ( ! $check || ! method_exists( $check, 'run_undo' ) ) {
+            wp_send_json_error( [ 'message' => __( 'This check has nothing to undo.', 'brikpanel' ) ], 400 );
+        }
+
+        $lock = 'brikpanel_bc_undo_' . $check_id;
+        if ( get_transient( $lock ) ) {
+            wp_send_json_error( [ 'message' => __( 'An undo is already running for this check.', 'brikpanel' ) ], 409 );
+        }
+        set_transient( $lock, 1, 2 * MINUTE_IN_SECONDS );
+
+        try {
+            $outcome = $check->run_undo();
+        } catch ( \Throwable $e ) {
+            delete_transient( $lock );
+            wp_send_json_error( [ 'message' => __( 'The undo could not be completed.', 'brikpanel' ) ], 500 );
+        }
+
+        delete_transient( $lock );
+
+        if ( ! $check->supports_batching() ) {
+            Brikpanel_BrikControl_Storage::save_check_result( $check_id, $check->run( [] ) );
+        }
+
+        wp_send_json_success( [
+            'check_id' => $check_id,
+            'restored' => (int) ( $outcome['restored'] ?? 0 ),
+            'message'  => (string) ( $outcome['message'] ?? '' ),
         ] );
     }
 

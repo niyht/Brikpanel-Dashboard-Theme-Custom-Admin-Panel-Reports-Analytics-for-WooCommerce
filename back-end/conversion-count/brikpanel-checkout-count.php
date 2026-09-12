@@ -31,9 +31,16 @@ function brikpanel_checkout_counter() {
         return;
     }
 
-    // Same daily cap for cookieless clients as the cookie above gives real
-    // shoppers, so a crawler walking the checkout cannot inflate the funnel.
-    if ( function_exists( 'brikpanel_cookieless_daily_gate' ) && ! brikpanel_cookieless_daily_gate( 'checkout' ) ) {
+    // Same one-per-day cap the cookie above gives real shoppers, applied
+    // server-side to a client that arrives without it. A script looping through
+    // the checkout with a fresh cookie jar each turn sends cookies on the
+    // request itself and remembers nothing between turns, so "it sent a cookie"
+    // was never enough to tell it apart from a returning shopper.
+    //
+    // Signed-in customers are exempt — durable identity, working cookies.
+    if ( ! is_user_logged_in()
+        && function_exists( 'brikpanel_client_daily_lock' )
+        && ! brikpanel_client_daily_lock( 'checkout' ) ) {
         return;
     }
 
