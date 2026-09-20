@@ -78,9 +78,56 @@ function _brikpanel_get_visitor_id() {
  * @return string Status keyword: Tracked | Removed | Skipped | Throttled.
  */
 function brikpanel_record_live_visitor( $page_url, $is_exit = false ) {
+    // Burst lock for a client that did not bring our cookie back (3.3.11).
+    //
+    // Each row here is keyed on the brikpanel_vid cookie, and a client that
+    // never returns it is handed a fresh id on every ping — so every ping was
+    // a new "live visitor" for the next BRIKPANEL_VISITOR_TIMEOUT seconds. A
+    // crawler running JavaScript with a blank profile per page put forty
+    // people on a Live view of a store that sees a hundred a day.
+    //
+    // So before minting an id, the passive identity (address + request
+    // headers, hashed, never stored raw) is locked for one timeout window: a
+    // memoryless client gets at most one row at a time. A real first-time
+    // visitor is unaffected in practice: their first ping mints the row and
+    // the lock, their second ping carries the cookie and updates that same
+    // row. Two brand-new visitors behind one address with byte-identical
+    // headers inside one window: the second one's first ping writes no row
+    // but still receives a cookie, so its next ping is a returning client
+    // with a row of its own. Exit pings never mint, so they skip this.
+    //
+    // Decided BEFORE _brikpanel_get_visitor_id(), which writes the new id into
+    // $_COOKIE; the raw-header reader is what tells a returning client apart.
+    $burst_locked = false;
+    if ( ! $is_exit
+        && function_exists( 'brikpanel_request_carried_visitor_id' )
+        && '' === brikpanel_request_carried_visitor_id()
+        && function_exists( 'brikpanel_client_bucket_key' ) ) {
+        $burst_key = brikpanel_client_bucket_key( 'live' );
+        if ( '' !== $burst_key ) {
+            if ( function_exists( 'brikpanel_has_object_cache' ) && brikpanel_has_object_cache() ) {
+                $burst_locked = (bool) wp_cache_get( $burst_key, 'brikpanel_live' );
+                if ( ! $burst_locked ) {
+                    wp_cache_set( $burst_key, 1, 'brikpanel_live', BRIKPANEL_VISITOR_TIMEOUT );
+                }
+            } else {
+                $burst_locked = (bool) get_transient( $burst_key );
+                if ( ! $burst_locked ) {
+                    set_transient( $burst_key, 1, BRIKPANEL_VISITOR_TIMEOUT );
+                }
+            }
+        }
+    }
+
+    // Mints and sets the cookie even when the burst lock refuses the row:
+    // a memoryless client discards it anyway, and a real visitor caught in a
+    // collision needs it so their very next ping stands on its own.
     $visitor_id = _brikpanel_get_visitor_id();
     if ( ! $visitor_id ) {
         return 'Skipped';
+    }
+    if ( $burst_locked ) {
+        return 'Throttled';
     }
 
     // Per-visitor rate limit. Use the object cache when available (in-memory,

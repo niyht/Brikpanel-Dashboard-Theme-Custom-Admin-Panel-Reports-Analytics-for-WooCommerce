@@ -222,6 +222,41 @@
 	color: #303030;
 }
 
+/* BrikMentor pitch under the "Abandoned" figure: a plain text link that reads
+   as the next step for that figure, not as an advert. It opens the floating
+   BrikMentor panel and is only printed while BrikMentor is being promoted. */
+.brikpanel-cartab-summary-cta {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	align-self: flex-start;
+	margin-top: 0.625rem;
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: #303030;
+	text-decoration: none;
+	border-radius: 0.375rem;
+}
+
+.brikpanel-cartab-summary-cta:hover,
+.brikpanel-cartab-summary-cta:focus {
+	color: #1a1a1a;
+	text-decoration: underline;
+}
+
+.brikpanel-cartab-summary-cta:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px #303030;
+}
+
+.brikpanel-cartab-summary-cta svg {
+	flex: 0 0 auto;
+}
+
+[dir="rtl"] .brikpanel-cartab-summary-cta svg {
+	transform: scaleX(-1);
+}
+
 /* Filters — one toolbar row; every control applies itself, so no Apply button.
    Labels live inside the controls ("All statuses"), which keeps the bar to a
    single line and removes the stack of tiny headings above it. */
@@ -504,6 +539,62 @@
 
 .brikpanel-cartab-email-cell {
 	font-weight: 550;
+	/* Keeps the envelope on the address's line. Deliberately not flex: the
+	   table sizes this column from its content and a flex cell would stop
+	   contributing an intrinsic width. */
+	white-space: nowrap;
+}
+
+/* The envelope beside an address. Same box, radius, inline offset, glyph size
+   and transition as .brikpanel-cartab-wa, so the two outreach marks cannot
+   drift apart in a row. Monochrome on purpose: green belongs to WhatsApp's own
+   mark, and mail has no brand to be recognised by. */
+.brikpanel-cartab-email-link {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	margin-inline-start: 0.5rem;
+	vertical-align: middle;
+	border-radius: 0.375rem;
+	color: #616161;
+	text-decoration: none;
+	transition: color 0.15s ease, background 0.15s ease;
+	/* Anchors the padlock stamp of the locked variant. Harmless while unlocked,
+	   and kept on the shared rule so both states have the same box. */
+	position: relative;
+}
+
+.brikpanel-cartab-email-link svg {
+	width: 1rem;
+	height: 1rem;
+	display: block;
+}
+
+.brikpanel-cartab-email-link:hover,
+.brikpanel-cartab-email-link:focus {
+	color: #303030;
+	background: #f7f7f7;
+}
+
+/* The locked envelope. Reuses .brikpanel-cartab-email-link for its box, radius,
+   inline offset and 1rem glyph, so locked and unlocked cells cannot drift apart
+   in size; only the colour differs, and it is the same grey/#303030 pair the
+   locked WhatsApp mark and the plain padlock use. Both classes in the selector
+   for the same reason as .brikpanel-cartab-wa-locked: winning on specificity
+   rather than on source order keeps this true however the rules are reordered.
+   cursor: pointer because with a lock URL this is a link, and without one it is
+   a <span> that still opens the pitch. */
+.brikpanel-cartab-email-link.brikpanel-cartab-email-link-locked {
+	color: #8a8a8a;
+	cursor: pointer;
+}
+
+.brikpanel-cartab-email-link.brikpanel-cartab-email-link-locked:hover,
+.brikpanel-cartab-email-link.brikpanel-cartab-email-link-locked:focus {
+	color: #303030;
+	background: #f7f7f7;
 }
 
 .brikpanel-cartab-date-cell {
@@ -572,7 +663,12 @@
 	margin-inline-start: 0.5rem;
 	vertical-align: middle;
 	border-radius: 0.375rem;
-	color: #616161;
+	/* The one place brand colour earns its keep: the mark is only recognisable
+	   as WhatsApp in WhatsApp green, and a grey one read as decoration rather
+	   than as a button that opens a conversation. Deliberately a step down from
+	   the #25d366 brand value, which is a screen-brightness green built for a
+	   logo and reads as neon against this page's greys. */
+	color: #1da851;
 	text-decoration: none;
 	transition: color 0.15s ease, background 0.15s ease;
 }
@@ -614,9 +710,8 @@
 
 .brikpanel-cartab-wa:hover,
 .brikpanel-cartab-wa:focus {
-	/* The one place brand colour earns its keep: the icon is only recognisable
-	   as WhatsApp in WhatsApp green, and it stays grey until pointed at. */
-	color: #25d366;
+	/* Green at rest already, so hover deepens it rather than introducing it. */
+	color: #15803c;
 	background: #f7f7f7;
 }
 
@@ -626,13 +721,18 @@
    apart in size; only the colour differs. Grey at rest and #303030 on hover,
    the same pair as the plain padlock - the green belongs to a button that
    actually opens a conversation, and this one does not. */
-.brikpanel-cartab-wa-locked {
+/* Both classes in the selector, not just the modifier: now that the unlocked
+   mark is green at rest these two colours are far apart, and a locked icon
+   flashing WhatsApp green would promise a conversation the store cannot open.
+   Winning on specificity rather than on source order keeps that true however
+   the rules are later reordered. */
+.brikpanel-cartab-wa.brikpanel-cartab-wa-locked {
 	color: #8a8a8a;
 	cursor: pointer;
 }
 
-.brikpanel-cartab-wa-locked:hover,
-.brikpanel-cartab-wa-locked:focus {
+.brikpanel-cartab-wa.brikpanel-cartab-wa-locked:hover,
+.brikpanel-cartab-wa.brikpanel-cartab-wa-locked:focus {
 	color: #303030;
 	background: #f7f7f7;
 }
@@ -659,8 +759,10 @@
 	pointer-events: none;
 }
 
-/* Specific enough to beat `.brikpanel-cartab-wa svg { width: 1rem }` above. */
-.brikpanel-cartab-wa .brikpanel-cartab-wa-lock svg {
+/* Specific enough to beat the `svg { width: 1rem }` rule of either host above.
+   One rule for both marks: the stamp is shared, so its glyph size must be too. */
+.brikpanel-cartab-wa .brikpanel-cartab-wa-lock svg,
+.brikpanel-cartab-email-link .brikpanel-cartab-wa-lock svg {
 	width: 0.625rem;
 	height: 0.625rem;
 	display: block;

@@ -937,22 +937,105 @@
 			});
 		}
 
+		/**
+		 * Arm the popup.
+		 *
+		 * Without the "Wait for cookie banner" setting this is the plain delay
+		 * it has always been. With it, the delay still runs from page load, but
+		 * when it ends the popup checks whether a cookie banner is on screen and
+		 * waits for the visitor to answer it first — accepting or declining,
+		 * both are answers — so the two never stack up at the entrance.
+		 *
+		 * Everything here is built so the popup cannot be lost:
+		 *  - the cap timer is armed first and unconditionally, so a banner that
+		 *    never reports, a visitor who ignores it, or a platform we cannot
+		 *    read still ends with the popup on screen;
+		 *  - a missing or broken signal module falls straight through to the
+		 *    old behaviour;
+		 *  - every path opens through maybeOpen(), which latches, so no
+		 *    combination of timers can open it twice.
+		 */
+		function schedulePopup() {
+			var t0 = Date.now();
+			var delayMs = Math.max(0, Number(cfg.popup.delay) || 0) * 1000;
+			var capMs = Math.max(1, Number(cfg.popup.maxWait) || 30) * 1000;
+			var opened = false;
+			var capTimer = null;
+			var delayTimer = null;
+
+			function maybeOpen() {
+				if (opened) {
+					return;
+				}
+				opened = true;
+				if (capTimer) {
+					window.clearTimeout(capTimer);
+					capTimer = null;
+				}
+				if (delayTimer) {
+					window.clearTimeout(delayTimer);
+					delayTimer = null;
+				}
+				if (!isDone() && !teaserHidden() && !wasDismissed()) {
+					openPopup();
+				}
+			}
+
+			var signal = window.brikpanelConsentSignal;
+			var waiting = Number(cfg.popup.waitConsent) === 1 && signal
+				&& typeof signal.answered === 'function' && typeof signal.onAnswer === 'function';
+
+			if (!waiting) {
+				delayTimer = window.setTimeout(maybeOpen, delayMs);
+				return;
+			}
+
+			// Asked when the popup is about to show rather than at page load:
+			// several platforms draw their banner a moment after this script
+			// runs, so a verdict taken at load would miss them.
+			function attempt() {
+				delayTimer = null;
+				if (opened) {
+					return;
+				}
+				var clear = true;
+				try {
+					clear = signal.answered();
+				} catch (err3) {}
+				if (clear) {
+					maybeOpen();
+					return;
+				}
+				// Let the banner's own closing animation finish first.
+				try {
+					signal.onAnswer(function () {
+						if (!opened && !delayTimer) {
+							delayTimer = window.setTimeout(maybeOpen, 800);
+						}
+					});
+				} catch (err4) {
+					maybeOpen();
+				}
+			}
+
+			capTimer = window.setTimeout(maybeOpen, capMs);
+			delayTimer = window.setTimeout(attempt, delayMs);
+		}
+
 		/* ---------------- Entry flow ---------------- */
 
 		if (savedCoupon()) {
 			// The visitor owns an unexpired code, so "done" is no longer the end
-			// of the road: the tab is how they get back to it.
+			// of the road: the tab is how they get back to it. Shown straight
+			// away: it is a small tab, not an interruption, and it is how the
+			// visitor reaches a code they already own.
 			showTeaser();
 		} else if (!isDone() && !teaserHidden()) {
 			if (wasDismissed()) {
 				// Popup was closed before — stay collapsed as the floating tab.
 				showTeaser();
 			} else {
-				window.setTimeout(function () {
-					if (!isDone() && !teaserHidden() && !wasDismissed()) {
-						openPopup();
-					}
-				}, Math.max(0, Number(cfg.popup.delay) || 0) * 1000);
+				schedulePopup();
 			}
 		}
 	}

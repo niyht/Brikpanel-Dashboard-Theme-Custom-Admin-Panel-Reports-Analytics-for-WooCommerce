@@ -76,10 +76,18 @@ body.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap {
     overflow: visible;
 }
 /* Constrain the inner nav to the viewport-minus-topbar height, so it owns
-   the only scrollbar inside the sidebar. */
+   the only scrollbar inside the sidebar.
+
+   Do NOT add `overscroll-behavior: contain` here. The sidebar is a fixed,
+   full-height scroll container spanning the whole left edge of the screen, so
+   `contain` turns that entire column into a dead zone for the mouse wheel: the
+   browser refuses to hand the scroll to the page, and when the menu is short
+   enough to fit (the common case) it has nothing of its own to scroll either,
+   so the wheel does nothing at all on every admin screen. Letting the scroll
+   chain normally means a short menu passes the wheel straight to the page, and
+   a long menu scrolls itself first and then hands over at its end. */
 body.brikpanel-has-topbar #brikpanel-navigation {
     height: calc(100vh - var(--bp-topbar-height)) !important;
-    overscroll-behavior: contain;
     scrollbar-width: thin;
 }
 body.brikpanel-has-topbar #brikpanel-navigation::-webkit-scrollbar { width: 6px; }
@@ -165,6 +173,12 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     padding: 0.25rem 0.375rem;
     border-radius: 0.5rem;
     transition: background 0.15s ease;
+    /* Give way when the left cluster runs out of room: without min-width the
+       store name never reaches its ellipsis and the cluster clips whatever
+       follows the brand (live pill, coming soon badge) instead. overflow keeps
+       the logo from spilling over those neighbours once the name is gone. */
+    min-width: 0;
+    overflow: hidden;
 }
 
 .brikpanel-topbar-brand:hover,
@@ -217,6 +231,8 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     font-size: 0.6875rem;
     font-weight: 500;
     color: var(--bp-topbar-text-3);
+    /* A multi-word translation must not wrap when the brand gives way. */
+    white-space: nowrap;
 }
 
 .brikpanel-topbar-live-pill {
@@ -261,6 +277,44 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     animation: none;
     box-shadow: none;
 }
+
+/* Shown only while WooCommerce Site visibility is set to "Coming soon".
+   Drops to its icon at 960px and below (the live pill leaves the bar there
+   too) and whenever the script finds the bar too crowded (`.is-compact`); the
+   label stays available through the link's aria-label and title. */
+.brikpanel-topbar-coming-soon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    height: 28px;
+    padding: 0 0.625rem;
+    border-radius: 999px;
+    background: #fff6e6;
+    border: 1px solid #f3dcae;
+    color: #7a4f01;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.brikpanel-topbar-coming-soon:hover,
+.brikpanel-topbar-coming-soon:focus {
+    background: #ffedc9;
+    border-color: #e8c47f;
+    color: #5e3c00;
+}
+/* Core's `a:focus` squares the corners to 2px; keep the pill round. */
+.brikpanel-topbar-coming-soon:focus { outline: none; box-shadow: none; border-radius: 999px; }
+/* Inset: the left cluster clips overflow, so an outer ring would be cut. */
+.brikpanel-topbar-coming-soon:focus-visible { box-shadow: inset 0 0 0 2px currentColor; }
+.brikpanel-topbar-coming-soon svg { flex-shrink: 0; }
+.brikpanel-topbar-coming-soon.is-compact { width: 28px; padding: 0; }
+.brikpanel-topbar-coming-soon.is-compact .brikpanel-topbar-coming-soon-label { display: none; }
 
 /* ---------- Right ---------- */
 
@@ -898,6 +952,140 @@ body.brikpanel-has-topbar .brikpanel-search-overlay {
     transition: background 0.15s ease;
 }
 .brikpanel-topbar-menu-btn:hover { background: #f1f1f1; }
+.brikpanel-topbar-menu-btn svg { display: block; flex-shrink: 0; }
+.brikpanel-topbar-menu-icon-panel { display: none !important; }
+
+/* ---------- Desktop sidebar toggle (above the 960px off-canvas range) ----------
+   The same button hides / shows the fixed sidebar and remembers the choice per
+   user. `brikpanel-sidebar-hidden` is printed on <body> by the server so the
+   page never loads with the sidebar and then snaps it away. Transitions only
+   run while `brikpanel-sidebar-animating` is set by the JS, so neither a page
+   load nor a window resize ever animates the layout. */
+@media (min-width: 961px) {
+    .brikpanel-topbar-menu-btn {
+        display: inline-flex;
+        width: 34px;
+        height: 34px;
+        margin-right: -0.25rem;
+        border-color: transparent;
+        background: transparent;
+        color: var(--bp-topbar-text-2, #616161);
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    .brikpanel-topbar-menu-btn:hover {
+        background: #f1f1f1;
+        color: var(--bp-topbar-text, #303030);
+    }
+    .brikpanel-topbar-menu-btn:active { background: #e3e3e3; }
+    .brikpanel-topbar-menu-btn:focus { outline: none; box-shadow: none; }
+    /* Inset: the left cluster clips overflow, so an outer ring would be cut. */
+    .brikpanel-topbar-menu-btn:focus-visible {
+        box-shadow: inset 0 0 0 2px var(--bp-topbar-text, #303030);
+    }
+    .brikpanel-topbar-menu-btn.is-desktop-off { display: none; }
+    .brikpanel-topbar-menu-icon-bars { display: none !important; }
+    .brikpanel-topbar-menu-icon-panel { display: block !important; }
+    .brikpanel-topbar-menu-chev-open,
+    body.brikpanel-sidebar-hidden .brikpanel-topbar-menu-chev-close { display: none; }
+    body.brikpanel-sidebar-hidden .brikpanel-topbar-menu-chev-open { display: inline; }
+
+    /* Tooltip: label + shortcut. Lives on the header (the left cluster clips). */
+    .brikpanel-topbar-sidebar-tip {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 1rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3125rem 0.375rem 0.3125rem 0.625rem;
+        background: #303030;
+        color: #ffffff;
+        font-size: 0.75rem;
+        font-weight: 550;
+        line-height: 1.2;
+        white-space: nowrap;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        opacity: 0;
+        transform: translateY(-2px);
+        pointer-events: none;
+        visibility: hidden;
+        transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0.12s;
+        z-index: 2;
+    }
+    .brikpanel-topbar-sidebar-tip-kbd {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 0.25rem;
+        box-sizing: border-box;
+        background: rgba(255, 255, 255, 0.16);
+        border: 0;
+        border-radius: 0.25rem;
+        color: #ffffff;
+        font: 600 0.6875rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .brikpanel-topbar.is-sidebar-tip-open .brikpanel-topbar-sidebar-tip {
+        opacity: 1;
+        transform: translateY(0);
+        visibility: visible;
+        transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s;
+    }
+
+    body.brikpanel-sidebar-animating.brikpanel-has-topbar #adminmenuback,
+    body.brikpanel-sidebar-animating.brikpanel-has-topbar #adminmenuwrap {
+        transition: transform 0.25s cubic-bezier(.4, 0, .2, 1), visibility 0s;
+        will-change: transform;
+    }
+    body.brikpanel-sidebar-animating.brikpanel-has-topbar #wpcontent {
+        transition: margin-left 0.25s cubic-bezier(.4, 0, .2, 1), margin-right 0.25s cubic-bezier(.4, 0, .2, 1);
+    }
+
+    body.brikpanel-sidebar-hidden.brikpanel-has-topbar #adminmenuback,
+    body.brikpanel-sidebar-hidden.brikpanel-has-topbar #adminmenuwrap {
+        transform: translateX(-100%);
+        visibility: hidden;
+    }
+    body.brikpanel-sidebar-animating.brikpanel-sidebar-hidden.brikpanel-has-topbar #adminmenuback,
+    body.brikpanel-sidebar-animating.brikpanel-sidebar-hidden.brikpanel-has-topbar #adminmenuwrap {
+        /* Stay painted while sliding out; drop out of the tab order at the end. */
+        transition: transform 0.25s cubic-bezier(.4, 0, .2, 1), visibility 0s linear 0.25s;
+    }
+    body.brikpanel-sidebar-hidden.brikpanel-has-topbar #wpcontent,
+    body.brikpanel-sidebar-hidden.brikpanel-has-topbar #wpfooter {
+        margin-left: 0 !important;
+    }
+    /* Classic / native menu modes float the menu in the page flow. While the
+       content margin animates narrower than that float, tables and flex boxes
+       inside the content drop below it and the column flashes empty. Lift the
+       menu out of the flow (same spot: #wpwrap is its positioned parent) for
+       the length of the animation and while it is hidden. */
+    body.brikpanel-sidebar-animating.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap,
+    body.brikpanel-sidebar-animating.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap,
+    body.brikpanel-sidebar-hidden.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap,
+    body.brikpanel-sidebar-hidden.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap {
+        position: absolute;
+        float: none;
+        top: 0;
+        left: 0;
+    }
+    /* Third-party layouts that offset themselves by the sidebar width. */
+    body.brikpanel-sidebar-hidden.brikpanel-has-topbar .sb-customizer-sidebar { left: 0 !important; }
+    body.brikpanel-sidebar-hidden.brikpanel-has-topbar .sbi-csz-header-insider { width: 100% !important; }
+}
+@media (min-width: 961px) and (prefers-reduced-motion: reduce) {
+    body.brikpanel-sidebar-animating.brikpanel-has-topbar #adminmenuback,
+    body.brikpanel-sidebar-animating.brikpanel-has-topbar #adminmenuwrap,
+    body.brikpanel-sidebar-animating.brikpanel-has-topbar #wpcontent,
+    .brikpanel-topbar-sidebar-tip {
+        transition: none !important;
+    }
+}
+@media (max-width: 960px) {
+    .brikpanel-topbar-sidebar-tip { display: none; }
+}
 
 /* Backdrop that appears behind the off-canvas sidebar on mobile. */
 .brikpanel-topbar-mobile-backdrop {
@@ -928,6 +1116,8 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
 
 @media (max-width: 960px) {
     .brikpanel-topbar-live-pill { display: none; }
+    .brikpanel-topbar-coming-soon { width: 28px; padding: 0; }
+    .brikpanel-topbar-coming-soon-label { display: none; }
 }
 
 /* ===== Sidebar access (matches WP's REAL auto-fold breakpoint, 960px) =====
@@ -988,6 +1178,16 @@ body.brikpanel-mobile-nav-open .brikpanel-topbar-mobile-backdrop {
     body.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap::-webkit-scrollbar-thumb {
         background: rgba(0, 0, 0, 0.18);
         border-radius: 3px;
+    }
+
+    /* Below this breakpoint the sidebar is an off-canvas sheet laid over the
+       page, not a column beside it, so here containing the scroll is right:
+       while the sheet is open the page behind it must stay where it is. The
+       desktop rule deliberately does NOT contain (see #brikpanel-navigation
+       above) because there the sidebar is a permanent column and containing
+       would make the whole left edge of the screen ignore the mouse wheel. */
+    body.brikpanel-mobile-nav-open #brikpanel-navigation {
+        overscroll-behavior: contain;
     }
 }
 

@@ -8,6 +8,13 @@ if( ! defined( 'ABSPATH' ) ) exit;
  * action below. Callers apply the master-switch / admin / bot guards.
  */
 function brikpanel_record_product_view() {
+    // Server-side once-per-day cap (3.3.11), same reason as
+    // brikpanel_record_visitor_view(): the local-storage latch is not there
+    // for a client that starts every page from a blank profile.
+    if ( function_exists( 'brikpanel_daily_counter_allowed' ) && ! brikpanel_daily_counter_allowed( 'product' ) ) {
+        return;
+    }
+
     global $wpdb;
     $table = $wpdb->prefix . 'brikpanel_visitors';
     $today = wp_date( 'Y-m-d' );

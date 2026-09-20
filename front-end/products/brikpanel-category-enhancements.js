@@ -427,8 +427,9 @@
     // =========================================================================
 
     function buildToolbar() {
-        var $nav = $('.tablenav.top').first();
-        if (!$nav.length || $nav.find('.brikpanel-tree-tools').length) {
+        var $nav     = $('.tablenav.top').first();
+        var $toolbar = $('.brikpanel-tax-toolbar-tools').first();
+        if ((!$nav.length && !$toolbar.length) || $('.brikpanel-tree-tools').length) {
             return;
         }
 
@@ -445,7 +446,10 @@
         $('<span class="brikpanel-tree-counter" aria-live="polite"></span>').appendTo($tools);
 
         var $bulk = $nav.children('.alignleft.actions').first();
-        if ($bulk.length) {
+        if ($toolbar.length) {
+            // The table card's toolbar (brikpanel-taxonomy-screen.js).
+            $toolbar.append($tools);
+        } else if ($bulk.length) {
             $tools.insertAfter($bulk);
         } else {
             $nav.prepend($tools);
@@ -932,10 +936,18 @@
             }
 
             var $name = $form.find('#tag-name');
-            $name.val('').trigger('focus');
+            $name.val('');
 
-            if ($form[0] && $form[0].scrollIntoView) {
-                $form[0].scrollIntoView({ block: 'center' });
+            // The add form lives in the slide-in panel of the screen script.
+            if ($('body').hasClass('brikpanel-tax-has-panel')) {
+                document.dispatchEvent(new CustomEvent('brikpanel:tax-panel-open', {
+                    detail: { focus: $name[0] || null }
+                }));
+            } else {
+                $name.trigger('focus');
+                if ($form[0] && $form[0].scrollIntoView) {
+                    $form[0].scrollIntoView({ block: 'center' });
+                }
             }
 
             showToast(
@@ -1035,23 +1047,9 @@
     // =========================================================================
 
     function repositionSearch() {
-        var $searchForm = $('form.search-form');
-        var $heading    = $('.wrap > h1').first();
-
-        if (!$searchForm.length || !$heading.length) {
-            return;
-        }
-
-        // Create a header container
-        var $header = $('<div class="brikpanel-cat-header"></div>');
-        $heading.wrap($header);
-        $header = $heading.parent();
-
-        // Move the whole <form> into the header. Moving only `.search-box`
-        // strands the input+submit outside any form, so clicking the button
-        // or pressing Enter no longer triggers a GET to edit-tags.php.
-        $searchForm.appendTo($header);
-        $header.addClass('brikpanel-cat-header');
+        // The search form itself is placed in the table card's toolbar by
+        // brikpanel-taxonomy-screen.js.
+        var $searchForm = $('form.search-form').first();
 
         // Only when the full tree is on the page can the box filter live;
         // otherwise it has to keep reloading into a server-side search.

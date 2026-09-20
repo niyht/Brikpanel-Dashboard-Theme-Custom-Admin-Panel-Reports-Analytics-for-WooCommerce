@@ -64,6 +64,18 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 			<?php if ( ! $conn['connected'] ) : ?>
 				<div class="bp-gs-card">
 					<div class="bp-gs-card-body">
+						<?php if ( ! empty( $vault_unreadable ) ) : ?>
+							<?php
+							// Not "you never connected" — the credentials are
+							// still stored, this site just cannot open them.
+							// Naming the likely cause is the difference between
+							// a one-minute fix and a support ticket.
+							?>
+							<div class="bp-gs-callout" role="alert">
+								<strong><?php esc_html_e( 'Saved connection could not be read.', 'brikpanel' ); ?></strong>
+								<?php esc_html_e( 'Your credentials are still stored and have not been deleted, but this site cannot decrypt them. This usually follows a change to the site address, a move to a new server, or new security keys in wp-config.php. Connect again to store a fresh copy.', 'brikpanel' ); ?>
+							</div>
+						<?php endif; ?>
 						<h2><?php esc_html_e( 'Connect your Google account', 'brikpanel' ); ?></h2>
 						<p class="bp-gs-card-sub">
 							<?php esc_html_e( 'BrikPanel uses a single, narrow Google permission — no app verification screen, no scary “unverified app” warning. It can only touch a spreadsheet it creates for you or one you explicitly hand over. The rest of your Google Drive stays invisible to BrikPanel.', 'brikpanel' ); ?>

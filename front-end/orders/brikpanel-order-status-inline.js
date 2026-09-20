@@ -203,8 +203,14 @@
 		if (!activeContext) return;
 		var orig = labelForStatus(activeContext.originalStatus) || activeContext.originalText;
 		var tpl = i18n.pending_text || 'Order #%1$s: %2$s → %3$s';
+		// The bar names the order the way the Order column does. With a
+		// sequential-order-number plugin that is not the row id, so the server
+		// hands over a map of the listed orders. Read on use, not at load: the
+		// map is printed after this file runs. Falls back to the id, which is
+		// the right answer whenever no plugin renumbers orders.
+		var numbers = brikpanelStatusInline.numbers || {};
 		$barText.textContent = tpl
-			.replace('%1$s', activeContext.orderId)
+			.replace('%1$s', numbers[activeContext.orderId] || activeContext.orderId)
 			.replace('%2$s', orig)
 			.replace('%3$s', activeContext.pendingLabel);
 

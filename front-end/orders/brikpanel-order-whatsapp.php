@@ -185,6 +185,62 @@ const BRIKPANEL_WHATSAPP_OPT_ORDER_MESSAGE  = 'brikpanel_whatsapp_order_message'
 const BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES = 'brikpanel_whatsapp_order_status_messages';
 
 /**
+ * Tell Import / Export how to carry the per-status WhatsApp drafts.
+ *
+ * This card has always declared its field id AS the option name, which is why
+ * the export saw it before the registry existed. The shape still needs an owner:
+ * it is a nested map, and the generic cleaner would flatten it into a list of
+ * strings.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_whatsapp_register_export_keys' );
+function brikpanel_whatsapp_register_export_keys( $map ) {
+	$map[ BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES ] = [
+		'class'    => 'portable',
+		'group'    => 'orders',
+		'sanitize' => 'brikpanel_whatsapp_sanitize_import_status_messages',
+		'default'  => [],
+	];
+	return $map;
+}
+
+/**
+ * Clean an imported per-status WhatsApp draft map: status slug => on/off + text.
+ *
+ * Unknown status slugs are kept. The target may register them later — a custom
+ * status, a shipping plugin — and BrikPanel only ever reads the slug an order
+ * actually has, so a draft waiting for a status that does not exist yet costs
+ * nothing and saves retyping.
+ *
+ * @param mixed $value
+ * @return array<string, array{enabled:bool, message:string}>
+ */
+function brikpanel_whatsapp_sanitize_import_status_messages( $value ) {
+	if ( ! is_array( $value ) ) {
+		return [];
+	}
+	$out = [];
+	foreach ( $value as $slug => $cfg ) {
+		$slug = sanitize_key( (string) $slug );
+		if ( '' === $slug || ! is_array( $cfg ) ) {
+			continue;
+		}
+		$message = isset( $cfg['message'] ) && is_scalar( $cfg['message'] ) ? (string) $cfg['message'] : '';
+		$out[ $slug ] = [
+			'enabled' => ! empty( $cfg['enabled'] ),
+			// The cleaner the settings screen uses, so an imported message can
+			// never carry markup a typed one could not.
+			'message' => function_exists( 'brikpanel_whatsapp_clean_message' )
+				? brikpanel_whatsapp_clean_message( $message )
+				: sanitize_textarea_field( $message ),
+		];
+	}
+	return $out;
+}
+
+/**
  * The general draft shipped with the plugin, used until a merchant edits it.
  *
  * Kept as a __() string (rather than a stored default) so a store that never
@@ -768,12 +824,18 @@ add_action( 'admin_head', function () {
 			width: 26px;
 			height: 26px;
 			border-radius: 6px;
-			color: #25d366;
+			/* Same green as the WhatsApp mark on Abandoned Carts, so one icon
+			   doing one job looks the same on both screens. A step down from the
+			   #25d366 brand value, which is built for a logo and reads as neon
+			   against an admin list's greys. The filled button further down
+			   keeps the brand value: on white-on-green it is the background, and
+			   there the bright tone is right. */
+			color: #1da851;
 			text-decoration: none;
 			transition: background-color .15s ease, transform .15s ease;
 		}
 		.brikpanel-wa-list-link:hover {
-			background: rgba(37, 211, 102, .12);
+			background: rgba(29, 168, 81, .12);
 			transform: translateY(-1px);
 		}
 		.brikpanel-wa-list-link .brikpanel-wa-glyph { display: block; }

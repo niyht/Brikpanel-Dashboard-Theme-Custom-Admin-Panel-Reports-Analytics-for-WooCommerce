@@ -31,6 +31,66 @@ if ( ! defined( 'ABSPATH' ) ) {
 const BRIKPANEL_STATUS_EMAILS_OPTION = 'brikpanel_status_emails';
 
 /**
+ * Tell Import / Export how to carry the per-status emails.
+ *
+ * Registered after the custom statuses themselves (this file is required after
+ * brikpanel-order-statuses.php, and registry order is apply order), so the
+ * statuses a rule names already exist by the time the rule is written.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_status_emails_register_export_keys' );
+function brikpanel_status_emails_register_export_keys( $map ) {
+	$map[ BRIKPANEL_STATUS_EMAILS_OPTION ] = [
+		'class'    => 'portable',
+		'group'    => 'order-statuses',
+		'sanitize' => 'brikpanel_status_emails_sanitize_import',
+		'default'  => [],
+	];
+	return $map;
+}
+
+/**
+ * Clean an imported per-status email map.
+ *
+ * Deliberately does NOT drop rules for statuses this site does not register.
+ * The settings save can restrict to the current list because the repeater
+ * above it has just written that list from the same form; an import has no
+ * such guarantee, and a status that arrives later (a plugin activated next
+ * week, a status typed by hand) should find its wording waiting for it. This
+ * is the same reasoning the WhatsApp per-status card already documents.
+ *
+ * The body is cleaned with wp_kses_post, not a plain-text cleaner: it is
+ * allowed limited HTML and carries {placeholder} tokens that must survive.
+ *
+ * @param mixed $value
+ * @return array<string, array>
+ */
+function brikpanel_status_emails_sanitize_import( $value ) {
+	if ( ! is_array( $value ) ) {
+		return [];
+	}
+	$out = [];
+	foreach ( $value as $slug => $cfg ) {
+		$slug = sanitize_key( (string) $slug );
+		if ( '' === $slug || ! is_array( $cfg ) ) {
+			continue;
+		}
+		$out[ $slug ] = [
+			'enabled'    => ! empty( $cfg['enabled'] ),
+			'customer'   => ! empty( $cfg['customer'] ),
+			'admin'      => ! empty( $cfg['admin'] ),
+			'recipients' => brikpanel_status_email_clean_recipients( isset( $cfg['recipients'] ) && is_scalar( $cfg['recipients'] ) ? (string) $cfg['recipients'] : '' ),
+			'subject'    => isset( $cfg['subject'] ) && is_scalar( $cfg['subject'] ) ? sanitize_text_field( (string) $cfg['subject'] ) : '',
+			'heading'    => isset( $cfg['heading'] ) && is_scalar( $cfg['heading'] ) ? sanitize_text_field( (string) $cfg['heading'] ) : '',
+			'content'    => isset( $cfg['content'] ) && is_scalar( $cfg['content'] ) ? wp_kses_post( (string) $cfg['content'] ) : '',
+		];
+	}
+	return $out;
+}
+
+/**
  * Default subject/heading/body used when a status email is enabled but a field
  * was left blank, so an email always has meaningful content out of the box.
  *
@@ -493,8 +553,12 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			&& 'sectionend' === $field['type']
 			&& 'brk_order_statuses_title' === $field['id'] ) {
 			array_splice( $fields, $i, 0, [ [
+				// The id is the option this card writes, so the settings export
+				// walker sees it. Nothing is posted under this name (the card's
+				// inputs are brikpanel_status_email[<slug>][…]), so WooCommerce's
+				// generic save loop still leaves the option to the handler below.
 				'type' => 'brikpanel_status_emails',
-				'id'   => 'brikpanel_status_emails_field',
+				'id'   => BRIKPANEL_STATUS_EMAILS_OPTION,
 			] ] );
 			break;
 		}

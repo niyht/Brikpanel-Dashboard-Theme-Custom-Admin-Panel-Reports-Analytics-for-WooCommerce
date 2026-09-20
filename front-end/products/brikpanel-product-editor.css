@@ -712,9 +712,25 @@
 .brikpanel-pe-wc-fields-content .form-field,.brikpanel-pe-metabox-content .form-field,.brikpanel-pe-wc-fields-content .options_group,.brikpanel-pe-metabox-content .options_group{margin-bottom:.75rem!important;padding:0!important;border:none!important}
 .brikpanel-pe-wc-fields-content .form-field:last-child,.brikpanel-pe-metabox-content .form-field:last-child{margin-bottom:0!important}
 .brikpanel-pe-wc-fields-content p.form-field,.brikpanel-pe-metabox-content p.form-field{display:flex!important;flex-direction:column!important}
+/* The flex above is !important, so it used to beat the inline `display:none`
+   jQuery's .hide() writes, and a plugin could no longer hide its own fields
+   (Measurement Price Calculator's "free input" and "limited options" rows both
+   showed, as did its Minimum Price with per-unit pricing off). A field its
+   script hid stays hidden. */
+.brikpanel-pe-wc-fields-content p.form-field[style*="display: none"],.brikpanel-pe-wc-fields-content p.form-field[style*="display:none"],.brikpanel-pe-metabox-content p.form-field[style*="display: none"],.brikpanel-pe-metabox-content p.form-field[style*="display:none"],.brikpanel-pe-var-extras p.form-field[style*="display: none"],.brikpanel-pe-var-extras p.form-field[style*="display:none"]{display:none!important}
 .brikpanel-pe-wc-fields-content .form-field .description,.brikpanel-pe-metabox-content .form-field .description{display:block!important;font-size:.75rem!important;color:var(--pe-text-muted)!important;margin-top:.25rem!important;font-style:normal!important;font-weight:400!important}
 .brikpanel-pe-wc-fields-content .form-field input.short,.brikpanel-pe-wc-fields-content .form-field input.long{width:100%!important}
 .brikpanel-pe-wc-fields-content .woocommerce_options_panel{padding:0!important}
+/* WooCommerce indents every field of a product-data panel for its 150px label
+   column (`.woocommerce_options_panel p.form-field{padding:…162px!important}`),
+   which out-ranks the generic reset above. Labels sit on top here, so the
+   indent only left a blank strip beside every field of a plugin's own tab. */
+.brikpanel-pe-wc-fields-content .woocommerce_options_panel p.form-field{padding:0!important}
+/* Help-tip icon next to its label instead of on a line of its own. */
+.brikpanel-pe-wc-fields-content p.form-field:has(> label ~ .woocommerce-help-tip){flex-direction:row!important;flex-wrap:wrap!important;align-items:center!important}
+.brikpanel-pe-wc-fields-content p.form-field:has(> label ~ .woocommerce-help-tip) > *{flex:0 0 100%;order:2}
+.brikpanel-pe-wc-fields-content p.form-field:has(> label ~ .woocommerce-help-tip) > label{flex:0 1 auto;order:0}
+.brikpanel-pe-wc-fields-content p.form-field:has(> label ~ .woocommerce-help-tip) > .woocommerce-help-tip{flex:0 0 auto;order:1;margin:0 0 .375rem!important;margin-inline-start:.375rem!important;float:none!important}
 
 /* Buttons inside metaboxes. Excludes:
    - .wp-color-result (wpColorPicker writes the selected hex into the
@@ -1739,3 +1755,28 @@ ul.ui-autocomplete.wp-tags-autocomplete .ui-menu-item-wrapper:hover{background:#
 .brikpanel-pe-wc-fields-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.75rem}
 .brikpanel-pe-wc-fields-head>label{display:block;font-size:.8125rem;font-weight:600;color:var(--pe-text,#303030);margin:0}
 .brikpanel-pe-wc-fields-head .brikpanel-pe-wc-fields__hide{flex:0 0 auto}
+
+/* Hidden copies of WooCommerce's native price/stock/weight labels, only there
+   for product-data plugins that read or rewrite them (see the PHP note). */
+.brikpanel-pe-native-bridge{display:none!important}
+/* Unit a plugin adds to a field without a prefix/suffix box (e.g. stock per sq ft). */
+.brikpanel-pe-unit-hint{margin-inline-start:.375rem;font-size:.75rem;font-weight:550;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-unit-hint::before{content:"("}
+.brikpanel-pe-unit-hint::after{content:")"}
+
+/* Measurement Price Calculator panel. Its own inline <style> and WooCommerce's
+   options-panel layout assume the native 80%-wide tab; restate the parts that
+   read wrong in the stacked card. */
+.brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav{margin:0 0 .75rem!important;font-size:.8125rem;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav a{color:var(--pe-text-secondary,#616161);font-weight:550;text-decoration:none;box-shadow:none}
+.brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav a.active{color:var(--pe-text,#303030);font-weight:600}
+.brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav a.disabled{color:var(--pe-text-muted,#8a8a8a);cursor:default}
+.brikpanel-pe-wc-fields-content #measurement_product_data hr{height:0;margin:.75rem 0;border:0;border-top:1px solid var(--pe-border,#e3e3e3);background:none}
+.brikpanel-pe-wc-fields-content #measurement_product_data .measurement_description{margin:0 0 .75rem;padding:0!important;font-size:.75rem;line-height:1.5;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-wc-fields-content #measurement_product_data ._measurement_input_attributes .wrap{display:flex!important;gap:.5rem;width:100%!important}
+.brikpanel-pe-wc-fields-content #measurement_product_data ._measurement_input_attributes .wrap input{flex:1 1 0;min-width:0;width:auto!important;float:none!important;margin:0!important}
+.brikpanel-pe-wc-fields-content #measurement_product_data table.wc-calculator-pricing-table{width:100%!important;margin:0!important;border:1px solid var(--pe-border,#e3e3e3);border-radius:var(--pe-radius-sm,.5rem);border-collapse:separate;border-spacing:0;overflow:hidden;box-shadow:none}
+.brikpanel-pe-wc-fields-content #measurement_product_data table.wc-calculator-pricing-table th{font-size:.75rem;font-weight:600;color:var(--pe-text-secondary,#616161);vertical-align:bottom}
+.brikpanel-pe-wc-fields-content #measurement_product_data table.wc-calculator-pricing-table td{vertical-align:middle}
+.brikpanel-pe-wc-fields-content #measurement_product_data td.wc-calculator-pricing-rule-range{white-space:nowrap;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-wc-fields-content #measurement_product_data td.wc-calculator-pricing-rule-range input{display:inline-block!important;width:calc(50% - .75rem)!important;margin:0!important;vertical-align:middle}

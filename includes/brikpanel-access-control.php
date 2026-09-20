@@ -99,6 +99,38 @@ const BRIKPANEL_ACCESS_OPT_DEFAULT_OFF_ROLES = 'brikpanel_access_default_off_rol
 // role default). Only consulted while personal mode is active.
 const BRIKPANEL_ACCESS_USER_META_PERSONAL = 'brikpanel_personal_enabled';
 
+/**
+ * Refine what Import / Export may do with the access-control options.
+ *
+ * The settings walk already exports these; two of them need a different rule.
+ *
+ *   - The master on/off switch is `clear => never`. Everything else here is a
+ *     preference; this one decides whether BrikPanel exists on the screen at
+ *     all. A source site that simply never touched it must not be able to
+ *     switch BrikPanel back on for a store that deliberately turned it off.
+ *   - The disabled-users list holds local user IDs, so it is classified `site`
+ *     and stays behind: ID 14 is a warehouse account here and somebody's
+ *     customer on the next store.
+ *   - The per-user personal-mode preference is user meta, and a preference of
+ *     one person rather than a layout worth cloning, so it is internal.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_access_register_export_keys' );
+function brikpanel_access_register_export_keys( $map ) {
+	$map[ BRIKPANEL_MASTER_OPT ] = [
+		'class'   => 'portable',
+		'group'   => 'access',
+		'type'    => 'checkbox',
+		'default' => 'yes',
+		'clear'   => 'never',
+	];
+	$map['brikpanel_access_disabled_users']        = [ 'class' => 'site', 'group' => 'access' ];
+	$map[ BRIKPANEL_ACCESS_USER_META_PERSONAL ]    = [ 'class' => 'internal' ];
+	return $map;
+}
+
 // "Screen Options" tab control. Two independent axes, both off by default:
 //   - …_SCREEN_OPTIONS_ALL  hides the Screen Options tab from every back-office
 //     user (administrators included).
@@ -189,6 +221,7 @@ function brikpanel_access_gated_options() {
 		'brikpanel_modern_dashboard',
 		'brikpanel_dashboard_topbar',
 		'brikpanel_orders_enhancements',
+		'brikpanel_orders_compact_list',
 		'brikpanel_modern_order_edit',
 		'brikpanel_simple_product_editor',
 		'brikpanel_modern_products_list',

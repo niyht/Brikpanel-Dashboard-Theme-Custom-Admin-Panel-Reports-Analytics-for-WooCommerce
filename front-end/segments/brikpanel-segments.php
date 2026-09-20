@@ -398,7 +398,7 @@ class Brikpanel_Segments {
 		$this->check_auth();
 
 		$filters = $this->parse_filters( $_POST );
-		$result  = $this->query_orders( $filters );
+		$result  = $this->query_orders( $filters, true );
 
 		wp_send_json_success( $result );
 	}
@@ -413,7 +413,16 @@ class Brikpanel_Segments {
 	 * Legacy: queries posts + postmeta. Product/category filters still use
 	 * wc_order_product_lookup when available (WC populates it for both stores).
 	 */
-	private function query_orders( array $f ) {
+	/**
+	 * @param array $f            Filters.
+	 * @param bool  $with_numbers Resolve each row's displayed order number. Only
+	 *                            the on-screen table needs it; the CSV export
+	 *                            prints the raw "Order ID" and asks for every
+	 *                            matching order at once, so making it resolve
+	 *                            numbers it then discards would load the whole
+	 *                            result set as order objects.
+	 */
+	private function query_orders( array $f, $with_numbers = false ) {
 		global $wpdb;
 
 		$hpos   = $this->is_hpos();
@@ -618,7 +627,7 @@ class Brikpanel_Segments {
 			$agg_sql_raw = "SELECT COALESCE(SUM({$fx_agg['expr']}),0) AS revenue FROM {$from}{$fx_agg['join']} WHERE {$where_sql}";
 		} else {
 			$fx_agg      = brikpanel_base_total_sql( false, 'o.ID', 'CAST(pm_agg.meta_value AS DECIMAL(20,4))', 'bpfxseg' );
-			$agg_sql_raw = "SELECT COALESCE(SUM({$fx_agg['expr']}),0) AS revenue FROM {$from} LEFT JOIN {$wpdb->postmeta} pm_agg ON pm_agg.post_id = o.ID AND pm_agg.meta_key = '_order_total'{$fx_agg['join']} WHERE {$where_sql}";
+			$agg_sql_raw = "SELECT COALESCE(SUM({$fx_agg['expr']}),0) AS revenue FROM {$from} LEFT JOIN {$wpdb->postmeta} pm_agg ON pm_agg.post_id = o.ID AND pm_agg.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_agg' ) . "{$fx_agg['join']} WHERE {$where_sql}";
 		}
 		$revenue = (float) $wpdb->get_var( $params ? $wpdb->prepare( $agg_sql_raw, $params ) : $agg_sql_raw ); // phpcs:ignore
 
@@ -638,16 +647,16 @@ class Brikpanel_Segments {
 				LIMIT %d OFFSET %d";
 		} else {
 			$select = "SELECT o.ID AS order_id, o.post_date_gmt AS date_created_gmt, o.post_status AS status,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_total' LIMIT 1) AS total_amount,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_currency' LIMIT 1) AS currency,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user' LIMIT 1) AS customer_id,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email' LIMIT 1) AS billing_email,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_phone' LIMIT 1) AS billing_phone,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_payment_method_title' LIMIT 1) AS payment_method_title,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_payment_method' LIMIT 1) AS payment_method,
-				(SELECT CONCAT_WS(' ', (SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_first_name' LIMIT 1), (SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_last_name' LIMIT 1))) AS billing_name,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_country' LIMIT 1) AS billing_country,
-				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_city' LIMIT 1) AS billing_city
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_total'  ORDER BY meta_id LIMIT 1) AS total_amount,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_currency'  ORDER BY meta_id LIMIT 1) AS currency,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user'  ORDER BY meta_id LIMIT 1) AS customer_id,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1) AS billing_email,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_phone'  ORDER BY meta_id LIMIT 1) AS billing_phone,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_payment_method_title'  ORDER BY meta_id LIMIT 1) AS payment_method_title,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_payment_method'  ORDER BY meta_id LIMIT 1) AS payment_method,
+				(SELECT CONCAT_WS(' ', (SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_first_name'  ORDER BY meta_id LIMIT 1), (SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_last_name'  ORDER BY meta_id LIMIT 1))) AS billing_name,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_country'  ORDER BY meta_id LIMIT 1) AS billing_country,
+				(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_city'  ORDER BY meta_id LIMIT 1) AS billing_city
 				FROM {$from}
 				WHERE {$where_sql}
 				ORDER BY {$sort_col} {$direction}
@@ -657,11 +666,20 @@ class Brikpanel_Segments {
 		$page_params = array_merge( $params, [ $f['per_page'], $offset ] );
 		$rows        = $wpdb->get_results( $wpdb->prepare( $select, $page_params ) ); // phpcs:ignore
 
+		// The rows come straight from SQL, so they carry the raw ID. The orders
+		// list shows whatever `woocommerce_order_number` returns, and this table
+		// has to match it. Resolved for the whole page at once, and for free on
+		// the stores where nothing renumbers orders.
+		$numbers = $with_numbers
+			? brikpanel_order_numbers_for_ids( wp_list_pluck( $rows, 'order_id' ) )
+			: [];
+
 		$items = [];
 		foreach ( $rows as $r ) {
 			$status_slug = preg_replace( '/^wc-/', '', $r->status );
 			$items[] = [
 				'id'            => (int) $r->order_id,
+				'number'        => (string) ( $numbers[ (int) $r->order_id ] ?? $r->order_id ),
 				'date'          => $r->date_created_gmt ? mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $r->date_created_gmt ) : '',
 				'date_iso'      => $r->date_created_gmt,
 				'status'        => $status_slug,
@@ -744,7 +762,7 @@ class Brikpanel_Segments {
 		if ( function_exists( 'brikpanel_excluded_customer_sql' ) ) {
 			$excl_expr = $hpos
 				? 'o.customer_id'
-				: "IFNULL((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user' LIMIT 1)+0, 0)";
+				: "IFNULL((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user'  ORDER BY meta_id LIMIT 1)+0, 0)";
 			$excl_sql = brikpanel_excluded_customer_sql( $excl_expr );
 			if ( $excl_sql !== '' ) {
 				// Strip the leading " AND " — order_where entries are joined with AND.
@@ -817,11 +835,11 @@ class Brikpanel_Segments {
 			$last_expr      = 'MAX(o.date_created_gmt)';
 			$first_expr     = 'MIN(o.date_created_gmt)';
 		} else {
-			$customer_key   = "IFNULL((SELECT CASE WHEN pm_u.meta_value IS NOT NULL AND pm_u.meta_value+0 > 0 THEN CONCAT('u:', pm_u.meta_value) ELSE CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email' LIMIT 1))) END FROM {$wpdb->postmeta} pm_u WHERE pm_u.post_id=o.ID AND pm_u.meta_key='_customer_user' LIMIT 1), CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email' LIMIT 1))))";
-			$user_id_expr   = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user' LIMIT 1))";
-			$email_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email' LIMIT 1))";
-			$phone_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_phone' LIMIT 1))";
-			$raw_total_sub  = "(SELECT CAST(meta_value AS DECIMAL(20,4)) FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_total' LIMIT 1)";
+			$customer_key   = "IFNULL((SELECT CASE WHEN pm_u.meta_value IS NOT NULL AND pm_u.meta_value+0 > 0 THEN CONCAT('u:', pm_u.meta_value) ELSE CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))) END FROM {$wpdb->postmeta} pm_u WHERE pm_u.post_id=o.ID AND pm_u.meta_key='_customer_user'  ORDER BY pm_u.meta_id LIMIT 1), CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))))";
+			$user_id_expr   = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user'  ORDER BY meta_id LIMIT 1))";
+			$email_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))";
+			$phone_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_phone'  ORDER BY meta_id LIMIT 1))";
+			$raw_total_sub  = "(SELECT CAST(meta_value AS DECIMAL(20,4)) FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_total'  ORDER BY meta_id LIMIT 1)";
 			$fx_cust        = brikpanel_base_total_sql( false, 'o.ID', $raw_total_sub, 'bpfxcust' );
 			$total_expr     = "COALESCE(SUM({$fx_cust['expr']}), 0)";
 			$last_expr      = 'MAX(o.post_date_gmt)';
@@ -922,8 +940,8 @@ class Brikpanel_Segments {
 		$count_sql = "SELECT COUNT(*) FROM ({$inner_sql}) agg
 			{$rfm_join}
 			LEFT JOIN {$wpdb->users} u ON CAST(agg.user_id AS UNSIGNED) = u.ID
-			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
-			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
+			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
+			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
 			{$outer_where_sql}";
 		$count_params = array_merge( $inner_params, $outer_params );
 		$total = (int) $wpdb->get_var( $count_params ? $wpdb->prepare( $count_sql, $count_params ) : $count_sql ); // phpcs:ignore
@@ -932,8 +950,8 @@ class Brikpanel_Segments {
 		$sum_sql = "SELECT COALESCE(SUM(agg.total_spent),0) AS total_spent, COALESCE(SUM(agg.order_count),0) AS orders FROM ({$inner_sql}) agg
 			{$rfm_join}
 			LEFT JOIN {$wpdb->users} u ON CAST(agg.user_id AS UNSIGNED) = u.ID
-			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
-			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
+			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
+			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
 			{$outer_where_sql}";
 		$sum_row = $wpdb->get_row( $count_params ? $wpdb->prepare( $sum_sql, $count_params ) : $sum_sql ); // phpcs:ignore
 		$sum_spent  = (float) ( $sum_row->total_spent ?? 0 );
@@ -952,9 +970,9 @@ class Brikpanel_Segments {
 			FROM ({$inner_sql}) agg
 			{$rfm_join}
 			LEFT JOIN {$wpdb->users} u ON CAST(agg.user_id AS UNSIGNED) = u.ID
-			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
-			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
-			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
+			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
+			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
+			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ph' ) . "
 			{$outer_where_sql}
 			ORDER BY {$sort_col} {$direction}
 			LIMIT %d OFFSET %d";

@@ -47,6 +47,42 @@ function brikpanel_brand_logo_is_enabled() {
 }
 
 /**
+ * Tell Import / Export how to carry the appearance settings that the field
+ * walk cannot classify on its own.
+ *
+ * Two entries, two different reasons:
+ *
+ *   - The custom CSS card renders its own editor, so the walk only knows a
+ *     type it has no cleaner for. It used to fall through a generic branch
+ *     that ran sanitize_text_field() over the value, which strips newlines:
+ *     a stylesheet arrived on the target as one long line, every time.
+ *     brikpanel_appearance_sanitize_custom_css() is the cleaner the settings
+ *     screen itself uses, so an imported sheet is exactly as safe as a typed one.
+ *   - The external logo URL is portable (it points at a CDN, not at this site's
+ *     media library) but was only reaching the file through a hand-kept list.
+ *     Its companion attachment id stays behind, classified `site` by the walk.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_appearance_register_export_keys' );
+function brikpanel_appearance_register_export_keys( $map ) {
+	$map['brikpanel_custom_css'] = [
+		'class'    => 'portable',
+		'group'    => 'appearance',
+		'sanitize' => 'brikpanel_appearance_sanitize_custom_css',
+		'default'  => '',
+	];
+	$map['brikpanel_brand_logo_url'] = [
+		'class'   => 'portable',
+		'group'   => 'appearance',
+		'type'    => 'url',
+		'default' => '',
+	];
+	return $map;
+}
+
+/**
  * Resolve the brand logo URL. Returns an empty string when no valid source is
  * configured, so callers can branch with a simple `if ( $url === '' )` instead
  * of probing the options themselves.

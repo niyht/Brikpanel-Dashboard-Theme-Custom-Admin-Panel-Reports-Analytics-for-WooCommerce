@@ -27,6 +27,64 @@ if (!defined('BRIKPANEL_PE_SECTION_ORDER_OPTION')) {
 }
 
 /**
+ * Tell Import / Export how to carry the product editor layout.
+ *
+ * Order and visibility are two halves of one choice and are registered
+ * together, the same pairing the dashboard sections needed.
+ *
+ * Section ids are NOT keys: a third-party metabox appears as `mb:<its id>`, so
+ * sanitize_key() would eat the colon and turn a plugin panel into a section
+ * nobody has ever heard of. sanitize_text_field() is the right cleaner here.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter('brikpanel_exportable_option_keys', 'brikpanel_pe_register_export_keys');
+function brikpanel_pe_register_export_keys($map) {
+    $map[BRIKPANEL_PE_SECTION_ORDER_OPTION] = [
+        'class'   => 'portable',
+        'group'   => 'products',
+        'type'    => 'json_string',
+        'default' => '',
+    ];
+    $map['brikpanel_pe_visible_sections'] = [
+        'class'    => 'portable',
+        'group'    => 'products',
+        'sanitize' => 'brikpanel_pe_sanitize_import_visible_sections',
+        'default'  => [],
+    ];
+    return $map;
+}
+
+/**
+ * Clean an imported list of visible product-editor sections.
+ *
+ * Ids belonging to plugins this site does not run are kept. The editor already
+ * ignores a section it cannot render, and dropping the entry would silently
+ * hide that panel again the day the plugin is installed on the target —
+ * which is precisely the workflow an agency template is for.
+ *
+ * @param mixed $value
+ * @return string[]
+ */
+function brikpanel_pe_sanitize_import_visible_sections($value) {
+    if (!is_array($value)) {
+        return [];
+    }
+    $out = [];
+    foreach ($value as $slug) {
+        if (!is_string($slug)) {
+            continue;
+        }
+        $slug = sanitize_text_field($slug);
+        if ('' !== $slug && !in_array($slug, $out, true)) {
+            $out[] = $slug;
+        }
+    }
+    return $out;
+}
+
+/**
  * Resolve the brand taxonomy registered on this install, if any.
  *
  * WooCommerce 9.6+ ships a native `product_brand` taxonomy; older sites may

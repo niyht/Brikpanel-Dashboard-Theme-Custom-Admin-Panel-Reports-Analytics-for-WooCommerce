@@ -367,6 +367,11 @@ function brikpanel_unified_tracker_js() {
         // native listener.
         function start() {
             if (running) return;
+            // A browser driven by automation (Puppeteer, Playwright,
+            // Selenium) says so itself; a person's browser never does.
+            // Nothing is sent for it, so a scripted crawl that renders the
+            // page cannot become a visitor, a live entry or a product view.
+            try { if (navigator.webdriver === true) return; } catch (e) {}
             running   = true;
             forgotten = false;
             sendCombined();

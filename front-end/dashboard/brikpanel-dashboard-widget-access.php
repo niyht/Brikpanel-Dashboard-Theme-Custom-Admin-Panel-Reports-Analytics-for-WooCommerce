@@ -27,6 +27,96 @@ const BRIKPANEL_DASH_WIDGET_AUDIENCE_OPTION = 'brikpanel_dashboard_widget_audien
 const BRIKPANEL_DASH_WIDGET_ROLES_OPTION    = 'brikpanel_dashboard_widget_hide_roles';
 
 /**
+ * Tell Import / Export about the two options behind the "Widget access" card.
+ *
+ * Same story as the top bar: the card draws its own selects, so its settings
+ * field is a placeholder and the walk never saw these. Which means a store
+ * that had carefully kept Site Health away from its staff handed that rule
+ * over to nobody when its configuration was cloned.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_dashboard_widget_register_export_keys' );
+function brikpanel_dashboard_widget_register_export_keys( $map ) {
+    $map[ BRIKPANEL_DASH_WIDGET_AUDIENCE_OPTION ] = [
+        'class'    => 'portable',
+        'group'    => 'dashboard',
+        'sanitize' => 'brikpanel_dashboard_widget_sanitize_import_audience',
+        'default'  => [],
+    ];
+    $map[ BRIKPANEL_DASH_WIDGET_ROLES_OPTION ] = [
+        'class'    => 'portable',
+        'group'    => 'dashboard',
+        'sanitize' => 'brikpanel_dashboard_widget_sanitize_import_roles',
+        'default'  => [],
+    ];
+    return $map;
+}
+
+/**
+ * Clean an imported widget audience map (widget id => admins|roles).
+ *
+ * Widget ids are WordPress meta-box ids, not keys — `dashboard_site_health`
+ * survives sanitize_key() but a third-party id with a capital letter or a dash
+ * would not, so this matches what the settings save itself does.
+ *
+ * @param mixed $value
+ * @return array<string,string>
+ */
+function brikpanel_dashboard_widget_sanitize_import_audience( $value ) {
+    if ( ! is_array( $value ) ) {
+        return [];
+    }
+    $out = [];
+    foreach ( $value as $widget_id => $audience ) {
+        $widget_id = sanitize_text_field( (string) $widget_id );
+        $audience  = is_scalar( $audience ) ? sanitize_key( (string) $audience ) : '';
+        if ( '' === $widget_id || ! in_array( $audience, [ 'admins', 'roles' ], true ) ) {
+            continue;  // 'all' is the absence of a rule.
+        }
+        $out[ $widget_id ] = $audience;
+    }
+    return $out;
+}
+
+/**
+ * Clean an imported widget hidden-roles map (widget id => role slugs).
+ *
+ * Roles unknown here are kept for the same reason as the top bar's: a rule
+ * that narrows visibility must not widen itself in transit.
+ *
+ * @param mixed $value
+ * @return array<string,string[]>
+ */
+function brikpanel_dashboard_widget_sanitize_import_roles( $value ) {
+    if ( ! is_array( $value ) ) {
+        return [];
+    }
+    $out = [];
+    foreach ( $value as $widget_id => $roles ) {
+        $widget_id = sanitize_text_field( (string) $widget_id );
+        if ( '' === $widget_id || ! is_array( $roles ) ) {
+            continue;
+        }
+        $clean = [];
+        foreach ( $roles as $role ) {
+            if ( ! is_string( $role ) ) {
+                continue;
+            }
+            $role = sanitize_key( $role );
+            if ( '' !== $role && ! in_array( $role, $clean, true ) ) {
+                $clean[] = $role;
+            }
+        }
+        if ( $clean ) {
+            $out[ $widget_id ] = $clean;
+        }
+    }
+    return $out;
+}
+
+/**
  * Saved per-widget audience map (widget_id => 'all'|'admins'|'roles').
  *
  * @return array<string,string>

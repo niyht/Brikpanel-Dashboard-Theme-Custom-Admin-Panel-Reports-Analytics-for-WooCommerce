@@ -346,8 +346,8 @@ class Brikpanel_Store_Summary {
 		return (int) $wpdb->get_var( $wpdb->prepare(
 			"SELECT COUNT(DISTINCT IFNULL(NULLIF(pm_email.meta_value,''), pm_uid.meta_value))
 			 FROM {$wpdb->posts} p
-			 LEFT JOIN {$wpdb->postmeta} pm_email ON pm_email.post_id=p.ID AND pm_email.meta_key='_billing_email'
-			 LEFT JOIN {$wpdb->postmeta} pm_uid   ON pm_uid.post_id=p.ID   AND pm_uid.meta_key='_customer_user'
+			 LEFT JOIN {$wpdb->postmeta} pm_email ON pm_email.post_id=p.ID AND pm_email.meta_key='_billing_email' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_email' ) . "
+			 LEFT JOIN {$wpdb->postmeta} pm_uid   ON pm_uid.post_id=p.ID   AND pm_uid.meta_key='_customer_user' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_uid' ) . "
 			 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 			   AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s",
 			$start_gmt, $end_gmt
@@ -396,7 +396,7 @@ class Brikpanel_Store_Summary {
 			if ( $end_gmt )   { $sql .= ' AND date_created_gmt <= %s'; $args[] = $end_gmt; }
 		} else {
 			$sql = "SELECT DISTINCT pm.meta_value AS currency FROM {$wpdb->posts} p
-			        LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_currency'
+			        LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_currency' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 			        WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 			          AND pm.meta_value IS NOT NULL AND pm.meta_value <> ''";
 			$args = [];
@@ -431,8 +431,8 @@ class Brikpanel_Store_Summary {
 			               COALESCE(SUM(CAST(pm_t.meta_value AS DECIMAL(20,4))),0) AS revenue,
 			               COUNT(p.ID) AS orders
 			        FROM {$wpdb->posts} p
-			        LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
-			        LEFT JOIN {$wpdb->postmeta} pm_c ON pm_c.post_id=p.ID AND pm_c.meta_key='_order_currency'
+			        LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_t' ) . "
+			        LEFT JOIN {$wpdb->postmeta} pm_c ON pm_c.post_id=p.ID AND pm_c.meta_key='_order_currency' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_c' ) . "
 			        WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")";
 			$args = [];
 			if ( $start_gmt ) { $sql .= ' AND p.post_date_gmt >= %s'; $args[] = $start_gmt; }
@@ -890,7 +890,7 @@ class Brikpanel_Store_Summary {
 				        SUM(pm.meta_value) AS revenue,
 				        COUNT(p.ID) AS orders
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order'
 				   AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
@@ -973,7 +973,7 @@ class Brikpanel_Store_Summary {
 				        SUM(pm.meta_value) AS revenue,
 				        COUNT(p.ID) AS orders
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order'
 				   AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
@@ -1080,7 +1080,7 @@ class Brikpanel_Store_Summary {
 			$all_time = $wpdb->get_results(
 				"SELECT p.post_status AS status, COUNT(p.ID) AS cnt, COALESCE(SUM(pm.meta_value),0) AS rev
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order'
 				 GROUP BY p.post_status"
 			); // phpcs:ignore
@@ -1212,7 +1212,7 @@ class Brikpanel_Store_Summary {
 		$rows = $wpdb->get_results(
 			"SELECT p.ID, p.post_title, sku.meta_value AS sku
 			 FROM {$wpdb->posts} p
-			 LEFT JOIN {$wpdb->postmeta} sku ON sku.post_id = p.ID AND sku.meta_key = '_sku'
+			 LEFT JOIN {$wpdb->postmeta} sku ON sku.post_id = p.ID AND sku.meta_key = '_sku' AND " . brikpanel_sql_first_meta_guard( 'post', 'sku' ) . "
 			 WHERE p.ID IN ({$in})"
 		); // phpcs:ignore
 		// phpcs:enable
@@ -1400,8 +1400,8 @@ class Brikpanel_Store_Summary {
 					bm_fn.meta_value AS bf, bm_ln.meta_value AS bl
 			 FROM {$tbl} m
 			 LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
-			 LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key='billing_first_name'
-			 LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key='billing_last_name'
+			 LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key='billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
+			 LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key='billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
 			 ORDER BY m.total_spent DESC
 			 LIMIT 10"
 		); // phpcs:ignore
@@ -1696,10 +1696,10 @@ class Brikpanel_Store_Summary {
 					p.post_status AS status,
 					IFNULL(expiry.meta_value, '') AS date_expires
 			 FROM {$wpdb->posts} p
-			 LEFT JOIN {$wpdb->postmeta} mu_use ON mu_use.post_id = p.ID AND mu_use.meta_key='_usage_count'
-			 LEFT JOIN {$wpdb->postmeta} dtype  ON dtype.post_id  = p.ID AND dtype.meta_key='discount_type'
-			 LEFT JOIN {$wpdb->postmeta} amt    ON amt.post_id    = p.ID AND amt.meta_key='coupon_amount'
-			 LEFT JOIN {$wpdb->postmeta} expiry ON expiry.post_id = p.ID AND expiry.meta_key='date_expires'
+			 LEFT JOIN {$wpdb->postmeta} mu_use ON mu_use.post_id = p.ID AND mu_use.meta_key='_usage_count' AND " . brikpanel_sql_first_meta_guard( 'post', 'mu_use' ) . "
+			 LEFT JOIN {$wpdb->postmeta} dtype  ON dtype.post_id  = p.ID AND dtype.meta_key='discount_type' AND " . brikpanel_sql_first_meta_guard( 'post', 'dtype' ) . "
+			 LEFT JOIN {$wpdb->postmeta} amt    ON amt.post_id    = p.ID AND amt.meta_key='coupon_amount' AND " . brikpanel_sql_first_meta_guard( 'post', 'amt' ) . "
+			 LEFT JOIN {$wpdb->postmeta} expiry ON expiry.post_id = p.ID AND expiry.meta_key='date_expires' AND " . brikpanel_sql_first_meta_guard( 'post', 'expiry' ) . "
 			 WHERE p.post_type='shop_coupon' AND p.post_status IN ('publish','expired')
 			 ORDER BY usage_count DESC
 			 LIMIT 10"
@@ -1864,11 +1864,9 @@ class Brikpanel_Store_Summary {
 				LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta pid
 						ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
 				LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta vid
-						ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'
-				LEFT JOIN {$wpdb->postmeta} vadd
-						ON vadd.post_id = CAST(vid.meta_value AS UNSIGNED)
-					   AND vadd.meta_key = '_cogs_value_is_additive'
-					   AND CAST(vid.meta_value AS UNSIGNED) > 0" . $vcost['joins'] . $pcost['joins'],
+						ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'"
+				. brikpanel_sql_single_meta_join( 'post', 'vadd', 'CAST(vid.meta_value AS UNSIGNED)', '_cogs_value_is_additive', 'CAST(vid.meta_value AS UNSIGNED) > 0' )
+				. $vcost['joins'] . $pcost['joins'],
 			'unit' => "CASE WHEN vadd.meta_value = 'yes'
 					THEN CAST(COALESCE({$vval}, '0') AS DECIMAL(20,4)) + CAST(COALESCE({$pval}, '0') AS DECIMAL(20,4))
 					ELSE CAST(COALESCE({$vval}, {$pval}, '0') AS DECIMAL(20,4)) END",
@@ -2634,7 +2632,7 @@ class Brikpanel_Store_Summary {
 		$stock_rows = $wpdb->get_results(
 			"SELECT pm.meta_value AS stock_status, COUNT(*) AS c
 			 FROM {$wpdb->posts} p
-			 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_stock_status'
+			 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_stock_status' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 			 WHERE p.post_type IN ('product','product_variation') AND p.post_status='publish'
 			 GROUP BY pm.meta_value"
 		); // phpcs:ignore
@@ -2663,8 +2661,8 @@ class Brikpanel_Store_Summary {
 				COALESCE(SUM(CAST(stock.meta_value AS DECIMAL(20,4)) * CAST(price.meta_value AS DECIMAL(20,4))), 0)             AS retail_value,
 				COALESCE(SUM(CAST(stock.meta_value AS DECIMAL(20,4)) * CAST(IFNULL({$cost['value']},'0') AS DECIMAL(20,4))), 0) AS cogs_value
 			 FROM {$wpdb->posts} p
-			 INNER JOIN {$wpdb->postmeta} stock ON stock.post_id=p.ID AND stock.meta_key='_stock' AND stock.meta_value <> ''
-			 LEFT JOIN  {$wpdb->postmeta} price ON price.post_id=p.ID AND price.meta_key='_price'
+			 " . brikpanel_sql_single_meta_join( 'post', 'stock', 'p.ID', '_stock', "stock.meta_value <> ''", 'INNER' ) . "
+			 " . brikpanel_sql_single_meta_join( 'post', 'price', 'p.ID', '_price' ) . "
 			 {$cost['joins']}
 			 WHERE p.post_type IN ('product','product_variation') AND p.post_status='publish'"
 		); // phpcs:ignore
@@ -2681,7 +2679,7 @@ class Brikpanel_Store_Summary {
 		$avg_price = (float) $wpdb->get_var(
 			"SELECT AVG(CAST(price.meta_value AS DECIMAL(20,4)))
 			 FROM {$wpdb->posts} p
-			 INNER JOIN {$wpdb->postmeta} price ON price.post_id=p.ID AND price.meta_key='_price' AND price.meta_value <> ''
+			 INNER JOIN {$wpdb->postmeta} price ON price.post_id=p.ID AND price.meta_key='_price' AND " . brikpanel_sql_first_meta_guard( 'post', 'price' ) . " AND price.meta_value <> ''
 			 WHERE p.post_type='product' AND p.post_status='publish'"
 		); // phpcs:ignore
 
@@ -2758,7 +2756,7 @@ class Brikpanel_Store_Summary {
 				        0 AS tax,
 				        COUNT(DISTINCT p.ID) AS orders
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_shipping'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_shipping' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s",
 				$start_dt
@@ -2817,8 +2815,8 @@ class Brikpanel_Store_Summary {
 				"SELECT pm_country.meta_value AS country, COUNT(*) AS orders,
 				        COALESCE(SUM(CAST(pm_total.meta_value AS DECIMAL(20,4))),0) AS revenue
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm_country ON pm_country.post_id=p.ID AND pm_country.meta_key='_shipping_country'
-				 LEFT JOIN {$wpdb->postmeta} pm_total   ON pm_total.post_id=p.ID   AND pm_total.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm_country ON pm_country.post_id=p.ID AND pm_country.meta_key='_shipping_country' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_country' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_total   ON pm_total.post_id=p.ID   AND pm_total.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_total' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				   AND pm_country.meta_value IS NOT NULL AND pm_country.meta_value <> ''
@@ -2952,7 +2950,7 @@ class Brikpanel_Store_Summary {
 			$fx  = brikpanel_base_total_sql( false, 'o.ID', 'pm.meta_value' );
 			$sql = "SELECT DATE_FORMAT(o.post_date_gmt, '%%Y-%%m') AS ym, COALESCE(SUM({$fx['expr']}),0) AS v
 					FROM {$wpdb->posts} o
-					LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=o.ID AND pm.meta_key='_order_total'{$fx['join']}
+					LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=o.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "{$fx['join']}
 					WHERE o.post_type='shop_order' AND o.post_status IN ({$kpi_sp})
 					  AND o.post_date_gmt >= %s AND o.post_date_gmt <= %s";
 			$excl = brikpanel_admin_order_exclusion_sql( false, 'o.ID' );
@@ -2978,7 +2976,7 @@ class Brikpanel_Store_Summary {
 			$sql = "SELECT DATE_FORMAT(o.post_date_gmt, '%%Y-%%m') AS ym, COALESCE(SUM(CAST(IFNULL(ra.meta_value,'0') AS DECIMAL(20,4))),0) AS v
 					FROM {$wpdb->posts} r
 					INNER JOIN {$wpdb->posts} o ON o.ID = r.post_parent
-					LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key='_refund_amount'
+					LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key='_refund_amount' AND " . brikpanel_sql_first_meta_guard( 'post', 'ra' ) . "
 					WHERE r.post_type='shop_order_refund' AND {$pred['where']}
 					  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
 					GROUP BY ym";
@@ -3212,7 +3210,10 @@ class Brikpanel_Store_Summary {
 		// Classify each order: "first" if its date matches the customer's
 		// first_order_date in the metrics table, else "returning". The join
 		// key mirrors how `customer_metrics` is keyed (user_id when > 0,
-		// otherwise email).
+		// otherwise email). Guest orders match on the full 'e:<email>' key,
+		// never on customer_email alone: a registered customer's 'u:' row
+		// carries the same email, so a guest order placed with it matched two
+		// rows and was counted twice.
 		if ( $this->is_hpos() ) {
 			// Split the customer<->order match into two single-column equi-joins
 			// wrapped in a UNION ALL, instead of a single OR across two columns.
@@ -3244,7 +3245,7 @@ class Brikpanel_Store_Summary {
 				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
 				          SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
 				   FROM {$wpdb->prefix}wc_orders o
-				   INNER JOIN {$tbl_metrics} m ON m.customer_email = o.billing_email
+				   INNER JOIN {$tbl_metrics} m ON m.customer_key = CONCAT('e:', LOWER(o.billing_email))
 				   WHERE o.type='shop_order' AND o.status IN ({$paid})
 				     AND o.customer_id = 0 AND o.billing_email <> ''
 				     AND o.date_created_gmt >= %s
@@ -3272,9 +3273,9 @@ class Brikpanel_Store_Summary {
 				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
 				          SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
 				   FROM {$wpdb->posts} p
-				   INNER JOIN {$wpdb->postmeta} pm_c ON pm_c.post_id=p.ID AND pm_c.meta_key='_customer_user' AND CAST(pm_c.meta_value AS UNSIGNED) > 0
-				   INNER JOIN {$tbl_metrics} m ON m.user_id = CAST(pm_c.meta_value AS UNSIGNED)
-				   LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
+				   " . brikpanel_sql_single_meta_join( 'post', 'pm_c', 'p.ID', '_customer_user', 'CAST(pm_c.meta_value AS UNSIGNED) > 0', 'INNER' ) . "
+				   INNER JOIN {$tbl_metrics} m ON m.customer_key = CONCAT('u:', CAST(pm_c.meta_value AS UNSIGNED))
+				   " . brikpanel_sql_single_meta_join( 'post', 'pm_t', 'p.ID', '_order_total' ) . "
 				   WHERE p.post_type='shop_order' AND p.post_status IN ({$paid})
 				     AND p.post_date_gmt >= %s
 				   GROUP BY ym
@@ -3285,10 +3286,10 @@ class Brikpanel_Store_Summary {
 				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
 				          SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN 1 ELSE 0 END) AS ret_orders
 				   FROM {$wpdb->posts} p
-				   INNER JOIN {$wpdb->postmeta} pm_e ON pm_e.post_id=p.ID AND pm_e.meta_key='_billing_email' AND pm_e.meta_value <> ''
-				   INNER JOIN {$tbl_metrics} m ON m.customer_email = pm_e.meta_value
-				   LEFT JOIN {$wpdb->postmeta} pm_c ON pm_c.post_id=p.ID AND pm_c.meta_key='_customer_user'
-				   LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
+				   " . brikpanel_sql_single_meta_join( 'post', 'pm_e', 'p.ID', '_billing_email', "pm_e.meta_value <> ''", 'INNER' ) . "
+				   INNER JOIN {$tbl_metrics} m ON m.customer_key = CONCAT('e:', LOWER(pm_e.meta_value))
+				   " . brikpanel_sql_single_meta_join( 'post', 'pm_c', 'p.ID', '_customer_user' ) . "
+				   " . brikpanel_sql_single_meta_join( 'post', 'pm_t', 'p.ID', '_order_total' ) . "
 				   WHERE p.post_type='shop_order' AND p.post_status IN ({$paid})
 				     AND CAST(IFNULL(pm_c.meta_value,'0') AS UNSIGNED) = 0
 				     AND p.post_date_gmt >= %s
@@ -3366,7 +3367,7 @@ class Brikpanel_Store_Summary {
 			$dow_rows = $wpdb->get_results( $wpdb->prepare(
 				"SELECT DAYOFWEEK(post_date_gmt) AS dow, COUNT(*) AS orders, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS revenue
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY dow",
@@ -3375,7 +3376,7 @@ class Brikpanel_Store_Summary {
 			$hr_rows = $wpdb->get_results( $wpdb->prepare(
 				"SELECT HOUR(post_date_gmt) AS hr, COUNT(*) AS orders, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS revenue
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY hr",
@@ -3476,9 +3477,9 @@ class Brikpanel_Store_Summary {
 				        COUNT(*) AS cnt,
 				        COALESCE(SUM(CAST(pm_total.meta_value AS DECIMAL(20,4))),0) AS at_risk
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm_method ON pm_method.post_id=p.ID AND pm_method.meta_key='_payment_method'
-				 LEFT JOIN {$wpdb->postmeta} pm_title  ON pm_title.post_id=p.ID  AND pm_title.meta_key='_payment_method_title'
-				 LEFT JOIN {$wpdb->postmeta} pm_total  ON pm_total.post_id=p.ID  AND pm_total.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm_method ON pm_method.post_id=p.ID AND pm_method.meta_key='_payment_method' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_method' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_title  ON pm_title.post_id=p.ID  AND pm_title.meta_key='_payment_method_title' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_title' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_total  ON pm_total.post_id=p.ID  AND pm_total.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_total' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status='wc-failed'
 				   AND p.post_date_gmt >= %s
 				 GROUP BY method
@@ -3563,7 +3564,7 @@ class Brikpanel_Store_Summary {
 			$summary = $wpdb->get_row( $wpdb->prepare(
 				"SELECT COUNT(*) AS cnt, COALESCE(SUM(ABS(CAST(pm.meta_value AS DECIMAL(20,4)))),0) AS amt
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order_refund' AND p.post_date_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
@@ -3571,7 +3572,7 @@ class Brikpanel_Store_Summary {
 				"SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
 				        COUNT(*) AS cnt, COALESCE(SUM(ABS(CAST(pm.meta_value AS DECIMAL(20,4)))),0) AS amt
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order_refund' AND p.post_date_gmt >= %s
 				 GROUP BY ym ORDER BY ym ASC",
 				$start_dt
@@ -3583,7 +3584,7 @@ class Brikpanel_Store_Summary {
 			) ); // phpcs:ignore
 			$total_revenue = (float) $wpdb->get_var( $wpdb->prepare(
 				"SELECT COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ") AND p.post_date_gmt >= %s",
 				$start_dt
 			) ); // phpcs:ignore
@@ -3684,9 +3685,9 @@ class Brikpanel_Store_Summary {
 				"SELECT IFNULL(NULLIF(pm_e.meta_value,''), pm_u.meta_value) AS ck,
 				        SUM(CAST(pm_t.meta_value AS DECIMAL(20,4))) AS rev
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm_e ON pm_e.post_id=p.ID AND pm_e.meta_key='_billing_email'
-				 LEFT JOIN {$wpdb->postmeta} pm_u ON pm_u.post_id=p.ID AND pm_u.meta_key='_customer_user'
-				 LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm_e ON pm_e.post_id=p.ID AND pm_e.meta_key='_billing_email' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_e' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_u ON pm_u.post_id=p.ID AND pm_u.meta_key='_customer_user' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_u' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_t' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY ck
@@ -3819,12 +3820,14 @@ class Brikpanel_Store_Summary {
 				 ORDER BY uses DESC LIMIT 10",
 				$start_dt
 			) ); // phpcs:ignore
+			// EXISTS, not a join on the coupon lines: an order that used two
+			// coupons would otherwise add its total twice to the revenue.
 			$with_coupon = $wpdb->get_row( $wpdb->prepare(
-				"SELECT COUNT(DISTINCT o.id) AS cnt, COALESCE(SUM(o.total_amount),0) AS rev
+				"SELECT COUNT(*) AS cnt, COALESCE(SUM(o.total_amount),0) AS rev
 				 FROM {$wpdb->prefix}wc_orders o
-				 INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON oi.order_id=o.id AND oi.order_item_type='coupon'
 				 WHERE o.type='shop_order' AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND o.date_created_gmt >= %s",
+				   AND o.date_created_gmt >= %s
+				   AND EXISTS (SELECT 1 FROM {$wpdb->prefix}woocommerce_order_items oi WHERE oi.order_id=o.id AND oi.order_item_type='coupon')",
 				$start_dt
 			) ); // phpcs:ignore
 			$all = $wpdb->get_row( $wpdb->prepare(
@@ -3850,18 +3853,18 @@ class Brikpanel_Store_Summary {
 				$start_dt
 			) ); // phpcs:ignore
 			$with_coupon = $wpdb->get_row( $wpdb->prepare(
-				"SELECT COUNT(DISTINCT p.ID) AS cnt, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS rev
+				"SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS rev
 				 FROM {$wpdb->posts} p
-				 INNER JOIN {$wpdb->prefix}woocommerce_order_items oi ON oi.order_id=p.ID AND oi.order_item_type='coupon'
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 " . brikpanel_sql_single_meta_join( 'post', 'pm', 'p.ID', '_order_total' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND p.post_date_gmt >= %s",
+				   AND p.post_date_gmt >= %s
+				   AND EXISTS (SELECT 1 FROM {$wpdb->prefix}woocommerce_order_items oi WHERE oi.order_id=p.ID AND oi.order_item_type='coupon')",
 				$start_dt
 			) ); // phpcs:ignore
 			$all = $wpdb->get_row( $wpdb->prepare(
 				"SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS rev
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total'
+				 " . brikpanel_sql_single_meta_join( 'post', 'pm', 'p.ID', '_order_total' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s",
 				$start_dt
@@ -3960,13 +3963,13 @@ class Brikpanel_Store_Summary {
 					COUNT(*) AS orders,
 					COALESCE(SUM(CAST(pm_total.meta_value AS DECIMAL(20,4))),0) AS revenue
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm_sci ON pm_sci.post_id=p.ID AND pm_sci.meta_key='_shipping_city'
-				 LEFT JOIN {$wpdb->postmeta} pm_sc  ON pm_sc.post_id=p.ID  AND pm_sc.meta_key='_shipping_country'
-				 LEFT JOIN {$wpdb->postmeta} pm_ss  ON pm_ss.post_id=p.ID  AND pm_ss.meta_key='_shipping_state'
-				 LEFT JOIN {$wpdb->postmeta} pm_bci ON pm_bci.post_id=p.ID AND pm_bci.meta_key='_billing_city'
-				 LEFT JOIN {$wpdb->postmeta} pm_bc  ON pm_bc.post_id=p.ID  AND pm_bc.meta_key='_billing_country'
-				 LEFT JOIN {$wpdb->postmeta} pm_bs  ON pm_bs.post_id=p.ID  AND pm_bs.meta_key='_billing_state'
-				 LEFT JOIN {$wpdb->postmeta} pm_total ON pm_total.post_id=p.ID AND pm_total.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm_sci ON pm_sci.post_id=p.ID AND pm_sci.meta_key='_shipping_city' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_sci' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_sc  ON pm_sc.post_id=p.ID  AND pm_sc.meta_key='_shipping_country' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_sc' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_ss  ON pm_ss.post_id=p.ID  AND pm_ss.meta_key='_shipping_state' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_ss' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_bci ON pm_bci.post_id=p.ID AND pm_bci.meta_key='_billing_city' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_bci' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_bc  ON pm_bc.post_id=p.ID  AND pm_bc.meta_key='_billing_country' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_bc' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_bs  ON pm_bs.post_id=p.ID  AND pm_bs.meta_key='_billing_state' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_bs' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_total ON pm_total.post_id=p.ID AND pm_total.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_total' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				   AND COALESCE(NULLIF(pm_sci.meta_value,''), pm_bci.meta_value) IS NOT NULL
@@ -4025,8 +4028,8 @@ class Brikpanel_Store_Summary {
 				"SELECT pm.meta_value AS source, COUNT(*) AS orders,
 				        COALESCE(SUM(CAST(pm_t.meta_value AS DECIMAL(20,4))),0) AS revenue
 				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm   ON pm.post_id=p.ID   AND pm.meta_key='_created_via'
-				 LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total'
+				 LEFT JOIN {$wpdb->postmeta} pm   ON pm.post_id=p.ID   AND pm.meta_key='_created_via' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
+				 LEFT JOIN {$wpdb->postmeta} pm_t ON pm_t.post_id=p.ID AND pm_t.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_t' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
 				 GROUP BY pm.meta_value
@@ -4072,10 +4075,10 @@ class Brikpanel_Store_Summary {
 			} else {
 				$attr = $wpdb->get_results( $wpdb->prepare(
 					"SELECT
-						(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_wc_order_attribution_source_type' LIMIT 1) AS source_type,
-						(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_wc_order_attribution_utm_source'  LIMIT 1) AS utm_source,
-						(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_wc_order_attribution_utm_medium'  LIMIT 1) AS utm_medium,
-						CAST(IFNULL((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_order_total' LIMIT 1),'0') AS DECIMAL(20,4)) AS revenue
+						(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_wc_order_attribution_source_type'  ORDER BY meta_id LIMIT 1) AS source_type,
+						(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_wc_order_attribution_utm_source'   ORDER BY meta_id LIMIT 1) AS utm_source,
+						(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_wc_order_attribution_utm_medium'   ORDER BY meta_id LIMIT 1) AS utm_medium,
+						CAST(IFNULL((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=p.ID AND meta_key='_order_total'  ORDER BY meta_id LIMIT 1),'0') AS DECIMAL(20,4)) AS revenue
 					 FROM {$wpdb->posts} p
 					 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 					   AND p.post_date_gmt >= %s",
@@ -4150,9 +4153,9 @@ class Brikpanel_Store_Summary {
 					IFNULL(pm_period.meta_value,'') AS billing_period,
 					CAST(IFNULL(pm_interval.meta_value,'1') AS UNSIGNED) AS billing_interval
 			 FROM {$wpdb->posts} p
-			 LEFT JOIN {$wpdb->postmeta} pm_total    ON pm_total.post_id=p.ID    AND pm_total.meta_key='_order_total'
-			 LEFT JOIN {$wpdb->postmeta} pm_period   ON pm_period.post_id=p.ID   AND pm_period.meta_key='_billing_period'
-			 LEFT JOIN {$wpdb->postmeta} pm_interval ON pm_interval.post_id=p.ID AND pm_interval.meta_key='_billing_interval'
+			 LEFT JOIN {$wpdb->postmeta} pm_total    ON pm_total.post_id=p.ID    AND pm_total.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_total' ) . "
+			 LEFT JOIN {$wpdb->postmeta} pm_period   ON pm_period.post_id=p.ID   AND pm_period.meta_key='_billing_period' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_period' ) . "
+			 LEFT JOIN {$wpdb->postmeta} pm_interval ON pm_interval.post_id=p.ID AND pm_interval.meta_key='_billing_interval' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_interval' ) . "
 			 WHERE p.post_type='shop_subscription' AND p.post_status='wc-active'"
 		); // phpcs:ignore
 
@@ -4532,6 +4535,7 @@ class Brikpanel_Store_Summary {
 			'brikpanel_modern_products_list'  => __( 'Modern Products List', 'brikpanel' ),
 			'brikpanel_modern_order_edit'     => __( 'Modern Order Edit', 'brikpanel' ),
 			'brikpanel_orders_enhancements'   => __( 'Orders List Enhancements', 'brikpanel' ),
+			'brikpanel_orders_compact_list'   => __( 'Compact Order List', 'brikpanel' ),
 			'brikpanel_hide_foreign_notices'  => __( 'Hide Foreign Notices', 'brikpanel' ),
 			'brikpanel_order_notify_popup'    => __( 'Order Notification Popup', 'brikpanel' ),
 		];

@@ -201,7 +201,7 @@ class Brikpanel_Ads_Dashboard {
 		if ( $is_hpos ) {
 			$sql = "SELECT COALESCE(SUM(CAST(om.meta_value AS DECIMAL(20,4))), 0)
 				FROM {$wpdb->prefix}wc_orders o
-				INNER JOIN {$wpdb->prefix}wc_orders_meta om ON om.order_id = o.id AND om.meta_key = '_wc_cog_order_total_value'
+				" . brikpanel_sql_single_meta_join( 'order', 'om', 'o.id', '_wc_cog_order_total_value', '', 'INNER' ) . "
 				WHERE o.type = 'shop_order'
 				AND o.status IN ($placeholders)
 				AND o.date_created_gmt >= %s
@@ -209,7 +209,7 @@ class Brikpanel_Ads_Dashboard {
 		} else {
 			$sql = "SELECT COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))), 0)
 				FROM {$wpdb->posts} p
-				INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = '_wc_cog_order_total_value'
+				" . brikpanel_sql_single_meta_join( 'post', 'pm', 'p.ID', '_wc_cog_order_total_value', '', 'INNER' ) . "
 				WHERE p.post_type = 'shop_order'
 				AND p.post_status IN ($placeholders)
 				AND p.post_date_gmt >= %s

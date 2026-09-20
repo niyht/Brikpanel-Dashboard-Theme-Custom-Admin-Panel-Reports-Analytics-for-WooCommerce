@@ -198,7 +198,19 @@ class Brikpanel_Ads_OAuth {
 		// past spend for past dates is still factual and deleting it would
 		// silently rewrite months of closed-period profit figures.
 		$deleted = Brikpanel_Ads_Store::delete_account( $platform );
-		Brikpanel_Ads_Logger::log( 'oauth', 'Disconnected ' . $platform . '; removed ' . (int) $deleted . ' stored spend row(s).' );
+
+		// Stop the history import too. Without this, every 90-day chunk still
+		// sitting in the queue (up to 13 of them, spread over six minutes) woke
+		// up, found no connection, and wrote an identical "skipped: not
+		// connected." line into the 100-entry log ring — flushing out the real
+		// errors the merchant needed to see and leaving a progress bar that
+		// could never finish.
+		$cancelled = class_exists( 'Brikpanel_Ads_Sync' ) ? Brikpanel_Ads_Sync::cancel_backfill( $platform ) : 0;
+
+		Brikpanel_Ads_Logger::log(
+			'oauth',
+			'Disconnected ' . $platform . '; removed ' . (int) $deleted . ' stored spend row(s), cancelled ' . (int) $cancelled . ' queued backfill chunk(s).'
+		);
 
 		wp_send_json_success( [ 'message' => __( 'Disconnected.', 'brikpanel' ) ] );
 	}
@@ -313,6 +325,15 @@ class Brikpanel_Ads_OAuth {
 
 		if ( ! $ok ) {
 			$this->finish_with_notice( 'error', __( 'Could not save tokens. Please try again.', 'brikpanel' ) );
+		}
+
+		// The card must stop announcing a stopped history import the moment the
+		// merchant fixes the connection. Reconnecting wipes primary_account, so
+		// the backfill flag below finds no account and schedules nothing, and
+		// the halted record would otherwise sit there saying "connection lost"
+		// over a healthy connection for good.
+		if ( class_exists( 'Brikpanel_Ads_Sync' ) ) {
+			Brikpanel_Ads_Sync::clear_halted_backfill( $platform );
 		}
 
 		// Successful reconnect clears any operator kill-switch latch and the

@@ -209,9 +209,9 @@ class Brikpanel_Customer_Analytics {
 				bm_ph.meta_value AS billing_phone
 			FROM {$tbl} m
 			LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
-			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
-			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
-			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
+			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
+			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
+			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ph' ) . "
 			ORDER BY m.total_spent DESC
 			LIMIT %d OFFSET %d",
 			$per_page,
@@ -381,9 +381,9 @@ class Brikpanel_Customer_Analytics {
 					bm_fn.meta_value AS bf, bm_ln.meta_value AS bl, bm_ph.meta_value AS billing_phone
 				FROM {$tbl} m
 				LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
-				LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
-				LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
-				LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
+				LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
+				LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
+				LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ph' ) . "
 				ORDER BY m.total_spent DESC
 				LIMIT %d OFFSET %d",
 				$batch_size,
@@ -503,9 +503,9 @@ class Brikpanel_Customer_Analytics {
 				bm_ph.meta_value AS billing_phone
 			FROM {$tbl} m
 			LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
-			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
-			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
-			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
+			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
+			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
+			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ph' ) . "
 			WHERE m.rfm_segment = %s
 			ORDER BY m.total_spent DESC
 			LIMIT %d OFFSET %d",
@@ -615,9 +615,9 @@ class Brikpanel_Customer_Analytics {
 					bm_fn.meta_value AS bf, bm_ln.meta_value AS bl, bm_ph.meta_value AS billing_phone
 				FROM {$tbl} m
 				LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID AND m.user_id > 0
-				LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name'
-				LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name'
-				LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone'
+				LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
+				LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
+				LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ph' ) . "
 				{$where}
 				ORDER BY m.total_spent DESC
 				LIMIT %d OFFSET %d",

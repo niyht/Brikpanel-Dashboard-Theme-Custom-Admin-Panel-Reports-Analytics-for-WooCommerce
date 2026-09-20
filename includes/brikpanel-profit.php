@@ -88,6 +88,9 @@ function brikpanel_profit_cogs( $start_gmt, $end_gmt, $exclude_marketplace = fal
 	$pcost = brikpanel_cogs_sql_join_set( 'pc', 'CAST(pid.meta_value AS UNSIGNED)' );
 	$vjoin = $vcost['joins'];
 	$pjoin = $pcost['joins'];
+	// One row per variation, like the cost joins: a flag stored twice must not
+	// turn one order line into two.
+	$vadd  = brikpanel_sql_single_meta_join( 'post', 'vadd', 'CAST(vid.meta_value AS UNSIGNED)', '_cogs_value_is_additive', 'CAST(vid.meta_value AS UNSIGNED) > 0' );
 
 	$joins = "
 		INNER JOIN {$wpdb->prefix}woocommerce_order_items oi
@@ -97,11 +100,7 @@ function brikpanel_profit_cogs( $start_gmt, $end_gmt, $exclude_marketplace = fal
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta pid
 				ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta vid
-				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'
-		LEFT JOIN  {$wpdb->postmeta} vadd
-				ON vadd.post_id = CAST(vid.meta_value AS UNSIGNED)
-			   AND vadd.meta_key = '_cogs_value_is_additive'
-			   AND CAST(vid.meta_value AS UNSIGNED) > 0{$vjoin}{$pjoin}";
+				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'{$vadd}{$vjoin}{$pjoin}";
 
 	// Unit cost resolution — WooCommerce's native `_cogs_total_value` is the
 	// source of truth, BrikPanel's legacy `_brikpanel_cogs` is the fallback
@@ -183,6 +182,9 @@ function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt, $exclude_marketpl
 	$pcost = brikpanel_cogs_sql_join_set( 'pc', 'CAST(pid.meta_value AS UNSIGNED)' );
 	$vjoin = $vcost['joins'];
 	$pjoin = $pcost['joins'];
+	// One row per variation, like the cost joins: a flag stored twice must not
+	// turn one order line into two.
+	$vadd  = brikpanel_sql_single_meta_join( 'post', 'vadd', 'CAST(vid.meta_value AS UNSIGNED)', '_cogs_value_is_additive', 'CAST(vid.meta_value AS UNSIGNED) > 0' );
 
 	$joins = "
 		INNER JOIN {$wpdb->prefix}woocommerce_order_items oi
@@ -192,11 +194,7 @@ function brikpanel_profit_cogs_coverage( $start_gmt, $end_gmt, $exclude_marketpl
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta pid
 				ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta vid
-				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'
-		LEFT JOIN  {$wpdb->postmeta} vadd
-				ON vadd.post_id = CAST(vid.meta_value AS UNSIGNED)
-			   AND vadd.meta_key = '_cogs_value_is_additive'
-			   AND CAST(vid.meta_value AS UNSIGNED) > 0{$vjoin}{$pjoin}";
+				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'{$vadd}{$vjoin}{$pjoin}";
 
 	// A line is "covered" when EITHER the variation or its parent has a cost
 	// row recorded — even an explicit 0 (free sample, complimentary item,
@@ -310,6 +308,9 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 	$pcost = brikpanel_cogs_sql_join_set( 'pc', 'CAST(pid.meta_value AS UNSIGNED)' );
 	$vjoin = $vcost['joins'];
 	$pjoin = $pcost['joins'];
+	// One row per variation, like the cost joins: a flag stored twice must not
+	// turn one order line into two.
+	$vadd  = brikpanel_sql_single_meta_join( 'post', 'vadd', 'CAST(vid.meta_value AS UNSIGNED)', '_cogs_value_is_additive', 'CAST(vid.meta_value AS UNSIGNED) > 0' );
 
 	$joins = "
 		INNER JOIN {$wpdb->prefix}woocommerce_order_items oi
@@ -321,11 +322,7 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta pid
 				ON pid.order_item_id = oi.order_item_id AND pid.meta_key = '_product_id'
 		LEFT JOIN  {$wpdb->prefix}woocommerce_order_itemmeta vid
-				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'
-		LEFT JOIN  {$wpdb->postmeta} vadd
-				ON vadd.post_id = CAST(vid.meta_value AS UNSIGNED)
-			   AND vadd.meta_key = '_cogs_value_is_additive'
-			   AND CAST(vid.meta_value AS UNSIGNED) > 0{$vjoin}{$pjoin}
+				ON vid.order_item_id = oi.order_item_id AND vid.meta_key = '_variation_id'{$vadd}{$vjoin}{$pjoin}
 		LEFT JOIN  {$wpdb->posts} pp
 				ON pp.ID = CAST(pid.meta_value AS UNSIGNED)";
 
@@ -464,7 +461,7 @@ function brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace = 
 		$sql  = "SELECT COALESCE(SUM(CAST(IFNULL(ra.meta_value, '0') AS DECIMAL(20,4))), 0)
 			FROM {$wpdb->posts} r
 			INNER JOIN {$wpdb->posts} o ON o.ID = r.post_parent
-			LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key = '_refund_amount'
+			LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key = '_refund_amount' AND " . brikpanel_sql_first_meta_guard( 'post', 'ra' ) . "
 			WHERE r.post_type = 'shop_order_refund'
 			  AND o.post_type = 'shop_order' AND o.post_status IN ($sp)
 			  AND o.post_date_gmt >= %s AND o.post_date_gmt <= %s";
@@ -529,7 +526,7 @@ function brikpanel_profit_coupons( $start_gmt, $end_gmt, $exclude_marketplace = 
 	} else {
 		$sql  = "SELECT COALESCE(SUM(CAST(IFNULL(d.meta_value, '0') AS DECIMAL(20,4))), 0)
 			FROM {$wpdb->posts} p
-			LEFT JOIN {$wpdb->postmeta} d ON d.post_id = p.ID AND d.meta_key = '_cart_discount'
+			LEFT JOIN {$wpdb->postmeta} d ON d.post_id = p.ID AND d.meta_key = '_cart_discount' AND " . brikpanel_sql_first_meta_guard( 'post', 'd' ) . "
 			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
 			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
 		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
@@ -586,8 +583,8 @@ function brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace = fals
 				CAST(IFNULL(t2.meta_value,'0') AS DECIMAL(20,4))
 			), 0)
 			FROM {$wpdb->posts} p
-			LEFT JOIN {$wpdb->postmeta} t1 ON t1.post_id = p.ID AND t1.meta_key = '_order_tax'
-			LEFT JOIN {$wpdb->postmeta} t2 ON t2.post_id = p.ID AND t2.meta_key = '_order_shipping_tax'
+			LEFT JOIN {$wpdb->postmeta} t1 ON t1.post_id = p.ID AND t1.meta_key = '_order_tax' AND " . brikpanel_sql_first_meta_guard( 'post', 't1' ) . "
+			LEFT JOIN {$wpdb->postmeta} t2 ON t2.post_id = p.ID AND t2.meta_key = '_order_shipping_tax' AND " . brikpanel_sql_first_meta_guard( 'post', 't2' ) . "
 			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
 			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
 		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
@@ -702,8 +699,8 @@ function brikpanel_profit_shipping_cost( $start_gmt, $end_gmt, $exclude_marketpl
 		$sql   = "SELECT COALESCE(SUM(%COST_EXPR%), 0)
 			FROM {$wpdb->prefix}wc_orders o
 			LEFT JOIN {$wpdb->prefix}wc_order_operational_data od ON od.order_id = o.id
-			LEFT JOIN {$wpdb->prefix}wc_orders_meta ovr ON ovr.order_id = o.id AND ovr.meta_key = %s
-			LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s
+			LEFT JOIN {$wpdb->prefix}wc_orders_meta ovr ON ovr.order_id = o.id AND ovr.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', 'ovr' ) . "
+			LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', 'bpfx' ) . "
 			WHERE o.type = 'shop_order' AND o.status IN ($sp)
 			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
 		$args  = array_merge( [ $ovr_key, $fx_key ], $statuses, [ $start_gmt, $end_gmt ] );
@@ -713,10 +710,10 @@ function brikpanel_profit_shipping_cost( $start_gmt, $end_gmt, $exclude_marketpl
 		$total = "CAST(COALESCE(tot.meta_value, '0') AS DECIMAL(20,4))";
 		$sql   = "SELECT COALESCE(SUM(%COST_EXPR%), 0)
 			FROM {$wpdb->posts} p
-			LEFT JOIN {$wpdb->postmeta} sh   ON sh.post_id   = p.ID AND sh.meta_key   = '_order_shipping'
-			LEFT JOIN {$wpdb->postmeta} tot  ON tot.post_id  = p.ID AND tot.meta_key  = '_order_total'
-			LEFT JOIN {$wpdb->postmeta} ovr  ON ovr.post_id  = p.ID AND ovr.meta_key  = %s
-			LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = p.ID AND bpfx.meta_key = %s
+			LEFT JOIN {$wpdb->postmeta} sh   ON sh.post_id   = p.ID AND sh.meta_key   = '_order_shipping' AND " . brikpanel_sql_first_meta_guard( 'post', 'sh' ) . "
+			LEFT JOIN {$wpdb->postmeta} tot  ON tot.post_id  = p.ID AND tot.meta_key  = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'tot' ) . "
+			LEFT JOIN {$wpdb->postmeta} ovr  ON ovr.post_id  = p.ID AND ovr.meta_key  = %s AND " . brikpanel_sql_first_meta_guard( 'post', 'ovr' ) . "
+			LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = p.ID AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', 'bpfx' ) . "
 			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
 			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
 		$args  = array_merge( [ $ovr_key, $fx_key ], $statuses, [ $start_gmt, $end_gmt ] );
@@ -857,6 +854,34 @@ function brikpanel_payment_fee_currency_meta_keys() {
  * Option name behind brikpanel_payment_fees_enabled().
  */
 const BRIKPANEL_PAYMENT_FEES_OPTION = 'brikpanel_payment_fees_enabled';
+
+/**
+ * Tell Import / Export about the payment-fee switch.
+ *
+ * It is toggled from the Expenses screen rather than the settings tab, which
+ * is why the settings-field walk never saw it, and why a cloned store used to
+ * end up counting card commission differently from the one it was cloned from.
+ *
+ * The declared default is 'no', not the 'yes' that the upgrade routine writes:
+ * 'no' is what brikpanel_payment_fees_enabled() reads when there is no row, and
+ * the registry's job is to describe the code, not the install history. A source
+ * site with no row is therefore a site with the feature off, and clearing the
+ * target's row reproduces exactly that. The coverage audit compares these two
+ * for a living, which is how the first draft of this entry — 'yes' — was caught.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_payment_fees_register_export_keys' );
+function brikpanel_payment_fees_register_export_keys( $map ) {
+	$map[ BRIKPANEL_PAYMENT_FEES_OPTION ] = [
+		'class'   => 'portable',
+		'group'   => 'expenses',
+		'type'    => 'checkbox',
+		'default' => 'no',
+	];
+	return $map;
+}
 
 /**
  * Whether real gateway transaction fees are counted as an expense.
@@ -1015,8 +1040,8 @@ function brikpanel_profit_payment_fees( $start_gmt, $end_gmt, $exclude_marketpla
 	$joins = '';
 	foreach ( $keys as $i => $unused_key ) {
 		$joins .= $is_hpos
-			? " LEFT JOIN {$wpdb->prefix}wc_orders_meta f{$i} ON f{$i}.order_id = o.id AND f{$i}.meta_key = %s"
-			: " LEFT JOIN {$wpdb->postmeta} f{$i} ON f{$i}.post_id = p.ID AND f{$i}.meta_key = %s";
+			? " LEFT JOIN {$wpdb->prefix}wc_orders_meta f{$i} ON f{$i}.order_id = o.id AND f{$i}.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', "f{$i}" )
+			: " LEFT JOIN {$wpdb->postmeta} f{$i} ON f{$i}.post_id = p.ID AND f{$i}.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', "f{$i}" );
 	}
 
 	$coalesce = [];
@@ -1049,8 +1074,8 @@ function brikpanel_profit_payment_fees( $start_gmt, $end_gmt, $exclude_marketpla
 	$cur_joins = '';
 	foreach ( array_keys( $cur_keys ) as $ci ) {
 		$cur_joins .= $is_hpos
-			? " LEFT JOIN {$wpdb->prefix}wc_orders_meta fc{$ci} ON fc{$ci}.order_id = o.id AND fc{$ci}.meta_key = %s"
-			: " LEFT JOIN {$wpdb->postmeta} fc{$ci} ON fc{$ci}.post_id = p.ID AND fc{$ci}.meta_key = %s";
+			? " LEFT JOIN {$wpdb->prefix}wc_orders_meta fc{$ci} ON fc{$ci}.order_id = o.id AND fc{$ci}.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', "fc{$ci}" )
+			: " LEFT JOIN {$wpdb->postmeta} fc{$ci} ON fc{$ci}.post_id = p.ID AND fc{$ci}.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', "fc{$ci}" );
 	}
 
 	if ( $is_hpos ) {
@@ -1059,7 +1084,7 @@ function brikpanel_profit_payment_fees( $start_gmt, $end_gmt, $exclude_marketpla
 		$from     = "FROM {$wpdb->prefix}wc_orders o"
 			. $joins
 			. $cur_joins
-			. " LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s";
+			. " LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', 'bpfx' );
 		$where    = " WHERE o.type = 'shop_order' AND o.status IN ($sp)"
 			. ' AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s';
 		$excl     = brikpanel_admin_order_exclusion_sql( true );
@@ -1069,9 +1094,9 @@ function brikpanel_profit_payment_fees( $start_gmt, $end_gmt, $exclude_marketpla
 		$from      = "FROM {$wpdb->posts} p"
 			. $joins
 			. $cur_joins
-			. " LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = p.ID AND bpfx.meta_key = %s"
-			. " LEFT JOIN {$wpdb->postmeta} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total'"
-			. " LEFT JOIN {$wpdb->postmeta} ocur ON ocur.post_id = p.ID AND ocur.meta_key = '_order_currency'";
+			. " LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = p.ID AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', 'bpfx' )
+			. " LEFT JOIN {$wpdb->postmeta} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'tot' )
+			. " LEFT JOIN {$wpdb->postmeta} ocur ON ocur.post_id = p.ID AND ocur.meta_key = '_order_currency' AND " . brikpanel_sql_first_meta_guard( 'post', 'ocur' );
 		$where     = " WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)"
 			. ' AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s';
 		$excl      = brikpanel_admin_order_exclusion_sql( false, 'p.ID' );
@@ -1210,7 +1235,7 @@ function brikpanel_profit_shipping_revenue( $start_gmt, $end_gmt, $exclude_marke
 	} else {
 		$sql  = "SELECT COALESCE(SUM(CAST(COALESCE(sh.meta_value, '0') AS DECIMAL(20,4))), 0)
 			FROM {$wpdb->posts} p
-			LEFT JOIN {$wpdb->postmeta} sh ON sh.post_id = p.ID AND sh.meta_key = '_order_shipping'
+			LEFT JOIN {$wpdb->postmeta} sh ON sh.post_id = p.ID AND sh.meta_key = '_order_shipping' AND " . brikpanel_sql_first_meta_guard( 'post', 'sh' ) . "
 			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
 			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
 		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );

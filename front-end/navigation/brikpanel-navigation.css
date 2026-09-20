@@ -112,6 +112,26 @@
 #wpfooter {
 	display: none;
 }
+/* WordPress core "Collapse menu" state (`folded`, saved per user as mfold=f).
+   The BrikPanel sidebar has no icon-only form, and its collapse button is not
+   shown in modern mode, yet a user who once folded the native menu (or folded
+   it while BrikPanel ran in classic mode) keeps the class. Core's more specific
+   `.folded` rules then squeeze the sidebar into a clipped 36px strip. Hiding
+   the sidebar is the BrikPanel topbar toggle's job, so undo the fold here.
+   Classic / native modes show the native menu and keep core folding. */
+@media screen and (min-width: 961px) {
+	body.folded:not(.brikpanel-classic-nav):not(.brikpanel-native-nav) #adminmenuback,
+	body.folded:not(.brikpanel-classic-nav):not(.brikpanel-native-nav) #adminmenuwrap {
+		width: var(--brikpanel-sidebar-width);
+	}
+	body.folded:not(.brikpanel-classic-nav):not(.brikpanel-native-nav) #wpcontent,
+	body.folded:not(.brikpanel-classic-nav):not(.brikpanel-native-nav) #wpfooter {
+		margin-left: var(--brikpanel-sidebar-width);
+	}
+	body.folded:not(.brikpanel-classic-nav):not(.brikpanel-native-nav) .interface-interface-skeleton {
+		left: var(--brikpanel-sidebar-width);
+	}
+}
 
 /* Page editor */
 @media (min-width: 783px) {
@@ -155,7 +175,13 @@
 	margin: 0 !important;
 }
 
-/* Style our own menu. */
+/* Style our own menu.
+   `position: relative` makes the menu the containing block for anything
+   absolutely positioned inside it, so nothing in the menu can be laid out
+   against #adminmenuwrap and sit on top of the menu's own scrollbar. Every
+   row is already position:relative, so no BrikPanel element moves; it only
+   stops a stray link (for example one another plugin left unclosed) from
+   stretching the full-row click overlay across the whole sidebar. */
 #brikpanel-navigation {
 	box-sizing: border-box;
 	padding: 0.75rem 0.75rem 1.5rem;
@@ -163,6 +189,7 @@
 	font-size: 0.85rem;
 	overflow-y: auto;
 	height: 100%;
+	position: relative;
 }
 #brikpanel-navigation li {
 	margin: 0;
@@ -300,6 +327,21 @@
 	background-color: rgb(0, 0, 0, 0.06);
 	padding: 0 0.5rem;
 	margin-top: 0.06rem;
+}
+/* "New" pill beside a freshly added sidebar item (BrikMentor). Sized like the
+   count bubbles above so a badged row stays exactly as tall as its neighbours;
+   filled dark like the nav customizer's own new-item badge. */
+#brikpanel-navigation a > .brikpanel-nav-badge-new {
+	display: inline-block;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	line-height: 16px;
+	color: #fff;
+	background: #303030;
+	border-radius: 0.5rem;
+	padding: 0 0.45rem;
+	margin-top: 0.06rem;
+	letter-spacing: 0.02em;
 }
 /* This ensures that no submenu item will get an icon, except for the
 WooCommerce submenu which we move out of a submenu visually. */

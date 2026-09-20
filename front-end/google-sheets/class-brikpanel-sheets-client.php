@@ -109,6 +109,36 @@ class Brikpanel_Sheets_Client {
 	}
 
 	/**
+	 * Overwrite several A1 ranges in one request (values:batchUpdate).
+	 *
+	 * Google applies the whole batch or none of it, so a caller that needs
+	 * per-row failure isolation must fall back to values_update() itself.
+	 *
+	 * @param string                $spreadsheet_id
+	 * @param array<string, array>  $data  [ A1 range => array of rows ].
+	 * @param string                $value_input_option
+	 * @return array
+	 * @throws Brikpanel_Sheets_Exception
+	 */
+	public function values_batch_update( $spreadsheet_id, array $data, $value_input_option = 'USER_ENTERED' ) {
+		if ( empty( $data ) ) {
+			return [];
+		}
+		$entries = [];
+		foreach ( $data as $range => $values ) {
+			$entries[] = [
+				'range'  => (string) $range,
+				'values' => self::neutralise_formula_injection( (array) $values, $value_input_option ),
+			];
+		}
+		$path = '/spreadsheets/' . rawurlencode( $spreadsheet_id ) . '/values:batchUpdate';
+		return $this->request( 'POST', self::SHEETS_BASE . $path, [
+			'valueInputOption' => $value_input_option,
+			'data'             => $entries,
+		] );
+	}
+
+	/**
 	 * OWASP CSV / Formula Injection guard. With valueInputOption=USER_ENTERED
 	 * Sheets treats `=`, `+`, `-`, `@`, leading tab/CR strings as formulas —
 	 * so a customer placing an order with a billing name like

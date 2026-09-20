@@ -195,15 +195,20 @@
         });
     }
 
-    // Periodic refresh
+    // Periodic refresh, paused while the tab is hidden so a forgotten
+    // background tab stops waking the server every minute.
     var interval = (cfg.refresh_interval && cfg.refresh_interval >= 15000) ? cfg.refresh_interval : 60000;
-    setInterval(fetchStatus, interval);
+    var timer = setInterval(fetchStatus, interval);
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') {
+            clearInterval(timer);
+            timer = null;
+        } else if (!timer) {
+            fetchStatus();
+            timer = setInterval(fetchStatus, interval);
+        }
+    });
 
     // First refresh on load (in case server-rendered cache was stale).
     setTimeout(fetchStatus, 800);
-
-    // The dashboard banner's dismiss handler deliberately does NOT live here.
-    // Everything above is behind an early return that fires when the shield
-    // element is missing, which silently killed the banner's X. It now lives
-    // in brikpanel-bc-banner.js, enqueued on the dashboard on its own.
 })();

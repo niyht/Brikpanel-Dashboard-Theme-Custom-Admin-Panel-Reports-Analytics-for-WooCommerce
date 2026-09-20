@@ -102,6 +102,11 @@ class Brikpanel_Ads_Proxy {
 
 		foreach ( $targets as $platform ) {
 			Brikpanel_Ads_Tokens::disconnect( $platform );
+			// Drop any queued history import too, otherwise every remaining
+			// chunk wakes up, finds no connection and files an identical note.
+			if ( class_exists( 'Brikpanel_Ads_Sync' ) ) {
+				Brikpanel_Ads_Sync::cancel_backfill( $platform, Brikpanel_Ads_Sync::HALT_CONNECTION_LOST );
+			}
 		}
 
 		update_option(

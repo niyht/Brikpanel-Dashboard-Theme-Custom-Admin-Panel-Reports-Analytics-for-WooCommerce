@@ -50,6 +50,58 @@ class Brikpanel_Pro_Search {
 	/** Bump to force every user's index to be rebuilt after a schema change. */
 	const NAV_INDEX_SCHEMA = 'v3';
 
+	/** How many orders the customer-detail lookups may return. */
+	const ORDER_RESULT_LIMIT = 20;
+
+	/**
+	 * How many orders the product-SKU lookup may return. Deliberately much
+	 * larger than the lookup limit above: typing a SKU is how staff ask "which
+	 * orders contain this item", and answering with a truncated list would be
+	 * worse than useless. Matches the limit this path has always used.
+	 */
+	const ORDER_SKU_LIMIT = 50;
+
+	/**
+	 * How many strings one search may be expanded into. The plugin's own
+	 * phone variants use at most seven; the rest is headroom for the
+	 * `brikpanel_search_terms` filter, and a ceiling so a runaway filter
+	 * cannot turn one keystroke into an unbounded IN() list.
+	 */
+	const MAX_SEARCH_TERMS = 12;
+
+	/** Longest single search term worth querying, in characters. */
+	const MAX_TERM_LENGTH = 100;
+
+	/**
+	 * Fewest digits a term needs before it is treated as a phone number.
+	 * Below this a partial match says almost nothing and would drag in
+	 * unrelated orders, so short numbers stay on the exact paths only.
+	 */
+	const PHONE_MIN_DIGITS = 7;
+
+	/**
+	 * How many rows each half of a legacy first/last name pair may fetch
+	 * before the two are intersected. Higher than the result limit on
+	 * purpose: the intersection is what gets capped, not its inputs.
+	 */
+	const NAME_PAIR_SCAN_LIMIT = 200;
+
+	/**
+	 * How many times the result limit the name lookup reads before ranking.
+	 * Whole-name matches are promoted over partial ones in PHP, and that can
+	 * only promote what was actually fetched, so the query takes a wider slice
+	 * than it will show. Wide enough that a customer is not buried behind
+	 * near-namesakes, bounded so the scan still stops early.
+	 */
+	const NAME_OVERFETCH = 5;
+
+	/**
+	 * Shortest term that is matched as part of a SKU rather than the whole of
+	 * one. One or two characters as a wildcard would pull in most of the
+	 * catalogue and every order containing it.
+	 */
+	const SKU_PARTIAL_MIN_LENGTH = 3;
+
 	public function __construct() {
 		// We also enqueue the scripts for the public side of WordPress because
 		// for logged in admins, the admin bar shows at the top there too.
@@ -356,16 +408,57 @@ class Brikpanel_Pro_Search {
 		$orders    = array();
 
 		if ( ! empty( $order_ids ) ) {
-			$orders = wc_get_orders( array( 'post__in' => $order_ids, 'limit' => 20 ) );
+			$orders = wc_get_orders(
+				array(
+					'post__in' => $order_ids,
+					'limit'    => self::ORDER_RESULT_LIMIT,
+					'type'     => 'shop_order',
+				)
+			);
 		}
 
-		$orders = array_merge( $orders, $this->get_orders_by_product_sku( $query ) );
+		// An order can be reached both by its customer and by a SKU it
+		// contains. Key the two paths by order id so it is listed once, and
+		// let the SKU hit win because it carries the matched product line.
+		$merged = array();
+		$loaded = array();
 
-		if ( empty( $orders ) ) {
+		foreach ( $orders as $order ) {
+			if ( $order instanceof WC_Order ) {
+				$loaded[ $order->get_id() ] = $order;
+			}
+		}
+
+		// wc_get_orders() ignores the order of post__in and hands everything
+		// back newest-first, which would throw away the relevance ranking the
+		// lookups just produced. Walk the IDs instead.
+		foreach ( $order_ids as $order_id ) {
+			if ( isset( $loaded[ $order_id ] ) ) {
+				$merged[ $order_id ] = $loaded[ $order_id ];
+			}
+		}
+
+		foreach ( $this->get_orders_by_product_sku( $query ) as $match ) {
+			if ( isset( $match['order'] ) && $match['order'] instanceof WC_Order ) {
+				$merged[ $match['order']->get_id() ] = $match;
+			}
+		}
+
+		if ( empty( $merged ) ) {
 			return '';
 		}
 
-		return $this->generate_order_results_html( $orders );
+		// The two paths keep their own budgets, exactly as before: up to 20
+		// orders matched on customer details, plus up to 50 matched on a SKU.
+		// Capping the merged list at 20 instead would quietly shorten a SKU
+		// search that used to answer in full.
+		return $this->generate_order_results_html(
+			array_slice(
+				array_values( $merged ),
+				0,
+				self::ORDER_RESULT_LIMIT + self::ORDER_SKU_LIMIT
+			)
+		);
 	}
 
 	private function query_recent_orders( $limit ) {
@@ -403,94 +496,841 @@ class Brikpanel_Pro_Search {
 	}
 
 	/**
-	 * Search order IDs by customer info, order number, email, phone — single
-	 * SQL query. HPOS-aware.
+	 * Search order IDs by order number, phone, email or customer name.
 	 *
-	 * @param string $query The search term.
-	 * @return array Order IDs.
+	 * Split deliberately into one small query per field instead of the single
+	 * multi-JOIN statement this used to be. That statement OR'd conditions
+	 * across four tables, which makes every index unusable: MariaDB fell back
+	 * to scanning the whole orders table (measured: 5 ms on 2.7k orders under
+	 * HPOS, 307 ms on the legacy postmeta path). One targeted query per field
+	 * keeps the phone and email indexes in play, lets a field be skipped
+	 * outright when the term cannot possibly match it, and stops as soon as
+	 * enough orders are found.
+	 *
+	 * Fields run cheapest-and-most-precise first, so exact hits head the list
+	 * and the looser name scan usually never runs at all.
+	 *
+	 * @param string $query The search term as typed.
+	 * @return array Order IDs, most relevant first.
 	 */
 	private function search_order_ids( $query ) {
-		if ( empty( $query ) ) {
+		$query = trim( (string) $query );
+		if ( '' === $query ) {
 			return array();
 		}
 
-		global $wpdb;
-		$is_hpos = 'yes' === get_option( 'woocommerce_custom_orders_table_enabled' );
-
-		if ( $is_hpos ) {
-			$orders_table = $wpdb->prefix . 'wc_orders';
-			$meta_table   = $wpdb->prefix . 'wc_orders_meta';
-			$addresses    = $wpdb->prefix . 'wc_order_addresses';
-
-			$sql = "SELECT DISTINCT o.id FROM {$orders_table} o
-				LEFT JOIN {$addresses} ba ON o.id = ba.order_id AND ba.address_type = 'billing'
-				LEFT JOIN {$addresses} sa ON o.id = sa.order_id AND sa.address_type = 'shipping'
-				LEFT JOIN {$meta_table} om ON o.id = om.order_id AND om.meta_key = '_order_number'
-				WHERE o.type = 'shop_order' AND (
-					o.id = %s
-					OR om.meta_value = %s
-					OR ba.email = %s
-					OR ba.phone = %s
-					OR ba.first_name = %s
-					OR ba.last_name = %s
-					OR sa.first_name = %s
-					OR sa.last_name = %s";
-
-			$args = array( $query, $query, $query, $query, $query, $query, $query, $query );
-
-			if ( count( explode( ' ', $query ) ) === 2 ) {
-				$parts = explode( ' ', $query );
-				$sql  .= "
-					OR (ba.first_name = %s AND ba.last_name = %s)
-					OR (ba.first_name = %s AND ba.last_name = %s)
-					OR (sa.first_name = %s AND sa.last_name = %s)
-					OR (sa.first_name = %s AND sa.last_name = %s)";
-				$args  = array_merge( $args, array(
-					$parts[0], $parts[1], $parts[1], $parts[0],
-					$parts[0], $parts[1], $parts[1], $parts[0],
-				) );
-			}
-
-			$sql .= ") LIMIT 20";
-		} else {
-			$sql = "SELECT DISTINCT p.ID FROM {$wpdb->posts} p
-				LEFT JOIN {$wpdb->postmeta} pm_on ON p.ID = pm_on.post_id AND pm_on.meta_key = '_order_number'
-				LEFT JOIN {$wpdb->postmeta} pm_bf ON p.ID = pm_bf.post_id AND pm_bf.meta_key = '_billing_first_name'
-				LEFT JOIN {$wpdb->postmeta} pm_bl ON p.ID = pm_bl.post_id AND pm_bl.meta_key = '_billing_last_name'
-				LEFT JOIN {$wpdb->postmeta} pm_be ON p.ID = pm_be.post_id AND pm_be.meta_key = '_billing_email'
-				LEFT JOIN {$wpdb->postmeta} pm_bp ON p.ID = pm_bp.post_id AND pm_bp.meta_key = '_billing_phone'
-				LEFT JOIN {$wpdb->postmeta} pm_sf ON p.ID = pm_sf.post_id AND pm_sf.meta_key = '_shipping_first_name'
-				LEFT JOIN {$wpdb->postmeta} pm_sl ON p.ID = pm_sl.post_id AND pm_sl.meta_key = '_shipping_last_name'
-				WHERE p.post_type = 'shop_order' AND (
-					p.ID = %s
-					OR pm_on.meta_value = %s
-					OR pm_be.meta_value = %s
-					OR pm_bp.meta_value = %s
-					OR pm_bf.meta_value = %s
-					OR pm_bl.meta_value = %s
-					OR pm_sf.meta_value = %s
-					OR pm_sl.meta_value = %s";
-
-			$args = array( $query, $query, $query, $query, $query, $query, $query, $query );
-
-			if ( count( explode( ' ', $query ) ) === 2 ) {
-				$parts = explode( ' ', $query );
-				$sql  .= "
-					OR (pm_bf.meta_value = %s AND pm_bl.meta_value = %s)
-					OR (pm_bf.meta_value = %s AND pm_bl.meta_value = %s)
-					OR (pm_sf.meta_value = %s AND pm_sl.meta_value = %s)
-					OR (pm_sf.meta_value = %s AND pm_sl.meta_value = %s)";
-				$args  = array_merge( $args, array(
-					$parts[0], $parts[1], $parts[1], $parts[0],
-					$parts[0], $parts[1], $parts[1], $parts[0],
-				) );
-			}
-
-			$sql .= ") LIMIT 20";
+		$terms = $this->build_search_terms( $query );
+		if ( empty( $terms ) ) {
+			return array();
 		}
 
-		$results = $wpdb->get_col( $wpdb->prepare( $sql, $args ) );
-		return array_map( 'absint', $results );
+		$limit = self::ORDER_RESULT_LIMIT;
+		$ids   = array();
+
+		foreach ( array( 'number', 'phone', 'email', 'name' ) as $field ) {
+			$method = 'order_ids_by_' . $field;
+			$found  = $this->$method( $terms, $limit );
+
+			if ( ! empty( $found ) ) {
+				$ids = array_values( array_unique( array_merge( $ids, $found ) ) );
+			}
+
+			if ( count( $ids ) >= $limit ) {
+				break;
+			}
+		}
+
+		$ids = $this->validate_order_ids( array_slice( $ids, 0, $limit ) );
+
+		/**
+		 * Filter the order IDs the command palette found for a search.
+		 *
+		 * Runs after the built-in lookups and before the orders are loaded, so
+		 * you can fold in orders your own storage knows about or drop ones the
+		 * current user should not see. IDs are re-sanitised afterwards, order
+		 * is preserved, and the list is capped, so returning something odd can
+		 * narrow or reorder the results but can never break the query.
+		 *
+		 * @param array  $ids   Order IDs found so far, most relevant first.
+		 * @param string $query The search term as typed.
+		 * @param array  $terms The search terms actually queried.
+		 */
+		$filtered = apply_filters( 'brikpanel_search_order_ids', $ids, $query, $terms );
+
+		// A filter that returns something other than an array is ignored
+		// rather than treated as "no results": a third party's mistake must
+		// not make the palette look broken.
+		return is_array( $filtered )
+			? $this->sanitize_id_list( $filtered, $limit )
+			: $ids;
+	}
+
+	/**
+	 * Build the list of literal strings worth querying for one typed term.
+	 *
+	 * Always contains the term itself. When the term looks like a phone number
+	 * it also carries every way that same number is commonly stored, so a UK
+	 * order saved as "+44 7911 123456" is found by typing "07911123456".
+	 *
+	 * @param string $query The search term as typed.
+	 * @return array
+	 */
+	private function build_search_terms( $query ) {
+		$terms = array_merge( array( $query ), $this->phone_variants( $query ) );
+		$terms = $this->sanitize_term_list( $terms );
+
+		/**
+		 * Filter the search terms before the order lookups run.
+		 *
+		 * Every returned string is queried, so this is the place to teach the
+		 * palette a format your store uses. The list already holds BrikPanel's
+		 * own phone variants, so you can drop those as well as add your own.
+		 * Entries are sanitised, de-duplicated, length-limited and capped
+		 * afterwards; a non-array return is ignored.
+		 *
+		 * @param array  $terms  Terms that will be queried.
+		 * @param string $query  The search term as typed.
+		 * @param string $source Source being searched. Always 'orders' today.
+		 */
+		$terms = apply_filters( 'brikpanel_search_terms', $terms, $query, 'orders' );
+
+		$terms = $this->sanitize_term_list( $terms );
+
+		return empty( $terms ) ? $this->sanitize_term_list( array( $query ) ) : $terms;
+	}
+
+	/**
+	 * Every common written form of the same phone number.
+	 *
+	 * Built from the plugin's own E.164 resolver so the country logic lives in
+	 * one place. Returns nothing when the term is too short to be a phone
+	 * number, which keeps ordinary word searches off this path entirely.
+	 *
+	 * @param string $query The search term as typed.
+	 * @return array
+	 */
+	private function phone_variants( $query ) {
+		$digits = preg_replace( '/\D+/', '', (string) $query );
+
+		if ( strlen( $digits ) < self::PHONE_MIN_DIGITS ) {
+			return array();
+		}
+
+		$variants = array( $digits );
+
+		$e164 = function_exists( 'brikpanel_phone_to_e164' ) ? brikpanel_phone_to_e164( $query ) : '';
+		if ( '' === $e164 ) {
+			return $variants;
+		}
+
+		$variants[] = $e164;
+		$variants[] = '+' . $e164;
+		$variants[] = '00' . $e164;
+
+		// The same number written the way it is dialled inside its own
+		// country: no dialling code, trunk zero back in front.
+		$code = function_exists( 'brikpanel_leading_dialing_code' ) ? brikpanel_leading_dialing_code( $e164 ) : '';
+		if ( '' !== $code && strlen( $e164 ) > strlen( $code ) ) {
+			$national   = substr( $e164, strlen( $code ) );
+			$variants[] = $national;
+			$variants[] = '0' . $national;
+		}
+
+		return $variants;
+	}
+
+	/**
+	 * The digits a phone number keeps in every format: its national part,
+	 * without dialling code or trunk zero. Used as the suffix to compare
+	 * against when no literal variant matched.
+	 *
+	 * @param string $query The search term as typed.
+	 * @return string Digits, or '' when the term is not phone-like enough.
+	 */
+	private function phone_suffix_digits( $query ) {
+		$digits = preg_replace( '/\D+/', '', (string) $query );
+
+		if ( strlen( $digits ) < self::PHONE_MIN_DIGITS ) {
+			return '';
+		}
+
+		$e164 = function_exists( 'brikpanel_phone_to_e164' ) ? brikpanel_phone_to_e164( $query ) : '';
+		if ( '' !== $e164 ) {
+			$code = function_exists( 'brikpanel_leading_dialing_code' ) ? brikpanel_leading_dialing_code( $e164 ) : '';
+			if ( '' !== $code && strlen( $e164 ) > strlen( $code ) ) {
+				$national = substr( $e164, strlen( $code ) );
+				if ( strlen( $national ) >= self::PHONE_MIN_DIGITS ) {
+					return $national;
+				}
+			}
+		}
+
+		$local = ltrim( $digits, '0' );
+
+		return strlen( $local ) >= self::PHONE_MIN_DIGITS ? $local : '';
+	}
+
+	/**
+	 * Whether a search term holds at least one word WordPress will search FOR
+	 * rather than exclude. A word prefixed with "-" is an exclusion, so
+	 * "-abc" asks for everything except abc and ranks by nothing.
+	 *
+	 * @param string $query The search term as typed.
+	 * @return bool
+	 */
+	private function has_positive_search_word( $query ) {
+		$words = preg_split( '/\s+/', trim( (string) $query ), -1, PREG_SPLIT_NO_EMPTY );
+
+		if ( empty( $words ) ) {
+			return false;
+		}
+
+		foreach ( $words as $word ) {
+			if ( '-' !== substr( $word, 0, 1 ) && '' !== trim( $word, '-' ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Whether a term is made only of the characters a phone number is written
+	 * with. Such a term is never worth running against names or emails.
+	 *
+	 * @param string $term
+	 * @return bool
+	 */
+	private function is_numeric_term( $term ) {
+		return '' !== $term && 1 === preg_match( '/^[0-9+().\-\/\s]+$/', $term );
+	}
+
+	/**
+	 * Clean a list of search terms coming from anywhere, including a filter.
+	 *
+	 * @param mixed $terms
+	 * @return array
+	 */
+	private function sanitize_term_list( $terms ) {
+		if ( ! is_array( $terms ) ) {
+			return array();
+		}
+
+		$out = array();
+
+		foreach ( $terms as $term ) {
+			if ( ! is_scalar( $term ) ) {
+				continue;
+			}
+
+			$term = trim( sanitize_text_field( (string) $term ) );
+
+			if ( '' === $term || brikpanel_strlen( $term ) > self::MAX_TERM_LENGTH ) {
+				continue;
+			}
+
+			$out[ $term ] = $term;
+
+			if ( count( $out ) >= self::MAX_SEARCH_TERMS ) {
+				break;
+			}
+		}
+
+		return array_values( $out );
+	}
+
+	/**
+	 * Clean a list of order IDs coming from anywhere, including a filter.
+	 * Keeps the given order, which is the relevance order.
+	 *
+	 * @param mixed $ids
+	 * @param int   $limit
+	 * @return array
+	 */
+	private function sanitize_id_list( $ids, $limit ) {
+		if ( ! is_array( $ids ) ) {
+			return array();
+		}
+
+		$out = array();
+
+		foreach ( $ids as $id ) {
+			if ( ! is_scalar( $id ) ) {
+				continue;
+			}
+
+			$id = absint( $id );
+			if ( $id > 0 ) {
+				$out[ $id ] = $id;
+			}
+		}
+
+		return array_slice( array_values( $out ), 0, max( 1, (int) $limit ) );
+	}
+
+	/**
+	 * Whether orders live in the HPOS tables.
+	 *
+	 * @return bool
+	 */
+	private function orders_use_hpos() {
+		return 'yes' === get_option( 'woocommerce_custom_orders_table_enabled' );
+	}
+
+	/**
+	 * A COLLATE clause that makes a name comparison ignore accents and the
+	 * Turkish dotless i, or '' when the column's charset has no such
+	 * collation.
+	 *
+	 * Order tables ship as utf8mb4_unicode_520_ci, which treats "ı" and "i"
+	 * as different letters. Correct for sorting, wrong for searching: staff on
+	 * an English keyboard type "yilmaz" and would never find "Yılmaz", and the
+	 * same goes for "muller" against "Müller" or "rene" against "Réne". The
+	 * general collation folds both ways. It costs nothing here because the
+	 * name columns carry no index in either storage mode, so the comparison
+	 * was always going to read the value anyway (measured slightly faster, not
+	 * slower). Never applied to the indexed email and phone columns, where it
+	 * would throw the index away.
+	 *
+	 * @param string $table  Table name written by BrikPanel, never a caller.
+	 * @param string $column Column name written by BrikPanel, never a caller.
+	 * @return string
+	 */
+	private function accent_insensitive_collate( $table, $column ) {
+		global $wpdb;
+
+		static $cache = array();
+
+		$key = $table . '.' . $column;
+		if ( isset( $cache[ $key ] ) ) {
+			return $cache[ $key ];
+		}
+
+		$charset = $wpdb->get_col_charset( $table, $column );
+
+		// Only charsets that are guaranteed to ship a general collation. An
+		// unknown or binary charset falls back to comparing as stored.
+		$known = array( 'utf8mb4', 'utf8mb3', 'utf8', 'latin1' );
+
+		$cache[ $key ] = ( is_string( $charset ) && in_array( $charset, $known, true ) )
+			? ' COLLATE ' . $charset . '_general_ci'
+			: '';
+
+		return $cache[ $key ];
+	}
+
+	/**
+	 * Build a placeholder list for an IN() clause.
+	 *
+	 * @param array  $values
+	 * @param string $type '%s' or '%d'.
+	 * @return string
+	 */
+	private function in_placeholders( array $values, $type = '%s' ) {
+		return implode( ',', array_fill( 0, count( $values ), $type ) );
+	}
+
+	/**
+	 * Keep only the IDs that really are orders.
+	 *
+	 * The per-field lookups query address and meta tables that also hold rows
+	 * for refunds, subscriptions and, on the legacy path, for any post at all.
+	 * Checking once over the merged list costs a single primary-key lookup
+	 * instead of adding a JOIN to every field query.
+	 *
+	 * Trashed and draft orders are dropped here too. Their address and meta
+	 * rows still match, so without this a trashed order takes one of the
+	 * twenty slots and is then silently dropped when the orders are loaded,
+	 * leaving a gap the admin cannot explain.
+	 *
+	 * @param array $ids
+	 * @return array
+	 */
+	private function validate_order_ids( array $ids ) {
+		global $wpdb;
+
+		$ids = $this->sanitize_id_list( $ids, self::ORDER_RESULT_LIMIT );
+		if ( empty( $ids ) ) {
+			return array();
+		}
+
+		$holders = $this->in_placeholders( $ids, '%d' );
+
+		if ( $this->orders_use_hpos() ) {
+			$sql = "SELECT id FROM {$wpdb->prefix}wc_orders
+				WHERE type = 'shop_order'
+				AND status NOT IN ('trash','auto-draft','checkout-draft')
+				AND id IN ({$holders})";
+		} else {
+			$sql = "SELECT ID FROM {$wpdb->posts}
+				WHERE post_type = 'shop_order'
+				AND post_status NOT IN ('trash','auto-draft')
+				AND ID IN ({$holders})";
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders are generated from a count, values are bound below.
+		$valid = $wpdb->get_col( $wpdb->prepare( $sql, $ids ) );
+		$valid = array_map( 'absint', (array) $valid );
+
+		return array_values( array_intersect( $ids, $valid ) );
+	}
+
+	/**
+	 * Orders whose number, or third-party order-number meta, is one of the
+	 * terms. Only ever runs for terms that are digits, so a word search never
+	 * touches it.
+	 *
+	 * @param array $terms
+	 * @param int   $limit
+	 * @return array
+	 */
+	private function order_ids_by_number( array $terms, $limit ) {
+		global $wpdb;
+
+		$numbers = array();
+		foreach ( $terms as $term ) {
+			$candidate = ltrim( trim( $term ), '#' );
+			if ( '' !== $candidate && ctype_digit( $candidate ) ) {
+				$numbers[ $candidate ] = $candidate;
+			}
+		}
+
+		if ( empty( $numbers ) ) {
+			return array();
+		}
+
+		$numbers    = array_values( $numbers );
+		$holders    = $this->in_placeholders( $numbers );
+		$id_holders = $this->in_placeholders( $numbers, '%d' );
+		$hpos       = $this->orders_use_hpos();
+
+		if ( $hpos ) {
+			$id_sql   = "SELECT id FROM {$wpdb->prefix}wc_orders WHERE type = 'shop_order' AND id IN ({$id_holders}) LIMIT %d";
+			$meta_sql = "SELECT order_id FROM {$wpdb->prefix}wc_orders_meta WHERE meta_key = '_order_number' AND meta_value IN ({$holders}) LIMIT %d";
+		} else {
+			$id_sql   = "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'shop_order' AND ID IN ({$id_holders}) LIMIT %d";
+			$meta_sql = "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_order_number' AND meta_value IN ({$holders}) LIMIT %d";
+		}
+
+		$args = array_merge( $numbers, array( (int) $limit ) );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders are generated from a count, values are bound below.
+		$ids = (array) $wpdb->get_col( $wpdb->prepare( $id_sql, $args ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders are generated from a count, values are bound below.
+		$ids = array_merge( $ids, (array) $wpdb->get_col( $wpdb->prepare( $meta_sql, $args ) ) );
+
+		return array_map( 'absint', $ids );
+	}
+
+	/**
+	 * Orders whose billing or shipping phone matches, in any written format.
+	 *
+	 * Two tiers. The first compares against the literal variants, which keeps
+	 * the phone index in play and answers almost every real search. Only when
+	 * that finds nothing does the second tier strip separators row by row and
+	 * compare the national part of the number, which is what makes
+	 * "+44 7911 123456" reachable by typing "07911123456".
+	 *
+	 * @param array $terms
+	 * @param int   $limit
+	 * @return array
+	 */
+	private function order_ids_by_phone( array $terms, $limit ) {
+		global $wpdb;
+
+		$candidates = array();
+		foreach ( $terms as $term ) {
+			if ( strlen( preg_replace( '/\D+/', '', $term ) ) >= self::PHONE_MIN_DIGITS ) {
+				$candidates[ $term ] = $term;
+			}
+		}
+
+		if ( empty( $candidates ) ) {
+			return array();
+		}
+
+		$candidates = array_values( $candidates );
+		$holders    = $this->in_placeholders( $candidates );
+		$hpos       = $this->orders_use_hpos();
+		$args       = array_merge( $candidates, array( (int) $limit ) );
+
+		if ( $hpos ) {
+			$sql = "SELECT DISTINCT order_id FROM {$wpdb->prefix}wc_order_addresses WHERE phone IN ({$holders}) LIMIT %d";
+		} else {
+			$sql = "SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+				WHERE meta_key IN ('_billing_phone','_shipping_phone')
+				AND meta_value IN ({$holders}) LIMIT %d";
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders are generated from a count, values are bound below.
+		$ids = array_map( 'absint', (array) $wpdb->get_col( $wpdb->prepare( $sql, $args ) ) );
+
+		if ( count( $ids ) >= $limit ) {
+			return $ids;
+		}
+
+		// Tier two always follows, because tier one finding *something* does
+		// not mean it found everything: one customer's number can be stored
+		// spelled out in one order and compact in the next, and only this
+		// comparison sees past the separators and the country prefix.
+		$suffix = '';
+		foreach ( $candidates as $candidate ) {
+			$suffix = $this->phone_suffix_digits( $candidate );
+			if ( '' !== $suffix ) {
+				break;
+			}
+		}
+
+		if ( '' === $suffix ) {
+			return $ids;
+		}
+
+		$stripped = $this->sql_phone_digits( $hpos ? 'phone' : 'meta_value' );
+
+		if ( $hpos ) {
+			$sql  = "SELECT DISTINCT order_id FROM {$wpdb->prefix}wc_order_addresses
+				WHERE phone <> '' AND RIGHT({$stripped}, %d) = %s LIMIT %d";
+		} else {
+			$sql  = "SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+				WHERE meta_key IN ('_billing_phone','_shipping_phone')
+				AND meta_value <> '' AND RIGHT({$stripped}, %d) = %s LIMIT %d";
+		}
+
+		$deep = array_map(
+			'absint',
+			(array) $wpdb->get_col(
+				$wpdb->prepare( $sql, strlen( $suffix ), $suffix, (int) $limit ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			)
+		);
+
+		// Tier one first, so an exactly-spelled number still outranks a hit
+		// that only matched once the separators were taken out.
+		return array_values( array_unique( array_merge( $ids, $deep ) ) );
+	}
+
+	/**
+	 * SQL expression that reduces a stored phone number to bare digits.
+	 * The column name is never caller-supplied.
+	 *
+	 * @param string $column
+	 * @return string
+	 */
+	private function sql_phone_digits( $column ) {
+		$expr = $column;
+
+		foreach ( array( ' ', '-', '(', ')', '.', '/' ) as $separator ) {
+			$expr = "REPLACE({$expr}, '{$separator}', '')";
+		}
+
+		return $expr;
+	}
+
+	/**
+	 * Orders whose billing or shipping email matches.
+	 *
+	 * Anchored at the start so the email index stays usable and so typing a
+	 * provider name does not return every customer who uses it.
+	 *
+	 * @param array $terms
+	 * @param int   $limit
+	 * @return array
+	 */
+	private function order_ids_by_email( array $terms, $limit ) {
+		global $wpdb;
+
+		$hpos   = $this->orders_use_hpos();
+		$column = $hpos ? 'email' : 'meta_value';
+
+		$clauses = array();
+		$args    = array();
+
+		foreach ( $terms as $term ) {
+			if ( $this->is_numeric_term( $term ) ) {
+				continue;
+			}
+
+			$clauses[] = "{$column} = %s";
+			$args[]    = $term;
+
+			$clauses[] = "{$column} LIKE %s";
+			$args[]    = $wpdb->esc_like( $term ) . '%';
+		}
+
+		if ( empty( $clauses ) ) {
+			return array();
+		}
+
+		$where = implode( ' OR ', $clauses );
+
+		if ( $hpos ) {
+			$sql = "SELECT DISTINCT order_id FROM {$wpdb->prefix}wc_order_addresses WHERE {$where} LIMIT %d";
+		} else {
+			$sql = "SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+				WHERE meta_key = '_billing_email' AND ({$where}) LIMIT %d";
+		}
+
+		$args[] = (int) $limit;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders are generated above, values are bound here.
+		return array_map( 'absint', (array) $wpdb->get_col( $wpdb->prepare( $sql, $args ) ) );
+	}
+
+	/**
+	 * Orders whose billing or shipping customer name matches.
+	 *
+	 * Substring matching, because staff type a surname far more often than a
+	 * full legal name. The name columns carry no index in either storage mode,
+	 * so this costs the same as the exact comparison it replaces. A two-word
+	 * term is also tried as a first/last pair in both orders.
+	 *
+	 * @param array $terms
+	 * @param int   $limit
+	 * @return array
+	 */
+	private function order_ids_by_name( array $terms, $limit ) {
+		$names = array();
+
+		foreach ( $terms as $term ) {
+			if ( $this->is_numeric_term( $term ) || false !== strpos( $term, '@' ) ) {
+				continue;
+			}
+			$names[ $term ] = $term;
+		}
+
+		if ( empty( $names ) ) {
+			return array();
+		}
+
+		return $this->orders_use_hpos()
+			? $this->order_ids_by_name_hpos( array_values( $names ), $limit )
+			: $this->order_ids_by_name_legacy( array_values( $names ), $limit );
+	}
+
+	/**
+	 * Name lookup against the HPOS address table, where a single row holds
+	 * both halves of a name so the pair test is a plain AND.
+	 *
+	 * @param array $names
+	 * @param int   $limit
+	 * @return array
+	 */
+	private function order_ids_by_name_hpos( array $names, $limit ) {
+		global $wpdb;
+
+		$table   = $wpdb->prefix . 'wc_order_addresses';
+		$collate = $this->accent_insensitive_collate( $table, 'first_name' );
+		$first_c = "first_name{$collate}";
+		$last_c  = "last_name{$collate}";
+
+		$clauses = array();
+		$args    = array();
+
+		foreach ( $names as $name ) {
+			$like      = '%' . $wpdb->esc_like( $name ) . '%';
+			$clauses[] = "{$first_c} LIKE %s";
+			$args[]    = $like;
+			$clauses[] = "{$last_c} LIKE %s";
+			$args[]    = $like;
+
+			$parts = preg_split( '/\s+/', $name, -1, PREG_SPLIT_NO_EMPTY );
+			if ( is_array( $parts ) && 2 === count( $parts ) ) {
+				$first = '%' . $wpdb->esc_like( $parts[0] ) . '%';
+				$last  = '%' . $wpdb->esc_like( $parts[1] ) . '%';
+
+				$clauses[] = "({$first_c} LIKE %s AND {$last_c} LIKE %s)";
+				$args[]    = $first;
+				$args[]    = $last;
+
+				$clauses[] = "({$first_c} LIKE %s AND {$last_c} LIKE %s)";
+				$args[]    = $last;
+				$args[]    = $first;
+			}
+		}
+
+		$where  = implode( ' OR ', $clauses );
+		$args[] = (int) $limit * self::NAME_OVERFETCH;
+
+		// The names come back with the ids so whoever matched the term outright
+		// can be ranked above whoever merely contains it. Without that, a
+		// customer called "Zed" is invisible behind twenty "Zedwick"s.
+		$sql = "SELECT order_id, first_name, last_name
+			FROM {$wpdb->prefix}wc_order_addresses WHERE {$where} LIMIT %d";
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders are generated above, values are bound here.
+		$rows = (array) $wpdb->get_results( $wpdb->prepare( $sql, $args ) );
+
+		$ranked = array();
+		foreach ( $rows as $row ) {
+			$ranked[] = array(
+				'id'    => absint( $row->order_id ),
+				'exact' => $this->name_matches_exactly( $names, array( $row->first_name, $row->last_name ) ),
+			);
+		}
+
+		return $this->rank_exact_first( $ranked, $limit );
+	}
+
+	/**
+	 * Whether any of the terms is the whole of one of the given name fields,
+	 * rather than just a part of it.
+	 *
+	 * @param array $terms  Search terms.
+	 * @param array $fields Stored name values.
+	 * @return bool
+	 */
+	private function name_matches_exactly( array $terms, array $fields ) {
+		$folded = array();
+		foreach ( $fields as $field ) {
+			$field = trim( (string) $field );
+			if ( '' !== $field ) {
+				$folded[] = brikpanel_strtolower( $field );
+			}
+		}
+
+		if ( empty( $folded ) ) {
+			return false;
+		}
+
+		foreach ( $terms as $term ) {
+			$term = brikpanel_strtolower( trim( (string) $term ) );
+			if ( '' !== $term && in_array( $term, $folded, true ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Put whole-name matches in front of partial ones, keep the order the
+	 * database returned within each group, de-duplicate and cap.
+	 *
+	 * @param array $ranked Rows of ['id' => int, 'exact' => bool].
+	 * @param int   $limit
+	 * @return array
+	 */
+	private function rank_exact_first( array $ranked, $limit ) {
+		$exact   = array();
+		$partial = array();
+
+		foreach ( $ranked as $row ) {
+			if ( empty( $row['id'] ) ) {
+				continue;
+			}
+			if ( ! empty( $row['exact'] ) ) {
+				$exact[ $row['id'] ] = $row['id'];
+			} else {
+				$partial[ $row['id'] ] = $row['id'];
+			}
+		}
+
+		// An id that matched outright anywhere must not also sit in the tail.
+		$partial = array_diff_key( $partial, $exact );
+
+		return array_slice(
+			array_merge( array_values( $exact ), array_values( $partial ) ),
+			0,
+			max( 1, (int) $limit )
+		);
+	}
+
+	/**
+	 * Name lookup on the legacy postmeta path.
+	 *
+	 * Queries postmeta on its own and validates the IDs afterwards, because
+	 * joining wp_posts in makes MariaDB drop the meta_key index (measured:
+	 * 0.8 ms standalone against 59 ms joined). The first/last pair cannot be
+	 * an AND across two rows, so each half is fetched and intersected here.
+	 *
+	 * @param array $names
+	 * @param int   $limit
+	 * @return array
+	 */
+	private function order_ids_by_name_legacy( array $names, $limit ) {
+		$first_keys = array( '_billing_first_name', '_shipping_first_name' );
+		$last_keys  = array( '_billing_last_name', '_shipping_last_name' );
+		$all_keys   = array_merge( $first_keys, $last_keys );
+
+		$ids = array();
+
+		foreach ( $names as $name ) {
+			$parts = preg_split( '/\s+/', $name, -1, PREG_SPLIT_NO_EMPTY );
+
+			if ( is_array( $parts ) && 2 === count( $parts ) ) {
+				// Over-fetch each half so the intersection is not cut short by
+				// a LIMIT applied before the two sides ever meet.
+				$wide  = max( (int) $limit, self::NAME_PAIR_SCAN_LIMIT );
+				$left  = $this->post_ids_by_meta_like( $first_keys, $parts[0], $wide );
+				$right = $this->post_ids_by_meta_like( $last_keys, $parts[1], $wide );
+				$ids   = array_merge( $ids, array_intersect( $left, $right ) );
+
+				$left  = $this->post_ids_by_meta_like( $first_keys, $parts[1], $wide );
+				$right = $this->post_ids_by_meta_like( $last_keys, $parts[0], $wide );
+				$ids   = array_merge( $ids, array_intersect( $left, $right ) );
+			}
+
+			$ids = array_merge(
+				$ids,
+				$this->post_ids_by_meta_like( $all_keys, $name, $limit * self::NAME_OVERFETCH, $names )
+			);
+
+			if ( count( array_unique( $ids ) ) >= $limit ) {
+				break;
+			}
+		}
+
+		return array_slice(
+			array_map( 'absint', array_values( array_unique( $ids ) ) ),
+			0,
+			max( 1, (int) $limit )
+		);
+	}
+
+	/**
+	 * Post IDs whose meta value for any of the given keys contains the term.
+	 *
+	 * @param array  $meta_keys Plain meta key names, never caller-supplied.
+	 * @param string $term
+	 * @param int    $limit
+	 * @return array
+	 */
+	private function post_ids_by_meta_like( array $meta_keys, $term, $limit, array $rank_terms = array() ) {
+		global $wpdb;
+
+		$term = trim( (string) $term );
+		if ( '' === $term || empty( $meta_keys ) ) {
+			return array();
+		}
+
+		$holders = $this->in_placeholders( $meta_keys );
+		$args    = array_merge( $meta_keys, array( '%' . $wpdb->esc_like( $term ) . '%', (int) $limit ) );
+		$collate = $this->accent_insensitive_collate( $wpdb->postmeta, 'meta_value' );
+
+		// The value comes back alongside the id so a whole-name match can be
+		// ranked above a mere substring, the same way the HPOS path does it.
+		$sql = "SELECT post_id, meta_value FROM {$wpdb->postmeta}
+			WHERE meta_key IN ({$holders}) AND meta_value{$collate} LIKE %s LIMIT %d";
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders are generated from a count, values are bound here.
+		$rows = (array) $wpdb->get_results( $wpdb->prepare( $sql, $args ) );
+
+		if ( empty( $rank_terms ) ) {
+			$ids = array();
+			foreach ( $rows as $row ) {
+				$ids[] = absint( $row->post_id );
+			}
+			return array_values( array_unique( $ids ) );
+		}
+
+		$ranked = array();
+		foreach ( $rows as $row ) {
+			$ranked[] = array(
+				'id'    => absint( $row->post_id ),
+				'exact' => $this->name_matches_exactly( $rank_terms, array( $row->meta_value ) ),
+			);
+		}
+
+		return $this->rank_exact_first( $ranked, $limit );
 	}
 
 	/**
@@ -503,7 +1343,21 @@ class Brikpanel_Pro_Search {
 	private function get_orders_by_product_sku( $sku ) {
 		global $wpdb;
 
-		$is_hpos = 'yes' === get_option( 'woocommerce_custom_orders_table_enabled' );
+		$sku = trim( (string) $sku );
+		if ( '' === $sku ) {
+			return array();
+		}
+
+		// Partial SKUs, matching what the Products source already does, so the
+		// same typing finds the product and the orders containing it. Very
+		// short terms stay exact: "a" as a wildcard would drag in half the
+		// catalogue and every order holding it.
+		$sku_escaped = $wpdb->esc_like( $sku );
+		$sku_match   = brikpanel_strlen( $sku ) >= self::SKU_PARTIAL_MIN_LENGTH
+			? '%' . $sku_escaped . '%'
+			: $sku_escaped;
+
+		$is_hpos = $this->orders_use_hpos();
 
 		$orders_table      = $wpdb->prefix . 'wc_orders';
 		$order_items_table = $wpdb->prefix . 'woocommerce_order_items';
@@ -534,12 +1388,13 @@ class Brikpanel_Pro_Search {
 					LEFT JOIN {$wpdb->postmeta} AS variation_meta
 						ON variations.ID = variation_meta.post_id
 						AND variation_meta.meta_key = '_sku'
-					WHERE (product_meta.meta_value = %s OR variation_meta.meta_value = %s)
+					WHERE (product_meta.meta_value LIKE %s OR variation_meta.meta_value LIKE %s)
 					AND orders.type = 'shop_order'
-					LIMIT 50
+					LIMIT %d
 					",
-					$sku,
-					$sku
+					$sku_match,
+					$sku_match,
+					self::ORDER_SKU_LIMIT
 				)
 			);
 		} else {
@@ -567,12 +1422,13 @@ class Brikpanel_Pro_Search {
 					LEFT JOIN {$wpdb->postmeta} AS variation_meta
 						ON variations.ID = variation_meta.post_id
 						AND variation_meta.meta_key = '_sku'
-					WHERE (product_meta.meta_value = %s OR variation_meta.meta_value = %s)
+					WHERE (product_meta.meta_value LIKE %s OR variation_meta.meta_value LIKE %s)
 					AND orders.post_type = 'shop_order'
-					LIMIT 50
+					LIMIT %d
 					",
-					$sku,
-					$sku
+					$sku_match,
+					$sku_match,
+					self::ORDER_SKU_LIMIT
 				)
 			);
 		}
@@ -583,12 +1439,12 @@ class Brikpanel_Pro_Search {
 
 		// Batch-load orders and products to avoid N+1 queries. Hard cap to
 		// prevent OOM on weak hosts.
-		$order_ids   = array_slice( array_unique( wp_list_pluck( $results, 'order_id' ) ), 0, 50 );
-		$product_ids = array_slice( array_unique( wp_list_pluck( $results, 'product_id' ) ), 0, 50 );
+		$order_ids   = array_slice( array_unique( wp_list_pluck( $results, 'order_id' ) ), 0, self::ORDER_SKU_LIMIT );
+		$product_ids = array_slice( array_unique( wp_list_pluck( $results, 'product_id' ) ), 0, self::ORDER_SKU_LIMIT );
 
 		$orders_map = array();
 		if ( ! empty( $order_ids ) ) {
-			foreach ( wc_get_orders( array( 'post__in' => $order_ids, 'limit' => 50 ) ) as $o ) {
+			foreach ( wc_get_orders( array( 'post__in' => $order_ids, 'limit' => self::ORDER_SKU_LIMIT ) ) as $o ) {
 				$orders_map[ $o->get_id() ] = $o;
 			}
 		}
@@ -627,6 +1483,10 @@ class Brikpanel_Pro_Search {
 		$li = '';
 
 		foreach ( $orders as $order_data ) {
+			// Reset per row: PHP keeps the variable alive across iterations, so
+			// a SKU hit would otherwise stamp its product onto every later row.
+			$matching_product = null;
+
 			if ( is_array( $order_data ) && isset( $order_data['found_by_sku'] ) ) {
 				$order            = $order_data['order'];
 				$matching_product = $order_data['matching_product'];
@@ -669,7 +1529,11 @@ class Brikpanel_Pro_Search {
 			$li .= '            <span class="text-sm">' . $name . '</span>';
 			$li .=                  $divider;
 			$li .= '            <span class="text-sm">';
-			$li .= '                Placed on <time class="order-date text-sm" datetime="' . $date_created_attr . '">' . $date_created_formatted . '</time>';
+			$li .= sprintf(
+				/* translators: %s: the date and time the order was placed. */
+				esc_html__( 'Placed on %s', 'brikpanel' ),
+				'<time class="order-date text-sm" datetime="' . $date_created_attr . '">' . $date_created_formatted . '</time>'
+			);
 			$li .= '            </span>';
 			$li .=                  $product_html;
 			$li .= '        </div>';
@@ -746,15 +1610,23 @@ class Brikpanel_Pro_Search {
 		$product_ids = array();
 
 		// Name match (covers simple + variable parent products).
-		$by_name = wc_get_products(
-			array(
-				'status'  => array( 'publish', 'draft', 'pending', 'private' ),
-				's'       => $query,
-				'limit'   => $limit,
-				'return'  => 'ids',
-				'orderby' => 'relevance',
-			)
+		$name_args = array(
+			'status' => array( 'publish', 'draft', 'pending', 'private' ),
+			's'      => $query,
+			'limit'  => $limit,
+			'return' => 'ids',
 		);
+
+		// Relevance ordering is only asked for when there is something to rank
+		// by. WordPress reads a leading "-" as "exclude this word", so a term
+		// made only of such words (typing just "-", or "-abc") leaves it with
+		// no positive keyword, and it emits a bare "ORDER BY  DESC" that
+		// MariaDB rejects outright.
+		if ( $this->has_positive_search_word( $query ) ) {
+			$name_args['orderby'] = 'relevance';
+		}
+
+		$by_name = wc_get_products( $name_args );
 		if ( ! empty( $by_name ) ) {
 			$product_ids = array_merge( $product_ids, $by_name );
 		}

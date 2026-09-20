@@ -145,6 +145,26 @@
 		return svg;
 	}
 
+	// An envelope, drawn the same way and at the same size as the WhatsApp mark
+	// so the two outreach buttons share one box in a row. Outlined rather than
+	// solid on purpose: it sits directly after the address in the first column,
+	// and a filled glyph there would out-shout the address it belongs to.
+	// i18n-ignore: SVG path data, not text.
+	var MAIL_PATH = 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v.4l8 5.1 8-5.1V6H4Zm16 12V8.75l-7.46 4.76a1 1 0 0 1-1.08 0L4 8.75V18h16Z';
+
+	function mailIcon() {
+		var ns = 'http://www.w3.org/2000/svg';
+		var svg = document.createElementNS(ns, 'svg');
+		svg.setAttribute('viewBox', '0 0 24 24');
+		svg.setAttribute('aria-hidden', 'true');
+		svg.setAttribute('focusable', 'false');
+		var path = document.createElementNS(ns, 'path');
+		path.setAttribute('d', MAIL_PATH);
+		path.setAttribute('fill', 'currentColor');
+		svg.appendChild(path);
+		return svg;
+	}
+
 	// The locked stand-in for a feature BrikMentor unlocks. Every string comes
 	// from the localized config: cfg.i18n.locked is ours, cfg.lockText is
 	// BrikMentor's own already-translated sentence, added on a second line only
@@ -212,6 +232,52 @@
 		el.setAttribute('aria-label', cfg.i18n.locked);
 		el.appendChild(whatsappIcon());
 
+		var stamp = document.createElement('span');
+		stamp.className = 'brikpanel-cartab-wa-lock';
+		stamp.setAttribute('aria-hidden', 'true');
+		stamp.appendChild(lockIcon());
+		el.appendChild(stamp);
+
+		return el;
+	}
+
+	// The envelope with the same padlock stamped on it: the locked stand-in for
+	// the mail shortcut in the Email cell. Built as waLockBadge()'s twin down to
+	// the stamp's class, so the two outreach marks stay one control in two
+	// places - a merchant who has learnt what the padlocked WhatsApp mark means
+	// should not have to learn this one separately.
+	//
+	// The address itself is NOT hidden: it is printed beside this badge by the
+	// caller and stays selectable. What is locked here is the one-click hand-off
+	// to a mail client, not the shopper's address.
+	function mailLockBadge() {
+		var text = cfg.i18n.locked;
+		if (cfg.lockText) {
+			text += '\n' + cfg.lockText;
+		}
+		// Same reasoning as lockBadge() and waLockBadge(): with no usable URL this
+		// must not be a link, because href="" reloads the admin page.
+		var el = document.createElement(cfg.lockUrl ? 'a' : 'span');
+		el.className = 'brikpanel-cartab-email-link brikpanel-cartab-email-link-locked';
+		if (cfg.lockUrl) {
+			el.href = cfg.lockUrl;
+			el.target = '_blank';
+			el.rel = 'noopener noreferrer';
+			if (cfg.lockPitch) {
+				el.setAttribute('data-bm-open', '');
+				// Its own pitch, not the WhatsApp one: somebody who clicked an
+				// envelope is asking about email, and being answered about phone
+				// numbers would read as the wrong panel having opened.
+				el.setAttribute('data-bm-variant', 'lock-mail');
+			}
+		}
+		el.title = text;
+		el.setAttribute('aria-label', cfg.i18n.locked);
+		el.appendChild(mailIcon());
+
+		// Deliberately the WhatsApp badge's own stamp class: one padlock pill,
+		// shared, so the locked envelope and the locked WhatsApp mark cannot
+		// drift apart in size, colour or corner.
 		var stamp = document.createElement('span');
 		stamp.className = 'brikpanel-cartab-wa-lock';
 		stamp.setAttribute('aria-hidden', 'true');
@@ -378,7 +444,49 @@
 	var CELLS = {
 		email: function (row) {
 			var td = colCell('email', 'brikpanel-cartab-email-cell');
-			td.textContent = row.email;
+			if (!row.email) {
+				// i18n-ignore: typographic em dash standing in for an empty value.
+				td.textContent = '\u2014';
+				return td;
+			}
+
+			var text = document.createElement('span');
+			text.className = 'brikpanel-cartab-email-text';
+			text.textContent = row.email;
+			td.appendChild(text);
+
+			// Promotion off and nothing to unlock it: no envelope at all, the
+			// screen is what it was before the shortcut existed. The Phone /
+			// WhatsApp column is absent on the same store for the same reason.
+			if (!cfg.emailShortcut) {
+				return td;
+			}
+
+			// Locked store: the padlocked envelope replaces the live one. After the
+			// address, never instead of it - this column identifies the row, and a
+			// cell that lost its address would break the table rather than gate it.
+			if (row.email_locked) {
+				td.appendChild(mailLockBadge());
+				return td;
+			}
+
+			// Hands the address to whatever mail client the merchant already uses.
+			// No target/rel: the client opens outside the browser and a _blank
+			// would leave an empty tab behind. Nothing is sent from this page.
+			var link = document.createElement('a');
+			link.className = 'brikpanel-cartab-email-link';
+			// Percent-encoded so a stray character in a stored address cannot end
+			// the URL early, but '@' is restored: RFC 6068 wants the separator
+			// literal, and some clients refuse a '%40' address outright.
+			link.href = 'mailto:' + encodeURIComponent(row.email).replace(/%40/g, '@');
+			link.title = cfg.i18n.email_compose;
+			// An aria-label on a link replaces everything inside it, which is what
+			// we want here: the glyph is aria-hidden and the address is already
+			// read out by the span beside it.
+			link.setAttribute('aria-label', cfg.i18n.email_compose);
+			link.appendChild(mailIcon());
+			td.appendChild(link);
+
 			return td;
 		},
 		name: function (row) {
@@ -471,7 +579,7 @@
 			var orderLink = document.createElement('a');
 			orderLink.className = 'brikpanel-cartab-details-order';
 			orderLink.href = row.order_url;
-			orderLink.textContent = cfg.i18n.order + ' #' + row.order_id;
+			orderLink.textContent = cfg.i18n.order + ' #' + (row.order_number || row.order_id);
 			box.appendChild(orderLink);
 		}
 

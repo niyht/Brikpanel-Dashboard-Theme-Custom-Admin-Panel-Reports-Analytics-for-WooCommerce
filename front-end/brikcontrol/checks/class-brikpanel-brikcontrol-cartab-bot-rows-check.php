@@ -196,7 +196,7 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
                 ),
                 number_format_i18n( $certain_rows )
             );
-            $result['message'] = __( 'These entries carry a browser id this plugin never issued, or arrive in shapes a browser cannot produce: one browser id typing many different addresses within minutes, one address arriving from many browser ids within minutes, or dozens of empty signups inside a single minute. Nothing has been changed; this check only reports. The capture endpoint now refuses foreign browser ids and rate-limits by connection, so new entries of this kind should stop.', 'brikpanel' );
+            $result['message'] = __( 'These entries carry a browser id this plugin never issued, or arrive in shapes a browser cannot produce: one browser id typing many different addresses within minutes, one address arriving from many browser ids within minutes, or dozens of empty signups inside a single minute. This check only reports; the Bot Traffic check on this page deletes the certain ones, with a restore point. The capture endpoint now refuses foreign browser ids and rate-limits by connection, so new entries of this kind should stop.', 'brikpanel' );
             if ( $likely_rows > 0 ) {
                 $result['message'] .= ' ' . $this->safe_sprintf(
                     /* translators: %s: number of entries. */
@@ -357,7 +357,111 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
 
         $findings  = [];
         $truncated = false;
-        $keys      = [
+        $keys      = $this->group_keys( $table, $t, $findings, $truncated );
+        if ( null === $keys ) {
+            return null;
+        }
+
+        // Every count in one pass over the open set. The group keys found above
+        // go back in as IN lists over indexed columns; rows never come out.
+        $params      = [];
+        $r1_pred     = $this->malformed_predicate( $params );
+        $certain_sql = $this->union_predicate( $keys, [ 'certain' ], $params );
+        $any_sql     = $this->union_predicate( $keys, [ 'certain', 'likely' ], $params );
+
+        $sql = "SELECT COUNT(*) AS scoped,
+                       COUNT(DISTINCT CASE WHEN {$r1_pred} THEN visitor_id END) AS r1_ids,
+                       SUM(CASE WHEN {$certain_sql} THEN 1 ELSE 0 END) AS certain_rows,
+                       SUM(CASE WHEN {$any_sql} THEN 1 ELSE 0 END) AS flagged_rows
+                  FROM {$table}
+                 WHERE " . self::SCOPE_SQL;
+        // The regexp bound for r1_ids comes first; union_predicate() appended
+        // its own parameters in the order its fragments appear in the SQL.
+        $counts = $wpdb->get_row( $wpdb->prepare( $sql, $params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        if ( ! is_array( $counts ) ) {
+            return null;
+        }
+
+        $groups_certain = 0;
+        $groups_likely  = 0;
+        foreach ( $findings as $finding ) {
+            if ( 'malformed' === $finding['rule'] ) {
+                continue; // Counted from the database, not from the ten examples.
+            }
+            if ( 'certain' === $finding['tier'] ) {
+                $groups_certain++;
+            } else {
+                $groups_likely++;
+            }
+        }
+
+        // Coupons are only relevant when something is flagged, and both coupon
+        // figures are optional: a migrated site can carry mixed collations
+        // between postmeta and this table, and a stat that reads 0 because the
+        // query failed would be a lie. suppress_errors() has no precedent in
+        // this codebase; it is used here so a collation clash on one store
+        // does not surface as a database error on every scan.
+        $coupons_flagged  = null;
+        $coupons_orphaned = null;
+        if ( (int) $counts['flagged_rows'] > 0 ) {
+            $coupon_params   = [ '_brikpanel_cartab_email' ];
+            $flagged_sql     = $this->union_predicate( $keys, [ 'certain', 'likely' ], $coupon_params );
+            $coupons_flagged = $this->count_or_null(
+                "SELECT COUNT(DISTINCT pm.post_id)
+                   FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'shop_coupon' AND p.post_status <> 'trash'
+                  WHERE pm.meta_key = %s
+                    AND pm.meta_value IN ( SELECT email FROM {$table} WHERE " . self::SCOPE_SQL . " AND email <> '' AND ( {$flagged_sql} ) )",
+                $coupon_params
+            );
+        }
+        $coupons_orphaned = $this->count_or_null(
+            "SELECT COUNT(DISTINCT pm.post_id)
+               FROM {$wpdb->postmeta} pm
+         INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'shop_coupon' AND p.post_status <> 'trash'
+          LEFT JOIN {$table} ac ON ac.email = pm.meta_value
+              WHERE pm.meta_key = %s AND ac.id IS NULL",
+            [ '_brikpanel_cartab_email' ]
+        );
+
+        // Certain first, then the biggest groups, so the table opens on what
+        // matters.
+        usort( $findings, static function ( $a, $b ) {
+            if ( $a['tier'] !== $b['tier'] ) {
+                return ( 'certain' === $a['tier'] ) ? -1 : 1;
+            }
+            return $b['rows'] <=> $a['rows'];
+        } );
+
+        return [
+            'findings'         => $findings,
+            'counts'           => $counts,
+            'groups_certain'   => $groups_certain,
+            'groups_likely'    => $groups_likely,
+            'truncated'        => $truncated,
+            'coupons_flagged'  => $coupons_flagged,
+            'coupons_orphaned' => $coupons_orphaned,
+        ];
+    }
+
+    /**
+     * The three group patterns, as findings plus the key lists the count and
+     * delete predicates are built from. Shared by the report and by the Bot
+     * Traffic cleanup, so the entries that check deletes are exactly the ones
+     * this card calls certain.
+     *
+     * @since 3.3.11
+     *
+     * @param string $table     Prefixed table name.
+     * @param array  $t         Thresholds.
+     * @param array  $findings  By reference.
+     * @param bool   $truncated By reference.
+     * @return array|null Null when a query failed.
+     */
+    private function group_keys( $table, array $t, array &$findings, &$truncated ) {
+        global $wpdb;
+
+        $keys = [
             'visitor' => [ 'certain' => [], 'likely' => [] ],
             'email'   => [ 'certain' => [], 'likely' => [] ],
             'burst'   => [ 'certain' => [], 'likely' => [] ],
@@ -485,86 +589,49 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
             ];
         }
 
-        // Every count in one pass over the open set. The group keys found above
-        // go back in as IN lists over indexed columns; rows never come out.
-        $params      = [];
-        $r1_pred     = $this->malformed_predicate( $params );
-        $certain_sql = $this->union_predicate( $keys, [ 'certain' ], $params );
-        $any_sql     = $this->union_predicate( $keys, [ 'certain', 'likely' ], $params );
+        return $keys;
+    }
 
-        $sql = "SELECT COUNT(*) AS scoped,
-                       COUNT(DISTINCT CASE WHEN {$r1_pred} THEN visitor_id END) AS r1_ids,
-                       SUM(CASE WHEN {$certain_sql} THEN 1 ELSE 0 END) AS certain_rows,
-                       SUM(CASE WHEN {$any_sql} THEN 1 ELSE 0 END) AS flagged_rows
-                  FROM {$table}
-                 WHERE " . self::SCOPE_SQL;
-        // The regexp bound for r1_ids comes first; union_predicate() appended
-        // its own parameters in the order its fragments appear in the SQL.
-        $counts = $wpdb->get_row( $wpdb->prepare( $sql, $params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-        if ( ! is_array( $counts ) ) {
+    /**
+     * Entries the certain tier covers: their total, and up to $limit ids
+     * (oldest first). What the Bot Traffic cleanup deletes.
+     *
+     * @since 3.3.11
+     *
+     * @param int $limit Ids to return; 0 for the count only.
+     * @return array{ids:int[],total:int}|null Null when the table is missing or a query failed.
+     */
+    public static function certain_rows( $limit = 0 ) {
+        global $wpdb;
+
+        $self  = new self();
+        $table = $wpdb->prefix . 'brikpanel_abandoned_carts';
+        if ( ! $self->table_exists( $table ) ) {
             return null;
         }
 
-        $groups_certain = 0;
-        $groups_likely  = 0;
-        foreach ( $findings as $finding ) {
-            if ( 'malformed' === $finding['rule'] ) {
-                continue; // Counted from the database, not from the ten examples.
-            }
-            if ( 'certain' === $finding['tier'] ) {
-                $groups_certain++;
-            } else {
-                $groups_likely++;
-            }
+        $findings  = [];
+        $truncated = false;
+        $keys      = $self->group_keys( $table, $self->thresholds(), $findings, $truncated );
+        if ( null === $keys ) {
+            return null;
         }
 
-        // Coupons are only relevant when something is flagged, and both coupon
-        // figures are optional: a migrated site can carry mixed collations
-        // between postmeta and this table, and a stat that reads 0 because the
-        // query failed would be a lie. suppress_errors() has no precedent in
-        // this codebase; it is used here so a collation clash on one store
-        // does not surface as a database error on every scan.
-        $coupons_flagged  = null;
-        $coupons_orphaned = null;
-        if ( (int) $counts['flagged_rows'] > 0 ) {
-            $coupon_params   = [ '_brikpanel_cartab_email' ];
-            $flagged_sql     = $this->union_predicate( $keys, [ 'certain', 'likely' ], $coupon_params );
-            $coupons_flagged = $this->count_or_null(
-                "SELECT COUNT(DISTINCT pm.post_id)
-                   FROM {$wpdb->postmeta} pm
-             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'shop_coupon' AND p.post_status <> 'trash'
-                  WHERE pm.meta_key = %s
-                    AND pm.meta_value IN ( SELECT email FROM {$table} WHERE " . self::SCOPE_SQL . " AND email <> '' AND ( {$flagged_sql} ) )",
-                $coupon_params
-            );
+        $params = [];
+        $pred   = $self->union_predicate( $keys, [ 'certain' ], $params );
+        $where  = self::SCOPE_SQL . " AND {$pred}";
+
+        $total = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where}", $params ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        if ( '' !== $wpdb->last_error ) {
+            return null;
         }
-        $coupons_orphaned = $this->count_or_null(
-            "SELECT COUNT(DISTINCT pm.post_id)
-               FROM {$wpdb->postmeta} pm
-         INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'shop_coupon' AND p.post_status <> 'trash'
-          LEFT JOIN {$table} ac ON ac.email = pm.meta_value
-              WHERE pm.meta_key = %s AND ac.id IS NULL",
-            [ '_brikpanel_cartab_email' ]
-        );
 
-        // Certain first, then the biggest groups, so the table opens on what
-        // matters.
-        usort( $findings, static function ( $a, $b ) {
-            if ( $a['tier'] !== $b['tier'] ) {
-                return ( 'certain' === $a['tier'] ) ? -1 : 1;
-            }
-            return $b['rows'] <=> $a['rows'];
-        } );
+        $ids = [];
+        if ( (int) $limit > 0 && (int) $total > 0 ) {
+            $ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$table} WHERE {$where} ORDER BY id ASC LIMIT %d", array_merge( $params, [ (int) $limit ] ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        }
 
-        return [
-            'findings'         => $findings,
-            'counts'           => $counts,
-            'groups_certain'   => $groups_certain,
-            'groups_likely'    => $groups_likely,
-            'truncated'        => $truncated,
-            'coupons_flagged'  => $coupons_flagged,
-            'coupons_orphaned' => $coupons_orphaned,
-        ];
+        return [ 'ids' => array_map( 'intval', (array) $ids ), 'total' => (int) $total ];
     }
 
     /**
@@ -807,7 +874,7 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
 
         if ( $flagged_rows > 0 ) {
             $recs[] = [
-                'text'     => __( 'Open Abandoned Carts and search for the example addresses below. Nothing was changed by this check; delete an entry by hand only once you are sure it is not a shopper.', 'brikpanel' ),
+                'text'     => __( 'Open Abandoned Carts and search for the example addresses below. Nothing was changed by this check. Certain entries are removed by the Bot Traffic cleanup on this page; delete a likely one by hand only once you are sure it is not a shopper.', 'brikpanel' ),
                 'priority' => 'high',
                 'link'     => [
                     'url'   => admin_url( 'admin.php?page=brikpanel-abandoned-carts' ),

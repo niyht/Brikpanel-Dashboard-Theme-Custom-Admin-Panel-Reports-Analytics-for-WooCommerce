@@ -3,7 +3,7 @@
  * BrikPanel — BrikControl
  *
  * Public façade for the Store Health panel: owns the admin page, the AJAX
- * endpoints, and the topbar / dashboard render hooks. Storage / scan logic
+ * endpoints, and the topbar render hook. Storage / scan logic
  * lives in the sibling classes — this file is wiring + view glue.
  *
  * @package BrikPanel
@@ -20,7 +20,6 @@ class Brikpanel_BrikControl {
     const NONCE_ACTION  = 'brikpanel_brikcontrol_nonce';
     const SCRIPT_HANDLE = 'brikpanel-brikcontrol';
     const TOPBAR_HANDLE = 'brikpanel-brikcontrol-topbar';
-    const BANNER_HANDLE = 'brikpanel-bc-banner';
 
     /**
      * Seconds to wait after a plugin activate/deactivate before scanning, so a
@@ -207,13 +206,8 @@ class Brikpanel_BrikControl {
         }
 
         $topbar_enabled = Brikpanel_Dashboard_Topbar::is_enabled();
-        $on_dashboard   = ( $hook === 'admin_page_brikpanel-dashboard' );
 
-        // The CSS file is shared by the topbar AND the dashboard banner. The
-        // banner can render on the BrikPanel dashboard even when the topbar
-        // is disabled, so we must load the CSS in that case too — otherwise
-        // the unstyled SVG falls back to the 300×150 browser default.
-        if ( ! $topbar_enabled && ! $on_dashboard ) {
+        if ( ! $topbar_enabled ) {
             return;
         }
 
@@ -223,33 +217,6 @@ class Brikpanel_BrikControl {
             [],
             BRIKPANEL_VERSION
         );
-
-        // The banner's dismiss "X" has exactly one owner, loaded wherever the
-        // banner can render — regardless of the topbar. It used to piggyback on
-        // the topbar script, which bails early when the shield element is not
-        // in the DOM; the X was then silently dead and the banner came back on
-        // the next page load, indistinguishable from "dismiss didn't save".
-        if ( $on_dashboard ) {
-            wp_enqueue_script(
-                self::BANNER_HANDLE,
-                BRIKPANEL_URL . 'front-end/brikcontrol/assets/brikpanel-bc-banner.js',
-                [],
-                BRIKPANEL_VERSION,
-                true
-            );
-            wp_localize_script( self::BANNER_HANDLE, 'brikpanelBcBanner', [
-                'ajax_url' => admin_url( 'admin-ajax.php' ),
-                'nonce'    => wp_create_nonce( self::NONCE_ACTION ),
-                'i18n'     => [
-                    'dismiss_failed' => __( 'Could not dismiss. Please try again.', 'brikpanel' ),
-                ],
-            ] );
-        }
-
-        // Topbar JS is the topbar's own concern; the banner doesn't need it.
-        if ( ! $topbar_enabled ) {
-            return;
-        }
 
         wp_enqueue_script(
             self::TOPBAR_HANDLE,
@@ -437,74 +404,6 @@ class Brikpanel_BrikControl {
     }
 
     // =========================================================================
-    // DASHBOARD BANNER (critical-only, dismissable)
-    // =========================================================================
-
-    /**
-     * Render a dismissable banner at the top of the BrikPanel dashboard if —
-     * and only if — there is at least one critical health check the current
-     * user has not already dismissed.
-     *
-     * Dismissal is permanent and scoped to the set of critical checks that
-     * were failing when the X was clicked, so the banner never nags twice for
-     * the same problem but still speaks up when a NEW check turns critical.
-     *
-     * Administrators only: shop_manager (and other roles granted
-     * manage_woocommerce) can reach the dashboard, but the banner phrasing
-     * is alarming and shop staff usually cannot action the underlying fix
-     * (plugin installs, server config, etc.), so we restrict it to users
-     * who hold manage_options.
-     */
-    public function render_dashboard_banner() {
-        if ( ! current_user_can( 'manage_options' ) ) {
-            return;
-        }
-        $bundle   = Brikpanel_BrikControl_Storage::get_results();
-        $critical = (int) ( $bundle['status_summary']['critical'] ?? 0 );
-        if ( $critical < 1 ) {
-            return;
-        }
-        $critical_ids = Brikpanel_BrikControl_Storage::critical_check_ids( $bundle );
-        if ( Brikpanel_BrikControl_Storage::is_dismissed( 'dashboard_banner', $critical_ids ) ) {
-            return;
-        }
-
-        $page_url = admin_url( 'admin.php?page=' . self::PAGE_SLUG );
-        ?>
-        <div class="brikpanel-bc-banner" data-bc-banner role="alert">
-            <div class="brikpanel-bc-banner-icon" aria-hidden="true">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            </div>
-            <div class="brikpanel-bc-banner-text">
-                <strong>
-                    <?php
-                    printf(
-                        /* translators: %s: critical issue count */
-                        esc_html( _n(
-                            '%s critical store health issue detected',
-                            '%s critical store health issues detected',
-                            $critical,
-                            'brikpanel'
-                        ) ),
-                        esc_html( number_format_i18n( $critical ) )
-                    );
-                    ?>
-                </strong>
-                <span><?php esc_html_e( 'Open the BrikControl report to see what to fix and which plugins can help.', 'brikpanel' ); ?></span>
-            </div>
-            <div class="brikpanel-bc-banner-actions">
-                <a class="brikpanel-bc-banner-cta" href="<?php echo esc_url( $page_url ); ?>">
-                    <?php esc_html_e( 'View report', 'brikpanel' ); ?>
-                </a>
-                <button type="button" class="brikpanel-bc-banner-dismiss" data-bc-dismiss aria-label="<?php esc_attr_e( 'Dismiss', 'brikpanel' ); ?>">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-            </div>
-        </div>
-        <?php
-    }
-
-    // =========================================================================
     // AJAX
     // =========================================================================
 
@@ -611,11 +510,7 @@ class Brikpanel_BrikControl {
         // The scope is computed here, never accepted from the request: the
         // client must not be able to widen its own dismissal and mute checks
         // the merchant was never shown.
-        $scope = ( $key === 'dashboard_banner' )
-            ? Brikpanel_BrikControl_Storage::critical_check_ids()
-            : [];
-
-        Brikpanel_BrikControl_Storage::dismiss( $key, $scope );
+        Brikpanel_BrikControl_Storage::dismiss( $key, Brikpanel_BrikControl_Storage::critical_check_ids() );
         wp_send_json_success( [ 'dismissed' => $key ] );
     }
 
@@ -670,6 +565,9 @@ class Brikpanel_BrikControl {
             'check_id' => $check_id,
             'removed'  => (int) ( $outcome['removed'] ?? 0 ),
             'has_more' => ! empty( $outcome['has_more'] ),
+            // A check can explain a partial or refused run (restore point full,
+            // another operation running). Already translated server-side.
+            'message'  => (string) ( $outcome['message'] ?? '' ),
         ] );
     }
 

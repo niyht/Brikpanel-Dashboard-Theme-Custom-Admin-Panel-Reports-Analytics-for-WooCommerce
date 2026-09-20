@@ -107,6 +107,197 @@ class Brikpanel_Cron {
 	 */
 	private static $resolved_hooks = null;
 
+	/**
+	 * Option holding the fingerprint of the last reconcile that reached the
+	 * database: [ 'sig' => string, 'at' => int ].
+	 *
+	 * @since 3.3.6
+	 */
+	const RECONCILE_OPTION = 'brikpanel_cron_reconciled';
+
+	/**
+	 * How long an unchanged set of recurring jobs is trusted before the
+	 * database is asked again. Covers what the fingerprint cannot see: a row
+	 * removed from outside this class (WooCommerce's own Scheduled Actions
+	 * screen, a database restore, a site clone).
+	 *
+	 * @since 3.3.6
+	 */
+	const RECONCILE_TTL = HOUR_IN_SECONDS;
+
+	/**
+	 * Schedule / cancel calls recorded while reconcile() collects them, in
+	 * call order. Null outside that window, where both methods write at once.
+	 *
+	 * @var array[]|null
+	 */
+	private static $intents = null;
+
+	/**
+	 * Whether this request already dropped the fingerprint, so repeated
+	 * events do not repeat the option lookup.
+	 *
+	 * @var bool
+	 */
+	private static $reconcile_invalidated = false;
+
+	// =========================================================================
+	// Reconcile (per-request recurring job registration)
+	// =========================================================================
+
+	/**
+	 * Run the per-request "make sure my recurring jobs exist" registrations
+	 * without asking the database on every request.
+	 *
+	 * WHY. Every module re-declares its recurring jobs on `init`, and each
+	 * schedule_recurring() / cancel() costs one to three Action Scheduler
+	 * queries even when nothing changes. Measured on the reference store: 24
+	 * queries on EVERY request, storefront and each admin-ajax poll included,
+	 * to confirm the same eight jobs over and over.
+	 *
+	 * HOW. Inside $collect the two methods only record what they were asked
+	 * for. The recorded list is fingerprinted: a setting that turns a sync on
+	 * or off, or changes its interval, changes the list and therefore the
+	 * fingerprint, so it is applied on the very next request exactly as
+	 * before. An unchanged list is re-applied once per RECONCILE_TTL. A write
+	 * that could not be completed (Action Scheduler mid-migration) leaves the
+	 * fingerprint unsaved, so the next request tries again.
+	 *
+	 * @since 3.3.6
+	 * @param callable $collect Callback that performs the registrations.
+	 * @return void
+	 */
+	public static function reconcile( callable $collect ) {
+		self::$intents = [];
+		try {
+			$collect();
+		} finally {
+			$intents       = self::$intents;
+			self::$intents = null;
+		}
+		if ( empty( $intents ) ) {
+			return;
+		}
+
+		// The start offset is left out: callers compute it from the current
+		// time, so it would change the fingerprint on every request.
+		$signed = array_map(
+			static function ( $intent ) {
+				unset( $intent['offset'] );
+				return $intent;
+			},
+			$intents
+		);
+		$sig   = md5( BRIKPANEL_VERSION . '|' . wp_json_encode( $signed ) );
+		$now   = time();
+		$stamp = get_option( self::RECONCILE_OPTION );
+		if (
+			is_array( $stamp )
+			&& isset( $stamp['sig'], $stamp['at'] )
+			&& $stamp['sig'] === $sig
+			&& (int) $stamp['at'] <= $now
+			&& $now - (int) $stamp['at'] < self::RECONCILE_TTL
+		) {
+			return;
+		}
+
+		$complete = true;
+		foreach ( $intents as $intent ) {
+			if ( 'recurring' === $intent['op'] ) {
+				if ( false === self::apply_recurring( $intent['hook'], $intent['interval'], $intent['args'], $intent['offset'] ) ) {
+					$complete = false;
+				}
+			} else {
+				self::apply_cancel( $intent['hook'], $intent['args'] );
+			}
+		}
+		if ( $complete ) {
+			update_option( self::RECONCILE_OPTION, [ 'sig' => $sig, 'at' => $now ], false );
+			self::$reconcile_invalidated = false;
+		}
+	}
+
+	/**
+	 * Listen for Action Scheduler events that can leave a recurring job
+	 * missing without going through this class, and forget the fingerprint
+	 * when one hits a BrikPanel action, so the next request re-checks.
+	 *
+	 * Action Scheduler does NOT schedule the next run of a recurring job when
+	 * the run timed out, died in a fatal error, or failed five times in a row
+	 * (it logs "consistently failing"). Before reconcile() existed, the very
+	 * next request re-created such a job; this keeps that recovery immediate
+	 * instead of waiting for RECONCILE_TTL.
+	 *
+	 * @since 3.3.6
+	 * @return void
+	 */
+	public static function watch_external_changes() {
+		foreach ( [
+			'action_scheduler_failed_execution',
+			'action_scheduler_failed_action',
+			'action_scheduler_unexpected_shutdown',
+			'action_scheduler_failed_to_schedule_next_instance',
+			'action_scheduler_canceled_action',
+			'action_scheduler_canceled_corrupted_action',
+		] as $event ) {
+			add_action( $event, [ __CLASS__, 'on_external_action_change' ], 10, 1 );
+		}
+		// A deleted row can no longer be looked up, so its group is unknown.
+		// Only a delete made from an admin screen counts: the queue cleaner
+		// deletes old finished rows all the time from cron and async requests,
+		// and none of those can remove a pending job.
+		add_action( 'action_scheduler_deleted_action', [ __CLASS__, 'on_external_action_delete' ], 10, 0 );
+	}
+
+	/**
+	 * @param int|mixed $action_id
+	 * @return void
+	 */
+	public static function on_external_action_change( $action_id ) {
+		if ( self::$reconcile_invalidated || false === get_option( self::RECONCILE_OPTION ) ) {
+			return;
+		}
+		if ( ! class_exists( 'ActionScheduler' ) || ! is_numeric( $action_id ) ) {
+			return;
+		}
+		try {
+			$action = ActionScheduler::store()->fetch_action( (int) $action_id );
+			$group  = ( is_object( $action ) && method_exists( $action, 'get_group' ) ) ? (string) $action->get_group() : '';
+		} catch ( \Throwable $e ) {
+			return;
+		}
+		if ( self::GROUP === $group ) {
+			self::invalidate_reconcile();
+		}
+	}
+
+	/**
+	 * @return void
+	 */
+	public static function on_external_action_delete() {
+		if ( self::$reconcile_invalidated ) {
+			return;
+		}
+		if ( is_admin() && ! wp_doing_ajax() && ! wp_doing_cron() ) {
+			self::invalidate_reconcile();
+		}
+	}
+
+	/**
+	 * Forget the last reconcile, so the next request checks every recurring
+	 * job against the database. Called after any direct schedule or cancel,
+	 * which can remove a job the fingerprint still believes exists.
+	 *
+	 * @since 3.3.6
+	 * @return void
+	 */
+	public static function invalidate_reconcile() {
+		self::$reconcile_invalidated = true;
+		if ( false !== get_option( self::RECONCILE_OPTION ) ) {
+			delete_option( self::RECONCILE_OPTION );
+		}
+	}
+
 	// =========================================================================
 	// Availability
 	// =========================================================================
@@ -456,6 +647,30 @@ class Brikpanel_Cron {
 		if ( ! self::is_available() ) {
 			return false;
 		}
+		if ( null !== self::$intents ) {
+			self::$intents[] = [
+				'op'       => 'recurring',
+				'hook'     => (string) $hook,
+				'interval' => max( 60, (int) $interval_seconds ),
+				'args'     => $args,
+				'offset'   => $start_offset,
+			];
+			return true;
+		}
+		self::invalidate_reconcile();
+		return self::apply_recurring( $hook, $interval_seconds, $args, $start_offset );
+	}
+
+	/**
+	 * The database half of schedule_recurring().
+	 *
+	 * @param string   $hook
+	 * @param int      $interval_seconds
+	 * @param array    $args
+	 * @param int|null $start_offset
+	 * @return int|bool
+	 */
+	private static function apply_recurring( $hook, $interval_seconds, array $args, $start_offset ) {
 		$interval = max( 60, (int) $interval_seconds );
 		if ( self::has_scheduled( $hook, [ $args ] ) ) {
 			// as_has_scheduled_action matches on hook + args + group only — the
@@ -465,6 +680,7 @@ class Brikpanel_Cron {
 			// with the UI happily showing the new setting. Compare the live
 			// recurrence and re-create the action when it no longer matches.
 			if ( self::recurring_interval_matches( $hook, $args, $interval ) ) {
+				self::drop_duplicate_recurring( $hook, $args );
 				return true;
 			}
 			self::cancel( $hook, $args );
@@ -473,6 +689,57 @@ class Brikpanel_Cron {
 		return self::guarded( static function () use ( $first_run, $interval, $hook, $args ) {
 			return (int) as_schedule_recurring_action( $first_run, $interval, $hook, [ $args ], self::GROUP, false, 10 );
 		} );
+	}
+
+	/**
+	 * Keep one pending copy of a recurring job and cancel the rest.
+	 *
+	 * Two requests that both find a job missing both create it, and from then
+	 * on each copy schedules its own successor, so the job runs twice for good
+	 * (seen on the reference store: the abandoned-cart sweep, twice every ten
+	 * minutes). The lowest action ID is kept.
+	 *
+	 * @param string $hook
+	 * @param array  $args
+	 * @return void
+	 */
+	private static function drop_duplicate_recurring( $hook, array $args ) {
+		try {
+			// The return format is the SECOND argument. A `return` key inside
+			// the query array is ignored and hands back full action objects.
+			$ids = as_get_scheduled_actions(
+				[
+					'hook'     => $hook,
+					'args'     => [ $args ],
+					'group'    => self::GROUP,
+					'status'   => 'pending',
+					'per_page' => 10,
+				],
+				'ids'
+			);
+		} catch ( \Throwable $e ) {
+			return;
+		}
+		if ( ! is_array( $ids ) || count( $ids ) < 2 || ! class_exists( 'ActionScheduler' ) ) {
+			return;
+		}
+		$ids = array_values( array_filter( array_map(
+			static function ( $id ) {
+				return is_scalar( $id ) ? (int) $id : 0;
+			},
+			$ids
+		) ) );
+		if ( count( $ids ) < 2 ) {
+			return;
+		}
+		sort( $ids );
+		array_shift( $ids );
+		foreach ( $ids as $id ) {
+			self::guarded( static function () use ( $id ) {
+				ActionScheduler::store()->cancel_action( $id );
+				return 1;
+			} );
+		}
 	}
 
 	/**
@@ -537,6 +804,26 @@ class Brikpanel_Cron {
 		if ( ! self::is_available() ) {
 			return 0;
 		}
+		if ( null !== self::$intents ) {
+			self::$intents[] = [
+				'op'   => 'cancel',
+				'hook' => (string) $hook,
+				'args' => $args,
+			];
+			return 0;
+		}
+		self::invalidate_reconcile();
+		return self::apply_cancel( $hook, $args );
+	}
+
+	/**
+	 * The database half of cancel().
+	 *
+	 * @param string     $hook
+	 * @param array|null $args
+	 * @return int Number of actions cancelled.
+	 */
+	private static function apply_cancel( $hook, $args ) {
 		$payload = $args === null ? null : [ $args ];
 		$count   = 0;
 		// as_unschedule_all_actions returns no count, so we query first to
@@ -817,6 +1104,7 @@ class Brikpanel_Cron {
 				return [ 'ok' => false, 'message' => __( 'Action does not belong to BrikPanel.', 'brikpanel' ) ];
 			}
 			$store->cancel_action( (int) $action_id );
+			self::invalidate_reconcile();
 			return [ 'ok' => true, 'message' => __( 'Cancelled.', 'brikpanel' ) ];
 		} catch ( \Throwable $e ) {
 			return [ 'ok' => false, 'message' => $e->getMessage() ];

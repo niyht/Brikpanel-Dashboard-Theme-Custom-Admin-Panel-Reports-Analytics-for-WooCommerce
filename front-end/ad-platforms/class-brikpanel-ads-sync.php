@@ -32,6 +32,10 @@ class Brikpanel_Ads_Sync {
 	/** Days per chunk during backfill. 90 = Meta's max insights window. */
 	const BACKFILL_CHUNK_DAYS = 90;
 
+	/** Halt reason codes stored in brikpanel_ads_backfill_status_<platform>. */
+	const HALT_CONNECTION_LOST = 'connection_lost';
+	const HALT_ACCOUNT_CHANGED = 'account_changed';
+
 	/** Daily sync runs once every 24 hours. */
 	const DAILY_INTERVAL_SECONDS = DAY_IN_SECONDS;
 
@@ -50,7 +54,9 @@ class Brikpanel_Ads_Sync {
 		add_action( 'brikpanel_cron_register', [ $this, 'register_handlers' ] );
 
 		// Schedule the recurring daily sync (idempotent; AS dedupes by group+hook).
-		add_action( 'init', [ $this, 'schedule_daily' ], 20 );
+		// On the register hook so the check joins Brikpanel_Cron::reconcile()
+		// instead of querying Action Scheduler on every request.
+		add_action( 'brikpanel_cron_register', [ $this, 'schedule_daily' ] );
 
 		// Hook OAuth completion → kick off backfill for the just-connected
 		// platform. The OAuth handler sets a `brikpanel_ads_needs_backfill_*`
@@ -102,9 +108,8 @@ class Brikpanel_Ads_Sync {
 			|| Brikpanel_Ads_Tokens::is_connected( Brikpanel_Ads_Tokens::PLATFORM_META );
 
 		if ( ! $connected ) {
-			if ( Brikpanel_Cron::is_scheduled( self::HOOK_DAILY ) ) {
-				Brikpanel_Cron::cancel( self::HOOK_DAILY );
-			}
+			// cancel() is already a no-op when nothing is pending.
+			Brikpanel_Cron::cancel( self::HOOK_DAILY );
 			return;
 		}
 
@@ -190,9 +195,25 @@ class Brikpanel_Ads_Sync {
 			'total_chunks'    => $total,
 			'completed_chunks'=> 0,
 			'last_error'      => '',
+			'halted'          => false,
+			'halt_reason'     => '',
 			'generation'      => $generation,
 		], false );
 	}
+
+	/**
+	 * Platforms whose halt has already been noted in this PHP process.
+	 *
+	 * @var array<string, bool>
+	 */
+	private static $halt_noted = [];
+
+	/**
+	 * Platforms whose "superseded" skip has already been noted in this process.
+	 *
+	 * @var array<string, bool>
+	 */
+	private static $superseded_noted = [];
 
 	/** Option key holding the current backfill generation for a platform. */
 	private static function backfill_generation_key( $platform ) {
@@ -209,6 +230,171 @@ class Brikpanel_Ads_Sync {
 		$next = self::backfill_generation( $platform ) + 1;
 		update_option( self::backfill_generation_key( $platform ), $next, false );
 		return $next;
+	}
+
+	/**
+	 * Stop a backfill that is still queued: drop the progress record and
+	 * cancel every chunk this platform still has in the Action Scheduler
+	 * queue.
+	 *
+	 * Disconnecting used to leave up to 13 chunks behind. Each woke up, found
+	 * no connection, wrote "skipped: not connected." into the 100-entry log
+	 * ring and reported success — so one disconnect buried the genuine errors
+	 * under a dozen identical notes and left the progress bar frozen for good.
+	 * Cancel the work instead of letting it drain.
+	 *
+	 * The generation bump is the belt to the cancellation's braces: Action
+	 * Scheduler may already have claimed a batch, and a claimed chunk can no
+	 * longer be unscheduled. Those land on the guards in
+	 * handle_backfill_chunk() instead.
+	 *
+	 * @param string $platform
+	 * @param string $reason_code Optional halt reason code (see halt_reason_text).
+	 *                            When given, the progress record is kept and
+	 *                            marked halted with this code instead of being
+	 *                            removed: the connection died on its own and
+	 *                            the merchant is still looking at the card.
+	 *                            When empty (an explicit disconnect) the record
+	 *                            is removed outright.
+	 * @return int Number of queued chunks cancelled.
+	 */
+	public static function cancel_backfill( $platform, $reason_code = '' ) {
+		$status_key = 'brikpanel_ads_backfill_status_' . $platform;
+		$status     = (array) get_option( $status_key, [] );
+
+		if ( $reason_code === '' || empty( $status ) ) {
+			delete_option( $status_key );
+		} else {
+			$status['halted']      = true;
+			$status['halt_reason'] = $reason_code;
+			update_option( $status_key, $status, false );
+		}
+
+		if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
+			return 0;
+		}
+
+		self::bump_backfill_generation( $platform );
+
+		// Cancel only this platform's chunks. The other platform may be
+		// mid-backfill and must not lose its queue because this one was
+		// disconnected, and Brikpanel_Cron::cancel() matches the whole
+		// argument list — which differs per chunk — so filter by payload here.
+		$cancelled = 0;
+		$pending   = Brikpanel_Cron::query( [
+			'hook'     => self::HOOK_BACKFILL,
+			'status'   => 'pending',
+			'per_page' => 200,
+		] );
+		foreach ( array_keys( $pending ) as $action_id ) {
+			$args    = Brikpanel_Cron::get_action_args( $action_id );
+			$payload = isset( $args[0] ) && is_array( $args[0] ) ? $args[0] : [];
+			if ( ! isset( $payload['platform'] ) || (string) $payload['platform'] !== $platform ) {
+				continue;
+			}
+			$result = Brikpanel_Cron::cancel_by_id( $action_id );
+			if ( ! empty( $result['ok'] ) ) {
+				$cancelled++;
+			}
+		}
+
+		return $cancelled;
+	}
+
+	/**
+	 * Record why a backfill stopped early, so the settings card can say so.
+	 *
+	 * Without this the bar sat at "Loading history… 2 of 13" forever: the skip
+	 * guards returned without touching completed_chunks and without writing an
+	 * error, leaving the rendered card and the JS poll with nothing to show but
+	 * a frozen bar and no way for the merchant to learn what went wrong.
+	 *
+	 * Scoped to the generation that owns the status record — a stale chunk must
+	 * never stamp a halt onto the backfill that replaced it.
+	 *
+	 * @param string $platform
+	 * @param int    $generation  Generation carried by the chunk.
+	 * @param string $reason_code Halt reason code (see halt_reason_text). A code
+	 *                            rather than a sentence: this runs in a
+	 *                            background worker whose locale is not the one
+	 *                            the merchant is reading the card in, and a
+	 *                            sentence frozen into the database would also
+	 *                            stay in the old language after a site language
+	 *                            change. Translate at render time.
+	 * @return bool True the first time this halt is recorded, false when the
+	 *              backfill was already halted for the same reason or the
+	 *              record belongs to a newer backfill. Callers use it to log
+	 *              the note once instead of once per queued chunk.
+	 */
+	private static function halt_backfill( $platform, $generation, $reason_code ) {
+		// Action Scheduler hands a worker a whole batch at once, so without
+		// this the same note landed in the 100-entry ring thirteen times over
+		// and pushed out the errors that actually needed reading.
+		if ( isset( self::$halt_noted[ $platform ] ) ) {
+			return false;
+		}
+
+		$key    = 'brikpanel_ads_backfill_status_' . $platform;
+		$status = (array) get_option( $key, [] );
+		$owner  = (int) ( $status['generation'] ?? 0 );
+		if ( ! empty( $status ) && $generation > 0 && $owner > 0 && $owner !== $generation ) {
+			return false;
+		}
+
+		self::$halt_noted[ $platform ] = true;
+
+		if ( empty( $status ) ) {
+			// No progress record to annotate (an old queue outliving its
+			// backfill). Still worth one note, never thirteen.
+			return true;
+		}
+
+		$already = ! empty( $status['halted'] ) && (string) ( $status['halt_reason'] ?? '' ) === $reason_code;
+
+		$status['halted']      = true;
+		$status['halt_reason'] = $reason_code;
+		update_option( $key, $status, false );
+
+		return ! $already;
+	}
+
+	/**
+	 * Drop a halted progress record, leaving a live one alone.
+	 *
+	 * A halt says "the import stopped and here is why". The moment the platform
+	 * is connected again that sentence is no longer true, and without this the
+	 * card kept announcing a stopped import forever: reconnecting wipes
+	 * primary_account, so the post-OAuth flag finds no account, schedules no
+	 * backfill, and never overwrites the record that would have cleared it.
+	 *
+	 * @param string $platform
+	 * @return bool Whether a record was removed.
+	 */
+	public static function clear_halted_backfill( $platform ) {
+		$key    = 'brikpanel_ads_backfill_status_' . $platform;
+		$status = (array) get_option( $key, [] );
+		if ( empty( $status ) || empty( $status['halted'] ) ) {
+			return false;
+		}
+		delete_option( $key );
+		unset( self::$halt_noted[ $platform ] );
+		return true;
+	}
+
+	/**
+	 * Merchant-facing sentence for a stored halt reason code.
+	 *
+	 * @param string $code
+	 * @return string Empty when the code is unknown or absent.
+	 */
+	public static function halt_reason_text( $code ) {
+		switch ( (string) $code ) {
+			case self::HALT_CONNECTION_LOST:
+				return __( 'The history import stopped because the connection to this platform was lost. Connect again to resume it.', 'brikpanel' );
+			case self::HALT_ACCOUNT_CHANGED:
+				return __( 'The history import stopped because the selected ad account changed. Pick the account again to restart it.', 'brikpanel' );
+		}
+		return '';
 	}
 
 	// =========================================================================
@@ -281,19 +467,32 @@ class Brikpanel_Ads_Sync {
 			return;
 		}
 
-		// Skip the chunk silently if the user disconnected between scheduling
-		// and execution — happens rarely but we don't want to spam the log.
+		// The connection went away between scheduling and execution: the
+		// merchant disconnected, or a 401 forced a refresh that came back
+		// permanently rejected. Not a failure of this chunk, so it is a note
+		// rather than an error — but the merchant is now staring at a progress
+		// bar that will never move again, so record why it stopped.
 		if ( ! Brikpanel_Ads_Tokens::is_connected( $platform ) ) {
-			Brikpanel_Ads_Logger::log( 'sync', 'Backfill chunk ' . $platform . ' skipped: not connected.' );
+			$first = self::halt_backfill( $platform, $generation, self::HALT_CONNECTION_LOST );
+			if ( $first ) {
+				Brikpanel_Ads_Logger::note( 'sync', 'Backfill chunk ' . $platform . ' skipped: not connected. Remaining chunks will skip too.' );
+			}
 			return;
 		}
 
 		// Superseded by a newer backfill (the merchant re-picked an account
 		// while this chunk was queued). Generation 0 means the chunk predates
 		// this guard, so fall through to the account check below instead.
+		// Never halt here: the newer backfill owns the progress record and is
+		// running fine — stamping a halt on it would report a failure that is
+		// not happening.
 		$current_gen = self::backfill_generation( $platform );
 		if ( $generation > 0 && $current_gen > 0 && $generation !== $current_gen ) {
-			Brikpanel_Ads_Logger::log( 'sync', 'Backfill chunk ' . $platform . ' skipped: superseded by a newer backfill.' );
+			// Once per process, for the same ring-buffer reason as the halt note.
+			if ( ! isset( self::$superseded_noted[ $platform ] ) ) {
+				self::$superseded_noted[ $platform ] = true;
+				Brikpanel_Ads_Logger::note( 'sync', 'Backfill chunk ' . $platform . ' skipped: superseded by a newer backfill.' );
+			}
 			return;
 		}
 
@@ -302,7 +501,10 @@ class Brikpanel_Ads_Sync {
 		// primary account) yet still counted by the dashboard totals.
 		$primary = (string) Brikpanel_Ads_Tokens::describe( $platform )['primary_account'];
 		if ( $primary !== '' && $primary !== $account_id ) {
-			Brikpanel_Ads_Logger::log( 'sync', 'Backfill chunk ' . $platform . ' skipped: account no longer selected.' );
+			$first = self::halt_backfill( $platform, $generation, self::HALT_ACCOUNT_CHANGED );
+			if ( $first ) {
+				Brikpanel_Ads_Logger::note( 'sync', 'Backfill chunk ' . $platform . ' skipped: account no longer selected. Remaining chunks will skip too.' );
+			}
 			return;
 		}
 
@@ -310,7 +512,9 @@ class Brikpanel_Ads_Sync {
 			$this->pull_window( $platform, $account_id, $start, $end );
 			$status = (array) get_option( 'brikpanel_ads_backfill_status_' . $platform, [] );
 			$status['completed_chunks'] = (int) ( $status['completed_chunks'] ?? 0 ) + 1;
-			$status['last_error'] = '';
+			$status['last_error']  = '';
+			$status['halted']      = false;
+			$status['halt_reason'] = '';
 			update_option( 'brikpanel_ads_backfill_status_' . $platform, $status, false );
 		} catch ( \Throwable $e ) {
 			Brikpanel_Ads_Logger::log( 'sync', 'Backfill chunk ' . $chunk . '/' . $total . ' ' . $platform . ' failed: ' . $e->getMessage() );

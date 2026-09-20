@@ -277,23 +277,60 @@ function brikpanel_ads_map_settings_title( $map ) {
 // was enabled) would keep firing daily with the module off. The pending-check
 // keeps this a no-op on every request once the queue is clean.
 // =============================================================================
+/**
+ * Tell Import / Export what the Ad Platforms module owns.
+ *
+ * Above the gate, for the same reason as Google Sheets: the module still owns
+ * these keys while it is switched off.
+ *
+ * Nothing here travels. The token record holds access and refresh tokens for
+ * one Google/Meta account and also names the ad account they were granted for;
+ * everything else is sync bookkeeping. The module's on/off switch is a declared
+ * settings field, so it travels through the normal walk.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_ads_register_export_keys' );
+function brikpanel_ads_register_export_keys( $map ) {
+	$map['brikpanel_ads_tokens'] = [ 'class' => 'secret', 'group' => 'integrations' ];
+	// Ciphertext parked when a vault could not be decrypted. Secret like
+	// the vault itself, and just as non-portable between sites.
+	$map['brikpanel_ads_tokens_unreadable'] = [ 'class' => 'secret', 'group' => 'integrations' ];
+	$map['brikpanel_ads_vault_alert'] = [ 'class' => 'internal', 'group' => 'integrations' ];
+
+	foreach ( [
+		'brikpanel_ads_error_log', 'brikpanel_ads_killswitch', 'brikpanel_ads_cache_version',
+		'brikpanel_ads_meta_connected', 'brikpanel_ads_first_sync_done',
+		// Operator escape hatches: read from the database, never written by the
+		// plugin, meaningful only on the one site somebody set them on.
+		'brikpanel_ads_google_unlocked', 'brikpanel_ads_google_disguise',
+		'brikpanel_ads_meta_unlocked', 'brikpanel_ads_meta_disguise',
+	] as $key ) {
+		$map[ $key ] = [ 'class' => 'internal' ];
+	}
+
+	return $map;
+}
+
 if ( ! brikpanel_ads_module_is_enabled() ) {
-	add_action( 'admin_init', function () {
+	// On the register hook so the sweep joins Brikpanel_Cron::reconcile() and
+	// stops querying Action Scheduler on every admin request once it is clean.
+	add_action( 'brikpanel_cron_register', function () {
 		if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
 			return;
 		}
 		foreach ( [ 'brikpanel_ads_daily_sync', 'brikpanel_ads_backfill_chunk' ] as $hook ) {
-			if ( Brikpanel_Cron::is_scheduled( $hook ) ) {
-				Brikpanel_Cron::cancel( $hook );
-			}
+			Brikpanel_Cron::cancel( $hook );
 		}
-	}, 20 );
+	} );
 	return;
 }
 
 // =============================================================================
 // Class loader (manual — matches Sheets module convention; no Composer)
 // =============================================================================
+require_once BRIKPANEL_PATH . 'includes/class-brikpanel-secret-vault.php';
 require_once BRIKPANEL_PATH . 'includes/class-brikpanel-proxy-envelope.php';
 require_once BRIKPANEL_ADS_DIR . 'class-brikpanel-ads-logger.php';
 require_once BRIKPANEL_ADS_DIR . 'class-brikpanel-ads-tokens.php';

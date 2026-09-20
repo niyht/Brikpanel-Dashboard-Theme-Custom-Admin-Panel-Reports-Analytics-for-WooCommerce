@@ -64,6 +64,15 @@ class Brikpanel_Sheets_Products_Sync {
 
 	const BATCH_SIZE        = 250;
 	const PUSH_DEBOUNCE_SEC = 5;
+
+	/** @var array<int, int> Product IDs queued during this request, written on shutdown. */
+	private static $pending_push = [];
+
+	/** @var bool Whether the shutdown flush is hooked. */
+	private static $push_flush_hooked = false;
+
+	/** @var bool Whether the shutdown flush already ran. */
+	private static $push_flushed = false;
 	const PUSH_LOCK         = 'brikpanel_gs_products_push_lock';
 	const PULL_LOCK         = 'brikpanel_gs_products_pull_lock';
 	const LOCK_TTL          = 300;
@@ -355,22 +364,69 @@ class Brikpanel_Sheets_Products_Sync {
 	 * The queue is a simple {product_id => 1} option so bursts of stock
 	 * changes (e.g. a bulk-update from an inventory CSV importer) coalesce
 	 * into a single Sheets write instead of N individual API calls.
+	 *
+	 * IDs are only collected here and written once, at the end of the
+	 * request. One editor save of a variable product fires the product and
+	 * stock hooks for the parent several times and again for every
+	 * variation: measured at 22 queue writes, each followed by an Action
+	 * Scheduler lookup, for a 16-variation product.
 	 */
 	private function queue_push( $product_id ) {
 		$product_id = (int) $product_id;
 		if ( $product_id <= 0 ) {
 			return;
 		}
+		self::$pending_push[ $product_id ] = 1;
+
+		if ( self::$push_flushed ) {
+			// A caller running after the shutdown flush (another shutdown
+			// callback saving a product) writes straight through.
+			self::flush_pending_push();
+			return;
+		}
+		if ( ! self::$push_flush_hooked ) {
+			self::$push_flush_hooked = true;
+			// Last on shutdown, so saves made by other shutdown callbacks
+			// (WooCommerce's deferred variable product sync) are included.
+			add_action( 'shutdown', [ __CLASS__, 'flush_pending_push' ], PHP_INT_MAX );
+		}
+	}
+
+	/**
+	 * Write the product IDs collected by queue_push() and schedule the push.
+	 *
+	 * @return void
+	 */
+	public static function flush_pending_push() {
+		self::$push_flushed = true;
+		if ( empty( self::$pending_push ) ) {
+			return;
+		}
+		$ids                = array_keys( self::$pending_push );
+		self::$pending_push = [];
+
+		// Read the stored queue fresh: a push worker may have drained it, or
+		// another request added to it, since this request first loaded it.
+		wp_cache_delete( self::OPT_PUSH_QUEUE, 'options' );
+		$notoptions = wp_cache_get( 'notoptions', 'options' );
+		if ( is_array( $notoptions ) && isset( $notoptions[ self::OPT_PUSH_QUEUE ] ) ) {
+			unset( $notoptions[ self::OPT_PUSH_QUEUE ] );
+			wp_cache_set( 'notoptions', $notoptions, 'options' );
+		}
 		$queue = (array) get_option( self::OPT_PUSH_QUEUE, [] );
-		$queue[ (string) $product_id ] = 1;
+		foreach ( $ids as $id ) {
+			$queue[ (string) $id ] = 1;
+		}
 		update_option( self::OPT_PUSH_QUEUE, $queue, false );
 
-		Brikpanel_Cron::schedule_single(
-			time() + self::PUSH_DEBOUNCE_SEC,
-			self::HOOK_PUSH_FLUSH,
-			[],
-			[ 'unique' => true ]
-		);
+		if ( class_exists( 'Brikpanel_Cron' ) ) {
+			Brikpanel_Cron::schedule_single(
+				time() + self::PUSH_DEBOUNCE_SEC,
+				self::HOOK_PUSH_FLUSH,
+				[],
+				[ 'unique' => true ]
+			);
+		}
 	}
 
 	// =========================================================================
@@ -576,22 +632,62 @@ class Brikpanel_Sheets_Products_Sync {
 		$updated_count  = 0;
 		$failed_pids    = []; // [ product_id => true ] rows whose write threw
 
-		// Updates first (single batchUpdate via values:batchUpdate isn't
-		// strictly needed — per-row writes are cheap when batched by AS).
+		// Updates first, all rows in one values:batchUpdate call. A variable
+		// product is the parent plus every variation, and one HTTP request per
+		// row kept a PHP worker busy for the whole sequence.
 		if ( ! empty( $to_update ) ) {
 			$end_col = self::col_letter( count( $columns ) );
+			$ranges  = [];
 			foreach ( $to_update as $row_num => $info ) {
-				$range = Brikpanel_Sheets_Client::a1_quote_tab( $config['tab'] )
+				$ranges[ $row_num ] = Brikpanel_Sheets_Client::a1_quote_tab( $config['tab'] )
 					. '!A' . (int) $row_num . ':' . $end_col . (int) $row_num;
+			}
+
+			$batch_ok   = false;
+			$row_by_row = true;
+			if ( count( $to_update ) > 1 ) {
+				$batch = [];
+				foreach ( $to_update as $row_num => $info ) {
+					$batch[ $ranges[ $row_num ] ] = [ $info['row'] ];
+				}
 				try {
-					$client->values_update( $config['spreadsheet_id'], $range, [ $info['row'] ] );
-					$updated_count++;
+					$client->values_batch_update( $config['spreadsheet_id'], $batch );
+					$updated_count = count( $to_update );
+					$batch_ok      = true;
 				} catch ( Brikpanel_Sheets_Exception $e ) {
-					Brikpanel_Sheets_Logger::log( 'products', 'Row update failed for product ' . $info['pid'] . ': ' . $e->getMessage(), $e->http_code );
-					// Continue with the rest — don't let one bad row tank the
-					// batch — but remember the failure so we do not record a
-					// snapshot for a row that never reached the sheet.
-					$failed_pids[ (int) $info['pid'] ] = true;
+					// Only a rejected payload (HTTP 400) can be a single bad row
+					// worth isolating. Rate limits, quota and outages were already
+					// retried inside the client, and re-sending every row one by
+					// one would only hit the same wall harder.
+					$row_by_row = ( 400 === (int) $e->http_code );
+					Brikpanel_Sheets_Logger::log(
+						'products',
+						( $row_by_row ? 'Batch row update rejected, retrying row by row: ' : 'Batch row update failed: ' ) . $e->getMessage(),
+						$e->http_code
+					);
+					if ( ! $row_by_row ) {
+						foreach ( $to_update as $info ) {
+							$failed_pids[ (int) $info['pid'] ] = true;
+						}
+					}
+				}
+			}
+
+			if ( ! $batch_ok && $row_by_row ) {
+				// One row at a time, either because there is only one or because
+				// the batch was rejected as a whole: a single bad row must not
+				// keep the others from reaching the sheet.
+				foreach ( $to_update as $row_num => $info ) {
+					try {
+						$client->values_update( $config['spreadsheet_id'], $ranges[ $row_num ], [ $info['row'] ] );
+						$updated_count++;
+					} catch ( Brikpanel_Sheets_Exception $e ) {
+						Brikpanel_Sheets_Logger::log( 'products', 'Row update failed for product ' . $info['pid'] . ': ' . $e->getMessage(), $e->http_code );
+						// Continue with the rest, but remember the failure so we
+						// do not record a snapshot for a row that never reached
+						// the sheet.
+						$failed_pids[ (int) $info['pid'] ] = true;
+					}
 				}
 			}
 		}
@@ -851,6 +947,7 @@ class Brikpanel_Sheets_Products_Sync {
 		}
 		self::clear_row_tracking_meta();
 		delete_option( self::OPT_PUSH_QUEUE );
+		self::$pending_push = []; // Not yet written; the rebuild covers them.
 		$args['rebuild'] = true;
 		$args['offset']  = 0;
 		self::set_rebuild_state( 0 );
@@ -1551,6 +1648,7 @@ class Brikpanel_Sheets_Products_Sync {
 		delete_option( self::OPT_LAST_PUSH );
 		delete_option( self::OPT_LAST_PULL );
 		delete_option( self::OPT_PUSH_QUEUE );
+		self::$pending_push = [];
 		// The tab this cursor was paging into has just been wiped, so it now
 		// points into empty space. Leaving it would make the next "Sync now"
 		// resume from the middle of a rebuild that no longer exists, skipping

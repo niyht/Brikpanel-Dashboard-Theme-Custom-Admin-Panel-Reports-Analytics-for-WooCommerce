@@ -388,6 +388,13 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
+            'name'    => __('Compact order list', 'brikpanel'),
+            'id'      => 'brikpanel_orders_compact_list',
+            'type'    => 'checkbox',
+            'desc'    => __('Show each order as one short row. Click the arrow next to an order to see its addresses, phone number and items without leaving the list. Works when Enhanced orders page is on.', 'brikpanel'),
+            'default' => 'yes',
+        ],
+        [
             'name'    => __('Merge orders', 'brikpanel'),
             'id'      => 'brikpanel_order_merge',
             'type'    => 'checkbox',
@@ -2278,6 +2285,71 @@ if ($is_hpos) {
     add_action('manage_shop_order_posts_custom_column', 'brikpanel_fill_order_column_legacy', 20, 2);
 }
 
+/**
+ * Collect the order numbers WooCommerce prints in the list, keyed by order ID.
+ *
+ * The staged status-change bar names the order it is about, and it only has the
+ * row's DOM id to go on, which is the raw database ID. That disagrees with the
+ * Order column next to it as soon as a sequential-order-number plugin is
+ * renumbering orders. WooCommerce runs `woocommerce_admin_order_buyer_name` once
+ * per rendered row in both storage modes (the legacy list table hands its rows to
+ * the same renderer), so it is the one place that sees every listed order object
+ * without a query of our own.
+ *
+ * Nothing is collected, and nothing is printed, unless a plugin is actually
+ * filtering order numbers: on every other store the number IS the ID and the bar
+ * already says the right thing.
+ *
+ * @param string $buyer Buyer name, returned untouched.
+ * @param mixed  $order Order for the row being rendered.
+ * @return string
+ */
+function brikpanel_orders_collect_order_number($buyer, $order) {
+    // WC_Order, not WC_Abstract_Order: only WC_Order has get_order_number().
+    if ($order instanceof WC_Order && has_filter('woocommerce_order_number')) {
+        brikpanel_orders_listed_numbers((string) $order->get_id(), (string) $order->get_order_number());
+    }
+    return $buyer;
+}
+
+/**
+ * Store for the collected numbers: called with a pair to record one, with
+ * nothing to read them all back.
+ *
+ * @param string|null $id     Order ID to record.
+ * @param string      $number Order number for that ID.
+ * @return array<string,string>
+ */
+function brikpanel_orders_listed_numbers($id = null, $number = '') {
+    static $numbers = array();
+    if (null !== $id) {
+        $numbers[$id] = $number;
+    }
+    return $numbers;
+}
+add_filter('woocommerce_admin_order_buyer_name', 'brikpanel_orders_collect_order_number', 5, 2);
+
+/**
+ * Hand the collected numbers to the inline status script.
+ *
+ * It cannot ride along with the enqueue, because the rows have not rendered yet
+ * at that point. 'admin_footer' runs after the table and still before
+ * 'admin_print_footer_scripts', so the map is complete and the script tag it
+ * belongs to has not been written yet.
+ */
+function brikpanel_orders_print_order_numbers() {
+    $numbers = brikpanel_orders_listed_numbers();
+    if (!$numbers || !wp_script_is('brikpanel_order_status_inline', 'enqueued')) {
+        return;
+    }
+    wp_add_inline_script(
+        'brikpanel_order_status_inline',
+        'window.brikpanelStatusInline && (window.brikpanelStatusInline.numbers = '
+            . wp_json_encode($numbers) . ');'
+    );
+}
+add_action('admin_footer', 'brikpanel_orders_print_order_numbers', 5);
+
 function brikpanel_set_order_columns($columns) {
     $columns['payment_method'] = __('Payment Method', 'brikpanel');
     $columns['order_items']    = __('Items', 'brikpanel');
@@ -2298,7 +2370,10 @@ function brikpanel_fill_order_column_legacy($column, $post_id) {
 function brikpanel_fill_order_column_content($column, $order) {
     switch ($column) {
         case 'payment_method':
-            echo esc_html($order->get_payment_method_title() ?? '—');
+            $payment_title = (string) $order->get_payment_method_title();
+            echo '' !== $payment_title
+                ? '<span class="bp-order-method bp-order-method--payment">' . esc_html($payment_title) . '</span>'
+                : '<span class="bp-order-muted">' . esc_html__('None', 'brikpanel') . '</span>';
             break;
 
         case 'order_items':

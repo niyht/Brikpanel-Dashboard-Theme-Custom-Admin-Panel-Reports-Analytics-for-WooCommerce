@@ -188,6 +188,26 @@ class Brikpanel_Dashboard {
      * recomputes on the next dashboard view. Cheap; accepts any hook args.
      */
     public function bust_catalog_counts() {
+        // Coalesced per request, same pattern as brikpanel_bust_data_caches():
+        // a variable product save moves the parent and every variation through
+        // transition_post_status, one delete each.
+        static $busted = false;
+        if ( $busted ) {
+            if ( ! has_action( 'shutdown', [ __CLASS__, 'delete_catalog_counts' ] ) ) {
+                add_action( 'shutdown', [ __CLASS__, 'delete_catalog_counts' ], PHP_INT_MAX );
+            }
+            return;
+        }
+        $busted = true;
+        self::delete_catalog_counts();
+    }
+
+    /**
+     * Drop the cached catalog counts. Use bust_catalog_counts().
+     *
+     * @return void
+     */
+    public static function delete_catalog_counts() {
         delete_transient( 'brikpanel_catalog_counts' );
     }
 
@@ -467,15 +487,6 @@ class Brikpanel_Dashboard {
         ?>
         <div id="brikpanel-dashboard" class="brikpanel-dashboard">
             <?php wp_nonce_field( 'brikpanel_dashboard_nonce', 'security' ); ?>
-
-            <?php
-            // Critical-only, 7-day-dismissable Store Health banner. Renders
-            // nothing when there are no critical findings or the user has
-            // already dismissed it within the suppression window.
-            if ( class_exists( 'Brikpanel_BrikControl' ) ) {
-                Brikpanel_BrikControl::instance()->render_dashboard_banner();
-            }
-            ?>
 
             <!-- Header -->
             <div class="brikpanel-dash-header">
@@ -1344,7 +1355,7 @@ class Brikpanel_Dashboard {
             $sql = "SELECT pm.meta_value AS user_agent
                     FROM {$wpdb->posts} p
                     INNER JOIN {$wpdb->postmeta} pm
-                        ON pm.post_id = p.ID AND pm.meta_key = '_customer_user_agent'
+                        ON pm.post_id = p.ID AND pm.meta_key = '_customer_user_agent' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
                     WHERE p.post_type = 'shop_order'
                       AND p.post_status IN ({$status_placeholders})
                       AND p.post_date_gmt BETWEEN %s AND %s
@@ -1529,9 +1540,9 @@ class Brikpanel_Dashboard {
             "SELECT p.ID, p.post_type, pm_stock.meta_value AS stock,
                     pm_threshold.meta_value AS threshold
              FROM {$wpdb->posts} p
-             INNER JOIN {$wpdb->postmeta} pm_manage   ON p.ID = pm_manage.post_id   AND pm_manage.meta_key = '_manage_stock'
-             INNER JOIN {$wpdb->postmeta} pm_stock    ON p.ID = pm_stock.post_id    AND pm_stock.meta_key = '_stock'
-             LEFT  JOIN {$wpdb->postmeta} pm_threshold ON p.ID = pm_threshold.post_id AND pm_threshold.meta_key = '_low_stock_amount'
+             INNER JOIN {$wpdb->postmeta} pm_manage   ON p.ID = pm_manage.post_id   AND pm_manage.meta_key = '_manage_stock' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_manage' ) . "
+             INNER JOIN {$wpdb->postmeta} pm_stock    ON p.ID = pm_stock.post_id    AND pm_stock.meta_key = '_stock' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_stock' ) . "
+             LEFT  JOIN {$wpdb->postmeta} pm_threshold ON p.ID = pm_threshold.post_id AND pm_threshold.meta_key = '_low_stock_amount' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_threshold' ) . "
              WHERE p.post_type IN ('product','product_variation')
                AND p.post_status = 'publish'
                AND pm_manage.meta_value = 'yes'
@@ -1674,9 +1685,10 @@ class Brikpanel_Dashboard {
         $stock_units = (int) $wpdb->get_var(
             "SELECT SUM(CAST(pm.meta_value AS SIGNED))
              FROM {$wpdb->postmeta} pm
-             INNER JOIN {$wpdb->postmeta} ms ON pm.post_id = ms.post_id AND ms.meta_key = '_manage_stock'
+             INNER JOIN {$wpdb->postmeta} ms ON pm.post_id = ms.post_id AND ms.meta_key = '_manage_stock' AND " . brikpanel_sql_first_meta_guard( 'post', 'ms' ) . "
              INNER JOIN {$wpdb->posts} p     ON pm.post_id = p.ID
              WHERE pm.meta_key = '_stock'
+               AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
                AND ms.meta_value = 'yes'
                AND p.post_status = 'publish'
                AND p.post_type IN ('product','product_variation')
@@ -3170,7 +3182,7 @@ class Brikpanel_Dashboard {
                         SUM({$fx['expr']}) AS revenue,
                         COUNT(p.ID) AS orders
                  FROM {$wpdb->posts} AS p
-                 LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id{$fx['join']}
+                 LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id AND pm.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "{$fx['join']}
                  WHERE p.post_type = 'shop_order'
                  AND pm.meta_key = '_order_total'
                  AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}{$mp_excl['sql']}
@@ -3287,18 +3299,23 @@ class Brikpanel_Dashboard {
                         CONCAT('e-', LOWER(pm_email.meta_value)),
                         CONCAT('o-', p.ID))))";
 
+            // Sales come from the order total (base-currency snapshot when one
+            // exists), exactly like the HPOS branch. This used to sum `_qty`
+            // from posts of type 'shop_order_item', which WooCommerce never
+            // creates, so every country showed 0 sales on a non-HPOS store.
+            // Each meta join is pinned to one row so a duplicate cannot
+            // multiply an order.
+            $fx_loc = brikpanel_base_total_sql( false, 'p.ID', 'CAST(pm_total.meta_value AS DECIMAL(20,4))', 'bpfxloc' );
             $country_query = $wpdb->prepare(
                 "SELECT pm.meta_value AS code,
                         COUNT(DISTINCT p.ID) AS order_count,
                         {$customer_count_expr} AS customer_count,
-                        CAST(COALESCE(SUM(CAST(oim.meta_value AS DECIMAL(10,2))), 0) AS DECIMAL(10,2)) AS total_sales
+                        COALESCE(SUM({$fx_loc['expr']}), 0) AS total_sales
                  FROM {$wpdb->posts} p
-                 LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_billing_country'
-                 LEFT JOIN {$wpdb->postmeta} pm_cust ON p.ID = pm_cust.post_id AND pm_cust.meta_key = '_customer_user'
-                 LEFT JOIN {$wpdb->postmeta} pm_email ON p.ID = pm_email.post_id AND pm_email.meta_key = '_billing_email'
-                 LEFT JOIN {$wpdb->postmeta} pm_total ON p.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'
-                 LEFT JOIN {$wpdb->posts} oi ON p.ID = oi.post_parent AND oi.post_type = 'shop_order_item'
-                 LEFT JOIN {$wpdb->postmeta} oim ON oi.ID = oim.post_id AND oim.meta_key = '_qty'
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm', 'p.ID', '_billing_country' ) . "
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm_cust', 'p.ID', '_customer_user' ) . "
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm_email', 'p.ID', '_billing_email' ) . "
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm_total', 'p.ID', '_order_total' ) . "{$fx_loc['join']}
                  WHERE p.post_type = 'shop_order'
                  AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}{$mp_excl['sql']}
                  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s
@@ -3311,14 +3328,13 @@ class Brikpanel_Dashboard {
                 "SELECT pm_city.meta_value AS city, pm_country.meta_value AS code,
                         COUNT(DISTINCT p.ID) AS order_count,
                         {$customer_count_expr} AS customer_count,
-                        CAST(COALESCE(SUM(CAST(oim.meta_value AS UNSIGNED)), 0) AS UNSIGNED) AS total_quantity
+                        SUM(ol.product_qty) AS total_quantity
                  FROM {$wpdb->posts} p
-                 LEFT JOIN {$wpdb->postmeta} pm_city ON p.ID = pm_city.post_id AND pm_city.meta_key = '_billing_city'
-                 LEFT JOIN {$wpdb->postmeta} pm_country ON p.ID = pm_country.post_id AND pm_country.meta_key = '_billing_country'
-                 LEFT JOIN {$wpdb->postmeta} pm_cust ON p.ID = pm_cust.post_id AND pm_cust.meta_key = '_customer_user'
-                 LEFT JOIN {$wpdb->postmeta} pm_email ON p.ID = pm_email.post_id AND pm_email.meta_key = '_billing_email'
-                 LEFT JOIN {$wpdb->posts} oi ON p.ID = oi.post_parent AND oi.post_type = 'shop_order_item'
-                 LEFT JOIN {$wpdb->postmeta} oim ON oi.ID = oim.post_id AND oim.meta_key = '_qty'
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm_city', 'p.ID', '_billing_city' ) . "
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm_country', 'p.ID', '_billing_country' ) . "
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm_cust', 'p.ID', '_customer_user' ) . "
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm_email', 'p.ID', '_billing_email' ) . "
+                 LEFT JOIN {$wpdb->prefix}wc_order_product_lookup ol ON p.ID = ol.order_id
                  WHERE p.post_type = 'shop_order'
                  AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}{$mp_excl['sql']}
                  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s
@@ -3564,7 +3580,7 @@ class Brikpanel_Dashboard {
                         SUM({$fx['expr']})   AS revenue
                  FROM {$wpdb->prefix}wc_orders o
                  INNER JOIN {$wpdb->prefix}wc_orders_meta om
-                     ON o.id = om.order_id AND om.meta_key = %s{$fx['join']}
+                     ON o.id = om.order_id AND om.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', 'om' ) . "{$fx['join']}
                  WHERE o.type = 'shop_order'
                  AND o.status IN ({$status_placeholders}){$admin_sql}
                  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s
@@ -3580,9 +3596,9 @@ class Brikpanel_Dashboard {
                         SUM(CAST({$fx['expr']} AS DECIMAL(20,6))) AS revenue
                  FROM {$wpdb->posts} p
                  INNER JOIN {$wpdb->postmeta} pm
-                     ON p.ID = pm.post_id AND pm.meta_key = %s
+                     ON p.ID = pm.post_id AND pm.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
                  LEFT JOIN {$wpdb->postmeta} pm_total
-                     ON p.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'{$fx['join']}
+                     ON p.ID = pm_total.post_id AND pm_total.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm_total' ) . "{$fx['join']}
                  WHERE p.post_type = 'shop_order'
                  AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}
                  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s
@@ -3615,6 +3631,7 @@ class Brikpanel_Dashboard {
             $from = "{$wpdb->prefix}wc_orders o
                      INNER JOIN {$wpdb->prefix}wc_orders_meta om
                          ON o.id = om.order_id AND om.meta_key = %s
+                        AND " . brikpanel_sql_first_meta_guard( 'order', 'om' ) . "
                      INNER JOIN {$wpdb->prefix}woocommerce_order_items oi
                          ON o.id = oi.order_id AND oi.order_item_type = 'line_item'";
             $where = "o.type = 'shop_order'
@@ -3633,6 +3650,7 @@ class Brikpanel_Dashboard {
         $from = "{$wpdb->posts} p
                  INNER JOIN {$wpdb->postmeta} om
                      ON p.ID = om.post_id AND om.meta_key = %s
+                    AND " . brikpanel_sql_first_meta_guard( 'post', 'om' ) . "
                  INNER JOIN {$wpdb->prefix}woocommerce_order_items oi
                      ON p.ID = oi.order_id AND oi.order_item_type = 'line_item'";
         $where = "p.post_type = 'shop_order'
@@ -3669,6 +3687,13 @@ class Brikpanel_Dashboard {
         $clause = $this->mp_order_header_clause( $start_gmt, $end_gmt, $is_hpos, $include_statuses, $status_placeholders, $meta_key );
 
         // COALESCE: _product_id wins; otherwise resolve via SKU lookup.
+        //
+        // A SKU is not unique in the lookup table (a trashed product, a stale
+        // row), so the lookup join is pinned to ONE live product, the way
+        // wc_get_product_id_by_sku() resolves it; joining every match used to
+        // count the same line once per product sharing the SKU. A SKU that
+        // belongs to a variation resolves to its parent, because categories
+        // live on the parent and the line was otherwise dropped.
         $sql = $wpdb->prepare(
             "SELECT {$clause['marketplace_alias']} AS marketplace_id,
                     tt.term_id                    AS term_id,
@@ -3682,10 +3707,17 @@ class Brikpanel_Dashboard {
                  ON oi.order_item_id = im_sku.order_item_id AND im_sku.meta_key = '_marketplace_sku'
              LEFT JOIN {$wpdb->prefix}wc_product_meta_lookup pml
                  ON im_sku.meta_value <> '' AND pml.sku = im_sku.meta_value
+                AND pml.product_id = (
+                    SELECT MIN(l.product_id)
+                      FROM {$wpdb->prefix}wc_product_meta_lookup l
+                     INNER JOIN {$wpdb->posts} lp ON lp.ID = l.product_id AND lp.post_status <> 'trash'
+                     WHERE l.sku = im_sku.meta_value
+                )
+             LEFT JOIN {$wpdb->posts} pml_post ON pml_post.ID = pml.product_id
              LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta im_total
                  ON oi.order_item_id = im_total.order_item_id AND im_total.meta_key = '_line_total'
              INNER JOIN {$wpdb->term_relationships} tr
-                 ON COALESCE(NULLIF(CAST(im_pid.meta_value AS UNSIGNED), 0), pml.product_id) = tr.object_id
+                 ON COALESCE(NULLIF(CAST(im_pid.meta_value AS UNSIGNED), 0), NULLIF(pml_post.post_parent, 0), pml.product_id) = tr.object_id
              INNER JOIN {$wpdb->term_taxonomy} tt
                  ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tt.taxonomy = 'product_cat'
              INNER JOIN {$wpdb->terms} t ON tt.term_id = t.term_id
@@ -3811,6 +3843,9 @@ class Brikpanel_Dashboard {
 
             $data[] = [
                 'id'         => $order->get_id(),
+                // Display only. A sequential-order-number plugin can make this
+                // differ from the ID; the row's link still uses the ID.
+                'number'     => (string) $order->get_order_number(),
                 'customer'   => $customer,
                 'status'     => $order->get_status(),
                 'total'      => wc_price( $order->get_total(), [ 'currency' => $order_currency ] ),

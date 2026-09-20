@@ -216,6 +216,38 @@
 }
 .bp-ads-stale-note .bp-ads-card-sub { color: #a3271a; margin: 0; }
 
+/* Neutral sibling of the stale note: an unfinished setup step, not a fault. */
+.bp-ads-todo-note {
+	display: flex;
+	gap: 0.625rem;
+	align-items: flex-start;
+	padding: 0.875rem 1rem;
+	margin-top: 1rem;
+	background: #f7f7f7;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	color: var(--text-secondary);
+}
+.bp-ads-todo-note svg { flex-shrink: 0; margin-top: 0.1rem; color: var(--text); }
+.bp-ads-todo-note strong {
+	display: block;
+	font-size: 0.875rem;
+	margin-bottom: 0.2rem;
+	color: var(--text);
+}
+.bp-ads-todo-note .bp-ads-card-sub { margin: 0; }
+
+.bp-ads-inline-hint {
+	margin: 0.5rem 0 0;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+	padding: 0.5rem 0.625rem;
+	background: #f7f7f7;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+}
+
 /* ---------- Form fields ---------- */
 .bp-ads-field { margin-top: 1rem; }
 .bp-ads-label {
@@ -398,6 +430,16 @@ select.bp-ads-input {
 	border-radius: 999px;
 	transition: width 0.4s ease;
 }
+.bp-ads-backfill.is-halted { border-color: #f1b0b0; background: #fdf1f1; }
+.bp-ads-backfill.is-halted .bp-ads-backfill-label { color: #a3271a; font-weight: 600; }
+.bp-ads-backfill.is-halted .bp-ads-backfill-fill { background: #d9a2a2; }
+.bp-ads-backfill-reason {
+	margin: 0.5rem 0 0;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+.bp-ads-backfill.is-halted .bp-ads-backfill-reason { color: #a3271a; }
 
 /* ---------- Imported data (monthly breakdown) ---------- */
 .bp-ads-insight + .bp-ads-insight {
@@ -536,6 +578,17 @@ select.bp-ads-input {
 	font-weight: 600;
 }
 .bp-ads-log-code { color: var(--error); }
+.bp-ads-log-sev {
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-weight: 600;
+	padding: 0.05rem 0.375rem;
+	border-radius: 0.25rem;
+	background: #fce4e4;
+	color: #a3271a;
+}
+.bp-ads-log-sev.is-note { background: #ececec; color: var(--text-secondary); }
+.bp-ads-log-entry.is-note .bp-ads-log-msg { color: var(--text-secondary); }
 .bp-ads-log-msg { color: var(--text); white-space: pre-wrap; word-break: break-word; }
 .bp-ads-log-empty {
 	padding: 1rem;

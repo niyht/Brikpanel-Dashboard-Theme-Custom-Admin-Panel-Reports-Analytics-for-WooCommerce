@@ -14,6 +14,39 @@ function makeElement(tagName, attributes = {}, properties = {}, listeners = []) 
 	return $element;
 }
 
+/**
+ * Columns WordPress, WooCommerce, WooCommerce Subscriptions and BrikPanel own.
+ * Anything else on the orders list was put there by another plugin, and is a
+ * candidate for the icon-action treatment (see brikpanelIconActionColumns).
+ */
+const BP_ICONBAR_KNOWN_COLUMNS = new Set([
+	// WordPress / WooCommerce
+	'primary', 'cb', 'comments',
+	'order_number', 'order_date', 'order_status', 'origin',
+	'billing_address', 'shipping_address', 'order_total', 'wc_actions',
+	// WooCommerce Subscriptions
+	'subscription_status', 'order_title', 'recurring_total', 'start_date',
+	'trial_end_date', 'next_payment_date', 'last_payment_date', 'end_date', 'orders',
+	// BrikPanel
+	'payment_method', 'order_items', 'tax_total', 'brikpanel_whatsapp',
+	'brikpanel_customer', 'brikpanel_shipping_method',
+]);
+
+/* A run of this many icon controls turns the treatment on. A lone icon cannot
+   stack, so it is never worth reserving width for. */
+const BP_ICONBAR_MIN_ITEMS = 2;
+/* A cell carrying more visible text of its own than this is a content column
+   that happens to hold a couple of icons, not an action column. */
+const BP_ICONBAR_MAX_TEXT = 40;
+/* Icons per row. Two keeps the column narrow, which is the whole point: the
+   merchant who reported this needs room for many columns at once. */
+const BP_ICONBAR_COLS = 2;
+/* ...but a plugin offering a dozen documents would be twelve rows tall at two
+   per row, so the grid widens instead of growing past this many rows. */
+const BP_ICONBAR_MAX_ROWS = 3;
+/* Hard ceiling on the reserved width, counted in icon slots. */
+const BP_ICONBAR_MAX_COLS = 4;
+
 document.addEventListener('DOMContentLoaded', () => {
 	brikpanelOrderTableFilters();
 });
@@ -40,21 +73,47 @@ function brikpanelOrderTableFilters() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+	// First, and behind its own guard: it needs nothing the calls below build,
+	// and any one of them throwing on a page it did not expect would otherwise
+	// skip it and leave a store's icon columns stacked.
 	try {
-		brikpanelTableScroll();
-		brikpanelPageHeader();
-		brikpanelOrdersOverviewSection();
-		brikpanelTableHeader();
-		brikpanelOrderSearch();
-		brikpanelFilters();
-		brikpanelBulkActions(getBulkActions());
-		brikpanelPagination();
-		brikpanelOrderNumberNamePreview();
-		brikpanelOrderStatus();
-		brikpanelFooter();
-		brikpanelEmptyTrashButton();
-		brikpanelAddFiltersToOrderLinks();
-		brikpanelListTableSearchResultCount();
+		brikpanelIconActionColumns();
+	} catch (error) {
+		console.error(error);
+	}
+
+	// Each pass runs behind its own guard: one pass throwing on a page it did
+	// not expect (a store with no orders yet has no list table) must not skip
+	// every pass after it.
+	const hasTable = !!document.querySelector('.wp-list-table');
+	// [pass, needs the list table]
+	const passes = [
+		[brikpanelModalScrollLock, false],
+		[brikpanelTableScroll, true],
+		[brikpanelPageHeader, false],
+		[brikpanelOrdersOverviewSection, false],
+		[brikpanelTableHeader, true],
+		[brikpanelOrderSearch, true],
+		[brikpanelFilters, true],
+		[() => brikpanelBulkActions(getBulkActions()), true],
+		[brikpanelPagination, true],
+		[brikpanelOrderNumberNamePreview, true],
+		[brikpanelCompactRows, true],
+		[brikpanelStickyOrderColumn, true],
+		[brikpanelOrderStatus, true],
+		[brikpanelFooter, true],
+		[brikpanelEmptyTrashButton, false],
+		[brikpanelAddFiltersToOrderLinks, true],
+		[brikpanelListTableSearchResultCount, true],
+	].filter(([, needsTable]) => hasTable || !needsTable).map(([pass]) => pass);
+	try {
+		passes.forEach(pass => {
+			try {
+				pass();
+			} catch (error) {
+				console.error(error);
+			}
+		});
 	} finally {
 		showBrikpanel();
 	}
@@ -104,8 +163,8 @@ function brikpanelSparklineSvg(values, uid) {
 
 	return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="brikpanel-spark-svg" aria-hidden="true" focusable="false">`
 		+ `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">`
-		+ `<stop offset="0%" stop-color="#3AA3FF" stop-opacity="0.28"/>`
-		+ `<stop offset="100%" stop-color="#3AA3FF" stop-opacity="0"/>`
+		+ `<stop offset="0%" stop-color="#303030" stop-opacity="0.1"/>`
+		+ `<stop offset="100%" stop-color="#303030" stop-opacity="0"/>`
 		+ `</linearGradient></defs>`
 		+ `<line x1="0" y1="${baseY}" x2="${W}" y2="${baseY}" class="brikpanel-spark-base"/>`
 		+ `<path d="${area}" fill="url(#${gid})" stroke="none"/>`
@@ -143,9 +202,7 @@ function brikpanelOrdersOverviewSection() {
 		if (saved && RANGES.some(r => r.key === saved)) currentRange = saved;
 	} catch (e) { /* storage may be unavailable */ }
 
-	// Default to the "solo" (centered) layout; it switches to the left-aligned
-	// side-by-side layout only once a marketplace card is actually rendered.
-	const $wrapper = makeElement('div', { class: 'brikpanel-overview brikpanel-overview--solo' });
+	const $wrapper = makeElement('div', { class: 'brikpanel-overview' });
 	const $summaryCard = makeElement('div', { class: 'brikpanel-overview-summary is-loading' });
 
 	// Date-range picker (calendar pill + dropdown).
@@ -198,10 +255,12 @@ function brikpanelOrdersOverviewSection() {
 	$summaryCard.append($range, $metrics);
 	$wrapper.append($summaryCard);
 
-	// Insert after page header.
+	// Insert after the page header, and after the Screen Options panel that
+	// opens right under it.
 	const $pageTop = document.querySelector('.brikpanel-page-top');
 	if ($pageTop) {
-		$pageTop.insertAdjacentElement('afterend', $wrapper);
+		const $next = $pageTop.nextElementSibling;
+		($next && $next.id === 'screen-meta' ? $next : $pageTop).insertAdjacentElement('afterend', $wrapper);
 	}
 
 	function setRangeLabel(key) {
@@ -278,63 +337,60 @@ function brikpanelOrdersOverviewSection() {
 	}
 
 	let $mpCard = null;
+	/* Marketplace card (BrikMarket): one row per marketplace under the summary.
+	   Built with DOM nodes so names and logo URLs coming from the marketplace
+	   integration are never parsed as HTML. */
 	function renderMarketplaces(marketplaces) {
-			if ($mpCard) { $mpCard.remove(); $mpCard = null; }
-			const hasMarketplaces = !!(marketplaces && marketplaces.length > 0);
-			// With a marketplace card alongside it the summary is left-aligned;
-			// on its own it is centered in the row.
-			$wrapper.classList.toggle('brikpanel-overview--solo', !hasMarketplaces);
-			// Marketplace section (only if data exists)
-			if (hasMarketplaces) {
-				$mpCard = makeElement('div', { class: 'brikpanel-overview-marketplaces' });
+		if ($mpCard) { $mpCard.remove(); $mpCard = null; }
+		if (!Array.isArray(marketplaces) || marketplaces.length === 0) return;
 
-				const $mpTitle = makeElement('div', { class: 'brikpanel-overview-title' });
-				$mpTitle.innerHTML = `<span class="brikpanel-overview-dot marketplace"></span><span class="brikpanel-overview-title-text">${i18n.marketplaces}</span>`;
-				$mpCard.append($mpTitle);
+		$mpCard = makeElement('div', { class: 'brikpanel-overview-marketplaces' });
 
-				// Sort by revenue descending
-				const sorted = [...marketplaces].sort((a, b) => (b.revenue_raw || 0) - (a.revenue_raw || 0));
-				const maxVisible = 1;
+		const $head = makeElement('div', { class: 'brikpanel-mp-head' });
+		$head.append(makeElement('span', { class: 'brikpanel-overview-title' }, { textContent: i18n.marketplaces || '' }));
+		$mpCard.append($head);
 
-				const $mpList = makeElement('div', { class: 'brikpanel-mp-list' });
+		const sorted = [...marketplaces].sort((a, b) => (b.revenue_raw || 0) - (a.revenue_raw || 0));
+		const maxVisible = 3;
+		const $list = makeElement('div', { class: 'brikpanel-mp-list' });
 
-				sorted.forEach((mp, idx) => {
-					const $row = makeElement('div', { class: `brikpanel-mp-row${idx >= maxVisible ? ' brikpanel-mp-hidden' : ''}` });
-					$row.innerHTML = `
-						<div class="brikpanel-mp-name">
-							${mp.logo ? `<img src="${mp.logo}" alt="${mp.name}" class="brikpanel-mp-logo">` : ''}
-							<span>${mp.name}</span>
-						</div>
-						<div class="brikpanel-mp-stats">
-							<span class="brikpanel-mp-stat"><strong>${mp.products}</strong> ${i18n.products}</span>
-							<span class="brikpanel-mp-divider"></span>
-							<span class="brikpanel-mp-stat"><strong>${mp.orders}</strong> ${i18n.orders_low}</span>
-							<span class="brikpanel-mp-divider"></span>
-							<span class="brikpanel-mp-stat revenue"><strong>${mp.revenue}</strong></span>
-						</div>
-					`;
-					$mpList.append($row);
-				});
+		sorted.forEach((mp, idx) => {
+			const $row = makeElement('div', { class: `brikpanel-mp-row${idx >= maxVisible ? ' brikpanel-mp-hidden' : ''}` });
 
-				$mpCard.append($mpList);
-
-				// Show all / collapse toggle (only if more than maxVisible)
-				if (sorted.length > maxVisible) {
-					const $toggle = makeElement('button', { class: 'brikpanel-mp-toggle' }, {}, [{
-						event: 'click',
-						handler: () => {
-							const expanded = $mpCard.classList.toggle('expanded');
-							$toggle.querySelector('.brikpanel-mp-toggle-text').textContent =
-								expanded ? i18n.show_less : i18n.show_all;
-							$toggle.querySelector('.brikpanel-mp-toggle-icon').classList.toggle('up', expanded);
-						}
-					}]);
-					$toggle.innerHTML = `<span class="brikpanel-mp-toggle-text">${i18n.show_all}</span><span class="brikpanel-mp-toggle-icon"></span>`;
-					$mpCard.append($toggle);
-				}
-
-				$wrapper.append($mpCard);
+			const $name = makeElement('div', { class: 'brikpanel-mp-name' });
+			const logo = String(mp.logo || '');
+			if (/^https?:\/\//i.test(logo)) {
+				$name.append(makeElement('img', { src: logo, alt: '', class: 'brikpanel-mp-logo', loading: 'lazy' }));
 			}
+			$name.append(makeElement('span', {}, { textContent: String(mp.name || '') }));
+
+			const $stats = makeElement('div', { class: 'brikpanel-mp-stats' });
+			const addStat = (value, label, extraClass = '') => {
+				const $stat = makeElement('span', { class: `brikpanel-mp-stat ${extraClass}`.trim() });
+				$stat.append(makeElement('strong', {}, { textContent: String(value) }));
+				if (label) $stat.append(document.createTextNode(' ' + label));
+				$stats.append($stat);
+			};
+			addStat(Number(mp.products || 0).toLocaleString(), i18n.products || '');
+			addStat(Number(mp.orders || 0).toLocaleString(), i18n.orders_low || '');
+			addStat(String(mp.revenue || ''), '', 'revenue');
+
+			$row.append($name, $stats);
+			$list.append($row);
+		});
+		$mpCard.append($list);
+
+		if (sorted.length > maxVisible) {
+			const $toggle = makeElement('button', { type: 'button', class: 'brikpanel-mp-toggle', 'aria-expanded': 'false' }, { textContent: i18n.show_all || '' });
+			$toggle.addEventListener('click', () => {
+				const expanded = $mpCard.classList.toggle('expanded');
+				$toggle.textContent = expanded ? (i18n.show_less || '') : (i18n.show_all || '');
+				$toggle.setAttribute('aria-expanded', String(expanded));
+			});
+			$head.append($toggle);
+		}
+
+		$wrapper.append($mpCard);
 	}
 
 	// Initial render.
@@ -346,6 +402,7 @@ function brikpanelOrdersOverviewSection() {
  * Makes adjustments to the orders table to make it scroll horizontally
  */
 function brikpanelTableScroll() {
+	if (!document.querySelector('.wp-list-table')) return;
 	const $tableContainer = makeElement('div', { class: 'wp-list-table-container', ['scroll-x']: '0' }, {}, [{
 		event: 'scroll',
 		handler: (event) => {
@@ -358,6 +415,7 @@ function brikpanelTableScroll() {
 
 function brikpanelPageHeader() {
 	const $heading = document.querySelector('.wp-heading-inline');
+	if (!$heading) return;
 	const $header = makeElement('div', { class: 'brikpanel-page-top' });
 	$heading.insertAdjacentElement('beforebegin', $header);
 	$header.insertAdjacentElement('afterbegin', $heading);
@@ -366,11 +424,65 @@ function brikpanelPageHeader() {
 		$pageActions.insertAdjacentElement('beforeend', $pageAction);
 	});
 
-	// WordPress's "Screen Options" / "Help" toggles (#screen-meta-links) are left
-	// untouched in their default position and styling, exactly like every other
-	// admin screen.
+	/* WordPress's Screen Options toggle joins the page actions, so the title row
+	   holds everything instead of the toggle floating on a row of its own. The
+	   node moves with its id and WordPress's own handlers, so it keeps working;
+	   its panel moves under the title row so it opens below the button. The
+	   legacy screen's WooCommerce clip on the toggle is undone in the CSS. */
+	const $screenMetaLinks = document.getElementById('screen-meta-links');
+	if ($screenMetaLinks && $screenMetaLinks.querySelector('.show-settings')) {
+		$pageActions.insertAdjacentElement('afterbegin', $screenMetaLinks);
+		const $screenMeta = document.getElementById('screen-meta');
+		if ($screenMeta) {
+			$header.insertAdjacentElement('afterend', $screenMeta);
+		}
+	}
 
 	$header.insertAdjacentElement('beforeend', $pageActions);
+}
+
+/**
+ * WooCommerce's modals (the order preview) lock scrolling with
+ * `body { overflow: hidden }`. BrikPanel's top bar gives <body> a fixed height,
+ * so that clipped the page and threw it back to the top; closing the modal
+ * then left <body> as the scrolling box. The lock is moved to <html> and the
+ * scroll position is restored.
+ */
+function brikpanelModalScrollLock() {
+	if (!window.jQuery) return;
+
+	let lastX = window.scrollX;
+	let lastY = window.scrollY;
+	let lastBodyTop = document.body.scrollTop;
+	let locked = false;
+
+	window.addEventListener('scroll', () => {
+		if (locked) return;
+		lastX = window.scrollX;
+		lastY = window.scrollY;
+	}, { passive: true });
+	document.body.addEventListener('scroll', () => {
+		if (!locked) lastBodyTop = document.body.scrollTop;
+	}, { passive: true });
+
+	const restore = () => {
+		window.scrollTo(lastX, lastY);
+		document.body.scrollTop = lastBodyTop;
+	};
+
+	window.jQuery(document.body)
+		.on('wc_backbone_modal_loaded', () => {
+			locked = true;
+			document.body.style.overflow = '';
+			document.documentElement.classList.add('brikpanel-modal-lock');
+			restore();
+		})
+		.on('wc_backbone_modal_removed', () => {
+			document.body.style.overflow = '';
+			document.documentElement.classList.remove('brikpanel-modal-lock');
+			restore();
+			locked = false;
+		});
 }
 
 /**
@@ -392,8 +504,18 @@ function brikpanelTableHeader() {
 
 	// Highlight 'All' tab if no other is selected
 	if (!document.querySelector('.subsubsub .current')) {
-		document.querySelector('.subsubsub .all a').classList.add('current');
+		document.querySelector('.subsubsub .all a')?.classList.add('current');
 	}
+
+	// Tabs that run under the search button fade out at the edge.
+	const syncTabsOverflow = () => $subsubsub.classList.toggle('is-overflowing', $subsubsub.scrollWidth > $subsubsub.clientWidth + 1);
+	syncTabsOverflow();
+	if ('ResizeObserver' in window) new ResizeObserver(syncTabsOverflow).observe($subsubsub);
+
+	// The search opens by itself when a search or filter is active on load;
+	// that must not play the opening animation.
+	$header1.classList.add('bp-anim-off');
+	window.setTimeout(() => $header1.classList.remove('bp-anim-off'), 700);
 }
 
 /**
@@ -507,6 +629,18 @@ function brikpanelOrderSearch() {
 		document.querySelector('.brikpanel-search').classList.add('expanded');
 	}
 
+	// Escape closes an empty search, like Cancel.
+	document.addEventListener('keydown', (event) => {
+		if (event.key !== 'Escape' || document.querySelector('.select2-container--open, .wc-backbone-modal')) return;
+		const $container = document.querySelector('.brikpanel-search.expanded');
+		const input = document.querySelector('#orders-search-input-search-input') ?? document.querySelector('#post-search-input');
+		if (!$container || (input && input.value !== '')) return;
+		const params = new URLSearchParams(window.location.search);
+		if (params.get('filter_action') || document.querySelector('.brikpanel-filters .brikpanel-filter-remove')) return;
+		$container.classList.remove('expanded');
+		input?.blur();
+	});
+
 	// Add event listener for expanding search on 'F' key press
 	document.addEventListener('keydown', (event) => {
 		if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName) || event.key.toLowerCase() !== 'f' || document.querySelector('.select2-container--open')) {
@@ -552,6 +686,9 @@ function brikpanelAdjustCustomDropdownPosition(key) {
 }
 
 function brikpanelFilterCustomDropdown(key, prettyText, selectSelector, selectedOptionSelector) {
+	// A store with no orders yet shows WooCommerce's blank slate: no list
+	// table and no filter form to attach to.
+	if (!document.querySelector('.wp-list-table')) return;
 	// Filter button
 	const $filterButton = makeElement('div', { class: `brikpanel-${key}-filter` }, { innerHTML: (_ordersI18n.filter_by || 'Filter by') + ' ' + prettyText }, [{
 		event: 'click',
@@ -696,7 +833,11 @@ function brikpanelFilters() {
 	const $filters = document.querySelector('.tablenav.top .actions:not(.bulkactions)');
 	$filters.classList.remove('alignleft');
 	$filters.classList.add('brikpanel-filters');
-	document.querySelector('.brikpanel-orders-table-header-1').insertAdjacentElement('afterend', $filters);
+	// The row opens and closes by animating a grid track, which (unlike
+	// max-height) follows the real height of the chips at any width.
+	const $collapse = makeElement('div', { class: 'brikpanel-filters-collapse' });
+	$collapse.append($filters);
+	document.querySelector('.brikpanel-orders-table-header-1').insertAdjacentElement('afterend', $collapse);
 
 	// Hide filter form elements
 	for (const $filter of $filters.children) {
@@ -753,6 +894,19 @@ function brikpanelBulkActions(actions) {
 	   rows are ticked. Nothing else here cares how many are selected. */
 	let $mergeButton = null;
 
+	// How many orders the actions below will apply to.
+	const $selectedCount = makeElement('span', { class: 'brikpanel-bulk-count', 'aria-live': 'polite' });
+	/* When the actions do not fit on one row (many statuses, narrow screens)
+	   they fold into a "Bulk actions" menu that opens above the bar. */
+	const $menuToggle = makeElement('button', {
+		type: 'button',
+		class: 'brikpanel-bulk-more',
+		'aria-expanded': 'false',
+		'aria-controls': 'brikpanel-bulk-menu',
+	}, { textContent: _ordersI18n.bulk_actions || '' });
+	const $menu = makeElement('div', { class: 'brikpanel-bulk-menu', id: 'brikpanel-bulk-menu' });
+	$bulkActions.append($selectedCount, $menuToggle, $menu);
+
 	actions.forEach(({ value, innerHTML }) => {
 		const $bulkAction = makeElement('button', { value: value }, { innerHTML: innerHTML }, [{
 			event: 'click', handler: (event) => {
@@ -764,7 +918,10 @@ function brikpanelBulkActions(actions) {
 		if (value === 'brikpanel_merge_orders') {
 			$mergeButton = $bulkAction;
 		}
-		$bulkActions.append($bulkAction);
+		if (value === 'trash' || value === 'delete') {
+			$bulkAction.classList.add('is-destructive');
+		}
+		$menu.append($bulkAction);
 	});
 
 	/* Counted live off the DOM rather than off the `checked` array below: WP
@@ -777,6 +934,9 @@ function brikpanelBulkActions(actions) {
 	}
 
 	function updateMergeState() {
+		const count = brikpanelSelectedRowCount();
+		$selectedCount.textContent = (_ordersI18n.selected_count || '%d').replace('%d', String(count));
+		$selectedCount.hidden = count === 0;
 		if (!$mergeButton) return;
 		const enough = brikpanelSelectedRowCount() >= 2;
 		$mergeButton.disabled = !enough;
@@ -840,6 +1000,43 @@ function brikpanelBulkActions(actions) {
 	});
 
 	updateMergeState();
+
+	const closeMenu = () => {
+		$bulkActions.classList.remove('menu-open');
+		$menuToggle.setAttribute('aria-expanded', 'false');
+	};
+	$menuToggle.addEventListener('click', (event) => {
+		event.stopPropagation();
+		const open = !$bulkActions.classList.contains('menu-open');
+		$bulkActions.classList.toggle('menu-open', open);
+		$menuToggle.setAttribute('aria-expanded', String(open));
+	});
+	$menu.addEventListener('click', () => closeMenu());
+	document.addEventListener('click', (event) => {
+		if (!$bulkActions.contains(event.target)) closeMenu();
+	});
+	document.addEventListener('keydown', (event) => {
+		if (event.key === 'Escape' && $bulkActions.classList.contains('menu-open')) {
+			closeMenu();
+			$menuToggle.focus();
+		}
+	});
+
+	const syncCompact = () => {
+		const $card = document.querySelector('#wc-orders-filter') ?? document.querySelector('#posts-filter');
+		const available = window.matchMedia('(max-width: 520px)').matches
+			? window.innerWidth - 24
+			: Math.max(240, ($card ? $card.clientWidth : window.innerWidth) - 24);
+		$bulkActions.style.maxWidth = `${available}px`;
+		$bulkActions.classList.remove('is-compact');
+		const natural = $selectedCount.getBoundingClientRect().width + $menu.scrollWidth + 48;
+		const compact = natural > available;
+		$bulkActions.classList.toggle('is-compact', compact);
+		if (!compact) closeMenu();
+	};
+	syncCompact();
+	window.addEventListener('resize', syncCompact);
+	if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncCompact);
 }
 
 /**
@@ -909,6 +1106,645 @@ function brikpanelOrderNumberNamePreview() {
 }
 
 /**
+ * Compact order list: an arrow in each order number cell opens a detail panel
+ * (addresses, phone, items, actions) in a row of its own under the order.
+ *
+ * The panel markup is printed as an inert <template> in the Customer cell by
+ * front-end/orders/brikpanel-orders-compact.php, because WooCommerce offers no
+ * hook after a row. The row is built on first open and only shown/hidden after.
+ */
+function brikpanelCompactRows() {
+	if (!document.body.classList.contains('bp-orders-compact')) return;
+
+	const $table = document.querySelector('.wp-list-table');
+	const $list = $table?.querySelector('#the-list');
+	if (!$list) return;
+
+	const labelShow = _ordersI18n.show_details || '';
+	const labelHide = _ordersI18n.hide_details || '';
+	const svgNS = 'http://www.w3.org/2000/svg';
+
+	const makeChevron = () => {
+		const $svg = document.createElementNS(svgNS, 'svg');
+		$svg.setAttribute('viewBox', '0 0 20 20');
+		$svg.setAttribute('width', '16');
+		$svg.setAttribute('height', '16');
+		$svg.setAttribute('aria-hidden', 'true');
+		$svg.setAttribute('focusable', 'false');
+		const $path = document.createElementNS(svgNS, 'path');
+		$path.setAttribute('d', 'M7.5 5l5 5-5 5');
+		$path.setAttribute('fill', 'none');
+		$path.setAttribute('stroke', 'currentColor');
+		$path.setAttribute('stroke-width', '1.75');
+		$path.setAttribute('stroke-linecap', 'round');
+		$path.setAttribute('stroke-linejoin', 'round');
+		$svg.append($path);
+		return $svg;
+	};
+
+	/* The short row shows only these columns. Every other column (WooCommerce's
+	   Origin and Actions, other plugins' columns) keeps rendering, so Screen
+	   Options and those plugins keep working, but its content moves into the
+	   panel and appears when the order is opened. */
+	const ROW_COLUMNS = new Set(['cb', 'order_number', 'brikpanel_whatsapp', 'brikpanel_customer', 'order_date', 'order_status', 'payment_method', 'brikpanel_shipping_method', 'order_total']);
+	// Columns whose content never moves to the panel.
+	const DROPPED_COLUMNS = new Set();
+	// Columns the user keeps in the row ("Show in the row" in Screen Options).
+	const rowColumnsConfig = window.brikpanelOrdersOverview?.row_columns;
+	const pinned = new Set(Array.isArray(rowColumnsConfig) ? rowColumnsConfig.map(String) : []);
+	// Phones show a fixed card, so every extra column opens in the panel there.
+	const phoneQuery = window.matchMedia('(max-width: 782px)');
+	const inRow = key => pinned.has(key) && !phoneQuery.matches;
+
+	const columnKey = $cell => {
+		const name = [...$cell.classList].find(cls => cls.startsWith('column-'));
+		return name ? name.slice('column-'.length) : '';
+	};
+
+	const headerLabel = $th => {
+		if (!$th) return '';
+		const $copy = $th.cloneNode(true);
+		$copy.querySelectorAll('.screen-reader-text, .sorting-indicators, .sorting-indicator, input').forEach($el => $el.remove());
+		return $copy.textContent.replace(/\s+/g, ' ').trim();
+	};
+
+	const hasContent = $node => $node.textContent.trim() !== '' || !!$node.querySelector('img, svg, a, button, input, select, [style*="background"]'); // i18n-ignore: CSS selector
+
+	const $headRow = $table.querySelector('thead tr'); // i18n-ignore: CSS selector
+	const extraColumns = [];
+	for (const $th of $headRow?.children || []) {
+		const key = columnKey($th);
+		if (!key || ROW_COLUMNS.has(key) || $th.classList.contains('check-column')) continue;
+		extraColumns.push({ key, label: headerLabel($th), $th });
+	}
+	const totalLabel = headerLabel($headRow?.querySelector('.column-order_total'));
+	const dateLabel = headerLabel($headRow?.querySelector('.column-order_date'));
+
+	// Columns currently shown (Screen Options can hide some), so the panel
+	// spans the whole row.
+	// Counted by rendered width: narrow screens hide some columns with CSS.
+	const visibleColumns = () => [...$table.querySelectorAll('thead tr:first-child > *')].filter($th => $th.getBoundingClientRect().width > 0).length || 1;
+	const syncColspans = () => {
+		const span = String(visibleColumns());
+		$list.querySelectorAll(':scope > tr.bp-order-detail > td').forEach($cell => {
+			if ($cell.getAttribute('colspan') !== span) $cell.setAttribute('colspan', span);
+		});
+	};
+
+	const makeExtra = (key, label, extraClass = '') => {
+		// The column class lets WordPress's Screen Options show/hide the item
+		// together with its column.
+		const $item = makeElement('div', { class: `bp-od-extra ${key ? 'column-' + key : ''} ${extraClass}`.trim() });
+		$item.append(makeElement('div', { class: 'bp-od-label' }, { textContent: label }));
+		const $value = makeElement('div', { class: 'bp-od-extra-value' });
+		$item.append($value);
+		return [$item, $value];
+	};
+
+	const extrasByRow = new WeakMap();
+	const movesByRow = new WeakMap();
+	// Rows whose panel has been built; only those hold column content.
+	const builtRows = new WeakSet();
+	// Panel item -> the cell it came from. WordPress's Screen Options only
+	// updates the column classes of elements in the page, and a panel that was
+	// never opened is not, so the item copies the cell's state when shown.
+	const itemSource = new WeakMap();
+
+	$list.querySelectorAll(':scope > tr').forEach($row => {
+		const $cell = $row.querySelector('.column-order_number');
+		if (!$cell || !$row.querySelector('template.bp-order-detail-tpl') || $cell.querySelector('.bp-order-toggle')) return;
+
+		const id = ($row.id || '').replace(/^(order|post)-/, '');
+		const $button = makeElement('button', {
+			type: 'button',
+			class: 'bp-order-toggle',
+			'aria-expanded': 'false',
+			'aria-controls': `bp-order-detail-${id}`,
+			'aria-label': labelShow,
+			title: labelShow,
+		});
+		$button.append(makeChevron());
+		($cell.querySelector('.brikpanel-order-number') || $cell).prepend($button);
+
+		const extras = [];
+		const moves = [];
+		extraColumns.forEach(({ key, label }) => {
+			const $source = $row.querySelector(`:scope > .column-${CSS.escape(key)}`);
+			if (!$source) return;
+			if (DROPPED_COLUMNS.has(key)) {
+				moves.push({ key, $source, $item: null, $value: null });
+				return;
+			}
+			// The content stays in its (hidden) cell until the panel is first
+			// opened: other plugins that bind their buttons or fill the cell once
+			// the page is ready still find it in the page.
+			const [$item, $value] = makeExtra(key, label);
+			if ($source.classList.contains('hidden')) $item.classList.add('hidden');
+			itemSource.set($item, $source);
+			moves.push({ key, $source, $item, $value });
+			extras.push($item);
+		});
+		movesByRow.set($row, moves);
+
+		// Anything other plugins print next to the amount (e.g. a currency
+		// note) would make the short row tall; it moves to the panel too.
+		const $total = $row.querySelector(':scope > .column-order_total');
+		if ($total) {
+			// WooCommerce wraps the amount in a tooltip span; notes can sit inside it.
+			const candidates = [...$total.children].flatMap($child => ($child.matches('.tips') ? [...$child.children] : [$child]));
+			const notes = candidates.filter($child =>
+				!$child.matches('.amount, .woocommerce-Price-amount, del, ins, .tips, .screen-reader-text, .toggle-row')
+				&& !$child.querySelector('.amount, .woocommerce-Price-amount'));
+			if (notes.length) {
+				const [$item, $value] = makeExtra('', totalLabel);
+				notes.forEach($note => $value.append($note));
+				extras.push($item);
+			}
+		}
+
+		// Phones leave the date out of the short card; it shows in the panel.
+		const $date = $row.querySelector(':scope > .column-order_date');
+		if ($date && hasContent($date)) {
+			const [$item, $value] = makeExtra('', dateLabel, 'bp-od-extra--phone');
+			$value.append(...[...$date.childNodes].map($node => $node.cloneNode(true)));
+			extras.push($item);
+		}
+
+		extrasByRow.set($row, extras);
+	});
+
+	const buildPanel = ($row, detailId) => {
+		const $template = $row.querySelector('template.bp-order-detail-tpl');
+		if (!$template) return null;
+		// "no-link": WooCommerce opens the order when a row cell is clicked;
+		// clicks inside the panel must not.
+		const $cell = makeElement('td', { class: 'no-link', colspan: String(visibleColumns()) });
+		const $wrap = makeElement('div', { class: 'bp-order-detail-wrap' });
+		$wrap.append($template.content.cloneNode(true));
+
+		builtRows.add($row);
+		placeRow($row);
+		const extras = extrasByRow.get($row) || [];
+		const $card = $wrap.querySelector('.bp-od');
+		if ($card && extras.length) {
+			const $extras = makeElement('div', { class: 'bp-od-extras' });
+			$extras.append(...extras);
+			$card.append($extras);
+			syncExtras($extras);
+		}
+
+		$cell.append($wrap);
+		const $detail = makeElement('tr', { class: 'bp-order-detail', id: detailId });
+		$detail.append($cell);
+		$row.after($detail);
+		return $detail;
+	};
+
+	// The extras block hides when every item sits in the row, and shows only on
+	// narrow widths when all that is left is the date.
+	const syncExtras = $extras => {
+		[...$extras.children].forEach($item => {
+			const $source = itemSource.get($item);
+			if ($source) $item.classList.toggle('hidden', $source.classList.contains('hidden'));
+		});
+		const live = [...$extras.children].filter($item => !['bp-od-extra--in-row', 'bp-od-extra--empty', 'hidden'].some(cls => $item.classList.contains(cls)));
+		$extras.hidden = live.length === 0;
+		$extras.classList.toggle('bp-od-extras--phone', live.length > 0 && live.every($item => $item.classList.contains('bp-od-extra--phone')));
+	};
+
+	// Put each extra column's content where it belongs: in its own cell when the
+	// user keeps the column in the row, otherwise in the order's panel. Content is
+	// moved, never copied, so other plugins' buttons keep their handlers.
+	const placeRow = $row => {
+		const moves = movesByRow.get($row);
+		if (!moves) return;
+		const built = builtRows.has($row);
+		moves.forEach(({ key, $source, $item, $value }) => {
+			const row = inRow(key);
+			$source.classList.toggle('bp-col-extra', !row);
+			if (!$item) return;
+			if (row) {
+				while ($value.firstChild) $source.append($value.firstChild);
+			} else if (built) {
+				while ($source.firstChild) $value.append($source.firstChild);
+			}
+			$item.classList.toggle('bp-od-extra--in-row', row);
+			$item.classList.toggle('bp-od-extra--empty', !row && built && !hasContent($value));
+		});
+	};
+
+	const applyPlacement = () => {
+		extraColumns.forEach(({ key, $th }) => $th.classList.toggle('bp-col-extra', !inRow(key)));
+		$list.querySelectorAll(':scope > tr').forEach($row => {
+			if (!movesByRow.has($row)) return;
+			placeRow($row);
+			const $extras = document.getElementById(`bp-order-detail-${($row.id || '').replace(/^(order|post)-/, '')}`)?.querySelector('.bp-od-extras');
+			if ($extras) syncExtras($extras);
+		});
+		syncColspans();
+		document.dispatchEvent(new CustomEvent('brikpanel:order-columns-changed'));
+	};
+	applyPlacement();
+	phoneQuery.addEventListener?.('change', applyPlacement);
+
+	// Screen Options "Show in the row" boxes: apply at once, then save for the user.
+	const $rowPrefs = document.querySelector('#screen-options-wrap .bp-row-columns');
+	if ($rowPrefs) {
+		// Right under WordPress's own Columns list.
+		const $columnPrefs = $rowPrefs.parentElement?.querySelector(':scope > .metabox-prefs:not(.bp-row-columns)');
+		if ($columnPrefs) $columnPrefs.after($rowPrefs);
+
+		const $error = makeElement('p', { class: 'bp-row-columns__error', role: 'alert', hidden: '' });
+		$rowPrefs.append($error);
+		const $boxes = [...$rowPrefs.querySelectorAll('.bp-row-column-tog')];
+
+		// One request at a time, always carrying the latest choice, so quick
+		// clicks can never reach the server out of order and store an old set.
+		let saved = new Set(pinned);
+		let busy = false;
+		let dirty = false;
+		const save = () => {
+			if (busy) {
+				dirty = true;
+				return;
+			}
+			busy = true;
+			dirty = false;
+			const sent = new Set(pinned);
+			const body = new URLSearchParams({ action: 'brikpanel_orders_row_columns', nonce: $rowPrefs.dataset.nonce || '' });
+			sent.forEach(key => body.append('columns[]', key));
+			fetch(window.brikpanelOrdersOverview?.ajax_url || '', { method: 'POST', credentials: 'same-origin', body })
+				.then(response => response.json())
+				.then(result => {
+					if (!result?.success) throw new Error();
+					saved = sent;
+				})
+				.catch(() => {
+					// Put back what is stored, so the page never shows a choice that
+					// will be gone after a reload.
+					dirty = false;
+					pinned.clear();
+					saved.forEach(key => pinned.add(key));
+					$boxes.forEach($box => { $box.checked = pinned.has($box.value); });
+					applyPlacement();
+					$error.textContent = _ordersI18n.row_columns_error || '';
+					$error.hidden = false;
+				})
+				.finally(() => {
+					busy = false;
+					if (dirty) save();
+				});
+		};
+
+		$rowPrefs.addEventListener('change', event => {
+			const $box = event.target;
+			if (!$box.matches?.('.bp-row-column-tog')) return;
+			if ($box.checked) pinned.add($box.value);
+			else pinned.delete($box.value);
+			applyPlacement();
+			$error.hidden = true;
+			save();
+		});
+	}
+
+	const toggleRow = ($row, $button) => {
+		const open = $button.getAttribute('aria-expanded') !== 'true';
+		const detailId = $button.getAttribute('aria-controls');
+		let $detail = document.getElementById(detailId);
+		if (open && !$detail) {
+			$detail = buildPanel($row, detailId);
+			if (!$detail) return;
+		}
+		if ($detail) $detail.hidden = !open;
+		$row.classList.toggle('bp-order-open', open);
+		$button.setAttribute('aria-expanded', String(open));
+		$button.setAttribute('aria-label', open ? labelHide : labelShow);
+		$button.title = open ? labelHide : labelShow;
+	};
+
+	$list.addEventListener('click', event => {
+		const $button = event.target.closest('.bp-order-toggle');
+		if ($button && $list.contains($button)) {
+			event.preventDefault();
+			toggleRow($button.closest('tr'), $button);
+			return;
+		}
+
+		// On phones the whole card opens its details, like the arrow. Links,
+		// the checkbox and the status badge keep their own behaviour.
+		if (!phoneQuery.matches) return;
+		const $row = event.target.closest('#the-list > tr');
+		if (!$row || $row.classList.contains('bp-order-detail')) return;
+		if (event.target.closest('a, button, input, label, select, textarea, .check-column, .order-status, .row-actions')) return;
+		const $rowButton = $row.querySelector('.bp-order-toggle');
+		if (!$rowButton) return;
+		event.stopPropagation(); // keeps WooCommerce from opening the order
+		toggleRow($row, $rowButton);
+	});
+
+	// Screen Options: keep open panels spanning the row after a column is
+	// shown or hidden. WordPress updates the header in its own change handler.
+	document.addEventListener('change', event => {
+		if (!event.target.matches?.('.hide-column-tog')) return;
+		setTimeout(() => {
+			const span = String(visibleColumns());
+			$list.querySelectorAll(':scope > tr.bp-order-detail > td').forEach($cell => $cell.setAttribute('colspan', span));
+			$list.querySelectorAll(':scope > tr.bp-order-detail .bp-od-extras').forEach(syncExtras);
+		});
+	});
+
+	// The panel stays in view while the table scrolls sideways: it is sticky
+	// to the left edge and as wide as the visible part of the table.
+	const $container = $table.closest('.wp-list-table-container');
+	if ($container) {
+		const syncWidth = () => {
+			$table.style.setProperty('--bp-detail-width', `${$container.clientWidth}px`);
+			syncColspans();
+		};
+		syncWidth();
+		if ('ResizeObserver' in window) new ResizeObserver(syncWidth).observe($container);
+	}
+}
+
+/**
+ * Keep the order number column, and any column in front of it, pinned to the
+ * left edge while the table scrolls sideways.
+ *
+ * The stylesheet assumes only the checkbox sits before the order number, which
+ * is not true once another column (e.g. WhatsApp) is placed there: the order
+ * number then stuck at the wrong offset and the column in between slid under
+ * it. Offsets are measured from the header instead.
+ */
+function brikpanelStickyOrderColumn() {
+	const $table = document.querySelector('.wp-list-table');
+	const $head = $table?.querySelector('thead .column-order_number');
+	// Right-to-left admin turns sticky columns off (assets/css/brikpanel-rtl.css).
+	if (!$head || document.body.classList.contains('rtl')) return;
+
+	const $style = document.createElement('style');
+	$style.id = 'brikpanel-sticky-order-columns';
+	document.head.append($style);
+
+	const sync = () => {
+		const rules = [];
+		let left = 0;
+		for (const $cell of $head.parentElement.children) {
+			if ($cell.classList.contains('hidden') || $cell.classList.contains('bp-col-extra')) continue;
+			const key = [...$cell.classList].find(name => name.startsWith('column-'));
+			if ($cell === $head || (key && !$cell.classList.contains('check-column') && key !== 'column-cb')) {
+				if (key && /^column-[a-z0-9_-]+$/i.test(key)) {
+					rules.push(`table.wp-list-table .${key}{position:sticky!important;left:${Math.floor(left)}px!important;}`);
+					if ($cell !== $head) {
+						rules.push(`table.wp-list-table tbody .${key}{background-color:#fff;z-index:1;}`, `table.wp-list-table thead .${key}{background-color:#f7f7f7;}`);
+					}
+				}
+			}
+			if ($cell === $head) break;
+			left += $cell.getBoundingClientRect().width;
+		}
+		$style.textContent = rules.join('\n');
+	};
+
+	sync();
+	if ('ResizeObserver' in window) {
+		const observer = new ResizeObserver(sync);
+		for (const $cell of $head.parentElement.children) {
+			observer.observe($cell);
+			if ($cell === $head) break;
+		}
+	}
+	document.addEventListener('change', event => {
+		if (event.target.matches?.('.hide-column-tog')) setTimeout(sync);
+	});
+	document.addEventListener('brikpanel:order-columns-changed', sync);
+}
+
+/**
+ * Visible text length of a subtree: whitespace collapsed, screen-reader-only
+ * labels and icon media ignored.
+ *
+ * An icon button's accessible name normally lives in a .screen-reader-text span
+ * (and an inline icon's in <svg><title>), so counting either would misread every
+ * properly labelled icon button as a text button.
+ *
+ * @param {Element}      $node   Subtree root.
+ * @param {Set<Element>} [$skip] Elements whose whole subtree is left out: the
+ *                               icons themselves, when what matters is the text
+ *                               around them rather than the labels they hide.
+ * @returns {number} Number of visible characters.
+ */
+function brikpanelIconbarTextLength($node, $skip = null) {
+	let length = 0;
+
+	for (const $child of $node.childNodes) {
+		if ($child.nodeType === Node.TEXT_NODE) {
+			length += $child.nodeValue.replace(/\s+/g, ' ').trim().length;
+			continue;
+		}
+
+		if ($child.nodeType !== Node.ELEMENT_NODE || $skip?.has($child)) continue;
+
+		if ($child.classList.contains('screen-reader-text')
+			|| $child.localName === 'svg'
+			|| $child.localName === 'script'
+			|| $child.localName === 'style'
+			|| $child.localName === 'template') {
+			continue;
+		}
+
+		length += brikpanelIconbarTextLength($child, $skip);
+	}
+
+	return length;
+}
+
+/**
+ * How a control shows its icon, or null when it is not an icon-only control.
+ *
+ * - 'media': an <img> or <svg> inside, and no visible label.
+ * - 'bg': the icon is a CSS background image. Plugins that draw icons this way
+ *   usually still print a label for screen readers and hide it visually with
+ *   `font-size: 0` or the classic far-negative `text-indent`, so the control
+ *   only counts when that label really is hidden: a text button that merely
+ *   has a decorative background stays a text button. "PDF Invoices and Packing
+ *   Slips For WooCommerce" by Acowebs renders its Documents column exactly like
+ *   this, and was the plugin behind the original report.
+ *
+ * Only computed style is read, and none of these properties depend on layout,
+ * so this never forces a reflow.
+ *
+ * @param {Element} $control
+ * @returns {'media'|'bg'|null}
+ */
+function brikpanelIconbarIconKind($control) {
+	const hasLabel = brikpanelIconbarTextLength($control) > 0;
+
+	if (!hasLabel && $control.querySelector('img, svg')) return 'media';
+
+	const style = getComputedStyle($control);
+	if (!style.backgroundImage.includes('url(')) return null;
+
+	const hidesLabel = parseFloat(style.fontSize) === 0 || parseFloat(style.textIndent) <= -999;
+
+	return !hasLabel || hidesLabel ? 'bg' : null;
+}
+
+/**
+ * Reads one cell and returns the icon run this pass can lay out, or null when
+ * the cell is not one: no run, a labelled control among the icons, copy of its
+ * own, or a container between an icon and the cell that cannot be made
+ * inline-level.
+ *
+ * It is all or nothing on purpose. Half-treating a cell -- squaring the icons
+ * off but leaving them stacked because they sit in list items -- buys the
+ * merchant nothing and costs them a narrower column, so such a cell is better
+ * left exactly as the other plugin rendered it.
+ *
+ * @param {HTMLTableCellElement} $cell Body cell of a column BrikPanel does not own.
+ * @returns {{$cell: HTMLTableCellElement, $items: Element[], kinds: string[], $wraps: Element[]}|null}
+ */
+function brikpanelIconbarReadCell($cell) {
+	if ($cell.classList.contains('brikpanel-iconbar-cell')) return null;
+
+	const $items = [];
+	const kinds = [];
+
+	for (const $control of $cell.querySelectorAll('a[href], button')) {
+		// WordPress' hover links ("Edit | Trash"), the order preview button and
+		// the mobile row toggle are already laid out by core and by BrikPanel.
+		if ($control.closest('.row-actions, .order-preview, .toggle-row')) continue;
+
+		// A control nested inside another control is one visual thing.
+		if ($control.parentElement?.closest('a[href], button')) continue;
+
+		// One control that is not an icon rules the whole cell out, because
+		// squaring a text button off at 2rem would cut its label in half.
+		const kind = brikpanelIconbarIconKind($control);
+		if (!kind) return null;
+
+		$items.push($control);
+		kinds.push(kind);
+	}
+
+	if ($items.length < BP_ICONBAR_MIN_ITEMS) return null;
+
+	// The labels background icons hide for screen readers are not text anyone
+	// sees, so they count neither as the cell's own copy nor as a wrapper's.
+	const $icons = new Set($items);
+
+	// A cell with real copy of its own is a content column that happens to carry
+	// a couple of icons. Pinning it to the width of two icons would be a worse
+	// problem than the one being fixed.
+	if (brikpanelIconbarTextLength($cell, $icons) > BP_ICONBAR_MAX_TEXT) return null;
+
+	const $wraps = [];
+
+	// Every container between an icon and the cell has to be one this pass can
+	// make inline-level. Anything else -- a list item, a table, a form control --
+	// ends the attempt: changing its outer display would change what it means or
+	// drop its marker, and leaving it alone would leave the run stacked anyway.
+	for (const $item of $items) {
+		for (let $wrap = $item.parentElement; $wrap && $wrap !== $cell; $wrap = $wrap.parentElement) {
+			if (($wrap.localName !== 'div' && $wrap.localName !== 'p')
+				|| brikpanelIconbarTextLength($wrap, $icons) > 0) {
+				return null;
+			}
+
+			$wraps.push($wrap);
+		}
+	}
+
+	return { $cell, $items, kinds, $wraps };
+}
+
+/**
+ * Lays out third-party icon-action columns ("Documents", "Labels", "Invoices"...)
+ * as a compact grid instead of a one-icon-per-line stack.
+ *
+ * BrikPanel pins the table to the width of its scroll container and clears every
+ * per-column width, so a column it does not know about gets squeezed towards its
+ * min-content width. A cell holding nothing but icon links then breaks that run
+ * one icon per line, and the row grows several times taller than it needs to be.
+ * A merchant running many columns at once reported exactly this.
+ *
+ * Nothing is moved, replaced or re-emitted: the other plugin's markup keeps its
+ * exact position in the DOM, so its event handlers, its tooltips, its
+ * target="_blank" links and any CSS it scopes to `td.column-x > div > a` all keep
+ * working. This only adds marker classes and one custom property; the layout
+ * itself lives in CSS (see "THIRD-PARTY ICON-ACTION COLUMNS" in
+ * brikpanel-orders.css).
+ *
+ * Every column is read before anything is written, and the reads are DOM walks
+ * plus layout-independent computed style, so the pass costs at most one style
+ * recalculation and never a reflow.
+ */
+function brikpanelIconActionColumns() {
+	const $table = document.querySelector('.wp-list-table');
+	if (!$table) return;
+
+	const plans = [];
+
+	// Which columns are not ours? Read once from the header row. On a store with
+	// no third-party order columns -- the overwhelming majority -- this loop is
+	// the entire cost of the feature.
+	for (const $th of $table.querySelectorAll('thead th.manage-column')) { // i18n-ignore: CSS selector, not user-facing text
+		for (const name of $th.classList) {
+			if (!name.startsWith('column-')) continue;
+
+			const column = name.slice('column-'.length);
+			if (!column || BP_ICONBAR_KNOWN_COLUMNS.has(column)) continue;
+
+			const runs = [];
+			let longest = 0;
+
+			for (const $cell of $table.querySelectorAll(`tbody td.column-${CSS.escape(column)}`)) {
+				const run = brikpanelIconbarReadCell($cell);
+				if (!run) continue;
+
+				runs.push(run);
+				longest = Math.max(longest, run.$items.length);
+			}
+
+			if (runs.length === 0) continue;
+
+			// One width for the whole column. A table column is as wide as its
+			// widest cell, so deciding this per cell would let a long run in one
+			// row silently re-pack every other row -- a four-icon cell would
+			// break 3 + 1 because some other row asked for three columns. The
+			// grid is two icons wide as a rule, and widens only so that a very
+			// long run cannot tower over the rest of the table.
+			const cols = String(Math.min(
+				Math.max(BP_ICONBAR_COLS, Math.ceil(longest / BP_ICONBAR_MAX_ROWS)),
+				BP_ICONBAR_MAX_COLS
+			));
+
+			plans.push({ $th, runs, cols });
+		}
+	}
+
+	// Only now write. A class added for one column would otherwise invalidate
+	// style, and the next column's computed-style reads would recalculate it.
+	for (const { $th, runs, cols } of plans) {
+		for (const { $cell, $items, kinds, $wraps } of runs) {
+			for (const $wrap of $wraps) $wrap.classList.add('brikpanel-iconbar-wrap');
+
+			$items.forEach(($item, index) => {
+				$item.classList.add('brikpanel-iconbar-item', `brikpanel-iconbar-item--${kinds[index]}`);
+			});
+
+			$cell.classList.add('brikpanel-iconbar-cell');
+			$cell.style.setProperty('--bp-iconbar-cols', cols);
+		}
+
+		// A long header label would otherwise hold the narrowed column open on
+		// its own, and the blanket nowrap on thead th is meant for the columns
+		// BrikPanel lays out itself. Columns this pass left alone keep the
+		// header they had.
+		$th.classList.add('brikpanel-iconbar-col');
+	}
+}
+
+/**
  * Makes adjustments to the order status table cell
  */
 function brikpanelOrderStatus() {
@@ -926,7 +1762,7 @@ function brikpanelOrderStatus() {
  */
 function brikpanelFooter() {
 	// Remove table footer
-	document.querySelector('.wp-list-table tfoot').remove();
+	document.querySelector('.wp-list-table tfoot')?.remove();
 }
 
 /**

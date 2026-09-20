@@ -22,6 +22,74 @@ const BRIKPANEL_CUSTOM_STATUSES_OPTION = 'brikpanel_custom_order_statuses';
 const BRIKPANEL_DEFAULT_STATUS_OPTION  = 'brikpanel_default_order_status';
 
 /**
+ * Tell Import / Export how to carry the custom order statuses.
+ *
+ * Registered rather than left to the settings walk because the walk only knows
+ * the field type, and this shape is nested (slug => label + colour) — the
+ * generic cleaner would have flattened it into a list of strings.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_cos_register_export_keys' );
+function brikpanel_cos_register_export_keys( $map ) {
+	$map[ BRIKPANEL_CUSTOM_STATUSES_OPTION ] = [
+		'class'    => 'portable',
+		'group'    => 'order-statuses',
+		'sanitize' => 'brikpanel_cos_sanitize_import_map',
+		'default'  => [],
+	];
+	return $map;
+}
+
+/**
+ * Clean an imported custom-status map.
+ *
+ * Runs the same guarantees the settings save does — sanitised slug, never a
+ * reserved one, 17 characters at most, plain-text label, valid hex colour —
+ * because an imported file is exactly as untrusted as a posted form, and a
+ * status slug that collides with a WooCommerce core status would shadow it
+ * store-wide.
+ *
+ * @param mixed $value
+ * @return array<string, array{label:string,color:string}>
+ */
+function brikpanel_cos_sanitize_import_map( $value ) {
+	if ( ! is_array( $value ) ) {
+		return [];
+	}
+	$reserved = brikpanel_cos_reserved_slugs();
+	$out      = [];
+
+	foreach ( $value as $slug => $row ) {
+		if ( ! is_array( $row ) ) {
+			continue;
+		}
+		$label = isset( $row['label'] ) && is_scalar( $row['label'] ) ? sanitize_text_field( (string) $row['label'] ) : '';
+		if ( '' === $label ) {
+			continue;
+		}
+		$color = isset( $row['color'] ) && is_scalar( $row['color'] ) ? sanitize_hex_color( (string) $row['color'] ) : '';
+		if ( ! $color ) {
+			$color = '#646970';
+		}
+
+		$taken = array_merge( $reserved, array_keys( $out ) );
+		$slug  = substr( sanitize_key( (string) $slug ), 0, 17 );
+		if ( '' === $slug || in_array( $slug, $taken, true ) ) {
+			$slug = brikpanel_cos_make_slug( $label, $taken );
+		}
+
+		$out[ $slug ] = [
+			'label' => $label,
+			'color' => $color,
+		];
+	}
+
+	return $out;
+}
+
+/**
  * Status slugs we must never let a custom status overwrite: every WooCommerce
  * core status plus the WordPress system statuses. Used both when minting a slug
  * and when validating the default.
@@ -741,8 +809,14 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 		'default'  => '',
 	];
 	$fields[] = [
+		// The id is the option this card writes, not a name of its own, so the
+		// settings export walker picks the statuses up with every other
+		// setting. (Nothing is posted under this name — the repeater's inputs
+		// are brikpanel_cos[…] — so WooCommerce's generic save loop skips it
+		// and leaves the option to the dedicated handler below. Same footing
+		// as the WhatsApp per-status card.)
 		'type' => 'brikpanel_order_statuses',
-		'id'   => 'brikpanel_order_statuses_field',
+		'id'   => BRIKPANEL_CUSTOM_STATUSES_OPTION,
 	];
 	$fields[] = [
 		'type' => 'sectionend',

@@ -119,8 +119,78 @@ function brikpanel_expense_money_kinds_sql( $alias = '' ) {
  * KPIs stay live without manual cache wiring per metric.
  */
 function brikpanel_bust_data_caches() {
+    // Coalesced per request: the first call bumps at once, and any further
+    // calls in the same request add ONE more bump at shutdown, so data changed
+    // later in the request still invalidates. A variable product save writes
+    // cost meta for every variation and used to bump (a database write each
+    // time) once per meta write.
+    static $bumped = false;
+    if ( $bumped ) {
+        if ( ! has_action( 'shutdown', 'brikpanel_bump_data_cache_ver' ) ) {
+            add_action( 'shutdown', 'brikpanel_bump_data_cache_ver', PHP_INT_MAX );
+        }
+        return;
+    }
+    $bumped = true;
+    brikpanel_bump_data_cache_ver();
+}
+
+/**
+ * Write the next shared data version. Use brikpanel_bust_data_caches().
+ *
+ * @return void
+ */
+function brikpanel_bump_data_cache_ver() {
+    // Fresh read, so a bump made by another request since this one loaded
+    // the value is not written back over.
+    wp_cache_delete( 'brikpanel_data_cache_ver', 'options' );
     update_option( 'brikpanel_data_cache_ver', (int) get_option( 'brikpanel_data_cache_ver', 1 ) + 1, false );
 }
+/**
+ * Drop the topbar notification-bell counts cache (Brikpanel_Dashboard_Topbar).
+ *
+ * New orders and status changes already invalidate it through the shared data
+ * version. These cover the rest of what the bell counts: orders trashed,
+ * restored or deleted, and products going in or out of stock or publication.
+ * Lives here, not in the topbar file, because that file only loads in wp-admin
+ * while stock and orders also change at checkout, over REST and in cron.
+ *
+ * @return void
+ */
+function brikpanel_flush_topbar_counts() {
+    // Coalesced like brikpanel_bust_data_caches(): once now, and once more at
+    // shutdown if anything else changed later in the same request.
+    static $done = false;
+    if ( $done ) {
+        if ( ! has_action( 'shutdown', 'brikpanel_delete_topbar_counts' ) ) {
+            add_action( 'shutdown', 'brikpanel_delete_topbar_counts', PHP_INT_MAX );
+        }
+        return;
+    }
+    $done = true;
+    brikpanel_delete_topbar_counts();
+}
+
+/**
+ * Delete the topbar counts transient. Use brikpanel_flush_topbar_counts().
+ *
+ * @return void
+ */
+function brikpanel_delete_topbar_counts() {
+    delete_transient( 'brikpanel_topbar_counts' );
+}
+add_action( 'woocommerce_trash_order',              'brikpanel_flush_topbar_counts' );
+add_action( 'woocommerce_untrash_order',            'brikpanel_flush_topbar_counts' );
+add_action( 'woocommerce_delete_order',             'brikpanel_flush_topbar_counts' );
+add_action( 'woocommerce_product_set_stock_status', 'brikpanel_flush_topbar_counts' );
+add_action( 'transition_post_status', static function ( $new_status, $old_status, $post ) {
+    // shop_order covers a legacy (non-HPOS) order restored from the trash,
+    // which fires no order-specific hook.
+    if ( $new_status !== $old_status && $post instanceof WP_Post && ( 'product' === $post->post_type || 'shop_order' === $post->post_type ) ) {
+        brikpanel_flush_topbar_counts();
+    }
+}, 10, 3 );
+
 add_action( 'woocommerce_new_order',            'brikpanel_bust_data_caches' );
 add_action( 'woocommerce_order_status_changed', 'brikpanel_bust_data_caches' );
 add_action( 'woocommerce_order_refunded',       'brikpanel_bust_data_caches' );
@@ -375,6 +445,95 @@ function brikpanel_product_search_meta_keys( $term = '' ) {
 }
 
 /**
+ * Table, object column and primary key of a WordPress / WooCommerce meta table,
+ * for the SQL builders below. Whitelisted so no caller-supplied string ever
+ * becomes a table or column name.
+ *
+ * @param string $scope 'post' (postmeta), 'order' (HPOS wc_orders_meta),
+ *                      'order_item' (woocommerce_order_itemmeta) or 'user'.
+ * @return array{table:string,object:string,pk:string}
+ */
+function brikpanel_sql_meta_table( $scope ) {
+    global $wpdb;
+
+    switch ( $scope ) {
+        case 'order':
+            return array( 'table' => "{$wpdb->prefix}wc_orders_meta", 'object' => 'order_id', 'pk' => 'id' );
+        case 'order_item':
+            return array( 'table' => "{$wpdb->prefix}woocommerce_order_itemmeta", 'object' => 'order_item_id', 'pk' => 'meta_id' );
+        case 'user':
+            return array( 'table' => $wpdb->usermeta, 'object' => 'user_id', 'pk' => 'umeta_id' );
+        default:
+            return array( 'table' => $wpdb->postmeta, 'object' => 'post_id', 'pk' => 'meta_id' );
+    }
+}
+
+/**
+ * SQL condition that keeps only the FIRST row of a meta key per object.
+ *
+ * Nothing stops a meta key from being stored twice on the same post or order:
+ * an importer writing with add_post_meta(), another plugin, two saves racing
+ * each other. A plain `JOIN meta ON object = x AND meta_key = 'k'` then turns
+ * one order line into two, and every SUM or COUNT in the query doubles: a
+ * cost of 8.99 × 5 was reported as 89.90. WordPress itself only ever reads the
+ * first row (get_post_meta( $id, $key, true ) loads meta ordered by meta_id),
+ * so pinning the aggregate to that same row makes reports and product screens
+ * agree even on a store with duplicate rows.
+ *
+ * Written as a NOT EXISTS on a lower primary key, not `pk = (SELECT MIN(pk))`:
+ * the MIN form made MariaDB abandon the post_id index for the join (measured
+ * 5.5× slower), while this one leaves the outer plan untouched and only runs
+ * for rows the join actually matched. Works in an ON clause or a WHERE clause.
+ *
+ * @param string $scope See brikpanel_sql_meta_table().
+ * @param string $alias Alias of the meta table in the outer query.
+ * @return string SQL condition, without a leading AND.
+ */
+function brikpanel_sql_first_meta_guard( $scope, $alias ) {
+    // Aliases are always literals written by BrikPanel; anything else is a bug
+    // and must not reach the query text.
+    if ( ! is_string( $alias ) || ! preg_match( '/^[A-Za-z_][A-Za-z0-9_]{0,60}$/', $alias ) ) {
+        return '1=1';
+    }
+
+    $t   = brikpanel_sql_meta_table( $scope );
+    $dup = $alias . '_dup';
+
+    return "NOT EXISTS (SELECT 1 FROM {$t['table']} {$dup}"
+        . " WHERE {$dup}.{$t['object']} = {$alias}.{$t['object']}"
+        . " AND {$dup}.meta_key = {$alias}.meta_key"
+        . " AND {$dup}.{$t['pk']} < {$alias}.{$t['pk']})";
+}
+
+/**
+ * JOIN clause for one meta key that can never match more than one row per
+ * object. See brikpanel_sql_first_meta_guard() for why.
+ *
+ * @param string $scope       See brikpanel_sql_meta_table().
+ * @param string $alias       Alias for the joined meta table.
+ * @param string $object_expr SQL expression for the object id (already safe SQL).
+ * @param string $meta_key    Meta key to join.
+ * @param string $extra_on    Optional extra ON condition (already safe SQL).
+ * @param string $join        'LEFT' or 'INNER'.
+ * @return string
+ */
+function brikpanel_sql_single_meta_join( $scope, $alias, $object_expr, $meta_key, $extra_on = '', $join = 'LEFT' ) {
+    $t        = brikpanel_sql_meta_table( $scope );
+    $join     = 'INNER' === strtoupper( (string) $join ) ? 'INNER' : 'LEFT';
+    $meta_key = is_string( $meta_key ) && preg_match( '/^[A-Za-z0-9_\-]{1,255}$/', $meta_key ) ? $meta_key : '';
+
+    if ( ! is_string( $alias ) || ! preg_match( '/^[A-Za-z_][A-Za-z0-9_]{0,60}$/', $alias ) ) {
+        $alias = 'bp_meta';
+    }
+
+    return "\n\t\t{$join} JOIN {$t['table']} {$alias}"
+        . "\n\t\t\tON {$alias}.{$t['object']} = {$object_expr}"
+        . "\n\t\t   AND {$alias}.meta_key = '" . esc_sql( $meta_key ) . "'"
+        . ( '' !== $extra_on ? "\n\t\t   AND {$extra_on}" : '' )
+        . "\n\t\t   AND " . brikpanel_sql_first_meta_guard( $scope, $alias );
+}
+
+/**
  * SQL fragments that resolve a product's cost across every known cost meta
  * key, for the aggregate queries that cannot afford a per-row PHP lookup.
  *
@@ -384,24 +543,22 @@ function brikpanel_product_search_meta_keys( $term = '' ) {
  * disagree. Stores without a third-party cost plugin get exactly the two
  * joins they always had — the extra cost is opt-in by installation.
  *
+ * Each join matches at most ONE row per key (the first, as get_post_meta()
+ * reads it), so a cost stored twice on a product is still counted once.
+ *
  * @param string $alias_prefix Short unique alias stem (e.g. 'vc', 'pc').
  * @param string $post_id_expr SQL expression for the post id to join on.
  * @param string $extra_on     Optional extra ON condition (already safe SQL).
  * @return array{joins:string,value:string}
  */
 function brikpanel_cogs_sql_join_set( $alias_prefix, $post_id_expr, $extra_on = '' ) {
-    global $wpdb;
-
     $joins  = '';
     $values = array();
     $i      = 0;
 
     foreach ( brikpanel_cogs_meta_keys() as $key ) {
-        $alias   = $alias_prefix . $i;
-        $joins  .= "\n\t\tLEFT JOIN {$wpdb->postmeta} {$alias}"
-            . "\n\t\t\tON {$alias}.post_id = {$post_id_expr}"
-            . "\n\t\t   AND {$alias}.meta_key = '" . esc_sql( $key ) . "'"
-            . ( '' !== $extra_on ? "\n\t\t   AND {$extra_on}" : '' );
+        $alias    = $alias_prefix . $i;
+        $joins   .= brikpanel_sql_single_meta_join( 'post', $alias, $post_id_expr, $key, $extra_on );
         $values[] = "NULLIF({$alias}.meta_value, '')";
         $i++;
     }
@@ -493,6 +650,107 @@ function brikpanel_mirror_cogs_meta( $meta_id, $object_id, $meta_key, $meta_valu
 add_action( 'added_post_meta',   'brikpanel_mirror_cogs_meta', 10, 4 );
 add_action( 'updated_post_meta', 'brikpanel_mirror_cogs_meta', 10, 4 );
 add_action( 'deleted_post_meta', 'brikpanel_mirror_cogs_meta', 10, 4 );
+
+/**
+ * Remove the extra cost row the mirror leaves behind when a product is CREATED
+ * with both cost keys at once.
+ *
+ * WC_Product_Data_Store_CPT::create() writes props (the native cost) before it
+ * saves plain meta. The native write fires the mirror, which adds
+ * `_brikpanel_cogs`; a moment later save_meta_data() adds the object's own
+ * `_brikpanel_cogs` again, so the new product ends up with two rows. This is
+ * what WooCommerce's "Duplicate" action and a CSV import of a BrikPanel export
+ * both do, on simple products and on every variation.
+ *
+ * Runs on woocommerce_new_product(_variation), which fires after the meta save.
+ * Touches only BrikPanel-owned keys, only when every row holds the same number,
+ * and never deletes a row the product object itself references, so a later
+ * save of that same object still updates an existing row. Deleted raw: going through
+ * delete_metadata_by_mid() would fire the mirror with the removed value.
+ *
+ * @param int        $product_id Newly created product or variation ID.
+ * @param WC_Product $product    The product object that was saved.
+ */
+function brikpanel_collapse_created_product_cogs_rows( $product_id, $product = null ) {
+    global $wpdb;
+
+    $product_id = (int) $product_id;
+    if ( $product_id <= 0 ) {
+        return;
+    }
+
+    $keys  = brikpanel_cogs_owned_meta_keys();
+    $holds = implode( ',', array_fill( 0, count( $keys ), '%s' ) );
+    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT meta_id, meta_key, meta_value FROM {$wpdb->postmeta}
+         WHERE post_id = %d AND meta_key IN ({$holds})
+         ORDER BY meta_id ASC",
+        array_merge( array( $product_id ), $keys )
+    ) );
+
+    $by_key = array();
+    foreach ( (array) $rows as $row ) {
+        $by_key[ $row->meta_key ][] = $row;
+    }
+
+    $referenced = array();
+    if ( $product instanceof WC_Data ) {
+        foreach ( $product->get_meta_data() as $meta ) {
+            if ( in_array( $meta->key, $keys, true ) && ! empty( $meta->id ) ) {
+                $referenced[ (int) $meta->id ] = true;
+            }
+        }
+    }
+
+    $delete = array();
+    foreach ( $by_key as $key_rows ) {
+        if ( count( $key_rows ) < 2 ) {
+            continue;
+        }
+        $first = (float) $key_rows[0]->meta_value;
+        foreach ( $key_rows as $row ) {
+            if ( '' === (string) $row->meta_value || (float) $row->meta_value !== $first ) {
+                continue 2;
+            }
+        }
+        // A row the product object references is never deleted: a later save
+        // of that same object updates meta by id and would silently lose the
+        // write. Only the rows nothing points at (the mirror's) go, and one row
+        // always stays. A source product that already had two referenced rows
+        // keeps both on its copy; the BrikControl check handles that case.
+        $keep_any = false;
+        foreach ( $key_rows as $row ) {
+            if ( isset( $referenced[ (int) $row->meta_id ] ) ) {
+                $keep_any = true;
+                break;
+            }
+        }
+        foreach ( $key_rows as $i => $row ) {
+            $id = (int) $row->meta_id;
+            if ( isset( $referenced[ $id ] ) ) {
+                continue;
+            }
+            if ( ! $keep_any && 0 === $i ) {
+                continue;
+            }
+            $delete[] = $id;
+        }
+    }
+
+    if ( empty( $delete ) ) {
+        return;
+    }
+
+    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+    $wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE post_id = {$product_id} AND meta_id IN (" . implode( ',', $delete ) . ')' );
+    wp_cache_delete( $product_id, 'post_meta' );
+    if ( class_exists( 'WC_Cache_Helper' ) ) {
+        WC_Cache_Helper::invalidate_cache_group( 'object_' . $product_id );
+    }
+}
+add_action( 'woocommerce_new_product',           'brikpanel_collapse_created_product_cogs_rows', 10, 2 );
+add_action( 'woocommerce_new_product_variation', 'brikpanel_collapse_created_product_cogs_rows', 10, 2 );
 
 /**
  * The cost defined directly on ONE product or variation post — no parent
@@ -1290,6 +1548,28 @@ function brikpanel_collect_order_item_downloads( $order ) {
 }
 
 /**
+ * AJAX: fresh per-item download data for the order screen, requested after
+ * WooCommerce grants or revokes a download permission without a reload, so
+ * the Items tab shows the change straight away.
+ */
+function brikpanel_ajax_order_item_downloads() {
+    check_ajax_referer( 'brikpanel_order_item_downloads', 'nonce' );
+
+    if ( ! current_user_can( 'edit_shop_orders' ) ) {
+        wp_send_json_error( null, 403 );
+    }
+
+    $order_id = isset( $_POST['order_id'] ) ? absint( wp_unslash( $_POST['order_id'] ) ) : 0;
+    $order    = $order_id && function_exists( 'wc_get_order' ) ? wc_get_order( $order_id ) : null;
+    if ( ! $order instanceof WC_Order ) {
+        wp_send_json_error( null, 404 );
+    }
+
+    wp_send_json_success( (object) brikpanel_collect_order_item_downloads( $order ) );
+}
+add_action( 'wp_ajax_brikpanel_order_item_downloads', 'brikpanel_ajax_order_item_downloads' );
+
+/**
  * Detect whether any WooCommerce-extending plugin is active that introduces
  * new product types beyond the core simple/variable/grouped/external set.
  *
@@ -1435,6 +1715,33 @@ function brikpanel_is_variable_product_type( $type ) {
  */
 const BRIKPANEL_EXCLUDED_USERS_OPTION = 'brikpanel_excluded_user_ids';
 const BRIKPANEL_EXCLUDED_ROLES_OPTION = 'brikpanel_excluded_roles';
+
+/**
+ * Tell Import / Export about the analytics exclusions.
+ *
+ * The two halves of one screen part company here, and deliberately. Roles are
+ * a rule ("never count staff orders") and mean the same thing on every store,
+ * so they travel. The user list is a set of local user IDs: ID 14 is a
+ * warehouse account on one site and a customer on the next, so copying it
+ * across would quietly delete a real customer from somebody else's analytics.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_analytics_register_export_keys' );
+function brikpanel_analytics_register_export_keys( $map ) {
+	$map[ BRIKPANEL_EXCLUDED_ROLES_OPTION ] = [
+		'class'    => 'portable',
+		'group'    => 'analytics',
+		'type'     => 'multiselect',
+		'default'  => [],
+	];
+	$map[ BRIKPANEL_EXCLUDED_USERS_OPTION ] = [
+		'class' => 'site',
+		'group' => 'analytics',
+	];
+	return $map;
+}
 
 /**
  * Translated display label for a role slug (e.g. 'shop_manager' →
@@ -2166,5 +2473,69 @@ if ( ! function_exists( 'brikpanel_csv_safe_row' ) ) {
 	 */
 	function brikpanel_csv_safe_row( array $row ) {
 		return array_map( 'brikpanel_csv_safe_cell', $row );
+	}
+}
+
+
+if ( ! function_exists( 'brikpanel_order_numbers_for_ids' ) ) {
+	/**
+	 * Resolve a batch of order IDs to the order numbers the shop actually shows.
+	 *
+	 * WooCommerce runs every displayed order number through the
+	 * `woocommerce_order_number` filter, which is what sequential-order-number
+	 * plugins hook to replace the raw database ID with their own series. Screens
+	 * that read orders straight out of the database with $wpdb never go through
+	 * an order object, so they would print the ID and disagree with the orders
+	 * list, which WooCommerce renders itself.
+	 *
+	 * Loading an order object per row just to ask for its number would be a
+	 * pointless cost on the stores that have no such plugin, and those are most
+	 * of them. So the filter is checked first: with nothing hooked the number IS
+	 * the ID and the map is built without touching the database at all. Only
+	 * when a plugin is actually renumbering orders are the page's orders loaded,
+	 * in one batch rather than one query per row.
+	 *
+	 * @param int[] $ids Order IDs.
+	 * @return array<int,string> Order ID => order number, one entry per valid ID.
+	 */
+	function brikpanel_order_numbers_for_ids( array $ids ) {
+		$ids = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+
+		$map = array();
+		foreach ( $ids as $id ) {
+			$map[ $id ] = (string) $id;
+		}
+
+		if ( ! $ids || ! has_filter( 'woocommerce_order_number' ) || ! function_exists( 'wc_get_orders' ) ) {
+			return $map;
+		}
+
+		// 'post__in' is the ID list key both storage backends understand: the
+		// HPOS query reads it, and the legacy one hands it to WP_Query. 'include'
+		// looks like the modern spelling but HPOS ignores it and returns the
+		// whole table.
+		$orders = wc_get_orders(
+			array(
+				'post__in' => $ids,
+				'limit'    => -1,
+				'type'     => 'shop_order',
+				'status'   => 'any',
+			)
+		);
+
+		if ( ! is_array( $orders ) ) {
+			return $map;
+		}
+
+		// WC_Order, not WC_Abstract_Order: get_order_number() lives on WC_Order
+		// alone, and a refund is an abstract order without it. 'type' should keep
+		// refunds out already, but a fatal is too high a price for trusting that.
+		foreach ( $orders as $order ) {
+			if ( $order instanceof WC_Order ) {
+				$map[ $order->get_id() ] = (string) $order->get_order_number();
+			}
+		}
+
+		return $map;
 	}
 }

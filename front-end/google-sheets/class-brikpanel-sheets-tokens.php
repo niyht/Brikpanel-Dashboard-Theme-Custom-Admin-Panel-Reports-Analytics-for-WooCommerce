@@ -4,16 +4,27 @@
  *
  * Token storage strategy:
  *  - Tokens are persisted in a single wp_options row (autoload=no), payload
- *    is JSON-encoded then encrypted with sodium_crypto_secretbox (or AES-256-GCM
- *    fallback). The encryption key is derived from AUTH_KEY + SECURE_AUTH_KEY
- *    via hash_hkdf, so it never has to be configured by the user but is unique
- *    per-site and unpredictable to outside code.
+ *    is JSON-encoded then encrypted. The encryption envelope is shared with the
+ *    Ad Platforms vault: see Brikpanel_Secret_Vault. The key is derived from the
+ *    site's own salts, so it never has to be configured by the user but is
+ *    unique per-site and unpredictable to outside code.
  *  - The plaintext cache is held only as private static $cache and is cleared
  *    on demand via flush_cache().
  *  - get_access_token() lazily refreshes the access token (via the brksoft.com
  *    proxy /oauth/refresh endpoint) when it would expire within REFRESH_SKEW
  *    seconds. This is the single entry point all API callers use; clients
  *    do not see refresh tokens.
+ *
+ * READ FAILURES NEVER DELETE
+ * --------------------------
+ * Until 3.3.14 a decrypt failure was treated as corruption and the option was
+ * deleted. It was virtually never corruption: the key was salted with
+ * site_url(), which is a per-request value, so a connection made in an HTTPS
+ * browser request was unreadable from the WP-Cron loopback and the plugin
+ * destroyed it. The vault is therefore tri-state — empty / readable /
+ * unreadable — a read failure is a read failure, write paths refuse to persist
+ * on top of something they could not read, and an explicit reconnect parks the
+ * old ciphertext in QUARANTINE_OPTION rather than dropping it.
  *
  * @package BrikPanel
  * @since   2.9.0
@@ -31,8 +42,39 @@ class Brikpanel_Sheets_Tokens {
 	/** Refresh-skew seconds: refresh if access token expires sooner than this. */
 	const REFRESH_SKEW = 90;
 
-	/** HKDF info parameter — bump if the storage format ever changes. */
-	const KDF_INFO = 'brikpanel-gs-v1';
+	/**
+	 * HKDF info parameter.
+	 *
+	 * v2 means the key is no longer salted with the request's site_url(). See
+	 * Brikpanel_Secret_Vault for why that salt destroyed connections. The v1
+	 * value below is kept solely to read blobs written before 3.3.14; every
+	 * such blob is re-encrypted under v2 the first time it is opened.
+	 */
+	const KDF_INFO        = 'brikpanel-gs-v2';
+	const KDF_INFO_LEGACY = 'brikpanel-gs-v1';
+
+	/**
+	 * Ciphertext we could not open, parked instead of deleted.
+	 *
+	 * See Brikpanel_Ads_Tokens::QUARANTINE_OPTION — same reasoning, same
+	 * guarantees: autoload=no, no plaintext, nobody on the site can open it.
+	 */
+	const QUARANTINE_OPTION = 'brikpanel_gs_tokens_unreadable';
+
+	/**
+	 * Throttle stamp for the "could not decrypt" log line, so an unreadable
+	 * vault cannot evict the whole ring buffer.
+	 * Shape: [ 'sig' => <hash of blob+reason>, 'at' => <unix ts> ].
+	 */
+	const ALERT_OPTION = 'brikpanel_gs_vault_alert';
+
+	/** How long the same unreadable blob stays quiet after being reported. */
+	const ALERT_TTL = 6 * HOUR_IN_SECONDS;
+
+	/** Vault states. See $state. */
+	const STATE_EMPTY      = 'empty';
+	const STATE_OK         = 'ok';
+	const STATE_UNREADABLE = 'unreadable';
 
 	/**
 	 * The one scope the whole integration depends on. Google presents this as
@@ -60,16 +102,61 @@ class Brikpanel_Sheets_Tokens {
 	 */
 	private static $cache = null;
 
+	/**
+	 * Whether load() has run this request. Separate from $cache because an
+	 * unreadable vault must stay distinguishable from an empty one.
+	 *
+	 * @var bool
+	 */
+	private static $loaded = false;
+
+	/**
+	 * STATE_EMPTY | STATE_OK | STATE_UNREADABLE for the cached load.
+	 *
+	 * @var string
+	 */
+	private static $state = self::STATE_EMPTY;
+
+	/**
+	 * True while load_fresh() is running, i.e. a write is about to follow.
+	 * Suppresses the lazy re-encrypt; persist() handles it for free.
+	 *
+	 * @var bool
+	 */
+	private static $in_fresh_read = false;
+
+	/**
+	 * One "could not decrypt" report per request, at most.
+	 *
+	 * @var bool
+	 */
+	private static $reported = false;
+
 	// =========================================================================
 	// Public API
 	// =========================================================================
 
 	/**
-	 * Whether any token is currently stored.
+	 * Whether there is a connection this request can actually use.
+	 *
+	 * The cheap half is unchanged: on a site that has never connected, the raw
+	 * option is empty and this answers without decrypting anything. That
+	 * matters because it runs on `init` of every request, storefront included,
+	 * through the sync modules' maybe_attach_hooks().
+	 *
+	 * The second half exists because "a row is present" stopped being the same
+	 * as "connected" once an unreadable vault survives instead of being
+	 * deleted. Every background job is gated on this, and answering true for
+	 * credentials we cannot open would send each one off to fail on a null
+	 * token and mark itself failed. Standing down quietly is the honest
+	 * behaviour, and the settings card is what tells the merchant why.
 	 */
 	public static function is_connected() {
 		$raw = get_option( self::OPTION, '' );
-		return is_string( $raw ) && $raw !== '';
+		if ( ! is_string( $raw ) || $raw === '' ) {
+			return false;
+		}
+		return self::load() !== null;
 	}
 
 	/**
@@ -182,11 +269,7 @@ class Brikpanel_Sheets_Tokens {
 				return true; // indeterminate — fail open.
 			}
 			$tokens['scope'] = $scope;
-			$encrypted = self::encrypt( wp_json_encode( $tokens ) );
-			if ( $encrypted !== false ) {
-				update_option( self::OPTION, $encrypted, false );
-				self::$cache = $tokens;
-			}
+			self::persist( $tokens );
 		}
 		return self::scope_has_drive( $scope );
 	}
@@ -211,7 +294,23 @@ class Brikpanel_Sheets_Tokens {
 		}
 
 		// Preserve refresh_token across refreshes if Google omits it.
-		$existing = self::load();
+		$existing = self::load_fresh();
+
+		// An explicit reconnect is the one path allowed to overwrite a vault we
+		// cannot open. Park the old ciphertext first, and inherit nothing from
+		// it — load() returned null, so $existing is already empty.
+		$replace_unreadable = ( self::$state === self::STATE_UNREADABLE );
+		if ( $replace_unreadable ) {
+			self::quarantine( (string) get_option( self::OPTION, '' ) );
+			Brikpanel_Sheets_Logger::log(
+				'oauth',
+				'An unreadable credential vault was replaced by this new connection.',
+				0,
+				[ 'reason' => 'vault_replaced' ]
+			);
+			$existing = null;
+		}
+
 		if ( empty( $tokens['refresh_token'] ) && ! empty( $existing['refresh_token'] ) ) {
 			$tokens['refresh_token'] = $existing['refresh_token'];
 		}
@@ -236,25 +335,24 @@ class Brikpanel_Sheets_Tokens {
 			'connected_at'    => (int) $tokens['connected_at'],
 		];
 
-		$encrypted = self::encrypt( wp_json_encode( $payload ) );
-		if ( $encrypted === false ) {
-			Brikpanel_Sheets_Logger::log( 'oauth', 'Token encryption failed.' );
-			return false;
-		}
-
-		$ok = update_option( self::OPTION, $encrypted, false );
-		if ( $ok ) {
-			self::$cache = $payload;
-		}
-		return (bool) $ok;
+		return self::persist( $payload, $replace_unreadable );
 	}
 
 	/**
 	 * Delete the stored tokens.
+	 *
+	 * Only ever called for a deliberate removal: a merchant disconnect, a
+	 * consent completed without the required scope, a revoked grant, or a
+	 * signed operator kill-switch. It is NOT reachable from a read path any
+	 * more — that was the bug.
 	 */
 	public static function clear() {
-		self::$cache = null;
+		self::$cache  = null;
+		self::$loaded = false;
+		self::$state  = self::STATE_EMPTY;
 		delete_option( self::OPTION );
+		delete_option( self::QUARANTINE_OPTION );
+		delete_option( self::ALERT_OPTION );
 	}
 
 	/**
@@ -317,11 +415,25 @@ class Brikpanel_Sheets_Tokens {
 	 * @return array|false New token payload or false on failure.
 	 */
 	public static function refresh() {
-		$tokens = self::load();
+		// Read past this process's cache: a long-lived worker can hold a
+		// snapshot minutes old, and spending a superseded refresh_token gets
+		// invalid_grant back — which the branch below answers by wiping the
+		// connection the merchant may have just re-made.
+		$tokens = self::load_fresh();
 		if ( ! $tokens || empty( $tokens['refresh_token'] ) ) {
+			if ( self::$state === self::STATE_UNREADABLE ) {
+				// Do not spend a credential we could not read, and above all do
+				// not let the resulting failure wipe the vault.
+				return false;
+			}
 			Brikpanel_Sheets_Logger::log( 'oauth', 'Refresh attempted with no refresh_token.' );
 			return false;
 		}
+
+		// Fingerprint the credential this attempt spends, so invalid_grant can
+		// be attributed to it rather than to whatever is stored by the time the
+		// answer comes back.
+		$sent_fp = hash( 'sha256', (string) $tokens['refresh_token'] );
 
 		$resp = wp_remote_post( BRIKPANEL_GS_PROXY_BASE . '/oauth/refresh', [
 			'timeout'   => 20,
@@ -348,6 +460,22 @@ class Brikpanel_Sheets_Tokens {
 			if ( $code === 400 || $code === 401 ) {
 				$err = is_array( $body ) ? (string) ( $body['error'] ?? '' ) : '';
 				if ( $err === 'invalid_grant' || $err === 'unauthorized_client' ) {
+					// Only if the token we spent is still the stored one. The
+					// merchant can reconnect while this call is in flight, and
+					// wiping here would delete the connection they just made.
+					$now = self::load_fresh();
+					if ( ! is_array( $now ) || empty( $now['refresh_token'] ) ) {
+						return false; // already gone, or unreadable; leave it
+					}
+					if ( ! hash_equals( $sent_fp, hash( 'sha256', (string) $now['refresh_token'] ) ) ) {
+						Brikpanel_Sheets_Logger::log(
+							'oauth',
+							'Refresh failed on a credential that is no longer stored; the newer connection was left alone.',
+							$code,
+							[ 'reason' => 'superseded_credential' ]
+						);
+						return false;
+					}
 					self::clear();
 					delete_transient( self::OUTAGE_FLAG );
 					return false;
@@ -366,20 +494,32 @@ class Brikpanel_Sheets_Tokens {
 		}
 		delete_transient( self::OUTAGE_FLAG );
 
-		// Merge: keep refresh_token + connected_email if proxy omits.
-		$tokens['access_token'] = (string) $body['access_token'];
-		$tokens['expires_at']   = time() + max( 60, (int) ( $body['expires_in'] ?? 3600 ) );
-		if ( ! empty( $body['scope'] ) ) {
-			$tokens['scope'] = (string) $body['scope'];
-		}
-
-		$encrypted = self::encrypt( wp_json_encode( $tokens ) );
-		if ( $encrypted === false ) {
+		// Apply the response ONTO the record as it stands in the database right
+		// now, not onto the pre-call snapshot. A refresh answer carries a token
+		// and an expiry, nothing else; connected_email and connected_at belong
+		// to whatever was last saved, possibly in the browser while this worker
+		// was mid-call. And a vault that vanished mid-flight (the merchant
+		// disconnected) must not be resurrected.
+		$fresh = self::load_fresh();
+		if ( ! is_array( $fresh ) ) {
 			return false;
 		}
-		update_option( self::OPTION, $encrypted, false );
-		self::$cache = $tokens;
-		return $tokens;
+
+		$fresh['access_token'] = (string) $body['access_token'];
+		$fresh['expires_at']   = time() + max( 60, (int) ( $body['expires_in'] ?? 3600 ) );
+		if ( ! empty( $body['scope'] ) ) {
+			$fresh['scope'] = (string) $body['scope'];
+		}
+		// Google may re-issue a refresh_token; usually it omits one. Take it
+		// only when offered, otherwise keep what is stored.
+		if ( ! empty( $body['refresh_token'] ) ) {
+			$fresh['refresh_token'] = (string) $body['refresh_token'];
+		}
+
+		if ( ! self::persist( $fresh ) ) {
+			return false;
+		}
+		return $fresh;
 	}
 
 	/**
@@ -387,7 +527,11 @@ class Brikpanel_Sheets_Tokens {
 	 * after admin-disconnect actions.
 	 */
 	public static function flush_cache() {
-		self::$cache = null;
+		self::$cache    = null;
+		self::$loaded   = false;
+		self::$state    = self::STATE_EMPTY;
+		self::$reported = false;
+		Brikpanel_Secret_Vault::flush();
 	}
 
 	// =========================================================================
@@ -400,120 +544,221 @@ class Brikpanel_Sheets_Tokens {
 	 * @return array|null
 	 */
 	private static function load() {
-		if ( self::$cache !== null ) {
-			return self::$cache;
+		if ( self::$loaded ) {
+			return is_array( self::$cache ) ? self::$cache : null;
 		}
+		self::$loaded = true;
+
 		$raw = (string) get_option( self::OPTION, '' );
 		if ( $raw === '' ) {
+			self::$state = self::STATE_EMPTY;
+			self::$cache = null;
 			return null;
 		}
-		$plain = self::decrypt( $raw );
+
+		$rewrap = false;
+		$plain  = Brikpanel_Secret_Vault::decrypt(
+			$raw,
+			Brikpanel_Secret_Vault::info( self::KDF_INFO ),
+			// Bare, NOT through info(): blobs written before 3.3.14 were keyed
+			// with the constant alone. Folding the blog id in here would make
+			// every existing connection permanently unreadable.
+			self::KDF_INFO_LEGACY,
+			$rewrap
+		);
+
 		if ( $plain === false ) {
-			Brikpanel_Sheets_Logger::log( 'oauth', 'Token decryption failed — corrupted blob, wiping.' );
-			self::clear();
+			// NOT wiped. Until 3.3.14 this deleted the option and logged
+			// "corrupted blob, wiping". The blob was virtually never corrupt —
+			// the key was salted with site_url(), a per-request value, so a
+			// connection made in the browser was unreadable from cron and the
+			// plugin destroyed it. See Brikpanel_Secret_Vault.
+			self::$state = self::STATE_UNREADABLE;
+			self::$cache = null;
+			self::report_unreadable( $raw, 'key_mismatch' );
 			return null;
 		}
+
 		$data = json_decode( $plain, true );
 		if ( ! is_array( $data ) ) {
-			self::clear();
+			// Previously a SILENT clear(). Same reasoning, and now audible.
+			self::$state = self::STATE_UNREADABLE;
+			self::$cache = null;
+			self::report_unreadable( $raw, 'corrupt_payload' );
 			return null;
 		}
+
+		self::$state = self::STATE_OK;
 		self::$cache = $data;
+
+		if ( $rewrap && ! self::$in_fresh_read ) {
+			self::rewrap( $raw, $data );
+		}
+
 		return $data;
 	}
 
 	/**
-	 * Derive the symmetric encryption key from WordPress salts via HKDF.
+	 * Re-read the vault from the database, ignoring this process's cache.
 	 *
-	 * Returns 32 bytes of binary. Never logged.
+	 * Mirrors Brikpanel_Ads_Tokens::load_all_fresh(). Every write here is a
+	 * read-modify-write of one blob, and load() answers from a static cache
+	 * that can be minutes old inside a long-lived Action Scheduler worker —
+	 * so a worker holding a stale snapshot could write it back over a
+	 * connection the merchant had just made in the browser.
 	 *
-	 * @return string
+	 * @return array|null
 	 */
-	private static function derive_key() {
-		$ikm = ( defined( 'AUTH_KEY' ) ? AUTH_KEY : '' )
-			. ( defined( 'SECURE_AUTH_KEY' ) ? SECURE_AUTH_KEY : '' )
-			. ( defined( 'LOGGED_IN_KEY' ) ? LOGGED_IN_KEY : '' );
-		if ( $ikm === '' ) {
-			// Absolutely no salts defined. Fall back to wp_salt() so the plugin
-			// still works on misconfigured installs — wp_salt persists a
-			// random value in wp_options the first time it runs.
-			$ikm = wp_salt( 'auth' ) . wp_salt( 'secure_auth' );
+	private static function load_fresh() {
+		self::$cache  = null;
+		self::$loaded = false;
+		self::$state  = self::STATE_EMPTY;
+
+		// autoload=no, but get_option still answers from the per-request object
+		// cache once something has read it.
+		wp_cache_delete( self::OPTION, 'options' );
+
+		// And from the "notoptions" list: a worker that started before anything
+		// was connected recorded this key as non-existent, so clearing only the
+		// value cache would still return an empty vault after the merchant
+		// connected.
+		$notoptions = wp_cache_get( 'notoptions', 'options' );
+		if ( is_array( $notoptions ) && isset( $notoptions[ self::OPTION ] ) ) {
+			unset( $notoptions[ self::OPTION ] );
+			wp_cache_set( 'notoptions', $notoptions, 'options' );
 		}
-		// PHP 7.1+: hash_hkdf is core.
-		return hash_hkdf( 'sha256', $ikm, 32, self::KDF_INFO, site_url() );
+
+		self::$in_fresh_read = true;
+		try {
+			return self::load();
+		} finally {
+			self::$in_fresh_read = false;
+		}
 	}
 
 	/**
-	 * Encrypt a plaintext string. Output format: "v1:" + base64(nonce . cipher).
-	 * Uses sodium_crypto_secretbox when available, falls back to AES-256-GCM.
+	 * Encrypt and store the vault.
 	 *
-	 * @param string $plaintext
-	 * @return string|false
+	 * @param array $payload
+	 * @param bool  $replace_unreadable Only an explicit merchant reconnect may
+	 *                                  pass true, having quarantined first.
+	 * @return bool
 	 */
-	private static function encrypt( $plaintext ) {
-		$key = self::derive_key();
-
-		if ( function_exists( 'sodium_crypto_secretbox' ) ) {
-			try {
-				$nonce  = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
-				$cipher = sodium_crypto_secretbox( (string) $plaintext, $nonce, $key );
-				return 'v1:' . base64_encode( $nonce . $cipher );
-			} catch ( \Throwable $e ) {
-				// Fall through to OpenSSL.
-			}
+	private static function persist( array $payload, $replace_unreadable = false ) {
+		if ( self::$state === self::STATE_UNREADABLE && ! $replace_unreadable ) {
+			return false;
 		}
 
-		if ( function_exists( 'openssl_encrypt' ) ) {
-			$iv     = random_bytes( 12 );
-			$tag    = '';
-			$cipher = openssl_encrypt( (string) $plaintext, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag, '', 16 );
-			if ( $cipher === false ) {
-				return false;
-			}
-			return 'v2:' . base64_encode( $iv . $tag . $cipher );
+		$encrypted = Brikpanel_Secret_Vault::encrypt(
+			wp_json_encode( $payload ),
+			Brikpanel_Secret_Vault::info( self::KDF_INFO )
+		);
+		if ( $encrypted === false ) {
+			Brikpanel_Sheets_Logger::log(
+				'oauth',
+				'Credential encryption is unavailable on this server (no libsodium, no OpenSSL).',
+				0,
+				[ 'reason' => 'no_cipher' ]
+			);
+			return false;
 		}
 
-		return false;
+		$ok = update_option( self::OPTION, $encrypted, false );
+		if ( $ok ) {
+			self::$cache  = $payload;
+			self::$loaded = true;
+			self::$state  = self::STATE_OK;
+		}
+		return (bool) $ok;
 	}
 
 	/**
-	 * Decrypt a blob produced by encrypt().
+	 * Re-encrypt a legacy blob under the current key. Lazy migration; see
+	 * Brikpanel_Ads_Tokens::rewrap() for the full reasoning.
 	 *
-	 * @param string $blob
-	 * @return string|false
+	 * @param string $raw
+	 * @param array  $data
 	 */
-	private static function decrypt( $blob ) {
-		$key = self::derive_key();
-
-		if ( strncmp( $blob, 'v1:', 3 ) === 0 ) {
-			if ( ! function_exists( 'sodium_crypto_secretbox_open' ) ) {
-				return false;
-			}
-			$bin   = base64_decode( substr( $blob, 3 ), true );
-			if ( $bin === false || strlen( $bin ) < SODIUM_CRYPTO_SECRETBOX_NONCEBYTES + 1 ) {
-				return false;
-			}
-			$nonce  = substr( $bin, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
-			$cipher = substr( $bin, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
-			$plain  = sodium_crypto_secretbox_open( $cipher, $nonce, $key );
-			return $plain === false ? false : (string) $plain;
+	private static function rewrap( $raw, array $data ) {
+		$blob = Brikpanel_Secret_Vault::encrypt(
+			wp_json_encode( $data ),
+			Brikpanel_Secret_Vault::info( self::KDF_INFO )
+		);
+		if ( $blob === false ) {
+			return;
+		}
+		if ( (string) get_option( self::OPTION, '' ) !== $raw ) {
+			return; // somebody wrote a newer vault; leave it alone
 		}
 
-		if ( strncmp( $blob, 'v2:', 3 ) === 0 ) {
-			if ( ! function_exists( 'openssl_decrypt' ) ) {
-				return false;
-			}
-			$bin = base64_decode( substr( $blob, 3 ), true );
-			if ( $bin === false || strlen( $bin ) < 12 + 16 + 1 ) {
-				return false;
-			}
-			$iv     = substr( $bin, 0, 12 );
-			$tag    = substr( $bin, 12, 16 );
-			$cipher = substr( $bin, 28 );
-			$plain  = openssl_decrypt( $cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag );
-			return $plain === false ? false : (string) $plain;
-		}
+		self::quarantine( $raw );
+		update_option( self::OPTION, $blob, false );
+		Brikpanel_Sheets_Logger::log(
+			'oauth',
+			'Stored credentials were re-encrypted with a stable site key.',
+			0,
+			[ 'reason' => 'rewrapped' ]
+		);
+	}
 
-		return false;
+	/**
+	 * Park ciphertext we could not open (or are about to replace). Never
+	 * overwrites an existing quarantine.
+	 *
+	 * @param string $raw
+	 */
+	private static function quarantine( $raw ) {
+		if ( $raw === '' || (string) get_option( self::QUARANTINE_OPTION, '' ) !== '' ) {
+			return;
+		}
+		update_option( self::QUARANTINE_OPTION, $raw, false );
+	}
+
+	/**
+	 * Report an unreadable vault once per request and once per blob per
+	 * ALERT_TTL. See Brikpanel_Ads_Tokens::report_unreadable().
+	 *
+	 * @param string $raw
+	 * @param string $reason 'key_mismatch' | 'corrupt_payload'
+	 */
+	private static function report_unreadable( $raw, $reason ) {
+		if ( self::$reported ) {
+			return;
+		}
+		self::$reported = true;
+
+		$sig  = substr( md5( $raw . '|' . $reason ), 0, 16 );
+		$seen = get_option( self::ALERT_OPTION, [] );
+		if (
+			is_array( $seen )
+			&& isset( $seen['sig'], $seen['at'] )
+			&& $seen['sig'] === $sig
+			&& ( time() - (int) $seen['at'] ) < self::ALERT_TTL
+		) {
+			return;
+		}
+		update_option( self::ALERT_OPTION, [ 'sig' => $sig, 'at' => time() ], false );
+
+		$message = $reason === 'corrupt_payload'
+			? 'Stored credentials decrypted but the contents were not readable — kept, not deleted.'
+			: 'Stored credentials could not be decrypted with this site key — kept, not deleted. Check the site address (http vs https, www vs non-www) and the wp-config salts, then reconnect.';
+
+		Brikpanel_Sheets_Logger::log(
+			'oauth',
+			$message,
+			0,
+			[
+				'reason' => $reason,
+				'scheme' => is_ssl() ? 'https' : 'http',
+				'host'   => (string) wp_parse_url( site_url(), PHP_URL_HOST ),
+				'ctx'    => wp_doing_cron() ? 'cron' : ( is_admin() ? 'admin' : 'front' ),
+			]
+		);
+	}
+
+	/** Whether the stored vault exists but could not be opened this request. */
+	public static function is_unreadable() {
+		self::load();
+		return self::$state === self::STATE_UNREADABLE;
 	}
 }

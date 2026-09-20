@@ -279,6 +279,12 @@ function brikpanel_base_total_sql( $is_hpos, $id_expr, $amount_expr, $alias = 'b
         $join = " LEFT JOIN {$wpdb->postmeta} {$alias} ON {$alias}.post_id = {$id_expr} AND {$alias}.meta_key = '{$meta_key}'";
     }
 
+    // One snapshot row per order: a second copy of the meta row would
+    // otherwise count the order twice in every revenue total built on this.
+    if ( function_exists( 'brikpanel_sql_first_meta_guard' ) ) {
+        $join .= ' AND ' . brikpanel_sql_first_meta_guard( $is_hpos ? 'order' : 'post', $alias );
+    }
+
     return [
         'join' => $join,
         'expr' => "COALESCE(NULLIF({$alias}.meta_value, ''), {$amount_expr})",

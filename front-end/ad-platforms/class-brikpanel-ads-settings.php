@@ -76,6 +76,13 @@ class Brikpanel_Ads_Settings {
 		$google_stale = Brikpanel_Ads_Tokens::needs_reconnect( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE ) !== '';
 		$meta_stale   = Brikpanel_Ads_Tokens::needs_reconnect( Brikpanel_Ads_Tokens::PLATFORM_META ) !== '';
 
+		// There ARE stored credentials, but this site cannot decrypt them — an
+		// address change, a salt rotation, a server without libsodium. Without
+		// this the card just said "Not connected", which is what sent the
+		// merchant who reported the bug digging through the database for hours.
+		// It is a property of the whole vault, so both cards show it.
+		$vault_unreadable = Brikpanel_Ads_Tokens::is_unreadable();
+
 		$flash = [
 			'tone'    => isset( $_GET['brikpanel_ads_flash'] ) ? sanitize_key( wp_unslash( $_GET['brikpanel_ads_flash'] ) ) : '',
 			'message' => isset( $_GET['brikpanel_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['brikpanel_msg'] ) ) : '',
@@ -143,7 +150,13 @@ class Brikpanel_Ads_Settings {
 					'loading_accounts'   => __( 'Loading accounts…', 'brikpanel' ),
 					'no_accounts'        => __( 'No ad accounts found for this connection.', 'brikpanel' ),
 					'generic_error'      => __( 'Something went wrong. Please try again.', 'brikpanel' ),
-					'log_empty'          => __( 'No errors logged.', 'brikpanel' ),
+					'log_empty'          => __( 'Nothing logged yet.', 'brikpanel' ),
+					/* translators: severity label on a log line that reports routine activity, not a failure. */
+					'log_note_label'     => _x( 'Note', 'log entry severity', 'brikpanel' ),
+					'log_error_label'    => __( 'Error', 'brikpanel' ),
+					'backfill_halted'    => __( 'History import stopped', 'brikpanel' ),
+					'only_managers'      => __( 'Only manager accounts were found. A manager account holds no spend of its own, so pick the ad account you actually advertise from: enter its ID below and put the manager ID in the Manager (MCC) field.', 'brikpanel' ),
+					'manager_picked'     => __( 'This is a manager account. It usually holds no spend of its own, so the import may come back empty. If it does, use the ID of the ad account you advertise from instead.', 'brikpanel' ),
 					'connected_label'    => __( 'Connected', 'brikpanel' ),
 					'not_connected_label'=> __( 'Not connected', 'brikpanel' ),
 					'pick_account_first' => __( 'Pick a primary account first.', 'brikpanel' ),
@@ -228,6 +241,10 @@ class Brikpanel_Ads_Settings {
 	public function ajax_status() {
 		$this->check_auth();
 		$out = [];
+		// A vault-wide property, reported per platform so a consumer reading
+		// connected=false is never left guessing whether the merchant never
+		// connected or the site just cannot open what it stored.
+		$unreadable = Brikpanel_Ads_Tokens::is_unreadable();
 		foreach ( [ Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, Brikpanel_Ads_Tokens::PLATFORM_META ] as $p ) {
 			$desc = Brikpanel_Ads_Tokens::describe( $p );
 			$last = (array) get_option( 'brikpanel_ads_last_sync_' . $p, [] );
@@ -238,12 +255,18 @@ class Brikpanel_Ads_Settings {
 				'primary_account'   => (string) $desc['primary_account'],
 				'login_customer_id' => (string) $desc['login_customer_id'],
 				'needs_reconnect'   => Brikpanel_Ads_Tokens::needs_reconnect( $p ) !== '',
+				'vault_unreadable'  => $unreadable,
 				'last_sync_ts'      => (int)    ( $last['ts'] ?? 0 ),
 				'last_sync_ok'      => (bool)   ( $last['ok'] ?? false ),
 				'backfill'          => [
 					'total'     => (int) ( $back['total_chunks'] ?? 0 ),
 					'completed' => (int) ( $back['completed_chunks'] ?? 0 ),
-					'error'     => (string) ( $back['last_error'] ?? '' ),
+					// Resolved here, not at write time: the background worker
+					// that halted the import does not run in the locale the
+					// merchant is reading this card in.
+					'error'     => Brikpanel_Ads_Sync::halt_reason_text( $back['halt_reason'] ?? '' )
+						?: (string) ( $back['last_error'] ?? '' ),
+					'halted'    => ! empty( $back['halted'] ),
 				],
 			];
 		}
@@ -323,6 +346,10 @@ class Brikpanel_Ads_Settings {
 			( new Brikpanel_Ads_Sync() )->schedule_backfill( $platform, $account_id );
 			$message = __( 'Account saved. Loading 3 years of history in the background. Refresh the page in a few minutes to see it.', 'brikpanel' );
 		} else {
+			// No new backfill to queue, so nothing is going to overwrite a
+			// halted record left by an earlier run. Clear it here or the card
+			// keeps reporting an import that stopped long ago.
+			Brikpanel_Ads_Sync::clear_halted_backfill( $platform );
 			$message = __( 'Account saved.', 'brikpanel' );
 		}
 
@@ -336,7 +363,17 @@ class Brikpanel_Ads_Settings {
 	public function ajax_save_login_customer() {
 		$this->check_auth();
 		$value = preg_replace( '/[^0-9]/', '', (string) wp_unslash( $_POST['login_customer_id'] ?? '' ) );
-		Brikpanel_Ads_Tokens::set_meta( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, 'login_customer_id', $value );
+
+		// set_meta() refuses to write when the platform has no vault entry.
+		// The return value used to be discarded, so a merchant whose connection
+		// had lapsed typed their manager ID, saw "Saved.", and then spent the
+		// afternoon wondering why every Google call still failed.
+		if ( ! Brikpanel_Ads_Tokens::is_connected( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE ) ) {
+			wp_send_json_error( [ 'message' => __( 'Connect this platform first.', 'brikpanel' ) ], 400 );
+		}
+		if ( ! Brikpanel_Ads_Tokens::set_meta( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, 'login_customer_id', $value ) ) {
+			wp_send_json_error( [ 'message' => __( 'Could not save the manager account ID. Please try again.', 'brikpanel' ) ], 500 );
+		}
 		wp_send_json_success();
 	}
 

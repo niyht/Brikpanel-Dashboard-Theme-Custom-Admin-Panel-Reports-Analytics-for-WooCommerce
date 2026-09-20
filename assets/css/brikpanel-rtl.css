@@ -809,6 +809,42 @@ body.rtl .brikpanel-navc-item.is-in-group .brikpanel-navc-row {
     padding-left: 0.5rem;
     padding-right: 1.5rem;
 }
+/* Mirror of the core `folded` reset in brikpanel-navigation.css. */
+@media screen and (min-width: 961px) {
+    body.rtl.folded:not(.brikpanel-classic-nav):not(.brikpanel-native-nav) #wpcontent,
+    body.rtl.folded:not(.brikpanel-classic-nav):not(.brikpanel-native-nav) #wpfooter {
+        margin-left: 0;
+        margin-right: var(--brikpanel-sidebar-width);
+    }
+    body.rtl.folded:not(.brikpanel-classic-nav):not(.brikpanel-native-nav) .interface-interface-skeleton {
+        left: auto;
+        right: var(--brikpanel-sidebar-width);
+    }
+}
+
+/* Desktop sidebar toggle: the sidebar is docked right, so it slides out to the
+   right and the content column gives back its right margin. The chevrons in
+   the panel glyph are mirrored so they still point toward the sidebar. */
+@media (min-width: 961px) {
+    body.rtl .brikpanel-topbar-menu-btn { margin-right: 0; margin-left: -0.25rem; }
+    body.rtl .brikpanel-topbar-sidebar-tip { left: auto; right: 1rem; padding: 0.3125rem 0.625rem 0.3125rem 0.375rem; }
+    body.rtl .brikpanel-topbar-menu-icon-panel { transform: scaleX(-1); }
+
+    body.rtl.brikpanel-sidebar-hidden.brikpanel-has-topbar #adminmenuback,
+    body.rtl.brikpanel-sidebar-hidden.brikpanel-has-topbar #adminmenuwrap { transform: translateX(100%); }
+
+    body.rtl.brikpanel-sidebar-hidden.brikpanel-has-topbar #wpcontent,
+    body.rtl.brikpanel-sidebar-hidden.brikpanel-has-topbar #wpfooter {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    body.rtl.brikpanel-sidebar-hidden.brikpanel-has-topbar .sb-customizer-sidebar { left: auto !important; right: 0 !important; }
+    body.rtl.brikpanel-sidebar-animating.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap,
+    body.rtl.brikpanel-sidebar-animating.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap,
+    body.rtl.brikpanel-sidebar-hidden.brikpanel-has-topbar.brikpanel-classic-nav #adminmenuwrap,
+    body.rtl.brikpanel-sidebar-hidden.brikpanel-has-topbar.brikpanel-native-nav #adminmenuwrap { left: auto; right: 0; }
+}
+
 body.rtl .brikpanel-navc-item.is-in-group::before {
     left: auto;
     right: 0.6rem;

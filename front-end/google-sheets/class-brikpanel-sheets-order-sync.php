@@ -1553,7 +1553,7 @@ class Brikpanel_Sheets_Order_Sync {
 		self::persist_sync_meta( $pending, [ self::META_SKIPPED ] );
 	}
 
-	private static function persist_sync_meta( array $pending, array $keys = null ) {
+	private static function persist_sync_meta( array $pending, ?array $keys = null ) {
 		if ( empty( $pending ) ) {
 			return;
 		}

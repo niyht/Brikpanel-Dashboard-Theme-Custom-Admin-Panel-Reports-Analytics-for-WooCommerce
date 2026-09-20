@@ -44,6 +44,48 @@ class Brikpanel_Category_Enhancements {
         // constructor runs, and both hooks below only fire while a list table
         // renders, long after admin_init.
         add_action('admin_init', [$this, 'register_taxonomy_filters'], 20);
+
+        // WooCommerce prints the attributes table by hand, so the screen has
+        // no registered columns and WordPress shows no Screen Options there.
+        add_filter('manage_product_page_product_attributes_columns', [__CLASS__, 'attribute_screen_columns']);
+    }
+
+    /**
+     * Columns of the Products > Attributes table, in WooCommerce's order.
+     *
+     * Registering them is what makes WordPress render Screen Options with a
+     * column toggle for each one; hiding and saving is done by core's
+     * common.js through the `column-{key}` classes the screen script puts on
+     * the cells. "name" is one of core's special columns and cannot be hidden.
+     *
+     * @param array $columns Registered columns.
+     * @return array
+     */
+    public static function attribute_screen_columns($columns) {
+        if (!is_array($columns)) {
+            $columns = [];
+        }
+
+        // The edit view is the same screen but has no table.
+        if (!empty($_GET['edit'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+            return $columns;
+        }
+
+        // Context keeps these common words apart from their other meanings in
+        // the plugin's translations.
+        $attribute_columns = [
+            'name' => _x('Name', 'product attributes table column', 'brikpanel'),
+            'slug' => _x('Slug', 'product attributes table column', 'brikpanel'),
+        ];
+
+        if (function_exists('wc_has_custom_attribute_types') && wc_has_custom_attribute_types()) {
+            $attribute_columns['type'] = _x('Type', 'product attributes table column', 'brikpanel');
+        }
+
+        $attribute_columns['orderby'] = _x('Order by', 'product attributes table column', 'brikpanel');
+        $attribute_columns['terms']   = _x('Terms', 'product attributes table column', 'brikpanel');
+
+        return array_merge($attribute_columns, $columns);
     }
 
     /**

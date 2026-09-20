@@ -26,6 +26,31 @@ class Brikpanel_Product_Editor {
     const MAX_TERM_ORDER_WRITES = 500;
 
     /**
+     * The product the editor page is rendering its "Additional product data"
+     * card for, set only while capture_wc_product_data_fields() runs.
+     *
+     * Section discovery (collect_wc_product_data_sections(), reached through
+     * augment_sections_auto()) used to fire the product-data hooks against a
+     * probe product first, and the card render then fired them a second time
+     * for the real one. A plugin that prints part of its panel through
+     * require_once / include_once (Measurement Price Calculator's Pricing
+     * Table) only produces that part on the FIRST fire, so the card showed an
+     * empty table and the next save wiped every pricing rule. While this is
+     * set, discovery first fires the hooks for the edited product (the render
+     * reuses that output), then probes exactly as before.
+     *
+     * @var WC_Product|null
+     */
+    private static $render_product = null;
+
+    /**
+     * Captured hook output for $render_product, keyed by hook + shape + id.
+     *
+     * @var array<string, string|string[]>
+     */
+    private static $render_hook_memo = [];
+
+    /**
      * User-facing, non-fatal warnings collected during a single save request
      * (e.g. a SKU or GTIN that WooCommerce rejected as duplicate/invalid).
      * Surfaced in the AJAX response so the editor can tell the merchant *why*
@@ -1011,6 +1036,35 @@ class Brikpanel_Product_Editor {
                 // nothing picked) the nonce is absent, so no third-party handler
                 // runs at all.
                 $wc_meta_nonce_field = wp_nonce_field('woocommerce_save_data', 'woocommerce_meta_nonce', false, false);
+
+                // Labels of WooCommerce's own General / Inventory / Shipping
+                // fields, which this editor replaces with its own. Product-data
+                // plugins rewrite them to show a unit, and read them without a
+                // null check: Measurement Price Calculator runs
+                // `$('label[for="_regular_price"]').html().replace(...)`, so on
+                // this page it threw, aborted its whole admin script and left
+                // every calculator option unhidden and inert. Labels only, never
+                // inputs, so nothing extra is posted and no price can be blanked.
+                // The editor JS mirrors any unit a plugin writes here onto the
+                // matching BrikPanel field (data-base is the untouched unit).
+                $bp_bridge_currency = html_entity_decode(get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8');
+                $bp_bridge_weight   = (string) get_option('woocommerce_weight_unit', '');
+                $bp_bridge_labels   = [
+                    /* translators: %s: currency symbol */
+                    '_regular_price' => ['bpe-price', $bp_bridge_currency, sprintf(__('Regular price (%s)', 'brikpanel'), $bp_bridge_currency)],
+                    /* translators: %s: currency symbol */
+                    '_sale_price'    => ['bpe-sale-price', $bp_bridge_currency, sprintf(__('Sale price (%s)', 'brikpanel'), $bp_bridge_currency)],
+                    '_stock'         => ['bpe-stock', '', __('Stock quantity', 'brikpanel')],
+                    /* translators: %s: weight unit */
+                    '_weight'        => ['bpe-weight', $bp_bridge_weight, sprintf(__('Weight (%s)', 'brikpanel'), $bp_bridge_weight)],
+                ];
+                $wc_native_label_bridge = '<div class="brikpanel-pe-native-bridge" hidden aria-hidden="true">';
+                foreach ($bp_bridge_labels as $bp_bridge_for => $bp_bridge) {
+                    $wc_native_label_bridge .= '<p class="form-field ' . esc_attr($bp_bridge_for) . '_field">'
+                        . '<label for="' . esc_attr($bp_bridge_for) . '" data-target="' . esc_attr($bp_bridge[0]) . '" data-base="' . esc_attr($bp_bridge[1]) . '">'
+                        . esc_html($bp_bridge[2]) . '</label></p>';
+                }
+                $wc_native_label_bridge .= '</div>';
                 // Deliberately NOT `brikpanel-pe-card-wide`: the embedded panels
                 // force every control to fill its card, so widening this one
                 // turns a price box into a 1200px-long input.
@@ -1043,6 +1097,7 @@ class Brikpanel_Product_Editor {
                     . '</div>'
                     . '<div class="brikpanel-pe-wc-fields-content">'
                     . $wc_meta_nonce_field
+                    . $wc_native_label_bridge
                     . '<div id="post" class="brikpanel-pe-wc-postsim">'
                     . '<div id="woocommerce-product-data" class="brikpanel-pe-wc-datawrap">'
                     . '<div class="inside"><div class="panel-wrap product_data">' . $wc_extras . '</div></div>'
@@ -4143,7 +4198,10 @@ class Brikpanel_Product_Editor {
         }
         sort($plugins);
 
+        // The version is part of it because an update can change which hooks
+        // are scanned (core_product_data_sub_hooks()), and with it the answer.
         return substr(md5(implode('|', $plugins)
+            . '|' . (defined('BRIKPANEL_VERSION') ? BRIKPANEL_VERSION : '')
             . '|' . (string) get_option('brikpanel_pe_wc_tabs_auto', 'no')
             . '|' . wp_json_encode((array) get_option('brikpanel_pe_wc_tabs_selected', []))
         ), 0, 12);
@@ -4282,6 +4340,32 @@ class Brikpanel_Product_Editor {
             'post_type' => 'product', 'posts_per_page' => 1, 'post_status' => 'any',
             'no_found_rows' => true, 'suppress_filters' => true,
         ];
+        if (function_exists('set_current_screen')) set_current_screen('product');
+        $GLOBALS['pagenow'] = 'post.php';
+
+        // Inside the editor render (see $render_product), fire the hooks for the
+        // product being edited BEFORE the probe does. A plugin that prints part
+        // of its panel through require_once only prints it on the first fire, so
+        // that fire must be the real product's; the card then reuses this output.
+        // Discovery below still probes as before, so the set of sections offered
+        // does not change.
+        if (self::$render_product) {
+            $post           = get_post(self::$render_product->get_id());
+            $thepostid      = $post ? $post->ID : 0;
+            $product_object = self::$render_product;
+            if ($post) {
+                self::collect_custom_tab_meta();
+                foreach ($core_sub_hooks as $hooks) {
+                    foreach ($hooks as $hook) {
+                        if (has_action($hook)) self::render_hook_capture($hook);
+                    }
+                }
+                if (has_action('woocommerce_product_data_panels')) {
+                    self::render_hook_capture('woocommerce_product_data_panels', true);
+                }
+            }
+        }
+
         $probe = get_posts($probe_args + [
             'tax_query' => [[
                 'taxonomy' => 'product_type',
@@ -4298,8 +4382,6 @@ class Brikpanel_Product_Editor {
             $thepostid = $post->ID;
             $product_object = wc_get_product($post->ID);
         }
-        if (function_exists('set_current_screen')) set_current_screen('product');
-        $GLOBALS['pagenow'] = 'post.php';
 
         // Core tab groups — include if any registered hook returns non-empty HTML.
         foreach ($core_sub_hooks as $label => $hooks) {
@@ -4863,6 +4945,31 @@ class Brikpanel_Product_Editor {
     }
 
     /**
+     * capture_isolated_hook() / capture_hook_chunks() for the product-data
+     * hooks, fired at most once per product while the editor renders.
+     *
+     * See $render_product. Outside the editor render (settings picker, orders
+     * screen) this is a plain pass-through.
+     *
+     * @param string $hook   Argument-less product-data action hook.
+     * @param bool   $chunks True for per-callback chunks, false for one string.
+     * @return string|string[]
+     */
+    private static function render_hook_capture($hook, $chunks = false) {
+        $id = self::$render_product ? (int) self::$render_product->get_id() : 0;
+        if (!$id || (int) ($GLOBALS['thepostid'] ?? 0) !== $id) {
+            return $chunks ? self::capture_hook_chunks($hook) : self::capture_isolated_hook($hook);
+        }
+        $key = $hook . '|' . ($chunks ? 'chunks' : 'html') . '|' . $id;
+        if (!array_key_exists($key, self::$render_hook_memo)) {
+            self::$render_hook_memo[$key] = $chunks
+                ? self::capture_hook_chunks($hook)
+                : self::capture_isolated_hook($hook);
+        }
+        return self::$render_hook_memo[$key];
+    }
+
+    /**
      * Fire a foreign WooCommerce product/variation hook during field
      * enumeration and return everything it echoed, while guaranteeing the
      * output-buffer stack is left exactly as deep as it was found.
@@ -4897,7 +5004,10 @@ class Brikpanel_Product_Editor {
         ob_start(); // sacrificial guard — absorbs a stray ob_get_clean() whose
                     // paired opener never ran in this isolated fire
         try {
-            do_action_ref_array($hook, $args);
+            // CURCY's inputs print only in their own block, never twice.
+            self::without_multicurrency_callbacks($hook, static function () use ($hook, $args) {
+                do_action_ref_array($hook, $args);
+            });
         } catch (\Throwable $e) {
             // A callback assuming a fully-saved product context must never break
             // enumeration; its fields are non-essential to the selector.
@@ -5108,20 +5218,7 @@ class Brikpanel_Product_Editor {
      * @return string[] Possibly-augmented section keys.
      */
     private static function augment_sections_for_multicurrency( array $selected, $context ) {
-        if ( ! class_exists( 'WOOMULTI_CURRENCY_Data' ) ) {
-            return $selected;
-        }
-        $data = WOOMULTI_CURRENCY_Data::get_ins();
-        if ( ! is_object( $data ) || ! method_exists( $data, 'check_fixed_price' ) || ! $data->check_fixed_price() ) {
-            return $selected;
-        }
-        /**
-         * Allow disabling the automatic surfacing of multi-currency per-currency
-         * price fields in the product editor.
-         *
-         * @param bool $enabled Default true.
-         */
-        if ( ! apply_filters( 'brikpanel_pe_auto_multicurrency_pricing', true ) ) {
+        if ( ! self::multicurrency_autosurface_active() ) {
             return $selected;
         }
 
@@ -5222,14 +5319,7 @@ class Brikpanel_Product_Editor {
         $kept = array();
         foreach ( $saved as $priority => $list ) {
             foreach ( $list as $id => $cb ) {
-                $fn  = isset( $cb['function'] ) ? $cb['function'] : null;
-                $cls = '';
-                if ( is_array( $fn ) ) {
-                    $cls = is_object( $fn[0] ) ? get_class( $fn[0] ) : ( is_string( $fn[0] ) ? $fn[0] : '' );
-                } elseif ( is_string( $fn ) && strpos( $fn, '::' ) !== false ) {
-                    $cls = substr( $fn, 0, strpos( $fn, '::' ) );
-                }
-                if ( $cls !== '' && stripos( $cls, 'WOOMULTI_CURRENCY' ) !== false ) {
+                if ( self::is_multicurrency_callback( $cb ) ) {
                     $kept[ $priority ][ $id ] = $cb;
                 }
             }
@@ -5250,6 +5340,169 @@ class Brikpanel_Product_Editor {
         // Always restore the full callback set, even if rendering threw.
         $hook_obj->callbacks = $saved;
         return $html;
+    }
+
+    /**
+     * Whether CURCY is in fixed-price mode and its per-currency price fields
+     * are auto-surfaced in their own "Multi-currency prices" block.
+     *
+     * @return bool
+     */
+    private static function multicurrency_autosurface_active() {
+        if ( ! class_exists( 'WOOMULTI_CURRENCY_Data' ) ) {
+            return false;
+        }
+        $data = WOOMULTI_CURRENCY_Data::get_ins();
+        if ( ! is_object( $data ) || ! method_exists( $data, 'check_fixed_price' ) || ! $data->check_fixed_price() ) {
+            return false;
+        }
+        /**
+         * Allow disabling the automatic surfacing of multi-currency per-currency
+         * price fields in the product editor.
+         *
+         * @param bool $enabled Default true.
+         */
+        return (bool) apply_filters( 'brikpanel_pe_auto_multicurrency_pricing', true );
+    }
+
+    /**
+     * Whether a registered hook callback belongs to CURCY.
+     *
+     * @param array $cb One $wp_filter callback entry.
+     * @return bool
+     */
+    private static function is_multicurrency_callback( $cb ) {
+        $fn  = is_array( $cb ) && isset( $cb['function'] ) ? $cb['function'] : null;
+        $cls = '';
+        if ( is_array( $fn ) && isset( $fn[0] ) ) {
+            $cls = is_object( $fn[0] ) ? get_class( $fn[0] ) : ( is_string( $fn[0] ) ? $fn[0] : '' );
+        } elseif ( is_string( $fn ) && strpos( $fn, '::' ) !== false ) {
+            $cls = substr( $fn, 0, strpos( $fn, '::' ) );
+        }
+        return $cls !== '' && stripos( $cls, 'WOOMULTI_CURRENCY' ) !== false;
+    }
+
+    /**
+     * Whether CURCY saves its product-level price fields for this product type.
+     *
+     * CURCY only saves them on `woocommerce_process_product_meta_<type>` for
+     * the types it lists (simple, external, …, never variable). On any other
+     * type the fields are dead inputs, and WooCommerce hides them natively
+     * (the pricing block is show_if_simple), so the editor must not show them.
+     *
+     * @param string $type Product type slug.
+     * @return bool
+     */
+    private static function multicurrency_saves_product_type( $type ) {
+        global $wp_filter;
+        $hook = 'woocommerce_process_product_meta_' . sanitize_key( (string) $type );
+        if ( empty( $wp_filter[ $hook ] ) || ! is_object( $wp_filter[ $hook ] ) ) {
+            return false;
+        }
+        foreach ( $wp_filter[ $hook ]->callbacks as $list ) {
+            foreach ( $list as $cb ) {
+                if ( self::is_multicurrency_callback( $cb ) ) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Run $fn with CURCY's own callbacks detached from $hook.
+     *
+     * While the per-currency prices are auto-surfaced in their own block,
+     * every other capture of CURCY's render hooks (the General section, the
+     * variation pricing section, the settings picker) must leave them out, or
+     * the same inputs print twice. Two inputs with one name make the save
+     * collector keep the second, untouched copy, so the typed price was lost.
+     *
+     * @param string   $hook Action hook about to be fired.
+     * @param callable $fn   Capture to run.
+     * @return mixed Whatever $fn returns.
+     */
+    private static function without_multicurrency_callbacks( $hook, callable $fn ) {
+        global $wp_filter;
+        if ( ! in_array( $hook, array( 'woocommerce_product_options_pricing', 'woocommerce_variation_options_pricing' ), true )
+            || empty( $wp_filter[ $hook ] ) || ! is_object( $wp_filter[ $hook ] )
+            || ! self::multicurrency_autosurface_active() ) {
+            return $fn();
+        }
+        $hook_obj = $wp_filter[ $hook ];
+        $saved    = $hook_obj->callbacks;
+        $kept     = array();
+        $removed  = false;
+        foreach ( $saved as $priority => $list ) {
+            foreach ( $list as $id => $cb ) {
+                if ( self::is_multicurrency_callback( $cb ) ) {
+                    $removed = true;
+                    continue;
+                }
+                $kept[ $priority ][ $id ] = $cb;
+            }
+        }
+        if ( ! $removed ) {
+            return $fn();
+        }
+        $hook_obj->callbacks = $kept;
+        try {
+            return $fn();
+        } finally {
+            $hook_obj->callbacks = $saved;
+        }
+    }
+
+    /**
+     * Give CURCY's save handlers the request shape they expect, run $fn, then
+     * put $_POST back.
+     *
+     * CURCY checks its own `_wmc_nonce` with a different action for the
+     * product (simple) and the variation save. WooCommerce sends them in two
+     * separate requests; this editor sends one form, so one of the two values
+     * always lost and that save was skipped. The request is already verified
+     * (editor nonce + edit_product), so a fresh nonce for the matching action
+     * is minted, and only when CURCY's fields were actually in the form.
+     *
+     * CURCY also keeps a sale price only when WooCommerce's native sale field
+     * is posted non-empty (`_sale_price`, `variable_sale_price[<loop>]`) and
+     * reads the native sale end date; this editor posts those under its own
+     * names, so they are mirrored here. Without it the per-currency sale price
+     * was wiped on every save.
+     *
+     * @param string   $context 'product' or 'variation'.
+     * @param array    $native  Native $_POST keys to mirror => value.
+     * @param callable $fn      Dispatch to run.
+     * @return void
+     */
+    private static function with_multicurrency_save_context( $context, array $native, callable $fn ) {
+        if ( ! class_exists( 'WOOMULTI_CURRENCY_Data' ) || ! isset( $_POST['_wmc_nonce'] ) ) {
+            $fn();
+            return;
+        }
+        $action = ( 'variation' === $context ) ? 'wmc_save_variable_product_currency' : 'wmc_save_simple_product_currency';
+        $keys   = array_merge( array( '_wmc_nonce' ), array_keys( $native ) );
+        $saved  = array();
+        foreach ( $keys as $key ) {
+            $saved[ $key ] = array_key_exists( $key, $_POST ) ? $_POST[ $key ] : null;
+        }
+        $_POST['_wmc_nonce'] = wp_create_nonce( $action );
+        foreach ( $native as $key => $value ) {
+            if ( ! array_key_exists( $key, $_POST ) ) {
+                $_POST[ $key ] = $value;
+            }
+        }
+        try {
+            $fn();
+        } finally {
+            foreach ( $saved as $key => $value ) {
+                if ( null === $value ) {
+                    unset( $_POST[ $key ] );
+                } else {
+                    $_POST[ $key ] = $value;
+                }
+            }
+        }
     }
 
     /**
@@ -5299,9 +5552,9 @@ class Brikpanel_Product_Editor {
         }
         // Multi-currency auto-surface (fixed mode): render only CURCY's own
         // per-variation price inputs, isolated from the rest of the variation
-        // pricing hook — unless the merchant already picked that whole section.
-        $curcy_var = in_array('curcy:variation_pricing', $selected, true)
-            && !in_array('woocommerce_variation_options_pricing', $selected_hooks, true);
+        // pricing hook. The pricing section itself leaves them out (see
+        // without_multicurrency_callbacks()), so they print exactly once.
+        $curcy_var = in_array('curcy:variation_pricing', $selected, true);
         if (empty($selected_hooks) && !$curcy_var) return [];
 
         global $post, $thepostid, $product_object;
@@ -5318,9 +5571,16 @@ class Brikpanel_Product_Editor {
             $post = $variation_post;
             $thepostid = $variation_post->ID;
             $product_object = wc_get_product($variation_post->ID);
-            $variation_data = array_map(function ($v) {
-                return is_array($v) ? $v[0] ?? '' : $v;
-            }, get_post_meta($variation_post->ID));
+            // Exactly WooCommerce's shape (WC_AJAX::load_variations()): meta
+            // values stay arrays, attributes are plain strings. Flattening the
+            // meta to scalars broke callbacks written against that contract:
+            // Measurement Price Calculator runs current() on a meta value, which
+            // is a TypeError on a string, so its Minimum Price field vanished
+            // from every variation that had one saved.
+            $variation_data = array_merge(
+                (array) get_post_custom($variation_post->ID),
+                (array) wc_get_product_variation_attributes($variation_post->ID)
+            );
 
             $html = '';
             foreach ($selected_hooks as $hook) {
@@ -5389,9 +5649,8 @@ class Brikpanel_Product_Editor {
             }
         }
         // Multi-currency auto-surface (fixed mode): isolated CURCY price inputs,
-        // unless the whole variation pricing section is already selected.
-        $curcy_var = in_array('curcy:variation_pricing', $selected, true)
-            && !in_array('woocommerce_variation_options_pricing', $selected_hooks, true);
+        // printed once (the pricing section leaves them out).
+        $curcy_var = in_array('curcy:variation_pricing', $selected, true);
         if (empty($selected_hooks) && !$curcy_var) return [];
 
         // Spin up a throwaway variation so plugin callbacks have a real object
@@ -5665,16 +5924,40 @@ class Brikpanel_Product_Editor {
         ]);
     }
 
-    /** Core sub-hooks grouped by native tab label — 3rd parties inject into these. */
+    /**
+     * Core sub-hooks grouped by native tab label — 3rd parties inject into these.
+     *
+     * Every hook WooCommerce fires inside a native tab belongs here: a plugin
+     * field on a hook missing from this list is never rendered, and its
+     * "save or clear when absent" handler then wipes the value on every save
+     * (Measurement Price Calculator's Area / Volume on
+     * `woocommerce_product_options_dimensions`). Deliberately absent:
+     * `woocommerce_product_options_stock_status`, where WooCommerce core
+     * itself prints its stock-notification checkbox (saved on
+     * woocommerce_admin_process_product_object with its own presence check).
+     */
     private static function core_product_data_sub_hooks() {
         return [
             __('General', 'brikpanel')         => [
                 'woocommerce_product_options_general_product_data',
+                'woocommerce_product_options_external',
                 'woocommerce_product_options_pricing',
+                'woocommerce_product_options_downloads',
+                'woocommerce_product_options_tax',
                 'woocommerce_product_options_sku',
             ],
-            __('Inventory', 'brikpanel')       => ['woocommerce_product_options_inventory_product_data'],
-            __('Shipping', 'brikpanel')        => ['woocommerce_product_options_shipping_product_data'],
+            __('Inventory', 'brikpanel')       => [
+                'woocommerce_product_options_global_unique_id',
+                'woocommerce_product_options_stock',
+                'woocommerce_product_options_stock_fields',
+                'woocommerce_product_options_sold_individually',
+                'woocommerce_product_options_inventory_product_data',
+            ],
+            __('Shipping', 'brikpanel')        => [
+                'woocommerce_product_options_dimensions',
+                'woocommerce_product_options_shipping',
+                'woocommerce_product_options_shipping_product_data',
+            ],
             __('Linked Products', 'brikpanel') => [
                 'woocommerce_product_options_grouping',
                 'woocommerce_product_options_related',
@@ -5694,10 +5977,17 @@ class Brikpanel_Product_Editor {
      * empty, nothing is emitted (default-off behaviour requested by admins).
      */
     private function capture_wc_product_data_fields($product_id, $product) {
+        // Section discovery below must fire the product-data hooks for THIS
+        // product, once, and hand the output to the render (see $render_product).
+        self::$render_product = ($product instanceof WC_Product && (int) $product->get_id() === (int) $product_id) ? $product : null;
+
         $selected = (array) get_option('brikpanel_pe_wc_tabs_selected', []);
         $selected = self::augment_sections_for_multicurrency($selected, 'product');
         $selected = self::augment_sections_auto($selected, 'product');
-        if (empty($selected)) return '';
+        if (empty($selected)) {
+            self::$render_product = null;
+            return '';
+        }
 
         if (!function_exists('woocommerce_wp_text_input')) {
             include_once WC_ABSPATH . 'includes/admin/wc-meta-box-functions.php';
@@ -5720,7 +6010,8 @@ class Brikpanel_Product_Editor {
         // mode via the synthetic `curcy:product_pricing` key. Rendered in
         // isolation so ONLY the CURCY inputs appear, never the rest of the
         // General tab that other plugins also hook.
-        if (in_array('curcy:product_pricing', $selected, true)) {
+        if (in_array('curcy:product_pricing', $selected, true)
+            && self::multicurrency_saves_product_type($product instanceof WC_Product ? $product->get_type() : 'simple')) {
             $curcy_html = self::render_isolated_multicurrency_fields('woocommerce_product_options_pricing');
             if ($curcy_html !== '') {
                 $output .= '<div class="brikpanel-pe-wc-tab-group" data-tab="multicurrency">'
@@ -5750,7 +6041,7 @@ class Brikpanel_Product_Editor {
                 // Buffer-safe fire (see capture_isolated_hook): never let a
                 // misbehaving 3rd-party field render abort the editor or leak an
                 // output buffer that corrupts the page.
-                $html = self::capture_isolated_hook($hook);
+                $html = self::render_hook_capture($hook);
                 if ($html !== '') $section .= $html;
             }
             if ($section !== '') {
@@ -5787,7 +6078,7 @@ class Brikpanel_Product_Editor {
             // per-callback pass the filter runs twice. Two identical panels mean
             // two sets of inputs with the same names, so keep the first.
             $seen_panel_ids = [];
-            foreach (self::capture_hook_chunks('woocommerce_product_data_panels') as $panels_html) {
+            foreach (self::render_hook_capture('woocommerce_product_data_panels', true) as $panels_html) {
                 $target_to_label = $tab_meta['labels'];
                 $target_to_key   = $tab_meta['keys'];
 
@@ -5883,6 +6174,8 @@ class Brikpanel_Product_Editor {
         $post           = $orig_post;
         $thepostid      = $orig_postid;
         $product_object = $orig_prodobj;
+        self::$render_product   = null;
+        self::$render_hook_memo = [];
 
         return $output;
     }
@@ -6867,9 +7160,17 @@ class Brikpanel_Product_Editor {
         // merchant who CAN see the input still saves and clears it normally.
         // Same doctrine as the WC core handlers above: a form that never showed
         // a field must not be able to clear it.
+        //
+        // Measurement Price Calculator has the same shape, only larger: its
+        // measurement handler rebuilds the whole `_wc_price_calculator` config
+        // and the pricing-rule table from $_POST (no isset on anything), and its
+        // dimensions handler writes `_area` / `_volume` straight from $_POST. With
+        // the card hidden, one save reset the calculator and emptied the rules.
         foreach ([
-            'sp_wc_barcode_field'      => 'seopress_save_wc_barcode_field',
-            'sp_wc_barcode_type_field' => 'seopress_save_wc_barcode_type_field',
+            'sp_wc_barcode_field'           => 'seopress_save_wc_barcode_field',
+            'sp_wc_barcode_type_field'      => 'seopress_save_wc_barcode_type_field',
+            '_measurement_price_calculator' => 'wc_measurement_price_calculator_process_product_meta_measurement',
+            '_area'                         => 'wc_measurement_price_calculator_process_product_meta',
         ] as $bp_sp_field => $bp_sp_callback) {
             if (!array_key_exists($bp_sp_field, $_POST)
                 && has_action('woocommerce_process_product_meta', $bp_sp_callback)) {
@@ -7867,10 +8168,18 @@ class Brikpanel_Product_Editor {
         // metabox nonce we don't carry) would otherwise end the request here,
         // before variations and the rest of the save. See
         // dispatch_foreign_hooks().
+        // CURCY reads WooCommerce's native sale keys (see
+        // with_multicurrency_save_context()).
+        $curcy_native = [
+            '_sale_price'          => wc_format_decimal(sanitize_text_field(wp_unslash($_POST['sale_price'] ?? ''))),
+            '_sale_price_dates_to' => preg_match('/^\d{4}-\d{2}-\d{2}$/', sanitize_text_field(wp_unslash($_POST['sale_to'] ?? ''))) ? sanitize_text_field(wp_unslash($_POST['sale_to'])) : '',
+        ];
         $this->dispatch_foreign_hooks(
-            function () use ($saved_id, $post_obj, $post_type_key, $_seopress_classic_save) {
+            function () use ($saved_id, $post_obj, $post_type_key, $_seopress_classic_save, $curcy_native) {
                 do_action('woocommerce_process_product_meta', $saved_id, $post_obj);
-                do_action('woocommerce_process_product_meta_' . $post_type_key, $saved_id);
+                self::with_multicurrency_save_context('product', $curcy_native, static function () use ($post_type_key, $saved_id) {
+                    do_action('woocommerce_process_product_meta_' . $post_type_key, $saved_id);
+                });
 
                 // SEOPress's Classic save fallback, detached at the top of this
                 // save so it could not follow save_post onto the variations.
@@ -8822,6 +9131,68 @@ class Brikpanel_Product_Editor {
         return $stored;
     }
 
+    /**
+     * Measurement Price Calculator's per-variation fields (Area, Volume,
+     * Minimum Price).
+     *
+     * The plugin does not save them on woocommerce_save_product_variation but on
+     * woocommerce_ajax_save_product_variations, walking the native form's
+     * `variable_post_id[<loop>]` list and bailing unless `variable_sku` was
+     * posted. BrikPanel's form has neither, so these fields never saved. That
+     * hook is not fired generically here: other listeners on it read the whole
+     * native variation form and would clear what this form does not carry.
+     *
+     * The handler deletes a value whose input is missing, so any loop the form
+     * did not render (a field that failed to print) is filled from the stored
+     * meta first: a form that never showed a field must not clear it.
+     *
+     * @param array<int,int> $loop_to_variation Submitted loop index => variation ID.
+     */
+    private function save_measurement_calculator_variation_fields(array $loop_to_variation) {
+        if (!$loop_to_variation || !function_exists('wc_measurement_price_calculator_process_product_meta_variable')) {
+            return;
+        }
+
+        $fields = [
+            'variable_area'      => '_area',
+            'variable_volume'    => '_volume',
+            'variable_min_price' => '_wc_measurement_price_calculator_min_price',
+        ];
+        $saved_post = [];
+        foreach (array_merge(array_keys($fields), ['variable_post_id', 'variable_sku']) as $key) {
+            $saved_post[$key] = array_key_exists($key, $_POST) ? $_POST[$key] : null;
+        }
+
+        foreach ($fields as $key => $meta_key) {
+            $posted = isset($_POST[$key]) && is_array($_POST[$key]) ? $_POST[$key] : [];
+            foreach ($loop_to_variation as $loop => $vid) {
+                if (!array_key_exists($loop, $posted)) {
+                    $posted[$loop] = (string) get_post_meta($vid, $meta_key, true);
+                }
+            }
+            $_POST[$key] = $posted;
+        }
+        $_POST['variable_post_id'] = $loop_to_variation;
+        if (!isset($_POST['variable_sku'])) {
+            $_POST['variable_sku'] = array_fill_keys(array_keys($loop_to_variation), '');
+        }
+
+        $this->dispatch_foreign_hooks(
+            static function () {
+                wc_measurement_price_calculator_process_product_meta_variable(0);
+            },
+            'Measurement Price Calculator variation fields'
+        );
+
+        foreach ($saved_post as $key => $value) {
+            if ($value === null) {
+                unset($_POST[$key]);
+            } else {
+                $_POST[$key] = $value;
+            }
+        }
+    }
+
     private function save_variations($product, $post_data) {
         // The client posts `variations` whenever the table is on the page, even
         // when it is empty. An absent key therefore means the editor never
@@ -9218,6 +9589,7 @@ class Brikpanel_Product_Editor {
         // handlers read `$_POST['field_name'][$loop]` so the index here must
         // match the one used when the fields were originally rendered.
         $submitted_ids = [];
+        $loop_to_variation = [];
         $loop_index = -1;
 
         foreach ($variations_data as $var_data) {
@@ -9540,6 +9912,7 @@ class Brikpanel_Product_Editor {
             }
 
             $submitted_ids[] = $vid;
+            if ($vid) $loop_to_variation[$loop_index] = $vid;
 
             // Let 3rd-party plugins persist their per-variation fields. $_POST
             // already has the flattened bracketed values (the client shipped
@@ -9549,9 +9922,15 @@ class Brikpanel_Product_Editor {
             if ($vid) {
                 // Guarded: a plugin bailing out here must not take the rest of
                 // the variation loop down with it. See dispatch_foreign_hooks().
+                $curcy_native = [
+                    'variable_sale_price'          => [$loop_index => $var_sale],
+                    'variable_sale_price_dates_to' => [$loop_index => $var_sale_to],
+                ];
                 $this->dispatch_foreign_hooks(
-                    static function () use ($vid, $loop_index) {
-                        do_action('woocommerce_save_product_variation', $vid, $loop_index);
+                    static function () use ($vid, $loop_index, $curcy_native) {
+                        self::with_multicurrency_save_context('variation', $curcy_native, static function () use ($vid, $loop_index) {
+                            do_action('woocommerce_save_product_variation', $vid, $loop_index);
+                        });
                     },
                     'woocommerce_save_product_variation (variation ' . $vid . ')'
                 );
@@ -9565,6 +9944,8 @@ class Brikpanel_Product_Editor {
                 }
             }
         }
+
+        $this->save_measurement_calculator_variation_fields($loop_to_variation);
 
         // Delete removed variations
         foreach ($product->get_children() as $child_id) {
@@ -10000,3 +10381,20 @@ class Brikpanel_Product_Editor {
 }
 
 new Brikpanel_Product_Editor();
+
+/**
+ * Tell Import / Export about the product editor's parked-tabs buffer.
+ *
+ * Internal, not portable: it is the undo state of one click on one site ("what
+ * the third-party fields looked like before they were hidden"), and it is
+ * deleted the moment that undo is used. Carrying it to another store would
+ * offer to restore a state that store was never in.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter('brikpanel_exportable_option_keys', 'brikpanel_pe_register_internal_export_keys');
+function brikpanel_pe_register_internal_export_keys($map) {
+    $map[Brikpanel_Product_Editor::TABS_PARKED_OPTION] = ['class' => 'internal'];
+    return $map;
+}

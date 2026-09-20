@@ -164,7 +164,10 @@ function brikpanel_get_range_summary( $config ) {
             $config['start_gmt']
         ) );
     } else {
-        $fx = brikpanel_base_total_sql( false, 'p.ID', 'CAST(pm.meta_value AS DECIMAL(10,2))', 'bpfxos' );
+        // DECIMAL(19,4) like the HPOS total_amount column: DECIMAL(10,2) capped
+        // a single order at 99,999,999.99 and rounded, so the legacy screen could
+        // disagree with HPOS for the same store.
+        $fx = brikpanel_base_total_sql( false, 'p.ID', 'CAST(pm.meta_value AS DECIMAL(19,4))', 'bpfxos' );
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $results = $wpdb->get_results( $wpdb->prepare(
             "SELECT DATE_FORMAT(CONVERT_TZ(p.post_date_gmt, '+00:00', %s), %s) AS bucket,
@@ -172,7 +175,7 @@ function brikpanel_get_range_summary( $config ) {
                     COUNT(*) AS cnt,
                     COALESCE(SUM({$fx['expr']}), 0) AS revenue
              FROM {$wpdb->posts} p
-             LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_order_total'{$fx['join']}
+             LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "{$fx['join']}
              WHERE p.post_date_gmt >= %s
                AND p.post_type = 'shop_order'
              GROUP BY bucket, status",
@@ -301,10 +304,10 @@ function brikpanel_get_marketplace_stats( $start_gmt ) {
         $order_rows = $wpdb->get_results( $wpdb->prepare(
             "SELECT om.marketplace_id,
                     COUNT(*) AS order_count,
-                    COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(10,2))), 0) AS revenue
+                    COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(19,4))), 0) AS revenue
              FROM {$wpdb->prefix}brksoft_order_map om
              INNER JOIN {$wpdb->posts} p ON om.wc_order_id = p.ID
-             LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_order_total'
+             LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
              WHERE p.post_date_gmt >= %s
                AND p.post_type = 'shop_order'
                AND p.post_status NOT IN ('wc-cancelled','wc-refunded','wc-failed','trash')
@@ -326,7 +329,9 @@ function brikpanel_get_marketplace_stats( $start_gmt ) {
             'logo'        => $marketplace->get_logo_url(),
             'products'    => $products,
             'orders'      => $orders,
-            'revenue'     => wp_strip_all_tags( wc_price( $revenue ) ),
+            // Plain text (the card renders it with textContent), so decode
+            // the currency symbol entity wc_price() emits.
+            'revenue'     => html_entity_decode( wp_strip_all_tags( wc_price( $revenue ) ), ENT_QUOTES, 'UTF-8' ),
             'revenue_raw' => $revenue,
         ];
     }

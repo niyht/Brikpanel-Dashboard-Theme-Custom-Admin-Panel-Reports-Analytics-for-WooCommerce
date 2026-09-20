@@ -1573,10 +1573,20 @@
     }
 }
 
-/* Prevent horizontal scroll from off-screen drawer */
+/* Prevent horizontal scroll from the off-screen drawer.
+
+   `clip`, not `hidden`. `hidden` on one axis forces the other axis to compute
+   to `auto`, which turns <body> into a scroll container and moves the page
+   scroll off the viewport onto <body>. The sidebar is position:fixed, so its
+   wheel events chain to the viewport scroller, which by then has nothing left
+   to scroll: the whole left column of this screen went dead to the mouse
+   wheel. `clip` hides the same horizontal overflow without creating a scroll
+   container, so the page scroll stays where the sidebar can reach it. The
+   drawer is position:fixed and so is not clipped by this. Same reasoning as
+   the `html { overflow-x: clip }` rule in brikpanel-orders.css. */
 body.admin_page_brikpanel-products,
 html:has(body.admin_page_brikpanel-products) {
-    overflow-x: hidden;
+    overflow-x: clip;
 }
 
 /* ---------- Hide WP Admin defaults ---------- */

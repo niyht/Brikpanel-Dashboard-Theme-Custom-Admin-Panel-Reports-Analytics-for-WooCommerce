@@ -159,6 +159,12 @@ class Brikpanel_Sheets_Settings {
 	public function render_page() {
 		$conn = Brikpanel_Sheets_Tokens::describe();
 
+		// There ARE stored credentials, but this site cannot decrypt them — an
+		// address change, a salt rotation, a server without libsodium. Without
+		// this the card just invites the merchant to connect, with no hint that
+		// anything was ever there or why it stopped.
+		$vault_unreadable = Brikpanel_Sheets_Tokens::is_unreadable();
+
 		// Refresh the discovered custom-order-field list so the column picker
 		// reflects this store's checkout fields. Cheap; safe to run every render.
 		Brikpanel_Sheets_Mapping::refresh_order_custom_fields();

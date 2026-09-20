@@ -101,6 +101,8 @@
         initBackorderNotify();
         initLinkedProducts();
         initThirdPartyTabLazyLoad();
+        initWcDatawrapAnchor();
+        initNativeLabelBridge();
         initThirdPartyHint();
         initCogsMirror();
         loadExistingData();
@@ -242,6 +244,90 @@
             // <ul>. We avoid triggering the <a> so jQuery does not follow its
             // href and scroll the page to the anchor.
             $(this).find('li').addBack().trigger('click');
+        });
+    }
+
+    /* Hidden copies of WooCommerce's native price/stock/weight labels
+       (.brikpanel-pe-native-bridge) exist so product-data plugins that rewrite
+       them do not crash. Measurement Price Calculator turns "Regular price (₺)"
+       into "Regular price (₺ / sq ft)" when a product is priced per unit; show
+       that unit on our own field so the merchant sees what the price means. The
+       unit text comes from the plugin, so there is nothing to translate here. */
+    /* The card recreates WooCommerce's `#woocommerce-product-data` box so other
+       plugins' scripts find it. Scripts that REPOSITION that box follow it out of
+       the card: Yoast WooCommerce SEO runs `$('#woocommerce-product-data')
+       .insertBefore($('#wpseo_meta'))` on ready, which dropped every third-party
+       field into the SEO card, outside the card's layout rules (panels floated,
+       headings pushed aside). Put it back once those ready handlers have run, and
+       again on load for late movers. Moving a node keeps its bound handlers. */
+    function initWcDatawrapAnchor() {
+        var home = document.querySelector('.brikpanel-pe-wc-fields .brikpanel-pe-wc-postsim');
+        if (!home) return;
+        function restore() {
+            var box = document.querySelector('.brikpanel-pe-wc-datawrap');
+            if (box && box.parentNode !== home) home.appendChild(box);
+        }
+        setTimeout(restore, 0);
+        $(window).on('load', restore);
+    }
+
+    function initNativeLabelBridge() {
+        var labels = document.querySelectorAll('.brikpanel-pe-native-bridge label[data-target]');
+        if (!labels.length || typeof MutationObserver === 'undefined') return;
+
+        function unitOf(text) {
+            var m = String(text || '').match(/\(([^()]*)\)\s*:?\s*$/);
+            return m ? m[1].trim() : '';
+        }
+
+        function apply(label) {
+            var input = document.getElementById(label.getAttribute('data-target'));
+            if (!input) return;
+            var base = label.getAttribute('data-base') || '';
+            var unit = unitOf(label.textContent);
+            var changed = unit !== '' && unit !== base;
+            var group = input.closest('.brikpanel-pe-input-group');
+            var box = group ? group.querySelector('.brikpanel-pe-input-prefix, .brikpanel-pe-input-suffix') : null;
+
+            if (box) {
+                if (!box.hasAttribute('data-bpe-base')) box.setAttribute('data-bpe-base', box.textContent);
+                box.textContent = '';
+                if (changed) {
+                    // "$ / sq cm" is symbols and Latin letters only, so an RTL
+                    // page reorders it into "sq cm / $". Isolate it as LTR.
+                    var bdi = document.createElement('bdi');
+                    bdi.dir = 'ltr';
+                    bdi.textContent = unit;
+                    box.appendChild(bdi);
+                } else {
+                    box.textContent = box.getAttribute('data-bpe-base');
+                }
+                return;
+            }
+            var fieldLabel = document.querySelector('label[for="' + input.id + '"]');
+            if (!fieldLabel) return;
+            var hint = fieldLabel.querySelector('.brikpanel-pe-unit-hint');
+            if (!changed) {
+                if (hint) hint.remove();
+                return;
+            }
+            if (!hint) {
+                hint = document.createElement('span');
+                hint.className = 'brikpanel-pe-unit-hint';
+                fieldLabel.appendChild(hint);
+            }
+            hint.textContent = unit;
+        }
+
+        var observer = new MutationObserver(function (records) {
+            records.forEach(function (r) {
+                var label = r.target.nodeType === 1 ? r.target.closest('label[data-target]') : r.target.parentElement;
+                if (label && label.matches('label[data-target]')) apply(label);
+            });
+        });
+        Array.prototype.forEach.call(labels, function (label) {
+            apply(label);
+            observer.observe(label, { childList: true, characterData: true, subtree: true });
         });
     }
 
@@ -478,7 +564,40 @@
         });
 
         // Track dirty state
-        $(document).on('input change', '.brikpanel-pe-content input, .brikpanel-pe-content textarea, .brikpanel-pe-content select, .brikpanel-pe-content [contenteditable]', function () {
+        // Scripts fire `.change()` on fields while the page sets up: plugins on
+        // their own fields (Measurement Price Calculator re-triggers every
+        // calculator toggle, WoodMart every metabox radio), and this editor on
+        // the variations switch and the product-type select when it loads the
+        // product. Those are not edits: counting them made every untouched
+        // product "unsaved", armed the leave-page prompt and let autosave write
+        // it back every minute. Only during page setup, though: after it, a
+        // script changing a field is answering the merchant (a media picker
+        // filling its hidden input), and that must still count.
+        var wcFieldsBooting = true;
+        var endWcFieldsBoot = function () {
+            setTimeout(function () { wcFieldsBooting = false; }, 1000);
+        };
+        if (document.readyState === 'complete') {
+            endWcFieldsBoot();
+        } else {
+            $(window).on('load', endWcFieldsBoot);
+        }
+        // The merchant touching the page ends setup at once, so a heavy page
+        // that has not finished loading never swallows a real edit. Capture
+        // phase: a handler that stops propagation must not hide the touch.
+        var endBootOnTouch = function () {
+            wcFieldsBooting = false;
+            ['mousedown', 'keydown', 'touchstart'].forEach(function (t) {
+                document.removeEventListener(t, endBootOnTouch, true);
+            });
+        };
+        ['mousedown', 'keydown', 'touchstart'].forEach(function (t) {
+            document.addEventListener(t, endBootOnTouch, true);
+        });
+        $(document).on('input change', '.brikpanel-pe-content input, .brikpanel-pe-content textarea, .brikpanel-pe-content select, .brikpanel-pe-content [contenteditable]', function (e) {
+            // A scripted event has no originalEvent (jQuery .trigger()) or is
+            // untrusted (dispatchEvent); a real edit is always trusted.
+            if (wcFieldsBooting && (!e.originalEvent || !e.originalEvent.isTrusted)) return;
             state.dirty = true;
         });
         // Password field lives in the header — track it separately

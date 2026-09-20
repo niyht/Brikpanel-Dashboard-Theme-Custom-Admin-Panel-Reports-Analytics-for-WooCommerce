@@ -133,6 +133,9 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
         && $undoable > 0
         && $can_manage;
     $undo_at  = isset( $meta['undo_at'] ) ? (int) $meta['undo_at'] : 0;
+    // Same idea as fix_confirm: the shared undo sentence talks about figures,
+    // which is wrong for a check that restores deleted rows.
+    $undo_confirm = isset( $meta['undo_confirm'] ) ? (string) $meta['undo_confirm'] : '';
     ?>
     <?php if ( $can_fix || $can_undo ) : ?>
         <div class="brikpanel-bc-card-actions">
@@ -150,6 +153,7 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
                         class="brikpanel-bc-button"
                         data-bc-undo="<?php echo esc_attr( $check_id ); ?>"
                         data-bc-undo-count="<?php echo esc_attr( $undoable ); ?>"
+                        <?php if ( $undo_confirm !== '' ) : ?>data-bc-undo-confirm="<?php echo esc_attr( $undo_confirm ); ?>"<?php endif; ?>
                         <?php if ( $undo_at > 0 ) : ?>title="<?php
                             printf(
                                 /* translators: %s: human-readable date/time of the last correction. */

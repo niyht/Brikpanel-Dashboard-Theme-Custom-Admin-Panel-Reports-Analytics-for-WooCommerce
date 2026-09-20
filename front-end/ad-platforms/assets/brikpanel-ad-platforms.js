@@ -207,12 +207,43 @@
 					$sel.appendChild(opt);
 				});
 				if ($save) { $save.disabled = !$sel.value; }
+
+				// Google only ever returns accounts linked directly to the
+				// signed-in address, so an agency whose login sits on the
+				// manager sees nothing but the manager here. Picking it leaves
+				// a green "Connected" pill over an import that comes back
+				// empty, so say what to do instead of letting them find out.
+				if (platform === 'google_ads') {
+					var onlyManagers = accounts.every(function (acc) { return !!acc.is_manager; });
+					showAccountHint($card, onlyManagers ? BP.i18n.only_managers : '');
+				}
+
 				busy($btn, false);
 			})
 			.catch(function (err) {
 				busy($btn, false);
 				toast(err.message || BP.i18n.generic_error, 'error');
 			});
+	}
+
+	// Show (or clear) an inline hint under the primary-account picker.
+	function showAccountHint($card, message) {
+		if (!$card) { return; }
+		var $field = $card.querySelector('[data-role="primary-select"]');
+		$field = $field ? $field.closest('.bp-ads-field') : null;
+		if (!$field) { return; }
+		var $hint = $field.querySelector('[data-role="account-hint"]');
+		if (!message) {
+			if ($hint) { $hint.remove(); }
+			return;
+		}
+		if (!$hint) {
+			$hint = document.createElement('p');
+			$hint.className = 'bp-ads-inline-hint';
+			$hint.setAttribute('data-role', 'account-hint');
+			$field.appendChild($hint);
+		}
+		$hint.textContent = message;
 	}
 
 	function handleSavePrimary($btn, platform) {
@@ -224,10 +255,17 @@
 			toast(BP.i18n.pick_account_first, 'error');
 			return;
 		}
+		// Saving a manager account is allowed — rare setups do report spend on
+		// one — but it is far more often a mistake, so warn rather than block.
+		var picked = $sel ? $sel.options[$sel.selectedIndex] : null;
+		var isManager = platform === 'google_ads' && picked
+			&& picked.textContent.indexOf(BP.i18n.manager_suffix) !== -1;
+
 		busy($btn, true);
 		ajax('brikpanel_ads_save_primary', { platform: platform, account_id: accountId })
 			.then(function (data) {
 				toast((data && data.message) || BP.i18n.saved, 'success');
+				showAccountHint($card, isManager ? BP.i18n.manager_picked : '');
 				busy($btn, false);
 			})
 			.catch(function (err) {
@@ -342,8 +380,15 @@
 		}
 		var html = '';
 		entries.forEach(function (e) {
-			html += '<div class="bp-ads-log-entry">'
+			// A background job that correctly found nothing to do is not a
+			// failure. Label it, so a run of routine notes stops reading as a
+			// run of errors.
+			var isNote = e.severity === 'info';
+			html += '<div class="bp-ads-log-entry' + (isNote ? ' is-note' : '') + '">'
 				+   '<div class="bp-ads-log-meta">'
+				+     '<span class="bp-ads-log-sev' + (isNote ? ' is-note' : '') + '">'
+				+       escapeHtml(isNote ? (BP.i18n.log_note_label || '') : (BP.i18n.log_error_label || ''))
+				+     '</span>'
 				+     '<span class="bp-ads-log-flow">' + escapeHtml(e.flow || '') + '</span>'
 				+     '<span>' + escapeHtml(e.ts_display || '') + '</span>'
 				+     (e.code ? '<span class="bp-ads-log-code">HTTP ' + escapeHtml(String(e.code)) + '</span>' : '')
@@ -507,6 +552,8 @@
 					var $back = $card.querySelector('.bp-ads-backfill');
 					var total     = state.backfill && state.backfill.total     || 0;
 					var completed = state.backfill && state.backfill.completed || 0;
+					var halted    = !!(state.backfill && state.backfill.halted);
+					var reason    = (state.backfill && state.backfill.error) || '';
 					if (total > 0 && completed < total) {
 						if (!$back) {
 							var fragment = document.createElement('div');
@@ -520,10 +567,26 @@
 						}
 						var pct = Math.min(100, Math.round((completed / Math.max(1, total)) * 100));
 						$back.querySelector('.bp-ads-backfill-fill').style.width = pct + '%';
-						$back.querySelector('.bp-ads-backfill-label').textContent =
-							String(BP.i18n.backfill_progress || '')
+						// A stalled bar with no words is what merchants report as
+						// a bug. When the import gave up, say so and say why.
+						$back.classList.toggle('is-halted', halted);
+						$back.querySelector('.bp-ads-backfill-label').textContent = halted
+							? String(BP.i18n.backfill_halted || '')
+							: String(BP.i18n.backfill_progress || '')
 								.replace('%1$d', completed)
 								.replace('%2$d', total);
+
+						var $reason = $back.querySelector('.bp-ads-backfill-reason');
+						if (reason) {
+							if (!$reason) {
+								$reason = document.createElement('p');
+								$reason.className = 'bp-ads-backfill-reason';
+								$back.appendChild($reason);
+							}
+							$reason.textContent = reason;
+						} else if ($reason) {
+							$reason.remove();
+						}
 					} else if ($back) {
 						$back.remove();
 					}

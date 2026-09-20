@@ -21,8 +21,10 @@
  * scripts/styles served from other plugins and from the active theme. It is
  * deliberately conservative:
  *
- *   - Only local `wp-content/plugins/*` (except BrikPanel and the WooCommerce
- *     core platform) and `wp-content/themes/*` assets are candidates. WordPress
+ *   - Only local `wp-content/plugins/*` (except BrikPanel, the WooCommerce
+ *     core platform and BrikMentor, the sibling product whose controls do
+ *     appear on these screens) and `wp-content/themes/*` assets are
+ *     candidates. WordPress
  *     core (`wp-includes` / `wp-admin`, e.g. jQuery and wp-components) and any
  *     externally hosted asset (e.g. the Google API the Sheets page loads from
  *     apis.google.com) are always kept.
@@ -141,7 +143,7 @@ function brikpanel_isolation_is_foreign_src( $src, $bp_dirname ) {
 		return true;
 	}
 
-	// Plugin assets, minus the two trusted origins.
+	// Plugin assets, minus the three trusted origins.
 	if ( false !== strpos( $s, '/wp-content/plugins/' ) ) {
 		// BrikPanel's own assets.
 		if ( '' !== $bp_dirname && false !== strpos( $s, '/wp-content/plugins/' . $bp_dirname . '/' ) ) {
@@ -150,6 +152,19 @@ function brikpanel_isolation_is_foreign_src( $src, $bp_dirname ) {
 		// WooCommerce core platform (never the extension plugins named
 		// `woocommerce-*`, which have no UI on BrikPanel pages).
 		if ( false !== strpos( $s, '/wp-content/plugins/woocommerce/' ) ) {
+			return false;
+		}
+		// BrikMentor, the sibling product. It draws controls on our screens
+		// that need their script behind them - its "Update to X now" notice
+		// button for one, which this sweep left rendered but dead on the
+		// dashboard (measured 2026-09-17: button present, script tag gone).
+		// The directory name comes from its own constant so a renamed folder
+		// still matches; the bare name covers a BrikMentor that is installed
+		// but not yet loaded when this runs.
+		$bm_dirname = defined( 'BRIKMENTOR_PATH' )
+			? strtolower( basename( untrailingslashit( BRIKMENTOR_PATH ) ) )
+			: 'brikmentor';
+		if ( '' !== $bm_dirname && false !== strpos( $s, '/wp-content/plugins/' . $bm_dirname . '/' ) ) {
 			return false;
 		}
 		return true;
@@ -216,3 +231,25 @@ function brikpanel_isolation_sweep_assets() {
 	}
 }
 add_action( 'admin_enqueue_scripts', 'brikpanel_isolation_sweep_assets', PHP_INT_MAX );
+
+/**
+ * Keep the theme's hidden-until-opened markup hidden.
+ *
+ * Some themes print modal forms into every admin page and rely on a
+ * stylesheet to hide them until a button opens them. Porto, for example,
+ * prints its "New Porto Builder" form (`#porto-builders-input`) on every
+ * screen and hides it with Magnific Popup's `.mfp-hide`. That stylesheet is a
+ * theme asset, so on BrikPanel's own pages the sweep above removes it and the
+ * raw form shows at the foot of the page. Magnific's rule is exactly
+ * `.mfp-hide { display: none !important; }`; restating it here costs nothing
+ * on themes that never use it and needs no per-theme list.
+ *
+ * @return void
+ */
+add_action( 'admin_head', 'brikpanel_isolation_hidden_markup_css' );
+function brikpanel_isolation_hidden_markup_css() {
+	if ( ! brikpanel_isolation_active() ) {
+		return;
+	}
+	echo '<style id="brikpanel-isolation-hidden-markup">.mfp-hide{display:none!important}</style>' . "\n";
+}

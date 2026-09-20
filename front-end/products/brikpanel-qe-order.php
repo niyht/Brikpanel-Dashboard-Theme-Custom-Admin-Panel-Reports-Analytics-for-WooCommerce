@@ -31,6 +31,97 @@ if (!defined('BRIKPANEL_QE_VISIBLE_OPTION')) {
     define('BRIKPANEL_QE_VISIBLE_OPTION', 'brikpanel_qe_visible_fields');
 }
 
+/**
+ * Tell Import / Export how to carry the Quick Edit drawer layout.
+ *
+ * The two legacy mirrors are registered as well, but the thing that actually
+ * makes the drawer arrive intact is `after`. The mirrors are DERIVED from the
+ * visible-fields list by the settings save, which reads $_POST and therefore
+ * cannot run during an import. Without the re-derive, a file saying "show the
+ * featured star" wrote the list and left the flag that actually draws the star
+ * at the target's old value — measured, and exactly the kind of half-applied
+ * setting that makes an import look unreliable.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter('brikpanel_exportable_option_keys', 'brikpanel_qe_register_export_keys');
+function brikpanel_qe_register_export_keys($map) {
+    $map[BRIKPANEL_QE_ORDER_OPTION] = [
+        'class'    => 'portable',
+        'group'    => 'products',
+        'type'     => 'json_string',
+        'default'  => '',
+        'after'    => 'brikpanel_qe_sync_legacy_mirrors',
+    ];
+    $map[BRIKPANEL_QE_VISIBLE_OPTION] = [
+        'class'    => 'portable',
+        'group'    => 'products',
+        'sanitize' => 'brikpanel_qe_sanitize_import_visible',
+        'default'  => [],
+        'after'    => 'brikpanel_qe_sync_legacy_mirrors',
+    ];
+    // Derived from the list above. They travel so an older BrikPanel reading
+    // this file still gets them, and they are recomputed here afterwards so a
+    // stale value in the file can never win over the list it is derived from.
+    foreach (['brikpanel_qe_custom_taxonomies', 'brikpanel_show_featured_star'] as $mirror) {
+        $map[$mirror] = [
+            'class'   => 'portable',
+            'group'   => 'products',
+            'type'    => 'checkbox',
+            'default' => 'no',
+            'after'   => 'brikpanel_qe_sync_legacy_mirrors',
+        ];
+    }
+    return $map;
+}
+
+/**
+ * Clean an imported visible-fields list.
+ *
+ * Unknown slugs are dropped: a Quick Edit field this build does not define
+ * cannot be rendered, so keeping it would only leave dead entries behind.
+ *
+ * @param mixed $value
+ * @return string[]
+ */
+function brikpanel_qe_sanitize_import_visible($value) {
+    if (!is_array($value)) {
+        return [];
+    }
+    $known = brikpanel_qe_field_slugs();
+    $out   = [];
+    foreach ($value as $slug) {
+        if (!is_string($slug)) {
+            continue;
+        }
+        $slug = sanitize_key($slug);
+        if ('' !== $slug && in_array($slug, $known, true) && !in_array($slug, $out, true)) {
+            $out[] = $slug;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Recompute the two legacy boolean mirrors from the visible-fields list.
+ *
+ * The list is the source of truth. Extracted from the settings save so the
+ * import can run the same derivation without a $_POST to read.
+ *
+ * @return void
+ */
+function brikpanel_qe_sync_legacy_mirrors() {
+    $visible = get_option(BRIKPANEL_QE_VISIBLE_OPTION, null);
+    if (!is_array($visible)) {
+        // Nothing saved: the readers fall back to their own defaults, and
+        // writing a guess here would invent a choice nobody made.
+        return;
+    }
+    update_option('brikpanel_qe_custom_taxonomies', in_array('custom_taxonomies', $visible, true) ? 'yes' : 'no');
+    update_option('brikpanel_show_featured_star', in_array('featured', $visible, true) ? 'yes' : 'no');
+}
+
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -586,9 +677,9 @@ add_action('woocommerce_update_options_brikpanel', function () {
     // Keep the two legacy boolean options in lockstep so any code path that
     // still reads them (third-party integrations, snapshot tools) sees the
     // same answer as brikpanel_qe_is_field_visible(). We treat the new
-    // visibility list as the source of truth.
-    update_option('brikpanel_qe_custom_taxonomies', in_array('custom_taxonomies', $visible, true) ? 'yes' : 'no');
-    update_option('brikpanel_show_featured_star', in_array('featured', $visible, true) ? 'yes' : 'no');
+    // visibility list as the source of truth. Shared with the settings import,
+    // which has no $_POST to derive them from.
+    brikpanel_qe_sync_legacy_mirrors();
 }, 11);
 
 // =============================================================================

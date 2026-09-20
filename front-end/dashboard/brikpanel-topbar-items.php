@@ -39,6 +39,145 @@ const BRIKPANEL_TOPBAR_ITEM_AUDIENCE_OPTION = 'brikpanel_topbar_item_audience';
 const BRIKPANEL_TOPBAR_ITEM_ROLES_OPTION    = 'brikpanel_topbar_item_hide_roles';
 
 /**
+ * Tell Import / Export about the six options behind the "Top bar items" card.
+ *
+ * The card renders its own switches, so its settings field carries a
+ * placeholder id and the settings-field walk cannot see any of this. Before
+ * this registration existed, an agency cloning a client store got a file with
+ * no top bar configuration in it at all — no visible controls, no per-role
+ * rules, and an empty custom shortcut — while the screen reported a clean
+ * import. Registration sits here, at file scope, for the reason the registry
+ * docblock gives: a module still owns its keys while it is switched off.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_topbar_register_export_keys' );
+function brikpanel_topbar_register_export_keys( $map ) {
+    $common = [ 'class' => 'portable', 'group' => 'dashboard' ];
+
+    $map[ BRIKPANEL_TOPBAR_HIDDEN_ITEMS_OPTION ] = $common + [
+        'sanitize' => 'brikpanel_topbar_sanitize_import_keys',
+        'default'  => [],
+    ];
+    $map[ BRIKPANEL_TOPBAR_CREATE_HIDDEN_OPTION ] = $common + [
+        'sanitize' => 'brikpanel_topbar_sanitize_import_keys',
+        'default'  => [],
+    ];
+    $map[ BRIKPANEL_TOPBAR_CUSTOM_LABEL_OPTION ] = $common + [
+        'type'    => 'text',
+        'default' => '',
+    ];
+    $map[ BRIKPANEL_TOPBAR_CUSTOM_URL_OPTION ] = $common + [
+        'sanitize'     => 'brikpanel_topbar_sanitize_link_url',
+        'default'      => '',
+        // The shortcut usually points either at the agency's own site (leave
+        // it alone) or at a page of the store it was configured on (repoint
+        // it). Only the second kind matches the exporting host.
+        'rewrite_urls' => true,
+    ];
+    $map[ BRIKPANEL_TOPBAR_ITEM_AUDIENCE_OPTION ] = $common + [
+        'sanitize' => 'brikpanel_topbar_sanitize_import_audience',
+        'default'  => [],
+    ];
+    $map[ BRIKPANEL_TOPBAR_ITEM_ROLES_OPTION ] = $common + [
+        'sanitize' => 'brikpanel_topbar_sanitize_import_roles',
+        'default'  => [],
+    ];
+
+    return $map;
+}
+
+/**
+ * Clean an imported list of item keys (the hidden lists).
+ *
+ * Keys the target does not register are KEPT, matching what the settings save
+ * already does with orphans: a plugin that adds a top bar item may simply be
+ * inactive right now, and dropping its rule would silently switch a control
+ * back on the day it is activated.
+ *
+ * @param mixed $value
+ * @return array
+ */
+function brikpanel_topbar_sanitize_import_keys( $value ) {
+    if ( ! is_array( $value ) ) {
+        return [];
+    }
+    $out = [];
+    foreach ( $value as $key ) {
+        if ( ! is_string( $key ) ) {
+            continue;
+        }
+        $key = sanitize_key( $key );
+        if ( '' !== $key && ! in_array( $key, $out, true ) ) {
+            $out[] = $key;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Clean an imported per-item audience map (item key => all|admins|roles).
+ *
+ * @param mixed $value
+ * @return array<string,string>
+ */
+function brikpanel_topbar_sanitize_import_audience( $value ) {
+    if ( ! is_array( $value ) ) {
+        return [];
+    }
+    $out = [];
+    foreach ( $value as $item => $audience ) {
+        $item     = sanitize_key( (string) $item );
+        $audience = is_scalar( $audience ) ? sanitize_key( (string) $audience ) : '';
+        if ( '' === $item || ! in_array( $audience, [ 'admins', 'roles' ], true ) ) {
+            // 'all' is the absence of a rule, so it is never stored.
+            continue;
+        }
+        $out[ $item ] = $audience;
+    }
+    return $out;
+}
+
+/**
+ * Clean an imported per-item hidden-roles map (item key => role slugs).
+ *
+ * Role slugs are not checked against the target's roles on purpose. A role
+ * that does not exist here simply never matches, whereas dropping it would
+ * quietly widen who can see a control — the one direction a visibility rule
+ * must not drift in.
+ *
+ * @param mixed $value
+ * @return array<string,string[]>
+ */
+function brikpanel_topbar_sanitize_import_roles( $value ) {
+    if ( ! is_array( $value ) ) {
+        return [];
+    }
+    $out = [];
+    foreach ( $value as $item => $roles ) {
+        $item = sanitize_key( (string) $item );
+        if ( '' === $item || ! is_array( $roles ) ) {
+            continue;
+        }
+        $clean = [];
+        foreach ( $roles as $role ) {
+            if ( ! is_string( $role ) ) {
+                continue;
+            }
+            $role = sanitize_key( $role );
+            if ( '' !== $role && ! in_array( $role, $clean, true ) ) {
+                $clean[] = $role;
+            }
+        }
+        if ( $clean ) {
+            $out[ $item ] = $clean;
+        }
+    }
+    return $out;
+}
+
+/**
  * Saved per-item audience map (key => 'all'|'admins'|'roles').
  *
  * @return array<string,string>
@@ -119,6 +258,7 @@ function brikpanel_topbar_item_audience_allows( $key ) {
  */
 function brikpanel_topbar_builtin_item_keys() {
     return [
+        'sidebar_toggle',
         'brand',
         'live',
         'search',
@@ -537,6 +677,10 @@ add_action( 'admin_bar_menu', 'brikpanel_topbar_bridge_to_admin_bar', 100 );
  */
 function brikpanel_topbar_items_label_map() {
     $map = [
+        'sidebar_toggle' => [
+            'label' => __( 'Sidebar show/hide button', 'brikpanel' ),
+            'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="9" y1="4" x2="9" y2="20"/></svg>',
+        ],
         'brand'         => [
             'label' => __( 'Logo &amp; store name', 'brikpanel' ),
             'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l1-5h16l1 5"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/></svg>',

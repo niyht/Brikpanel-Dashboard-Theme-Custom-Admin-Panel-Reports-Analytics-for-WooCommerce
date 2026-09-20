@@ -18,6 +18,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/class-brikpanel-cron.php';
 
+Brikpanel_Cron::watch_external_changes();
+
 if ( is_admin() ) {
 	require_once __DIR__ . '/class-brikpanel-cron-page.php';
 }
@@ -41,9 +43,14 @@ add_action( 'init', function () {
 	if ( ! Brikpanel_Cron::is_available() ) {
 		return;
 	}
-	/**
-	 * Fires once per request when Action Scheduler is ready and BrikPanel
-	 * background jobs can be registered/scheduled.
-	 */
-	do_action( 'brikpanel_cron_register' );
+	// schedule_recurring() and cancel() calls made from these callbacks are
+	// collected and only reach the database when the set of jobs changed or
+	// the last check is over an hour old. See Brikpanel_Cron::reconcile().
+	Brikpanel_Cron::reconcile( static function () {
+		/**
+		 * Fires once per request when Action Scheduler is ready and BrikPanel
+		 * background jobs can be registered/scheduled.
+		 */
+		do_action( 'brikpanel_cron_register' );
+	} );
 }, 20 );

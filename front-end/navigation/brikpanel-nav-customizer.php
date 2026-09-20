@@ -35,6 +35,35 @@ if ( ! defined( 'BRIKPANEL_NAV_CONFIG_OPTION' ) ) {
 	define( 'BRIKPANEL_NAV_CONFIG_OPTION', 'brikpanel_nav_config' );
 }
 
+/**
+ * Tell Import / Export how to carry the sidebar layout.
+ *
+ * Stored as a JSON string, so the generic json_string cleaner is the right one.
+ * `rewrite_urls` is what makes an imported sidebar usable: a custom link the
+ * source admin added usually points either at the agency's own site (left
+ * alone) or at a page of the store it was built on (repointed at this store).
+ * Only links whose host matches the exporting site are touched.
+ *
+ * Menu rows for plugins this site does not have are NOT stripped on import.
+ * The customizer already shows them as "Not available on this site" with a
+ * delete button, which is a decision for the merchant looking at the screen,
+ * not one to make silently during a file read.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_nav_register_export_keys' );
+function brikpanel_nav_register_export_keys( $map ) {
+	$map[ BRIKPANEL_NAV_CONFIG_OPTION ] = [
+		'class'        => 'portable',
+		'group'        => 'navigation',
+		'type'         => 'json_string',
+		'default'      => '',
+		'rewrite_urls' => true,
+	];
+	return $map;
+}
+
 // =============================================================================
 // CONFIG: GET / SAVE
 // =============================================================================
@@ -1251,13 +1280,32 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 	}
 
 	// Append any system items not present in the config (newly installed
-	// plugins, or items the user has not yet customized). We append them to
-	// the store section by default; users can move them in the customizer.
+	// plugins, or items the user has not yet customized); users can move them
+	// in the customizer.
+	//
+	// WHERE they go depends on what they are. A foreign plugin's top-level is
+	// appended at the very end, which the renderer draws inside the collapsed
+	// "Site management" group: the right place for something the merchant has
+	// not looked at yet. A store-cluster surface (BrikPanel's own screens, a
+	// companion such as BrikMentor: see brikpanel_nav_is_store_slug()) must not
+	// vanish into that group, so it is placed at the end of the store section
+	// instead, or straight after the row the surface names through the
+	// `brikpanel_nav_new_item_after` filter when that row is in the store
+	// section. Configured rows are never moved: this only decides where a row
+	// the merchant has never seen first appears.
 	//
 	// When "Hide new menu items by default" is on, these unconfigured items are
 	// left OUT of the live sidebar until an administrator reviews them in the
 	// editor (which always lists them). Native separators are always kept.
 	$hide_new = brikpanel_nav_hide_new_items_enabled();
+	$index_of = static function ( array $rows, $slug ) {
+		foreach ( $rows as $i => $row ) {
+			if ( isset( $row[2] ) && (string) $row[2] === (string) $slug ) {
+				return $i;
+			}
+		}
+		return null;
+	};
 	foreach ( $menu as $item ) {
 		if ( ! isset( $item[2] ) ) {
 			continue;
@@ -1273,6 +1321,28 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 		}
 		if ( $hide_new ) {
 			// Newly-detected item, not yet reviewed — keep it off the sidebar.
+			continue;
+		}
+		if ( brikpanel_nav_is_store_slug( $slug ) ) {
+			// End of the store section: just before the first Site management
+			// row, or the end of the list when there is no such row.
+			$store_end = ( $first_sitemgmt !== '' ) ? $index_of( $new_menu, $first_sitemgmt ) : null;
+			$store_end = ( null === $store_end ) ? count( $new_menu ) : $store_end;
+
+			/**
+			 * Filter the row a never-configured store-cluster item is placed
+			 * after when it first appears in a customized sidebar. Return the
+			 * slug of an existing row; it only counts when that row sits in
+			 * the store section. Empty means "end of the store section".
+			 *
+			 * @param string $after Slug to insert after ('' = end of store section).
+			 * @param string $slug  The new item's slug.
+			 */
+			$after = (string) apply_filters( 'brikpanel_nav_new_item_after', '', $slug );
+			$pos   = ( '' !== $after ) ? $index_of( $new_menu, $after ) : null;
+			$pos   = ( null !== $pos && $pos < $store_end ) ? $pos + 1 : $store_end;
+
+			array_splice( $new_menu, $pos, 0, array( $item ) );
 			continue;
 		}
 		$new_menu[] = $item;

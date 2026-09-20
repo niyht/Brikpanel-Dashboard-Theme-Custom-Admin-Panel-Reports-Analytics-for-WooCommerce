@@ -218,7 +218,7 @@
 		el('bp-seg-tbody').innerHTML = data.items.map(function (o) {
 			const location = [o.city, o.country].filter(Boolean).join(', ');
 			return '<tr>'
-				+ '<td><a class="bp-seg-primary-link" href="' + escape(o.edit_url) + '">#' + escape(o.id) + '</a></td>'
+				+ '<td><a class="bp-seg-primary-link" href="' + escape(o.edit_url) + '">#' + escape(o.number || o.id) + '</a></td>'
 				+ '<td>' + escape(o.date) + '</td>'
 				+ '<td><span class="bp-seg-status is-' + escape(o.status) + '">' + escape(o.status_label) + '</span></td>'
 				+ '<td class="bp-seg-customer">' + (o.name ? escape(o.name) : '<span class="bp-seg-subtle">' + escape(I18N.guest || 'Guest') + '</span>') + (o.email ? '<div class="bp-seg-subtle">' + escape(o.email) + '</div>' : '') + '</td>'

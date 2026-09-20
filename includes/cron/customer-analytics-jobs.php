@@ -123,10 +123,10 @@ function brikpanel_recompute_customer_metrics_handler() {
 				COALESCE(SUM(CAST(tot_meta.meta_value AS DECIMAL(20,4))), 0) / NULLIF(COUNT(*), 0) AS aov,
 				GREATEST(0, TIMESTAMPDIFF(DAY, MAX(o.post_date_gmt), UTC_TIMESTAMP())) AS recency_days
 			FROM {$wpdb->posts} o
-			LEFT JOIN {$wpdb->postmeta} cu_meta  ON cu_meta.post_id  = o.ID AND cu_meta.meta_key  = '_customer_user'
-			LEFT JOIN {$wpdb->postmeta} em_meta  ON em_meta.post_id  = o.ID AND em_meta.meta_key  = '_billing_email'
-			LEFT JOIN {$wpdb->postmeta} ph_meta  ON ph_meta.post_id  = o.ID AND ph_meta.meta_key  = '_billing_phone'
-			LEFT JOIN {$wpdb->postmeta} tot_meta ON tot_meta.post_id = o.ID AND tot_meta.meta_key = '_order_total'
+			LEFT JOIN {$wpdb->postmeta} cu_meta  ON cu_meta.post_id  = o.ID AND cu_meta.meta_key  = '_customer_user' AND " . brikpanel_sql_first_meta_guard( 'post', 'cu_meta' ) . "
+			LEFT JOIN {$wpdb->postmeta} em_meta  ON em_meta.post_id  = o.ID AND em_meta.meta_key  = '_billing_email' AND " . brikpanel_sql_first_meta_guard( 'post', 'em_meta' ) . "
+			LEFT JOIN {$wpdb->postmeta} ph_meta  ON ph_meta.post_id  = o.ID AND ph_meta.meta_key  = '_billing_phone' AND " . brikpanel_sql_first_meta_guard( 'post', 'ph_meta' ) . "
+			LEFT JOIN {$wpdb->postmeta} tot_meta ON tot_meta.post_id = o.ID AND tot_meta.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'tot_meta' ) . "
 			WHERE o.post_type = 'shop_order'
 			  AND o.post_status IN ({$status_in})
 			  AND (cu_meta.meta_value+0 > 0 OR em_meta.meta_value <> '')
@@ -417,8 +417,8 @@ function brikpanel_recompute_cohort_retention_handler() {
 				END AS customer_key,
 				DATE_FORMAT(o.post_date_gmt, '%Y-%m-01') AS order_month
 			FROM {$wpdb->posts} o
-			LEFT JOIN {$wpdb->postmeta} cu_meta ON cu_meta.post_id = o.ID AND cu_meta.meta_key = '_customer_user'
-			LEFT JOIN {$wpdb->postmeta} em_meta ON em_meta.post_id = o.ID AND em_meta.meta_key = '_billing_email'
+			LEFT JOIN {$wpdb->postmeta} cu_meta ON cu_meta.post_id = o.ID AND cu_meta.meta_key = '_customer_user' AND " . brikpanel_sql_first_meta_guard( 'post', 'cu_meta' ) . "
+			LEFT JOIN {$wpdb->postmeta} em_meta ON em_meta.post_id = o.ID AND em_meta.meta_key = '_billing_email' AND " . brikpanel_sql_first_meta_guard( 'post', 'em_meta' ) . "
 			WHERE o.post_type = 'shop_order'
 			  AND o.post_status IN ({$status_in})
 			  AND (cu_meta.meta_value+0 > 0 OR em_meta.meta_value <> '')

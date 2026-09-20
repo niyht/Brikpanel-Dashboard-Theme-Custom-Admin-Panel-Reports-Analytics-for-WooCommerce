@@ -538,7 +538,11 @@ function brikpanel_ea_render_card() {
     if ( ! current_user_can( 'manage_options' ) ) {
         return;
     }
-    if ( function_exists( 'brikpanel_brikmentor_promo_active' ) && brikpanel_brikmentor_promo_active() ) {
+    // The generic launch card stays down here only while the store has no
+    // cart figures to show. Once the pitch card with real numbers has rendered
+    // under the KPIs, a second card saying the same thing would be noise.
+    if ( function_exists( 'brikpanel_brikmentor_promo_active' ) && brikpanel_brikmentor_promo_active()
+        && ! ( function_exists( 'brikpanel_brikmentor_pitch_rendered' ) && brikpanel_brikmentor_pitch_rendered() ) ) {
         brikpanel_ea_render_live_card();
     }
     if ( ! brikpanel_ea_card_available() ) {
@@ -652,7 +656,7 @@ function brikpanel_ea_render_live_card() {
     }
     $nonce        = wp_create_nonce( 'brikpanel_bm_promo_nonce' );
     $cta_url      = function_exists( 'brikpanel_brikmentor_url' ) ? brikpanel_brikmentor_url() : 'https://brksoft.com/brikmentor';
-    $checkout_url = function_exists( 'brikpanel_brikmentor_checkout_url' ) ? brikpanel_brikmentor_checkout_url() : $cta_url;
+    $checkout_url = function_exists( 'brikpanel_brikmentor_checkout_url' ) ? brikpanel_brikmentor_checkout_url( 'dashboard' ) : $cta_url;
     // Price is injected, never baked into the copy, so it stays one unbreakable
     // token in every locale (see brikpanel_brikmentor_price()).
     $title        = brikpanel_ea_price_text( __( 'BrikMentor is live: first month %s', 'brikpanel' ) );

@@ -619,6 +619,95 @@ function brikpanel_visitor_id_from_cookie() {
 }
 
 /**
+ * The browser id the client actually SENT with this request, or '' when it
+ * sent none or sent one this plugin never issued.
+ *
+ * Differs from brikpanel_visitor_id_from_cookie() in one way that matters:
+ * it reads the raw Cookie header, not $_COOKIE. The live-visitor minter
+ * writes a freshly issued id straight into $_COOKIE so the rest of the
+ * request can see it, which would make every memoryless client look like a
+ * returning one to any counter that runs after the live ping in the same
+ * request. The raw header is what the client sent and is never rewritten.
+ *
+ * "Carried" is the question the daily counters ask: did this client bring
+ * back something we handed it earlier? A yes means it keeps state between
+ * requests (cookies, and in practice local storage too), so its own
+ * once-per-day latch can be trusted. A no means it has no memory to trust,
+ * and the server keeps one for it (brikpanel_daily_counter_allowed()).
+ *
+ * @since 3.3.11
+ *
+ * @return string
+ */
+function brikpanel_request_carried_visitor_id() {
+    static $carried = null;
+    if ( null !== $carried ) {
+        return $carried;
+    }
+
+    $carried = '';
+    $header  = isset( $_SERVER['HTTP_COOKIE'] ) ? (string) $_SERVER['HTTP_COOKIE'] : '';
+    if ( '' === $header ) {
+        return $carried;
+    }
+
+    // First occurrence wins, which is how PHP fills $_COOKIE too.
+    if ( 1 === preg_match( '/(?:^|;)\s*brikpanel_vid=([^;]*)/', $header, $m ) ) {
+        $value = substr( sanitize_text_field( rawurldecode( $m[1] ) ), 0, 64 );
+        if ( brikpanel_visitor_id_is_valid( $value ) ) {
+            $carried = $value;
+        }
+    }
+
+    return $carried;
+}
+
+/**
+ * Whether a once-per-visitor-per-day counter may record this request.
+ *
+ * The daily visitor and product-view figures cap a visitor at one recorded
+ * event per day with a latch in the browser's local storage. That is the
+ * whole cap: the server used to write +1 for every request that arrived
+ * without the latch. A crawler that runs JavaScript but starts every page
+ * with a blank profile never has the latch, so every page it opened became
+ * a new visitor. One store with under a hundred real visitors a day
+ * reported eleven thousand.
+ *
+ * Same three-part shape as the add-to-cart counters (3.3.1):
+ *   1. Signed-in users are trusted outright. Their session is durable and
+ *      account-keyed; an address-keyed lock would only make two colleagues
+ *      behind one connection cancel each other out.
+ *   2. A client that brought back the id this plugin issued earlier keeps
+ *      state between requests, so its own latch is trusted. No lock row is
+ *      written for these — on a busy store that would be thousands of
+ *      wp_options rows a day for visitors who are behaving.
+ *   3. A client with no memory of us gets one recorded event per identity
+ *      (address + passive headers) per day via brikpanel_client_daily_lock().
+ *      The first event always passes — a real visitor's first page of the
+ *      day is not a repeat. Only the second identical one is refused.
+ *
+ * Not a security boundary. A client that rotates its address defeats it, as
+ * it does every address-keyed brake in this file. It is a data-quality cap.
+ *
+ * @since 3.3.11
+ *
+ * @param string $bucket Namespace so separate counters do not share a lock.
+ * @return bool True when the caller may record; false when this identity was
+ *              already counted today.
+ */
+function brikpanel_daily_counter_allowed( $bucket ) {
+    if ( is_user_logged_in() ) {
+        return true;
+    }
+
+    if ( '' !== brikpanel_request_carried_visitor_id() ) {
+        return true;
+    }
+
+    return brikpanel_client_daily_lock( $bucket );
+}
+
+/**
  * Transient key for a short burst lock on the client's passive identity.
  *
  * Companion to brikpanel_client_daily_lock() for endpoints that already keep

@@ -58,7 +58,7 @@ function brikpanel_get_total_revenue( $start_date_gmt = null, $end_date_gmt = nu
 
         // 'IN' operatörü kullanılıyor
         $query_sql = "SELECT SUM({$fx['expr']}) FROM {$table_name} AS p
-                      LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id{$fx['join']}
+                      LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id AND pm.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "{$fx['join']}
                       WHERE p.post_type = 'shop_order'
                       AND pm.meta_key = '_order_total'
                       AND p.post_status IN ({$status_placeholders})";

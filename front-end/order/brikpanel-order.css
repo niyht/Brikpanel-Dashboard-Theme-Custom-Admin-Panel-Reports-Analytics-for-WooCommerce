@@ -393,9 +393,39 @@ standard WooCommerce ones. */
    (#woocommerce-order-source-data) and Customer History
    (#woocommerce-customer-history) are deliberately NOT hidden: they carry
    useful native data and are styled like every other modern card below. */
-.brikpanel-modern-edit #order_custom,
-.brikpanel-modern-edit #woocommerce-order-downloads {
+.brikpanel-modern-edit #order_custom {
 	display: none !important;
+}
+
+/* ---- Loading ----
+   brikpanel-order.js moves the boxes into the header, tabs and summary once
+   the page has loaded. Until then the content is kept invisible (it still
+   takes its space, so nothing jumps), then fades in. If the script never
+   runs, the content shows up by itself after a moment. Only with JS on: WP
+   swaps the body's no-js class for js before any content is printed. */
+@keyframes brk-order-boot-reveal {
+	to { visibility: visible; }
+}
+
+@keyframes brk-order-boot-fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+body.js.brikpanel-modern-edit.bp-order-booting #wpbody-content > .wrap,
+body.js.brikpanel-modern-edit.bp-order-booting #wpbody-content > #screen-meta-links {
+	visibility: hidden;
+	animation: brk-order-boot-reveal 0s linear 2.5s forwards;
+}
+
+body.brikpanel-modern-edit.bp-order-ready #poststuff {
+	animation: brk-order-boot-fade .18s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	body.brikpanel-modern-edit.bp-order-ready #poststuff {
+		animation: none;
+	}
 }
 
 /* ---- Hide WooCommerce footer ---- */
@@ -454,6 +484,23 @@ standard WooCommerce ones. */
 	float: none;
 	margin: 0;
 	padding: 0;
+}
+
+/* WooCommerce's admin stylesheet hides these toggles on its pages with a
+   screen-reader clip (`.woocommerce-admin-page #screen-options-link-wrap`),
+   because it normally draws its own header. Moved into this header they were
+   therefore a 1px invisible box behind the status badge. Two ids outrank it. */
+.brikpanel-order-header #screen-meta-links #screen-options-link-wrap,
+.brikpanel-order-header #screen-meta-links #contextual-help-link-wrap {
+	position: static;
+	width: auto;
+	height: auto;
+	margin: 0;
+	padding: 0;
+	overflow: visible;
+	clip: auto;
+	clip-path: none;
+	white-space: nowrap;
 }
 
 .brikpanel-order-header #screen-meta-links.brikpanel-order-screen-meta .button.show-settings {
@@ -1603,6 +1650,8 @@ standard WooCommerce ones. */
 .brikpanel-toast {
 	position: fixed;
 	top: 44px;
+	/* Below the fixed order header, so it never covers Status and Save. */
+	top: calc(var(--brk-order-header-top, 32px) + var(--brk-order-header-h, 52px) + 12px);
 	right: 20px;
 	z-index: 10000;
 	padding: 0.75rem 1.25rem;
@@ -1709,13 +1758,18 @@ standard WooCommerce ones. */
 	padding: 0.3125rem 0.375rem !important;
 }
 
-/* General links in sidebar cards */
-.brikpanel-modern-edit #side-sortables .postbox .inside a {
+/* General links in sidebar cards.
+   The exclusions matter: other plugins' boxes live in this column too, and
+   plenty of them render an action as `<a class="button button-primary">`.
+   Without the guard this quietly repaints white button text grey — invisible
+   on a coloured button. Same exclusions as the tabbed sibling in
+   brikpanel-order-tabs.css. */
+.brikpanel-modern-edit #side-sortables .postbox .inside a:not(.button):not(.button-primary):not(.button-secondary):not(.submitdelete) {
 	color: var(--brk-text-secondary);
 	transition: color 0.15s;
 }
 
-.brikpanel-modern-edit #side-sortables .postbox .inside a:hover {
+.brikpanel-modern-edit #side-sortables .postbox .inside a:not(.button):not(.button-primary):not(.button-secondary):not(.submitdelete):hover {
 	color: var(--brk-text);
 }
 

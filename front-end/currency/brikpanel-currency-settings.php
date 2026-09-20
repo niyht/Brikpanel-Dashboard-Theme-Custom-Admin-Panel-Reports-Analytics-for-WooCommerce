@@ -19,6 +19,52 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Register the "Currency" section under the BrikPanel settings tab, after
  * Analytics in the Store group.
  */
+/**
+ * Tell Import / Export how to carry the manual exchange rates.
+ *
+ * `after` matters more here than the sanitiser does. The rate table already
+ * invalidates its conversions through `update_option_` / `add_option_` hooks,
+ * which a plain update_option() does fire — but there is no `delete_option_`
+ * counterpart, so clearing the rates to match a source that has none would
+ * otherwise leave every converted order total cached against rates that no
+ * longer exist.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_fx_register_export_keys' );
+function brikpanel_fx_register_export_keys( $map ) {
+    $map[ BRIKPANEL_FX_RATES_OPTION ] = [
+        'class'    => 'portable',
+        'group'    => 'currency',
+        'sanitize' => 'brikpanel_fx_sanitize_import_rates',
+        'default'  => [],
+        'after'    => 'brikpanel_fx_on_rates_changed',
+    ];
+    return $map;
+}
+
+/**
+ * Clean an imported rate table to [ CODE => positive float ].
+ *
+ * @param mixed $value
+ * @return array<string,float>
+ */
+function brikpanel_fx_sanitize_import_rates( $value ) {
+    if ( ! is_array( $value ) ) {
+        return [];
+    }
+    $out = [];
+    foreach ( $value as $code => $rate ) {
+        $code = strtoupper( sanitize_text_field( (string) $code ) );
+        $rate = (float) str_replace( ',', '.', (string) $rate );
+        if ( '' !== $code && $rate > 0 ) {
+            $out[ $code ] = $rate;
+        }
+    }
+    return $out;
+}
+
 add_filter( 'woocommerce_get_sections_brikpanel', function ( $sections ) {
     $out = [];
     foreach ( $sections as $id => $label ) {
@@ -71,8 +117,11 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
         'desc' => __( 'When your store takes orders in more than one currency, BrikPanel converts every order to your store currency before adding it up, so Revenue, Average Order Value and the sales chart are never a meaningless mix of currencies. If you use a multi-currency plugin such as CURCY, the exact rate from the day of each sale is read automatically from the order — you only need the rates below for currencies that arrive without one.', 'brikpanel' ),
     ];
     $fields[] = [
+        // The id is the option this card writes, so the settings export walker
+        // sees it. The rate inputs post under brikpanel_fx[…], so WooCommerce's
+        // generic save loop still leaves the option to the handler below.
         'type' => 'brikpanel_fx_rates',
-        'id'   => 'brikpanel_fx_rates_field',
+        'id'   => BRIKPANEL_FX_RATES_OPTION,
     ];
     $fields[] = [
         'type' => 'sectionend',

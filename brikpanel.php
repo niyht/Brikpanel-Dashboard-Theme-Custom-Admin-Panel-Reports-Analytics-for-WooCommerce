@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.3.1
+ * Version: 3.3.15
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.3.1');
+define('BRIKPANEL_VERSION', '3.3.15');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -187,6 +187,19 @@ if (!function_exists('brikpanel_update_option')) {
 }
 
 // =============================================================================
+// SETTINGS EXPORT REGISTRY (must load before any module registers its keys)
+//
+// Modules classify their own options at file scope, above their own gates, so
+// a module that is switched off can still answer for the keys it owns while an
+// import is about to overwrite them. That only works if the registry exists
+// before the first module file is required — hence this position, next to the
+// option-prime registry it is the sibling of, rather than inside
+// brikpanel_init_admin(). It is pure data plus pure functions: no hooks, no
+// queries, so loading it on a storefront request costs nothing.
+// =============================================================================
+brikpanel_require('includes/brikpanel-export-registry.php');
+
+// =============================================================================
 // SEO PLUGIN COMPATIBILITY BOOTSTRAP (must run before plugins_loaded listeners)
 // =============================================================================
 /**
@@ -331,11 +344,13 @@ function brikpanel_init_admin() {
     // downloaded and installed by the merchant from the relay's own welcome page,
     // never pushed from inside wp-admin (keeps BrikPanel within wp.org Guideline 8).
     brikpanel_require('front-end/orders/brikpanel-order-whatsapp.php');
+    brikpanel_require('front-end/orders/brikpanel-orders-compact.php');
     brikpanel_require('front-end/orders/brikpanel-orders-stats.php');
     brikpanel_require('front-end/orders/brikpanel-order-merge.php');
     brikpanel_require('front-end/currency/brikpanel-currency-settings.php');
     brikpanel_require('front-end/order/brikpanel-order-fields.php');
     brikpanel_require('front-end/order/brikpanel-order-shipping-cost.php');
+    brikpanel_require('front-end/order/brikpanel-order-box-placement.php');
     brikpanel_require('front-end/import-export/brikpanel-import-export.php');
     brikpanel_require('front-end/products/brikpanel-section-order.php');
     brikpanel_require('front-end/products/brikpanel-qe-order.php');
@@ -850,6 +865,21 @@ brikpanel_require('front-end/brikcontrol/brikpanel-brikcontrol.php');
 // is_admin() at the bottom of that file.
 // =============================================================================
 brikpanel_require('front-end/search/brikpanel-search.php');
+
+// Orders list "Show in the row" choice (front-end/orders/brikpanel-orders-compact.php)
+// is a per-site user option in the shared user meta table; a deleted subsite
+// must take it along on every request type, WP-CLI included.
+add_action( 'wp_delete_site', function ( $old_site ) {
+    global $wpdb;
+    if ( ! is_object( $old_site ) || empty( $old_site->blog_id ) ) {
+        return;
+    }
+    $brikpanel_blog_prefix = $wpdb->get_blog_prefix( (int) $old_site->blog_id );
+    delete_metadata( 'user', 0, $brikpanel_blog_prefix . 'brikpanel_orders_row_columns', '', true );
+    // Order screen "Show in the sidebar" choice
+    // (front-end/order/brikpanel-order-box-placement.php), stored the same way.
+    delete_metadata( 'user', 0, $brikpanel_blog_prefix . 'brikpanel_order_side_boxes', '', true );
+} );
 
 // =============================================================================
 // GOOGLE SHEETS — must load outside is_admin so:
@@ -1463,8 +1493,41 @@ function brikpanel_backfill_native_cogs_safety_net() {
     }
     brikpanel_backfill_native_cogs();
     brikpanel_unify_cogs_to_native();
+    brikpanel_meta_fanout_cache_refresh();
 }
 add_action('plugins_loaded', 'brikpanel_backfill_native_cogs_safety_net', 20);
+
+/**
+ * Pass number of the one-time report cache refresh below. Bump it whenever a
+ * release changes how stored figures are counted, so every site drops the
+ * numbers it computed the old way.
+ */
+define('BRIKPANEL_META_FANOUT_PASS', '1');
+
+/**
+ * Drop cached report figures once after reports stopped counting duplicate
+ * meta rows twice (a cost saved twice on a product used to double COGS).
+ *
+ * Without this a merchant who updates keeps seeing the wrong number until the
+ * cache expires on its own, which reads as "the update did not fix it".
+ * Bumping the shared data version invalidates every keyed report cache at
+ * once; the catalog counts transient is not keyed by that version, so it is
+ * dropped by name.
+ *
+ * Guarded by its own marker rather than the version gate, so a site that is
+ * already on the current version still gets it. Must run before anything in
+ * the request reads brikpanel_data_cache_ver(), which memoises the value.
+ */
+function brikpanel_meta_fanout_cache_refresh() {
+    if (get_option('brikpanel_meta_fanout_refresh_done') === BRIKPANEL_META_FANOUT_PASS) {
+        return;
+    }
+    if (function_exists('brikpanel_bump_data_cache_ver')) {
+        brikpanel_bump_data_cache_ver();
+    }
+    delete_transient('brikpanel_catalog_counts');
+    brikpanel_update_option('brikpanel_meta_fanout_refresh_done', BRIKPANEL_META_FANOUT_PASS);
+}
 
 /**
  * Run table creation on plugin upgrade so existing installs pick up new
@@ -1484,6 +1547,7 @@ function brikpanel_maybe_upgrade_db() {
     brikpanel_create_table();
     brikpanel_backfill_native_cogs();
     brikpanel_unify_cogs_to_native();
+    brikpanel_meta_fanout_cache_refresh();
     // Existing installs never run brikpanel_provision_site() again, so a new
     // default that must reach them has to be seeded here too. The one-shot
     // marker inside makes running it from both call sites harmless.
@@ -2411,8 +2475,13 @@ function brikpanel_backfill_native_cogs() {
     // Capture the rows we are about to backfill so their per-post meta cache
     // can be invalidated afterwards (a raw INSERT bypasses WordPress's own
     // cache busting that update_post_meta() would have triggered).
+    // Only the FIRST native row of each product is read (the one
+    // get_post_meta() returns), so a cost stored twice is copied once instead
+    // of producing two legacy rows.
+    $wc_first = brikpanel_sql_first_meta_guard( 'post', 'wc' );
+
     $target_ids = $wpdb->get_col(
-        "SELECT wc.post_id
+        "SELECT DISTINCT wc.post_id
          FROM {$wpdb->postmeta} wc
          INNER JOIN {$wpdb->posts} p
                  ON p.ID = wc.post_id
@@ -2422,7 +2491,8 @@ function brikpanel_backfill_native_cogs() {
                AND bp.meta_key = '_brikpanel_cogs'
          WHERE wc.meta_key = '_cogs_total_value'
            AND wc.meta_value <> ''
-           AND bp.meta_id IS NULL"
+           AND bp.meta_id IS NULL
+           AND {$wc_first}"
     );
 
     if ( empty( $target_ids ) ) {
@@ -2442,7 +2512,8 @@ function brikpanel_backfill_native_cogs() {
                AND bp.meta_key = '_brikpanel_cogs'
          WHERE wc.meta_key = '_cogs_total_value'
            AND wc.meta_value <> ''
-           AND bp.meta_id IS NULL"
+           AND bp.meta_id IS NULL
+           AND {$wc_first}"
     );
 
     // Drop the stale per-post meta cache for each backfilled product and bump
@@ -2478,8 +2549,12 @@ function brikpanel_unify_cogs_to_native() {
 
     global $wpdb;
 
+    // Only the FIRST legacy row of each product is promoted (the one
+    // get_post_meta() returns), so a cost stored twice becomes one native row.
+    $bp_first = brikpanel_sql_first_meta_guard( 'post', 'bp' );
+
     $target_ids = $wpdb->get_col(
-        "SELECT bp.post_id
+        "SELECT DISTINCT bp.post_id
          FROM {$wpdb->postmeta} bp
          INNER JOIN {$wpdb->posts} p
                  ON p.ID = bp.post_id
@@ -2489,7 +2564,8 @@ function brikpanel_unify_cogs_to_native() {
                AND wc.meta_key = '_cogs_total_value'
          WHERE bp.meta_key = '_brikpanel_cogs'
            AND bp.meta_value <> ''
-           AND (wc.meta_id IS NULL OR wc.meta_value = '')"
+           AND (wc.meta_id IS NULL OR wc.meta_value = '')
+           AND {$bp_first}"
     );
 
     if ( empty( $target_ids ) ) {
@@ -2510,12 +2586,18 @@ function brikpanel_unify_cogs_to_native() {
                AND wc.meta_key = '_cogs_total_value'
          WHERE bp.meta_key = '_brikpanel_cogs'
            AND bp.meta_value <> ''
-           AND wc.meta_id IS NULL"
+           AND wc.meta_id IS NULL
+           AND {$bp_first}"
     );
 
     // Heal the rare native row that exists but was left as an empty string.
-    $wpdb->query(
-        "UPDATE {$wpdb->postmeta} wc
+    // Pairs are picked first and written by id: MySQL refuses an UPDATE whose
+    // subquery reads the table being updated, and the first-row guards need
+    // exactly that. Only the first row on each side counts, as everywhere else.
+    $wc_first = brikpanel_sql_first_meta_guard( 'post', 'wc' );
+    $heal     = $wpdb->get_results(
+        "SELECT wc.meta_id, bp.meta_value
+         FROM {$wpdb->postmeta} wc
          INNER JOIN {$wpdb->posts} p
                  ON p.ID = wc.post_id
                 AND p.post_type IN ('product', 'product_variation')
@@ -2523,10 +2605,18 @@ function brikpanel_unify_cogs_to_native() {
                  ON bp.post_id = wc.post_id
                 AND bp.meta_key = '_brikpanel_cogs'
                 AND bp.meta_value <> ''
-         SET wc.meta_value = bp.meta_value
+                AND {$bp_first}
          WHERE wc.meta_key = '_cogs_total_value'
-           AND wc.meta_value = ''"
+           AND wc.meta_value = ''
+           AND {$wc_first}"
     );
+    foreach ( (array) $heal as $row ) {
+        $wpdb->update(
+            $wpdb->postmeta,
+            array( 'meta_value' => $row->meta_value ),
+            array( 'meta_id' => (int) $row->meta_id )
+        );
+    }
 
     foreach ( $target_ids as $pid ) {
         wp_cache_delete( (int) $pid, 'post_meta' );

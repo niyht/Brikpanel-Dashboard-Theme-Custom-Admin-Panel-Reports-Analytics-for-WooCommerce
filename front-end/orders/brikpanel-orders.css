@@ -712,6 +712,11 @@ html {
 	float: inline-end;
 }
 
+/* The heading sits over the amounts in both writing directions. */
+.wp-list-table th.manage-column.column-order_total {
+	text-align: end !important;
+}
+
 .post-type-shop_order .wp-list-table td.column-order_total,
 .post-type-shop_order .wp-list-table td.column-wc_actions,
 .woocommerce_page_wc-orders .wc-orders-list-table.wp-list-table td.column-order_total,
@@ -1017,6 +1022,178 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	vertical-align: inherit !important;
 }
 
+/* =============================================================================
+   THIRD-PARTY ICON-ACTION COLUMNS
+   -----------------------------------------------------------------------------
+   Columns other plugins add to the orders list ("Documents", "Labels", "PDF"...)
+   often hold nothing but a short run of icon-only links. Two rules above make
+   that run collapse into a one-icon-wide vertical stack, which is how a merchant
+   running many columns at once ended up with rows four times taller than they
+   needed to be:
+
+     - `.wp-list-table { width: 100% }` pins the table to its scroll container,
+       so with many columns the auto table algorithm squeezes every flexible
+       column down towards its min-content width instead of letting the table
+       overflow and scroll.
+     - The `width: fit-content !important` rule directly above wipes out every
+       per-column width, including the 110px WooCommerce reserves for its own
+       action column, so a foreign column has nothing left holding it open.
+
+   Nothing declares `white-space` for a plain `td`, so the computed value is
+   `normal` and a squeezed column breaks the run of inline-block icons one per
+   line. brikpanelIconActionColumns() tags the cells holding such a run; these
+   rules lay it out as a two-icon-wide grid of 2rem squares, matching the action
+   buttons above.
+
+   The cell is deliberately NOT turned into a flex or grid container: `display`
+   anything on a `<td>` drops `display: table-cell`, the browser wraps the cell
+   in an anonymous cell of its own, and the column stops lining up with its
+   header and with the sticky check / order-number columns. A plain inline
+   formatting context inside a cell pinned to the width of two icons produces the
+   same grid with none of that risk.
+   ============================================================================= */
+.wp-list-table td.brikpanel-iconbar-cell {
+	--bp-iconbar-slot: 2rem;
+	--bp-iconbar-gap: .25rem;
+	/* Horizontal padding of a body cell, from the rule at the top of the file. */
+	--bp-iconbar-pad: 1.5rem;
+	/* Every icon carries its gap as a trailing margin, the last one on a line
+	   included, and that trailing margin still counts towards fitting the line --
+	   so the budget is a whole slot per icon, not slots minus one gap. The extra
+	   sliver absorbs subpixel rounding in the column algorithm and whatever a
+	   badge between two icons costs; without it the cell lands a fraction short
+	   and the second icon wraps onto its own line. */
+	--bp-iconbar-width: calc(
+		var(--bp-iconbar-cols, 2) * (var(--bp-iconbar-slot) + var(--bp-iconbar-gap))
+		+ var(--bp-iconbar-pad) + .375rem
+	);
+}
+
+/* The selector mirrors the `width: fit-content !important` rule above, plus
+   `tbody` and the marker class, on purpose: specificity is compared on class
+   count first, so a short `.wp-list-table td.brikpanel-iconbar-cell` would lose
+   to it no matter how far down the file it sits. */
+.wp-list-table tbody tr:not(.inline-edit-row):not(.no-items):not(.type-product):not(.type-shop_subscription) td.brikpanel-iconbar-cell {
+	box-sizing: border-box;
+	white-space: normal;
+	/* Line boxes hug the 2rem icons: the 13px strut is shorter than an icon, so
+	   rows butt together and the wrap gap comes from the icons' own margin. */
+	line-height: 1;
+	/* Icons are inline-level, so the newline a plugin leaves between two of them
+	   collapses to a real space that counts towards fitting the line -- enough on
+	   its own to push the second icon onto a row of its own. Cancelling it here
+	   is narrower than zeroing the cell's font size, which would also swallow a
+	   badge a plugin prints as bare text. The gap itself comes from the icons'
+	   own margin, so nothing is lost. */
+	word-spacing: -.25rem;
+	/* `min-width` is the floor the auto table algorithm cannot go below, which is
+	   what stops the column collapsing; `max-width` is what keeps the run two
+	   icons wide when the table has width to spare. The slack is there so a
+	   status dot a plugin tucks next to an icon still fits on the line, while
+	   staying far short of the 2.25rem a third icon would need. */
+	width: var(--bp-iconbar-width) !important;
+	min-width: var(--bp-iconbar-width);
+	max-width: calc(var(--bp-iconbar-width) + .75rem);
+}
+
+/* A long header label ("Dokumen Pengiriman") would hold the column open on its
+   own, so let it wrap. The blanket nowrap on `thead th` is meant for the columns
+   BrikPanel lays out itself. */
+.wp-list-table thead th.brikpanel-iconbar-col,
+.wp-list-table thead th.brikpanel-iconbar-col a {
+	white-space: normal;
+}
+
+/* Per-icon wrappers. Some plugins put each icon in its own <div> or <p>; those
+   are block boxes and stack no matter what `white-space` says. `inline-block`
+   changes only the *outer* display type, so the wrapper keeps its own box --
+   background, border, padding -- where `display: contents` would throw all three
+   away. The JS only ever flags a bare <div>/<p> with no text of its own; if the
+   icons sit in anything else -- list items, a table, a form control -- it leaves
+   the whole cell alone rather than half-treating it, so nothing here can reach a
+   wrapper whose display carries meaning. `margin-block: 0` stops the 1em margins
+   a <p> brings from inflating the row. */
+.wp-list-table td.brikpanel-iconbar-cell .brikpanel-iconbar-wrap {
+	display: inline-block;
+	margin-block: 0;
+	vertical-align: middle;
+	line-height: 1;
+}
+
+/* Every icon, however it is drawn, sits on the grid: inline, vertically
+   centred and spaced by the grid gap. `vertical-align: middle` is load-bearing,
+   not cosmetic: inline-level boxes sit on their own baseline otherwise, and a run
+   of them ends up tall enough to read as two rows. Margins are logical, so the
+   grid mirrors itself on RTL admin locales with nothing added to
+   brikpanel-rtl.css. */
+.wp-list-table td.brikpanel-iconbar-cell .brikpanel-iconbar-item {
+	vertical-align: middle;
+	margin-block: 0 var(--bp-iconbar-gap) !important;
+	margin-inline: 0 var(--bp-iconbar-gap) !important;
+	float: none !important;
+}
+
+/* Icons drawn from an <img>/<svg> inside a plain link or a WordPress .button:
+   squared off to match .wc-action-button above. */
+.wp-list-table td.brikpanel-iconbar-cell .brikpanel-iconbar-item--media {
+	display: inline-flex !important;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--bp-iconbar-slot) !important;
+	height: var(--bp-iconbar-slot) !important;
+	min-width: 0 !important;
+	min-height: 0 !important;
+	max-width: none !important;
+	max-height: none !important;
+	padding: 0 !important;
+	border: none !important;
+	border-radius: .5rem;
+	background-color: transparent;
+	box-shadow: var(--light-bevel);
+	color: #4a4a4a;
+	line-height: 0;
+	text-decoration: none;
+	/* Keeps a badge a plugin pulls over the icon edge from being clipped. */
+	overflow: visible;
+}
+
+.wp-list-table td.brikpanel-iconbar-cell .brikpanel-iconbar-item--media:hover {
+	background-color: #fafafa;
+}
+
+/* Icon artwork is clamped rather than restyled: plugins ship these at anything
+   from 14px to 32px, and only a shared size makes a row of them line up. */
+.wp-list-table td.brikpanel-iconbar-cell .brikpanel-iconbar-item--media img,
+.wp-list-table td.brikpanel-iconbar-cell .brikpanel-iconbar-item--media svg {
+	display: block;
+	flex: none;
+	width: 1.125rem !important;
+	height: 1.125rem !important;
+	min-width: 0 !important;
+	max-width: 1.125rem !important;
+	max-height: 1.125rem !important;
+	margin: 0 !important;
+	object-fit: contain;
+}
+
+/* Icons a plugin paints as a CSS background. Here the artwork already is the
+   button -- its frame, colour, size and hover image -- and it may be a sprite
+   that only lines up at the plugin's own box size and background position, so
+   nothing about the look is touched: resizing the box or the image would blur a
+   small raster icon, crop a large one or show the wrong slice of a sprite. Only
+   the outer display changes, so a plugin that made these blocks cannot stack
+   them. `inline-block` rather than flex, and `overflow` left alone, because the
+   label these controls carry is hidden with `font-size: 0` or a far-negative
+   `text-indent`: text-indent only behaves inside a block container, and forcing
+   overflow visible would bring an indented label back into view.
+   The cell's width budget assumes the 2rem slot, which is what these icons
+   usually are (the Acowebs Documents column is exactly 32px); icons a good deal
+   smaller or larger than that simply get as many to a row as fit. */
+.wp-list-table td.brikpanel-iconbar-cell .brikpanel-iconbar-item--bg {
+	display: inline-block !important;
+}
+
 .brikpanel-analytics {
 	display: flex;
 	width: fit-content;
@@ -1294,46 +1471,30 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	}
 }
 
-/* ===== Orders Overview Section ===== */
+/* ===== Orders Overview Section =====
+   One full-width card under the title row: the date range on the left, then
+   four equal metric cells (value + sparkline). A BrikMarket store gets a second
+   card listing its marketplaces. Monochrome, like the rest of the page. */
 .brikpanel-overview {
 	display: flex;
-	gap: .75rem;
-	margin-top: 1rem;
-	flex-wrap: wrap;
-	align-items: flex-start;
-}
-
-/* No marketplace card: center the summary card in the row instead of pinning
-   it to the left. */
-.brikpanel-overview--solo {
-	justify-content: center;
-}
-
-.brikpanel-overview-marketplaces {
-	display: flex;
 	flex-direction: column;
-	gap: .2rem;
-	padding: .4rem .9rem .3rem;
-	background-color: white;
-	border-radius: .75rem;
-	box-shadow: var(--outline);
-	flex-shrink: 0;
+	gap: 12px;
+	margin: 0 0 16px;
 }
 
-/* Summary card: date-range pill + metric cards in a single row. The card hugs
-   its content and stays left-aligned (flex: 0 1 auto) instead of stretching to
-   fill the row; align-items: flex-start on the wrapper keeps it at its natural
-   height rather than matching a taller marketplace card. */
-.brikpanel-overview-summary {
-	flex: 0 1 auto;
+.brikpanel-overview-summary,
+.brikpanel-overview-marketplaces {
+	box-sizing: border-box;
 	min-width: 0;
-	display: flex;
-	align-items: center;
-	gap: .75rem;
-	padding: 1rem .85rem;
 	background-color: #fff;
+	border: 1px solid #e3e3e3;
 	border-radius: .75rem;
-	box-shadow: var(--outline);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+}
+
+.brikpanel-overview-summary {
+	display: flex;
+	align-items: stretch;
 }
 
 /* Date-range picker */
@@ -1342,33 +1503,38 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	display: flex;
 	align-items: center;
 	flex-shrink: 0;
+	padding: 12px;
+	border-inline-end: 1px solid #ebebeb;
 }
 
 .brikpanel-range-btn {
-	display: flex;
+	box-sizing: border-box;
+	display: inline-flex;
 	align-items: center;
-	gap: .4rem;
-	padding: .4rem .6rem;
-	background-color: #fff;
-	border: 1px solid #e3e3e3;
+	gap: 6px;
+	height: 32px;
+	padding: 0 10px;
+	border: 0;
 	border-radius: .5rem;
-	font-size: .8125rem;
-	font-weight: 600;
+	background-color: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
 	color: #303030;
-	line-height: 1.2;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 1;
+	white-space: nowrap;
 	cursor: pointer;
-	box-shadow: 0 1px 0 rgba(0, 0, 0, .03);
-	transition: background-color .15s ease, border-color .15s ease;
+	transition: background-color .15s ease;
 }
 
-.brikpanel-range-btn:hover {
+.brikpanel-range-btn:hover,
+.brikpanel-range.open .brikpanel-range-btn {
 	background-color: #f7f7f7;
 }
 
 .brikpanel-range-btn:focus-visible {
-	outline: none;
-	border-color: #303030;
-	box-shadow: 0 0 0 1px #303030;
+	outline: 2px solid #303030;
+	outline-offset: 2px;
 }
 
 .brikpanel-range-ico {
@@ -1385,7 +1551,7 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	width: 14px;
 	height: 14px;
 	color: #8a8a8a;
-	transition: transform .2s ease;
+	transition: transform .2s cubic-bezier(.4, 0, .2, 1);
 }
 
 .brikpanel-range.open .brikpanel-range-chevron {
@@ -1394,18 +1560,24 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 
 .brikpanel-range-menu {
 	position: absolute;
-	top: calc(100% + .375rem);
-	left: 0;
-	min-width: 190px;
+	top: calc(100% - 6px);
+	inset-inline-start: 12px;
+	z-index: 60;
 	display: flex;
 	flex-direction: column;
-	gap: 1px;
+	gap: 0;
+	min-width: 200px;
 	padding: .375rem;
+	border: 0;
+	border-radius: .75rem;
 	background-color: #fff;
-	border: 1px solid #e3e3e3;
-	border-radius: .625rem;
-	box-shadow: 0 6px 22px rgba(0, 0, 0, .13);
-	z-index: 60;
+	box-shadow: 0 4px 12px -2px rgba(26, 26, 26, .16), 0 0 0 1px rgba(0, 0, 0, .06);
+	animation: brikpanel-range-in .12s ease-out;
+}
+
+@keyframes brikpanel-range-in {
+	from { opacity: 0; transform: translateY(-4px); }
+	to { opacity: 1; transform: translateY(0); }
 }
 
 .brikpanel-range-menu[hidden] {
@@ -1415,16 +1587,17 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 .brikpanel-range-opt {
 	display: flex;
 	align-items: center;
-	gap: .625rem;
+	gap: 8px;
 	width: 100%;
-	padding: .5rem .625rem;
+	padding: .375rem .625rem;
+	border: 0;
+	border-radius: .5rem;
 	background-color: transparent;
-	border: none;
-	border-radius: .375rem;
-	font-size: .8125rem;
-	font-weight: 500;
 	color: #303030;
-	text-align: left;
+	font-size: .8125rem;
+	font-weight: 450;
+	text-align: start;
+	white-space: nowrap;
 	cursor: pointer;
 	transition: background-color .12s ease;
 }
@@ -1433,13 +1606,24 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	background-color: #f5f5f5;
 }
 
+.brikpanel-range-opt[aria-checked="true"] {
+	background-color: #f0f0f0;
+	font-weight: 600;
+}
+
+.brikpanel-range-opt:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: -2px;
+}
+
 .brikpanel-range-radio {
+	position: relative;
+	flex-shrink: 0;
+	box-sizing: border-box;
 	width: 16px;
 	height: 16px;
+	border: 1px solid #8a8a8a;
 	border-radius: 50%;
-	border: 1.5px solid #c4c4c4;
-	flex-shrink: 0;
-	position: relative;
 	transition: border-color .12s ease;
 }
 
@@ -1455,117 +1639,103 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	background-color: #303030;
 }
 
-/* Metric cards */
+/* Metric cells */
 .brikpanel-metrics {
-	flex: 1;
+	flex: 1 1 auto;
 	min-width: 0;
-	display: flex;
-	align-items: stretch;
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .brikpanel-metric {
-	flex: 0 0 auto;
-	min-width: 0;
+	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-	gap: .3rem;
-	padding: 0 .9rem;
-	border-left: 1px solid #ededed;
+	gap: 6px;
+	min-width: 0;
+	padding: 12px 16px;
+	border-inline-start: 1px solid #ebebeb;
+}
+
+.brikpanel-metric:first-child {
+	border-inline-start: 0;
 }
 
 .brikpanel-metric-label {
-	font-size: .6875rem;
-	font-weight: 550;
-	color: #8a8a8a;
-	white-space: nowrap;
 	overflow: hidden;
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+	line-height: 16px;
 	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .brikpanel-metric-body {
 	display: flex;
 	align-items: flex-end;
 	justify-content: space-between;
-	gap: .5rem;
+	gap: 12px;
+	min-width: 0;
 }
 
-.brikpanel-metric-value {
-	font-size: 1.1rem;
-	font-weight: 680;
+.brikpanel-metric-value,
+.brikpanel-metric--revenue .brikpanel-metric-value {
 	color: #303030;
-	line-height: 1;
+	font-size: clamp(1rem, 9cqi, 1.25rem);
+	font-variant-numeric: tabular-nums;
+	font-weight: 650;
+	line-height: 1.15;
 	white-space: nowrap;
 }
 
-.brikpanel-metric--revenue .brikpanel-metric-value {
-	font-size: .9375rem;
-	color: #16a34a;
-}
-
 .brikpanel-metric-spark {
-	flex: 0 0 64px;
-	width: 64px;
-	height: 26px;
-	align-self: flex-end;
+	flex: 0 1 88px;
+	min-width: 40px;
+	height: 28px;
 }
 
 .brikpanel-spark-svg {
 	display: block;
 	width: 100%;
-	height: 26px;
+	height: 28px;
 	overflow: visible;
 }
 
 .brikpanel-spark-line {
-	stroke: #3AA3FF;
-	stroke-width: 1.6;
+	stroke: #616161;
+	stroke-width: 1.5;
 	stroke-linecap: round;
 	stroke-linejoin: round;
 	vector-effect: non-scaling-stroke;
 }
 
 .brikpanel-spark-base {
-	stroke: #d8dde3;
+	stroke: #e3e3e3;
 	stroke-width: 1;
 	stroke-dasharray: 2 3;
 	vector-effect: non-scaling-stroke;
 }
 
+/* A narrow cell keeps the number and drops the sparkline. */
+@container (max-width: 170px) {
+	.brikpanel-metric-spark {
+		display: none;
+	}
+}
+
 /* Loading state */
 .brikpanel-overview-summary.is-loading .brikpanel-metric-value {
-	color: transparent;
-	background-color: #f0f0f0;
+	min-width: 3rem;
 	border-radius: .25rem;
-	min-width: 2.5rem;
+	background-color: #f1f1f1;
+	color: transparent;
 	animation: brikpanel-skeleton-pulse 1.5s ease-in-out infinite;
 }
 
 .brikpanel-overview-summary.is-loading .brikpanel-metric-spark {
-	opacity: .3;
-}
-
-.brikpanel-overview-title {
-	display: flex;
-	align-items: center;
-	gap: .375rem;
-	font-size: .6875rem;
-	font-weight: 600;
-	color: #8a8a8a;
-	text-transform: uppercase;
-	letter-spacing: .03em;
-}
-
-.brikpanel-overview-dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background-color: #3AA3FF;
-	flex-shrink: 0;
-}
-
-.brikpanel-overview-dot.marketplace {
-	background-color: #f59e0b;
+	opacity: .35;
 }
 
 @keyframes brikpanel-skeleton-pulse {
@@ -1573,174 +1743,187 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	50% { opacity: .5; }
 }
 
-/* Marketplace list */
+/* Marketplaces card */
+.brikpanel-overview-marketplaces {
+	display: flex;
+	flex-direction: column;
+	padding: 4px 0;
+}
+
+.brikpanel-mp-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 16px 6px;
+}
+
+.brikpanel-overview-title {
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+}
+
 .brikpanel-mp-list {
 	display: flex;
 	flex-direction: column;
-	gap: .375rem;
 }
 
 .brikpanel-mp-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 1rem;
-	padding: .25rem .5rem;
-	border-radius: .5rem;
-	background-color: #fafafa;
+	gap: 16px;
+	padding: 8px 16px;
+	border-top: 1px solid #f1f1f1;
 }
 
 .brikpanel-mp-name {
 	display: flex;
 	align-items: center;
-	gap: .375rem;
-	font-size: .8125rem;
-	font-weight: 600;
+	gap: 8px;
+	min-width: 0;
 	color: #303030;
+	font-size: .8125rem;
+	font-weight: 550;
+}
+
+.brikpanel-mp-name span {
+	overflow: hidden;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
 .brikpanel-mp-logo {
+	flex-shrink: 0;
 	width: 20px;
 	height: 20px;
-	object-fit: contain;
 	border-radius: 4px;
+	object-fit: contain;
 }
 
 .brikpanel-mp-stats {
 	display: flex;
 	align-items: center;
-	gap: .5rem;
-	font-size: .75rem;
+	gap: 16px;
 	color: #616161;
+	font-size: .8125rem;
+	white-space: nowrap;
 }
 
 .brikpanel-mp-stat strong {
-	font-weight: 650;
 	color: #303030;
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
 }
 
-.brikpanel-mp-stat.revenue strong {
-	color: #16a34a;
+.brikpanel-mp-stat.revenue {
+	min-width: 6rem;
+	text-align: end;
 }
 
-.brikpanel-mp-divider {
-	width: 3px;
-	height: 3px;
-	border-radius: 50%;
-	background-color: #d4d4d4;
-	flex-shrink: 0;
-}
-
-/* Hidden marketplace rows (collapse/expand) */
 .brikpanel-mp-row.brikpanel-mp-hidden {
-	max-height: 0;
-	padding-top: 0;
-	padding-bottom: 0;
-	margin: 0;
-	opacity: 0;
-	overflow: hidden;
-	transition: max-height .3s ease, opacity .2s ease, padding .3s ease, margin .3s ease;
+	display: none;
 }
 
 .brikpanel-overview-marketplaces.expanded .brikpanel-mp-row.brikpanel-mp-hidden {
-	max-height: 3rem;
-	padding: .3125rem .5rem;
-	margin: 0;
-	opacity: 1;
+	display: flex;
 }
 
 .brikpanel-mp-toggle {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: .25rem;
-	margin-top: 0;
-	padding: 0 .5rem;
-	border: none;
+	padding: 3px 8px;
+	border: 0;
+	border-radius: .375rem;
 	background: transparent;
-	color: #8a8a8a;
-	font-size: .6875rem;
+	color: #616161;
+	font-size: .75rem;
 	font-weight: 550;
 	cursor: pointer;
-	border-radius: .375rem;
-	transition: color .15s;
+	transition: background-color .15s ease, color .15s ease;
 }
 
 .brikpanel-mp-toggle:hover {
+	background-color: #f1f1f1;
 	color: #303030;
 }
 
-.brikpanel-mp-toggle-icon {
-	display: inline-block;
-	width: 12px;
-	height: 12px;
-	background-color: currentColor;
-	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5.293 7.293a1 1 0 0 1 1.414 0L10 10.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z'/%3E%3C/svg%3E");
-	mask-size: contain;
-	mask-repeat: no-repeat;
-	-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5.293 7.293a1 1 0 0 1 1.414 0L10 10.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z'/%3E%3C/svg%3E");
-	-webkit-mask-size: contain;
-	-webkit-mask-repeat: no-repeat;
-	transition: transform .2s;
+.brikpanel-mp-toggle:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 1px;
 }
 
-.brikpanel-mp-toggle-icon.up {
-	transform: rotate(180deg);
-}
-
-@media screen and (max-width: 782px) {
-	.brikpanel-overview {
-		flex-direction: column;
-	}
-
-	/* Stack the date pill above the metrics, then lay the four metric cards out
-	   as a 2x2 grid so the values and sparklines stay readable on narrow
-	   screens. */
+@media screen and (max-width: 1100px) {
+	/* The range moves to its own row above the four cells. */
 	.brikpanel-overview-summary {
 		flex-direction: column;
-		gap: .85rem;
 	}
 
 	.brikpanel-range {
-		width: 100%;
-	}
-
-	.brikpanel-range-btn {
-		width: 100%;
-		justify-content: space-between;
+		padding: 10px 12px;
+		border-inline-end: 0;
+		border-bottom: 1px solid #ebebeb;
 	}
 
 	.brikpanel-range-menu {
-		left: 0;
-		right: 0;
+		top: calc(100% - 4px);
+	}
+}
+
+@media screen and (max-width: 782px) {
+	.brikpanel-range-btn {
+		width: 100%;
+		justify-content: flex-start;
 	}
 
+	.brikpanel-range-chevron {
+		margin-inline-start: auto;
+	}
+
+	.brikpanel-range-menu {
+		inset-inline: 12px;
+	}
+
+	/* 2 x 2 grid with hairlines between the cells. */
 	.brikpanel-metrics {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: .75rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	.brikpanel-metric {
-		border-left: none;
-		border: 1px solid #ededed;
-		border-radius: .5rem;
-		padding: .65rem .8rem;
-		gap: .4rem;
+		padding: 10px 12px;
+	}
+
+	.brikpanel-metric:nth-child(odd) {
+		border-inline-start: 0;
+	}
+
+	.brikpanel-metric:nth-child(n + 3) {
+		border-top: 1px solid #ebebeb;
 	}
 
 	.brikpanel-mp-row {
 		flex-direction: column;
 		align-items: flex-start;
-		gap: .25rem;
+		gap: 4px;
+	}
+
+	.brikpanel-mp-stats {
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+
+	.brikpanel-mp-stat.revenue {
+		min-width: 0;
+		text-align: start;
 	}
 }
 
-/* Very narrow phones — one metric per row keeps the labels readable. */
-@media screen and (max-width: 400px) {
-	.brikpanel-metrics {
-		grid-template-columns: 1fr;
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-range-menu {
+		animation: none;
+	}
+
+	.brikpanel-range-chevron {
+		transition: none;
 	}
 }
 
@@ -1760,4 +1943,2027 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 
 .brikpanel-bulk-actions button[disabled]:hover {
 	background: #fff;
+}
+
+/* =============================================================================
+   ORDERS LIST LOOK
+   -----------------------------------------------------------------------------
+   The approved orders list design: a page head, then one card holding the
+   status tabs, search, filters, table and pagination. Monochrome, with tinted
+   status pills. Later in the file than the older rules on purpose, so it wins
+   at equal specificity.
+   ========================================================================== */
+
+/* ---- Page head ------------------------------------------------------------ */
+
+/* Title on the left; Screen Options and Add order share one row on the right. */
+.brikpanel-page-top {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px 16px;
+	min-height: 32px;
+	margin: 4px 0 16px;
+}
+
+body .wrap .brikpanel-page-top .wp-heading-inline {
+	margin: 0;
+	padding: 0 !important;
+	color: #303030;
+	font-size: 1.125rem !important;
+	font-weight: 600 !important;
+	line-height: 32px;
+}
+
+.brikpanel-page-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.brikpanel-page-actions .page-title-action {
+	box-sizing: border-box;
+	height: 32px !important;
+	min-height: 32px !important;
+	padding: 0 14px !important;
+	font-weight: 550 !important;
+	line-height: 1 !important;
+	white-space: nowrap;
+}
+
+.brikpanel-page-actions .page-title-action:first-of-type {
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .2), inset 0 1px 0 rgba(255, 255, 255, .1);
+}
+
+.brikpanel-page-actions .page-title-action:first-of-type::before {
+	content: none;
+}
+
+.brikpanel-page-actions .page-title-action:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+/* Screen Options as a secondary button. Id-qualified selectors: WordPress
+   styles these toggles through #screen-meta-links. */
+.brikpanel-page-actions #screen-meta-links {
+	display: flex;
+	align-self: auto;
+	float: none;
+	margin: 0;
+}
+
+.brikpanel-page-actions #screen-meta-links .screen-meta-toggle {
+	position: static !important;
+	float: none;
+	margin: 0;
+}
+
+.brikpanel-page-actions #screen-meta-links .show-settings {
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	margin: 0;
+	padding: 0 12px;
+	border: 0;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+	color: #303030;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 1;
+	white-space: nowrap;
+	transition: background-color .15s ease;
+}
+
+.brikpanel-page-actions #screen-meta-links .show-settings::before {
+	content: "";
+	flex-shrink: 0;
+	width: 16px;
+	height: 16px;
+	background-color: #616161;
+	mask: url(icons/bp-sliders.svg) center / contain no-repeat;
+	-webkit-mask: url(icons/bp-sliders.svg) center / contain no-repeat;
+}
+
+.brikpanel-page-actions #screen-meta-links .show-settings::after {
+	content: none;
+}
+
+.brikpanel-page-actions #screen-meta-links .show-settings:hover,
+.brikpanel-page-actions #screen-meta-links .show-settings.screen-meta-active {
+	background: #f7f7f7;
+	color: #303030;
+}
+
+.brikpanel-page-actions #screen-meta-links .show-settings:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+	box-shadow: inset 0 0 0 1px #e3e3e3;
+}
+
+/* Its panel opens as a card under the title row. */
+.wrap > #screen-meta {
+	box-sizing: border-box;
+	margin: 0 0 16px;
+	border: 1px solid #e3e3e3;
+	border-radius: .75rem;
+	background-color: #fff;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+	color: #303030;
+}
+
+.wrap > #screen-meta #screen-options-wrap {
+	padding: 14px 16px;
+}
+
+.wrap > #screen-meta fieldset {
+	margin: 0 0 12px;
+	padding: 0;
+	border: 0;
+}
+
+.wrap > #screen-meta fieldset legend,
+.wrap > #screen-meta h5 {
+	margin-bottom: 6px;
+	color: #303030;
+	font-size: .8125rem;
+	font-weight: 600;
+}
+
+.wrap > #screen-meta label {
+	color: #303030;
+	font-size: .8125rem;
+}
+
+.wrap > #screen-meta input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	border: 0;
+	border-radius: 4px;
+	box-shadow: inset 0 0 0 1px #8a8a8a;
+}
+
+.wrap > #screen-meta input[type="checkbox"]:checked {
+	background-color: #303030;
+	box-shadow: none;
+}
+
+.wrap > #screen-meta input[type="checkbox"]:checked::before {
+	content: "";
+	width: 8px;
+	height: 4px;
+	margin: 4px 0 0 3px;
+	border: solid #fff;
+	border-width: 0 0 2px 2px;
+	transform: rotate(-45deg);
+}
+
+.wrap > #screen-meta input[type="number"] {
+	min-height: 30px;
+	border: 1px solid #8a8a8a;
+	border-radius: .5rem;
+	box-shadow: none;
+}
+
+.wrap > #screen-meta input[type="number"]:focus {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+}
+
+.wrap > #screen-meta .button-primary,
+.wrap > #screen-meta #screen-options-apply {
+	min-height: 30px;
+	padding: 0 14px;
+	border: 0;
+	border-radius: .5rem;
+	background: #303030;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .2), inset 0 1px 0 rgba(255, 255, 255, .1);
+	color: #fff;
+	font-weight: 550;
+}
+
+.wrap > #screen-meta .button-primary:hover,
+.wrap > #screen-meta #screen-options-apply:hover {
+	background: #1a1a1a;
+}
+
+/* "Show in the row" group (compact order list). */
+.wrap > #screen-meta .bp-row-columns__hint {
+	margin: 0 0 6px;
+	color: #616161;
+	font-size: .75rem;
+}
+
+.wrap > #screen-meta .bp-row-columns__error {
+	margin: 6px 0 0;
+	color: #d72c0d;
+	font-size: .75rem;
+}
+
+.wrap > #screen-meta .bp-row-columns__error[hidden] {
+	display: none;
+}
+
+/* While a WooCommerce modal is open (see brikpanelModalScrollLock). */
+html.brikpanel-modal-lock {
+	overflow-y: hidden !important;
+}
+
+/* ---- Card ------------------------------------------------------------------ */
+
+#wc-orders-filter,
+#posts-filter {
+	padding: 0;
+	border: 1px solid #e3e3e3;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+}
+
+#wc-orders-filter::after,
+#posts-filter::after {
+	content: none;
+}
+
+
+/* ---- Status tabs + search row --------------------------------------------- */
+
+.brikpanel-orders-table-header-1 {
+	box-sizing: border-box;
+	min-height: 45px;
+	gap: 8px;
+	padding: 8px;
+	border-bottom: 1px solid #e3e3e3;
+}
+
+.brikpanel-orders-table-header-1:has(.expanded) {
+	gap: 0;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub {
+	gap: 2px;
+	scrollbar-width: none;
+	transition: opacity .15s ease, width .25s cubic-bezier(.4, 0, .2, 1);
+}
+
+.brikpanel-orders-table-header-1 .subsubsub::-webkit-scrollbar {
+	display: none;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub li {
+	margin: 0;
+	padding: 0;
+	white-space: nowrap;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub a {
+	height: auto;
+	padding: 5px 10px;
+	border-radius: .5rem;
+	color: #616161;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 18px;
+	white-space: nowrap;
+	transition: background-color .15s ease, color .15s ease;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub a .count {
+	color: #8a8a8a;
+	font-weight: 400;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub a:hover {
+	background-color: #f1f1f1;
+	color: #303030;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub a.current {
+	background-color: #ebebeb;
+	color: #303030;
+	font-weight: 550;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub a:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: -2px;
+}
+
+/* Search: a small boxed icon button pinned to the end of the tab row. Opening
+   grows it across the row from its right edge (only its own width animates, so
+   nothing else reflows), the tabs slide back and fade under it, and the field's
+   content fades in once there is room. Closing runs the same steps backwards. */
+.brikpanel-orders-table-header-1 {
+	position: relative;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub,
+.brikpanel-orders-table-header-1:has(.expanded) .subsubsub {
+	box-sizing: border-box;
+	width: 100%;
+	height: auto;
+	padding-inline-end: 64px;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub {
+	opacity: 1;
+	transform: none;
+	transition: opacity .2s ease .1s, transform .3s cubic-bezier(.2, .8, .2, 1) .06s;
+}
+
+.brikpanel-orders-table-header-1:has(.expanded) .subsubsub {
+	opacity: 0;
+	transform: translateX(-16px);
+	pointer-events: none;
+	transition: opacity .12s ease, transform .24s cubic-bezier(.4, 0, 1, 1);
+}
+
+.rtl .brikpanel-orders-table-header-1:has(.expanded) .subsubsub {
+	transform: translateX(16px);
+}
+
+.brikpanel-search,
+.brikpanel-search:not(.expanded),
+.brikpanel-search.expanded {
+	position: absolute;
+	top: 8px;
+	inset-inline-end: 8px;
+	z-index: 2;
+	box-sizing: border-box;
+	height: 28px;
+	min-height: 28px;
+	min-width: 0;
+	margin: 0;
+	border-radius: .5rem;
+	background-color: #fff;
+	/* Closing: a little quicker than opening. */
+	transition: width .28s cubic-bezier(.4, 0, .2, 1), padding .28s cubic-bezier(.4, 0, .2, 1), border-color .2s ease, background-color .2s ease;
+}
+
+.brikpanel-search:not(.expanded) {
+	width: 54px;
+	padding: 0 7px;
+	border: 1px solid #e3e3e3;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.brikpanel-search:not(.expanded):hover {
+	background-color: #f7f7f7;
+}
+
+.brikpanel-search:not(.expanded):active {
+	background-color: #f1f1f1;
+	box-shadow: none;
+}
+
+.brikpanel-search:not(.expanded):focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+/* Open: a quiet field. A plain 1px grey border, one step darker while typing;
+   no ring and no shadow of any kind. */
+.brikpanel-search.expanded {
+	width: calc(100% - 16px);
+	padding: 0 3px 0 9px;
+	border: 1px solid #e3e3e3;
+	box-shadow: none;
+	cursor: text;
+	transition: width .38s cubic-bezier(.4, 0, .2, 1), padding .38s cubic-bezier(.4, 0, .2, 1), border-color .2s ease, background-color .2s ease;
+}
+
+.brikpanel-search.expanded:focus-within {
+	border-color: #c9c9c9;
+	box-shadow: none;
+}
+
+.rtl .brikpanel-search.expanded {
+	padding: 0 9px 0 3px;
+}
+
+.brikpanel-search .icons {
+	flex-shrink: 0;
+	gap: 6px;
+}
+
+.brikpanel-search .icons .search-icon,
+.brikpanel-search .icons .filter-icon {
+	width: 16px;
+	height: 16px;
+	background-color: #616161;
+}
+
+.brikpanel-search .icons .search-icon {
+	mask-image: url(icons/bp-search.svg);
+	-webkit-mask-image: url(icons/bp-search.svg);
+	transition: background-color .2s ease;
+}
+
+.brikpanel-search .icons .filter-icon {
+	mask-image: url(icons/bp-filter.svg);
+	-webkit-mask-image: url(icons/bp-filter.svg);
+	transition: opacity .16s ease .12s, width .34s cubic-bezier(.2, .8, .2, 1), margin .34s cubic-bezier(.2, .8, .2, 1), background-color .2s ease;
+}
+
+.brikpanel-search:not(.expanded):hover .icons > div {
+	background-color: #303030;
+}
+
+.brikpanel-search.expanded .icons .search-icon {
+	background-color: #8a8a8a;
+}
+
+.brikpanel-search.expanded:focus-within .icons .search-icon {
+	background-color: #303030;
+}
+
+.brikpanel-search.expanded .icons .filter-icon {
+	width: 0;
+	margin-inline-start: -6px;
+	opacity: 0;
+	transition: opacity .1s ease, width .34s cubic-bezier(.2, .8, .2, 1), margin .34s cubic-bezier(.2, .8, .2, 1);
+}
+
+/* The field's content never takes part in the width animation: it keeps its
+   natural width, is clipped by its own box and only fades. */
+.brikpanel-search .search-box,
+.brikpanel-search:not(.expanded) .search-box {
+	flex: 1 1 auto;
+	gap: 6px;
+	min-width: 0;
+	max-width: none;
+	max-height: none;
+	overflow: hidden;
+}
+
+.brikpanel-search:not(.expanded) .search-box {
+	opacity: 0;
+	pointer-events: none;
+	transform: translateX(8px);
+	transition: opacity .1s ease, transform .1s ease;
+}
+
+.brikpanel-search.expanded .search-box {
+	opacity: 1;
+	transform: none;
+	transition: opacity .24s ease .2s, transform .32s cubic-bezier(.2, .8, .2, 1) .2s;
+}
+
+.brikpanel-search .search-box #order-search-filter {
+	flex-shrink: 0;
+	width: auto;
+	max-width: 180px;
+	height: 22px;
+	min-height: 22px;
+	padding: 0 22px 0 8px;
+	border: 0;
+	border-radius: .375rem;
+	background-color: #f3f3f3;
+	background-position: right 4px top 50%;
+	background-size: 14px;
+	box-shadow: none;
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+	line-height: 22px;
+}
+
+.brikpanel-search .search-box #order-search-filter:hover {
+	color: #303030;
+}
+
+.brikpanel-search .search-box #order-search-filter:focus {
+	background-color: #ebebeb;
+	box-shadow: none;
+	outline: none;
+}
+
+#post-search-input,
+#orders-search-input-search-input,
+.expanded #post-search-input,
+.expanded #orders-search-input-search-input {
+	height: 26px;
+	min-height: 26px;
+	padding: 0 8px;
+	border: 0;
+	background-color: transparent !important;
+	box-shadow: none !important;
+	color: #303030;
+	font-size: .8125rem;
+	opacity: 1;
+	transition: none;
+}
+
+#post-search-input::placeholder,
+#orders-search-input-search-input::placeholder {
+	color: #8a8a8a;
+}
+
+.brikpanel-search-cancel {
+	flex-shrink: 0;
+	padding: 3px 8px;
+	border-radius: .375rem;
+	color: #616161;
+	font-weight: 550;
+	white-space: nowrap;
+	transition: background-color .15s ease, color .15s ease;
+}
+
+.brikpanel-search-cancel:hover {
+	background-color: #f1f1f1;
+	color: #303030;
+}
+
+/* Tooltip: small and dark, anchored to the button's end edge so it never runs
+   off a narrow screen. */
+.brikpanel-search .brikpanel-tooltip {
+	left: auto;
+	right: 0;
+	bottom: calc(100% + 8px);
+	width: max-content !important;
+	padding: 4px 8px;
+	border: 0;
+	border-radius: .375rem;
+	background-color: #303030;
+	color: #fff;
+	filter: none;
+	font-size: 12px;
+	font-weight: 450;
+	transform: none;
+	transition: opacity .15s ease;
+}
+
+.brikpanel-search .brikpanel-tooltip.top::after {
+	top: 100%;
+	left: auto;
+	right: 20px;
+	border-width: 5px;
+	border-color: #303030 transparent transparent transparent;
+	transform: none;
+}
+
+/* Right to left the button sits at the left edge, so the tooltip opens to the
+   right; otherwise it hangs off the page and widens it. */
+.rtl .brikpanel-search .brikpanel-tooltip {
+	left: 0;
+	right: auto;
+}
+
+.rtl .brikpanel-search .brikpanel-tooltip.top::after {
+	left: 20px;
+	right: auto;
+}
+
+.brikpanel-search.expanded .brikpanel-tooltip {
+	opacity: 0 !important;
+	pointer-events: none !important;
+}
+
+/* Tabs that run under the search button fade out instead of being cut off
+   (is-overflowing is set by brikpanelTableHeader). */
+.brikpanel-orders-table-header-1 .subsubsub.is-overflowing {
+	-webkit-mask-image: linear-gradient(to left, transparent 58px, #000 96px);
+	mask-image: linear-gradient(to left, transparent 58px, #000 96px);
+}
+
+.rtl .brikpanel-orders-table-header-1 .subsubsub.is-overflowing {
+	-webkit-mask-image: linear-gradient(to right, transparent 58px, #000 96px);
+	mask-image: linear-gradient(to right, transparent 58px, #000 96px);
+}
+
+/* No animation while the page sets itself up (search already open on load). */
+.bp-anim-off,
+.bp-anim-off *,
+.bp-anim-off + .brikpanel-filters-collapse,
+.bp-anim-off + .brikpanel-filters-collapse * {
+	transition: none !important;
+}
+
+/* ---- Filters row ------------------------------------------------------------ */
+
+/* Opens under the search by animating a grid track from 0 to the chips' real
+   height. */
+.brikpanel-filters-collapse {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows .3s cubic-bezier(.2, .8, .2, 1);
+}
+
+.brikpanel-orders-table-header-1:has(.expanded) + .brikpanel-filters-collapse {
+	grid-template-rows: 1fr;
+	transition: grid-template-rows .34s cubic-bezier(.2, .8, .2, 1) .06s;
+}
+
+.brikpanel-filters-collapse > .brikpanel-filters {
+	box-sizing: border-box;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	min-height: 0;
+	max-height: none;
+	padding: 0 8px;
+	overflow: hidden;
+	border-top: 0;
+	border-bottom: 1px solid transparent;
+	opacity: 0;
+	transition: opacity .12s ease, padding .3s cubic-bezier(.2, .8, .2, 1), border-color .2s ease;
+}
+
+.brikpanel-orders-table-header-1:has(.expanded) + .brikpanel-filters-collapse > .brikpanel-filters {
+	padding: 8px;
+	border-bottom-color: #e3e3e3;
+	opacity: 1;
+	transition: opacity .22s ease .16s, padding .34s cubic-bezier(.2, .8, .2, 1) .06s, border-color .2s ease;
+}
+
+.brikpanel-filters [class*="-filter"],
+.brikpanel-filters .select2-selection {
+	box-sizing: border-box;
+	height: 28px !important;
+	gap: 6px;
+	padding: 0 10px !important;
+	border: 1px dashed #c9c9c9 !important;
+	border-radius: .5rem !important;
+	background-color: #fff;
+	color: #616161;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 26px;
+	transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+
+.brikpanel-filters [class*="-filter"]:hover,
+.brikpanel-filters .select2-selection:hover {
+	border-style: solid !important;
+	border-color: #8a8a8a !important;
+	color: #303030;
+}
+
+.brikpanel-filters [class*="-filter"]:has(.brikpanel-filter-remove),
+.brikpanel-filters .select2-selection:has(.brikpanel-filter-remove) {
+	padding-right: 6px !important;
+	border-style: solid !important;
+	border-color: #e3e3e3 !important;
+	background-color: #f3f3f3;
+	color: #303030;
+}
+
+.brikpanel-filters .select2-selection__rendered,
+.brikpanel-filters .select2-selection__placeholder {
+	color: inherit !important;
+	font-size: .8125rem;
+	line-height: 26px !important;
+}
+
+.brikpanel-filters button.brikpanel-clear-filter {
+	height: 28px !important;
+	padding: 0 8px !important;
+	border: 0 !important;
+	border-radius: .5rem !important;
+	background-color: transparent;
+	color: #616161;
+	font-size: .8125rem;
+}
+
+.brikpanel-filters button.brikpanel-clear-filter:hover {
+	background-color: #f1f1f1;
+	color: #303030;
+}
+
+.brikpanel-filters:has(.brikpanel-filter-remove) button.brikpanel-clear-filter {
+	color: #d72c0d;
+}
+
+.brikpanel-filter-remove {
+	width: 14px;
+	height: 14px;
+	background-color: #616161;
+}
+
+.brikpanel-filter-remove:hover {
+	background-color: #303030;
+	transform: none;
+}
+
+/* Filter menus share the status menu's look. */
+.brikpanel-filter-dropdown {
+	box-sizing: border-box;
+	gap: 0;
+	min-width: 200px;
+	max-height: 320px;
+	padding: .375rem;
+	overflow-y: auto;
+	border-radius: .75rem;
+	box-shadow: 0 4px 12px -2px rgba(26, 26, 26, .16), 0 0 0 1px rgba(0, 0, 0, .06);
+	transition: opacity .12s ease;
+}
+
+.brikpanel-filter-dropdown label {
+	gap: 8px;
+	padding: .375rem .625rem;
+	border-radius: .5rem;
+	color: #303030;
+	font-size: .8125rem;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.brikpanel-filter-dropdown label:hover {
+	background-color: #f5f5f5;
+}
+
+.brikpanel-filter-dropdown label:has(input:checked) {
+	background-color: #f0f0f0;
+	font-weight: 600;
+}
+
+.brikpanel-filter-dropdown input[type="radio"] {
+	width: 16px;
+	height: 16px;
+	border: 1px solid #8a8a8a;
+}
+
+.brikpanel-filter-dropdown input[type="radio"]:checked {
+	border-color: #303030;
+}
+
+.brikpanel-filter-dropdown input[type="radio"]:checked::before {
+	background-color: #303030;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-orders-table-header-1 .subsubsub,
+	.brikpanel-orders-table-header-1:has(.expanded) .subsubsub,
+	.brikpanel-search,
+	.brikpanel-search:not(.expanded),
+	.brikpanel-search.expanded,
+	.brikpanel-search .icons .filter-icon,
+	.brikpanel-search.expanded .icons .filter-icon,
+	.brikpanel-search .search-box,
+	.brikpanel-search:not(.expanded) .search-box,
+	.brikpanel-search.expanded .search-box,
+	.brikpanel-filters-collapse,
+	.brikpanel-orders-table-header-1:has(.expanded) + .brikpanel-filters-collapse,
+	.brikpanel-filters-collapse > .brikpanel-filters,
+	.brikpanel-orders-table-header-1:has(.expanded) + .brikpanel-filters-collapse > .brikpanel-filters {
+		transition: none;
+	}
+}
+
+/* ---- Table ------------------------------------------------------------------- */
+
+.wp-list-table thead,
+.wp-list-table tfoot {
+	border: 0 !important;
+}
+
+.wp-list-table thead tr th,
+.wp-list-table thead tr td {
+	border-top: 0 !important;
+	border-bottom: 1px solid #e3e3e3 !important;
+	background-color: #f7f7f7;
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+	line-height: 18px;
+}
+
+.wp-list-table thead th a,
+.wp-list-table thead th a span {
+	color: #616161 !important;
+	font-size: .75rem !important;
+	font-weight: 550 !important;
+}
+
+.wp-list-table thead th.sortable a,
+.wp-list-table thead th.sorted a {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0 !important;
+}
+
+.wp-list-table thead th a:hover,
+.wp-list-table thead th a:hover span {
+	color: #303030 !important;
+}
+
+.wp-list-table #the-list > tr:first-child > td,
+.wp-list-table #the-list > tr:first-child > th {
+	border-top: 0 !important;
+}
+
+body.woocommerce_page_wc-orders .wp-list-table tbody td,
+body.woocommerce_page_wc-orders .wp-list-table tbody th.column-primary,
+body.post-type-shop_order .wp-list-table tbody td,
+body.post-type-shop_order .wp-list-table tbody th.column-primary {
+	padding: 9px 12px !important;
+	color: #303030;
+	font-size: 13px;
+}
+
+.wp-list-table #the-list > tr:not(.bp-order-detail):hover > td,
+.wp-list-table #the-list > tr:not(.bp-order-detail):hover > th {
+	background-color: #fafafa !important;
+}
+
+/* Selected orders stay marked while the bulk action bar is open. */
+.wp-list-table #the-list > tr:has(> .check-column input:checked) > td,
+.wp-list-table #the-list > tr:has(> .check-column input:checked) > th {
+	background-color: #f7f7f7 !important;
+}
+
+.wp-list-table tbody#the-list .check-column input[type="checkbox"],
+.wp-list-table thead .check-column#cb input[type="checkbox"] {
+	display: inline-grid;
+	place-items: center;
+	width: 16px;
+	min-width: 16px;
+	height: 16px;
+	margin: 0;
+	border: 0;
+	border-radius: 4px;
+	background-color: #fff;
+	box-shadow: inset 0 0 0 1px #8a8a8a !important;
+	vertical-align: middle;
+	transition: background-color .12s ease;
+}
+
+.wp-list-table tbody#the-list .check-column input[type="checkbox"]:checked,
+.wp-list-table thead .check-column#cb input[type="checkbox"]:checked {
+	background-color: #303030;
+	box-shadow: none !important;
+}
+
+.wp-list-table tbody#the-list .check-column input[type="checkbox"]:checked::before,
+.wp-list-table thead .check-column#cb input[type="checkbox"]:checked::before {
+	content: "" !important;
+	float: none;
+	width: 8px;
+	height: 4px;
+	margin: 0 !important;
+	border: solid #fff;
+	border-width: 0 0 2px 2px;
+	transform: translateY(-1px) rotate(-45deg);
+}
+
+.wp-list-table tbody#the-list .check-column input[type="checkbox"]:focus-visible,
+.wp-list-table thead .check-column#cb input[type="checkbox"]:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.wp-list-table .order-view,
+.wp-list-table .order-view strong {
+	color: #303030;
+	font-size: 13px;
+	font-weight: 650;
+	text-decoration: none;
+}
+
+.wp-list-table .order-view:hover strong {
+	text-decoration: underline;
+}
+
+.wp-list-table td.column-order_date {
+	color: #616161;
+	white-space: nowrap;
+}
+
+.wp-list-table td.column-order_total {
+	color: #303030;
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.wp-list-table td.column-order_total del {
+	color: #8a8a8a;
+	font-weight: 400;
+}
+
+.wp-list-table td.column-order_total ins {
+	text-decoration: none;
+}
+
+/* Status pills: tinted, with a dot in the text colour. Custom statuses keep the
+   colour chosen for them (front-end/order-statuses). */
+.wp-list-table .order-status {
+	display: inline-flex !important;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	padding: 5px 8px 5px 7px !important;
+	border-radius: 999px !important;
+	font-size: .75rem !important;
+	font-weight: 550;
+	line-height: 1 !important;
+	white-space: nowrap;
+}
+
+.wp-list-table .order-status::before {
+	content: "";
+	flex-shrink: 0;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background-color: currentColor;
+}
+
+.wp-list-table .order-status > span {
+	line-height: 1 !important;
+}
+
+.wp-list-table .order-status.status-processing { background-color: #e4f5e1; color: #1a6b15; }
+.wp-list-table .order-status.status-completed { background-color: #ebebeb; color: #303030; }
+.wp-list-table .order-status.status-on-hold { background-color: #fff1d6; color: #7a5200; }
+.wp-list-table .order-status.status-pending { background-color: #f1f1f1; color: #616161; box-shadow: inset 0 0 0 1px #d4d4d4; }
+.wp-list-table .order-status.status-cancelled { background-color: #ebebeb; color: #616161; }
+.wp-list-table .order-status.status-refunded { background-color: #ebebeb; color: #616161; }
+.wp-list-table .order-status.status-failed { background-color: #fce4e4; color: #c62828; }
+.wp-list-table .order-status.status-trash { background-color: #fce4e4; color: #c62828; }
+.wp-list-table .order-status.status-checkout-draft,
+.wp-list-table .order-status.status-draft { background-color: #f1f1f1; color: #8a8a8a; }
+
+.wp-list-table .order-status.status-pending::before,
+.wp-list-table .order-status.status-checkout-draft::before,
+.wp-list-table .order-status.status-draft::before {
+	background-color: transparent;
+	box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+/* Payment and shipping method, with their icons. */
+.bp-order-method {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: #616161;
+	white-space: nowrap;
+}
+
+.bp-order-method::before {
+	content: "";
+	flex-shrink: 0;
+	width: 16px;
+	height: 16px;
+	background-color: currentColor;
+	mask: url(icons/bp-card.svg) center / contain no-repeat;
+	-webkit-mask: url(icons/bp-card.svg) center / contain no-repeat;
+}
+
+.bp-order-method--shipping::before {
+	mask-image: url(icons/bp-truck.svg);
+	-webkit-mask-image: url(icons/bp-truck.svg);
+}
+
+.wp-list-table #the-list .no-items td {
+	padding: 40px 12px !important;
+	color: #616161;
+	text-align: center;
+}
+
+/* ---- Pagination ----------------------------------------------------------------- */
+
+.brikpanel-pagination {
+	align-items: center;
+	padding: 8px 12px;
+	border-top: 1px solid #e3e3e3;
+	background-color: #fff;
+}
+
+.brikpanel-pagination .displaying-num {
+	margin-right: 12px;
+	color: #616161;
+	font-size: .8125rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.brikpanel-pagination .pagination-links {
+	gap: 2px;
+}
+
+.brikpanel-pagination .tablenav-pages .button {
+	width: 28px;
+	height: 28px;
+	border-radius: .5rem;
+	transition: background-color .15s ease;
+}
+
+.brikpanel-pagination .tablenav-pages a.button:hover,
+.brikpanel-pagination .tablenav-pages a.button:focus-visible {
+	background-color: #f1f1f1 !important;
+}
+
+.brikpanel-pagination .paging-input {
+	padding: 0 6px;
+	color: #303030;
+	font-size: .8125rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.brikpanel-pagination .chevron.left,
+.brikpanel-pagination .chevron.right,
+.brikpanel-pagination .chevron.double-left,
+.brikpanel-pagination .chevron.double-right {
+	width: 16px;
+	height: 16px;
+	mask-image: url(icons/bp-chevron.svg);
+	-webkit-mask-image: url(icons/bp-chevron.svg);
+}
+
+.brikpanel-pagination .chevron.double-left,
+.brikpanel-pagination .chevron.double-right {
+	mask-image: url(icons/bp-chevron-double.svg);
+	-webkit-mask-image: url(icons/bp-chevron-double.svg);
+}
+
+.brikpanel-pagination .button .chevron,
+.brikpanel-pagination .button.chevron {
+	background: #616161 !important;
+}
+
+.brikpanel-pagination .button.disabled .chevron,
+.brikpanel-pagination .button.disabled.chevron {
+	background: #c7c7c7 !important;
+}
+
+/* ---- Bulk action bar ------------------------------------------------------------- */
+
+.brikpanel-bulk-actions {
+	align-items: center;
+	gap: 6px;
+	border-radius: .75rem;
+	background-color: #fff;
+	box-shadow: 0 8px 24px -6px rgba(26, 26, 26, .2), 0 0 0 1px rgba(0, 0, 0, .06);
+}
+
+/* Many bulk actions (custom statuses, plugins) must not push the bar past the
+   card: it scrolls sideways instead. */
+.brikpanel-bulk-actions.show {
+	max-width: calc(100% - 24px);
+	overflow-x: auto;
+	scrollbar-width: thin;
+}
+
+.brikpanel-bulk-actions > * {
+	flex-shrink: 0;
+}
+
+.brikpanel-bulk-count {
+	padding: 0 8px 0 6px;
+	color: #303030;
+	font-size: .8125rem;
+	font-variant-numeric: tabular-nums;
+	font-weight: 550;
+	white-space: nowrap;
+}
+
+.brikpanel-bulk-actions button {
+	padding: .375rem .75rem;
+	border-radius: .5rem;
+	background-color: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+	color: #303030;
+	font-size: .8125rem;
+	font-weight: 550;
+	white-space: nowrap;
+	transition: background-color .15s ease;
+}
+
+.brikpanel-bulk-actions button:hover {
+	background-color: #f7f7f7;
+}
+
+.brikpanel-bulk-actions button:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.brikpanel-bulk-actions button.is-destructive {
+	color: #d72c0d;
+}
+
+/* ---- Motion preferences ----------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-search,
+	.brikpanel-search:not(.expanded),
+	.brikpanel-search .icons .filter-icon,
+	.brikpanel-search .search-box,
+	.brikpanel-orders-table-header-1 .subsubsub,
+	#post-search-input,
+	#orders-search-input-search-input {
+		transition: none;
+	}
+}
+
+/* =============================================================================
+   COMPACT ORDER LIST
+   -----------------------------------------------------------------------------
+   One short row per order. The arrow in the order number cell opens a detail
+   panel in its own row under the order (brikpanelCompactRows in
+   brikpanel-orders.js, markup from brikpanel-orders-compact.php). Columns that
+   are not part of the short row are hidden and their content shows in the
+   panel.
+   ========================================================================== */
+
+body.bp-orders-compact .wp-list-table .bp-col-extra {
+	display: none !important;
+}
+
+body.bp-orders-compact .wp-list-table .column-brikpanel_customer,
+body.bp-orders-compact .wp-list-table .column-brikpanel_shipping_method,
+body.bp-orders-compact .wp-list-table .column-payment_method {
+	white-space: nowrap;
+}
+
+.bp-order-muted {
+	color: #8a8a8a;
+}
+
+body.bp-orders-compact .brikpanel-order-number {
+	justify-content: flex-start;
+	gap: 4px;
+	padding-right: 12px !important;
+}
+
+/* Quick actions in the short row: the preview beside the order number and
+   WhatsApp in its own column, both as small boxed icon buttons. Screen
+   Options shows or hides the WhatsApp column as usual. */
+body.bp-orders-compact .wp-list-table th.column-brikpanel_whatsapp,
+body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp {
+	width: 1% !important;
+	padding-left: 4px !important;
+	padding-right: 8px !important;
+	text-align: center;
+	white-space: nowrap;
+}
+
+body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-list-link,
+body.bp-orders-compact #the-list .brikpanel-order-number .order-preview {
+	box-sizing: border-box;
+	position: relative;
+	display: inline-grid !important;
+	place-items: center;
+	float: none !important;
+	width: 28px !important;
+	height: 28px;
+	margin: -6px 0 !important;
+	padding: 0 !important;
+	overflow: visible;
+	border: 0 !important;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3;
+	color: #616161;
+	vertical-align: middle;
+	transform: none;
+	transition: background-color .15s ease, color .15s ease;
+}
+
+body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-list-link {
+	color: #1a8917;
+}
+
+body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-list-link:hover,
+body.bp-orders-compact #the-list .brikpanel-order-number .order-preview:hover {
+	background: #f7f7f7;
+	transform: none;
+}
+
+body.bp-orders-compact #the-list .brikpanel-order-number .order-preview:hover {
+	color: #303030;
+}
+
+body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-list-link:focus-visible,
+body.bp-orders-compact #the-list .brikpanel-order-number .order-preview:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-glyph {
+	width: 16px;
+	height: 16px;
+}
+
+body.bp-orders-compact #the-list .brikpanel-order-number .order-preview::before {
+	content: "" !important;
+	position: static;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	background: currentColor;
+	-webkit-mask: url(icons/bp-eye.svg) center / contain no-repeat;
+	mask: url(icons/bp-eye.svg) center / contain no-repeat;
+}
+
+body.bp-orders-compact #the-list .brikpanel-order-number .order-preview.disabled {
+	cursor: progress;
+	opacity: .5;
+}
+
+.bp-order-toggle {
+	display: inline-grid;
+	place-items: center;
+	flex-shrink: 0;
+	width: 28px;
+	height: 28px;
+	margin: -6px 2px -6px -6px;
+	padding: 0;
+	border: 0;
+	border-radius: .5rem;
+	background: transparent;
+	color: #616161;
+	cursor: pointer;
+	transition: background-color .15s ease, color .15s ease;
+}
+
+.bp-order-toggle:hover {
+	background: #ebebeb;
+	color: #303030;
+}
+
+.bp-order-toggle:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 1px;
+}
+
+.bp-order-toggle svg {
+	display: block;
+	transition: transform .2s cubic-bezier(.4, 0, .2, 1);
+}
+
+.bp-order-toggle[aria-expanded="true"] svg {
+	transform: rotate(90deg);
+}
+
+.rtl .bp-order-toggle[aria-expanded="false"] svg {
+	transform: scaleX(-1);
+}
+
+/* The open order and its panel read as one block. */
+body.bp-orders-compact .wp-list-table #the-list > tr.bp-order-open > td,
+body.bp-orders-compact .wp-list-table #the-list > tr.bp-order-open > th {
+	background-color: #fafafa !important;
+}
+
+body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail[hidden] {
+	display: none !important;
+}
+
+body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail:not(.inline-edit-row):not(.no-items) > td.no-link {
+	width: auto !important;
+	padding: 4px 12px 16px !important;
+	border-top: 0 !important;
+	background-color: #fafafa;
+	cursor: default;
+	white-space: normal;
+}
+
+/* Sticky to the left edge and as wide as the visible part of the table, so the
+   panel stays in view while the table scrolls sideways. The left padding lines
+   the card up under the order number. */
+.bp-order-detail-wrap {
+	position: sticky;
+	left: 12px;
+	box-sizing: border-box;
+	width: calc(var(--bp-detail-width, 100%) - 24px);
+	max-width: 100%;
+	padding-inline-start: 60px;
+}
+
+.rtl .bp-order-detail-wrap {
+	left: auto;
+	right: 12px;
+}
+
+.bp-od {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) auto;
+	gap: 16px 20px;
+	padding: 14px 16px;
+	border: 1px solid #e3e3e3;
+	border-radius: .625rem;
+	background: #fff;
+	color: #303030;
+	font-size: 13px;
+	line-height: 1.5;
+	text-align: start;
+}
+
+.bp-od-col {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.bp-od-label {
+	display: block;
+	margin-bottom: 4px;
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+}
+
+.bp-od-name {
+	font-weight: 550;
+}
+
+.bp-od-contact,
+.bp-od-contact a {
+	color: #616161;
+}
+
+.bp-od-contact a {
+	text-decoration: none;
+}
+
+.bp-od-contact a:hover {
+	color: #303030;
+	text-decoration: underline;
+}
+
+.bp-od-via {
+	margin-top: 2px;
+	color: #8a8a8a;
+}
+
+.bp-od-items {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.bp-od-items li {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 6px;
+	margin: 0;
+}
+
+.bp-od-qty {
+	color: #8a8a8a;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.bp-od-item {
+	min-width: 0;
+}
+
+.bp-od-options {
+	display: block;
+	color: #8a8a8a;
+	font-size: .75rem;
+}
+
+.bp-od-items li.bp-od-more {
+	display: block;
+	color: #616161;
+	font-weight: 550;
+}
+
+.bp-od-note {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid #efefef;
+	color: #616161;
+}
+
+.bp-od-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.bp-od .bp-od-btn {
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: auto;
+	height: auto;
+	min-height: 0;
+	margin: 0;
+	padding: .375rem .875rem;
+	border: 0;
+	border-radius: .5rem;
+	font-family: inherit;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 1.4;
+	text-decoration: none;
+	text-indent: 0;
+	overflow: visible;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color .15s ease;
+}
+
+.bp-od .bp-od-btn::before,
+.bp-od .bp-od-btn::after {
+	content: none;
+}
+
+/* WooCommerce and the list's own styles turn .order-preview into a tiny eye
+   icon; inside the panel it is a normal button. */
+.wp-list-table .bp-od .order-preview.bp-od-btn {
+	float: none !important;
+	width: auto !important;
+	height: auto !important;
+	margin: 0 !important;
+	padding: .375rem .875rem !important;
+	border: 0 !important;
+	overflow: visible !important;
+	font-size: .8125rem !important;
+	text-indent: 0 !important;
+}
+
+.wp-list-table .bp-od .order-preview.bp-od-btn::before,
+.wp-list-table .bp-od .order-preview.bp-od-btn::after {
+	content: none !important;
+	display: none !important;
+}
+
+.bp-od .bp-od-btn:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.bp-od .bp-od-btn-primary,
+.bp-od .bp-od-btn-primary:hover,
+.bp-od .bp-od-btn-primary:focus {
+	color: #fff;
+}
+
+.bp-od .bp-od-btn-primary {
+	background: #303030;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .2), inset 0 1px 0 rgba(255, 255, 255, .1);
+}
+
+.bp-od .bp-od-btn-primary:hover {
+	background: #1a1a1a;
+}
+
+.bp-od .bp-od-btn-secondary,
+.bp-od .bp-od-btn-secondary:hover,
+.bp-od .bp-od-btn-secondary:focus {
+	color: #303030;
+}
+
+.bp-od .bp-od-btn-secondary {
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+}
+
+.bp-od .bp-od-btn-secondary:hover {
+	background: #f7f7f7;
+}
+
+.bp-od .bp-od-btn.disabled {
+	opacity: .6;
+	cursor: progress;
+}
+
+.bp-od-wa .brikpanel-wa-glyph {
+	color: #1a8917;
+}
+
+/* Everything else the order carries: other columns, notes printed next to the
+   total, and on phones the date. */
+.bp-od-extras {
+	grid-column: 1 / -1;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 32px;
+	padding-top: 12px;
+	border-top: 1px solid #efefef;
+}
+
+.bp-od-extras > .bp-od-extra {
+	width: auto !important;
+	min-width: 0;
+	max-width: 100%;
+	text-align: start !important;
+}
+
+.bp-od-extra.hidden,
+.bp-od-extra--phone,
+.bp-od-extras--phone {
+	display: none;
+}
+
+/* Action buttons kept in the row sit side by side. */
+body.bp-orders-compact .wp-list-table td.column-wc_actions {
+	white-space: nowrap;
+}
+
+body.bp-orders-compact .wp-list-table td.column-wc_actions p {
+	display: inline-flex;
+	gap: 4px;
+	margin: 0;
+}
+
+body.bp-orders-compact .wp-list-table td.column-wc_actions .wc-action-button {
+	float: none !important;
+	margin: 0 !important;
+}
+
+/* Kept in the row by the user (Screen Options "Show in the row"). */
+.bp-od-extras > .bp-od-extra--in-row,
+.bp-od-extras > .bp-od-extra--empty,
+.bp-od-extras[hidden] {
+	display: none !important;
+}
+
+.bp-od-extra-value {
+	color: #303030;
+	overflow-wrap: anywhere;
+}
+
+.bp-od-extra-value p {
+	margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bp-order-toggle svg {
+		transition: none;
+	}
+}
+
+@media screen and (max-width: 1100px) {
+	.bp-od {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	}
+
+	.bp-od-actions {
+		grid-column: 1 / -1;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+}
+
+@media screen and (max-width: 782px) {
+	/* Phones: each order is a small card, as in the design: order number and
+	   customer on the first line with the arrow at the end, status and total on
+	   the second. A tap anywhere on the card opens the details. */
+	body.bp-orders-compact .wp-list-table {
+		min-width: 0 !important;
+	}
+
+	/* The header keeps only "select all" and the Order label. */
+	body.bp-orders-compact .wp-list-table thead tr {
+		display: flex !important;
+		align-items: center;
+	}
+
+	body.bp-orders-compact .wp-list-table thead tr > * {
+		display: none !important;
+	}
+
+	body.bp-orders-compact .wp-list-table thead tr > .check-column,
+	body.bp-orders-compact .wp-list-table thead tr > .column-order_number {
+		display: block !important;
+		position: static !important;
+		box-sizing: border-box;
+		width: auto !important;
+		border-bottom: 0 !important;
+	}
+
+	body.bp-orders-compact .wp-list-table thead tr > .check-column#cb {
+		width: auto !important;
+		padding: 8px 0 !important;
+		padding-inline: 12px 10px !important;
+	}
+
+	body.bp-orders-compact .wp-list-table thead tr > .column-order_number {
+		flex: 1 1 auto;
+		padding: 8px 0 !important;
+		padding-inline-end: 12px !important;
+	}
+
+	body.bp-orders-compact .wp-list-table thead {
+		display: block;
+		border-bottom: 1px solid #e3e3e3 !important;
+		background-color: #f7f7f7;
+	}
+
+	body.bp-orders-compact .wp-list-table tbody {
+		display: block;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) {
+		position: relative;
+		display: flex !important;
+		flex-wrap: wrap;
+		align-items: center;
+		row-gap: 8px;
+		padding: 12px 0;
+		box-shadow: inset 0 1px 0 #e3e3e3;
+		cursor: pointer;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items):first-child {
+		box-shadow: none;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items)::after {
+		content: "";
+		order: 3;
+		flex-basis: 100%;
+		height: 0;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > * {
+		display: none !important;
+		box-sizing: border-box;
+		width: auto !important;
+		margin: 0;
+		border: 0 !important;
+		background-color: transparent !important;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .check-column {
+		display: block !important;
+		order: 0;
+		flex: 0 0 auto;
+		padding: 0 !important;
+		padding-inline: 12px 10px !important;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_number {
+		display: block !important;
+		position: static !important;
+		order: 1;
+		flex: 0 0 auto;
+		padding: 0 !important;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-brikpanel_customer:not(.hidden) {
+		display: block !important;
+		order: 2;
+		flex: 1 1 0;
+		min-width: 0;
+		padding: 0 !important;
+		padding-inline: 8px 48px !important;
+		overflow: hidden;
+		color: #616161;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_status:not(.hidden) {
+		display: block !important;
+		order: 4;
+		flex: 0 0 auto;
+		padding: 0 !important;
+		padding-inline-start: 38px !important;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_total:not(.hidden) {
+		display: block !important;
+		order: 5;
+		flex: 0 0 auto;
+		margin-inline-start: auto;
+		padding: 0 !important;
+		padding-inline-end: 12px !important;
+		text-align: end !important;
+	}
+
+	body.bp-orders-compact #the-list .brikpanel-order-number {
+		padding-right: 0 !important;
+	}
+
+	body.bp-orders-compact #the-list .column-order_number .toggle-row,
+	body.bp-orders-compact #the-list .column-order_number .small-screen-only,
+	body.bp-orders-compact #the-list .brikpanel-order-number .order-preview {
+		display: none !important;
+	}
+
+	body.bp-orders-compact #the-list .bp-order-toggle {
+		position: absolute;
+		top: 8px;
+		inset-inline-end: 8px;
+		margin: 0;
+	}
+
+	body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail:not([hidden]) {
+		display: block !important;
+	}
+
+	body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail:not(.inline-edit-row):not(.no-items) > td.no-link {
+		display: block !important;
+		padding: 0 12px 12px !important;
+	}
+
+	body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail > td::before {
+		content: none !important;
+	}
+
+	.bp-order-detail-wrap {
+		position: static;
+		width: auto;
+		padding-inline-start: 0;
+	}
+
+	.bp-od {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 12px;
+		padding: 12px;
+	}
+
+	.bp-od-extra--phone {
+		display: block;
+	}
+
+	.bp-od-extras--phone {
+		display: flex;
+	}
+
+	.bp-od-extras {
+		gap: 10px 24px;
+	}
+
+	.bp-od-actions {
+		flex-direction: column;
+	}
+
+	.bp-od .bp-od-btn {
+		padding: .5rem .875rem;
+	}
+}
+
+/* =============================================================================
+   RESPONSIVE PASS
+   ========================================================================== */
+
+/* ---- Compact list: drop secondary columns as the card narrows, so a laptop
+   or tablet never scrolls the table sideways. What they held is in the
+   order's detail panel ("via ..." lines, and the date on narrow widths). ---- */
+body.bp-orders-compact #wc-orders-filter,
+body.bp-orders-compact #posts-filter {
+	container: bp-olist / inline-size;
+}
+
+@container bp-olist (max-width: 1180px) {
+	body.bp-orders-compact .wp-list-table .column-brikpanel_shipping_method {
+		display: none !important;
+	}
+}
+
+@container bp-olist (max-width: 1040px) {
+	body.bp-orders-compact .wp-list-table .column-payment_method {
+		display: none !important;
+	}
+}
+
+@container bp-olist (max-width: 880px) {
+	body.bp-orders-compact .wp-list-table .column-order_date {
+		display: none !important;
+	}
+
+	body.bp-orders-compact .bp-od-extra--phone {
+		display: block;
+	}
+
+	body.bp-orders-compact .bp-od-extras--phone {
+		display: flex;
+	}
+}
+
+/* The WhatsApp column header is its mark, keeping the column narrow; the
+   text stays for screen readers and Screen Options. */
+body.bp-orders-compact .wp-list-table thead th.column-brikpanel_whatsapp {
+	font-size: 0 !important;
+}
+
+body.bp-orders-compact .wp-list-table thead th.column-brikpanel_whatsapp::before {
+	content: "";
+	display: inline-block;
+	width: 14px;
+	height: 14px;
+	vertical-align: middle;
+	background-color: #8a8a8a;
+	-webkit-mask: url(icons/bp-whatsapp.svg) center / contain no-repeat;
+	mask: url(icons/bp-whatsapp.svg) center / contain no-repeat;
+}
+
+/* ---- Detail panel: WooCommerce's action buttons with their names ---- */
+.bp-od-extras .column-wc_actions a.button.wc-action-button {
+	display: inline-flex !important;
+	align-items: center;
+	width: auto !important;
+	height: 28px !important;
+	margin: 0 6px 6px 0 !important;
+	padding: 0 10px !important;
+	overflow: visible;
+	border-radius: .5rem;
+	box-shadow: inset 0 0 0 1px #e3e3e3 !important;
+	background: #fff;
+	color: #303030 !important;
+	font-size: .75rem;
+	font-weight: 550;
+	line-height: 1 !important;
+	text-indent: 0 !important;
+	white-space: nowrap;
+}
+
+.bp-od-extras .column-wc_actions a.button.wc-action-button::after {
+	content: none !important;
+}
+
+.bp-od-extras .column-wc_actions a.button.wc-action-button:hover {
+	background: #f7f7f7;
+}
+
+/* ---- Tablets (card rows): tighter rhythm ---- */
+@media screen and (max-width: 782px) {
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) {
+		row-gap: 0;
+		padding: 10px 0;
+	}
+
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_status:not(.hidden),
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_total:not(.hidden) {
+		margin-top: 6px;
+	}
+
+	body.bp-orders-compact #the-list .bp-order-toggle {
+		top: 6px;
+	}
+}
+
+/* Tablet widths keep two columns and a row of buttons in the panel; only
+   phones stack everything. */
+@media screen and (min-width: 601px) and (max-width: 782px) {
+	.bp-od {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		gap: 14px 20px;
+		padding: 14px 16px;
+	}
+
+	.bp-od-actions {
+		grid-column: 1 / -1;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.bp-od .bp-od-btn {
+		padding: .375rem .875rem;
+	}
+}
+
+/* ---- Bulk action bar: fold the actions into a menu when they do not fit ---- */
+.brikpanel-bulk-actions.show {
+	overflow: hidden;
+}
+
+.brikpanel-bulk-menu {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.brikpanel-bulk-actions .brikpanel-bulk-more {
+	display: none;
+}
+
+.brikpanel-bulk-actions.is-compact .brikpanel-bulk-more {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+
+.brikpanel-bulk-actions.is-compact .brikpanel-bulk-more::after {
+	content: "";
+	width: 14px;
+	height: 14px;
+	background-color: currentColor;
+	-webkit-mask: url(icons/bp-chevron.svg) center / contain no-repeat;
+	mask: url(icons/bp-chevron.svg) center / contain no-repeat;
+	transform: rotate(-90deg);
+	transition: transform .15s ease;
+}
+
+.brikpanel-bulk-actions.is-compact.menu-open .brikpanel-bulk-more::after {
+	transform: rotate(90deg);
+}
+
+.brikpanel-bulk-actions.show.is-compact {
+	overflow: visible;
+}
+
+.brikpanel-bulk-actions.is-compact .brikpanel-bulk-menu {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 8px);
+	z-index: 5;
+	display: none;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0;
+	min-width: 240px;
+	max-width: calc(100vw - 24px);
+	max-height: 60vh;
+	padding: 6px;
+	overflow-y: auto;
+	border-radius: .75rem;
+	background: #fff;
+	box-shadow: 0 4px 12px -2px rgba(26, 26, 26, .16), 0 0 0 1px rgba(0, 0, 0, .06);
+}
+
+.brikpanel-bulk-actions.is-compact.menu-open .brikpanel-bulk-menu {
+	display: flex;
+}
+
+.brikpanel-bulk-actions.is-compact .brikpanel-bulk-menu button {
+	justify-content: flex-start;
+	padding: .5rem .625rem;
+	box-shadow: none;
+	text-align: left;
+	white-space: normal;
+}
+
+.brikpanel-bulk-actions.is-compact .brikpanel-bulk-menu button:hover {
+	background: #f5f5f5;
+}
+
+@media screen and (max-width: 520px) {
+	.brikpanel-bulk-actions.show {
+		flex-wrap: nowrap;
+		justify-content: space-between;
+		padding-top: .75rem !important;
+		padding-bottom: calc(.75rem + env(safe-area-inset-bottom, 0px)) !important;
+	}
+
+	.brikpanel-bulk-actions.is-compact .brikpanel-bulk-menu {
+		right: 12px;
+		left: 12px;
+		min-width: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-bulk-actions.is-compact .brikpanel-bulk-more::after {
+		transition: none;
+	}
+}
+
+/* ---- Empty store: WooCommerce's "no orders yet" message in the same quiet
+   style as the rest of the page (it ships with a bright blue button). ---- */
+.woocommerce_page_wc-orders .woocommerce-BlankState,
+.post-type-shop_order .woocommerce-BlankState {
+	padding: 48px 16px;
+	text-align: center;
+}
+
+.woocommerce_page_wc-orders .woocommerce-BlankState .woocommerce-BlankState-message,
+.post-type-shop_order .woocommerce-BlankState .woocommerce-BlankState-message {
+	margin: 12px auto 16px;
+	color: #616161;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	font-size: .9375rem;
+	font-weight: 550;
+	line-height: 1.5;
+}
+
+.woocommerce_page_wc-orders .woocommerce-BlankState .woocommerce-BlankState-cta.button,
+.post-type-shop_order .woocommerce-BlankState .woocommerce-BlankState-cta.button {
+	display: inline-flex;
+	align-items: center;
+	height: 32px !important;
+	min-height: 32px !important;
+	margin: 0;
+	padding: 0 14px !important;
+	border: 0;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+	color: #303030;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+	font-size: .8125rem !important;
+	font-weight: 550;
+	line-height: 32px !important;
+	text-shadow: none;
+}
+
+.woocommerce_page_wc-orders .woocommerce-BlankState .woocommerce-BlankState-cta.button:hover,
+.post-type-shop_order .woocommerce-BlankState .woocommerce-BlankState-cta.button:hover {
+	background: #f7f7f7;
+	color: #303030;
+}
+
+.woocommerce_page_wc-orders .woocommerce-BlankState .woocommerce-BlankState-cta.button:focus-visible,
+.post-type-shop_order .woocommerce-BlankState .woocommerce-BlankState-cta.button:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+	box-shadow: inset 0 0 0 1px #e3e3e3;
 }

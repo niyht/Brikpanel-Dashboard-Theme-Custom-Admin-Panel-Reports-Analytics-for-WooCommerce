@@ -329,7 +329,7 @@ class Brikpanel_Sheets_Reports_Sync {
 				$sql = $wpdb->prepare(
 					"SELECT COALESCE(SUM(meta_total.meta_value+0),0) AS rev, COUNT(*) AS cnt
 					 FROM {$wpdb->posts} p
-					 LEFT JOIN {$wpdb->postmeta} meta_total ON meta_total.post_id = p.ID AND meta_total.meta_key='_order_total'
+					 LEFT JOIN {$wpdb->postmeta} meta_total ON meta_total.post_id = p.ID AND meta_total.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'meta_total' ) . "
 					 WHERE p.post_type='shop_order' AND p.post_status IN ({$status_in})
 					   AND p.post_date_gmt BETWEEN %s AND %s",
 					$day_lo, $day_hi

@@ -11,11 +11,19 @@
  *                 context-aware pitch panel, and the existing waitlist
  *                 surfaces turn into "BrikMentor is live" CTAs (handled in
  *                 brikpanel-early-access.php via the helpers below).
+ *                 Since 3.3.8 three more surfaces: a card under the dashboard
+ *                 KPIs carrying the store's own abandoned-cart figures, a
+ *                 "BrikMentor" sidebar entry with an in-admin page behind it,
+ *                 and a text link under the "Abandoned" figure on the
+ *                 Abandoned Carts screen.
  *   - Flag OFF  → this module renders nothing and the early-access waitlist
  *                 (includes/brikpanel-early-access.php) behaves as it did
- *                 before launch. Nothing writes this value: it exists so a
- *                 store that does not want the promotion can set the option
- *                 to 'no' and be left alone.
+ *                 before launch. The Abandoned Carts screen also drops its
+ *                 padlocked WhatsApp column and envelope. The flag is the
+ *                 "Show BrikMentor promotion" switch under WooCommerce →
+ *                 Settings → BrikPanel, and `define(
+ *                 'BRIKPANEL_BRIKMENTOR_PROMO', false )` in wp-config.php
+ *                 pins it for agencies that deploy by config.
  *   - BrikMentor plugin installed → every promotional surface auto-hides,
  *                 regardless of the flag.
  *
@@ -44,9 +52,61 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * @return bool
  */
+/**
+ * Tell Import / Export about the BrikMentor promotion switch.
+ *
+ * Registered HERE, at file scope, and not inside the settings-field callback
+ * that draws the checkbox — because that callback returns early on a site that
+ * has BrikMentor installed, and the field does not exist there at all. Exporting
+ * from such a site would then omit the key entirely, and a strict "make the
+ * target match the source" import would delete the target's `no` and switch the
+ * promotion back on. That is the opposite of what the agency who asked for this
+ * switch wants, on the exact stores they asked for it on.
+ *
+ * `clear => never` closes the other half of the same hole: the value travels
+ * when the source has one, and the target's own choice is left alone when it
+ * does not. A promotion nobody asked to see again should never come back by
+ * itself.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_brikmentor_register_export_keys' );
+function brikpanel_brikmentor_register_export_keys( $map ) {
+    $map['brikpanel_brikmentor_live'] = [
+        'class'   => 'portable',
+        'group'   => 'general',
+        'type'    => 'checkbox',
+        'default' => 'yes',
+        'clear'   => 'never',
+    ];
+    return $map;
+}
+
 function brikpanel_brikmentor_is_live() {
+    if ( brikpanel_brikmentor_promo_is_pinned() ) {
+        // wp-config.php wins over the option: an agency that deploys the same
+        // config to every client store gets the same answer on every one of
+        // them, whatever a later settings save writes.
+        return (bool) BRIKPANEL_BRIKMENTOR_PROMO;
+    }
     $value = get_option( 'brikpanel_brikmentor_live', 'yes' );
     return in_array( $value, array( 'yes', '1', 1, true ), true );
+}
+
+/**
+ * Has wp-config.php pinned the promotion on or off?
+ *
+ * `define( 'BRIKPANEL_BRIKMENTOR_PROMO', false );` hides every launch surface
+ * without anyone having to open the settings screen, and the settings toggle
+ * shows as read-only while it is set. Only a real boolean counts, so a typo
+ * such as `'no'` (a non-empty string, i.e. true) cannot switch the promotion
+ * ON by mistake: anything that is not a boolean is treated as "not pinned".
+ *
+ * @return bool
+ */
+function brikpanel_brikmentor_promo_is_pinned() {
+    return defined( 'BRIKPANEL_BRIKMENTOR_PROMO' ) && is_bool( BRIKPANEL_BRIKMENTOR_PROMO );
 }
 
 /**
@@ -146,9 +206,13 @@ function brikpanel_brikmentor_claim_id() {
  *
  * Overridable via option/filter so campaigns can be re-pointed without a release.
  *
+ * @param string $via Which surface the click came from (announce, fab, lock,
+ *                    lock-mail, dashboard, dashboard-top, carts-stat, settings,
+ *                    page). Every BrikPanel surface shares src=panel, so this is
+ *                    the only way the relay can tell them apart. Optional.
  * @return string
  */
-function brikpanel_brikmentor_checkout_url() {
+function brikpanel_brikmentor_checkout_url( $via = '' ) {
     $base = get_option( 'brikpanel_brikmentor_checkout_url', '' );
     if ( ! is_string( $base ) || '' === trim( $base ) ) {
         $relay = get_option( 'brikmentor_relay_url' );
@@ -157,14 +221,16 @@ function brikpanel_brikmentor_checkout_url() {
             : 'https://brksoft.com';
         $base = $relay . '/wp-json/brikmentor-relay/v1/checkout';
     }
-    $base = add_query_arg(
-        array(
-            'src'      => 'panel',
-            'site_url' => rawurlencode( home_url() ),
-            'claim_id' => brikpanel_brikmentor_claim_id(),
-        ),
-        $base
+    $args = array(
+        'src'      => 'panel',
+        'site_url' => rawurlencode( home_url() ),
+        'claim_id' => brikpanel_brikmentor_claim_id(),
     );
+    $via  = sanitize_key( (string) $via );
+    if ( '' !== $via ) {
+        $args['via'] = $via;
+    }
+    $base = add_query_arg( $args, $base );
     /**
      * Filter the BrikMentor Stripe Checkout URL used by the launch CTAs.
      *
@@ -269,6 +335,13 @@ function brikpanel_brikmentor_fab_screens() {
                 // by hand, one cart at a time. Only the email is automatic, and
                 // promising otherwise here would sell the wrong product.
                 'lock' => __( 'Unlocking gives you the phone number behind each cart and a ready-made WhatsApp message to open with one click. The reminder emails then go out on their own, and they bring back 5-10% of total revenue in a store that runs them properly.', 'brikpanel' ),
+                // Opened from the padlocked envelope in the Email column. It
+                // must not promise that unlocking turns that envelope into
+                // something clever: it stays a hand-off to the merchant's own
+                // mail client, one cart at a time. What is actually for sale
+                // here is not having to click it at all, so that is what this
+                // says.
+                'lock-mail' => __( 'Writing to one shopper at a time is the slow way back. BrikMentor follows up on every abandoned cart for you: a reminder written for the cart it belongs to, sent on a schedule you set once. Cart recovery emails bring back 5-10% of total revenue in a store that runs them properly.', 'brikpanel' ),
             ),
         ),
         'brikpanel-customer-analytics' => array(
@@ -325,7 +398,7 @@ function brikpanel_brikmentor_render_fab() {
     }
 
     $cta_url      = brikpanel_brikmentor_url();
-    $checkout_url = function_exists( 'brikpanel_brikmentor_checkout_url' ) ? brikpanel_brikmentor_checkout_url() : $cta_url;
+    $checkout_url = function_exists( 'brikpanel_brikmentor_checkout_url' ) ? brikpanel_brikmentor_checkout_url( 'fab' ) : $cta_url;
     // The one objection every merchant on this screen already has, pointed at
     // the section of the landing page that answers it at length. Appended only
     // when the campaign URL does not carry a fragment of its own.
@@ -364,7 +437,6 @@ function brikpanel_brikmentor_render_fab() {
             <svg class="brikpanel-bm-fab__star" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" fill="#fff"/></svg>
         </button>
     </div>
-    <?php brikpanel_brikmentor_print_star_motion(); ?>
     <style>
         .brikpanel-bm-fab-root {
             position: fixed; right: 24px; bottom: 24px; z-index: 9991;
@@ -377,30 +449,15 @@ function brikpanel_brikmentor_render_fab() {
             display: flex; align-items: center; justify-content: center;
             box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
             transition: background 0.15s ease, transform 0.15s ease;
-            animation: brikpanel-bm-breathe 3.2s ease-in-out infinite;
         }
-        .brikpanel-bm-fab:hover { background: #1a1a1a; transform: scale(1.05); animation-play-state: paused; }
+        .brikpanel-bm-fab:hover { background: #1a1a1a; transform: scale(1.05); }
         .brikpanel-bm-fab:focus { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #303030; }
-        .brikpanel-bm-fab__star {
-            display: block;
-            transform-origin: 50% 52%;
-            animation: brikpanel-bm-acrobat 7s cubic-bezier(.34,.06,.36,.96) infinite;
-        }
-        @keyframes brikpanel-bm-breathe {
-            0%, 100% { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), 0 0 0 0 rgba(48, 48, 48, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
-            50%      { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), 0 0 0 9px rgba(48, 48, 48, 0),   inset 0 1px 0 rgba(255, 255, 255, 0.12); }
-        }
-        /* The acrobat routine itself is printed by
-           brikpanel_brikmentor_print_star_motion(), because the launch
-           announcement reuses it on screens this <style> never reaches. */
-        /* The show is over once the merchant clicks: while the panel is open
-           the button sits still (upright star, no pulse) and resumes when the
-           panel closes. */
-        .brikpanel-bm-fab-root.is-open .brikpanel-bm-fab,
-        .brikpanel-bm-fab-root.is-open .brikpanel-bm-fab__star { animation: none; }
-        @media (prefers-reduced-motion: reduce) {
-            .brikpanel-bm-fab, .brikpanel-bm-fab__star { animation: none; }
-        }
+        /* A still star. The routine that used to spin it (see
+           brikpanel_brikmentor_print_star_motion()) now belongs to the one-time
+           announcement only: with the dashboard card, the sidebar entry and the
+           in-page links carrying the pitch, this button is a quiet way back to
+           the panel, not the thing that has to catch the eye. */
+        .brikpanel-bm-fab__star { display: block; }
         .brikpanel-bm-panel {
             width: 320px; max-width: calc(100vw - 48px);
             background: #fff; border: 1px solid #e3e3e3; border-radius: 0.75rem;
@@ -496,6 +553,20 @@ function brikpanel_brikmentor_render_fab() {
         // Tab-specific pitch copy (Customer Analytics). Empty object elsewhere.
         var variants = <?php echo wp_json_encode( $variants ); ?>;
 
+        // The CTA names the surface that opened the panel (`via`), so the relay
+        // can tell the floating button from the padlocks and the stat-card
+        // link even though all of them share this one panel. Rewritten on
+        // every open; the button's own value is the default.
+        var cta = panel.querySelector('.brikpanel-bm-panel__cta');
+        function viaFor(key) {
+            if (!cta) { return; }
+            try {
+                var u = new URL(cta.getAttribute('href'), window.location.href);
+                u.searchParams.set('via', key || 'fab');
+                cta.setAttribute('href', u.toString());
+            } catch (e) { /* an unparsable href keeps whatever it had */ }
+        }
+
         // The pitch this screen loaded with, so an opener that names no variant
         // can put it back. Without it, opening once from the padlock would leave
         // its copy behind for every later open from the floating button.
@@ -530,7 +601,7 @@ function brikpanel_brikmentor_render_fab() {
             }
         }
         fab.addEventListener('click', function () {
-            if (panel.hidden) { pitchFor(null); }
+            if (panel.hidden) { pitchFor(null); viaFor('fab'); }
             opener = fab;
             setOpen(panel.hidden);
         });
@@ -546,6 +617,7 @@ function brikpanel_brikmentor_render_fab() {
             if (!el) { return; }
             e.preventDefault();
             pitchFor(el.getAttribute('data-bm-variant'));
+            viaFor(el.getAttribute('data-bm-via') || el.getAttribute('data-bm-variant'));
             opener = el;
             setOpen(true);
         });
@@ -609,7 +681,9 @@ function brikpanel_bm_ajax_card_dismiss() {
  */
 add_filter( 'brikpanel_settings_fields', 'brikpanel_brikmentor_settings_field', 998 );
 function brikpanel_brikmentor_settings_field( $fields ) {
-    if ( ! brikpanel_brikmentor_promo_active() ) {
+    // With BrikMentor installed there is nothing to promote and nothing to
+    // switch off, so the whole section stays out of the way.
+    if ( brikpanel_brikmentor_installed() ) {
         return $fields;
     }
     $fields[] = array(
@@ -617,17 +691,58 @@ function brikpanel_brikmentor_settings_field( $fields ) {
         'id'    => 'brk_brikmentor_title',
         'title' => __( 'BrikMentor', 'brikpanel' ),
     );
-    $fields[] = array(
-        // Pseudo-field: it stores nothing, so it is excluded from the
-        // import/export option map (see brikpanel-import-export.php).
-        'type' => 'brikpanel_brikmentor_promo',
-        'id'   => 'brikpanel_brikmentor_promo_field',
+
+    // The on/off switch is drawn whether or not the promotion is currently on:
+    // a switch that disappears the moment it is turned off could never be
+    // turned back on. A store where wp-config.php has pinned the value sees
+    // the switch read-only, with a line saying where the value comes from.
+    $pinned = brikpanel_brikmentor_promo_is_pinned();
+    $toggle = array(
+        'name'    => __( 'Show BrikMentor promotion', 'brikpanel' ),
+        'id'      => 'brikpanel_brikmentor_live',
+        'type'    => 'checkbox',
+        'desc'    => __( 'Show the BrikMentor card, menu item, corner button and the locked contact buttons on BrikPanel screens. Turn this off to hide every BrikMentor promotion, for example when you set up BrikPanel for a client.', 'brikpanel' ),
+        'default' => 'yes',
     );
+    if ( $pinned ) {
+        $toggle['value']             = BRIKPANEL_BRIKMENTOR_PROMO ? 'yes' : 'no';
+        $toggle['disabled']          = true;
+        $toggle['desc_tip']          = __( 'Set by the BRIKPANEL_BRIKMENTOR_PROMO constant in wp-config.php, so it cannot be changed here.', 'brikpanel' );
+    }
+    $fields[] = $toggle;
+
+    if ( brikpanel_brikmentor_promo_active() ) {
+        $fields[] = array(
+            // Pseudo-field: it stores nothing, so it is excluded from the
+            // import/export option map (see brikpanel-import-export.php).
+            'type' => 'brikpanel_brikmentor_promo',
+            'id'   => 'brikpanel_brikmentor_promo_field',
+        );
+    }
     $fields[] = array(
         'type' => 'sectionend',
         'id'   => 'brk_brikmentor_title',
     );
     return $fields;
+}
+
+/**
+ * Keep the stored switch untouched while wp-config.php pins the value.
+ *
+ * A disabled checkbox is not posted, so a plain save of the General section
+ * would write 'no' underneath the constant; the day the constant is removed
+ * the store would then wake up with the promotion off for no reason it can
+ * see. Returning the current stored value makes the save a no-op instead.
+ *
+ * @param mixed $value  Sanitised value about to be saved.
+ * @return mixed
+ */
+add_filter( 'woocommerce_admin_settings_sanitize_option_brikpanel_brikmentor_live', 'brikpanel_brikmentor_keep_pinned_switch' );
+function brikpanel_brikmentor_keep_pinned_switch( $value ) {
+    if ( brikpanel_brikmentor_promo_is_pinned() ) {
+        return get_option( 'brikpanel_brikmentor_live', 'yes' );
+    }
+    return $value;
 }
 
 /**
@@ -639,7 +754,7 @@ function brikpanel_brikmentor_settings_field( $fields ) {
 add_action( 'woocommerce_admin_field_brikpanel_brikmentor_promo', 'brikpanel_brikmentor_render_settings_field' );
 function brikpanel_brikmentor_render_settings_field( $field ) {
     $cta_url      = brikpanel_brikmentor_url();
-    $checkout_url = brikpanel_brikmentor_checkout_url();
+    $checkout_url = brikpanel_brikmentor_checkout_url( 'settings' );
     ?>
     <tr valign="top">
         <th scope="row" class="titledesc">
@@ -675,16 +790,12 @@ function brikpanel_brikmentor_render_settings_field( $field ) {
 /**
  * Print the acrobatic star keyframes, at most once per request.
  *
- * WHY THIS IS NOT INLINE ANY MORE. The routine used to live inside
- * brikpanel_brikmentor_render_fab()'s own <style>, which prints on exactly two
- * screens. The launch announcement reuses it on every BrikPanel screen, and a
- * @keyframes name that resolves on one screen and not on another fails in the
- * quietest way CSS can: the element simply sits still, with no error anywhere.
- * Printing it from one guarded place is what keeps the two surfaces honest.
- *
- * Only the star's routine is shared. Each surface keeps its own pulse: the
- * floating button's ring carries that button's drop shadow and inset highlight,
- * which would be wrong on a flat badge inside a white card.
+ * Since 3.3.8 only the one-time launch announcement uses it: the floating
+ * button's star sits still now that the dashboard card, the sidebar entry and
+ * the in-page links carry the pitch. Kept as a guarded printer so a second
+ * surface can pick it up again without the @keyframes name resolving on one
+ * screen and not another, which fails in the quietest way CSS can: the element
+ * simply sits still, with no error anywhere.
  *
  * @return void
  */
@@ -765,6 +876,11 @@ function brikpanel_brikmentor_announce_is_panel_screen() {
         return false;
     }
     $page = sanitize_key( wp_unslash( $_GET['page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    // Never on the BrikMentor page itself: announcing the product on top of
+    // its own pitch would be two dialogs saying the same thing.
+    if ( BRIKPANEL_BM_PAGE_SLUG === $page ) {
+        return false;
+    }
     return 0 === strpos( $page, 'brikpanel-' );
 }
 
@@ -838,7 +954,7 @@ function brikpanel_brikmentor_render_announce() {
     }
 
     $cta_url      = brikpanel_brikmentor_url();
-    $checkout_url = brikpanel_brikmentor_checkout_url();
+    $checkout_url = brikpanel_brikmentor_checkout_url( 'announce' );
     // The one objection a merchant reading this already has, pointed at the
     // section of the landing page that answers it at length. Same treatment as
     // the floating panel: appended only when the campaign URL carries no
@@ -1056,4 +1172,774 @@ function brikpanel_bm_ajax_announce_dismiss() {
     }
     update_user_meta( get_current_user_id(), BRIKPANEL_BM_ANNOUNCE_META, BRIKPANEL_BM_ANNOUNCE_CAMPAIGN );
     wp_send_json_success();
+}
+
+
+/* ── Store figures behind the pitch (abandoned carts, last 30 days) ─────────── */
+
+/**
+ * Days of cart history the pitch figures cover. The sentence printed beside
+ * the figure says "30 days" in every language, so this is not a knob: change
+ * it and the sentence must change with it.
+ */
+if ( ! defined( 'BRIKPANEL_BM_PITCH_DAYS' ) ) {
+    define( 'BRIKPANEL_BM_PITCH_DAYS', 30 );
+}
+
+/** How long a merchant's X keeps the dashboard pitch card away, in days. */
+if ( ! defined( 'BRIKPANEL_BM_PITCH_SNOOZE_DAYS' ) ) {
+    define( 'BRIKPANEL_BM_PITCH_SNOOZE_DAYS', 30 );
+}
+
+/** User meta holding the time the dashboard pitch card may come back. */
+if ( ! defined( 'BRIKPANEL_BM_PITCH_META' ) ) {
+    define( 'BRIKPANEL_BM_PITCH_META', '_brikpanel_bm_pitch_snoozed_until' );
+}
+
+/** Slug of the in-admin BrikMentor page behind the sidebar entry. */
+if ( ! defined( 'BRIKPANEL_BM_PAGE_SLUG' ) ) {
+    define( 'BRIKPANEL_BM_PAGE_SLUG', 'brikpanel-brikmentor' );
+}
+
+/**
+ * Abandoned carts of the last 30 days: how many, and what they hold.
+ *
+ * Reads BrikPanel's own abandoned-carts table and nothing else, so a store
+ * whose cart module never captured anything gets null and no pitch. The rows
+ * are the ones the Abandoned Carts screen itself calls "Abandoned": stored as
+ * such, holding at least one item, and not since turned into an order. Cart
+ * totals are kept in the currency the cart was captured in, so they are
+ * summed per currency (as that screen does) and the currency with the most
+ * carts is the one shown: adding euros to dollars would print a figure that
+ * is true in no currency.
+ *
+ * Cached for fifteen minutes. The dashboard is the most opened screen in the
+ * plugin and a figure a quarter of an hour old sells exactly as well.
+ *
+ * @return array{count:int, amount:float, currency:string}|null Null when no cart qualifies.
+ */
+function brikpanel_brikmentor_cart_pitch() {
+    $cached = get_transient( 'brikpanel_bm_cart_pitch' );
+    if ( is_array( $cached ) && array_key_exists( 'count', $cached ) ) {
+        return empty( $cached['count'] ) ? null : $cached;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'brikpanel_abandoned_carts';
+    $best  = array( 'count' => 0, 'amount' => 0.0, 'currency' => '' );
+
+    // The cart module may never have created its table on this store; a
+    // missing table must mean "no pitch", not a database error on the dashboard.
+    $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) );
+    if ( $exists === $table ) {
+        $since = gmdate( 'Y-m-d H:i:s', time() - BRIKPANEL_BM_PITCH_DAYS * DAY_IN_SECONDS );
+        $row   = $wpdb->get_row( $wpdb->prepare(
+            "SELECT currency, COUNT(*) AS c, SUM(cart_total) AS amount
+               FROM {$table}
+              WHERE status = 'abandoned' AND item_count > 0 AND abandoned_at >= %s
+              GROUP BY currency
+              ORDER BY c DESC, amount DESC
+              LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is prefix + constant.
+            $since
+        ) );
+        if ( $row && (int) $row->c > 0 ) {
+            $best = array(
+                'count'    => (int) $row->c,
+                'amount'   => (float) $row->amount,
+                // Rows captured before the currency column existed carry ''.
+                // The Abandoned Carts screen reads those as the store currency.
+                'currency' => '' !== (string) $row->currency ? (string) $row->currency
+                    : ( function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : '' ),
+            );
+        }
+    }
+
+    set_transient( 'brikpanel_bm_cart_pitch', $best, 15 * MINUTE_IN_SECONDS );
+    return empty( $best['count'] ) ? null : $best;
+}
+
+/**
+ * The cart total, formatted in the carts' own currency.
+ *
+ * @param array $pitch A brikpanel_brikmentor_cart_pitch() result.
+ * @return string
+ */
+function brikpanel_brikmentor_pitch_amount( array $pitch ) {
+    $amount = (float) ( $pitch['amount'] ?? 0 );
+    if ( function_exists( 'brikpanel_money_text' ) ) {
+        return brikpanel_money_text( $amount, array( 'currency' => (string) ( $pitch['currency'] ?? '' ) ) );
+    }
+    return number_format_i18n( $amount, 2 );
+}
+
+/**
+ * "47 abandoned carts in the last 30 days", already translated and pluralised.
+ *
+ * @param array $pitch A brikpanel_brikmentor_cart_pitch() result.
+ * @return string
+ */
+function brikpanel_brikmentor_pitch_label( array $pitch ) {
+    $count = (int) ( $pitch['count'] ?? 0 );
+    return sprintf(
+        /* translators: %s: number of abandoned carts */
+        _n( '%s abandoned cart in the last 30 days', '%s abandoned carts in the last 30 days', $count, 'brikpanel' ),
+        number_format_i18n( $count )
+    );
+}
+
+/** Has this user put the dashboard pitch card away for a while? */
+function brikpanel_brikmentor_pitch_snoozed() {
+    $until = (int) get_user_meta( get_current_user_id(), BRIKPANEL_BM_PITCH_META, true );
+    return $until > time();
+}
+
+/**
+ * Whether the pitch card has rendered on this request.
+ *
+ * The launch card at the bottom of the dashboard asks this before printing,
+ * so the two never share a screen: the pitch card fires under the KPIs, well
+ * before the bottom of the page renders, which is what makes a plain static
+ * flag enough.
+ *
+ * @param bool|null $set Pass true to record a render; null only reads.
+ * @return bool
+ */
+function brikpanel_brikmentor_pitch_rendered( $set = null ) {
+    static $rendered = false;
+    if ( null !== $set ) {
+        $rendered = (bool) $set;
+    }
+    return $rendered;
+}
+
+/* ── Dashboard pitch card (under the KPI rows) ──────────────────────────────── */
+
+add_action( 'brikpanel_dashboard_after_kpis', 'brikpanel_brikmentor_render_dashboard_pitch', 20 );
+/**
+ * A card under the dashboard KPIs that talks in the store's own numbers.
+ *
+ * It sits where the merchant's eye already is, reads like one more figure of
+ * theirs rather than an advert, and only exists when there is a figure to
+ * show: a store with no abandoned carts in the last 30 days keeps the generic
+ * launch card at the bottom of the page instead. Priority 20 keeps it below
+ * the ad-platform cards that hook the same action.
+ *
+ * Every string but the figure sentence is one the plugin already ships.
+ *
+ * @return void
+ */
+function brikpanel_brikmentor_render_dashboard_pitch() {
+    if ( ! brikpanel_brikmentor_promo_active() ) {
+        return;
+    }
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        return;
+    }
+    if ( brikpanel_brikmentor_pitch_snoozed() ) {
+        return;
+    }
+    $pitch = brikpanel_brikmentor_cart_pitch();
+    if ( ! $pitch ) {
+        return;
+    }
+    brikpanel_brikmentor_pitch_rendered( true );
+
+    $cta_url      = brikpanel_brikmentor_url();
+    $checkout_url = brikpanel_brikmentor_checkout_url( 'dashboard-top' );
+    $nonce        = wp_create_nonce( 'brikpanel_bm_pitch_nonce' );
+    $cta_label    = brikpanel_brikmentor_price_text( __( 'Try BrikMentor for %s', 'brikpanel' ) );
+    ?>
+    <div class="brikpanel-ea-card brikpanel-bm-pitch" data-bm-pitch data-nonce="<?php echo esc_attr( $nonce ); ?>">
+        <div class="brikpanel-ea-card__badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" fill="#fff"/></svg>
+        </div>
+        <div class="brikpanel-bm-pitch__stat">
+            <span class="brikpanel-bm-pitch__amount"><?php echo esc_html( brikpanel_brikmentor_pitch_amount( $pitch ) ); ?></span>
+            <span class="brikpanel-bm-pitch__label"><?php echo esc_html( brikpanel_brikmentor_pitch_label( $pitch ) ); ?></span>
+        </div>
+        <div class="brikpanel-ea-card__text">
+            <p class="brikpanel-ea-card__title"><?php esc_html_e( 'Recover these carts on autopilot', 'brikpanel' ); ?></p>
+            <p class="brikpanel-ea-card__body"><?php echo esc_html( brikpanel_brikmentor_nb_units( __( 'Writing to one shopper at a time is the slow way back. BrikMentor follows up on every abandoned cart for you: a reminder written for the cart it belongs to, sent on a schedule you set once. Cart recovery emails bring back 5-10% of total revenue in a store that runs them properly.', 'brikpanel' ) ) ); ?></p>
+        </div>
+        <a class="brikpanel-ea-card__cta" href="<?php echo esc_url( $checkout_url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $cta_label ); ?></a>
+        <a class="brikpanel-ea-card__learn" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
+        <button type="button" class="brikpanel-ea-card__close" data-bm-pitch-dismiss aria-label="<?php esc_attr_e( 'Dismiss', 'brikpanel' ); ?>">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+    </div>
+    <?php brikpanel_brikmentor_print_pitch_assets(); ?>
+    <?php
+}
+
+/* ── AJAX: put the dashboard pitch card away for a while ────────────────────── */
+add_action( 'wp_ajax_brikpanel_bm_pitch_dismiss', 'brikpanel_bm_ajax_pitch_dismiss' );
+function brikpanel_bm_ajax_pitch_dismiss() {
+    check_ajax_referer( 'brikpanel_bm_pitch_nonce' );
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        wp_send_json_error( array( 'reason' => 'forbidden' ), 403 );
+    }
+    update_user_meta(
+        get_current_user_id(),
+        BRIKPANEL_BM_PITCH_META,
+        time() + BRIKPANEL_BM_PITCH_SNOOZE_DAYS * DAY_IN_SECONDS
+    );
+    wp_send_json_success();
+}
+
+/**
+ * Styles and the dismiss script the pitch cards share (dashboard, Customer
+ * Analytics). Printed at most once per request, on top of the base card styles
+ * the launch card already ships.
+ *
+ * @return void
+ */
+function brikpanel_brikmentor_print_pitch_assets() {
+    static $printed = false;
+    if ( $printed ) {
+        return;
+    }
+    $printed = true;
+    if ( function_exists( 'brikpanel_ea_print_card_styles' ) ) {
+        brikpanel_ea_print_card_styles();
+    }
+    ?>
+    <style>
+        /* On the dashboard the card sits between the KPI grid (1.25rem below
+           it already) and the next section, so it takes the grid's own bottom
+           spacing, not the launch card's top margin. */
+        .brikpanel-bm-pitch { margin: 0 0 1.25rem; gap: 1.25rem; }
+        /* On Customer Analytics it sits between the header and the tab bar. */
+        .brikpanel-bm-pitch--ca { margin: 0.25rem 0 1.25rem; }
+        /* The figure block is styled like the KPI cards above it: a big
+           tabular number and a small label, so it reads as the store's own
+           data, which it is. */
+        .brikpanel-bm-pitch__stat {
+            flex: 0 0 auto; display: flex; flex-direction: column; min-width: 9rem;
+            padding-inline-end: 1.25rem; border-inline-end: 1px solid #e3e3e3;
+        }
+        .brikpanel-bm-pitch__amount {
+            font-size: 1.375rem; font-weight: 600; line-height: 1.2; color: #303030;
+            white-space: nowrap; font-variant-numeric: tabular-nums;
+        }
+        .brikpanel-bm-pitch__label { margin-top: 0.15rem; font-size: 0.75rem; font-weight: 550; color: #616161; }
+        .brikpanel-bm-pitch .brikpanel-ea-card__cta:focus,
+        .brikpanel-bm-pitch .brikpanel-ea-card__close:focus { outline: none; box-shadow: 0 0 0 2px #303030; }
+        /* Narrow: the figure keeps the first line, the pitch takes a full
+           line under it, and the button, the link and the X share one row
+           at the end instead of wrapping one by one. */
+        @media (max-width: 960px) {
+            .brikpanel-bm-pitch { flex-wrap: wrap; row-gap: 0.75rem; }
+            .brikpanel-bm-pitch__stat { border-inline-end: 0; padding-inline-end: 0; }
+            .brikpanel-bm-pitch .brikpanel-ea-card__text { flex-basis: 100%; order: 1; }
+            .brikpanel-bm-pitch .brikpanel-ea-card__cta,
+            .brikpanel-bm-pitch .brikpanel-ea-card__learn { order: 2; }
+            .brikpanel-bm-pitch .brikpanel-ea-card__close { order: 2; margin-inline-start: auto; }
+        }
+    </style>
+    <script>
+    (function () {
+        var cards = document.querySelectorAll('[data-bm-pitch]');
+        Array.prototype.forEach.call(cards, function (card) {
+            var btn = card.querySelector('[data-bm-pitch-dismiss]');
+            if (!btn) { return; }
+            btn.addEventListener('click', function () {
+                var fd = new FormData();
+                fd.append('action', 'brikpanel_bm_pitch_dismiss');
+                fd.append('_ajax_nonce', card.getAttribute('data-nonce'));
+                fetch(<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>, {
+                    method: 'POST', body: fd, credentials: 'same-origin', keepalive: true
+                });
+                if (card.parentNode) { card.parentNode.removeChild(card); }
+            });
+        });
+    })();
+    </script>
+    <?php
+}
+
+/* ── Customer Analytics pitch card (between the header and the tabs) ────────── */
+
+/**
+ * The RFM segments BrikMentor's win-back series writes to by default.
+ *
+ * Mirrors the product's own default (at_risk, cant_lose, hibernating). The
+ * segment slugs are BrikPanel's, so the count is taken from the same table the
+ * RFM tab reads. Filterable so a future product default can be matched
+ * without a release on this side.
+ *
+ * @return string[]
+ */
+function brikpanel_brikmentor_winback_segments() {
+    return (array) apply_filters( 'brikpanel_brikmentor_winback_segments', array( 'at_risk', 'cant_lose', 'hibernating' ) );
+}
+
+/**
+ * How many customers sit in the segments the win-back series would write to.
+ *
+ * Same table as the RFM tab (brikpanel_customer_metrics, filled by the nightly
+ * recompute), so the figure agrees with what the merchant sees on that tab. A
+ * store whose metrics were never computed gets null and no card. Cached for
+ * fifteen minutes like the cart figure.
+ *
+ * @return array{count:int}|null Null when no customer qualifies.
+ */
+function brikpanel_brikmentor_rfm_pitch() {
+    $cached = get_transient( 'brikpanel_bm_rfm_pitch' );
+    if ( is_array( $cached ) && array_key_exists( 'count', $cached ) ) {
+        return empty( $cached['count'] ) ? null : $cached;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'brikpanel_customer_metrics';
+    $best  = array( 'count' => 0 );
+
+    $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) );
+    if ( $exists === $table ) {
+        $segments = array_values( array_filter( array_map( 'sanitize_key', brikpanel_brikmentor_winback_segments() ) ) );
+        if ( $segments ) {
+            $marks         = implode( ', ', array_fill( 0, count( $segments ), '%s' ) );
+            $best['count'] = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table} WHERE rfm_segment IN ({$marks})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is prefix + constant; placeholders built per segment.
+                $segments
+            ) );
+        }
+    }
+
+    set_transient( 'brikpanel_bm_rfm_pitch', $best, 15 * MINUTE_IN_SECONDS );
+    return empty( $best['count'] ) ? null : $best;
+}
+
+/**
+ * "312 customers are drifting away", translated and pluralised.
+ *
+ * @param array $pitch A brikpanel_brikmentor_rfm_pitch() result.
+ * @return string
+ */
+function brikpanel_brikmentor_rfm_label( array $pitch ) {
+    $count = (int) ( $pitch['count'] ?? 0 );
+    return sprintf(
+        /* translators: %s: number of customers in the At Risk, Can't Lose Them and Hibernating segments */
+        _n( '%s customer is drifting away', '%s customers are drifting away', $count, 'brikpanel' ),
+        number_format_i18n( $count )
+    );
+}
+
+add_action( 'brikpanel_ca_after_header', 'brikpanel_brikmentor_render_analytics_pitch', 20 );
+/**
+ * The pitch card on Customer Analytics, in the store's own numbers.
+ *
+ * The count is the customers in the segments the win-back series writes to,
+ * which is exactly what that screen's RFM tab shows the merchant. Same card as
+ * the dashboard, same snooze (one X puts both away for thirty days), same
+ * gates: promotion on, BrikMentor not installed, a figure to show. Every
+ * string but the figure sentence is one the plugin already ships.
+ *
+ * @return void
+ */
+function brikpanel_brikmentor_render_analytics_pitch() {
+    if ( ! brikpanel_brikmentor_promo_active() ) {
+        return;
+    }
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        return;
+    }
+    if ( brikpanel_brikmentor_pitch_snoozed() ) {
+        return;
+    }
+    $pitch = brikpanel_brikmentor_rfm_pitch();
+    if ( ! $pitch ) {
+        return;
+    }
+
+    $screens      = brikpanel_brikmentor_fab_screens();
+    $body         = isset( $screens['brikpanel-customer-analytics']['variants']['rfm'] ) ? $screens['brikpanel-customer-analytics']['variants']['rfm'] : '';
+    $cta_url      = brikpanel_brikmentor_url();
+    $checkout_url = brikpanel_brikmentor_checkout_url( 'analytics' );
+    $nonce        = wp_create_nonce( 'brikpanel_bm_pitch_nonce' );
+    $cta_label    = brikpanel_brikmentor_price_text( __( 'Try BrikMentor for %s', 'brikpanel' ) );
+    ?>
+    <div class="brikpanel-ea-card brikpanel-bm-pitch brikpanel-bm-pitch--ca" data-bm-pitch data-nonce="<?php echo esc_attr( $nonce ); ?>">
+        <div class="brikpanel-ea-card__badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 17.58l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" fill="#fff"/></svg>
+        </div>
+        <div class="brikpanel-bm-pitch__stat">
+            <span class="brikpanel-bm-pitch__amount"><?php echo esc_html( number_format_i18n( (int) $pitch['count'] ) ); ?></span>
+            <span class="brikpanel-bm-pitch__label"><?php echo esc_html( brikpanel_brikmentor_rfm_label( $pitch ) ); ?></span>
+        </div>
+        <div class="brikpanel-ea-card__text">
+            <p class="brikpanel-ea-card__title"><?php esc_html_e( 'Turn this data into revenue', 'brikpanel' ); ?></p>
+            <p class="brikpanel-ea-card__body"><?php echo esc_html( $body ); ?></p>
+        </div>
+        <a class="brikpanel-ea-card__cta" href="<?php echo esc_url( $checkout_url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $cta_label ); ?></a>
+        <a class="brikpanel-ea-card__learn" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
+        <button type="button" class="brikpanel-ea-card__close" data-bm-pitch-dismiss aria-label="<?php esc_attr_e( 'Dismiss', 'brikpanel' ); ?>">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+    </div>
+    <?php brikpanel_brikmentor_print_pitch_assets(); ?>
+    <?php
+}
+
+/* ── Sidebar entry + the in-admin BrikMentor page behind it ─────────────────── */
+
+add_action( 'admin_menu', 'brikpanel_brikmentor_register_menu', 60 );
+/**
+ * A "BrikMentor" entry in the sidebar, on every admin screen.
+ *
+ * It is a real admin page, not a link out of the admin: a merchant who clicks
+ * a sidebar item expects a screen of theirs to open, and the page it opens
+ * carries the store's own figures, which no outside page can. Registered as a
+ * top-level so the modern sidebar pins it into the store cluster (the
+ * `brikpanel` prefix already marks it as a store surface there); in the
+ * native WordPress menu it lands right after Abandoned Carts.
+ *
+ * @return void
+ */
+function brikpanel_brikmentor_register_menu() {
+    if ( ! brikpanel_brikmentor_promo_active() ) {
+        return;
+    }
+    $hook = add_menu_page(
+        'BrikMentor',
+        'BrikMentor',
+        'manage_woocommerce',
+        BRIKPANEL_BM_PAGE_SLUG,
+        'brikpanel_brikmentor_render_page',
+        'dashicons-star-filled',
+        56.9
+    );
+    if ( $hook ) {
+        add_action( 'load-' . $hook, function () {
+            global $title;
+            $title = 'BrikMentor';
+        } );
+    }
+}
+
+add_action( 'brikpanel_nav_store_cluster_ready', 'brikpanel_brikmentor_pin_menu' );
+/**
+ * Put the sidebar entry after Marketing (before Settings), or after Abandoned
+ * Carts on a store without the Marketing item. Two calls on purpose: the
+ * second is a no-op when Marketing is missing.
+ *
+ * @param array $menu The $menu-shaped array, by reference.
+ * @return void
+ */
+function brikpanel_brikmentor_pin_menu( &$menu ) {
+    if ( ! function_exists( 'brikpanel_move_item_after' ) || ! is_array( $menu ) ) {
+        return;
+    }
+    $menu = brikpanel_move_item_after( $menu, BRIKPANEL_BM_PAGE_SLUG, 'brikpanel-abandoned-carts' );
+    $menu = brikpanel_move_item_after( $menu, BRIKPANEL_BM_PAGE_SLUG, 'woocommerce-marketing' );
+}
+
+add_filter( 'brikpanel_nav_new_item_after', 'brikpanel_brikmentor_menu_first_position', 10, 2 );
+/**
+ * Where the entry first appears in a sidebar the merchant customized before
+ * this version existed: after Marketing, the same spot it takes on a store
+ * that never touched the customizer. Without this the customizer would file
+ * a never-seen row at the very end, inside the collapsed Site management
+ * group, and the entry would be invisible on exactly the stores that care
+ * enough about their sidebar to have arranged it.
+ *
+ * @param string $after Slug to insert after.
+ * @param string $slug  The new item's slug.
+ * @return string
+ */
+function brikpanel_brikmentor_menu_first_position( $after, $slug ) {
+    return ( BRIKPANEL_BM_PAGE_SLUG === (string) $slug ) ? 'woocommerce-marketing' : $after;
+}
+
+add_filter( 'brikpanel_nav_item_title', 'brikpanel_brikmentor_menu_badge', 10, 2 );
+/**
+ * The "New" pill beside the sidebar label. Added at render time rather than
+ * baked into the registered title, so the nav customizer, the native menu
+ * and screen readers all see the plain word "BrikMentor".
+ *
+ * @param string $title Sidebar label HTML.
+ * @param string $slug  Top-level menu slug.
+ * @return string
+ */
+function brikpanel_brikmentor_menu_badge( $title, $slug ) {
+    if ( BRIKPANEL_BM_PAGE_SLUG !== (string) $slug ) {
+        return $title;
+    }
+    return $title . ' <span class="brikpanel-nav-badge-new">' . esc_html__( 'New', 'brikpanel' ) . '</span>';
+}
+
+/**
+ * The regular monthly price, ready to print (the price after the $1 month).
+ *
+ * Same treatment as brikpanel_brikmentor_price(): one typographic token, the
+ * space inside it made non-breaking, filterable so a price change is one
+ * string and not nine translations.
+ *
+ * @return string
+ */
+function brikpanel_brikmentor_regular_price() {
+    /* translators: regular monthly price in US dollars, charged after the first month. Locales that place the symbol after the amount should translate this as "15 $". */
+    $price    = trim( _x( '$15', 'regular monthly price', 'brikpanel' ) );
+    $unbroken = preg_replace( '/[\s\x{00A0}]+/u', "\u{00A0}", $price );
+    $price    = ( null === $unbroken || '' === $unbroken ) ? $price : $unbroken;
+
+    /**
+     * Filter the regular monthly price token shown on the BrikMentor page.
+     *
+     * @param string $price Display price, symbol and amount already joined.
+     */
+    return (string) apply_filters( 'brikpanel_brikmentor_regular_price', $price );
+}
+
+/**
+ * The eight flows, in the order they are shown, each with a one-line pitch.
+ *
+ * Names are the ones BrikMentor itself uses for these flows, so a merchant
+ * who buys meets the same words inside the product.
+ *
+ * @return array<int, array{icon:string, name:string, line:string}>
+ */
+function brikpanel_brikmentor_page_flows() {
+    return array(
+        array(
+            'icon' => 'cart',
+            'name' => __( 'Abandoned cart', 'brikpanel' ),
+            'line' => __( 'Reminders on a proven schedule, a coupon only if needed.', 'brikpanel' ),
+        ),
+        array(
+            'icon' => 'return',
+            'name' => __( 'Winback', 'brikpanel' ),
+            'line' => __( 'Brings back customers who stopped ordering.', 'brikpanel' ),
+        ),
+        array(
+            'icon' => 'bag',
+            'name' => __( 'Post-purchase', 'brikpanel' ),
+            'line' => __( 'What other customers bought alongside, a few days after each order.', 'brikpanel' ),
+        ),
+        array(
+            'icon' => 'box',
+            'name' => __( 'Back in stock', 'brikpanel' ),
+            'line' => __( 'A waitlist button on sold-out products, an email the moment they return.', 'brikpanel' ),
+        ),
+        array(
+            'icon' => 'card',
+            'name' => __( 'Payment recovery', 'brikpanel' ),
+            'line' => __( 'A second chance for orders whose payment failed.', 'brikpanel' ),
+        ),
+        array(
+            'icon' => 'wave',
+            'name' => __( 'Welcome series', 'brikpanel' ),
+            'line' => __( 'First emails to shoppers who join through the signup popup.', 'brikpanel' ),
+        ),
+        array(
+            'icon' => 'ticket',
+            'name' => __( 'Popup coupon', 'brikpanel' ),
+            'line' => __( 'Delivers the discount code your popup promises.', 'brikpanel' ),
+        ),
+        array(
+            'icon' => 'history',
+            'name' => __( 'Old cart backlog', 'brikpanel' ),
+            'line' => __( 'A one-time series for carts abandoned before you installed.', 'brikpanel' ),
+        ),
+    );
+}
+
+/**
+ * Small line icons for the BrikMentor page, keyed by name. Inline SVG so the
+ * page needs no asset file; stroke follows the text colour.
+ *
+ * @param string $key Icon key.
+ * @return string SVG markup (trusted, static).
+ */
+function brikpanel_brikmentor_page_icon( $key ) {
+    $paths = array(
+        'cart'    => '<circle cx="9" cy="20" r="1.2"/><circle cx="18" cy="20" r="1.2"/><path d="M2.5 3.5h2.4l2.3 11.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.2L20.5 8H6.2"/>',
+        'return'  => '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
+        'bag'     => '<path d="M6.5 8h11l1 12.5h-13z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>',
+        'box'     => '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5"/><path d="M12 12v9"/>',
+        'card'    => '<rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19"/><path d="M6.5 14.5h4"/>',
+        'wave'    => '<path d="M3.5 7.5 12 13l8.5-5.5"/><rect x="3.5" y="5" width="17" height="14" rx="2"/>',
+        'ticket'  => '<path d="M3.5 8.5a2 2 0 0 0 0 4 2 2 0 0 1 0 4v1.5h17V16a2 2 0 0 1 0-4 2 2 0 0 1 0-4V6.5h-17z"/><path d="M12 6.5v13" stroke-dasharray="2 2.5"/>',
+        'history' => '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+        'spark'   => '<path d="M12 3.5 13.8 9l5.7 1.8-5.7 1.8L12 18.5l-1.8-5.9-5.7-1.8L10.2 9z"/>',
+        'at'      => '<circle cx="12" cy="12" r="3.5"/><path d="M15.5 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.3 6.7"/>',
+        'check'   => '<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.8-5"/>',
+        'phone'   => '<path d="M6.5 3.5h3l1.5 4-2 1.2a11 11 0 0 0 6.3 6.3l1.2-2 4 1.5v3a2 2 0 0 1-2.2 2A16 16 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z"/>',
+    );
+    $d = isset( $paths[ $key ] ) ? $paths[ $key ] : $paths['spark'];
+    return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . $d . '</svg>';
+}
+
+/**
+ * The in-admin BrikMentor page.
+ *
+ * One screen, three blocks: the store's own figure with the offer beside it,
+ * the eight flows as a grid of one-liners, and four facts about what the
+ * merchant does not have to do. Nothing is installed from here: the button
+ * opens BrikMentor's own checkout in a new tab, exactly as the floating panel
+ * does. Flow names are BrikMentor's own; the figure sentence, the flow lines
+ * and the facts are the only strings this page adds to the catalogue.
+ *
+ * @return void
+ */
+function brikpanel_brikmentor_render_page() {
+    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        return;
+    }
+    $pitch        = brikpanel_brikmentor_cart_pitch();
+    $cta_url      = brikpanel_brikmentor_url();
+    $checkout_url = brikpanel_brikmentor_checkout_url( 'page' );
+    $why_url      = ( false === strpos( $cta_url, '#' ) ) ? $cta_url . '#bm-free' : $cta_url;
+    $cta_label    = brikpanel_brikmentor_price_text( __( 'Try BrikMentor for %s', 'brikpanel' ) );
+    $generic      = brikpanel_brikmentor_price_text( __( 'BrikMentor is live: first month %s', 'brikpanel' ) );
+    /* translators: %s: regular monthly price, e.g. "$15" */
+    $then         = brikpanel_brikmentor_nb_units( str_replace( array( '%1$s', '%s' ), brikpanel_brikmentor_regular_price(), __( 'then %s a month, cancel any time', 'brikpanel' ) ) );
+
+    $facts = array(
+        array( 'spark', __( 'AI writes every email for your store, in your language, from your own product names.', 'brikpanel' ) ),
+        array( 'at', __( 'Sent from your own domain, with an unsubscribe link in every email.', 'brikpanel' ) ),
+        array( 'check', __( 'Revenue counts only when a customer clicks and then orders, listed by order number.', 'brikpanel' ) ),
+        array( 'phone', __( 'Unlocks phone numbers and one-click WhatsApp messages on Abandoned Carts.', 'brikpanel' ) ),
+    );
+    ?>
+    <div class="wrap brikpanel-bm-page">
+        <div class="brikpanel-bm-page__head">
+            <h1>BrikMentor</h1>
+            <p class="brikpanel-bm-page__sub"><?php esc_html_e( 'The AI assistant and email marketing engine for your store data is out now. Automated cart recovery, win-back and segment campaigns, running inside WooCommerce.', 'brikpanel' ); ?></p>
+        </div>
+
+        <div class="brikpanel-bm-page__card brikpanel-bm-page__hero">
+            <div class="brikpanel-bm-page__hero-main">
+                <span class="brikpanel-bm-page__kicker"><?php esc_html_e( 'BrikMentor is live', 'brikpanel' ); ?></span>
+                <?php if ( $pitch ) : ?>
+                    <div class="brikpanel-bm-page__stat">
+                        <span class="brikpanel-bm-page__amount"><?php echo esc_html( brikpanel_brikmentor_pitch_amount( $pitch ) ); ?></span>
+                        <span class="brikpanel-bm-page__stat-label"><?php echo esc_html( brikpanel_brikmentor_pitch_label( $pitch ) ); ?></span>
+                    </div>
+                    <h2 class="brikpanel-bm-page__title"><?php esc_html_e( 'Recover these carts on autopilot', 'brikpanel' ); ?></h2>
+                <?php else : ?>
+                    <h2 class="brikpanel-bm-page__title"><?php echo esc_html( $generic ); ?></h2>
+                    <p class="brikpanel-bm-page__body"><?php esc_html_e( 'Roughly 70 of every 100 shoppers leave without completing checkout. Well-timed cart recovery emails bring back 5-10% of total revenue in a store that runs them properly. It is the one sales channel you set up once and that never asks for your time again. Don\'t leave that money on the table.', 'brikpanel' ); ?></p>
+                <?php endif; ?>
+            </div>
+            <div class="brikpanel-bm-page__offer">
+                <div class="brikpanel-bm-page__price">
+                    <span class="brikpanel-bm-page__price-label"><?php esc_html_e( 'First month', 'brikpanel' ); ?></span>
+                    <span class="brikpanel-bm-page__price-value"><?php echo esc_html( brikpanel_brikmentor_price() ); ?></span>
+                </div>
+                <p class="brikpanel-bm-page__then"><?php echo esc_html( $then ); ?></p>
+                <a class="brikpanel-bm-page__cta" href="<?php echo esc_url( $checkout_url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $cta_label ); ?></a>
+                <a class="brikpanel-bm-page__ghost" href="<?php echo esc_url( $why_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Wouldn\'t a free plugin be enough?', 'brikpanel' ); ?></a>
+                <a class="brikpanel-bm-page__ghost" href="<?php echo esc_url( $cta_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn more', 'brikpanel' ); ?></a>
+            </div>
+        </div>
+
+        <h2 class="brikpanel-bm-page__h2"><?php esc_html_e( 'Eight flows, ready on day one', 'brikpanel' ); ?></h2>
+        <div class="brikpanel-bm-page__flows">
+            <?php foreach ( brikpanel_brikmentor_page_flows() as $flow ) : ?>
+                <div class="brikpanel-bm-page__flow">
+                    <span class="brikpanel-bm-page__icon"><?php echo brikpanel_brikmentor_page_icon( $flow['icon'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?></span>
+                    <span class="brikpanel-bm-page__flow-name"><?php echo esc_html( $flow['name'] ); ?></span>
+                    <span class="brikpanel-bm-page__flow-line"><?php echo esc_html( $flow['line'] ); ?></span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <h2 class="brikpanel-bm-page__h2"><?php esc_html_e( 'Nothing to set up', 'brikpanel' ); ?></h2>
+        <div class="brikpanel-bm-page__facts">
+            <?php foreach ( $facts as $fact ) : ?>
+                <div class="brikpanel-bm-page__fact">
+                    <span class="brikpanel-bm-page__icon"><?php echo brikpanel_brikmentor_page_icon( $fact[0] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?></span>
+                    <span><?php echo esc_html( $fact[1] ); ?></span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <style>
+        .brikpanel-bm-page {
+            max-width: 820px; margin: 1.25rem auto 2rem;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #303030;
+        }
+        .brikpanel-bm-page__head { margin-bottom: 1rem; }
+        .brikpanel-bm-page__head h1 { margin: 0; padding: 0; font-size: 1.125rem; font-weight: 600; color: #303030; }
+        .brikpanel-bm-page__sub { margin: 0.25rem 0 0; font-size: 0.8125rem; line-height: 1.5; color: #616161; max-width: 640px; }
+        .brikpanel-bm-page__card {
+            background: #fff; border: 1px solid #e3e3e3; border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); padding: 1.25rem 1.5rem;
+        }
+        .brikpanel-bm-page__hero { display: flex; gap: 1.5rem; align-items: stretch; }
+        .brikpanel-bm-page__hero-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+        .brikpanel-bm-page__kicker {
+            display: block; margin-bottom: 0.5rem;
+            font-size: 0.75rem; font-weight: 550; color: #1a8917; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .brikpanel-bm-page__stat { display: flex; flex-direction: column; margin-bottom: 0.625rem; }
+        .brikpanel-bm-page__amount {
+            font-size: 1.75rem; font-weight: 600; line-height: 1.15; color: #303030;
+            white-space: nowrap; font-variant-numeric: tabular-nums;
+        }
+        .brikpanel-bm-page__stat-label { margin-top: 0.15rem; font-size: 0.8125rem; font-weight: 550; color: #616161; }
+        .brikpanel-bm-page__title { margin: 0; padding: 0; font-size: 1.0625rem; font-weight: 600; line-height: 1.35; color: #303030; }
+        .brikpanel-bm-page__body { margin: 0.5rem 0 0; padding: 0; font-size: 0.875rem; line-height: 1.55; color: #616161; }
+        /* The offer column: price tag, what comes after, the button, two links. */
+        .brikpanel-bm-page__offer {
+            flex: 0 0 240px; display: flex; flex-direction: column; gap: 0.5rem; justify-content: center;
+            padding-inline-start: 1.5rem; border-inline-start: 1px solid #e3e3e3;
+        }
+        .brikpanel-bm-page__price {
+            display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem;
+            padding: 0.5rem 0.75rem; background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 0.5rem;
+        }
+        .brikpanel-bm-page__price-label { font-size: 0.75rem; font-weight: 550; color: #616161; text-transform: uppercase; letter-spacing: 0.04em; }
+        .brikpanel-bm-page__price-value { font-size: 1.125rem; font-weight: 600; color: #303030; line-height: 1.2; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .brikpanel-bm-page__then { margin: -0.125rem 0 0; padding: 0; text-align: center; font-size: 0.75rem; color: #8a8a8a; }
+        .brikpanel-bm-page__cta {
+            display: flex; align-items: center; justify-content: center; text-align: center;
+            padding: 0.625rem 1rem; border-radius: 0.5rem;
+            background: #303030; color: #fff; text-decoration: none;
+            font-size: 0.875rem; font-weight: 550; line-height: 1.2;
+            box-shadow: inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+            transition: background 0.15s ease;
+        }
+        .brikpanel-bm-page__cta:hover { background: #1a1a1a; color: #fff; }
+        .brikpanel-bm-page__cta:focus { outline: none; box-shadow: 0 0 0 2px #303030; color: #fff; }
+        .brikpanel-bm-page__ghost {
+            display: block; text-align: center; text-decoration: none;
+            padding: 0.25rem 0.5rem; border-radius: 0.375rem;
+            font-size: 0.8125rem; font-weight: 550; color: #8a8a8a;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .brikpanel-bm-page__ghost:hover { background: #f7f7f7; color: #303030; }
+        .brikpanel-bm-page__ghost:focus { outline: none; box-shadow: 0 0 0 2px #303030; color: #303030; }
+        .brikpanel-bm-page__h2 { margin: 1.5rem 0 0.75rem; padding: 0; font-size: 0.9375rem; font-weight: 600; color: #303030; }
+        /* Flows: eight small cards, four across. Icon, name, one line. */
+        .brikpanel-bm-page__flows { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+        .brikpanel-bm-page__flow {
+            display: flex; flex-direction: column; gap: 0.25rem;
+            background: #fff; border: 1px solid #e3e3e3; border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); padding: 0.875rem 1rem;
+        }
+        .brikpanel-bm-page__icon {
+            display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+            width: 32px; height: 32px; border-radius: 50%; background: #f1f1f1; color: #303030;
+        }
+        .brikpanel-bm-page__flow .brikpanel-bm-page__icon { margin-bottom: 0.375rem; }
+        .brikpanel-bm-page__flow-name { font-size: 0.8125rem; font-weight: 600; color: #303030; line-height: 1.3; }
+        .brikpanel-bm-page__flow-line { font-size: 0.75rem; line-height: 1.45; color: #616161; }
+        /* Facts: two columns of icon + one sentence. */
+        .brikpanel-bm-page__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+        .brikpanel-bm-page__fact {
+            display: flex; align-items: center; gap: 0.75rem;
+            background: #fff; border: 1px solid #e3e3e3; border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); padding: 0.75rem 1rem;
+            font-size: 0.8125rem; line-height: 1.45; color: #303030;
+        }
+        @media (max-width: 782px) {
+            .brikpanel-bm-page__hero { flex-direction: column; }
+            .brikpanel-bm-page__offer { flex-basis: auto; padding-inline-start: 0; border-inline-start: 0; padding-top: 1rem; border-top: 1px solid #e3e3e3; }
+            .brikpanel-bm-page__flows { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .brikpanel-bm-page__facts { grid-template-columns: minmax(0, 1fr); }
+        }
+    </style>
+    <?php
 }

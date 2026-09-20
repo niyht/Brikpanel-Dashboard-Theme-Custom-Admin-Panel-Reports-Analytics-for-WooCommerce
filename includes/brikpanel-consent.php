@@ -143,16 +143,19 @@ function brikpanel_consent_granted() {
 }
 
 /**
- * Value of the WP Consent API's decision cookie for BrikPanel's category.
+ * Cookie prefix the WP Consent API writes its decisions under.
  *
- * @return string|null 'allow' / 'deny' / other raw value, or null when the
- *                     banner has not written a decision for this visitor.
+ * The API exposes the prefix through a config object, not a plain function.
+ * Prefer that when it is loaded; otherwise apply the very filter it applies,
+ * which yields the same answer and keeps working on a site that filters the
+ * prefix while the API itself is inactive.
+ *
+ * Also handed to the storefront so the popup's consent signal reads the same
+ * cookie name this side does.
+ *
+ * @return string Never empty.
  */
-function brikpanel_consent_api_cookie_value() {
-    // The API exposes the prefix through a config object, not a plain
-    // function. Prefer that when it is loaded; otherwise apply the very
-    // filter it applies, which yields the same answer and keeps working on
-    // a site that filters the prefix while the API itself is inactive.
+function brikpanel_consent_cookie_prefix() {
     $prefix = '';
     if ( class_exists( 'WP_Consent_API' )
         && isset( WP_Consent_API::$config )
@@ -162,11 +165,18 @@ function brikpanel_consent_api_cookie_value() {
     if ( '' === $prefix ) {
         $prefix = (string) apply_filters( 'wp_consent_cookie_prefix', 'wp_consent' );
     }
-    if ( '' === $prefix ) {
-        $prefix = 'wp_consent';
-    }
 
-    $name = $prefix . '_' . brikpanel_consent_category();
+    return '' !== $prefix ? $prefix : 'wp_consent';
+}
+
+/**
+ * Value of the WP Consent API's decision cookie for BrikPanel's category.
+ *
+ * @return string|null 'allow' / 'deny' / other raw value, or null when the
+ *                     banner has not written a decision for this visitor.
+ */
+function brikpanel_consent_api_cookie_value() {
+    $name = brikpanel_consent_cookie_prefix() . '_' . brikpanel_consent_category();
 
     return isset( $_COOKIE[ $name ] )
         ? sanitize_text_field( wp_unslash( $_COOKIE[ $name ] ) )
@@ -506,6 +516,24 @@ function brikpanel_consent_api_register() {
 
     if ( brikpanel_consent_required() || ! $tracking_on ) {
         add_filter( 'wp_consent_api_registered_' . BRIKPANEL_BASENAME, '__return_true' );
+    }
+
+    // Disclosed before the tracking bail-out: the signup popup's consent latch
+    // is written whether or not storefront tracking is on, because the popup
+    // does not belong to the tracking feature.
+    if ( 'yes' === get_option( 'brikpanel_cartab_popup_enabled', 'no' )
+        && 'yes' === get_option( 'brikpanel_cartab_popup_wait_consent', 'yes' ) ) {
+        wp_add_cookie_info(
+            'brikpanel_consent_answered',
+            'BrikPanel',
+            'functional',
+            __( '30 days', 'brikpanel' ),
+            __( 'Remembers that this visitor already answered the cookie banner, so the signup popup does not wait for it again.', 'brikpanel' ),
+            '',
+            false,
+            false,
+            'LOCALSTORAGE'
+        );
     }
 
     if ( ! $tracking_on ) {

@@ -24,8 +24,14 @@ class Brikpanel_Ads_Logger {
 	/** Maximum number of entries kept in the buffer. */
 	const MAX_ENTRIES = 100;
 
+	/** Severity for an entry that reports a real failure. */
+	const SEVERITY_ERROR = 'error';
+
+	/** Severity for routine activity that is not a failure. */
+	const SEVERITY_INFO = 'info';
+
 	/**
-	 * Append a log entry. Older entries are evicted FIFO.
+	 * Append a failure entry. Older entries are evicted FIFO.
 	 *
 	 * @param string $flow    One of: oauth, google, meta, sync, client.
 	 * @param string $message Free-form message; redacted before storage.
@@ -33,20 +39,90 @@ class Brikpanel_Ads_Logger {
 	 * @param array  $context Optional extra fields (kept tiny). All scalar values.
 	 */
 	public static function log( $flow, $message, $code = 0, array $context = [] ) {
+		self::write( self::SEVERITY_ERROR, $flow, $message, $code, $context );
+	}
+
+	/**
+	 * Append a routine, non-failure entry.
+	 *
+	 * Background jobs that correctly decide they have nothing to do (a backfill
+	 * chunk queued before the merchant disconnected, a chunk superseded by a
+	 * newer backfill) used to land here through log(), which made the settings
+	 * card present a dozen "nothing to do" notes as a dozen errors. Merchants
+	 * read that as a broken connection and wrote in about it. Same buffer, same
+	 * retention — only the severity differs, so the card can label them.
+	 *
+	 * @param string $flow
+	 * @param string $message
+	 * @param int    $code
+	 * @param array  $context
+	 */
+	public static function note( $flow, $message, $code = 0, array $context = [] ) {
+		self::write( self::SEVERITY_INFO, $flow, $message, $code, $context );
+	}
+
+	/**
+	 * Shared writer for log() and note().
+	 *
+	 * @param string $severity self::SEVERITY_ERROR or self::SEVERITY_INFO.
+	 * @param string $flow
+	 * @param string $message
+	 * @param int    $code
+	 * @param array  $context
+	 */
+	private static function write( $severity, $flow, $message, $code, array $context ) {
 		$entry = [
-			'ts'      => time(),
-			'flow'    => (string) $flow,
-			'code'    => (int) $code,
-			'message' => self::redact( (string) $message ),
-			'context' => self::sanitize_context( $context ),
+			'ts'       => time(),
+			'flow'     => (string) $flow,
+			'code'     => (int) $code,
+			'severity' => $severity === self::SEVERITY_INFO ? self::SEVERITY_INFO : self::SEVERITY_ERROR,
+			'message'  => self::redact( (string) $message ),
+			'context'  => self::sanitize_context( $context ),
 		];
 
 		$log = (array) get_option( self::OPTION, [] );
-		$log[] = $entry;
+
+		// Collapse an immediate repeat instead of appending it. The buffer only
+		// holds MAX_ENTRIES, and several call sites are polls: a backfill chunk
+		// that skips, a status the API keeps rejecting, or a vault that cannot
+		// be decrypted re-logs the identical line every pass and evicts the
+		// whole history — including the OAuth failure that explains why the
+		// sync stopped — within minutes. Keep the newest timestamp and count
+		// the repeats so the signal survives. Ported from
+		// Brikpanel_Sheets_Logger, with severity added to the comparison
+		// because this buffer carries two of them.
+		$last_idx = count( $log ) - 1;
+		if ( $last_idx >= 0
+			&& isset( $log[ $last_idx ] )
+			&& is_array( $log[ $last_idx ] )
+			&& ( $log[ $last_idx ]['message'] ?? null ) === $entry['message']
+			&& ( $log[ $last_idx ]['flow'] ?? null ) === $entry['flow']
+			&& (int) ( $log[ $last_idx ]['code'] ?? 0 ) === $entry['code']
+			&& self::severity_of( $log[ $last_idx ] ) === $entry['severity']
+		) {
+			$log[ $last_idx ]['ts']    = $entry['ts'];
+			$log[ $last_idx ]['count'] = (int) ( $log[ $last_idx ]['count'] ?? 1 ) + 1;
+		} else {
+			$log[] = $entry;
+		}
+
 		if ( count( $log ) > self::MAX_ENTRIES ) {
 			$log = array_slice( $log, -self::MAX_ENTRIES );
 		}
 		update_option( self::OPTION, $log, false );
+	}
+
+	/**
+	 * Severity of a stored entry. Entries written before severities existed
+	 * carry no field; they were all written by log(), so they are errors.
+	 *
+	 * @param array $entry
+	 * @return string
+	 */
+	public static function severity_of( array $entry ) {
+		return isset( $entry['severity'] ) && $entry['severity'] === self::SEVERITY_INFO
+			? self::SEVERITY_INFO
+			: self::SEVERITY_ERROR;
 	}
 
 	/**

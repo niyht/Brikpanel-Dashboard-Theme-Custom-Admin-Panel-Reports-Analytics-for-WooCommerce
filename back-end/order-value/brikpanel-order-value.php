@@ -44,7 +44,7 @@ function brikpanel_get_average_order_value( $start_date_gmt = null, $end_date_gm
         // 'IN' operatörü kullanılıyor
         $query_sql = "SELECT COUNT(p.ID) as order_count, SUM({$fx['expr']}) as total_revenue
                       FROM {$table_name} AS p
-                      LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id{$fx['join']}
+                      LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id AND pm.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "{$fx['join']}
                       WHERE p.post_type = 'shop_order'
                       AND pm.meta_key = '_order_total'
                       AND p.post_status IN ({$status_placeholders})";

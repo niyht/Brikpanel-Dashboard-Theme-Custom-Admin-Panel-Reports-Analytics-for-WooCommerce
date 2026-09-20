@@ -195,6 +195,16 @@ function brikpanel_record_traffic_source( $channel, $host ) {
  * @param string $landing_url location.href of the landing page.
  */
 function brikpanel_record_visitor_view( $referrer = '', $landing_url = '' ) {
+    // Server-side once-per-day cap (3.3.11). The browser's local-storage latch
+    // is the only reason this used to fire once a day, and a client that
+    // starts every page with a blank profile never carries it: each page it
+    // opened became a new visitor, plus a traffic-source hit and a device
+    // hit below. A client with no memory of us now gets one count per
+    // identity per day; returning browsers and signed-in users are untouched.
+    if ( function_exists( 'brikpanel_daily_counter_allowed' ) && ! brikpanel_daily_counter_allowed( 'visitor' ) ) {
+        return;
+    }
+
     global $wpdb;
     $table       = $wpdb->prefix . 'brikpanel_visitors';
     $today       = wp_date( 'Y-m-d' );

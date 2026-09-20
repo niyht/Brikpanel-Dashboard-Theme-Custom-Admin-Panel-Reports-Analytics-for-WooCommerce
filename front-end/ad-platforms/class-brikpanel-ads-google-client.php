@@ -93,7 +93,7 @@ class Brikpanel_Ads_Google_Client {
 				// manager). We still surface the row so it can be picked once
 				// login_customer_id is set, so a 403 is not an error worth
 				// logging. Without this, every Load accounts for an MCC user
-				// would flood the "Recent errors" card. request() still logs
+				// would flood the "Recent activity" card. request() still logs
 				// genuinely unexpected enrichment failures (e.g. 500).
 				$detail = $this->request( 'POST', '/google-ads/customer-info', [
 					'customer_id' => $cid,

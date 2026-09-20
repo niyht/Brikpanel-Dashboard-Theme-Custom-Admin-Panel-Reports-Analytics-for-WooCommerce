@@ -14,13 +14,33 @@
  *   - `brikpanel_export_settings` — streams a JSON download with a `.json`
  *     filename based on the site host + timestamp.
  *   - `brikpanel_import_settings` — accepts a JSON upload, validates the
- *     header, sanitises every value against the option's declared type in
- *     `brikpanel_settings_fields()`, and writes the result with
- *     `update_option()`.
+ *     header, sanitises every value against its registry entry, and applies it.
  *
- * Both endpoints require `manage_woocommerce` and a fresh nonce. Attachment
- * IDs (e.g. brand logo) are intentionally excluded — they reference a media
- * library on the source site and would point at a missing file on the target.
+ * Both endpoints require `manage_woocommerce` and a fresh nonce.
+ *
+ * WHAT CHANGED IN 3.3.14, AND WHY
+ *
+ * This module used to decide what was exportable by walking
+ * `brikpanel_settings_fields()` and treating each field's `id` as an option
+ * name. It is now one contributor to `includes/brikpanel-export-registry.php`
+ * instead of the authority, because that walk could not see:
+ *
+ *   - a card that renders its own inputs, whose field id is a placeholder and
+ *     whose real options live under other names (six cards, twelve options,
+ *     every top bar setting among them);
+ *   - a field declared conditionally, such as the BrikMentor promotion switch,
+ *     which is only added when BrikMentor is absent.
+ *
+ * Two further faults are fixed here rather than in the registry:
+ *
+ *   - A value the source admin never saved was simply absent from the file, so
+ *     the target kept its own different value and the merchant was told the
+ *     import had succeeded. The file now records those keys in `defaults` and
+ *     the import clears them, which is what "clone this site" has to mean.
+ *   - Anything whose type had no case in the sanitiser fell through a generic
+ *     branch that FLATTENED nested arrays and ran `sanitize_text_field()` over
+ *     scalars — which is how multi-line custom CSS arrived as a single line.
+ *     Shapes are now cleaned by the module that owns them.
  *
  * @package BrikPanel
  * @since   2.8.6
@@ -30,125 +50,136 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Authoritative list of option keys that participate in import / export.
- *
- * Built by walking `brikpanel_settings_fields()` (every field with a real
- * `id` and a non-title `type`) plus the few keys that are persisted outside
- * the WC field list (sidebar layout, product editor section order, legacy
- * visible-sections list).
- *
- * Returns `[ option_key => meta ]` where meta carries:
- *   - `type`    — original WC field type (used for sanitisation on import)
- *   - `default` — default value, when the field declared one
- *
- * Third parties can extend or trim the list via the
- * `brikpanel_exportable_option_keys` filter.
- *
- * @return array<string, array{type:string, default?:mixed}>
- */
-function brikpanel_import_export_get_option_map() {
-	$map = [];
-
-	if ( function_exists( 'brikpanel_settings_fields' ) ) {
-		foreach ( brikpanel_settings_fields() as $field ) {
-			if ( empty( $field['id'] ) || empty( $field['type'] ) ) {
-				continue;
-			}
-			$type = (string) $field['type'];
-			if ( in_array( $type, [ 'title', 'sectionend', 'brikpanel_dev_docs', 'brikpanel_nav_customizer', 'brikpanel_section_order', 'brikpanel_early_access', 'brikpanel_brikmentor_promo', 'brikpanel_cartab_popup_i18n' ], true ) ) {
-				continue;
-			}
-			// Brand logo references an attachment id that does not transfer
-			// across sites — exporting it would point at a missing media item
-			// on the target. Skip the picker. (The companion external URL is
-			// portable and is exported via the extras map below.)
-			if ( $field['id'] === 'brikpanel_brand_logo_id' || $type === 'brikpanel_brand_logo_picker' ) {
-				continue;
-			}
-			$map[ $field['id'] ] = [
-				'type'    => $type,
-				'default' => array_key_exists( 'default', $field ) ? $field['default'] : null,
-			];
-		}
-	}
-
-	// Options that live outside the WC field array but are still part of the
-	// admin's BrikPanel configuration footprint.
-	$extras = [
-		'brikpanel_nav_config'           => [ 'type' => 'json_string' ],
-		'brikpanel_pe_section_order'     => [ 'type' => 'json_string' ],
-		'brikpanel_pe_visible_sections'  => [ 'type' => 'multiselect' ],
-		'brikpanel_dashboard_section_order' => [ 'type' => 'json_string' ],
-		// External brand logo URL (e.g. a CDN-hosted logo). Unlike the
-		// attachment-id picker this value is portable across sites.
-		'brikpanel_brand_logo_url'       => [ 'type' => 'url' ],
-		// Quick-edit drawer field visibility. The companion order option
-		// (brikpanel_qe_field_order) already travels as a WC settings field,
-		// but without this list the target site can't tell which drawer
-		// fields the source admin enabled, so the drawer config arrives half
-		// applied. Stored as a flat array of visible slugs → multiselect.
-		'brikpanel_qe_visible_fields'    => [ 'type' => 'multiselect' ],
-		// The signup popup's wording in the store's other languages. Its
-		// settings field renders its own inputs, so it is skipped by the walk
-		// above and has to be named here or a multilingual store's export
-		// would carry the popup's default-language text and nothing else.
-		'brikpanel_cartab_popup_i18n'    => [ 'type' => 'brikpanel_cartab_popup_i18n' ],
-	];
-	foreach ( $extras as $key => $meta ) {
-		if ( ! isset( $map[ $key ] ) ) {
-			$map[ $key ] = $meta;
-		}
-	}
-
-	/**
-	 * Filter the option keys that BrikPanel includes in export / import.
-	 *
-	 * @param array $map [ option_key => [ type, default? ] ]
-	 */
-	return apply_filters( 'brikpanel_exportable_option_keys', $map );
-}
+// =============================================================================
+// REGISTRY CONTRIBUTION — the declared settings fields
+// =============================================================================
 
 /**
- * Build the payload that goes into the downloaded JSON file. Header carries
- * provenance metadata so a future BrikPanel build can detect format mismatches
- * and refuse incompatible imports cleanly.
+ * Register every option that IS a declared WooCommerce settings field.
  *
+ * Priority 5 so modules registering at the default priority can refine what
+ * the walk produced — a module knows its own shape, its own sanitiser and
+ * whether clearing its key is safe; the walk only knows the field type.
+ *
+ * Placeholder ids are skipped (they name a card, not an option) and the brand
+ * logo attachment id is classified `site` rather than dropped, so the audit can
+ * see it was considered: an attachment id points at a media library that does
+ * not exist on the target.
+ *
+ * @param array $map Registry so far.
  * @return array
  */
-function brikpanel_import_export_build_payload() {
-	$map     = brikpanel_import_export_get_option_map();
-	$options = [];
-
-	foreach ( $map as $key => $meta ) {
-		// `false` is the documented "not in DB" return; preserve that distinction
-		// from a stored empty string so import knows whether the source admin
-		// intentionally cleared a value.
-		$value = get_option( $key, null );
-		if ( $value === null ) {
-			continue;
-		}
-		$options[ $key ] = $value;
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_import_export_register_declared_fields', 5 );
+function brikpanel_import_export_register_declared_fields( $map ) {
+	if ( ! function_exists( 'brikpanel_settings_fields' ) ) {
+		return $map;
 	}
 
-	return [
-		'format'           => 'brikpanel-settings',
-		'format_version'   => 1,
-		'plugin_version'   => defined( 'BRIKPANEL_VERSION' ) ? BRIKPANEL_VERSION : '',
-		'exported_at'      => gmdate( 'c' ),
-		'source_site_url'  => home_url( '/' ),
-		'options'          => $options,
-	];
+	$placeholders = array_flip( brikpanel_export_placeholder_field_ids() );
+	$group        = 'general';
+
+	foreach ( brikpanel_settings_fields() as $field ) {
+		$type = isset( $field['type'] ) ? (string) $field['type'] : '';
+		$id   = isset( $field['id'] ) ? (string) $field['id'] : '';
+
+		// A title opens a section; remember which one so the fields under it
+		// can tell a merchant where they came from.
+		if ( 'title' === $type && '' !== $id ) {
+			$section = function_exists( 'brikpanel_settings_section_for_title' )
+				? (string) brikpanel_settings_section_for_title( $id )
+				: '';
+			$group   = '' === $section ? 'general' : $section;
+			continue;
+		}
+		if ( '' === $id || '' === $type || 'sectionend' === $type ) {
+			continue;
+		}
+		if ( isset( $placeholders[ $id ] ) ) {
+			continue;
+		}
+		if ( isset( $map[ $id ] ) ) {
+			continue;  // Already owned by its module; the module's entry wins.
+		}
+
+		if ( 'brikpanel_brand_logo_id' === $id || 'brikpanel_brand_logo_picker' === $type ) {
+			$map[ $id ] = [
+				'class' => 'site',
+				'group' => $group,
+			];
+			continue;
+		}
+
+		$map[ $id ] = [
+			'class'   => 'portable',
+			'group'   => $group,
+			'type'    => $type,
+			'default' => array_key_exists( 'default', $field ) ? $field['default'] : null,
+		];
+	}
+
+	return $map;
 }
 
 /**
- * Sanitize a single value against the field type declared in the option map.
- * Anything unrecognised falls through `sanitize_text_field()` so we never
- * write raw payload through to `update_option()`.
+ * The exportable option map, kept as a named function because other code (and
+ * the screen's own copy) asks for it.
+ *
+ * @return array<string, array> [ option_key => registry entry ]
+ */
+function brikpanel_import_export_get_option_map() {
+	return brikpanel_export_portable_entries();
+}
+
+// =============================================================================
+// SANITISATION
+// =============================================================================
+
+/**
+ * Clean one imported value.
+ *
+ * The registry entry decides: a `sanitize` callable from the owning module
+ * wins, because only that module knows the shape. Otherwise the legacy
+ * WooCommerce field type picks a generic cleaner.
+ *
+ * Returns the sentinel `null` when the value cannot be cleaned safely, so the
+ * caller can count it rather than write something wrong. The old code's
+ * catch-all branch is deliberately NOT the fallback any more: it flattened
+ * nested arrays into a list of strings, which silently destroyed every
+ * multi-level setting it was handed.
+ *
+ * @param mixed $value Raw value from the JSON file.
+ * @param array $entry Registry entry.
+ * @return mixed|null Cleaned value, or null when it must be skipped.
+ */
+function brikpanel_import_export_sanitize_entry( $value, array $entry ) {
+	if ( '' !== $entry['sanitize'] ) {
+		if ( ! is_callable( $entry['sanitize'] ) ) {
+			// The owning module is not loaded on this request. Writing the raw
+			// value would be worse than skipping it.
+			return null;
+		}
+		return call_user_func( $entry['sanitize'], $value );
+	}
+
+	$type = (string) $entry['type'];
+	if ( '' === $type ) {
+		// No shape declared at all. Scalars are safe to clean generically;
+		// anything structured is not.
+		return is_scalar( $value ) ? sanitize_text_field( (string) $value ) : null;
+	}
+
+	return brikpanel_import_export_sanitize_value( $value, $type );
+}
+
+/**
+ * Sanitize a value against a legacy WooCommerce field type.
+ *
+ * Kept as its own function because `format_version: 1` files are still
+ * imported through it, and because a type is all the walk knows.
  *
  * @param mixed  $value Raw value as it came from the JSON file.
  * @param string $type  Declared field type ('checkbox', 'select', …).
- * @return mixed
+ * @return mixed|null
  */
 function brikpanel_import_export_sanitize_value( $value, $type ) {
 	switch ( $type ) {
@@ -199,75 +230,6 @@ function brikpanel_import_export_sanitize_value( $value, $type ) {
 		case 'textarea':
 			return is_scalar( $value ) ? sanitize_textarea_field( (string) $value ) : '';
 
-		case 'brikpanel_whatsapp_status_messages':
-			// Per-order-status WhatsApp drafts: order status slug => on/off plus
-			// the message. A nested shape, so the generic array branch below
-			// would flatten it away; rebuild it key by key instead. Unknown
-			// status slugs are kept: the target site may register them later
-			// (a custom status, a shipping plugin), and BrikPanel only ever
-			// reads the slug the order actually has.
-			if ( ! is_array( $value ) ) {
-				return [];
-			}
-			$out = [];
-			foreach ( $value as $slug => $cfg ) {
-				$slug = sanitize_key( (string) $slug );
-				if ( '' === $slug || ! is_array( $cfg ) ) {
-					continue;
-				}
-				$message = isset( $cfg['message'] ) && is_scalar( $cfg['message'] ) ? (string) $cfg['message'] : '';
-				$out[ $slug ] = [
-					'enabled' => ! empty( $cfg['enabled'] ),
-					// Same cleaner the settings screen uses, so an imported
-					// message can never carry markup a typed one could not.
-					'message' => function_exists( 'brikpanel_whatsapp_clean_message' )
-						? brikpanel_whatsapp_clean_message( $message )
-						: sanitize_textarea_field( $message ),
-				];
-			}
-			return $out;
-
-		case 'brikpanel_cartab_popup_i18n':
-			// The signup popup's wording per language: locale => slot => text.
-			// Nested, so the generic array branch below would flatten it into a
-			// list of strings. Locales are kept even when the target site does
-			// not speak them yet — the merchant may add the language after the
-			// import, and the wording should already be waiting for it.
-			if ( ! is_array( $value ) ) {
-				return [];
-			}
-			$slots = class_exists( 'Brikpanel_Cart_Abandonment' )
-				? array_flip( Brikpanel_Cart_Abandonment::popup_i18n_slots() )
-				: [];
-			$out = [];
-			foreach ( $value as $locale => $texts ) {
-				// Locale keys, not option keys: 'pt_BR' and 'zh-Hant' both have
-				// to survive, and sanitize_key() would lowercase them apart.
-				$locale = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $locale );
-				if ( '' === $locale || ! is_array( $texts ) ) {
-					continue;
-				}
-				$bucket = [];
-				foreach ( $texts as $slot => $text ) {
-					$slot = (string) $slot;
-					if ( ( $slots && ! isset( $slots[ $slot ] ) ) || ! is_scalar( $text ) ) {
-						continue;
-					}
-					// Same cleaner the settings screen uses, so imported
-					// wording can never carry markup a typed one could not.
-					$clean = class_exists( 'Brikpanel_Cart_Abandonment' )
-						? Brikpanel_Cart_Abandonment::sanitize_popup_text( null, [ 'id' => 'brikpanel_cartab_popup_i18n' ], (string) $text )
-						: sanitize_textarea_field( (string) $text );
-					if ( '' !== $clean ) {
-						$bucket[ $slot ] = $clean;
-					}
-				}
-				if ( $bucket ) {
-					$out[ $locale ] = $bucket;
-				}
-			}
-			return $out;
-
 		case 'json_string':
 			// Stored as a JSON-encoded scalar in the DB. Accept either a
 			// pre-encoded string or a nested array (re-encode it).
@@ -281,17 +243,92 @@ function brikpanel_import_export_sanitize_value( $value, $type ) {
 			return '';
 
 		default:
-			if ( is_array( $value ) ) {
-				$out = [];
-				foreach ( $value as $entry ) {
-					if ( is_scalar( $entry ) ) {
-						$out[] = sanitize_text_field( (string) $entry );
-					}
-				}
-				return $out;
-			}
-			return is_scalar( $value ) ? sanitize_text_field( (string) $value ) : '';
+			// An unrecognised type means nobody has declared this shape. Skip
+			// it: the old behaviour here — flatten arrays, strip newlines out
+			// of scalars — quietly corrupted every value it could not name.
+			return null;
 	}
+}
+
+// =============================================================================
+// PAYLOAD
+// =============================================================================
+
+/**
+ * Build the payload that goes into the downloaded JSON file.
+ *
+ * `options` keeps exactly its version 1 meaning: keys that have a row, values
+ * verbatim. Keys with no row go into `defaults` as a flat list of names rather
+ * than as nulls inside `options`, and that shape is load-bearing: a BrikPanel
+ * 3.3.13 reading this file ignores the key it does not know, whereas a null
+ * inside `options` would have been cleaned into an empty string and written
+ * over a good value on the target.
+ *
+ * @param int $user_id Whose per-user layouts to include. 0 for none.
+ * @return array
+ */
+function brikpanel_import_export_build_payload( $user_id = 0 ) {
+	$options  = [];
+	$defaults = [];
+
+	foreach ( brikpanel_export_portable_entries() as $key => $entry ) {
+		// `null` is the documented "not in DB" return; it is what tells the
+		// difference between a stored empty string and a setting the source
+		// admin never touched.
+		$value = get_option( $key, null );
+		if ( $value === null ) {
+			$defaults[] = $key;
+			continue;
+		}
+		$options[ $key ] = $value;
+	}
+
+	$payload = [
+		'format'          => 'brikpanel-settings',
+		'format_version'  => BRIKPANEL_EXPORT_FORMAT_VERSION,
+		'plugin_version'  => defined( 'BRIKPANEL_VERSION' ) ? BRIKPANEL_VERSION : '',
+		'exported_at'     => gmdate( 'c' ),
+		'source_site_url' => home_url( '/' ),
+		'groups'          => brikpanel_export_group_slugs(),
+		'options'         => $options,
+		'defaults'        => $defaults,
+	];
+
+	$layouts = brikpanel_import_export_read_user_layouts( $user_id );
+	if ( $layouts ) {
+		$payload['user_layouts'] = $layouts;
+	}
+
+	return $payload;
+}
+
+/**
+ * Read the per-user admin layouts (column choices) of one account.
+ *
+ * These are preferences of a person, not of a site. They travel so an agency
+ * can hand a client store the same table layout it built, and they are applied
+ * to the account that imports — never to anybody else's.
+ *
+ * @param int $user_id User whose layouts to read.
+ * @return array
+ */
+function brikpanel_import_export_read_user_layouts( $user_id ) {
+	$user_id = (int) $user_id;
+	if ( $user_id <= 0 ) {
+		return [];
+	}
+
+	$out = [];
+	foreach ( brikpanel_export_user_layout_keys() as $key => $meta ) {
+		$value = 'option' === $meta['kind']
+			? get_user_option( $key, $user_id )
+			: get_user_meta( $user_id, $key, true );
+		if ( '' === $value || false === $value || null === $value || [] === $value ) {
+			continue;
+		}
+		$out[ $key ] = $value;
+	}
+	return $out;
 }
 
 /**
@@ -321,7 +358,7 @@ function brikpanel_import_export_handle_export() {
 	// when the export submit piggy-backs on WC's #mainform.
 	check_admin_referer( 'brikpanel_export_settings', 'brikpanel_export_nonce' );
 
-	$payload = brikpanel_import_export_build_payload();
+	$payload = brikpanel_import_export_build_payload( get_current_user_id() );
 	$json    = wp_json_encode( $payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 	if ( $json === false ) {
 		wp_die( esc_html__( 'Could not encode BrikPanel settings as JSON.', 'brikpanel' ) );
@@ -382,57 +419,308 @@ function brikpanel_import_export_handle_import() {
 		exit;
 	}
 
+	$version = isset( $payload['format_version'] ) ? (int) $payload['format_version'] : 1;
+	if ( $version > BRIKPANEL_EXPORT_FORMAT_VERSION ) {
+		// A file from a newer BrikPanel. Applying the half we understand would
+		// produce a partial clone described as a complete one.
+		wp_safe_redirect( add_query_arg( 'brikpanel_import', 'too_new', $redirect ) );
+		exit;
+	}
+
 	$incoming = isset( $payload['options'] ) && is_array( $payload['options'] ) ? $payload['options'] : [];
-	if ( empty( $incoming ) ) {
+	$absent   = ( $version >= 2 && isset( $payload['defaults'] ) && is_array( $payload['defaults'] ) )
+		? $payload['defaults']
+		: [];
+	if ( empty( $incoming ) && empty( $absent ) ) {
 		wp_safe_redirect( add_query_arg( 'brikpanel_import', 'empty', $redirect ) );
 		exit;
 	}
 
-	$map     = brikpanel_import_export_get_option_map();
-	$applied = 0;
-	$skipped = 0;
+	$result = brikpanel_import_export_apply( $payload, $incoming, $absent, $version );
 
-	// Several exportable keys are unbounded (the sidebar config grows with the
-	// menu, the section-order lists with the screens) and their own save paths
-	// deliberately write them with autoload off. A plain update_option() here
-	// would create them autoloaded on a target site that never saved them,
-	// putting multi-KB blobs on every page load. Reuse the canonical denylist
-	// instead of restating the keys.
-	$no_autoload = function_exists( 'brikpanel_option_autoload_denylist' )
-		? brikpanel_option_autoload_denylist()
-		: [];
+	wp_safe_redirect( add_query_arg(
+		[
+			'brikpanel_import'            => 'ok',
+			'brikpanel_import_applied'    => $result['applied'],
+			'brikpanel_import_cleared'    => $result['cleared'],
+			'brikpanel_import_skipped'    => $result['skipped'],
+			'brikpanel_import_rewritten'  => $result['rewritten'],
+			'brikpanel_import_layouts'    => $result['layouts'],
+			'brikpanel_import_stale'      => rawurlencode( implode( ',', $result['stale_groups'] ) ),
+			'brikpanel_import_v'          => $version,
+		],
+		$redirect
+	) );
+	exit;
+}
 
-	foreach ( $incoming as $key => $value ) {
-		if ( ! is_string( $key ) || ! isset( $map[ $key ] ) ) {
+/**
+ * Apply a validated payload.
+ *
+ * Registry order is the apply order, and that is deliberate: the per-status
+ * email settings name statuses that the custom-status option has to have
+ * written first, and the Quick Edit mirrors are derived from a list that has
+ * to be in place before they are recomputed.
+ *
+ * @param array $payload  Whole decoded file (header included).
+ * @param array $incoming `options` map.
+ * @param array $absent   `defaults` list of keys that are at their default on
+ *                        the source.
+ * @param int   $version  Payload format version.
+ * @return array Counters plus the stale-group list.
+ */
+function brikpanel_import_export_apply( array $payload, array $incoming, array $absent, $version ) {
+	$registry = brikpanel_export_portable_entries();
+	$absent   = array_flip( array_filter( $absent, 'is_string' ) );
+
+	$applied   = 0;
+	$cleared   = 0;
+	$skipped   = 0;
+	$rewritten = 0;
+	$after     = [];
+	$touched   = [];
+
+	$source_host = '';
+	if ( ! empty( $payload['source_site_url'] ) && is_string( $payload['source_site_url'] ) ) {
+		$source_host = (string) wp_parse_url( $payload['source_site_url'], PHP_URL_HOST );
+	}
+
+	// Count the keys the file does not mention at all, so a version 1 file can
+	// be described honestly rather than reported as a clean clone.
+	foreach ( $incoming as $key => $_value ) {
+		if ( ! is_string( $key ) || ! isset( $registry[ $key ] ) ) {
 			$skipped++;
+		}
+	}
+
+	foreach ( $registry as $key => $entry ) {
+		$has_value = array_key_exists( $key, $incoming );
+
+		if ( $has_value ) {
+			$clean = brikpanel_import_export_sanitize_entry( $incoming[ $key ], $entry );
+			if ( $clean === null ) {
+				$skipped++;
+				continue;
+			}
+			if ( $entry['rewrite_urls'] && '' !== $source_host ) {
+				$clean = brikpanel_import_export_rewrite_urls( $clean, $source_host, $rewritten );
+			}
+			brikpanel_update_option( $key, $clean );
+			$applied++;
+			$touched[] = $key;
+			if ( '' !== $entry['after'] ) {
+				$after[ $entry['after'] ] = true;
+			}
 			continue;
 		}
-		$type      = isset( $map[ $key ]['type'] ) ? (string) $map[ $key ]['type'] : '';
-		$sanitized = brikpanel_import_export_sanitize_value( $value, $type );
-		if ( isset( $no_autoload[ $key ] ) ) {
-			update_option( $key, $sanitized, false );
-		} else {
-			update_option( $key, $sanitized );
+
+		if ( ! isset( $absent[ $key ] ) || 'never' === $entry['clear'] ) {
+			continue;
 		}
-		$applied++;
+
+		// Count only what actually changed. A key the target had never saved
+		// either is already at the source's value, and reporting it would turn
+		// an accurate number into an alarming one: a fresh store importing a
+		// template would be told a hundred and thirty settings had been reset
+		// when nothing on the screen moved.
+		$had_row = ( get_option( $key, null ) !== null );
+
+		if ( 'write_default' === $entry['clear'] ) {
+			brikpanel_update_option( $key, $entry['default'] );
+		} else {
+			delete_option( $key );
+		}
+		if ( $had_row ) {
+			$cleared++;
+		}
+		$touched[] = $key;
+		if ( '' !== $entry['after'] ) {
+			$after[ $entry['after'] ] = true;
+		}
 	}
+
+	$layouts = 0;
+	if ( ! empty( $payload['user_layouts'] ) && is_array( $payload['user_layouts'] ) ) {
+		$layouts = brikpanel_import_export_apply_user_layouts( $payload['user_layouts'], get_current_user_id() );
+	}
+
+	// Side effects the write itself does not produce. `update_option_X` hooks
+	// DO fire from a plain update_option(), so this is not about those; it is
+	// about the two gaps they leave: handlers bound to
+	// `woocommerce_update_options_brikpanel` (which read $_POST and therefore
+	// cannot run here), and the clear path, where almost nothing in the plugin
+	// registers a `delete_option_X` counterpart.
+	foreach ( array_keys( $after ) as $callable ) {
+		if ( is_callable( $callable ) ) {
+			call_user_func( $callable );
+		}
+	}
+
+	/**
+	 * Fires once after a settings import has been applied.
+	 *
+	 * @since 3.3.14
+	 *
+	 * @param string[] $touched Option keys written or cleared.
+	 * @param array    $payload The decoded file.
+	 */
+	do_action( 'brikpanel_settings_imported', $touched, $payload );
 
 	// Pop any cached data + branded "saved" toast so the next page load
 	// reflects the imported configuration immediately.
 	if ( function_exists( 'brikpanel_bust_data_caches' ) ) {
 		brikpanel_bust_data_caches();
 	}
+	// Action Scheduler schedules are fingerprinted; an import can change which
+	// jobs should exist (a module toggled off, an interval changed). Dropping
+	// the fingerprint makes the next init re-register them instead of waiting
+	// out the reconcile TTL.
+	delete_option( 'brikpanel_cron_reconciled' );
+
 	set_transient( 'brikpanel_settings_saved_' . get_current_user_id(), 1, 30 );
 
-	wp_safe_redirect( add_query_arg(
-		[
-			'brikpanel_import'         => 'ok',
-			'brikpanel_import_applied' => $applied,
-			'brikpanel_import_skipped' => $skipped,
-		],
-		$redirect
-	) );
-	exit;
+	return [
+		'applied'      => $applied,
+		'cleared'      => $cleared,
+		'skipped'      => $skipped,
+		'rewritten'    => $rewritten,
+		'layouts'      => $layouts,
+		'stale_groups' => brikpanel_import_export_stale_groups( $payload, $version ),
+	];
+}
+
+/**
+ * Repoint absolute URLs that pointed at the source site.
+ *
+ * Only URLs whose host matches the exporting site are touched. An agency's own
+ * domain, a supplier portal, a documentation link — anything external — is left
+ * exactly as it was, which is the whole reason this is a host comparison and
+ * not a search and replace.
+ *
+ * @param mixed  $value       Cleaned value.
+ * @param string $source_host Host of the exporting site.
+ * @param int    $count       Running count of rewrites, by reference.
+ * @return mixed
+ */
+function brikpanel_import_export_rewrite_urls( $value, $source_host, &$count ) {
+	$target = (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST );
+	if ( '' === $target || $target === $source_host ) {
+		return $value;
+	}
+
+	if ( is_string( $value ) ) {
+		// Some layouts (the sidebar) are stored as a JSON string, so the URLs
+		// are nested inside it rather than being the value. Walk the decoded
+		// structure and re-encode, otherwise a whole navigation config would
+		// parse as "no host" and quietly keep pointing at the source site.
+		$trimmed = ltrim( $value );
+		if ( '' !== $trimmed && ( '{' === $trimmed[0] || '[' === $trimmed[0] ) ) {
+			$decoded = json_decode( $value, true );
+			if ( is_array( $decoded ) ) {
+				$before  = $count;
+				$decoded = brikpanel_import_export_rewrite_urls( $decoded, $source_host, $count );
+				return $count > $before ? wp_json_encode( $decoded ) : $value;
+			}
+		}
+
+		$host = (string) wp_parse_url( $value, PHP_URL_HOST );
+		if ( '' !== $host && strtolower( $host ) === strtolower( $source_host ) ) {
+			$count++;
+			return str_ireplace( '//' . $source_host, '//' . $target, $value );
+		}
+		return $value;
+	}
+
+	if ( is_array( $value ) ) {
+		foreach ( $value as $k => $v ) {
+			$value[ $k ] = brikpanel_import_export_rewrite_urls( $v, $source_host, $count );
+		}
+	}
+
+	return $value;
+}
+
+/**
+ * Write the per-user layouts onto the importing account.
+ *
+ * @param array $layouts From the payload.
+ * @param int   $user_id Importing user.
+ * @return int Number of layouts applied.
+ */
+function brikpanel_import_export_apply_user_layouts( array $layouts, $user_id ) {
+	$user_id = (int) $user_id;
+	if ( $user_id <= 0 ) {
+		return 0;
+	}
+
+	$applied = 0;
+	foreach ( brikpanel_export_user_layout_keys() as $key => $meta ) {
+		if ( ! array_key_exists( $key, $layouts ) ) {
+			continue;
+		}
+		$value = $layouts[ $key ];
+		if ( '' !== $meta['sanitize'] ) {
+			if ( ! is_callable( $meta['sanitize'] ) ) {
+				continue;
+			}
+			$value = call_user_func( $meta['sanitize'], $value );
+		}
+		if ( null === $value ) {
+			continue;
+		}
+		// update_user_option() prefixes the blog id; on multisite the two are
+		// not interchangeable, so the storage kind is part of the contract.
+		if ( 'option' === $meta['kind'] ) {
+			update_user_option( $user_id, $key, $value );
+		} else {
+			update_user_meta( $user_id, $key, $value );
+		}
+		$applied++;
+	}
+	return $applied;
+}
+
+/**
+ * Which sections does this file predate?
+ *
+ * A version 1 file carries no group list, so every group this build knows is
+ * potentially missing from it — but saying "all of them" would be noise. The
+ * honest answer for a v1 file is a different sentence, handled by the screen;
+ * here it returns the concrete diff whenever the file does carry groups.
+ *
+ * @param array $payload Decoded file.
+ * @param int   $version Format version.
+ * @return string[] Group slugs this build has and the file does not.
+ */
+/**
+ * Human label for a registry group.
+ *
+ * Groups are settings-section slugs, so the section list answers almost all of
+ * them and the merchant reads the same words as on the settings tab. The few
+ * that belong to a screen outside that tab get a label here — reusing strings
+ * the catalogues already carry rather than minting new ones.
+ *
+ * @param string $slug     Group slug.
+ * @param array  $sections Section slug => label.
+ * @return string
+ */
+function brikpanel_import_export_group_label( $slug, array $sections ) {
+	$key = 'general' === $slug ? '' : $slug;
+	if ( isset( $sections[ $key ] ) ) {
+		return (string) $sections[ $key ];
+	}
+	$extra = [
+		'expenses' => __( 'Expenses', 'brikpanel' ),
+	];
+	return isset( $extra[ $slug ] ) ? $extra[ $slug ] : $slug;
+}
+
+function brikpanel_import_export_stale_groups( array $payload, $version ) {
+	if ( $version < 2 || empty( $payload['groups'] ) || ! is_array( $payload['groups'] ) ) {
+		return [];
+	}
+	$theirs = array_filter( $payload['groups'], 'is_string' );
+	return array_values( array_diff( brikpanel_export_group_slugs(), $theirs ) );
 }
 
 // =============================================================================
@@ -454,29 +742,83 @@ function brikpanel_import_export_handle_import() {
  * differently so the two never collide.
  */
 function brikpanel_import_export_render_section() {
-	$map         = brikpanel_import_export_get_option_map();
-	$total_keys  = count( $map );
-	$post_url    = admin_url( 'admin-post.php' );
+	$post_url = admin_url( 'admin-post.php' );
+	$sections = function_exists( 'brikpanel_settings_get_sections' ) ? brikpanel_settings_get_sections() : [];
+	$labels   = [];
+	foreach ( brikpanel_export_group_slugs() as $slug ) {
+		$labels[] = brikpanel_import_export_group_label( $slug, $sections );
+	}
+	sort( $labels );
 
-	$status = isset( $_GET['brikpanel_import'] ) ? sanitize_key( wp_unslash( $_GET['brikpanel_import'] ) ) : '';
-	$applied = isset( $_GET['brikpanel_import_applied'] ) ? (int) $_GET['brikpanel_import_applied'] : 0;
-	$skipped = isset( $_GET['brikpanel_import_skipped'] ) ? (int) $_GET['brikpanel_import_skipped'] : 0;
+	$status    = isset( $_GET['brikpanel_import'] ) ? sanitize_key( wp_unslash( $_GET['brikpanel_import'] ) ) : '';
+	$applied   = isset( $_GET['brikpanel_import_applied'] ) ? (int) $_GET['brikpanel_import_applied'] : 0;
+	$cleared   = isset( $_GET['brikpanel_import_cleared'] ) ? (int) $_GET['brikpanel_import_cleared'] : 0;
+	$skipped   = isset( $_GET['brikpanel_import_skipped'] ) ? (int) $_GET['brikpanel_import_skipped'] : 0;
+	$rewritten = isset( $_GET['brikpanel_import_rewritten'] ) ? (int) $_GET['brikpanel_import_rewritten'] : 0;
+	$layouts   = isset( $_GET['brikpanel_import_layouts'] ) ? (int) $_GET['brikpanel_import_layouts'] : 0;
+	$file_ver  = isset( $_GET['brikpanel_import_v'] ) ? (int) $_GET['brikpanel_import_v'] : 0;
+	$stale_raw = isset( $_GET['brikpanel_import_stale'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_GET['brikpanel_import_stale'] ) ) ) : '';
+
+	// Build the success message out of one plural-aware line per non-zero
+	// counter. One msgid carrying five numbers would be untranslatable in half
+	// the catalogues and unreadable in the rest.
+	$lines = [];
+	if ( 'ok' === $status ) {
+		$lines[] = sprintf(
+			/* translators: %d: number of settings written. */
+			_n( '%d setting applied.', '%d settings applied.', $applied, 'brikpanel' ),
+			$applied
+		);
+		if ( $cleared > 0 ) {
+			$lines[] = sprintf(
+				/* translators: %d: number of settings reset to their default. */
+				_n( '%d setting cleared to its default.', '%d settings cleared to their defaults.', $cleared, 'brikpanel' ),
+				$cleared
+			);
+		}
+		if ( $skipped > 0 ) {
+			$lines[] = sprintf(
+				/* translators: %d: number of keys the file carried that this site does not know. */
+				_n( '%d unknown key skipped.', '%d unknown keys skipped.', $skipped, 'brikpanel' ),
+				$skipped
+			);
+		}
+		if ( $rewritten > 0 ) {
+			$lines[] = sprintf(
+				/* translators: %d: number of links repointed from the source site to this one. */
+				_n( '%d link repointed to this site.', '%d links repointed to this site.', $rewritten, 'brikpanel' ),
+				$rewritten
+			);
+		}
+		if ( $layouts > 0 ) {
+			$lines[] = __( 'Your saved column layouts were applied to your own account.', 'brikpanel' );
+		}
+		if ( $file_ver > 0 && $file_ver < 2 ) {
+			$lines[] = __( 'This file lists only the settings that had been saved on the source site. Anything it does not mention was left as it is here.', 'brikpanel' );
+		} elseif ( '' !== $stale_raw ) {
+			$stale = array_filter( array_map( 'trim', explode( ',', $stale_raw ) ) );
+			$names = [];
+			foreach ( $stale as $slug ) {
+				$names[] = brikpanel_import_export_group_label( $slug, $sections );
+			}
+			if ( $names ) {
+				$lines[] = sprintf(
+					/* translators: %s: comma-separated list of settings section names. */
+					__( 'This file was made by an older BrikPanel and does not include: %s. Those settings were left as they are here.', 'brikpanel' ),
+					implode( ', ', $names )
+				);
+			}
+		}
+	}
 
 	$status_messages = [
-		'ok'         => [
-			'type' => 'success',
-			'text' => sprintf(
-				/* translators: 1: number of options imported, 2: number skipped */
-				_n( '%1$d setting imported. %2$d unknown key skipped.', '%1$d settings imported. %2$d unknown keys skipped.', $applied, 'brikpanel' ),
-				$applied,
-				$skipped
-			),
-		],
+		'ok'         => [ 'type' => 'success', 'text' => implode( ' ', $lines ) ],
 		'no_file'    => [ 'type' => 'error', 'text' => __( 'Pick a BrikPanel JSON file before clicking Import.', 'brikpanel' ) ],
 		'too_large'  => [ 'type' => 'error', 'text' => __( 'That file is too large to be a BrikPanel settings export.', 'brikpanel' ) ],
 		'unreadable' => [ 'type' => 'error', 'text' => __( 'Could not read the uploaded file. Please try again.', 'brikpanel' ) ],
 		'invalid'    => [ 'type' => 'error', 'text' => __( 'That file is not a valid BrikPanel settings export.', 'brikpanel' ) ],
 		'empty'      => [ 'type' => 'error', 'text' => __( 'The uploaded file did not contain any BrikPanel settings.', 'brikpanel' ) ],
+		'too_new'    => [ 'type' => 'error', 'text' => __( 'That file was made by a newer BrikPanel. Update this site first, then import it.', 'brikpanel' ) ],
 	];
 	?>
 	<div class="brikpanel-iox">
@@ -493,9 +835,9 @@ function brikpanel_import_export_render_section() {
 					<p class="brikpanel-iox__card-desc">
 						<?php
 						printf(
-							/* translators: %d: number of options included */
-							esc_html__( 'Download every BrikPanel option as a single JSON file. Includes %d configuration keys: toggles, layout, accent color, sidebar order, dashboard order, notification preferences.', 'brikpanel' ),
-							(int) $total_keys
+							/* translators: %s: comma-separated list of settings section names. */
+							esc_html__( 'Download your BrikPanel configuration as a single JSON file, covering %s.', 'brikpanel' ),
+							esc_html( implode( ', ', $labels ) )
 						);
 						?>
 					</p>
@@ -516,7 +858,7 @@ function brikpanel_import_export_render_section() {
 				<?php esc_html_e( 'Download JSON file', 'brikpanel' ); ?>
 			</button>
 			<p class="brikpanel-iox__hint">
-				<?php esc_html_e( 'The brand logo image is not included — attachment IDs are tied to your media library and would point at a missing file on the target site. Re-pick the logo after importing.', 'brikpanel' ); ?>
+				<?php esc_html_e( 'Your own column layouts travel with the file and are applied to the account that imports it. Connection keys, media library picks and anything holding a user or page ID from this site stay behind, so the brand logo has to be picked again after importing.', 'brikpanel' ); ?>
 			</p>
 		</section>
 
@@ -525,7 +867,7 @@ function brikpanel_import_export_render_section() {
 				<div>
 					<h2 class="brikpanel-iox__card-title"><?php esc_html_e( 'Import settings', 'brikpanel' ); ?></h2>
 					<p class="brikpanel-iox__card-desc">
-						<?php esc_html_e( 'Upload a JSON file exported from BrikPanel. Existing options with the same keys will be overwritten. Unknown keys are skipped — your store stays safe.', 'brikpanel' ); ?>
+						<?php esc_html_e( 'Upload a JSON file exported from BrikPanel. This site is made to match the one the file came from: settings it carries are overwritten, and settings the source site had left at their default are reset here too. Unknown keys are skipped.', 'brikpanel' ); ?>
 					</p>
 				</div>
 				<svg class="brikpanel-iox__card-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>

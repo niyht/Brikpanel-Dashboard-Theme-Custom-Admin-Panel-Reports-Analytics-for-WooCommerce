@@ -88,6 +88,14 @@ function brikpanel_prime_keys_always() {
 
 		// Ad platforms.
 		'brikpanel_ads_tokens',
+		// Throttle stamps for the "credentials unreadable" log line. Read on
+		// the same requests as the vaults themselves, so priming them keeps an
+		// unreadable vault from adding a query per request.
+		'brikpanel_ads_vault_alert',
+		'brikpanel_gs_vault_alert',
+
+		// Recurring job fingerprint, read on init by Brikpanel_Cron::reconcile().
+		'brikpanel_cron_reconciled',
 
 		// Front-end tracking emitter.
 		'brikpanel_frontend_tracking',
@@ -103,6 +111,10 @@ function brikpanel_prime_keys_always() {
 		// Read by the abandoned-cart sweep, which runs under wp-cron.php and the
 		// Action Scheduler queue runner — neither of them an admin request.
 		'brikpanel_cartab_abandon_minutes',
+		// Decided on the storefront enqueue path, before the popup's assets are
+		// chosen. Stores that never saved the section have no row for either.
+		'brikpanel_cartab_popup_enabled',
+		'brikpanel_cartab_popup_wait_consent',
 
 		// One-shot migration guards evaluated on plugins_loaded / init, i.e.
 		// on EVERY request including the storefront, before the marker they
@@ -161,6 +173,7 @@ function brikpanel_prime_keys_admin() {
 		// One-shot migration / backfill markers.
 		'brikpanel_native_cogs_backfilled',
 		'brikpanel_cogs_unified_native',
+		'brikpanel_meta_fanout_refresh_done',
 		'brikpanel_qe_field_order_migrated_v1',
 		'brikpanel_qe_field_backfilled_cogs',
 		'brikpanel_pe_metaboxes_merged',
@@ -226,6 +239,7 @@ function brikpanel_prime_keys_admin() {
 
 		// Misc screen gates measured hitting the DB.
 		'brikpanel_orders_enhancements',
+		'brikpanel_orders_compact_list',
 		'brikpanel_order_merge',
 		'brikpanel_modern_segments',
 		'brikpanel_whatsapp_order_message',
@@ -308,6 +322,7 @@ function brikpanel_option_autoload_map() {
 	return array(
 		'brikpanel_native_cogs_backfilled'          => true,
 		'brikpanel_cogs_unified_native'             => true,
+		'brikpanel_meta_fanout_refresh_done'        => true,
 		'brikpanel_qe_field_order_migrated_v1'      => true,
 		'brikpanel_qe_field_backfilled_cogs'        => true,
 		'brikpanel_pe_metaboxes_merged'             => true,
@@ -333,6 +348,8 @@ function brikpanel_option_autoload_denylist() {
 	return array(
 		'brikpanel_gs_tokens'                           => 'OAuth credentials',
 		'brikpanel_ads_tokens'                          => 'OAuth credentials',
+		'brikpanel_gs_tokens_unreadable'                => 'OAuth credentials (quarantined ciphertext)',
+		'brikpanel_ads_tokens_unreadable'               => 'OAuth credentials (quarantined ciphertext)',
 		'brikpanel_ea_lead'                             => 'PII payload',
 		'brikpanel_gs_error_log'                        => 'log, grows without bound',
 		'brikpanel_ads_error_log'                       => 'log, grows without bound',

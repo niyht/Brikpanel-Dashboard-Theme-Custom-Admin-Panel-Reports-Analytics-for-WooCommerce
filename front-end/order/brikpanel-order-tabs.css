@@ -1,0 +1,1739 @@
+/* =================================================================
+   ORDER SCREEN — TABBED LAYOUT
+   -----------------------------------------------------------------
+   Left: one card with Items / Customer / Notes / More tabs holding
+   WooCommerce's own boxes (moved there by buildTabs() in
+   brikpanel-order.js). Right: order summary, order actions and the
+   shipping cost box. Everything is scoped to body.bp-order-tabs, which
+   the script adds only once the tabs are built, so without it the page
+   keeps the two-column modern layout from brikpanel-order.css.
+   ================================================================= */
+
+/* ---- Page grid ---- */
+.brikpanel-modern-edit.bp-order-tabs #poststuff #post-body {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 320px;
+	grid-template-areas:
+		"content content"
+		"main side";
+	align-items: start;
+	gap: 0 16px;
+	margin-right: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #post-body > #post-body-content {
+	grid-area: content;
+	float: none !important;
+	width: auto !important;
+	margin: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #post-body > #postbox-container-2 {
+	grid-area: main;
+	float: none !important;
+	width: auto !important;
+	min-width: 0;
+	margin: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #post-body > #postbox-container-1 {
+	grid-area: side;
+	float: none !important;
+	width: auto !important;
+	min-width: 0;
+	margin: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs.bp-order-side-sticky #post-body > #postbox-container-1 {
+	position: sticky;
+	top: calc(var(--bp-otabs-top, 104px) + 16px);
+}
+
+.brikpanel-modern-edit.bp-order-tabs #poststuff #post-body #side-sortables,
+.brikpanel-modern-edit.bp-order-tabs #normal-sortables,
+.brikpanel-modern-edit.bp-order-tabs #advanced-sortables {
+	width: auto !important;
+	min-height: 0 !important;
+	outline: none !important;
+}
+
+/* The drop zones WordPress keeps for dragging boxes are empty now. */
+.brikpanel-modern-edit.bp-order-tabs #normal-sortables:not(:has(> .postbox)),
+.brikpanel-modern-edit.bp-order-tabs #advanced-sortables:not(:has(> .postbox)) {
+	display: none !important;
+}
+
+/* ---- Tabs card ---- */
+.bp-otabs {
+	margin: 0 0 16px;
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: .75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+	color: #303030;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* The tab bar stays under the order header while a long order scrolls. */
+.bp-otabs__bar {
+	position: sticky;
+	top: var(--bp-otabs-top, 104px);
+	z-index: 20;
+	display: flex;
+	gap: 2px;
+	padding: 8px;
+	overflow-x: auto;
+	border-bottom: 1px solid #e3e3e3;
+	border-radius: .75rem .75rem 0 0;
+	background: #fff;
+	scrollbar-width: none;
+}
+
+.bp-otabs__bar::-webkit-scrollbar {
+	display: none;
+}
+
+.bp-otabs__tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	padding: 5px 10px;
+	border: 0;
+	border-radius: .5rem;
+	background: transparent;
+	color: #616161;
+	font: inherit;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 18px;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color .15s ease, color .15s ease;
+}
+
+.bp-otabs__tab[hidden] {
+	display: none;
+}
+
+.bp-otabs__tab:hover {
+	background: #f1f1f1;
+	color: #303030;
+}
+
+.bp-otabs__tab[aria-selected="true"] {
+	background: #ebebeb;
+	color: #303030;
+}
+
+.bp-otabs__tab:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: -2px;
+}
+
+.bp-otabs__count {
+	min-width: 18px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: #f1f1f1;
+	color: #616161;
+	font-size: .6875rem;
+	font-variant-numeric: tabular-nums;
+	font-weight: 550;
+	line-height: 18px;
+	text-align: center;
+}
+
+.bp-otabs__tab[aria-selected="true"] .bp-otabs__count {
+	background: #fff;
+}
+
+.bp-otabs__count:empty {
+	display: none;
+}
+
+.bp-otabs__panel[hidden] {
+	display: none !important;
+}
+
+.bp-otabs__panel:focus {
+	outline: none;
+}
+
+/* ---- Boxes inside a tab: sections of the card, not cards of their own ---- */
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox {
+	min-width: 0;
+	margin: 0 !important;
+	overflow: visible;
+	border: 0 !important;
+	border-radius: 0 !important;
+	background: transparent !important;
+	box-shadow: none !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox + .postbox {
+	border-top: 1px solid #ebebeb !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox:last-child {
+	border-radius: 0 0 .75rem .75rem !important;
+}
+
+/* A collapsed box would be invisible behind its (hidden) toggle. */
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox.closed > .inside {
+	display: block !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox > .postbox-header {
+	min-height: 0;
+	padding: 16px 20px 0 !important;
+	border-bottom: 0 !important;
+	background: transparent !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox > .postbox-header .hndle {
+	padding: 0 !important;
+	color: #616161 !important;
+	font-size: .75rem !important;
+	font-weight: 600 !important;
+	letter-spacing: 0 !important;
+	text-transform: none !important;
+	cursor: default;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox > .postbox-header .handle-actions {
+	display: none !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox > .inside {
+	margin: 0 !important;
+	padding: 12px 20px 20px !important;
+}
+
+/* The tab already names these boxes. */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items > .postbox-header,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-data > .postbox-header,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes > .postbox-header {
+	display: none !important;
+}
+
+/* Just granted download access: the new row lights up for a moment. */
+.brikpanel-modern-edit #woocommerce-order-downloads .wc-metabox.bp-perm-new {
+	animation: bp-perm-new 2.4s ease-out;
+}
+
+@keyframes bp-perm-new {
+	0%, 35% { background-color: #e4f5e1; }
+	100% { background-color: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-modern-edit #woocommerce-order-downloads .wc-metabox.bp-perm-new {
+		animation: none;
+		outline: 1px solid #b7e1b0;
+	}
+}
+
+/* Shipping cost under More: a short field, not one stretched across the tab. */
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel .brikpanel-osc {
+	max-width: 420px;
+}
+
+/* ---- Items ---- */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items > .inside {
+	padding: 0 !important;
+	overflow: hidden;
+	border: 0 !important;
+	border-radius: 0 0 .75rem .75rem;
+	box-shadow: none !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .woocommerce_order_items_wrapper {
+	margin: 0;
+}
+
+/* Flatten the rounded blocks and spacer rows the two-column layout uses, so
+   the items read as one section of the card. */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .woocommerce_order_items_wrapper {
+	padding-bottom: 0 !important;
+	border-radius: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .woocommerce_order_items {
+	margin-bottom: 0;
+	border-radius: 0;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .woocommerce_order_items tbody:not(:last-child)::after {
+	content: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .woocommerce_order_items tbody td {
+	border-radius: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_fee_line_items tr:first-child td,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_shipping_line_items tr:first-child td,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_refunds tr:first-child td {
+	border-top: 1px solid #f1f1f1 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row {
+	padding: 14px 20px !important;
+	border: 0 !important;
+	border-top: 1px solid #ebebeb !important;
+	border-radius: 0 !important;
+	background: #fff !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-totals-items {
+	background: #fafafa !important;
+}
+
+/* WooCommerce's item buttons in the BrikPanel button styles. */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .button {
+	display: inline-flex;
+	align-items: center;
+	height: 32px !important;
+	min-height: 32px !important;
+	margin: 0 6px 0 0;
+	padding: 0 12px !important;
+	border: 0 !important;
+	border-radius: .5rem !important;
+	background: #fff !important;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05) !important;
+	color: #303030 !important;
+	font-size: .8125rem !important;
+	font-weight: 550 !important;
+	line-height: 1 !important;
+	text-shadow: none !important;
+	vertical-align: middle;
+	transition: background-color .15s ease !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .button:hover {
+	background: #f7f7f7 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .button-primary:not(.calculate-action) {
+	background: #303030 !important;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .2), inset 0 1px 0 rgba(255, 255, 255, .1) !important;
+	color: #fff !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .button-primary:not(.calculate-action):hover {
+	background: #1a1a1a !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .button:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .button:last-child {
+	margin-right: 0;
+}
+
+/* ---- Customer ---- */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-data > .inside {
+	padding: 20px !important;
+}
+
+/* The header bar and the summary already carry the order number. */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-data .woocommerce-order-data__heading {
+	display: none;
+}
+
+/* The box already has its padding; WooCommerce's own would indent twice. */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-data #order_data {
+	padding: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-data .woocommerce-order-data__meta {
+	margin: 0 0 16px;
+	color: #8a8a8a;
+	font-size: .75rem;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-data .order_data_column_container {
+	gap: 24px;
+}
+
+/* ---- Notes: a full-width timeline ---- */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes > .inside {
+	padding: 20px !important;
+}
+
+/* Composer: the note across the full width, then visibility and the add
+   button on one row. */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: end;
+	gap: 8px 12px;
+	margin: 0 0 24px;
+	padding: 0 !important;
+	border: 0 !important;
+	background: transparent;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note > p:first-child {
+	grid-column: 1 / -1;
+	margin: 0;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note > p:first-child label,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note .order_note_visibility label {
+	display: block;
+	margin: 0 0 4px;
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note .order_note_visibility select {
+	width: auto !important;
+	min-width: 200px;
+	max-width: 100%;
+	height: 32px;
+	min-height: 32px;
+	padding: 0 28px 0 10px !important;
+	font-size: .8125rem !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note .add_note_email_settings {
+	margin: 4px 0 0;
+	font-size: .75rem;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note .add_note_actions {
+	margin: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note .add_note_actions .button {
+	width: auto !important;
+	height: 32px;
+	min-height: 32px;
+	padding: 0 14px !important;
+	font-size: .8125rem !important;
+	line-height: 1 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes textarea#add_order_note {
+	min-height: 72px;
+	padding: 10px 12px;
+	border-radius: .5rem;
+	font-size: .8125rem;
+}
+
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes {
+	margin: 0 0 0 6px;
+	padding: 0 0 0 18px;
+	border-left: 1px solid #e3e3e3;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li {
+	margin: 0 0 14px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .note_content {
+	position: relative;
+	padding: 8px 12px !important;
+	border: 0;
+	border-radius: .5rem;
+	background: #f7f7f7 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li.customer-note .note_content {
+	background: #fff !important;
+	box-shadow: inset 0 0 0 1px #e3e3e3;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .note_content::after {
+	content: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .note_content p {
+	position: static;
+	margin: 0;
+	padding-left: 0 !important;
+	color: #303030;
+	font-size: .8125rem;
+	line-height: 1.5;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .note_content p::before {
+	top: 13px;
+	left: -23px;
+	width: 9px;
+	height: 9px;
+	transform: none;
+	background: #fff;
+	box-shadow: inset 0 0 0 2px #c9c9c9;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li.customer-note .note_content p::before,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li:not(.system-note) .note_content p::before {
+	box-shadow: inset 0 0 0 2px #303030;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .meta {
+	margin: 4px 0 0;
+	padding: 0;
+	color: #8a8a8a !important;
+	font-size: .75rem;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .meta .delete_note {
+	font-size: .75rem;
+}
+
+/* ---- More: other boxes as titled sections ---- */
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel--more > .postbox > .inside {
+	font-size: .8125rem;
+}
+
+/* Plain WordPress buttons inside the tabs (other plugins, downloads) in the
+   BrikPanel look. The items box has its own rules above. */
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel:not(.bp-otabs__panel--items) .inside .button:not(.button-primary):not(.wc-reload):not(.brikpanel-wa-btn) {
+	min-height: 32px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+	color: #303030;
+	font-weight: 550;
+	line-height: 32px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel:not(.bp-otabs__panel--items) .inside .button:not(.button-primary):not(.wc-reload):not(.brikpanel-wa-btn):hover {
+	background: #f7f7f7;
+	color: #303030;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel:not(.bp-otabs__panel--items):not(.bp-otabs__panel--notes) .inside .button-primary {
+	min-height: 32px;
+	padding: 0 14px;
+	border: 0;
+	border-radius: .5rem;
+	background: #303030;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .2), inset 0 1px 0 rgba(255, 255, 255, .1);
+	color: #fff;
+	font-weight: 550;
+	line-height: 32px;
+}
+
+/* ---- Summary column ---- */
+.bp-osummary {
+	box-sizing: border-box;
+	margin: 0 0 10px;
+	padding: 14px 16px;
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: .75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+	color: #303030;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.bp-osummary__label {
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+}
+
+.bp-osummary__total {
+	min-height: 28px;
+	margin: 2px 0 8px;
+	font-size: 1.375rem;
+	font-variant-numeric: tabular-nums;
+	font-weight: 650;
+	line-height: 28px;
+}
+
+.bp-osummary__payment {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+}
+
+.bp-osummary__pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 8px 5px 7px;
+	border-radius: 999px;
+	background: #f1f1f1;
+	box-shadow: inset 0 0 0 1px #d4d4d4;
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.bp-osummary__pill::before {
+	content: "";
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.bp-osummary__pill.is-paid {
+	background: #ebebeb;
+	box-shadow: none;
+	color: #303030;
+}
+
+.bp-osummary__pill.is-paid::before {
+	background: currentColor;
+	box-shadow: none;
+}
+
+.bp-osummary__method {
+	color: #8a8a8a;
+	font-size: .75rem;
+}
+
+.bp-osummary__customer {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid #efefef;
+}
+
+.bp-osummary__avatar {
+	display: grid;
+	flex-shrink: 0;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: #f1f1f1;
+	box-shadow: inset 0 0 0 1px #ebebeb;
+	color: #616161;
+	font-size: .6875rem;
+	font-weight: 650;
+}
+
+.bp-osummary__who {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.bp-osummary__name {
+	overflow: hidden;
+	font-size: .8125rem;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bp-osummary__orders {
+	color: #8a8a8a;
+	font-size: .75rem;
+}
+
+.bp-osummary__wa {
+	display: grid;
+	flex-shrink: 0;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3;
+	color: #1a8917;
+	transition: background-color .15s ease;
+}
+
+.bp-osummary__wa::before {
+	content: "";
+	width: 16px;
+	height: 16px;
+	background: currentColor;
+	-webkit-mask: url(../orders/icons/bp-whatsapp.svg) center / contain no-repeat;
+	mask: url(../orders/icons/bp-whatsapp.svg) center / contain no-repeat;
+}
+
+.bp-osummary__wa:hover {
+	background: #f7f7f7;
+	color: #1a8917;
+}
+
+.bp-osummary__wa:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+/* ---- Narrower screens ---- */
+@media screen and (max-width: 1100px) {
+	.brikpanel-modern-edit.bp-order-tabs #poststuff #post-body {
+		grid-template-columns: minmax(0, 1fr) 280px;
+	}
+}
+
+@media screen and (max-width: 850px) {
+	/* One column: the tabs first, then the summary and the side boxes. */
+	.brikpanel-modern-edit.bp-order-tabs #poststuff #post-body {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"content"
+			"main"
+			"side";
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-data > .inside,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes > .inside {
+		padding: 16px !important;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox > .postbox-header {
+		padding: 14px 16px 0 !important;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel > .postbox > .inside {
+		padding: 10px 16px 16px !important;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bp-otabs__tab,
+	.bp-osummary__wa {
+		transition: none;
+	}
+}
+
+/* =================================================================
+   RESPONSIVE + DETAIL PASS
+   Layout follows the space the page really has (container queries), not
+   the window: with the admin menu open a 1280px laptop leaves the order
+   screen about 1000px, which is too narrow for two columns.
+   ================================================================= */
+
+.brikpanel-modern-edit.bp-order-tabs #poststuff {
+	container: bp-order / inline-size;
+}
+
+.bp-otabs {
+	container: bp-tabs / inline-size;
+}
+
+/* One column: summary first (total, payment, customer at a glance), then the
+   tabs, then order actions and the side boxes. */
+@container bp-order (max-width: 1080px) {
+	.brikpanel-modern-edit.bp-order-tabs #poststuff #post-body {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"content"
+			"summary"
+			"main"
+			"side";
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #post-body > #postbox-container-1 {
+		display: contents;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #postbox-container-1 > .bp-osummary {
+		grid-area: summary;
+		margin-bottom: 16px;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #postbox-container-1 > #side-sortables {
+		grid-area: side;
+	}
+
+	/* Summary as one compact row when there is room for it. */
+	.bp-osummary {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		grid-template-areas:
+			"label payment customer"
+			"total payment customer";
+		align-items: center;
+		gap: 0 20px;
+	}
+
+	.bp-osummary__label { grid-area: label; }
+	.bp-osummary__total { grid-area: total; margin: 0; }
+	.bp-osummary__payment { grid-area: payment; }
+
+	.bp-osummary__customer {
+		grid-area: customer;
+		margin: 0;
+		padding: 0;
+		padding-inline-start: 20px;
+		border-top: 0;
+		border-inline-start: 1px solid #efefef;
+	}
+}
+
+/* Below the tabs, the side boxes sit two by two instead of stretching. */
+@container bp-order (min-width: 700px) and (max-width: 1080px) {
+	/* `auto-fit` rather than a fixed two, and no `:only-child` rule, because
+	   a box switched off in Screen Options is still a child: with two boxes
+	   and one hidden, `:only-child` never matched and the surviving box sat
+	   at half width beside an empty gap. A hidden box is not a grid item at
+	   all, so auto-fit collapses the spare track on its own.
+	   The track floor is half the row rather than a pixel width, which keeps
+	   it to two columns: a plain `minmax(260px, 1fr)` fitted three narrow
+	   columns on a wide screen, below the width these cards are drawn for. */
+	.brikpanel-modern-edit.bp-order-tabs #postbox-container-1 > #side-sortables {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(calc(50% - 8px), 1fr));
+		align-items: start;
+		gap: 16px;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #postbox-container-1 > #side-sortables > .postbox {
+		margin: 0 !important;
+	}
+}
+
+@container bp-order (max-width: 600px) {
+	.bp-osummary {
+		display: block;
+	}
+
+	.bp-osummary__total {
+		margin: 2px 0 8px;
+	}
+
+	.bp-osummary__customer {
+		margin-top: 12px;
+		padding: 12px 0 0;
+		border-top: 1px solid #efefef;
+		border-inline-start: 0;
+	}
+}
+
+/* ---- Tab bar: fade the edge when tabs overflow ---- */
+/* A white fade that sticks to the end edge. (A mask would make the sticky
+   bar see-through and show the page scrolling underneath.) */
+.bp-otabs__bar.is-overflowing::after {
+	content: "";
+	position: sticky;
+	inset-inline-end: -8px;
+	flex: 0 0 40px;
+	margin-inline-start: -40px;
+	margin-inline-end: -8px;
+	background: linear-gradient(to left, #fff 20%, rgba(255, 255, 255, 0));
+	pointer-events: none;
+}
+
+.rtl .bp-otabs__bar.is-overflowing::after {
+	background: linear-gradient(to right, #fff 20%, rgba(255, 255, 255, 0));
+}
+
+/* ---- Links: monochrome, like the rest of BrikPanel ---- */
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs a:not(.button):not(.bp-od-btn):not(.edit_address):not(.delete_note),
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .inside a:not(.button):not(.submitdelete) {
+	color: #303030;
+	text-decoration: underline;
+	text-decoration-color: #c9c9c9;
+	text-underline-offset: 2px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs a:not(.button):not(.bp-od-btn):not(.edit_address):not(.delete_note):hover,
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .inside a:not(.button):not(.submitdelete):hover {
+	text-decoration-color: currentColor;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items a.wc-order-item-name,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items td.name > a {
+	color: #303030;
+	font-weight: 550;
+	text-decoration: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items a.wc-order-item-name:hover,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items td.name > a:hover {
+	text-decoration: underline;
+}
+
+.brikpanel-modern-edit.bp-order-tabs a:focus-visible,
+.brikpanel-modern-edit.bp-order-tabs button:focus-visible,
+.brikpanel-modern-edit.bp-order-tabs input:focus-visible,
+.brikpanel-modern-edit.bp-order-tabs select:focus-visible,
+.brikpanel-modern-edit.bp-order-tabs textarea:focus-visible {
+	outline-color: #303030;
+}
+
+/* ---- Items table ---- */
+.brikpanel-modern-edit.bp-order-tabs .woocommerce_order_items thead th {
+	padding: 8px 12px !important;
+	background: #f7f7f7 !important;
+	color: #616161 !important;
+	font-size: .75rem !important;
+	font-weight: 550 !important;
+	letter-spacing: 0 !important;
+	text-transform: none !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .woocommerce_order_items td {
+	color: #303030;
+	font-size: .8125rem;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .woocommerce_order_items td.item_cost_of_goods {
+	color: #8a8a8a;
+}
+
+/* Inline editing (pencil on an item, refund quantities). */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table input[type="text"],
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table input[type="number"],
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table textarea,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-refund-items input[type="text"],
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-refund-items input[type="number"] {
+	box-sizing: border-box;
+	min-height: 32px;
+	padding: 4px 8px;
+	border: 1px solid #8a8a8a;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: none;
+	color: #303030;
+	font-size: .8125rem;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table input:focus,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table textarea:focus,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-refund-items input:focus {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+	outline: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table .split-input {
+	border: 1px solid #e3e3e3;
+	border-radius: .5rem;
+	box-shadow: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table .split-input input {
+	border: 0 !important;
+	box-shadow: none !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: .3em;
+	min-height: 32px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+	color: #303030;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 1;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table .button:hover {
+	background: #f7f7f7;
+	color: #303030;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	border: 0;
+	border-radius: 4px;
+	box-shadow: inset 0 0 0 1px #8a8a8a;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items input[type="checkbox"]:checked {
+	background: #303030;
+	box-shadow: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items input[type="checkbox"]:checked::before {
+	content: "";
+	width: 8px;
+	height: 4px;
+	margin: 4px 0 0 3px;
+	border: solid #fff;
+	border-width: 0 0 2px 2px;
+	transform: rotate(-45deg);
+}
+
+/* Item buttons: one wrapping row, spacing from gap (flex drops the spaces
+   between "Refund", the amount and "manually", so gap puts them back). */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .button {
+	gap: .3em;
+	margin: 0 !important;
+	float: none !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-bulk-actions > p,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-add-item,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-refund-items .refund-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .description {
+	float: none;
+	margin: 0 auto 0 0;
+	color: #8a8a8a;
+	font-size: .75rem;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .calculate-action,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-add-item .cancel-action {
+	margin-left: auto !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .description + .button {
+	margin-left: 0 !important;
+}
+
+/* ---- Totals: a compact block on the right ---- */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-totals-items {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-totals-items > .clear {
+	display: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals {
+	float: none !important;
+	/* Same width for every totals table, so labels and amounts line up. */
+	width: min(100%, 380px) !important;
+	min-width: 0;
+	max-width: 100%;
+	margin: 0 !important;
+	margin-inline-start: auto !important;
+	padding: 0 !important;
+	border-collapse: collapse;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals:empty {
+	display: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals + table.wc-order-totals {
+	margin: 10px 0 0 !important;
+	margin-inline-start: auto !important;
+	padding-top: 10px !important;
+	border-collapse: separate;
+	border-spacing: 0;
+	border-top: 1px solid #e3e3e3 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals td:has(> .description) {
+	padding-inline-end: 0 !important;
+	text-align: start;
+	white-space: normal;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals td {
+	padding: 3px 0 !important;
+	border: 0 !important;
+	color: #303030;
+	font-size: .8125rem;
+	line-height: 1.5;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals td.label {
+	padding-inline-end: 32px !important;
+	color: #616161;
+	font-weight: 400;
+	text-align: start;
+	white-space: nowrap;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals td.total {
+	font-variant-numeric: tabular-nums;
+	font-weight: 600 !important;
+	text-align: end;
+	white-space: nowrap;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals:first-of-type tr:last-child td {
+	padding-top: 6px !important;
+	font-size: .875rem;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals:first-of-type tr:last-child td.label {
+	color: #303030;
+	font-weight: 600;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals td .description {
+	display: block;
+	color: #8a8a8a;
+	font-size: .75rem;
+	white-space: normal;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals td.label-highlight {
+	color: #303030;
+	font-weight: 600;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals .refunded-total {
+	color: #d72c0d;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals .cost-total {
+	color: #8a8a8a !important;
+	font-weight: 400 !important;
+}
+
+/* Refund form rows keep their inputs aligned to the right edge. */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-refund-items table.wc-order-totals td.total {
+	min-width: 140px;
+}
+
+/* ---- Items as cards when the tab is narrow ---- */
+@container bp-tabs (max-width: 640px) {
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .woocommerce_order_items_wrapper {
+		overflow: visible;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody {
+		display: block;
+		width: 100%;
+		/* brikpanel-order.css keeps the wide table at 460px or more. */
+		min-width: 0;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > thead {
+		display: none;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody > tr {
+		display: grid;
+		grid-template-columns: 40px minmax(0, 1fr) auto;
+		align-items: start;
+		gap: 2px 12px;
+		padding: 12px 16px;
+		border-top: 1px solid #f1f1f1;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody:first-of-type > tr:first-child {
+		border-top: 0;
+	}
+
+	/* The row draws the line; cell lines would show as broken pieces. */
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_fee_line_items tr:first-child td,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_shipping_line_items tr:first-child td,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_refunds tr:first-child td {
+		border-top: 0 !important;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody > tr > td {
+		display: block;
+		width: auto !important;
+		min-width: 0;
+		padding: 0 !important;
+		border: 0 !important;
+		background: transparent !important;
+		text-align: left;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.thumb {
+		grid-column: 1;
+		grid-row: 1 / span 4;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.thumb img,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.thumb .wc-order-item-thumbnail {
+		width: 40px !important;
+		height: 40px !important;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.name {
+		grid-column: 2;
+		grid-row: 1;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.line_cost {
+		grid-column: 3;
+		grid-row: 1;
+		font-weight: 600;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.item_cost,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.quantity,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.item_cost_of_goods,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.line_tax {
+		grid-column: 2 / span 2;
+		color: #616161;
+		font-size: .75rem;
+	}
+
+	/* The column name comes from the table header (brikpanel-order.js). */
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td[data-bp-label]:not(.name):not(.thumb):not(.line_cost):not(.wc-order-edit-line-item)::before {
+		content: attr(data-bp-label) ": ";
+		color: #8a8a8a;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody > tr > td[data-bp-empty]:not(.thumb) {
+		display: none;
+	}
+
+	/* "Price: $1,000.00" on one line. */
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td:not(.name) > .view {
+		display: inline;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.name {
+		overflow-wrap: anywhere;
+		white-space: normal;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_refunds td.name,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_fee_line_items td.name,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items #order_shipping_line_items td.name {
+		grid-column: 2;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.wc-order-edit-line-item {
+		position: static;
+		grid-column: 3;
+		grid-row: 2;
+		justify-self: end;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items td.wc-order-edit-line-item .wc-order-edit-line-item-actions {
+		position: static;
+		flex-direction: row;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals {
+		width: 100% !important;
+		min-width: 0;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-totals-items {
+		align-items: stretch;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row {
+		padding: 12px 16px !important;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .description {
+		flex-basis: 100%;
+		text-align: left;
+	}
+
+	/* Editing a line: the name, meta fields and amount boxes get the full width. */
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody > tr:has(> td.name > .view[style*="none"]) > td.name,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody > tr:has(> td.name > .view[style*="none"]) > td.line_cost {
+		grid-column: 2 / -1;
+		grid-row: auto;
+		text-align: left;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody > tr:has(> td.name > .view[style*="none"]) > td.line_cost .edit {
+		max-width: 240px;
+	}
+
+	/* Cost and price have nothing to show while a line is edited. */
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.woocommerce_order_items > tbody > tr > td:not(.name):not(:has(> .edit)):not(:has(> .refund)):has(> .view[style*="none"]) {
+		display: none;
+	}
+
+	/* Refund form: labels may wrap so the amount boxes stay on screen. */
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-refund-items table.wc-order-totals td.label {
+		padding-inline-end: 12px !important;
+		white-space: normal;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-refund-items table.wc-order-totals td.total {
+		min-width: 0;
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-refund-items table.wc-order-totals td.total input[type="text"] {
+		width: 130px !important;
+		max-width: 100%;
+	}
+}
+
+/* Line actions: dark focus ring, not the WordPress blue one. */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-edit-line-item-actions a:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-edit-line-item-actions a:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+/* ---- Customer tab: General in one row, the two addresses side by side ---- */
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_container {
+	display: grid !important;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 24px 32px !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_container::before,
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_container::after {
+	content: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column {
+	float: none !important;
+	width: auto !important;
+	min-width: 0;
+	margin: 0 !important;
+	padding: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	align-items: start;
+	gap: 0 16px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general > * {
+	grid-column: 1 / -1;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general > p.form-field {
+	grid-column: auto;
+	float: none !important;
+	width: auto !important;
+	min-width: 0;
+	margin: 0 0 4px !important;
+	padding: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general > p.form-field:first-of-type {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general > p.form-field:first-of-type > label {
+	flex-basis: 100%;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general input.date-picker {
+	flex: 1 1 0;
+	width: auto !important;
+	min-width: 0;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general input.hour,
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general input.minute {
+	flex: 0 0 46px;
+	width: 46px !important;
+	min-width: 0;
+	padding-left: 8px !important;
+	padding-right: 4px !important;
+}
+
+/* The address fields are floated; clear them so what follows starts below.
+   (No display change here: WooCommerce hides and shows this block.) */
+.brikpanel-modern-edit.bp-order-tabs #order_data div.edit_address::after {
+	content: "";
+	display: table;
+	clear: both;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data div.edit_address + .brikpanel-wa-order-screen {
+	margin-top: 12px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data div.edit_address select:not(.select2-hidden-accessible) {
+	height: 40px !important;
+	min-height: 40px;
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
+	line-height: 1.4 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data div.edit_address textarea {
+	font-size: .875rem !important;
+	line-height: 1.5;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .select2-container--default .select2-selection--single {
+	border-radius: .5rem;
+}
+
+/* Customer picker: the clear cross sits before the arrow, not on top of it. */
+.brikpanel-modern-edit.bp-order-tabs #order_data .select2-selection__clear {
+	margin-right: 20px !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column > h3 {
+	display: flex !important;
+	align-items: center;
+	gap: 8px;
+	min-height: 28px;
+	margin: 0 0 12px !important;
+	padding: 0 0 8px !important;
+	border-bottom: 1px solid #ebebeb !important;
+	color: #303030 !important;
+	font-size: .8125rem !important;
+	font-weight: 600 !important;
+	letter-spacing: 0 !important;
+	text-transform: none !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column > h3 .brikpanel-copy-address {
+	margin-left: auto;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column > h3 a.load_customer_billing,
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column > h3 a.load_customer_shipping,
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column > h3 a.billing-same-as-shipping {
+	color: #616161 !important;
+	font-size: .75rem;
+	font-weight: 500;
+	text-decoration: underline;
+	text-decoration-color: #c9c9c9;
+	text-transform: none;
+	white-space: nowrap;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column label {
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column .address p {
+	margin: 0 0 8px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column .address strong {
+	display: block;
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+}
+
+/* WhatsApp: a secondary button with the green mark, not a green block. */
+.brikpanel-modern-edit.bp-order-tabs .brikpanel-wa-order-screen {
+	margin: 8px 0 0;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .brikpanel-wa-btn.brikpanel-wa-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 32px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+	color: #303030;
+	font-size: .8125rem;
+	font-weight: 550;
+	text-decoration: none;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .brikpanel-wa-btn.brikpanel-wa-btn:hover {
+	background: #f7f7f7;
+	color: #303030;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .brikpanel-wa-btn.brikpanel-wa-btn svg {
+	width: 16px;
+	height: 16px;
+	color: #1a8917;
+}
+
+@container bp-tabs (max-width: 700px) {
+	.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_container,
+	.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #order_data .order_data_column_general > p.form-field {
+		margin-bottom: 8px !important;
+	}
+}
+
+/* ---- Customer history and attribution: label over value, in a row ---- */
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel .order-attribution-metabox h4 {
+	margin: 0 0 2px;
+	color: #616161;
+	font-size: .75rem;
+	font-weight: 550;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel .order-attribution-metabox h4 .woocommerce-help-tip {
+	font-size: 12px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel .order-attribution-metabox > span,
+.brikpanel-modern-edit.bp-order-tabs .bp-otabs__panel .order-attribution-metabox > div > span {
+	display: block;
+	margin: 0 0 12px;
+	color: #303030;
+	font-size: .875rem;
+	font-weight: 600;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-customer-history .customer-history {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-rows: auto auto;
+	grid-auto-flow: column;
+	gap: 0 16px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-customer-history .customer-history > span {
+	margin: 0;
+}
+
+/* ---- Notes ---- */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .note_body,
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .note_body p {
+	margin: 0 !important;
+	padding: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .note_content .note_header {
+	display: inline-block;
+	margin: 0 0 4px;
+	padding: 1px 6px;
+	border: 0;
+	border-radius: .375rem;
+	background: #ebebeb;
+	color: #616161;
+	font-size: .6875rem;
+	font-weight: 550;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li {
+	margin-bottom: 10px;
+}
+
+@container bp-tabs (max-width: 520px) {
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note .order_note_visibility select,
+	.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes div.add_note .add_note_actions .button {
+		width: 100% !important;
+		min-width: 0;
+	}
+}
+
+/* ---- More: downloads search fits the tab ---- */
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-downloads .toolbar {
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-downloads p.buttons {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	float: none !important;
+	margin: 0;
+	padding: 0;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-downloads p.buttons .select2-container {
+	flex: 1 1 240px;
+	width: auto !important;
+	min-width: 0;
+	max-width: 480px;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #woocommerce-order-downloads .button.grant_access {
+	margin: 0 !important;
+}
+
+/* ---- Right column boxes match the summary card ---- */
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .postbox-header {
+	padding: 12px 16px 0 !important;
+	border-bottom: 0 !important;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .postbox-header .hndle {
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	color: #303030;
+	font-size: .8125rem !important;
+	font-weight: 600;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside {
+	padding: 10px 16px 14px !important;
+}
+
+.brikpanel-modern-edit #woocommerce-order-actions select,
+.brikpanel-modern-edit #woocommerce-order-actions .select2-container {
+	box-sizing: border-box;
+	max-width: 100%;
+	margin-left: 0;
+	margin-right: 0;
+}
+
+/* ---- Other plugins' boxes in the right column ----
+   Invoice, shipping label and tracking boxes open here rather than under More.
+   They were written for whatever width they happened to get, so nothing may
+   escape 320px: a control that overflows this column pushes the page sideways
+   and can leave a field the merchant cannot reach. Widths only — colours,
+   borders and spacing stay with the plugin that owns the box. */
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside {
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside input:not([type="checkbox"]):not([type="radio"]),
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside select,
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside textarea,
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside .select2-container {
+	box-sizing: border-box;
+	max-width: 100%;
+}
+
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside img,
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside svg,
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside canvas {
+	max-width: 100%;
+	height: auto;
+}
+
+/* A table cannot be made narrow without hiding a column, so it scrolls. */
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside > table,
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside > * > table {
+	display: block;
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+/* Two buttons side by side rarely fit; let them wrap instead of overflowing. */
+.brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside .button {
+	max-width: 100%;
+	white-space: normal;
+}
+
+/* ---- Order header: status colours as on the orders list, quiet focus ---- */
+.brikpanel-order-header__status-badge.status--processing::before,
+.brikpanel-status-dropdown__item[data-status="processing"]::before { background: #1a8917; }
+.brikpanel-order-header__status-badge.status--on-hold::before,
+.brikpanel-status-dropdown__item[data-status="on-hold"]::before { background: #b27b00; }
+.brikpanel-order-header__status-badge.status--completed::before,
+.brikpanel-status-dropdown__item[data-status="completed"]::before { background: #303030; }
+.brikpanel-order-header__status-badge.status--cancelled::before,
+.brikpanel-status-dropdown__item[data-status="cancelled"]::before,
+.brikpanel-order-header__status-badge.status--refunded::before,
+.brikpanel-status-dropdown__item[data-status="refunded"]::before { background: #8a8a8a; }
+.brikpanel-order-header__status-badge.status--failed::before,
+.brikpanel-status-dropdown__item[data-status="failed"]::before { background: #c62828; }
+.brikpanel-order-header__status-badge.status--pending::before,
+.brikpanel-status-dropdown__item[data-status="pending"]::before,
+.brikpanel-order-header__status-badge.status--checkout-draft::before,
+.brikpanel-status-dropdown__item[data-status="checkout-draft"]::before {
+	background: transparent;
+	box-shadow: inset 0 0 0 1.5px #616161;
+}
+
+.brikpanel-order-header .brikpanel-order-header__status-badge:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.brikpanel-order-header .brikpanel-order-header__status-badge:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+/* Small phones: keep the whole header on screen. */
+@media screen and (max-width: 420px) {
+	.brikpanel-order-header {
+		gap: 6px !important;
+		padding-left: 10px !important;
+		padding-right: 10px !important;
+	}
+
+	.brikpanel-order-header__left,
+	.brikpanel-order-header__right {
+		gap: 6px !important;
+		min-width: 0;
+	}
+
+	.brikpanel-order-header__left {
+		flex-shrink: 1 !important;
+	}
+
+	.brikpanel-order-header__status-badge {
+		padding: 4px 8px !important;
+	}
+
+	.brikpanel-order-header__status-badge svg {
+		display: none;
+	}
+
+	.brikpanel-order-header .brk-save-btn {
+		padding: 0 10px !important;
+		min-height: 32px;
+	}
+
+	.brikpanel-order-header .brk-save-btn svg {
+		display: none;
+	}
+}
+
+/* ---- Screen Options: "Show in the sidebar" ----
+   Scoped to #wpbody-content rather than `.wrap > #screen-meta` like the orders
+   list, because only the Screen Options LINK is moved into the sticky header
+   here; the panel itself stays where WordPress printed it, outside .wrap. */
+#wpbody-content #screen-meta .bp-side-boxes__hint {
+	margin: 0 0 6px;
+	color: #616161;
+	font-size: .75rem;
+}
+
+#wpbody-content #screen-meta .bp-side-boxes__foot {
+	margin: 6px 0 0;
+}
+
+#wpbody-content #screen-meta .bp-side-boxes__reset {
+	color: #616161;
+	font-size: .75rem;
+}
+
+#wpbody-content #screen-meta .bp-side-boxes__reset:hover {
+	color: #303030;
+}
+
+#wpbody-content #screen-meta .bp-side-boxes__error {
+	margin: 6px 0 0;
+	color: #d72c0d;
+	font-size: .75rem;
+}
+
+#wpbody-content #screen-meta .bp-side-boxes__error[hidden] {
+	display: none;
+}

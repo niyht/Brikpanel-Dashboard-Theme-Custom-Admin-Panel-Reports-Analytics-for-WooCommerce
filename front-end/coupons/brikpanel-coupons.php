@@ -640,29 +640,36 @@ class Brikpanel_Coupons {
         $placeholders = implode( ',', array_fill( 0, count( $lower_codes ), '%s' ) );
         $hpos         = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
 
+        // Each order counts once per code: the inner DISTINCT drops a coupon
+        // line stored twice on the same order, and the order total is read
+        // from a single meta row. An order that used two different coupons
+        // still credits its total to each of them, on purpose.
+        $coupon_orders = "SELECT DISTINCT LOWER(oi.order_item_name) AS code, oi.order_id
+                 FROM {$wpdb->prefix}woocommerce_order_items oi
+                 WHERE oi.order_item_type = 'coupon'
+                 AND LOWER(oi.order_item_name) IN ($placeholders)";
+
         if ( $hpos ) {
             // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $rows = $wpdb->get_results( $wpdb->prepare(
-                "SELECT LOWER(oi.order_item_name) AS code, SUM(o.total_amount) AS revenue
-                 FROM {$wpdb->prefix}woocommerce_order_items oi
-                 INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = oi.order_id
-                 WHERE oi.order_item_type = 'coupon'
-                 AND LOWER(oi.order_item_name) IN ($placeholders)
+                "SELECT c.code, SUM(o.total_amount) AS revenue
+                 FROM ( {$coupon_orders} ) c
+                 INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = c.order_id
+                 WHERE o.type = 'shop_order'
                  AND o.status IN (" . brikpanel_paid_statuses_sql() . ")
-                 GROUP BY LOWER(oi.order_item_name)",
+                 GROUP BY c.code",
                 ...$lower_codes
             ) );
         } else {
             // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $rows = $wpdb->get_results( $wpdb->prepare(
-                "SELECT LOWER(oi.order_item_name) AS code, SUM(pm.meta_value) AS revenue
-                 FROM {$wpdb->prefix}woocommerce_order_items oi
-                 INNER JOIN {$wpdb->prefix}posts p ON p.ID = oi.order_id
-                 INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = oi.order_id AND pm.meta_key = '_order_total'
-                 WHERE oi.order_item_type = 'coupon'
-                 AND LOWER(oi.order_item_name) IN ($placeholders)
+                "SELECT c.code, SUM(CAST(pm.meta_value AS DECIMAL(20,4))) AS revenue
+                 FROM ( {$coupon_orders} ) c
+                 INNER JOIN {$wpdb->posts} p ON p.ID = c.order_id
+                 " . brikpanel_sql_single_meta_join( 'post', 'pm', 'c.order_id', '_order_total', '', 'INNER' ) . "
+                 WHERE p.post_type = 'shop_order'
                  AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
-                 GROUP BY LOWER(oi.order_item_name)",
+                 GROUP BY c.code",
                 ...$lower_codes
             ) );
         }

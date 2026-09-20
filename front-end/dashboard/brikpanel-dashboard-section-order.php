@@ -26,6 +26,64 @@ if ( ! defined( 'BRIKPANEL_DASHBOARD_SECTION_ORDER_OPTION' ) ) {
     define( 'BRIKPANEL_DASHBOARD_SECTION_ORDER_OPTION', 'brikpanel_dashboard_section_order' );
 }
 
+/**
+ * Tell Import / Export about the dashboard section layout.
+ *
+ * These two options are written by the same save handler and mean nothing
+ * apart: the ORDER used to travel (it happened to be on a hand-kept list) while
+ * the VISIBILITY did not, so a cloned store showed the source's arrangement of
+ * a different set of cards. They are registered together now, and they are both
+ * cleared together, so the pair can never drift again.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_dashboard_sections_register_export_keys' );
+function brikpanel_dashboard_sections_register_export_keys( $map ) {
+    $map[ BRIKPANEL_DASHBOARD_SECTION_ORDER_OPTION ] = [
+        'class'   => 'portable',
+        'group'   => 'dashboard',
+        'type'    => 'json_string',
+        'default' => '',
+    ];
+    $map['brikpanel_dashboard_visible_sections'] = [
+        'class'    => 'portable',
+        'group'    => 'dashboard',
+        'sanitize' => 'brikpanel_dashboard_sanitize_import_visible_sections',
+        'default'  => [],
+    ];
+    return $map;
+}
+
+/**
+ * Clean an imported list of visible dashboard sections.
+ *
+ * Section slugs the target does not know are dropped rather than kept: unlike a
+ * role rule, an unknown section here cannot narrow anything — it would just sit
+ * in the list forever. The reader already treats an empty list as "show all",
+ * so dropping everything is safe and means the same as never having saved.
+ *
+ * @param mixed $value
+ * @return string[]
+ */
+function brikpanel_dashboard_sanitize_import_visible_sections( $value ) {
+    if ( ! is_array( $value ) ) {
+        return [];
+    }
+    $known = array_keys( brikpanel_dashboard_section_label_map() );
+    $out   = [];
+    foreach ( $value as $slug ) {
+        if ( ! is_string( $slug ) ) {
+            continue;
+        }
+        $slug = sanitize_key( $slug );
+        if ( '' !== $slug && ( ! $known || in_array( $slug, $known, true ) ) && ! in_array( $slug, $out, true ) ) {
+            $out[] = $slug;
+        }
+    }
+    return $out;
+}
+
 // =============================================================================
 // HELPERS
 // =============================================================================

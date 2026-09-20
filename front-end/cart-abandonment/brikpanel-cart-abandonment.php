@@ -210,6 +210,51 @@ class Brikpanel_Cart_Abandonment {
 		);
 	}
 
+	/**
+	 * Whether the popup waits for the visitor to answer the cookie banner
+	 * before it opens. Split out from popup_config() for the same reason
+	 * popup_enabled() is: it is read on the enqueue path, not while building
+	 * the wording.
+	 *
+	 * @return bool
+	 */
+	public static function popup_wait_consent() {
+		/**
+		 * Opt out of waiting for the cookie banner.
+		 *
+		 * Named apart from the option id on purpose, so a call site can never
+		 * confuse it with WordPress' own option_{$id} filter.
+		 *
+		 * @param bool $enabled Whether the popup waits for an answer.
+		 */
+		return (bool) apply_filters(
+			'brikpanel_cartab_popup_wait_consent_enabled',
+			get_option( 'brikpanel_cartab_popup_wait_consent', 'yes' ) === 'yes'
+		);
+	}
+
+	/**
+	 * How long the popup may wait for a banner answer before it opens anyway.
+	 *
+	 * This cap is the feature's safety valve, not a preference: a banner that
+	 * never reports, a platform we cannot read, or a visitor who simply
+	 * ignores the banner must all end with the popup on screen. Deliberately
+	 * not a setting — a merchant raising it to "never" would silently lose
+	 * every signup.
+	 *
+	 * @return int Seconds.
+	 */
+	public static function popup_consent_max_wait() {
+		/**
+		 * Change how long the popup waits for a cookie banner answer.
+		 *
+		 * @param int $seconds Clamped to 1..120 afterwards.
+		 */
+		$seconds = (int) apply_filters( 'brikpanel_cartab_popup_consent_max_wait', 30 );
+
+		return max( 1, min( 120, $seconds ) );
+	}
+
 	/** Popup configuration with translatable fallbacks for unset options. */
 	public static function popup_config() {
 		$lang = self::popup_language_texts();
@@ -1061,10 +1106,45 @@ class Brikpanel_Cart_Abandonment {
 				file_exists( $css ) ? (string) filemtime( $css ) : BRIKPANEL_VERSION
 			);
 		}
+		// The popup waits for the visitor to answer the cookie banner, so it
+		// needs the consent signal beside it. Loaded as a dependency rather
+		// than inline: WordPress then guarantees the order, and checkout — where
+		// this same script runs with the popup branch dead — ships none of it.
+		$deps   = [];
+		$signal = $dir . 'brikpanel-consent-signal.js';
+		if ( $popup_here && self::popup_wait_consent() ) {
+			wp_enqueue_script(
+				'brikpanel_consent_signal',
+				$url . 'brikpanel-consent-signal.js',
+				[],
+				file_exists( $signal ) ? (string) filemtime( $signal ) : BRIKPANEL_VERSION,
+				true
+			);
+			// Site-level values only, exactly like the tracker's footer script:
+			// this markup is baked into page-cached HTML, so it must never vary
+			// with one visitor's consent state.
+			wp_localize_script(
+				'brikpanel_consent_signal',
+				'brikpanelConsent',
+				[
+					'category'     => function_exists( 'brikpanel_consent_category' )
+						? brikpanel_consent_category()
+						: 'statistics',
+					'cookiePrefix' => function_exists( 'brikpanel_consent_cookie_prefix' )
+						? brikpanel_consent_cookie_prefix()
+						: 'wp_consent',
+					'ownCookie'    => defined( 'BRIKPANEL_CONSENT_COOKIE' )
+						? BRIKPANEL_CONSENT_COOKIE
+						: 'brikpanel_consent',
+				]
+			);
+			$deps[] = 'brikpanel_consent_signal';
+		}
+
 		wp_enqueue_script(
 			'brikpanel_cartab_scripts',
 			$url . 'cart-abandonment.js',
-			[],
+			$deps,
 			file_exists( $js ) ? (string) filemtime( $js ) : BRIKPANEL_VERSION,
 			true
 		);
@@ -1101,6 +1181,8 @@ class Brikpanel_Cart_Abandonment {
 				'enabled'     => 1,
 				'autoapply'   => self::popup_autoapply() ? 1 : 0,
 				'delay'       => $popup['delay'],
+				'waitConsent' => self::popup_wait_consent() ? 1 : 0,
+				'maxWait'     => self::popup_consent_max_wait(),
 				'cooldown'    => $popup['cooldown'],
 				'discount'    => $popup['discount'],
 				'style'       => $popup['style'],
@@ -1824,8 +1906,7 @@ class Brikpanel_Cart_Abandonment {
 		}
 
 		// Kept in a local so the caller can be told when the code dies without
-		// re-reading the coupon. Never set_individual_use(): that would let this
-		// coupon evict, or be evicted by, a companion plugin's own coupon.
+		// re-reading the coupon.
 		$expires_at = time() + 30 * DAY_IN_SECONDS;
 
 		try {
@@ -1835,6 +1916,11 @@ class Brikpanel_Cart_Abandonment {
 			$coupon->set_amount( $discount );
 			$coupon->set_usage_limit( 1 );
 			$coupon->set_usage_limit_per_user( 1 );
+			// "Individual use only" is not this plugin's call. BrikMentor issues
+			// the store's other marketing codes and decides whether any of them
+			// may share a basket; asked per coupon, at mint time. Left alone
+			// (no BrikMentor), the popup code stacks as it always has.
+			$coupon->set_individual_use( self::popup_coupon_individual_use( $email ) );
 			$coupon->set_email_restrictions( [ $email ] );
 			$coupon->set_date_expires( $expires_at );
 			$coupon->set_description( __( 'Signup popup coupon (BrikPanel cart abandonment)', 'brikpanel' ) );
@@ -1845,6 +1931,28 @@ class Brikpanel_Cart_Abandonment {
 		}
 
 		return [ 'code' => $code, 'amount' => $discount, 'expires' => $expires_at ];
+	}
+
+	/**
+	 * Should the signup popup coupon be "individual use only" (WooCommerce's
+	 * checkbox: cannot be combined with any other coupon)? Off on its own; a
+	 * companion plugin that manages the store's marketing codes answers
+	 * through the filter. Public and named so that plugin can tell whether
+	 * this BrikPanel asks at all before promising the merchant it does.
+	 *
+	 * @since 3.3.6
+	 * @param string $email Recipient, for filters that decide per address.
+	 * @return bool
+	 */
+	public static function popup_coupon_individual_use( $email = '' ) {
+		/**
+		 * Whether the signup popup coupon may NOT be combined with other coupons.
+		 *
+		 * @since 3.3.6
+		 * @param bool   $individual_use Default false: the code stacks.
+		 * @param string $email          Recipient.
+		 */
+		return (bool) apply_filters( 'brikpanel_cartab_popup_coupon_individual_use', false, (string) $email );
 	}
 
 	/**
@@ -3246,7 +3354,7 @@ class Brikpanel_Cart_Abandonment {
 			// Never wp_http_validate_url(): it rejects local hosts and would
 			// leave every development install with a dead padlock.
 			$url = function_exists( 'brikpanel_brikmentor_checkout_url' )
-				? brikpanel_brikmentor_checkout_url()
+				? brikpanel_brikmentor_checkout_url( 'lock' )
 				: '';
 		}
 
@@ -3270,6 +3378,23 @@ class Brikpanel_Cart_Abandonment {
 	public static function mentor_locked() {
 		$entitlement = self::mentor_entitlement();
 		return self::mentor_active() && is_array( $entitlement ) && empty( $entitlement['entitled'] );
+	}
+
+	/**
+	 * May the "Recover these carts on autopilot" link print under the
+	 * "Abandoned" figure?
+	 *
+	 * Only while BrikMentor is being promoted here: not installed, promotion
+	 * switched on, and a user who could buy it. With BrikMentor present the
+	 * carts on this screen are already being followed up, and the link opens
+	 * a panel that then does not exist.
+	 *
+	 * @return bool
+	 */
+	private static function mentor_pitch_available() {
+		return function_exists( 'brikpanel_brikmentor_promo_active' )
+			&& brikpanel_brikmentor_promo_active()
+			&& current_user_can( 'manage_woocommerce' );
 	}
 
 	/**
@@ -3764,6 +3889,18 @@ class Brikpanel_Cart_Abandonment {
 				$locked_row['wa_locked']    = true;
 				$locked_row['wa_opens']     = 0;
 				$locked_row['wa_opens_title'] = '';
+				// The envelope beside the address goes the same way as the WhatsApp
+				// mark, and for the same reason: both are outreach, and a screen that
+				// locks one while leaving the other live reads as a bug rather than
+				// as a boundary. The address itself stays - it is what identifies the
+				// row, and the export writes it either way - so this locks the
+				// shortcut, never the data.
+				//
+				// Only set when locked, exactly like wa_locked: the flag is read for
+				// truthiness in JS, and a row that never passes through here (an
+				// install where the whole outreach column is absent) must come out
+				// unlocked rather than undefined-and-guessed-at.
+				$locked_row['email_locked'] = true;
 				$locked_row['mail']         = [
 					'sent'    => 0,
 					'pending' => 0,
@@ -3963,6 +4100,15 @@ class Brikpanel_Cart_Abandonment {
 		$popup_enabled = get_option( 'brikpanel_cartab_popup_enabled', 'no' ) === 'yes';
 		$collection_on = self::is_enabled();
 		$settings_url  = admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=cart-abandonment' );
+		// The Settings shortcut is only drawn for users who may actually open the
+		// BrikPanel tab. With the "Restrict settings to administrators" lock on
+		// (the default), a shop manager is silently redirected away from
+		// page=wc-settings&tab=brikpanel, so the button would be a dead end that
+		// wrongly implies access. Same guard the topbar shortcut already uses.
+		// function_exists() because access control is loaded through
+		// brikpanel_require() and a page must not fatal if that module is missing.
+		$can_open_settings = ! function_exists( 'brikpanel_user_can_open_settings' )
+			|| brikpanel_user_can_open_settings();
 		// Follow-ups rides along with BrikMentor; Phone / WhatsApp is our own
 		// column and is drawn locked when BrikMentor cannot unlock it.
 		$outreach = self::mentor_active();
@@ -4028,9 +4174,11 @@ class Brikpanel_Cart_Abandonment {
 					<button type="button" class="brikpanel-cartab-btn brikpanel-cartab-btn-secondary" id="brikpanel-cartab-export-xlsx">
 						<?php esc_html_e( 'Export Excel', 'brikpanel' ); ?>
 					</button>
+					<?php if ( $can_open_settings ) : ?>
 					<a class="brikpanel-cartab-btn brikpanel-cartab-btn-primary" href="<?php echo esc_url( $settings_url ); ?>">
 						<?php esc_html_e( 'Settings', 'brikpanel' ); ?>
 					</a>
+					<?php endif; ?>
 				</div>
 			</div>
 
@@ -4075,6 +4223,12 @@ class Brikpanel_Cart_Abandonment {
 						<span class="brikpanel-cartab-summary-meta-label"><?php esc_html_e( 'Recoverable value', 'brikpanel' ); ?></span>
 						<span class="brikpanel-cartab-summary-meta-value" id="brikpanel-cartab-amount-abandoned">—</span>
 					</div>
+					<?php if ( self::mentor_pitch_available() ) : ?>
+					<a class="brikpanel-cartab-summary-cta" href="<?php echo esc_url( brikpanel_brikmentor_url() ); ?>" data-bm-open data-bm-via="carts-stat" target="_blank" rel="noopener noreferrer">
+						<?php esc_html_e( 'Recover these carts on autopilot', 'brikpanel' ); ?>
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+					</a>
+					<?php endif; ?>
 				</div>
 				<div class="brikpanel-cartab-summary-card">
 					<div class="brikpanel-cartab-summary-label"><?php esc_html_e( 'Recovered', 'brikpanel' ); ?></div>
@@ -4232,6 +4386,13 @@ class Brikpanel_Cart_Abandonment {
 			// Server-side, because a store that already has BrikMentor is never
 			// pitched - see outreach_lock().
 			lockPitch: <?php echo wp_json_encode( (bool) $lock['pitch'] ); ?>,
+			// Is the envelope beside each address drawn at all? Same gate as the
+			// Phone / WhatsApp column: both are outreach, and a store that has
+			// switched the BrikMentor promotion off (and has no BrikMentor to
+			// unlock them) gets neither - not a padlock, and not a free envelope
+			// as a reward for switching the promotion off. The address itself is
+			// the row's identity and always stays.
+			emailShortcut: <?php echo wp_json_encode( self::outreach_column_available() ); ?>,
 			// Resolved column order + visibility for this user. The body cells
 			// are built from columnOrder, so the header and the rows always
 			// agree, including after a drag-and-drop reorder.
@@ -4252,6 +4413,7 @@ class Brikpanel_Cart_Abandonment {
 				popup_off:      <?php echo wp_json_encode( __( 'Popup disabled.', 'brikpanel' ) ); ?>,
 				sku:            <?php echo wp_json_encode( __( 'SKU', 'brikpanel' ) ); ?>,
 				whatsapp:       <?php echo wp_json_encode( __( 'Message on WhatsApp', 'brikpanel' ) ); ?>,
+				email_compose:  <?php echo wp_json_encode( __( 'Send an email', 'brikpanel' ) ); ?>,
 				no_phone:       <?php echo wp_json_encode( __( 'No phone number on file.', 'brikpanel' ) ); ?>,
 				phone_account:  <?php echo wp_json_encode( __( 'From their account', 'brikpanel' ) ); ?>,
 				phone_order:    <?php echo wp_json_encode( __( 'From a past order', 'brikpanel' ) ); ?>,
@@ -4296,6 +4458,15 @@ class Brikpanel_Cart_Abandonment {
 		$result = self::query_entries( $args );
 
 		$date_format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+
+		// Recovered rows link to a real order, and the number shown has to be the
+		// one the orders list shows, which a sequential-order-number plugin can
+		// move away from the ID. Resolved for the whole page in one go, and at no
+		// cost when nothing renumbers orders.
+		$order_numbers = function_exists( 'brikpanel_order_numbers_for_ids' )
+			? brikpanel_order_numbers_for_ids( wp_list_pluck( $result['rows'], 'order_id' ) )
+			: [];
+
 		$items       = [];
 		foreach ( $result['rows'] as $row ) {
 			$row['updated_h'] = $row['updated_at'] !== ''
@@ -4306,8 +4477,10 @@ class Brikpanel_Cart_Abandonment {
 				: '';
 			$row['total_h'] = brikpanel_money_text( $row['cart_total'], [ 'currency' => $row['currency'] ] );
 			// HPOS-aware edit link (legacy storage uses post.php).
-			$row['order_url'] = '';
+			$row['order_url']    = '';
+			$row['order_number'] = '';
 			if ( $row['order_id'] > 0 ) {
+				$row['order_number'] = (string) ( $order_numbers[ (int) $row['order_id'] ] ?? $row['order_id'] );
 				$hpos = class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
 					&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
 				$row['order_url'] = $hpos
@@ -5210,6 +5383,14 @@ class Brikpanel_Cart_Abandonment {
 			];
 		}
 		$fields[] = [
+			'title'    => __( 'Wait for cookie banner', 'brikpanel' ),
+			'desc'     => __( 'Show the popup only after the visitor answers the cookie banner', 'brikpanel' ),
+			'desc_tip' => __( 'Stops the popup from landing on top of a cookie banner the visitor has not dealt with yet. Accepting and declining both release it, because signing up for an offer is not tracking. On a store with no cookie banner nothing changes, and the popup opens after 30 seconds in any case, so it can never be lost.', 'brikpanel' ),
+			'id'       => 'brikpanel_cartab_popup_wait_consent',
+			'type'     => 'checkbox',
+			'default'  => 'yes',
+		];
+		$fields[] = [
 			'title'             => __( 'Popup delay', 'brikpanel' ),
 			'desc'              => __( 'seconds after the page loads', 'brikpanel' ),
 			'id'                => 'brikpanel_cartab_popup_delay',
@@ -5277,3 +5458,123 @@ add_action( 'brikpanel_cron_register', function () {
 
 	Brikpanel_Cron::schedule_recurring( 'brikpanel_cartab_flip_abandoned', 10 * MINUTE_IN_SECONDS );
 } );
+
+// =============================================================================
+// SETTINGS EXPORT — the signup popup's other-language wording
+// =============================================================================
+
+/**
+ * Tell Import / Export how to carry the popup wording per language.
+ *
+ * The card renders its own inputs per locale, so the settings-field walk sees a
+ * placeholder and nothing else. Without this a multilingual store's export
+ * carried the default-language wording and silently left every translation
+ * behind.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_cartab_register_export_keys' );
+function brikpanel_cartab_register_export_keys( $map ) {
+	$map['brikpanel_cartab_popup_i18n'] = [
+		'class'    => 'portable',
+		'group'    => 'cart-abandonment',
+		'sanitize' => 'brikpanel_cartab_sanitize_import_popup_i18n',
+		'default'  => [],
+	];
+	return $map;
+}
+
+/**
+ * Clean imported popup wording: locale => slot => text.
+ *
+ * Locales the target does not speak yet are KEPT. A merchant who adds the
+ * language next week should find the wording already waiting rather than have
+ * to retype it — the import is the one moment where that text exists.
+ *
+ * Locale keys are not option keys: `pt_BR` and `zh-Hant` both have to survive,
+ * and sanitize_key() would lowercase them apart.
+ *
+ * @param mixed $value
+ * @return array<string, array<string,string>>
+ */
+function brikpanel_cartab_sanitize_import_popup_i18n( $value ) {
+	if ( ! is_array( $value ) ) {
+		return [];
+	}
+	$slots = class_exists( 'Brikpanel_Cart_Abandonment' )
+		? array_flip( Brikpanel_Cart_Abandonment::popup_i18n_slots() )
+		: [];
+
+	$out = [];
+	foreach ( $value as $locale => $texts ) {
+		$locale = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $locale );
+		if ( '' === $locale || ! is_array( $texts ) ) {
+			continue;
+		}
+		$bucket = [];
+		foreach ( $texts as $slot => $text ) {
+			$slot = (string) $slot;
+			if ( ( $slots && ! isset( $slots[ $slot ] ) ) || ! is_scalar( $text ) ) {
+				continue;
+			}
+			// The cleaner the settings screen uses, so imported wording can
+			// never carry markup a typed one could not.
+			$clean = class_exists( 'Brikpanel_Cart_Abandonment' )
+				? Brikpanel_Cart_Abandonment::sanitize_popup_text( null, [ 'id' => 'brikpanel_cartab_popup_i18n' ], (string) $text )
+				: sanitize_textarea_field( (string) $text );
+			if ( '' !== $clean ) {
+				$bucket[ $slot ] = $clean;
+			}
+		}
+		if ( $bucket ) {
+			$out[ $locale ] = $bucket;
+		}
+	}
+	return $out;
+}
+
+/**
+ * Clean an imported abandoned-carts column layout for one person.
+ *
+ * Shape is { visible: { id => bool }, order: [ id, … ] }, and both halves are
+ * filtered against the columns this build defines: a column id that does not
+ * exist cannot be drawn, and leaving it in the order array would shift the
+ * rest.
+ *
+ * @param mixed $value
+ * @return array|null
+ */
+function brikpanel_cartab_sanitize_import_columns( $value ) {
+	if ( ! is_array( $value ) || ! class_exists( 'Brikpanel_Cart_Abandonment' ) ) {
+		return null;
+	}
+	$known   = array_keys( Brikpanel_Cart_Abandonment::get_column_defs() );
+	$visible = [];
+	$order   = [];
+
+	if ( isset( $value['visible'] ) && is_array( $value['visible'] ) ) {
+		foreach ( $value['visible'] as $id => $on ) {
+			$id = sanitize_key( (string) $id );
+			if ( '' !== $id && in_array( $id, $known, true ) ) {
+				$visible[ $id ] = (bool) $on;
+			}
+		}
+	}
+	if ( isset( $value['order'] ) && is_array( $value['order'] ) ) {
+		foreach ( $value['order'] as $id ) {
+			if ( ! is_string( $id ) ) {
+				continue;
+			}
+			$id = sanitize_key( $id );
+			if ( '' !== $id && in_array( $id, $known, true ) && ! in_array( $id, $order, true ) ) {
+				$order[] = $id;
+			}
+		}
+	}
+
+	if ( ! $visible && ! $order ) {
+		return null;
+	}
+	return [ 'visible' => $visible, 'order' => $order ];
+}

@@ -6,8 +6,7 @@
  *   - polls progress while a scan is running and updates the bar + chips
  *   - reloads the page once the scan finishes so the freshly-rendered cards
  *     come from the server (avoids client-side rendering parity bugs)
- *   - handles dashboard banner dismiss button (when banner is on this page —
- *     normally not, but the dismiss button uses the same mechanism)
+ *   - per-check repair and undo buttons
  */
 (function () {
     'use strict';
@@ -144,10 +143,6 @@
         startPolling();
     }
 
-    // No banner dismiss handler here: the banner renders on the dashboard, not
-    // on this page, so the copy that used to sit here was dead code. Its owner
-    // is brikpanel-bc-banner.js.
-
     // Per-check repair action. The button only exists for checks that opted in
     // via supports_fix() and that currently have something to clean.
     document.addEventListener('click', function (e) {
@@ -190,9 +185,12 @@
                 if (json && json.success && json.data) {
                     var msg = (i18n.fix_done || '').replace('{count}', json.data.removed);
                     if (json.data.has_more) msg += ' ' + (i18n.fix_more || '');
+                    // The check's own explanation, translated server-side.
+                    if (json.data.message) msg += ' ' + json.data.message;
                     if (resultEl) resultEl.textContent = msg;
-                    // Reload so the card re-renders from the freshly saved result.
-                    setTimeout(function () { window.location.reload(); }, 1200);
+                    // Reload so the card re-renders from the freshly saved result;
+                    // later when there is an explanation to read first.
+                    setTimeout(function () { window.location.reload(); }, json.data.message ? 5000 : 1200);
                     return;
                 }
                 restore((json && json.data && json.data.message) || i18n.fix_failed || '');
@@ -218,7 +216,8 @@
         // Captured from the DOM: the server already rendered it translated.
         var original = labelEl ? labelEl.textContent : '';
 
-        if (!window.confirm((i18n.undo_confirm || '').replace('{count}', count))) return;
+        var undoText = btn.getAttribute('data-bc-undo-confirm') || i18n.undo_confirm || '';
+        if (!window.confirm(undoText.replace('{count}', count))) return;
 
         btn.disabled = true;
         if (labelEl) labelEl.textContent = i18n.undo_running || '';
@@ -240,9 +239,11 @@
             .then(function (json) {
                 if (json && json.success && json.data) {
                     if (resultEl) {
-                        resultEl.textContent = (i18n.undo_done || '').replace('{count}', json.data.restored);
+                        var undoMsg = (i18n.undo_done || '').replace('{count}', json.data.restored);
+                        if (json.data.message) undoMsg += ' ' + json.data.message;
+                        resultEl.textContent = undoMsg;
                     }
-                    setTimeout(function () { window.location.reload(); }, 1200);
+                    setTimeout(function () { window.location.reload(); }, json.data.message ? 5000 : 1200);
                     return;
                 }
                 restore((json && json.data && json.data.message) || i18n.undo_failed || '');
