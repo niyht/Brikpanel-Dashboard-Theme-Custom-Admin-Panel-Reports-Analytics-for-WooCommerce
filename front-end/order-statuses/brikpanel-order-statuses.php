@@ -3,9 +3,9 @@
  * Custom order statuses.
  *
  * Lets the store owner create their own WooCommerce order statuses (label +
- * colour) from a settings screen, and pick which status new orders should
- * start in — without touching code. Works for both simple and variable
- * products because an order status lives on the order, not the product.
+ * colour) from a settings screen, without touching code. Works for both simple
+ * and variable products because an order status lives on the order, not the
+ * product.
  *
  * Loaded globally (front + admin) from brikpanel.php so the statuses register
  * on every request, not only inside wp-admin. The settings-screen hooks are
@@ -19,7 +19,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 const BRIKPANEL_CUSTOM_STATUSES_OPTION = 'brikpanel_custom_order_statuses';
-const BRIKPANEL_DEFAULT_STATUS_OPTION  = 'brikpanel_default_order_status';
 
 /**
  * Tell Import / Export how to carry the custom order statuses.
@@ -91,8 +90,7 @@ function brikpanel_cos_sanitize_import_map( $value ) {
 
 /**
  * Status slugs we must never let a custom status overwrite: every WooCommerce
- * core status plus the WordPress system statuses. Used both when minting a slug
- * and when validating the default.
+ * core status plus the WordPress system statuses. Used when minting a slug.
  *
  * The former hard-coded BrikPanel statuses "Return Draft" (return-draft) and
  * "Change" (change) are deliberately NOT reserved any more: they are now
@@ -314,25 +312,14 @@ add_filter( 'wc_order_statuses', function ( $statuses ) {
 	return $statuses;
 } );
 
-/**
- * Apply the merchant-chosen default status to brand-new orders.
- *
- * WooCommerce reads this filter whenever an order has no explicit status yet
- * (checkout, programmatic wc_create_order, manual "Add order"). We only
- * override when the stored choice is a real, currently-registered status so a
- * deleted custom status can never strand new orders in a missing state.
- */
-add_filter( 'woocommerce_default_order_status', function ( $status ) {
-	$chosen = (string) get_option( BRIKPANEL_DEFAULT_STATUS_OPTION, '' );
-	if ( '' === $chosen ) {
-		return $status;
-	}
-	$valid = array_merge(
-		brikpanel_cos_reserved_slugs(),
-		array_keys( brikpanel_get_custom_order_statuses() )
-	);
-	return in_array( $chosen, $valid, true ) ? $chosen : $status;
-} );
+// There is deliberately no "default status for new orders" choice. Until 3.3.25
+// one filtered woocommerce_default_order_status, and on the classic checkout
+// that skipped payment altogether: WooCommerce only asks the gateway for money
+// when the new order is pending or failed (WC_Order::needs_payment()), so an
+// order born "processing" went straight to the thank-you page unpaid, sent no
+// order emails and was never cancelled by the unpaid-order cleanup, which only
+// looks at pending orders. A status that should follow payment belongs on
+// woocommerce_payment_complete_order_status, never on the starting status.
 
 /**
  * Paint each custom status' badge + dot in its chosen colour. Attached to the
@@ -780,33 +767,15 @@ add_filter( 'brikpanel_settings_section_icons', function ( $icons ) {
 } );
 
 /**
- * Inject the section's fields: a default-status picker (standard WC select,
- * saved by core) and the custom-status repeater (custom field type, saved by
- * our own handler below).
+ * Inject the section's fields: the custom-status repeater (custom field type,
+ * saved by our own handler below).
  */
 add_filter( 'brikpanel_settings_fields', function ( $fields ) {
-	$status_options = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_statuses() : [];
-	$default_choices = [ '' => __( 'WooCommerce default (Pending payment)', 'brikpanel' ) ];
-	foreach ( $status_options as $key => $label ) {
-		// Store the bare slug so it matches what woocommerce_default_order_status expects.
-		$default_choices[ str_replace( 'wc-', '', $key ) ] = $label;
-	}
-
 	$fields[] = [
 		'name' => __( 'Order statuses', 'brikpanel' ),
 		'type' => 'title',
 		'id'   => 'brk_order_statuses_title',
-		'desc' => __( 'Create your own order statuses and choose where new orders begin. Use these for workflows WooCommerce does not cover out of the box, such as "Awaiting stock", "Packed" or "Ready for pickup". This applies to every order, whether it contains simple or variable products.', 'brikpanel' ),
-	];
-	$fields[] = [
-		'name'     => __( 'Default status for new orders', 'brikpanel' ),
-		'id'       => BRIKPANEL_DEFAULT_STATUS_OPTION,
-		'type'     => 'select',
-		'class'    => 'wc-enhanced-select',
-		'options'  => $default_choices,
-		'desc'     => __( 'The status every new order starts in before payment is processed. Leave on the WooCommerce default unless you have a specific workflow that needs otherwise — changing this affects checkout and can interfere with payment gateways.', 'brikpanel' ),
-		'desc_tip' => true,
-		'default'  => '',
+		'desc' => __( 'Create your own order statuses. Use these for workflows WooCommerce does not cover out of the box, such as "Awaiting stock", "Packed" or "Ready for pickup". This applies to every order, whether it contains simple or variable products.', 'brikpanel' ),
 	];
 	$fields[] = [
 		// The id is the option this card writes, not a name of its own, so the
@@ -837,11 +806,11 @@ function brikpanel_render_status_import_card() {
 		return;
 	}
 	?>
-	<section class="bp-cos-card bp-cos-import" data-cos-import>
+	<section class="bp-settings-card bp-settings-card--custom bp-cos-card bp-cos-import" data-cos-import>
 		<header class="bp-cos-card__head">
 			<div>
 				<h3 class="bp-cos-card__title"><?php esc_html_e( 'Import from another plugin', 'brikpanel' ); ?></h3>
-				<p class="bp-cos-card__sub"><?php esc_html_e( 'We found custom order statuses created outside BrikPanel. Adopt them here so you can safely deactivate the other plugin — your orders keep their status, colour and filters. This is the same for orders with simple or variable products.', 'brikpanel' ); ?></p>
+				<p class="bp-cos-card__sub"><?php esc_html_e( 'We found custom order statuses created outside BrikPanel. Adopt them here so you can safely deactivate the other plugin: your orders keep their status, colour and filters. This is the same for orders with simple or variable products.', 'brikpanel' ); ?></p>
 			</div>
 			<button type="button" class="bp-cos-add bp-cos-import-btn" data-cos-import-run>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -860,21 +829,21 @@ function brikpanel_render_status_import_card() {
 						<span class="bp-cos-import-count">
 							<?php
 							/* translators: %s: number of orders. */
-							echo esc_html( sprintf( _n( '%s order', '%s orders', $data['count'], 'brikpanel' ), number_format_i18n( $data['count'] ) ) );
+							echo esc_html( sprintf( _n( '%s order', '%s orders', $data['count'], 'brikpanel' ), brikpanel_number( $data['count'] ) ) );
 							?>
 						</span>
 					<?php endif; ?>
 					<?php if ( $data['registered'] ) : ?>
 						<span class="bp-cos-import-tag" title="<?php esc_attr_e( 'Currently provided by another active plugin.', 'brikpanel' ); ?>"><?php esc_html_e( 'active plugin', 'brikpanel' ); ?></span>
 					<?php else : ?>
-						<span class="bp-cos-import-tag is-orphan" title="<?php esc_attr_e( 'Used by orders but no longer registered by any plugin — orders show the raw status key until you import it.', 'brikpanel' ); ?>"><?php esc_html_e( 'needs rescue', 'brikpanel' ); ?></span>
+						<span class="bp-cos-import-tag is-orphan" title="<?php esc_attr_e( 'Used by orders but no longer registered by any plugin. Orders show the raw status key until you import it.', 'brikpanel' ); ?>"><?php esc_html_e( 'needs rescue', 'brikpanel' ); ?></span>
 					<?php endif; ?>
 				</label>
 			<?php endforeach; ?>
 		</div>
 
 		<p class="bp-cos-hint">
-			<?php esc_html_e( 'Imported statuses appear in the list below, where you can rename the colour or remove them. Only import statuses from a plugin you plan to remove — a status marked "active plugin" is still managed by that plugin.', 'brikpanel' ); ?>
+			<?php esc_html_e( 'Imported statuses appear in the list below, where you can rename the colour or remove them. Only import statuses from a plugin you plan to remove. A status marked "active plugin" is still managed by that plugin.', 'brikpanel' ); ?>
 		</p>
 	</section>
 	<?php
@@ -892,7 +861,7 @@ function brikpanel_render_order_statuses_field() {
 	?>
 	</table>
 	<?php brikpanel_render_status_import_card(); ?>
-	<section class="bp-cos-card">
+	<section class="bp-settings-card bp-settings-card--custom bp-cos-card">
 		<header class="bp-cos-card__head">
 			<div>
 				<h3 class="bp-cos-card__title"><?php esc_html_e( 'Your custom statuses', 'brikpanel' ); ?></h3>
@@ -968,8 +937,7 @@ function brikpanel_render_order_statuses_field() {
 add_action( 'woocommerce_admin_field_brikpanel_order_statuses', 'brikpanel_render_order_statuses_field' );
 
 /**
- * Persist the repeater. Runs after WooCommerce has saved the standard fields
- * (the default-status select among them) for this section.
+ * Persist the repeater. Runs when the Order statuses section is saved.
  */
 add_action( 'woocommerce_update_options_brikpanel', function () {
 	if ( ! function_exists( 'brikpanel_settings_get_current_section' )

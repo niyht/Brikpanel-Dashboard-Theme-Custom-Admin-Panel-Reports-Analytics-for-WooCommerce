@@ -141,7 +141,7 @@ function brikpanel_order_shipping_cost_render_metabox( $context ) {
 		.brikpanel-osc-prefix{display:flex;align-items:center;padding:0 .625rem;background:#f7f7f7;border-inline-end:1px solid #e3e3e3;font-size:.875rem;color:#616161}
 		.brikpanel-osc-input-group input{flex:1;min-width:0;border:0;box-shadow:none;outline:none;padding:.5rem .625rem;font-size:.875rem;background:transparent}
 		.brikpanel-osc-input-group input:focus{border:0;box-shadow:none;outline:none}
-		.brikpanel-osc-hint{margin:.5rem 0 0;font-size:.75rem;line-height:1.5;color:#8a8a8a}
+		.brikpanel-osc-hint{margin:.5rem 0 0;font-size:.75rem;line-height:1.5;color:#616161}
 	</style>
 	<?php
 }

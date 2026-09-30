@@ -118,7 +118,7 @@ class Brikpanel_Ads_Proxy {
 		if ( class_exists( 'Brikpanel_Ads_Logger' ) ) {
 			Brikpanel_Ads_Logger::log(
 				'oauth',
-				'Operator kill-switch received (' . $directive . ') via ' . $context . ' — local tokens wiped.'
+				'Operator kill-switch received (' . $directive . ') via ' . $context . '; local tokens wiped.'
 			);
 		}
 	}

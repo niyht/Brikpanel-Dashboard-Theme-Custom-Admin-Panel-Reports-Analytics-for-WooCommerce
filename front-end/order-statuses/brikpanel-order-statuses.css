@@ -3,13 +3,9 @@
  * Follows the BrikPanel design system (monochrome, soft cards, system font).
  */
 
+/* The card itself is the shared settings card (.bp-settings-card--custom in
+   the settings tab styles); only its inside is styled here (field test D15). */
 .bp-cos-card {
-	background: #ffffff;
-	border: 1px solid #e3e3e3;
-	border-radius: 0.75rem;
-	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.08 );
-	padding: 1.25rem 1.5rem;
-	margin: 1rem 0 0;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	color: #303030;
 }
@@ -23,7 +19,7 @@
 }
 
 .bp-cos-card__title {
-	font-size: 1rem;
+	font-size: var(--brikpanel-card-title-size, 0.9375rem);
 	font-weight: 600;
 	margin: 0 0 0.15rem;
 	color: #303030;
@@ -71,7 +67,7 @@
 
 .bp-cos-empty {
 	font-size: 0.8125rem;
-	color: #8a8a8a;
+	color: #616161;
 	margin: 0.25rem 0 0;
 	padding: 1rem 0;
 	text-align: center;
@@ -154,7 +150,7 @@
 }
 
 .bp-cos-slug.is-pending {
-	color: #8a8a8a;
+	color: #616161;
 	font-style: italic;
 }
 
@@ -180,7 +176,7 @@
 
 .bp-cos-hint {
 	font-size: 0.75rem;
-	color: #8a8a8a;
+	color: #616161;
 	line-height: 1.5;
 	margin: 0.875rem 0 0;
 }

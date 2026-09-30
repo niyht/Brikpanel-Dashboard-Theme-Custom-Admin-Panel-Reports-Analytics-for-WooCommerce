@@ -70,6 +70,10 @@ class Brikpanel_Products_List {
         $defs = [
             'image'    => ['label' => __('Image', 'brikpanel'),    'default' => true],
             'name'     => ['label' => __('Product', 'brikpanel'),  'default' => true, 'locked' => true],
+            // The product ID used to sit on its own line above every name. The
+            // row is one line now, so the ID is a column of its own, off until
+            // the user asks for it.
+            'id'       => ['label' => __('ID', 'brikpanel'),       'default' => false],
             'sku'      => ['label' => __('SKU', 'brikpanel'),      'default' => true],
             'variation_skus' => ['label' => __('Variation SKUs', 'brikpanel'), 'default' => false],
             'global_unique_id' => ['label' => __('GTIN', 'brikpanel'), 'default' => false],
@@ -667,6 +671,14 @@ class Brikpanel_Products_List {
                 'partial' => $missing > 0,
                 'missing' => $missing,
                 'total'   => $total,
+                // Finished here: the plural form follows the count (field test E7).
+                'label'   => $missing > 0
+                    ? brikpanel_safe_sprintf(
+                        /* translators: %s: number of variations. */
+                        _n('%s variation has no cost', '%s variations have no cost', $missing, 'brikpanel'),
+                        brikpanel_number($missing)
+                    )
+                    : '',
             ];
 
             $profit_payload = $blank_profit;
@@ -691,6 +703,13 @@ class Brikpanel_Products_List {
                     'partial' => $profit_missing > 0,
                     'missing' => $profit_missing,
                     'total'   => $total,
+                    'label'   => $profit_missing > 0
+                        ? brikpanel_safe_sprintf(
+                            /* translators: %s: number of variations. */
+                            _n('%s variation has no cost or price on file', '%s variations have no cost or price on file', $profit_missing, 'brikpanel'),
+                            brikpanel_number($profit_missing)
+                        )
+                        : '',
                 ];
             }
 
@@ -791,11 +810,41 @@ class Brikpanel_Products_List {
     private static function price_range_html($min, $max) {
         return ($min === $max)
             ? wc_price($min)
-            : (wc_price($min) . ' &ndash; ' . wc_price($max));
+            : wc_format_price_range($min, $max);
     }
 
     /**
-     * Profit as a percentage of cost (markup), formatted for display.
+     * The struck regular price and the sale price of a simple product on sale,
+     * '' otherwise.
+     *
+     * WooCommerce's get_price_html() can be overridden by third-party
+     * `woocommerce_get_price_html` filters that on some stores collapse the
+     * struck regular and sale price into one figure, hiding the sale price
+     * from the list, so the pair is built here from the raw prices. Tax
+     * handling mirrors WooCommerce (wc_get_price_to_display()) and so does
+     * the price suffix ("incl. VAT"). Variable and grouped products keep
+     * get_price_html(): their display is a range.
+     *
+     * @param WC_Product $product
+     * @return string HTML.
+     */
+    private static function sale_display_html($product) {
+        if (!$product || !$product->is_type('simple') || !$product->is_on_sale()) {
+            return '';
+        }
+        $regular_raw = $product->get_regular_price();
+        if ($regular_raw === '' || $regular_raw === null) {
+            return '';
+        }
+        $reg_disp  = wc_price(wc_get_price_to_display($product, ['price' => $regular_raw]));
+        $sale_disp = wc_price(wc_get_price_to_display($product, ['price' => $product->get_price()]));
+        return '<del aria-hidden="true">' . $reg_disp . '</del> <ins>' . $sale_disp . '</ins>' . $product->get_price_suffix();
+    }
+
+    /**
+     * Profit as a percentage of cost (markup), finished for display: the
+     * store's separators and the percent sign where the viewer's language
+     * writes it ("%25" in Turkish). The browser used to glue "%" after it.
      *
      * Measured against cost rather than price on purpose: that is the figure
      * merchants recognise from cost-of-goods tooling, and it answers "how much
@@ -811,7 +860,7 @@ class Brikpanel_Products_List {
         if (!is_numeric($cost) || (float) $cost == 0.0) {
             return '';
         }
-        return number_format_i18n(($profit / (float) $cost) * 100, 2);
+        return brikpanel_percent(($profit / (float) $cost) * 100, 2);
     }
 
     /**
@@ -827,19 +876,10 @@ class Brikpanel_Products_List {
      * @return array{value:string,tooltip:string,multi:bool}
      */
     private static function compute_global_unique_id_display($product) {
-        $value = trim((string) $product->get_global_unique_id());
+        $value = trim(brikpanel_wc_gtin($product));
 
         if ($value === '' && $product->is_type('variable')) {
-            $found = [];
-            foreach ($product->get_children() as $cid) {
-                $v = wc_get_product($cid);
-                if (!$v) continue;
-                $vid = trim((string) $v->get_global_unique_id());
-                if ($vid !== '') {
-                    $found[$vid] = true;
-                }
-            }
-            $found = array_keys($found);
+            $found = self::child_gtins($product->get_children());
 
             if (count($found) === 1) {
                 return ['value' => $found[0], 'tooltip' => '', 'multi' => false];
@@ -859,6 +899,56 @@ class Brikpanel_Products_List {
         }
 
         return ['value' => $value, 'tooltip' => '', 'multi' => false];
+    }
+
+    /**
+     * The distinct, non-empty GTINs stored on a set of variations, in ONE query.
+     *
+     * Reading post meta directly rather than hydrating a WC_Product per child
+     * is both cheaper and more portable: `_global_unique_id` is the same key
+     * WooCommerce keeps the prop in on every version that has the feature, so
+     * this path needs no version check at all. The previous shape cost one
+     * full product load per variation, on every row of the list.
+     *
+     * Values are collected into a keyed set, so a product carrying duplicate
+     * meta rows for the same key collapses to one entry instead of inflating
+     * the "N GTINs" count.
+     *
+     * @param int[] $children Variation IDs.
+     * @return string[] Distinct GTINs, in the order first seen.
+     */
+    private static function child_gtins($children) {
+        global $wpdb;
+
+        $ids = array_filter(array_map('intval', (array) $children));
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $rows = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT meta_value FROM {$wpdb->postmeta}
+                  WHERE meta_key = %s
+                    AND post_id IN ($placeholders)
+                    AND meta_value <> ''
+                  ORDER BY meta_id ASC",
+                ...array_merge([BRIKPANEL_GTIN_META_KEY], $ids)
+            )
+        );
+        // phpcs:enable
+
+        $found = [];
+        foreach ((array) $rows as $row) {
+            $gtin = trim((string) $row);
+            if ($gtin !== '') {
+                $found[$gtin] = true;
+            }
+        }
+
+        return array_keys($found);
     }
 
     /**
@@ -1259,7 +1349,7 @@ class Brikpanel_Products_List {
                     <div class="brikpanel-pl-toggle-row">
                         <span class="brikpanel-pl-toggle-label">
                             <?php esc_html_e('Virtual (no shipping)', 'brikpanel'); ?>
-                            <small class="brikpanel-pl-toggle-help"><?php esc_html_e('Service or intangible product — no physical shipping.', 'brikpanel'); ?></small>
+                            <small class="brikpanel-pl-toggle-help"><?php esc_html_e('Service or intangible product, no physical shipping.', 'brikpanel'); ?></small>
                         </span>
                         <label class="brikpanel-pl-switch">
                             <input type="checkbox" id="bpl-qe-virtual-toggle">
@@ -1293,7 +1383,7 @@ class Brikpanel_Products_List {
                 ?>
                 <div class="brikpanel-pl-qe-field" data-qe-slug="status">
                     <label for="bpl-qe-status"><?php esc_html_e('Status', 'brikpanel'); ?></label>
-                    <select id="bpl-qe-status" class="brikpanel-pl-select">
+                    <select id="bpl-qe-status" class="brikpanel-pl-select brikpanel-control">
                         <option value="publish"><?php esc_html_e('Published', 'brikpanel'); ?></option>
                         <?php // "Scheduled" only reflects a product that already carries a future
                               // publish date (set in the full editor). Keeping the choice lets
@@ -1433,16 +1523,42 @@ class Brikpanel_Products_List {
             ];
         }
 
+        // The view the URL asks for (a reload, the editor's back link, a Brand
+        // link). It is printed as the page's first state: the search row and
+        // the chosen filters are on screen before the script reads the same
+        // values, so nothing jumps once it runs. Read-only, like any list view.
+        $bpl_req = [];
+        $bpl_req_params = [
+            's'        => 'bpl_s',
+            'cat'      => 'bpl_cat',
+            'brand'    => 'bpl_brand',
+            'stock'    => 'bpl_stock',
+            'type'     => 'bpl_type',
+            'featured' => 'bpl_featured',
+            'sort'     => 'bpl_sort',
+        ];
+        foreach ($bpl_req_params as $bpl_key => $bpl_param) {
+            // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only view state.
+            $bpl_req[$bpl_key] = isset($_GET[$bpl_param]) ? sanitize_text_field(wp_unslash($_GET[$bpl_param])) : '';
+        }
+        $bpl_filters_set = count($tax_filter_chips);
+        foreach (['cat', 'brand', 'stock', 'type', 'featured'] as $bpl_key) {
+            if ('' !== $bpl_req[$bpl_key]) {
+                $bpl_filters_set++;
+            }
+        }
+        $bpl_find_open = $bpl_filters_set > 0 || '' !== $bpl_req['s'];
+
         $currency     = get_woocommerce_currency_symbol();
         $column_defs  = self::get_column_defs();
         $column_state = self::get_user_columns(0, $column_defs);
 
         // The dynamic columns are not in the DOM until the first fetch
         // resolves, so the spinner row spans the server-rendered headers only:
-        // 18 built-ins plus the opt-in Product Code column when its plugin is
+        // 19 built-ins plus the opt-in Product Code column when its plugin is
         // active. (Once rows arrive, the JS totalColumnCount() takes over and
         // adds the dynamic ones.)
-        $initial_colspan = 18 + ((function_exists('brikpanel_pcfw_active') && brikpanel_pcfw_active()) ? 1 : 0);
+        $initial_colspan = 19 + ((function_exists('brikpanel_pcfw_active') && brikpanel_pcfw_active()) ? 1 : 0);
 
         $table_attrs  = '';
         foreach ($column_state as $col_id => $visible) {
@@ -1466,224 +1582,258 @@ class Brikpanel_Products_List {
         $trash     = isset($counts->trash) ? (int) $counts->trash : 0;
         $all_count = $total + $draft + $private_c + $future;
         ?>
-        <div class="wrap">
+        <div class="wrap brikpanel-shell__page">
         <div class="brikpanel-pl" id="brikpanel-products-list" data-tax-filters="<?php echo esc_attr(wp_json_encode((object) $active_tax_filters)); ?>">
 
+            <?php
+            // The header gives way in its own order, measured
+            // (front-end/shared/brikpanel-fit-row.js, CLAUDE.md "Başlık satırı
+            // kuralı"): one line while it fits; then Import, Export and Bulk
+            // update fold into "More actions"; then Screen Options shows as its
+            // icon, then it steps aside (the Columns chip in the filter row
+            // opens the same list, and stacked cards show no columns anyway);
+            // Add product's label goes to its icon only as the last resort.
+            // Below 480px the three buttons used to lose their labels and
+            // stand as look-alike icons (field test C2). The search lives in
+            // the card's tab row, as on Orders.
+            $bpl_header_fit = [
+                'title'  => 'h1',
+                'lines'  => [''],
+                'levels' => ['', 'is-fold', 'is-fold is-icon-screen', 'is-fold is-no-screen', 'is-fold is-no-screen is-icon-add'],
+            ];
+            ?>
             <!-- Header -->
-            <div class="brikpanel-pl-header">
-                <div class="brikpanel-pl-header-left">
-                    <h1><?php esc_html_e('Products', 'brikpanel'); ?></h1>
-                    <span class="brikpanel-pl-count" id="bpl-total-count"><?php echo esc_html($all_count); ?></span>
-                </div>
-                <div class="brikpanel-pl-header-right">
-                    <div class="brikpanel-pl-search-wrap">
-                        <svg class="brikpanel-pl-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                        <input type="text" id="bpl-search" class="brikpanel-pl-search" placeholder="<?php esc_attr_e('Search products...', 'brikpanel'); ?>">
+            <div class="brikpanel-pl-header" id="bpl-header" data-bp-fit-row="<?php echo esc_attr(wp_json_encode($bpl_header_fit)); ?>">
+                <?php
+                // Fit as soon as the header opens (the helper is printed in <head>).
+                wp_print_inline_script_tag('if(window.brikpanelFitRow){window.brikpanelFitRow.auto(document.getElementById("bpl-header"));}');
+                ?>
+                <div class="brikpanel-pl-header-main">
+                    <div class="brikpanel-pl-header-left">
+                        <h1><?php esc_html_e('Products', 'brikpanel'); ?></h1>
+                        <span class="brikpanel-pl-count" id="bpl-total-count"><?php echo esc_html($all_count); ?></span>
                     </div>
-                    <a href="<?php echo esc_url(admin_url('edit.php?post_type=product&page=product_importer')); ?>" class="brikpanel-pl-btn secondary">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        <?php esc_html_e('Import', 'brikpanel'); ?>
-                    </a>
-                    <a href="<?php echo esc_url(admin_url('edit.php?post_type=product&page=product_exporter')); ?>" class="brikpanel-pl-btn secondary">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        <?php esc_html_e('Export', 'brikpanel'); ?>
-                    </a>
-                    <button type="button" class="brikpanel-pl-btn secondary" id="bpl-bulk-update-btn">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        <?php esc_html_e('Bulk update', 'brikpanel'); ?>
-                    </button>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=brikpanel-product-editor')); ?>" class="brikpanel-pl-btn primary" id="bpl-add-new">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        <?php esc_html_e('Add product', 'brikpanel'); ?>
-                    </a>
+                    <div class="brikpanel-pl-header-right">
+                        <?php
+                        // The Columns list, also where people look for it: beside
+                        // Import, named like WordPress's own "Screen Options" (as
+                        // on the Orders list). The Columns chip in the filter row
+                        // opens the same list.
+                        ?>
+                        <div class="brikpanel-pl-screen-menu" id="bpl-screen-menu">
+                            <button type="button" class="brikpanel-pl-btn secondary brikpanel-pl-screen-btn" id="bpl-screen-options-btn" aria-haspopup="true" aria-expanded="false" aria-controls="bpl-columns-popover" title="<?php esc_attr_e('Screen Options', 'brikpanel'); ?>">
+                                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h8M15 6h2M3 14h2M9 14h8"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg>
+                                <span class="brikpanel-pl-screen-label"><?php esc_html_e('Screen Options', 'brikpanel'); ?></span>
+                            </button>
+                        </div>
+                        <div class="brikpanel-overflow">
+                            <?php
+                            if (function_exists('brikpanel_overflow_trigger')) {
+                                brikpanel_overflow_trigger('bpl-header-more');
+                            }
+                            ?>
+                            <div class="brikpanel-overflow__menu" id="bpl-header-more">
+                                <?php
+                                // This page only needs `edit_products`, but WooCommerce's importer
+                                // and exporter each check their own capability (`import`,
+                                // `export`) on top of it. A button the user cannot follow is a
+                                // dead link, so each one is shown only to those who can.
+                                if ( current_user_can( 'import' ) ) :
+                                    ?>
+                                <a href="<?php echo esc_url(admin_url('edit.php?post_type=product&page=product_importer')); ?>" class="brikpanel-pl-btn secondary">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    <?php esc_html_e('Import', 'brikpanel'); ?>
+                                </a>
+                                <?php endif; ?>
+                                <?php if ( current_user_can( 'export' ) ) : ?>
+                                <a href="<?php echo esc_url(admin_url('edit.php?post_type=product&page=product_exporter')); ?>" class="brikpanel-pl-btn secondary">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    <?php esc_html_e('Export', 'brikpanel'); ?>
+                                </a>
+                                <?php endif; ?>
+                                <button type="button" class="brikpanel-pl-btn secondary" id="bpl-bulk-update-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    <?php esc_html_e('Bulk update', 'brikpanel'); ?>
+                                </button>
+                            </div>
+                        </div>
+                        <a href="<?php echo esc_url(admin_url('admin.php?page=brikpanel-product-editor')); ?>" class="brikpanel-pl-btn primary" id="bpl-add-new">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span class="brikpanel-pl-add-label"><?php esc_html_e('Add product', 'brikpanel'); ?></span>
+                        </a>
+                    </div>
                 </div>
             </div>
+            <?php brikpanel_header_end(); ?>
 
-            <!-- Filters Bar -->
-            <div class="brikpanel-pl-filters">
-                <div class="brikpanel-pl-tabs">
-                    <button class="brikpanel-pl-tab active" data-status="any">
-                        <?php esc_html_e('All', 'brikpanel'); ?>
-                        <span class="brikpanel-pl-tab-count" data-count="all"><?php echo esc_html($all_count); ?></span>
-                    </button>
-                    <button class="brikpanel-pl-tab" data-status="publish">
-                        <?php esc_html_e('Published', 'brikpanel'); ?>
-                        <span class="brikpanel-pl-tab-count" data-count="publish"><?php echo esc_html($total); ?></span>
-                    </button>
-                    <?php if ($future > 0) : ?>
-                    <button class="brikpanel-pl-tab" data-status="future">
-                        <?php esc_html_e('Scheduled', 'brikpanel'); ?>
-                        <span class="brikpanel-pl-tab-count" data-count="future"><?php echo esc_html($future); ?></span>
-                    </button>
-                    <?php endif; ?>
-                    <button class="brikpanel-pl-tab" data-status="draft">
-                        <?php esc_html_e('Draft', 'brikpanel'); ?>
-                        <span class="brikpanel-pl-tab-count" data-count="draft"><?php echo esc_html($draft); ?></span>
-                    </button>
-                    <?php if ($private_c > 0) : ?>
-                    <button class="brikpanel-pl-tab" data-status="private">
-                        <?php esc_html_e('Private', 'brikpanel'); ?>
-                        <span class="brikpanel-pl-tab-count" data-count="private"><?php echo esc_html($private_c); ?></span>
-                    </button>
-                    <?php endif; ?>
-                    <?php if ($trash > 0) : ?>
-                    <button class="brikpanel-pl-tab" data-status="trash">
-                        <?php esc_html_e('Trash', 'brikpanel'); ?>
-                        <span class="brikpanel-pl-tab-count" data-count="trash"><?php echo esc_html($trash); ?></span>
-                    </button>
-                    <?php endif; ?>
-                </div>
-                <div class="brikpanel-pl-filter-group">
-                    <select id="bpl-cat-filter" class="brikpanel-pl-select">
-                        <option value=""><?php esc_html_e('All categories', 'brikpanel'); ?></option>
-                        <?php foreach ($categories as $cat) : ?>
-                            <option value="<?php echo esc_attr($cat->term_id); ?>"><?php echo esc_html($cat->name); ?> (<?php echo esc_html($cat->count); ?>)</option>
-                        <?php endforeach; ?>
-                    </select>
-                    <?php if (!empty($brands)) : ?>
-                    <select id="bpl-brand-filter" class="brikpanel-pl-select">
-                        <option value=""><?php esc_html_e('All brands', 'brikpanel'); ?></option>
-                        <?php foreach ($brands as $brand_term) : ?>
-                            <option value="<?php echo esc_attr($brand_term->term_id); ?>"><?php echo esc_html($brand_term->name); ?> (<?php echo esc_html($brand_term->count); ?>)</option>
-                        <?php endforeach; ?>
-                    </select>
-                    <?php endif; ?>
-                    <select id="bpl-stock-filter" class="brikpanel-pl-select">
-                        <option value=""><?php esc_html_e('All stock', 'brikpanel'); ?></option>
-                        <option value="instock"><?php esc_html_e('In stock', 'brikpanel'); ?></option>
-                        <option value="outofstock"><?php esc_html_e('Out of stock', 'brikpanel'); ?></option>
-                        <option value="lowstock"><?php esc_html_e('Low stock', 'brikpanel'); ?></option>
-                    </select>
-                    <?php
-                    // Product types: pull all `product_type` terms so third-party
-                    // types (subscription, booking, bundle, etc.) registered by
-                    // other plugins surface automatically. wc_get_product_types()
-                    // gives nicely translated labels for the four core types.
-                    $core_type_labels = function_exists('wc_get_product_types') ? wc_get_product_types() : [];
-                    $type_terms = get_terms([
-                        'taxonomy'   => 'product_type',
-                        'hide_empty' => false,
-                    ]);
-                    if (!is_wp_error($type_terms) && !empty($type_terms)) : ?>
-                    <select id="bpl-type-filter" class="brikpanel-pl-select">
-                        <option value=""><?php esc_html_e('All types', 'brikpanel'); ?></option>
-                        <?php foreach ($type_terms as $type_term) :
-                            $label = isset($core_type_labels[$type_term->slug])
-                                ? $core_type_labels[$type_term->slug]
-                                : ucfirst($type_term->name);
-                            ?>
-                            <option value="<?php echo esc_attr($type_term->slug); ?>"><?php echo esc_html($label); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <?php endif; ?>
-                    <select id="bpl-featured-filter" class="brikpanel-pl-select">
-                        <option value=""><?php esc_html_e('All products', 'brikpanel'); ?></option>
-                        <option value="yes"><?php esc_html_e('Featured only', 'brikpanel'); ?></option>
-                        <option value="no"><?php esc_html_e('Not featured', 'brikpanel'); ?></option>
-                    </select>
-                    <select id="bpl-sort" class="brikpanel-pl-select">
-                        <option value="date-desc"><?php esc_html_e('Newest first', 'brikpanel'); ?></option>
-                        <option value="date-asc"><?php esc_html_e('Oldest first', 'brikpanel'); ?></option>
-                        <option value="title-asc"><?php esc_html_e('Name A-Z', 'brikpanel'); ?></option>
-                        <option value="title-desc"><?php esc_html_e('Name Z-A', 'brikpanel'); ?></option>
-                        <option value="price-asc"><?php esc_html_e('Price low-high', 'brikpanel'); ?></option>
-                        <option value="price-desc"><?php esc_html_e('Price high-low', 'brikpanel'); ?></option>
-                        <option value="menu-asc"><?php esc_html_e('Custom order', 'brikpanel'); ?></option>
-                    </select>
-                    <button type="button" class="brikpanel-pl-btn secondary" id="bpl-sort-toggle" aria-pressed="false" title="<?php esc_attr_e('Drag products to reorder them in the storefront', 'brikpanel'); ?>">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                        <span class="brikpanel-pl-sort-toggle-label"><?php esc_html_e('Sort', 'brikpanel'); ?></span>
-                    </button>
-                    <div class="brikpanel-pl-columns-menu" id="bpl-columns-menu">
-                        <button type="button" class="brikpanel-pl-btn secondary brikpanel-pl-columns-btn" id="bpl-columns-btn" aria-haspopup="true" aria-expanded="false">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-                            <?php esc_html_e('Columns', 'brikpanel'); ?>
+            <!-- Products Table -->
+            <div class="brikpanel-pl-card<?php echo $bpl_find_open ? ' is-find-open is-find-settled' : ''; ?>">
+                <div class="brikpanel-pl-progress" id="bpl-progress"></div>
+                <?php
+                // The card opens like the Orders list: the status tabs on one
+                // row and a small search-and-filter button at its end. Pressing
+                // it grows the search across the row and opens the filters under
+                // it (setFindOpen() in brikpanel-products-list.js). A page that
+                // loads with a search or a filter set opens it by itself.
+                ?>
+                <div class="brikpanel-pl-cardtop">
+                    <div class="brikpanel-pl-tabs" data-bp-strip data-bp-strip-end-clear="58">
+                        <button class="brikpanel-pl-tab active" data-status="any">
+                            <?php esc_html_e('All', 'brikpanel'); ?>
+                            <span class="brikpanel-pl-tab-count" data-count="all"><?php echo esc_html($all_count); ?></span>
                         </button>
-                        <div class="brikpanel-pl-columns-popover" id="bpl-columns-popover" role="menu" hidden>
+                        <button class="brikpanel-pl-tab" data-status="publish">
+                            <?php esc_html_e('Published', 'brikpanel'); ?>
+                            <span class="brikpanel-pl-tab-count" data-count="publish"><?php echo esc_html($total); ?></span>
+                        </button>
+                        <?php if ($future > 0) : ?>
+                        <button class="brikpanel-pl-tab" data-status="future">
+                            <?php esc_html_e('Scheduled', 'brikpanel'); ?>
+                            <span class="brikpanel-pl-tab-count" data-count="future"><?php echo esc_html($future); ?></span>
+                        </button>
+                        <?php endif; ?>
+                        <button class="brikpanel-pl-tab" data-status="draft">
+                            <?php esc_html_e('Draft', 'brikpanel'); ?>
+                            <span class="brikpanel-pl-tab-count" data-count="draft"><?php echo esc_html($draft); ?></span>
+                        </button>
+                        <?php if ($private_c > 0) : ?>
+                        <button class="brikpanel-pl-tab" data-status="private">
+                            <?php esc_html_e('Private', 'brikpanel'); ?>
+                            <span class="brikpanel-pl-tab-count" data-count="private"><?php echo esc_html($private_c); ?></span>
+                        </button>
+                        <?php endif; ?>
+                        <?php if ($trash > 0) : ?>
+                        <button class="brikpanel-pl-tab" data-status="trash">
+                            <?php esc_html_e('Trash', 'brikpanel'); ?>
+                            <span class="brikpanel-pl-tab-count" data-count="trash"><?php echo esc_html($trash); ?></span>
+                        </button>
+                        <?php endif; ?>
+                    </div>
+                    <div class="brikpanel-pl-find<?php echo $bpl_find_open ? ' is-open' : ''; ?>" id="bpl-find">
+                        <button type="button" class="brikpanel-pl-find-open<?php echo $bpl_filters_set ? ' has-count' : ''; ?>" id="bpl-find-open" aria-expanded="<?php echo $bpl_find_open ? 'true' : 'false'; ?>" aria-controls="bpl-find-field bpl-refine" aria-label="<?php esc_attr_e('Search and filter (F)', 'brikpanel'); ?>" title="<?php esc_attr_e('Search and filter (F)', 'brikpanel'); ?>">
+                            <span class="brikpanel-pl-find-ico is-search" aria-hidden="true"></span>
+                            <span class="brikpanel-pl-find-ico is-filter" aria-hidden="true"></span>
+                            <span class="brikpanel-pl-filters-count" id="bpl-filters-count" aria-hidden="true"<?php echo $bpl_filters_set ? '' : ' hidden'; ?>><?php echo $bpl_filters_set ? (int) $bpl_filters_set : ''; ?></span>
+                        </button>
+                        <div class="brikpanel-pl-find-field" id="bpl-find-field">
+                            <span class="brikpanel-pl-find-ico is-search" aria-hidden="true"></span>
+                            <input type="text" id="bpl-search" class="brikpanel-pl-find-input" value="<?php echo esc_attr($bpl_req['s']); ?>" placeholder="<?php esc_attr_e('Search products...', 'brikpanel'); ?>" aria-label="<?php esc_attr_e('Search products...', 'brikpanel'); ?>" autocomplete="off">
+                            <button type="button" class="brikpanel-pl-find-cancel" id="bpl-find-cancel"><?php esc_html_e('Cancel', 'brikpanel'); ?></button>
+                        </div>
+                    </div>
+                </div>
+                <div class="brikpanel-pl-refine" id="bpl-refine">
+                    <div class="brikpanel-pl-refine-inner">
+                        <div class="brikpanel-pl-filter-group" id="bpl-filter-group">
+                            <select id="bpl-cat-filter" class="brikpanel-pl-select brikpanel-pl-chip<?php echo '' !== $bpl_req['cat'] ? ' is-set' : ''; ?>">
+                                <option value=""><?php esc_html_e('All categories', 'brikpanel'); ?></option>
+                                <?php foreach ($categories as $cat) : ?>
+                                    <option value="<?php echo esc_attr($cat->term_id); ?>"<?php selected($bpl_req['cat'], (string) $cat->term_id); ?>><?php echo esc_html($cat->name); ?> (<?php echo esc_html($cat->count); ?>)</option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php if (!empty($brands)) : ?>
+                            <select id="bpl-brand-filter" class="brikpanel-pl-select brikpanel-pl-chip<?php echo '' !== $bpl_req['brand'] ? ' is-set' : ''; ?>">
+                                <option value=""><?php esc_html_e('All brands', 'brikpanel'); ?></option>
+                                <?php foreach ($brands as $brand_term) : ?>
+                                    <option value="<?php echo esc_attr($brand_term->term_id); ?>"<?php selected($bpl_req['brand'], (string) $brand_term->term_id); ?>><?php echo esc_html($brand_term->name); ?> (<?php echo esc_html($brand_term->count); ?>)</option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php endif; ?>
+                            <select id="bpl-stock-filter" class="brikpanel-pl-select brikpanel-pl-chip<?php echo '' !== $bpl_req['stock'] ? ' is-set' : ''; ?>">
+                                <option value=""><?php esc_html_e('All stock', 'brikpanel'); ?></option>
+                                <option value="instock"<?php selected($bpl_req['stock'], 'instock'); ?>><?php esc_html_e('In stock', 'brikpanel'); ?></option>
+                                <option value="outofstock"<?php selected($bpl_req['stock'], 'outofstock'); ?>><?php esc_html_e('Out of stock', 'brikpanel'); ?></option>
+                                <option value="lowstock"<?php selected($bpl_req['stock'], 'lowstock'); ?>><?php esc_html_e('Low stock', 'brikpanel'); ?></option>
+                            </select>
                             <?php
-                            $has_extra = false;
-                            foreach ($column_defs as $col_id => $def) :
-                                $locked  = !empty($def['locked']);
-                                $checked = !empty($column_state[$col_id]);
-                                $extra   = !empty($def['extra']);
-                                if ($extra && !$has_extra) :
-                                    $has_extra = true; ?>
-                                    <div class="brikpanel-pl-columns-divider" role="separator" aria-hidden="true">
-                                        <?php esc_html_e('Plugin columns', 'brikpanel'); ?>
+                            // Product types: pull all `product_type` terms so third-party
+                            // types (subscription, booking, bundle, etc.) registered by
+                            // other plugins surface automatically. wc_get_product_types()
+                            // gives nicely translated labels for the four core types.
+                            $core_type_labels = function_exists('wc_get_product_types') ? wc_get_product_types() : [];
+                            $type_terms = get_terms([
+                                'taxonomy'   => 'product_type',
+                                'hide_empty' => false,
+                            ]);
+                            if (!is_wp_error($type_terms) && !empty($type_terms)) : ?>
+                            <select id="bpl-type-filter" class="brikpanel-pl-select brikpanel-pl-chip<?php echo '' !== $bpl_req['type'] ? ' is-set' : ''; ?>">
+                                <option value=""><?php esc_html_e('All types', 'brikpanel'); ?></option>
+                                <?php foreach ($type_terms as $type_term) :
+                                    $label = isset($core_type_labels[$type_term->slug])
+                                        ? $core_type_labels[$type_term->slug]
+                                        : ucfirst($type_term->name);
+                                    ?>
+                                    <option value="<?php echo esc_attr($type_term->slug); ?>"<?php selected($bpl_req['type'], $type_term->slug); ?>><?php echo esc_html($label); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php endif; ?>
+                            <select id="bpl-featured-filter" class="brikpanel-pl-select brikpanel-pl-chip<?php echo '' !== $bpl_req['featured'] ? ' is-set' : ''; ?>">
+                                <option value=""><?php esc_html_e('All products', 'brikpanel'); ?></option>
+                                <option value="yes"<?php selected($bpl_req['featured'], 'yes'); ?>><?php esc_html_e('Featured only', 'brikpanel'); ?></option>
+                                <option value="no"<?php selected($bpl_req['featured'], 'no'); ?>><?php esc_html_e('Not featured', 'brikpanel'); ?></option>
+                            </select>
+                            <button type="button" class="brikpanel-pl-clear" id="bpl-clear-filters"<?php echo $bpl_filters_set ? '' : ' hidden'; ?>><?php esc_html_e('Clear filters', 'brikpanel'); ?></button>
+                            <div class="brikpanel-pl-refine-end">
+                                <select id="bpl-sort" class="brikpanel-pl-select brikpanel-pl-chip is-solid">
+                                    <option value="date-desc"<?php selected($bpl_req['sort'], 'date-desc'); ?>><?php esc_html_e('Newest first', 'brikpanel'); ?></option>
+                                    <option value="date-asc"<?php selected($bpl_req['sort'], 'date-asc'); ?>><?php esc_html_e('Oldest first', 'brikpanel'); ?></option>
+                                    <option value="title-asc"<?php selected($bpl_req['sort'], 'title-asc'); ?>><?php esc_html_e('Name A-Z', 'brikpanel'); ?></option>
+                                    <option value="title-desc"<?php selected($bpl_req['sort'], 'title-desc'); ?>><?php esc_html_e('Name Z-A', 'brikpanel'); ?></option>
+                                    <option value="price-asc"<?php selected($bpl_req['sort'], 'price-asc'); ?>><?php esc_html_e('Price low-high', 'brikpanel'); ?></option>
+                                    <option value="price-desc"<?php selected($bpl_req['sort'], 'price-desc'); ?>><?php esc_html_e('Price high-low', 'brikpanel'); ?></option>
+                                    <option value="menu-asc"<?php selected($bpl_req['sort'], 'menu-asc'); ?>><?php esc_html_e('Custom order', 'brikpanel'); ?></option>
+                                </select>
+                                <button type="button" class="brikpanel-pl-chip-btn" id="bpl-sort-toggle" aria-pressed="false" title="<?php esc_attr_e('Drag products to reorder them in the storefront', 'brikpanel'); ?>">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                                    <span class="brikpanel-pl-sort-toggle-label"><?php esc_html_e('Sort', 'brikpanel'); ?></span>
+                                </button>
+                                <div class="brikpanel-pl-columns-menu" id="bpl-columns-menu">
+                                    <button type="button" class="brikpanel-pl-chip-btn brikpanel-pl-columns-btn" id="bpl-columns-btn" aria-haspopup="true" aria-expanded="false">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                                        <?php esc_html_e('Columns', 'brikpanel'); ?>
+                                    </button>
+                                    <div class="brikpanel-pl-columns-popover" id="bpl-columns-popover" role="menu" hidden>
+                                        <?php
+                                        $has_extra = false;
+                                        foreach ($column_defs as $col_id => $def) :
+                                            $locked  = !empty($def['locked']);
+                                            $checked = !empty($column_state[$col_id]);
+                                            $extra   = !empty($def['extra']);
+                                            if ($extra && !$has_extra) :
+                                                $has_extra = true; ?>
+                                                <div class="brikpanel-pl-columns-divider" role="separator" aria-hidden="true">
+                                                    <?php esc_html_e('Plugin columns', 'brikpanel'); ?>
+                                                </div>
+                                            <?php endif; ?>
+                                            <label class="brikpanel-pl-columns-item<?php echo $locked ? ' is-locked' : ''; ?><?php echo $extra ? ' is-extra' : ''; ?>">
+                                                <input type="checkbox" data-col="<?php echo esc_attr($col_id); ?>"
+                                                    <?php if ($extra) echo ' data-extra="1"'; ?>
+                                                    <?php checked($checked); ?>
+                                                    <?php disabled($locked); ?>>
+                                                <span><?php echo esc_html($def['label']); ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
                                     </div>
-                                <?php endif; ?>
-                                <label class="brikpanel-pl-columns-item<?php echo $locked ? ' is-locked' : ''; ?><?php echo $extra ? ' is-extra' : ''; ?>">
-                                    <input type="checkbox" data-col="<?php echo esc_attr($col_id); ?>"
-                                        <?php if ($extra) echo ' data-extra="1"'; ?>
-                                        <?php checked($checked); ?>
-                                        <?php disabled($locked); ?>>
-                                    <span><?php echo esc_html($def['label']); ?></span>
-                                </label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Active taxonomy filter chips (Brand/Tag/custom). Rendered
+                             server-side from the URL; JS removes them on click. -->
+                        <div class="brikpanel-pl-filter-chips" id="bpl-filter-chips"<?php echo empty($tax_filter_chips) ? ' hidden' : ''; ?>>
+                            <?php foreach ($tax_filter_chips as $chip) : ?>
+                                <span class="brikpanel-pl-filter-chip" data-taxonomy="<?php echo esc_attr($chip['taxonomy']); ?>">
+                                    <span class="brikpanel-pl-filter-chip-label"><?php
+                                        /* translators: 1: taxonomy label (e.g. Brand), 2: term name (e.g. Aurora) */
+                                        echo esc_html(sprintf(__('%1$s: %2$s', 'brikpanel'), $chip['tax_label'], $chip['term_label']));
+                                    ?></span>
+                                    <button type="button" class="brikpanel-pl-filter-chip-remove" aria-label="<?php esc_attr_e('Remove filter', 'brikpanel'); ?>">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                    </button>
+                                </span>
                             <?php endforeach; ?>
                         </div>
                     </div>
                 </div>
-                <!-- Active taxonomy filter chips (Brand/Tag/custom). Rendered
-                     server-side from the URL; JS removes them on click. -->
-                <div class="brikpanel-pl-filter-chips" id="bpl-filter-chips"<?php echo empty($tax_filter_chips) ? ' hidden' : ''; ?>>
-                    <?php foreach ($tax_filter_chips as $chip) : ?>
-                        <span class="brikpanel-pl-filter-chip" data-taxonomy="<?php echo esc_attr($chip['taxonomy']); ?>">
-                            <span class="brikpanel-pl-filter-chip-label"><?php
-                                /* translators: 1: taxonomy label (e.g. Brand), 2: term name (e.g. Aurora) */
-                                echo esc_html(sprintf(__('%1$s: %2$s', 'brikpanel'), $chip['tax_label'], $chip['term_label']));
-                            ?></span>
-                            <button type="button" class="brikpanel-pl-filter-chip-remove" aria-label="<?php esc_attr_e('Remove filter', 'brikpanel'); ?>">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                            </button>
-                        </span>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-
-            <!-- Bulk Actions Bar (hidden by default) -->
-            <div class="brikpanel-pl-bulk-bar" id="bpl-bulk-bar" style="display:none;">
-                <div class="brikpanel-pl-bulk-left">
-                    <span id="bpl-selected-count">0</span> <?php esc_html_e('selected', 'brikpanel'); ?>
-                    <button type="button" class="brikpanel-pl-bulk-link" id="bpl-select-all-btn"><?php esc_html_e('Select all', 'brikpanel'); ?></button>
-                    <button type="button" class="brikpanel-pl-bulk-link" id="bpl-deselect-all-btn"><?php esc_html_e('Deselect all', 'brikpanel'); ?></button>
-                </div>
-                <div class="brikpanel-pl-bulk-right">
-                    <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-export">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        <?php esc_html_e('Export selected', 'brikpanel'); ?>
-                    </button>
-                    <?php
-                    // Category / tag assignment lives in the bulk-update modal, but users
-                    // looking for it start here, at the selection bar. These shortcuts open
-                    // the modal already on the "Selected products" tab with the matching
-                    // "Add to ..." action chosen. Only the two core taxonomies get a button;
-                    // brands and other custom taxonomies stay inside the modal's action list.
-                    $bulk_taxonomies = self::get_bulk_taxonomies();
-                    if (isset($bulk_taxonomies['product_cat'])) : ?>
-                        <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-cats" data-taxonomy="product_cat">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                            <?php esc_html_e('Categories', 'brikpanel'); ?>
-                        </button>
-                    <?php endif; ?>
-                    <?php if (isset($bulk_taxonomies['product_tag'])) : ?>
-                        <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-tags" data-taxonomy="product_tag">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                            <?php esc_html_e('Tags', 'brikpanel'); ?>
-                        </button>
-                    <?php endif; ?>
-                    <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-publish"><?php esc_html_e('Publish', 'brikpanel'); ?></button>
-                    <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-draft"><?php esc_html_e('Set as draft', 'brikpanel'); ?></button>
-                    <button type="button" class="brikpanel-pl-btn danger small" id="bpl-bulk-trash"><?php esc_html_e('Move to trash', 'brikpanel'); ?></button>
-                    <button type="button" class="brikpanel-pl-btn danger small" id="bpl-bulk-delete-perm">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                        <?php esc_html_e('Delete permanently', 'brikpanel'); ?>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Products Table -->
-            <div class="brikpanel-pl-card">
-                <div class="brikpanel-pl-progress" id="bpl-progress"></div>
                 <div class="brikpanel-pl-sort-hint" id="bpl-sort-hint" hidden>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                     <span><?php esc_html_e('Drag the handle on the left of each row to set the order products appear in your storefront. Changes are saved automatically.', 'brikpanel'); ?></span>
@@ -1699,6 +1849,7 @@ class Brikpanel_Products_List {
                                 </th>
                                 <th class="brikpanel-pl-th-image brikpanel-pl-col brikpanel-pl-col-image"></th>
                                 <th class="brikpanel-pl-th-name brikpanel-pl-col brikpanel-pl-col-name"><?php esc_html_e('Product', 'brikpanel'); ?></th>
+                                <th class="brikpanel-pl-th-id brikpanel-pl-col brikpanel-pl-col-id"><?php esc_html_e('ID', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-sku brikpanel-pl-col brikpanel-pl-col-sku"><?php esc_html_e('SKU', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-varskus brikpanel-pl-col brikpanel-pl-col-variation_skus"><?php esc_html_e('Variation SKUs', 'brikpanel'); ?></th>
                                 <th class="brikpanel-pl-th-guid brikpanel-pl-col brikpanel-pl-col-global_unique_id"><?php esc_html_e('GTIN', 'brikpanel'); ?></th>
@@ -1726,10 +1877,76 @@ class Brikpanel_Products_List {
                             </tr>
                         </tbody>
                     </table>
+                    <?php
+                    // The spinner row spans the header cells that show, before
+                    // the page paints: on a phone most columns are hidden, and
+                    // with a fixed table layout the extra span added phantom
+                    // columns that cut the header's background half way (field
+                    // test C12). The list script keeps it in step afterwards.
+                    wp_print_inline_script_tag('(function(t){var h=t&&t.tHead&&t.tHead.rows[0],b=t&&t.tBodies[0]&&t.tBodies[0].rows[0],n=0,i;if(!h||!b||b.cells.length!==1){return;}for(i=0;i<h.cells.length;i++){if(window.getComputedStyle(h.cells[i]).display!=="none"){n+=h.cells[i].colSpan||1;}}b.cells[0].colSpan=Math.max(1,n);})(document.getElementById("bpl-table"));');
+                    ?>
                 </div>
 
                 <!-- Pagination -->
                 <div class="brikpanel-pl-pagination" id="bpl-pagination"></div>
+            </div>
+
+            <?php
+            // Selection bar: while products are selected it floats at the bottom
+            // of the list, like the Orders list. When the buttons do not fit on
+            // one row they fold into a "Bulk actions" menu that opens above the
+            // bar (the shared overflow menu, folded by syncBulkFold() in
+            // brikpanel-products-list.js, which measures instead of guessing
+            // from the screen width).
+            ?>
+            <div class="brikpanel-pl-bulk-bar" id="bpl-bulk-bar" hidden>
+                <div class="brikpanel-pl-bulk-inner">
+                <div class="brikpanel-pl-bulk-left">
+                    <span class="brikpanel-pl-bulk-count" id="bpl-selected-count" aria-live="polite"></span>
+                    <button type="button" class="brikpanel-pl-bulk-link" id="bpl-select-all-btn"><?php esc_html_e('Select all', 'brikpanel'); ?></button>
+                    <button type="button" class="brikpanel-pl-bulk-link" id="bpl-deselect-all-btn"><?php esc_html_e('Deselect all', 'brikpanel'); ?></button>
+                </div>
+                <div class="brikpanel-pl-bulk-right">
+                    <div class="brikpanel-overflow">
+                        <button type="button" class="brikpanel-overflow__trigger brikpanel-pl-bulk-more" aria-expanded="false" aria-controls="bpl-bulk-more">
+                            <?php esc_html_e('Bulk actions', 'brikpanel'); ?>
+                            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l5-5 5 5"/></svg>
+                        </button>
+                        <div class="brikpanel-overflow__menu" id="bpl-bulk-more">
+                            <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-export">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                <?php esc_html_e('Export selected', 'brikpanel'); ?>
+                            </button>
+                            <?php
+                            // Category / tag assignment lives in the bulk-update modal, but users
+                            // looking for it start here, at the selection bar. These shortcuts open
+                            // the modal already on the "Selected products" tab with the matching
+                            // "Add to ..." action chosen. Only the two core taxonomies get a button;
+                            // brands and other custom taxonomies stay inside the modal's action list.
+                            $bulk_taxonomies = self::get_bulk_taxonomies();
+                            if (isset($bulk_taxonomies['product_cat'])) : ?>
+                                <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-cats" data-taxonomy="product_cat">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                    <?php esc_html_e('Categories', 'brikpanel'); ?>
+                                </button>
+                            <?php endif; ?>
+                            <?php if (isset($bulk_taxonomies['product_tag'])) : ?>
+                                <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-tags" data-taxonomy="product_tag">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                                    <?php esc_html_e('Tags', 'brikpanel'); ?>
+                                </button>
+                            <?php endif; ?>
+                            <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-publish"><?php esc_html_e('Publish', 'brikpanel'); ?></button>
+                            <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-draft"><?php esc_html_e('Set as draft', 'brikpanel'); ?></button>
+                            <button type="button" class="brikpanel-pl-btn danger small" id="bpl-bulk-trash"><?php esc_html_e('Move to trash', 'brikpanel'); ?></button>
+                            <button type="button" class="brikpanel-pl-btn danger small" id="bpl-bulk-delete-perm">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                <?php esc_html_e('Delete permanently', 'brikpanel'); ?>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                </div>
             </div>
 
             <!-- Quick Edit Drawer -->
@@ -1816,15 +2033,15 @@ class Brikpanel_Products_List {
                         <div class="brikpanel-pl-modal-tab-content active" id="bpl-bulk-tab-cat">
                             <div class="brikpanel-pl-modal-field">
                                 <label><?php esc_html_e('Scope', 'brikpanel'); ?> *</label>
-                                <select id="bpl-bulk-scope" class="brikpanel-pl-select full">
+                                <select id="bpl-bulk-scope" class="brikpanel-pl-select full brikpanel-control">
                                     <option value="category"><?php esc_html_e('All products in a category', 'brikpanel'); ?></option>
                                     <option value="all"><?php esc_html_e('All products in the store', 'brikpanel'); ?></option>
                                 </select>
                             </div>
                             <div class="brikpanel-pl-modal-field" id="bpl-bulk-cat-wrap">
                                 <label><?php esc_html_e('Category', 'brikpanel'); ?> *</label>
-                                <select id="bpl-bulk-cat" class="brikpanel-pl-select full">
-                                    <option value=""><?php esc_html_e('— Select category —', 'brikpanel'); ?></option>
+                                <select id="bpl-bulk-cat" class="brikpanel-pl-select full brikpanel-control">
+                                    <option value=""><?php esc_html_e('Select category', 'brikpanel'); ?></option>
                                     <?php foreach ($categories as $cat) : ?>
                                         <option value="<?php echo esc_attr($cat->term_id); ?>"><?php echo esc_html($cat->name); ?> (<?php echo esc_html($cat->count); ?>)</option>
                                     <?php endforeach; ?>
@@ -1833,7 +2050,7 @@ class Brikpanel_Products_List {
                             <div class="brikpanel-pl-modal-row">
                                 <div class="brikpanel-pl-modal-field grow">
                                     <label><?php esc_html_e('Action', 'brikpanel'); ?></label>
-                                    <select id="bpl-bulk-action-cat" class="brikpanel-pl-select full">
+                                    <select id="bpl-bulk-action-cat" class="brikpanel-pl-select full brikpanel-control">
                                         <?php $this->render_bulk_action_options(); ?>
                                     </select>
                                 </div>
@@ -1851,12 +2068,12 @@ class Brikpanel_Products_List {
                                 <div class="brikpanel-pl-modal-field-label"><?php esc_html_e('Variation filter (optional)', 'brikpanel'); ?></div>
                                 <div class="brikpanel-pl-modal-row">
                                     <div class="brikpanel-pl-modal-field grow">
-                                        <select id="bpl-bulk-attr-key" class="brikpanel-pl-select full">
+                                        <select id="bpl-bulk-attr-key" class="brikpanel-pl-select full brikpanel-control">
                                             <option value=""><?php esc_html_e('All products / variations', 'brikpanel'); ?></option>
                                         </select>
                                     </div>
                                     <div class="brikpanel-pl-modal-field grow">
-                                        <select id="bpl-bulk-attr-val" class="brikpanel-pl-select full" disabled>
+                                        <select id="bpl-bulk-attr-val" class="brikpanel-pl-select full brikpanel-control" disabled>
                                             <option value=""><?php esc_html_e('Select attribute first', 'brikpanel'); ?></option>
                                         </select>
                                     </div>
@@ -1871,7 +2088,7 @@ class Brikpanel_Products_List {
                             <div class="brikpanel-pl-modal-row">
                                 <div class="brikpanel-pl-modal-field grow">
                                     <label><?php esc_html_e('Action', 'brikpanel'); ?></label>
-                                    <select id="bpl-bulk-action-sel" class="brikpanel-pl-select full">
+                                    <select id="bpl-bulk-action-sel" class="brikpanel-pl-select full brikpanel-control">
                                         <?php $this->render_bulk_action_options(); ?>
                                     </select>
                                 </div>
@@ -1898,7 +2115,7 @@ class Brikpanel_Products_List {
                             <div class="brikpanel-pl-modal-row">
                                 <div class="brikpanel-pl-modal-field grow">
                                     <label><?php esc_html_e('Trailing digits to zero', 'brikpanel'); ?></label>
-                                    <select id="bpl-bulk-round-digits" class="brikpanel-pl-select full">
+                                    <select id="bpl-bulk-round-digits" class="brikpanel-pl-select full brikpanel-control">
                                         <option value="1"><?php esc_html_e('Last 1 digit (…0)', 'brikpanel'); ?></option>
                                         <option value="2" selected><?php esc_html_e('Last 2 digits (…00)', 'brikpanel'); ?></option>
                                         <option value="3"><?php esc_html_e('Last 3 digits (…000)', 'brikpanel'); ?></option>
@@ -1907,7 +2124,7 @@ class Brikpanel_Products_List {
                                 </div>
                                 <div class="brikpanel-pl-modal-field grow">
                                     <label><?php esc_html_e('Direction', 'brikpanel'); ?></label>
-                                    <select id="bpl-bulk-round-mode" class="brikpanel-pl-select full">
+                                    <select id="bpl-bulk-round-mode" class="brikpanel-pl-select full brikpanel-control">
                                         <option value="down" selected><?php esc_html_e('Round down', 'brikpanel'); ?></option>
                                         <option value="nearest"><?php esc_html_e('Nearest', 'brikpanel'); ?></option>
                                         <option value="up"><?php esc_html_e('Round up', 'brikpanel'); ?></option>
@@ -1929,7 +2146,7 @@ class Brikpanel_Products_List {
                             </div>
                             <div class="brikpanel-pl-modal-field">
                                 <label><?php esc_html_e('Delete mode', 'brikpanel'); ?></label>
-                                <select id="bpl-del-mode" class="brikpanel-pl-select full">
+                                <select id="bpl-del-mode" class="brikpanel-pl-select full brikpanel-control">
                                     <option value="selected"><?php esc_html_e('Selected products only', 'brikpanel'); ?></option>
                                     <option value="category"><?php esc_html_e('All products in a category', 'brikpanel'); ?></option>
                                     <option value="all"><?php esc_html_e('All products in the store', 'brikpanel'); ?></option>
@@ -1937,8 +2154,8 @@ class Brikpanel_Products_List {
                             </div>
                             <div class="brikpanel-pl-modal-field" id="bpl-del-cat-wrap" style="display:none;">
                                 <label><?php esc_html_e('Category', 'brikpanel'); ?></label>
-                                <select id="bpl-del-cat" class="brikpanel-pl-select full">
-                                    <option value=""><?php esc_html_e('— Select category —', 'brikpanel'); ?></option>
+                                <select id="bpl-del-cat" class="brikpanel-pl-select full brikpanel-control">
+                                    <option value=""><?php esc_html_e('Select category', 'brikpanel'); ?></option>
                                     <?php foreach ($categories as $cat) : ?>
                                         <option value="<?php echo esc_attr($cat->term_id); ?>"><?php echo esc_html($cat->name); ?> (<?php echo esc_html($cat->count); ?>)</option>
                                     <?php endforeach; ?>
@@ -1976,7 +2193,7 @@ class Brikpanel_Products_List {
                                     <?php esc_html_e('Brands', 'brikpanel'); ?>
                                 </label>
                             </div>
-                            <p class="brikpanel-pl-modal-hint"><?php esc_html_e('When checked, ALL terms in the selected taxonomies are removed after products are deleted — not only those linked to the deleted products.', 'brikpanel'); ?></p>
+                            <p class="brikpanel-pl-modal-hint"><?php esc_html_e('When checked, ALL terms in the selected taxonomies are removed after products are deleted, not only those linked to the deleted products.', 'brikpanel'); ?></p>
                             <div class="brikpanel-pl-modal-divider"></div>
                             <div class="brikpanel-pl-modal-field">
                                 <label class="brikpanel-pl-modal-check">
@@ -1989,8 +2206,8 @@ class Brikpanel_Products_List {
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                                 <div>
                                     <strong><?php esc_html_e('Fast mode bypasses plugin hooks:', 'brikpanel'); ?></strong>
-                                    <ul class="bpl-fast-warning-list">
-                                        <li><?php esc_html_e('Always permanent — no trash, no undo.', 'brikpanel'); ?></li>
+                                    <ul class="brikpanel-bullets bpl-fast-warning-list">
+                                        <li><?php esc_html_e('Always permanent: no trash, no undo.', 'brikpanel'); ?></li>
                                         <li><?php esc_html_e('Image files stay in uploads/ as orphans (media library entries are removed but the files on disk are not).', 'brikpanel'); ?></li>
                                         <li><?php esc_html_e('SEO, search index, cache and analytics plugins will not be notified and may show stale data until re-indexed.', 'brikpanel'); ?></li>
                                         <li><?php esc_html_e('Third-party custom tables tied to products will not be cleaned.', 'brikpanel'); ?></li>
@@ -2022,11 +2239,11 @@ class Brikpanel_Products_List {
                             <span id="bpl-progress-stats-text">0 / 0</span>
                             <span id="bpl-progress-percent">0%</span>
                         </div>
-                        <p class="bpl-progress-errors" id="bpl-progress-errors" hidden></p>
+                        <p class="bpl-progress-errors" id="bpl-progress-errors"></p>
                     </div>
                     <div class="bpl-progress-footer">
                         <button type="button" class="brikpanel-pl-btn secondary" id="bpl-progress-cancel"><?php esc_html_e('Cancel', 'brikpanel'); ?></button>
-                        <button type="button" class="brikpanel-pl-btn primary" id="bpl-progress-done" hidden><?php esc_html_e('Done', 'brikpanel'); ?></button>
+                        <button type="button" class="brikpanel-pl-btn primary" id="bpl-progress-done"><?php esc_html_e('Done', 'brikpanel'); ?></button>
                     </div>
                 </div>
             </div>
@@ -2527,30 +2744,14 @@ class Brikpanel_Products_List {
                     }
                 }
                 $author_id   = (int) $post->post_author;
-                $author_name = $author_id ? get_the_author_meta('display_name', $author_id) : '';
+                $author_name = $author_id ? brikpanel_plain_name(get_the_author_meta('display_name', $author_id)) : '';
 
-                // Robust sale-price display. WooCommerce's get_price_html() can be
-                // overridden by 3rd-party `woocommerce_get_price_html` filters that
-                // on some stores collapse the struck regular + sale price into a
-                // single figure, hiding the current (sale) price from the list.
-                // For simple products we therefore build the sale display ourselves
-                // from the raw regular/active price so an active WooCommerce sale is
-                // always visible. Tax handling mirrors WooCommerce via
-                // wc_get_price_to_display(); variable/grouped products keep
-                // get_price_html() because their display is a min–max range.
-                $sale_display_html = '';
-                if ($product->is_type('simple') && $product->is_on_sale()) {
-                    $regular_raw = $product->get_regular_price();
-                    if ($regular_raw !== '' && $regular_raw !== null) {
-                        $reg_disp  = wc_price(wc_get_price_to_display($product, ['price' => $regular_raw]));
-                        $sale_disp = wc_price(wc_get_price_to_display($product, ['price' => $product->get_price()]));
-                        $sale_display_html = '<del aria-hidden="true">' . $reg_disp . '</del> <ins>' . $sale_disp . '</ins>';
-                    }
-                }
+                $sale_display_html = self::sale_display_html($product);
 
                 $products[] = [
                     'id'             => $post->ID,
-                    'name'           => $product->get_name() ?? '',
+                    // Stored names can hold "&amp;" (REST imports); the JS escapes on insert.
+                    'name'           => brikpanel_plain_name($product->get_name() ?? ''),
                     'sku'            => $product->get_sku() ?? '',
                     // Resolved in compute_cost_payloads() so the SKUs come out
                     // of the query it already runs over this product's children.
@@ -2576,14 +2777,14 @@ class Brikpanel_Products_List {
                     // Publish date + time in the site timezone/format. Merchants who
                     // order category pages by date rely on seeing (and re-dating)
                     // this; column is opt-in via the Columns picker (default off).
-                    'date'           => wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post)),
+                    'date'           => wp_date(brikpanel_datetime_format(), get_post_timestamp($post)),
                     // Tooltip for the "Scheduled" status badge — the moment the
                     // product goes live. Empty for non-scheduled products.
                     'scheduled_label' => $post->post_status === 'future'
                         ? sprintf(
                             /* translators: %s: date and time the product publishes */
                             __('Scheduled for %s', 'brikpanel'),
-                            wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($post))
+                            wp_date(brikpanel_datetime_format(), get_post_timestamp($post))
                         )
                         : '',
                     'image'          => $image_url,
@@ -2789,11 +2990,20 @@ class Brikpanel_Products_List {
             wp_send_json_error(['message' => __('Product not found.', 'brikpanel')]);
         }
 
-        // Update fields that were sent
-        if (isset($_POST['name'])) {
-            $name = sanitize_text_field($_POST['name']);
-            if ($name) {
-                $product->set_name($name);
+        // Update fields that were sent. The drawer always posts the name, filled
+        // with the decoded text of the stored one ("&amp;" shows as "&"), so an
+        // untouched name is left exactly as stored: writing the decoded text
+        // back would let sanitize_text_field() strip a "<XL>" or collapse
+        // spacing the merchant never touched.
+        if (isset($_POST['name']) && is_scalar($_POST['name'])) {
+            $posted  = (string) wp_unslash($_POST['name']);
+            $current = (string) $product->get_name();
+            if ($posted !== $current && $posted !== brikpanel_plain_name($current)) {
+                // Still slashed on purpose: wp_insert_post() unslashes the title.
+                $name = sanitize_text_field($_POST['name']);
+                if ($name) {
+                    $product->set_name($name);
+                }
             }
         }
 
@@ -2964,7 +3174,8 @@ class Brikpanel_Products_List {
         if (array_key_exists('cogs_value', $_POST)) {
             $cogs_raw     = sanitize_text_field($_POST['cogs_value']);
             $cogs_decimal = brikpanel_set_product_cogs_raw($product->get_id(), $cogs_raw);
-            if (method_exists($product, 'set_cogs_value')) {
+            // Feature off, the setter stores nothing and writes to the error log.
+            if (brikpanel_wc_cogs_enabled($product)) {
                 $product->set_cogs_value($cogs_decimal !== '' ? $cogs_decimal : null);
             }
         }
@@ -3064,11 +3275,14 @@ class Brikpanel_Products_List {
             'message' => __('Product updated!', 'brikpanel'),
             'product' => [
                 'id'              => $product_id,
-                'name'            => $product->get_name() ?? '',
+                'name'            => brikpanel_plain_name($product->get_name() ?? ''),
                 'sku'             => $product->get_sku() ?? '',
                 'regular_price'   => $product->get_regular_price(),
                 'sale_price'      => $product->get_sale_price(),
                 'price_html'      => $product->get_price_html(),
+                // Always sent, '' when the sale ended: the row merges this over
+                // its cached copy, and a missing key kept the old sale on screen.
+                'sale_display'    => self::sale_display_html($product),
                 'cogs'            => $cost_payloads_qe['cogs'],
                 'cogs_value'      => brikpanel_product_cogs_raw($product_id),
                 'profit'          => $cost_payloads_qe['profit'],
@@ -3083,7 +3297,7 @@ class Brikpanel_Products_List {
                 'tag_ids'         => $tag_ids_qe,
                 'custom_taxonomies' => (object) $custom_taxonomy_ids_qe,
                 'menu_order'      => (int) $product->get_menu_order(),
-                'date'            => wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_post_timestamp($product_id)),
+                'date'            => wp_date(brikpanel_datetime_format(), get_post_timestamp($product_id)),
                 'type'            => $product->get_type(),
                 // Kept in step with the list payload. The client merges this
                 // response into the cached row rather than replacing it, so
@@ -3715,7 +3929,9 @@ class Brikpanel_Products_List {
                 foreach ($cat_ids as $cid) {
                     $term = get_term($cid, 'product_cat');
                     if ($term && !is_wp_error($term)) {
-                        $cats[] = $term->name;
+                        // "&amp;" becomes "&", but ">" stays encoded: the
+                        // WooCommerce importer reads it as a category level.
+                        $cats[] = brikpanel_term_ref($term->name);
                     }
                 }
 
@@ -3725,7 +3941,7 @@ class Brikpanel_Products_List {
                 foreach ($tag_ids as $tid) {
                     $term = get_term($tid, 'product_tag');
                     if ($term && !is_wp_error($term)) {
-                        $tags[] = $term->name;
+                        $tags[] = brikpanel_term_ref($term->name);
                     }
                 }
 
@@ -3751,7 +3967,7 @@ class Brikpanel_Products_List {
                     $product->get_id(),
                     $type,
                     $product->get_sku(),
-                    $product->get_name(),
+                    brikpanel_plain_name($product->get_name()),
                     $product->get_status() === 'publish' ? 1 : 0,
                     $product->get_short_description(),
                     $product->get_description(),
@@ -4419,7 +4635,7 @@ class Brikpanel_Products_List {
                 // variation for variable products (each variation carries its
                 // own cost), just like price.
                 $cogs_decimal = brikpanel_set_product_cogs_raw($product->get_id(), $value);
-                if (method_exists($product, 'set_cogs_value')) {
+                if (brikpanel_wc_cogs_enabled($product)) {
                     $product->set_cogs_value($cogs_decimal !== '' ? $cogs_decimal : null);
                 }
                 break;
@@ -4490,7 +4706,7 @@ class Brikpanel_Products_List {
             $result['ids'][]     = $term_id;
             $result['created'][] = [
                 'id'   => $term_id,
-                'name' => ($term && !is_wp_error($term)) ? $term->name : $name,
+                'name' => brikpanel_plain_name(($term && !is_wp_error($term)) ? $term->name : $name),
             ];
         }
 
@@ -4700,7 +4916,7 @@ class Brikpanel_Products_List {
         if (array_key_exists('cogs_value', $_POST)) {
             $cogs_raw     = sanitize_text_field($_POST['cogs_value']);
             $cogs_decimal = brikpanel_set_product_cogs_raw($var_id, $cogs_raw);
-            if (method_exists($v, 'set_cogs_value')) {
+            if (brikpanel_wc_cogs_enabled($v)) {
                 $v->set_cogs_value($cogs_decimal !== '' ? $cogs_decimal : null);
             }
         }

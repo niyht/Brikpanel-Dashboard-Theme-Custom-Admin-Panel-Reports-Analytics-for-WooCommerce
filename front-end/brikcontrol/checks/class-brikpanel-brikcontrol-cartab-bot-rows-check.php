@@ -101,7 +101,7 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
      * @return string
      */
     public function get_label() {
-        return __( 'Abandoned Cart Entries', 'brikpanel' );
+        return __( 'Abandoned cart entries', 'brikpanel' );
     }
 
     /**
@@ -129,6 +129,15 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
         return false;
     }
 
+    /**
+     * Figures only; the card writes the sentences (see bc_present()).
+     *
+     * @return int
+     */
+    public function bc_schema() {
+        return 2;
+    }
+
     /* ---------------------------------------------------------------------
      * Run
      * ------------------------------------------------------------------ */
@@ -146,9 +155,7 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
 
         if ( ! $this->table_exists( $table ) ) {
             $result['status']      = 'unknown';
-            $result['score']       = 0;
-            $result['summary']     = __( 'The abandoned-carts table could not be found.', 'brikpanel' );
-            $result['message']     = __( 'BrikPanel creates it when the plugin is activated. Deactivate and reactivate BrikPanel, then run this check again.', 'brikpanel' );
+            $result['facts']       = [ 'state' => 'no_table' ];
             $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
             return $result;
         }
@@ -158,13 +165,8 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
 
         if ( null === $scan ) {
             $result['status']      = 'unknown';
-            $result['score']       = 0;
-            $result['summary']     = __( 'The abandoned-cart entries could not be read.', 'brikpanel' );
-            $result['message']     = $this->safe_sprintf(
-                /* translators: %s: database error text. */
-                __( 'The database refused one of the scan queries: %s', 'brikpanel' ),
-                (string) $wpdb->last_error
-            );
+            // The database's own words, shown as they are: not a translation.
+            $result['facts']       = [ 'state' => 'query_failed', 'db_error' => (string) $wpdb->last_error ];
             $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
             return $result;
         }
@@ -173,20 +175,88 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
         $scoped        = (int) $counts['scoped'];
         $certain_rows  = (int) $counts['certain_rows'];
         $flagged_rows  = (int) $counts['flagged_rows'];
-        $likely_rows   = max( 0, $flagged_rows - $certain_rows );
-        $certain_grps  = (int) $counts['r1_ids'] + $scan['groups_certain'];
-        $likely_grps   = $scan['groups_likely'];
-        $truncated     = $scan['truncated'];
 
         if ( $scoped < 1 ) {
-            $result['status']  = 'ok';
-            $result['score']   = 100;
-            $result['summary'] = __( 'No abandoned-cart entries to check yet.', 'brikpanel' );
-            $result['message'] = __( 'Entries appear here once a shopper types an email at checkout or in the signup popup.', 'brikpanel' );
+            $result['status'] = 'ok';
+            $result['score']  = 100;
         } elseif ( $certain_rows > 0 ) {
-            $result['status']  = 'critical';
-            $result['score']   = 0;
-            $result['summary'] = $this->safe_sprintf(
+            $result['status'] = 'critical';
+            $result['score']  = 0;
+        } elseif ( $flagged_rows > 0 ) {
+            $result['status'] = 'warning';
+            $result['score']  = 55;
+        } else {
+            $result['status'] = 'ok';
+            $result['score']  = 100;
+        }
+
+        $result['facts'] = [
+            'state'            => 'scanned',
+            'scoped'           => $scoped,
+            'certain_rows'     => $certain_rows,
+            'flagged_rows'     => $flagged_rows,
+            'certain_groups'   => (int) $counts['r1_ids'] + $scan['groups_certain'],
+            'likely_groups'    => $scan['groups_likely'],
+            'truncated'        => (bool) $scan['truncated'],
+            'max_groups'       => self::MAX_GROUPS,
+            'coupons_flagged'  => $scan['coupons_flagged'],
+            'coupons_orphaned' => $scan['coupons_orphaned'],
+            'thresholds'       => $thresholds,
+            // The worst groups as data (rule, tier, key, counts, UTC times).
+            'samples'          => array_slice( $scan['findings'], 0, self::SAMPLE_LIMIT ),
+        ];
+
+        $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
+
+        return $result;
+    }
+
+    /**
+     * Sentences for the stored figures, in the viewer's language.
+     *
+     * @param array  $r       Stored result.
+     * @param string $context 'page' or 'summary'.
+     * @return array
+     */
+    public function bc_present( array $r, $context = 'page' ) {
+        $r = parent::bc_present( $r, $context );
+
+        $f = isset( $r['facts'] ) && is_array( $r['facts'] ) ? $r['facts'] : [];
+        if ( empty( $f['state'] ) || (int) ( $r['schema'] ?? 1 ) < 2 ) {
+            return $r; // Written before 3.3.25: show what was stored.
+        }
+
+        $r['message']         = '';
+        $r['recommendations'] = [];
+        $r['metadata']        = [];
+
+        if ( 'no_table' === $f['state'] ) {
+            $r['summary'] = __( 'The abandoned-carts table could not be found.', 'brikpanel' );
+            $r['message'] = __( 'BrikPanel creates it when the plugin is activated. Deactivate and reactivate BrikPanel, then run this check again.', 'brikpanel' );
+            return $r;
+        }
+        if ( 'query_failed' === $f['state'] ) {
+            $r['summary'] = __( 'The abandoned-cart entries could not be read.', 'brikpanel' );
+            $r['message'] = brikpanel_safe_sprintf(
+                /* translators: %s: database error text. */
+                __( 'The database refused one of the scan queries: %s', 'brikpanel' ),
+                (string) ( $f['db_error'] ?? '' )
+            );
+            return $r;
+        }
+
+        $scoped       = (int) ( $f['scoped'] ?? 0 );
+        $certain_rows = (int) ( $f['certain_rows'] ?? 0 );
+        $flagged_rows = (int) ( $f['flagged_rows'] ?? 0 );
+        $likely_rows  = max( 0, $flagged_rows - $certain_rows );
+        $truncated    = ! empty( $f['truncated'] );
+        $bot_check    = class_exists( 'Brikpanel_BrikControl_Registry' ) ? Brikpanel_BrikControl_Registry::get( 'bot_traffic' ) : null;
+
+        if ( $scoped < 1 ) {
+            $r['summary'] = __( 'No abandoned-cart entries to check yet.', 'brikpanel' );
+            $r['message'] = __( 'Entries appear here once a shopper types an email at checkout or in the signup popup.', 'brikpanel' );
+        } elseif ( $certain_rows > 0 ) {
+            $r['summary'] = brikpanel_safe_sprintf(
                 /* translators: %s: number of entries. */
                 _n(
                     '%s entry was almost certainly written by a script, not a shopper',
@@ -194,11 +264,19 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
                     $certain_rows,
                     'brikpanel'
                 ),
-                number_format_i18n( $certain_rows )
+                brikpanel_number( $certain_rows )
             );
-            $result['message'] = __( 'These entries carry a browser id this plugin never issued, or arrive in shapes a browser cannot produce: one browser id typing many different addresses within minutes, one address arriving from many browser ids within minutes, or dozens of empty signups inside a single minute. This check only reports; the Bot Traffic check on this page deletes the certain ones, with a restore point. The capture endpoint now refuses foreign browser ids and rate-limits by connection, so new entries of this kind should stop.', 'brikpanel' );
+            $r['message'] = __( 'These entries carry a browser id this plugin never issued, or arrive in shapes a browser cannot produce: one browser id typing many different addresses within minutes, one address arriving from many browser ids within minutes, or dozens of empty signups inside a single minute.', 'brikpanel' );
+            $r['message'] .= ' ' . ( $bot_check
+                ? brikpanel_safe_sprintf(
+                    /* translators: %s: name of another check on the Store Health page, e.g. "Bot traffic". */
+                    __( 'This check only reports; the "%s" check on this page deletes the certain ones, with a restore point.', 'brikpanel' ),
+                    $bot_check->get_label()
+                )
+                : __( 'This check only reports and changes nothing.', 'brikpanel' ) );
+            $r['message'] .= ' ' . __( 'The capture endpoint now refuses foreign browser ids and rate-limits by connection, so new entries of this kind should stop.', 'brikpanel' );
             if ( $likely_rows > 0 ) {
-                $result['message'] .= ' ' . $this->safe_sprintf(
+                $r['message'] .= ' ' . brikpanel_safe_sprintf(
                     /* translators: %s: number of entries. */
                     _n(
                         '%s further entry repeats in a way that is suspicious but not conclusive.',
@@ -206,13 +284,11 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
                         $likely_rows,
                         'brikpanel'
                     ),
-                    number_format_i18n( $likely_rows )
+                    brikpanel_number( $likely_rows )
                 );
             }
         } elseif ( $flagged_rows > 0 ) {
-            $result['status']  = 'warning';
-            $result['score']   = 55;
-            $result['summary'] = $this->safe_sprintf(
+            $r['summary'] = brikpanel_safe_sprintf(
                 /* translators: %s: number of entries. */
                 _n(
                     '%s entry repeats in a way a script would produce',
@@ -220,27 +296,30 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
                     $flagged_rows,
                     'brikpanel'
                 ),
-                number_format_i18n( $flagged_rows )
+                brikpanel_number( $flagged_rows )
             );
-            $result['message'] = __( 'One browser id with several addresses, one address across several browser ids, or a burst of empty signups. A shared computer, a shopper on several devices or a busy promotion can look exactly the same, so open the list below and check before deleting anything. Nothing has been changed by this check.', 'brikpanel' );
+            $r['message'] = __( 'One browser id with several addresses, one address across several browser ids, or a burst of empty signups. A shared computer, a shopper on several devices or a busy promotion can look exactly the same, so open the list below and check before deleting anything. Nothing has been changed by this check.', 'brikpanel' );
         } else {
-            $result['status']  = 'ok';
-            $result['score']   = 100;
-            $result['summary'] = __( 'Your abandoned-cart entries look like real shoppers.', 'brikpanel' );
-            $result['message'] = __( 'Every browser id has the shape this plugin issues, no browser id juggles many addresses, no address is spread across many browser ids, and no minute holds a burst of empty signups.', 'brikpanel' );
+            $r['summary'] = __( 'Your abandoned-cart entries look like real shoppers.', 'brikpanel' );
+            $r['message'] = __( 'Every browser id has the shape this plugin issues, no browser id juggles many addresses, no address is spread across many browser ids, and no minute holds a burst of empty signups.', 'brikpanel' );
         }
 
         if ( $truncated && $flagged_rows > 0 ) {
-            $result['message'] = trim(
-                $result['message'] . ' ' . $this->safe_sprintf(
+            $r['message'] = trim(
+                $r['message'] . ' ' . brikpanel_safe_sprintf(
                     /* translators: %s: number of groups. */
                     __( 'More groups matched than one pass counts; only the %s largest groups per pattern are included, so these figures are lower bounds.', 'brikpanel' ),
-                    number_format_i18n( self::MAX_GROUPS )
+                    brikpanel_number( (int) ( $f['max_groups'] ?? self::MAX_GROUPS ) )
                 )
             );
         }
 
-        $result['recommendations'] = $this->build_recommendations( $flagged_rows, $scan['coupons_flagged'] );
+        if ( 'page' !== $context ) {
+            return $r;
+        }
+
+        $certain_grps = (int) ( $f['certain_groups'] ?? 0 );
+        $likely_grps  = (int) ( $f['likely_groups'] ?? 0 );
 
         $stats = [
             [
@@ -264,24 +343,27 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
                 'tone'  => '',
             ],
         ];
-        if ( null !== $scan['coupons_flagged'] ) {
+        // The coupon figures only mean something next to flagged entries; on a
+        // clean store a fifth tile only pushed the row into a list.
+        if ( $flagged_rows > 0 && isset( $f['coupons_flagged'] ) && null !== $f['coupons_flagged'] ) {
             $stats[] = [
                 'label' => __( 'Coupons for flagged emails', 'brikpanel' ),
-                'value' => (int) $scan['coupons_flagged'],
-                'tone'  => (int) $scan['coupons_flagged'] > 0 ? 'warn' : '',
+                'value' => (int) $f['coupons_flagged'],
+                'tone'  => (int) $f['coupons_flagged'] > 0 ? 'warn' : '',
             ];
         }
-        if ( null !== $scan['coupons_orphaned'] ) {
+        if ( $flagged_rows > 0 && isset( $f['coupons_orphaned'] ) && null !== $f['coupons_orphaned'] ) {
             $stats[] = [
                 'label' => __( 'Coupons with no cart entry', 'brikpanel' ),
-                'value' => (int) $scan['coupons_orphaned'],
+                'value' => (int) $f['coupons_orphaned'],
                 'tone'  => '',
             ];
         }
 
-        $result['metadata'] = [
+        $r['recommendations'] = $this->build_recommendations( $flagged_rows, $f['coupons_flagged'] ?? null, $bot_check );
+        $r['metadata']        = [
             'stats'         => $stats,
-            'samples'       => $this->build_samples( $scan['findings'] ),
+            'samples'       => $this->build_samples( (array) ( $f['samples'] ?? [] ) ),
             'samples_title' => __( 'Entries that look automated', 'brikpanel' ),
             'samples_cols'  => [
                 __( 'Pattern', 'brikpanel' ),
@@ -291,13 +373,9 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
                 __( 'Example email', 'brikpanel' ),
                 __( 'First seen', 'brikpanel' ),
             ],
-            'thresholds'    => $thresholds,
-            'truncated'     => $truncated,
         ];
 
-        $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
-
-        return $result;
+        return $r;
     }
 
     /* ---------------------------------------------------------------------
@@ -779,71 +857,82 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
      * ------------------------------------------------------------------ */
 
     /**
-     * Detail rows for the card table. Plain scalars only; the card escapes.
+     * Detail rows for the card table, from the stored findings. Plain
+     * scalars only; the card escapes.
      *
-     * @param array $findings Sorted findings.
+     * @param array $findings Stored findings, sorted.
      * @return array
      */
     private function build_samples( array $findings ) {
         $samples = [];
 
         foreach ( array_slice( $findings, 0, self::SAMPLE_LIMIT ) as $f ) {
-            switch ( $f['rule'] ) {
+            if ( ! is_array( $f ) ) {
+                continue;
+            }
+            $rule     = (string) ( $f['rule'] ?? '' );
+            $key      = (string) ( $f['key'] ?? '' );
+            $rows     = (int) ( $f['rows'] ?? 0 );
+            $distinct = (int) ( $f['distinct'] ?? 0 );
+            $span     = (int) ( $f['span'] ?? 0 );
+
+            switch ( $rule ) {
                 case 'visitor':
-                    $pattern    = $this->safe_sprintf(
+                    $pattern    = brikpanel_safe_sprintf(
                         /* translators: 1: number of email addresses, 2: time span such as "3 mins". */
                         _n(
                             'One browser id, %1$s address in %2$s',
                             'One browser id, %1$s addresses in %2$s',
-                            $f['distinct'],
+                            $distinct,
                             'brikpanel'
                         ),
-                        number_format_i18n( $f['distinct'] ),
-                        $this->span_label( $f['span'] )
+                        brikpanel_number( $distinct ),
+                        $this->span_label( $span )
                     );
-                    $identifier = substr( $f['key'], 0, 40 );
+                    $identifier = substr( $key, 0, 40 );
                     break;
                 case 'email':
-                    $pattern    = $this->safe_sprintf(
+                    $pattern    = brikpanel_safe_sprintf(
                         /* translators: 1: number of browser ids, 2: time span such as "3 mins". */
                         _n(
                             'One address, %1$s browser id in %2$s',
                             'One address, %1$s browser ids in %2$s',
-                            $f['distinct'],
+                            $distinct,
                             'brikpanel'
                         ),
-                        number_format_i18n( $f['distinct'] ),
-                        $this->span_label( $f['span'] )
+                        brikpanel_number( $distinct ),
+                        $this->span_label( $span )
                     );
-                    $identifier = $f['key'];
+                    $identifier = $key;
                     break;
                 case 'burst':
-                    $pattern    = ( 'popup' === $f['source'] )
-                        ? $this->safe_sprintf(
+                    $pattern    = ( 'popup' === ( $f['source'] ?? '' ) )
+                        ? brikpanel_safe_sprintf(
                             /* translators: %s: number of entries. */
-                            __( '%s empty popup signups in one minute', 'brikpanel' ),
-                            number_format_i18n( $f['rows'] )
+                            _n( '%s empty popup signup in one minute', '%s empty popup signups in one minute', $rows, 'brikpanel' ),
+                            brikpanel_number( $rows )
                         )
-                        : $this->safe_sprintf(
+                        : brikpanel_safe_sprintf(
                             /* translators: %s: number of entries. */
-                            __( '%s empty checkout signups in one minute', 'brikpanel' ),
-                            number_format_i18n( $f['rows'] )
+                            _n( '%s empty checkout signup in one minute', '%s empty checkout signups in one minute', $rows, 'brikpanel' ),
+                            brikpanel_number( $rows )
                         );
-                    $identifier = get_date_from_gmt( $f['key'] . ':00', 'Y-m-d H:i' );
+                    // The minute the burst happened, in the store's clock and format.
+                    $identifier = brikpanel_local_datetime( $key . ':00', brikpanel_short_date_format() . ' ' . brikpanel_time_format(), $key );
                     break;
                 default:
                     $pattern    = __( 'Browser id not issued by this plugin', 'brikpanel' );
-                    $identifier = substr( $f['key'], 0, 40 );
+                    $identifier = substr( $key, 0, 40 );
                     break;
             }
 
             $samples[] = [
                 $pattern,
-                ( 'certain' === $f['tier'] ) ? __( 'Certain', 'brikpanel' ) : __( 'Likely', 'brikpanel' ),
+                ( 'certain' === ( $f['tier'] ?? '' ) ) ? __( 'Certain', 'brikpanel' ) : __( 'Likely', 'brikpanel' ),
                 $identifier,
-                number_format_i18n( $f['rows'] ),
-                $f['example'],
-                '' !== $f['first_at'] ? get_date_from_gmt( $f['first_at'], 'Y-m-d H:i' ) : '',
+                brikpanel_number( $rows ),
+                (string) ( $f['example'] ?? '' ),
+                brikpanel_local_datetime( (string) ( $f['first_at'] ?? '' ), brikpanel_short_date_format() . ' ' . brikpanel_time_format() ),
             ];
         }
 
@@ -865,32 +954,48 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
     }
 
     /**
-     * @param int      $flagged_rows    Entries involved.
-     * @param int|null $coupons_flagged Coupons handed to flagged addresses, when known.
+     * @param int                                $flagged_rows    Entries involved.
+     * @param int|null                           $coupons_flagged Coupons handed to flagged addresses, when known.
+     * @param Brikpanel_BrikControl_Check|null   $bot_check       The check whose cleanup removes the certain entries.
      * @return array
      */
-    private function build_recommendations( $flagged_rows, $coupons_flagged ) {
+    private function build_recommendations( $flagged_rows, $coupons_flagged, $bot_check = null ) {
         $recs = [];
 
         if ( $flagged_rows > 0 ) {
+            $carts_url = function_exists( 'brikpanel_module_url' )
+                ? brikpanel_module_url( 'brikpanel-abandoned-carts' )
+                : admin_url( 'admin.php?page=brikpanel-abandoned-carts' );
             $recs[] = [
-                'text'     => __( 'Open Abandoned Carts and search for the example addresses below. Nothing was changed by this check. Certain entries are removed by the Bot Traffic cleanup on this page; delete a likely one by hand only once you are sure it is not a shopper.', 'brikpanel' ),
+                'text'     => $bot_check
+                    ? brikpanel_safe_sprintf(
+                        /* translators: %s: label of the cleanup button of another check, e.g. "Clean up bot traffic". */
+                        __( 'Open Abandoned Carts and search for the example addresses below. This check changed nothing. "%s" on this page removes the certain entries; delete a likely one by hand only once you are sure it is not a shopper.', 'brikpanel' ),
+                        $bot_check->get_fix_label()
+                    )
+                    : __( 'Open Abandoned Carts and search for the example addresses below. This check changed nothing; delete an entry by hand only once you are sure it is not a shopper.', 'brikpanel' ),
                 'priority' => 'high',
                 'link'     => [
-                    'url'   => admin_url( 'admin.php?page=brikpanel-abandoned-carts' ),
+                    'url'   => $carts_url,
                     'label' => __( 'Open Abandoned Carts', 'brikpanel' ),
                 ],
             ];
-            $recs[] = [
-                'text'     => __( 'If a known crawler is behind it, add its user agent or address under WooCommerce → Settings → BrikPanel → Analytics so it stops being counted at all.', 'brikpanel' ),
-                'priority' => 'medium',
-            ];
+            if ( class_exists( 'Brikpanel_BrikControl' ) ) {
+                $recs[] = Brikpanel_BrikControl::exclusion_recommendation();
+            }
         }
 
         if ( (int) $coupons_flagged > 0 ) {
+            $coupons_url = function_exists( 'brikpanel_module_url' )
+                ? brikpanel_module_url( 'brikpanel-coupons' )
+                : admin_url( 'edit.php?post_type=shop_coupon' );
             $recs[] = [
-                'text'     => __( 'Popup signups among these entries were handed real coupons (codes starting with BRIK-). Each is single-use and locked to the address it was issued to, so nobody else can redeem it; review them under Marketing > Coupons if you want them gone.', 'brikpanel' ),
+                'text'     => __( 'Popup signups among these entries were handed real coupons (codes starting with BRIK-). Each is single-use and locked to the address it was issued to, so nobody else can redeem it; review them in your coupon list if you want them gone.', 'brikpanel' ),
                 'priority' => 'low',
+                'link'     => [
+                    'url'   => $coupons_url,
+                    'label' => __( 'Open coupons', 'brikpanel' ),
+                ],
             ];
         }
 
@@ -919,31 +1024,5 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
         $cache[ $table ] = ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table );
 
         return $cache[ $table ];
-    }
-
-    /**
-     * sprintf() that cannot be brought down by a bad translation.
-     *
-     * Same helper, and same reason, as the other checks: a translator who drops
-     * a placeholder would otherwise throw inside the scan worker and abort the
-     * whole sweep.
-     *
-     * @param string $format Translated format string.
-     * @param mixed  ...$args printf arguments.
-     * @return string
-     */
-    private function safe_sprintf( $format, ...$args ) {
-        $format = (string) $format;
-        try {
-            return vsprintf( $format, $args );
-        } catch ( \Throwable $e ) {
-            $stripped = preg_replace(
-                '/%(?:\d+\$)?[-+ 0#\']*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/',
-                '',
-                $format
-            );
-            $stripped = str_replace( '%%', '%', (string) $stripped );
-            return trim( (string) $stripped );
-        }
     }
 }

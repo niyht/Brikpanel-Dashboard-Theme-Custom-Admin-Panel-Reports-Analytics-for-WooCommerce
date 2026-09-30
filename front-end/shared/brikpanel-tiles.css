@@ -1,0 +1,24 @@
+/**
+ * BrikPanel - summary tiles laid out by brikpanel-tiles.js (field test C).
+ * The script writes the column count inline; this file only makes the row a
+ * grid and keeps tile text measurable (it overflows instead of breaking
+ * mid-word, so "does it fit" has an answer). A screen styles its compact list
+ * look under `.is-tiles-list`.
+ */
+[data-bp-tiles] {
+	display: grid;
+}
+
+[data-bp-tiles] > * {
+	min-width: 0;
+}
+
+[data-bp-tiles]:not(.is-tiles-list) > *,
+[data-bp-tiles]:not(.is-tiles-list) > * * {
+	overflow-wrap: normal;
+	word-break: normal;
+}
+
+[data-bp-tiles] > [hidden] {
+	display: none;
+}

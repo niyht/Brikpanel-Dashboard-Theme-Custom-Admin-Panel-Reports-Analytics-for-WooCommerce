@@ -199,8 +199,8 @@ function brikpanel_topbar_item_roles_map() {
 
 /**
  * Whether the current user's role passes a top bar item's audience rule.
- * Administrators (and network admins) always pass, so an owner can never lock
- * themselves out of a control they hid from their own role.
+ * Real administrators (and multisite super admins) always pass, so an owner can
+ * never lock themselves out of a control they hid from their own role.
  *
  * @param string $key
  * @return bool
@@ -219,7 +219,20 @@ function brikpanel_topbar_item_audience_allows( $key ) {
     if ( $audience === 'all' ) {
         return true;
     }
-    if ( current_user_can( 'manage_options' ) || ( is_multisite() && current_user_can( 'manage_network' ) ) ) {
+    // Real administrators (and multisite super admins) always pass, so an owner
+    // can never hide a control from their own account. Deliberately role-based
+    // via brikpanel_user_is_administrator(): stores routinely grant
+    // `manage_options` to the shop_manager role with a role editor, and a bare
+    // capability check let those managers slip straight past every rule here —
+    // the reported bug was an "Admins only" hidden-notices bell that stayed
+    // visible to a store manager. is_super_admin() (inside the helper) is also
+    // stronger than the `manage_network` capability a role editor can hand out.
+    // Same shape as the dashboard widget gate in
+    // front-end/dashboard/brikpanel-dashboard-widget-access.php.
+    $is_admin = function_exists( 'brikpanel_user_is_administrator' )
+        ? brikpanel_user_is_administrator()
+        : ( current_user_can( 'manage_options' ) || ( is_multisite() && current_user_can( 'manage_network' ) ) );
+    if ( $is_admin ) {
         return true;
     }
     if ( $audience === 'admins' ) {
@@ -818,24 +831,146 @@ function brikpanel_topbar_create_hidden_items() {
 }
 
 /**
- * Whether a quick-create entry should render. Unknown keys default to visible.
+ * Whether a quick-create entry can do anything for the current user: the
+ * feature behind it exists and the user may open the screen it links to.
+ *
+ * The owner's hide list decides what the store WANTS in the menu; this decides
+ * what each user CAN use. The top bar is drawn for anyone holding
+ * `manage_woocommerce` OR `manage_options`, so without this a role built with
+ * only one of them was handed entries that answered 403. The capabilities are
+ * the ones the target screens check themselves:
+ *
+ *  - product:   admin.php?page=brikpanel-product-editor, registered with
+ *               `edit_products` (it redirects to the native editor, which needs
+ *               the same, when the modern editor is off).
+ *  - order:     post-new.php?post_type=shop_order needs the order type's
+ *               edit_posts and create_posts. With HPOS, WooCommerce sends it on
+ *               to its own new-order screen, which also wants publish_posts
+ *               (publish_shop_orders) or `manage_woocommerce`.
+ *  - coupon:    admin.php?page=brikpanel-coupons, registered with
+ *               `manage_woocommerce`.
+ *  - cart_link: the Cart share builder, Brikpanel_Cart_Share::CAPABILITY, and
+ *               only while the feature is switched on and its class loaded.
+ *  - post:      post-new.php needs the post type's edit_posts and create_posts.
+ *
+ * With "Block pages hidden from the menu" on, an entry whose screen the
+ * Navigation rules close for this user is not available either: it would only
+ * open the "not available" card (front-end/navigation/brikpanel-nav-page-access.php).
+ *
+ * Unknown keys stay available, as the entry list promises.
+ *
+ * @param string $key
+ * @return bool
+ */
+function brikpanel_topbar_create_item_available( $key ) {
+    if ( ! brikpanel_topbar_create_item_capable( $key ) ) {
+        return false;
+    }
+    if ( function_exists( 'brikpanel_nav_url_blocked_for_current_user' ) ) {
+        $url = brikpanel_topbar_create_item_url( $key );
+        if ( '' !== $url && brikpanel_nav_url_blocked_for_current_user( $url ) ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Where a quick-create entry leads. The top bar's link and the check above
+ * read the same address, so the two cannot drift apart.
+ *
+ * @param string $key
+ * @return string Absolute admin URL, '' for unknown keys.
+ */
+function brikpanel_topbar_create_item_url( $key ) {
+    switch ( $key ) {
+        case 'product':
+            return admin_url( 'admin.php?page=brikpanel-product-editor' );
+
+        case 'order':
+            return admin_url( 'post-new.php?post_type=shop_order' );
+
+        case 'coupon':
+            return function_exists( 'brikpanel_module_url' )
+                ? brikpanel_module_url( 'brikpanel-coupons', [ 'action' => 'new' ], admin_url( 'post-new.php?post_type=shop_coupon' ) )
+                : admin_url( 'admin.php?page=brikpanel-coupons&action=new' );
+
+        case 'cart_link':
+            return admin_url( 'admin.php?page=brikpanel-cart-share' );
+
+        case 'post':
+            return admin_url( 'post-new.php' );
+    }
+
+    return '';
+}
+
+/**
+ * Whether the current user passes the capabilities of a quick-create entry's
+ * screen (see brikpanel_topbar_create_item_available()).
+ *
+ * @param string $key
+ * @return bool
+ */
+function brikpanel_topbar_create_item_capable( $key ) {
+    switch ( $key ) {
+        case 'product':
+            return current_user_can( 'edit_products' );
+
+        case 'order':
+            $type = get_post_type_object( 'shop_order' );
+            if ( ! $type || ! current_user_can( $type->cap->edit_posts ) || ! current_user_can( $type->cap->create_posts ) ) {
+                return false;
+            }
+            if ( function_exists( 'brikpanel_wc_hpos_enabled' ) && brikpanel_wc_hpos_enabled() ) {
+                return current_user_can( $type->cap->publish_posts ) || current_user_can( 'manage_woocommerce' );
+            }
+            return true;
+
+        case 'coupon':
+            return current_user_can( 'manage_woocommerce' );
+
+        case 'cart_link':
+            return class_exists( 'Brikpanel_Cart_Share' )
+                && Brikpanel_Cart_Share::is_enabled()
+                && current_user_can( Brikpanel_Cart_Share::CAPABILITY );
+
+        case 'post':
+            $type = get_post_type_object( 'post' );
+            return $type && current_user_can( $type->cap->edit_posts ) && current_user_can( $type->cap->create_posts );
+    }
+
+    return true;
+}
+
+/**
+ * Whether a quick-create entry should render: the owner has not hidden it and
+ * the current user can use it. Unknown keys default to visible.
  *
  * @param string $key
  * @return bool
  */
 function brikpanel_topbar_create_item_is_visible( $key ) {
-    return ! in_array( $key, brikpanel_topbar_create_hidden_items(), true );
+    return ! in_array( $key, brikpanel_topbar_create_hidden_items(), true )
+        && brikpanel_topbar_create_item_available( $key );
 }
 
 /**
  * Whether at least one quick-create entry is still visible. The Create button
- * hides itself when every entry has been turned off, so the bar never shows an
- * empty dropdown.
+ * hides itself when no entry is left, so the bar never shows an empty
+ * dropdown. It asks the same question as every entry does, instead of
+ * counting the owner's hide list: a count knew nothing about capabilities or
+ * about Cart share being switched off, so the button could open onto nothing.
  *
  * @return bool
  */
 function brikpanel_topbar_has_visible_create_items() {
-    return count( brikpanel_topbar_create_hidden_items() ) < count( brikpanel_topbar_create_item_keys() );
+    foreach ( brikpanel_topbar_create_item_keys() as $key ) {
+        if ( brikpanel_topbar_create_item_is_visible( $key ) ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -902,7 +1037,7 @@ function brikpanel_render_topbar_items_field( $field ) {
     $custom_url    = trim( (string) get_option( BRIKPANEL_TOPBAR_CUSTOM_URL_OPTION, '' ) );
 
     // Show a real, store-correct orders URL as the link placeholder (HPOS-aware).
-    $orders_url = ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' ) && \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() )
+    $orders_url = brikpanel_wc_hpos_enabled()
         ? admin_url( 'admin.php?page=wc-orders' )
         : admin_url( 'edit.php?post_type=shop_order' );
 
@@ -1155,7 +1290,7 @@ function brikpanel_render_topbar_items_field( $field ) {
                     margin: 0 0 .5rem;
                     font-size: .75rem;
                     line-height: 1.5;
-                    color: #8a8a8a;
+                    color: #616161;
                 }
                 .brikpanel-topbar-subitems {
                     margin: 0;

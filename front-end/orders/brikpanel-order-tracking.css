@@ -1,0 +1,215 @@
+/* =============================================================================
+   Tracking number window on the orders list (brikpanel-order-tracking.js).
+   Loaded only on the compact orders list, and only while Trakoo is active.
+   The fields and buttons are the shared ones (front-end/shared/brikpanel-ui.css);
+   only the window, its layout and the notice are drawn here.
+   ============================================================================= */
+
+/* The window. No display value here: the browser hides a closed <dialog> with
+   its own dialog:not([open]) rule, and a class rule setting display would win
+   over it and leave the window on the page. The padding lives on the parts
+   inside, so a click on the dialog element itself is always the dimmed page. */
+.bp-otrack {
+	box-sizing: border-box;
+	width: min(28rem, calc(100% - 2rem));
+	max-width: none;
+	max-height: calc(100dvh - 2rem);
+	margin: auto;
+	padding: 0;
+	overflow: auto;
+	color: #303030;
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 20px 48px rgba(0, 0, 0, 0.18);
+}
+
+.bp-otrack::backdrop {
+	background: rgba(26, 26, 26, 0.45);
+}
+
+.bp-otrack__form {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+}
+
+.bp-otrack__head {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+	padding: 1.25rem 1.5rem 0.75rem;
+}
+
+.bp-otrack__titles {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.bp-otrack__title {
+	margin: 0;
+	padding: 0;
+	font-size: var(--brikpanel-card-title-size, 0.9375rem);
+	font-weight: var(--brikpanel-card-title-weight, 600);
+	line-height: 1.4;
+	color: #303030;
+}
+
+.bp-otrack__sub {
+	margin: 0.125rem 0 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: #616161;
+}
+
+.bp-otrack__close {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	margin-block-start: -0.25rem;
+	margin-inline-end: -0.5rem;
+	padding: 0;
+	color: #616161;
+	background: transparent;
+	border: 0;
+	border-radius: 0.5rem;
+	cursor: pointer;
+}
+
+.bp-otrack__close:hover {
+	color: #303030;
+	background: #f1f1f1;
+}
+
+.bp-otrack__close:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.bp-otrack__body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.875rem;
+	padding: 0.25rem 1.5rem 1.25rem;
+}
+
+.bp-otrack__check {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: #303030;
+	cursor: pointer;
+}
+
+.bp-otrack__check input[type="checkbox"] {
+	flex: none;
+	margin: 0.1875rem 0 0;
+}
+
+.bp-otrack__hint,
+.bp-otrack__note,
+.bp-otrack__error {
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+}
+
+.bp-otrack__hint {
+	color: #616161;
+}
+
+.bp-otrack__note {
+	padding: 0.625rem 0.75rem;
+	color: #303030;
+	background: #f7f7f7;
+	border-radius: 0.5rem;
+}
+
+.bp-otrack__error {
+	color: #d72c0d;
+}
+
+.bp-otrack__hint[hidden],
+.bp-otrack__note[hidden],
+.bp-otrack__error[hidden] {
+	display: none;
+}
+
+.bp-otrack__foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	padding: 1rem 1.5rem;
+	border-top: 1px solid #e3e3e3;
+}
+
+@media screen and (max-width: 782px) {
+	.bp-otrack__head {
+		padding: 1rem 1rem 0.5rem;
+	}
+
+	.bp-otrack__body {
+		padding: 0.25rem 1rem 1rem;
+	}
+
+	.bp-otrack__foot {
+		padding: 0.75rem 1rem;
+	}
+
+	.bp-otrack__foot .bp-otrack__btn {
+		flex: 1 1 0;
+		min-height: var(--brikpanel-control-h, 2.5rem);
+	}
+}
+
+/* ── Notice after a save ────────────────────────────────────────────────────
+   Top corner at the end of the line (the left one in right-to-left languages),
+   just under the top bar; the script measures the bar and sets the offset. */
+.bp-otrack-toast {
+	position: fixed;
+	top: var(--bp-otrack-top, 44px);
+	inset-inline-end: 20px;
+	z-index: 100002;
+	box-sizing: border-box;
+	max-width: min(22rem, calc(100vw - 2rem));
+	padding: 0.75rem 1rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.5;
+	color: #1a6b15;
+	background: #e4f5e1;
+	border: 1px solid #b7e1b0;
+	border-radius: 0.5rem;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	opacity: 0;
+	transform: translateX(110%);
+	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+	pointer-events: none;
+}
+
+.rtl .bp-otrack-toast {
+	transform: translateX(-110%);
+}
+
+.bp-otrack-toast.is-in {
+	opacity: 1;
+	transform: none;
+}
+
+@media screen and (max-width: 782px) {
+	.bp-otrack-toast {
+		inset-inline-end: 14px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bp-otrack-toast {
+		transition: none;
+	}
+}

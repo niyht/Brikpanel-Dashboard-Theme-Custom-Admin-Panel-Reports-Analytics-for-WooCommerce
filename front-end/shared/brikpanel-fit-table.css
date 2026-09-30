@@ -1,0 +1,94 @@
+/**
+ * BrikPanel - stacked rows for tables fitted by brikpanel-fit-table.js.
+ *
+ * Opt-in: only a table carrying `brikpanel-fit-table` uses these rules, and
+ * only while the helper has set `is-stacked` (the table did not fit its card).
+ * Each row becomes a card of label-over-value tiles, the same look as the
+ * Abandoned Carts stacked rows. Labels come from `data-bp-label` on the cells
+ * (the helper copies the header text with `labels: 'head'`).
+ *
+ * Cell roles a screen can add:
+ *   brikpanel-fit-lead     the row's name: first, across the whole card
+ *   brikpanel-fit-headline a key figure (a total): bold, right after the lead
+ *   brikpanel-fit-full     a tile that needs the whole width (row buttons)
+ *
+ * Screen stylesheets that need more must write their rules at (0,3,0) or
+ * higher so they win over the generic cell rule (0,2,3). Rows with [hidden]
+ * keep it: display is only set on :not([hidden]).
+ */
+.brikpanel-fit-table.is-stacked,
+.brikpanel-fit-table.is-stacked > tbody {
+	display: block;
+	width: 100%;
+	min-width: 0;
+}
+
+.brikpanel-fit-table.is-stacked > thead {
+	display: none;
+}
+
+.brikpanel-fit-table.is-stacked > tbody > tr:not([hidden]) {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--bp-fit-tile, 9rem)), 1fr));
+	gap: 0.625rem 1rem;
+	padding: 0.875rem 1rem;
+}
+
+.brikpanel-fit-table.is-stacked > tbody > tr + tr {
+	border-top: 1px solid var(--bp-fit-line, #e3e3e3);
+}
+
+.brikpanel-fit-table.is-stacked > tbody > tr > td {
+	display: block;
+	width: auto;
+	min-width: 0;
+	max-width: none;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	text-align: start;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-fit-table.is-stacked td[data-bp-label]::before {
+	content: attr(data-bp-label);
+	display: block;
+	margin-bottom: 0.125rem;
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: normal;
+	text-transform: none;
+	color: var(--bp-fit-label, #616161);
+}
+
+.brikpanel-fit-table.is-stacked .brikpanel-fit-lead {
+	grid-column: 1 / -1;
+	order: -2;
+}
+
+/* td + class: must match the label rule above (0,3,2) to beat it. */
+.brikpanel-fit-table.is-stacked td.brikpanel-fit-lead::before {
+	display: none;
+}
+
+.brikpanel-fit-table.is-stacked .brikpanel-fit-headline {
+	order: -1;
+	font-weight: 600;
+}
+
+.brikpanel-fit-table.is-stacked .brikpanel-fit-full {
+	grid-column: 1 / -1;
+}
+
+/* A cell with nothing in it has no value to show: a lone label under an
+   empty column would read like a missing figure. */
+.brikpanel-fit-table.is-stacked > tbody > tr > td:empty {
+	display: none;
+}
+
+/* A message row ("No suppliers yet", "Loading") is one cell across the card. */
+.brikpanel-fit-table.is-stacked > tbody > tr > td[colspan] {
+	grid-column: 1 / -1;
+	text-align: center;
+}

@@ -316,22 +316,22 @@ class Brikpanel_Sheets_Order_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK_REALTIME_FLUSH,
 			[ $this, 'handle_flush_realtime' ],
-			static function () { return [ 'label' => __( 'Sheets — flush new orders to Google Sheets', 'brikpanel' ) ]; }
+			static function () { return [ 'label' => __( 'Sheets: flush new orders to Google Sheets', 'brikpanel' ) ]; }
 		);
 		Brikpanel_Cron::register_handler(
 			self::HOOK_BULK_FLUSH,
 			[ $this, 'handle_flush_bulk' ],
-			static function () { return [ 'label' => __( 'Sheets — scheduled bulk order export', 'brikpanel' ) ]; }
+			static function () { return [ 'label' => __( 'Sheets: scheduled bulk order export', 'brikpanel' ) ]; }
 		);
 		Brikpanel_Cron::register_handler(
 			self::HOOK_UPDATE_ROWS,
 			[ $this, 'handle_update_rows' ],
-			static function () { return [ 'label' => __( 'Sheets — update changed-status order rows', 'brikpanel' ) ]; }
+			static function () { return [ 'label' => __( 'Sheets: update changed-status order rows', 'brikpanel' ) ]; }
 		);
 		Brikpanel_Cron::register_handler(
 			self::HOOK_PULL,
 			[ $this, 'handle_pull' ],
-			static function () { return [ 'label' => __( 'Sheets — pull order status changes from Google Sheets', 'brikpanel' ) ]; }
+			static function () { return [ 'label' => __( 'Sheets: pull order status changes from Google Sheets', 'brikpanel' ) ]; }
 		);
 
 		// Schedule recurring bulk export if user picked an interval.
@@ -836,7 +836,7 @@ class Brikpanel_Sheets_Order_Sync {
 			// concurrent edits slip past.
 			if ( $last_push_ts > 0 && $woo_modified_ts > ( $last_push_ts + 10 ) ) {
 				$conflicts++;
-				Brikpanel_Sheets_Logger::log( 'orders', 'Pull conflict for order ' . $order_id . ' — Woo modified after last push; re-pushing row.' );
+				Brikpanel_Sheets_Logger::log( 'orders', 'Pull conflict for order ' . $order_id . ': Woo modified after last push; re-pushing row.' );
 				// Re-push this row so the sheet catches up to Woo.
 				Brikpanel_Cron::enqueue_async( self::HOOK_UPDATE_ROWS, [ 'order_ids' => [ $order_id ] ] );
 				continue;
@@ -1060,7 +1060,7 @@ class Brikpanel_Sheets_Order_Sync {
 		// unmarked order in the sheet is the adoption path's job, and giving
 		// it a map without the synced flag would leave inconsistent state.
 		global $wpdb;
-		$is_hpos = Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+		$is_hpos = brikpanel_wc_hpos_enabled();
 		$table   = $is_hpos ? $wpdb->prefix . 'wc_orders_meta' : $wpdb->postmeta;
 		$id_col  = $is_hpos ? 'order_id' : 'post_id';
 		$ids     = array_map( 'intval', array_keys( $maps ) );
@@ -1122,7 +1122,7 @@ class Brikpanel_Sheets_Order_Sync {
 		$lock_key = self::FLUSH_LOCK;
 		$held_since = get_transient( $lock_key );
 		if ( $held_since && ( time() - (int) $held_since ) < self::FLUSH_LOCK_TTL ) {
-			Brikpanel_Sheets_Logger::log( 'orders', 'Skipping flush — another flush is in progress (lock held).' );
+			Brikpanel_Sheets_Logger::log( 'orders', 'Skipping flush: another flush is in progress (lock held).' );
 			// Flag it: a plain empty result reads as "everything is synced" to
 			// the interactive drain, which would then stop early and report
 			// success while a background job is still mid-export. The drain
@@ -1251,7 +1251,7 @@ class Brikpanel_Sheets_Order_Sync {
 				$skipped[] = $order->get_id();
 				Brikpanel_Sheets_Logger::log(
 					'orders',
-					'Skipped order ' . $order->get_id() . ' — could not build its rows: ' . $e->getMessage()
+					'Skipped order ' . $order->get_id() . ': could not build its rows: ' . $e->getMessage()
 				);
 				continue;
 			}
@@ -1560,7 +1560,7 @@ class Brikpanel_Sheets_Order_Sync {
 
 		global $wpdb;
 
-		$hpos   = Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+		$hpos   = brikpanel_wc_hpos_enabled();
 		$table  = $hpos ? $wpdb->prefix . 'wc_orders_meta' : $wpdb->postmeta;
 		$id_col = $hpos ? 'order_id' : 'post_id';
 
@@ -1782,12 +1782,14 @@ class Brikpanel_Sheets_Order_Sync {
 			case 'discount_total':       return (float) $order->get_total_discount();
 			case 'total':                return (float) $order->get_total();
 			case 'payment_method':       return (string) $order->get_payment_method();
-			case 'payment_method_title': return (string) $order->get_payment_method_title();
+			// Gateway and shipping titles are saved through wp_kses_post() and
+			// coupon codes through kses, so a bare "&" is stored as "&amp;".
+			case 'payment_method_title': return brikpanel_plain_label( (string) $order->get_payment_method_title() );
 			case 'transaction_id':       return (string) $order->get_transaction_id();
-			case 'coupon_codes':         return implode( ', ', $order->get_coupon_codes() );
+			case 'coupon_codes':         return implode( ', ', array_map( 'brikpanel_plain_name', $order->get_coupon_codes() ) );
 			case 'customer_note':        return (string) $order->get_customer_note();
 			case 'customer_id':          return (int) $order->get_customer_id();
-			case 'shipping_method':      return (string) $order->get_shipping_method(); // comma-joined titles
+			case 'shipping_method':      return brikpanel_plain_label( (string) $order->get_shipping_method() ); // comma-joined titles
 			case 'order_cogs_total':     return round( $this->order_cogs_total( $order ), 2 );
 
 			// Billing
@@ -1835,7 +1837,8 @@ class Brikpanel_Sheets_Order_Sync {
 					return $p ? (string) $p->get_sku() : '';
 				} ) );
 			case 'product_name':
-				if ( $item ) { return (string) $item->get_name(); }
+				// Item names copy the product title: "&amp;", TranslatePress <span>.
+				if ( $item ) { return brikpanel_plain_label( (string) $item->get_name() ); }
 				return $this->order_items_summary( $order );
 			case 'items_summary':
 				return $item ? $this->format_item_summary( $item ) : $this->order_items_summary( $order );
@@ -1854,7 +1857,12 @@ class Brikpanel_Sheets_Order_Sync {
 						if ( $label === '' || $label === $raw_name ) {
 							$label = brikpanel_title_case( $raw_name );
 						}
-						$attrs[] = $label . ': ' . (string) $v;
+						// Term name rather than the stored slug ("black-white").
+						$value = (string) $product->get_attribute( $raw_name );
+						if ( $value === '' ) {
+							$value = (string) $v;
+						}
+						$attrs[] = brikpanel_plain_name( $label ) . ': ' . brikpanel_plain_name( $value );
 					}
 					return implode( '; ', $attrs );
 				}
@@ -1871,7 +1879,7 @@ class Brikpanel_Sheets_Order_Sync {
 						} elseif ( ! is_scalar( $value ) ) {
 							continue;
 						}
-						$meta_strs[] = wp_strip_all_tags( wc_attribute_label( $key ) ) . ': ' . wp_strip_all_tags( (string) $value );
+						$meta_strs[] = brikpanel_plain_label( wc_attribute_label( $key ) ) . ': ' . brikpanel_plain_label( (string) $value );
 					}
 					return implode( '; ', $meta_strs );
 				}
@@ -1937,7 +1945,7 @@ class Brikpanel_Sheets_Order_Sync {
 	private function format_item_summary( $item ) {
 		$qty     = (float) $item->get_quantity();
 		$qty_str = ( $qty === (float) (int) $qty ) ? (string) (int) $qty : (string) $qty;
-		return $qty_str . '× ' . (string) $item->get_name();
+		return $qty_str . '× ' . brikpanel_plain_label( (string) $item->get_name() );
 	}
 
 	/**

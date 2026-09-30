@@ -142,24 +142,32 @@ function brikpanel_review_render_notice() {
         </div>
     </div>
     <style>
+        /* Every rule for something inside the box starts with the box's own
+           class. The box keeps WordPress's `notice` class, and since WordPress
+           7.0 core styles the inside of every notice: `div.notice a` (0,1,2)
+           paints links in the admin scheme colour and underlines them, and
+           `div.notice a:hover` / `div.notice a:focus` (0,2,2) recolour them and
+           draw a blue ring with 2px corners. A lone class (0,1,0) lost to all
+           of them, so "Write a review" became blue text on the dark button
+           (2.27:1). Two classes (0,2,0), three for states (0,3,0), outrank core. */
         .brikpanel-review-notice {
             background: #ffffff;
             border: 1px solid #e3e3e3;
-            border-left: 4px solid #303030;
+            border-inline-start: 4px solid #303030;
             border-radius: 0.75rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
             margin: 1rem 20px 1rem 2px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             color: #303030;
         }
-        .brikpanel-review-notice__inner {
+        .brikpanel-review-notice .brikpanel-review-notice__inner {
             display: flex;
             align-items: flex-start;
             gap: 1rem;
             padding: 1.25rem 1.5rem;
             position: relative;
         }
-        .brikpanel-review-notice__icon {
+        .brikpanel-review-notice .brikpanel-review-notice__icon {
             flex-shrink: 0;
             width: 42px;
             height: 42px;
@@ -169,12 +177,16 @@ function brikpanel_review_render_notice() {
             align-items: center;
             justify-content: center;
         }
-        .brikpanel-review-notice__content {
+        .brikpanel-review-notice .brikpanel-review-notice__content {
             flex: 1 1 auto;
             min-width: 0;
-            padding-right: 2rem;
+            padding-inline-end: 2rem;
         }
-        .brikpanel-review-notice__title {
+        /* The paragraphs keep !important. The box shows on every admin screen,
+           and some plugins restyle notice paragraphs on their own screens with
+           an ID or a wrapper class (Loco Translate `#loco-admin.wrap .notice p`,
+           Yoast `.yoast .notice p`), which outranks any class scope. */
+        .brikpanel-review-notice .brikpanel-review-notice__title {
             margin: 0 0 0.375rem !important;
             font-size: 1rem !important;
             font-weight: 600 !important;
@@ -182,20 +194,20 @@ function brikpanel_review_render_notice() {
             line-height: 1.4 !important;
             padding: 0 !important;
         }
-        .brikpanel-review-notice__body {
+        .brikpanel-review-notice .brikpanel-review-notice__body {
             margin: 0 0 0.875rem !important;
             font-size: 0.875rem !important;
             color: #616161 !important;
             line-height: 1.5 !important;
             padding: 0 !important;
         }
-        .brikpanel-review-notice__actions {
+        .brikpanel-review-notice .brikpanel-review-notice__actions {
             display: flex;
             flex-wrap: wrap;
             gap: 0.5rem;
             align-items: center;
         }
-        .brikpanel-review-notice__btn {
+        .brikpanel-review-notice .brikpanel-review-notice__btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -210,43 +222,42 @@ function brikpanel_review_render_notice() {
             line-height: 1.2;
             transition: background 0.15s ease, color 0.15s ease;
         }
-        .brikpanel-review-notice__btn:focus {
-            outline: none;
-            box-shadow: 0 0 0 2px #303030;
-        }
-        .brikpanel-review-notice__btn--primary {
+        .brikpanel-review-notice .brikpanel-review-notice__btn--primary,
+        .brikpanel-review-notice .brikpanel-review-notice__btn--primary:visited {
             background: #303030;
             color: #ffffff;
             box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
-        .brikpanel-review-notice__btn--primary:hover,
-        .brikpanel-review-notice__btn--primary:focus {
+        .brikpanel-review-notice .brikpanel-review-notice__btn--primary:hover,
+        .brikpanel-review-notice .brikpanel-review-notice__btn--primary:focus,
+        .brikpanel-review-notice .brikpanel-review-notice__btn--primary:active {
             background: #1a1a1a;
             color: #ffffff;
+            box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
-        .brikpanel-review-notice__btn--secondary {
+        .brikpanel-review-notice .brikpanel-review-notice__btn--secondary {
             background: #ffffff;
             color: #303030;
             box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, 0.05);
         }
-        .brikpanel-review-notice__btn--secondary:hover,
-        .brikpanel-review-notice__btn--secondary:focus {
+        .brikpanel-review-notice .brikpanel-review-notice__btn--secondary:hover,
+        .brikpanel-review-notice .brikpanel-review-notice__btn--secondary:focus {
             background: #f7f7f7;
             color: #303030;
         }
-        .brikpanel-review-notice__btn--ghost {
+        .brikpanel-review-notice .brikpanel-review-notice__btn--ghost {
             background: transparent;
-            color: #8a8a8a;
+            color: #616161;
         }
-        .brikpanel-review-notice__btn--ghost:hover,
-        .brikpanel-review-notice__btn--ghost:focus {
+        .brikpanel-review-notice .brikpanel-review-notice__btn--ghost:hover,
+        .brikpanel-review-notice .brikpanel-review-notice__btn--ghost:focus {
             color: #303030;
             background: #f7f7f7;
         }
-        .brikpanel-review-notice__close {
+        .brikpanel-review-notice .brikpanel-review-notice__close {
             position: absolute;
             top: 0.625rem;
-            right: 0.75rem;
+            inset-inline-end: 0.75rem;
             width: 28px;
             height: 28px;
             border-radius: 0.375rem;
@@ -260,18 +271,36 @@ function brikpanel_review_render_notice() {
             padding: 0;
             transition: background 0.15s ease, color 0.15s ease;
         }
-        .brikpanel-review-notice__close:hover,
-        .brikpanel-review-notice__close:focus {
+        .brikpanel-review-notice .brikpanel-review-notice__close:hover,
+        .brikpanel-review-notice .brikpanel-review-notice__close:focus {
             color: #303030;
             background: #f7f7f7;
-            outline: none;
         }
+        /* No ring on mouse focus (the transparent outline only shows in forced
+           colours mode), BrikPanel's usual offset ring on keyboard focus. */
+        .brikpanel-review-notice .brikpanel-review-notice__btn:focus,
+        .brikpanel-review-notice .brikpanel-review-notice__close:focus {
+            outline: 2px solid transparent;
+        }
+        .brikpanel-review-notice .brikpanel-review-notice__btn:focus {
+            border-radius: 0.5rem;
+        }
+        .brikpanel-review-notice .brikpanel-review-notice__btn:focus-visible,
+        .brikpanel-review-notice .brikpanel-review-notice__close:focus-visible {
+            outline: 2px solid #303030;
+            outline-offset: 2px;
+        }
+        /* On a phone the text gets the whole width: the star column and the
+           room kept for the close button took 76px of a 322px box (the text ran
+           259px wide, the box 346px tall). The dark leading edge still marks
+           the box; only the title's first line needs to clear the close button. */
         @media (max-width: 600px) {
-            .brikpanel-review-notice__inner { padding: 1rem 1.125rem; gap: 0.75rem; }
-            .brikpanel-review-notice__icon { width: 36px; height: 36px; }
-            .brikpanel-review-notice__content { padding-right: 1.75rem; }
-            .brikpanel-review-notice__actions { gap: 0.375rem; }
-            .brikpanel-review-notice__btn { padding: 0.5rem 0.75rem; }
+            .brikpanel-review-notice .brikpanel-review-notice__inner { padding: 1rem 1.125rem; gap: 0.75rem; }
+            .brikpanel-review-notice .brikpanel-review-notice__icon { display: none; }
+            .brikpanel-review-notice .brikpanel-review-notice__content { padding-inline-end: 0; }
+            .brikpanel-review-notice .brikpanel-review-notice__title { padding-inline-end: 2rem !important; }
+            .brikpanel-review-notice .brikpanel-review-notice__actions { gap: 0.375rem; }
+            .brikpanel-review-notice .brikpanel-review-notice__btn { padding: 0.5rem 0.75rem; }
         }
     </style>
     <script>
@@ -289,8 +318,10 @@ function brikpanel_review_render_notice() {
                 fd.append('action', 'brikpanel_review_action');
                 fd.append('_ajax_nonce', nonce);
                 fd.append('review_action', action);
+                // A failed request rejects later, past the try; catch it too so a
+                // dropped connection leaves no error in the console.
                 try {
-                    fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' });
+                    fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' }).catch(function () {});
                 } catch (err) {}
                 notice.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
                 notice.style.opacity = '0';

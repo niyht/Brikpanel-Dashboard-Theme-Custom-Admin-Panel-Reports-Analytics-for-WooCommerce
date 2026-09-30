@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_statuses() : [];
 ?>
 <div class="wrap brikpanel-gs-wrap">
-	<div class="bp-gs"
+	<div class="bp-gs brikpanel-shell__page"
 		id="bp-gs"
 		data-connected="<?php echo $conn['connected'] ? '1' : '0'; ?>"
 		data-flash-tone="<?php echo esc_attr( $flash['tone'] ); ?>"
@@ -33,27 +33,36 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 					<?php esc_html_e( 'Send your orders, customers, and analytics straight to a Google Sheet.', 'brikpanel' ); ?>
 				</p>
 			</div>
+			<?php
+			// The pill says what the status poll (brikpanel-google-sheets.js)
+			// will say: the connected account's email, else "Connected". The
+			// poll used to swap the email in 30 seconds after load, and on a
+			// phone that squeezed the title beside it to an 82px column
+			// (field test B10). The full text is also the pill's tooltip, since
+			// a long email ends in "…".
+			$bp_gs_pill_text = empty( $conn['connected'] )
+				? __( 'Not connected', 'brikpanel' )
+				: ( '' !== (string) ( $conn['email'] ?? '' ) ? (string) $conn['email'] : __( 'Connected', 'brikpanel' ) );
+			?>
 			<div class="bp-gs-header-right">
-				<span class="bp-gs-pill" id="bp-gs-pill" data-state="<?php echo $conn['connected'] ? 'live' : 'off'; ?>">
+				<span class="bp-gs-pill" id="bp-gs-pill" data-state="<?php echo $conn['connected'] ? 'live' : 'off'; ?>" title="<?php echo esc_attr( $bp_gs_pill_text ); ?>">
 					<span class="bp-gs-pill-dot"></span>
-					<span class="bp-gs-pill-text">
-						<?php echo $conn['connected']
-							? esc_html__( 'Connected', 'brikpanel' )
-							: esc_html__( 'Not connected', 'brikpanel' ); ?>
-					</span>
+					<span class="bp-gs-pill-text"><?php echo esc_html( $bp_gs_pill_text ); ?></span>
 				</span>
 			</div>
 		</div>
+		<?php brikpanel_header_end(); ?>
 
 		<div class="bp-gs-toast" id="bp-gs-toast" hidden></div>
 
-		<div class="bp-gs-tabs" role="tablist">
-			<button type="button" class="bp-gs-tab is-active" data-tab="connection" role="tab"><?php esc_html_e( 'Connection', 'brikpanel' ); ?></button>
-			<button type="button" class="bp-gs-tab"           data-tab="orders"     role="tab"><?php esc_html_e( 'Orders',     'brikpanel' ); ?></button>
-			<button type="button" class="bp-gs-tab"           data-tab="products"   role="tab"><?php esc_html_e( 'Products',   'brikpanel' ); ?></button>
-			<button type="button" class="bp-gs-tab"           data-tab="reports"    role="tab"><?php esc_html_e( 'Reports',    'brikpanel' ); ?></button>
-			<button type="button" class="bp-gs-tab"           data-tab="customers"  role="tab"><?php esc_html_e( 'Customers',  'brikpanel' ); ?></button>
-			<button type="button" class="bp-gs-tab"           data-tab="expenses"   role="tab"><?php esc_html_e( 'Expenses',   'brikpanel' ); ?></button>
+		<?php // One line that scrolls inside itself on a phone (shared strip helper, field test C3). ?>
+		<div class="bp-gs-tabs" role="tablist" data-bp-strip>
+			<button type="button" class="bp-gs-tab is-active" data-tab="connection" role="tab" aria-selected="true"><?php esc_html_e( 'Connection', 'brikpanel' ); ?></button>
+			<button type="button" class="bp-gs-tab"           data-tab="orders"     role="tab" aria-selected="false"><?php esc_html_e( 'Orders',     'brikpanel' ); ?></button>
+			<button type="button" class="bp-gs-tab"           data-tab="products"   role="tab" aria-selected="false"><?php esc_html_e( 'Products',   'brikpanel' ); ?></button>
+			<button type="button" class="bp-gs-tab"           data-tab="reports"    role="tab" aria-selected="false"><?php esc_html_e( 'Reports',    'brikpanel' ); ?></button>
+			<button type="button" class="bp-gs-tab"           data-tab="customers"  role="tab" aria-selected="false"><?php esc_html_e( 'Customers',  'brikpanel' ); ?></button>
+			<button type="button" class="bp-gs-tab"           data-tab="expenses"   role="tab" aria-selected="false"><?php esc_html_e( 'Expenses',   'brikpanel' ); ?></button>
 		</div>
 
 		<!-- ============================================================== -->
@@ -78,11 +87,11 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 						<?php endif; ?>
 						<h2><?php esc_html_e( 'Connect your Google account', 'brikpanel' ); ?></h2>
 						<p class="bp-gs-card-sub">
-							<?php esc_html_e( 'BrikPanel uses a single, narrow Google permission — no app verification screen, no scary “unverified app” warning. It can only touch a spreadsheet it creates for you or one you explicitly hand over. The rest of your Google Drive stays invisible to BrikPanel.', 'brikpanel' ); ?>
+							<?php esc_html_e( 'BrikPanel uses a single, narrow Google permission: no app verification screen, no scary “unverified app” warning. It can only touch a spreadsheet it creates for you or one you explicitly hand over. The rest of your Google Drive stays invisible to BrikPanel.', 'brikpanel' ); ?>
 						</p>
-						<ul class="bp-gs-scope-list">
-							<li><?php esc_html_e( 'Drive (per-file) — create a new spreadsheet, or open only the one you pick', 'brikpanel' ); ?></li>
-							<li><?php esc_html_e( 'Email — to display which Google account is connected', 'brikpanel' ); ?></li>
+						<ul class="brikpanel-bullets bp-gs-scope-list">
+							<li><?php esc_html_e( 'Drive (per-file): create a new spreadsheet, or open only the one you pick', 'brikpanel' ); ?></li>
+							<li><?php esc_html_e( 'Email: to display which Google account is connected', 'brikpanel' ); ?></li>
 						</ul>
 						<div class="bp-gs-actions">
 							<button type="button" class="bp-gs-btn bp-gs-btn-primary" id="bp-gs-connect">
@@ -109,8 +118,9 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 								<?php
 								if ( $conn['expires_at'] > 0 ) {
 									$mins = max( 0, (int) ceil( ( $conn['expires_at'] - time() ) / 60 ) );
-									/* translators: %d minutes */
-									echo esc_html( sprintf( _n( 'in %d minute (auto-refreshed)', 'in %d minutes (auto-refreshed)', $mins, 'brikpanel' ), $mins ) );
+									// Same message as the live refresh in brikpanel-google-sheets.js.
+									/* translators: %s: minutes until the access token is refreshed. */
+									echo esc_html( sprintf( _n( 'in %s minute (auto-refreshed)', 'in %s minutes (auto-refreshed)', $mins, 'brikpanel' ), brikpanel_number( $mins ) ) );
 								} else {
 									esc_html_e( 'unknown', 'brikpanel' );
 								}
@@ -174,8 +184,8 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 							<div class="bp-gs-input-row">
 								<input type="text"
 									id="bp-gs-sheet-create-title"
-									class="bp-gs-input"
-									placeholder="<?php echo esc_attr( sprintf( __( 'BrikPanel — %s', 'brikpanel' ), wp_parse_url( home_url(), PHP_URL_HOST ) ) ); ?>">
+									class="bp-gs-input brikpanel-control"
+									placeholder="<?php echo esc_attr( sprintf( /* translators: %s: the store's domain, e.g. example.com. A suggested spreadsheet name. */ __( 'BrikPanel · %s', 'brikpanel' ), wp_parse_url( home_url(), PHP_URL_HOST ) ) ); ?>">
 								<button type="button" class="bp-gs-btn bp-gs-btn-secondary" id="bp-gs-create">
 									<?php esc_html_e( 'Create', 'brikpanel' ); ?>
 								</button>
@@ -195,7 +205,7 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 			<div class="bp-gs-card">
 				<div class="bp-gs-card-body">
 					<h2><?php esc_html_e( 'Order sync', 'brikpanel' ); ?></h2>
-					<p class="bp-gs-card-sub"><?php esc_html_e( 'Push WooCommerce orders to a tab. Each row is one line item — variations get their own row with attribute columns.', 'brikpanel' ); ?></p>
+					<p class="bp-gs-card-sub"><?php esc_html_e( 'Push WooCommerce orders to a tab. Each row is one line item; variations get their own row with attribute columns.', 'brikpanel' ); ?></p>
 
 					<form class="bp-gs-form" data-flow="orders">
 						<div class="bp-gs-field bp-gs-field-toggle">
@@ -208,7 +218,7 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 
 						<div class="bp-gs-field">
 							<label class="bp-gs-label" for="bp-gs-orders-tab"><?php esc_html_e( 'Target tab name', 'brikpanel' ); ?></label>
-							<input type="text" id="bp-gs-orders-tab" name="tab" class="bp-gs-input" value="<?php echo esc_attr( $config['orders_tab'] ); ?>">
+							<input type="text" id="bp-gs-orders-tab" name="tab" class="bp-gs-input brikpanel-control" value="<?php echo esc_attr( $config['orders_tab'] ); ?>">
 						</div>
 
 						<div class="bp-gs-field">
@@ -253,8 +263,8 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 						</div>
 
 						<div class="bp-gs-field">
-							<label class="bp-gs-label" for="bp-gs-bulk-since"><?php esc_html_e( 'Bulk export — include orders from', 'brikpanel' ); ?></label>
-							<input type="date" id="bp-gs-bulk-since" name="bulk_since" class="bp-gs-input" value="<?php echo esc_attr( $config['orders_bulk_since'] ); ?>">
+							<label class="bp-gs-label" for="bp-gs-bulk-since"><?php esc_html_e( 'Bulk export: include orders from', 'brikpanel' ); ?></label>
+							<input type="date" id="bp-gs-bulk-since" name="bulk_since" class="bp-gs-input brikpanel-control" value="<?php echo esc_attr( $config['orders_bulk_since'] ); ?>">
 						</div>
 
 						<?php if ( ! empty( $order_statuses ) ) : ?>
@@ -374,7 +384,7 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 
 						<div class="bp-gs-field">
 							<label class="bp-gs-label" for="bp-gs-products-tab"><?php esc_html_e( 'Target tab name', 'brikpanel' ); ?></label>
-							<input type="text" id="bp-gs-products-tab" name="tab" class="bp-gs-input" value="<?php echo esc_attr( $config['products_tab'] ); ?>">
+							<input type="text" id="bp-gs-products-tab" name="tab" class="bp-gs-input brikpanel-control" value="<?php echo esc_attr( $config['products_tab'] ); ?>">
 						</div>
 
 						<div class="bp-gs-field">
@@ -392,11 +402,11 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 												<input type="checkbox" name="categories[]" value="<?php echo esc_attr( $term->term_id ); ?>" <?php checked( $cat_checked ); ?>>
 												<span><?php echo esc_html( $term->name ); ?></span>
 											</span>
-											<span class="bp-gs-cat-count"><?php echo esc_html( number_format_i18n( (int) $term->count ) ); ?></span>
+											<span class="bp-gs-cat-count"><?php echo esc_html( brikpanel_number( (int) $term->count ) ); ?></span>
 										</label>
 									<?php endforeach; ?>
 								</div>
-								<p class="bp-gs-help"><?php esc_html_e( 'Changing the categories? After saving, click "Sync now" — the tab is rebuilt from scratch to match the new selection, with no empty gaps.', 'brikpanel' ); ?></p>
+								<p class="bp-gs-help"><?php esc_html_e( 'Changing the categories? After saving, click "Sync now". The tab is rebuilt from scratch to match the new selection, with no empty gaps.', 'brikpanel' ); ?></p>
 							<?php endif; ?>
 						</div>
 
@@ -489,11 +499,22 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 							</div>
 						</div>
 
-						<ul class="bp-gs-info-list">
-							<li><strong><?php esc_html_e( 'BrikPanel — Sales Summary', 'brikpanel' ); ?></strong> — <?php esc_html_e( 'multi-window revenue, orders, AOV, conversion.', 'brikpanel' ); ?></li>
-							<li><strong><?php esc_html_e( 'BrikPanel — Daily KPIs', 'brikpanel' ); ?></strong> — <?php esc_html_e( 'last 90 days, one row per day.', 'brikpanel' ); ?></li>
-							<li><strong><?php esc_html_e( 'BrikPanel — Top Products', 'brikpanel' ); ?></strong> — <?php esc_html_e( 'top 50 by units sold, last 90 days.', 'brikpanel' ); ?></li>
-							<li><strong><?php esc_html_e( 'BrikPanel — Funnel', 'brikpanel' ); ?></strong> — <?php esc_html_e( 'daily visitor → checkout funnel.', 'brikpanel' ); ?></li>
+						<ul class="brikpanel-bullets bp-gs-info-list">
+							<?php
+							// The tab names as they appear in the spreadsheet: the sync's own
+							// constants, never a translation (a translated name here would
+							// point at a tab that does not exist).
+							$bp_gs_report_tabs = [
+								Brikpanel_Sheets_Reports_Sync::TAB_SUMMARY => __( 'multi-window revenue, orders, AOV, conversion.', 'brikpanel' ),
+								Brikpanel_Sheets_Reports_Sync::TAB_KPIS    => __( 'last 90 days, one row per day.', 'brikpanel' ),
+								Brikpanel_Sheets_Reports_Sync::TAB_TOP     => __( 'top 50 by units sold, last 90 days.', 'brikpanel' ),
+								Brikpanel_Sheets_Reports_Sync::TAB_FUNNEL  => __( 'daily visitor → checkout funnel.', 'brikpanel' ),
+								Brikpanel_Sheets_Reports_Sync::TAB_PROFIT  => __( 'revenue, costs, expenses and net profit for the last 7, 30 and 90 days and all time.', 'brikpanel' ),
+							];
+							foreach ( $bp_gs_report_tabs as $bp_gs_tab => $bp_gs_desc ) :
+								?>
+								<li><strong><?php echo esc_html( $bp_gs_tab ); ?></strong>: <?php echo esc_html( $bp_gs_desc ); ?></li>
+							<?php endforeach; ?>
 						</ul>
 
 						<div class="bp-gs-actions">
@@ -532,7 +553,7 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 
 						<div class="bp-gs-field">
 							<label class="bp-gs-label" for="bp-gs-customers-tab"><?php esc_html_e( 'Target tab name', 'brikpanel' ); ?></label>
-							<input type="text" id="bp-gs-customers-tab" name="tab" class="bp-gs-input" value="<?php echo esc_attr( $config['customers_tab'] ); ?>">
+							<input type="text" id="bp-gs-customers-tab" name="tab" class="bp-gs-input brikpanel-control" value="<?php echo esc_attr( $config['customers_tab'] ); ?>">
 						</div>
 
 						<div class="bp-gs-actions">
@@ -581,7 +602,7 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 
 						<div class="bp-gs-field">
 							<label class="bp-gs-label" for="bp-gs-expenses-tab"><?php esc_html_e( 'Target tab name', 'brikpanel' ); ?></label>
-							<input type="text" id="bp-gs-expenses-tab" name="tab" class="bp-gs-input" value="<?php echo esc_attr( $config['expenses_tab'] ); ?>">
+							<input type="text" id="bp-gs-expenses-tab" name="tab" class="bp-gs-input brikpanel-control" value="<?php echo esc_attr( $config['expenses_tab'] ); ?>">
 						</div>
 
 						<div class="bp-gs-section-divider"></div>
@@ -611,7 +632,7 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 							</div>
 						</div>
 
-						<ul class="bp-gs-info-list">
+						<ul class="brikpanel-bullets bp-gs-info-list">
 							<li><?php esc_html_e( 'The tab holds one row per expense you manage: every one-off cost, plus the first row of each repeating cost. The extra dated copies BrikPanel creates from a repeating cost are not listed, because they are rebuilt from that first row whenever you change it.', 'brikpanel' ); ?></li>
 							<li><?php esc_html_e( 'Set Type to "Percentage of revenue" for costs like card commission. The Amount cell then holds the rate, so 2.9 means 2.9%.', 'brikpanel' ); ?></li>
 							<li><?php esc_html_e( 'Deleting a row from the sheet does not delete the expense, because an empty row cannot be told apart from one that has not loaded yet. Delete it on the Operational Expenses screen instead.', 'brikpanel' ); ?></li>

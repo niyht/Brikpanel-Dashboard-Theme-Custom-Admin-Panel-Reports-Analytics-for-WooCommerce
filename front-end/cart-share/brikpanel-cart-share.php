@@ -30,6 +30,14 @@ class Brikpanel_Cart_Share {
     /** Query variable that carries the shared cart payload. */
     const QUERY_VAR = 'bp-cart';
 
+    /**
+     * Capability for the admin builder page and for every link that leads to it
+     * (the "More" sidebar group, the top bar Create menu). One constant, so a
+     * link can never be shown to someone the page itself would turn away with
+     * a 403. Editors used to get exactly that from the sidebar's "More" row.
+     */
+    const CAPABILITY = 'manage_woocommerce';
+
     public function __construct() {
         // Settings tab wiring is registered unconditionally so the on/off toggle
         // is always reachable, even while the feature itself is switched off.
@@ -290,7 +298,7 @@ class Brikpanel_Cart_Share {
             '',
             __( 'Cart share', 'brikpanel' ),
             '',
-            'manage_woocommerce',
+            self::CAPABILITY,
             'brikpanel-cart-share',
             [ $this, 'render_page' ]
         );
@@ -305,7 +313,7 @@ class Brikpanel_Cart_Share {
 
     public function render_page() {
         ?>
-        <div class="wrap">
+        <div class="wrap brikpanel-shell__page">
         <div class="brikpanel-cs" id="brikpanel-cart-share">
 
             <div class="brikpanel-cs-header">
@@ -314,6 +322,7 @@ class Brikpanel_Cart_Share {
                     <p class="brikpanel-cs-subtitle"><?php esc_html_e( 'Pick the products a customer asked for, then send them one link that fills their cart.', 'brikpanel' ); ?></p>
                 </div>
             </div>
+            <?php brikpanel_header_end(); ?>
 
             <div class="brikpanel-cs-grid">
 
@@ -322,7 +331,7 @@ class Brikpanel_Cart_Share {
                     <h2 class="brikpanel-cs-card-title"><?php esc_html_e( 'Products', 'brikpanel' ); ?></h2>
 
                     <div class="brikpanel-cs-search-field">
-                        <input type="text" id="bpcs-search" class="brikpanel-cs-search" autocomplete="off" placeholder="<?php esc_attr_e( 'Search products by name or SKU…', 'brikpanel' ); ?>">
+                        <input type="text" id="bpcs-search" class="brikpanel-cs-search brikpanel-control" autocomplete="off" placeholder="<?php esc_attr_e( 'Search products by name or SKU…', 'brikpanel' ); ?>">
                         <div class="brikpanel-cs-suggestions" id="bpcs-suggestions" hidden></div>
                     </div>
 
@@ -339,7 +348,7 @@ class Brikpanel_Cart_Share {
                     <h2 class="brikpanel-cs-card-title"><?php esc_html_e( 'Share link', 'brikpanel' ); ?></h2>
 
                     <div class="brikpanel-cs-link-row">
-                        <input type="text" id="bpcs-link" class="brikpanel-cs-link-input" readonly placeholder="<?php esc_attr_e( 'Your link appears here once you add a product.', 'brikpanel' ); ?>">
+                        <input type="text" id="bpcs-link" class="brikpanel-cs-link-input brikpanel-control" readonly placeholder="<?php esc_attr_e( 'Your link appears here once you add a product.', 'brikpanel' ); ?>">
                         <button type="button" class="brikpanel-cs-btn primary" id="bpcs-copy" disabled>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             <span><?php esc_html_e( 'Copy', 'brikpanel' ); ?></span>
@@ -377,7 +386,7 @@ class Brikpanel_Cart_Share {
     public function ajax_search_products() {
         check_ajax_referer( 'brikpanel_cartshare_admin', 'security' );
 
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( self::CAPABILITY ) ) {
             wp_send_json_error( [ 'message' => __( 'Permission denied.', 'brikpanel' ) ] );
         }
 
@@ -443,7 +452,7 @@ class Brikpanel_Cart_Share {
     public function ajax_get_variations() {
         check_ajax_referer( 'brikpanel_cartshare_admin', 'security' );
 
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( self::CAPABILITY ) ) {
             wp_send_json_error( [ 'message' => __( 'Permission denied.', 'brikpanel' ) ] );
         }
 
@@ -469,7 +478,7 @@ class Brikpanel_Cart_Share {
                 }
                 $taxonomy = str_replace( 'attribute_', '', $key );
                 $term     = get_term_by( 'slug', $value, $taxonomy );
-                $attrs[]  = $term && ! is_wp_error( $term ) ? $term->name : $value;
+                $attrs[]  = $term && ! is_wp_error( $term ) ? brikpanel_plain_name( $term->name ) : $value;
             }
 
             $variations[] = [
@@ -532,10 +541,17 @@ class Brikpanel_Cart_Share {
             true
         );
 
+        // The button wears the same classes WooCommerce gives its own cart
+        // buttons ("Apply coupon", "Update cart"), so the theme paints it like
+        // them. A fixed look of our own read as a faint, unstyled button next
+        // to a theme's coloured ones (wp.org report, Astra + classic cart).
+        $element_class = function_exists( 'wc_wp_theme_get_element_class_name' ) ? wc_wp_theme_get_element_class_name( 'button' ) : '';
+
         wp_localize_script( 'brikpanel_cartshare_front', 'brikpanelCartShare', [
             'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
             'nonce'        => wp_create_nonce( 'brikpanel_cartshare_pub' ),
             'initialLink'  => self::build_link_from_cart(),
+            'buttonClass'  => trim( 'button ' . $element_class ),
             'whatsappBase' => 'https://wa.me/?text=',
             'i18n'         => [
                 'button'      => __( 'Share cart', 'brikpanel' ),
@@ -557,7 +573,8 @@ class Brikpanel_Cart_Share {
     // =========================================================================
 
     private function format_product_label( $product ) {
-        $name = $product->get_name();
+        // Plain text for the builder (textContent); stored names can hold "&amp;".
+        $name = brikpanel_plain_label( $product->get_name() );
         $sku  = $product->get_sku();
         if ( $sku ) {
             return $name . ' (' . $sku . ')';

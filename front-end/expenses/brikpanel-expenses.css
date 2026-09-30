@@ -9,7 +9,7 @@
     --ex-card:           #ffffff;
     --ex-text:           #303030;
     --ex-text-secondary: #616161;
-    --ex-text-muted:     #8a8a8a;
+    --ex-text-placeholder:     #8a8a8a;
     --ex-border:         #e3e3e3;
     --ex-input-border:   #8a8a8a;
     --ex-input-focus:    #303030;
@@ -22,10 +22,10 @@
 }
 
 /* ── Layout ─────────────────────────────────────────────────────────────────── */
+/* Width, gutters and top spacing: the wide page shell
+   (front-end/shared/brikpanel-ui.css, `brikpanel-shell__page`). */
 .brikpanel-expenses-wrap {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 0 0 2rem;
+    padding-bottom: 2rem;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     color: var(--ex-text);
     box-sizing: border-box;
@@ -42,16 +42,17 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    padding: 1.5rem 0 1rem;
+    padding: 0 0 1rem;
     gap: 1rem;
     flex-wrap: wrap;
 }
 
 .brikpanel-ex-header h1 {
     margin: 0 0 0.25rem;
-    font-size: 1.125rem;
-    font-weight: 600;
-    line-height: 1.3;
+    font-size: var(--brikpanel-title-size, 1.125rem);
+    font-weight: var(--brikpanel-title-weight, 600);
+    line-height: var(--brikpanel-title-line, 1.3);
+    padding: 0;
     color: var(--ex-text);
 }
 
@@ -63,11 +64,17 @@
 }
 
 /* ── Summary bar ────────────────────────────────────────────────────────────── */
+/* Two figures side by side while both fit, otherwise a short list
+   (front-end/shared/brikpanel-tiles.js, data-bp-tiles). On a phone they
+   wrapped one under the other at two different widths. A figure keeps its
+   own size on a wide screen (--bp-tile-max); the template is the look
+   without the script. */
 .brikpanel-ex-summary {
-    display: flex;
+    --bp-tile-max: 16rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 16rem));
     gap: 1rem;
     margin-bottom: 1rem;
-    flex-wrap: wrap;
 }
 
 .brikpanel-ex-summary-card {
@@ -75,16 +82,38 @@
     border: 1px solid var(--ex-border);
     border-radius: var(--ex-radius-card);
     padding: 1rem 1.25rem;
-    min-width: 140px;
+    min-width: 0;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
+.brikpanel-ex-summary.is-tiles-list {
+    gap: 0.5rem;
+}
+
+.brikpanel-ex-summary.is-tiles-list .brikpanel-ex-summary-card {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.625rem 1rem;
+}
+
+.brikpanel-ex-summary.is-tiles-list .brikpanel-ex-summary-label {
+    margin-bottom: 0;
+}
+
+.brikpanel-ex-summary.is-tiles-list .brikpanel-ex-summary-value {
+    font-size: 1rem;
+    text-align: end;
+    overflow-wrap: anywhere;
+}
+
 .brikpanel-ex-summary-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--ex-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: var(--brikpanel-label-size, 0.8125rem);
+    font-weight: var(--brikpanel-label-weight, 550);
+    color: #616161;
+    text-transform: var(--brikpanel-caps-case, none);
+    letter-spacing: var(--brikpanel-caps-track, normal);
     margin-bottom: 0.375rem;
 }
 
@@ -224,86 +253,31 @@
 }
 
 /* ── Filters ─────────────────────────────────────────────────────────────────── */
+/* The row, its fields, labels and boxes are the shared parts in
+   front-end/shared/brikpanel-ui.css (.brikpanel-filter-bar, .brikpanel-field,
+   .brikpanel-control): one control height, so the three labels and the three
+   boxes line up and the buttons are as tall as the boxes (field test D1). */
 .brikpanel-ex-filters {
     padding: 1.125rem 1.25rem;
 }
 
-.brikpanel-ex-filter-row {
-    display: flex;
-    gap: 0.75rem;
-    align-items: flex-end;
-    flex-wrap: wrap;
-}
-
-.brikpanel-ex-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-    min-width: 0;
-}
-
-/* The explicit display:flex above out-specifies the UA `[hidden]{display:none}`
-   rule, so toggling `.hidden` in JS (to drop the Date + Repeats fields for a
-   percentage cost) would leave them on screen. Re-assert it for [hidden]. */
-.brikpanel-ex-field[hidden] {
-    display: none;
-}
-
-.brikpanel-ex-field label {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--ex-text);
-    line-height: 1;
-}
-
-.brikpanel-ex-field input[type="date"],
-.brikpanel-ex-field input[type="text"],
-.brikpanel-ex-field input[type="number"],
-.brikpanel-ex-field select,
-.brikpanel-ex-field textarea {
-    border: 1px solid var(--ex-input-border);
-    border-radius: var(--ex-radius);
-    padding: 0.625rem 0.75rem;
-    font-size: 0.875rem;
-    color: var(--ex-text);
-    background: #fff;
-    line-height: 1.4;
-    transition: border-color 0.15s, box-shadow 0.15s;
-    width: 100%;
-    font-family: inherit;
-}
-
-.brikpanel-ex-field input:focus,
-.brikpanel-ex-field select:focus,
-.brikpanel-ex-field textarea:focus {
-    outline: none;
-    border-color: var(--ex-input-focus);
-    box-shadow: 0 0 0 1px var(--ex-input-focus);
-}
-
-.brikpanel-ex-field input::placeholder,
-.brikpanel-ex-field textarea::placeholder {
-    color: var(--ex-text-muted);
-}
-
-.brikpanel-ex-field textarea {
-    resize: vertical;
-}
-
-.brikpanel-ex-filter-actions {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    padding-bottom: 0;
-    flex-shrink: 0;
+/* Only on a wide row: in the phone column a flex basis would become a height. */
+@media (min-width: 641px) {
+    .brikpanel-ex-filter-row .brikpanel-ex-field {
+        flex: 0 1 11rem;
+    }
 }
 
 /* ── Input Group (prefix/suffix) ─────────────────────────────────────────────── */
+/* Drawn as one control: the same height and edge as the shared box. */
 .brikpanel-ex-input-group {
     display: flex;
     align-items: stretch;
+    box-sizing: border-box;
+    height: var(--brikpanel-control-h, 2.5rem);
     border: 1px solid var(--ex-input-border);
     border-radius: var(--ex-radius);
+    background: #fff;
     overflow: hidden;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -346,6 +320,14 @@
     box-shadow: none !important;
     flex: 1;
     min-width: 0;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--ex-text);
+    background: transparent;
 }
 
 .brikpanel-ex-input-group input:focus {
@@ -407,7 +389,7 @@
     border: none;
     background: transparent;
     cursor: pointer;
-    color: var(--ex-text-muted);
+    color: var(--ex-text-placeholder);
     transition: background 0.1s, color 0.1s;
     padding: 0;
 }
@@ -441,8 +423,10 @@
 .brikpanel-ex-table thead th {
     padding: 0.75rem 1rem;
     text-align: left;
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-size: var(--brikpanel-th-size, 0.75rem);
+    font-weight: var(--brikpanel-th-weight, 600);
+    text-transform: var(--brikpanel-caps-case, none);
+    letter-spacing: var(--brikpanel-caps-track, normal);
     color: var(--ex-text-secondary);
     border-bottom: 1px solid var(--ex-border);
     white-space: nowrap;
@@ -480,12 +464,17 @@
     width: 72px;
 }
 
+/* The flex row lives inside the cell: display:flex on the <td> itself stopped
+   it acting as a table cell (field test B6). */
 .brikpanel-ex-actions-cell {
+    padding-right: 0.75rem;
+}
+
+.brikpanel-ex-row-actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 0.25rem;
-    padding-right: 0.75rem;
 }
 
 .brikpanel-ex-date-cell {
@@ -495,12 +484,38 @@
 }
 
 .brikpanel-ex-desc-cell {
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     color: var(--ex-text-secondary);
     font-size: 0.8125rem;
+}
+
+/* The cap sits on an element inside the cell: on a bare <td> max-width is
+   ignored by the table layout, so a long description used to stretch its
+   column and push Amount, Edit and Delete out of the card (field test B6).
+   Two lines, then an ellipsis; the full text is in the title tooltip. */
+.brikpanel-ex-desc-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    min-width: 10rem;
+    max-width: 22rem;
+    overflow-wrap: break-word;
+}
+
+/* Stacked rows (brikpanel-fit-table.css draws the card): the actions start at
+   the left of their tile and the description may use the card's width. */
+.brikpanel-ex-table.is-stacked .brikpanel-ex-actions-cell {
+    padding: 0;
+}
+
+.brikpanel-ex-table.is-stacked .brikpanel-ex-row-actions {
+    justify-content: flex-start;
+}
+
+.brikpanel-ex-table.is-stacked .brikpanel-ex-desc-text {
+    min-width: 0;
+    max-width: none;
+    -webkit-line-clamp: 4;
 }
 
 /* ── Badges ──────────────────────────────────────────────────────────────────── */
@@ -510,14 +525,14 @@
 .brikpanel-ex-parent-cat {
     display: block;
     margin-bottom: 0.1875rem;
-    color: #8a8a8a;
+    color: var(--ex-text-secondary, #616161);
     font-size: 0.6875rem;
     font-weight: 550;
     line-height: 1.3;
 }
 
 .brikpanel-ex-optional {
-    color: #8a8a8a;
+    color: var(--ex-text-secondary, #616161);
     font-size: 0.6875rem;
     font-weight: 400;
 }
@@ -527,7 +542,7 @@
    merge the two amounts — so it has to be readable, not decorative. */
 .brikpanel-ex-hint {
     margin: 0.375rem 0 0;
-    color: #8a8a8a;
+    color: var(--ex-text-secondary, #616161);
     font-size: 0.6875rem;
     font-weight: 400;
     line-height: 1.4;
@@ -559,7 +574,7 @@
 
 .brikpanel-ex-rec-none {
     background: #f0f0f0;
-    color: var(--ex-text-muted);
+    color: var(--ex-text-secondary, #616161);
 }
 
 .brikpanel-ex-rec-monthly {
@@ -581,7 +596,7 @@
 .brikpanel-ex-empty {
     text-align: center;
     padding: 2.5rem 1rem !important;
-    color: var(--ex-text-muted);
+    color: var(--ex-text-secondary, #616161);
     font-size: 0.875rem;
 }
 
@@ -690,7 +705,7 @@
     border-radius: 0.375rem;
     font-size: 1.25rem;
     line-height: 1;
-    color: var(--ex-text-muted);
+    color: var(--ex-text-placeholder);
     transition: background 0.1s, color 0.1s;
     padding: 0;
 }
@@ -773,26 +788,19 @@ body.brikpanel-ex-modal-open {
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
+@media (max-width: 782px) {
+    .brikpanel-ex-summary {
+        --bp-tile-max: 1fr;
+    }
+}
+
 @media (max-width: 640px) {
     .brikpanel-ex-modal-grid {
         grid-template-columns: 1fr;
     }
 
-    .brikpanel-ex-filter-row {
-        flex-direction: column;
-    }
-
-    .brikpanel-ex-filter-row .brikpanel-ex-field,
-    .brikpanel-ex-filter-row .brikpanel-ex-filter-actions {
-        width: 100%;
-    }
-
     .brikpanel-ex-header {
         flex-direction: column;
-    }
-
-    .brikpanel-ex-table thead th:nth-child(3),
-    .brikpanel-ex-table tbody td:nth-child(3) {
-        display: none;
+        flex-wrap: nowrap;
     }
 }

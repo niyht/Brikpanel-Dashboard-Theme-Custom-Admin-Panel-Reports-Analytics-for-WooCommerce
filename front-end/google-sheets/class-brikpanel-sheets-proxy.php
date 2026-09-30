@@ -82,7 +82,7 @@ class Brikpanel_Sheets_Proxy {
 		if ( class_exists( 'Brikpanel_Sheets_Logger' ) ) {
 			Brikpanel_Sheets_Logger::log(
 				'oauth',
-				'Operator kill-switch received (' . $directive . ') via ' . $context . ' — local tokens wiped.'
+				'Operator kill-switch received (' . $directive . ') via ' . $context . '; local tokens wiped.'
 			);
 		}
 	}

@@ -61,17 +61,23 @@ add_action( 'admin_enqueue_scripts', function () {
         return;
     }
 
+    // On a phone the step rail is one scrolling row under the close button
+    // (front-end/shared/brikpanel-scroll-strip.js).
+    // The shared UI parts carry the "New" badge of the step rail.
+    $strip_style  = function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'scroll_strip', 'ui' ], 'style' ) : [];
+    $strip_script = function_exists( 'brikpanel_narrow_dep' ) ? brikpanel_narrow_dep( 'scroll_strip' ) : [];
+
     wp_enqueue_style(
         'brikpanel_welcome_styles',
         BRIKPANEL_URL . 'front-end/welcome/brikpanel-welcome.css',
-        [],
+        $strip_style,
         BRIKPANEL_VERSION
     );
 
     wp_enqueue_script(
         'brikpanel_welcome_scripts',
         BRIKPANEL_URL . 'front-end/welcome/brikpanel-welcome.js',
-        [],
+        $strip_script,
         BRIKPANEL_VERSION,
         true
     );
@@ -82,7 +88,7 @@ add_action( 'admin_enqueue_scripts', function () {
         'i18n'     => [
             'next'        => __( 'Next', 'brikpanel' ),
             'previous'    => __( 'Previous', 'brikpanel' ),
-            'get_started' => __( 'Get Started', 'brikpanel' ),
+            'get_started' => __( 'Get started', 'brikpanel' ),
             'skip'        => __( 'Skip tour', 'brikpanel' ),
         ],
     ] );
@@ -270,7 +276,7 @@ add_action( 'admin_footer', function () {
             <div class="brikpanel-welcome-body">
 
                 <!-- ── Left rail ──────────────────────────────────────────────── -->
-                <nav class="brikpanel-welcome-rail" aria-label="<?php esc_attr_e( 'Tour sections', 'brikpanel' ); ?>">
+                <nav class="brikpanel-welcome-rail" data-bp-strip data-bp-strip-end-clear="44" aria-label="<?php esc_attr_e( 'Tour sections', 'brikpanel' ); ?>">
                     <div class="brikpanel-welcome-railhead">
                         <span class="brikpanel-welcome-railhead-logo"><?php echo $icon_logo; ?></span>
                         <span class="brikpanel-welcome-railhead-name">BrikPanel</span>
@@ -284,7 +290,7 @@ add_action( 'admin_footer', function () {
                             <span class="brikpanel-welcome-rail-ico"><?php echo $sec['rail_icon']; ?></span>
                             <span class="brikpanel-welcome-rail-title"><?php echo esc_html( $sec['rail_title'] ); ?></span>
                             <?php if ( ! empty( $sec['rail_badge'] ) ) : ?>
-                                <span class="brikpanel-welcome-rail-badge"><?php echo esc_html( $sec['rail_badge'] ); ?></span>
+                                <span class="brikpanel-badge brikpanel-badge--new brikpanel-welcome-rail-badge"><?php echo esc_html( $sec['rail_badge'] ); ?></span>
                             <?php endif; ?>
                         </button>
                     <?php endforeach; ?>
@@ -310,14 +316,19 @@ add_action( 'admin_footer', function () {
                                 <h2><?php esc_html_e( 'You are all set', 'brikpanel' ); ?></h2>
                                 <p><?php esc_html_e( 'That is the tour. Everything is on by default, so you can dive straight in. Here are a couple of great places to start.', 'brikpanel' ); ?></p>
                                 <div class="brikpanel-welcome-cta">
-                                    <a class="brikpanel-welcome-btn brikpanel-welcome-btn--primary" data-bw-cta href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-dashboard' ) ); ?>">
+                                    <a class="brikpanel-welcome-btn brikpanel-welcome-btn--primary" data-bw-cta href="<?php echo esc_url( function_exists( 'brikpanel_module_url' ) ? brikpanel_module_url( 'brikpanel-dashboard' ) : admin_url( 'admin.php?page=brikpanel-dashboard' ) ); ?>">
                                         <?php esc_html_e( 'Open your dashboard', 'brikpanel' ); ?>
                                         <?php echo $icon_arrow_right; ?>
                                     </a>
+                                    <?php
+                                    // Only while Google Sheets is on: a switched-off module has no page to open.
+                                    if ( ! function_exists( 'brikpanel_module_available' ) || brikpanel_module_available( 'brikpanel-google-sheets' ) ) :
+                                        ?>
                                     <a class="brikpanel-welcome-btn brikpanel-welcome-btn--secondary" data-bw-cta href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-google-sheets' ) ); ?>">
                                         <?php echo $icon_integrations; ?>
                                         <?php esc_html_e( 'Connect Google Sheets', 'brikpanel' ); ?>
                                     </a>
+                                    <?php endif; ?>
                                 </div>
                                 <a class="brikpanel-welcome-final-link" data-bw-cta href="<?php echo esc_url( admin_url( 'admin.php?page=wc-settings&tab=brikpanel' ) ); ?>">
                                     <?php esc_html_e( 'Browse all settings', 'brikpanel' ); ?>

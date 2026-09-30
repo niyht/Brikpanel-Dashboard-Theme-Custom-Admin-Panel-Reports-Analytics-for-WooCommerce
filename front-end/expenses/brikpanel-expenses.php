@@ -223,7 +223,7 @@ class Brikpanel_Expenses {
 
 		$categories = $this->get_categories();
 		?>
-		<div class="wrap brikpanel-expenses-wrap" id="brikpanel-expenses">
+		<div class="wrap brikpanel-expenses-wrap brikpanel-shell__page" id="brikpanel-expenses">
 			<div class="brikpanel-ex-header">
 				<div class="brikpanel-ex-header-left">
 					<h1><?php esc_html_e( 'Operational Expenses', 'brikpanel' ); ?></h1>
@@ -235,6 +235,7 @@ class Brikpanel_Expenses {
 					</button>
 				</div>
 			</div>
+			<?php brikpanel_header_end(); ?>
 
 			<!-- Payment fees: real gateway processing costs, read straight off the
 			     orders. Lives here rather than in WooCommerce settings because it
@@ -262,7 +263,7 @@ class Brikpanel_Expenses {
 			</div>
 
 			<!-- Summary bar -->
-			<div class="brikpanel-ex-summary" id="brikpanel-ex-summary">
+			<div class="brikpanel-ex-summary" id="brikpanel-ex-summary" data-bp-tiles>
 				<div class="brikpanel-ex-summary-card">
 					<div class="brikpanel-ex-summary-label"><?php esc_html_e( 'Total (filtered)', 'brikpanel' ); ?></div>
 					<div class="brikpanel-ex-summary-value" id="brikpanel-ex-total">—</div>
@@ -275,25 +276,25 @@ class Brikpanel_Expenses {
 
 			<!-- Filters -->
 			<div class="brikpanel-ex-card brikpanel-ex-filters">
-				<div class="brikpanel-ex-filter-row">
-					<div class="brikpanel-ex-field">
+				<div class="brikpanel-ex-filter-row brikpanel-filter-bar">
+					<div class="brikpanel-ex-field brikpanel-field">
 						<label for="brikpanel-ex-from"><?php esc_html_e( 'From', 'brikpanel' ); ?></label>
-						<input type="date" id="brikpanel-ex-from" value="<?php echo esc_attr( gmdate( 'Y-m-01' ) ); ?>" />
+						<input type="date" id="brikpanel-ex-from" class="brikpanel-control" value="<?php echo esc_attr( brikpanel_store_date( 'Y-m-01' ) ); ?>" />
 					</div>
-					<div class="brikpanel-ex-field">
+					<div class="brikpanel-ex-field brikpanel-field">
 						<label for="brikpanel-ex-to"><?php esc_html_e( 'To', 'brikpanel' ); ?></label>
-						<input type="date" id="brikpanel-ex-to" value="<?php echo esc_attr( gmdate( 'Y-m-t' ) ); ?>" />
+						<input type="date" id="brikpanel-ex-to" class="brikpanel-control" value="<?php echo esc_attr( brikpanel_store_date( 'Y-m-t' ) ); ?>" />
 					</div>
-					<div class="brikpanel-ex-field">
+					<div class="brikpanel-ex-field brikpanel-field">
 						<label for="brikpanel-ex-cat-filter"><?php esc_html_e( 'Title', 'brikpanel' ); ?></label>
-						<select id="brikpanel-ex-cat-filter">
+						<select id="brikpanel-ex-cat-filter" class="brikpanel-control">
 							<option value=""><?php esc_html_e( 'All titles', 'brikpanel' ); ?></option>
 							<?php foreach ( $categories as $cat ) : ?>
 								<option value="<?php echo esc_attr( $cat ); ?>"><?php echo esc_html( $cat ); ?></option>
 							<?php endforeach; ?>
 						</select>
 					</div>
-					<div class="brikpanel-ex-filter-actions">
+					<div class="brikpanel-ex-filter-actions brikpanel-filter-bar__actions">
 						<button type="button" class="brikpanel-ex-btn brikpanel-ex-btn-secondary" id="brikpanel-ex-search-btn">
 							<?php esc_html_e( 'Apply', 'brikpanel' ); ?>
 						</button>
@@ -307,7 +308,7 @@ class Brikpanel_Expenses {
 			<!-- Table -->
 			<div class="brikpanel-ex-card brikpanel-ex-table-card">
 				<div class="brikpanel-ex-table-wrap">
-					<table class="brikpanel-ex-table" id="brikpanel-ex-table">
+					<table class="brikpanel-ex-table brikpanel-fit-table" id="brikpanel-ex-table">
 						<thead>
 							<tr>
 								<th><?php esc_html_e( 'Date', 'brikpanel' ); ?></th>
@@ -341,19 +342,23 @@ class Brikpanel_Expenses {
 						<input type="hidden" id="brikpanel-ex-edit-id" value="" />
 						<div class="brikpanel-ex-modal-body">
 							<div class="brikpanel-ex-modal-grid">
-								<div class="brikpanel-ex-field">
+								<div class="brikpanel-ex-field brikpanel-field">
 									<label for="brikpanel-ex-date"><?php esc_html_e( 'Date', 'brikpanel' ); ?></label>
-									<input type="date" id="brikpanel-ex-date" required value="<?php echo esc_attr( gmdate( 'Y-m-d' ) ); ?>" />
+									<?php /* expense_date is a SITE-LOCAL column (written with current_time() on
+	save), so the pre-filled value has to be the store's day. gmdate() here meant
+	that between local midnight and the UTC offset a new expense was pre-filled
+	with yesterday and filed under the wrong month. */ ?>
+									<input type="date" id="brikpanel-ex-date" class="brikpanel-control" required value="<?php echo esc_attr( brikpanel_store_date( 'Y-m-d' ) ); ?>" />
 								</div>
-								<div class="brikpanel-ex-field">
+								<div class="brikpanel-ex-field brikpanel-field">
 										<label for="brikpanel-ex-kind"><?php esc_html_e( 'Type', 'brikpanel' ); ?></label>
-										<select id="brikpanel-ex-kind">
+										<select id="brikpanel-ex-kind" class="brikpanel-control">
 											<option value="fixed"><?php esc_html_e( 'Fixed amount', 'brikpanel' ); ?></option>
 											<option value="percent"><?php esc_html_e( 'Percentage of revenue', 'brikpanel' ); ?></option>
 											<option value="per_order"><?php esc_html_e( 'Cost per order', 'brikpanel' ); ?></option>
 										</select>
 									</div>
-									<div class="brikpanel-ex-field">
+									<div class="brikpanel-ex-field brikpanel-field">
 									<label for="brikpanel-ex-amount"><?php echo esc_html( _x( 'Amount', 'money value of an expense', 'brikpanel' ) ); ?></label>
 									<div class="brikpanel-ex-input-group">
 										<span class="brikpanel-ex-prefix" id="brikpanel-ex-prefix"><?php echo esc_html( $currency ); ?></span>
@@ -371,9 +376,9 @@ class Brikpanel_Expenses {
 								// sentence, and Title in between would break it.
 								$shipping_classes = self::shipping_class_options();
 								?>
-								<div class="brikpanel-ex-field" id="brikpanel-ex-scope-field" hidden>
+								<div class="brikpanel-ex-field brikpanel-field" id="brikpanel-ex-scope-field" hidden>
 									<label for="brikpanel-ex-scope"><?php echo esc_html( _x( 'Applies to', 'which orders a per-order cost is charged on', 'brikpanel' ) ); ?></label>
-									<select id="brikpanel-ex-scope">
+									<select id="brikpanel-ex-scope" class="brikpanel-control">
 										<option value=""><?php esc_html_e( 'Every order', 'brikpanel' ); ?></option>
 										<option value="free_shipping"><?php esc_html_e( 'Orders shipped free', 'brikpanel' ); ?></option>
 										<?php if ( $shipping_classes ) : ?>
@@ -386,9 +391,9 @@ class Brikpanel_Expenses {
 									</select>
 									<p class="brikpanel-ex-hint"><?php esc_html_e( 'Charged once for every matching order in the period you are viewing.', 'brikpanel' ); ?></p>
 								</div>
-								<div class="brikpanel-ex-field">
+								<div class="brikpanel-ex-field brikpanel-field">
 									<label for="brikpanel-ex-category"><?php esc_html_e( 'Title', 'brikpanel' ); ?></label>
-									<input type="text" id="brikpanel-ex-category" placeholder="<?php esc_attr_e( 'e.g. Rent, Salaries, Credit card commission', 'brikpanel' ); ?>" list="brikpanel-ex-cat-list" required />
+									<input type="text" id="brikpanel-ex-category" class="brikpanel-control" placeholder="<?php esc_attr_e( 'e.g. Rent, Salaries, Credit card commission', 'brikpanel' ); ?>" list="brikpanel-ex-cat-list" required />
 									<datalist id="brikpanel-ex-cat-list">
 										<?php foreach ( $categories as $cat ) : ?>
 											<option value="<?php echo esc_attr( $cat ); ?>"></option>
@@ -396,23 +401,23 @@ class Brikpanel_Expenses {
 									</datalist>
 								</div>
 								<?php // Naming the cost comes first, then what it belongs to: the second question only makes sense once the first is answered. ?>
-								<div class="brikpanel-ex-field">
+								<div class="brikpanel-ex-field brikpanel-field">
 									<label for="brikpanel-ex-parent-category"><?php echo esc_html( _x( 'Part of', 'the expense this cost is filed under', 'brikpanel' ) ); ?> <span class="brikpanel-ex-optional"><?php esc_html_e( 'optional', 'brikpanel' ); ?></span></label>
 									<?php self::render_parent_category_picker( 'brikpanel-ex-parent-category' ); ?>
 									<p class="brikpanel-ex-hint" id="brikpanel-ex-parent-hint"><?php esc_html_e( 'Shows this cost under one you already have. Amounts stay separate.', 'brikpanel' ); ?></p>
 								</div>
-								<div class="brikpanel-ex-field">
+								<div class="brikpanel-ex-field brikpanel-field">
 									<label for="brikpanel-ex-recurring"><?php esc_html_e( 'Recurring', 'brikpanel' ); ?></label>
-									<select id="brikpanel-ex-recurring">
+									<select id="brikpanel-ex-recurring" class="brikpanel-control">
 										<option value="none"><?php esc_html_e( 'One-time', 'brikpanel' ); ?></option>
 										<option value="monthly"><?php esc_html_e( 'Monthly', 'brikpanel' ); ?></option>
 										<option value="weekly"><?php esc_html_e( 'Weekly', 'brikpanel' ); ?></option>
 										<option value="yearly"><?php esc_html_e( 'Yearly', 'brikpanel' ); ?></option>
 									</select>
 								</div>
-								<div class="brikpanel-ex-field brikpanel-ex-field-full">
+								<div class="brikpanel-ex-field brikpanel-field brikpanel-ex-field-full">
 									<label for="brikpanel-ex-description"><?php esc_html_e( 'Description', 'brikpanel' ); ?></label>
-									<textarea id="brikpanel-ex-description" rows="2" placeholder="<?php esc_attr_e( 'Optional notes…', 'brikpanel' ); ?>"></textarea>
+									<textarea id="brikpanel-ex-description" class="brikpanel-control" rows="2" placeholder="<?php esc_attr_e( 'Optional notes…', 'brikpanel' ); ?>"></textarea>
 								</div>
 							</div>
 						</div>
@@ -551,9 +556,10 @@ class Brikpanel_Expenses {
 		foreach ( $rows as $r ) {
 			$kind   = isset( $r->kind ) ? (string) $r->kind : 'fixed';
 			$amount = (float) $r->amount;
-			// Percentage rows display their rate ("2.9%"); fixed rows their money.
+			// Percentage rows display their rate ("2.9%", Turkish "%2.9"); fixed
+			// rows their money.
 			$amount_fmt = ( 'percent' === $kind )
-				? rtrim( rtrim( number_format( $amount, 2, '.', '' ), '0' ), '.' ) . '%'
+				? brikpanel_percent( $amount, 2 )
 				: html_entity_decode( wp_strip_all_tags( wc_price( $amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 			if ( 'per_order' === $kind ) {
 				// Composed HERE, not in JS: renderRows() prints amount_fmt
@@ -567,6 +573,9 @@ class Brikpanel_Expenses {
 			$items[] = [
 				'id'              => (int) $r->id,
 				'date'            => $r->expense_date,
+				// Shown in the list: the store's short date, not the stored Y-m-d
+				// (field test E2). `date` stays for the CSV and the edit form.
+				'date_display'    => brikpanel_local_label_date( (string) $r->expense_date, brikpanel_short_date_format(), (string) $r->expense_date ),
 				'category'        => $r->category,
 				'parent_category' => (string) ( $r->parent_category ?? '' ),
 				// What the merchant reads. For a computed card line the stored
@@ -1021,14 +1030,13 @@ class Brikpanel_Expenses {
 		if ( '' === $title ) {
 			$title = __( 'Commission', 'brikpanel' );
 		}
-		$rate = rtrim( rtrim( number_format( (float) $row->amount, 2, '.', '' ), '0' ), '.' );
 
 		return [
 			'public' => [
 				'token'  => $this->plan_token( [ 'percent', (int) $row->id, (string) $row->amount ] ),
 				'title'  => __( 'Remove this expense?', 'brikpanel' ),
-				/* translators: 1: name of the cost, 2: percentage rate, e.g. 2.9. */
-				'body'   => sprintf( __( '%1$s: %2$s%% of revenue.', 'brikpanel' ), $title, $rate ),
+				/* translators: 1: name of the cost, 2: percentage rate, already formatted with its percent sign, e.g. "2.9%". */
+				'body'   => brikpanel_safe_sprintf( __( '%1$s: %2$s of revenue.', 'brikpanel' ), $title, brikpanel_percent( (float) $row->amount, 2 ) ),
 				'note'   => __( 'This cost is a percentage of revenue, so removing it affects every period.', 'brikpanel' ),
 				'scopes' => [
 					[
@@ -1420,7 +1428,7 @@ class Brikpanel_Expenses {
 	/** A stored date in the site's format. Midday avoids a timezone day-shift. */
 	private static function date_text( string $ymd ): string {
 		$ts = strtotime( substr( $ymd, 0, 10 ) . ' 12:00:00' );
-		return $ts ? wp_date( (string) get_option( 'date_format' ), $ts ) : substr( $ymd, 0, 10 );
+		return $ts ? wp_date( brikpanel_date_format(), $ts ) : substr( $ymd, 0, 10 );
 	}
 
 	// =========================================================================
@@ -1663,8 +1671,8 @@ class Brikpanel_Expenses {
 			}
 		) );
 		?>
-		<select id="<?php echo esc_attr( $id_prefix ); ?>" class="brikpanel-ex-group-select">
-			<option value=""><?php esc_html_e( 'Nothing — a cost on its own', 'brikpanel' ); ?></option>
+		<select id="<?php echo esc_attr( $id_prefix ); ?>" class="brikpanel-ex-group-select brikpanel-control">
+			<option value=""><?php esc_html_e( 'Nothing, a cost on its own', 'brikpanel' ); ?></option>
 			<?php if ( $builtin ) : ?>
 				<?php
 				// The card's own computed lines. They carry NO data-key on

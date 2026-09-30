@@ -19,6 +19,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * via BRIKPANEL_VISITOR_TIMEOUT instead, at most ~75 s later). Net effect:
  * ~3 requests per navigation drop to 1.
  *
+ * The recurring ping also stops once nobody has touched the page for
+ * BRIKPANEL_VISITOR_IDLE_TIMEOUT (30 minutes), and resumes on the next
+ * interaction. Before that, a page left open and on screen pinged forever
+ * and kept its visitor on the Live list for days.
+ *
  * The old standalone AJAX actions stay registered in their original files so
  * page caches still serving pre-3.2.20 inline JS keep working until they
  * expire. Merchants can also disable all tracking (WooCommerce ▸ Settings ▸
@@ -31,6 +36,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * POST flags (all optional, each part runs only when its flag is present):
  *   live=1, page_url        — live-visitor ping (rate-limited server-side).
+ *   idle                    — with live: seconds since the visitor last
+ *                             touched the page (0 on a page load).
+ *   src_ref, src_url        — with live: where the visit began (referring
+ *                             page, landing address). Only sent while
+ *                             "Traffic source in Live view" is on.
+ *   live_page               — with live: the page as "post:ID", "term:ID"
+ *                             or "front", so the Live list can name it.
  *   page_id                 — page-view counter for "Most visited pages".
  *   visitor=1, ref, url     — daily visitor + device + traffic-source count.
  *   product=1               — daily product-view counter.
@@ -94,7 +106,35 @@ function brikpanel_ajax_unified_track() {
     // 1) Live-visitor ping (rate limit + transient cap live inside).
     if ( ! empty( $_POST['live'] ) && function_exists( 'brikpanel_record_live_visitor' ) ) {
         $page_url       = isset( $_POST['page_url'] ) ? esc_url_raw( wp_unslash( $_POST['page_url'] ) ) : '';
-        $done['live']   = brikpanel_record_live_visitor( $page_url, false );
+        // The visit's entry source. Absent from pages cached with an older
+        // tracker, and ignored by the recorder while the setting is off.
+        $entry = [];
+        foreach ( [ 'src_ref' => 'ref', 'src_url' => 'url' ] as $field => $key ) {
+            if ( isset( $_POST[ $field ] ) && is_string( $_POST[ $field ] ) ) {
+                $entry[ $key ] = esc_url_raw( substr( wp_unslash( $_POST[ $field ] ), 0, 2000 ) );
+            }
+        }
+        // Seconds since the last interaction. A tracker from before the idle
+        // limit never sends it: its page-load request (the only one carrying
+        // page_id / visitor / product) still means someone just opened a
+        // page, while its recurring pings say nothing and pass null.
+        if ( isset( $_POST['idle'] ) ) {
+            $idle = absint( wp_unslash( $_POST['idle'] ) );
+        } elseif ( ! empty( $_POST['page_id'] ) || ! empty( $_POST['visitor'] ) || ! empty( $_POST['product'] ) ) {
+            $idle = 0;
+        } else {
+            $idle = null;
+        }
+        // The page's post or term, named on the dashboard. Absent from pages
+        // cached with an older tracker, which then show their address.
+        $page_ref = '';
+        if ( isset( $_POST['live_page'] ) && is_string( $_POST['live_page'] ) ) {
+            $raw_ref = wp_unslash( $_POST['live_page'] );
+            if ( preg_match( '/^(?:(?:post|term):[1-9][0-9]{0,18}|front)$/', $raw_ref ) ) {
+                $page_ref = $raw_ref;
+            }
+        }
+        $done['live']   = brikpanel_record_live_visitor( $page_url, false, $entry, $idle, $page_ref );
     }
 
     // 2) Page-view counter (fires on every page view by design).
@@ -138,6 +178,17 @@ add_action( 'wp_ajax_brikpanel_unified_track', 'brikpanel_ajax_unified_track' );
  * carrying no visitor-specific value — and decides for itself, in the
  * browser, whether it may run. The two values it needs for that are
  * site-level settings, identical for every visitor of the page.
+ *
+ * Idle limit: the script remembers when someone last touched the page (a
+ * pointer, key, wheel, touch, click or page scroll; events a script fires
+ * and a pointer that did not move are ignored, so a self-scrolling slider
+ * cannot keep a forgotten tab alive) and sends that age with every live ping.
+ * After BRIKPANEL_VISITOR_IDLE_TIMEOUT without any, it stops pinging. The
+ * next interaction pings at once and restarts the interval, which replaces a
+ * scheduled ping instead of adding one. Becoming visible again, and coming
+ * back from the back/forward cache, count as interaction. The listeners are
+ * attached in start(), so a page still waiting for consent listens to
+ * nothing and sends nothing.
  */
 function brikpanel_unified_tracker_js() {
     if ( is_admin() || wp_doing_ajax() ) {
@@ -173,11 +224,17 @@ function brikpanel_unified_tracker_js() {
         : [ 'id' => (int) get_the_ID(), 'type' => 'post' ];
     $page_id          = (int) $view['id'];
     $page_type        = (string) $view['type'];
+    // What the Live list calls this page: its post or term, or the front page
+    // when that is a list of latest posts with no post of its own.
+    $live_page        = $page_id > 0 ? $page_type . ':' . $page_id : ( is_front_page() ? 'front' : '' );
     $ping_interval_ms = ( function_exists( 'brikpanel_live_ping_interval' ) ? brikpanel_live_ping_interval() : 30 ) * 1000;
+    $idle_ms          = ( function_exists( 'brikpanel_live_idle_timeout' ) ? brikpanel_live_idle_timeout() : 30 * MINUTE_IN_SECONDS ) * 1000;
     // Site-level settings, not visitor state — safe to bake into cached HTML.
     $require_consent  = function_exists( 'brikpanel_consent_required' ) && brikpanel_consent_required();
     $consent_cat      = function_exists( 'brikpanel_consent_category' ) ? brikpanel_consent_category() : 'statistics';
     $consent_cookie   = defined( 'BRIKPANEL_CONSENT_COOKIE' ) ? BRIKPANEL_CONSENT_COOKIE : 'brikpanel_consent';
+    // "Traffic source in Live view": site-level, so safe in cached HTML too.
+    $live_source      = ! function_exists( 'brikpanel_live_traffic_source_enabled' ) || brikpanel_live_traffic_source_enabled();
     ?>
     <script>
     (function() {
@@ -187,6 +244,12 @@ function brikpanel_unified_tracker_js() {
         var isProduct   = <?php echo $is_product ? 'true' : 'false'; ?>;
         var pageId      = <?php echo (int) $page_id; ?>;
         var pageType    = "<?php echo esc_js( $page_type ); ?>";
+        var LIVE_PAGE   = "<?php echo esc_js( $live_page ); ?>";
+
+        // Where this visit came from, for the Live visitors list.
+        var LIVE_SOURCE = <?php echo $live_source ? 'true' : 'false'; ?>;
+        var ENTRY_KEY   = 'brikpanel_entry_src';
+        var entry       = null;
 
         // Consent gate. When false this whole block behaves exactly as it did
         // before 3.2.48; when true nothing is sent, read or written until the
@@ -199,10 +262,70 @@ function brikpanel_unified_tracker_js() {
         var timer     = null;
         var forgotten = false;
 
+        // Idle limit: see the PHP docblock of brikpanel_unified_tracker_js().
+        var INTERVAL_MS = <?php echo (int) $ping_interval_ms; ?>;
+        var IDLE_MS     = <?php echo (int) $idle_ms; ?>;
+        var listening   = false;
+        var lastActive  = Date.now();
+        var lastX = null, lastY = null;
+
+        function idleFor() {
+            return Date.now() - lastActive;
+        }
+
         function buildLive(fd) {
             fd.append('live', '1');
             fd.append('page_url', window.location.href);
+            fd.append('idle', String(Math.max(0, Math.floor(idleFor() / 1000))));
+            // Which page this is, so the Live list can show its name. Not
+            // page_id: that one counts a page view, once per page load.
+            if (LIVE_PAGE) fd.append('live_page', LIVE_PAGE);
             if (REQUIRE_CONSENT) fd.append('consent', '1');
+            // Sent with every ping, not once: the live row is rewritten on each
+            // ping and can expire while the tab sits in the background.
+            if (entry) {
+                fd.append('src_ref', entry.r || '');
+                fd.append('src_url', entry.u || '');
+            }
+        }
+
+        // The visit's entry: the referring page and the address it landed on
+        // (which carries any campaign tags). Remembered for this tab, so every
+        // later page can still say where the visitor came from. A new entry
+        // starts when there is none yet, when the address carries a campaign
+        // or ad-click tag, or when the visitor comes back from another site
+        // after half an hour away. A mid-visit return from another site (a
+        // payment page, say) keeps the original source. With nothing stored
+        // and a referrer from this very site (consent given on a later page)
+        // the source is unknown, so nothing is sent. Runs from start() only,
+        // so nothing is stored before the visitor allows analytics.
+        function captureEntry() {
+            if (!LIVE_SOURCE) {
+                try { sessionStorage.removeItem(ENTRY_KEY); } catch (e) {}
+                return null;
+            }
+            var now = Date.now(), saved = null;
+            try { saved = JSON.parse(sessionStorage.getItem(ENTRY_KEY) || 'null'); } catch (e) {}
+            if (!saved || typeof saved !== 'object') saved = null;
+            var ref = '', refHost = '', here = '';
+            try {
+                ref = document.referrer || '';
+                here = window.location.hostname.replace(/^www\./, '');
+                if (ref) refHost = new URL(ref).hostname.replace(/^www\./, '');
+            } catch (e) {}
+            var external = !!refHost && refHost !== here && refHost.slice(-(here.length + 1)) !== '.' + here;
+            var tagged = /[?&](utm_[a-z]+|gclid|gclsrc|gbraid|wbraid|msclkid|fbclid|ttclid)=/i.test(window.location.search || '');
+            var idle = !saved || !saved.t || (now - saved.t) > 1800000;
+            if (!saved || tagged || (external && idle)) {
+                if (!saved && !tagged && ref && !external) return null;
+                saved = {
+                    r: external ? String(ref).slice(0, 1000) : '',
+                    u: String(window.location.href).slice(0, 2000)
+                };
+            }
+            saved.t = now;
+            try { sessionStorage.setItem(ENTRY_KEY, JSON.stringify(saved)); } catch (e) {}
+            return saved;
         }
 
         function readCookie(name) {
@@ -301,6 +424,7 @@ function brikpanel_unified_tracker_js() {
         // No exit beacon: the Live widget expires idle visitors on its own.
         function pingLive() {
             if (document.visibilityState === 'hidden') return;
+            if (idleFor() >= IDLE_MS) return;
             var fd = new FormData();
             fd.append('action', 'brikpanel_unified_track');
             buildLive(fd);
@@ -332,6 +456,7 @@ function brikpanel_unified_tracker_js() {
                     if (k && /^brikpanel_(visitor|product)_viewed_/.test(k)) return true;
                 }
             } catch (e) {}
+            try { if (sessionStorage.getItem(ENTRY_KEY)) return true; } catch (e) {}
             return false;
         }
 
@@ -346,6 +471,8 @@ function brikpanel_unified_tracker_js() {
                 }
                 for (var j = 0; j < keys.length; j++) localStorage.removeItem(keys[j]);
             } catch (e) {}
+            entry = null;
+            try { sessionStorage.removeItem(ENTRY_KEY); } catch (e) {}
         }
 
         // Ask the server to expire our cookies and drop this browser from the
@@ -362,6 +489,42 @@ function brikpanel_unified_tracker_js() {
             }).catch(function() {});
         }
 
+        // Someone touched the page: back from idle, ping now and restart the interval.
+        function markActive(e) {
+            if (e && e.isTrusted === false) return;
+            if (e && e.type === 'pointermove') {
+                if (e.screenX === lastX && e.screenY === lastY) return;
+                lastX = e.screenX; lastY = e.screenY;
+            }
+            var wasIdle = idleFor() >= IDLE_MS;
+            lastActive = Date.now();
+            if (wasIdle && running && document.visibilityState !== 'hidden') {
+                pingLive();
+                if (timer) clearInterval(timer);
+                timer = setInterval(pingLive, INTERVAL_MS);
+            }
+        }
+
+        function markShown(e) {
+            if (document.visibilityState === 'hidden') return;
+            if (e && e.type === 'pageshow' && !e.persisted) return;
+            markActive(e);
+        }
+
+        function listen() {
+            if (listening) return;
+            listening = true;
+            var types = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'click'];
+            for (var i = 0; i < types.length; i++) {
+                document.addEventListener(types[i], markActive, { capture: true, passive: true });
+            }
+            // Page scroll only: a box that scrolls itself must not count.
+            window.addEventListener('scroll', markActive, { passive: true });
+            document.addEventListener('visibilitychange', markShown);
+            document.addEventListener('prerenderingchange', markShown);
+            window.addEventListener('pageshow', markShown);
+        }
+
         // Idempotent: consent platforms routinely fire their change event more
         // than once, and the jQuery fallback below can double up with the
         // native listener.
@@ -372,10 +535,13 @@ function brikpanel_unified_tracker_js() {
             // Nothing is sent for it, so a scripted crawl that renders the
             // page cannot become a visitor, a live entry or a product view.
             try { if (navigator.webdriver === true) return; } catch (e) {}
-            running   = true;
-            forgotten = false;
+            running    = true;
+            forgotten  = false;
+            lastActive = Date.now();
+            listen();
+            entry      = captureEntry();
             sendCombined();
-            timer = setInterval(pingLive, <?php echo (int) $ping_interval_ms; ?>);
+            timer = setInterval(pingLive, INTERVAL_MS);
         }
 
         // Clearing the interval is the point: without it a withdrawal would

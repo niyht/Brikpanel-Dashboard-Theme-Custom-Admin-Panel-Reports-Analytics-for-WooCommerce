@@ -88,13 +88,19 @@ class Brikpanel_Stock_Orders {
 		wp_enqueue_style(
 			'brikpanel-stock-orders',
 			$base . 'brikpanel-stock-orders.css',
-			[],
+			array_merge(
+				function_exists( 'brikpanel_fit_table_dep' ) ? brikpanel_fit_table_dep( 'style' ) : [],
+				function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'tiles', 'ui' ], 'style' ) : []
+			),
 			file_exists( $path . 'brikpanel-stock-orders.css' ) ? filemtime( $path . 'brikpanel-stock-orders.css' ) : BRIKPANEL_VERSION
 		);
 		wp_enqueue_script(
 			'brikpanel-stock-orders',
 			$base . 'brikpanel-stock-orders.js',
-			[],
+			array_merge(
+				function_exists( 'brikpanel_fit_table_dep' ) ? brikpanel_fit_table_dep() : [],
+				function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'tiles', 'format' ] ) : []
+			),
 			file_exists( $path . 'brikpanel-stock-orders.js' ) ? filemtime( $path . 'brikpanel-stock-orders.js' ) : BRIKPANEL_VERSION,
 			true
 		);
@@ -136,7 +142,7 @@ class Brikpanel_Stock_Orders {
 		$new_url  = admin_url( 'admin.php?page=' . self::PAGE_SLUG . '&action=new' );
 		$ven_url  = admin_url( 'admin.php?page=' . Brikpanel_Vendors::PAGE_SLUG );
 		?>
-		<div class="wrap brikpanel-so-wrap" id="brikpanel-stock-orders">
+		<div class="wrap brikpanel-so-wrap brikpanel-shell__page" id="brikpanel-stock-orders">
 			<div class="brikpanel-so-header">
 				<div class="brikpanel-so-header-left">
 					<h1><?php esc_html_e( 'Stock Orders', 'brikpanel' ); ?></h1>
@@ -147,9 +153,10 @@ class Brikpanel_Stock_Orders {
 					<a class="brikpanel-so-btn brikpanel-so-btn-primary" href="<?php echo esc_url( $new_url ); ?>">+ <?php esc_html_e( 'New stock order', 'brikpanel' ); ?></a>
 				</div>
 			</div>
+			<?php brikpanel_header_end(); ?>
 
 			<!-- Summary -->
-			<div class="brikpanel-so-summary" id="brikpanel-so-summary">
+			<div class="brikpanel-so-summary" id="brikpanel-so-summary" data-bp-tiles>
 				<div class="brikpanel-so-summary-card">
 					<div class="brikpanel-so-summary-label"><?php esc_html_e( 'Open POs', 'brikpanel' ); ?></div>
 					<div class="brikpanel-so-summary-value" id="brikpanel-so-open">—</div>
@@ -166,14 +173,14 @@ class Brikpanel_Stock_Orders {
 
 			<!-- Filters -->
 			<div class="brikpanel-so-card brikpanel-so-filters">
-				<div class="brikpanel-so-filter-row">
-					<div class="brikpanel-so-field brikpanel-so-field-grow">
+				<div class="brikpanel-so-filter-row brikpanel-filter-bar">
+					<div class="brikpanel-so-field brikpanel-field brikpanel-so-field-grow">
 						<label for="brikpanel-so-search"><?php esc_html_e( 'Search', 'brikpanel' ); ?></label>
-						<input type="search" id="brikpanel-so-search" placeholder="<?php esc_attr_e( 'Reference or supplier…', 'brikpanel' ); ?>" autocomplete="off" />
+						<input type="search" class="brikpanel-control" id="brikpanel-so-search" placeholder="<?php esc_attr_e( 'Reference or supplier…', 'brikpanel' ); ?>" autocomplete="off" />
 					</div>
-					<div class="brikpanel-so-field">
+					<div class="brikpanel-so-field brikpanel-field">
 						<label for="brikpanel-so-status-filter"><?php esc_html_e( 'Status', 'brikpanel' ); ?></label>
-						<select id="brikpanel-so-status-filter">
+						<select class="brikpanel-control" id="brikpanel-so-status-filter">
 							<option value=""><?php esc_html_e( 'All', 'brikpanel' ); ?></option>
 							<option value="<?php echo esc_attr( self::STATUS_DRAFT ); ?>"><?php esc_html_e( 'Draft', 'brikpanel' ); ?></option>
 							<option value="<?php echo esc_attr( self::STATUS_ORDERED ); ?>"><?php esc_html_e( 'Ordered', 'brikpanel' ); ?></option>
@@ -182,13 +189,13 @@ class Brikpanel_Stock_Orders {
 							<option value="<?php echo esc_attr( self::STATUS_CANCELLED ); ?>"><?php esc_html_e( 'Cancelled', 'brikpanel' ); ?></option>
 						</select>
 					</div>
-					<div class="brikpanel-so-field">
+					<div class="brikpanel-so-field brikpanel-field">
 						<label for="brikpanel-so-from"><?php esc_html_e( 'From', 'brikpanel' ); ?></label>
-						<input type="date" id="brikpanel-so-from" />
+						<input type="date" class="brikpanel-control" id="brikpanel-so-from" />
 					</div>
-					<div class="brikpanel-so-field">
+					<div class="brikpanel-so-field brikpanel-field">
 						<label for="brikpanel-so-to"><?php esc_html_e( 'To', 'brikpanel' ); ?></label>
-						<input type="date" id="brikpanel-so-to" />
+						<input type="date" class="brikpanel-control" id="brikpanel-so-to" />
 					</div>
 				</div>
 			</div>
@@ -196,7 +203,7 @@ class Brikpanel_Stock_Orders {
 			<!-- Table -->
 			<div class="brikpanel-so-card brikpanel-so-table-card">
 				<div class="brikpanel-so-table-wrap">
-					<table class="brikpanel-so-table" id="brikpanel-so-table">
+					<table class="brikpanel-so-table brikpanel-fit-table" id="brikpanel-so-table">
 						<thead>
 							<tr>
 								<th><?php esc_html_e( 'Reference', 'brikpanel' ); ?></th>
@@ -231,7 +238,7 @@ class Brikpanel_Stock_Orders {
 			edit_url: <?php echo wp_json_encode( admin_url( 'admin.php?page=' . self::PAGE_SLUG . '&action=edit&id=' ) ); ?>,
 			i18n: {
 				confirm_delete: <?php echo wp_json_encode( __( 'Delete this stock order? This cannot be undone.', 'brikpanel' ) ); ?>,
-				no_orders:      <?php echo wp_json_encode( __( 'No stock orders yet — click "New stock order" to create one.', 'brikpanel' ) ); ?>,
+				no_orders:      <?php echo wp_json_encode( __( 'No stock orders yet. Click "New stock order" to create one.', 'brikpanel' ) ); ?>,
 				error:          <?php echo wp_json_encode( __( 'Something went wrong.', 'brikpanel' ) ); ?>,
 				draft:          <?php echo wp_json_encode( __( 'Draft', 'brikpanel' ) ); ?>,
 				ordered:        <?php echo wp_json_encode( __( 'Ordered', 'brikpanel' ) ); ?>,
@@ -240,6 +247,7 @@ class Brikpanel_Stock_Orders {
 				cancelled:      <?php echo wp_json_encode( __( 'Cancelled', 'brikpanel' ) ); ?>,
 				open:           <?php echo wp_json_encode( __( 'Open', 'brikpanel' ) ); ?>,
 				delete:         <?php echo wp_json_encode( __( 'Delete', 'brikpanel' ) ); ?>,
+				loading:        <?php echo wp_json_encode( __( 'Loading…', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>
@@ -283,7 +291,7 @@ class Brikpanel_Stock_Orders {
 
 		$ref_prefix = (string) get_option( 'brikpanel_po_reference_prefix', 'PO' );
 		?>
-		<div class="wrap brikpanel-so-wrap brikpanel-so-editor-wrap" id="brikpanel-stock-orders">
+		<div class="wrap brikpanel-so-wrap brikpanel-so-editor-wrap brikpanel-shell__page" id="brikpanel-stock-orders">
 			<div class="brikpanel-so-header">
 				<div class="brikpanel-so-header-left">
 					<a class="brikpanel-so-back" href="<?php echo esc_url( $back_url ); ?>">&larr; <?php esc_html_e( 'Stock orders', 'brikpanel' ); ?></a>
@@ -317,6 +325,7 @@ class Brikpanel_Stock_Orders {
 					<?php endif; ?>
 				</div>
 			</div>
+			<?php brikpanel_header_end(); ?>
 
 			<form id="brikpanel-so-form" autocomplete="off" data-id="<?php echo esc_attr( (string) ( $po ? $po->id : 0 ) ); ?>" <?php echo $is_locked ? 'data-locked="1"' : ''; ?>>
 				<!-- Header card: vendor, reference, dates -->
@@ -326,10 +335,10 @@ class Brikpanel_Stock_Orders {
 					</header>
 					<div class="brikpanel-so-card__body">
 						<div class="brikpanel-so-grid">
-							<div class="brikpanel-so-field">
+							<div class="brikpanel-so-field brikpanel-field">
 								<label for="brikpanel-so-vendor"><?php esc_html_e( 'Supplier', 'brikpanel' ); ?> <span class="brikpanel-so-req">*</span></label>
-								<select id="brikpanel-so-vendor" required>
-									<option value="0"><?php esc_html_e( '— Select supplier —', 'brikpanel' ); ?></option>
+								<select class="brikpanel-control" id="brikpanel-so-vendor" required>
+									<option value="0"><?php esc_html_e( 'Select supplier', 'brikpanel' ); ?></option>
 									<?php
 									$current_vendor_id = $po ? (int) $po->vendor_id : (int) $preselect_vendor_id;
 									foreach ( $vendors as $vid => $vname ) :
@@ -338,39 +347,39 @@ class Brikpanel_Stock_Orders {
 									<?php endforeach; ?>
 								</select>
 							</div>
-							<div class="brikpanel-so-field">
+							<div class="brikpanel-so-field brikpanel-field">
 								<label for="brikpanel-so-reference"><?php esc_html_e( 'Reference', 'brikpanel' ); ?></label>
-								<input type="text" id="brikpanel-so-reference" maxlength="40" value="<?php echo esc_attr( $po ? $po->reference : '' ); ?>" placeholder="<?php echo esc_attr( $ref_prefix . '-' . gmdate( 'Y' ) . '-…' ); ?>" />
+								<input type="text" class="brikpanel-control" id="brikpanel-so-reference" maxlength="40" value="<?php echo esc_attr( $po ? $po->reference : '' ); ?>" placeholder="<?php echo esc_attr( $ref_prefix . '-' . brikpanel_store_date( 'Y' ) . '-…' ); ?>" />
 							</div>
-							<div class="brikpanel-so-field">
+							<div class="brikpanel-so-field brikpanel-field">
 								<label for="brikpanel-so-order-date"><?php esc_html_e( 'Order date', 'brikpanel' ); ?></label>
-								<input type="date" id="brikpanel-so-order-date" value="<?php echo esc_attr( $po && $po->order_date ? $po->order_date : '' ); ?>" />
+								<input type="date" class="brikpanel-control" id="brikpanel-so-order-date" value="<?php echo esc_attr( $po && $po->order_date ? $po->order_date : '' ); ?>" />
 							</div>
-							<div class="brikpanel-so-field">
+							<div class="brikpanel-so-field brikpanel-field">
 								<label for="brikpanel-so-expected-date"><?php esc_html_e( 'Expected date', 'brikpanel' ); ?></label>
-								<input type="date" id="brikpanel-so-expected-date" value="<?php echo esc_attr( $po && $po->expected_date ? $po->expected_date : '' ); ?>" />
+								<input type="date" class="brikpanel-control" id="brikpanel-so-expected-date" value="<?php echo esc_attr( $po && $po->expected_date ? $po->expected_date : '' ); ?>" />
 							</div>
-							<div class="brikpanel-so-field">
+							<div class="brikpanel-so-field brikpanel-field">
 								<label for="brikpanel-so-received-date"><?php esc_html_e( 'Received date', 'brikpanel' ); ?></label>
-								<input type="date" id="brikpanel-so-received-date" value="<?php echo esc_attr( $po && $po->received_date ? $po->received_date : '' ); ?>" />
+								<input type="date" class="brikpanel-control" id="brikpanel-so-received-date" value="<?php echo esc_attr( $po && $po->received_date ? $po->received_date : '' ); ?>" />
 							</div>
-							<div class="brikpanel-so-field">
+							<div class="brikpanel-so-field brikpanel-field">
 								<label for="brikpanel-so-shipping"><?php esc_html_e( 'Shipping fee', 'brikpanel' ); ?></label>
 								<div class="brikpanel-so-input-group">
 									<span class="brikpanel-so-prefix"><?php echo esc_html( $currency ); ?></span>
 									<input type="number" id="brikpanel-so-shipping" min="0" step="0.01" value="<?php echo esc_attr( $po ? (string) $po->shipping_fee : '0' ); ?>" />
 								</div>
 							</div>
-							<div class="brikpanel-so-field">
+							<div class="brikpanel-so-field brikpanel-field">
 								<label for="brikpanel-so-tax"><?php esc_html_e( 'Tax', 'brikpanel' ); ?></label>
 								<div class="brikpanel-so-input-group">
 									<span class="brikpanel-so-prefix"><?php echo esc_html( $currency ); ?></span>
 									<input type="number" id="brikpanel-so-tax" min="0" step="0.01" value="<?php echo esc_attr( $po ? (string) $po->tax : '0' ); ?>" />
 								</div>
 							</div>
-							<div class="brikpanel-so-field brikpanel-so-field-full">
+							<div class="brikpanel-so-field brikpanel-field brikpanel-so-field-full">
 								<label for="brikpanel-so-notes"><?php esc_html_e( 'Notes', 'brikpanel' ); ?></label>
-								<textarea id="brikpanel-so-notes" rows="2" placeholder="<?php esc_attr_e( 'Internal notes — payment terms, container ID…', 'brikpanel' ); ?>"><?php echo esc_textarea( $po ? $po->notes : '' ); ?></textarea>
+								<textarea class="brikpanel-control" id="brikpanel-so-notes" rows="2" placeholder="<?php esc_attr_e( 'Internal notes: payment terms, container ID…', 'brikpanel' ); ?>"><?php echo esc_textarea( $po ? $po->notes : '' ); ?></textarea>
 							</div>
 						</div>
 					</div>
@@ -380,16 +389,16 @@ class Brikpanel_Stock_Orders {
 				<div class="brikpanel-so-card brikpanel-so-editor-card">
 					<header class="brikpanel-so-card__header">
 						<h2><?php esc_html_e( 'Items', 'brikpanel' ); ?></h2>
-						<p class="brikpanel-so-card__desc"><?php esc_html_e( 'Add the products you\'re ordering. Variations are supported — the picker will list each variation with its attributes.', 'brikpanel' ); ?></p>
+						<p class="brikpanel-so-card__desc"><?php esc_html_e( 'Add the products you\'re ordering. Variations are supported: the picker lists each variation with its attributes.', 'brikpanel' ); ?></p>
 					</header>
 					<div class="brikpanel-so-card__body">
 						<div class="brikpanel-so-product-picker">
-							<input type="text" id="brikpanel-so-product-search" placeholder="<?php esc_attr_e( 'Search products by name or SKU…', 'brikpanel' ); ?>" autocomplete="off" />
+							<input type="text" class="brikpanel-control" id="brikpanel-so-product-search" placeholder="<?php esc_attr_e( 'Search products by name or SKU…', 'brikpanel' ); ?>" autocomplete="off" />
 							<div class="brikpanel-so-suggestions" id="brikpanel-so-suggestions" hidden></div>
 						</div>
 
 						<div class="brikpanel-so-items-wrap">
-							<table class="brikpanel-so-items" id="brikpanel-so-items">
+							<table class="brikpanel-so-items brikpanel-fit-table" id="brikpanel-so-items">
 								<thead>
 									<tr>
 										<th><?php esc_html_e( 'Product', 'brikpanel' ); ?></th>
@@ -402,7 +411,7 @@ class Brikpanel_Stock_Orders {
 								</thead>
 								<tbody id="brikpanel-so-items-tbody">
 									<?php if ( empty( $items ) ) : ?>
-										<tr class="brikpanel-so-items-empty"><td colspan="6"><?php esc_html_e( 'No items yet — search above to add a product.', 'brikpanel' ); ?></td></tr>
+										<tr class="brikpanel-so-items-empty"><td colspan="6"><?php esc_html_e( 'No items yet. Search above to add a product.', 'brikpanel' ); ?></td></tr>
 									<?php endif; ?>
 								</tbody>
 							</table>
@@ -428,7 +437,7 @@ class Brikpanel_Stock_Orders {
 			currency:       <?php echo wp_json_encode( $currency ); ?>,
 			back_url:       <?php echo wp_json_encode( esc_url_raw( $back_url ) ); ?>,
 			ref_prefix:     <?php echo wp_json_encode( $ref_prefix ); ?>,
-			items_seed:     <?php echo wp_json_encode( $this->seed_items_for_js( $items ) ); ?>,
+			items_seed:     <?php echo wp_json_encode( $this->seed_items_for_js( $items ), JSON_HEX_TAG | JSON_HEX_AMP ); ?>,
 			po_id:          <?php echo wp_json_encode( $po ? (int) $po->id : 0 ); ?>,
 			preselect_vid:  <?php echo wp_json_encode( (int) ( $is_new ? $preselect_vendor_id : 0 ) ); ?>,
 			locked:         <?php echo wp_json_encode( (bool) $is_locked ); ?>,
@@ -442,8 +451,9 @@ class Brikpanel_Stock_Orders {
 				no_results:      <?php echo wp_json_encode( __( 'No products found.', 'brikpanel' ) ); ?>,
 				remove:          <?php echo wp_json_encode( __( 'Remove', 'brikpanel' ) ); ?>,
 				prefilled:       <?php echo wp_json_encode( __( 'Defaults applied from supplier profile.', 'brikpanel' ) ); ?>,
-				empty_items:     <?php echo wp_json_encode( __( 'No items yet — search above to add a product.', 'brikpanel' ) ); ?>,
+				empty_items:     <?php echo wp_json_encode( __( 'No items yet. Search above to add a product.', 'brikpanel' ) ); ?>,
 				variation_label: <?php echo wp_json_encode( _x( 'Variation #', 'prefix before a variation id, e.g. "Variation #12"', 'brikpanel' ) ); ?>,
+				sku:             <?php echo wp_json_encode( __( 'SKU', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>
@@ -457,7 +467,8 @@ class Brikpanel_Stock_Orders {
 				'id'           => (int) $r->id,
 				'product_id'   => (int) $r->product_id,
 				'variation_id' => (int) $r->variation_id,
-				'title'        => $r->title,
+				// Lines saved before names were decoded still hold "&amp;".
+				'title'        => brikpanel_plain_name( $r->title ),
 				'sku'          => $r->sku,
 				'qty_ordered'  => (float) $r->qty_ordered,
 				'qty_received' => (float) $r->qty_received,
@@ -532,7 +543,8 @@ class Brikpanel_Stock_Orders {
 		$rows = $wpdb->get_results( $wpdb->prepare( $list_sql, $list_params ) ); // phpcs:ignore
 
 		// Summary across all (not paginated)
-		$cutoff = gmdate( 'Y-m-d', strtotime( '-90 days' ) );
+		// SITE-LOCAL DATE column.
+		$cutoff = brikpanel_store_date( 'Y-m-d', '-90 days' );
 		$summary = $wpdb->get_row( $wpdb->prepare(
 			"SELECT
 				COALESCE( SUM( CASE WHEN status IN ('ordered','partially_received') THEN 1 ELSE 0 END ), 0 ) AS open_count,
@@ -548,7 +560,7 @@ class Brikpanel_Stock_Orders {
 				'id'            => (int) $r->id,
 				'reference'     => $r->reference,
 				'vendor_id'     => (int) $r->vendor_id,
-				'vendor_name'   => $r->vendor_name ?: __( '— Unassigned —', 'brikpanel' ),
+				'vendor_name'   => $r->vendor_name ?: __( 'Unassigned', 'brikpanel' ),
 				'status'        => $r->status,
 				'status_label'  => $this->status_label( $r->status ),
 				'order_date'    => $r->order_date,
@@ -857,7 +869,7 @@ class Brikpanel_Stock_Orders {
 				$results[]    = [
 					'product_id'   => $parent_id,
 					'variation_id' => $product->get_id(),
-					'title'        => ( $parent ? $parent->get_name() : '' ) . ' — ' . wp_strip_all_tags( wc_get_formatted_variation( $product, true ) ),
+					'title'        => ( $parent ? brikpanel_plain_label( $parent->get_name() ) : '' ) . ', ' . brikpanel_plain_label( wc_get_formatted_variation( $product, true ) ),
 					'sku'          => $product->get_sku(),
 					'cost'         => $this->resolve_existing_cost( $product ),
 				];
@@ -876,7 +888,7 @@ class Brikpanel_Stock_Orders {
 					$results[]    = [
 						'product_id'   => $product->get_id(),
 						'variation_id' => $variation->get_id(),
-						'title'        => $product->get_name() . ' — ' . wp_strip_all_tags( wc_get_formatted_variation( $variation, true ) ),
+						'title'        => brikpanel_plain_label( $product->get_name() ) . ', ' . brikpanel_plain_label( wc_get_formatted_variation( $variation, true ) ),
 						'sku'          => $variation->get_sku(),
 						'cost'         => $this->resolve_existing_cost( $variation ),
 					];
@@ -890,7 +902,7 @@ class Brikpanel_Stock_Orders {
 				$results[]    = [
 					'product_id'   => $product->get_id(),
 					'variation_id' => 0,
-					'title'        => $product->get_name(),
+					'title'        => brikpanel_plain_label( $product->get_name() ),
 					'sku'          => $product->get_sku(),
 					'cost'         => $this->resolve_existing_cost( $product ),
 				];
@@ -1039,9 +1051,14 @@ class Brikpanel_Stock_Orders {
 
 		$decimal = wc_format_decimal( $new_cost, '' );
 
-		// WC native COGS (9.5+).
+		// WC native COGS (9.5+). The setter only runs while WooCommerce's COGS
+		// feature is on (off, it stores nothing and writes to the error log).
+		// The save stays either way, as before: it fires the product update
+		// hooks (Sheets push, caches) on a receive that did not touch stock.
 		if ( method_exists( $product, 'set_cogs_value' ) ) {
-			$product->set_cogs_value( $decimal !== '' ? $decimal : null );
+			if ( brikpanel_wc_cogs_enabled( $product ) ) {
+				$product->set_cogs_value( $decimal !== '' ? $decimal : null );
+			}
 			$product->save();
 		}
 		// Write the whole cost-key set (BrikPanel legacy + any third-party cost
@@ -1088,7 +1105,7 @@ class Brikpanel_Stock_Orders {
 			$v_t         = $wpdb->prefix . Brikpanel_Vendors::TABLE;
 			$vendor_name = (string) $wpdb->get_var( $wpdb->prepare( "SELECT name FROM {$v_t} WHERE id = %d", (int) $po->vendor_id ) ); // phpcs:ignore
 		}
-		$description = sprintf( '%s — %s', $ref, $vendor_name !== '' ? $vendor_name : __( 'Stock order', 'brikpanel' ) );
+		$description = $ref . ' · ' . ( $vendor_name !== '' ? $vendor_name : __( 'Stock order', 'brikpanel' ) );
 		$amount      = (float) $po->total;
 		$date        = $po->received_date ?: current_time( 'Y-m-d' );
 
@@ -1137,7 +1154,9 @@ class Brikpanel_Stock_Orders {
 		global $wpdb;
 		$prefix = (string) get_option( 'brikpanel_po_reference_prefix', 'PO' );
 		$prefix = $prefix !== '' ? $prefix : 'PO';
-		$year   = gmdate( 'Y' );
+		// The store's year: on 31 December a UTC year would stamp a new PO with
+		// the previous year for the first hours of the merchant's new year.
+		$year   = brikpanel_store_date( 'Y' );
 		$so_t   = $wpdb->prefix . self::TABLE;
 		// Find the highest sequential number used this year for this prefix.
 		$pattern = $wpdb->esc_like( $prefix . '-' . $year . '-' ) . '%';
@@ -1155,6 +1174,6 @@ class Brikpanel_Stock_Orders {
 		if ( function_exists( 'wc_price' ) ) {
 			return html_entity_decode( wp_strip_all_tags( wc_price( (float) $amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		}
-		return number_format_i18n( (float) $amount, 2 );
+		return brikpanel_number( (float) $amount, 2 );
 	}
 }

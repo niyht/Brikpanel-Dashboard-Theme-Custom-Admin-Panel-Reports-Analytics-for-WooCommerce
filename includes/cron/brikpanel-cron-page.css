@@ -8,7 +8,7 @@
 	--cron-card:           #ffffff;
 	--cron-text:           #303030;
 	--cron-text-secondary: #616161;
-	--cron-text-muted:     #8a8a8a;
+	--cron-text-placeholder:     #8a8a8a;
 	--cron-border:         #e3e3e3;
 	--cron-input-border:   #8a8a8a;
 	--cron-input-focus:    #303030;
@@ -24,10 +24,10 @@
 	--cron-radius-card:    0.75rem;
 }
 
+/* Width, gutters and top spacing: the wide page shell
+   (front-end/shared/brikpanel-ui.css, `brikpanel-shell__page`). */
 .brikpanel-cron-wrap {
-	max-width: 1100px;
-	margin: 0 auto;
-	padding: 0 0 2rem;
+	padding-bottom: 2rem;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	color: var(--cron-text);
 	box-sizing: border-box;
@@ -44,16 +44,17 @@
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
-	padding: 1.5rem 0 1rem;
+	padding: 0 0 1rem;
 	gap: 1rem;
 	flex-wrap: wrap;
 }
 
 .brikpanel-cron-header h1 {
 	margin: 0 0 0.25rem;
-	font-size: 1.125rem;
-	font-weight: 600;
-	line-height: 1.3;
+	font-size: var(--brikpanel-title-size, 1.125rem);
+	font-weight: var(--brikpanel-title-weight, 600);
+	line-height: var(--brikpanel-title-line, 1.3);
+	padding: 0;
 	color: var(--cron-text);
 }
 
@@ -92,11 +93,35 @@
 }
 
 /* ── KPI cards ──────────────────────────────────────────────────────────── */
+/* Summary tiles (front-end/shared/brikpanel-tiles.js sets the column count):
+   an auto-fit grid of 180px tiles went 3 + 1 at mid widths and one tall card
+   per row on a phone. The template below is only the no-script look. */
 .brikpanel-cron-kpis {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 	gap: 1rem;
 	margin-bottom: 1rem;
+}
+
+.brikpanel-cron-kpis.is-tiles-list {
+	gap: 0.5rem;
+}
+
+.brikpanel-cron-kpis.is-tiles-list .brikpanel-cron-kpi {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.625rem 1rem;
+}
+
+.brikpanel-cron-kpis.is-tiles-list .brikpanel-cron-kpi-label {
+	margin-bottom: 0;
+}
+
+.brikpanel-cron-kpis.is-tiles-list .brikpanel-cron-kpi-value {
+	font-size: 1rem;
+	text-align: end;
 }
 
 .brikpanel-cron-kpi {
@@ -108,11 +133,11 @@
 }
 
 .brikpanel-cron-kpi-label {
-	font-size: 0.75rem;
-	font-weight: 600;
-	color: var(--cron-text-secondary);
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	font-size: var(--brikpanel-label-size, 0.8125rem);
+	font-weight: var(--brikpanel-label-weight, 550);
+	color: #616161;
+	text-transform: var(--brikpanel-caps-case, none);
+	letter-spacing: var(--brikpanel-caps-track, normal);
 	margin-bottom: 0.375rem;
 }
 
@@ -124,64 +149,35 @@
 	font-variant-numeric: tabular-nums;
 }
 
-.brikpanel-cron-kpi[data-kpi="failed"] .brikpanel-cron-kpi-value {
+/* Coloured only when there is something to count: "Failed 0" is the good
+   state and was drawn in red (field test D5). The script sets .is-nonzero. */
+.brikpanel-cron-kpi[data-kpi="failed"].is-nonzero .brikpanel-cron-kpi-value {
 	color: var(--cron-error);
 }
 
-.brikpanel-cron-kpi[data-kpi="complete"] .brikpanel-cron-kpi-value {
+.brikpanel-cron-kpi[data-kpi="complete"].is-nonzero .brikpanel-cron-kpi-value {
 	color: var(--cron-success);
 }
 
 /* ── Filters ────────────────────────────────────────────────────────────── */
+/* Row, fields, labels and selects (with their arrow) are the shared parts in
+   front-end/shared/brikpanel-ui.css. The selects were 60px tall with no arrow
+   and Apply was pushed to the far edge (field test D5): Apply now follows the
+   boxes, and a long job name no longer sizes its box. */
 .brikpanel-cron-filters {
 	padding: 1.125rem 1.25rem;
 }
 
-.brikpanel-cron-filter-row {
-	display: flex;
-	gap: 0.75rem;
-	align-items: flex-end;
-	flex-wrap: wrap;
-}
+/* Only on a wide row: in the phone column a flex basis would become a height. */
+@media (min-width: 641px) {
+	.brikpanel-cron-filter-row .brikpanel-cron-field--status {
+		flex: 0 1 12rem;
+	}
 
-.brikpanel-cron-field {
-	display: flex;
-	flex-direction: column;
-	gap: 0.375rem;
-	min-width: 180px;
-}
-
-.brikpanel-cron-field label {
-	font-size: 0.8125rem;
-	font-weight: 600;
-	color: var(--cron-text);
-	letter-spacing: 0;
-}
-
-.brikpanel-cron-field input,
-.brikpanel-cron-field select {
-	padding: 0.625rem 0.75rem;
-	border: 1px solid var(--cron-input-border);
-	border-radius: var(--cron-radius);
-	font-size: 0.875rem;
-	color: var(--cron-text);
-	background: #fff;
-	transition: box-shadow 0.15s ease, border-color 0.15s ease;
-	min-height: 38px;
-	width: 100%;
-}
-
-.brikpanel-cron-field input:focus,
-.brikpanel-cron-field select:focus {
-	outline: none;
-	border-color: var(--cron-input-focus);
-	box-shadow: 0 0 0 1px var(--cron-input-focus);
-}
-
-.brikpanel-cron-filter-actions {
-	display: flex;
-	gap: 0.5rem;
-	margin-left: auto;
+	.brikpanel-cron-filter-row .brikpanel-cron-field--hook {
+		flex: 1 1 16rem;
+		max-width: 24rem;
+	}
 }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
@@ -254,12 +250,12 @@
 	background: #fafafa;
 	border-bottom: 1px solid var(--cron-border);
 	padding: 0.75rem 1rem;
-	font-size: 0.75rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--cron-text-secondary);
-	text-align: left;
+	font-size: var(--brikpanel-th-size, 0.75rem);
+	font-weight: var(--brikpanel-th-weight, 600);
+	text-transform: var(--brikpanel-caps-case, none);
+	letter-spacing: var(--brikpanel-caps-track, normal);
+	color: #616161;
+	text-align: start;
 	white-space: nowrap;
 }
 
@@ -292,7 +288,7 @@
 
 .brikpanel-cron-empty {
 	text-align: center;
-	color: var(--cron-text-muted);
+	color: var(--cron-text-secondary, #616161);
 	padding: 2rem 1rem !important;
 	font-size: 0.875rem;
 }
@@ -306,19 +302,98 @@
 
 .brikpanel-cron-job-cell small {
 	font-size: 0.75rem;
-	color: var(--cron-text-muted);
+	color: var(--cron-text-secondary, #616161);
 	font-family: ui-monospace, "SF Mono", Menlo, monospace;
 }
 
+/* Args preview, one line under the hook slug. It used to be its own column: a
+   280px nowrap box that could not shrink and, with the slug, pushed the row
+   buttons off the card (field test B2). Clamped rather than nowrap, so it only
+   takes the width the job column has; the full value is in its title. */
 .brikpanel-cron-args {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 1;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+	margin-top: 2px;
 	font-family: ui-monospace, "SF Mono", Menlo, monospace;
 	font-size: 0.75rem;
 	color: var(--cron-text-secondary);
-	max-width: 280px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	display: inline-block;
+}
+
+/* A reload after a row action keeps the rows, dimmed, until the new list lands. */
+.brikpanel-cron-table.is-loading > tbody {
+	opacity: 0.55;
+	pointer-events: none;
+}
+
+/* ── Stacked rows ───────────────────────────────────────────────────────────
+   brikpanel-cron-page.js adds .is-stacked when the table cannot show every
+   column inside the card. Each row becomes a card: the job on top, then small
+   label-over-value tiles, then the buttons, which may wrap and are never cut.
+   Only the generic cell rule sets display, and it comes after the row hover
+   rule above so its transparent background wins the tie. */
+.brikpanel-cron-table.is-stacked,
+.brikpanel-cron-table.is-stacked > tbody {
+	display: block;
+}
+
+.brikpanel-cron-table.is-stacked > thead {
+	display: none;
+}
+
+.brikpanel-cron-table.is-stacked > tbody > tr {
+	display: grid;
+	/* auto-fit: the two tiles share the row instead of leaving empty tracks. */
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+	gap: 0.75rem 1rem;
+	padding: 1rem 1.25rem;
+}
+
+.brikpanel-cron-table.is-stacked > tbody > tr + tr {
+	border-top: 1px solid var(--cron-border);
+}
+
+.brikpanel-cron-table.is-stacked > tbody > tr > td {
+	display: block;
+	min-width: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	overflow-wrap: anywhere;
+}
+
+@media (hover: hover) {
+	.brikpanel-cron-table.is-stacked > tbody > tr:hover {
+		background: #fafafa;
+	}
+}
+
+.brikpanel-cron-table.is-stacked td[data-bp-label]::before {
+	content: attr(data-bp-label);
+	display: block;
+	margin-bottom: 0.25rem;
+	font-size: var(--brikpanel-th-size, 0.75rem);
+	font-weight: var(--brikpanel-th-weight, 600);
+	text-transform: var(--brikpanel-caps-case, none);
+	letter-spacing: var(--brikpanel-caps-track, normal);
+	color: #616161;
+}
+
+.brikpanel-cron-table.is-stacked .brikpanel-cron-col-job,
+.brikpanel-cron-table.is-stacked .brikpanel-cron-col-actions,
+.brikpanel-cron-table.is-stacked .brikpanel-cron-empty {
+	grid-column: 1 / -1;
+}
+
+.brikpanel-cron-table.is-stacked .brikpanel-cron-row-actions {
+	justify-content: flex-start;
+	flex-wrap: wrap;
+}
+
+.brikpanel-cron-table.is-stacked .brikpanel-cron-args {
+	-webkit-line-clamp: 2;
 }
 
 /* ── Status badges ──────────────────────────────────────────────────────── */
@@ -367,14 +442,12 @@
 	color: var(--cron-text-secondary);
 }
 
-/* ── Recurring marker ───────────────────────────────────────────────────── */
-.brikpanel-cron-recurring-yes {
-	color: var(--cron-text);
-	font-weight: 550;
-}
-
-.brikpanel-cron-recurring-no {
-	color: var(--cron-text-muted);
+/* ── Recurring note (under the scheduled date) ──────────────────────────── */
+.brikpanel-cron-recurring {
+	display: block;
+	margin-top: 2px;
+	font-size: 0.75rem;
+	color: var(--cron-text-secondary, #616161);
 }
 
 /* ── Pagination ─────────────────────────────────────────────────────────── */
@@ -437,7 +510,7 @@
 	border: 0;
 	font-size: 1.5rem;
 	line-height: 1;
-	color: var(--cron-text-muted);
+	color: var(--cron-text-placeholder);
 	cursor: pointer;
 	padding: 0.25rem 0.5rem;
 }
@@ -463,7 +536,7 @@
 
 .brikpanel-cron-log-date {
 	font-family: ui-monospace, "SF Mono", Menlo, monospace;
-	color: var(--cron-text-muted);
+	color: var(--cron-text-secondary, #616161);
 	font-size: 0.75rem;
 	margin-bottom: 0.25rem;
 }

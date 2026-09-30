@@ -132,8 +132,31 @@
 		saveBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>' +
 			escHtml((isNew ? cfg.i18n.create : cfg.i18n.save) || '');
 		saveBtn.addEventListener('click', function () {
+			// WooCommerce's Update / Create button (kept in the page, hidden, see
+			// bp-order-save-in-header below) does the real save.
 			var origSave = document.querySelector('.save_order.button-primary');
-			if (origSave) origSave.click();
+			if (origSave) {
+				origSave.click();
+				return;
+			}
+			// Another plugin removed WooCommerce's order actions box: this button
+			// used to do nothing then. Submit the order form (HPOS: #order, the
+			// older screen: #post) with the field that button would have sent.
+			var form = document.getElementById('order') || document.getElementById('post');
+			if (!form) return;
+			var flag = form.querySelector('input[type="hidden"][name="save"]');
+			if (!flag) {
+				flag = document.createElement('input');
+				flag.type = 'hidden';
+				flag.name = 'save';
+				form.appendChild(flag);
+			}
+			flag.value = (isNew ? cfg.i18n.create : cfg.i18n.save) || '';
+			if (typeof form.requestSubmit === 'function') {
+				form.requestSubmit();
+			} else {
+				form.submit();
+			}
 		});
 
 		right.appendChild(statusWrap);
@@ -143,6 +166,10 @@
 		header.appendChild(right);
 
 		wrap.insertBefore(header, wrap.firstChild);
+		// The header's Save is now the order's one save button: the CSS hides
+		// WooCommerce's second, identical one in the order actions box (field
+		// test D16). Without this script both stay, as before.
+		document.body.classList.add('bp-order-save-in-header');
 
 		// Pull WordPress's "Screen Options" / "Help" toggles up into this header.
 		// WP floats #screen-meta-links at the very top of the content — exactly
@@ -257,6 +284,51 @@
 
 		applyHeaderMetrics();
 		window.addEventListener('resize', scheduleHeaderMetrics);
+
+		// The bar gives way in priority order, measured on its real width (field
+		// test B10, CLAUDE.md "Başlık satırı kuralı"): the order number and Save
+		// never do. First Screen Options drops its text, then the date goes, then
+		// the word after the back arrow, then the status label ends in "…"; the
+		// number is cut only when nothing else is left. Breakpoints guessed this
+		// before, and a long order number with a long status pushed Save off the
+		// screen at 961-1100px. Measured on the bar itself ('live'): it is fixed
+		// and stays one row, and its Screen Options button is styled through
+		// WordPress ids that a copy would not keep. The ResizeObserver below
+		// re-publishes the bar's height when a level changes it.
+		// The last two let an item shrink to fill the bar, so they are not
+		// asked to leave room spare (fit-row.js).
+		var fitLevels = [
+			'',
+			'is-meta-icons',
+			'is-meta-icons is-no-date',
+			'is-meta-icons is-no-date is-bare-back',
+			{ cls: 'is-meta-icons is-no-date is-bare-back is-short-status', spare: false },
+			{ cls: 'is-meta-icons is-no-date is-bare-back is-short-status is-cut-title', spare: false }
+		];
+		if (window.brikpanelFitRow) {
+			window.brikpanelFitRow(header, {
+				measure: 'live',
+				title: '.brikpanel-order-header__title',
+				lines: [''],
+				levels: fitLevels,
+				onChange: scheduleHeaderMetrics
+			});
+		} else if (window.matchMedia) {
+			// Without the helper: the breakpoint layout the bar had before.
+			var tabletQuery = window.matchMedia('(max-width: 782px)');
+			var phoneQuery = window.matchMedia('(max-width: 600px)');
+			var applyBreakpoints = function () {
+				header.classList.toggle('is-meta-icons', tabletQuery.matches);
+				['is-no-date', 'is-bare-back', 'is-short-status', 'is-cut-title'].forEach(function (cls) {
+					header.classList.toggle(cls, phoneQuery.matches);
+				});
+			};
+			applyBreakpoints();
+			[tabletQuery, phoneQuery].forEach(function (query) {
+				if (query.addEventListener) query.addEventListener('change', applyBreakpoints);
+				else if (query.addListener) query.addListener(applyBreakpoints);
+			});
+		}
 
 		// Folding the admin menu changes the content column without changing the
 		// window, so it is invisible to the resize listener. Core announces it on
@@ -573,7 +645,7 @@
 			if (f.remaining === null || typeof f.remaining === 'undefined') {
 				parts.push(cfg.i18n.unlimited);
 			} else {
-				parts.push(cfg.i18n.remaining.replace('%s', String(f.remaining)));
+				parts.push(countText(cfg.i18n.remaining, f.remaining | 0));
 			}
 
 			if (f.expires) {
@@ -591,8 +663,13 @@
 	}
 
 	function formatCount(n) {
-		var tmpl = n === 1 ? cfg.i18n.download_one : cfg.i18n.download_many;
-		return tmpl.replace('%d', String(n));
+		return countText(cfg.i18n.download_count, n);
+	}
+
+	// A count made here, in the plural form the language needs (the message
+	// carries every form: brikpanel_js_plural() in PHP).
+	function countText(msg, n) {
+		return window.brikpanelFormat ? window.brikpanelFormat.count(msg, n) : String(n);
 	}
 
 	/* ============================================================
@@ -1214,8 +1291,12 @@
 				wa.href = data.whatsapp_url;
 				wa.target = '_blank';
 				wa.rel = 'noopener';
-				wa.title = i18n.whatsapp || '';
-				wa.setAttribute('aria-label', i18n.whatsapp || '');
+				// Once the first message went out in a status with a follow-up, the
+				// icon opens the follow-up (brikpanel-order-whatsapp.php).
+				var waLabel = (data.whatsapp_followup ? i18n.whatsapp_followup : i18n.whatsapp) || '';
+				wa.title = waLabel;
+				wa.setAttribute('aria-label', waLabel);
+				if (data.whatsapp_followup) wa.dataset.bpWaFollowup = '1';
 				customer.appendChild(wa);
 			}
 		} else {
@@ -1301,6 +1382,10 @@
 			safely(renderItemDownloads);
 			safely(watchDownloadPermissions);
 		} finally {
+			// The tabs can bring in the page scrollbar, which narrows the bar:
+			// fit it once more before the page is shown.
+			var fitted = window.brikpanelFitRow && window.brikpanelFitRow.get(document.querySelector('.brikpanel-order-header'));
+			if (fitted) fitted.refit();
 			reveal();
 		}
 	}

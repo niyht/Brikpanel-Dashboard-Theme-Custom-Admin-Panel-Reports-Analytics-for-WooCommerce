@@ -2,9 +2,9 @@
    BrikPanel – Simplified Product Editor
    ========================================================================== */
 
-.brikpanel-pe{--pe-bg:#f1f1f1;--pe-card:#fff;--pe-text:#303030;--pe-text-secondary:#616161;--pe-text-muted:#8a8a8a;--pe-border:#e3e3e3;--pe-input-border:#8a8a8a;--pe-input-focus:#303030;--pe-primary:#303030;--pe-primary-hover:#1a1a1a;--pe-success:#1a8917;--pe-error:#d72c0d;--pe-radius-sm:.5rem;--pe-radius:.75rem;--pe-transition:all .2s ease;--pe-shadow:0 1px 3px rgba(0,0,0,.08);--pe-field-max:22rem;--pe-panel-max:34rem;--pe-prose-max:48rem;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;color:var(--pe-text);line-height:1.5}
+.brikpanel-pe{--pe-bg:#f1f1f1;--pe-card:#fff;--pe-text:#303030;--pe-text-secondary:#616161;--pe-text-placeholder:#8a8a8a;--pe-border:#e3e3e3;--pe-input-border:#8a8a8a;--pe-input-focus:#303030;--pe-primary:#303030;--pe-primary-hover:#1a1a1a;--pe-success:#1a8917;--pe-error:#d72c0d;--pe-radius-sm:.5rem;--pe-radius:.75rem;--pe-transition:all .2s ease;--pe-shadow:0 1px 3px rgba(0,0,0,.08);--pe-field-max:22rem;--pe-panel-max:34rem;--pe-prose-max:48rem;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;color:var(--pe-text);line-height:1.5}
 
-.brikpanel-product-editor-page #wpcontent{padding-left:0}
+.brikpanel-product-editor-page #wpcontent{padding-left:0!important;padding-right:0!important}
 .brikpanel-product-editor-page #wpbody-content{padding-bottom:0;margin-top:0!important}
 .brikpanel-product-editor-page #wpbody-content>.wrap{margin:0;padding:0}
 /* Red errors stay on screen. Both flavours must be named: WordPress core and
@@ -14,15 +14,27 @@
 .brikpanel-product-editor-page .notice:not(.brikpanel-pe-notice):not(.notice-error):not(.error),
 .brikpanel-product-editor-page .updated:not(.brikpanel-pe-notice):not(.notice-error):not(.error),
 .brikpanel-product-editor-page .update-nag{display:none!important;margin:0!important;padding:0!important;height:0!important;border:0!important}
+/* The notices that do show sit under brikpanel_header_end() at the top of the
+   card column, a 1rem-gap flex column: the gap spaces them, so the global margin
+   under each notice (brikpanel-navigation.css) would double it. */
+.brikpanel-pe-content .brikpanel-header-end~:is(.notice,div.updated,div.error,div.update-nag):not(.inline){margin:0}
 .brikpanel-pe{max-width:100%;min-height:100vh;background:var(--pe-bg)}
 
-/* Header — sticks just below the BrikPanel global topbar (52px tall, fixed). */
-.brikpanel-pe-header{position:sticky;top:var(--bp-topbar-height,52px);z-index:50;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 2rem;background:var(--pe-card);border-bottom:1px solid var(--pe-border);box-shadow:var(--pe-shadow)}
-.brikpanel-pe-header-left{display:flex;align-items:center;gap:1rem}
-.brikpanel-pe-header-left h1{font-size:1.125rem;font-weight:600;margin:0;padding:0;color:var(--pe-text)}
-.brikpanel-pe-back{display:inline-flex;align-items:center;gap:.25rem;font-size:.8125rem;color:var(--pe-text-secondary);text-decoration:none;padding:.375rem .5rem;border-radius:var(--pe-radius-sm);transition:var(--pe-transition)}
+/* Header — sticks just below the BrikPanel global topbar (52px tall, fixed).
+   What gives way when it runs out of room is decided by
+   front-end/shared/brikpanel-fit-row.js from the levels printed on the header
+   (field test B10, CLAUDE.md "Başlık satırı kuralı"); the title and the primary
+   button never do. The rules below are the state before and without that
+   script, and already safe: the title keeps its line and is cut only when it
+   alone is wider than its whole row, the two groups wrap as blocks, and the
+   action group moves to its own line in one piece instead of leaving Update
+   alone there. */
+.brikpanel-pe-header{position:sticky;top:var(--bp-topbar-height,52px);z-index:50;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem 1rem;padding:.75rem 2rem;background:var(--pe-card);border-bottom:1px solid var(--pe-border);box-shadow:var(--pe-shadow)}
+.brikpanel-pe-header-left{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1rem;flex:0 1 auto;min-width:0;max-width:100%}
+.brikpanel-pe-header-left h1{flex:0 1 auto;min-width:0;max-width:100%;font-size:1.125rem;font-weight:600;margin:0;padding:0;color:var(--pe-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brikpanel-pe-back{display:inline-flex;flex-shrink:0;align-items:center;gap:.25rem;font-size:.8125rem;color:var(--pe-text-secondary);text-decoration:none;padding:.375rem .5rem;border-radius:var(--pe-radius-sm);transition:var(--pe-transition)}
 .brikpanel-pe-back:hover{color:var(--pe-text);background:var(--pe-bg)}
-.brikpanel-pe-header-right{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;justify-content:flex-end}
+.brikpanel-pe-header-right{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto;max-width:100%;margin-inline-start:auto}
 .brikpanel-pe-header-right a.brikpanel-pe-btn{text-decoration:none}
 .brikpanel-pe-featured-star{display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;padding:0;border:none;background:transparent;color:var(--pe-text-secondary,#616161);border-radius:var(--pe-radius-sm,.375rem);cursor:pointer;transition:color .15s ease,background .15s ease,transform .08s ease}
 .brikpanel-pe-featured-star:hover{background:#f1f1f1;color:var(--pe-text,#303030)}
@@ -31,14 +43,51 @@
 .brikpanel-pe-featured-star.is-on{color:#eab308}
 .brikpanel-pe-featured-star.is-on:hover{color:#ca8a04;background:#fef9c3}
 
-/* Header overflow ("More actions") menu — on desktop the wrapper and its menu
-   are display:contents so View product / Duplicate / Add new render inline in
-   the header exactly as before, and the kebab trigger is hidden. The mobile
-   breakpoint (≤782px) re-enables the wrapper as a real popover to keep the
-   sticky header compact. */
+/* Header overflow ("More actions") menu — while the header has room the wrapper
+   and its menu are display:contents, so View product / Duplicate / Add new sit
+   inline in the header and the kebab trigger is hidden. The `is-fold` level
+   below turns them into a real menu under the trigger. */
 .brikpanel-pe-header-overflow{display:contents}
 .brikpanel-pe-overflow-trigger{display:none}
 .brikpanel-pe-overflow-menu{display:contents}
+.brikpanel-pe-overflow-menu>.brikpanel-pe-btn[hidden]{display:none}
+
+/* Header levels, set by brikpanel-fit-row.js from the most room to the least.
+   Folded: the secondary actions become a small menu under "More actions". */
+.brikpanel-pe-header.is-fold .brikpanel-pe-header-overflow{display:inline-block;position:relative;flex-shrink:0}
+.brikpanel-pe-header .brikpanel-pe-header-overflow[hidden]{display:none}
+.brikpanel-pe-header.is-fold .brikpanel-pe-overflow-trigger{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:2.25rem;height:2.25rem;padding:0;background:var(--pe-card);color:var(--pe-text-secondary);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);cursor:pointer;box-shadow:0 1px 0 rgba(0,0,0,.05);transition:background .15s ease,color .15s ease,border-color .15s ease}
+.brikpanel-pe-header.is-fold .brikpanel-pe-overflow-trigger:hover{background:#f7f7f7;color:var(--pe-text)}
+.brikpanel-pe-header.is-fold .brikpanel-pe-header-overflow.is-open .brikpanel-pe-overflow-trigger{background:#f0f0f0;border-color:#d4d4d4;color:var(--pe-text)}
+/* Closed, the menu is also visibility:hidden (after its fade), so Tab skips
+   links nobody can see. --bpe-pop-shift keeps it inside the window (JS). */
+.brikpanel-pe-header.is-fold .brikpanel-pe-overflow-menu{display:flex;flex-direction:column;gap:.125rem;position:absolute;top:calc(100% + .375rem);inset-inline-start:0;min-width:190px;margin:0;padding:.375rem;list-style:none;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;visibility:hidden;transform:translateY(-4px) scale(.98);transform-origin:top;translate:var(--bpe-pop-shift,0px) 0;pointer-events:none;transition:opacity .15s ease,transform .15s ease,visibility 0s linear .15s;z-index:200}
+.brikpanel-pe-header.is-fold .brikpanel-pe-header-overflow.is-open .brikpanel-pe-overflow-menu{opacity:1;visibility:visible;transform:translateY(0) scale(1);pointer-events:auto;transition:opacity .15s ease,transform .15s ease,visibility 0s}
+.brikpanel-pe-header.is-fold .brikpanel-pe-overflow-menu .brikpanel-pe-btn{box-sizing:border-box;width:100%;justify-content:flex-start;gap:.5rem;background:transparent;border:none;box-shadow:none!important;padding:.5rem .625rem;border-radius:.4375rem;font-size:.8125rem;font-weight:500;color:var(--pe-text)}
+.brikpanel-pe-header.is-fold .brikpanel-pe-overflow-menu .brikpanel-pe-btn:hover{background:#f7f7f7}
+/* Two rows: the title row, then the action row, each as wide as the header. */
+.brikpanel-pe-header.is-two-rows .brikpanel-pe-header-left,
+.brikpanel-pe-header.is-two-rows .brikpanel-pe-header-right{flex:1 1 100%}
+/* Text gives way last, one row at a time: the back link keeps its arrow (its
+   name stays for screen readers), the date and visibility controls their icon
+   (their text is in the popover they open). */
+.brikpanel-pe-header.is-bare-back .brikpanel-pe-back{gap:0;padding-inline:.375rem}
+.brikpanel-pe-header.is-bare-back .brikpanel-pe-back-label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.brikpanel-pe-header.is-tight-date .brikpanel-pe-pubdate-chevron{display:none}
+/* Icon-only visibility and date controls keep a button's frame and a 32px
+   target: bare, the eye and its chevron read as decoration (field test C2).
+   The label stays for screen readers. */
+.brikpanel-pe-header.is-tight-date .brikpanel-pe-pubdate-label,
+.brikpanel-pe-header.is-tight-vis .brikpanel-pe-catvis-label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.brikpanel-pe-header.is-tight-vis .brikpanel-pe-catvis-trigger{padding:.375rem .4375rem}
+.brikpanel-pe-header.is-tight-date .brikpanel-pe-pubdate-trigger{padding:.375rem .4375rem;min-height:2rem;min-width:2rem;justify-content:center;background:var(--pe-card);color:var(--pe-text-secondary);border:1px solid var(--pe-border);box-shadow:0 1px 0 rgba(0,0,0,.03)}
+.brikpanel-pe-header.is-tight-date .brikpanel-pe-pubdate-trigger:hover{background:#f7f7f7;border-color:#d4d4d4}
+/* Before the action row takes a second line: the status label ends in "…"
+   (its full name is in its menu) instead of pushing Update off the row. */
+.brikpanel-pe-header.is-short-status .brikpanel-pe-header-right{flex-wrap:nowrap}
+.brikpanel-pe-header.is-short-status .brikpanel-pe-status-wrap{flex:0 1 auto;min-width:4.5rem}
+.brikpanel-pe-header.is-short-status .brikpanel-pe-status-trigger{width:100%;min-width:0}
+.brikpanel-pe-header.is-short-status .brikpanel-pe-status-trigger-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* Content */
 .brikpanel-pe-content{max-width:820px;margin:0 auto;padding:1.5rem 2rem 3rem;display:flex;flex-direction:column;gap:1rem}
@@ -49,7 +98,7 @@
    `--pe-*` tokens live on `.brikpanel-pe` and an unresolved var() would render
    the note transparent. */
 .brikpanel-pe-typenote{display:flex;align-items:flex-start;gap:.5rem;padding:.75rem 1rem;background:var(--pe-card,#fff);border:1px solid var(--pe-border,#e3e3e3);border-radius:var(--pe-radius-sm,.5rem);box-shadow:var(--pe-shadow,0 1px 3px rgba(0,0,0,.08));font-size:.8125rem;color:var(--pe-text-secondary,#616161)}
-.brikpanel-pe-typenote svg{flex:0 0 auto;margin-top:.125rem;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-typenote svg{flex:0 0 auto;margin-top:.125rem;color:var(--pe-text-placeholder,#8a8a8a)}
 .brikpanel-pe-typenote a{color:var(--pe-text,#303030);text-decoration:underline}
 .brikpanel-pe-typenote a:hover{color:var(--pe-primary-hover,#1a1a1a)}
 
@@ -245,7 +294,7 @@
 .brikpanel-pe-field label{display:block;font-size:.8125rem;font-weight:600;color:var(--pe-text);margin-bottom:.375rem}
 .brikpanel-pe-field input[type="text"],.brikpanel-pe-field input[type="number"],.brikpanel-pe-field input[type="url"],.brikpanel-pe-field textarea,.brikpanel-pe-field select{width:100%;padding:.625rem .75rem;font-size:.875rem;color:var(--pe-text);background:var(--pe-card);border:1px solid var(--pe-input-border);border-radius:var(--pe-radius-sm);outline:none;transition:border-color .15s ease,box-shadow .15s ease;box-sizing:border-box;line-height:1.5}
 .brikpanel-pe-field input:focus,.brikpanel-pe-field textarea:focus,.brikpanel-pe-field select:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
-.brikpanel-pe-field input::placeholder,.brikpanel-pe-field textarea::placeholder{color:var(--pe-text-muted)}
+.brikpanel-pe-field input::placeholder,.brikpanel-pe-field textarea::placeholder{color:var(--pe-text-placeholder)}
 .brikpanel-pe-field input.has-error,.brikpanel-pe-field textarea.has-error{border-color:var(--pe-error);box-shadow:0 0 0 1px var(--pe-error)}
 .brikpanel-pe-field-error{font-size:.75rem;color:var(--pe-error);margin-top:.25rem;min-height:0;overflow:hidden}
 
@@ -265,8 +314,10 @@
 .brikpanel-pe-input-group.small .brikpanel-pe-input-prefix{padding:0 .5rem;font-size:.8125rem}
 .brikpanel-pe-input.small{height:2rem;padding:0 .5rem!important;font-size:.8125rem!important;width:80px}
 
-/* Row */
+/* Row. The grid display beats the browser's own [hidden] rule, so a row the
+   script hides (the Supplier SKU row while no supplier is chosen) needs its own. */
 .brikpanel-pe-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.brikpanel-pe-row[hidden]{display:none}
 
 /* Toggle Row */
 .brikpanel-pe-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.25rem 0;margin-bottom:.5rem}
@@ -274,7 +325,7 @@
 .brikpanel-pe-toggle-row>span{font-size:.875rem;font-weight:500;color:var(--pe-text)}
 .brikpanel-pe-toggle-row+.brikpanel-pe-toggle-row{margin-top:.25rem;padding-top:.75rem;border-top:1px solid var(--pe-border)}
 .brikpanel-pe-toggle-label{display:flex;flex-direction:column;gap:.125rem;min-width:0;flex:1}
-.brikpanel-pe-toggle-help{font-size:.75rem;font-weight:400;color:var(--pe-text-muted);line-height:1.4}
+.brikpanel-pe-toggle-help{font-size:.75rem;font-weight:400;color:var(--pe-text-secondary, #616161);line-height:1.4}
 .brikpanel-pe-switch input:disabled+.brikpanel-pe-slider{cursor:not-allowed;opacity:.6}
 
 /* Switch */
@@ -307,13 +358,17 @@
 .brikpanel-pe-link{display:inline-block;font-size:.8125rem;color:var(--pe-text-secondary);text-decoration:none;margin-top:.5rem;cursor:pointer;transition:color .15s ease}
 .brikpanel-pe-link:hover{color:var(--pe-text)}
 
-/* Tooltip */
-.brikpanel-pe-tooltip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:10px;font-weight:700;color:var(--pe-text-muted);border:1px solid var(--pe-text-muted);border-radius:50%;cursor:help;position:relative;vertical-align:middle;margin-left:.25rem}
-.brikpanel-pe-tooltip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--pe-text);color:#fff;font-size:.6875rem;font-weight:400;padding:.5rem .625rem;border-radius:var(--pe-radius-sm);white-space:normal;width:220px;line-height:1.4;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease;z-index:100}
-.brikpanel-pe-tooltip:hover::after{opacity:1;visibility:visible}
+/* Tooltip: the "?" beside a field label. front-end/shared/brikpanel-tip.js
+   opens the bubble on hover, focus or a tap (a tap used to focus the field
+   and open the phone keyboard instead) and keeps it on screen. A button now,
+   so the "?" is secondary grey (6:1), not muted (3.5:1). */
+.brikpanel-pe-tooltip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:10px;font-weight:700;color:var(--pe-text-secondary);border:1px solid var(--pe-text-secondary);border-radius:50%;cursor:help;position:relative;vertical-align:middle;margin-inline-start:.25rem;outline:none}
+.brikpanel-pe-tooltip:hover,.brikpanel-pe-tooltip:focus-visible,.brikpanel-pe-tooltip.is-bp-tip-open{color:var(--pe-text);border-color:var(--pe-text)}
+.brikpanel-pe-tooltip:focus-visible{box-shadow:0 0 0 2px var(--pe-text)}
+.brikpanel-pe-tooltip-tip{--bp-tip-w:240px;padding:.5rem .625rem;background:var(--pe-text);color:#fff;font-size:.6875rem;font-weight:400;line-height:1.4;border-radius:var(--pe-radius-sm)}
 
 /* Char Count */
-.brikpanel-pe-char-count{display:block;text-align:right;font-size:.6875rem;color:var(--pe-text-muted);margin-top:.25rem}
+.brikpanel-pe-char-count{display:block;text-align:right;font-size:.6875rem;color:var(--pe-text-secondary, #616161);margin-top:.25rem}
 
 /* Inline Form */
 .brikpanel-pe-inline-form{display:flex;gap:.5rem;align-items:flex-end}
@@ -323,18 +378,32 @@
 /* Images */
 .brikpanel-pe-images{display:flex;flex-direction:column;gap:.75rem}
 .brikpanel-pe-dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;padding:2rem;border:2px dashed var(--pe-border);border-radius:var(--pe-radius);background:#fafafa;cursor:pointer;transition:border-color .15s ease,background .15s ease;min-height:120px}
-.brikpanel-pe-dropzone:hover,.brikpanel-pe-dropzone.dragover{border-color:var(--pe-text-muted);background:#f5f5f5}
-.brikpanel-pe-dropzone p{font-size:.8125rem;color:var(--pe-text-muted);margin:0}
+.brikpanel-pe-dropzone:hover,.brikpanel-pe-dropzone.dragover{border-color:var(--pe-text-placeholder);background:#f5f5f5}
+.brikpanel-pe-dropzone p{font-size:.8125rem;color:var(--pe-text-secondary, #616161);margin:0}
 .brikpanel-pe-gallery{display:flex;flex-wrap:wrap;gap:.5rem}
 .brikpanel-pe-gallery-item{position:relative;width:80px;height:80px;border-radius:var(--pe-radius-sm);overflow:hidden;border:2px solid transparent;cursor:grab;background:#f7f7f7}
 .brikpanel-pe-gallery-item:first-child{border-color:var(--pe-primary)}
 .brikpanel-pe-gallery-item img{width:100%;height:100%;object-fit:cover;display:block}
-.brikpanel-pe-gallery-item-badge{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:.5625rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#fff;background:var(--pe-primary);padding:1px 0}
-.brikpanel-pe-gallery-item-remove{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;font-size:14px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0}
-.brikpanel-pe-gallery-item:hover .brikpanel-pe-gallery-item-remove{display:flex}
-.brikpanel-pe-gallery-item-video{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;line-height:0;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0}
-.brikpanel-pe-gallery-item:hover .brikpanel-pe-gallery-item-video{display:flex}
-.brikpanel-pe-gallery-item-video.is-active{display:flex;background:var(--pe-primary)}
+.brikpanel-pe-gallery-item-badge{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:.5625rem;font-weight:600;text-transform:none;letter-spacing:normal;color:#fff;background:var(--pe-primary);padding:1px 0}
+/* Remove and video buttons sit in opposite top corners, placed with logical
+   sides so a right-to-left admin mirrors both instead of stacking them in one
+   corner. Shown with opacity, not display, so they can still take keyboard
+   focus while the pointer is elsewhere. A touch screen has no hover to reveal
+   them, so there they always show. */
+.brikpanel-pe-gallery-item-remove{position:absolute;top:2px;inset-inline-end:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;opacity:0;transition:opacity .15s ease}
+.brikpanel-pe-gallery-item-video{position:absolute;top:2px;inset-inline-start:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;line-height:0;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;opacity:0;transition:opacity .15s ease}
+.brikpanel-pe-gallery-item:hover .brikpanel-pe-gallery-item-remove,.brikpanel-pe-gallery-item-remove:focus-visible,.brikpanel-pe-gallery-item:hover .brikpanel-pe-gallery-item-video,.brikpanel-pe-gallery-item-video:focus-visible,.brikpanel-pe-gallery-item-video.is-active{opacity:1}
+.brikpanel-pe-gallery-item-video.is-active{background:var(--pe-primary)}
+.brikpanel-pe-gallery-item-remove:focus-visible,.brikpanel-pe-gallery-item-video:focus-visible{outline:2px solid var(--pe-primary);outline-offset:1px}
+@media (hover:none),(any-pointer:coarse){.brikpanel-pe-gallery-item-remove,.brikpanel-pe-gallery-item-video{opacity:1}}
+/* One video per product (Flatsome, Porto): a row under the images. */
+.brikpanel-pe-prodvideo{display:flex;align-items:center;gap:.75rem;margin-top:.75rem;padding:.625rem .75rem;background:#fafafa;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
+.brikpanel-pe-prodvideo-icon{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border-radius:50%;background:var(--pe-border);color:var(--pe-text-secondary)}
+.brikpanel-pe-prodvideo-icon.is-active{background:var(--pe-primary);color:#fff}
+.brikpanel-pe-prodvideo-info{display:flex;flex-direction:column;gap:.125rem;flex:1;min-width:0}
+.brikpanel-pe-prodvideo-label{font-size:.8125rem;font-weight:600;color:var(--pe-text)}
+.brikpanel-pe-prodvideo-meta{font-size:.75rem;color:var(--pe-text-secondary, #616161);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brikpanel-pe-prodvideo .brikpanel-pe-btn{flex:none}
 /* Upload spinner placeholder */
 .brikpanel-pe-gallery-item.is-uploading{border-color:var(--pe-primary);animation:bpe-pulse 1.2s ease-in-out infinite}
 .brikpanel-pe-gallery-item.is-uploading::after{content:"";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.7);border-radius:inherit;z-index:3}
@@ -352,7 +421,7 @@
 .brikpanel-pe-cat-tree{list-style:none;margin:0;padding:0}
 /* Shown instead of the tree when the taxonomy has no terms at all, so an
    empty Category or Brand box reads as "nothing here yet" rather than broken. */
-.brikpanel-pe-cat-empty{margin:0;padding:.5rem .25rem;font-size:.8125rem;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-cat-empty{margin:0;padding:.5rem .25rem;font-size:.8125rem;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-cat-children{list-style:none;margin:0;padding:0 0 0 1rem;border-left:1px solid var(--pe-border);margin-left:.625rem}
 .brikpanel-pe-cat-tree li{margin:0;padding:0}
 .brikpanel-pe-cat-tree label{display:flex;align-items:center;gap:.375rem;font-size:.8125rem;padding:.25rem .375rem;border-radius:4px;cursor:pointer;transition:background .1s ease;color:var(--pe-text);font-weight:400!important;margin:0}
@@ -376,9 +445,9 @@
 .brikpanel-pe-fmt.is-open .brikpanel-pe-fmt-trigger{background:#fff;border-color:var(--pe-input-border);color:var(--pe-text)}
 .brikpanel-pe-editor-toolbar .brikpanel-pe-fmt-trigger:disabled{opacity:.35;cursor:not-allowed}
 .brikpanel-pe-fmt-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.brikpanel-pe-fmt-trigger svg{flex:none;color:var(--pe-text-muted);transition:transform .15s ease}
+.brikpanel-pe-fmt-trigger svg{flex:none;color:var(--pe-text-placeholder);transition:transform .15s ease}
 .brikpanel-pe-fmt.is-open .brikpanel-pe-fmt-trigger svg{transform:rotate(180deg)}
-.brikpanel-pe-editor-toolbar .brikpanel-pe-fmt-menu{position:absolute;top:calc(100% + .375rem);left:0;z-index:50;min-width:11rem;display:none;flex-direction:column;padding:.3125rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04)}
+.brikpanel-pe-editor-toolbar .brikpanel-pe-fmt-menu{position:absolute;top:calc(100% + .375rem);inset-inline-start:0;z-index:50;min-width:11rem;display:none;flex-direction:column;padding:.3125rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04)}
 .brikpanel-pe-fmt.is-open .brikpanel-pe-fmt-menu{display:flex}
 .brikpanel-pe-editor-toolbar .brikpanel-pe-fmt-item{display:flex;align-items:center;justify-content:space-between;gap:.75rem;width:100%;height:auto;min-height:34px;padding:0 .625rem;background:none;border:none;border-radius:5px;color:var(--pe-text);font-size:.8125rem;font-weight:450;text-align:left;cursor:pointer;transition:background .1s ease}
 .brikpanel-pe-editor-toolbar .brikpanel-pe-fmt-item:hover{background:var(--pe-bg);color:var(--pe-text)}
@@ -399,7 +468,7 @@
 .brikpanel-pe-editor-toolbar .brikpanel-pe-color-trigger:hover:not(:disabled){background:var(--pe-border)}
 .brikpanel-pe-colorpick.is-open .brikpanel-pe-color-trigger{background:#fff;box-shadow:inset 0 0 0 1px var(--pe-input-border)}
 .brikpanel-pe-color-a{font-weight:700;font-size:.8125rem;color:var(--pe-text);border-bottom:3px solid #d72c0d;line-height:1;padding-bottom:1px}
-.brikpanel-pe-colorpick-menu{position:absolute;top:calc(100% + .375rem);left:0;z-index:50;display:none;grid-template-columns:repeat(4,1fr);gap:6px;padding:.5rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04)}
+.brikpanel-pe-colorpick-menu{position:absolute;top:calc(100% + .375rem);inset-inline-start:0;z-index:50;display:none;grid-template-columns:repeat(4,1fr);gap:6px;padding:.5rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04)}
 .brikpanel-pe-colorpick.is-open .brikpanel-pe-colorpick-menu{display:grid}
 .brikpanel-pe-editor-toolbar .brikpanel-pe-color-swatch{width:22px;height:22px;padding:0;border:1px solid rgba(0,0,0,.18);border-radius:5px;cursor:pointer;transition:transform .1s ease}
 .brikpanel-pe-editor-toolbar .brikpanel-pe-color-swatch:hover{transform:scale(1.12)}
@@ -407,7 +476,7 @@
 /* The dialog is appended to <body>, outside .brikpanel-pe, so the design
    tokens must be redeclared here or var(--pe-*) resolves to nothing and the
    box/buttons render transparent. */
-.brikpanel-pe-linkdlg{--pe-bg:#f1f1f1;--pe-card:#fff;--pe-text:#303030;--pe-text-secondary:#616161;--pe-text-muted:#8a8a8a;--pe-border:#e3e3e3;--pe-input-border:#8a8a8a;--pe-input-focus:#303030;--pe-primary:#303030;--pe-primary-hover:#1a1a1a;--pe-radius-sm:.5rem;--pe-radius:.75rem;position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.brikpanel-pe-linkdlg{--pe-bg:#f1f1f1;--pe-card:#fff;--pe-text:#303030;--pe-text-secondary:#616161;--pe-text-placeholder:#8a8a8a;--pe-border:#e3e3e3;--pe-input-border:#8a8a8a;--pe-input-focus:#303030;--pe-primary:#303030;--pe-primary-hover:#1a1a1a;--pe-error:#d72c0d;--pe-radius-sm:.5rem;--pe-radius:.75rem;position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .brikpanel-pe-linkdlg[hidden]{display:none}
 .brikpanel-pe-linkdlg-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35)}
 .brikpanel-pe-linkdlg-box{position:relative;width:380px;max-width:calc(100vw - 2rem);max-height:calc(100vh - 2rem);overflow-y:auto;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 12px 40px rgba(0,0,0,.18);padding:1.25rem 1.5rem;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -421,7 +490,7 @@
 .brikpanel-pe-editor-divider{width:1px;align-self:center;height:18px;margin:0 4px;background:var(--pe-border);flex:none}
 .brikpanel-pe-editor{min-height:120px;padding:.75rem;font-size:.875rem;line-height:1.6;border:1px solid var(--pe-input-border);border-radius:0 0 var(--pe-radius-sm) var(--pe-radius-sm);outline:none;transition:border-color .15s ease,box-shadow .15s ease;overflow-y:auto;color:var(--pe-text)}
 .brikpanel-pe-editor:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
-.brikpanel-pe-editor:empty:before{content:attr(data-placeholder);color:var(--pe-text-muted);pointer-events:none}
+.brikpanel-pe-editor:empty:before{content:attr(data-placeholder);color:var(--pe-text-placeholder);pointer-events:none}
 .brikpanel-pe-editor ul,.brikpanel-pe-editor ol{padding-left:1.5rem;margin:.5rem 0}
 .brikpanel-pe-editor ul{list-style:disc outside}
 .brikpanel-pe-editor ol{list-style:decimal outside}
@@ -454,7 +523,7 @@
 .brikpanel-pe-editor img.brikpanel-lightbox{outline:2px dashed var(--pe-border);outline-offset:2px}
 /* Image dialog (rides on .brikpanel-pe-linkdlg base for vars/box/backdrop) */
 .brikpanel-pe-imgdlg-preview{display:flex;align-items:center;justify-content:center;min-height:120px;margin:0 0 .75rem;padding:.5rem;background:var(--pe-bg);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);overflow:hidden}
-.brikpanel-pe-imgdlg-preview.is-empty{color:var(--pe-text-muted);font-size:.8125rem}
+.brikpanel-pe-imgdlg-preview.is-empty{color:var(--pe-text-secondary, #616161);font-size:.8125rem}
 .brikpanel-pe-imgdlg-preview img{max-width:100%;max-height:220px;border-radius:4px}
 .brikpanel-pe-imgdlg-choose{width:100%;justify-content:center}
 .brikpanel-pe-imgdlg-align,.brikpanel-pe-imgdlg-size{display:grid;grid-template-columns:repeat(4,1fr);gap:.25rem;padding:.25rem;background:var(--pe-bg);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
@@ -462,12 +531,31 @@
 .brikpanel-pe-imgdlg-align button:hover,.brikpanel-pe-imgdlg-size button:hover{background:var(--pe-border);color:var(--pe-text)}
 .brikpanel-pe-imgdlg-align button.is-active,.brikpanel-pe-imgdlg-size button.is-active{background:var(--pe-primary);color:#fff}
 
-/* Blocksy product video dialog (rides on .brikpanel-pe-linkdlg base) */
-.brikpanel-pe-viddlg-help{font-size:.8125rem;color:var(--pe-text-muted);line-height:1.5;margin:0 0 1rem}
+/* Product video dialog (rides on the .brikpanel-pe-linkdlg base; appended to
+   <body>, so it only sees the tokens redeclared on .brikpanel-pe-linkdlg).
+   One [hidden] guard covers every part shown or hidden by the script. */
+.brikpanel-pe-viddlg [hidden]{display:none}
+/* border-box so the base max-width (100vw - 2rem) keeps a 16px gutter on phones. */
+.brikpanel-pe-viddlg .brikpanel-pe-linkdlg-box{width:460px;box-sizing:border-box}
+.brikpanel-pe-viddlg-help{font-size:.8125rem;color:var(--pe-text-secondary, #616161);line-height:1.5;margin:0 0 1rem}
+.brikpanel-pe-viddlg-seg{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+.brikpanel-pe-viddlg-field,.brikpanel-pe-viddlg-opt{margin-top:.875rem}
+.brikpanel-pe-viddlg-other{margin-bottom:.875rem}
+.brikpanel-pe-viddlg-other-value{display:block;padding:.5rem .75rem;font-size:.75rem;line-height:1.5;word-break:break-all;color:var(--pe-text-secondary);background:var(--pe-bg);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
 .brikpanel-pe-viddlg-filerow{display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;background:var(--pe-bg);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
 .brikpanel-pe-viddlg-filename{flex:1;min-width:0;font-size:.8125rem;color:var(--pe-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brikpanel-pe-viddlg-filerow .brikpanel-pe-btn{flex-shrink:0}
+.brikpanel-pe-viddlg-note{margin:.375rem 0 0;font-size:.75rem;line-height:1.5;color:var(--pe-text-secondary, #616161)}
+.brikpanel-pe-viddlg-notes{margin-top:.5rem}
+.brikpanel-pe-viddlg-error{margin:.625rem 0 0;font-size:.8125rem;line-height:1.5;color:var(--pe-error)}
+/* WordPress's input[type=url]:focus / select:focus (blue) outrank the base
+   dialog rule; the design system's focus ring is the dark primary. */
+.brikpanel-pe-viddlg .brikpanel-pe-linkdlg-url:focus,.brikpanel-pe-viddlg .brikpanel-pe-viddlg-select:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus);outline:none}
+.brikpanel-pe-viddlg .brikpanel-pe-linkdlg-url.has-error{border-color:var(--pe-error);box-shadow:0 0 0 1px var(--pe-error)}
+.brikpanel-pe-viddlg-select{width:100%;max-width:100%;box-sizing:border-box;padding:.5rem .75rem;font-size:.875rem;color:var(--pe-text);background:var(--pe-card);border:1px solid var(--pe-input-border);border-radius:var(--pe-radius-sm)}
+.brikpanel-pe-viddlg .brikpanel-pe-toggle-row>span{font-size:.8125rem}
 .brikpanel-pe-viddlg-actions{align-items:center}
+.brikpanel-pe-viddlg-remove{margin-inline-end:auto}
 
 /* Variation Wizard */
 .brikpanel-pe-var-wizard{position:relative;min-width:0;max-width:100%}
@@ -482,11 +570,11 @@
 /* Choice cards — variation templates + the attributes box, evenly sized */
 .brikpanel-pe-var-templates{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.75rem}
 .brikpanel-pe-var-template{position:relative;display:flex;flex-direction:column;align-items:center;gap:.25rem;padding:1.25rem 1rem;border:1px solid var(--pe-border);border-radius:var(--pe-radius);cursor:pointer;text-align:center;transition:border-color .15s ease,box-shadow .15s ease;background:var(--pe-card)}
-.brikpanel-pe-var-template:hover{border-color:var(--pe-text-muted);background:#fafafa}
+.brikpanel-pe-var-template:hover{border-color:var(--pe-text-placeholder);background:#fafafa}
 .brikpanel-pe-var-template.active{border-color:var(--pe-primary);box-shadow:0 0 0 1px var(--pe-primary)}
 .brikpanel-pe-var-template-icon{color:var(--pe-text-secondary);margin-bottom:.25rem}
 .brikpanel-pe-var-template strong{font-size:.875rem;font-weight:600;color:var(--pe-text)}
-.brikpanel-pe-var-template small{font-size:.6875rem;color:var(--pe-text-muted)}
+.brikpanel-pe-var-template small{font-size:.6875rem;color:var(--pe-text-secondary, #616161)}
 /* Count badge on the "Attributes" box — shows how many specs are defined */
 .brikpanel-pe-attr-count{position:absolute;top:.5rem;right:.5rem;min-width:18px;height:18px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;font-size:.6875rem;font-weight:600;line-height:1;color:#fff;background:var(--pe-primary);border-radius:9px}
 .brikpanel-pe-attr-count[hidden]{display:none}
@@ -498,35 +586,35 @@
    and a scrollable, hoverable option list. */
 .brikpanel-pe-combo{position:relative}
 .brikpanel-pe-combo-trigger{display:flex;align-items:center;justify-content:space-between;gap:.5rem;width:100%;padding:.5rem .75rem;font-size:.8125rem;color:var(--pe-text);background:var(--pe-card);border:1px solid var(--pe-input-border);border-radius:var(--pe-radius-sm);cursor:pointer;text-align:left;transition:border-color .15s ease,box-shadow .15s ease}
-.brikpanel-pe-combo-trigger:hover{border-color:var(--pe-text-muted)}
+.brikpanel-pe-combo-trigger:hover{border-color:var(--pe-text-placeholder)}
 .brikpanel-pe-combo.open .brikpanel-pe-combo-trigger{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
-.brikpanel-pe-combo-value{flex:1;color:var(--pe-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.brikpanel-pe-combo-chevron{flex-shrink:0;color:var(--pe-text-muted);transition:transform .15s ease}
+.brikpanel-pe-combo-value{flex:1;color:var(--pe-text-secondary, #616161);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brikpanel-pe-combo-chevron{flex-shrink:0;color:var(--pe-text-placeholder);transition:transform .15s ease}
 .brikpanel-pe-combo.open .brikpanel-pe-combo-chevron{transform:rotate(180deg)}
 .brikpanel-pe-combo-panel{display:none;position:absolute;top:calc(100% + .25rem);left:0;right:0;z-index:30;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);box-shadow:0 6px 20px rgba(0,0,0,.12);overflow:hidden}
 .brikpanel-pe-combo.open .brikpanel-pe-combo-panel{display:block}
 .brikpanel-pe-combo-search{position:relative;padding:.5rem;border-bottom:1px solid var(--pe-border)}
-.brikpanel-pe-combo-search svg{position:absolute;left:1rem;top:50%;transform:translateY(-50%);color:var(--pe-text-muted);pointer-events:none}
+.brikpanel-pe-combo-search svg{position:absolute;left:1rem;top:50%;transform:translateY(-50%);color:var(--pe-text-placeholder);pointer-events:none}
 .brikpanel-pe-combo-search input{width:100%;box-sizing:border-box;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);outline:none;padding:.4375rem .625rem .4375rem 2rem;font-size:.8125rem;color:var(--pe-text);background:var(--pe-bg)}
 .brikpanel-pe-combo-search input:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus);background:var(--pe-card)}
-.brikpanel-pe-combo-search input::placeholder{color:var(--pe-text-muted)}
+.brikpanel-pe-combo-search input::placeholder{color:var(--pe-text-placeholder)}
 .brikpanel-pe-combo-list{list-style:none;margin:0;padding:.25rem;max-height:240px;overflow-y:auto}
 .brikpanel-pe-combo-option{padding:.5rem .625rem;font-size:.8125rem;color:var(--pe-text);border-radius:.375rem;cursor:pointer;transition:background .1s ease}
 .brikpanel-pe-combo-option:hover,.brikpanel-pe-combo-option.active{background:var(--pe-bg)}
-.brikpanel-pe-combo-empty{padding:.625rem;font-size:.8125rem;color:var(--pe-text-muted);text-align:center}
-.brikpanel-pe-attr-divider{display:flex;align-items:center;gap:.625rem;margin:.75rem 0;font-size:.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--pe-text-muted)}
+.brikpanel-pe-combo-empty{padding:.625rem;font-size:.8125rem;color:var(--pe-text-secondary, #616161);text-align:center}
+.brikpanel-pe-attr-divider{display:flex;align-items:center;gap:.625rem;margin:.75rem 0;font-size:.75rem;font-weight:600;text-transform:none;letter-spacing:normal;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-attr-divider::before,.brikpanel-pe-attr-divider::after{content:"";flex:1;height:1px;background:var(--pe-border)}
 .brikpanel-pe-attr-inputgroup{display:flex;align-items:stretch;border:1px solid var(--pe-input-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);overflow:hidden;transition:border-color .15s ease,box-shadow .15s ease}
 .brikpanel-pe-attr-inputgroup:focus-within{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-attr-inputgroup input{flex:1;min-width:0;border:none;outline:none;background:transparent;padding:.5rem .75rem;font-size:.8125rem;color:var(--pe-text)}
-.brikpanel-pe-attr-inputgroup input::placeholder{color:var(--pe-text-muted)}
+.brikpanel-pe-attr-inputgroup input::placeholder{color:var(--pe-text-placeholder)}
 .brikpanel-pe-attr-inputgroup button{flex-shrink:0;border:none;border-left:1px solid var(--pe-border);background:var(--pe-card);color:var(--pe-text);padding:0 1.125rem;font-size:.8125rem;font-weight:600;cursor:pointer;transition:background .15s ease}
 .brikpanel-pe-attr-inputgroup button:hover{background:#f7f7f7}
 .brikpanel-pe-attr-inputgroup button:active{background:#f0f0f0}
 .brikpanel-pe-attr-quickrow{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin-top:.625rem}
-.brikpanel-pe-attr-quicklabel{font-size:.75rem;color:var(--pe-text-muted)}
+.brikpanel-pe-attr-quicklabel{font-size:.75rem;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-chip-btn{display:inline-flex;align-items:center;gap:.25rem;padding:.3125rem .6875rem;font-size:.75rem;font-weight:550;color:var(--pe-text-secondary);background:var(--pe-bg);border:1px solid var(--pe-border);border-radius:999px;cursor:pointer;transition:color .15s ease,border-color .15s ease,background .15s ease}
-.brikpanel-pe-chip-btn:hover{color:var(--pe-text);border-color:var(--pe-text-muted);background:#fff}
+.brikpanel-pe-chip-btn:hover{color:var(--pe-text);border-color:var(--pe-text-placeholder);background:#fff}
 
 /* Tag Input */
 .brikpanel-pe-tag-group{margin-bottom:1rem}
@@ -535,7 +623,7 @@
 .brikpanel-pe-tag-input-wrap:focus-within{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-tag{display:inline-flex;align-items:center;gap:.25rem;padding:.1875rem .5rem;font-size:.8125rem;font-weight:500;background:var(--pe-bg);border:1px solid var(--pe-border);border-radius:4px;color:var(--pe-text);white-space:nowrap;animation:bpe-tag-in .15s ease}
 @keyframes bpe-tag-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
-.brikpanel-pe-tag-remove{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;background:none;border:none;cursor:pointer;color:var(--pe-text-muted);font-size:14px;line-height:1;padding:0;border-radius:50%;transition:color .1s ease}
+.brikpanel-pe-tag-remove{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;background:none;border:none;cursor:pointer;color:var(--pe-text-secondary);font-size:14px;line-height:1;padding:0;border-radius:50%;transition:color .1s ease}
 .brikpanel-pe-tag-remove:hover{color:var(--pe-error);background:rgba(215,44,13,.1)}
 .brikpanel-pe-tag-input-wrap input{flex:1;min-width:80px;border:none;outline:none;font-size:.8125rem;padding:.125rem 0;background:transparent;color:var(--pe-text)}
 
@@ -556,7 +644,7 @@
 .brikpanel-pe-tag:active{cursor:grabbing}
 .brikpanel-pe-tag.ui-sortable-helper{animation:none;cursor:grabbing;opacity:.95;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .brikpanel-pe-tag-placeholder{display:inline-flex;align-items:center;min-width:48px;height:26px;border:1px dashed var(--pe-input-border);border-radius:4px;background:var(--pe-bg);visibility:visible!important}
-.brikpanel-pe-attr-order-note{margin:.375rem 0 0;font-size:.75rem;line-height:1.5;color:var(--pe-text-muted)}
+.brikpanel-pe-attr-order-note{margin:.375rem 0 0;font-size:.75rem;line-height:1.5;color:var(--pe-text-secondary, #616161)}
 
 /* Tag Suggestions dropdown */
 .brikpanel-pe-tag-suggestions{position:relative;z-index:10;display:none;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);box-shadow:0 4px 12px rgba(0,0,0,.1);margin-top:.25rem;max-height:200px;overflow-y:auto}
@@ -578,21 +666,24 @@
 .brikpanel-pe-var-step[data-step="attr"] .brikpanel-pe-help-text{margin:-.25rem 0 .75rem;font-size:.75rem;color:var(--pe-text-secondary)}
 #bpe-attr-list{display:flex;flex-direction:column;gap:.25rem}
 .brikpanel-pe-attr-row{position:relative;padding-left:1.25rem}
-.brikpanel-pe-attr-drag{position:absolute;left:-.125rem;top:.3rem;display:inline-flex;align-items:center;justify-content:center;width:1.125rem;height:1.25rem;color:var(--pe-text-muted);cursor:grab;opacity:0;transition:opacity .12s ease,color .12s ease;touch-action:none}
+.brikpanel-pe-attr-drag{position:absolute;left:-.125rem;top:.3rem;display:inline-flex;align-items:center;justify-content:center;width:1.125rem;height:1.25rem;color:var(--pe-text-placeholder);cursor:grab;opacity:0;transition:opacity .12s ease,color .12s ease;touch-action:none}
 .brikpanel-pe-attr-row:hover .brikpanel-pe-attr-drag,.brikpanel-pe-attr-drag:focus-visible{opacity:1}
 .brikpanel-pe-attr-drag:hover{color:var(--pe-text-secondary)}
+/* No hover on a touch screen: the handle stays visible there, it took drags
+   while invisible (same cause as the coupon row buttons, field test C4). */
+@media (hover:none){.brikpanel-pe-attr-drag{opacity:1}}
 .brikpanel-pe-attr-drag:active{cursor:grabbing}
 .brikpanel-pe-attr-row.ui-sortable-helper{opacity:.9;box-shadow:var(--pe-shadow)}
 .brikpanel-pe-attr-row-placeholder{border:1px dashed var(--pe-input-border);border-radius:var(--pe-radius-sm);background:#fafafa;margin-bottom:.5rem;visibility:visible!important}
 .brikpanel-pe-attr-row .brikpanel-pe-tag-group{margin-bottom:.5rem}
 .brikpanel-pe-attr-row .brikpanel-pe-tag-group>label{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem}
-.brikpanel-pe-attr-remove{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:transparent;border:1px solid var(--pe-border);border-radius:50%;cursor:pointer;color:var(--pe-text-muted);font-size:14px;line-height:1;padding:0;transition:color .1s ease,border-color .1s ease,background .1s ease;font-weight:400}
+.brikpanel-pe-attr-remove{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:22px;height:22px;margin-inline-start:auto;background:transparent;border:1px solid var(--pe-border);border-radius:50%;cursor:pointer;color:var(--pe-text-secondary);font-size:14px;line-height:1;padding:0;transition:color .1s ease,border-color .1s ease,background .1s ease;font-weight:400}
 .brikpanel-pe-attr-remove:hover{color:var(--pe-error);border-color:var(--pe-error);background:rgba(215,44,13,.06)}
 
 /* "Variable product" toggle row: stacked label + hint */
 .brikpanel-pe-toggle-text{display:flex;flex-direction:column;gap:.125rem}
 .brikpanel-pe-toggle-text>span{font-size:.875rem;font-weight:600;color:var(--pe-text)}
-.brikpanel-pe-toggle-text small{font-size:.75rem;color:var(--pe-text-muted);font-weight:400}
+.brikpanel-pe-toggle-text small{font-size:.75rem;color:var(--pe-text-secondary, #616161);font-weight:400}
 
 /* Card header band: "Variable product" title + subtitle on the left, switch on
    the right, separated from the attribute editor by an inset divider so the card
@@ -602,7 +693,10 @@
 /* Unified attribute editor + per-row "Use for variations" switch */
 .brikpanel-pe-attr-editor{margin-top:0}
 .brikpanel-pe-attr-label{display:block;font-size:.8125rem;font-weight:600;color:var(--pe-text);margin-bottom:.375rem}
-.brikpanel-pe-attr-row-controls{display:inline-flex;align-items:center;gap:.625rem;flex-shrink:0}
+/* The switches and the remove button wrap inside the row when they do not fit
+   beside the name (phones, longer languages): the group never runs past the
+   card edge, and a wrapped remove button sits at the end of its line. */
+.brikpanel-pe-attr-row-controls{display:inline-flex;flex-wrap:wrap;align-items:center;gap:.5rem .625rem;max-width:100%}
 .brikpanel-pe-usevar{display:none;align-items:center;gap:.375rem;cursor:pointer;font-size:.75rem;color:var(--pe-text-secondary);user-select:none}
 #bpe-var-card.bpe-variable-on .brikpanel-pe-usevar{display:inline-flex}
 /* "Show on product page" — same switch, but always visible: a simple product's
@@ -666,10 +760,14 @@
 
 /* ALL text inputs, textareas, selects — full override with !important */
 .brikpanel-pe-metabox-content input[type="text"],.brikpanel-pe-metabox-content input[type="number"],.brikpanel-pe-metabox-content input[type="url"],.brikpanel-pe-metabox-content input[type="email"],.brikpanel-pe-metabox-content input[type="search"],.brikpanel-pe-metabox-content input[type="tel"],.brikpanel-pe-metabox-content textarea,.brikpanel-pe-metabox-content select,
-.brikpanel-pe-wc-fields-content input[type="text"],.brikpanel-pe-wc-fields-content input[type="number"],.brikpanel-pe-wc-fields-content input[type="url"],.brikpanel-pe-wc-fields-content input[type="email"],.brikpanel-pe-wc-fields-content input[type="search"],.brikpanel-pe-wc-fields-content textarea,.brikpanel-pe-wc-fields-content select{width:100%!important;max-width:100%!important;padding:.625rem .75rem!important;font-size:.875rem!important;color:var(--pe-text)!important;background:var(--pe-card)!important;border:1px solid var(--pe-input-border)!important;border-radius:var(--pe-radius-sm)!important;outline:none!important;box-sizing:border-box!important;transition:border-color .15s ease,box-shadow .15s ease!important;height:auto!important;line-height:1.5!important;box-shadow:none!important;margin:0!important}
+.brikpanel-pe-wc-fields-content input[type="text"],.brikpanel-pe-wc-fields-content input[type="number"],.brikpanel-pe-wc-fields-content input[type="url"],.brikpanel-pe-wc-fields-content input[type="email"],.brikpanel-pe-wc-fields-content input[type="search"],.brikpanel-pe-wc-fields-content textarea,.brikpanel-pe-wc-fields-content select{width:100%!important;max-width:100%!important;padding:0 .75rem!important;font-size:.875rem!important;color:var(--pe-text)!important;background-color:var(--pe-card)!important;border:1px solid var(--pe-input-border)!important;border-radius:var(--pe-radius-sm)!important;outline:none!important;box-sizing:border-box!important;transition:border-color .15s ease,box-shadow .15s ease!important;height:var(--brikpanel-control-h,2.5rem)!important;min-height:var(--brikpanel-control-h,2.5rem)!important;line-height:1.5!important;box-shadow:none!important;margin:0!important}
+/* Fields other plugins add: one line tall like the editor's own boxes (40px, they were 43), a textarea as tall as its rows; a select keeps an arrow (the `background` shorthand here used to erase it, field test D5). */
+.brikpanel-pe-metabox-content textarea,.brikpanel-pe-wc-fields-content textarea,.brikpanel-pe-metabox-content select[multiple],.brikpanel-pe-wc-fields-content select[multiple]{height:auto!important;padding:.625rem .75rem!important}
+.brikpanel-pe-metabox-content select:not([multiple]),.brikpanel-pe-wc-fields-content select:not([multiple]){-webkit-appearance:none!important;appearance:none!important;padding-inline-end:2rem!important;background-image:var(--brikpanel-control-arrow,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"))!important;background-repeat:no-repeat!important;background-position:right .75rem center!important;background-size:12px 12px!important;cursor:pointer}
+body.rtl .brikpanel-pe-metabox-content select:not([multiple]),body.rtl .brikpanel-pe-wc-fields-content select:not([multiple]){background-position:left .75rem center!important}
 .brikpanel-pe-metabox-content input:focus,.brikpanel-pe-metabox-content textarea:focus,.brikpanel-pe-metabox-content select:focus,
 .brikpanel-pe-wc-fields-content input:focus,.brikpanel-pe-wc-fields-content textarea:focus,.brikpanel-pe-wc-fields-content select:focus{border-color:var(--pe-input-focus)!important;box-shadow:0 0 0 1px var(--pe-input-focus)!important}
-.brikpanel-pe-metabox-content input::placeholder,.brikpanel-pe-wc-fields-content input::placeholder{color:var(--pe-text-muted)!important}
+.brikpanel-pe-metabox-content input::placeholder,.brikpanel-pe-wc-fields-content input::placeholder{color:var(--pe-text-placeholder)!important}
 
 /* ALL labels */
 .brikpanel-pe-metabox-content label,.brikpanel-pe-wc-fields-content label{display:block!important;float:none!important;width:auto!important;font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text)!important;margin:0 0 .375rem!important;padding:0!important;line-height:1.5!important}
@@ -718,7 +816,7 @@
    showed, as did its Minimum Price with per-unit pricing off). A field its
    script hid stays hidden. */
 .brikpanel-pe-wc-fields-content p.form-field[style*="display: none"],.brikpanel-pe-wc-fields-content p.form-field[style*="display:none"],.brikpanel-pe-metabox-content p.form-field[style*="display: none"],.brikpanel-pe-metabox-content p.form-field[style*="display:none"],.brikpanel-pe-var-extras p.form-field[style*="display: none"],.brikpanel-pe-var-extras p.form-field[style*="display:none"]{display:none!important}
-.brikpanel-pe-wc-fields-content .form-field .description,.brikpanel-pe-metabox-content .form-field .description{display:block!important;font-size:.75rem!important;color:var(--pe-text-muted)!important;margin-top:.25rem!important;font-style:normal!important;font-weight:400!important}
+.brikpanel-pe-wc-fields-content .form-field .description,.brikpanel-pe-metabox-content .form-field .description{display:block!important;font-size:.75rem!important;color:var(--pe-text-secondary, #616161) !important;margin-top:.25rem!important;font-style:normal!important;font-weight:400!important}
 .brikpanel-pe-wc-fields-content .form-field input.short,.brikpanel-pe-wc-fields-content .form-field input.long{width:100%!important}
 .brikpanel-pe-wc-fields-content .woocommerce_options_panel{padding:0!important}
 /* WooCommerce indents every field of a product-data panel for its 150px label
@@ -754,7 +852,7 @@
 
 /* Blur/upgrade upsell areas — tone down */
 .brikpanel-pe-metabox-content .wpcode-blur-area{opacity:.85}
-.brikpanel-pe-metabox-content [class*="upgrade"],.brikpanel-pe-metabox-content [class*="pro-"],.brikpanel-pe-metabox-content [class*="upsell"]{font-size:.75rem!important;color:var(--pe-text-muted)!important}
+.brikpanel-pe-metabox-content [class*="upgrade"],.brikpanel-pe-metabox-content [class*="pro-"],.brikpanel-pe-metabox-content [class*="upsell"]{font-size:.75rem!important;color:var(--pe-text-secondary, #616161) !important}
 
 /* Hide toolbars, WC chrome */
 .brikpanel-pe-wc-fields-content .toolbar,.brikpanel-pe-metabox-content .toolbar{display:none!important}
@@ -763,47 +861,96 @@
 /* Variation reorder handle — narrow first column, invisible until the row is
    hovered or the handle is keyboard-focused, so the table reads exactly as
    before at rest. Matches the attribute-row handle above. */
-.brikpanel-pe-var-table .var-drag-col{width:24px}
+.brikpanel-pe-var-table .var-drag-col{width:24px;padding-left:0;padding-right:0}
 .brikpanel-pe-var-table .var-drag-cell{width:24px;padding:.5rem .125rem;vertical-align:middle;text-align:center}
-.brikpanel-pe-var-table .var-drag-handle{display:inline-flex;align-items:center;justify-content:center;width:1.125rem;height:1.25rem;color:var(--pe-text-muted,#8a8a8a);cursor:grab;opacity:0;transition:opacity .12s ease,color .12s ease;touch-action:none}
+.brikpanel-pe-var-table .var-drag-handle{display:inline-flex;align-items:center;justify-content:center;width:1.125rem;height:1.25rem;color:var(--pe-text-placeholder,#8a8a8a);cursor:grab;opacity:0;transition:opacity .12s ease,color .12s ease;touch-action:none}
 .brikpanel-pe-var-table tr.var-main-row:hover .var-drag-handle,.brikpanel-pe-var-table .var-drag-handle:focus-visible{opacity:1}
 .brikpanel-pe-var-table .var-drag-handle:hover{color:var(--pe-text-secondary,#616161)}
+@media (hover:none){.brikpanel-pe-var-table .var-drag-handle{opacity:1}}
 .brikpanel-pe-var-table .var-drag-handle:active{cursor:grabbing}
 /* Drop target while dragging a variation row */
 tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px dashed var(--pe-input-border,#8a8a8a)}
-/* Row whose combination is no longer produced by the current attribute values */
-.brikpanel-pe-var-table .var-orphan-badge{display:inline-flex;align-items:center;margin-left:.5rem;padding:.0625rem .375rem;border:1px solid var(--pe-border,#e3e3e3);border-radius:999px;background:#f7f7f7;color:var(--pe-text-muted,#8a8a8a);font-size:.6875rem;font-weight:550;white-space:nowrap}
+/* Row whose combination is no longer produced by the current attribute values.
+   Sits under the name and may wrap: kept on one line it widened the Variation
+   column enough to turn the whole table into cards (field test B6). */
+.brikpanel-pe-var-table .var-orphan-badge{display:inline-block;padding:.0625rem .375rem;border:1px solid var(--pe-border,#e3e3e3);border-radius:999px;background:#f7f7f7;color:var(--pe-text-secondary, #616161);font-size:.6875rem;font-weight:550;line-height:1.35}
 
 /* Sort control in the variation tools strip — same control metrics as the bulk
    fields beside it so the whole strip reads as one row of equal boxes. */
 .brikpanel-pe-var-bulk #bpe-var-sort{width:auto;flex:0 1 auto;min-width:0;height:2.125rem;min-height:0;line-height:normal;padding:0 1.6rem 0 .5rem;font-size:.8125rem;background-color:var(--pe-card);border-radius:var(--pe-radius-sm);background-position:right .5rem center}
 
-/* Variation row expander — revealed only when 3rd-party extras exist */
-.brikpanel-pe-var-table .var-expand-col{width:28px}
+/* Variation row expander (▾, every row): opens the row's details — sale
+   schedule, SKU, optional fields, third-party fields (field test B6). The dot
+   says closed details hold a value. Only the chevron turns, so the dot stays
+   in its corner. The header ▾ opens or closes every row at once. */
+.brikpanel-pe-var-table .var-expand-col{width:28px;padding-left:0;padding-right:0}
 .brikpanel-pe-var-table .var-expand-cell{width:28px;padding:.5rem .25rem;vertical-align:middle}
-.brikpanel-pe-var-table .var-expand-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:1px solid var(--pe-border);border-radius:4px;background:#fff;color:var(--pe-text-secondary);cursor:pointer;transition:background .15s ease,transform .15s ease}
+.brikpanel-pe-var-table .var-expand-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:1px solid var(--pe-border);border-radius:4px;background:#fff;color:var(--pe-text-secondary);cursor:pointer;transition:background .15s ease}
 .brikpanel-pe-var-table .var-expand-btn:hover{background:#f7f7f7;color:var(--pe-text)}
-.brikpanel-pe-var-table .var-expand-btn.open{transform:rotate(180deg);background:#f0f0f0}
+.brikpanel-pe-var-table .var-expand-btn[aria-expanded="true"]{background:#f0f0f0}
+.brikpanel-pe-var-table .var-expand-btn svg,
+.brikpanel-pe-var-table .var-expand-all svg{transition:transform .2s cubic-bezier(.4,0,.2,1)}
+.brikpanel-pe-var-table .var-expand-btn[aria-expanded="true"] svg,
+.brikpanel-pe-var-table .var-expand-all[aria-expanded="true"] svg{transform:rotate(180deg)}
+.brikpanel-pe-var-table .var-details-dot{position:absolute;top:-3px;inset-inline-end:-3px;width:7px;height:7px;border-radius:50%;background:var(--pe-primary);box-shadow:0 0 0 2px var(--pe-card);visibility:hidden}
+.brikpanel-pe-var-table .var-expand-btn.has-details .var-details-dot{visibility:visible}
+.brikpanel-pe-var-table .var-expand-all{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-inline-start:3px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--pe-text-secondary);cursor:pointer}
+.brikpanel-pe-var-table .var-expand-all:hover{background:#ececec;color:var(--pe-text)}
 /* Per-row variation delete button — last column, monochrome until hover */
-.brikpanel-pe-var-table .var-delete-col{width:32px}
+.brikpanel-pe-var-table .var-delete-col{width:32px;padding-left:0;padding-right:0}
 .brikpanel-pe-var-table .var-delete-cell{width:32px;padding:.5rem .25rem;vertical-align:middle;text-align:center}
-.brikpanel-pe-var-table .var-delete-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:1px solid var(--pe-border);border-radius:4px;background:#fff;color:var(--pe-text-muted);cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
+.brikpanel-pe-var-table .var-delete-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:1px solid var(--pe-border);border-radius:4px;background:#fff;color:var(--pe-text-placeholder);cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
 .brikpanel-pe-var-table .var-delete-btn:hover{background:#fce4e4;color:var(--pe-error,#d72c0d);border-color:#f1b0b0}
 .brikpanel-pe-var-table tr.var-extras-row>td{padding:0;background:#fafafa;border-top:none}
 .brikpanel-pe-var-table tr.var-main-row.has-extra{border-bottom:none}
-.brikpanel-pe-var-extras{padding:1rem 1.25rem;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:.875rem;color:var(--pe-text)}
+/* width:0 + min-width:100%: the panel fills the row but its content can never
+   widen the table (a wide third-party field used to push every column out,
+   field test B6). A foreign table wider than the card scrolls in here. */
+.brikpanel-pe-var-extras{width:0;min-width:100%;box-sizing:border-box;overflow-x:auto;padding:.25rem 1.25rem 1rem;padding-inline-start:3.5rem;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:.875rem;color:var(--pe-text)}
+
+/* Details row behind ▾ (field test B6): sale schedule, SKU and the optional
+   per-variation fields as labelled tiles. Always in the DOM so the save always
+   finds its fields; [hidden] while closed. Opening slides it down with a
+   0fr → 1fr grid row; the JS keeps it visible until the close has played. */
+.brikpanel-pe-var-table tr.var-details-row>td{padding:0;background:#fafafa}
+.brikpanel-pe-var-table .var-details-anim{display:grid;grid-template-rows:0fr;transition:grid-template-rows .38s cubic-bezier(.4,0,.2,1)}
+.brikpanel-pe-var-table tr.var-details-row.is-open .var-details-anim{grid-template-rows:1fr}
+.brikpanel-pe-var-table tr.var-details-row.is-closing .var-details-anim{transition-duration:.28s}
+.brikpanel-pe-var-table .var-details-clip{min-height:0;overflow:hidden}
+.brikpanel-pe-var-details{width:0;min-width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:.75rem;padding:.75rem 1rem .875rem;padding-inline-start:3.5rem}
+.brikpanel-pe-var-details-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,9.5rem),1fr));gap:.625rem .875rem}
+.brikpanel-pe-var-detail{display:flex;flex-direction:column;gap:.25rem;min-width:0;margin:0}
+.brikpanel-pe-var-detail-label{font-size:.75rem;font-weight:600;color:var(--pe-text-secondary)}
+.brikpanel-pe-var-details select{width:100%;height:30px;box-sizing:border-box;padding:0 1.5rem 0 .5rem;font-size:.8125rem;line-height:normal;color:var(--pe-text);border:1px solid var(--pe-border);border-radius:4px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background:var(--pe-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right .5rem center;transition:border-color .15s ease,box-shadow .15s ease}
+.brikpanel-pe-var-details select:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
+.brikpanel-pe-var-table .var-date-field{position:relative;display:block}
+.brikpanel-pe-var-table .var-date-field input{padding-inline-end:1.75rem}
+.brikpanel-pe-var-table .var-date-clear{position:absolute;inset-inline-end:.3125rem;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--pe-text-placeholder);cursor:pointer}
+.brikpanel-pe-var-table .var-date-clear[hidden]{display:none}
+.brikpanel-pe-var-table .var-date-clear:hover{background:#ececec;color:var(--pe-text)}
+.brikpanel-pe-var-details-more{padding-top:.625rem;border-top:1px solid var(--pe-border)}
+.brikpanel-pe-var-table .var-extras-toggle{display:inline-flex;align-items:center;gap:.375rem;padding:0;border:0;background:none;font:inherit;font-size:.75rem;font-weight:600;color:var(--pe-text-secondary);cursor:pointer}
+.brikpanel-pe-var-table .var-extras-toggle:hover{color:var(--pe-text)}
+.brikpanel-pe-var-table .var-extras-toggle svg{transition:transform .2s cubic-bezier(.4,0,.2,1)}
+.brikpanel-pe-var-table .var-extras-toggle[aria-expanded="true"] svg{transform:rotate(90deg)}
+@media (prefers-reduced-motion:reduce){
+.brikpanel-pe-var-table .var-details-anim,
+.brikpanel-pe-var-table .var-expand-btn svg,
+.brikpanel-pe-var-table .var-expand-all svg,
+.brikpanel-pe-var-table .var-extras-toggle svg{transition:none}
+}
 .brikpanel-pe-var-extras .form-field,.brikpanel-pe-var-extras p.form-field{margin-bottom:.75rem!important;padding:0!important;border:none!important;display:flex!important;flex-direction:column!important}
 .brikpanel-pe-var-extras label{display:block!important;float:none!important;width:auto!important;font-size:.8125rem!important;font-weight:600!important;margin:0 0 .375rem!important;padding:0!important;color:var(--pe-text)!important}
 .brikpanel-pe-var-extras label:has(input[type=checkbox]),.brikpanel-pe-var-extras label:has(input[type=radio]){display:inline-flex!important;align-items:center!important;font-weight:400!important}
 .brikpanel-pe-var-extras input[type=text],.brikpanel-pe-var-extras input[type=number],.brikpanel-pe-var-extras input[type=email],.brikpanel-pe-var-extras input[type=url],.brikpanel-pe-var-extras textarea,.brikpanel-pe-var-extras select{width:100%!important;max-width:100%!important;padding:.5rem .625rem!important;font-size:.8125rem!important;border:1px solid var(--pe-input-border)!important;border-radius:.375rem!important;outline:none!important;box-shadow:none!important;background:#fff}
 .brikpanel-pe-var-extras input:focus,.brikpanel-pe-var-extras textarea:focus,.brikpanel-pe-var-extras select:focus{border-color:var(--pe-input-focus)!important;box-shadow:0 0 0 1px var(--pe-input-focus)!important}
 .brikpanel-pe-var-extras .options_group{padding:0!important;border:none!important}
-.brikpanel-pe-var-extras .description{font-size:.75rem!important;color:var(--pe-text-muted)!important;margin-top:.25rem!important;font-style:normal!important}
+.brikpanel-pe-var-extras .description{font-size:.75rem!important;color:var(--pe-text-secondary, #616161) !important;margin-top:.25rem!important;font-style:normal!important}
 
 /* WC Product Data tab groups (third-party fields grouped by original tab) */
 .brikpanel-pe-wc-tab-group{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--pe-border)}
 .brikpanel-pe-wc-tab-group:first-of-type{margin-top:0;padding-top:0;border-top:none}
-.brikpanel-pe-wc-tab-title{font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text-secondary)!important;margin:0 0 .75rem!important;text-transform:uppercase;letter-spacing:.03em}
+.brikpanel-pe-wc-tab-title{font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text-secondary)!important;margin:0 0 .75rem!important;text-transform:none;letter-spacing:normal}
 /* Force-show third-party panel wrappers — WC hides them by default because
    they are normally behind a tab. Inside BrikPanel they must always be visible. */
 .brikpanel-pe-wc-fields-content .panel,.brikpanel-pe-wc-fields-content .woocommerce_options_panel,.brikpanel-pe-wc-fields-content .brikpanel-pe-wc-panel{display:block!important;padding:0!important}
@@ -855,7 +1002,7 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 /* Re-tint all builder text to the BrikPanel palette (kills the #172a68 blue). */
 .brikpanel-pe-wc-fields-content [class*="wcpa_"],.brikpanel-pe-metabox-content [class*="wcpa_"]{color:var(--pe-text)!important}
 /* Help / description lines → muted, like every other helper text. */
-.brikpanel-pe-wc-fields-content [class*="wcpa_desc"],.brikpanel-pe-metabox-content [class*="wcpa_desc"]{color:var(--pe-text-muted)!important;font-size:.75rem!important;font-weight:400!important;margin:.25rem 0 .75rem!important}
+.brikpanel-pe-wc-fields-content [class*="wcpa_desc"],.brikpanel-pe-metabox-content [class*="wcpa_desc"]{color:var(--pe-text-secondary, #616161) !important;font-size:.75rem!important;font-weight:400!important;margin:.25rem 0 .75rem!important}
 /* Builder headings (form title, list title) → BrikPanel label size/weight. */
 .brikpanel-pe-wc-fields-content [class*="wcpa_formTitle"],.brikpanel-pe-wc-fields-content [class*="wcpa_formListTitle"]{font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text)!important;margin:0!important;letter-spacing:0!important}
 /* The outer list box → single clean card border + radius. */
@@ -887,7 +1034,7 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-metaboxes-wrap .postbox + .postbox{margin-top:1rem!important;padding-top:1rem!important;border-top:1px solid var(--pe-border)!important}
 .brikpanel-pe-metaboxes-wrap .postbox-header{background:transparent!important;border:none!important;box-shadow:none!important;margin:0 0 .5rem!important;padding:0!important;min-height:0!important}
 .brikpanel-pe-metaboxes-wrap .postbox-header .hndle,
-.brikpanel-pe-metaboxes-wrap .postbox-header h2.hndle{font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text-secondary)!important;background:transparent!important;border:none!important;box-shadow:none!important;margin:0!important;padding:0!important;text-transform:uppercase;letter-spacing:.03em;line-height:1.3!important;cursor:default!important}
+.brikpanel-pe-metaboxes-wrap .postbox-header h2.hndle{font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text-secondary)!important;background:transparent!important;border:none!important;box-shadow:none!important;margin:0!important;padding:0!important;text-transform:none;letter-spacing:normal;line-height:1.3!important;cursor:default!important}
 .brikpanel-pe-metaboxes-wrap .postbox-header .handle-actions,
 .brikpanel-pe-metaboxes-wrap .postbox-header .handlediv,
 .brikpanel-pe-metaboxes-wrap .postbox-header .handle-order-higher,
@@ -1041,11 +1188,11 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-metabox-content .acf-field .acf-label label,
 .brikpanel-pe-wc-fields-content .acf-field .acf-label label{font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text)!important;margin:0!important;padding:0!important;display:block!important;line-height:1.4!important}
 .brikpanel-pe-metabox-content .acf-field .acf-label p.description,
-.brikpanel-pe-wc-fields-content .acf-field .acf-label p.description{font-size:.75rem!important;color:var(--pe-text-muted)!important;margin:.25rem 0 0!important;padding:0!important;font-style:normal!important;font-weight:400!important;line-height:1.4!important}
+.brikpanel-pe-wc-fields-content .acf-field .acf-label p.description{font-size:.75rem!important;color:var(--pe-text-secondary, #616161) !important;margin:.25rem 0 0!important;padding:0!important;font-style:normal!important;font-weight:400!important;line-height:1.4!important}
 .brikpanel-pe-metabox-content .acf-field .acf-input,
 .brikpanel-pe-wc-fields-content .acf-field .acf-input{margin:0!important;padding:0!important;float:none!important;width:auto!important}
 .brikpanel-pe-metabox-content .acf-field .acf-input > p.description,
-.brikpanel-pe-wc-fields-content .acf-field .acf-input > p.description{font-size:.75rem!important;color:var(--pe-text-muted)!important;margin:.25rem 0 0!important;font-style:normal!important;font-weight:400!important}
+.brikpanel-pe-wc-fields-content .acf-field .acf-input > p.description{font-size:.75rem!important;color:var(--pe-text-secondary, #616161) !important;margin:.25rem 0 0!important;font-style:normal!important;font-weight:400!important}
 
 /* ACF file / image uploader — align with BrikPanel dropzone aesthetic */
 .brikpanel-pe-metabox-content .acf-file-uploader .hide-if-value,
@@ -1053,7 +1200,7 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-wc-fields-content .acf-file-uploader .hide-if-value,
 .brikpanel-pe-wc-fields-content .acf-image-uploader .hide-if-value{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:.75rem!important;padding:.75rem 1rem!important;border:1px dashed var(--pe-border)!important;border-radius:var(--pe-radius-sm)!important;background:#fafafa!important}
 .brikpanel-pe-metabox-content .acf-file-uploader .hide-if-value p,
-.brikpanel-pe-wc-fields-content .acf-file-uploader .hide-if-value p{margin:0!important;font-size:.8125rem!important;color:var(--pe-text-muted)!important;display:flex!important;align-items:center!important;gap:.625rem!important;flex:1!important}
+.brikpanel-pe-wc-fields-content .acf-file-uploader .hide-if-value p{margin:0!important;font-size:.8125rem!important;color:var(--pe-text-secondary, #616161) !important;display:flex!important;align-items:center!important;gap:.625rem!important;flex:1!important}
 .brikpanel-pe-metabox-content .acf-file-uploader .show-if-value,
 .brikpanel-pe-wc-fields-content .acf-file-uploader .show-if-value{border:1px solid var(--pe-border)!important;border-radius:var(--pe-radius-sm)!important;padding:.75rem!important;background:#fff!important}
 
@@ -1182,21 +1329,22 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-metabox-content .acf-relationship .filters .filter,.brikpanel-pe-wc-fields-content .acf-relationship .filters .filter{flex:1}
 /* Repeater/flexible-content (Pro) baseline — keep table aesthetic */
 .brikpanel-pe-metabox-content .acf-repeater,.brikpanel-pe-metabox-content .acf-flexible-content,.brikpanel-pe-wc-fields-content .acf-repeater,.brikpanel-pe-wc-fields-content .acf-flexible-content{border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);overflow:hidden;background:#fff}
-.brikpanel-pe-metabox-content .acf-repeater .acf-table>thead>tr>th,.brikpanel-pe-wc-fields-content .acf-repeater .acf-table>thead>tr>th{background:#f7f7f7;border-bottom:1px solid var(--pe-border);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.02em;color:var(--pe-text-secondary)}
+.brikpanel-pe-metabox-content .acf-repeater .acf-table>thead>tr>th,.brikpanel-pe-wc-fields-content .acf-repeater .acf-table>thead>tr>th{background:#f7f7f7;border-bottom:1px solid var(--pe-border);font-weight:600;font-size:.75rem;text-transform:none;letter-spacing:normal;color:var(--pe-text-secondary)}
 
-/* Variation table stock status select */
-.brikpanel-pe-var-table .var-stock-status{width:100%;min-width:90px;padding:.375rem .5rem;font-size:.8125rem;border:1px solid var(--pe-border);border-radius:4px;outline:none;cursor:pointer;background:var(--pe-card);transition:border-color .15s ease,box-shadow .15s ease;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .5rem center}
+/* Stock cell (field test B6): the Track switch, then the quantity box OR the
+   status select. Both sit in one grid cell sized by the wider of the two (the
+   select's longest option), so the column keeps its width when a row flips.
+   The inactive one is only made invisible, and is disabled and aria-hidden. */
+.brikpanel-pe-var-table .var-stock-ctl{display:inline-flex;align-items:center;gap:.375rem;vertical-align:middle}
+.brikpanel-pe-var-table .var-stock-pair{display:inline-grid}
+.brikpanel-pe-var-table .var-stock-pair>*{grid-area:1/1}
+.brikpanel-pe-var-table .var-stock-pair .is-off{visibility:hidden}
+.brikpanel-pe-var-table td .var-stock-pair input{min-width:0}
+.brikpanel-pe-var-table .var-stock-status{height:30px;box-sizing:border-box;padding:0 1.5rem 0 .5rem;font-size:.8125rem;line-height:normal;color:var(--pe-text);border:1px solid var(--pe-border);border-radius:4px;outline:none;cursor:pointer;background:var(--pe-card);transition:border-color .15s ease,box-shadow .15s ease;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .5rem center}
 .brikpanel-pe-var-table .var-stock-status:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
-/* Per-variation "Track" (manage stock) toggle cell */
-.brikpanel-pe-var-table .var-track-cell{text-align:center;vertical-align:middle}
-.brikpanel-pe-var-table th.var-track-col{text-align:center}
 .brikpanel-pe-switch-sm{width:34px;height:18px}
 .brikpanel-pe-switch-sm .brikpanel-pe-slider::before{width:12px;height:12px}
 .brikpanel-pe-switch-sm input:checked+.brikpanel-pe-slider::before{transform:translateX(16px)}
-/* When a row isn't tracking, its quantity input is inert; greyed so the
-   active control (status select) reads as the source of truth. Same the
-   other way for the status select while tracking is on. */
-.brikpanel-pe-var-table .var-stock:disabled,.brikpanel-pe-var-table .var-stock-status:disabled{background:#f1f1f1;color:var(--pe-text-muted);cursor:not-allowed;opacity:.7}
 
 /* Variation tools panel — one quiet gray card holding a SINGLE toolbar strip:
    bulk edits, then sorting + "Default Form Values", side by side on ONE line.
@@ -1250,21 +1398,40 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-var-defaults-toggle[aria-expanded="true"]{background:#f1f1f1}
 .brikpanel-pe-var-defaults-pop{position:absolute;top:calc(100% + .375rem);right:0;z-index:30;min-width:15rem;max-width:min(22rem,80vw);padding:.75rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);box-shadow:0 4px 16px rgba(0,0,0,.12)}
 .brikpanel-pe-var-defaults-pop[hidden]{display:none}
-.brikpanel-pe-var-defaults-title{display:block;font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--pe-text-muted)}
+.brikpanel-pe-var-defaults-title{display:block;font-size:.75rem;font-weight:600;letter-spacing:normal;text-transform:none;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-var-defaults-help{margin:.25rem 0 .625rem;font-size:.75rem;line-height:1.4;color:var(--pe-text-secondary)}
 .brikpanel-pe-var-defaults-row{display:flex;flex-direction:column;align-items:stretch;gap:.375rem;min-width:0;margin-top:0}
 .brikpanel-pe-var-defaults .bpe-var-default{width:100%;min-width:0;max-width:none;height:2.125rem;min-height:0;line-height:normal;padding:0 1.6rem 0 .5rem;font-size:.8125rem;background:var(--pe-card);border-radius:var(--pe-radius-sm);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .5rem center;cursor:pointer}
 
-/* Variation Table */
-.brikpanel-pe-var-table-wrap{overflow-x:auto;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
-.brikpanel-pe-var-table{width:100%;border-collapse:collapse;font-size:.8125rem;min-width:600px}
+/* Variation Table.
+   Field test B6: the table never runs past its card any more. It fits (slim
+   row + details) or front-end/shared/brikpanel-fit-table.js stacks it; the
+   scroll box below is only the fallback if that script is missing. Headers and
+   names wrap at spaces; only the inputs keep a floor. */
+.brikpanel-pe-var-table-wrap{position:relative;overflow-x:auto;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm)}
+.brikpanel-pe-var-table{width:100%;border-collapse:collapse;font-size:.8125rem}
 .brikpanel-pe-var-table thead{background:#f7f7f7}
-.brikpanel-pe-var-table th{padding:.625rem .75rem;text-align:left;font-weight:600;font-size:.75rem;color:var(--pe-text-secondary);border-bottom:1px solid var(--pe-border);white-space:nowrap}
-.brikpanel-pe-var-table td{padding:.5rem;border-bottom:1px solid var(--pe-border);vertical-align:middle}
-.brikpanel-pe-var-table tr:last-child td{border-bottom:none}
-.brikpanel-pe-var-table td input{width:100%;min-width:60px;padding:.375rem .5rem;font-size:.8125rem;border:1px solid var(--pe-border);border-radius:4px;outline:none;transition:border-color .15s ease,box-shadow .15s ease;box-sizing:border-box}
-.brikpanel-pe-var-table td input:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
-.brikpanel-pe-var-table .var-name{font-weight:550;white-space:nowrap;color:var(--pe-text)}
+.brikpanel-pe-var-table th{padding:.625rem .75rem;text-align:left;vertical-align:bottom;font-weight:600;font-size:.75rem;line-height:1.3;color:var(--pe-text-secondary);border-bottom:1px solid var(--pe-border)}
+.brikpanel-pe-var-table td{padding:.5rem;vertical-align:middle}
+/* A line on top of each variation, not under it: every variation now ends
+   with a [hidden] details row, so tr:last-child is never the last visible
+   row, and a bottom line doubled the table's own border. */
+.brikpanel-pe-var-table tbody>tr.var-main-row:not(:first-child)>td{border-top:1px solid var(--pe-border)}
+/* Text and number boxes only. The rule used to reach the hidden checkbox in
+   every switch too (and third-party checkboxes in the extras), giving it a
+   60px box that spilled out of the switch. The explicit white also beats
+   WordPress' grey input[readonly]: flatpickr makes the sale dates readonly,
+   and they looked disabled (field test D17). */
+.brikpanel-pe-var-table td input:where([type="text"],[type="number"]){width:100%;min-width:4.5rem;padding:.375rem .5rem;font-size:.8125rem;color:var(--pe-text);background-color:var(--pe-card);border:1px solid var(--pe-border);border-radius:4px;outline:none;transition:border-color .15s ease,box-shadow .15s ease;box-sizing:border-box}
+.brikpanel-pe-var-table td input:where([type="text"],[type="number"]):focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
+.brikpanel-pe-var-table td input.var-date[readonly]{background-color:var(--pe-card);cursor:pointer}
+/* The money and stock columns take no share of the spare width. A text box's
+   natural width is ~150px, so the auto layout handed them the room and a name
+   like "Red - Any Size" wrapped onto three lines beside half-empty price
+   boxes. At 1% they keep their floor and the Variation column gets the rest. */
+.brikpanel-pe-var-table td.var-num-cell,
+.brikpanel-pe-var-table td.var-stock-cell{width:1%}
+.brikpanel-pe-var-table .var-name{font-weight:550;color:var(--pe-text)}
 /* Variation name cell carries a leading "Active" toggle (WC's Enabled state).
    Extra-small switch variant: deliberately daintier than the Track switch so
    the row reads calm — the name stays the visual anchor, not the control. */
@@ -1273,23 +1440,28 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-switch-xs .brikpanel-pe-slider::before{width:10px;height:10px;left:2px;bottom:2px}
 .brikpanel-pe-switch-xs input:checked+.brikpanel-pe-slider{background:var(--pe-primary)}
 .brikpanel-pe-switch-xs input:checked+.brikpanel-pe-slider::before{transform:translateX(12px)}
-/* Inline alignment on purpose: display:flex on a <td> stops it acting as a
-   table cell, so the cell no longer stretches to the row height and its
-   bottom border floats up mid-row (looked broken next to the other columns).
-   vertical-align keeps real table layout and centers both pieces. */
-.brikpanel-pe-var-table .var-name .var-enabled-switch{vertical-align:middle;margin-right:.55rem}
-.brikpanel-pe-var-table .var-name-text{vertical-align:middle}
+/* The flex box is an inner span on purpose: display:flex on the <td> itself
+   stops it acting as a table cell, so the cell no longer stretches to the row
+   height and its border floats up mid-row. Image, Active switch, then the
+   name, which wraps at spaces (break-word, not anywhere: "anywhere" would let
+   the table squeeze a name to one letter per line). */
+.brikpanel-pe-var-table .var-name-inner{display:flex;align-items:center;gap:.5rem}
+.brikpanel-pe-var-table .var-name .var-enabled-switch{flex:0 0 auto}
+.brikpanel-pe-var-table .var-name-text-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:.125rem;min-width:0}
+.brikpanel-pe-var-table .var-name-text{overflow-wrap:break-word}
 /* Manually added row: the combination is still being chosen, so the name cell
-   holds one dropdown per axis instead of a derived label. */
-.brikpanel-pe-var-table .var-attr-picks{display:inline-flex;flex-wrap:wrap;gap:.375rem;vertical-align:middle}
-.brikpanel-pe-var-table .var-attr-select{min-width:8.5rem;max-width:14rem;height:2rem;padding:0 1.5rem 0 .5rem;font-size:.8125rem;font-weight:400;color:var(--pe-text);background-color:var(--pe-card);border:1px solid var(--pe-input-border);border-radius:4px}
+   holds one dropdown per axis instead of a derived label, one under the other.
+   The floor stays below "Any <attribute>" so a new row does not turn the table
+   into cards by itself. */
+.brikpanel-pe-var-table .var-attr-picks{display:flex;flex-direction:column;align-items:stretch;gap:.25rem;min-width:0}
+.brikpanel-pe-var-table .var-attr-select{width:100%;min-width:6.5rem;max-width:14rem;height:2rem;padding:0 1.5rem 0 .5rem;font-size:.8125rem;font-weight:400;color:var(--pe-text);background-color:var(--pe-card);border:1px solid var(--pe-input-border);border-radius:4px}
 /* Same combination twice: WooCommerce can only ever reach the first one. */
 .brikpanel-pe-var-table tr.is-duplicate>td{background:#fdeeec}
 .brikpanel-pe-var-table tr.is-duplicate .var-attr-select{border-color:var(--pe-error)}
 /* Inactive variation: dim its editable cells so its off-state reads at a glance,
    while the Active toggle, expander and delete control stay fully legible. */
 .brikpanel-pe-var-table tr.is-disabled td:not(.var-name):not(.var-drag-cell):not(.var-expand-cell):not(.var-delete-cell){opacity:.42}
-.brikpanel-pe-var-table tr.is-disabled .var-name-text{color:var(--pe-text-muted)}
+.brikpanel-pe-var-table tr.is-disabled .var-name-text{color:var(--pe-text-placeholder)}
 
 /* Variation Image — stacked card effect for multi-image */
 .brikpanel-pe-var-table .var-image-btn{position:relative;width:40px;height:40px;border:1.5px solid #999;border-radius:4px;background:#fafafa;cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:visible;padding:0;z-index:1;transition:border-color .15s ease}
@@ -1298,16 +1470,25 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-var-table .var-image-btn::after{transform:translate(10px,4px);z-index:-2}
 .brikpanel-pe-no-var-gallery .brikpanel-pe-var-table .var-image-btn::before,
 .brikpanel-pe-no-var-gallery .brikpanel-pe-var-table .var-image-btn::after{display:none}
-.brikpanel-pe-var-table .var-image-btn:hover{border-color:var(--pe-text-muted)}
+.brikpanel-pe-var-table .var-image-btn:hover{border-color:var(--pe-text-placeholder)}
 .brikpanel-pe-var-table .var-image-btn img{width:100%;height:100%;object-fit:cover;position:relative;z-index:2;border-radius:3px}
-.brikpanel-pe-var-table .var-image-btn svg{color:var(--pe-text-muted);position:relative;z-index:2}
+.brikpanel-pe-var-table .var-image-btn svg{color:var(--pe-text-placeholder);position:relative;z-index:2}
 .var-image-count{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;border-radius:9px;background:var(--pe-primary);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;z-index:5;line-height:1;padding:0 4px;box-shadow:0 1px 3px rgba(0,0,0,.2)}
-/* Remove-image control — appears on hover over a variation image cell */
-.brikpanel-pe-var-table .var-image-wrap{position:relative;display:inline-block}
-.brikpanel-pe-var-table .var-image-remove{position:absolute;top:-7px;left:-7px;width:18px;height:18px;padding:0;border:1.5px solid #fff;border-radius:50%;background:var(--pe-primary);color:#fff;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:7;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:background .15s ease}
-.brikpanel-pe-var-table .var-image-wrap:hover .var-image-remove{display:flex}
+/* The margin makes room for the stacked-card edges drawn 10px to the right. */
+.brikpanel-pe-var-table .var-image-wrap{position:relative;display:inline-block;flex:0 0 auto;margin-right:10px}
+.brikpanel-pe-no-var-gallery .brikpanel-pe-var-table .var-image-wrap{margin-right:0}
+/* Remove-image control (top) and product video (bottom, only where the theme
+   plays one) on the side away from the stacked-card edges, in either writing
+   direction. Revealed like the gallery buttons: hover or keyboard focus, and
+   always on a touch screen. */
+.brikpanel-pe-var-table .var-image-remove{position:absolute;top:-7px;inset-inline-start:-7px;width:18px;height:18px;padding:0;border:1.5px solid #fff;border-radius:50%;background:var(--pe-primary);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:7;box-shadow:0 1px 3px rgba(0,0,0,.3);opacity:0;transition:opacity .15s ease,background .15s ease}
 .brikpanel-pe-var-table .var-image-remove:hover{background:var(--pe-error)}
 .brikpanel-pe-var-table .var-image-remove svg{position:relative;z-index:2}
+.brikpanel-pe-var-table .var-image-video{position:absolute;bottom:-7px;inset-inline-start:-7px;width:18px;height:18px;padding:0;border:1.5px solid #fff;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:7;box-shadow:0 1px 3px rgba(0,0,0,.3);opacity:0;transition:opacity .15s ease,background .15s ease}
+.brikpanel-pe-var-table .var-image-wrap:hover .var-image-remove,.brikpanel-pe-var-table .var-image-remove:focus-visible,.brikpanel-pe-var-table .var-image-wrap:hover .var-image-video,.brikpanel-pe-var-table .var-image-video:focus-visible,.brikpanel-pe-var-table .var-image-video.is-active{opacity:1}
+.brikpanel-pe-var-table .var-image-video.is-active{background:var(--pe-primary)}
+@media (hover:none),(any-pointer:coarse){.brikpanel-pe-var-table .var-image-remove,.brikpanel-pe-var-table .var-image-video{opacity:1}}
+.brikpanel-pe-var-table .var-image-video svg{width:9px;height:9px;position:relative;z-index:2}
 
 /* Toast */
 .bpe-toast-container{position:fixed;top:44px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:.5rem}
@@ -1329,15 +1510,9 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-vendor-sku-row > .brikpanel-pe-field:last-child{grid-column:2 / 3}
 
 /* Vendor select — slim variant of the standard select. Used inside the
-   COGS card, the variations table, and stock orders. */
+   COGS card, the variation details (styled with the other detail selects)
+   and stock orders. */
 .brikpanel-pe-vendor-select{font-size:.875rem;line-height:1.4}
-
-/* Variations table vendor column — kept narrow so the table stays readable.
-   The column is still wide enough for "(parent: Acme Wholesale Co.)". */
-.brikpanel-pe-var-table .bpe-var-vendor-th,
-.brikpanel-pe-var-table .var-vendor-cell{min-width:140px;max-width:200px}
-.brikpanel-pe-var-table .var-vendor{width:100%;padding:.375rem .5rem;font-size:.8125rem;border:1px solid var(--pe-input-border);border-radius:.375rem;background:#fff;line-height:1.3;transition:border-color .15s,box-shadow .15s}
-.brikpanel-pe-var-table .var-vendor:focus{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 
 /* SEO Preview */
 .brikpanel-pe-seo-preview{border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);padding:.75rem;margin-bottom:1rem;background:#fafafa;font-family:Arial,sans-serif}
@@ -1354,13 +1529,14 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-sr-rerun{padding:.375rem .75rem;font-size:.75rem}
 .brikpanel-pe-sr-summary{display:flex;flex-wrap:wrap;gap:.375rem;margin-bottom:.875rem}
 .brikpanel-pe-sr-pill{display:inline-flex;align-items:center;padding:.1875rem .5rem;border-radius:999px;font-size:.6875rem;font-weight:600;line-height:1.2}
-.brikpanel-pe-sr-pill.error{background:#fce4e4;color:#c62828}
-.brikpanel-pe-sr-pill.warning{background:#fff3cd;color:#856404}
-.brikpanel-pe-sr-pill.suggestion{background:#e7f0fd;color:#1d4ed8}
-.brikpanel-pe-sr-pill.success{background:#e4f5e1;color:#1a6b15}
+/* State classes are is-*: a bare `error` is a WordPress admin notice class. */
+.brikpanel-pe-sr-pill.is-error{background:#fce4e4;color:#c62828}
+.brikpanel-pe-sr-pill.is-warning{background:#fff3cd;color:#856404}
+.brikpanel-pe-sr-pill.is-suggestion{background:#e7f0fd;color:#1d4ed8}
+.brikpanel-pe-sr-pill.is-success{background:#e4f5e1;color:#1a6b15}
 .brikpanel-pe-sr-group{margin-top:.875rem}
 .brikpanel-pe-sr-group:first-of-type{margin-top:0}
-.brikpanel-pe-sr-group-title{font-size:.75rem;font-weight:600;color:var(--pe-text-secondary);text-transform:uppercase;letter-spacing:.02em;margin-bottom:.5rem}
+.brikpanel-pe-sr-group-title{font-size:.75rem;font-weight:600;color:var(--pe-text-secondary);text-transform:none;letter-spacing:normal;margin-bottom:.5rem}
 .brikpanel-pe-sr-check{display:flex;align-items:flex-start;gap:.5rem;padding:.5rem .625rem;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);margin-bottom:.375rem;background:#fafafa}
 .brikpanel-pe-sr-check:last-child{margin-bottom:0}
 .brikpanel-pe-sr-dot{flex-shrink:0;width:.5rem;height:.5rem;border-radius:50%;margin-top:.375rem}
@@ -1369,7 +1545,7 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-sr-check--suggestion .brikpanel-pe-sr-dot{background:#1d4ed8}
 .brikpanel-pe-sr-check--success .brikpanel-pe-sr-dot{background:#1a8917}
 .brikpanel-pe-sr-msg{flex:1;font-size:.8125rem;color:var(--pe-text);line-height:1.4}
-.brikpanel-pe-sr-tag{flex-shrink:0;font-size:.6875rem;font-weight:600;color:var(--pe-text-muted)}
+.brikpanel-pe-sr-tag{flex-shrink:0;font-size:.6875rem;font-weight:600;color:var(--pe-text-secondary, #616161)}
 /* SEO score gauge (SmartCrawl analyzer). Circular progress driven by the
    --bpe-score custom property (0-100); colour band set by the score-level
    modifier. Monochrome track, status-coloured fill only. */
@@ -1405,8 +1581,8 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-inline-input{width:70px;padding:2px 6px;font-size:.8125rem;border:1px solid var(--pe-input-focus);border-radius:4px;outline:none;box-shadow:0 0 0 1px var(--pe-input-focus)}
 
 /* Downloadable files */
-.brikpanel-pe-help-text{font-size:.75rem;color:var(--pe-text-muted);margin:0 0 .75rem;line-height:1.4}
-.brikpanel-pe-text-muted{font-size:.8125rem;color:var(--pe-text-muted);margin:0;font-style:italic}
+.brikpanel-pe-help-text{font-size:.75rem;color:var(--pe-text-secondary, #616161);margin:0 0 .75rem;line-height:1.4}
+.brikpanel-pe-text-muted{font-size:.8125rem;color:var(--pe-text-secondary, #616161);margin:0;font-style:italic}
 .brikpanel-pe-downloads{display:flex;flex-direction:column;gap:.5rem;margin-bottom:.75rem}
 .brikpanel-pe-download-item{display:flex;align-items:center;gap:.625rem;padding:.5rem .75rem;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:#fafafa}
 .brikpanel-pe-download-icon{flex-shrink:0;color:var(--pe-text-secondary)}
@@ -1418,7 +1594,7 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-download-url:focus{border-color:var(--pe-input-focus);color:var(--pe-text);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-download-browse{flex-shrink:0;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--pe-border);background:#fff;border-radius:4px;color:var(--pe-text-secondary);cursor:pointer;padding:0;transition:all .15s ease}
 .brikpanel-pe-download-browse:hover{background:var(--pe-bg);color:var(--pe-text);border-color:var(--pe-input-border)}
-.brikpanel-pe-download-remove{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:transparent;color:var(--pe-text-muted);border:none;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .15s ease}
+.brikpanel-pe-download-remove{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:transparent;color:var(--pe-text-placeholder);border:none;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .15s ease}
 .brikpanel-pe-download-remove:hover{background:rgba(215,44,13,.1);color:var(--pe-error)}
 
 /* Product List Status */
@@ -1434,34 +1610,70 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe{overflow-x:clip}
 
-/* Widescreen, part two — has to sit AFTER the variation-table rules above, which
-   pin the name to one line at the same specificity and would otherwise win on
-   source order. With the wide card the point is to lose the table's horizontal
-   scrollbar, so a long variation name wraps rather than pushing every other
-   column out of view. Below the breakpoint the name stays on one line: the
-   table scrolls there anyway and short rows are worth more than wrapped names.
-   The min-width matters: once the name may wrap, the auto layout is free to
-   squeeze that column down to its longest single word and the names turn into
-   four-line stacks. This floors it at a readable width. */
+/* Widescreen, part two — has to sit AFTER the variation-table rules above,
+   which it overrides at the same specificity. Names wrap at every width now
+   (field test B6); on the wide card the auto layout would still squeeze the
+   name column down to its longest single word and stack names four lines
+   deep, so this floors it at a readable width there. */
 @media screen and (min-width:1360px){
-.brikpanel-pe-widescreen .brikpanel-pe-var-table .var-name{white-space:normal;min-width:15rem}
+.brikpanel-pe-widescreen .brikpanel-pe-var-table .var-name{min-width:15rem}
 }
 
+/* Stacked rows (field test B6). front-end/shared/brikpanel-fit-table.js adds
+   .is-stacked when even the slim row cannot fit its card (tablet, phone, long
+   translations). Each variation becomes a card: drag, ▾, image, Active and
+   name on the top line, Delete in the corner, the fields as labelled tiles in
+   the same language as Abandoned Carts. The sub-rows keep [hidden] while
+   closed: display is only set on :not([hidden]). Sits after every table rule
+   above so equal-specificity rules lose on source order. */
+.brikpanel-pe-var-table.is-stacked,
+.brikpanel-pe-var-table.is-stacked>tbody{display:block}
+.brikpanel-pe-var-table.is-stacked>thead{display:none}
+.brikpanel-pe-var-table.is-stacked>tbody>tr.var-main-row{position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,8.5rem),1fr));gap:.625rem .875rem;padding:.75rem .875rem .875rem}
+.brikpanel-pe-var-table.is-stacked>tbody>tr.var-main-row:not(:first-child){border-top:1px solid var(--pe-border)}
+/* Kept at (0,2,3) on purpose: the placement rules below (td.var-name,
+   td.var-drag-cell …) are (0,3,1) and must win over this reset. */
+.brikpanel-pe-var-table.is-stacked>tbody>tr>td{display:block;width:auto;min-width:0;padding:0;border:0}
+/* The table-mode row line sits on the cells at (0,3,3); a card draws it on
+   the row instead, so the cells drop theirs. */
+.brikpanel-pe-var-table.is-stacked>tbody>tr.var-main-row:not(:first-child)>td{border-top:0}
+.brikpanel-pe-var-table.is-stacked>tbody>tr.var-main-row.is-duplicate{background:#fdeeec}
+.brikpanel-pe-var-table.is-stacked>tbody>tr.var-main-row.is-duplicate>td{background:transparent}
+.brikpanel-pe-var-table.is-stacked td[data-bp-label]::before{content:attr(data-bp-label);display:block;margin-bottom:.25rem;font-size:.75rem;font-weight:600;color:var(--pe-text-secondary)}
+.brikpanel-pe-var-table.is-stacked td.var-name{grid-column:1/-1;padding-inline-start:3.125rem;padding-inline-end:2.25rem}
+.brikpanel-pe-var-table.is-stacked td.var-drag-cell{position:absolute;inset-inline-start:.5rem;top:1.375rem;width:auto}
+.brikpanel-pe-var-table.is-stacked td.var-expand-cell{position:absolute;inset-inline-start:1.875rem;top:1.3rem;width:auto}
+.brikpanel-pe-var-table.is-stacked td.var-delete-cell{position:absolute;inset-inline-end:.75rem;top:1.2rem;width:auto}
+.brikpanel-pe-var-table.is-stacked td input:where([type="text"],[type="number"]){min-width:0}
+.brikpanel-pe-var-table.is-stacked .var-stock-ctl{display:flex}
+.brikpanel-pe-var-table.is-stacked .var-stock-pair{flex:1 1 auto;min-width:0}
+.brikpanel-pe-var-table.is-stacked .var-stock-pair>*{width:100%}
+.brikpanel-pe-var-table.is-stacked .var-attr-picks{flex-direction:row;flex-wrap:wrap}
+.brikpanel-pe-var-table.is-stacked .var-attr-select{width:auto}
+.brikpanel-pe-var-table.is-stacked>tbody>tr.var-backorder-row:not([hidden]),
+.brikpanel-pe-var-table.is-stacked>tbody>tr.var-details-row:not([hidden]),
+.brikpanel-pe-var-table.is-stacked>tbody>tr.var-extras-row:not([hidden]){display:block}
+.brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-details,
+.brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-extras,
+.brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-backorder{width:auto;padding-inline-start:.875rem}
+.brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-details-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,8.5rem),1fr))}
+
 @media screen and (max-width:782px){
-/* Compact two-row sticky header: row 1 = back + product title (left), the
-   action cluster wraps onto row 2 (right-aligned). The secondary nav actions
-   collapse into the kebab menu below, so the header stays ~2 rows instead of 3. */
+/* Smaller sticky header. Which parts fold, take a second row or drop their
+   text is not decided here but by the header levels above (fit-row.js), from
+   the real width: a breakpoint cannot know the language or the controls a
+   product shows. */
 /* `top` must stay keyed to the bar that is actually above it. Hardcoding WP's
    46px mobile admin-bar height parked the sticky header 46px down while the
    BrikPanel top bar occupies 0-52px, so its first 6-7px sat underneath the bar
    (and under its shadow) on every phone. The variable resolves to 52px when
    the top bar is on; the 46px fallback covers the top-bar-off case, where WP's
    own admin bar really is 46px at this breakpoint. */
-.brikpanel-pe-header{top:var(--bp-topbar-height,46px);padding:.5rem .875rem;gap:.5rem;flex-wrap:wrap}
-.brikpanel-pe-header-left{flex:1 1 100%;min-width:0;gap:.375rem}
-.brikpanel-pe-header-left .brikpanel-pe-back{flex-shrink:0;padding:.25rem .375rem}
-.brikpanel-pe-header-left h1{font-size:1.0625rem;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brikpanel-pe-header-right{flex:1 1 100%;gap:.375rem;justify-content:flex-end}
+.brikpanel-pe-header{top:var(--bp-topbar-height,46px);padding:.5rem .875rem;gap:.5rem}
+.brikpanel-pe-header-left{gap:.375rem}
+.brikpanel-pe-header-left .brikpanel-pe-back{padding:.25rem .375rem}
+.brikpanel-pe-header-left h1{font-size:1.0625rem}
+.brikpanel-pe-header-right{gap:.375rem}
 .brikpanel-pe-content{padding:1rem}
 .brikpanel-pe-row{grid-template-columns:1fr}
 .brikpanel-pe-row-3{grid-template-columns:1fr}
@@ -1505,44 +1717,21 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-gallery-item{width:70px;height:70px}
 .brikpanel-pe-btn{padding:.625rem 1rem;font-size:.875rem}
 .brikpanel-pe-inline-form{flex-wrap:wrap}
-.brikpanel-pe-tooltip::after{left:auto;right:0;transform:none}
 /* Rich-text toolbar: let the formatting buttons wrap onto a second row instead
    of overflowing the card on narrow screens. Drop the auto margin so the HTML
    toggle flows inline with the rest rather than being pinned far right. */
 .brikpanel-pe-editor-toolbar{flex-wrap:wrap;row-gap:2px}
 .brikpanel-pe-editor-toolbar .brikpanel-pe-html-toggle{margin-left:0}
-
-/* Header overflow menu becomes a real kebab popover on mobile/tablet. */
-.brikpanel-pe-header-overflow{display:inline-block;position:relative}
-.brikpanel-pe-overflow-trigger{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:2.25rem;height:2.25rem;padding:0;background:var(--pe-card);color:var(--pe-text-secondary);border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);cursor:pointer;box-shadow:0 1px 0 rgba(0,0,0,.05);transition:background .15s ease,color .15s ease,border-color .15s ease}
-.brikpanel-pe-overflow-trigger:hover{background:#f7f7f7;color:var(--pe-text)}
-.brikpanel-pe-header-overflow.is-open .brikpanel-pe-overflow-trigger{background:#f0f0f0;border-color:#d4d4d4;color:var(--pe-text)}
-.brikpanel-pe-overflow-menu{display:flex;flex-direction:column;gap:.125rem;position:absolute;top:calc(100% + .375rem);left:0;min-width:190px;margin:0;padding:.375rem;list-style:none;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;transform:translateY(-4px) scale(.98);transform-origin:top left;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:200}
-.brikpanel-pe-header-overflow.is-open .brikpanel-pe-overflow-menu{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
-.brikpanel-pe-overflow-menu .brikpanel-pe-btn{width:100%;justify-content:flex-start;gap:.5rem;background:transparent;border:none;box-shadow:none!important;padding:.5rem .625rem;border-radius:.4375rem;font-size:.8125rem;font-weight:500;color:var(--pe-text)}
-.brikpanel-pe-overflow-menu .brikpanel-pe-btn:hover{background:#f7f7f7}
-
-/* Variations table: smoother momentum scroll + a fade hint on the right edge
-   so it reads as horizontally scrollable on touch. */
-.brikpanel-pe-var-table-wrap{-webkit-overflow-scrolling:touch;position:relative}
 }
 @media screen and (max-width:480px){
 .brikpanel-pe-header-left h1{font-size:1rem}
 .brikpanel-pe-dropzone{padding:1.5rem}
-/* Phone: collapse the catalog-visibility control to its eye icon so the whole
-   action cluster (kebab, star, status, visibility, Update) fits on one row.
-   The label is still reachable inside the dropdown it opens. */
-.brikpanel-pe-catvis-trigger .brikpanel-pe-catvis-label{display:none}
-.brikpanel-pe-catvis-trigger{padding:.4375rem .375rem}
-/* Same treatment for the publish-date control: collapse to its calendar icon so
-   the header action cluster stays on one row. Date is reachable in its popover. */
-.brikpanel-pe-pubdate-trigger .brikpanel-pe-pubdate-label,
-.brikpanel-pe-pubdate-trigger .brikpanel-pe-pubdate-chevron{display:none}
-.brikpanel-pe-pubdate-trigger{padding:.4375rem .375rem}
-/* Tighten the action cluster so it stays on a single row down to ~340px
-   instead of wrapping the Update button onto its own line. */
-.brikpanel-pe-header-right{gap:.3125rem}
-.brikpanel-pe-overflow-trigger{width:2rem;height:2rem}
+/* Smaller controls in the action row on phones. Whether the visibility and date
+   controls keep their text is a header level (is-tight-vis, is-tight-date):
+   they keep it whenever it fits. position:relative anchors the status menu
+   below to this row, so it drops as a near full-width sheet. */
+.brikpanel-pe-header-right{gap:.3125rem;position:relative}
+.brikpanel-pe-header.is-fold .brikpanel-pe-overflow-trigger{width:2rem;height:2rem}
 .brikpanel-pe-featured-star{width:1.875rem;height:1.875rem}
 }
 
@@ -1555,11 +1744,11 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-status-trigger:focus-visible{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-status-wrap.is-open .brikpanel-pe-status-trigger{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-status-trigger-label{flex:1;text-align:left}
-.brikpanel-pe-status-chevron{flex-shrink:0;color:var(--pe-text-muted);transition:transform .15s ease}
+.brikpanel-pe-status-chevron{flex-shrink:0;color:var(--pe-text-placeholder);transition:transform .15s ease}
 .brikpanel-pe-status-wrap.is-open .brikpanel-pe-status-chevron{transform:rotate(180deg)}
 
 /* Status indicator dot — colored per state */
-.brikpanel-pe-status-dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;flex-shrink:0;background:var(--pe-text-muted)}
+.brikpanel-pe-status-dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;flex-shrink:0;background:var(--pe-text-placeholder)}
 .brikpanel-pe-status-wrap[data-status="publish"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:var(--pe-success);box-shadow:0 0 0 3px rgba(26,137,23,.12)}
 .brikpanel-pe-status-wrap[data-status="draft"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#9ca3af;box-shadow:0 0 0 3px rgba(156,163,175,.2)}
 .brikpanel-pe-status-wrap[data-status="private"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#4c1d95;box-shadow:0 0 0 3px rgba(76,29,149,.15)}
@@ -1572,7 +1761,7 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="password"]{background:#b45309}
 
 /* Popover menu */
-.brikpanel-pe-status-menu{position:absolute;top:calc(100% + .375rem);right:0;min-width:260px;margin:0;padding:.375rem;list-style:none;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;transform:translateY(-4px) scale(.98);transform-origin:top right;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:200}
+.brikpanel-pe-status-menu{position:absolute;top:calc(100% + .375rem);right:0;min-width:260px;margin:0;padding:.375rem;list-style:none;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;transform:translateY(-4px) scale(.98);transform-origin:top right;translate:var(--bpe-pop-shift,0px) 0;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:200}
 .brikpanel-pe-status-wrap.is-open .brikpanel-pe-status-menu{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
 .brikpanel-pe-status-menu li{display:flex;align-items:flex-start;gap:.625rem;padding:.625rem .75rem;border-radius:.4375rem;cursor:pointer;transition:background .1s ease}
 .brikpanel-pe-status-menu li:hover{background:#f7f7f7}
@@ -1585,7 +1774,9 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 /* Password field — inline beside the status dropdown */
 .brikpanel-pe-password-inline{display:none;align-items:center}
 .brikpanel-pe-password-inline.is-visible{display:inline-flex}
-.brikpanel-pe-password-inline input{width:100px;padding:.375rem .5rem;font:inherit;font-size:.75rem;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);color:var(--pe-text);transition:border-color .15s ease,box-shadow .15s ease}
+/* min-height:0: WordPress 7.1 gives text inputs min-height:40px, which made this
+   the tallest control in the header and pushed the whole bar taller. */
+.brikpanel-pe-password-inline input{width:100px;min-height:0;padding:.375rem .5rem;font:inherit;font-size:.75rem;line-height:normal;border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);color:var(--pe-text);transition:border-color .15s ease,box-shadow .15s ease}
 .brikpanel-pe-password-inline input:focus{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 
 /* Publish date — mini popover in the header (shares the datetime input with the
@@ -1595,24 +1786,32 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-pubdate-trigger:hover{background:#f0f0f0;color:var(--pe-text)}
 .brikpanel-pe-pubdate-trigger svg{flex-shrink:0}
 .brikpanel-pe-pubdate-label{max-width:150px;overflow:hidden;text-overflow:ellipsis}
-.brikpanel-pe-pubdate-chevron{color:var(--pe-text-muted);transition:transform .15s ease}
+.brikpanel-pe-pubdate-chevron{color:var(--pe-text-placeholder);transition:transform .15s ease}
 .brikpanel-pe-pubdate-wrap.is-open .brikpanel-pe-pubdate-chevron{transform:rotate(180deg)}
-.brikpanel-pe-pubdate-pop{position:absolute;top:calc(100% + .25rem);left:0;min-width:220px;padding:.75rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;transform:translateY(-4px) scale(.97);transform-origin:top left;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:200}
-.brikpanel-pe-pubdate-wrap.is-open .brikpanel-pe-pubdate-pop{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+/* Closed, the popover is also visibility:hidden (after its fade) so Tab does not
+   land on its date field. --bpe-pop-shift keeps an open header popover inside
+   the window (clampPopover() in the editor JS): anchored to the chip, this one
+   ran past the right edge on phones. */
+.brikpanel-pe-pubdate-pop{position:absolute;top:calc(100% + .25rem);inset-inline-start:0;min-width:220px;padding:.75rem;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;visibility:hidden;transform:translateY(-4px) scale(.97);transform-origin:top;translate:var(--bpe-pop-shift,0px) 0;pointer-events:none;transition:opacity .15s ease,transform .15s ease,visibility 0s linear .15s;z-index:200}
+.brikpanel-pe-pubdate-wrap.is-open .brikpanel-pe-pubdate-pop{opacity:1;visibility:visible;transform:translateY(0) scale(1);pointer-events:auto;transition:opacity .15s ease,transform .15s ease,visibility 0s}
 .brikpanel-pe-pubdate-poplabel{display:block;margin-bottom:.375rem;font-size:.8125rem;font-weight:600;color:var(--pe-text)}
 .brikpanel-pe-pubdate-pop input{width:100%;box-sizing:border-box;padding:.5rem .625rem;font:inherit;font-size:.8125rem;color:var(--pe-text);border:1px solid var(--pe-input-border);border-radius:var(--pe-radius-sm);background:var(--pe-card);transition:border-color .15s ease,box-shadow .15s ease}
 .brikpanel-pe-pubdate-pop input:focus{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 
 /* Catalog visibility — mini dropdown in the header */
 .brikpanel-pe-catvis-wrap{position:relative;display:inline-block}
-.brikpanel-pe-catvis-trigger{display:inline-flex;align-items:center;gap:.3rem;padding:.3125rem .5rem;background:transparent;color:var(--pe-text-secondary);border:none;font:inherit;font-size:.6875rem;font-weight:500;cursor:pointer;border-radius:var(--pe-radius-sm);transition:background .15s ease,color .15s ease;white-space:nowrap}
-.brikpanel-pe-catvis-trigger:hover{background:#f0f0f0;color:var(--pe-text)}
+/* Framed like the status control beside it, at every header level: a
+   borderless eye and chevron did not read as a button (field test C2). */
+.brikpanel-pe-catvis-trigger{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;box-sizing:border-box;min-height:2rem;min-width:2rem;padding:.375rem .5625rem;background:var(--pe-card);color:var(--pe-text-secondary);border:1px solid var(--pe-border);font:inherit;font-size:.75rem;font-weight:500;line-height:1.2;cursor:pointer;border-radius:var(--pe-radius-sm);box-shadow:0 1px 0 rgba(0,0,0,.03);transition:background .15s ease,color .15s ease,border-color .15s ease,box-shadow .15s ease;white-space:nowrap}
+.brikpanel-pe-catvis-trigger:hover{background:#f7f7f7;border-color:#d4d4d4;color:var(--pe-text)}
+.brikpanel-pe-catvis-trigger:focus-visible{outline:none;border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
+.brikpanel-pe-catvis-wrap.is-open .brikpanel-pe-catvis-trigger{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus);color:var(--pe-text)}
 .brikpanel-pe-catvis-trigger svg{flex-shrink:0}
-.brikpanel-pe-catvis-chevron{color:var(--pe-text-muted);transition:transform .15s ease}
+.brikpanel-pe-catvis-chevron{color:var(--pe-text-placeholder);transition:transform .15s ease}
 .brikpanel-pe-catvis-wrap.is-open .brikpanel-pe-catvis-chevron{transform:rotate(180deg)}
-.brikpanel-pe-catvis-menu{position:absolute;top:calc(100% + .25rem);right:0;min-width:160px;margin:0;padding:.25rem;list-style:none;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;transform:translateY(-4px) scale(.97);transform-origin:top right;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:200}
+.brikpanel-pe-catvis-menu{position:absolute;top:calc(100% + .25rem);right:0;min-width:160px;margin:0;padding:.25rem;list-style:none;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:var(--pe-radius);box-shadow:0 6px 20px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.04);opacity:0;transform:translateY(-4px) scale(.97);transform-origin:top right;translate:var(--bpe-pop-shift,0px) 0;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:200}
 .brikpanel-pe-catvis-wrap.is-open .brikpanel-pe-catvis-menu{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
-.brikpanel-pe-catvis-menu-title{padding:.375rem .625rem .25rem;font-size:.6875rem;font-weight:600;color:var(--pe-text-muted);text-transform:uppercase;letter-spacing:.03em;cursor:default}
+.brikpanel-pe-catvis-menu-title{padding:.375rem .625rem .25rem;font-size:.75rem;font-weight:600;color:var(--pe-text-secondary, #616161);text-transform:none;letter-spacing:normal;cursor:default}
 .brikpanel-pe-catvis-menu li[role="option"]{padding:.375rem .625rem;border-radius:.3125rem;cursor:pointer;font-size:.75rem;color:var(--pe-text);transition:background .1s ease}
 .brikpanel-pe-catvis-menu li[role="option"]:hover{background:#f7f7f7}
 .brikpanel-pe-catvis-menu li[role="option"].is-active{background:#f1f1f1;font-weight:600}
@@ -1621,9 +1820,9 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
   .brikpanel-pe-status-trigger{min-width:0;gap:.375rem;padding:.4375rem .4375rem .4375rem .5rem}
   /* The status trigger sits mid-row, so anchoring its (wide) menu to the
      trigger pushes it off the right edge and it gets clipped. Re-anchor the
-     menu to the full-width header-right bar instead, so it drops down as a
+     menu to the full-width header-right bar instead (position:relative is set
+     on it in the header's 480px block above), so it drops down as a
      near-full-width sheet that always stays on screen. */
-  .brikpanel-pe-header-right{position:relative}
   .brikpanel-pe-status-wrap{position:static}
   .brikpanel-pe-status-menu{left:0;right:0;width:auto;min-width:0;max-width:none;transform-origin:top center}
 }
@@ -1641,10 +1840,10 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-metaboxes-wrap .tagsdiv .ajaxtag input.newtag:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
 .brikpanel-pe-metaboxes-wrap .tagsdiv .ajaxtag input.button.tagadd{flex:0 0 auto;width:auto;margin:0;padding:.5rem 1rem;background:#fff;color:var(--pe-text);border-radius:var(--pe-radius-sm);border:none;box-shadow:inset 0 0 0 1px var(--pe-border),0 1px 0 rgba(0,0,0,.05);font-size:.8125rem;font-weight:550;cursor:pointer;transition:background .15s ease}
 .brikpanel-pe-metaboxes-wrap .tagsdiv .ajaxtag input.button.tagadd:hover{background:#f7f7f7}
-.brikpanel-pe-metaboxes-wrap .tagsdiv p.howto{margin:.375rem 0 0;color:var(--pe-text-muted);font-size:.75rem}
+.brikpanel-pe-metaboxes-wrap .tagsdiv p.howto{margin:.375rem 0 0;color:var(--pe-text-secondary, #616161);font-size:.75rem}
 .brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist{display:flex;flex-wrap:wrap;gap:.375rem;margin:.75rem 0 0;padding:0;list-style:none}
 .brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist li{display:inline-flex;align-items:center;gap:.25rem;float:none;max-width:none;margin:0;padding:.25rem .625rem .25rem .5rem;background:#f7f7f7;color:var(--pe-text);border:1px solid var(--pe-border);border-radius:999px;font-size:.75rem;font-weight:500;line-height:1.3;white-space:nowrap;overflow:visible;text-overflow:clip}
-.brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist li button.ntdelbutton{display:inline-flex!important;align-items:center!important;justify-content:center!important;position:static!important;width:16px!important;height:16px!important;margin:0!important;padding:0!important;background:transparent!important;border:none!important;border-radius:50%!important;color:var(--pe-text-muted)!important;cursor:pointer!important;line-height:1!important;gap:0!important;box-shadow:none!important;text-indent:0!important;font-size:inherit!important;flex:0 0 16px!important;transition:background .15s ease,color .15s ease}
+.brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist li button.ntdelbutton{display:inline-flex!important;align-items:center!important;justify-content:center!important;position:static!important;width:16px!important;height:16px!important;margin:0!important;padding:0!important;background:transparent!important;border:none!important;border-radius:50%!important;color:var(--pe-text-placeholder)!important;cursor:pointer!important;line-height:1!important;gap:0!important;box-shadow:none!important;text-indent:0!important;font-size:inherit!important;flex:0 0 16px!important;transition:background .15s ease,color .15s ease}
 .brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist li button.ntdelbutton:hover{background:#e3e3e3;color:var(--pe-text)}
 .brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist li button.ntdelbutton .screen-reader-text{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist li button.ntdelbutton .remove-tag-icon{position:static;display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;background:none;font:inherit;color:inherit}
@@ -1711,9 +1910,11 @@ ul.ui-autocomplete.wp-tags-autocomplete .ui-menu-item-wrapper:hover{background:#
    third-party extras row when the merchant picks "On backorder". */
 .brikpanel-pe-var-table tr.var-backorder-row>td{padding:0;background:#fafafa;border-top:none}
 .brikpanel-pe-var-table tr.var-main-row.has-backorder{border-bottom:none}
-.brikpanel-pe-var-backorder{padding:.625rem 1.25rem;display:flex;align-items:center;gap:1.25rem;font-size:.8125rem;color:var(--pe-text)}
-.brikpanel-pe-var-backorder .brikpanel-pe-var-backorder-label{font-weight:600;color:var(--pe-text-secondary);font-size:.75rem;text-transform:uppercase;letter-spacing:.03em}
-.brikpanel-pe-var-backorder .brikpanel-pe-radio-group{flex-direction:row;gap:1rem}
+/* width:0 + min-width:100% and wrapping: the two long radio labels must not
+   widen the table (field test B6). */
+.brikpanel-pe-var-backorder{width:0;min-width:100%;box-sizing:border-box;padding:.625rem 1.25rem;display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1.25rem;font-size:.8125rem;color:var(--pe-text)}
+.brikpanel-pe-var-backorder .brikpanel-pe-var-backorder-label{font-weight:600;color:var(--pe-text-secondary);font-size:.75rem;text-transform:none;letter-spacing:normal}
+.brikpanel-pe-var-backorder .brikpanel-pe-radio-group{flex-direction:row;flex-wrap:wrap;gap:.25rem 1rem}
 
 /* ---- Product Catalog Feed Pro (WPWOOF) panel polish ----------------------
    The plugin's product-data panel ships WooCommerce-native float layouts plus
@@ -1728,7 +1929,7 @@ ul.ui-autocomplete.wp-tags-autocomplete .ui-menu-item-wrapper:hover{background:#
 .brikpanel-pe-wc-fields-content .trigger_div .switch{float:none!important;margin:0!important;flex:0 0 auto}
 .brikpanel-pe-wc-fields-content .trigger_div label.woof-switcher-title{float:none!important;margin:0!important;font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text)!important;cursor:pointer}
 /* Channel badges -> small muted uppercase caption under the field. */
-.brikpanel-pe-wc-fields-content .extra-link-2-wrapper{display:inline-block;margin:.25rem 0 0!important;font-size:.6875rem;font-weight:600;letter-spacing:.04em;line-height:1.4;color:var(--pe-text-muted);text-transform:uppercase}
+.brikpanel-pe-wc-fields-content .extra-link-2-wrapper{display:inline-block;margin:.25rem 0 0!important;font-size:.75rem;font-weight:600;letter-spacing:normal;line-height:1.4;color:var(--pe-text-secondary, #616161);text-transform:none}
 .brikpanel-pe-wc-fields-content .extra-link-2-wrapper a{color:var(--pe-text-secondary);text-decoration:none}
 .brikpanel-pe-wc-fields-content .extra-link-2-wrapper a:hover{text-decoration:underline}
 /* Field rows -> consistent vertical rhythm (covers form-row too). */
@@ -1760,23 +1961,23 @@ ul.ui-autocomplete.wp-tags-autocomplete .ui-menu-item-wrapper:hover{background:#
    for product-data plugins that read or rewrite them (see the PHP note). */
 .brikpanel-pe-native-bridge{display:none!important}
 /* Unit a plugin adds to a field without a prefix/suffix box (e.g. stock per sq ft). */
-.brikpanel-pe-unit-hint{margin-inline-start:.375rem;font-size:.75rem;font-weight:550;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-unit-hint{margin-inline-start:.375rem;font-size:.75rem;font-weight:550;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-unit-hint::before{content:"("}
 .brikpanel-pe-unit-hint::after{content:")"}
 
 /* Measurement Price Calculator panel. Its own inline <style> and WooCommerce's
    options-panel layout assume the native 80%-wide tab; restate the parts that
    read wrong in the stacked card. */
-.brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav{margin:0 0 .75rem!important;font-size:.8125rem;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav{margin:0 0 .75rem!important;font-size:.8125rem;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav a{color:var(--pe-text-secondary,#616161);font-weight:550;text-decoration:none;box-shadow:none}
 .brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav a.active{color:var(--pe-text,#303030);font-weight:600}
-.brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav a.disabled{color:var(--pe-text-muted,#8a8a8a);cursor:default}
+.brikpanel-pe-wc-fields-content #measurement_product_data .measurement-subnav a.disabled{color:var(--pe-text-placeholder,#8a8a8a);cursor:default}
 .brikpanel-pe-wc-fields-content #measurement_product_data hr{height:0;margin:.75rem 0;border:0;border-top:1px solid var(--pe-border,#e3e3e3);background:none}
-.brikpanel-pe-wc-fields-content #measurement_product_data .measurement_description{margin:0 0 .75rem;padding:0!important;font-size:.75rem;line-height:1.5;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-wc-fields-content #measurement_product_data .measurement_description{margin:0 0 .75rem;padding:0!important;font-size:.75rem;line-height:1.5;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-wc-fields-content #measurement_product_data ._measurement_input_attributes .wrap{display:flex!important;gap:.5rem;width:100%!important}
 .brikpanel-pe-wc-fields-content #measurement_product_data ._measurement_input_attributes .wrap input{flex:1 1 0;min-width:0;width:auto!important;float:none!important;margin:0!important}
 .brikpanel-pe-wc-fields-content #measurement_product_data table.wc-calculator-pricing-table{width:100%!important;margin:0!important;border:1px solid var(--pe-border,#e3e3e3);border-radius:var(--pe-radius-sm,.5rem);border-collapse:separate;border-spacing:0;overflow:hidden;box-shadow:none}
 .brikpanel-pe-wc-fields-content #measurement_product_data table.wc-calculator-pricing-table th{font-size:.75rem;font-weight:600;color:var(--pe-text-secondary,#616161);vertical-align:bottom}
 .brikpanel-pe-wc-fields-content #measurement_product_data table.wc-calculator-pricing-table td{vertical-align:middle}
-.brikpanel-pe-wc-fields-content #measurement_product_data td.wc-calculator-pricing-rule-range{white-space:nowrap;color:var(--pe-text-muted,#8a8a8a)}
+.brikpanel-pe-wc-fields-content #measurement_product_data td.wc-calculator-pricing-rule-range{white-space:nowrap;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-wc-fields-content #measurement_product_data td.wc-calculator-pricing-rule-range input{display:inline-block!important;width:calc(50% - .75rem)!important;margin:0!important;vertical-align:middle}

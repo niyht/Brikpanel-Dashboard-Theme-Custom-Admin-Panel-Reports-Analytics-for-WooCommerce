@@ -7,6 +7,23 @@
 	--brikpanel-sidebar-width: 220px;
 }
 
+/* WordPress's accent color follows the user's admin color scheme (blue by
+   default, red under Midnight) and paints core buttons and focus rings. The
+   scheme only exists to match WordPress's own menu, which the BrikPanel look
+   replaces, so there the accent is BrikPanel's (field test D4/D8). The body
+   class comes from brikpanel_admin_body_class(); the untouched WordPress menu
+   (native mode) does not get it and keeps its scheme. (0,2,1) beats core's
+   and WooCommerce's `body.admin-color-*` (0,1,1) at any load order. A custom
+   accent from Appearance is printed later with the same selector. */
+body.wp-admin.brikpanel-chrome {
+	--wp-admin-theme-color: #303030;
+	--wp-admin-theme-color--rgb: 48, 48, 48;
+	--wp-admin-theme-color-darker-10: #1a1a1a;
+	--wp-admin-theme-color-darker-10--rgb: 26, 26, 26;
+	--wp-admin-theme-color-darker-20: #000;
+	--wp-admin-theme-color-darker-20--rgb: 0, 0, 0;
+}
+
 /* Brikpanel açma kapama butonu */
 .brikpanel-site-management-toggle,
 .brikpanel-menu-group-toggle {
@@ -262,7 +279,14 @@
 	text-decoration: none;
 	z-index: 0;
 }
-#brikpanel-navigation a::after {
+/* Full-row click layer: the whole row opens the link. Only a link that sits in
+   a row gets it: in a row's title container, or straight in a list item (the
+   flyout rows Elementor adds with its own script). A link the browser rebuilt
+   loose under a list (another plugin's markup took a row apart) would lay its
+   layer against the parent row and cover every row under it: WP Bulk Delete's
+   "<li>Upgrade to Pro</li>" title left such a copy, and no row of the plugin
+   could be clicked (wp.org support, 2026-09-25). */
+#brikpanel-navigation :is(li, .brikpanel-menu-icon-title-container) > a::after {
 	content: '';
 	position: absolute;
 	top: 0;
@@ -301,7 +325,7 @@
 	box-shadow: inset 0 0 0 2px var(--brikpanel-text);
 	border-radius: 0.5rem;
 }
-#brikpanel-navigation a:focus::after {
+#brikpanel-navigation :is(li, .brikpanel-menu-icon-title-container) > a:focus::after {
 	background-color: var(--brikpanel-bg-hover);
 	z-index: -1;
 	border-radius: 0.5rem;
@@ -328,20 +352,18 @@
 	padding: 0 0.5rem;
 	margin-top: 0.06rem;
 }
-/* "New" pill beside a freshly added sidebar item (BrikMentor). Sized like the
-   count bubbles above so a badged row stays exactly as tall as its neighbours;
-   filled dark like the nav customizer's own new-item badge. */
+/* WordPress prints a bubble even at zero ("Updates 0", "Comments 0") and hides
+   it only with `#adminmenu li span.count-0`, which never reaches this sidebar.
+   Its update and comment scripts also switch a live bubble to count-0 instead
+   of removing it. Same rule here. */
+#brikpanel-navigation span.count-0 {
+	display: none;
+}
+/* "New" pill beside a freshly added sidebar item (BrikMentor). Its look is the
+   shared dark badge (.brikpanel-badge--new in front-end/shared/brikpanel-ui.css,
+   one line as tall as the count bubbles above); only its placement is here. */
 #brikpanel-navigation a > .brikpanel-nav-badge-new {
-	display: inline-block;
-	font-size: 0.6875rem;
-	font-weight: 600;
-	line-height: 16px;
-	color: #fff;
-	background: #303030;
-	border-radius: 0.5rem;
-	padding: 0 0.45rem;
 	margin-top: 0.06rem;
-	letter-spacing: 0.02em;
 }
 /* This ensures that no submenu item will get an icon, except for the
 WooCommerce submenu which we move out of a submenu visually. */
@@ -357,9 +379,10 @@ WooCommerce submenu which we move out of a submenu visually. */
 	font-weight: 400;
 	display: none;
 }
-.visible {
-	display: block;
-}
+/* A submenu opens only through its row's brikpanel-has-open-submenu class. There
+   used to be a bare .visible { display: block } here as well; this file loads on
+   every admin page, so it also forced core's and other plugins' .visible elements
+   to block. */
 .brikpanel-has-open-submenu .brikpanel-submenu {
 	display: block;
 }
@@ -465,7 +488,7 @@ WooCommerce submenu which we move out of a submenu visually. */
 	flex-shrink: 0;
 }
 /* Keep the menu-item icon painted ABOVE the full-row click overlay
-   (`#brikpanel-navigation a::after`, an absolutely-positioned box that
+   (the row link's `::after`, an absolutely-positioned box that
    spans the whole row so the entire item is clickable). That overlay sits
    on top of the in-flow icon; it is transparent today, but if any state
    (focus / current / a future tweak) gives it a background the icon would
@@ -889,4 +912,35 @@ li#toplevel_page_woocommerce .wp-menu-image {
 }
 .brikpanel-native-nav .sbi-csz-header-insider {
 	width: calc(100% - 160px);
+}
+
+/* Admin notices on BrikPanel's own screens (field test B5). WordPress moves
+   every notice right after `.wp-header-end`, which brikpanel_header_end() prints
+   under each screen's header. One gap under each notice, whatever margin it
+   brought: core gives `.wrap .notice` 5px/15px and a notice outside `.wrap`
+   15px side margins, which set the dashboard's notices 15px off the cards. */
+.brikpanel-header-end ~ :is(.notice, div.updated, div.error, div.update-nag):not(.inline) {
+	margin: 0 0 1rem;
+}
+
+/* Text "Dismiss" links in other plugins' notices (field test B9). WordPress 7
+   gives every `.notice-dismiss` a fixed 24px box, drawn for its own icon-only
+   <button>. CURCY and the other VillaTheme plugins, and WooCommerce 4.x, print
+   a text link with that class instead: held to 24px, plus the button padding
+   core adds to `.button`, the word spills out of the notice and is cut at the
+   window edge, on every admin screen. WooCommerce 11 sizes its own link the
+   same way (width and height auto). A link takes its own width again, never
+   less than the 24px box, so an icon-only link keeps core's size.
+   `fit-content`, not `auto`: in RTL core also sets `left: 12px`, and with both
+   insets set an auto width would stretch the link across the whole notice.
+   `:where()` keeps the specificity of `a.notice-dismiss`, so a plugin's own
+   sizing still wins, and core's <button> is not matched. The rule reaches
+   other plugins' links on purpose, in the two places notices live: the page
+   (#wpbody-content, before and after WordPress moves them) and the top bar's
+   bell. */
+:where(#wpbody-content, #brikpanel-topbar) a.notice-dismiss {
+	width: fit-content;
+	height: auto;
+	min-width: 24px;
+	min-height: 24px;
 }

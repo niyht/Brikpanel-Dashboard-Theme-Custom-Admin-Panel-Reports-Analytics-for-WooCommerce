@@ -480,7 +480,8 @@ function brikpanel_ajax_consent_forget() {
     $visitors = get_transient( 'brikpanel_live_visitors' );
     if ( is_array( $visitors ) && isset( $visitors[ $vid ] ) ) {
         unset( $visitors[ $vid ] );
-        set_transient( 'brikpanel_live_visitors', $visitors, 120 );
+        // Same lifetime as the recorder's, so this write cannot cut it short.
+        set_transient( 'brikpanel_live_visitors', $visitors, function_exists( 'brikpanel_live_store_lifetime' ) ? brikpanel_live_store_lifetime() : 120 );
     }
 
     wp_send_json_success( [ 'forgotten' => true ] );
@@ -592,6 +593,21 @@ function brikpanel_consent_api_register() {
         false,
         'LOCALSTORAGE'
     );
+    // Session storage, not local: gone when the tab is closed. The Consent API
+    // has no separate type for it, so it is declared with the local one.
+    if ( function_exists( 'brikpanel_live_traffic_source_enabled' ) && brikpanel_live_traffic_source_enabled() ) {
+        wp_add_cookie_info(
+            'brikpanel_entry_src',
+            'BrikPanel',
+            $category,
+            __( 'Until the browser tab is closed', 'brikpanel' ),
+            __( 'Remembers where this visit came from (the referring site and the campaign in the link) so the store owner\'s Live visitors list can show it.', 'brikpanel' ),
+            '',
+            false,
+            false,
+            'LOCALSTORAGE'
+        );
+    }
 }
 add_action( 'init', 'brikpanel_consent_api_register', 9 );
 
@@ -634,3 +650,9 @@ function brikpanel_consent_purge_page_cache( $old, $new ) {
 }
 add_action( 'update_option_brikpanel_tracking_require_consent', 'brikpanel_consent_purge_page_cache', 10, 2 );
 add_action( 'update_option_brikpanel_frontend_tracking', 'brikpanel_consent_purge_page_cache', 10, 2 );
+// "Traffic source in Live view" decides whether the cached tracker remembers
+// the visit's entry source in the browser, so a flip must reach cached pages
+// too. The first save of a never-stored option arrives as add_option_ with
+// ($option, $value), which the comparison above reads as a change: fine.
+add_action( 'update_option_brikpanel_live_traffic_source', 'brikpanel_consent_purge_page_cache', 10, 2 );
+add_action( 'add_option_brikpanel_live_traffic_source', 'brikpanel_consent_purge_page_cache', 10, 2 );

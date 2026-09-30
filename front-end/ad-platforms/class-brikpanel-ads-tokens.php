@@ -123,6 +123,15 @@ class Brikpanel_Ads_Tokens {
 	const PLATFORM_META   = 'meta_ads';
 
 	/**
+	 * Most ad accounts one platform pulls spend from.
+	 *
+	 * Each selected account costs one API call per daily sync and a 13-chunk
+	 * history import when it is added, and the daily sync walks the accounts
+	 * one after another inside a single background job.
+	 */
+	const MAX_ACCOUNTS = 20;
+
+	/**
 	 * In-process plaintext cache. Cleared on demand. Never logged.
 	 *
 	 * Shape: [
@@ -136,7 +145,9 @@ class Brikpanel_Ads_Tokens {
 	 *     'connected_at'      => int,
 	 *     'developer_token'   => string,  // Google only (stored at proxy, mirrored here for header)
 	 *     'login_customer_id' => string,  // Google MCC ID, if connecting via manager
-	 *     'primary_account'   => string,  // CID for Google, ad_account_id for Meta
+	 *     'accounts'          => string[], // selected ad accounts, in order (CIDs for Google, act_ IDs for Meta)
+	 *     'account_names'     => array<string, string>, // ID => name, from the platform's own account list
+	 *     'primary_account'   => string,  // first of `accounts`; kept for builds that know only one account
 	 *   ],
 	 *   'meta_ads' => [ ...similar shape... ],
 	 * ]
@@ -211,7 +222,7 @@ class Brikpanel_Ads_Tokens {
 	 * Connection metadata for the settings page. Never includes raw tokens.
 	 *
 	 * @param string $platform
-	 * @return array{connected:bool, email:string, scope:string, expires_at:int, connected_at:int, primary_account:string, login_customer_id:string}
+	 * @return array{connected:bool, email:string, scope:string, expires_at:int, connected_at:int, primary_account:string, accounts:string[], account_names:array<string,string>, login_customer_id:string}
 	 */
 	public static function describe( $platform ) {
 		$tokens = self::load_platform( $platform );
@@ -223,18 +234,95 @@ class Brikpanel_Ads_Tokens {
 				'expires_at'        => 0,
 				'connected_at'      => 0,
 				'primary_account'   => '',
+				'accounts'          => [],
+				'account_names'     => [],
 				'login_customer_id' => '',
 			];
 		}
+		$accounts = self::accounts_of( $tokens );
 		return [
 			'connected'         => true,
 			'email'             => (string) ( $tokens['connected_email'] ?? '' ),
 			'scope'             => (string) ( $tokens['scope'] ?? '' ),
 			'expires_at'        => (int) ( $tokens['expires_at'] ?? 0 ),
 			'connected_at'      => (int) ( $tokens['connected_at'] ?? 0 ),
-			'primary_account'   => (string) ( $tokens['primary_account'] ?? '' ),
+			'primary_account'   => $accounts[0] ?? '',
+			'accounts'          => $accounts,
+			'account_names'     => self::names_of( $tokens, $accounts ),
 			'login_customer_id' => (string) ( $tokens['login_customer_id'] ?? '' ),
 		];
+	}
+
+	/**
+	 * The selected accounts, read past this process's cache.
+	 *
+	 * Action Scheduler runs up to 25 due actions in one PHP process and only
+	 * clears caches after the whole batch, so describe() inside a worker can
+	 * answer with the selection as it stood when the worker started. A chunk
+	 * running twenty seconds after the merchant unticked an account would
+	 * still see it ticked and write its rows back. Workers read through here.
+	 *
+	 * @param string $platform
+	 * @return string[] Empty when the platform is not connected.
+	 */
+	public static function selected_accounts_fresh( $platform ) {
+		$record = self::load_platform_fresh( $platform );
+		if ( ! is_array( $record ) || empty( $record['access_token'] ) ) {
+			return [];
+		}
+		return self::accounts_of( $record );
+	}
+
+	/**
+	 * The selected account IDs held in one platform record, in order.
+	 *
+	 * A record written before several accounts were possible carries only
+	 * primary_account. So does one an older build rewrote after a downgrade:
+	 * this build always stores the first account as primary_account too, so a
+	 * primary that is missing from the list, or is not its first entry, was
+	 * set by a build that knows only one account, and that choice wins.
+	 *
+	 * @param array $record
+	 * @return string[]
+	 */
+	private static function accounts_of( array $record ) {
+		$primary = isset( $record['primary_account'] ) && is_scalar( $record['primary_account'] )
+			? trim( (string) $record['primary_account'] )
+			: '';
+		$list = [];
+		if ( isset( $record['accounts'] ) && is_array( $record['accounts'] ) ) {
+			foreach ( $record['accounts'] as $id ) {
+				if ( ! is_scalar( $id ) ) {
+					continue;
+				}
+				$id = trim( (string) $id );
+				if ( $id !== '' && ! in_array( $id, $list, true ) ) {
+					$list[] = $id;
+				}
+			}
+		}
+		if ( $primary !== '' && ( ! $list || $list[0] !== $primary ) ) {
+			return [ $primary ];
+		}
+		return array_slice( $list, 0, self::MAX_ACCOUNTS );
+	}
+
+	/**
+	 * Stored display names for the given accounts.
+	 *
+	 * @param array    $record
+	 * @param string[] $accounts
+	 * @return array<string, string>
+	 */
+	private static function names_of( array $record, array $accounts ) {
+		$names = isset( $record['account_names'] ) && is_array( $record['account_names'] ) ? $record['account_names'] : [];
+		$out   = [];
+		foreach ( $accounts as $id ) {
+			if ( isset( $names[ $id ] ) && is_scalar( $names[ $id ] ) && (string) $names[ $id ] !== '' ) {
+				$out[ $id ] = (string) $names[ $id ];
+			}
+		}
+		return $out;
 	}
 
 	/**
@@ -303,10 +391,18 @@ class Brikpanel_Ads_Tokens {
 		if ( empty( $tokens['connected_email'] ) && ! empty( $existing['connected_email'] ) ) {
 			$tokens['connected_email'] = $existing['connected_email'];
 		}
-		// Preserve primary_account / login_customer_id across refresh — they
-		// are set by the settings page, not by the OAuth response.
+		// Preserve the account selection / login_customer_id across refresh and
+		// Re-authorize: they are set by the settings page, not by the OAuth
+		// response. The selection has to be carried over explicitly because the
+		// record below is rebuilt from a fixed set of keys.
 		if ( empty( $tokens['primary_account'] ) && ! empty( $existing['primary_account'] ) ) {
 			$tokens['primary_account'] = $existing['primary_account'];
+		}
+		if ( ! isset( $tokens['accounts'] ) && isset( $existing['accounts'] ) ) {
+			$tokens['accounts'] = $existing['accounts'];
+		}
+		if ( ! isset( $tokens['account_names'] ) && isset( $existing['account_names'] ) ) {
+			$tokens['account_names'] = $existing['account_names'];
 		}
 		if ( empty( $tokens['login_customer_id'] ) && ! empty( $existing['login_customer_id'] ) ) {
 			$tokens['login_customer_id'] = $existing['login_customer_id'];
@@ -328,6 +424,8 @@ class Brikpanel_Ads_Tokens {
 			'connected_email'   => (string) ( $tokens['connected_email'] ?? '' ),
 			'connected_at'      => (int) $tokens['connected_at'],
 			'primary_account'   => (string) ( $tokens['primary_account'] ?? '' ),
+			'accounts'          => isset( $tokens['accounts'] ) && is_array( $tokens['accounts'] ) ? array_values( $tokens['accounts'] ) : [],
+			'account_names'     => isset( $tokens['account_names'] ) && is_array( $tokens['account_names'] ) ? $tokens['account_names'] : [],
 			'login_customer_id' => (string) ( $tokens['login_customer_id'] ?? '' ),
 		];
 
@@ -335,8 +433,69 @@ class Brikpanel_Ads_Tokens {
 	}
 
 	/**
-	 * Update a single non-secret metadata field (e.g. primary_account
-	 * selection) without touching the access/refresh tokens.
+	 * Replace the selected ad accounts of one platform.
+	 *
+	 * Callers must check the result before acting on the new selection: when
+	 * this refuses (unreadable vault, platform no longer connected) nothing was
+	 * stored, and deleting the spend of the "removed" accounts would destroy
+	 * data for a selection that never took effect.
+	 *
+	 * @param string   $platform
+	 * @param string[] $ids   Normalised account IDs, in display order.
+	 * @param array    $names ID => display name; entries for other IDs are dropped.
+	 * @return bool
+	 */
+	public static function set_accounts( $platform, array $ids, array $names = [] ) {
+		if ( ! self::is_valid_platform( $platform ) ) {
+			return false;
+		}
+		$clean = [];
+		foreach ( $ids as $id ) {
+			if ( ! is_scalar( $id ) ) {
+				continue;
+			}
+			$id = trim( (string) $id );
+			if ( $id !== '' && ! in_array( $id, $clean, true ) ) {
+				$clean[] = $id;
+			}
+		}
+		if ( count( $clean ) > self::MAX_ACCOUNTS ) {
+			return false;
+		}
+
+		$all = self::load_all_fresh();
+		if ( self::$state === self::STATE_UNREADABLE ) {
+			return false;
+		}
+		if ( ! isset( $all[ $platform ] ) || ! is_array( $all[ $platform ] ) ) {
+			return false;
+		}
+
+		$kept = [];
+		foreach ( $clean as $id ) {
+			if ( ! isset( $names[ $id ] ) || ! is_scalar( $names[ $id ] ) ) {
+				continue;
+			}
+			$name = trim( sanitize_text_field( (string) $names[ $id ] ) );
+			$name = function_exists( 'brikpanel_substr' ) ? brikpanel_substr( $name, 0, 120 ) : substr( $name, 0, 120 );
+			if ( $name !== '' && $name !== $id ) {
+				$kept[ $id ] = $name;
+			}
+		}
+
+		$all[ $platform ]['accounts']        = $clean;
+		$all[ $platform ]['account_names']   = $kept;
+		$all[ $platform ]['primary_account'] = $clean[0] ?? '';
+		return self::persist( $all );
+	}
+
+	/**
+	 * Update a single non-secret metadata field (e.g. login_customer_id)
+	 * without touching the access/refresh tokens.
+	 *
+	 * Writing primary_account is the one-account form of set_accounts(): it
+	 * collapses a multi-account selection to that single account (or to none),
+	 * which is exactly what the one-account card used to mean by it.
 	 *
 	 * @param string $platform
 	 * @param string $key   One of: primary_account, login_customer_id.
@@ -362,6 +521,13 @@ class Brikpanel_Ads_Tokens {
 			return false;
 		}
 		$all[ $platform ][ $key ] = (string) $value;
+		if ( $key === 'primary_account' ) {
+			$names = isset( $all[ $platform ]['account_names'] ) && is_array( $all[ $platform ]['account_names'] )
+				? $all[ $platform ]['account_names']
+				: [];
+			$all[ $platform ]['accounts']      = $value === '' ? [] : [ (string) $value ];
+			$all[ $platform ]['account_names'] = isset( $names[ (string) $value ] ) ? [ (string) $value => $names[ (string) $value ] ] : [];
+		}
 		return self::persist( $all );
 	}
 
@@ -579,7 +745,7 @@ class Brikpanel_Ads_Tokens {
 				self::flag_needs_reconnect( $platform, 'revoked' );
 				Brikpanel_Ads_Logger::log(
 					'oauth',
-					$platform . ' refresh failed permanently (HTTP ' . $code . ') — connection dropped, merchant must reconnect.',
+					$platform . ' refresh failed permanently (HTTP ' . $code . '); connection dropped, merchant must reconnect.',
 					$code
 				);
 				self::disconnect( $platform );
@@ -615,7 +781,7 @@ class Brikpanel_Ads_Tokens {
 		// Apply the response ONTO the record as it stands in the database right
 		// now. The pre-call snapshot must not be written back wholesale: a
 		// refresh answer carries a token and an expiry, nothing else, while
-		// primary_account / login_customer_id / connected_email belong to
+		// the account selection / login_customer_id / connected_email belong to
 		// whatever the merchant last saved — possibly in the browser, while
 		// this Action Scheduler worker was mid-call. Assigning the snapshot
 		// back silently reverted those.
@@ -822,8 +988,8 @@ class Brikpanel_Ads_Tokens {
 		update_option( self::ALERT_OPTION, [ 'sig' => $sig, 'at' => time() ], false );
 
 		$message = $reason === 'corrupt_payload'
-			? 'Stored credentials decrypted but the contents were not readable — kept, not deleted.'
-			: 'Stored credentials could not be decrypted with this site key — kept, not deleted. Check the site address (http vs https, www vs non-www) and the wp-config salts, then reconnect.';
+			? 'Stored credentials decrypted but the contents were not readable. Kept, not deleted.'
+			: 'Stored credentials could not be decrypted with this site key. Kept, not deleted. Check the site address (http vs https, www vs non-www) and the wp-config salts, then reconnect.';
 
 		// scheme/host/ctx ARE the diagnosis: two entries differing in either
 		// column is the whole bug report, readable without a database client.

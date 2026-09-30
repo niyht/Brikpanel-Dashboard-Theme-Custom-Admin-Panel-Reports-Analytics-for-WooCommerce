@@ -11,8 +11,9 @@
 	}
 
 	// items is kept so a column reorder can repaint the table without asking
-	// the server for the same page again.
-	var state = { page: 1, pages: 1, items: [] };
+	// the server for the same page again. storeTotal is every captured row,
+	// filters ignored: it picks the empty text on those repaints too.
+	var state = { page: 1, pages: 1, items: [], storeTotal: 0 };
 
 	// Incremented per list request; only the newest response is allowed to
 	// paint. See load().
@@ -54,9 +55,9 @@
 		return !!(cfg.columnVisible && cfg.columnVisible[colId]);
 	}
 
-	/** Width of a full-row cell: every visible column plus the actions column. */
+	/** Width of a full-row cell: the toggle column, every visible column, and the actions column. */
 	function fullColSpan() {
-		var span = 1;
+		var span = 2;
 		columnOrder().forEach(function (id) {
 			if (isVisible(id)) {
 				span++;
@@ -65,11 +66,73 @@
 		return span;
 	}
 
-	/** A <td> already tagged with the class its column's hide rule targets. */
+	/**
+	 * Header text per column id, copied from the translated <th data-col>
+	 * cells. Keyed by id, not position: a reorder moves the header cells.
+	 */
+	var columnLabels = null;
+
+	function columnLabel(colId) {
+		if (!columnLabels) {
+			columnLabels = {};
+			var ths = document.querySelectorAll('#brikpanel-cartab-thead-row th[data-col]');
+			Array.prototype.forEach.call(ths, function (th) {
+				columnLabels[th.getAttribute('data-col')] = th.textContent.replace(/\s+/g, ' ').trim();
+			});
+		}
+		return columnLabels[colId] || '';
+	}
+
+	/**
+	 * A <td> already tagged with the class its column's hide rule targets, and
+	 * with the label a stacked row shows above its value (see fitTable()).
+	 */
 	function colCell(colId, extraClass) {
 		var td = document.createElement('td');
 		td.className = 'brikpanel-cartab-col-' + colId + (extraClass ? ' ' + extraClass : '');
+		var label = columnLabel(colId);
+		if (label) {
+			td.setAttribute('data-bp-label', label);
+		}
 		return td;
+	}
+
+	/**
+	 * Writes an address that may break after "@" and before a dot, never inside
+	 * a word; unbroken, a long address held its column wide open. The breakable
+	 * part sits in its own white-space: normal span, while the last piece stays
+	 * in the nowrap cell with the envelope, so the icon never ends up alone on
+	 * a line. A character loop, not a lookbehind regex (older Safari).
+	 */
+	function appendAddress(el, address) {
+		var pieces = [];
+		var current = '';
+		for (var i = 0; i < address.length; i++) {
+			var ch = address.charAt(i);
+			if (ch === '.' && current) {
+				pieces.push(current);
+				current = '';
+			}
+			current += ch;
+			if (ch === '@') {
+				pieces.push(current);
+				current = '';
+			}
+		}
+		if (current) {
+			pieces.push(current);
+		}
+		var last = pieces.pop() || '';
+		if (pieces.length) {
+			var head = document.createElement('span');
+			head.className = 'brikpanel-cartab-email-head';
+			pieces.forEach(function (piece) {
+				head.appendChild(document.createTextNode(piece));
+				head.appendChild(document.createElement('wbr'));
+			});
+			el.appendChild(head);
+		}
+		el.appendChild(document.createTextNode(last));
 	}
 
 	function post(action, data) {
@@ -322,6 +385,8 @@
 
 		var number = document.createElement('span');
 		number.className = 'brikpanel-cartab-phone';
+		// Left-to-right data: keeps "+90 532..." in order on a right-to-left page.
+		number.setAttribute('dir', 'ltr');
 		number.textContent = row.phone;
 		if (row.phone_source === 'account') {
 			number.title = cfg.i18n.phone_account;
@@ -357,7 +422,7 @@
 			// translated in PHP: wa_title spells out the number that will be
 			// dialled, wa_opens_title how often the draft was opened. Neither
 			// is an English fallback.
-			link.setAttribute('aria-label', [cfg.i18n.whatsapp, row.wa_opens_title || ''].filter(Boolean).join(' — '));
+			link.setAttribute('aria-label', [cfg.i18n.whatsapp, row.wa_opens_title || ''].filter(Boolean).join(', '));
 			link.title = [row.wa_title || cfg.i18n.whatsapp, row.wa_opens_title || ''].filter(Boolean).join('\n');
 
 			// Nothing is sent from this page, but opening the draft is worth
@@ -452,7 +517,9 @@
 
 			var text = document.createElement('span');
 			text.className = 'brikpanel-cartab-email-text';
-			text.textContent = row.email;
+			// Left-to-right data, kept in order on a right-to-left page.
+			text.setAttribute('dir', 'ltr');
+			appendAddress(text, row.email);
 			td.appendChild(text);
 
 			// Promotion off and nothing to unlock it: no envelope at all, the
@@ -470,15 +537,19 @@
 				return td;
 			}
 
+			// The add-on that fills the outreach cells hands over the finished
+			// link (brikpanel_cartab_outreach_rows); this page only draws it.
+			// No link, no envelope.
+			if (!row.email_href) {
+				return td;
+			}
+
 			// Hands the address to whatever mail client the merchant already uses.
 			// No target/rel: the client opens outside the browser and a _blank
 			// would leave an empty tab behind. Nothing is sent from this page.
 			var link = document.createElement('a');
 			link.className = 'brikpanel-cartab-email-link';
-			// Percent-encoded so a stray character in a stored address cannot end
-			// the URL early, but '@' is restored: RFC 6068 wants the separator
-			// literal, and some clients refuse a '%40' address outright.
-			link.href = 'mailto:' + encodeURIComponent(row.email).replace(/%40/g, '@');
+			link.href = row.email_href;
 			link.title = cfg.i18n.email_compose;
 			// An aria-label on a link replaces everything inside it, which is what
 			// we want here: the glyph is aria-hidden and the address is already
@@ -532,9 +603,31 @@
 	function renderDetailsRow(row) {
 		var tr = document.createElement('tr');
 		tr.className = 'brikpanel-cartab-details-row';
+		tr.id = 'brikpanel-cartab-details-' + row.id;
+		// Closed rows leave the flow entirely. A table with border-collapse
+		// shares each border between the two rows that meet at it, so a row
+		// that is merely zero-height still claims half of its neighbour's
+		// border and every closed row adds half a pixel to the table.
 		tr.hidden = true;
+		// An empty cell under the chevron, so the details start exactly where the
+		// first data column starts whatever width that chevron column ends up
+		// with. A padding guess would drift the moment the icon or the cell
+		// padding changes.
+		var spacerTd = document.createElement('td');
+		spacerTd.className = 'brikpanel-cartab-details-spacer';
+		tr.appendChild(spacerTd);
+
 		var td = document.createElement('td');
-		td.colSpan = fullColSpan();
+		td.colSpan = fullColSpan() - 1;
+
+		// Collapsed with the grid 0fr -> 1fr technique rather than `hidden`, so
+		// the row can animate open. The cell carries no padding or border of its
+		// own; both live on the inner box, which is what lets the row collapse to
+		// zero height instead of leaving a sliver behind.
+		var collapse = document.createElement('div');
+		collapse.className = 'brikpanel-cartab-details-collapse';
+		var clip = document.createElement('div');
+		clip.className = 'brikpanel-cartab-details-clip';
 
 		var box = document.createElement('div');
 		box.className = 'brikpanel-cartab-details';
@@ -583,9 +676,40 @@
 			box.appendChild(orderLink);
 		}
 
-		td.appendChild(box);
+		clip.appendChild(box);
+		collapse.appendChild(clip);
+		td.appendChild(collapse);
 		tr.appendChild(td);
 		return tr;
+	}
+
+	/**
+	 * Open or close one details row.
+	 *
+	 * Showing it has to happen a frame before the class that animates it, or
+	 * the browser has nothing to transition from. Hiding it has to happen a
+	 * beat AFTER the class is removed, or the animation is cut off; the timer
+	 * is used rather than `transitionend` because that event never fires for a
+	 * visitor who has asked for reduced motion.
+	 */
+	function toggleDetails(detailsTr, dataTr, open) {
+		window.clearTimeout(detailsTr.bpCloseTimer);
+		dataTr.classList.toggle('is-expanded', open);
+
+		if (open) {
+			detailsTr.hidden = false;
+			// Commit the collapsed starting state before animating away from it.
+			void detailsTr.offsetHeight;
+			detailsTr.classList.add('is-open');
+			return;
+		}
+
+		detailsTr.classList.remove('is-open');
+		detailsTr.bpCloseTimer = window.setTimeout(function () {
+			if (!detailsTr.classList.contains('is-open')) {
+				detailsTr.hidden = true;
+			}
+		}, 300);
 	}
 
 	function render(items) {
@@ -597,14 +721,41 @@
 			var td = document.createElement('td');
 			td.colSpan = fullColSpan();
 			td.className = 'brikpanel-cartab-empty';
-			td.textContent = cfg.i18n.empty;
+			// Rows exist but the filters hide them all: "No emails captured
+			// yet." would read as if nothing had ever been captured.
+			td.textContent = state.storeTotal > 0 ? cfg.i18n.empty_filtered : cfg.i18n.empty;
 			tr.appendChild(td);
 			tbody.appendChild(tr);
+			fitTable();
 			return;
 		}
 
 		items.forEach(function (row) {
 			var tr = document.createElement('tr');
+
+			// Expand affordance at the start of the row, in place of the old
+			// "Details" button that used to sit in the actions column. The table
+			// carries many columns, so a chevron here costs one narrow column and
+			// gives the actions column back.
+			// Its own "expander" classes: .brikpanel-cartab-toggle is the header's
+			// Email popup switch, and sharing it restyled that switch.
+			var toggleTd = document.createElement('td');
+			toggleTd.className = 'brikpanel-cartab-expander-cell';
+
+			var toggleBtn = document.createElement('button');
+			toggleBtn.type = 'button';
+			toggleBtn.className = 'brikpanel-cartab-expander';
+			toggleBtn.setAttribute('aria-expanded', 'false');
+			toggleBtn.setAttribute('aria-controls', 'brikpanel-cartab-details-' + row.id);
+			// No visible label: the chevron is the control, so the accessible
+			// name and the tooltip come from the localized string.
+			toggleBtn.title = cfg.i18n.details;
+			toggleBtn.setAttribute('aria-label', cfg.i18n.details);
+			toggleBtn.innerHTML = '<svg class="brikpanel-cartab-chevron" width="14" height="14" viewBox="0 0 24 24"'
+				+ ' fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"'
+				+ ' stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+			toggleTd.appendChild(toggleBtn);
+			tr.appendChild(toggleTd);
 
 			// Cells follow the user's column order; hiding is left to CSS so a
 			// toggle never has to rebuild the table.
@@ -617,17 +768,11 @@
 			var actionsTd = document.createElement('td');
 			actionsTd.className = 'brikpanel-cartab-actions-cell';
 
-			var detailsBtn = document.createElement('button');
-			detailsBtn.type = 'button';
-			detailsBtn.className = 'brikpanel-cartab-row-btn';
-			detailsBtn.textContent = cfg.i18n.details;
-
 			var deleteBtn = document.createElement('button');
 			deleteBtn.type = 'button';
 			deleteBtn.className = 'brikpanel-cartab-row-btn brikpanel-cartab-row-btn-danger';
 			deleteBtn.textContent = cfg.i18n.delete;
 
-			actionsTd.appendChild(detailsBtn);
 			actionsTd.appendChild(deleteBtn);
 			tr.appendChild(actionsTd);
 			tbody.appendChild(tr);
@@ -635,8 +780,10 @@
 			var detailsTr = renderDetailsRow(row);
 			tbody.appendChild(detailsTr);
 
-			detailsBtn.addEventListener('click', function () {
-				detailsTr.hidden = !detailsTr.hidden;
+			toggleBtn.addEventListener('click', function () {
+				var open = !detailsTr.classList.contains('is-open');
+				toggleDetails(detailsTr, tr, open);
+				toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
 			});
 			deleteBtn.addEventListener('click', function () {
 				if (!window.confirm(cfg.i18n.confirm_delete)) {
@@ -653,6 +800,8 @@
 				});
 			});
 		});
+
+		fitTable();
 	}
 
 	function load() {
@@ -675,8 +824,21 @@
 				return;
 			}
 			var d = json.data;
+			// The page asked for is past the end but earlier pages still hold
+			// rows: the last row of the last page was deleted, or rows went
+			// away since the page was opened. Step back to the new last page
+			// before painting, otherwise the list shows "No carts match these
+			// filters." with no pager to get back. state.page only goes down
+			// here, so this cannot loop.
+			var lastPage = Math.max(1, Number(d.pages) || 1);
+			if (!(d.items && d.items.length) && (Number(d.total) || 0) > 0 && state.page > lastPage) {
+				state.page = lastPage;
+				load();
+				return;
+			}
 			state.pages = d.pages;
 			state.items = d.items || [];
+			state.storeTotal = Number(d.counts && d.counts.total) || 0;
 			render(state.items);
 
 			$('brikpanel-cartab-stat-total').textContent = d.counts.total;
@@ -729,6 +891,28 @@
 	var theadRow    = $('brikpanel-cartab-thead-row');
 	var colsSaveTimer = null;
 	var dragItem = null;
+
+	// =====================================================================
+	// Fit: table or stacked cards
+	// =====================================================================
+	// Rows turn into stacked cards when the table cannot show every column
+	// inside its card (field test B2: Delete was cut off on tablets, and with
+	// BrikMentor's two columns even on a 1440px screen). Measured rather than
+	// guessed: the width depends on the language, the data and how many of
+	// the columns the user switched on. render() calls fitTable() last.
+	// The shared helper (front-end/shared/brikpanel-fit-table.js) measures an
+	// invisible copy, which keeps the data-hide-<id> attributes, so switched-off
+	// columns are not counted. Below 720px it stacks regardless.
+
+	var fit = (table && window.brikpanelFitTable) ? window.brikpanelFitTable(table, { floor: 720 }) : null;
+
+	// After every render (and column switch): the rows changed, so they are
+	// measured again.
+	function fitTable() {
+		if (fit) {
+			fit.refit();
+		}
+	}
 
 	/** Column ids in the order the popover currently shows them. */
 	function popoverOrder() {
@@ -997,5 +1181,7 @@
 		});
 	});
 
+	// The server-rendered header can already be too wide while "Loading" shows.
+	fitTable();
 	load();
 })();

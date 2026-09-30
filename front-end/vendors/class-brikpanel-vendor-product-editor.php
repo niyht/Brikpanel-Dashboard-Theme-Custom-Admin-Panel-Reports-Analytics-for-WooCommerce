@@ -152,11 +152,11 @@ class Brikpanel_Vendor_Product_Editor {
 		}
 		$vendor_id = (int) get_post_meta( $post_id, self::META_VENDOR_ID, true );
 		if ( ! $vendor_id ) {
-			echo '<span style="color:#8a8a8a;">—</span>';
+			echo '<span style="color:#8a8a8a;">—</span>'; // contrast-ok: empty-value marker.
 			return;
 		}
 		$opts = self::active_options();
-		echo isset( $opts[ $vendor_id ] ) ? esc_html( $opts[ $vendor_id ] ) : '<span style="color:#8a8a8a;">—</span>';
+		echo isset( $opts[ $vendor_id ] ) ? esc_html( $opts[ $vendor_id ] ) : '<span style="color:#8a8a8a;">—</span>'; // contrast-ok: empty-value marker.
 	}
 
 	// =========================================================================

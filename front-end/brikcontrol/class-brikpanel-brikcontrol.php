@@ -33,6 +33,15 @@ class Brikpanel_BrikControl {
     /** Transient backing the cooldown above. */
     const TRANSIENT_PLUGIN_COOLDOWN = 'brikpanel_brikcontrol_plugin_scan_cooldown';
 
+    /**
+     * Checks whose figures another check's cleanup or undo changes, keyed by
+     * the check that ran: the bot traffic cleanup deletes (and its undo puts
+     * back) the scripted entries the "Abandoned cart entries" check counts.
+     */
+    const LINKED_CHECKS = [
+        'bot_traffic' => [ 'cartab_bot_rows' ],
+    ];
+
     private static $instance = null;
 
     public static function instance() {
@@ -85,6 +94,13 @@ class Brikpanel_BrikControl {
      * the state the scan is supposed to report on.
      */
     public function on_plugin_change() {
+        // BrikPanel's own deactivation fires this hook too (its deactivation
+        // hook sets the flag first). A scan queued then would be left behind
+        // for a plugin that is going away, so nothing is queued.
+        if ( ! empty( $GLOBALS['brikpanel_self_deactivating'] ) ) {
+            return;
+        }
+
         static $handled = false;
         if ( $handled ) {
             return;
@@ -149,19 +165,37 @@ class Brikpanel_BrikControl {
         $this->enqueue_page_assets();
     }
 
+    /**
+     * Asset version from the file's own change time, so an edited file is never
+     * served stale from a browser cache while the plugin version stays the same.
+     */
+    private static function asset_version( $file ) {
+        // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+        return @filemtime( BRIKPANEL_PATH . 'front-end/brikcontrol/assets/' . $file ) ?: BRIKPANEL_VERSION;
+    }
+
     private function enqueue_page_assets() {
+        // Sample tables stack into cards when they do not fit (field test B6).
+        $fit_style  = function_exists( 'brikpanel_fit_table_dep' ) ? brikpanel_fit_table_dep( 'style' ) : [];
+        $fit_script = function_exists( 'brikpanel_fit_table_dep' ) ? brikpanel_fit_table_dep() : [];
+        // Summary tiles and per-check figures never wrap 2 + 1 (field test C10).
+        if ( function_exists( 'brikpanel_narrow_dep' ) ) {
+            $fit_style  = array_merge( $fit_style, brikpanel_narrow_dep( 'tiles', 'style' ) );
+            $fit_script = array_merge( $fit_script, brikpanel_narrow_dep( 'tiles' ) );
+        }
+
         wp_enqueue_style(
             self::SCRIPT_HANDLE,
             BRIKPANEL_URL . 'front-end/brikcontrol/assets/brikpanel-brikcontrol.css',
-            [],
-            BRIKPANEL_VERSION
+            $fit_style,
+            self::asset_version( 'brikpanel-brikcontrol.css' )
         );
 
         wp_enqueue_script(
             self::SCRIPT_HANDLE,
             BRIKPANEL_URL . 'front-end/brikcontrol/assets/brikpanel-brikcontrol.js',
-            [],
-            BRIKPANEL_VERSION,
+            $fit_script,
+            self::asset_version( 'brikpanel-brikcontrol.js' ),
             true
         );
 
@@ -169,22 +203,14 @@ class Brikpanel_BrikControl {
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( self::NONCE_ACTION ),
             'page_url' => admin_url( 'admin.php?page=' . self::PAGE_SLUG ),
+            // Sentences with a number in them (progress, confirmations, results)
+            // come from the server, written with _n() in the viewer's language.
             'i18n'     => [
-                'rescan'             => __( 'Rescan now', 'brikpanel' ),
-                'rescanning'         => __( 'Scan queued — refreshing…', 'brikpanel' ),
+                'rescanning'         => __( 'Scan queued. Refreshing…', 'brikpanel' ),
                 'rescan_failed'      => __( 'Could not start scan.', 'brikpanel' ),
-                'never_scanned'      => __( 'Not scanned yet', 'brikpanel' ),
-                'scan_in_progress'   => __( 'Scanning in background…', 'brikpanel' ),
-                'just_now'           => __( 'just now', 'brikpanel' ),
-                'scanning_progress'  => __( 'Scanning {cursor} / {total} products…', 'brikpanel' ),
-                'fix_confirm'        => __( 'Remove {count} leftover index rows? Products in your catalogue are not affected.', 'brikpanel' ),
                 'fix_running'        => __( 'Cleaning up…', 'brikpanel' ),
-                'fix_done'           => __( '{count} rows removed.', 'brikpanel' ),
-                'fix_more'           => __( 'More rows remain — run the cleanup again.', 'brikpanel' ),
                 'fix_failed'         => __( 'Cleanup failed. Please try again.', 'brikpanel' ),
-                'undo_confirm'       => __( 'Put the previous figures back? This restores {count} row(s) exactly as they were before the last correction.', 'brikpanel' ),
                 'undo_running'       => __( 'Restoring…', 'brikpanel' ),
-                'undo_done'          => __( '{count} row(s) restored.', 'brikpanel' ),
                 'undo_failed'        => __( 'Could not restore. Please try again.', 'brikpanel' ),
             ],
         ] );
@@ -215,14 +241,14 @@ class Brikpanel_BrikControl {
             self::TOPBAR_HANDLE,
             BRIKPANEL_URL . 'front-end/brikcontrol/assets/brikpanel-brikcontrol.css',
             [],
-            BRIKPANEL_VERSION
+            self::asset_version( 'brikpanel-brikcontrol.css' )
         );
 
         wp_enqueue_script(
             self::TOPBAR_HANDLE,
             BRIKPANEL_URL . 'front-end/brikcontrol/assets/brikpanel-brikcontrol-topbar.js',
             [],
-            BRIKPANEL_VERSION,
+            self::asset_version( 'brikpanel-brikcontrol-topbar.js' ),
             true
         );
 
@@ -231,16 +257,12 @@ class Brikpanel_BrikControl {
             'nonce'    => wp_create_nonce( self::NONCE_ACTION ),
             'page_url' => admin_url( 'admin.php?page=' . self::PAGE_SLUG ),
             'refresh_interval' => 60000,
+            // "5 min ago" comes with every status reply (last_scan_relative),
+            // written by relative_time() with _n().
             'i18n'     => [
                 'all_ok'         => __( 'All checks passing', 'brikpanel' ),
-                'view_report'    => __( 'Open Store Health', 'brikpanel' ),
-                'last_scan'      => __( 'Last scan', 'brikpanel' ),
                 'never_scanned'  => __( 'Not scanned yet', 'brikpanel' ),
                 'scan_running'   => __( 'Scanning…', 'brikpanel' ),
-                'just_now'       => __( 'just now', 'brikpanel' ),
-                'minutes_ago'    => __( '%s min ago', 'brikpanel' ),
-                'hours_ago'      => __( '%s h ago', 'brikpanel' ),
-                'days_ago'       => __( '%s d ago', 'brikpanel' ),
             ],
         ] );
     }
@@ -265,6 +287,13 @@ class Brikpanel_BrikControl {
         $is_active = Brikpanel_BrikControl_Storage::is_scan_active();
         $registry  = Brikpanel_BrikControl_Registry::get_all();
 
+        // Results stored before 3.3.25 hold sentences in the language of the
+        // scan: queue one rescan so they are replaced by figures.
+        Brikpanel_BrikControl_Storage::maybe_heal( $bundle );
+
+        // Every check writes its own sentences, in this viewer's language.
+        $bundle = Brikpanel_BrikControl_Storage::present_bundle( 'page', $bundle );
+
         // Surface registered checks that have not yet produced a result so the
         // page never looks empty on first visit.
         foreach ( $registry as $check_id => $check ) {
@@ -274,8 +303,8 @@ class Brikpanel_BrikControl {
                     'label'           => $check->get_label(),
                     'category'        => $check->get_category(),
                     'status'          => 'unknown',
-                    'score'           => 0,
-                    'summary'         => __( 'Not scanned yet — run a scan to see results.', 'brikpanel' ),
+                    'score'           => null,
+                    'summary'         => __( 'Not scanned yet. Run a scan to see results.', 'brikpanel' ),
                     'message'         => '',
                     'recommendations' => [],
                     'metadata'        => [],
@@ -284,6 +313,8 @@ class Brikpanel_BrikControl {
                 ];
             }
         }
+
+        $progress_texts = self::progress_texts( $progress );
 
         include BRIKPANEL_PATH . 'front-end/brikcontrol/views/page.php';
     }
@@ -313,7 +344,7 @@ class Brikpanel_BrikControl {
             $title_attr  = sprintf(
                 /* translators: %s: critical issue count */
                 _n( '%s critical store health issue', '%s critical store health issues', $critical, 'brikpanel' ),
-                number_format_i18n( $critical )
+                brikpanel_number( $critical )
             );
         } elseif ( $warning > 0 ) {
             $state       = 'warning';
@@ -321,7 +352,7 @@ class Brikpanel_BrikControl {
             $title_attr  = sprintf(
                 /* translators: %s: warning count */
                 _n( '%s store health warning', '%s store health warnings', $warning, 'brikpanel' ),
-                number_format_i18n( $warning )
+                brikpanel_number( $warning )
             );
         } else {
             $state       = 'ok';
@@ -414,16 +445,24 @@ class Brikpanel_BrikControl {
             Brikpanel_BrikControl_Runner::maybe_resume();
         }
 
-        $bundle   = Brikpanel_BrikControl_Storage::get_results();
-        $progress = Brikpanel_BrikControl_Storage::get_progress();
-        $active   = Brikpanel_BrikControl_Storage::is_scan_active();
+        // What the topbar shows: label, status and the one-line summary per
+        // check, written for this viewer. The full bundle (sample tables,
+        // restore-point details) never leaves the page render.
+        $payload = Brikpanel_BrikControl_Storage::get_topbar_payload();
+        $checks  = [];
+        foreach ( $payload['checks'] as $row ) {
+            $checks[ $row['id'] ] = [
+                'label'   => $row['label'],
+                'status'  => $row['status'],
+                'summary' => $row['summary'],
+            ];
+        }
 
         // Make sure registered-but-not-yet-scanned checks appear so the topbar
         // never shows an "empty" dropdown after install.
         foreach ( Brikpanel_BrikControl_Registry::get_all() as $check_id => $check ) {
-            if ( ! isset( $bundle['checks'][ $check_id ] ) ) {
-                $bundle['checks'][ $check_id ] = [
-                    'id'      => $check_id,
+            if ( ! isset( $checks[ $check_id ] ) ) {
+                $checks[ $check_id ] = [
                     'label'   => $check->get_label(),
                     'status'  => 'unknown',
                     'summary' => __( 'Not scanned yet', 'brikpanel' ),
@@ -431,11 +470,17 @@ class Brikpanel_BrikControl {
             }
         }
 
+        $last_scan = (int) $payload['last_scan'];
+
         wp_send_json_success( [
-            'bundle'    => $bundle,
-            'progress'  => $progress,
-            'is_active' => $active,
-            'last_scan_relative' => $bundle['last_scan'] > 0 ? $this->relative_time( (int) $bundle['last_scan'] ) : '',
+            'bundle'             => [
+                'last_scan'      => $last_scan,
+                'status_summary' => $payload['summary'],
+                'checks'         => $checks,
+            ],
+            'progress'           => Brikpanel_BrikControl_Storage::get_progress(),
+            'is_active'          => Brikpanel_BrikControl_Storage::is_scan_active(),
+            'last_scan_relative' => $last_scan > 0 ? $this->relative_time( $last_scan ) : '',
         ] );
     }
 
@@ -492,10 +537,17 @@ class Brikpanel_BrikControl {
         if ( class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
             Brikpanel_BrikControl_Runner::maybe_resume();
         }
+        $progress = Brikpanel_BrikControl_Storage::get_progress();
+        $bundle   = Brikpanel_BrikControl_Storage::get_results();
         wp_send_json_success( [
-            'progress'  => Brikpanel_BrikControl_Storage::get_progress(),
+            'progress'  => $progress,
+            'texts'     => self::progress_texts( $progress ),
             'is_active' => Brikpanel_BrikControl_Storage::is_scan_active(),
-            'bundle'    => Brikpanel_BrikControl_Storage::get_results(),
+            // The page only redraws its status counts while a scan runs.
+            'bundle'    => [
+                'last_scan'      => (int) $bundle['last_scan'],
+                'status_summary' => $bundle['status_summary'],
+            ],
         ] );
     }
 
@@ -560,14 +612,24 @@ class Brikpanel_BrikControl {
         if ( ! $check->supports_batching() ) {
             Brikpanel_BrikControl_Storage::save_check_result( $check_id, $check->run( [] ) );
         }
+        $this->rerun_linked_checks( $check_id );
+
+        $outcome = is_array( $outcome ) ? $outcome : [];
+        $parts   = [ method_exists( $check, 'bc_fix_done' ) ? $check->bc_fix_done( $outcome ) : '' ];
+        if ( ! empty( $outcome['has_more'] ) ) {
+            $parts[] = __( 'More rows remain. Run the cleanup again.', 'brikpanel' );
+        }
+        // A check can explain a partial or refused run (restore point full,
+        // another operation running), already in the viewer's language.
+        $parts[] = (string) ( $outcome['message'] ?? '' );
 
         wp_send_json_success( [
             'check_id' => $check_id,
             'removed'  => (int) ( $outcome['removed'] ?? 0 ),
             'has_more' => ! empty( $outcome['has_more'] ),
-            // A check can explain a partial or refused run (restore point full,
-            // another operation running). Already translated server-side.
-            'message'  => (string) ( $outcome['message'] ?? '' ),
+            'message'  => trim( implode( ' ', array_filter( $parts, 'strlen' ) ) ),
+            // Something beyond the count to read: the page waits longer.
+            'note'     => ! empty( $outcome['has_more'] ) || '' !== (string) ( $outcome['message'] ?? '' ),
         ] );
     }
 
@@ -618,12 +680,97 @@ class Brikpanel_BrikControl {
         if ( ! $check->supports_batching() ) {
             Brikpanel_BrikControl_Storage::save_check_result( $check_id, $check->run( [] ) );
         }
+        $this->rerun_linked_checks( $check_id );
+
+        $outcome  = is_array( $outcome ) ? $outcome : [];
+        $restored = (int) ( $outcome['restored'] ?? 0 );
+        $parts    = [ ( $restored > 0 && method_exists( $check, 'bc_undo_done' ) ) ? $check->bc_undo_done( $outcome ) : '' ];
+        $parts[]  = (string) ( $outcome['message'] ?? '' );
 
         wp_send_json_success( [
             'check_id' => $check_id,
-            'restored' => (int) ( $outcome['restored'] ?? 0 ),
-            'message'  => (string) ( $outcome['message'] ?? '' ),
+            'restored' => $restored,
+            'message'  => trim( implode( ' ', array_filter( $parts, 'strlen' ) ) ),
+            'note'     => '' !== (string) ( $outcome['message'] ?? '' ),
         ] );
+    }
+
+    /**
+     * Re-run and save the checks a cleanup or undo also changed, so their
+     * cards and the top bar shield are right on the next page load instead
+     * of after the next scan.
+     *
+     * A failure here never fails the cleanup that already happened: the
+     * linked card keeps its previous result until the next scan.
+     *
+     * @param string $check_id Check whose cleanup or undo just ran.
+     * @return void
+     */
+    private function rerun_linked_checks( $check_id ) {
+        foreach ( self::LINKED_CHECKS[ $check_id ] ?? [] as $linked_id ) {
+            $linked = Brikpanel_BrikControl_Registry::get( $linked_id );
+            if ( ! $linked || $linked->supports_batching() ) {
+                continue;
+            }
+            try {
+                Brikpanel_BrikControl_Storage::save_check_result( $linked_id, $linked->run( [] ) );
+            } catch ( \Throwable $e ) {
+                unset( $e );
+            }
+        }
+    }
+
+    /**
+     * Progress line and percentage for a scan in flight, in the viewer's
+     * language (the page's first render and every poll use the same text).
+     *
+     * @param array $progress Storage::get_progress().
+     * @return array{label:string, pct:string}
+     */
+    public static function progress_texts( array $progress ) {
+        $total  = (int) ( $progress['total'] ?? 0 );
+        $cursor = (int) ( $progress['cursor'] ?? 0 );
+        if ( $total <= 0 ) {
+            return [
+                'label' => __( 'Scanning your store…', 'brikpanel' ),
+                'pct'   => '',
+            ];
+        }
+        return [
+            'label' => brikpanel_safe_sprintf(
+                /* translators: 1: products scanned so far, 2: products to scan in total. */
+                _n( 'Scanning… %1$s / %2$s product', 'Scanning… %1$s / %2$s products', $total, 'brikpanel' ),
+                brikpanel_number( $cursor ),
+                brikpanel_number( $total )
+            ),
+            'pct'   => brikpanel_percent( min( 100, ( $cursor / max( 1, $total ) ) * 100 ), 0 ),
+        ];
+    }
+
+    /**
+     * "Leave this crawler out of your analytics" advice shared by the checks
+     * that find automated traffic. The two setting names are the settings
+     * page's own labels, and the link lands on the first of them.
+     *
+     * @return array Recommendation.
+     */
+    public static function exclusion_recommendation() {
+        $rec = [
+            'text'     => brikpanel_safe_sprintf(
+                /* translators: 1: settings field name "Excluded user agents", 2: settings field name "Excluded IP addresses". */
+                __( 'If a known crawler is behind it, add it to "%1$s" or "%2$s" in the analytics settings, so it stops being counted at all.', 'brikpanel' ),
+                __( 'Excluded user agents', 'brikpanel' ),
+                __( 'Excluded IP addresses', 'brikpanel' )
+            ),
+            'priority' => 'medium',
+        ];
+        if ( function_exists( 'brikpanel_user_can_open_settings' ) && brikpanel_user_can_open_settings() ) {
+            $rec['link'] = [
+                'url'   => admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=analytics' ) . '#bp-jump=brikpanel_excluded_user_agents',
+                'label' => __( 'Analytics settings', 'brikpanel' ),
+            ];
+        }
+        return $rec;
     }
 
     private function verify_ajax() {
@@ -657,15 +804,15 @@ class Brikpanel_BrikControl {
         if ( $diff < HOUR_IN_SECONDS ) {
             $m = (int) floor( $diff / 60 );
             /* translators: %s: minutes */
-            return sprintf( _n( '%s min ago', '%s min ago', $m, 'brikpanel' ), number_format_i18n( $m ) );
+            return sprintf( _n( '%s min ago', '%s min ago', $m, 'brikpanel' ), brikpanel_number( $m ) );
         }
         if ( $diff < DAY_IN_SECONDS ) {
             $h = (int) floor( $diff / HOUR_IN_SECONDS );
             /* translators: %s: hours */
-            return sprintf( _n( '%s h ago', '%s h ago', $h, 'brikpanel' ), number_format_i18n( $h ) );
+            return sprintf( _n( '%s h ago', '%s h ago', $h, 'brikpanel' ), brikpanel_number( $h ) );
         }
         $d = (int) floor( $diff / DAY_IN_SECONDS );
         /* translators: %s: days */
-        return sprintf( _n( '%s d ago', '%s d ago', $d, 'brikpanel' ), number_format_i18n( $d ) );
+        return sprintf( _n( '%s d ago', '%s d ago', $d, 'brikpanel' ), brikpanel_number( $d ) );
     }
 }

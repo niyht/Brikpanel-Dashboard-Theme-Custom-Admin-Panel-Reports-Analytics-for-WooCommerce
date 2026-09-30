@@ -1,0 +1,295 @@
+/**
+ * BrikPanel - the "More actions" menu (field test C). Paired with
+ * brikpanel-overflow.js. See that file for the markup. A row whose buttons are
+ * not 36px tall sets `--bp-overflow-size` so the "..." button matches them.
+ *
+ * Unfolded, the wrapper and the menu are `display: contents`: the real buttons
+ * sit in their row as if the menu were not there. Folded (an ancestor has
+ * `is-fold`, or `brikpanel-overflow--phone` at 782px and below), the menu hangs
+ * under the trigger with the buttons as labelled rows. Menu rows take (0,3,1)
+ * so a screen's own button look, up to `.row .btn.kind` (0,3,0), gives way.
+ */
+.brikpanel-overflow,
+.brikpanel-overflow__menu {
+	display: contents;
+}
+
+.brikpanel-overflow__trigger {
+	display: none;
+}
+
+/* A name only the folded menu shows (an icon button's label): read out by
+   screen readers either way. */
+.brikpanel-overflow__label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* ---------------------------------------------------------------- folded */
+.is-fold .brikpanel-overflow {
+	display: inline-flex;
+	position: relative;
+	flex: none;
+}
+
+.is-fold .brikpanel-overflow .brikpanel-overflow__trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	box-sizing: border-box;
+	width: var(--bp-overflow-size, 2.25rem);
+	height: var(--bp-overflow-size, 2.25rem);
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: .5rem;
+	background: #fff;
+	color: #303030;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+	font: inherit;
+	cursor: pointer;
+	transition: background .15s ease;
+}
+
+.is-fold .brikpanel-overflow .brikpanel-overflow__trigger:hover {
+	background: #f7f7f7;
+}
+
+.is-fold .brikpanel-overflow.is-open .brikpanel-overflow__trigger {
+	background: #f0f0f0;
+}
+
+.is-fold .brikpanel-overflow .brikpanel-overflow__trigger:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+/* Closed, the menu is also visibility:hidden (after its fade), so Tab skips
+   buttons nobody can see. --bp-overflow-shift keeps it inside the window. */
+.is-fold .brikpanel-overflow .brikpanel-overflow__menu {
+	display: flex;
+	flex-direction: column;
+	gap: .125rem;
+	position: absolute;
+	top: calc(100% + .375rem);
+	inset-inline-end: 0;
+	z-index: 200;
+	box-sizing: border-box;
+	min-width: 12.5rem;
+	max-width: calc(100vw - 1rem);
+	margin: 0;
+	padding: .375rem;
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: .75rem;
+	box-shadow: 0 6px 20px rgba(0, 0, 0, .12), 0 2px 4px rgba(0, 0, 0, .04);
+	opacity: 0;
+	visibility: hidden;
+	transform: translateY(-4px);
+	translate: var(--bp-overflow-shift, 0px) 0;
+	pointer-events: none;
+	transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
+}
+
+.is-fold .brikpanel-overflow.is-open .brikpanel-overflow__menu {
+	opacity: 1;
+	visibility: visible;
+	transform: none;
+	pointer-events: auto;
+	transition: opacity .15s ease, transform .15s ease, visibility 0s;
+}
+
+.is-fold .brikpanel-overflow .brikpanel-overflow__menu > :is(a, button):not([hidden]) {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: .5rem;
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 2.25rem;
+	margin: 0;
+	padding: .5rem .625rem;
+	border: 0;
+	border-radius: .4375rem;
+	background: transparent;
+	box-shadow: none;
+	color: #303030;
+	font-size: .8125rem;
+	font-weight: 500;
+	line-height: 1.3;
+	text-align: start;
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	order: 0;
+}
+
+.is-fold .brikpanel-overflow .brikpanel-overflow__menu > :is(a, button):hover {
+	background: #f7f7f7;
+	color: #303030;
+}
+
+.is-fold .brikpanel-overflow .brikpanel-overflow__menu > :is(a, button):focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: -2px;
+	box-shadow: none;
+}
+
+.is-fold .brikpanel-overflow .brikpanel-overflow__menu > [hidden] {
+	display: none;
+}
+
+.is-fold .brikpanel-overflow .brikpanel-overflow__label {
+	position: static;
+	width: auto;
+	height: auto;
+	margin: 0;
+	overflow: visible;
+	clip: auto;
+}
+
+/* ------------------------------------------- phones: folded without a row */
+@media (max-width: 782px) {
+	.brikpanel-overflow.brikpanel-overflow--phone {
+		display: inline-flex;
+		position: relative;
+		flex: none;
+	}
+
+	.brikpanel-overflow--phone .brikpanel-overflow__trigger {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: none;
+		box-sizing: border-box;
+		width: 2.25rem;
+		height: 2.25rem;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		border-radius: .5rem;
+		background: transparent;
+		color: #616161;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.brikpanel-overflow--phone.is-open .brikpanel-overflow__trigger {
+		background: #f0f0f0;
+		color: #303030;
+	}
+
+	.brikpanel-overflow--phone .brikpanel-overflow__trigger:focus-visible {
+		outline: 2px solid #303030;
+		outline-offset: 1px;
+	}
+
+	.brikpanel-overflow.brikpanel-overflow--phone .brikpanel-overflow__menu {
+		display: flex;
+		flex-direction: column;
+		gap: .125rem;
+		position: absolute;
+		top: calc(100% + .25rem);
+		inset-inline-end: 0;
+		z-index: 200;
+		box-sizing: border-box;
+		min-width: 12.5rem;
+		max-width: calc(100vw - 1rem);
+		margin: 0;
+		padding: .375rem;
+		background: #fff;
+		border: 1px solid #e3e3e3;
+		border-radius: .75rem;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, .12), 0 2px 4px rgba(0, 0, 0, .04);
+		opacity: 0;
+		visibility: hidden;
+		transform: translateY(-4px);
+		translate: var(--bp-overflow-shift, 0px) 0;
+		pointer-events: none;
+		transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
+	}
+
+	.brikpanel-overflow.brikpanel-overflow--phone.is-open .brikpanel-overflow__menu {
+		opacity: 1;
+		visibility: visible;
+		transform: none;
+		pointer-events: auto;
+		transition: opacity .15s ease, transform .15s ease, visibility 0s;
+	}
+
+	.brikpanel-overflow--phone .brikpanel-overflow__menu > :is(a, button):not([hidden]) {
+		display: flex;
+		align-items: center;
+		justify-content: flex-start;
+		gap: .5rem;
+		box-sizing: border-box;
+		width: 100%;
+		height: auto;
+		min-height: 2.5rem;
+		margin: 0;
+		padding: .5rem .625rem;
+		border: 0;
+		border-radius: .4375rem;
+		background: transparent;
+		box-shadow: none;
+		color: #303030;
+		font-size: .875rem;
+		font-weight: 500;
+		line-height: 1.3;
+		text-align: start;
+		text-decoration: none;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.brikpanel-overflow--phone .brikpanel-overflow__menu > :is(a, button):hover {
+		background: #f7f7f7;
+		color: #303030;
+	}
+
+	.brikpanel-overflow--phone .brikpanel-overflow__menu > [hidden] {
+		display: none;
+	}
+
+	.brikpanel-overflow--phone .brikpanel-overflow__label {
+		position: static;
+		width: auto;
+		height: auto;
+		margin: 0;
+		overflow: visible;
+		clip: auto;
+	}
+}
+
+/* Placed by brikpanel-overflow.js when there is no room below the trigger:
+   above it, or (no room either way inside a clipping box) against the window. */
+.brikpanel-overflow.is-up .brikpanel-overflow__menu {
+	top: auto;
+	bottom: calc(100% + .25rem);
+}
+
+.brikpanel-overflow.is-fixed .brikpanel-overflow__menu {
+	position: fixed;
+	top: var(--bp-overflow-top, 0px);
+	bottom: auto;
+	left: var(--bp-overflow-left, 0px);
+	right: auto;
+	translate: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.is-fold .brikpanel-overflow .brikpanel-overflow__menu,
+	.is-fold .brikpanel-overflow.is-open .brikpanel-overflow__menu,
+	.brikpanel-overflow.brikpanel-overflow--phone .brikpanel-overflow__menu,
+	.brikpanel-overflow.brikpanel-overflow--phone.is-open .brikpanel-overflow__menu {
+		transition: none;
+	}
+}

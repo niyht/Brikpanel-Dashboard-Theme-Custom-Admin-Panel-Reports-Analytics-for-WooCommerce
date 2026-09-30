@@ -457,6 +457,11 @@ class Brikpanel_ASE_Bridge {
      * Returns the row actions contributed by plugins for a given post via
      * the `post_row_actions` filter, as an ordered list of `[id, html]`
      * pairs. Empty list when no plugin contributes anything.
+     *
+     * The actions WordPress and WooCommerce themselves name (edit, quick edit,
+     * trash, view, WooCommerce's "Duplicate" ...) are left out: the BrikPanel
+     * row has its own buttons for them, and WooCommerce's copies showed up as
+     * a second, blue "Trash" and "Duplicate" beside those (field test D18).
      */
     public static function get_row_actions( $post ) {
         if ( ! is_object( $post ) ) {
@@ -474,8 +479,24 @@ class Brikpanel_ASE_Bridge {
             return [];
         }
 
+        /**
+         * Filters the row action keys the BrikPanel product and coupon lists
+         * leave out because the row already has a button for them.
+         *
+         * @param string[] $keys Action keys of the `post_row_actions` filter.
+         * @param WP_Post  $post The row's post.
+         */
+        $native = (array) apply_filters(
+            'brikpanel_list_native_row_actions',
+            [ 'edit', 'inline', 'inline hide-if-no-js', 'trash', 'untrash', 'delete', 'view', 'preview', 'duplicate' ],
+            $post
+        );
+
         $out = [];
         foreach ( $actions as $key => $html ) {
+            if ( in_array( (string) $key, $native, true ) ) {
+                continue;
+            }
             $out[] = [
                 'id'   => sanitize_html_class( (string) $key ),
                 'html' => wp_kses_post( (string) $html ),

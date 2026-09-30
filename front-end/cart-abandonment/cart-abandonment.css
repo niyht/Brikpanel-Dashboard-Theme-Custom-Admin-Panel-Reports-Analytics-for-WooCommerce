@@ -458,7 +458,7 @@
 	font-size: 0.6875rem !important;
 	font-weight: 700 !important;
 	letter-spacing: 0.16em !important;
-	color: #8a8a8a !important;
+	color: #616161 !important;
 }
 
 .brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-foil {
@@ -478,7 +478,9 @@
 	font-weight: 700 !important;
 	letter-spacing: 0.2em !important;
 	text-transform: uppercase !important;
-	color: #8f8f8f !important;
+	/* Readable on both foil stripes (5.2:1 on #c7c7c7). #8f8f8f was 1.9:1
+	   (field test E5). */
+	color: #4a4a4a !important;
 }
 
 .brikpanel-cartab-popup-overlay .brikpanel-cartab-scratch-coin {
@@ -1113,7 +1115,7 @@
 	font-weight: 600 !important;
 	text-transform: uppercase !important;
 	letter-spacing: 0.08em !important;
-	color: #8a8a8a !important;
+	color: #616161 !important;
 	margin-bottom: 0.375rem !important;
 }
 
@@ -1166,7 +1168,7 @@
 .brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-hint {
 	margin-top: 0.5rem !important;
 	font-size: 0.75rem !important;
-	color: #8a8a8a !important;
+	color: #616161 !important;
 }
 
 /* "Wrong address? Edit it" affordance under the emailed-coupon notice. */
@@ -1277,7 +1279,7 @@
 .brikpanel-cartab-popup-overlay .brikpanel-cartab-editmail-note {
 	margin-top: 0.375rem !important;
 	font-size: 0.75rem !important;
-	color: #8a8a8a !important;
+	color: #616161 !important;
 }
 
 .brikpanel-cartab-popup-overlay .brikpanel-cartab-editmail-note.is-error {
@@ -1474,7 +1476,7 @@
 .brikpanel-cartab-popup-overlay .brikpanel-cartab-coupon-saved {
 	margin-top: 0.375rem !important;
 	font-size: 0.75rem !important;
-	color: #8a8a8a !important;
+	color: #616161 !important;
 }
 
 /* Collapse: the card flies into the tab it is about to become, so the visitor
@@ -1497,4 +1499,20 @@
 		opacity: 0;
 		transition: opacity 0.25s ease;
 	}
+}
+
+/* ==========================================================================
+ * `hidden` must hide inside the popup, whatever the theme says.
+ * ========================================================================== */
+
+/* The browser applies [hidden] through its own stylesheet, and any `display`
+ * a stylesheet sets beats it. Themes give every button one (WoodMart
+ * inline-flex, Hello Elementor inline-block), so the "Wrong address? Edit it"
+ * link stayed on screen above its own open edit form. !important and the extra
+ * :not() weight keep this above every rule in this file (they are all
+ * `.brikpanel-cartab-popup-overlay .x { … !important }`) and above theme rules.
+ * It is last in the file so a later rule of the same weight cannot undo it.
+ * `until-found` is left to the browser, which reveals it on find-in-page. */
+.brikpanel-cartab-popup-overlay [hidden]:not([hidden="until-found"]) {
+	display: none !important;
 }

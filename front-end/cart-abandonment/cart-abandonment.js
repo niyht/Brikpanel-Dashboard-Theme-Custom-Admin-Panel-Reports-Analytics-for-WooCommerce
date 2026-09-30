@@ -402,7 +402,11 @@
 		function buildOfferVisual() {
 			var style = String(cfg.popup.style || 'pocket');
 			var wrap = el('div', 'brikpanel-cartab-ticket-wrap brikpanel-cartab-ticket-wrap--' + style);
-			var pctText = discount + '%';
+			// "%s" is the number, "%%" the sign: the shopper's language decides
+			// the order ("%10" in Turkish, "10 %" in German).
+			var pctText = String(cfg.popup.pct || '%s%%').replace(/%(%|s)/g, function (m, c) {
+				return c === 's' ? String(discount) : '%';
+			});
 			var i;
 
 			if (style === 'classic') {
@@ -433,7 +437,9 @@
 				wrap.appendChild(box);
 			} else if (style === 'slot') {
 				var frame = el('div', 'brikpanel-cartab-slot');
-				var chars = (String(discount) + '%').split('');
+				// One reel per visible character; the no-break space some
+				// languages put before the sign gets no reel.
+				var chars = pctText.replace(/[\s\u00a0]/g, '').split('');
 				var fillers = ['7', '3', '9', '2', '8', '4', '6', '5'];
 				for (i = 0; i < chars.length; i++) {
 					var reel = el('div', 'brikpanel-cartab-slot-reel brikpanel-cartab-slot-reel-' + Math.min(i + 1, 4));

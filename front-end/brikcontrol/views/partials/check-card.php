@@ -4,7 +4,9 @@
  *
  * Variables in scope (from views/page.php loop):
  *   - $check_id     : string
- *   - $check_result : array  (CheckResult schema)
+ *   - $check_result : array  (CheckResult schema, already presented by the
+ *                    check's bc_present(): sentences in the viewer's language,
+ *                    score banded to the status or null for none)
  *
  * @package BrikPanel
  */
@@ -14,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 $status   = $check_result['status'] ?? 'unknown';
-$score    = (int) ( $check_result['score'] ?? 0 );
+$score    = isset( $check_result['score'] ) && is_numeric( $check_result['score'] ) ? (int) $check_result['score'] : null;
 $label    = $check_result['label'] ?? $check_id;
 $summary  = $check_result['summary'] ?? '';
 $message  = $check_result['message'] ?? '';
@@ -41,7 +43,7 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
             </span>
             <h2 class="brikpanel-bc-card-title"><?php echo esc_html( $label ); ?></h2>
         </div>
-        <?php if ( $score > 0 || $status !== 'unknown' ) : ?>
+        <?php if ( null !== $score ) : ?>
             <div class="brikpanel-bc-card-score" title="<?php esc_attr_e( 'Health score', 'brikpanel' ); ?>">
                 <span class="brikpanel-bc-score-num"><?php echo esc_html( $score ); ?></span>
                 <span class="brikpanel-bc-score-suffix">/100</span>
@@ -71,33 +73,48 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
             <?php foreach ( $recs as $rec ) :
                 $priority = isset( $rec['priority'] ) ? $rec['priority'] : 'medium';
                 $text     = isset( $rec['text'] ) ? $rec['text'] : '';
-                $link     = isset( $rec['link'] ) && is_array( $rec['link'] ) ? $rec['link'] : null;
 
-                // Resolve the URL at render time because scans run as AS
-                // workers without a current user — the link metadata only
-                // carries slug/search so we can pick the in-admin URL for
-                // capable viewers and the wp.org URL for anyone else.
-                $link_url = '';
-                if ( $link ) {
-                    if ( ! empty( $link['plugin_slug'] ) && class_exists( 'Brikpanel_BrikControl_Image_Plugins' ) ) {
-                        $link_url = Brikpanel_BrikControl_Image_Plugins::resolve_install_url(
-                            (string) $link['plugin_slug'],
-                            isset( $link['plugin_search'] ) ? (string) $link['plugin_search'] : ''
-                        );
-                    } elseif ( ! empty( $link['url'] ) ) {
-                        $link_url = (string) $link['url'];
-                    }
+                // One link (`link`) or several (`links`: one recommendation
+                // with a button per plugin, field test E6).
+                $rec_links = [];
+                if ( ! empty( $rec['links'] ) && is_array( $rec['links'] ) ) {
+                    $rec_links = $rec['links'];
+                } elseif ( ! empty( $rec['link'] ) && is_array( $rec['link'] ) ) {
+                    $rec_links = [ $rec['link'] ];
                 }
-                $is_external = $link_url !== '' && strpos( $link_url, 'wordpress.org' ) !== false;
                 ?>
                 <li class="brikpanel-bc-rec brikpanel-bc-rec-<?php echo esc_attr( $priority ); ?>">
                     <span class="brikpanel-bc-rec-prio" aria-hidden="true"></span>
                     <span class="brikpanel-bc-rec-text"><?php echo esc_html( $text ); ?></span>
-                    <?php if ( $link_url !== '' ) : ?>
-                        <a class="brikpanel-bc-rec-link" href="<?php echo esc_url( $link_url ); ?>"<?php echo $is_external ? ' target="_blank" rel="noopener"' : ''; ?>>
-                            <?php echo esc_html( $link['label'] ?? __( 'Open', 'brikpanel' ) ); ?>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                        </a>
+                    <?php if ( ! empty( $rec_links ) ) : ?>
+                        <span class="brikpanel-bc-rec-actions">
+                            <?php
+                            foreach ( $rec_links as $link ) :
+                                if ( ! is_array( $link ) ) {
+                                    continue;
+                                }
+                                // Resolved per viewer: scans run as Action Scheduler
+                                // workers without a current user, so a plugin link
+                                // only carries slug/search, and the viewer gets the
+                                // in-admin installer or the wp.org page.
+                                $link_url = '';
+                                if ( ! empty( $link['plugin_slug'] ) && class_exists( 'Brikpanel_BrikControl_Image_Plugins' ) ) {
+                                    $link_url = Brikpanel_BrikControl_Image_Plugins::resolve_install_url(
+                                        (string) $link['plugin_slug'],
+                                        isset( $link['plugin_search'] ) ? (string) $link['plugin_search'] : ''
+                                    );
+                                } elseif ( ! empty( $link['url'] ) ) {
+                                    $link_url = (string) $link['url'];
+                                }
+                                if ( '' === $link_url ) {
+                                    continue;
+                                }
+                                $is_external = strpos( $link_url, 'wordpress.org' ) !== false;
+                                $link_label  = isset( $link['label'] ) ? (string) $link['label'] : __( 'Open', 'brikpanel' );
+                                ?>
+                                <a class="brikpanel-btn brikpanel-btn--secondary" href="<?php echo esc_url( $link_url ); ?>"<?php echo $is_external ? ' target="_blank" rel="noopener"' : ''; ?><?php echo ! empty( $link['aria_label'] ) ? ' aria-label="' . esc_attr( (string) $link['aria_label'] ) . '"' : ''; ?>><?php echo esc_html( $link_label ); ?></a>
+                            <?php endforeach; ?>
+                        </span>
                     <?php endif; ?>
                 </li>
             <?php endforeach; ?>
@@ -118,10 +135,17 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
         && $fixable > 0
         && $can_manage;
 
-    // A check whose repair rewrites data rather than deleting dead rows can
-    // hand over its own confirmation sentence; the shared one in the localize
-    // array talks about index rows and would be a lie here.
+    // Every check hands over its own confirmation, counted with _n() in the
+    // viewer's language; a check that has none gets a neutral one.
     $fix_confirm = isset( $meta['fix_confirm'] ) ? (string) $meta['fix_confirm'] : '';
+    if ( '' === $fix_confirm ) {
+        $fix_confirm = sprintf(
+            /* translators: %s: number of items a Store Health cleanup would remove. */
+            _n( 'Clean up %s item?', 'Clean up %s items?', $fixable, 'brikpanel' ),
+            brikpanel_number( $fixable )
+        );
+    }
+    $fix_confirm = str_replace( '{count}', brikpanel_number( $fixable ), $fix_confirm );
 
     // Undo is offered whenever the check kept a restore point, independently of
     // whether anything is currently flagged: after a successful correction
@@ -133,9 +157,22 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
         && $undoable > 0
         && $can_manage;
     $undo_at  = isset( $meta['undo_at'] ) ? (int) $meta['undo_at'] : 0;
-    // Same idea as fix_confirm: the shared undo sentence talks about figures,
-    // which is wrong for a check that restores deleted rows.
+    // Same idea as fix_confirm. Results stored before 3.3.25 still carry a
+    // {count} token, filled in here.
     $undo_confirm = isset( $meta['undo_confirm'] ) ? (string) $meta['undo_confirm'] : '';
+    if ( '' === $undo_confirm ) {
+        $undo_confirm = sprintf(
+            /* translators: %s: number of database rows to put back. */
+            _n(
+                'Put the previous values back? This restores %s row exactly as it was before the last correction.',
+                'Put the previous values back? This restores %s rows exactly as they were before the last correction.',
+                $undoable,
+                'brikpanel'
+            ),
+            brikpanel_number( $undoable )
+        );
+    }
+    $undo_confirm = str_replace( '{count}', brikpanel_number( $undoable ), $undo_confirm );
     ?>
     <?php if ( $can_fix || $can_undo ) : ?>
         <div class="brikpanel-bc-card-actions">
@@ -143,8 +180,7 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
                 <button type="button"
                         class="brikpanel-bc-button brikpanel-bc-button-primary"
                         data-bc-fix="<?php echo esc_attr( $check_id ); ?>"
-                        data-bc-fix-count="<?php echo esc_attr( $fixable ); ?>"
-                        <?php if ( $fix_confirm !== '' ) : ?>data-bc-fix-confirm="<?php echo esc_attr( $fix_confirm ); ?>"<?php endif; ?>>
+                        data-bc-fix-confirm="<?php echo esc_attr( $fix_confirm ); ?>">
                     <span data-bc-fix-label><?php echo esc_html( $check_obj->get_fix_label() ); ?></span>
                 </button>
             <?php endif; ?>
@@ -152,13 +188,12 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
                 <button type="button"
                         class="brikpanel-bc-button"
                         data-bc-undo="<?php echo esc_attr( $check_id ); ?>"
-                        data-bc-undo-count="<?php echo esc_attr( $undoable ); ?>"
-                        <?php if ( $undo_confirm !== '' ) : ?>data-bc-undo-confirm="<?php echo esc_attr( $undo_confirm ); ?>"<?php endif; ?>
+                        data-bc-undo-confirm="<?php echo esc_attr( $undo_confirm ); ?>"
                         <?php if ( $undo_at > 0 ) : ?>title="<?php
                             printf(
                                 /* translators: %s: human-readable date/time of the last correction. */
                                 esc_attr__( 'Corrected %s', 'brikpanel' ),
-                                esc_attr( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $undo_at ) )
+                                esc_attr( wp_date( brikpanel_datetime_format(), $undo_at ) )
                             );
                         ?>"<?php endif; ?>>
                     <span data-bc-undo-label><?php esc_html_e( 'Undo last correction', 'brikpanel' ); ?></span>
@@ -168,13 +203,8 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
         </div>
     <?php endif; ?>
 
-    <?php
-    // Generic stats grid. Kept as an if/elseif so the image check's hard-coded
-    // block below stays exactly as it was and no empty container is emitted for
-    // a check whose totals use different keys.
-    ?>
     <?php if ( ! empty( $meta['stats'] ) && is_array( $meta['stats'] ) ) : ?>
-        <div class="brikpanel-bc-stats">
+        <div class="brikpanel-bc-stats" data-bp-tiles>
             <?php
             foreach ( $meta['stats'] as $stat ) :
                 $tone       = isset( $stat['tone'] ) ? (string) $stat['tone'] : '';
@@ -183,45 +213,10 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
                     : '';
                 ?>
                 <div class="brikpanel-bc-stat<?php echo esc_attr( $tone_class ); ?>">
-                    <span class="brikpanel-bc-stat-num"><?php echo esc_html( number_format_i18n( (float) ( $stat['value'] ?? 0 ) ) ); ?></span>
+                    <span class="brikpanel-bc-stat-num"><?php echo esc_html( brikpanel_number( (float) ( $stat['value'] ?? 0 ) ) ); ?></span>
                     <span class="brikpanel-bc-stat-label"><?php echo esc_html( (string) ( $stat['label'] ?? '' ) ); ?></span>
                 </div>
             <?php endforeach; ?>
-        </div>
-    <?php elseif ( ! empty( $meta['totals'] ) ) :
-        $totals = $meta['totals'];
-        ?>
-        <div class="brikpanel-bc-stats">
-            <?php if ( isset( $totals['attachments'] ) ) : ?>
-                <div class="brikpanel-bc-stat">
-                    <span class="brikpanel-bc-stat-num"><?php echo esc_html( number_format_i18n( $totals['attachments'] ) ); ?></span>
-                    <span class="brikpanel-bc-stat-label"><?php esc_html_e( 'Total images', 'brikpanel' ); ?></span>
-                </div>
-            <?php endif; ?>
-            <?php if ( isset( $totals['oversized'] ) ) : ?>
-                <div class="brikpanel-bc-stat brikpanel-bc-stat-warn">
-                    <span class="brikpanel-bc-stat-num"><?php echo esc_html( number_format_i18n( $totals['oversized'] ) ); ?></span>
-                    <span class="brikpanel-bc-stat-label"><?php esc_html_e( 'Over 1 MB', 'brikpanel' ); ?></span>
-                </div>
-            <?php endif; ?>
-            <?php if ( isset( $totals['webp_avif'] ) ) : ?>
-                <div class="brikpanel-bc-stat brikpanel-bc-stat-good">
-                    <span class="brikpanel-bc-stat-num"><?php echo esc_html( number_format_i18n( $totals['webp_avif'] ) ); ?></span>
-                    <span class="brikpanel-bc-stat-label"><?php esc_html_e( 'WebP / AVIF', 'brikpanel' ); ?></span>
-                </div>
-            <?php endif; ?>
-            <?php if ( isset( $totals['legacy'] ) ) : ?>
-                <div class="brikpanel-bc-stat">
-                    <span class="brikpanel-bc-stat-num"><?php echo esc_html( number_format_i18n( $totals['legacy'] ) ); ?></span>
-                    <span class="brikpanel-bc-stat-label"><?php esc_html_e( 'JPEG / PNG', 'brikpanel' ); ?></span>
-                </div>
-            <?php endif; ?>
-            <?php if ( ! empty( $totals['missing_files'] ) ) : ?>
-                <div class="brikpanel-bc-stat brikpanel-bc-stat-error">
-                    <span class="brikpanel-bc-stat-num"><?php echo esc_html( number_format_i18n( $totals['missing_files'] ) ); ?></span>
-                    <span class="brikpanel-bc-stat-label"><?php esc_html_e( 'Missing files', 'brikpanel' ); ?></span>
-                </div>
-            <?php endif; ?>
         </div>
     <?php endif; ?>
 
@@ -238,7 +233,8 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
         ?>
         <details class="brikpanel-bc-details">
             <summary><?php echo esc_html( $sample_title ); ?></summary>
-            <table class="brikpanel-bc-largest-table">
+            <div class="brikpanel-bc-table-wrap">
+            <table class="brikpanel-bc-largest-table brikpanel-fit-table">
                 <?php if ( ! empty( $sample_cols ) ) : ?>
                     <thead>
                         <tr>
@@ -258,13 +254,15 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            </div>
         </details>
     <?php endif; ?>
 
     <?php if ( ! empty( $largest ) ) : ?>
         <details class="brikpanel-bc-details">
             <summary><?php esc_html_e( 'Largest images (top 10)', 'brikpanel' ); ?></summary>
-            <table class="brikpanel-bc-largest-table">
+            <div class="brikpanel-bc-table-wrap">
+            <table class="brikpanel-bc-largest-table brikpanel-fit-table">
                 <thead>
                     <tr>
                         <th><?php esc_html_e( 'Image', 'brikpanel' ); ?></th>
@@ -274,27 +272,41 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ( $largest as $entry ) : ?>
+                    <?php
+                    foreach ( $largest as $entry ) :
+                        $entry_post  = (int) ( $entry['post_id'] ?? 0 );
+                        $entry_image = (int) ( $entry['id'] ?? 0 );
+                        // Built for this viewer: a link stored by the scan worker
+                        // (no current user) was always empty.
+                        $entry_edit  = $entry_post > 0 ? (string) get_edit_post_link( $entry_post, 'raw' ) : '';
+                        $entry_media = $entry_image > 0 ? (string) get_edit_post_link( $entry_image, 'raw' ) : '';
+                        $entry_title = $entry_post > 0 ? brikpanel_plain_label( get_the_title( $entry_post ) ) : '';
+                        ?>
                         <tr>
-                            <td>
-                                <a href="<?php echo esc_url( $entry['edit_url'] ?? '#' ); ?>">
-                                    <?php
-                                    $product_title = get_the_title( (int) ( $entry['post_id'] ?? 0 ) );
-                                    echo esc_html( $product_title !== '' ? $product_title : __( '(no title)', 'brikpanel' ) );
-                                    ?>
-                                </a>
+                            <td class="brikpanel-fit-lead">
+                                <?php if ( '' !== $entry_edit ) : ?>
+                                    <a href="<?php echo esc_url( $entry_edit ); ?>"><?php echo esc_html( '' !== $entry_title ? $entry_title : __( '(no title)', 'brikpanel' ) ); ?></a>
+                                <?php else : ?>
+                                    <?php echo esc_html( '' !== $entry_title ? $entry_title : __( '(no title)', 'brikpanel' ) ); ?>
+                                <?php endif; ?>
                             </td>
-                            <td><?php echo esc_html( number_format_i18n( $entry['size_mb'] ?? 0, 2 ) ); ?> MB</td>
+                            <td class="brikpanel-bc-nowrap"><?php
+                                /* translators: %s: an image file size in megabytes, e.g. "2.40" */
+                                echo esc_html( sprintf( __( '%s MB', 'brikpanel' ), brikpanel_number( (float) ( $entry['size_mb'] ?? 0 ), 2 ) ) );
+                            ?></td>
                             <td><?php echo esc_html( $entry['mime'] ?? '' ); ?></td>
                             <td>
-                                <a class="brikpanel-bc-table-link" href="<?php echo esc_url( $entry['media_url'] ?? '#' ); ?>">
-                                    <?php esc_html_e( 'Open', 'brikpanel' ); ?>
-                                </a>
+                                <?php if ( '' !== $entry_media ) : ?>
+                                    <a class="brikpanel-bc-table-link" href="<?php echo esc_url( $entry_media ); ?>">
+                                        <?php esc_html_e( 'Open', 'brikpanel' ); ?>
+                                    </a>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            </div>
         </details>
     <?php endif; ?>
 
@@ -305,8 +317,11 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
                 printf(
                     /* translators: %s: human-readable date/time */
                     esc_html__( 'Scanned %s', 'brikpanel' ),
-                    esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $scanned ) )
+                    esc_html( wp_date( brikpanel_datetime_format(), $scanned ) )
                 );
+                if ( ! empty( $meta['scope'] ) ) {
+                    echo ' · ' . esc_html( (string) $meta['scope'] );
+                }
                 ?>
             </span>
         </footer>

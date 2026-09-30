@@ -838,9 +838,9 @@ function brikpanel_order_merge_execute( $target_id, array $source_ids, $shipping
 			$target->delete_meta_data( BRIKPANEL_ORDER_MERGE_META_PENDING );
 
 			$note = sprintf(
-				/* translators: 1: comma-separated list of merged order numbers, 2: formatted order total. */
-				__( 'Merged in order(s) %1$s. New order total: %2$s.', 'brikpanel' ),
-				implode( ', ', $moved_numbers ),
+				/* translators: 1: the merged order numbers, e.g. "1234" or "1234 and 1235", 2: formatted order total. */
+				_n( 'Merged in order %1$s. New order total: %2$s.', 'Merged in orders %1$s. New order total: %2$s.', count( $moved_numbers ), 'brikpanel' ),
+				wp_sprintf_l( '%l', $moved_numbers ),
 				function_exists( 'brikpanel_money_text' )
 					? brikpanel_money_text( $target->get_total(), [ 'currency' => $target->get_currency() ] )
 					: wp_strip_all_tags( wc_price( $target->get_total(), [ 'currency' => $target->get_currency() ] ) )
@@ -1107,7 +1107,7 @@ function brikpanel_order_merge_maybe_run() {
 	$target = wc_get_order( $report['target_id'] );
 	$back   = $target instanceof WC_Order
 		? $target->get_edit_order_url()
-		: admin_url( 'admin.php?page=wc-orders' );
+		: brikpanel_wc_orders_list_url();
 
 	wp_safe_redirect( $back );
 	exit;
@@ -1133,10 +1133,11 @@ function brikpanel_order_merge_render_page() {
 			$why = __( 'The BrikPanel interface is switched off for this account, so order merging is unavailable.', 'brikpanel' );
 		}
 
-		echo '<div class="wrap brikpanel-merge">';
+		echo '<div class="wrap brikpanel-merge brikpanel-shell__page">';
 		echo '<h1 class="bpm-title">' . esc_html__( 'Merge orders', 'brikpanel' ) . '</h1>';
+		brikpanel_header_end();
 		echo '<div class="bpm-card bpm-card--error"><p>' . esc_html( $why ) . '</p></div>';
-		echo '<p><a class="bpm-btn bpm-btn--sec" href="' . esc_url( admin_url( 'admin.php?page=wc-orders' ) ) . '">'
+		echo '<p><a class="bpm-btn bpm-btn--sec" href="' . esc_url( brikpanel_wc_orders_list_url() ) . '">'
 			. esc_html__( 'Back to orders', 'brikpanel' ) . '</a></p>';
 		echo '</div>';
 		return;
@@ -1146,14 +1147,15 @@ function brikpanel_order_merge_render_page() {
 	$token = isset( $_REQUEST['merge'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['merge'] ) ) : '';
 	$ids   = brikpanel_order_merge_read_token( $token );
 
-	echo '<div class="wrap brikpanel-merge">';
+	echo '<div class="wrap brikpanel-merge brikpanel-shell__page">';
 
 	if ( count( $ids ) < 2 ) {
 		echo '<h1 class="bpm-title">' . esc_html__( 'Merge orders', 'brikpanel' ) . '</h1>';
+		brikpanel_header_end();
 		echo '<div class="bpm-card bpm-card--error"><p>'
 			. esc_html__( 'This merge has expired or was already used. Go back to the orders list and select the orders again.', 'brikpanel' )
 			. '</p></div>';
-		echo '<p><a class="bpm-btn bpm-btn--sec" href="' . esc_url( admin_url( 'admin.php?page=wc-orders' ) ) . '">'
+		echo '<p><a class="bpm-btn bpm-btn--sec" href="' . esc_url( brikpanel_wc_orders_list_url() ) . '">'
 			. esc_html__( 'Back to orders', 'brikpanel' ) . '</a></p>';
 		echo '</div>';
 		return;
@@ -1171,9 +1173,10 @@ function brikpanel_order_merge_render_page() {
 
 	echo '<h1 class="bpm-title">' . esc_html__( 'Merge orders', 'brikpanel' ) . '</h1>';
 	echo '<p class="bpm-lede">' . esc_html__( 'Products from the other orders move onto the main order. The others are cancelled with a note pointing here, and nothing is deleted.', 'brikpanel' ) . '</p>';
+	brikpanel_header_end();
 
 	if ( $report['fatal'] ) {
-		echo '<div class="bpm-card bpm-card--error"><h2>' . esc_html__( 'These orders cannot be merged', 'brikpanel' ) . '</h2><ul>';
+		echo '<div class="bpm-card bpm-card--error"><h2>' . esc_html__( 'These orders cannot be merged', 'brikpanel' ) . '</h2><ul class="brikpanel-bullets">';
 		foreach ( $report['fatal'] as $line ) {
 			echo '<li>' . esc_html( $line ) . '</li>';
 		}
@@ -1184,7 +1187,7 @@ function brikpanel_order_merge_render_page() {
 				. '</strong>: ' . esc_html( $reason ) . '</li>';
 		}
 		echo '</ul></div>';
-		echo '<p><a class="bpm-btn bpm-btn--sec" href="' . esc_url( admin_url( 'admin.php?page=wc-orders' ) ) . '">'
+		echo '<p><a class="bpm-btn bpm-btn--sec" href="' . esc_url( brikpanel_wc_orders_list_url() ) . '">'
 			. esc_html__( 'Back to orders', 'brikpanel' ) . '</a></p>';
 		echo '</div>';
 		return;
@@ -1251,7 +1254,7 @@ function brikpanel_order_merge_render_page() {
 	if ( $report['warnings'] ) {
 		echo '<div class="bpm-card bpm-card--warn">';
 		echo '<h2>' . esc_html__( 'Before you continue', 'brikpanel' ) . '</h2>';
-		echo '<ul>';
+		echo '<ul class="brikpanel-bullets">';
 		foreach ( $report['warnings'] as $line ) {
 			echo '<li>' . esc_html( $line ) . '</li>';
 		}
@@ -1281,7 +1284,7 @@ function brikpanel_order_merge_render_page() {
 
 	// --- Actions -----------------------------------------------------------
 	echo '<div class="bpm-actions">';
-	echo '<a class="bpm-btn bpm-btn--sec" href="' . esc_url( admin_url( 'admin.php?page=wc-orders' ) ) . '">'
+	echo '<a class="bpm-btn bpm-btn--sec" href="' . esc_url( brikpanel_wc_orders_list_url() ) . '">'
 		. esc_html__( 'Cancel', 'brikpanel' ) . '</a>';
 	echo '<button type="submit" name="bpm_action" value="merge" class="bpm-btn bpm-btn--pri">'
 		. esc_html(

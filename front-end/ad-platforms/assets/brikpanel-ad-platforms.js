@@ -22,8 +22,14 @@
 		fd.append('_ajax_nonce', BP.nonce);
 		if (data && typeof data === 'object') {
 			Object.keys(data).forEach(function (k) {
-				if (data[k] !== undefined && data[k] !== null) {
-					fd.append(k, data[k]);
+				var v = data[k];
+				if (v === undefined || v === null) { return; }
+				if (Array.isArray(v)) {
+					// PHP reads "key[]" as an array. Appending the array itself
+					// would send one comma-joined string.
+					v.forEach(function (item) { fd.append(k + '[]', item); });
+				} else {
+					fd.append(k, v);
 				}
 			});
 		}
@@ -111,8 +117,8 @@
 				return handleDisconnect($btn, platform);
 			case 'load-accounts':
 				return handleLoadAccounts($btn, platform);
-			case 'save-primary':
-				return handleSavePrimary($btn, platform);
+			case 'save-accounts':
+				return handleSaveAccounts($btn, platform);
 			case 'save-manual':
 				return handleSaveManual($btn, platform);
 			case 'save-mcc':
@@ -128,13 +134,11 @@
 		}
 	});
 
-	// Enable Save when the selection changes.
+	// Keep Save, the hints and the currency note in step with the ticks.
 	$root.addEventListener('change', function (e) {
-		var $sel = e.target.closest('[data-role="primary-select"]');
-		if (!$sel) { return; }
-		var $card = $sel.closest('.bp-ads-card');
-		var $save = $card.querySelector('[data-action="save-primary"]');
-		if ($save) { $save.disabled = !$sel.value; }
+		var $box = e.target.closest('.bp-ads-account-check');
+		if (!$box) { return; }
+		refreshAccountState($box.closest('.bp-ads-card'));
 	});
 
 	// ---------- action handlers ----------
@@ -171,11 +175,137 @@
 			});
 	}
 
+	// ---------- ad account list ----------
+	function accountField($card) {
+		return $card ? $card.querySelector('[data-role="accounts-field"]') : null;
+	}
+
+	// The selection as the page was rendered (what the server has stored).
+	function savedAccounts($card) {
+		var $field = accountField($card);
+		try {
+			var list = JSON.parse(($field && $field.getAttribute('data-saved')) || '[]');
+			return Array.isArray(list) ? list.map(String) : [];
+		} catch (e) {
+			return [];
+		}
+	}
+
+	function accountChecks($card) {
+		var $field = accountField($card);
+		return $field ? Array.prototype.slice.call($field.querySelectorAll('.bp-ads-account-check')) : [];
+	}
+
+	function tickedAccounts($card) {
+		return accountChecks($card)
+			.filter(function ($c) { return $c.checked; })
+			.map(function ($c) { return $c.value; });
+	}
+
+	function sameSet(a, b) {
+		if (a.length !== b.length) { return false; }
+		var x = a.slice().sort();
+		var y = b.slice().sort();
+		for (var i = 0; i < x.length; i++) {
+			if (x[i] !== y[i]) { return false; }
+		}
+		return true;
+	}
+
+	function refreshAccountState($card) {
+		if (!$card || !accountField($card)) { return; }
+		var $save = $card.querySelector('[data-action="save-accounts"]');
+		if ($save) { $save.disabled = sameSet(tickedAccounts($card), savedAccounts($card)); }
+
+		// Ticking a manager account is allowed — rare setups do report spend
+		// on one — but it is far more often a mistake, so warn rather than
+		// block. Google only ever returns accounts linked directly to the
+		// signed-in address, so an agency whose login sits on the manager
+		// sees nothing but managers; say what to do instead.
+		var managerTicked = accountChecks($card).some(function ($c) {
+			return $c.checked && $c.getAttribute('data-manager') === '1';
+		});
+		showAccountHint($card, managerTicked
+			? BP.i18n.manager_picked
+			: ($card.getAttribute('data-only-managers') === '1' ? BP.i18n.only_managers : ''));
+
+		updateCurrencyNote($card);
+	}
+
+	// Ticked accounts that spend in another currency than the store: the
+	// dashboard cannot put that spend into ROAS or Net profit.
+	function updateCurrencyNote($card) {
+		var $note = $card.querySelector('[data-role="currency-note"]');
+		if (!$note) { return; }
+		var store = String(BP.storeCurrency || '').toUpperCase();
+		var names = [];
+		accountChecks($card).forEach(function ($c) {
+			var cur = String($c.getAttribute('data-currency') || '').toUpperCase();
+			if ($c.checked && store && cur && cur !== store) {
+				names.push($c.getAttribute('data-name') || $c.value);
+			}
+		});
+		if (!names.length || !window.brikpanelFormat) {
+			$note.textContent = '';
+			$note.hidden = true;
+			return;
+		}
+		var F = window.brikpanelFormat;
+		$note.textContent = F.format(F.plural(BP.i18n.currency_note, names.length), [names.join(', ')]);
+		$note.hidden = false;
+	}
+
+	function accountRow(id, a, saved) {
+		var $li = document.createElement('li');
+		$li.className = 'bp-ads-account';
+		var $label = document.createElement('label');
+		$label.className = 'bp-ads-account-label';
+
+		var $box = document.createElement('input');
+		$box.type = 'checkbox';
+		$box.className = 'bp-ads-account-check';
+		$box.value = id;
+		$box.checked = !!a.checked;
+		$box.setAttribute('data-name', a.name || '');
+		$box.setAttribute('data-currency', a.currency || '');
+		$box.setAttribute('data-has-data', a.hasData ? '1' : '0');
+		$box.setAttribute('data-manager', a.manager ? '1' : '0');
+
+		var $text = document.createElement('span');
+		$text.className = 'bp-ads-account-text';
+		var $name = document.createElement('span');
+		$name.className = 'bp-ads-account-name';
+		$name.textContent = a.name || id;
+		$text.appendChild($name);
+
+		var parts = [a.name ? id : '', a.currency || '', a.status || '', a.manager ? BP.i18n.manager_suffix : '']
+			.filter(function (p) { return !!p; });
+		if (parts.length) {
+			var $meta = document.createElement('span');
+			$meta.className = 'bp-ads-account-meta';
+			$meta.textContent = parts.join(' · ');
+			$text.appendChild($meta);
+		}
+
+		$label.appendChild($box);
+		$label.appendChild($text);
+
+		// Spend still stored for an account the saved selection leaves out.
+		if (a.hasData && saved.indexOf(id) === -1) {
+			var $badge = document.createElement('span');
+			$badge.className = 'brikpanel-badge bp-ads-account-badge';
+			$badge.textContent = BP.i18n.not_selected || '';
+			$label.appendChild($badge);
+		}
+		$li.appendChild($label);
+		return $li;
+	}
+
 	function handleLoadAccounts($btn, platform) {
 		if (!platform) { return; }
 		var $card = cardForButton($btn);
-		var $sel  = $card.querySelector('[data-role="primary-select"]');
-		var $save = $card.querySelector('[data-action="save-primary"]');
+		var $list = $card ? $card.querySelector('[data-role="account-list"]') : null;
+		if (!$list) { return; }
 		busy($btn, true);
 		ajax('brikpanel_ads_list_accounts', { platform: platform })
 			.then(function (data) {
@@ -185,39 +315,54 @@
 					busy($btn, false);
 					return;
 				}
-				var current = $sel.value;
-				$sel.innerHTML = '';
-				accounts.forEach(function (acc) {
-					var opt = document.createElement('option');
-					if (platform === 'google_ads') {
-						opt.value = acc.id;
-						opt.textContent = (acc.name || acc.id) +
-							(acc.currency ? ' (' + acc.currency + ')' : '') +
-							(acc.is_manager ? ' — ' + BP.i18n.manager_suffix : '');
-					} else {
-						opt.value = acc.id || ('act_' + (acc.account_id || ''));
-						// Surface disabled / closed / unsettled accounts so the
-						// merchant doesn't pick a dead one and then wonder why
-						// today's spend never moves off zero.
-						opt.textContent = (acc.name || acc.id) +
-							(acc.currency ? ' (' + acc.currency + ')' : '') +
-							(acc.status_label ? ' — ' + acc.status_label : '');
-					}
-					if (opt.value === current) { opt.selected = true; }
-					$sel.appendChild(opt);
+				// Keep what is on screen: ticks the merchant already changed, and
+				// rows the server listed (accounts added by ID, accounts with
+				// imported spend) that the platform's list may not contain.
+				var order = [];
+				var info = {};
+				accountChecks($card).forEach(function ($c) {
+					order.push($c.value);
+					info[$c.value] = {
+						checked: $c.checked,
+						name: $c.getAttribute('data-name') || '',
+						currency: $c.getAttribute('data-currency') || '',
+						hasData: $c.getAttribute('data-has-data') === '1',
+						manager: $c.getAttribute('data-manager') === '1',
+						status: ''
+					};
 				});
-				if ($save) { $save.disabled = !$sel.value; }
+				accounts.forEach(function (acc) {
+					var id = platform === 'google_ads'
+						? String(acc.id || '')
+						: String(acc.id || (acc.account_id ? 'act_' + acc.account_id : ''));
+					if (!id) { return; }
+					var prev = info[id];
+					info[id] = {
+						checked: prev ? prev.checked : false,
+						name: acc.name && String(acc.name) !== id ? String(acc.name) : (prev ? prev.name : ''),
+						currency: acc.currency ? String(acc.currency).toUpperCase() : (prev ? prev.currency : ''),
+						hasData: prev ? prev.hasData : false,
+						manager: !!acc.is_manager,
+						// Surface disabled / closed / unsettled accounts so the
+						// merchant doesn't tick a dead one and then wonder why
+						// today's spend never moves off zero.
+						status: acc.status_label ? String(acc.status_label) : ''
+					};
+					if (!prev) { order.push(id); }
+				});
 
-				// Google only ever returns accounts linked directly to the
-				// signed-in address, so an agency whose login sits on the
-				// manager sees nothing but the manager here. Picking it leaves
-				// a green "Connected" pill over an import that comes back
-				// empty, so say what to do instead of letting them find out.
+				var saved = savedAccounts($card);
+				$list.innerHTML = '';
+				order.forEach(function (id) { $list.appendChild(accountRow(id, info[id], saved)); });
+				$list.hidden = false;
+				var $empty = $card.querySelector('[data-role="accounts-empty"]');
+				if ($empty) { $empty.remove(); }
+
 				if (platform === 'google_ads') {
 					var onlyManagers = accounts.every(function (acc) { return !!acc.is_manager; });
-					showAccountHint($card, onlyManagers ? BP.i18n.only_managers : '');
+					$card.setAttribute('data-only-managers', onlyManagers ? '1' : '0');
 				}
-
+				refreshAccountState($card);
 				busy($btn, false);
 			})
 			.catch(function (err) {
@@ -226,11 +371,9 @@
 			});
 	}
 
-	// Show (or clear) an inline hint under the primary-account picker.
+	// Show (or clear) an inline hint under the account list.
 	function showAccountHint($card, message) {
-		if (!$card) { return; }
-		var $field = $card.querySelector('[data-role="primary-select"]');
-		$field = $field ? $field.closest('.bp-ads-field') : null;
+		var $field = accountField($card);
 		if (!$field) { return; }
 		var $hint = $field.querySelector('[data-role="account-hint"]');
 		if (!message) {
@@ -241,32 +384,47 @@
 			$hint = document.createElement('p');
 			$hint.className = 'bp-ads-inline-hint';
 			$hint.setAttribute('data-role', 'account-hint');
-			$field.appendChild($hint);
+			var $actions = $field.querySelector('.bp-ads-accounts-actions');
+			$field.insertBefore($hint, $actions ? $actions.nextSibling : null);
 		}
 		$hint.textContent = message;
 	}
 
-	function handleSavePrimary($btn, platform) {
+	// The saved card is drawn by the server (names, "Not selected" marks,
+	// Sync now), so a save reloads the page and says how it went there.
+	function reloadWithFlash(message, tone) {
+		var url = new URL(window.location.href);
+		url.searchParams.set('brikpanel_ads_flash', tone === 'error' ? 'error' : 'success');
+		url.searchParams.set('brikpanel_msg', message);
+		window.location.href = url.toString();
+	}
+
+	function handleSaveAccounts($btn, platform) {
 		if (!platform) { return; }
 		var $card = cardForButton($btn);
-		var $sel  = $card.querySelector('[data-role="primary-select"]');
-		var accountId = $sel ? $sel.value : '';
-		if (!accountId) {
-			toast(BP.i18n.pick_account_first, 'error');
+		var ticked = tickedAccounts($card);
+		if (!ticked.length) {
+			toast(BP.i18n.pick_accounts_first, 'error');
 			return;
 		}
-		// Saving a manager account is allowed — rare setups do report spend on
-		// one — but it is far more often a mistake, so warn rather than block.
-		var picked = $sel ? $sel.options[$sel.selectedIndex] : null;
-		var isManager = platform === 'google_ads' && picked
-			&& picked.textContent.indexOf(BP.i18n.manager_suffix) !== -1;
+		// The server deletes the stored spend of every account left out.
+		var losing = accountChecks($card).some(function ($c) {
+			return !$c.checked && $c.getAttribute('data-has-data') === '1';
+		});
+		if (losing && !window.confirm(BP.i18n.remove_confirm)) { return; }
 
 		busy($btn, true);
-		ajax('brikpanel_ads_save_primary', { platform: platform, account_id: accountId })
+		ajax('brikpanel_ads_save_accounts', {
+			platform: platform,
+			mode: 'replace',
+			account_ids: ticked,
+			// The list this page shows. If another tab has changed the stored
+			// list since, the server refuses instead of deleting spend of an
+			// account this page never showed.
+			base_ids: savedAccounts($card)
+		})
 			.then(function (data) {
-				toast((data && data.message) || BP.i18n.saved, 'success');
-				showAccountHint($card, isManager ? BP.i18n.manager_picked : '');
-				busy($btn, false);
+				reloadWithFlash((data && data.message) || BP.i18n.saved, 'success');
 			})
 			.catch(function (err) {
 				busy($btn, false);
@@ -274,6 +432,8 @@
 			});
 	}
 
+	// "Can't find your account?": adds one account to the stored list and
+	// never removes one, whatever the boxes above show.
 	function handleSaveManual($btn, platform) {
 		if (!platform) { return; }
 		var $card = cardForButton($btn);
@@ -284,12 +444,9 @@
 			return;
 		}
 		busy($btn, true);
-		ajax('brikpanel_ads_save_primary', { platform: platform, account_id: accountId })
+		ajax('brikpanel_ads_save_accounts', { platform: platform, mode: 'add', account_ids: [accountId] })
 			.then(function (data) {
-				toast((data && data.message) || BP.i18n.saved, 'success');
-				// Reload so the server-rendered card shows the saved account
-				// in the picker and enables Sync now.
-				setTimeout(function () { window.location.reload(); }, 900);
+				reloadWithFlash((data && data.message) || BP.i18n.saved, 'success');
 			})
 			.catch(function (err) {
 				busy($btn, false);
@@ -318,7 +475,7 @@
 		busy($btn, true);
 		ajax('brikpanel_ads_sync_now', { platform: platform })
 			.then(function (data) {
-				toast((data && data.message) || BP.i18n.saved, 'success');
+				toast((data && data.message) || BP.i18n.saved, data && data.tone === 'error' ? 'error' : 'success');
 				busy($btn, false);
 				// Update last-sync line without a full page reload.
 				var $card = cardForButton($btn);
@@ -406,32 +563,29 @@
 	}
 
 	// ---------- imported spend data (monthly breakdown) ----------
+	// Laid out like the store's prices, numbers and dates, in the viewer's
+	// language (front-end/shared/brikpanel-format.js); the amount keeps the ad
+	// account's own currency symbol. All of it used to follow the browser's
+	// language (field test E2).
+	var BF = window.brikpanelFormat || null;
+	var symbols = {};
 	function fmtMoney(amount, currency) {
 		var n = Number(amount) || 0;
-		try {
-			return new Intl.NumberFormat(undefined, {
-				style: 'currency',
-				currency: currency || 'USD',
-				maximumFractionDigits: 2
-			}).format(n);
-		} catch (e) {
-			return (currency ? currency + ' ' : '') + n.toFixed(2);
-		}
+		var code = String(currency || '').toUpperCase();
+		if (!BF) { return (code ? code + ' ' : '') + n.toFixed(2); }
+		return BF.money(n, { symbol: symbols[code] || code, decimals: 2 });
 	}
 	function fmtNum(n) {
-		try { return new Intl.NumberFormat().format(Number(n) || 0); }
-		catch (e) { return String(Number(n) || 0); }
+		return BF ? BF.number(Number(n) || 0) : String(Number(n) || 0);
 	}
 	function fmtPct(n) {
-		return (Number(n) || 0).toFixed(2) + '%';
+		return BF ? BF.percent(Number(n) || 0, 2, false) : (Number(n) || 0).toFixed(2);
 	}
 	function fmtMonth(ym) {
-		var parts = String(ym).split('-');
-		if (parts.length !== 2) { return ym; }
-		var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
-		try {
-			return new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }).format(d);
-		} catch (e) { return ym; }
+		return BF && /^\d{4}-\d{1,2}$/.test(String(ym)) ? BF.monthYear(ym + '-01') : String(ym);
+	}
+	function fmtDay(ymd) {
+		return BF && ymd ? BF.dateShort(ymd) : String(ymd || '');
 	}
 	function derive(spend, impr, clicks) {
 		return {
@@ -447,19 +601,20 @@
 			+ '</div>';
 	}
 
-	function renderPlatformInsight(platform, pd, i18n) {
+	function renderPlatformInsight(platform, acc, i18n, fold) {
 		var name = platform === 'google_ads'
 			? (BP.i18n.platform_google || '')
 			: (BP.i18n.platform_meta || '');
-		var cur = pd.currency || '';
-		var s = pd.summary;
+		var cur = acc.currency || '';
+		var s = acc.summary;
 		var d = derive(s.spend, s.impressions, s.clicks);
 
-		var meta = (i18n.account || '').replace('%s', escapeHtml(pd.account_id))
+		var label = acc.name ? acc.name + ' (' + acc.account_id + ')' : acc.account_id;
+		var meta = (i18n.account || '').replace('%s', escapeHtml(label))
 			+ ' · ' + escapeHtml(cur)
 			+ ' · ' + (i18n.span || '')
-				.replace('%1$s', escapeHtml(s.first_date))
-				.replace('%2$s', escapeHtml(s.last_date));
+				.replace('%1$s', escapeHtml(fmtDay(s.first_date)))
+				.replace('%2$s', escapeHtml(fmtDay(s.last_date)));
 
 		var kpis = [
 			kpiCell(fmtMoney(s.spend, cur), i18n.kpi_spend),
@@ -471,7 +626,7 @@
 		].join('');
 
 		var totalRow = '<tr class="bp-ads-table-total">'
-			+ '<td>' + escapeHtml(i18n.total_row || '') + '</td>'
+			+ '<td class="brikpanel-fit-lead">' + escapeHtml(i18n.total_row || '') + '</td>'
 			+ '<td class="num">' + escapeHtml(fmtMoney(s.spend, cur)) + '</td>'
 			+ '<td class="num">' + escapeHtml(fmtNum(s.impressions)) + '</td>'
 			+ '<td class="num">' + escapeHtml(fmtNum(s.clicks)) + '</td>'
@@ -479,12 +634,12 @@
 			+ '<td class="num">' + escapeHtml(fmtMoney(d.cpc, cur)) + '</td>'
 			+ '</tr>';
 
-		var rows = pd.months.map(function (m) {
+		var rows = acc.months.map(function (m) {
 			var md = derive(m.spend, m.impressions, m.clicks);
 			var rc = m.currency || cur;
 			return '<tr>'
-				+ '<td>' + escapeHtml(fmtMonth(m.month)) + '</td>'
-				+ '<td class="num">' + escapeHtml(fmtMoney(m.spend, rc)) + '</td>'
+				+ '<td class="brikpanel-fit-lead">' + escapeHtml(fmtMonth(m.month)) + '</td>'
+				+ '<td class="num brikpanel-fit-headline">' + escapeHtml(fmtMoney(m.spend, rc)) + '</td>'
 				+ '<td class="num">' + escapeHtml(fmtNum(m.impressions)) + '</td>'
 				+ '<td class="num">' + escapeHtml(fmtNum(m.clicks)) + '</td>'
 				+ '<td class="num">' + escapeHtml(fmtPct(md.ctr)) + '</td>'
@@ -492,13 +647,7 @@
 				+ '</tr>';
 		}).join('');
 
-		return '<div class="bp-ads-insight">'
-			+ '<div class="bp-ads-insight-head">'
-			+   '<span class="bp-ads-insight-name">' + escapeHtml(name) + '</span>'
-			+   '<span class="bp-ads-insight-meta">' + meta + '</span>'
-			+ '</div>'
-			+ '<div class="bp-ads-kpi-strip">' + kpis + '</div>'
-			+ '<div class="bp-ads-table-wrap"><table class="bp-ads-table">'
+		var table = '<div class="bp-ads-table-wrap"><table class="bp-ads-table brikpanel-fit-table">'
 			+   '<thead><tr>'
 			+     '<th>' + escapeHtml(i18n.col_month || '') + '</th>'
 			+     '<th class="num">' + escapeHtml(i18n.col_spend || '') + '</th>'
@@ -508,8 +657,50 @@
 			+     '<th class="num">' + escapeHtml(i18n.col_cpc || '') + '</th>'
 			+   '</tr></thead>'
 			+   '<tbody>' + totalRow + rows + '</tbody>'
-			+ '</table></div>'
+			+ '</table></div>';
+
+		// With many accounts the month tables are folded: twenty of them open
+		// at once make a very long page, and each one is measured to fit.
+		if (fold) {
+			table = '<details class="bp-ads-insight-months">'
+				+ '<summary class="bp-ads-insight-months-toggle">' + escapeHtml(i18n.months || '') + '</summary>'
+				+ table
+				+ '</details>';
+		}
+
+		var badge = acc.selected ? ''
+			: ' <span class="brikpanel-badge bp-ads-account-badge">' + escapeHtml(BP.i18n.not_selected || '') + '</span>';
+
+		return '<div class="bp-ads-insight">'
+			+ '<div class="bp-ads-insight-head">'
+			+   '<span class="bp-ads-insight-name">' + escapeHtml(name) + badge + '</span>'
+			+   '<span class="bp-ads-insight-meta">' + meta + '</span>'
+			+ '</div>'
+			+ '<div class="bp-ads-kpi-strip">' + kpis + '</div>'
+			+ table
 			+ '</div>';
+	}
+
+	// Stacked into cards when a month table cannot show every column (field
+	// test B6: on a phone CTR and CPC scrolled out of sight). Measured while
+	// visible; a folded table is measured when it is opened.
+	function fitInsightTables($body) {
+		if (!window.brikpanelFitTable) { return; }
+		Array.prototype.forEach.call($body.querySelectorAll('.bp-ads-table-wrap'), function (wrap) {
+			var fitNow = function () {
+				if (wrap.bpFit) { wrap.bpFit.refit(); return; }
+				var fit = window.brikpanelFitTable(wrap, { labels: 'head', slack: 0 });
+				if (fit) { wrap.bpFit = fit; fit.refit(); }
+			};
+			var $details = wrap.closest('details');
+			if (!$details) {
+				fitNow();
+			} else {
+				$details.addEventListener('toggle', function () {
+					if ($details.open) { fitNow(); }
+				});
+			}
+		});
 	}
 
 	function loadInsights($btn) {
@@ -520,17 +711,27 @@
 		if ($btn) { busy($btn, true); }
 		ajax('brikpanel_ads_spend_breakdown', {})
 			.then(function (data) {
-				var sections = [];
+				var blocks = [];
 				['google_ads', 'meta_ads'].forEach(function (p) {
 					var pd = data && data[p];
-					if (!pd || !pd.connected || !pd.summary || !pd.months || !pd.months.length) { return; }
-					sections.push(renderPlatformInsight(p, pd, i18n));
+					if (!pd || !pd.connected || !Array.isArray(pd.accounts)) { return; }
+					if (pd.symbols) {
+						Object.keys(pd.symbols).forEach(function (k) { symbols[k] = pd.symbols[k]; });
+					}
+					pd.accounts.forEach(function (acc) {
+						if (!acc || !acc.summary || !acc.months || !acc.months.length) { return; }
+						blocks.push({ platform: p, acc: acc });
+					});
 				});
-				if (!sections.length) {
+				if (!blocks.length) {
 					$card.hidden = true;
 				} else {
-					$body.innerHTML = sections.join('');
+					var fold = blocks.length > 3;
+					$body.innerHTML = blocks.map(function (b) {
+						return renderPlatformInsight(b.platform, b.acc, i18n, fold);
+					}).join('');
 					$card.hidden = false;
+					fitInsightTables($body);
 				}
 				if ($btn) { busy($btn, false); }
 			})
@@ -594,6 +795,8 @@
 			})
 			.catch(function () { /* silent */ });
 	}
+
+	Array.prototype.forEach.call($root.querySelectorAll('.bp-ads-card[data-connected="1"]'), refreshAccountState);
 
 	// Only poll when at least one card is connected (otherwise nothing to update).
 	var anyConnected = !!$root.querySelector('.bp-ads-card[data-connected="1"]');

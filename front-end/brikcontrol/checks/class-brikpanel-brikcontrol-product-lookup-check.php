@@ -65,7 +65,7 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
      * @return string
      */
     public function get_label() {
-        return __( 'Product SKU Index', 'brikpanel' );
+        return __( 'Product SKU index', 'brikpanel' );
     }
 
     /**
@@ -105,6 +105,15 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
         return __( 'Clean up index', 'brikpanel' );
     }
 
+    /**
+     * Figures only; the card writes the sentences (see bc_present()).
+     *
+     * @return int
+     */
+    public function bc_schema() {
+        return 2;
+    }
+
     /* ---------------------------------------------------------------------
      * Scan
      * ------------------------------------------------------------------ */
@@ -124,7 +133,7 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
             // partial install). Nothing to assert either way.
             $result['status']      = 'ok';
             $result['score']       = 100;
-            $result['summary']     = __( 'WooCommerce product tables were not found.', 'brikpanel' );
+            $result['facts']       = [ 'tables_missing' => true ];
             $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
             return $result;
         }
@@ -144,7 +153,65 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
             // being created over the REST API again.
             $result['status'] = 'critical';
             $result['score']  = 0;
-            $result['summary'] = $this->safe_sprintf(
+        } elseif ( $total >= $warn_at ) {
+            $result['status'] = 'warning';
+            $result['score']  = 60;
+        } elseif ( $total > 0 ) {
+            $result['status'] = 'ok';
+            $result['score']  = max( 80, 100 - (int) ceil( $total / 10 ) );
+        } else {
+            $result['status'] = 'ok';
+            $result['score']  = 100;
+        }
+
+        $result['facts'] = [
+            'meta_orphans' => $meta_orphans,
+            'with_sku'     => $with_sku,
+            'attr_orphans' => $attr_orphans,
+            'total'        => $total,
+            'indexed'      => (int) $scan['indexed'],
+            'warn_at'      => $warn_at,
+            // [ product id, SKU ] pairs: data, not sentences.
+            'samples'      => $scan['samples'],
+        ];
+
+        $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
+
+        return $result;
+    }
+
+    /**
+     * Sentences for the stored figures, in the viewer's language.
+     *
+     * @param array  $r       Stored result.
+     * @param string $context 'page' or 'summary'.
+     * @return array
+     */
+    public function bc_present( array $r, $context = 'page' ) {
+        $r = parent::bc_present( $r, $context );
+
+        $f = isset( $r['facts'] ) && is_array( $r['facts'] ) ? $r['facts'] : [];
+        if ( empty( $f ) || (int) ( $r['schema'] ?? 1 ) < 2 ) {
+            return $r; // Written before 3.3.25: show what was stored.
+        }
+
+        $r['message']         = '';
+        $r['recommendations'] = [];
+        $r['metadata']        = [];
+
+        if ( ! empty( $f['tables_missing'] ) ) {
+            $r['summary'] = __( 'WooCommerce product tables were not found.', 'brikpanel' );
+            return $r;
+        }
+
+        $with_sku     = (int) ( $f['with_sku'] ?? 0 );
+        $total        = (int) ( $f['total'] ?? 0 );
+        $meta_orphans = (int) ( $f['meta_orphans'] ?? 0 );
+        $attr_orphans = (int) ( $f['attr_orphans'] ?? 0 );
+        $warn_at      = (int) ( $f['warn_at'] ?? self::DEFAULT_WARN_ORPHANS );
+
+        if ( $with_sku > 0 ) {
+            $r['summary'] = brikpanel_safe_sprintf(
                 /* translators: %s: number of SKUs. */
                 _n(
                     '%s SKU is reserved by a product that no longer exists',
@@ -152,26 +219,32 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
                     $with_sku,
                     'brikpanel'
                 ),
-                number_format_i18n( $with_sku )
+                brikpanel_number( $with_sku )
             );
-            $result['message'] = $this->safe_sprintf(
+            $r['message'] = brikpanel_safe_sprintf(
                 /* translators: %s: number of leftover index entries. */
-                __( 'WooCommerce keeps a fast SKU index alongside your products. %s entries in it point at products that were deleted. The WordPress admin will tell you those SKUs are free, but the REST API refuses to create a product with them, so ERP, import and sync integrations fail with "already present in the lookup table".', 'brikpanel' ),
-                number_format_i18n( $with_sku )
+                _n(
+                    'WooCommerce keeps a fast SKU index alongside your products. %s entry in it points at a product that was deleted. The WordPress admin will tell you that SKU is free, but the REST API refuses to create a product with it, so ERP, import and sync integrations fail with "already present in the lookup table".',
+                    'WooCommerce keeps a fast SKU index alongside your products. %s entries in it point at products that were deleted. The WordPress admin will tell you those SKUs are free, but the REST API refuses to create a product with them, so ERP, import and sync integrations fail with "already present in the lookup table".',
+                    $with_sku,
+                    'brikpanel'
+                ),
+                brikpanel_number( $with_sku )
             );
         } elseif ( $total >= $warn_at ) {
-            $result['status'] = 'warning';
-            $result['score']  = 60;
-            $result['summary'] = $this->safe_sprintf(
+            $r['summary'] = brikpanel_safe_sprintf(
                 /* translators: %s: number of leftover index rows. */
-                __( '%s leftover index rows from deleted products', 'brikpanel' ),
-                number_format_i18n( $total )
+                _n(
+                    '%s leftover index row from deleted products',
+                    '%s leftover index rows from deleted products',
+                    $total,
+                    'brikpanel'
+                ),
+                brikpanel_number( $total )
             );
-            $result['message'] = __( 'None of them hold a SKU, so nothing is blocked today, but the index has drifted far enough from your catalogue that a delete path is leaking rows.', 'brikpanel' );
+            $r['message'] = __( 'None of them hold a SKU, so nothing is blocked today, but the index has drifted far enough from your catalogue that a delete path is leaking rows.', 'brikpanel' );
         } elseif ( $total > 0 ) {
-            $result['status'] = 'ok';
-            $result['score']  = max( 80, 100 - (int) ceil( $total / 10 ) );
-            $result['summary'] = $this->safe_sprintf(
+            $r['summary'] = brikpanel_safe_sprintf(
                 /* translators: %s: number of leftover index rows. */
                 _n(
                     '%s leftover index row, harmless',
@@ -179,20 +252,43 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
                     $total,
                     'brikpanel'
                 ),
-                number_format_i18n( $total )
+                brikpanel_number( $total )
             );
-            $result['message'] = __( 'These rows carry no SKU, so they block nothing and slow nothing down. You can clear them whenever you like.', 'brikpanel' );
+            $r['message'] = _n(
+                'This row carries no SKU, so it blocks nothing and slows nothing down. You can clear it whenever you like.',
+                'These rows carry no SKU, so they block nothing and slow nothing down. You can clear them whenever you like.',
+                $total,
+                'brikpanel'
+            );
         } else {
-            $result['status']  = 'ok';
-            $result['score']   = 100;
-            $result['summary'] = __( 'Every index entry matches a real product.', 'brikpanel' );
+            $r['summary'] = __( 'Every index entry matches a real product.', 'brikpanel' );
         }
 
-        $result['recommendations'] = $this->build_recommendations( $with_sku, $total, $warn_at );
+        if ( 'page' !== $context ) {
+            return $r;
+        }
 
-        $result['metadata'] = [
-            'fixable' => $total,
-            'stats'   => [
+        $r['recommendations'] = $this->build_recommendations( $with_sku, $total, $warn_at );
+
+        $samples = [];
+        foreach ( (array) ( $f['samples'] ?? [] ) as $pair ) {
+            // Product ids stay plain: an id is a code, not an amount.
+            $samples[] = [ (string) (int) ( $pair[0] ?? 0 ), (string) ( $pair[1] ?? '' ) ];
+        }
+
+        $r['metadata'] = [
+            'fixable'       => $total,
+            'fix_confirm'   => brikpanel_safe_sprintf(
+                /* translators: %s: number of leftover index rows. */
+                _n(
+                    'Remove %s leftover index row? Products in your catalogue are not affected.',
+                    'Remove %s leftover index rows? Products in your catalogue are not affected.',
+                    $total,
+                    'brikpanel'
+                ),
+                brikpanel_number( $total )
+            ),
+            'stats'         => [
                 [
                     'label' => __( 'Leftover index rows', 'brikpanel' ),
                     'value' => $meta_orphans,
@@ -210,11 +306,11 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
                 ],
                 [
                     'label' => __( 'Indexed products', 'brikpanel' ),
-                    'value' => (int) $scan['indexed'],
+                    'value' => (int) ( $f['indexed'] ?? 0 ),
                     'tone'  => 'good',
                 ],
             ],
-            'samples'       => $scan['samples'],
+            'samples'       => $samples,
             'samples_title' => __( 'Blocked SKUs', 'brikpanel' ),
             'samples_cols'  => [
                 __( 'Product ID', 'brikpanel' ),
@@ -222,9 +318,20 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
             ],
         ];
 
-        $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
+        return $r;
+    }
 
-        return $result;
+    /**
+     * @param array $outcome run_fix() result.
+     * @return string
+     */
+    public function bc_fix_done( array $outcome ) {
+        $removed = (int) ( $outcome['removed'] ?? 0 );
+        return brikpanel_safe_sprintf(
+            /* translators: %s: number of index rows removed. */
+            _n( '%s leftover index row removed.', '%s leftover index rows removed.', $removed, 'brikpanel' ),
+            brikpanel_number( $removed )
+        );
     }
 
     /**
@@ -328,7 +435,11 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
 
         if ( $total > 0 ) {
             $recs[] = [
-                'text'     => __( 'Use "Clean up index" to remove them. Nothing in your catalogue is touched: only rows whose product no longer exists are deleted.', 'brikpanel' ),
+                'text'     => brikpanel_safe_sprintf(
+                    /* translators: %s: label of the cleanup button on this card, e.g. "Clean up index". */
+                    __( 'Use "%s" to remove them. Nothing in your catalogue is touched: only rows whose product no longer exists are deleted.', 'brikpanel' ),
+                    $this->get_fix_label()
+                ),
                 'priority' => $with_sku > 0 ? 'high' : 'low',
             ];
         }
@@ -479,31 +590,5 @@ class Brikpanel_BrikControl_Product_Lookup_Check extends Brikpanel_BrikControl_C
         $cache[ $table ] = ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table );
 
         return $cache[ $table ];
-    }
-
-    /**
-     * sprintf() that cannot be brought down by a bad translation.
-     *
-     * A translator who drops or mistypes a placeholder would otherwise throw
-     * ArgumentCountError inside the scan worker and abort the whole sweep. Same
-     * helper as the image health check, for the same reason.
-     *
-     * @param string $format Translated format string.
-     * @param mixed  ...$args printf arguments.
-     * @return string
-     */
-    private function safe_sprintf( $format, ...$args ) {
-        $format = (string) $format;
-        try {
-            return vsprintf( $format, $args );
-        } catch ( \Throwable $e ) {
-            $stripped = preg_replace(
-                '/%(?:\d+\$)?[-+ 0#\']*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/',
-                '',
-                $format
-            );
-            $stripped = str_replace( '%%', '%', (string) $stripped );
-            return trim( (string) $stripped );
-        }
     }
 }

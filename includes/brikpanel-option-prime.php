@@ -108,6 +108,9 @@ function brikpanel_prime_keys_always() {
 		// are storefront reads.
 		'brikpanel_custom_order_statuses',
 		'brikpanel_live_ping_interval',
+		// Printed into the storefront tracker (whether it remembers the visit's
+		// entry source), so read on every storefront page.
+		'brikpanel_live_traffic_source',
 		// Read by the abandoned-cart sweep, which runs under wp-cron.php and the
 		// Action Scheduler queue runner — neither of them an admin request.
 		'brikpanel_cartab_abandon_minutes',
@@ -132,15 +135,14 @@ function brikpanel_prime_keys_always() {
 		'brikpanel_brikcontrol_scan_pileup_cleaned',
 
 		// Order-status buckets. Read through BRIKPANEL_PAID_STATUSES_OPTION /
-		// _REFUNDED_ / the default-status constant by every revenue query
-		// (dashboard cards, topbar stats, coupon reports), and those run on
-		// admin-ajax AND on the wc-analytics REST routes. REST is not an admin
-		// request, so the admin list does not cover it: measured 1-2 SELECTs
-		// per poll on a store that had never saved the Orders settings section.
-		// Small, read-mostly, and already invalidated by update_option_ hooks.
+		// _REFUNDED_ by every revenue query (dashboard cards, topbar stats,
+		// coupon reports), and those run on admin-ajax AND on the wc-analytics
+		// REST routes. REST is not an admin request, so the admin list does not
+		// cover it: measured 1-2 SELECTs per poll on a store that had never
+		// saved the Orders settings section. Small, read-mostly, and already
+		// invalidated by update_option_ hooks.
 		'brikpanel_paid_statuses',
 		'brikpanel_refunded_statuses',
-		'brikpanel_default_order_status',
 	);
 }
 
@@ -214,6 +216,10 @@ function brikpanel_prime_keys_admin() {
 		// same admin-only paths as the shipping-cost gate above.
 		'brikpanel_payment_fees_enabled',
 
+		// Profit: takes tax out of Revenue and Expenses on the dashboard, and
+		// joins the dashboard transient key. Same admin-only paths as above.
+		'brikpanel_profit_exclude_tax',
+
 		// Dashboard widget access + layout.
 		'brikpanel_dashboard_widget_audience',
 		'brikpanel_dashboard_widget_hide_roles',
@@ -223,6 +229,9 @@ function brikpanel_prime_keys_admin() {
 
 		// Navigation customizer + appearance, read during menu/header render.
 		'brikpanel_nav_config',
+		// Read on every admin page: the page guard and the palette index.
+		'brikpanel_nav_block_hidden_pages',
+		'brikpanel_nav_hide_new_items',
 		'brikpanel_excluded_roles',
 		'brikpanel_excluded_user_ids',
 
@@ -266,6 +275,9 @@ function brikpanel_prime_keys_admin() {
 		// Notice suppression, admin_init on every screen.
 		'brikpanel_hide_foreign_notices',
 		'brikpanel_hide_error_notices',
+
+		// WooCommerce ads switch, asked by WooCommerce at init on every screen.
+		'brikpanel_hide_wc_ads',
 
 		// Screen gates evaluated in module constructors / in_admin_header.
 		'brikpanel_modern_dashboard',

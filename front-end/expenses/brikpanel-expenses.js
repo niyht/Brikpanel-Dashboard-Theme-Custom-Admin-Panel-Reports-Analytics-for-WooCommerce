@@ -249,11 +249,23 @@
 
     // ── List ──────────────────────────────────────────────────────────────────
 
+    // Rows turn into stacked cards when the table cannot show every column in
+    // its card (field test B6: a long description pushed Amount, Edit and
+    // Delete out of sight). The shared helper measures an invisible copy and
+    // copies the header texts into the cells as card labels.
+    var FIT = (window.brikpanelFitTable && el('brikpanel-ex-table')) ? window.brikpanelFitTable(el('brikpanel-ex-table'), { labels: 'head', slack: 0 }) : null;
+
+    // Every tbody change goes through here so the fit never lags a render.
+    function setBody(html) {
+        $tbody.innerHTML = html;
+        if (FIT) FIT.refit();
+    }
+
     function fetchList(page) {
         if (state.loading) return;
         state.loading = true;
         state.page    = page || 1;
-        $tbody.innerHTML = '<tr><td colspan="6" class="brikpanel-ex-empty brikpanel-ex-loading"><span class="brikpanel-ex-spinner"></span></td></tr>';
+        setBody('<tr><td colspan="6" class="brikpanel-ex-empty brikpanel-ex-loading"><span class="brikpanel-ex-spinner"></span></td></tr>');
 
         ajax({
             action:    'brikpanel_expenses_list',
@@ -264,7 +276,7 @@
         }, function (err, res) {
             state.loading = false;
             if (err || !res || !res.success) {
-                $tbody.innerHTML = '<tr><td colspan="6" class="brikpanel-ex-empty">' + escHtml(i18n.error || 'Something went wrong.') + '</td></tr>';
+                setBody('<tr><td colspan="6" class="brikpanel-ex-empty">' + escHtml(i18n.error || 'Something went wrong.') + '</td></tr>');
                 return;
             }
             var d = res.data;
@@ -284,7 +296,7 @@
 
     function renderRows(items) {
         if (!items.length) {
-            $tbody.innerHTML = '<tr><td colspan="6" class="brikpanel-ex-empty">' + escHtml(i18n.no_expenses || 'No expenses found.') + '</td></tr>';
+            setBody('<tr><td colspan="6" class="brikpanel-ex-empty">' + escHtml(i18n.no_expenses || 'No expenses found.') + '</td></tr>');
             return;
         }
         var html = '';
@@ -293,14 +305,14 @@
             // single date or a repeat schedule.
             var isOngoing = item.kind === 'percent' || item.kind === 'per_order';
             html += '<tr data-id="' + item.id + '">';
-            html += '<td class="brikpanel-ex-date-cell">' + escHtml(isOngoing ? (i18n.ongoing || 'Ongoing') : item.date) + '</td>';
+            html += '<td class="brikpanel-ex-date-cell">' + escHtml(isOngoing ? (i18n.ongoing || 'Ongoing') : (item.date_display || item.date)) + '</td>';
             // What this cost is filed under sits above the title as a quiet line
             // rather than claiming a whole column, so the table keeps its six
             // columns and standalone rows look exactly as they always did. A
             // per-order cost's scope shares that slot: two rows both titled
             // "Packaging", one every-order and one bulky-only, are otherwise
             // indistinguishable. The label is composed server-side.
-            html += '<td>';
+            html += '<td class="brikpanel-fit-lead">';
             if (item.parent_category) {
                 // parent_label, never parent_category: a cost filed under one of
                 // the card's computed lines stores a stable key, and the key must
@@ -313,22 +325,22 @@
                 html += '<span class="brikpanel-ex-parent-cat">' + escHtml(item.scope_label) + '</span>';
             }
             html += '<span class="brikpanel-ex-cat-badge">' + escHtml(item.category) + '</span></td>';
-            html += '<td class="brikpanel-ex-desc-cell">' + escHtml(item.description || '—') + '</td>';
+            html += '<td class="brikpanel-ex-desc-cell"><span class="brikpanel-ex-desc-text"' + (item.description ? ' title="' + escHtml(item.description) + '"' : '') + '>' + escHtml(item.description || '—') + '</span></td>';
             html += isOngoing
                 ? '<td>—</td>'
                 : '<td><span class="brikpanel-ex-rec-badge brikpanel-ex-rec-' + escHtml(item.recurring) + '">' + escHtml(recurringLabel(item.recurring)) + '</span></td>';
-            html += '<td class="brikpanel-ex-num">' + escHtml(item.amount_fmt) + '</td>';
-            html += '<td class="brikpanel-ex-actions-cell">';
+            html += '<td class="brikpanel-ex-num brikpanel-fit-headline">' + escHtml(item.amount_fmt) + '</td>';
+            html += '<td class="brikpanel-ex-actions-cell brikpanel-fit-full"><div class="brikpanel-ex-row-actions">';
             html += '<button class="brikpanel-ex-icon-btn brikpanel-ex-edit-btn" data-id="' + item.id + '" title="' + escHtml(i18n.edit || 'Edit') + '" aria-label="' + escHtml(i18n.edit || 'Edit') + '">';
             html += '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             html += '</button>';
             html += '<button class="brikpanel-ex-icon-btn brikpanel-ex-delete-btn" data-id="' + item.id + '" title="' + escHtml(i18n.delete || 'Delete') + '" aria-label="' + escHtml(i18n.delete || 'Delete') + '">';
             html += '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
             html += '</button>';
-            html += '</td>';
+            html += '</div></td>';
             html += '</tr>';
         });
-        $tbody.innerHTML = html;
+        setBody(html);
     }
 
     function renderPagination(page, pages) {

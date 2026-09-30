@@ -113,30 +113,55 @@ class Brikpanel_Coupons {
         $trash   = isset($counts->trash) ? (int) $counts->trash : 0;
         $all     = $publish + $draft;
         ?>
-        <div class="wrap">
+        <div class="wrap brikpanel-shell__page">
         <div class="brikpanel-cp" id="brikpanel-coupons-list">
 
+            <?php
+            // The header row gives way in its own order, measured
+            // (front-end/shared/brikpanel-fit-row.js, CLAUDE.md "Başlık satırı
+            // kuralı"): one line while it fits; then the title and Add coupon on
+            // top with the search below; Add coupon's label goes to its icon only
+            // as the last resort. On a 360px phone the search box could not
+            // shrink and pushed Add coupon off the screen (field test C4).
+            $bpc_header_fit = [
+                'title'  => 'h1',
+                'lines'  => [''],
+                'levels' => [
+                    '',
+                    [ 'cls' => 'is-two-rows', 'lines' => [ '.brikpanel-cp-header-main' ] ],
+                    [ 'cls' => 'is-two-rows is-icon-add', 'lines' => [ '.brikpanel-cp-header-main' ] ],
+                ],
+            ];
+            ?>
             <!-- Header -->
-            <div class="brikpanel-cp-header">
-                <div class="brikpanel-cp-header-left">
-                    <h1><?php esc_html_e('Coupons', 'brikpanel'); ?></h1>
-                    <span class="brikpanel-cp-count" id="bpc-total-count"><?php echo esc_html($all); ?></span>
-                </div>
-                <div class="brikpanel-cp-header-right">
-                    <div class="brikpanel-cp-search-wrap">
-                        <svg class="brikpanel-cp-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                        <input type="text" id="bpc-search" class="brikpanel-cp-search" placeholder="<?php esc_attr_e('Search coupons...', 'brikpanel'); ?>">
+            <div class="brikpanel-cp-header" id="bpc-header" data-bp-fit-row="<?php echo esc_attr(wp_json_encode($bpc_header_fit)); ?>">
+                <?php
+                // Fit as soon as the header opens: the page arrives in pieces and
+                // each is painted (the helper itself is printed in <head>).
+                wp_print_inline_script_tag('if(window.brikpanelFitRow){window.brikpanelFitRow.auto(document.getElementById("bpc-header"));}');
+                ?>
+                <div class="brikpanel-cp-header-main">
+                    <div class="brikpanel-cp-header-left">
+                        <h1><?php esc_html_e('Coupons', 'brikpanel'); ?></h1>
+                        <span class="brikpanel-cp-count" id="bpc-total-count"><?php echo esc_html($all); ?></span>
                     </div>
-                    <button type="button" class="brikpanel-cp-btn primary" id="bpc-add-new">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        <?php esc_html_e('Add coupon', 'brikpanel'); ?>
-                    </button>
+                    <div class="brikpanel-cp-header-right">
+                        <button type="button" class="brikpanel-cp-btn primary" id="bpc-add-new">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span class="brikpanel-cp-add-label"><?php esc_html_e('Add coupon', 'brikpanel'); ?></span>
+                        </button>
+                    </div>
+                </div>
+                <div class="brikpanel-cp-search-wrap">
+                    <svg class="brikpanel-cp-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                    <input type="text" id="bpc-search" class="brikpanel-cp-search brikpanel-control brikpanel-control--quiet" placeholder="<?php esc_attr_e('Search coupons...', 'brikpanel'); ?>" aria-label="<?php esc_attr_e('Search coupons...', 'brikpanel'); ?>">
                 </div>
             </div>
+            <?php brikpanel_header_end(); ?>
 
             <!-- Filters Bar -->
             <div class="brikpanel-cp-filters">
-                <div class="brikpanel-cp-tabs">
+                <div class="brikpanel-cp-tabs" data-bp-strip>
                     <button class="brikpanel-cp-tab active" data-status="any">
                         <?php esc_html_e('All', 'brikpanel'); ?>
                         <span class="brikpanel-cp-tab-count" data-count="all"><?php echo esc_html($all); ?></span>
@@ -157,7 +182,7 @@ class Brikpanel_Coupons {
                     <?php endif; ?>
                 </div>
                 <div class="brikpanel-cp-filter-group">
-                    <select id="bpc-sort" class="brikpanel-cp-select">
+                    <select id="bpc-sort" class="brikpanel-cp-select brikpanel-control brikpanel-control--quiet">
                         <option value="date-desc"><?php esc_html_e('Newest first', 'brikpanel'); ?></option>
                         <option value="date-asc"><?php esc_html_e('Oldest first', 'brikpanel'); ?></option>
                         <option value="title-asc"><?php esc_html_e('Code A-Z', 'brikpanel'); ?></option>
@@ -183,7 +208,7 @@ class Brikpanel_Coupons {
             <!-- Coupons Table -->
             <div class="brikpanel-cp-card">
                 <div class="brikpanel-cp-table-wrap">
-                    <table class="brikpanel-cp-table" id="bpc-table">
+                    <table class="brikpanel-cp-table brikpanel-fit-table" id="bpc-table">
                         <thead>
                             <tr>
                                 <th class="brikpanel-cp-th-check">
@@ -193,7 +218,7 @@ class Brikpanel_Coupons {
                                 <th class="brikpanel-cp-th-type"><?php esc_html_e('Type', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-amount"><?php esc_html_e('Amount', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-desc"><?php esc_html_e('Description', 'brikpanel'); ?></th>
-                                <th class="brikpanel-cp-th-usage"><?php esc_html_e('Usage / Limit', 'brikpanel'); ?></th>
+                                <th class="brikpanel-cp-th-usage"><?php esc_html_e('Usage / limit', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-revenue"><?php esc_html_e('Revenue', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-expiry"><?php esc_html_e('Expiry date', 'brikpanel'); ?></th>
                                 <th class="brikpanel-cp-th-status"><?php esc_html_e('Status', 'brikpanel'); ?></th>
@@ -202,7 +227,7 @@ class Brikpanel_Coupons {
                         </thead>
                         <tbody id="bpc-table-body">
                             <tr class="brikpanel-cp-loading-row">
-                                <td colspan="9">
+                                <td colspan="10">
                                     <div class="brikpanel-cp-spinner"></div>
                                 </td>
                             </tr>
@@ -251,7 +276,7 @@ class Brikpanel_Coupons {
                         <div class="brikpanel-cp-qe-row">
                             <div class="brikpanel-cp-qe-field">
                                 <label for="bpc-discount-type"><?php esc_html_e('Discount type', 'brikpanel'); ?></label>
-                                <select id="bpc-discount-type" class="brikpanel-cp-select full">
+                                <select id="bpc-discount-type" class="brikpanel-cp-select full brikpanel-control">
                                     <option value="percent"><?php esc_html_e('Percentage discount', 'brikpanel'); ?></option>
                                     <option value="fixed_cart"><?php esc_html_e('Fixed cart discount', 'brikpanel'); ?></option>
                                     <option value="fixed_product"><?php esc_html_e('Fixed product discount', 'brikpanel'); ?></option>
@@ -731,7 +756,18 @@ class Brikpanel_Coupons {
         // Expiry date
         $expiry = sanitize_text_field($_POST['expiry_date'] ?? '');
         if ($expiry) {
-            $coupon->set_date_expires(strtotime($expiry . ' 23:59:59'));
+            // "Expires on 19 September" means usable through the end of the 19th
+            // IN THE STORE'S TIMEZONE. strtotime() ran with PHP's default zone,
+            // which WordPress pins to UTC, so the coupon actually survived until
+            // 03:00 on the 20th on a UTC+3 store — and WooCommerce's own coupon
+            // screen, which renders the stored instant in site time, then showed
+            // the 20th. Building the instant in wp_timezone() fixes both.
+            $expiry_day = brikpanel_local_day_object($expiry);
+            if ($expiry_day) {
+                $coupon->set_date_expires($expiry_day->setTime(23, 59, 59)->getTimestamp());
+            } else {
+                $coupon->set_date_expires(null);
+            }
         } else {
             $coupon->set_date_expires(null);
         }
@@ -785,12 +821,22 @@ class Brikpanel_Coupons {
             $coupon->set_limit_usage_to_x_items($limit_items !== '' ? intval($limit_items) : '');
         }
 
-        // Set status - default publish for new coupons
-        if ($coupon_id === 0) {
-            $coupon->set_status('publish');
+        // Set status - default publish for new coupons.
+        // The status is staged before the save and reasserted after it: older
+        // WooCommerce has no WC_Coupon::set_status(), and a brand-new coupon
+        // has no post to update until save() has given it an ID.
+        $is_new = ($coupon_id === 0);
+        if ($is_new) {
+            brikpanel_wc_coupon_set_status($coupon, 'publish');
         }
 
         $coupon->save();
+
+        // Only for a new coupon: reasserting this on an edit would silently
+        // republish a coupon the merchant had drafted or scheduled.
+        if ($is_new) {
+            brikpanel_wc_coupon_sync_status($coupon->get_id(), 'publish');
+        }
 
         wp_send_json_success([
             'message'   => $coupon_id > 0 ? __('Coupon updated!', 'brikpanel') : __('Coupon created!', 'brikpanel'),
@@ -920,9 +966,14 @@ class Brikpanel_Coupons {
         $new_coupon->set_excluded_product_categories($original->get_excluded_product_categories());
         $new_coupon->set_email_restrictions($original->get_email_restrictions());
         $new_coupon->set_limit_usage_to_x_items($original->get_limit_usage_to_x_items());
-        $new_coupon->set_status('draft');
+        brikpanel_wc_coupon_set_status($new_coupon, 'draft');
 
         $new_coupon->save();
+
+        // A duplicate must never go live on its own. On a WooCommerce without
+        // the setter the copy is created as 'publish', so this is the call that
+        // actually makes it a draft there.
+        brikpanel_wc_coupon_sync_status($new_coupon->get_id(), 'draft');
 
         wp_send_json_success([
             'message'   => __('Coupon duplicated!', 'brikpanel'),
@@ -1015,7 +1066,7 @@ class Brikpanel_Coupons {
         foreach ($terms as $t) {
             $items[] = [
                 'value' => (int) $t->term_id,
-                'label' => $t->name,
+                'label' => brikpanel_plain_name($t->name),
             ];
         }
 
@@ -1175,7 +1226,8 @@ class Brikpanel_Coupons {
      * name. Keeps the picker readable when display name and login are the same.
      */
     private function format_user_label($display_name, $user_login) {
-        $display_name = trim((string) $display_name);
+        // Display names are stored HTML-encoded; the picker writes text.
+        $display_name = trim(brikpanel_plain_name((string) $display_name));
         $user_login   = trim((string) $user_login);
 
         if ($display_name === '') {
@@ -1278,14 +1330,15 @@ class Brikpanel_Coupons {
             }
             $labels[] = [
                 'value' => (int) $tid,
-                'label' => $term->name,
+                'label' => brikpanel_plain_name($term->name),
             ];
         }
         return $labels;
     }
 
     private function format_product_label($product) {
-        $name = $product->get_name();
+        // Stored names can hold "&amp;" and, for variations, markup.
+        $name = brikpanel_plain_label($product->get_name());
         $sku  = $product->get_sku();
         if ($sku) {
             return $name . ' (' . $sku . ')';

@@ -9,7 +9,7 @@
     --card: #ffffff;
     --text: #303030;
     --text-secondary: #616161;
-    --text-muted: #8a8a8a;
+    --text-placeholder: #8a8a8a;
     --border: #e3e3e3;
     --input-border: #8a8a8a;
     --input-focus: #303030;
@@ -26,28 +26,39 @@
     padding: 0;
 }
 
-/* ---------- Header ---------- */
+/* ---------- Header ----------
+   Levels set by brikpanel-fit-row.js (the PHP lists them): one line while it
+   fits (title, Import, Export, Bulk update, Add product); `is-fold` puts the
+   three secondary buttons in "More actions"; `is-icon-add` shows Add product
+   as its icon (last resort). The search sits in the card's tab row, as on the
+   Orders list. */
 .brikpanel-pl-header {
+    --bp-overflow-size: 2.0625rem; /* "More actions" as tall as the buttons */
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 1.25rem 0;
+    flex-wrap: nowrap;
+    padding: 0 0 1rem; /* the page shell gives the top */
     gap: 1rem;
-    flex-wrap: wrap;
+}
+
+.brikpanel-pl-header-main {
+    display: contents;
 }
 
 .brikpanel-pl-header-left {
     display: flex;
     align-items: center;
     gap: 0.625rem;
+    flex: none;
+    order: 0;
 }
 
 .brikpanel-pl-header-left h1 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin: 0;
+    font-size: var(--brikpanel-title-size, 1.125rem);
+    font-weight: var(--brikpanel-title-weight, 600);
+    line-height: var(--brikpanel-title-line, 1.3);
     padding: 0;
-    line-height: 1;
+    margin: 0;
     color: var(--text);
 }
 
@@ -70,39 +81,63 @@
     display: flex;
     align-items: center;
     gap: 0.625rem;
+    flex: none;
+    order: 2;
+    margin-inline-start: auto;
 }
 
-/* ---------- Search ---------- */
-.brikpanel-pl-search-wrap {
+/* "Screen Options": the Columns list, where people look for it. Its list
+   hangs from the button (the popover moves under whichever button opened
+   it). One level before the last it shows as its icon. */
+.brikpanel-pl-screen-menu {
     position: relative;
-    display: flex;
-    align-items: center;
+    display: inline-flex;
+    flex: none;
 }
 
-.brikpanel-pl-search-icon {
+.brikpanel-pl-screen-btn svg {
+    flex: none;
+    color: #616161;
+}
+
+.brikpanel-pl-btn.secondary.brikpanel-pl-screen-btn[aria-expanded="true"] {
+    background: var(--hover-bg);
+}
+
+.brikpanel-pl-header.is-icon-screen .brikpanel-pl-screen-label {
     position: absolute;
-    left: 0.75rem;
-    color: var(--text-muted);
-    pointer-events: none;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
 
-.brikpanel-pl input[type="text"].brikpanel-pl-search {
-    width: 240px;
-    padding: 8px 12px 8px 36px;
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    font-size: 0.8125rem;
-    color: var(--text);
-    background: var(--card);
-    transition: border-color 0.15s, box-shadow 0.15s;
-    outline: none;
-    height: auto;
-    line-height: 1.4;
+.brikpanel-pl-header.is-icon-screen .brikpanel-pl-screen-btn {
+    padding: 0.5rem;
 }
 
-.brikpanel-pl input[type="text"].brikpanel-pl-search:focus {
-    border-color: var(--input-focus);
-    box-shadow: 0 0 0 1px var(--input-focus);
+.brikpanel-pl-header.is-no-screen .brikpanel-pl-screen-menu {
+    display: none;
+}
+
+.brikpanel-pl-header.is-icon-add .brikpanel-pl-add-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.brikpanel-pl-header.is-icon-add #bpl-add-new {
+    padding: 0.5rem;
 }
 
 /* ---------- Buttons ---------- */
@@ -162,91 +197,524 @@
     cursor: not-allowed;
 }
 
-/* ---------- Filters Bar ---------- */
-.brikpanel-pl-filters {
+/* ---------- Card top: status tabs and search, as on the Orders list ----------
+   One row: the tabs, and at its end a small boxed button with a search and a
+   filter icon. Opening it (setFindOpen() in brikpanel-products-list.js) grows
+   the button across the row from its end edge: only its own width animates,
+   the tabs slide back and fade under it, and the field's content fades in once
+   there is room. The filter row under it unfolds (grid rows 0fr -> 1fr). The
+   values are the Orders list's ("ORDERS LIST LOOK" in brikpanel-orders.css). */
+.brikpanel-pl-cardtop {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.75rem;
+    box-sizing: border-box;
+    min-height: 45px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
 }
 
-/* ---------- Status Tabs ---------- */
+/* One scrolling row (data-bp-strip): fades only where more tabs wait, and
+   stops short of the search button on the row's end. */
 .brikpanel-pl-tabs {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 2px;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding-inline-end: 64px;
+    transition: opacity .2s ease .1s, transform .3s cubic-bezier(.2, .8, .2, 1) .06s, visibility 0s;
+}
+
+.brikpanel-pl-card.is-find-open .brikpanel-pl-tabs {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-16px);
+    pointer-events: none;
+    transition: opacity .12s ease, transform .24s cubic-bezier(.4, 0, 1, 1), visibility 0s linear .24s;
+}
+
+body.rtl .brikpanel-pl-card.is-find-open .brikpanel-pl-tabs {
+    transform: translateX(16px);
 }
 
 .brikpanel-pl-tab {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
-    border: none;
-    border-radius: 0.5rem;
+    gap: 4px;
+    flex: none;
+    margin: 0;
+    padding: 5px 10px;
+    border: 0;
+    border-radius: .5rem;
     background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.8125rem;
-    font-weight: 500;
+    color: #616161;
+    font-size: .8125rem;
+    font-weight: 550;
+    line-height: 18px;
+    white-space: nowrap;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background-color .15s ease, color .15s ease;
 }
 
 .brikpanel-pl-tab:hover {
-    background: rgba(0,0,0,0.05);
+    background: #f1f1f1;
+    color: #303030;
 }
 
 .brikpanel-pl-tab.active {
-    background: rgba(0,0,0,0.08);
-    color: var(--text);
-    font-weight: 600;
+    background: #ebebeb;
+    color: #303030;
 }
 
+.brikpanel-pl-tab:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: -2px;
+}
+
+/* In brackets and at 4.5:1 or more, as on Orders (#8a8a8a was 3.3:1). */
 .brikpanel-pl-tab-count {
-    font-size: 0.6875rem;
-    color: var(--text-muted);
-    font-weight: 500;
+    color: #616161;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Filter Selects ---------- */
+.brikpanel-pl-tab-count::before {
+    content: "(";
+}
+
+.brikpanel-pl-tab-count::after {
+    content: ")";
+}
+
+.brikpanel-pl-tab.active .brikpanel-pl-tab-count {
+    color: inherit;
+}
+
+/* The search box, pinned to the end of the tab row. Closed it is a 54px
+   button; open it spans the row. */
+.brikpanel-pl-find {
+    position: absolute;
+    top: 8px;
+    inset-inline-end: 8px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    width: 54px;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: .5rem;
+    background: #fff;
+    overflow: hidden;
+    /* Closing: a little quicker than opening. */
+    transition: width .28s cubic-bezier(.4, 0, .2, 1), border-color .2s ease, background-color .2s ease;
+}
+
+.brikpanel-pl-find.is-open {
+    width: calc(100% - 16px);
+    transition: width .38s cubic-bezier(.4, 0, .2, 1), border-color .2s ease, background-color .2s ease;
+}
+
+.brikpanel-pl-find:not(.is-open):hover {
+    background: #f7f7f7;
+}
+
+/* Open: a quiet field. A 1px grey edge, one step darker while typing; no ring
+   and no shadow. */
+.brikpanel-pl-find.is-open:focus-within {
+    border-color: #c9c9c9;
+}
+
+.brikpanel-pl-find-open {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0 7px;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: #616161;
+    cursor: pointer;
+    transition: opacity .12s ease .1s, visibility 0s;
+}
+
+.brikpanel-pl-find-open:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: -2px;
+}
+
+.brikpanel-pl-find.is-open .brikpanel-pl-find-open {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .1s ease, visibility 0s linear .1s;
+}
+
+.brikpanel-pl-find-ico {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background-color: #616161;
+    -webkit-mask: url(../orders/icons/bp-search.svg) center / contain no-repeat;
+    mask: url(../orders/icons/bp-search.svg) center / contain no-repeat;
+    transition: background-color .2s ease;
+}
+
+.brikpanel-pl-find-ico.is-filter {
+    -webkit-mask-image: url(../orders/icons/bp-filter.svg);
+    mask-image: url(../orders/icons/bp-filter.svg);
+}
+
+.brikpanel-pl-find-open:hover .brikpanel-pl-find-ico {
+    background-color: #303030;
+}
+
+/* With filters set, their number stands where the filter icon was, so a
+   filter folded away with the search is never forgotten. */
+.brikpanel-pl-filters-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    box-sizing: border-box;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #303030;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.brikpanel-pl-filters-count[hidden] {
+    display: none;
+}
+
+.brikpanel-pl-find-open.has-count .brikpanel-pl-find-ico.is-filter {
+    display: none;
+}
+
+/* The field's content never takes part in the width animation: it keeps its
+   natural width, is clipped by the box and only fades. */
+.brikpanel-pl-find-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding-inline: 7px 3px;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(8px);
+    transition: opacity .1s ease, transform .1s ease, visibility 0s linear .1s;
+}
+
+body.rtl .brikpanel-pl-find-field {
+    transform: translateX(-8px);
+}
+
+.brikpanel-pl-find.is-open .brikpanel-pl-find-field {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: opacity .24s ease .2s, transform .32s cubic-bezier(.2, .8, .2, 1) .2s, visibility 0s;
+}
+
+.brikpanel-pl-find-field .brikpanel-pl-find-ico {
+    background-color: #8a8a8a;
+}
+
+.brikpanel-pl-find-field:focus-within .brikpanel-pl-find-ico {
+    background-color: #303030;
+}
+
+.brikpanel-pl input[type="text"].brikpanel-pl-find-input {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    height: 26px;
+    min-height: 26px;
+    margin: 0;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    color: #303030;
+    font-size: .8125rem;
+    line-height: 26px;
+}
+
+.brikpanel-pl input[type="text"].brikpanel-pl-find-input::placeholder {
+    color: #8a8a8a;
+}
+
+.brikpanel-pl-find-cancel {
+    flex: none;
+    margin: 0;
+    padding: 3px 8px;
+    border: 0;
+    border-radius: .375rem;
+    background: transparent;
+    color: #616161;
+    font-size: .8125rem;
+    font-weight: 550;
+    line-height: 18px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color .15s ease, color .15s ease;
+}
+
+.brikpanel-pl-find-cancel:hover {
+    background: #f1f1f1;
+    color: #303030;
+}
+
+.brikpanel-pl-find-cancel:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: -2px;
+}
+
+/* The filter row. It clips its content only while it moves: once open
+   (`is-find-settled`) it shows it whole, so the Columns list can hang below
+   the row. Closed, it is also hidden from Tab. */
+.brikpanel-pl-refine {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .3s cubic-bezier(.2, .8, .2, 1);
+}
+
+.brikpanel-pl-card.is-find-open .brikpanel-pl-refine {
+    grid-template-rows: 1fr;
+    transition: grid-template-rows .34s cubic-bezier(.2, .8, .2, 1) .06s;
+}
+
+.brikpanel-pl-refine-inner {
+    min-height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    transition: visibility 0s linear .3s;
+}
+
+.brikpanel-pl-card.is-find-open .brikpanel-pl-refine-inner {
+    visibility: visible;
+    transition: visibility 0s;
+}
+
+.brikpanel-pl-card.is-find-settled .brikpanel-pl-refine-inner {
+    overflow: visible;
+}
+
+/* A page that loads with a search or a filter set, and a reduced-motion
+   setting: no motion. */
+.brikpanel-pl-card.is-find-instant :is(.brikpanel-pl-tabs, .brikpanel-pl-find, .brikpanel-pl-find-open, .brikpanel-pl-find-field, .brikpanel-pl-refine, .brikpanel-pl-refine-inner) {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .brikpanel-pl-card :is(.brikpanel-pl-tabs, .brikpanel-pl-find, .brikpanel-pl-find-open, .brikpanel-pl-find-field, .brikpanel-pl-refine, .brikpanel-pl-refine-inner) {
+        transition: none;
+    }
+}
+
+/* ---------- Filter chips ----------
+   The filters are the Orders list's chips: 28px, dashed while unset, solid
+   and filled once set. They stay native selects (keyboard, screen readers,
+   the phone's own picker). WordPress 7.1 styles every select with a (0,1,1)
+   rule, so these take (0,2,1). No `background` shorthand: it would drop the
+   arrow. */
 .brikpanel-pl-filter-group {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
     flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
 }
 
-.brikpanel-pl-select {
-    padding: 0.375rem 2rem 0.375rem 0.625rem;
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    font-size: 0.8125rem;
-    color: var(--text);
-    background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23616161' stroke-width='2'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E") no-repeat right 0.5rem center;
-    background-size: 12px;
+.brikpanel-pl-refine-end {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-inline-start: auto;
+}
+
+/* `field-sizing: content`: a chip as wide as the choice it shows, not as its
+   longest option (a long category name made "All categories" 160px wide and
+   pushed the row onto two lines). Browsers without it keep the 200px cap. */
+.wp-core-ui select.brikpanel-pl-chip {
+    box-sizing: border-box;
+    field-sizing: content;
+    width: auto;
+    min-width: 0;
+    max-width: 200px;
+    height: 28px;
+    min-height: 28px;
+    margin: 0;
+    padding-block: 0;
+    padding-inline: 10px 26px;
+    border: 1px dashed #c9c9c9;
+    border-radius: .5rem;
+    background-color: #fff;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23616161' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7.5l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 7px top 50%;
+    background-size: 14px 14px;
+    box-shadow: none;
+    color: #616161;
+    font-size: .8125rem;
+    font-weight: 550;
+    line-height: 26px;
+    text-overflow: ellipsis;
     cursor: pointer;
-    outline: none;
-    appearance: none;
-    -webkit-appearance: none;
-    transition: border-color 0.15s;
-    max-width: 180px;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
 }
 
-.brikpanel-pl-select:focus {
-    border-color: var(--input-focus);
-    box-shadow: 0 0 0 1px var(--input-focus);
+/* `wp-core-ui` is the body itself, so the RTL rule scopes by the list. */
+body.rtl .brikpanel-pl select.brikpanel-pl-chip {
+    background-position: left 7px top 50%;
 }
 
-/* ---------- Active Filter Chips ---------- */
+.wp-core-ui select.brikpanel-pl-chip:hover {
+    border-style: solid;
+    border-color: #8a8a8a;
+    color: #303030;
+}
+
+.wp-core-ui select.brikpanel-pl-chip:focus {
+    border-color: #8a8a8a;
+    box-shadow: none;
+    color: #303030;
+}
+
+.wp-core-ui select.brikpanel-pl-chip:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: 1px;
+}
+
+/* Set filter, and the sort (never "unset"): a solid edge. */
+.wp-core-ui select.brikpanel-pl-chip:is(.is-set, .is-solid) {
+    border-style: solid;
+    border-color: #e3e3e3;
+}
+
+.wp-core-ui select.brikpanel-pl-chip.is-set {
+    background-color: #f3f3f3;
+    color: #303030;
+}
+
+.wp-core-ui select.brikpanel-pl-chip:is(.is-set, .is-solid):hover {
+    border-color: #8a8a8a;
+}
+
+/* Sort mode and Columns: chips too, solid (they are buttons, not filters). */
+.brikpanel-pl-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-sizing: border-box;
+    height: 28px;
+    margin: 0;
+    padding: 0 10px;
+    border: 1px solid #e3e3e3;
+    border-radius: .5rem;
+    background: #fff;
+    color: #616161;
+    font-size: .8125rem;
+    font-weight: 550;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+
+.brikpanel-pl-chip-btn:hover {
+    border-color: #8a8a8a;
+    color: #303030;
+}
+
+.brikpanel-pl-chip-btn:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: 1px;
+}
+
+.brikpanel-pl-chip-btn[aria-expanded="true"] {
+    background: #f3f3f3;
+    color: #303030;
+}
+
+.brikpanel-pl-chip-btn svg {
+    flex: none;
+    width: 14px;
+    height: 14px;
+}
+
+/* Shown once a filter is set, like the Orders list's "Clear filters". */
+.brikpanel-pl-clear {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: 28px;
+    margin: 0;
+    padding: 0 8px;
+    border: 0;
+    border-radius: .5rem;
+    background: transparent;
+    color: #d72c0d;
+    font-size: .8125rem;
+    font-weight: 550;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color .15s ease;
+}
+
+.brikpanel-pl-clear:hover {
+    background: #fce4e4;
+}
+
+.brikpanel-pl-clear:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: 1px;
+}
+
+.brikpanel-pl-clear[hidden] {
+    display: none;
+}
+
+/* Price, status and type under a product's name: only on phones, where their
+   own columns are hidden. */
+.brikpanel-pl-row-meta {
+    display: none;
+}
+
+.brikpanel-pl-row-meta-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.0625rem 0.4375rem;
+    border-radius: 1rem;
+    font-size: 0.6875rem;
+    font-weight: 550;
+}
+
+/* ---------- Active taxonomy filters (Brand, Tag, ...) ----------
+   Set filters, so they read like a set chip: solid and filled. */
 .brikpanel-pl-filter-chips {
-    flex-basis: 100%;
-    width: 100%;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 6px;
+    padding: 0 8px 8px;
 }
 
 .brikpanel-pl-filter-chips[hidden] {
@@ -256,88 +724,217 @@
 .brikpanel-pl-filter-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.25rem 0.375rem 0.25rem 0.625rem;
-    border: 1px solid var(--border);
-    border-radius: 1rem;
-    background: var(--card);
-    font-size: 0.75rem;
+    gap: 4px;
+    box-sizing: border-box;
+    height: 28px;
+    padding-block: 0;
+    padding-inline: 10px 4px;
+    border: 1px solid #e3e3e3;
+    border-radius: .5rem;
+    background: #f3f3f3;
+    color: #303030;
+    font-size: .8125rem;
     font-weight: 550;
-    color: var(--text);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .brikpanel-pl-filter-chip-remove {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     padding: 0;
     border: none;
-    border-radius: 50%;
+    border-radius: .375rem;
     background: transparent;
-    color: var(--text-muted);
+    color: #616161;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
 }
 
 .brikpanel-pl-filter-chip-remove:hover {
-    background: rgba(0,0,0,0.08);
-    color: var(--text);
+    background: #e3e3e3;
+    color: #303030;
 }
 
-/* ---------- Bulk Bar ---------- */
+/* ---------- Selection bar ----------
+   While products are selected it floats at the bottom of the list, as on the
+   Orders list: a white bar with a shadow (opaque, so rows never show through
+   it). The full-width box around it lets clicks through to the rows beside
+   the bar. When the buttons do not fit beside the count, syncBulkFold()
+   (brikpanel-products-list.js) adds `is-fold` and they fold into "Bulk
+   actions", which opens above the bar; `is-tight` also drops "Select all",
+   the same as the header checkbox. */
 .brikpanel-pl-bulk-bar {
+    position: sticky;
+    bottom: 1.5rem;
+    z-index: 30;
+    display: flex;
+    justify-content: center;
+    margin-top: .75rem;
+    pointer-events: none;
+}
+
+.brikpanel-pl-bulk-bar[hidden] {
+    display: none;
+}
+
+/* While it shows, a row reached with Tab scrolls into view above it. */
+html:has(.brikpanel-pl-bulk-bar:not([hidden])),
+html:has(.brikpanel-pl-bulk-bar:not([hidden])) body {
+    scroll-padding-bottom: 5.5rem;
+}
+
+.brikpanel-pl-bulk-inner {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0.625rem 1rem;
-    background: #f0f4ff;
-    border: 1px solid #d0daf7;
-    border-radius: 0.5rem;
-    margin-bottom: 0.75rem;
-    gap: 1rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    gap: 6px;
+    box-sizing: border-box;
+    max-width: 100%;
+    padding: .625rem .75rem;
+    border-radius: .75rem;
+    background: #fff;
+    box-shadow: 0 8px 24px -6px rgba(26, 26, 26, .2), 0 0 0 1px rgba(0, 0, 0, .06);
+    pointer-events: auto;
+    animation: bpl-bulk-in .2s cubic-bezier(.4, 0, .2, 1);
+}
+
+@keyframes bpl-bulk-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
 }
 
 .brikpanel-pl-bulk-left {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    font-size: 0.8125rem;
+    flex: none;
+    gap: 2px;
+}
+
+.brikpanel-pl-bulk-count {
+    padding: 0 8px 0 6px;
+    color: #303030;
+    font-size: .8125rem;
     font-weight: 550;
-    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 .brikpanel-pl-bulk-link {
-    background: none;
-    border: none;
-    color: #4a6cf7;
-    font-size: 0.8125rem;
-    font-weight: 500;
+    margin: 0;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: .5rem;
+    background: transparent;
+    color: #616161;
+    font-size: .8125rem;
+    font-weight: 550;
+    line-height: 18px;
+    white-space: nowrap;
     cursor: pointer;
-    padding: 0;
-    text-decoration: underline;
+    transition: background-color .15s ease, color .15s ease;
 }
 
 .brikpanel-pl-bulk-link:hover {
-    color: #3451d1;
+    background: #f1f1f1;
+    color: #303030;
+}
+
+.brikpanel-pl-bulk-link:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: -2px;
+}
+
+.brikpanel-pl-bulk-bar.is-tight #bpl-select-all-btn {
+    display: none;
 }
 
 .brikpanel-pl-bulk-right {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    flex: none;
+    gap: 6px;
+    padding-inline-start: 6px;
+    border-inline-start: 1px solid #ebebeb;
 }
 
-/* ---------- Products Card ---------- */
+.brikpanel-pl-bulk-bar .brikpanel-pl-btn {
+    gap: 6px;
+    padding: .375rem .75rem;
+    border-radius: .5rem;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+    color: #303030;
+    font-size: .8125rem;
+    font-weight: 550;
+    transition: background-color .15s ease;
+}
+
+.brikpanel-pl-bulk-bar .brikpanel-pl-btn:hover {
+    background: #f7f7f7;
+}
+
+.brikpanel-pl-bulk-bar .brikpanel-pl-btn:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: 2px;
+}
+
+.brikpanel-pl-bulk-bar .brikpanel-pl-btn.danger {
+    color: #d72c0d;
+}
+
+/* "Bulk actions": only while the buttons are folded. */
+.brikpanel-pl-bulk-bar.is-fold .brikpanel-overflow .brikpanel-pl-bulk-more {
+    gap: 6px;
+    width: auto;
+    height: 30px;
+    padding: 0 .75rem;
+    font-size: .8125rem;
+    font-weight: 550;
+    white-space: nowrap;
+}
+
+.brikpanel-pl-bulk-more svg {
+    flex: none;
+    transition: transform .15s ease;
+}
+
+.brikpanel-pl-bulk-bar .brikpanel-overflow.is-open .brikpanel-pl-bulk-more svg {
+    transform: rotate(180deg);
+}
+
+/* Folded, a plain list of labels (as the Orders list's menu): only some of
+   the buttons carry an icon, and the labels would not line up. */
+.brikpanel-pl-bulk-bar.is-fold .brikpanel-overflow .brikpanel-overflow__menu > .brikpanel-pl-btn svg {
+    display: none;
+}
+
+.brikpanel-pl-bulk-bar.is-fold .brikpanel-overflow .brikpanel-overflow__menu > .brikpanel-pl-btn.danger {
+    color: #d72c0d;
+}
+
+.brikpanel-pl-bulk-bar.is-fold .brikpanel-overflow .brikpanel-overflow__menu > .brikpanel-pl-btn.danger:hover {
+    background: #fef2f2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .brikpanel-pl-bulk-inner {
+        animation: none;
+    }
+}
+
+/* ---------- Products Card ----------
+   No overflow clipping: the Columns list hangs from the filter row over the
+   table, and the rows' "More actions" menus place themselves. The table's
+   own box scrolls sideways when it has to. */
 .brikpanel-pl-card {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 0.75rem;
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    overflow: hidden;
     position: relative;
 }
 
@@ -394,7 +991,10 @@
     flex-shrink: 0;
 }
 
-/* ---------- Table ---------- */
+/* ---------- Table ----------
+   The Orders list's table (values from brikpanel-orders.css): a 12px header
+   on #f7f7f7, 13px rows with 6px x 12px cells and a hairline between rows.
+   Every row is one line, 44px: a 32px image and the name cut with "…". */
 .brikpanel-pl-table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -403,40 +1003,29 @@
 .brikpanel-pl-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 700px;
+    min-width: 620px;
 }
 
 .brikpanel-pl-table thead {
-    background: var(--hover-bg);
+    background: #f7f7f7;
     border-bottom: 1px solid var(--border);
 }
 
 .brikpanel-pl-table thead th {
-    padding: 0.75rem 1rem;
-    text-align: left;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
+    padding: 8px 12px;
+    text-align: start;
+    font-size: var(--brikpanel-th-size, 0.75rem);
+    font-weight: 550;
+    line-height: 18px;
+    color: #616161;
+    text-transform: var(--brikpanel-caps-case, none);
+    letter-spacing: var(--brikpanel-caps-track, normal);
     white-space: nowrap;
     user-select: none;
 }
 
-.brikpanel-pl-table thead th:first-child {
-    padding-left: 1.25rem;
-}
-
-.brikpanel-pl-th-check {
-    width: 40px;
-}
-
-.brikpanel-pl-th-image {
-    width: 50px;
-}
-
 .brikpanel-pl-th-actions {
-    width: 100px;
+    width: 28px;
 }
 
 /* ---------- Table Rows ---------- */
@@ -450,18 +1039,35 @@
 }
 
 .brikpanel-pl-row:hover {
-    background: var(--hover-bg);
+    background: #fafafa;
+}
+
+.brikpanel-pl-row:has(.brikpanel-pl-row-check:checked) {
+    background: #f7f7f7;
 }
 
 .brikpanel-pl-row td {
-    padding: 0.625rem 1rem;
-    font-size: 0.875rem;
+    padding: 6px 12px;
+    font-size: 0.8125rem;
+    line-height: 1.5;
     vertical-align: middle;
     color: var(--text);
 }
 
-.brikpanel-pl-row td:first-child {
-    padding-left: 1.25rem;
+/* Checkbox 12px from the card edge (as on Orders), then the image and the
+   name at 12px from each other. */
+.brikpanel-pl-table :is(.brikpanel-pl-th-check, .brikpanel-pl-cell-check) {
+    width: 16px;
+    padding-inline: 12px 8px;
+}
+
+.brikpanel-pl-table :is(.brikpanel-pl-th-image, .brikpanel-pl-cell-image) {
+    width: 32px;
+    padding-inline: 4px;
+}
+
+.brikpanel-pl-table :is(.brikpanel-pl-th-name, .brikpanel-pl-cell-name) {
+    padding-inline-start: 8px;
 }
 
 .brikpanel-pl-row-deleting {
@@ -478,37 +1084,99 @@
     accent-color: var(--primary);
 }
 
+/* In the table: the Orders list's box, 16px with a 1px grey edge, filled
+   dark with a white tick when checked, and the same size on phones (where
+   WordPress makes every checkbox 25px). */
+.brikpanel-pl-table input[type="checkbox"].brikpanel-pl-checkbox {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    margin: 0;
+    border: 0;
+    border-radius: 4px;
+    background-color: #fff;
+    box-shadow: inset 0 0 0 1px #8a8a8a;
+    vertical-align: middle;
+    transition: background-color .12s ease;
+}
+
+.brikpanel-pl-table input[type="checkbox"].brikpanel-pl-checkbox:checked {
+    background-color: #303030;
+    box-shadow: none;
+}
+
+.brikpanel-pl-table input[type="checkbox"].brikpanel-pl-checkbox:checked::before {
+    content: "";
+    float: none;
+    width: 8px;
+    height: 4px;
+    margin: 0;
+    border: solid #fff;
+    border-width: 0 0 2px 2px;
+    transform: translateY(-1px) rotate(-45deg);
+}
+
+.brikpanel-pl-table input[type="checkbox"].brikpanel-pl-checkbox:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: 2px;
+}
+
 /* ---------- Product Image ---------- */
 .brikpanel-pl-thumb {
-    width: 40px;
-    height: 40px;
+    display: block;
+    box-sizing: border-box;
+    width: 32px;
+    height: 32px;
     border-radius: 0.375rem;
     object-fit: cover;
     border: 1px solid var(--border);
     background: var(--hover-bg);
 }
 
-/* ---------- Product Name ---------- */
+/* ---------- Product Name ----------
+   One line: star, name, type badge. The line is as wide as the column the
+   table gives it (width 0, min-width 100%), so a long name never widens the
+   table: it ends in "…" and the badge stays beside it. The name column takes
+   the room the other columns leave, never less than 12rem. */
+.brikpanel-pl-th-name {
+    width: 100%;
+    min-width: 12rem;
+}
+
 .brikpanel-pl-cell-name {
-    font-weight: 550;
-    max-width: 280px;
+    font-weight: 600;
+}
+
+.brikpanel-pl-name-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 0;
+    min-width: 100%;
 }
 
 .brikpanel-pl-featured-star {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
+    flex: none;
+    width: 22px;
+    height: 22px;
     padding: 0;
-    margin-right: .375rem;
+    margin: 0;
     border: none;
     background: transparent;
     color: #8a8a8a;
     border-radius: .375rem;
     cursor: pointer;
-    vertical-align: middle;
     transition: color .15s ease, background .15s ease, transform .08s ease;
+}
+.brikpanel-pl-featured-star svg {
+    width: 15px;
+    height: 15px;
 }
 .brikpanel-pl-featured-star:hover {
     background: #f1f1f1;
@@ -534,11 +1202,11 @@
 }
 
 .brikpanel-pl-product-name-link {
-    display: inline-block;
-    max-width: 280px;
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
     color: #303030;
     text-decoration: none;
-    vertical-align: middle;
     cursor: pointer;
 }
 
@@ -553,36 +1221,59 @@
     outline: none;
 }
 
+.brikpanel-pl-product-name-link:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
 .brikpanel-pl-product-name-text {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 280px;
 }
 
+/* inline-flex: the count is its own item, so in a right-to-left page it sits
+   on the left of "Variable" with the hairline between them. As text, an
+   untranslated "Variable" and its number ran together as "Variable6". */
 .brikpanel-pl-type-badge {
-    display: inline-block;
-    margin-top: 0.125rem;
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    margin: 0;
     padding: 0.0625rem 0.375rem;
     border-radius: 0.25rem;
     background: #f0f0f0;
-    color: var(--text-muted);
+    color: #616161;
     font-size: 0.6875rem;
     font-weight: 500;
+    line-height: 1.5;
+    white-space: nowrap;
 }
 
 /* Variation count, nested inside the "Variable" badge. A hairline divider
-   rather than a second chip, so the pair reads as one control — including on
-   mobile, where the badge itself becomes a block. */
+   rather than a second chip, so the pair reads as one control. */
 .brikpanel-pl-type-badge .brikpanel-pl-type-count {
-    margin-left: 0.3125rem;
-    padding-left: 0.3125rem;
-    border-left: 1px solid #d5d5d5;
+    margin-inline-start: 0.3125rem;
+    padding-inline-start: 0.3125rem;
+    border-inline-start: 1px solid #d5d5d5;
     color: #616161;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     cursor: default;
+}
+
+/* ---------- ID (a column of its own, off by default) ---------- */
+.brikpanel-pl-th-id {
+    width: 1%;
+}
+
+.brikpanel-pl-cell-id {
+    color: #616161;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    user-select: all;
 }
 
 /* ---------- SKU ---------- */
@@ -646,7 +1337,7 @@
 }
 
 .brikpanel-pl-profit-pct {
-    color: #8a8a8a;
+    color: var(--text-secondary, #616161);
     font-size: 0.75rem;
 }
 
@@ -655,7 +1346,7 @@
 }
 
 .brikpanel-pl-price-cell del {
-    color: var(--text-muted);
+    color: var(--text-secondary, #616161);
     font-size: 0.8125rem;
 }
 
@@ -687,7 +1378,7 @@
 
 .brikpanel-pl-stock-badge.low {
     background: #fff3e0;
-    color: #e65100;
+    color: #b04a00; /* 5:1 on its tint; #e65100 read at 3.5:1 */
 }
 
 .brikpanel-pl-stock-badge.out {
@@ -696,7 +1387,7 @@
 }
 
 .brikpanel-pl-stock-na {
-    color: var(--text-muted);
+    color: var(--text-secondary, #616161);
 }
 
 /* ---------- Inline stock-status toggle (sits next to the qty badge) ---------- */
@@ -760,6 +1451,8 @@
 }
 
 /* ---------- Status Badge ---------- */
+/* The same colours dress the status in the phone meta line under the name
+   (.brikpanel-pl-row-meta-status), which is not a toggle. */
 .brikpanel-pl-status-badge {
     display: inline-flex;
     align-items: center;
@@ -772,27 +1465,28 @@
     user-select: none;
 }
 
-.brikpanel-pl-status-badge.published {
+:is(.brikpanel-pl-status-badge, .brikpanel-pl-row-meta-status).published {
     background: #e8f5e9;
     color: #1b5e20;
 }
 
-.brikpanel-pl-status-badge.draft {
+/* Draft reads at 4.5:1 or more (the muted gray was 3.2:1 on this fill). */
+:is(.brikpanel-pl-status-badge, .brikpanel-pl-row-meta-status).draft {
     background: #f5f5f5;
-    color: var(--text-muted);
+    color: var(--text-secondary);
 }
 
-.brikpanel-pl-status-badge.trashed {
+:is(.brikpanel-pl-status-badge, .brikpanel-pl-row-meta-status).trashed {
     background: #fce4e4;
     color: #c62828;
 }
 
-.brikpanel-pl-status-badge.private {
+:is(.brikpanel-pl-status-badge, .brikpanel-pl-row-meta-status).private {
     background: #e7e7f5;
     color: #3b3b7a;
 }
 
-.brikpanel-pl-status-badge.scheduled {
+:is(.brikpanel-pl-status-badge, .brikpanel-pl-row-meta-status).scheduled {
     background: #e6effd;
     color: #1d4ed8;
 }
@@ -806,61 +1500,167 @@
     pointer-events: none;
 }
 
-/* ---------- Actions ---------- */
-.brikpanel-pl-actions-cell {
-    text-align: right;
-    padding-right: 1.25rem !important;
+/* ---------- Actions ----------
+   In the table: View, Quick edit, Duplicate and Move to trash as quiet 28px
+   icons in the row. Stacked into cards, the table has `is-fold` (set with
+   `is-stacked`) and they fold into the shared "More actions" menu with their
+   labels. Actions other plugins add sit in a small menu of their own
+   (`.brikpanel-pl-row-extras`, always folded) until then. See
+   rowActionsWrap() in brikpanel-products-list.js. */
+.brikpanel-pl-table .brikpanel-pl-actions-cell {
+    width: 1%;
+    padding-inline: 4px 12px;
+    text-align: end;
+    white-space: nowrap;
 }
 
 .brikpanel-pl-actions {
+    --bp-overflow-size: 28px;
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.25rem;
+    gap: 2px;
 }
 
-.brikpanel-pl-actions button {
+.brikpanel-pl-table:not(.is-fold) .brikpanel-pl-row-core > .brikpanel-pl-row-menu > :is(a, button):not([hidden]) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border: none;
-    border-radius: 0.375rem;
+    flex: none;
+    box-sizing: border-box;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: .5rem;
     background: transparent;
-    color: var(--text-secondary);
+    color: #616161;
+    text-decoration: none;
     cursor: pointer;
-    transition: all 0.1s;
+    transition: background-color .15s ease, color .15s ease;
 }
 
-.brikpanel-pl-actions button:hover {
-    background: var(--border);
-    color: var(--text);
+.brikpanel-pl-table:not(.is-fold) .brikpanel-pl-row-core > .brikpanel-pl-row-menu > :is(a, button):hover {
+    background: #f1f1f1;
+    color: #303030;
 }
 
-.brikpanel-pl-action-delete:hover {
-    color: var(--error) !important;
-    background: #fef2f2 !important;
+.brikpanel-pl-table:not(.is-fold) .brikpanel-pl-row-core > .brikpanel-pl-row-menu > :is(a, button):focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: -2px;
 }
 
-.brikpanel-pl-action-view {
+.brikpanel-pl-table:not(.is-fold) .brikpanel-pl-row-core > .brikpanel-pl-row-menu > :is(.brikpanel-pl-action-delete, .brikpanel-pl-action-delete-perm):hover {
+    background: #fef2f2;
+    color: #d72c0d;
+}
+
+/* In the table the plugins' actions show in their own menu; the copy in the
+   row's menu is for the folded card only. */
+.brikpanel-pl-table:not(.is-fold) .brikpanel-pl-row-core > .brikpanel-pl-row-menu > :is(.brikpanel-pl-menu-sep, .brikpanel-pl-row-action),
+.brikpanel-pl-table.is-fold .brikpanel-pl-row-extras {
+    display: none;
+}
+
+.brikpanel-pl-row-extras {
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border: none;
-    border-radius: 0.375rem;
+    flex: none;
+}
+
+.brikpanel-pl-actions .brikpanel-overflow .brikpanel-pl-row-more {
     background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.1s;
+    box-shadow: none;
+    color: #616161;
+}
+
+.brikpanel-pl-actions .brikpanel-overflow .brikpanel-pl-row-more:hover {
+    background: #f1f1f1;
+    color: #303030;
+}
+
+.brikpanel-pl-actions .brikpanel-overflow.is-open .brikpanel-pl-row-more {
+    background: #ebebeb;
+    color: #303030;
+}
+
+.brikpanel-pl-actions .brikpanel-overflow__menu svg {
+    flex: none;
+}
+
+/* A closed folded menu takes no room at all. Faded out it still hung below
+   its row, and the last rows' menus reached past the table: the table's own
+   scroll box grew a second, inner scrollbar (seen on phones since field test
+   C). It opens with the same short fade. */
+.is-fold .brikpanel-overflow:not(.is-open) > .brikpanel-pl-row-menu {
+    display: none;
+}
+
+.is-fold .brikpanel-overflow.is-open > .brikpanel-pl-row-menu {
+    animation: bpl-row-menu-in .15s ease;
+}
+
+@keyframes bpl-row-menu-in {
+    from {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .is-fold .brikpanel-overflow.is-open > .brikpanel-pl-row-menu {
+        animation: none;
+    }
+}
+
+/* Folded, Move to trash and Delete permanently read as what they are. */
+.brikpanel-pl-table.is-fold .brikpanel-overflow .brikpanel-overflow__menu > :is(.brikpanel-pl-action-delete, .brikpanel-pl-action-delete-perm) {
+    color: #d72c0d;
+}
+
+.brikpanel-pl-table.is-fold .brikpanel-overflow .brikpanel-overflow__menu > :is(.brikpanel-pl-action-delete, .brikpanel-pl-action-delete-perm):hover {
+    background: #fef2f2;
+    color: #d72c0d;
+}
+
+/* The plugins' actions, under a line in the folded menu. */
+.brikpanel-pl-menu-sep {
+    display: block;
+    height: 1px;
+    margin: .25rem .375rem;
+    background: #ebebeb;
+}
+
+.brikpanel-pl-actions .brikpanel-overflow__menu > .brikpanel-pl-row-action {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: 2.25rem;
+    padding: 0 .625rem;
+    border-radius: .4375rem;
+    color: #616161;
+    font-size: .8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.brikpanel-pl-actions .brikpanel-overflow__menu > .brikpanel-pl-row-action:has(a):hover {
+    background: #f7f7f7;
+}
+
+.brikpanel-pl-actions .brikpanel-overflow__menu > .brikpanel-pl-row-action a {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    align-self: stretch;
+    color: #303030;
     text-decoration: none;
 }
 
-.brikpanel-pl-action-view:hover {
-    background: var(--border);
-    color: var(--text);
+.brikpanel-pl-actions .brikpanel-overflow__menu > .brikpanel-pl-row-action a:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: -2px;
+    border-radius: .4375rem;
+    box-shadow: none;
 }
 
 /* ---------- Editable Cells ---------- */
@@ -900,59 +1700,75 @@
     border-color: var(--input-focus);
 }
 
-/* ---------- Pagination ---------- */
+/* ---------- Pagination ----------
+   The Orders list's pager: 28px quiet buttons, the current page filled. */
 .brikpanel-pl-pagination {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1.25rem;
-    border-top: 1px solid var(--border);
     gap: 1rem;
     flex-wrap: wrap;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 0.75rem 0.75rem;
 }
 
 .brikpanel-pl-showing {
     font-size: 0.8125rem;
     color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
 }
 
 .brikpanel-pl-page-btns {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 2px;
 }
 
 .brikpanel-pl-page-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: 0.375rem;
-    background: var(--card);
+    box-sizing: border-box;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
     color: var(--text);
     font-size: 0.8125rem;
-    font-weight: 500;
+    font-weight: 550;
+    font-variant-numeric: tabular-nums;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background-color 0.15s ease;
+}
+
+.brikpanel-pl-page-btn:is([data-page="prev"], [data-page="next"]) {
+    color: #616161;
 }
 
 .brikpanel-pl-page-btn:hover:not(.disabled):not(.active) {
-    background: var(--hover-bg);
-    border-color: var(--text-muted);
+    background: #f1f1f1;
+}
+
+.brikpanel-pl-page-btn:focus-visible {
+    outline: 2px solid #303030;
+    outline-offset: 1px;
 }
 
 .brikpanel-pl-page-btn.active {
     background: var(--primary);
     color: #fff;
-    border-color: var(--primary);
 }
 
 .brikpanel-pl-page-btn.disabled {
-    opacity: 0.35;
+    color: #c7c7c7;
     cursor: not-allowed;
+}
+
+body.rtl .brikpanel-pl-page-btn svg {
+    transform: scaleX(-1);
 }
 
 .brikpanel-pl-page-dots {
@@ -960,7 +1776,7 @@
     align-items: center;
     justify-content: center;
     width: 1.5rem;
-    color: var(--text-muted);
+    color: var(--text-placeholder);
     font-size: 0.8125rem;
 }
 
@@ -978,7 +1794,7 @@
 }
 
 .brikpanel-pl-empty-state p {
-    color: var(--text-muted);
+    color: var(--text-secondary, #616161);
     font-size: 0.875rem;
     margin: 0;
 }
@@ -1290,19 +2106,21 @@
     transform: translateX(0);
 }
 
-.brikpanel-pl-toast.success {
+/* State classes are is-*: a bare `error` makes WordPress style the toast as an
+   admin notice (div.error padding and margin, no shadow). */
+.brikpanel-pl-toast.is-success {
     background: #e4f5e1;
     color: #1a6b15;
     border: 1px solid #b7e1b0;
 }
 
-.brikpanel-pl-toast.error {
+.brikpanel-pl-toast.is-error {
     background: #fce4e4;
     color: #c62828;
     border: 1px solid #f1b0b0;
 }
 
-.brikpanel-pl-toast.info {
+.brikpanel-pl-toast.is-info {
     background: #e8f0fe;
     color: #1a56db;
     border: 1px solid #bdd3f7;
@@ -1330,197 +2148,243 @@
 }
 
 .brikpanel-pl-text-muted {
-    color: var(--text-muted);
+    color: var(--text-secondary, #616161);
+}
+
+/* ---------- Short of room: snug cells, folded buttons, then cards ----------
+   What gives way when the columns do not fit the card, in this order. Each
+   step is measured on a copy by brikpanelFitTable
+   (front-end/shared/brikpanel-fit-table.js, levels set up in
+   brikpanel-products-list.js), not guessed from the screen width: the
+   language, the columns switched on and the store's own SKUs and prices
+   decide it.
+   1. `is-snug`: 8px cell padding, and a SKU, price or category name longer
+      than 8rem may wrap (the SKU only at its own separators). The name keeps
+      its 12rem floor at every step: below that the rows stack rather than
+      cut names to a word.
+   2. `is-snugger`: the same at 6.5rem.
+   3. `is-fold`: the row buttons fold into "More actions" (rules above).
+   4. `is-stacked`: every row becomes the Orders list's phone card: the
+      checkbox, the image and the name on the first line with "More actions"
+      in the corner; the type badge (and a status other than Published) on the
+      second line with the price at its end. The other columns are one tap
+      away in Quick edit.
+   Nothing is cut off at the card's edge (CLAUDE.md, "Tablo sığma kuralı").
+   With the default columns a 1280px screen needs step 1 for a typical
+   catalogue. */
+.brikpanel-pl-table.is-snug:not(.is-stacked) > thead > tr > th:not(.brikpanel-pl-th-check, .brikpanel-pl-th-image, .brikpanel-pl-th-actions),
+.brikpanel-pl-table.is-snug:not(.is-stacked) > tbody > tr.brikpanel-pl-row > td:not(.brikpanel-pl-cell-check, .brikpanel-pl-cell-image, .brikpanel-pl-actions-cell) {
+    padding-inline: 8px;
+}
+
+/* A value up to its cap keeps its one line; a longer one wraps at its
+   breaks (a sale price under its struck price, a price suffix, a SKU at its
+   dashes). The box is as wide as the value, capped, but never narrower than
+   its longest unbreakable part, which would otherwise run into the next
+   column. The cells stay `nowrap`, so the category's "+N" chip stays beside
+   its name. The SKU and price boxes keep their own display (the editable
+   box centres its text). */
+.brikpanel-pl-table.is-snug:not(.is-stacked) .brikpanel-pl-sku-cell,
+.brikpanel-pl-table.is-snug:not(.is-stacked) .brikpanel-pl-cat-main,
+.brikpanel-pl-table.is-snug:not(.is-stacked) .brikpanel-pl-price-cell {
+    width: max-content;
+    min-width: min-content;
+    max-width: 8rem;
+    white-space: normal;
+}
+
+/* Still short: a lower cap before the row buttons fold. */
+.brikpanel-pl-table.is-snug.is-snugger:not(.is-stacked) .brikpanel-pl-sku-cell,
+.brikpanel-pl-table.is-snug.is-snugger:not(.is-stacked) .brikpanel-pl-cat-main,
+.brikpanel-pl-table.is-snug.is-snugger:not(.is-stacked) .brikpanel-pl-price-cell {
+    max-width: 6.5rem;
+}
+
+/* Chrome breaks a line at <wbr> even inside `nowrap`: outside `is-snug` the
+   SKU's break points are switched off, or every SKU wrapped at each dash. */
+.brikpanel-pl-table:not(.is-snug) .brikpanel-pl-sku-cell > wbr {
+    display: none;
+}
+
+.brikpanel-pl-table.is-stacked,
+.brikpanel-pl-table.is-stacked > tbody,
+.brikpanel-pl-table.is-stacked > thead {
+    display: block;
+    width: 100%;
+    min-width: 0;
+}
+
+.brikpanel-pl-table.is-stacked > thead > tr {
+    display: flex;
+    align-items: center;
+}
+
+.brikpanel-pl-table.is-stacked > thead > tr > th {
+    display: none;
+}
+
+.brikpanel-pl-table.is-stacked > thead > tr > .brikpanel-pl-th-check,
+.brikpanel-pl-table.is-stacked > thead > tr > .brikpanel-pl-th-name {
+    display: block;
+    width: auto;
+    min-width: 0;
+}
+
+.brikpanel-pl-table.is-stacked > thead > tr > .brikpanel-pl-th-check {
+    padding-inline: 12px 10px;
+}
+
+.brikpanel-pl-table.is-stacked > thead > tr > .brikpanel-pl-th-name {
+    padding-inline-start: 0;
+}
+
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+}
+
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td {
+    display: none;
+}
+
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-cell-check,
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-cell-image,
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-cell-name,
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-actions-cell {
+    display: block;
+}
+
+/* The user's own Columns choice still counts. */
+.brikpanel-pl-table.is-stacked[data-hide-image] > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-cell-image {
+    display: none;
+}
+
+.brikpanel-pl.is-sort-mode .brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-cell-handle {
+    display: block;
+    flex: none;
+    padding-block: 0 !important;
+}
+
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-cell-check {
+    flex: none;
+    width: auto;
+    padding: 0;
+    padding-inline: 12px 10px;
+}
+
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-cell-image {
+    flex: none;
+    width: auto;
+    padding: 0;
+    padding-inline-end: 10px;
+}
+
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row .brikpanel-pl-thumb {
+    width: 40px;
+    height: 40px;
+}
+
+/* contain: a long name must not widen the list and push the menu button off
+   the card (the Orders list's phone lesson). */
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-cell-name {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0;
+    padding-inline-end: 48px;
+    contain: inline-size;
+}
+
+.brikpanel-pl-table.is-stacked > tbody > tr.brikpanel-pl-row > td.brikpanel-pl-actions-cell {
+    position: absolute;
+    top: 7px;
+    inset-inline-end: 8px;
+    width: auto;
+    padding: 0;
+}
+
+.brikpanel-pl-table.is-stacked .brikpanel-pl-name-line .brikpanel-pl-type-badge {
+    display: none;
+}
+
+/* The second line runs under the menu button, so the price ends where the
+   card's content does. */
+.brikpanel-pl-table.is-stacked .brikpanel-pl-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin-top: 6px;
+    margin-inline-end: -36px;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+/* A long price (a range with a unit and a sale, as measurement price plugins
+   print it) wraps at its end instead of running off the card; an amount
+   itself never breaks. */
+.brikpanel-pl-table.is-stacked .brikpanel-pl-row-meta-price {
+    min-width: 0;
+    margin-inline-start: auto;
+    color: #303030;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+}
+
+.brikpanel-pl-table.is-stacked .brikpanel-pl-row-meta-price .amount {
+    white-space: nowrap;
+}
+
+.brikpanel-pl-table.is-stacked .brikpanel-pl-row-meta-price del {
+    color: var(--text-secondary, #616161);
+    font-weight: 400;
+}
+
+.brikpanel-pl-table.is-stacked .brikpanel-pl-row-meta-price ins {
+    text-decoration: none;
+}
+
+/* Loading, empty and error rows span the card. */
+.brikpanel-pl-table.is-stacked > tbody > tr:not(.brikpanel-pl-row),
+.brikpanel-pl-table.is-stacked > tbody > tr:not(.brikpanel-pl-row) > td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* ---------- Responsive ---------- */
 @media screen and (max-width: 782px) {
-    /* WordPress gives #wpcontent an asymmetric 10px-left / 0-right padding on
-       mobile, which shoves the whole panel off-centre (extra space always ends
-       up on one side). Zero it and apply a single symmetric gutter on the panel
-       itself so the left and right margins always match. */
-    body.admin_page_brikpanel-products #wpcontent {
-        padding-left: 0 !important;
-    }
-    .brikpanel-pl {
-        padding-left: 14px;
-        padding-right: 14px;
-        box-sizing: border-box;
-    }
-
     .brikpanel-pl-header {
-        flex-direction: column;
-        align-items: flex-start;
-        padding: 1rem 0 0.75rem;
-        gap: 0.625rem;
+        padding: 0 0 0.75rem;
     }
 
-    /* Search bar full width on its own row, then action buttons share the row
-       below it (wrap as needed). Without flex-wrap the secondary buttons and
-       "Add product" CTA fall off-screen on mobile. */
-    .brikpanel-pl-header-right {
-        width: 100%;
+    /* Without the fit helper (a caching plugin dropped it) the three
+       secondary buttons wrap under the title with their labels. */
+    .brikpanel-pl-header:not([data-bp-fit-level]) {
         flex-wrap: wrap;
-        gap: 0.5rem;
+        row-gap: 0.75rem;
     }
 
-    .brikpanel-pl-search-wrap {
-        flex: 1 1 100%;
-        order: -1;
+    .brikpanel-pl-header:not([data-bp-fit-level]) .brikpanel-pl-header-right {
+        flex-wrap: wrap;
     }
 
-    .brikpanel-pl input[type="text"].brikpanel-pl-search {
-        width: 100%;
+    .wp-core-ui select.brikpanel-pl-chip {
+        max-width: 160px;
     }
 
-    /* All header buttons: equal-share the second row, primary CTA goes last
-       so "Add product" is the most prominent. */
-    .brikpanel-pl-header-right .brikpanel-pl-btn {
-        flex: 1 1 auto;
-        justify-content: center;
+    /* While the first rows load, a phone already shows the stacked header
+       (the fit helper stacks the table as the rows are drawn), not every
+       column title in a row that runs off the card. */
+    .brikpanel-pl-table:has(> tbody > .brikpanel-pl-loading-row) {
         min-width: 0;
     }
-    .brikpanel-pl-header-right .brikpanel-pl-btn.primary {
-        flex-basis: 100%;
-        order: 99;
-    }
 
-    .brikpanel-pl-filters {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.5rem;
-    }
-
-    .brikpanel-pl-tabs {
-        width: 100%;
-        overflow-x: auto;
-        padding-bottom: 0.25rem;
-        scrollbar-width: thin;
-    }
-
-    .brikpanel-pl-filter-group {
-        width: 100%;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.5rem;
-    }
-
-    .brikpanel-pl-select {
-        flex: 1;
-        max-width: none;
-        width: 100%;
-    }
-    /* Categories filter spans the full first row so the long option labels
-       (e.g. "Apparel Display On Website (12)") don't get truncated to ~3 chars. */
-    .brikpanel-pl-filter-group #bpl-cat-filter {
-        grid-column: 1 / -1;
-    }
-    .brikpanel-pl-columns-menu .brikpanel-pl-columns-btn {
-        width: 100%;
-        justify-content: center;
-    }
-    /* Sort + Columns buttons share the final row (2-up on tablet, stacked on
-       phone), both centred so they read as a matched action pair. */
-    .brikpanel-pl-filter-group > .brikpanel-pl-btn {
-        justify-content: center;
-    }
-
-    .brikpanel-pl-bulk-bar {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .brikpanel-pl-bulk-right {
-        width: 100%;
-    }
-
-    .brikpanel-pl-bulk-right .brikpanel-pl-btn {
-        flex: 1;
-    }
-
-    .brikpanel-pl-pagination {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    /* Hide secondary columns to make room for actions on small screens. The
-       remaining columns are: select / image / product (name+meta) / actions. */
-    .brikpanel-pl-th-sku,
-    .brikpanel-pl-cell-sku,
-    .brikpanel-pl-th-cat,
-    .brikpanel-pl-cell-cat,
-    .brikpanel-pl-th-price,
-    .brikpanel-pl-cell-price,
-    .brikpanel-pl-th-cogs,
-    .brikpanel-pl-cell-cogs,
-    .brikpanel-pl-th-profit,
-    .brikpanel-pl-cell-profit,
-    .brikpanel-pl-th-stock,
-    .brikpanel-pl-cell-stock,
-    .brikpanel-pl-th-status,
-    .brikpanel-pl-cell-status {
+    .brikpanel-pl-table:has(> tbody > .brikpanel-pl-loading-row) > thead > tr > th:not(.brikpanel-pl-th-check, .brikpanel-pl-th-name) {
         display: none;
-    }
-
-    .brikpanel-pl-table-wrap {
-        overflow-x: hidden;
-    }
-    /* Drop the desktop min-width so the 4 visible columns (check / image /
-       name / actions) fit within the viewport instead of pushing the
-       actions column off-screen. `table-layout: fixed` distributes width
-       per the explicit column rules below; the name column absorbs whatever
-       is left and truncates with an ellipsis. */
-    .brikpanel-pl-table {
-        min-width: 0;
-        width: 100%;
-        table-layout: fixed;
-    }
-    .brikpanel-pl-table thead th,
-    .brikpanel-pl-row td {
-        padding-left: 0.375rem;
-        padding-right: 0.375rem;
-    }
-    .brikpanel-pl-table thead th:first-child,
-    .brikpanel-pl-row td:first-child {
-        padding-left: 0.625rem;
-    }
-    .brikpanel-pl-th-check,
-    .brikpanel-pl-row td:first-child { width: 32px; }
-    .brikpanel-pl-th-image,
-    .brikpanel-pl-cell-image { width: 44px; }
-    .brikpanel-pl-th-actions,
-    .brikpanel-pl-actions-cell { width: 124px; }
-
-    /* Action buttons: there's no hover on touch devices, so the per-row
-       actions (view / edit / duplicate / delete) must be permanently
-       visible. Pack them tighter so they fit beside the product name. */
-    .brikpanel-pl-actions {
-        opacity: 1 !important;
-        gap: 0;
-    }
-    .brikpanel-pl-actions-cell {
-        padding-right: 0.5rem !important;
-        width: 1%;             /* shrink-to-fit */
-        white-space: nowrap;
-    }
-    .brikpanel-pl-actions button,
-    .brikpanel-pl-actions .brikpanel-pl-action-view {
-        width: 1.875rem;
-        height: 1.875rem;
-    }
-
-    /* Name column: relax the desktop 280px max-width and let the cell take
-       whatever the table assigns, so long names truncate cleanly with an
-       ellipsis instead of pushing the type badge off-screen. */
-    .brikpanel-pl-cell-name { max-width: none; min-width: 0; }
-    .brikpanel-pl-product-name-link,
-    .brikpanel-pl-product-name-text { max-width: 100%; }
-    /* Stack the type badge ("Variable", "Grouped", …) under the name so it
-       doesn't share the limited horizontal space. */
-    .brikpanel-pl-type-badge {
-        display: block;
-        width: max-content;
-        margin-top: 0.25rem;
     }
 
     /* Full-screen sheet below whichever bar is on top. The hardcoded 46px was
@@ -1540,36 +2404,13 @@
     .brikpanel-pl-drawer-overlay.open ~ .brikpanel-pl-wrap {
         pointer-events: none;
     }
-}
 
-/* Phones (<=600px): stack every filter full width in a single column. The
-   2-column grid leaves an odd item (Sort) alone on its own row and pushes the
-   selects hard against the right edge — a single column is cleaner, perfectly
-   symmetric and matches native mobile form pickers. */
-@media screen and (max-width: 600px) {
-    .brikpanel-pl-filter-group {
-        grid-template-columns: 1fr;
+    .brikpanel-pl-bulk-bar {
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     }
-}
 
-/* Very small phones (<=480px): drop button labels in the header so the icons
-   alone fit cleanly on a single row without wrapping. */
-@media screen and (max-width: 480px) {
-    .brikpanel-pl-header-right .brikpanel-pl-btn.secondary {
-        gap: 0;
-        padding: 0.5rem;
-    }
-    .brikpanel-pl-header-right .brikpanel-pl-btn.secondary > span,
-    .brikpanel-pl-header-right .brikpanel-pl-btn.secondary {
-        font-size: 0;
-    }
-    .brikpanel-pl-header-right .brikpanel-pl-btn.secondary svg {
-        width: 18px;
-        height: 18px;
-    }
-    /* Restore full text for the primary "Add product" CTA. */
-    .brikpanel-pl-header-right .brikpanel-pl-btn.primary {
-        font-size: 0.8125rem;
+    .brikpanel-pl-pagination {
+        justify-content: center;
     }
 }
 
@@ -1608,22 +2449,14 @@ body.admin_page_brikpanel-products #screen-meta {
     height: 0 !important;
     border: 0 !important;
 }
-body.admin_page_brikpanel-products #wpbody-content > .wrap {
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
 /* Body background */
 body.admin_page_brikpanel-products #wpbody-content {
     padding-bottom: 2rem;
     margin: 0 !important;
 }
 
-body.admin_page_brikpanel-products .wrap {
-    margin: 0 !important;
-    padding: 0 10px !important;
-    max-width: none !important;
-}
+/* Width and gutters: the wide page shell (front-end/shared/brikpanel-ui.css,
+   `brikpanel-shell__page` on the .wrap). */
 
 /* Lock body scroll when drawer/modal is open */
 body.brikpanel-pl-drawer-open {
@@ -1797,7 +2630,7 @@ body.brikpanel-pl-drawer-open {
     box-shadow: 0 0 0 1px var(--input-focus);
 }
 
-.brikpanel-pl-select.full {
+.wp-core-ui select.brikpanel-pl-select.full {
     width: 100%;
     max-width: none;
 }
@@ -1818,14 +2651,14 @@ body.brikpanel-pl-drawer-open {
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+    text-transform: none;
+    letter-spacing: normal;
     margin-bottom: 0.5rem;
 }
 
 .brikpanel-pl-modal-hint {
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--text-secondary, #616161);
     margin: 0.25rem 0 0;
     line-height: 1.4;
 }
@@ -1874,11 +2707,11 @@ body.brikpanel-pl-drawer-open {
 }
 
 .brikpanel-pl-qe-var-fields .brikpanel-pl-qe-field label {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 500;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+    color: var(--text-secondary, #616161);
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 .brikpanel-pl-qe-var-input {
@@ -2073,16 +2906,14 @@ body.brikpanel-pl-drawer-open {
     margin-top: 2px;
 }
 
+/* Bullets, indent and item spacing: the shared list (.brikpanel-bullets in
+   front-end/shared/brikpanel-ui.css). WordPress removes list markers, so this
+   list read as indented sentences with no bullet (field test D11). */
 .bpl-fast-warning-list {
     margin: 0.375rem 0 0;
-    padding-left: 1.125rem;
     font-size: 0.75rem;
     font-weight: 400;
     line-height: 1.55;
-}
-
-.bpl-fast-warning-list li {
-    margin-bottom: 0.25rem;
 }
 
 .bpl-fast-hint {
@@ -2198,9 +3029,11 @@ body.brikpanel-pl-drawer-open {
 .brikpanel-pl-toggle-dot.outofstock { background: #d72c0d; }
 .brikpanel-pl-toggle-dot.onbackorder { background: #c2820a; }
 
-/* The drawer toggle fills the row */
+/* The drawer toggle fills the row: its border and padding inside that width
+   (content-box sizing made it 6px + border wider than the field). */
 #bpl-qe-stock-status-toggle {
     display: flex;
+    box-sizing: border-box;
     width: 100%;
 }
 #bpl-qe-stock-status-toggle .brikpanel-pl-toggle-opt {
@@ -2214,8 +3047,11 @@ body.brikpanel-pl-drawer-open {
 @media (max-width: 480px) {
     .brikpanel-pl-drawer-body .brikpanel-pl-toggle-group {
         display: flex;
+        box-sizing: border-box;
         width: 100%;
     }
+    /* A label that still does not fit breaks at its space ("On / backorder")
+       instead of running out of its button (8px past the drawer at 360px). */
     .brikpanel-pl-drawer-body .brikpanel-pl-toggle-opt {
         flex: 1;
         min-width: 0;
@@ -2223,6 +3059,9 @@ body.brikpanel-pl-drawer-open {
         font-size: 0.6875rem;
         gap: 0.25rem;
         justify-content: center;
+        white-space: normal;
+        text-align: center;
+        line-height: 1.2;
     }
 }
 
@@ -2295,7 +3134,7 @@ body.brikpanel-pl-drawer-open {
 .brikpanel-pl-var-popup-empty {
     padding: 1.5rem;
     text-align: center;
-    color: #8a8a8a;
+    color: var(--text-secondary, #616161);
     font-size: 0.8125rem;
 }
 .brikpanel-pl-var-popup-row {
@@ -2383,7 +3222,7 @@ body.brikpanel-pl-drawer-open {
     --card: #ffffff;
     --text: #303030;
     --text-secondary: #616161;
-    --text-muted: #8a8a8a;
+    --text-placeholder: #8a8a8a;
     --border: #e3e3e3;
     --input-border: #8a8a8a;
     --input-focus: #303030;
@@ -2408,9 +3247,12 @@ body.brikpanel-pl-drawer-open {
     gap: 0.375rem;
 }
 
+/* Hangs from the button's end edge; brikpanelTip.nudge() (products-list.js)
+   moves it back inside the page column when that edge is not where the
+   button sits. */
 .brikpanel-pl-columns-popover {
     position: absolute;
-    right: 0;
+    inset-inline-end: 0;
     top: calc(100% + 6px);
     min-width: 200px;
     background: #fff;
@@ -2465,11 +3307,11 @@ body.brikpanel-pl-drawer-open {
     margin: 0.375rem 0.25rem 0.125rem;
     padding: 0.375rem 0.375rem 0.25rem;
     border-top: 1px solid #e3e3e3;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #8a8a8a;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-secondary, #616161);
     user-select: none;
 }
 
@@ -2559,12 +3401,13 @@ body.brikpanel-pl-drawer-open {
     margin: 0;
     padding: 0.5rem 0.25rem;
     font-size: 0.8125rem;
-    color: #8a8a8a;
+    color: var(--text-secondary, #616161);
 }
 
 /* Column hiding — toggled by data-hide-* attributes on the table. */
 .brikpanel-pl-table[data-hide-image] .brikpanel-pl-col-image,
 .brikpanel-pl-table[data-hide-name] .brikpanel-pl-col-name,
+.brikpanel-pl-table[data-hide-id] .brikpanel-pl-col-id,
 .brikpanel-pl-table[data-hide-sku] .brikpanel-pl-col-sku,
 .brikpanel-pl-table[data-hide-variation_skus] .brikpanel-pl-col-variation_skus,
 .brikpanel-pl-table[data-hide-global_unique_id] .brikpanel-pl-col-global_unique_id,
@@ -2586,19 +3429,6 @@ body.brikpanel-pl-drawer-open {
     color: var(--text-secondary, #616161);
     font-size: .8125rem;
     white-space: nowrap;
-}
-
-/* ---------- Inline product ID — tiny muted line above the product title ---------- */
-.brikpanel-pl-name-id {
-    display: block;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.6875rem;
-    line-height: 1.3;
-    color: #8a8a8a;
-    margin-bottom: 1px;
-    -webkit-user-select: all;
-    -moz-user-select: all;
-    user-select: all;
 }
 
 /* ---------- Variation SKUs column ----------
@@ -2804,7 +3634,7 @@ a.brikpanel-pl-cat-link:focus {
 }
 
 .brikpanel-pl-cell-ase label {
-    color: #8a8a8a;
+    color: var(--text-secondary, #616161);
     font-size: 0.75rem;
 }
 
@@ -2886,7 +3716,7 @@ a.brikpanel-pl-cat-link:focus {
 
 .brikpanel-pl-cell-ase .ac-file-type,
 .brikpanel-pl-cell-ase .ac-extension {
-    color: #8a8a8a;
+    color: var(--text-secondary, #616161);
     font-size: 0.6875rem;
 }
 
@@ -2898,22 +3728,9 @@ a.brikpanel-pl-cat-link:focus {
     display: none;
 }
 
-/* Row actions injected via post_row_actions filter (e.g. ASE "ID: N"). */
-.brikpanel-pl-row-actions {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-left: 0.5rem;
-    font-size: 0.6875rem;
-    color: #8a8a8a;
-    line-height: 1;
-    vertical-align: middle;
-}
-
-.brikpanel-pl-row-actions .asenha-list-table-item-id {
-    background: #f1f1f1;
-    border-radius: 0.25rem;
-    padding: 0.125rem 0.375rem;
+/* Row actions other plugins add (post_row_actions), e.g. ASE's "ID: N": a
+   row of the "More actions" menu (see Actions above). */
+.brikpanel-pl-row-action .asenha-list-table-item-id {
     color: #616161;
     font-weight: 500;
 }
@@ -2947,7 +3764,7 @@ a.brikpanel-pl-cat-link:focus {
 .brikpanel-pl-toggle-help {
     font-size: 0.75rem;
     font-weight: 400;
-    color: #8a8a8a;
+    color: var(--text-secondary, #616161);
     line-height: 1.4;
 }
 .brikpanel-pl-switch input:disabled + .brikpanel-pl-switch-slider {
@@ -3011,13 +3828,16 @@ a.brikpanel-pl-cat-link:focus {
 
 .brikpanel-pl-help-text {
     font-size: 0.75rem;
-    color: #8a8a8a;
+    color: var(--text-secondary, #616161);
     margin: 0 0 0.625rem;
     line-height: 1.4;
 }
-.brikpanel-pl-text-muted {
+/* Empty-state note inside a panel ("No files added yet.", no variations). Its own
+   class: .brikpanel-pl-text-muted is the table's plain muted dash, and sharing that
+   name turned every empty table cell italic and a pixel smaller than its row. */
+.brikpanel-pl-empty-note {
     font-size: 0.8125rem;
-    color: #8a8a8a;
+    color: var(--text-secondary, #616161);
     margin: 0;
     font-style: italic;
 }
@@ -3132,12 +3952,13 @@ a.brikpanel-pl-cat-link:focus {
 
 /* Toolbar Sort button — secondary by default; flips to primary-style when
    the mode is engaged so it doubles as the "exit sort mode" affordance. */
-.brikpanel-pl-btn#bpl-sort-toggle.is-active {
+.brikpanel-pl-chip-btn#bpl-sort-toggle.is-active {
+    border-color: var(--primary);
     background: var(--primary);
     color: #fff;
-    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
-.brikpanel-pl-btn#bpl-sort-toggle.is-active:hover {
+.brikpanel-pl-chip-btn#bpl-sort-toggle.is-active:hover {
+    border-color: var(--primary-hover);
     background: var(--primary-hover);
 }
 
@@ -3186,7 +4007,8 @@ a.brikpanel-pl-cat-link:focus {
 .brikpanel-pl.is-sort-mode .brikpanel-pl-th-handle,
 .brikpanel-pl.is-sort-mode .brikpanel-pl-cell-handle {
     width: 32px;
-    padding: 0.625rem 0 0.625rem 0.5rem !important;
+    padding-block: 6px !important;
+    padding-inline: 0.5rem 0 !important;
     overflow: visible;
 }
 .brikpanel-pl.is-sort-mode .brikpanel-pl-sort-handle {
@@ -3198,7 +4020,7 @@ a.brikpanel-pl-cat-link:focus {
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--text-placeholder);
     cursor: grab;
     padding: 0;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
@@ -3232,8 +4054,8 @@ a.brikpanel-pl-cat-link:focus {
    height so the table doesn't jitter while the user hovers between rows. */
 tr.brikpanel-pl-row-placeholder {
     background: rgba(48, 48, 48, 0.04);
-    border-top: 1px dashed var(--text-muted);
-    border-bottom: 1px dashed var(--text-muted);
+    border-top: 1px dashed var(--text-placeholder);
+    border-bottom: 1px dashed var(--text-placeholder);
     visibility: visible !important;
 }
 tr.brikpanel-pl-row-placeholder td {

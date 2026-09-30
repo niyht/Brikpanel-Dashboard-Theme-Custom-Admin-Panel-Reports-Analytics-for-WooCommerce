@@ -228,7 +228,7 @@ class Brikpanel_Sheets_OAuth {
 		);
 		if ( $granted_scope !== '' && ! Brikpanel_Sheets_Tokens::scope_has_drive( $granted_scope ) ) {
 			Brikpanel_Sheets_Tokens::clear();
-			Brikpanel_Sheets_Logger::log( 'oauth', 'Consent completed WITHOUT drive.file — granted scope: ' . $granted_scope );
+			Brikpanel_Sheets_Logger::log( 'oauth', 'Consent completed WITHOUT drive.file; granted scope: ' . $granted_scope );
 			$this->finish_with_notice(
 				'error',
 				__( 'Almost there: Google did not grant access to your spreadsheets. On the Google permission screen, please keep the "See, edit, create and delete only the specific Google Drive files you use with this app" box checked, then connect again.', 'brikpanel' )

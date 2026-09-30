@@ -181,6 +181,13 @@ function brikpanel_recompute_customer_metrics_handler() {
 	$duration = round( microtime( true ) - $start_ts, 3 );
 	$peak     = function_exists( 'memory_get_peak_usage' ) ? round( memory_get_peak_usage( true ) / 1024 / 1024, 1 ) : 0;
 
+	// Marks a finished run (the failures above throw before this line). On a
+	// store without customers the table stays empty either way, so the page
+	// header reads this to tell "ran, nobody yet" from "never ran"
+	// (Brikpanel_Customer_Analytics::compute_metrics_meta()). Internal, not
+	// autoloaded: only the Customer Analytics page reads it.
+	update_option( 'brikpanel_ca_last_run', time(), false );
+
 	// Invalidate the read-side caches so the Customer Analytics page and the
 	// Dashboard's LTV/RFM panels both reflect fresh metrics on the next render.
 	if ( method_exists( 'Brikpanel_Customer_Analytics', 'bust_cache' ) ) {
@@ -227,11 +234,12 @@ function brikpanel_ca_assign_rfm_scores() {
 	global $wpdb;
 	$tbl = $wpdb->prefix . 'brikpanel_customer_metrics';
 
-	// MySQL 8.0+ supports NTILE() and UPDATE … JOIN on a derived table.
-	// Stores running pre-8.0 won't get RFM until they upgrade — we degrade
-	// gracefully by zeroing scores rather than fataling.
-	$server_version = $wpdb->db_version();
-	if ( version_compare( $server_version, '8.0', '<' ) ) {
+	// NTILE() needs window functions: MySQL 8.0+ or MariaDB 10.2+ (see
+	// brikpanel_db_supports_window_functions(), which also reads MariaDB
+	// behind the "5.5.5-" prefix). Older servers get no RFM until they
+	// upgrade; we degrade gracefully by zeroing scores rather than fataling.
+	// ajax_rfm_summary() uses the same helper, so its message agrees.
+	if ( ! brikpanel_db_supports_window_functions() ) {
 		$wpdb->query( "UPDATE {$tbl} SET r_score=0, f_score=0, m_score=0, rfm_segment=NULL" ); // phpcs:ignore
 		return 0;
 	}
@@ -384,7 +392,16 @@ function brikpanel_recompute_cohort_retention_handler() {
 	$counted   = brikpanel_ca_counted_statuses();
 	$status_in = "'" . implode( "','", array_map( 'esc_sql', $counted ) ) . "'";
 	$months_back = 24;
-	$cutoff_date = gmdate( 'Y-m-01', strtotime( "-{$months_back} months" ) );
+	// Month-safe and store-local: gmdate('Y-m-01', strtotime('-24 months')) both
+	// used the UTC month and, run on the 31st, could skip a month outright.
+	$cutoff_date = brikpanel_store_month_start( $months_back );
+
+	// A customer's cohort is the month of their FIRST order as the merchant's
+	// calendar sees it. Resolving it with DATE_FORMAT(*_gmt) bucketed by the UTC
+	// month, so an order placed in the first hours of a month was credited to the
+	// previous cohort on every store east of UTC.
+	$month_hpos   = brikpanel_local_month_case_sql( 'o.date_created_gmt', $months_back );
+	$month_legacy = brikpanel_local_month_case_sql( 'o.post_date_gmt', $months_back );
 
 	$hpos = brikpanel_ca_is_hpos();
 
@@ -401,7 +418,7 @@ function brikpanel_recompute_cohort_retention_handler() {
 					WHEN o.customer_id > 0 THEN CONCAT('u:', o.customer_id)
 					ELSE CONCAT('e:', LOWER(o.billing_email))
 				END AS customer_key,
-				DATE_FORMAT(o.date_created_gmt, '%Y-%m-01') AS order_month
+				{$month_hpos} AS order_month
 			FROM {$wpdb->prefix}wc_orders o
 			WHERE o.type = 'shop_order'
 			  AND o.status IN ({$status_in})
@@ -415,7 +432,7 @@ function brikpanel_recompute_cohort_retention_handler() {
 					WHEN cu_meta.meta_value+0 > 0 THEN CONCAT('u:', cu_meta.meta_value)
 					ELSE CONCAT('e:', LOWER(IFNULL(em_meta.meta_value, '')))
 				END AS customer_key,
-				DATE_FORMAT(o.post_date_gmt, '%Y-%m-01') AS order_month
+				{$month_legacy} AS order_month
 			FROM {$wpdb->posts} o
 			LEFT JOIN {$wpdb->postmeta} cu_meta ON cu_meta.post_id = o.ID AND cu_meta.meta_key = '_customer_user' AND " . brikpanel_sql_first_meta_guard( 'post', 'cu_meta' ) . "
 			LEFT JOIN {$wpdb->postmeta} em_meta ON em_meta.post_id = o.ID AND em_meta.meta_key = '_billing_email' AND " . brikpanel_sql_first_meta_guard( 'post', 'em_meta' ) . "

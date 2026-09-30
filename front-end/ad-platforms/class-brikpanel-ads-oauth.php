@@ -61,6 +61,22 @@ class Brikpanel_Ads_OAuth {
 	const SCOPES_GOOGLE = 'https://www.googleapis.com/auth/adwords openid email';
 	const SCOPES_META   = 'ads_read,email,public_profile';
 
+	/**
+	 * The one scope the Google Ads integration depends on.
+	 *
+	 * Google presents it as a tickable checkbox on the granular consent screen
+	 * and it is NOT ticked by default, so a merchant can finish the handshake
+	 * with a perfectly valid token that cannot read a single ad account. The
+	 * card would then say "Connected" while every sync returned nothing, with
+	 * no surface anywhere explaining why. Google's own guidance is explicit
+	 * that an app must check which scopes were granted rather than assume.
+	 *
+	 * Matched on the stable tail so it works whether the granted-scope string
+	 * comes back as the bare name or the full URL. Same approach as
+	 * Brikpanel_Sheets_Tokens::REQUIRED_SCOPE.
+	 */
+	const REQUIRED_SCOPE_GOOGLE = 'auth/adwords';
+
 	public function __construct() {
 		add_action( 'wp_ajax_brikpanel_ads_oauth_start',      [ $this, 'ajax_start' ] );
 		add_action( 'wp_ajax_brikpanel_ads_oauth_disconnect', [ $this, 'ajax_disconnect' ] );
@@ -185,6 +201,9 @@ class Brikpanel_Ads_OAuth {
 
 		Brikpanel_Ads_Tokens::disconnect( $platform );
 		Brikpanel_Ads_Tokens::clear_needs_reconnect( $platform );
+		if ( class_exists( 'Brikpanel_Ads_Settings' ) ) {
+			Brikpanel_Ads_Settings::forget_account_list( $platform );
+		}
 
 		// The confirmation dialog promises "your synced spend data will be
 		// deleted", and until now nothing ever deleted it. The leftover rows
@@ -304,10 +323,16 @@ class Brikpanel_Ads_OAuth {
 			$this->finish_with_notice( 'error', __( 'OAuth redemption failed. Please try connecting again.', 'brikpanel' ) );
 		}
 
+		// What the token endpoint actually told us was granted. Kept separate
+		// from the display fallback below, because the permission check must
+		// never confirm a grant using the scope we REQUESTED: that would turn
+		// "the merchant unticked the box" into "everything is fine".
+		$echoed_scope = (string) ( $body['scope'] ?? '' );
+
 		// Meta's token endpoint does not echo the granted scope back, so the
 		// vault would record an empty string and `describe()['scope']` was
 		// permanently blank for Meta. Fall back to what we asked for.
-		$granted_scope = (string) ( $body['scope'] ?? '' );
+		$granted_scope = $echoed_scope;
 		if ( $granted_scope === '' ) {
 			$granted_scope = $platform === Brikpanel_Ads_Tokens::PLATFORM_GOOGLE
 				? self::SCOPES_GOOGLE
@@ -328,10 +353,12 @@ class Brikpanel_Ads_OAuth {
 		}
 
 		// The card must stop announcing a stopped history import the moment the
-		// merchant fixes the connection. Reconnecting wipes primary_account, so
-		// the backfill flag below finds no account and schedules nothing, and
-		// the halted record would otherwise sit there saying "connection lost"
-		// over a healthy connection for good.
+		// merchant fixes the connection. A connection that died took the account
+		// selection with it, so the backfill flag below finds no account and
+		// queues nothing, and the halted record would otherwise sit there saying
+		// "connection lost" over a healthy connection for good. Only the halt is
+		// cleared: the per-account progress stays, so ticking the accounts again
+		// resumes the imports that had not finished.
 		if ( class_exists( 'Brikpanel_Ads_Sync' ) ) {
 			Brikpanel_Ads_Sync::clear_halted_backfill( $platform );
 		}
@@ -346,9 +373,12 @@ class Brikpanel_Ads_OAuth {
 		// resets it once it queues the backfill.
 		update_option( 'brikpanel_ads_needs_backfill_' . $platform, 'yes', false );
 
-		// One cheap probe so a Meta connect that silently lost `ads_read`
-		// tells the merchant immediately instead of at the first sync.
-		$permission_warning = self::verify_meta_permissions( $platform );
+		// Both consent screens let a merchant finish the handshake while
+		// declining the one permission the integration needs, so check before
+		// the card gets to claim success.
+		$permission_warning = $platform === Brikpanel_Ads_Tokens::PLATFORM_GOOGLE
+			? self::verify_google_permissions( $platform, $echoed_scope )
+			: self::verify_meta_permissions( $platform );
 		if ( $permission_warning !== '' ) {
 			$this->finish_with_notice( 'error', $permission_warning );
 		}
@@ -437,6 +467,94 @@ class Brikpanel_Ads_OAuth {
 			return '';
 		}
 		return '';
+	}
+
+	/**
+	 * Whether a granted-scope string actually carries the Google Ads scope.
+	 *
+	 * Google returns granted scopes space-delimited and as full URLs, so a
+	 * tail test on "auth/adwords" is the robust check. The tail must be the
+	 * WHOLE remainder of the segment, not merely present in it: a hypothetical
+	 * "…/auth/adwords.readonly" must not be mistaken for the real thing.
+	 *
+	 * @param string $scope
+	 * @return bool
+	 */
+	private static function scope_has_adwords( $scope ) {
+		$scope = (string) $scope;
+		if ( $scope === '' ) {
+			return false;
+		}
+		foreach ( preg_split( '/\s+/', trim( $scope ) ) as $s ) {
+			if ( $s === self::REQUIRED_SCOPE_GOOGLE
+				|| substr( $s, -( strlen( self::REQUIRED_SCOPE_GOOGLE ) + 1 ) ) === '/' . self::REQUIRED_SCOPE_GOOGLE ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Verify that the Google Ads permission was actually granted.
+	 *
+	 * Google's consent screen shows the Ads scope as a checkbox that is not
+	 * ticked by default, so the handshake can complete with a valid token that
+	 * reads nothing. Without this the card said "Connected" and the merchant
+	 * found out through empty spend figures.
+	 *
+	 * Unlike Meta this needs no probe in the normal case: Google's token
+	 * endpoint echoes the granted scope, so the answer is already in hand.
+	 * The probe is only a fallback for the case where it did not.
+	 *
+	 * Only permission-shaped failures are reported; a transient network or
+	 * rate-limit error must not scare the merchant off a connection that is
+	 * fine. Same rule as verify_meta_permissions().
+	 *
+	 * @param string $platform
+	 * @param string $echoed_scope Granted scope as returned by the token
+	 *                             endpoint. Never the requested scope.
+	 * @return string '' when healthy, otherwise a translated warning.
+	 */
+	private static function verify_google_permissions( $platform, $echoed_scope ) {
+		if ( $platform !== Brikpanel_Ads_Tokens::PLATFORM_GOOGLE ) {
+			return '';
+		}
+
+		$echoed_scope = (string) $echoed_scope;
+		if ( $echoed_scope !== '' ) {
+			if ( self::scope_has_adwords( $echoed_scope ) ) {
+				return '';
+			}
+			Brikpanel_Ads_Logger::log( 'oauth', 'Google connected without the Ads scope; prompting for re-authorisation.' );
+			return self::google_permission_message();
+		}
+
+		// No scope echoed back, which Google normally does. Ask the API
+		// instead of guessing.
+		if ( ! class_exists( 'Brikpanel_Ads_Google_Client' ) ) {
+			return '';
+		}
+		try {
+			( new Brikpanel_Ads_Google_Client() )->list_accounts();
+		} catch ( Brikpanel_Ads_Google_Exception $e ) {
+			// list_accounts() already swallows the routine per-customer 403
+			// (a manager-only account the user cannot read directly), so
+			// anything escaping it came from listAccessibleCustomers itself,
+			// where 401/403 does mean the grant is missing.
+			if ( in_array( (int) $e->http_code, [ 401, 403 ], true ) ) {
+				Brikpanel_Ads_Logger::log( 'oauth', 'Google connected without the Ads scope; prompting for re-authorisation.', $e->http_code );
+				return self::google_permission_message();
+			}
+		} catch ( \Throwable $e ) {
+			// Not a permission problem. Stay quiet.
+			return '';
+		}
+		return '';
+	}
+
+	/** The one message both Google permission paths show. */
+	private static function google_permission_message() {
+		return __( 'Google Ads connected, but the Google Ads permission was not granted, so no spend can be imported. Click Connect again and leave the Google Ads permission ticked on Google’s permission screen.', 'brikpanel' );
 	}
 
 	/** URL-safe Base64 without padding (RFC 4648 §5 / PKCE spec). */

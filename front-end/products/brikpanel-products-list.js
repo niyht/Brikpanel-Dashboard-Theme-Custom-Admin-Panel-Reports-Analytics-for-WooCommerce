@@ -8,6 +8,23 @@
 
     var PL = window.brikpanelPL || {};
 
+    // Numbers and percentages with the store's separators, the percent sign
+    // where the viewer's language writes it (front-end/shared/brikpanel-format.js).
+    var BF = window.brikpanelFormat || null;
+    function fmtNum(n, decimals) {
+        return BF ? BF.number(n || 0, decimals || 0, true) : String(Number(n) || 0);
+    }
+    function fmtPct(v) {
+        return BF ? BF.percent(v || 0, 0) : String(Number(v) || 0);
+    }
+    // A plural message from PHP (brikpanel_js_plural) for a count made here.
+    function countText(msg, n) {
+        return BF ? BF.count(msg, n) : '';
+    }
+    function pluralText(msg, n, values) {
+        return BF ? BF.format(BF.plural(msg, n), values) : '';
+    }
+
     var state = {
         page: 1,
         per_page: PL.per_page || 20,
@@ -201,6 +218,131 @@
         try { window.history.replaceState(null, '', newUrl); } catch (e) {}
     }
 
+    // Filter selects and the state key each one sets. Sort is not a filter.
+    var FILTER_SELECTS = {
+        category:     '#bpl-cat-filter',
+        brand:        '#bpl-brand-filter',
+        stock_filter: '#bpl-stock-filter',
+        product_type: '#bpl-type-filter',
+        featured:     '#bpl-featured-filter'
+    };
+
+    function activeFilterCount() {
+        var n = 0;
+        Object.keys(FILTER_SELECTS).forEach(function (key) {
+            if (state[key]) { n++; }
+        });
+        Object.keys(state.tax_filters || {}).forEach(function (slug) {
+            if (state.tax_filters[slug]) { n++; }
+        });
+        return n;
+    }
+
+    // A set filter reads as a solid chip, an unset one stays dashed (as on
+    // Orders). The search button shows how many are set, so filters folded
+    // away with the search are never forgotten; Clear filters shows once one is.
+    function syncFiltersCount() {
+        Object.keys(FILTER_SELECTS).forEach(function (key) {
+            $(FILTER_SELECTS[key]).toggleClass('is-set', !!state[key]);
+        });
+        var n = activeFilterCount();
+        var clear = document.getElementById('bpl-clear-filters');
+        if (clear) {
+            clear.hidden = !n;
+        }
+        var badge = document.getElementById('bpl-filters-count');
+        var btn = document.getElementById('bpl-find-open');
+        if (!badge || !btn) {
+            return;
+        }
+        badge.textContent = n ? String(n) : '';
+        badge.hidden = !n;
+        btn.classList.toggle('has-count', n > 0);
+        btn.setAttribute('aria-label', (n && PL.i18n.filters_active)
+            ? PL.i18n.filters_active.replace('%d', n)
+            : (PL.i18n.search_and_filter || btn.getAttribute('title') || ''));
+    }
+
+    // =========================================================================
+    // SEARCH AND FILTERS (the button at the end of the tab row, as on Orders)
+    // =========================================================================
+
+    var findSettleTimer = null;
+
+    function isFindOpen() {
+        return $('#bpl-find').hasClass('is-open');
+    }
+
+    // Opening grows the search across the tab row and unfolds the filter row
+    // under it; closing folds both back into the small button. `instant`
+    // skips the motion (a page that loads with a search or a filter set).
+    // The filter row clips its content only while it moves: once open it
+    // shows it whole, so the Columns list can hang below the row.
+    function setFindOpen(open, opts) {
+        opts = opts || {};
+        var $find = $('#bpl-find');
+        var $card = $find.closest('.brikpanel-pl-card');
+        if (!$find.length || open === isFindOpen()) {
+            return;
+        }
+        clearTimeout(findSettleTimer);
+        if (opts.instant) {
+            $card.addClass('is-find-instant');
+        }
+        $find.toggleClass('is-open', open);
+        $card.toggleClass('is-find-open', open).removeClass('is-find-settled');
+        $('#bpl-find-open').attr('aria-expanded', open ? 'true' : 'false');
+        if (open) {
+            findSettleTimer = setTimeout(function () {
+                $card.addClass('is-find-settled');
+            }, opts.instant ? 0 : 420);
+            if (opts.focus) {
+                // After the field is shown: a hidden field cannot take focus.
+                setTimeout(function () { $('#bpl-search').trigger('focus'); }, 0);
+            }
+        } else {
+            // The Columns list goes with the filter row it hangs from.
+            if ($('#bpl-columns-popover').closest('#bpl-refine').length) {
+                $('#bpl-columns-popover').prop('hidden', true);
+                $('#bpl-columns-btn').attr('aria-expanded', 'false');
+            }
+            if (opts.focus) {
+                $('#bpl-find-open').trigger('focus');
+            }
+        }
+        if (opts.instant) {
+            // Two frames: the closed state has to be painted without motion first.
+            window.requestAnimationFrame(function () {
+                window.requestAnimationFrame(function () { $card.removeClass('is-find-instant'); });
+            });
+        }
+    }
+
+    // Cancel empties a search first; with nothing typed it closes the row.
+    function cancelFind() {
+        if ($('#bpl-search').val() !== '' || state.search !== '') {
+            clearTimeout(searchTimer);
+            $('#bpl-search').val('');
+            state.search = '';
+            state.page = 1;
+            fetchProducts();
+            $('#bpl-search').trigger('focus');
+            return;
+        }
+        setFindOpen(false, { focus: true });
+    }
+
+    function clearFilters() {
+        Object.keys(FILTER_SELECTS).forEach(function (key) {
+            state[key] = '';
+            $(FILTER_SELECTS[key]).val('');
+        });
+        state.tax_filters = {};
+        $('#bpl-filter-chips').empty().attr('hidden', 'hidden');
+        state.page = 1;
+        fetchProducts();
+    }
+
     // The list URL to hand the editor as a return target — only when a filter
     // is actually active, so unfiltered views keep clean editor URLs and fall
     // back to the plain product list.
@@ -227,6 +369,48 @@
                 state.page = 1;
                 fetchProducts();
             }, 350);
+        });
+
+        // Search and filters open from the button at the end of the tab row.
+        $('#bpl-find-open').on('click', function () {
+            setFindOpen(true, { focus: true });
+        });
+        $('#bpl-find-cancel').on('click', cancelFind);
+        $('#bpl-clear-filters').on('click', clearFilters);
+
+        // Escape closes an empty search with no filter set (as on Orders); F
+        // opens it from anywhere that is not a field. A modifier key means the
+        // browser's own shortcut (Ctrl+F finds in page), so it is left alone.
+        $(document).on('keydown', function (e) {
+            if (e.key === 'Escape') {
+                if (isFindOpen() && $(e.target).closest('#bpl-find').length &&
+                    $('#bpl-search').val() === '' && !state.search && !activeFilterCount()) {
+                    setFindOpen(false, { focus: true });
+                }
+                return;
+            }
+            if ((e.key !== 'f' && e.key !== 'F') || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) {
+                return;
+            }
+            var t = e.target;
+            if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) {
+                return;
+            }
+            // Not over the quick-edit drawer, a modal, the variation popup or
+            // an open menu. (The modals stay laid out while closed, so their
+            // `open` class is the test, not :visible.)
+            if ($('#bpl-drawer').hasClass('open') ||
+                $('.brikpanel-pl-modal-overlay.open, #bpl-progress-backdrop.open').length ||
+                $('.brikpanel-pl-var-overlay').length ||
+                $('.brikpanel-overflow.is-open').length) {
+                return;
+            }
+            e.preventDefault();
+            if (isFindOpen()) {
+                $('#bpl-search').trigger('focus');
+            } else {
+                setFindOpen(true, { focus: true });
+            }
         });
 
         // Remove an active taxonomy-filter chip (Brand/Tag/custom).
@@ -370,11 +554,45 @@
             }, 400);
         }
 
+        // Two buttons open the Columns list: "Screen Options" in the header
+        // (where people look for it, as on the Orders list) and Columns in the
+        // filter row. The one list moves under the button that opened it.
+        var $screenBtn = $('#bpl-screen-options-btn');
+
+        function closeColumns() {
+            $colsPopover.prop('hidden', true);
+            $colsBtn.attr('aria-expanded', 'false');
+            $screenBtn.attr('aria-expanded', 'false');
+        }
+
+        function toggleColumns($btn) {
+            var $home = $btn.parent();
+            var wasHere = !$colsPopover.prop('hidden') && $colsPopover.parent().is($home);
+            closeColumns();
+            if (wasHere) {
+                return;
+            }
+            if (!$colsPopover.parent().is($home)) {
+                $home.append($colsPopover);
+            }
+            $colsPopover.prop('hidden', false);
+            $btn.attr('aria-expanded', 'true');
+            // Keep it inside the page column: from 783px up the button is not
+            // always at the row's end, and the popover ran past the screen or
+            // under the admin menu.
+            if (window.brikpanelTip) {
+                window.brikpanelTip.nudge($colsPopover[0], $colsPopover.closest('.wrap')[0]);
+            }
+        }
+
         $colsBtn.on('click', function (e) {
             e.stopPropagation();
-            var willOpen = $colsPopover.prop('hidden');
-            $colsPopover.prop('hidden', !willOpen);
-            $colsBtn.attr('aria-expanded', willOpen ? 'true' : 'false');
+            toggleColumns($colsBtn);
+        });
+
+        $screenBtn.on('click', function (e) {
+            e.stopPropagation();
+            toggleColumns($screenBtn);
         });
 
         $colsPopover.on('click', function (e) { e.stopPropagation(); });
@@ -383,19 +601,27 @@
             var col = $(this).data('col');
             applyColumnVisibility(col, this.checked);
             saveColumns();
+            syncMessageSpans();
+            refitTable();
         });
+
+        // Crossing the phone width hides or shows columns: re-span the message row.
+        if (window.matchMedia) {
+            var phoneMq = window.matchMedia('(max-width: 782px)');
+            var onPhoneChange = function () { syncMessageSpans(); };
+            if (phoneMq.addEventListener) { phoneMq.addEventListener('change', onPhoneChange); }
+            else if (phoneMq.addListener) { phoneMq.addListener(onPhoneChange); }
+        }
 
         $(document).on('click', function () {
             if (!$colsPopover.prop('hidden')) {
-                $colsPopover.prop('hidden', true);
-                $colsBtn.attr('aria-expanded', 'false');
+                closeColumns();
             }
         });
 
         $(document).on('keydown', function (e) {
             if (e.key === 'Escape' && !$colsPopover.prop('hidden')) {
-                $colsPopover.prop('hidden', true);
-                $colsBtn.attr('aria-expanded', 'false');
+                closeColumns();
             }
         });
 
@@ -765,9 +991,9 @@
      * Used for full-width loading / empty rows.
      */
     function totalColumnCount() {
-        // 1 sort handle (hidden unless sortMode) + 16 native BrikPanel cols
-        // (check, image, name, sku, variation skus, gtin, price, cogs, profit,
-        // stock, cat, shipping class, author, sort order, status, date)
+        // 1 sort handle (hidden unless sortMode) + 17 native BrikPanel cols
+        // (check, image, name, id, sku, variation skus, gtin, price, cogs,
+        // profit, stock, cat, shipping class, author, sort order, status, date)
         // + 1 actions col
         // + N dynamic columns. Every native <th>/<td> is always present in the
         // DOM so colspan calculations stay stable; CSS hides the ones the user
@@ -778,7 +1004,44 @@
         var extras = state.extraColumns ? Object.keys(state.extraColumns).length : 0;
         // +1 for the opt-in Product Code column when its plugin is active (its
         // <th>/<td> are always in the DOM in that case; CSS hides them when off).
-        return 18 + (PL.has_product_code ? 1 : 0) + extras;
+        return 19 + (PL.has_product_code ? 1 : 0) + extras;
+    }
+
+    /**
+     * The header cells that show right now. A message row (loading, empty,
+     * error) spans exactly these: with the phone's `table-layout: fixed` a
+     * colspan that also counted hidden columns made the browser add phantom
+     * columns, which took their share of the width and ended the header's
+     * background half way (field test C12).
+     */
+    function visibleColumnCount() {
+        var head = document.querySelector('#bpl-table thead tr');
+        if (!head) {
+            return totalColumnCount();
+        }
+        var n = 0;
+        for (var i = 0; i < head.cells.length; i++) {
+            if (window.getComputedStyle(head.cells[i]).display !== 'none') {
+                n += head.cells[i].colSpan || 1;
+            }
+        }
+        return Math.max(1, n);
+    }
+
+    // Re-span the message row after the visible columns changed (a column
+    // switched on or off, the window crossed the phone width).
+    function syncMessageSpans() {
+        var body = document.getElementById('bpl-table-body');
+        if (!body) {
+            return;
+        }
+        var span = visibleColumnCount();
+        for (var i = 0; i < body.rows.length; i++) {
+            var cells = body.rows[i].cells;
+            if (cells.length === 1 && cells[0].colSpan !== span) {
+                cells[0].colSpan = span;
+            }
+        }
     }
 
     /**
@@ -908,9 +1171,9 @@
         // reads state.extraColumns, which is exactly the value a malformed
         // payload may have poisoned on the way here, so a throw from it must not
         // be what stops the row from being drawn.
-        var span = 18;
+        var span = 19;
         try {
-            span = totalColumnCount();
+            span = visibleColumnCount();
         } catch (e) {}
 
         $body.html('<tr><td colspan="' + span + '" class="brikpanel-pl-empty">' +
@@ -930,6 +1193,7 @@
         // Keep the URL in step with what we are about to render, so a reload
         // or the editor back link reproduces this exact view.
         syncStateToUrl();
+        syncFiltersCount();
 
         state.loading = true;
         showProgress();
@@ -939,7 +1203,7 @@
         // (e.g. just-removed rows after a bulk action) stays visible while
         // the background fetch syncs counts and pagination.
         if (!silent) {
-            $body.html('<tr class="brikpanel-pl-loading-row"><td colspan="' + totalColumnCount() + '"><div class="brikpanel-pl-spinner"></div></td></tr>');
+            $body.html('<tr class="brikpanel-pl-loading-row"><td colspan="' + visibleColumnCount() + '"><div class="brikpanel-pl-spinner"></div></td></tr>');
         }
 
         currentFetchXhr = $.ajax({
@@ -1066,15 +1330,27 @@
     // RENDER PRODUCTS
     // =========================================================================
 
+    // The rows stack into cards when the table does not fit its card
+    // (CLAUDE.md, "Tablo sığma kuralı"): measured by the shared helper on an
+    // invisible copy after every render, never guessed from the screen width.
+    var fitTable = null;
+
+    function refitTable() {
+        if (fitTable) {
+            fitTable.refit();
+        }
+    }
+
     function renderProducts() {
         var $body = $('#bpl-table-body');
 
         if (!state.products.length) {
-            $body.html('<tr><td colspan="' + totalColumnCount() + '" class="brikpanel-pl-empty">' +
+            $body.html('<tr><td colspan="' + visibleColumnCount() + '" class="brikpanel-pl-empty">' +
                 '<div class="brikpanel-pl-empty-state">' +
                 '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>' +
                 '<p>' + escHtml(PL.i18n.no_products) + '</p>' +
                 '</div></td></tr>');
+            refitTable();
             return;
         }
 
@@ -1084,6 +1360,7 @@
         }
 
         $body.html(html);
+        refitTable();
 
         // Restore checked states
         state.selected.forEach(function (id) {
@@ -1257,9 +1534,9 @@
         var cogs = p ? p.cogs : null;
         var inner = (cogs && cogs.html) ? cogs.html : '<span class="brikpanel-pl-text-muted">&mdash;</span>';
         var flag = '';
-        if (cogs && cogs.partial && cogs.missing > 0) {
-            var tpl   = PL.i18n.cogs_partial || '%d variations have no cost';
-            var label = tpl.replace('%d', cogs.missing);
+        if (cogs && cogs.partial && cogs.missing > 0 && cogs.label) {
+            // Built on the server, in the plural form for the count.
+            var label = cogs.label;
             flag = ' <span class="brikpanel-pl-cogs-flag" tabindex="0" role="note" aria-label="'
                 + escAttr(label) + '" title="' + escAttr(label) + '">!</span>';
         }
@@ -1289,14 +1566,61 @@
         var negative = profit.negative ? ' is-negative' : '';
         var out = '<span class="brikpanel-pl-profit-value' + negative + '">' + profit.html + '</span>';
         if (profit.percent) {
-            out += ' <span class="brikpanel-pl-profit-pct">(' + escHtml(profit.percent) + '%)</span>';
+            // A finished percentage from the server ("25%", "%25", "25 %").
+            out += ' <span class="brikpanel-pl-profit-pct">(' + escHtml(profit.percent) + ')</span>';
         }
-        if (profit.partial && profit.missing > 0) {
-            var label = (PL.i18n.profit_partial || '').replace('%d', profit.missing);
+        if (profit.partial && profit.missing > 0 && profit.label) {
+            var label = profit.label;
             out += ' <span class="brikpanel-pl-cogs-flag" tabindex="0" role="note" aria-label="'
                 + escAttr(label) + '" title="' + escAttr(label) + '">!</span>';
         }
         return out;
+    }
+
+    // A row button's name: read out always, shown as text only in the phone
+    // "More actions" menu (front-end/shared/brikpanel-overflow.css).
+    function actionLabel(text) {
+        return '<span class="brikpanel-overflow__label">' + escHtml(text || '') + '</span>';
+    }
+
+    function rowMoreTrigger(menuId) {
+        var more = PL.i18n.more_actions || '';
+        return '<button type="button" class="brikpanel-overflow__trigger brikpanel-pl-row-more" aria-expanded="false" aria-controls="' + escAttr(menuId) + '" aria-label="' + escAttr(more) + '" title="' + escAttr(more) + '">' +
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>' +
+            '</button>';
+    }
+
+    // In the table the row buttons (View, Quick edit, Duplicate, Move to
+    // trash) stay in the row as icons. When the table is short of room, and
+    // always when the rows are stacked into cards (a phone), they fold into
+    // one "More actions" menu: four icons squeezed the product name to 94px
+    // on a 360px phone (field test C2). The table's `is-fold` class (a fit
+    // level, see initFitTable()) does the folding.
+    //
+    // Actions other plugins add (post_row_actions) sit in a small menu of
+    // their own after the icons, so the row stays one line; once folded they
+    // join the one menu under a line. Only one of the two copies ever shows,
+    // and the folded one carries no ids.
+    function rowActionsWrap(id, buttonsHtml, extrasHtml) {
+        var menuId = 'bpl-row-more-' + id;
+        var html = '<div class="brikpanel-pl-actions">' +
+            '<div class="brikpanel-overflow brikpanel-pl-row-core">' +
+                rowMoreTrigger(menuId) +
+                '<div class="brikpanel-overflow__menu brikpanel-pl-row-menu" id="' + escAttr(menuId) + '">' +
+                    buttonsHtml +
+                    (extrasHtml ? '<span class="brikpanel-pl-menu-sep" aria-hidden="true"></span>' + extrasHtml.replace(/\sid="[^"]*"/g, '') : '') +
+                '</div>' +
+            '</div>';
+        if (extrasHtml) {
+            var extrasId = 'bpl-row-extras-' + id;
+            html += '<div class="brikpanel-pl-row-extras is-fold">' +
+                '<div class="brikpanel-overflow">' +
+                    rowMoreTrigger(extrasId) +
+                    '<div class="brikpanel-overflow__menu brikpanel-pl-row-menu" id="' + escAttr(extrasId) + '">' + extrasHtml + '</div>' +
+                '</div>' +
+            '</div>';
+        }
+        return html + '</div>';
     }
 
     function renderProductRow(p) {
@@ -1361,6 +1685,11 @@
         // filters that can hide the sale price); fall back to WooCommerce's
         // price_html for everything else (variable ranges, non-sale, etc.).
         var priceDisplay = p.sale_display ? p.sale_display : (p.price_html || '—');
+        // The editable box is a flex container, and flex drops a text node that
+        // is only a space: the struck price ran into the sale price
+        // ("$20.00$18.00"), a range into its dash, a price into its suffix
+        // (field test E4). One inline wrapper keeps the spaces.
+        priceDisplay = '<span class="brikpanel-pl-price-display">' + priceDisplay + '</span>';
         var isVariable = p.type === 'variable';
 
         var priceEditable = isVariable ?
@@ -1389,7 +1718,7 @@
                     return { name: name, id: (otherIds[i] != null ? otherIds[i] : null) };
                 });
                 catText = mainCat +
-                    '<span class="brikpanel-pl-cat-more" data-others="' + escAttr(JSON.stringify(others)) + '" tabindex="0" aria-label="' + escAttr((PL.i18n.more_categories || '%d more').replace('%d', others.length)) + '">+' + others.length + '</span>';
+                    '<span class="brikpanel-pl-cat-more" data-others="' + escAttr(JSON.stringify(others)) + '" tabindex="0" aria-label="' + escAttr(countText(PL.i18n.more_categories, others.length)) + '">+' + others.length + '</span>';
             }
         }
 
@@ -1403,7 +1732,7 @@
             var vCount = parseInt(p.variation_count, 10);
             var vBadge = '';
             if (vCount > 0) {
-                var vTitle = String(PL.i18n.variations_count || '').replace('%d', vCount);
+                var vTitle = countText(PL.i18n.variations_count, vCount);
                 vBadge = '<span class="brikpanel-pl-type-count" title="' + escAttr(vTitle) +
                     '" aria-label="' + escAttr(vTitle) + '">' + escHtml(String(vCount)) + '</span>';
             }
@@ -1413,10 +1742,12 @@
         var trashActions = '';
         if (p.status === 'trash') {
             trashActions = '<button type="button" class="brikpanel-pl-action-restore" title="' + escAttr(PL.i18n.restore) + '">' +
-                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>' +
+                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>' +
+                actionLabel(PL.i18n.restore) +
                 '</button>' +
                 '<button type="button" class="brikpanel-pl-action-delete-perm" title="' + escAttr(PL.i18n.delete_permanently) + '">' +
-                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d72c0d" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d72c0d" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+                actionLabel(PL.i18n.delete_permanently) +
                 '</button>';
         }
 
@@ -1435,15 +1766,18 @@
             }
         }
 
-        // Row actions contributed via post_row_actions filter (e.g. ASE's
-        // "ID: N" badge).
+        // Row actions contributed via the post_row_actions filter (e.g. ASE's
+        // "ID: N" badge) go into a menu at the end of the row (rowActionsWrap):
+        // they are actions, and on their own line under the name they made
+        // the row two lines tall. Their HTML is sanitised server-side
+        // (wp_kses_post).
         var aseActionsHtml = '';
         if (p.extra_actions && p.extra_actions.length) {
             var parts = [];
             for (var ai = 0; ai < p.extra_actions.length; ai++) {
                 parts.push('<span class="brikpanel-pl-row-action brikpanel-pl-row-action-' + escAttr(p.extra_actions[ai].id || '') + '">' + (p.extra_actions[ai].html || '') + '</span>');
             }
-            aseActionsHtml = '<div class="brikpanel-pl-row-actions">' + parts.join('') + '</div>';
+            aseActionsHtml = parts.join('');
         }
 
         // Featured-product star — opt-in via the BrikPanel setting. Renders
@@ -1453,7 +1787,7 @@
         if (PL.show_featured_star) {
             var isFeatured = !!p.is_featured;
             var starTitle  = isFeatured
-                ? (PL.i18n.unmark_featured || 'Featured — click to remove')
+                ? (PL.i18n.unmark_featured || '')
                 : (PL.i18n.mark_featured || 'Mark as featured');
             featuredStarHtml =
                 '<button type="button" class="brikpanel-pl-featured-star' + (isFeatured ? ' is-on' : '') +
@@ -1522,6 +1856,16 @@
                 '</span>' +
             '</td>';
 
+        // The phone card's second line (as on Orders): the type badge, the
+        // status when it is not Published, and the price at the end. Shown
+        // only at phone widths, where their own columns are hidden (field test
+        // C2). Hidden from screen readers: the columns carry the same values.
+        var rowMetaHtml = '<span class="brikpanel-pl-row-meta" aria-hidden="true">' +
+            typeLabel +
+            (p.status !== 'publish' ? '<span class="brikpanel-pl-row-meta-status ' + statusClass + '">' + escHtml(statusLabel) + '</span>' : '') +
+            '<span class="brikpanel-pl-row-meta-price">' + priceDisplay + '</span>' +
+            '</span>';
+
         // Carry the active filtered list URL into the editor so its "Back to
         // products" link returns to this exact view instead of the full list.
         var ret = currentReturnUrl();
@@ -1533,8 +1877,19 @@
             handleCell +
             '<td class="brikpanel-pl-cell-check"><input type="checkbox" class="brikpanel-pl-row-check brikpanel-pl-checkbox" value="' + p.id + '"' + checked + '></td>' +
             '<td class="brikpanel-pl-cell-image brikpanel-pl-col brikpanel-pl-col-image"><img src="' + escAttr(p.image) + '" alt="" class="brikpanel-pl-thumb" loading="lazy"></td>' +
-            '<td class="brikpanel-pl-cell-name brikpanel-pl-col brikpanel-pl-col-name"><span class="brikpanel-pl-name-id" title="' + escAttr(PL.i18n.product_id || '') + '">#' + p.id + '</span>' + featuredStarHtml + '<a href="' + escAttr(editHref) + '" class="brikpanel-pl-product-name-link"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text">' + escHtml(p.name) + '</span></a>' + typeLabel + aseActionsHtml + '</td>' +
-            '<td class="brikpanel-pl-cell-sku brikpanel-pl-col brikpanel-pl-col-sku"><span class="brikpanel-pl-editable brikpanel-pl-sku-cell" data-field="sku" data-value="' + escAttr(p.sku || '') + '">' + (p.sku ? escHtml(p.sku) : '<span class="brikpanel-pl-text-muted">—</span>') + '</span></td>' +
+            // One line, as on Orders: star, name, type badge. A name too long
+            // for the column ends in "…" (the full name is its tooltip) instead
+            // of pushing the badge and the row onto more lines. dir="auto": the
+            // "…" goes at the end of the name's own language, or an English
+            // name on a right-to-left screen lost its first words instead.
+            '<td class="brikpanel-pl-cell-name brikpanel-pl-col brikpanel-pl-col-name">' +
+                '<div class="brikpanel-pl-name-line">' + featuredStarHtml + '<a href="' + escAttr(editHref) + '" class="brikpanel-pl-product-name-link" title="' + escAttr(p.name) + '"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text" dir="auto">' + escHtml(p.name) + '</span></a>' + typeLabel + '</div>' +
+                rowMetaHtml +
+            '</td>' +
+            '<td class="brikpanel-pl-cell-id brikpanel-pl-col brikpanel-pl-col-id">' + escHtml(String(p.id)) + '</td>' +
+            // A long SKU may wrap in a table short of room (`is-snug`), at its
+            // own separators only, never inside a letter group.
+            '<td class="brikpanel-pl-cell-sku brikpanel-pl-col brikpanel-pl-col-sku"><span class="brikpanel-pl-editable brikpanel-pl-sku-cell" data-field="sku" data-value="' + escAttr(p.sku || '') + '">' + (p.sku ? escHtml(p.sku).replace(/([-_\/])/g, '$1<wbr>') : '<span class="brikpanel-pl-text-muted">—</span>') + '</span></td>' +
             varSkusCell +
             '<td class="brikpanel-pl-cell-guid brikpanel-pl-col brikpanel-pl-col-global_unique_id">' + gidInner + '</td>' +
             pcodeCell +
@@ -1550,22 +1905,24 @@
             '<td class="brikpanel-pl-cell-date brikpanel-pl-col brikpanel-pl-col-date">' + (p.date ? escHtml(p.date) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             aseCellsHtml +
             '<td class="brikpanel-pl-actions-cell">' +
-                (p.status !== 'trash' ?
-                '<div class="brikpanel-pl-actions">' +
+                rowActionsWrap(p.id, (p.status !== 'trash' ?
                     '<a href="' + escAttr(p.view_url) + '" target="_blank" class="brikpanel-pl-action-view" title="' + escAttr(PL.i18n.view || 'View') + '">' +
-                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+                    actionLabel(PL.i18n.view) +
                     '</a>' +
                     '<button type="button" class="brikpanel-pl-action-edit" title="' + escAttr(PL.i18n.quick_edit) + '">' +
-                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+                    actionLabel(PL.i18n.quick_edit) +
                     '</button>' +
                     '<button type="button" class="brikpanel-pl-action-duplicate" title="' + escAttr(PL.i18n.duplicate) + '">' +
-                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+                    actionLabel(PL.i18n.duplicate) +
                     '</button>' +
                     '<button type="button" class="brikpanel-pl-action-delete" title="' + escAttr(PL.i18n.trash) + '">' +
-                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
-                    '</button>' +
-                '</div>'
-                : '<div class="brikpanel-pl-actions">' + trashActions + '</div>') +
+                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+                    actionLabel(PL.i18n.trash) +
+                    '</button>'
+                    : trashActions), aseActionsHtml) +
             '</td>' +
             '</tr>';
     }
@@ -1629,7 +1986,7 @@
             '<div class="brikpanel-pl-stock-popover" role="dialog" aria-label="' + escAttr(PL.i18n.stock_label || 'Stock') + '">' +
                 '<div class="brikpanel-pl-stock-popover-field">' +
                     '<label>' + escHtml(PL.i18n.stock_label || 'Stock') + '</label>' +
-                    '<input type="number" min="0" class="brikpanel-pl-stock-popover-qty" value="' + escAttr(currentStock) + '" placeholder="—">' +
+                    '<input type="number" min="0" class="brikpanel-pl-stock-popover-qty" value="' + escAttr(currentStock) + '" placeholder="—">' + // i18n-ignore: empty-value marker, not text.
                 '</div>' +
                 '<div class="brikpanel-pl-stock-popover-field">' +
                     '<label>' + escHtml(PL.i18n.stock_status_label || 'Availability') + '</label>' +
@@ -1771,7 +2128,7 @@
                 '</div>' +
                 '<div class="brikpanel-pl-stock-popover-field">' +
                     '<label>' + escHtml(PL.i18n.sale_label || 'Sale') + '</label>' +
-                    '<input type="text" inputmode="decimal" class="brikpanel-pl-stock-popover-qty brikpanel-pl-price-popover-sale" value="' + escAttr(sale) + '" placeholder="—">' +
+                    '<input type="text" inputmode="decimal" class="brikpanel-pl-stock-popover-qty brikpanel-pl-price-popover-sale" value="' + escAttr(sale) + '" placeholder="—">' + // i18n-ignore: empty-value marker, not text.
                 '</div>' +
                 '<div class="brikpanel-pl-stock-popover-actions">' +
                     '<button type="button" class="brikpanel-pl-btn secondary small brikpanel-pl-price-popover-cancel">' + escHtml(PL.i18n.cancel || 'Cancel') + '</button>' +
@@ -1932,6 +2289,7 @@
     function refreshRow($row, product) {
         var newRow = $(renderProductRow(product));
         $row.replaceWith(newRow);
+        refitTable();
     }
 
     // Merges a quick-edit / inline-edit response into the cached row and
@@ -2007,16 +2365,16 @@
     function renderQeDownloads() {
         var $list = $('#bpl-qe-downloads-list').empty();
         if (!state.qeDownloads.length) {
-            $list.append('<p class="brikpanel-pl-text-muted">' + escHtml(PL.i18n.no_files || 'No files added yet.') + '</p>');
+            $list.append('<p class="brikpanel-pl-empty-note">' + escHtml(PL.i18n.no_files || 'No files added yet.') + '</p>');
             return;
         }
         state.qeDownloads.forEach(function (d, idx) {
             var $row = $('<div class="brikpanel-pl-download-item" data-idx="' + idx + '">');
             $row.append('<svg class="brikpanel-pl-download-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>');
             var $info = $('<div class="brikpanel-pl-download-info">');
-            $info.append('<input type="text" class="brikpanel-pl-download-name" value="' + escHtml(d.name) + '" placeholder="' + escHtml(PL.i18n.file_name || 'File name') + '">');
+            $info.append('<input type="text" class="brikpanel-pl-download-name" value="' + escAttr(d.name) + '" placeholder="' + escHtml(PL.i18n.file_name || 'File name') + '">');
             var $urlRow = $('<div class="brikpanel-pl-download-url-row">');
-            $urlRow.append('<input type="url" class="brikpanel-pl-download-url" value="' + escHtml(d.file) + '" placeholder="https://…" spellcheck="false">');
+            $urlRow.append('<input type="url" class="brikpanel-pl-download-url" value="' + escAttr(d.file) + '" placeholder="https://…" spellcheck="false">');
             $urlRow.append('<button type="button" class="brikpanel-pl-download-browse" title="' + escHtml(PL.i18n.choose_file || 'Choose file') + '">' +
                 '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
                 '</button>');
@@ -2368,12 +2726,12 @@
     function bulkAction(action, $btn) {
         if (!state.selected.length) return;
 
-        var confirmMsg = PL.i18n.confirm_bulk.replace('%d', state.selected.length);
+        var confirmMsg = countText(PL.i18n.confirm_bulk, state.selected.length);
         if (action === 'trash') {
-            confirmMsg = PL.i18n.confirm_bulk_trash.replace('%d', state.selected.length);
+            confirmMsg = countText(PL.i18n.confirm_bulk_trash, state.selected.length);
         }
         if (action === 'delete') {
-            confirmMsg = PL.i18n.confirm_bulk_delete_perm.replace('%d', state.selected.length);
+            confirmMsg = countText(PL.i18n.confirm_bulk_delete_perm, state.selected.length);
             if (!confirm(confirmMsg)) return;
             if (!confirm(PL.i18n.confirm_bulk_delete_perm_2)) return;
         } else {
@@ -2447,14 +2805,63 @@
         });
     }
 
+    // The selection bar floats at the bottom of the list while products are
+    // selected, as on the Orders list.
     function updateBulkBar() {
         var count = state.selected.length;
-        $('#bpl-selected-count').text(count);
-        if (count > 0) {
-            $('#bpl-bulk-bar').slideDown(200);
-        } else {
-            $('#bpl-bulk-bar').slideUp(200);
+        var bar = document.getElementById('bpl-bulk-bar');
+        if (!bar) {
+            return;
         }
+        $('#bpl-selected-count').text((PL.i18n.selected_count || '%d').replace('%d', count));
+        if (count > 0) {
+            bar.hidden = false;
+            syncBulkFold();
+        } else if (!bar.hidden) {
+            if (window.brikpanelOverflow) {
+                window.brikpanelOverflow.close(null);
+            }
+            bar.hidden = true;
+        }
+    }
+
+    // Its buttons fold into "Bulk actions" when they do not fit on one row
+    // beside the count, and on the tightest screens "Select all" (the same as
+    // the header checkbox) goes too. Measured rather than guessed from the
+    // screen width: the labels change with the language, and Categories and
+    // Tags only show where they can be used.
+    var BULK_LEVELS = [[], ['is-fold'], ['is-fold', 'is-tight']];
+
+    function syncBulkFold() {
+        var bar = document.getElementById('bpl-bulk-bar');
+        var inner = bar && bar.querySelector('.brikpanel-pl-bulk-inner');
+        if (!inner || bar.hidden) {
+            return;
+        }
+        var room = bar.clientWidth;
+        if (!room) {
+            return;
+        }
+        for (var i = 0; i < BULK_LEVELS.length; i++) {
+            bar.classList.remove('is-fold', 'is-tight');
+            for (var c = 0; c < BULK_LEVELS[i].length; c++) {
+                bar.classList.add(BULK_LEVELS[i][c]);
+            }
+            if (bulkBarNeed(inner) <= room) {
+                return;
+            }
+        }
+    }
+
+    // The bar's full width with its padding. Its scrollWidth leaves out the
+    // end padding, so buttons that only ran into the padding counted as a
+    // fit and the last one sat on the bar's edge.
+    function bulkBarNeed(inner) {
+        var saved = inner.style.maxWidth;
+        inner.style.maxWidth = 'none';
+        var need = inner.getBoundingClientRect().width;
+        inner.style.maxWidth = saved;
+        return need;
     }
 
     // =========================================================================
@@ -2618,7 +3025,7 @@
         $btn.toggleClass('is-on', !!on);
         $btn.attr('aria-pressed', on ? 'true' : 'false');
         var label = on
-            ? (PL.i18n.unmark_featured || 'Featured — click to remove')
+            ? (PL.i18n.unmark_featured || '')
             : (PL.i18n.mark_featured || 'Mark as featured');
         $btn.attr('title', label);
         $btn.find('svg').attr('fill', on ? 'currentColor' : 'none');
@@ -2684,7 +3091,7 @@
         $btn.toggleClass('is-on', !!on);
         $btn.attr('aria-pressed', on ? 'true' : 'false');
         var label = on
-            ? (PL.i18n.unmark_featured || 'Featured — click to remove')
+            ? (PL.i18n.unmark_featured || '')
             : (PL.i18n.mark_featured || 'Mark as featured');
         $btn.attr('title', label);
         $btn.find('svg').attr('fill', on ? 'currentColor' : 'none');
@@ -2699,7 +3106,7 @@
         var $pag = $('#bpl-pagination');
         if (state.pages <= 1) {
             $pag.html('<span class="brikpanel-pl-showing">' +
-                PL.i18n.showing.replace('%1$d', state.total).replace('%2$d', state.total) +
+                escHtml(pluralText(PL.i18n.showing, state.total, [fmtNum(state.total), fmtNum(state.total)])) +
                 '</span>');
             return;
         }
@@ -2707,7 +3114,7 @@
         var start = (state.page - 1) * state.per_page + 1;
         var end = Math.min(state.page * state.per_page, state.total);
         var html = '<span class="brikpanel-pl-showing">' +
-            PL.i18n.showing_range.replace('%1$d', start).replace('%2$d', end).replace('%3$d', state.total) +
+            escHtml(pluralText(PL.i18n.showing_range, state.total, [fmtNum(start), fmtNum(end), fmtNum(state.total)])) +
             '</span>';
 
         html += '<div class="brikpanel-pl-page-btns">';
@@ -2843,7 +3250,8 @@
     function showToast(message, type) {
         type = type || 'success';
         var $container = $('#bpl-toast-container');
-        var $toast = $('<div class="brikpanel-pl-toast ' + type + '">' +
+        // is-*, never a bare `error`: WordPress styles every div.error as an admin notice.
+        var $toast = $('<div class="brikpanel-pl-toast is-' + type + '">' +
             '<span class="brikpanel-pl-toast-text">' + escHtml(message) + '</span>' +
             '<button class="brikpanel-pl-toast-close">&times;</button>' +
             '</div>');
@@ -3018,7 +3426,7 @@
             if (field === 'stock') {
                 var stockVal = v.stock !== null ? v.stock : '';
                 html += '<div class="brikpanel-pl-var-popup-fields">';
-                html += '<input type="number" class="brikpanel-pl-var-popup-input" data-field="stock" value="' + escAttr(stockVal) + '" min="0" placeholder="—">';
+                html += '<input type="number" class="brikpanel-pl-var-popup-input" data-field="stock" value="' + escAttr(stockVal) + '" min="0" placeholder="—">'; // i18n-ignore: empty-value marker, not text.
                 html += '</div>';
             } else {
                 html += '<div class="brikpanel-pl-var-popup-fields">';
@@ -3077,7 +3485,7 @@
                     complete: function () {
                         pending--;
                         if (pending <= 0) {
-                            showToast(saved + ' ' + PL.i18n.saved, 'success');
+                            showToast(countText(PL.i18n.variations_saved, saved), 'success');
                             closeVariationPopup();
                             fetchProducts();
                         }
@@ -3122,7 +3530,7 @@
             dataFilter: lenientJsonFilter,
             success: function (res) {
                 if (!res.success || !res.data.variations.length) {
-                    $container.html('<p class="brikpanel-pl-text-muted" style="text-align:center;padding:1rem;">' + escHtml(PL.i18n.no_variations) + '</p>');
+                    $container.html('<p class="brikpanel-pl-empty-note" style="text-align:center;padding:1rem;">' + escHtml(PL.i18n.no_variations) + '</p>');
                     return;
                 }
                 renderDrawerVariations($container, res.data.variations, productId);
@@ -3257,7 +3665,7 @@
             if (mode === 'selected') {
                 var c = state.selected.length;
                 $('#bpl-del-sel-info').show().text(
-                    c > 0 ? PL.i18n.bulk_selected_count.replace('%d', c) : PL.i18n.bulk_no_selection
+                    c > 0 ? countText(PL.i18n.bulk_selected_count, c) : PL.i18n.bulk_no_selection
                 ).toggleClass('brikpanel-pl-modal-warn', c === 0);
             } else {
                 $('#bpl-del-sel-info').hide();
@@ -3308,7 +3716,7 @@
         // Update selected count info
         var count = state.selected.length;
         if (count > 0) {
-            $('#bpl-bulk-sel-info').text(PL.i18n.bulk_selected_count.replace('%d', count)).removeClass('brikpanel-pl-modal-warn');
+            $('#bpl-bulk-sel-info').text(countText(PL.i18n.bulk_selected_count, count)).removeClass('brikpanel-pl-modal-warn');
         } else {
             $('#bpl-bulk-sel-info').text(PL.i18n.bulk_no_selection).addClass('brikpanel-pl-modal-warn');
         }
@@ -3444,7 +3852,7 @@
         else if (mode === 'down') { rounded = Math.floor(sample / factor) * factor; }
         else                      { rounded = Math.round(sample / factor) * factor; }
         var fmt = function (n) {
-            try { return n.toLocaleString(); } catch (e) { return String(n); }
+            return fmtNum(n, 2);
         };
         $out.text(fmt(sample) + ' → ' + fmt(rounded));
     }
@@ -3618,12 +4026,12 @@
             if (!confirm(confirmMsg)) return;
 
             if (permanent) {
-                var confirmMsg2 = PL.i18n.delete_confirm_2 || 'PERMANENT DELETE — cannot be undone.';
+                var confirmMsg2 = PL.i18n.delete_confirm_2 || '';
                 if (!confirm(confirmMsg2)) return;
             }
 
             if (fast) {
-                var fastMsg = PL.i18n.fast_delete_confirm || 'FAST DELETE — irreversible. Continue?';
+                var fastMsg = PL.i18n.fast_delete_confirm || '';
                 if (!confirm(fastMsg)) return;
             }
         } else if (hasTaxPurge) {
@@ -3657,8 +4065,8 @@
     function openProgressModal(jobType, totalKnown) {
         var title = jobType === 'delete' ? PL.i18n.bulk_title_delete : PL.i18n.bulk_title_update;
         $('#bpl-progress-title').text(title || PL.i18n.applying);
-        $('#bpl-progress-stats-text').text(totalKnown ? ('0 / ' + totalKnown) : PL.i18n.bulk_preparing);
-        $('#bpl-progress-percent').text('0%');
+        $('#bpl-progress-stats-text').text(totalKnown ? ('0 / ' + fmtNum(totalKnown)) : PL.i18n.bulk_preparing);
+        $('#bpl-progress-percent').text(fmtPct(0));
         $('#bpl-progress-fill').css('width', '0%');
         $('#bpl-progress-errors').hide().text('');
         $('#bpl-progress-cancel').show().prop('disabled', false);
@@ -3670,9 +4078,9 @@
         var pct = total > 0 ? Math.floor((processed / total) * 100) : 0;
         $('#bpl-progress-fill').css('width', pct + '%');
         $('#bpl-progress-stats-text').text(
-            (PL.i18n.bulk_progress || '%1$d / %2$d').replace('%1$d', processed).replace('%2$d', total)
+            BF ? BF.format(PL.i18n.bulk_progress, [fmtNum(processed), fmtNum(total)]) : ''
         );
-        $('#bpl-progress-percent').text(pct + '%');
+        $('#bpl-progress-percent').text(fmtPct(pct));
     }
 
     function finishProgressModal(jobType, processed, errorCount, cancelled) {
@@ -3680,15 +4088,15 @@
         $('#bpl-progress-done').show().prop('disabled', false);
 
         if (cancelled) {
-            $('#bpl-progress-title').text(PL.i18n.bulk_cancelled || 'Cancelled');
+            $('#bpl-progress-title').text(PL.i18n.bulk_cancelled || '');
         } else {
             var template = jobType === 'delete' ? PL.i18n.bulk_complete_delete : PL.i18n.bulk_complete_update;
-            $('#bpl-progress-title').text((template || '%d items').replace('%d', processed));
+            $('#bpl-progress-title').text(countText(template, processed));
         }
 
         if (errorCount > 0) {
             $('#bpl-progress-errors')
-                .text((PL.i18n.bulk_errors_count || '%d errors').replace('%d', errorCount))
+                .text(countText(PL.i18n.bulk_errors_count, errorCount))
                 .show();
         }
     }
@@ -3831,7 +4239,59 @@
         initBulkModal();
         readTaxFiltersFromDom();
         readStateFromUrl();
+        // A search or a filter carried in by the URL (a reload, the editor's
+        // back link, a Brand link) shows at once, without the opening motion.
+        // The server prints that state already; this covers a cached page.
+        if (state.search || activeFilterCount()) {
+            setFindOpen(true, { instant: true });
+        }
+        // The selection bar measures again when its room changes (the window,
+        // the admin menu folding) and once the fonts are in.
+        var bulkBar = document.getElementById('bpl-bulk-bar');
+        if (bulkBar && typeof window.ResizeObserver === 'function') {
+            var bulkWidth = 0;
+            new window.ResizeObserver(function () {
+                var w = bulkBar.clientWidth;
+                if (w && w !== bulkWidth) {
+                    bulkWidth = w;
+                    syncBulkFold();
+                }
+            }).observe(bulkBar);
+        } else {
+            $(window).on('resize', syncBulkFold);
+        }
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(syncBulkFold);
+        }
+        initFitTable();
         fetchProducts();
+    }
+
+    // What gives way when the columns do not fit the card, in this order
+    // (each step measured on a copy by the helper, not guessed from the
+    // screen width): the cells get narrower padding and long SKUs, prices and
+    // category names may wrap (`is-snug`, then at a lower cap `is-snugger`),
+    // then the row buttons fold into the "More actions" menu (`is-fold`),
+    // and only then do the rows stack into cards, which keep them all. With
+    // the default columns on a 1280px screen the rows stacked at once and hid
+    // Stock and Category.
+    function initFitTable() {
+        var table = document.getElementById('bpl-table');
+        if (!table || !window.brikpanelFitTable) {
+            return;
+        }
+        fitTable = window.brikpanelFitTable(table, {
+            wrap: document.querySelector('.brikpanel-pl-table-wrap'),
+            // Not even 1px over: the card's scroll box would show a bar for it.
+            slack: 0,
+            hysteresis: 16,
+            levels: ['', 'is-snug', 'is-snug is-snugger', 'is-snug is-snugger is-fold'],
+            onChange: function () {
+                if (window.brikpanelOverflow) {
+                    window.brikpanelOverflow.close(null);
+                }
+            }
+        });
     }
 
     $(document).ready(init);

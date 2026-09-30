@@ -7,6 +7,7 @@
  *   - $progress  : array  current scan progress
  *   - $is_active : bool   whether a scan is in flight
  *   - $registry  : Brikpanel_BrikControl_Check[]
+ *   - $progress_texts : array { label, pct } progress line in the viewer's language
  *
  * @package BrikPanel
  */
@@ -22,7 +23,7 @@ $last_label = $last > 0
     ? sprintf(
         /* translators: %s: human-readable date/time */
         esc_html__( 'Last scan: %s', 'brikpanel' ),
-        esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last ) )
+        esc_html( wp_date( brikpanel_datetime_format(), $last ) )
     )
     : esc_html__( 'No scan completed yet.', 'brikpanel' );
 
@@ -36,7 +37,7 @@ uasort( $ordered, static function ( $a, $b ) use ( $status_weight ) {
     return $sa <=> $sb;
 } );
 ?>
-<div class="brikpanel-bc-wrap">
+<div class="brikpanel-bc-wrap brikpanel-shell__page">
     <div class="brikpanel-bc-header">
         <div class="brikpanel-bc-header-left">
             <h1 class="brikpanel-bc-title"><?php esc_html_e( 'Store Health', 'brikpanel' ); ?></h1>
@@ -49,23 +50,24 @@ uasort( $ordered, static function ( $a, $b ) use ( $status_weight ) {
             </button>
         </div>
     </div>
+    <?php brikpanel_header_end(); ?>
 
-    <div class="brikpanel-bc-summary-card" data-bc-summary>
-        <div class="brikpanel-bc-summary-chip brikpanel-bc-chip-critical">
-            <span class="brikpanel-bc-chip-num" data-bc-count="critical"><?php echo esc_html( number_format_i18n( $summary['critical'] ) ); ?></span>
+    <div class="brikpanel-bc-summary-card" data-bc-summary data-bp-tiles>
+        <div class="brikpanel-bc-summary-chip brikpanel-bc-chip-critical<?php echo 0 === (int) $summary['critical'] ? ' is-zero' : ''; ?>">
+            <span class="brikpanel-bc-chip-num" data-bc-count="critical"><?php echo esc_html( brikpanel_number( $summary['critical'] ) ); ?></span>
             <span class="brikpanel-bc-chip-label"><?php esc_html_e( 'Critical', 'brikpanel' ); ?></span>
         </div>
-        <div class="brikpanel-bc-summary-chip brikpanel-bc-chip-warning">
-            <span class="brikpanel-bc-chip-num" data-bc-count="warning"><?php echo esc_html( number_format_i18n( $summary['warning'] ) ); ?></span>
+        <div class="brikpanel-bc-summary-chip brikpanel-bc-chip-warning<?php echo 0 === (int) $summary['warning'] ? ' is-zero' : ''; ?>">
+            <span class="brikpanel-bc-chip-num" data-bc-count="warning"><?php echo esc_html( brikpanel_number( $summary['warning'] ) ); ?></span>
             <span class="brikpanel-bc-chip-label"><?php esc_html_e( 'Warnings', 'brikpanel' ); ?></span>
         </div>
-        <div class="brikpanel-bc-summary-chip brikpanel-bc-chip-ok">
-            <span class="brikpanel-bc-chip-num" data-bc-count="ok"><?php echo esc_html( number_format_i18n( $summary['ok'] ) ); ?></span>
+        <div class="brikpanel-bc-summary-chip brikpanel-bc-chip-ok<?php echo 0 === (int) $summary['ok'] ? ' is-zero' : ''; ?>">
+            <span class="brikpanel-bc-chip-num" data-bc-count="ok"><?php echo esc_html( brikpanel_number( $summary['ok'] ) ); ?></span>
             <span class="brikpanel-bc-chip-label"><?php esc_html_e( 'OK', 'brikpanel' ); ?></span>
         </div>
         <?php if ( $summary['unknown'] > 0 ) : ?>
             <div class="brikpanel-bc-summary-chip brikpanel-bc-chip-unknown">
-                <span class="brikpanel-bc-chip-num" data-bc-count="unknown"><?php echo esc_html( number_format_i18n( $summary['unknown'] ) ); ?></span>
+                <span class="brikpanel-bc-chip-num" data-bc-count="unknown"><?php echo esc_html( brikpanel_number( $summary['unknown'] ) ); ?></span>
                 <span class="brikpanel-bc-chip-label"><?php esc_html_e( 'Pending', 'brikpanel' ); ?></span>
             </div>
         <?php endif; ?>
@@ -73,14 +75,8 @@ uasort( $ordered, static function ( $a, $b ) use ( $status_weight ) {
 
     <div class="brikpanel-bc-progress" data-bc-progress<?php echo $is_active ? '' : ' hidden'; ?>>
         <div class="brikpanel-bc-progress-text">
-            <span data-bc-progress-label><?php esc_html_e( 'Scanning your store…', 'brikpanel' ); ?></span>
-            <span data-bc-progress-pct>
-                <?php
-                if ( $progress['total'] > 0 ) {
-                    echo esc_html( number_format_i18n( min( 100, ( $progress['cursor'] / max( 1, $progress['total'] ) ) * 100 ), 0 ) ) . '%';
-                }
-                ?>
-            </span>
+            <span data-bc-progress-label><?php echo esc_html( $progress_texts['label'] ); ?></span>
+            <span data-bc-progress-pct><?php echo esc_html( $progress_texts['pct'] ); ?></span>
         </div>
         <div class="brikpanel-bc-progress-track">
             <div class="brikpanel-bc-progress-bar" data-bc-progress-bar style="width: <?php echo esc_attr( $progress['total'] > 0 ? min( 100, ( $progress['cursor'] / max( 1, $progress['total'] ) ) * 100 ) : 0 ); ?>%;"></div>

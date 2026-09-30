@@ -141,9 +141,44 @@ class Brikpanel_Pro_Search {
 		if ( ! isset( $_POST['security'] ) || ! wp_verify_nonce( sanitize_key( $_POST['security'] ), 'brikpanel_search_action' ) ) {
 			wp_send_json_error( array( 'message' => 'Invalid nonce.' ) );
 		}
-		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		if ( ! self::user_can_search() ) {
 			wp_send_json_error( array( 'message' => 'Unauthorized.' ) );
 		}
+	}
+
+	/**
+	 * Whether the current user may use the palette at all.
+	 *
+	 * The one answer for every surface that ships or opens it: the admin-bar
+	 * trigger (which also carries the overlay), the CSS/JS in
+	 * brikpanel_enqueue_global_assets(), the top bar's search button, the
+	 * per-user navigation index and every AJAX call. The palette searches
+	 * orders, so `manage_woocommerce` is the baseline. On a multisite network
+	 * that denies BrikPanel to this user, includes/brikpanel-network-access.php
+	 * refuses every brikpanel_* AJAX action, so the palette would open and then
+	 * answer nothing: it must not be offered in the first place.
+	 *
+	 * @return bool
+	 */
+	public static function user_can_search() {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return false;
+		}
+		return ! function_exists( 'brikpanel_user_can_access' ) || brikpanel_user_can_access();
+	}
+
+	/**
+	 * The capability an order result links through: the order type's own edit
+	 * capability, which WooCommerce checks before it opens an order screen
+	 * (the legacy edit.php list and the HPOS wc-orders page alike).
+	 * `manage_woocommerce` alone does not grant it, so a role built with only
+	 * that capability was offered order results it could not open.
+	 *
+	 * @return string
+	 */
+	private static function orders_capability() {
+		$type = get_post_type_object( 'shop_order' );
+		return ( $type && ! empty( $type->cap->edit_posts ) ) ? (string) $type->cap->edit_posts : 'edit_shop_orders';
 	}
 
 	// =========================================================================
@@ -171,7 +206,7 @@ class Brikpanel_Pro_Search {
 			array(
 				'id'         => 'orders',
 				'label'      => __( 'Orders', 'brikpanel' ),
-				'capability' => 'manage_woocommerce',
+				'capability' => self::orders_capability(),
 				'callback'   => array( $this, 'source_orders' ),
 			),
 			array(
@@ -213,7 +248,12 @@ class Brikpanel_Pro_Search {
 	 * treated as enabled.
 	 */
 	private function is_source_enabled( $source_id ) {
-		return 'no' !== get_option( 'brikpanel_search_' . sanitize_key( $source_id ), 'yes' );
+		if ( 'no' === get_option( 'brikpanel_search_' . sanitize_key( $source_id ), 'yes' ) ) {
+			return false;
+		}
+		// With "Block pages hidden from the menu" on, a source whose results
+		// open a screen closed to this user would only list dead ends.
+		return ! ( function_exists( 'brikpanel_nav_search_source_blocked' ) && brikpanel_nav_search_source_blocked( (string) $source_id ) );
 	}
 
 	// =========================================================================
@@ -231,7 +271,7 @@ class Brikpanel_Pro_Search {
 	 * non-admin bug report alongside the duplicated menu.
 	 */
 	public function add_search_to_admin_bar( WP_Admin_Bar $admin_bar ) {
-		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		if ( ! self::user_can_search() ) {
 			return;
 		}
 		$admin_bar->add_menu(
@@ -313,7 +353,7 @@ class Brikpanel_Pro_Search {
 	private function generate_initial_html() {
 		$hint = '<p class="hint-text">' . esc_html( $this->get_hint_text() ) . '</p>';
 
-		$orders_enabled = $this->is_source_enabled( 'orders' ) && current_user_can( 'manage_woocommerce' );
+		$orders_enabled = $this->is_source_enabled( 'orders' ) && current_user_can( self::orders_capability() );
 		if ( ! $orders_enabled ) {
 			return $hint;
 		}
@@ -1354,7 +1394,7 @@ class Brikpanel_Pro_Search {
 		// catalogue and every order holding it.
 		$sku_escaped = $wpdb->esc_like( $sku );
 		$sku_match   = brikpanel_strlen( $sku ) >= self::SKU_PARTIAL_MIN_LENGTH
-			? '%' . $sku_escaped . '%'
+			? '%' . $sku_escaped . '%' // i18n-ignore: SQL LIKE wildcards, not a percent sign on screen.
 			: $sku_escaped;
 
 		$is_hpos = $this->orders_use_hpos();
@@ -1494,6 +1534,16 @@ class Brikpanel_Pro_Search {
 				$order = $order_data;
 			}
 
+			// On legacy (post) order storage WordPress checks each order on its
+			// own: without `edit_others_shop_orders` a user may only open the
+			// orders they authored, which on a store is almost none. Skip the rows
+			// the order screen would refuse, the way the product and customer
+			// sources skip rows with no edit link. With HPOS, WooCommerce opens any
+			// order for a `manage_woocommerce` user, which the palette requires.
+			if ( ! brikpanel_wc_hpos_enabled() && ! current_user_can( 'edit_post', $order->get_id() ) ) {
+				continue;
+			}
+
 			$edit_url = esc_url( $order->get_edit_order_url() );
 
 			$number = esc_html( $order->get_order_number() );
@@ -1505,17 +1555,18 @@ class Brikpanel_Pro_Search {
 
 			$divider = '' === $name ? '' : '<span class="text-sm"> • </span>';
 
-			$date_format = esc_html( get_option( 'date_format', 'F j' ) );
-			$time_format = esc_html( get_option( 'time_format', 'g:i a' ) );
-			$format      = "$date_format \a\\t $time_format";
-
+			// The store's date and time format. The format used to carry an
+			// escaped English "at" ("\a\t") that every language printed as is
+			// (field test E2).
 			$date_created           = $order->get_date_created();
 			$date_created_attr      = $date_created ? esc_attr( $date_created->date( 'c' ) ) : '';
-			$date_created_formatted = $date_created ? esc_html( $date_created->date_i18n( $format ) ) : '';
+			$date_created_formatted = $date_created ? esc_html( wp_date( brikpanel_datetime_format(), $date_created->getTimestamp() ) ) : '';
 
 			$product_html = '';
 			if ( isset( $matching_product ) ) {
-				$product_title = esc_html( $matching_product->get_formatted_name() );
+				// get_formatted_name() carries a <span class="description"> for
+				// variations; esc_html() alone would print it as text.
+				$product_title = esc_html( brikpanel_plain_label( $matching_product->get_formatted_name() ) );
 				$product_html  = '<div class="text-sm matching-order-product">' . $product_title . '</div>';
 			}
 
@@ -1689,7 +1740,10 @@ class Brikpanel_Pro_Search {
 				continue;
 			}
 
-			$title = $product->get_formatted_name(); // Includes ID, SKU, and variation attributes.
+			// Name and, for a variation, its options; plain text because it is
+			// printed through esc_html(). No "(SKU)": the line under it already
+			// says "SKU: …" (field test E3).
+			$title = brikpanel_product_label( $product );
 			$sku   = $product->get_sku();
 
 			$parts = array();
@@ -1697,7 +1751,7 @@ class Brikpanel_Pro_Search {
 				/* translators: %s: product SKU. */
 				$parts[] = sprintf( __( 'SKU: %s', 'brikpanel' ), $sku );
 			}
-			$gtin = trim( (string) $product->get_global_unique_id() );
+			$gtin = trim( brikpanel_wc_gtin( $product ) );
 			if ( '' !== $gtin ) {
 				/* translators: %s: product GTIN/UPC/EAN/ISBN code. */
 				$parts[] = sprintf( __( 'GTIN: %s', 'brikpanel' ), $gtin );
@@ -1816,12 +1870,18 @@ class Brikpanel_Pro_Search {
 	// =========================================================================
 
 	/**
-	 * Capture the fully-resolved admin menu into a per-user transient. WP has
-	 * already filtered $menu / $submenu by the current user's capabilities by
-	 * the time this runs (PHP_INT_MAX on admin_menu), and every plugin that
-	 * registers admin pages is included automatically — which is exactly the
+	 * Capture the resolved admin menu into a per-user index. Every plugin that
+	 * registers admin pages is included automatically, which is exactly the
 	 * "search the whole site, including third-party plugins" behaviour
 	 * customers expect from a command palette.
+	 *
+	 * This runs at PHP_INT_MAX on admin_menu, which is NOT after WordPress's
+	 * capability clean-up. Core filters submenus before admin_menu (and
+	 * add_submenu_page() refuses the rest), but it only removes the top-level
+	 * rows the user may not open once admin_menu has returned
+	 * (wp-admin/includes/menu.php). build_navigation_index() therefore applies
+	 * that same test itself. Trusting the globals here offered a default shop
+	 * manager "Plugins" and "Settings", which both answered 403.
 	 *
 	 * admin-ajax.php never builds the admin menu, so we read this snapshot
 	 * back during the search request instead of rebuilding it.
@@ -1841,7 +1901,7 @@ class Brikpanel_Pro_Search {
 		if ( 'no' === get_option( 'brikpanel_search_navigation', 'yes' ) ) {
 			return;
 		}
-		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		if ( ! self::user_can_search() ) {
 			return;
 		}
 
@@ -2051,6 +2111,9 @@ class Brikpanel_Pro_Search {
 	 * entries. Reads only the globals WordPress has already populated, so it
 	 * issues no queries and is safe to run on every admin page load.
 	 *
+	 * Only rows the user may open are indexed (see row_is_openable()), because
+	 * a search result that answers 403 is worse than no result.
+	 *
 	 * @param array $menu
 	 * @param array $submenu
 	 * @return array
@@ -2058,8 +2121,8 @@ class Brikpanel_Pro_Search {
 	private function build_navigation_index( $menu, $submenu ) {
 		$index = array();
 
-		foreach ( $menu as $top ) {
-			if ( empty( $top[0] ) || empty( $top[2] ) ) {
+		foreach ( (array) $menu as $top ) {
+			if ( ! is_array( $top ) || empty( $top[0] ) || empty( $top[2] ) ) {
 				continue;
 			}
 			// Skip separators.
@@ -2074,28 +2137,45 @@ class Brikpanel_Pro_Search {
 
 			// Top-level entry itself (only when it has no children, to avoid
 			// duplicating the first submenu item which points to the same page).
-			if ( ! $has_sub && $parent_label ) {
+			// A childless row is only reachable through its own capability: this
+			// is the test WordPress applies right after admin_menu, too late for
+			// this snapshot.
+			if ( ! $has_sub ) {
+				if ( '' === $parent_label || ! self::row_is_openable( $top ) ) {
+					continue;
+				}
+				$url = self::normalize_menu_url( $this->resolve_menu_url( $parent_slug, '' ) );
+				if ( self::url_hidden_in_sidebar( $url ) ) {
+					continue;
+				}
 				$index[] = array(
 					'label'  => $parent_label,
 					'parent' => '',
-					'url'    => self::normalize_menu_url( $this->resolve_menu_url( $parent_slug, '' ) ),
+					'url'    => $url,
 				);
 				continue;
 			}
 
 			if ( $has_sub ) {
 				foreach ( $submenu[ $parent_slug ] as $sub ) {
-					if ( empty( $sub[0] ) || empty( $sub[2] ) ) {
+					// Rows written straight into $submenu never went through
+					// add_submenu_page()'s capability check, so every child is
+					// tested too, as core's own menu output does.
+					if ( ! is_array( $sub ) || empty( $sub[0] ) || empty( $sub[2] ) || ! self::row_is_openable( $sub ) ) {
 						continue;
 					}
 					$label = $this->clean_menu_title( $sub[0] );
 					if ( '' === $label ) {
 						continue;
 					}
+					$url = self::normalize_menu_url( $this->resolve_menu_url( $sub[2], $parent_slug ) );
+					if ( self::url_hidden_in_sidebar( $url ) ) {
+						continue;
+					}
 					$index[] = array(
 						'label'  => $label,
 						'parent' => $parent_label,
-						'url'    => self::normalize_menu_url( $this->resolve_menu_url( $sub[2], $parent_slug ) ),
+						'url'    => $url,
 					);
 				}
 			}
@@ -2103,6 +2183,34 @@ class Brikpanel_Pro_Search {
 
 		// Hard cap keeps the stored payload small even on plugin-heavy sites.
 		return array_slice( $index, 0, 400 );
+	}
+
+	/**
+	 * Whether the current user passes a menu row's capability: a string, or an
+	 * int user level as core still accepts from very old plugins. A missing
+	 * capability never passes, which is how WordPress itself treats it.
+	 *
+	 * @param array $row A $menu or $submenu row.
+	 * @return bool
+	 */
+	private static function row_is_openable( $row ) {
+		return isset( $row[1] )
+			&& ( is_string( $row[1] ) || is_int( $row[1] ) )
+			&& current_user_can( $row[1] );
+	}
+
+	/**
+	 * Whether the user's BrikPanel sidebar hides the page a menu link opens
+	 * (a Navigation rule, or "Hide new menu items by default"). The palette
+	 * lists what the sidebar lists: until 3.3.25 it offered pages the sidebar
+	 * hid, which is how a shop manager with Settings hidden found it anyway.
+	 *
+	 * @param string $url Absolute admin URL from resolve_menu_url().
+	 * @return bool
+	 */
+	private static function url_hidden_in_sidebar( $url ) {
+		return function_exists( 'brikpanel_nav_url_hidden_for_current_user' )
+			&& brikpanel_nav_url_hidden_for_current_user( $url );
 	}
 
 	/**
@@ -2290,11 +2398,11 @@ class Brikpanel_Pro_Search {
 		foreach ( $sections as $key => $label ) {
 			$out[ $key ] = $label;
 			if ( 'orders' === $key ) {
-				$out['search'] = __( 'Search', 'brikpanel' );
+				$out['search'] = _x( 'Search', 'settings section name', 'brikpanel' );
 			}
 		}
 		if ( ! isset( $out['search'] ) ) {
-			$out['search'] = __( 'Search', 'brikpanel' );
+			$out['search'] = _x( 'Search', 'settings section name', 'brikpanel' );
 		}
 		return $out;
 	}

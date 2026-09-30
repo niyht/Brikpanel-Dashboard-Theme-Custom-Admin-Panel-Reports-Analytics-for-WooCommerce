@@ -3,13 +3,9 @@
  * Follows the BrikPanel design system (monochrome, soft cards, system font).
  */
 
+/* The card itself is the shared settings card (.bp-settings-card--custom in
+   the settings tab styles); only its inside is styled here (field test D15). */
 .bp-cse-card {
-	background: #ffffff;
-	border: 1px solid #e3e3e3;
-	border-radius: 0.75rem;
-	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.08 );
-	padding: 1.25rem 1.5rem;
-	margin: 1rem 0 0;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	color: #303030;
 }
@@ -58,7 +54,7 @@
 	flex: 0 0 auto;
 	font-size: 0.75rem;
 	font-weight: 550;
-	color: #8a8a8a;
+	color: #616161;
 }
 
 .bp-cse-item.is-on .bp-cse-state {
@@ -194,6 +190,14 @@
 
 .bp-cse-input::placeholder {
 	color: #8a8a8a;
+}
+
+/* A short note under a field. */
+.bp-cse-hint {
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: #616161;
 }
 
 /* Recipients row */

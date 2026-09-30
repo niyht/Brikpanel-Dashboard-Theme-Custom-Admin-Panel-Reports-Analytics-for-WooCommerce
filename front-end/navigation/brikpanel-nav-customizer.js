@@ -44,10 +44,13 @@
 	/**
 	 * Read the audience rule from a row owner. For a top-level item the owner is
 	 * the <li.brikpanel-navc-item>; for a submenu row it is the
-	 * <li.brikpanel-navc-submenu-item>. The audience <select> lives in the row
-	 * and the role checklist is a sibling `.brikpanel-navc-roles` block. Returns
-	 * an object to merge into the serialized entry:
-	 *   {} (everyone) | { audience:'admins' } | { audience:'roles', hide_roles:[…] }
+	 * <li.brikpanel-navc-submenu-item>. The audience <select> lives in the row;
+	 * the role checklist (`.brikpanel-navc-roles`) and the permission picker
+	 * (`.brikpanel-navc-caps`) are sibling blocks. Returns an object to merge
+	 * into the serialized entry:
+	 *   {} (everyone) | { audience:'admins' }
+	 *   | { audience:'roles', hide_roles:[…] } | { audience:'only_roles', show_roles:[…] }
+	 *   | { audience:'caps', show_caps:[…] }
 	 */
 	function readAudience(owner, isSub) {
 		if (!owner) return {};
@@ -59,13 +62,27 @@
 		if (audience === 'admins') return { audience: 'admins' };
 		if (audience === 'roles') {
 			const panel = owner.querySelector(':scope > .brikpanel-navc-roles'); // i18n-ignore: CSS selector
-			const hideRoles = [];
+			const checked = [];
 			if (panel) {
 				panel.querySelectorAll('[data-navc-role]').forEach(function (cb) {
-					if (cb.checked) hideRoles.push(cb.value);
+					if (cb.checked) checked.push(cb.value);
 				});
 			}
-			if (hideRoles.length) return { audience: 'roles', hide_roles: hideRoles };
+			if (!checked.length) return {};
+			if (panel.getAttribute('data-navc-role-mode') === 'show') {
+				return { audience: 'only_roles', show_roles: checked };
+			}
+			return { audience: 'roles', hide_roles: checked };
+		}
+		if (audience === 'caps') {
+			const capsSel = owner.querySelector(':scope > .brikpanel-navc-caps [data-navc-caps-select]'); // i18n-ignore: CSS selector
+			const caps = [];
+			if (capsSel) {
+				Array.prototype.forEach.call(capsSel.options, function (opt) {
+					if (opt.selected && opt.value) caps.push(opt.value);
+				});
+			}
+			if (caps.length) return { audience: 'caps', show_caps: caps };
 			return {};
 		}
 		return {};
@@ -78,11 +95,15 @@
 				'<option value="all">' + escapeAttr(i18n.audienceAll || 'Everyone') + '</option>' +
 				'<option value="admins">' + escapeAttr(i18n.audienceAdmins || 'Admins only') + '</option>' +
 				'<option value="roles">' + escapeAttr(i18n.audienceRoles || 'Specific roles') + '</option>' +
+				'<option value="caps">' + escapeAttr(i18n.audienceCaps) + '</option>' +
 			'</select>'
 		);
 	}
 
-	/** Role checklist block markup for client-created rows (hidden by default). */
+	/**
+	 * Role checklist block markup for client-created rows (hidden by default,
+	 * switch on "Hide from these roles"). Mirrors the PHP-rendered block.
+	 */
 	function audienceRolesHTML() {
 		let rolesHtml = '';
 		Object.keys(roles).forEach(function (slug) {
@@ -93,11 +114,40 @@
 				'</label>';
 		});
 		return (
-			'<div class="brikpanel-navc-roles" data-navc-roles hidden>' +
-				'<span class="brikpanel-navc-roles-title">' + escapeAttr(i18n.hideFromRoles || 'Hide from these roles') + '</span>' +
+			'<div class="brikpanel-navc-roles" data-navc-roles data-navc-role-mode="hide" hidden>' +
+				'<div class="brikpanel-navc-rolemode" role="group" aria-label="' + escapeAttr(i18n.rolesRule) + '">' +
+					'<button type="button" class="brikpanel-navc-rolemode-btn" data-navc-action="role-mode" data-mode="hide" aria-pressed="true">' + escapeAttr(i18n.hideFromRoles || 'Hide from these roles') + '</button>' +
+					'<button type="button" class="brikpanel-navc-rolemode-btn" data-navc-action="role-mode" data-mode="show" aria-pressed="false">' + escapeAttr(i18n.showOnlyRoles) + '</button>' +
+				'</div>' +
+				'<p class="brikpanel-navc-rolemode-hint" data-navc-role-hint hidden>' + escapeAttr(i18n.showOnlyHint) + '</p>' +
 				'<div class="brikpanel-navc-roles-grid">' + rolesHtml + '</div>' +
 			'</div>'
 		);
+	}
+
+	/** Permission picker block markup for client-created rows (hidden by default). */
+	function audienceCapsHTML() {
+		return (
+			'<div class="brikpanel-navc-caps bp-select2-skin" data-navc-caps hidden>' +
+				'<span class="brikpanel-navc-rule-title">' + escapeAttr(i18n.capsTitle) + '</span>' +
+				'<select multiple class="brikpanel-navc-caps-select" data-navc-caps-select data-placeholder="' + escapeAttr(i18n.capsPlaceholder) + '" aria-label="' + escapeAttr(i18n.capsTitle) + '"></select>' +
+			'</div>'
+		);
+	}
+
+	/**
+	 * Point a role strip's switch at 'hide' or 'show'. The strip attribute, both
+	 * buttons' aria-pressed and the show-only hint always change together.
+	 */
+	function setRoleMode(panel, mode) {
+		if (!panel) return;
+		mode = mode === 'show' ? 'show' : 'hide';
+		panel.setAttribute('data-navc-role-mode', mode);
+		panel.querySelectorAll('[data-navc-action="role-mode"]').forEach(function (btn) { // i18n-ignore: CSS selector
+			btn.setAttribute('aria-pressed', btn.getAttribute('data-mode') === mode ? 'true' : 'false');
+		});
+		const hint = panel.querySelector('[data-navc-role-hint]');
+		if (hint) hint.hidden = mode !== 'show';
 	}
 
 	function ready(fn) {
@@ -124,6 +174,91 @@
 		const dialogSaveBtn = root.querySelector('[data-navc-action="dialog-save"]');
 		// dialogContext.mode: 'add' | 'edit' | 'change-icon'
 		let dialogContext = null;
+
+		// ---------------------------------------------------------------------
+		// "Users with a permission" pickers.
+		// ---------------------------------------------------------------------
+		// Every capability the site's roles grant, printed once on the root. A
+		// picker holds only its saved permissions until it is first opened, so
+		// the ~180 rows never carry ~400 options each.
+		let capabilities = [];
+		try {
+			capabilities = JSON.parse(root.getAttribute('data-capabilities') || '[]');
+		} catch (err) {
+			capabilities = [];
+		}
+		if (!Array.isArray(capabilities)) capabilities = [];
+		const $ = window.jQuery;
+		const hasSelectWoo = !!($ && $.fn && $.fn.selectWoo);
+
+		// Add the full list once, in the root list's (sorted) order. Options
+		// already there keep their selected state; a saved permission the site no
+		// longer has stays at the end, still selected.
+		function fillCapsOptions(sel) {
+			if (sel.getAttribute('data-navc-filled') === '1') return;
+			sel.setAttribute('data-navc-filled', '1');
+			const byValue = {};
+			Array.prototype.forEach.call(sel.options, function (opt) {
+				byValue[opt.value] = opt;
+			});
+			const frag = document.createDocumentFragment();
+			capabilities.forEach(function (cap) {
+				if (typeof cap !== 'string' || cap === '') return;
+				if (byValue[cap]) {
+					frag.appendChild(byValue[cap]);
+					delete byValue[cap];
+				} else {
+					frag.appendChild(new Option(cap, cap, false, false));
+				}
+			});
+			Object.keys(byValue).forEach(function (value) {
+				frag.appendChild(byValue[value]);
+			});
+			sel.appendChild(frag);
+		}
+
+		// Start a picker once, and only while it is on screen: selectWoo measures
+		// its search field when it starts, and inside a closed submenu panel that
+		// measurement is 0.
+		function initCapsSelect(sel) {
+			if (!sel || sel.getAttribute('data-navc-init') === '1') return;
+			sel.setAttribute('data-navc-init', '1');
+			if (!hasSelectWoo) {
+				fillCapsOptions(sel);
+				sel.setAttribute('size', '6');
+				return;
+			}
+			const $sel = $(sel);
+			$sel.selectWoo({
+				width: '100%',
+				closeOnSelect: false,
+				maximumSelectionLength: 20,
+				placeholder: i18n.capsPlaceholder || '',
+				language: {
+					noResults: function () { return i18n.capsNoMatch || ''; },
+					maximumSelected: function () { return i18n.capsMax || ''; },
+				},
+			});
+			// selectWoo reads the options again for every search, so adding them
+			// here, before the first list is drawn, is enough.
+			$sel.on('select2:opening', function () {
+				fillCapsOptions(sel);
+			});
+			// selectWoo hides the <select> from screen readers and its search box
+			// has no name of its own.
+			const instance = $sel.data('select2');
+			const search = instance && instance.$container ? instance.$container[0].querySelector('.select2-search__field') : null;
+			if (search) search.setAttribute('aria-label', i18n.capsTitle || '');
+		}
+
+		function initVisibleCaps(scope) {
+			scope.querySelectorAll('[data-navc-caps]').forEach(function (panel) {
+				// offsetParent is null while the strip or a parent (a closed
+				// submenu panel) is hidden.
+				if (panel.hidden || panel.offsetParent === null) return;
+				initCapsSelect(panel.querySelector('[data-navc-caps-select]'));
+			});
+		}
 
 		// ---------------------------------------------------------------------
 		// State sync: read DOM → JSON, write into hidden input.
@@ -301,6 +436,15 @@
 						panel.setAttribute('hidden', '');
 					}
 				}
+				const capsPanel = owner ? owner.querySelector(':scope > .brikpanel-navc-caps') : null; // i18n-ignore: CSS selector
+				if (capsPanel) {
+					if (audienceSel.value === 'caps') {
+						capsPanel.removeAttribute('hidden');
+						initCapsSelect(capsPanel.querySelector('[data-navc-caps-select]'));
+					} else {
+						capsPanel.setAttribute('hidden', '');
+					}
+				}
 				serialize();
 				return;
 			}
@@ -410,6 +554,20 @@
 				openDialog({ mode: 'edit-system', element: li });
 				return;
 			}
+			if (action === 'role-mode') {
+				e.preventDefault();
+				const panel = actionEl.closest('[data-navc-roles]');
+				if (!panel) return;
+				const mode = actionEl.getAttribute('data-mode') === 'show' ? 'show' : 'hide';
+				if (panel.getAttribute('data-navc-role-mode') === mode) return;
+				setRoleMode(panel, mode);
+				serialize();
+				// A button changes no form field, so WooCommerce would keep its
+				// Save button disabled and not warn before leaving. It listens
+				// for change on the form's fields, the hidden JSON one included.
+				hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+				return;
+			}
 			if (action === 'toggle-submenus') {
 				e.preventDefault();
 				const li = actionEl.closest('.brikpanel-navc-item');
@@ -421,6 +579,9 @@
 					panel.removeAttribute('hidden');
 					actionEl.setAttribute('aria-expanded', 'true');
 					actionEl.classList.add('is-open');
+					// Permission pickers in the submenu rows start now that they
+					// can be measured.
+					initVisibleCaps(panel);
 				} else {
 					panel.setAttribute('hidden', '');
 					actionEl.setAttribute('aria-expanded', 'false');
@@ -488,6 +649,23 @@
 						cb.checked = false;
 					});
 					ul.querySelectorAll('[data-navc-roles]').forEach(function (panel) {
+						setRoleMode(panel, 'hide');
+						panel.setAttribute('hidden', '');
+					});
+					// Empty every permission picker WITHOUT a plain change event:
+					// that would run serialize() and overwrite the empty reset
+					// config above with the current, customised order. selectWoo
+					// redraws on its own namespaced event only.
+					ul.querySelectorAll('[data-navc-caps]').forEach(function (panel) {
+						const capsSel = panel.querySelector('[data-navc-caps-select]');
+						if (capsSel) {
+							Array.prototype.forEach.call(capsSel.options, function (opt) {
+								opt.selected = false;
+							});
+							if (hasSelectWoo && capsSel.getAttribute('data-navc-init') === '1') {
+								$(capsSel).trigger('change.select2');
+							}
+						}
 						panel.setAttribute('hidden', '');
 					});
 				});
@@ -740,7 +918,8 @@
 						'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>' +
 					'</button>' +
 				'</div>' +
-				audienceRolesHTML();
+				audienceRolesHTML() +
+				audienceCapsHTML();
 			li.querySelector('.brikpanel-navc-label-text').textContent = data.label;
 			li.querySelector('.brikpanel-navc-label-meta').textContent = data.url;
 			return li;
@@ -829,7 +1008,17 @@
 			if (e.key === 'Escape' && !dialogBackdrop.hidden) closeDialog();
 		});
 
+		// selectWoo announces a changed selection through jQuery's trigger(),
+		// which a native addEventListener('change') never hears; a delegated
+		// jQuery handler hears both that and the plain select's native event.
+		if ($) {
+			$(root).on('change', '[data-navc-caps-select]', function () {
+				serialize();
+			});
+		}
+
 		// Initial serialize so the hidden field reflects DOM state from PHP-render.
+		initVisibleCaps(root);
 		markGroupMembers();
 		serialize();
 	});

@@ -7,9 +7,22 @@
  *   - reloads the page once the scan finishes so the freshly-rendered cards
  *     come from the server (avoids client-side rendering parity bugs)
  *   - per-check repair and undo buttons
+ *
+ * Every sentence with a number in it (progress, confirmations, results) comes
+ * from the server, written with _n() in the viewer's language; this file only
+ * places it.
  */
 (function () {
     'use strict';
+
+    // Sample tables in the check cards: rows turn into cards when a table
+    // does not fit (field test B6). The rows come from the server, so one
+    // refit each is enough; a closed <details> is measured once it opens.
+    if (window.brikpanelFitTable) {
+        Array.prototype.forEach.call(document.querySelectorAll('.brikpanel-bc-table-wrap > .brikpanel-fit-table'), function (table) {
+            window.brikpanelFitTable(table, { labels: 'head', slack: 0 }).refit();
+        });
+    }
 
     var cfg = window.brikpanelBrikControl;
     if (!cfg || !cfg.ajax_url) {
@@ -36,17 +49,16 @@
         }
     }
 
-    function updateProgress(progress) {
+    function updateProgress(progress, texts) {
         if (!progress) return;
         var pct = 0;
         if (progress.total > 0) {
             pct = Math.min(100, Math.round((progress.cursor / progress.total) * 100));
         }
-        if (progressBar) progressBar.style.width = pct + '%';
-        if (progressPct) progressPct.textContent = pct + '%';
-        if (progressLabel && progress.total > 0) {
-            var tpl = (cfg.i18n && cfg.i18n.scanning_progress) || 'Scanning {cursor} / {total} products…';
-            progressLabel.textContent = tpl.replace('{cursor}', progress.cursor).replace('{total}', progress.total);
+        if (progressBar) progressBar.style.width = pct + '%'; // i18n-ignore: CSS width, not text.
+        if (texts) {
+            if (progressPct) progressPct.textContent = texts.pct || '';
+            if (progressLabel && texts.label) progressLabel.textContent = texts.label;
         }
     }
 
@@ -55,7 +67,11 @@
         var s = bundle.status_summary;
         ['critical', 'warning', 'ok', 'unknown'].forEach(function (key) {
             var el = document.querySelector('[data-bc-count="' + key + '"]');
-            if (el) el.textContent = s[key] || 0;
+            if (!el) return;
+            el.textContent = s[key] || 0;
+            // A zero count keeps the neutral look: "0 warnings" is good news.
+            var chip = el.closest('.brikpanel-bc-summary-chip');
+            if (chip) chip.classList.toggle('is-zero', !(Number(s[key]) > 0));
         });
     }
 
@@ -77,7 +93,7 @@
                 var d = json.data;
                 if (d.is_active) {
                     showProgress(true);
-                    updateProgress(d.progress);
+                    updateProgress(d.progress, d.texts);
                     updateChips(d.bundle);
                     return;
                 }
@@ -152,17 +168,14 @@
 
         var i18n     = cfg.i18n || {};
         var checkId  = btn.getAttribute('data-bc-fix');
-        var count    = parseInt(btn.getAttribute('data-bc-fix-count'), 10) || 0;
         var labelEl  = btn.querySelector('[data-bc-fix-label]');
         var resultEl = btn.parentNode ? btn.parentNode.querySelector('[data-bc-fix-result]') : null;
         // Captured from the DOM, never a hard-coded English string: the server
         // rendered it through the check's translated get_fix_label().
         var original = labelEl ? labelEl.textContent : '';
 
-        // The check may have supplied its own sentence, already translated
-        // server-side; the shared key is the fallback for checks that have not.
-        var confirmText = btn.getAttribute('data-bc-fix-confirm') || i18n.fix_confirm || '';
-        if (!window.confirm(confirmText.replace('{count}', count))) return;
+        // Written by the check on the server, with its count and plural.
+        if (!window.confirm(btn.getAttribute('data-bc-fix-confirm') || '')) return;
 
         btn.disabled = true;
         if (labelEl) labelEl.textContent = i18n.fix_running || '';
@@ -183,14 +196,10 @@
             .then(function (r) { return r.json(); })
             .then(function (json) {
                 if (json && json.success && json.data) {
-                    var msg = (i18n.fix_done || '').replace('{count}', json.data.removed);
-                    if (json.data.has_more) msg += ' ' + (i18n.fix_more || '');
-                    // The check's own explanation, translated server-side.
-                    if (json.data.message) msg += ' ' + json.data.message;
-                    if (resultEl) resultEl.textContent = msg;
+                    if (resultEl) resultEl.textContent = json.data.message || '';
                     // Reload so the card re-renders from the freshly saved result;
-                    // later when there is an explanation to read first.
-                    setTimeout(function () { window.location.reload(); }, json.data.message ? 5000 : 1200);
+                    // later when there is more than the count to read first.
+                    setTimeout(function () { window.location.reload(); }, json.data.note ? 5000 : 2000);
                     return;
                 }
                 restore((json && json.data && json.data.message) || i18n.fix_failed || '');
@@ -210,14 +219,12 @@
 
         var i18n     = cfg.i18n || {};
         var checkId  = btn.getAttribute('data-bc-undo');
-        var count    = parseInt(btn.getAttribute('data-bc-undo-count'), 10) || 0;
         var labelEl  = btn.querySelector('[data-bc-undo-label]');
         var resultEl = btn.parentNode ? btn.parentNode.querySelector('[data-bc-fix-result]') : null;
         // Captured from the DOM: the server already rendered it translated.
         var original = labelEl ? labelEl.textContent : '';
 
-        var undoText = btn.getAttribute('data-bc-undo-confirm') || i18n.undo_confirm || '';
-        if (!window.confirm(undoText.replace('{count}', count))) return;
+        if (!window.confirm(btn.getAttribute('data-bc-undo-confirm') || '')) return;
 
         btn.disabled = true;
         if (labelEl) labelEl.textContent = i18n.undo_running || '';
@@ -238,12 +245,8 @@
             .then(function (r) { return r.json(); })
             .then(function (json) {
                 if (json && json.success && json.data) {
-                    if (resultEl) {
-                        var undoMsg = (i18n.undo_done || '').replace('{count}', json.data.restored);
-                        if (json.data.message) undoMsg += ' ' + json.data.message;
-                        resultEl.textContent = undoMsg;
-                    }
-                    setTimeout(function () { window.location.reload(); }, json.data.message ? 5000 : 1200);
+                    if (resultEl) resultEl.textContent = json.data.message || '';
+                    setTimeout(function () { window.location.reload(); }, json.data.note ? 5000 : 2000);
                     return;
                 }
                 restore((json && json.data && json.data.message) || i18n.undo_failed || '');

@@ -142,7 +142,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
     }
 
     public function get_label() {
-        return __( 'Bot Traffic', 'brikpanel' );
+        return __( 'Bot traffic', 'brikpanel' );
     }
 
     public function get_category() {
@@ -165,6 +165,20 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         return __( 'Clean up bot traffic', 'brikpanel' );
     }
 
+    /**
+     * Figures only; the card writes the sentences (see bc_present()).
+     *
+     * 3: scripted abandoned-cart entries no longer set the status; the
+     *    "Abandoned cart entries" check grades them. A stored schema 2 result
+     *    could still be Critical for them alone, so it is rescanned once
+     *    (Storage::maybe_heal()).
+     *
+     * @return int
+     */
+    public function bc_schema() {
+        return 3;
+    }
+
     /* ---------------------------------------------------------------------
      * Scan
      * ------------------------------------------------------------------ */
@@ -177,17 +191,16 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $started = microtime( true );
         $result  = $this->make_result_skeleton();
 
-        $scan   = $this->scan();
-        $backup = $this->read_backup_index();
-        $legacy = $this->read_index( self::LEGACY_BACKUP_OPTION );
+        $scan     = $this->scan();
+        $backup   = $this->read_backup_index();
+        $legacy   = $this->read_index( self::LEGACY_BACKUP_OPTION );
         $undoable = $backup['count'] + $legacy['count'];
         $undo_at  = max( (int) $backup['time'], (int) $legacy['time'] );
 
         if ( null === $scan ) {
             $result['status']      = 'ok';
             $result['score']       = 100;
-            $result['summary']     = __( 'No analytics history has been recorded yet.', 'brikpanel' );
-            $result['metadata']    = [ 'undoable' => $undoable, 'undo_at' => $undo_at, 'undo_confirm' => $this->undo_confirm_text() ];
+            $result['facts']       = [ 'no_history' => true, 'undoable' => $undoable, 'undo_at' => $undo_at ];
             $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
             return $result;
         }
@@ -195,11 +208,12 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $impossible = (int) $scan['impossible'];
         $extreme    = (int) $scan['extreme'];
         $cartab     = (int) $scan['cartab'];
-        $flagged    = $impossible + $extreme;
-        $overcount  = (int) $scan['overcount'];
-        $total      = $flagged + $cartab;
 
-        if ( $impossible > 0 || $cartab > 0 ) {
+        // Only the daily figures grade this card. Scripted abandoned-cart
+        // entries are graded by their own check; counting them here as well
+        // made one problem show as two Critical cards (field test F2). The
+        // card still lists them, because its cleanup deletes them.
+        if ( $impossible > 0 ) {
             $result['status'] = 'critical';
             $result['score']  = 0;
         } elseif ( $extreme > 0 ) {
@@ -210,113 +224,21 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             $result['score']  = 100;
         }
 
-        if ( $total > 0 ) {
-            $result['summary'] = $this->safe_sprintf(
-                /* translators: 1: number of days, 2: number of abandoned-cart entries. */
-                __( '%1$s day(s) of figures and %2$s abandoned-cart entries look like bot traffic', 'brikpanel' ),
-                number_format_i18n( $flagged ),
-                number_format_i18n( $cartab )
-            );
-            $parts = [];
-            if ( $impossible > 0 ) {
-                $parts[] = $this->safe_sprintf(
-                    /* translators: %s: number of days. */
-                    _n(
-                        '%s day recorded more add-to-carts than the store had visitors, which cannot be real.',
-                        '%s days recorded more add-to-carts than the store had visitors, which cannot be real.',
-                        $impossible,
-                        'brikpanel'
-                    ),
-                    number_format_i18n( $impossible )
-                );
-            }
-            if ( $extreme > 0 ) {
-                $parts[] = $this->safe_sprintf(
-                    /* translators: 1: number of days, 2: multiplier, 3: minimum event count. */
-                    _n(
-                        '%1$s day sits at least %2$s times above the normal for that same figure and counted at least %3$s events: the shape automated traffic leaves behind, though a real promotion can look like it too.',
-                        '%1$s days sit at least %2$s times above the normal for that same figure and counted at least %3$s events: the shape automated traffic leaves behind, though a real promotion can look like it too.',
-                        $extreme,
-                        'brikpanel'
-                    ),
-                    number_format_i18n( $extreme ),
-                    number_format_i18n( $scan['multiplier'] ),
-                    number_format_i18n( $scan['floor'] )
-                );
-            }
-            if ( $cartab > 0 ) {
-                $parts[] = $this->safe_sprintf(
-                    /* translators: %s: number of entries. */
-                    _n(
-                        '%s abandoned-cart entry was almost certainly written by a script (see the Abandoned Cart Entries check for the reasons).',
-                        '%s abandoned-cart entries were almost certainly written by a script (see the Abandoned Cart Entries check for the reasons).',
-                        $cartab,
-                        'brikpanel'
-                    ),
-                    number_format_i18n( $cartab )
-                );
-            }
-            $parts[] = __( 'The cleanup lowers each flagged day to the highest figure it could honestly have had, scales that day\'s traffic sources and device counts to match, deletes the flagged entries, and keeps everything it changed so one click puts it back.', 'brikpanel' );
-            $result['message'] = implode( ' ', $parts );
-        } else {
-            $result['summary'] = __( 'No bot traffic found in your analytics history.', 'brikpanel' );
-            $result['message'] = __( 'No day counted more add-to-carts than the store had visitors, no figure stands far above its own normal, and no abandoned-cart entry looks scripted.', 'brikpanel' );
-        }
-
-        if ( ! empty( $scan['truncated'] ) && $flagged > 0 ) {
-            $result['message'] = trim(
-                $result['message'] . ' ' . $this->safe_sprintf(
-                    /* translators: %s: number of series. */
-                    __( 'More products or pages are affected than one pass covers; these are the worst %s. Run the check again after cleaning them to see the rest.', 'brikpanel' ),
-                    number_format_i18n( self::MAX_CANDIDATE_SERIES )
-                )
-            );
-        }
-
-        $result['recommendations'] = $this->build_recommendations( $total );
-
-        $result['metadata'] = [
-            'fixable'       => $total,
-            'undoable'      => $undoable,
-            'undo_at'       => $undo_at,
-            'fix_confirm'   => $this->fix_confirm_text( $flagged, $overcount, $cartab ),
-            'undo_confirm'  => $this->undo_confirm_text(),
-            'stats'         => [
-                [
-                    'label' => __( 'Impossible days', 'brikpanel' ),
-                    'value' => $impossible,
-                    'tone'  => $impossible > 0 ? 'error' : 'good',
-                ],
-                [
-                    'label' => __( 'Extreme days', 'brikpanel' ),
-                    'value' => $extreme,
-                    'tone'  => $extreme > 0 ? 'warn' : '',
-                ],
-                [
-                    'label' => __( 'Scripted cart entries', 'brikpanel' ),
-                    'value' => $cartab,
-                    'tone'  => $cartab > 0 ? 'error' : '',
-                ],
-                [
-                    'label' => __( 'Events to be removed', 'brikpanel' ),
-                    'value' => $overcount,
-                    'tone'  => $overcount > 0 ? 'warn' : '',
-                ],
-                [
-                    'label' => __( 'Days scanned', 'brikpanel' ),
-                    'value' => (int) $scan['window'],
-                    'tone'  => '',
-                ],
-            ],
-            'samples'       => $scan['samples'],
-            'samples_title' => __( 'What would change', 'brikpanel' ),
-            'samples_cols'  => [
-                __( 'Date', 'brikpanel' ),
-                __( 'What', 'brikpanel' ),
-                __( 'Recorded', 'brikpanel' ),
-                __( 'Corrected to', 'brikpanel' ),
-                __( 'Why', 'brikpanel' ),
-            ],
+        $result['facts'] = [
+            'impossible' => $impossible,
+            'extreme'    => $extreme,
+            'cartab'     => $cartab,
+            'overcount'  => (int) $scan['overcount'],
+            'window'     => (int) $scan['window'],
+            'multiplier' => (float) $scan['multiplier'],
+            'floor'      => (int) $scan['floor'],
+            'truncated'  => ! empty( $scan['truncated'] ),
+            'max_series' => self::MAX_CANDIDATE_SERIES,
+            'undoable'   => $undoable,
+            'undo_at'    => $undo_at,
+            // The worst day/series pairs as data (source, id, column, local
+            // date, recorded, corrected, rule); names come at render time.
+            'samples'    => $scan['samples'],
         ];
 
         $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
@@ -325,47 +247,307 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
     }
 
     /**
-     * @param int $flagged   Day/series pairs that would change.
+     * Sentences for the stored figures, in the viewer's language.
+     *
+     * @param array  $r       Stored result.
+     * @param string $context 'page' or 'summary'.
+     * @return array
+     */
+    public function bc_present( array $r, $context = 'page' ) {
+        $r = parent::bc_present( $r, $context );
+
+        $f = isset( $r['facts'] ) && is_array( $r['facts'] ) ? $r['facts'] : [];
+        if ( empty( $f ) || (int) ( $r['schema'] ?? 1 ) < 2 ) {
+            return $r; // Written before 3.3.25: show what was stored.
+        }
+
+        $undoable = (int) ( $f['undoable'] ?? 0 );
+        $undo     = [
+            'undoable'     => $undoable,
+            'undo_at'      => (int) ( $f['undo_at'] ?? 0 ),
+            'undo_confirm' => brikpanel_safe_sprintf(
+                /* translators: %s: number of database rows to put back. */
+                _n(
+                    'Put the previous figures and deleted entries back? This restores %s row exactly as it was before the cleanup.',
+                    'Put the previous figures and deleted entries back? This restores %s rows exactly as they were before the cleanup.',
+                    $undoable,
+                    'brikpanel'
+                ),
+                brikpanel_number( $undoable )
+            ),
+        ];
+
+        $r['message']         = '';
+        $r['recommendations'] = [];
+        $r['metadata']        = 'page' === $context ? $undo : [];
+
+        if ( ! empty( $f['no_history'] ) ) {
+            $r['summary'] = __( 'No analytics history has been recorded yet.', 'brikpanel' );
+            return $r;
+        }
+
+        $impossible = (int) ( $f['impossible'] ?? 0 );
+        $extreme    = (int) ( $f['extreme'] ?? 0 );
+        $cartab     = (int) ( $f['cartab'] ?? 0 );
+        $overcount  = (int) ( $f['overcount'] ?? 0 );
+        $window     = (int) ( $f['window'] ?? self::DEFAULT_WINDOW_DAYS );
+        $flagged    = $impossible + $extreme;
+        $total      = $flagged + $cartab;
+
+        // Scripted abandoned-cart entries alone leave the card OK (their own
+        // check grades them), so they are mentioned as something the cleanup
+        // can also take care of, not as bot traffic found here (field test F2).
+        $cartab_check = ( $cartab > 0 && class_exists( 'Brikpanel_BrikControl_Registry' ) ) ? Brikpanel_BrikControl_Registry::get( 'cartab_bot_rows' ) : null;
+
+        if ( $flagged > 0 ) {
+            // Only what was found, each with its own plural: this used to read
+            // "0 day(s) of figures and 10 abandoned-cart entries look like bot
+            // traffic" (field test E7).
+            $found = [
+                brikpanel_safe_sprintf(
+                    /* translators: %s: number of daily figures (one figure on one day, e.g. that day's visitors). */
+                    _n( '%s daily figure', '%s daily figures', $flagged, 'brikpanel' ),
+                    brikpanel_number( $flagged )
+                ),
+            ];
+            if ( $cartab > 0 ) {
+                $found[] = brikpanel_safe_sprintf(
+                    /* translators: %s: number of abandoned-cart entries. */
+                    _n( '%s abandoned-cart entry', '%s abandoned-cart entries', $cartab, 'brikpanel' ),
+                    brikpanel_number( $cartab )
+                );
+            }
+            $r['summary'] = brikpanel_safe_sprintf(
+                /* translators: %s: what was found, e.g. "3 daily figures and 10 abandoned-cart entries". */
+                __( 'Looks like bot traffic: %s', 'brikpanel' ),
+                wp_sprintf_l( '%l', $found )
+            );
+        } elseif ( $cartab > 0 ) {
+            $r['summary'] = brikpanel_safe_sprintf(
+                /* translators: %s: number of abandoned-cart entries written by a script. */
+                _n(
+                    'Your daily figures look real. %s scripted abandoned-cart entry can be cleaned up.',
+                    'Your daily figures look real. %s scripted abandoned-cart entries can be cleaned up.',
+                    $cartab,
+                    'brikpanel'
+                ),
+                brikpanel_number( $cartab )
+            );
+        } else {
+            $r['summary'] = brikpanel_safe_sprintf(
+                /* translators: %s: number of days examined. */
+                _n( 'No bot traffic found in the last %s day.', 'No bot traffic found in the last %s days.', $window, 'brikpanel' ),
+                brikpanel_number( $window )
+            );
+        }
+
+        if ( 'page' !== $context ) {
+            return $r;
+        }
+
+        if ( $flagged > 0 ) {
+            $parts = [];
+            if ( $impossible > 0 ) {
+                $parts[] = brikpanel_safe_sprintf(
+                    /* translators: %s: number of daily figures. */
+                    _n(
+                        '%s daily figure counted more add-to-carts than the store had visitors that day, which cannot be real.',
+                        '%s daily figures counted more add-to-carts than the store had visitors that day, which cannot be real.',
+                        $impossible,
+                        'brikpanel'
+                    ),
+                    brikpanel_number( $impossible )
+                );
+            }
+            if ( $extreme > 0 ) {
+                $parts[] = brikpanel_safe_sprintf(
+                    /* translators: 1: number of daily figures, 2: how many times above normal, e.g. "10", 3: smallest daily count the rule looks at. */
+                    _n(
+                        '%1$s daily figure sits at least %2$s times above its own normal and counted at least %3$s events. Automated traffic leaves this shape behind, though a real promotion can look like it too.',
+                        '%1$s daily figures sit at least %2$s times above their own normal and counted at least %3$s events. Automated traffic leaves this shape behind, though a real promotion can look like it too.',
+                        $extreme,
+                        'brikpanel'
+                    ),
+                    brikpanel_number( $extreme ),
+                    brikpanel_number( (float) ( $f['multiplier'] ?? self::DEFAULT_MULTIPLIER ), 1, true ),
+                    brikpanel_number( (int) ( $f['floor'] ?? self::DEFAULT_FLOOR ) )
+                );
+            }
+            if ( $cartab > 0 ) {
+                $parts[] = $cartab_check
+                    ? brikpanel_safe_sprintf(
+                        /* translators: 1: number of entries, 2: name of another check on the Store Health page, e.g. "Abandoned cart entries". */
+                        _n(
+                            '%1$s abandoned-cart entry was almost certainly written by a script (the "%2$s" check explains why).',
+                            '%1$s abandoned-cart entries were almost certainly written by a script (the "%2$s" check explains why).',
+                            $cartab,
+                            'brikpanel'
+                        ),
+                        brikpanel_number( $cartab ),
+                        $cartab_check->get_label()
+                    )
+                    : brikpanel_safe_sprintf(
+                        /* translators: %s: number of entries. */
+                        _n(
+                            '%s abandoned-cart entry was almost certainly written by a script.',
+                            '%s abandoned-cart entries were almost certainly written by a script.',
+                            $cartab,
+                            'brikpanel'
+                        ),
+                        brikpanel_number( $cartab )
+                    );
+            }
+            $parts[]      = __( 'The cleanup lowers each flagged figure to the highest value it could honestly have had, scales that day\'s traffic sources and device counts to match, deletes the flagged entries, and keeps everything it changed so one click puts it back.', 'brikpanel' );
+            $r['message'] = implode( ' ', $parts );
+        } elseif ( $cartab > 0 ) {
+            $r['message'] = $cartab_check
+                ? brikpanel_safe_sprintf(
+                    /* translators: %s: name of another check on the Store Health page, e.g. "Abandoned cart entries". */
+                    __( 'The "%s" check explains how a scripted entry is recognised. The cleanup deletes scripted entries and keeps a copy of each, so one click puts them back.', 'brikpanel' ),
+                    $cartab_check->get_label()
+                )
+                : __( 'The cleanup deletes scripted entries and keeps a copy of each, so one click puts them back.', 'brikpanel' );
+        } else {
+            $r['message'] = __( 'No day counted more add-to-carts than the store had visitors, no figure stands far above its own normal, and no abandoned-cart entry looks scripted.', 'brikpanel' );
+        }
+
+        if ( ! empty( $f['truncated'] ) && $flagged > 0 ) {
+            $r['message'] = trim(
+                $r['message'] . ' ' . brikpanel_safe_sprintf(
+                    /* translators: %s: number of products or pages. */
+                    __( 'More products or pages are affected than one pass covers; these are the worst %s. Run the check again after cleaning them to see the rest.', 'brikpanel' ),
+                    brikpanel_number( (int) ( $f['max_series'] ?? self::MAX_CANDIDATE_SERIES ) )
+                )
+            );
+        }
+
+        // About flagged days only: a red "open the list first" beside an OK
+        // card with nothing but scripted cart entries would raise an alarm
+        // the status does not.
+        if ( $flagged > 0 ) {
+            $r['recommendations'][] = [
+                'text'     => __( 'Open the list below first. The cleanup rewrites your own analytics history, and a real campaign day can look like a robot day. You can undo it afterwards.', 'brikpanel' ),
+                'priority' => 'high',
+            ];
+            if ( class_exists( 'Brikpanel_BrikControl' ) ) {
+                $r['recommendations'][] = Brikpanel_BrikControl::exclusion_recommendation();
+            }
+        }
+
+        // Four figures, one line each: a fifth tile ("Days scanned") pushed two
+        // labels onto a second line and left the row ragged (field test E7).
+        // The window now sits in the card's footer.
+        $r['metadata'] = array_merge(
+            $undo,
+            [
+                'fixable'       => $total,
+                'fix_confirm'   => $this->fix_confirm_text( $flagged, $overcount, $cartab ),
+                'scope'         => brikpanel_safe_sprintf(
+                    /* translators: %s: number of days of analytics history examined. */
+                    _n( 'Last %s day checked', 'Last %s days checked', $window, 'brikpanel' ),
+                    brikpanel_number( $window )
+                ),
+                'stats'         => [
+                    [
+                        'label' => __( 'Impossible days', 'brikpanel' ),
+                        'value' => $impossible,
+                        'tone'  => $impossible > 0 ? 'error' : 'good',
+                    ],
+                    [
+                        'label' => __( 'Extreme days', 'brikpanel' ),
+                        'value' => $extreme,
+                        'tone'  => $extreme > 0 ? 'warn' : '',
+                    ],
+                    [
+                        'label' => __( 'Scripted cart entries', 'brikpanel' ),
+                        'value' => $cartab,
+                        // Never louder than the card: these do not grade it.
+                        'tone'  => ( $cartab > 0 && $flagged > 0 ) ? 'warn' : '',
+                    ],
+                    [
+                        'label' => __( 'Events to be removed', 'brikpanel' ),
+                        'value' => $overcount,
+                        'tone'  => $overcount > 0 ? 'warn' : '',
+                    ],
+                ],
+                'samples'       => $this->build_samples( (array) ( $f['samples'] ?? [] ), $cartab ),
+                'samples_title' => __( 'What would change', 'brikpanel' ),
+                'samples_cols'  => [
+                    __( 'Date', 'brikpanel' ),
+                    __( 'What', 'brikpanel' ),
+                    __( 'Recorded', 'brikpanel' ),
+                    __( 'Corrected to', 'brikpanel' ),
+                    __( 'Why', 'brikpanel' ),
+                ],
+            ]
+        );
+
+        return $r;
+    }
+
+    /**
+     * @param int $flagged   Daily figures that would change.
      * @param int $overcount Recorded events that would disappear.
      * @param int $cartab    Abandoned-cart entries that would be deleted.
      * @return string
      */
     private function fix_confirm_text( $flagged, $overcount, $cartab ) {
-        return $this->safe_sprintf(
-            /* translators: 1: number of days, 2: number of events, 3: number of abandoned-cart entries. */
-            __( 'Clean up bot traffic? This lowers %1$s day(s) of figures (about %2$s recorded events) and deletes %3$s abandoned-cart entries. Your products, orders and customers are not touched. Everything changed is kept in a restore point so you can undo it at any time.', 'brikpanel' ),
-            number_format_i18n( (int) $flagged ),
-            number_format_i18n( (int) $overcount ),
-            number_format_i18n( (int) $cartab )
-        );
+        $parts = [ __( 'Clean up bot traffic?', 'brikpanel' ) ];
+        if ( $flagged > 0 ) {
+            $parts[] = brikpanel_safe_sprintf(
+                /* translators: %s: number of daily figures. */
+                _n( '%s daily figure is lowered.', '%s daily figures are lowered.', (int) $flagged, 'brikpanel' ),
+                brikpanel_number( (int) $flagged )
+            );
+            if ( $overcount > 0 ) {
+                $parts[] = brikpanel_safe_sprintf(
+                    /* translators: %s: number of recorded events. */
+                    _n( 'That removes about %s recorded event.', 'That removes about %s recorded events.', (int) $overcount, 'brikpanel' ),
+                    brikpanel_number( (int) $overcount )
+                );
+            }
+        }
+        if ( $cartab > 0 ) {
+            $parts[] = brikpanel_safe_sprintf(
+                /* translators: %s: number of abandoned-cart entries. */
+                _n( '%s abandoned-cart entry is deleted.', '%s abandoned-cart entries are deleted.', (int) $cartab, 'brikpanel' ),
+                brikpanel_number( (int) $cartab )
+            );
+        }
+        $parts[] = __( 'Your products, orders and customers are not touched. Everything changed is kept in a restore point so you can undo it at any time.', 'brikpanel' );
+        return implode( ' ', $parts );
     }
 
     /**
+     * @param array $outcome run_fix() result.
      * @return string
      */
-    private function undo_confirm_text() {
-        /* translators: {count} is replaced in the browser with the number of rows to restore. Keep it as is. */
-        return __( 'Put the previous figures and deleted entries back? This restores {count} row(s) exactly as they were before the cleanup.', 'brikpanel' );
-    }
-
-    /**
-     * @param int $total Flagged items.
-     * @return array
-     */
-    private function build_recommendations( $total ) {
-        if ( $total < 1 ) {
-            return [];
+    public function bc_fix_done( array $outcome ) {
+        $figures = (int) ( $outcome['figures'] ?? 0 );
+        $entries = (int) ( $outcome['entries'] ?? 0 );
+        $done    = [];
+        if ( $figures > 0 ) {
+            $done[] = brikpanel_safe_sprintf(
+                /* translators: %s: number of daily figures lowered. */
+                _n( '%s daily figure lowered', '%s daily figures lowered', $figures, 'brikpanel' ),
+                brikpanel_number( $figures )
+            );
         }
-        return [
-            [
-                'text'     => __( 'Open the list below first. The cleanup rewrites your own analytics history, and a real campaign day can look like a robot day. You can undo it afterwards.', 'brikpanel' ),
-                'priority' => 'high',
-            ],
-            [
-                'text'     => __( 'If a known crawler is behind it, add its user agent or address under WooCommerce → Settings → BrikPanel → Analytics so it stops being counted at all.', 'brikpanel' ),
-                'priority' => 'medium',
-            ],
-        ];
+        if ( $entries > 0 ) {
+            $done[] = brikpanel_safe_sprintf(
+                /* translators: %s: number of abandoned-cart entries deleted. */
+                _n( '%s abandoned-cart entry deleted', '%s abandoned-cart entries deleted', $entries, 'brikpanel' ),
+                brikpanel_number( $entries )
+            );
+        }
+        if ( empty( $done ) ) {
+            return __( 'Nothing needed cleaning up.', 'brikpanel' );
+        }
+        return brikpanel_safe_sprintf(
+            /* translators: %s: what the cleanup did, e.g. "3 daily figures lowered and 10 abandoned-cart entries deleted". */
+            __( 'Done: %s.', 'brikpanel' ),
+            wp_sprintf_l( '%l', $done )
+        );
     }
 
     /**
@@ -446,7 +628,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             'multiplier' => $s['multiplier'],
             'floor'      => $s['floor'],
             'truncated'  => $truncated,
-            'samples'    => $this->build_samples( $findings, $cartab ),
+            'samples'    => $this->sample_findings( $findings ),
         ];
     }
 
@@ -557,10 +739,10 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $findings = [];
 
         $series = [
-            'visitors' => [ 'col' => 'visitor_count',     'label' => __( 'Store visitors', 'brikpanel' ) ],
-            'product'  => [ 'col' => 'product_count',     'label' => __( 'Product views', 'brikpanel' ) ],
-            'atc'      => [ 'col' => 'add_to_cart_count', 'label' => __( 'Store add-to-carts', 'brikpanel' ) ],
-            'checkout' => [ 'col' => 'checkout_count',    'label' => __( 'Checkout visits', 'brikpanel' ) ],
+            'visitors' => [ 'col' => 'visitor_count' ],
+            'product'  => [ 'col' => 'product_count' ],
+            'atc'      => [ 'col' => 'add_to_cart_count' ],
+            'checkout' => [ 'col' => 'checkout_count' ],
         ];
 
         $medians = [];
@@ -586,9 +768,8 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 $ceiling = ( 'atc' === $key ) ? $this->visitor_ceiling( $day['visitors'], $day['atc'] ) : null;
 
                 $finding = $this->weigh(
-                    'visitors', $day['id'], $meta['col'], $date, $meta['label'],
-                    $day[ $key ], $ceiling, $normal,
-                    __( 'More adds than visitors', 'brikpanel' )
+                    'visitors', $day['id'], $meta['col'], $date,
+                    $day[ $key ], $ceiling, $normal
                 );
                 if ( $finding ) {
                     $findings[] = $finding;
@@ -705,9 +886,8 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                         : null;
 
                     $finding = $this->weigh(
-                        $source, $sid, $val_col, $date, '',
-                        $total, $ceiling, $normal,
-                        __( 'More adds than store visitors', 'brikpanel' )
+                        $source, $sid, $val_col, $date,
+                        $total, $ceiling, $normal
                     );
                     if ( $finding ) {
                         $findings[] = $finding;
@@ -768,7 +948,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
      *
      * @return array|null Null when the day is fine.
      */
-    private function weigh( $source, $ref, $column, $date, $label, $current, $ceiling, $normal, $ceiling_reason ) {
+    private function weigh( $source, $ref, $column, $date, $current, $ceiling, $normal ) {
         if ( null === $ceiling && null === $normal ) {
             return null;
         }
@@ -791,12 +971,10 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             'ref'     => (int) $ref,
             'column'  => $column,
             'date'    => (string) $date,
-            'label'   => (string) $label,
             'current' => (int) $current,
             // Never raise a figure, whatever the arithmetic says.
             'target'  => $target,
             'rule'    => ( null !== $ceiling ) ? 'impossible' : 'extreme',
-            'reason'  => ( null !== $ceiling ) ? $ceiling_reason : __( 'Far above its own normal', 'brikpanel' ),
         ];
     }
 
@@ -840,85 +1018,155 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $id    = (int) $id;
         $title = get_the_title( $id );
         if ( is_string( $title ) && '' !== trim( $title ) ) {
-            return html_entity_decode( wp_strip_all_tags( $title ), ENT_QUOTES, get_bloginfo( 'charset' ) );
+            return brikpanel_plain_label( $title );
         }
         if ( 'page' === $source ) {
             $term = get_term( $id );
             if ( $term instanceof WP_Term ) {
                 return $term->name;
             }
-            return $this->safe_sprintf(
+            return brikpanel_safe_sprintf(
                 /* translators: %s: page ID. */
                 __( 'Page #%s', 'brikpanel' ),
-                number_format_i18n( $id )
+                (string) $id
             );
         }
-        return $this->safe_sprintf(
+        return brikpanel_safe_sprintf(
             /* translators: %s: product ID of a product that no longer exists. */
             __( 'Product #%s', 'brikpanel' ),
-            number_format_i18n( $id )
+            (string) $id
         );
     }
 
     /**
-     * Detail rows for the card table.
+     * The findings the card lists, worst first, as data.
      *
      * @param array $findings Sorted findings.
+     * @return array
+     */
+    private function sample_findings( array $findings ) {
+        $out = [];
+        foreach ( array_slice( $findings, 0, self::SAMPLE_LIMIT ) as $finding ) {
+            $out[] = [
+                'source'  => (string) $finding['source'],
+                'ref'     => (int) $finding['ref'],
+                'column'  => (string) $finding['column'],
+                'date'    => (string) $finding['date'],
+                'current' => (int) $finding['current'],
+                'target'  => (int) $finding['target'],
+                'rule'    => (string) $finding['rule'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Detail rows for the card table, in the viewer's language.
+     *
+     * @param array $findings sample_findings() output.
      * @param int   $cartab   Scripted abandoned-cart entries.
      * @return array
      */
     private function build_samples( array $findings, $cartab ) {
-        $shown = array_slice( $findings, 0, self::SAMPLE_LIMIT );
-
         $ids = [];
-        foreach ( $shown as $finding ) {
-            if ( 'visitors' !== $finding['source'] ) {
-                $ids[] = (int) $finding['ref'];
+        foreach ( $findings as $finding ) {
+            if ( is_array( $finding ) && 'visitors' !== ( $finding['source'] ?? '' ) ) {
+                $ids[] = (int) ( $finding['ref'] ?? 0 );
             }
         }
+        $ids = array_values( array_filter( array_unique( $ids ) ) );
         if ( ! empty( $ids ) ) {
-            _prime_post_caches( array_values( array_unique( $ids ) ), false, false );
+            _prime_post_caches( $ids, false, false );
         }
+
+        $series = [
+            'visitor_count'     => __( 'Store visitors', 'brikpanel' ),
+            'product_count'     => __( 'Product views', 'brikpanel' ),
+            'add_to_cart_count' => __( 'Store add-to-carts', 'brikpanel' ),
+            'checkout_count'    => __( 'Checkout visits', 'brikpanel' ),
+        ];
 
         $samples = [];
         if ( $cartab > 0 ) {
-            $samples[] = [
+            $cartab_check = class_exists( 'Brikpanel_BrikControl_Registry' ) ? Brikpanel_BrikControl_Registry::get( 'cartab_bot_rows' ) : null;
+            $samples[]    = [
                 '',
                 __( 'Abandoned-cart entries written by scripts', 'brikpanel' ),
-                number_format_i18n( $cartab ),
-                __( 'deleted', 'brikpanel' ),
-                __( 'Certain by the Abandoned Cart Entries check', 'brikpanel' ),
+                brikpanel_number( $cartab ),
+                __( 'Deleted', 'brikpanel' ),
+                $cartab_check
+                    ? brikpanel_safe_sprintf(
+                        /* translators: %s: name of another check on the Store Health page, e.g. "Abandoned cart entries". */
+                        __( 'Certain, by the "%s" check', 'brikpanel' ),
+                        $cartab_check->get_label()
+                    )
+                    : __( 'Certain', 'brikpanel' ),
             ];
         }
-        foreach ( $shown as $finding ) {
-            switch ( $finding['source'] ) {
+
+        foreach ( $findings as $finding ) {
+            if ( ! is_array( $finding ) ) {
+                continue;
+            }
+            $source = (string) ( $finding['source'] ?? '' );
+            $ref    = (int) ( $finding['ref'] ?? 0 );
+            switch ( $source ) {
                 case 'cart':
-                    $label = $this->safe_sprintf(
+                    $label = brikpanel_safe_sprintf(
                         /* translators: %s: product name. */
                         __( 'Add-to-carts: %s', 'brikpanel' ),
-                        $this->object_label( 'cart', $finding['ref'] )
+                        $this->object_label( 'cart', $ref )
                     );
                     break;
                 case 'page':
-                    $label = $this->safe_sprintf(
+                    $label = brikpanel_safe_sprintf(
                         /* translators: %s: page or product name. */
                         __( 'Page views: %s', 'brikpanel' ),
-                        $this->object_label( 'page', $finding['ref'] )
+                        $this->object_label( 'page', $ref )
                     );
                     break;
                 default:
-                    $label = $finding['label'];
+                    $label = $series[ (string) ( $finding['column'] ?? '' ) ] ?? (string) ( $finding['column'] ?? '' );
             }
+
+            if ( 'impossible' === ( $finding['rule'] ?? '' ) ) {
+                $why = ( 'visitors' === $source )
+                    ? __( 'More adds than visitors', 'brikpanel' )
+                    : __( 'More adds than store visitors', 'brikpanel' );
+            } else {
+                $why = __( 'Far above its own normal', 'brikpanel' );
+            }
+
             $samples[] = [
-                $finding['date'],
+                $this->local_day_label( (string) ( $finding['date'] ?? '' ) ),
                 $label,
-                number_format_i18n( $finding['current'] ),
-                number_format_i18n( $finding['target'] ),
-                $finding['reason'],
+                brikpanel_number( (int) ( $finding['current'] ?? 0 ) ),
+                brikpanel_number( (int) ( $finding['target'] ?? 0 ) ),
+                $why,
             ];
         }
 
         return $samples;
+    }
+
+    /**
+     * A store-local calendar day (the counters write local dates) in the
+     * store's short date format with the viewer's month names.
+     *
+     * @param string $day 'Y-m-d'.
+     * @return string
+     */
+    private function local_day_label( $day ) {
+        if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $day ) ) {
+            return $day;
+        }
+        try {
+            // Noon, so no timezone shift can move it onto another day.
+            $dt = new DateTimeImmutable( $day . ' 12:00:00', wp_timezone() );
+        } catch ( Exception $e ) {
+            return $day;
+        }
+        return (string) wp_date( brikpanel_short_date_format(), $dt->getTimestamp() );
     }
 
     /* ---------------------------------------------------------------------
@@ -952,6 +1200,8 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $batch    = array_slice( $findings, 0, self::FIX_CHUNK );
 
         $removed = 0;
+        $figures = 0;
+        $entries = 0;
         $full    = false;
 
         // 1) Figures. Backup entries are collected per finding and written
@@ -974,6 +1224,8 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             if ( ! $this->append_backup( $planned ) ) {
                 return [
                     'removed'  => $removed,
+                    'figures'  => $figures,
+                    'entries'  => $entries,
                     'has_more' => true,
                     'message'  => __( 'The restore point could not be written, so nothing more was changed.', 'brikpanel' ),
                 ];
@@ -982,6 +1234,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 $this->apply_value( $entry );
             }
             $removed += max( 0, $finding['current'] - $finding['target'] );
+            $figures++;
         }
 
         // 2) Abandoned-cart entries: whole rows, copied before deletion.
@@ -999,6 +1252,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 } else {
                     $deleted  = $this->delete_cartab_rows( $ids );
                     $removed += $deleted;
+                    $entries += $deleted;
                 }
             }
         }
@@ -1013,6 +1267,8 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
 
         return [
             'removed'  => $removed,
+            'figures'  => $figures,
+            'entries'  => $entries,
             'has_more' => $has_more,
             'message'  => $full
                 ? __( 'The restore point is full. Undo the last cleanup or leave it in place, then run the check again.', 'brikpanel' )
@@ -1535,28 +1791,5 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         }
         $cache[ $table ] = ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table );
         return $cache[ $table ];
-    }
-
-    /**
-     * sprintf() that cannot be brought down by a bad translation: a translator
-     * who drops a placeholder would otherwise throw inside the scan worker.
-     *
-     * @param string $format Translated format string.
-     * @param mixed  ...$args printf arguments.
-     * @return string
-     */
-    private function safe_sprintf( $format, ...$args ) {
-        $format = (string) $format;
-        try {
-            $out = @vsprintf( $format, $args );
-            if ( false !== $out ) {
-                return $out;
-            }
-        } catch ( \Throwable $e ) {
-            unset( $e );
-        }
-        $stripped = preg_replace( '/%(?:\d+\$)?[-+ 0#\']*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/', '', $format );
-        $stripped = str_replace( '%%', '%', (string) $stripped );
-        return trim( (string) $stripped );
     }
 }

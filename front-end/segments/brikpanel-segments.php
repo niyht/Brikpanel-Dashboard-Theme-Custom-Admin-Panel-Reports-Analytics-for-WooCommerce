@@ -128,7 +128,8 @@ class Brikpanel_Segments {
 			foreach ( $wc_countries->get_countries() as $code => $name ) {
 				$countries[] = [
 					'value' => $code,
-					'label' => $name,
+					// WooCommerce's list holds entities ("Cura&ccedil;ao").
+					'label' => brikpanel_plain_name( $name ),
 				];
 			}
 		}
@@ -143,7 +144,7 @@ class Brikpanel_Segments {
 			foreach ( $terms as $term ) {
 				$categories[] = [
 					'value' => (int) $term->term_id,
-					'label' => $term->name,
+					'label' => brikpanel_plain_name( $term->name ),
 				];
 			}
 		}
@@ -200,7 +201,7 @@ class Brikpanel_Segments {
 			}
 			$products[] = [
 				'value' => (int) $pid,
-				'label' => $product->get_name() . ' (#' . $pid . ')',
+				'label' => brikpanel_plain_label( $product->get_name() ) . ' (#' . $pid . ')',
 			];
 		}
 
@@ -290,6 +291,48 @@ class Brikpanel_Segments {
 	}
 
 	/**
+	 * Append a half-open store-day window to a WHERE/HAVING clause list.
+	 *
+	 * All four date filters on this screen compare a store-local Y-m-d the
+	 * merchant picked against a column stored in UTC. Until 3.3.19 each of the
+	 * four wrote the conversion by hand as
+	 * gmdate( 'Y-m-d 00:00:00', strtotime( $day ) ), which looks like a
+	 * conversion but is a no-op round trip: WordPress pins PHP's default
+	 * timezone to UTC, so the bound ended up being UTC midnight. Measured on a
+	 * UTC+3 store for the local day 2026-08-10, the old bounds pulled in an
+	 * order belonging to 9 August and missed the one belonging to 10 August:
+	 * the same row count, entirely the wrong rows.
+	 *
+	 * The upper bound is EXCLUSIVE, so this emits `<` and never `<=`. Adjacent
+	 * day windows then tile with no gap and no overlap, which is what stops a
+	 * range from quietly growing an extra day the way the Store Summary
+	 * "Yesterday" row once did.
+	 *
+	 * @param string $column  UTC column or aggregate alias, already resolved for
+	 *                        the active order storage (HPOS or legacy posts).
+	 * @param string $from    Local 'Y-m-d', or '' for no lower bound.
+	 * @param string $to      Local 'Y-m-d' INCLUSIVE, or '' for no upper bound.
+	 * @param array  $clauses By reference. Receives the SQL fragments.
+	 * @param array  $params  By reference. Receives the UTC bound values.
+	 * @return void
+	 */
+	private function add_day_window( $column, $from, $to, array &$clauses, array &$params ) {
+		$bounds = brikpanel_local_range_bounds_utc( $from, $to );
+
+		// An unparseable date yields no bound at all rather than an epoch one, so
+		// a hand-edited export URL widens the result set instead of emptying it.
+		if ( '' !== $bounds['start'] ) {
+			$clauses[] = $column . ' >= %s';
+			$params[]  = $bounds['start'];
+		}
+
+		if ( '' !== $bounds['end_exclusive'] ) {
+			$clauses[] = $column . ' < %s';
+			$params[]  = $bounds['end_exclusive'];
+		}
+	}
+
+	/**
 	 * Translate a preset key into concrete filter values. Presets are purely
 	 * a UX shortcut — the server applies them on top of whatever other
 	 * filters the client sent, so combining "Last 30 days" with an explicit
@@ -297,21 +340,28 @@ class Brikpanel_Segments {
 	 */
 	private function apply_preset( array $f ) {
 		switch ( $f['preset'] ) {
+			// Whole store days, today included, so "Last 7 days" is seven buckets
+			// and not a rolling 168 hours. gmdate() here meant the UTC day, which
+			// on a UTC+3 store is still yesterday until 03:00 local.
 			case 'today':
-				$f['date_from'] = gmdate( 'Y-m-d' );
-				$f['date_to']   = gmdate( 'Y-m-d' );
+				$range          = brikpanel_store_days_range( 1 );
+				$f['date_from'] = $range['from'];
+				$f['date_to']   = $range['to'];
 				break;
 			case 'last7':
-				$f['date_from'] = gmdate( 'Y-m-d', strtotime( '-6 days' ) );
-				$f['date_to']   = gmdate( 'Y-m-d' );
+				$range          = brikpanel_store_days_range( 7 );
+				$f['date_from'] = $range['from'];
+				$f['date_to']   = $range['to'];
 				break;
 			case 'last30':
-				$f['date_from'] = gmdate( 'Y-m-d', strtotime( '-29 days' ) );
-				$f['date_to']   = gmdate( 'Y-m-d' );
+				$range          = brikpanel_store_days_range( 30 );
+				$f['date_from'] = $range['from'];
+				$f['date_to']   = $range['to'];
 				break;
 			case 'last90':
-				$f['date_from'] = gmdate( 'Y-m-d', strtotime( '-89 days' ) );
-				$f['date_to']   = gmdate( 'Y-m-d' );
+				$range          = brikpanel_store_days_range( 90 );
+				$f['date_from'] = $range['from'];
+				$f['date_to']   = $range['to'];
 				break;
 			case 'completed':
 				if ( empty( $f['statuses'] ) ) {
@@ -369,7 +419,7 @@ class Brikpanel_Segments {
 				break;
 			case 'new_customers':
 				if ( $f['registered_from'] === '' ) {
-					$f['registered_from'] = gmdate( 'Y-m-d', strtotime( '-29 days' ) );
+					$f['registered_from'] = brikpanel_store_date( 'Y-m-d', '-29 days' );
 				}
 				break;
 			case 'one_time':
@@ -383,7 +433,7 @@ class Brikpanel_Segments {
 				break;
 			case 'dormant':
 				if ( $f['last_order_to'] === '' ) {
-					$f['last_order_to'] = gmdate( 'Y-m-d', strtotime( '-90 days' ) );
+					$f['last_order_to'] = brikpanel_store_date( 'Y-m-d', '-90 days' );
 				}
 				break;
 		}
@@ -439,25 +489,8 @@ class Brikpanel_Segments {
 			$where[] = "o.post_status NOT IN ('trash','auto-draft')";
 		}
 
-		// Date range
-		if ( $f['date_from'] !== '' ) {
-			if ( $hpos ) {
-				$where[]  = 'o.date_created_gmt >= %s';
-				$params[] = gmdate( 'Y-m-d 00:00:00', strtotime( $f['date_from'] ) );
-			} else {
-				$where[]  = 'o.post_date_gmt >= %s';
-				$params[] = gmdate( 'Y-m-d 00:00:00', strtotime( $f['date_from'] ) );
-			}
-		}
-		if ( $f['date_to'] !== '' ) {
-			if ( $hpos ) {
-				$where[]  = 'o.date_created_gmt <= %s';
-				$params[] = gmdate( 'Y-m-d 23:59:59', strtotime( $f['date_to'] ) );
-			} else {
-				$where[]  = 'o.post_date_gmt <= %s';
-				$params[] = gmdate( 'Y-m-d 23:59:59', strtotime( $f['date_to'] ) );
-			}
-		}
+		// Date range. The merchant picks store days; the column is UTC.
+		$this->add_day_window( $hpos ? 'o.date_created_gmt' : 'o.post_date_gmt', $f['date_from'], $f['date_to'], $where, $params );
 
 		// Statuses
 		if ( ! empty( $f['statuses'] ) ) {
@@ -680,8 +713,10 @@ class Brikpanel_Segments {
 			$items[] = [
 				'id'            => (int) $r->order_id,
 				'number'        => (string) ( $numbers[ (int) $r->order_id ] ?? $r->order_id ),
-				'date'          => $r->date_created_gmt ? mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $r->date_created_gmt ) : '',
-				'date_iso'      => $r->date_created_gmt,
+				// date_created_gmt is UTC. mysql2date() would read it as store time
+				// and print the London clock under the store's own format.
+				'date'          => brikpanel_local_datetime( $r->date_created_gmt ),
+				'date_export'   => brikpanel_local_datetime( $r->date_created_gmt, 'Y-m-d H:i:s' ),
 				'status'        => $status_slug,
 				'status_label'  => wc_get_order_status_name( $status_slug ),
 				'total'         => (float) $r->total_amount,
@@ -692,7 +727,7 @@ class Brikpanel_Segments {
 				'phone'         => (string) $r->billing_phone,
 				'country'       => (string) $r->billing_country,
 				'city'          => (string) $r->billing_city,
-				'payment'       => (string) ( $r->payment_method_title ?: $r->payment_method ),
+				'payment'       => brikpanel_plain_label( (string) ( $r->payment_method_title ?: $r->payment_method ) ),
 				'edit_url'      => admin_url( $hpos ? 'admin.php?page=wc-orders&action=edit&id=' . (int) $r->order_id : 'post.php?post=' . (int) $r->order_id . '&action=edit' ),
 			];
 		}
@@ -809,14 +844,7 @@ class Brikpanel_Segments {
 		}
 
 		// Date range on orders (if user wants "customers who ordered in period")
-		if ( $f['date_from'] !== '' ) {
-			$order_where[] = $hpos ? 'o.date_created_gmt >= %s' : 'o.post_date_gmt >= %s';
-			$params[]      = gmdate( 'Y-m-d 00:00:00', strtotime( $f['date_from'] ) );
-		}
-		if ( $f['date_to'] !== '' ) {
-			$order_where[] = $hpos ? 'o.date_created_gmt <= %s' : 'o.post_date_gmt <= %s';
-			$params[]      = gmdate( 'Y-m-d 23:59:59', strtotime( $f['date_to'] ) );
-		}
+		$this->add_day_window( $hpos ? 'o.date_created_gmt' : 'o.post_date_gmt', $f['date_from'], $f['date_to'], $order_where, $params );
 
 		$order_where_sql = implode( ' AND ', $order_where );
 
@@ -867,14 +895,8 @@ class Brikpanel_Segments {
 			$having[] = 'order_count <= %d';
 			$having_params[] = $f['order_count_max'];
 		}
-		if ( $f['last_order_from'] !== '' ) {
-			$having[] = 'last_order_date >= %s';
-			$having_params[] = gmdate( 'Y-m-d 00:00:00', strtotime( $f['last_order_from'] ) );
-		}
-		if ( $f['last_order_to'] !== '' ) {
-			$having[] = 'last_order_date <= %s';
-			$having_params[] = gmdate( 'Y-m-d 23:59:59', strtotime( $f['last_order_to'] ) );
-		}
+		// last_order_date is MAX() of a UTC column, so the same conversion applies.
+		$this->add_day_window( 'last_order_date', $f['last_order_from'], $f['last_order_to'], $having, $having_params );
 
 		$having_sql = $having ? ( 'HAVING ' . implode( ' AND ', $having ) ) : '';
 
@@ -903,14 +925,8 @@ class Brikpanel_Segments {
 			$outer_where[] = '(agg.email LIKE %s OR u.display_name LIKE %s OR u.user_email LIKE %s OR CONCAT_WS(" ", bm_fn.meta_value, bm_ln.meta_value) LIKE %s)';
 			$outer_params[] = $like; $outer_params[] = $like; $outer_params[] = $like; $outer_params[] = $like;
 		}
-		if ( $f['registered_from'] !== '' ) {
-			$outer_where[] = 'u.user_registered >= %s';
-			$outer_params[] = gmdate( 'Y-m-d 00:00:00', strtotime( $f['registered_from'] ) );
-		}
-		if ( $f['registered_to'] !== '' ) {
-			$outer_where[] = 'u.user_registered <= %s';
-			$outer_params[] = gmdate( 'Y-m-d 23:59:59', strtotime( $f['registered_to'] ) );
-		}
+		// wp_users.user_registered is documented by core as UTC.
+		$this->add_day_window( 'u.user_registered', $f['registered_from'], $f['registered_to'], $outer_where, $outer_params );
 
 		// RFM segment filter — relies on the precomputed customer_metrics
 		// table which is keyed by customer_key (matching the aggregate
@@ -984,7 +1000,7 @@ class Brikpanel_Segments {
 			$user_id = (int) $r->user_id;
 			$name = trim( trim( (string) $r->billing_first_name . ' ' . (string) $r->billing_last_name ) );
 			if ( $name === '' ) {
-				$name = (string) $r->display_name;
+				$name = brikpanel_plain_name( (string) $r->display_name );
 			}
 			if ( $name === '' ) {
 				$name = (string) ( $r->registered_email ?: $r->email );
@@ -995,14 +1011,16 @@ class Brikpanel_Segments {
 				'name'                 => $name,
 				'email'                => (string) ( $r->registered_email ?: $r->email ),
 				'phone'                => (string) ( $r->phone ?: $r->billing_phone_meta ),
-				'registered'           => $r->user_registered ? mysql2date( get_option( 'date_format' ), $r->user_registered ) : ( $user_id ? '' : __( 'Guest', 'brikpanel' ) ),
-				'registered_iso'       => (string) $r->user_registered,
+				// wp_users.user_registered is UTC; so are MIN()/MAX() of *_gmt below.
+				'registered'           => brikpanel_local_date( $r->user_registered, $user_id ? '' : __( 'Guest', 'brikpanel' ) ),
+				'registered_export'    => brikpanel_local_datetime( $r->user_registered, 'Y-m-d H:i:s' ),
 				'order_count'          => (int) $r->order_count,
 				'total_spent'          => (float) $r->total_spent,
 				'total_spent_display'  => wp_strip_all_tags( wc_price( (float) $r->total_spent ) ),
-				'last_order'           => $r->last_order_date ? mysql2date( get_option( 'date_format' ), $r->last_order_date ) : '',
-				'last_order_iso'       => (string) $r->last_order_date,
-				'first_order'          => $r->first_order_date ? mysql2date( get_option( 'date_format' ), $r->first_order_date ) : '',
+				'last_order'           => brikpanel_local_date( $r->last_order_date ),
+				'last_order_export'    => brikpanel_local_datetime( $r->last_order_date, 'Y-m-d H:i:s' ),
+				'first_order'          => brikpanel_local_date( $r->first_order_date ),
+				'first_order_export'   => brikpanel_local_datetime( $r->first_order_date, 'Y-m-d H:i:s' ),
 				'aov'                  => $r->order_count > 0 ? ( (float) $r->total_spent / (int) $r->order_count ) : 0,
 				'aov_display'          => wp_strip_all_tags( wc_price( $r->order_count > 0 ? ( (float) $r->total_spent / (int) $r->order_count ) : 0 ) ),
 				'edit_url'             => $user_id ? admin_url( 'user-edit.php?user_id=' . $user_id ) : '',
@@ -1049,11 +1067,17 @@ class Brikpanel_Segments {
 
 		nocache_headers();
 		header( 'Content-Type: text/csv; charset=UTF-8' );
-		header( 'Content-Disposition: attachment; filename="brikpanel-segments-' . $tab . '-' . gmdate( 'Ymd-His' ) . '.csv"' );
+		header( 'Content-Disposition: attachment; filename="brikpanel-segments-' . $tab . '-' . brikpanel_store_date( 'Ymd-His' ) . '.csv"' );
 
 		$out = fopen( 'php://output', 'w' );
 		// UTF-8 BOM so Excel opens non-ASCII characters cleanly.
 		fwrite( $out, "\xEF\xBB\xBF" );
+
+		// Every date cell below is the store's own wall clock, written as
+		// 'Y-m-d H:i:s' so a spreadsheet sorts it chronologically in any locale.
+		// The header names the zone, because a column of bare timestamps that does
+		// not say which clock it is on is exactly how this screen got reported.
+		$tz_label = wp_timezone_string();
 
 		// Every data row below goes through brikpanel_csv_safe_row(), which
 		// neutralises CSV formula injection across the whole row. This used to
@@ -1065,7 +1089,8 @@ class Brikpanel_Segments {
 			$result = $this->query_orders( $filters );
 			fputcsv( $out, [
 				__( 'Order ID', 'brikpanel' ),
-				__( 'Date', 'brikpanel' ),
+				/* translators: %s: the store's timezone, for example Europe/Istanbul. */
+				sprintf( __( 'Date (%s)', 'brikpanel' ), $tz_label ),
 				__( 'Status', 'brikpanel' ),
 				__( 'Customer', 'brikpanel' ),
 				__( 'Email', 'brikpanel' ),
@@ -1078,7 +1103,7 @@ class Brikpanel_Segments {
 			foreach ( $result['items'] as $item ) {
 				fputcsv( $out, brikpanel_csv_safe_row( [
 					$item['id'],
-					$item['date_iso'],
+					$item['date_export'],
 					$item['status_label'],
 					$item['name'],
 					$item['email'],
@@ -1096,12 +1121,15 @@ class Brikpanel_Segments {
 				__( 'Name', 'brikpanel' ),
 				__( 'Email', 'brikpanel' ),
 				__( 'Phone', 'brikpanel' ),
-				__( 'Registered', 'brikpanel' ),
+				/* translators: %s: the store's timezone, for example Europe/Istanbul. */
+				sprintf( __( 'Registered (%s)', 'brikpanel' ), $tz_label ),
 				__( 'Orders', 'brikpanel' ),
 				__( 'Total spent', 'brikpanel' ),
 				__( 'Average order value', 'brikpanel' ),
-				__( 'First order', 'brikpanel' ),
-				__( 'Last order', 'brikpanel' ),
+				/* translators: %s: the store's timezone, for example Europe/Istanbul. */
+				sprintf( __( 'First order (%s)', 'brikpanel' ), $tz_label ),
+				/* translators: %s: the store's timezone, for example Europe/Istanbul. */
+				sprintf( __( 'Last order (%s)', 'brikpanel' ), $tz_label ),
 			] );
 			foreach ( $result['items'] as $item ) {
 				fputcsv( $out, brikpanel_csv_safe_row( [
@@ -1109,12 +1137,12 @@ class Brikpanel_Segments {
 					$item['name'],
 					$item['email'],
 					$item['phone'],
-					$item['registered_iso'],
+					$item['registered_export'],
 					$item['order_count'],
 					$item['total_spent'],
 					$item['aov'],
-					$item['first_order'],
-					$item['last_order_iso'],
+					$item['first_order_export'],
+					$item['last_order_export'],
 				] ) );
 			}
 		}

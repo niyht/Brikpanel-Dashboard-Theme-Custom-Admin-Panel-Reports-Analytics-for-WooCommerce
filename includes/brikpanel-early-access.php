@@ -424,11 +424,11 @@ function brikpanel_ea_print_styles() {
         }
         .brikpanel-ea-btn--primary:hover { background: #1a1a1a; color: #fff; }
         .brikpanel-ea-btn--primary:disabled { opacity: 0.6; cursor: default; }
-        .brikpanel-ea-btn--ghost { background: transparent; color: #8a8a8a; }
+        .brikpanel-ea-btn--ghost { background: transparent; color: #616161; }
         .brikpanel-ea-btn--ghost:hover { color: #303030; background: #f7f7f7; }
         .brikpanel-ea-fineprint {
             margin: 0.75rem 0 0; padding: 0;
-            font-size: 0.75rem; color: #8a8a8a; line-height: 1.4;
+            font-size: 0.75rem; color: #616161; line-height: 1.4;
         }
         .brikpanel-ea-wa {
             margin-top: 1.25rem; padding-top: 1.25rem;
@@ -903,13 +903,12 @@ function brikpanel_ea_render_settings_field( $field ) {
                 <p class="brikpanel-newsletter-desc">
                     <?php esc_html_e( 'New BrikPanel and BrikMentor features, WooCommerce tips and store growth ideas, straight to your inbox. Unsubscribe any time.', 'brikpanel' ); ?>
                 </p>
-                <button type="button" class="button brikpanel-newsletter-btn" data-ea-open data-ea-source="newsletter_settings">
+                <button type="button" class="brikpanel-btn brikpanel-btn--secondary brikpanel-newsletter-btn" data-ea-open data-ea-source="newsletter_settings">
                     <?php esc_html_e( 'Subscribe', 'brikpanel' ); ?>
                 </button>
             <?php endif; ?>
             <style>
                 .brikpanel-newsletter-desc { max-width: 640px; color: #616161; margin: 0 0 0.75rem; }
-                .brikpanel-newsletter-btn { display: inline-flex; align-items: center; }
                 .brikpanel-newsletter-joined { display: flex; align-items: center; gap: 0.5rem; color: #1a8917; font-weight: 550; margin: 0; }
                 .brikpanel-newsletter-check { display: inline-flex; }
             </style>

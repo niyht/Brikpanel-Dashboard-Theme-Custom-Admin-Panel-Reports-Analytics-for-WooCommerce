@@ -246,16 +246,19 @@ class Brikpanel_Sheets_Settings {
 		$css_ver  = is_readable( $css_path ) ? (string) filemtime( $css_path ) : BRIKPANEL_VERSION;
 		$js_ver   = is_readable( $js_path )  ? (string) filemtime( $js_path )  : BRIKPANEL_VERSION;
 
+		// The tab row scrolls inside itself on a phone (shared strip helper).
+		$strip_css = function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'scroll_strip', 'ui' ], 'style' ) : [];
+		$strip_js  = function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'scroll_strip', 'format' ] ) : [];
 		wp_enqueue_style(
 			'brikpanel-gs',
 			BRIKPANEL_GS_URL . 'assets/brikpanel-google-sheets.css',
-			[],
+			$strip_css,
 			$css_ver
 		);
 		wp_enqueue_script(
 			'brikpanel-gs',
 			BRIKPANEL_GS_URL . 'assets/brikpanel-google-sheets.js',
-			[],
+			$strip_js,
 			$js_ver,
 			true
 		);
@@ -281,21 +284,19 @@ class Brikpanel_Sheets_Settings {
 					'picker_failed'      => __( 'Could not open the Google Picker. Please try again.', 'brikpanel' ),
 					'picker_unavailable' => __( 'Picking an existing spreadsheet is not available yet. Create a new one below.', 'brikpanel' ),
 					'generic_error'      => __( 'Something went wrong. Please try again.', 'brikpanel' ),
-					'server_error'       => __( 'The server ended the request before it finished. Nothing was lost — click Sync now again to continue where it stopped.', 'brikpanel' ),
+					'server_error'       => __( 'The server ended the request before it finished. Nothing was lost: click Sync now again to continue where it stopped.', 'brikpanel' ),
+					// Counts that add up in the browser: named ("Orders: 12"), so no
+					// plural form is needed (the browser has no plural rules).
 					/* translators: 1: orders synced so far, 2: sheet rows written so far. */
-					'sync_progress'      => __( 'Synced %1$d orders (%2$d rows)…', 'brikpanel' ),
+					'sync_progress'      => __( 'Syncing… Orders: %1$s, rows: %2$s', 'brikpanel' ),
 					/* translators: 1: total orders synced, 2: total sheet rows written. */
-					'sync_done'          => __( 'Synced %1$d orders (%2$d rows).', 'brikpanel' ),
-					/* translators: %1$d: product rows written to the sheet so far. */
-					'sync_progress_products' => __( 'Synced %1$d product rows…', 'brikpanel' ),
-					/* translators: %1$d: total product rows written to the sheet. */
-					'sync_done_products'     => __( 'Synced %1$d product rows.', 'brikpanel' ),
+					'sync_done'          => __( 'Sync finished. Orders: %1$s, rows: %2$s.', 'brikpanel' ),
+					/* translators: %1$s: product rows written to the sheet so far. */
+					'sync_progress_products' => __( 'Syncing… Product rows: %1$s', 'brikpanel' ),
+					/* translators: %1$s: total product rows written to the sheet. */
+					'sync_done_products'     => __( 'Sync finished. Product rows: %1$s.', 'brikpanel' ),
 					'no_access'          => __( 'BrikPanel does not have access yet. Open the spreadsheet, share it with %s, then click Validate.', 'brikpanel' ),
 					'log_empty'          => __( 'No errors logged.', 'brikpanel' ),
-					/* translators: %s: number of orders. */
-					'scope_all'          => __( 'All %s orders in this date and status range will be exported.', 'brikpanel' ),
-					/* translators: 1: matching orders, 2: total orders in range. */
-					'scope_filtered'     => __( '%1$s of %2$s orders match this shipping filter.', 'brikpanel' ),
 					'scope_warning'      => __( 'Orders with no shipping method recorded are excluded while any box is ticked. Untick every box to export all orders.', 'brikpanel' ),
 					'scope_none'         => __( 'No orders match this shipping filter, so nothing would be exported. Untick every box to export all orders.', 'brikpanel' ),
 					'scope_counting'     => __( 'Counting…', 'brikpanel' ),
@@ -304,7 +305,8 @@ class Brikpanel_Sheets_Settings {
 					'connected_label'    => __( 'Connected', 'brikpanel' ),
 					'not_connected_label'=> __( 'Not connected', 'brikpanel' ),
 					/* translators: %d minutes until auto-refresh */
-					'expires_template'   => __( 'in %d min (auto-refreshed)', 'brikpanel' ),
+					/* translators: %s: minutes until the access token is refreshed. */
+					'expires_template'   => brikpanel_js_plural( _n_noop( 'in %s minute (auto-refreshed)', 'in %s minutes (auto-refreshed)', 'brikpanel' ) ),
 					'pulling'            => __( 'Pulling changes from Sheets…', 'brikpanel' ),
 					'reset_products_confirm' => __( "This will WIPE the current Products tab in Google Sheets and then re-push every product from scratch. Any rows you added manually to that tab will be lost. Continue?", 'brikpanel' ),
 					'reset_expenses_confirm' => __( "This will WIPE the current Expenses tab in Google Sheets and then re-write it from your BrikPanel expenses. Any rows you typed into that tab and have not pulled in yet will be lost. Continue?", 'brikpanel' ),
@@ -462,7 +464,7 @@ class Brikpanel_Sheets_Settings {
 		$title = isset( $_POST['title'] ) ? sanitize_text_field( wp_unslash( $_POST['title'] ) ) : '';
 		if ( $title === '' ) {
 			$site = wp_parse_url( home_url(), PHP_URL_HOST );
-			$title = 'BrikPanel — ' . ( $site ?: 'WooCommerce' );
+			$title = 'BrikPanel · ' . ( $site ?: 'WooCommerce' );
 		}
 		try {
 			$client = new Brikpanel_Sheets_Client();
@@ -833,13 +835,13 @@ class Brikpanel_Sheets_Settings {
 						update_option( Brikpanel_Sheets_Order_Sync::OPT_ROW_LAYOUT, $old_layout, false );
 						Brikpanel_Sheets_Mapping::set_columns( 'orders', $old_columns );
 						wp_send_json_error( [
-							'message' => __( 'Row layout was not changed: the target tab could not be wiped (rate limit or connection issue). Your other settings were saved — wait a minute and try the layout switch again.', 'brikpanel' ),
+							'message' => __( 'Row layout was not changed: the target tab could not be wiped (rate limit or connection issue). Your other settings were saved. Wait a minute and try the layout switch again.', 'brikpanel' ),
 						], 502 );
 					}
 					self::reset_sync_state();
 
 					wp_send_json_success( [
-						'message' => __( 'Row layout changed — the target tab was wiped and all orders will re-export in the new layout. Click "Sync now" to fill it.', 'brikpanel' ),
+						'message' => __( 'Row layout changed. The target tab was wiped and all orders will re-export in the new layout. Click "Sync now" to fill it.', 'brikpanel' ),
 						'reload'  => true,
 					] );
 				}
@@ -1013,10 +1015,28 @@ class Brikpanel_Sheets_Settings {
 
 		$scope = Brikpanel_Sheets_Order_Sync::count_export_scope( $statuses, $since_ts, $methods );
 
+		$matched = (int) $scope['matched'];
+		$total   = (int) $scope['total'];
+		// The sentence is finished here: its plural form follows the count
+		// (Russian and Polish have three), the numbers the store's separators.
+		$text = empty( $methods )
+			? brikpanel_safe_sprintf(
+				/* translators: %s: number of orders. */
+				_n( 'All %s order in this date and status range will be exported.', 'All %s orders in this date and status range will be exported.', $total, 'brikpanel' ),
+				brikpanel_number( $total )
+			)
+			: brikpanel_safe_sprintf(
+				/* translators: 1: matching orders, 2: total orders in range. */
+				_n( '%1$s of %2$s orders matches this shipping filter.', '%1$s of %2$s orders match this shipping filter.', $matched, 'brikpanel' ),
+				brikpanel_number( $matched ),
+				brikpanel_number( $total )
+			);
+
 		wp_send_json_success( [
-			'matched'  => (int) $scope['matched'],
-			'total'    => (int) $scope['total'],
+			'matched'  => $matched,
+			'total'    => $total,
 			'filtered' => ! empty( $methods ),
+			'text'     => $text,
 		] );
 	}
 
@@ -1105,7 +1125,7 @@ class Brikpanel_Sheets_Settings {
 						// Whole budget spent waiting on the flush lock — a
 						// background job owns the export right now. Saying
 						// "everything is synced" here would be a lie.
-						$message = __( 'A background sync is already running — it will finish on its own, or click "Sync now" again in a moment to watch progress.', 'brikpanel' );
+						$message = __( 'A background sync is already running. It will finish on its own, or click "Sync now" again in a moment to watch progress.', 'brikpanel' );
 					} elseif ( $orders_n === 0 ) {
 						// Distinguish "already synced everything" from "your filters
 						// match no orders in the configured window". Both produce 0
@@ -1125,7 +1145,7 @@ class Brikpanel_Sheets_Settings {
 						if ( $total_matching === 0 ) {
 							$message = __( 'No orders matched the selected status filters and "include orders from" date. Adjust those settings and try again.', 'brikpanel' );
 						} else {
-							$message = __( 'No new orders to sync — every matching order is already marked synced. To wipe the target tab and re-push the full history, click "Reset & re-push everything".', 'brikpanel' );
+							$message = __( 'No new orders to sync. Every matching order is already marked synced. To wipe the target tab and re-push the full history, click "Reset & re-push everything".', 'brikpanel' );
 						}
 					} else {
 						$message = sprintf(
@@ -1221,7 +1241,7 @@ class Brikpanel_Sheets_Settings {
 					if ( $clear_failed ) {
 						$message = __( 'The target tab could not be wiped, so nothing was re-pushed and your existing rows were left untouched. This is usually a Google rate limit, wait a minute and click "Sync now" again.', 'brikpanel' );
 					} elseif ( $locked ) {
-						$message = __( 'A background sync is already running — it will finish on its own, or click "Sync now" again in a moment to watch progress.', 'brikpanel' );
+						$message = __( 'A background sync is already running. It will finish on its own, or click "Sync now" again in a moment to watch progress.', 'brikpanel' );
 					} else {
 						$message = sprintf(
 							/* translators: 1: appended count, 2: updated count */
@@ -1449,7 +1469,7 @@ class Brikpanel_Sheets_Settings {
 		}
 
 		foreach ( $keep as &$e ) {
-			$e['ts_display'] = $e['ts'] ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $e['ts'] ) : '';
+			$e['ts_display'] = $e['ts'] ? wp_date( brikpanel_datetime_format(), $e['ts'] ) : '';
 			// Repeats are collapsed into one entry (see the logger); say so, or
 			// a recurring failure reads as a single one-off event.
 			$repeats = (int) ( $e['count'] ?? 1 );
@@ -1458,7 +1478,7 @@ class Brikpanel_Sheets_Settings {
 					/* translators: 1: log message, 2: how many times it repeated. */
 					__( '%1$s (repeated %2$s times)', 'brikpanel' ),
 					(string) $e['message'],
-					number_format_i18n( $repeats )
+					brikpanel_number( $repeats )
 				);
 			}
 		}
@@ -1509,7 +1529,7 @@ class Brikpanel_Sheets_Settings {
 
 		if ( ! $tab_cleared ) {
 			wp_send_json_error( [
-				'message' => __( 'The target tab could not be wiped (rate limit or connection issue), so the reset was cancelled to avoid duplicate rows. Nothing was changed — wait a minute and try again.', 'brikpanel' ),
+				'message' => __( 'The target tab could not be wiped (rate limit or connection issue), so the reset was cancelled to avoid duplicate rows. Nothing was changed. Wait a minute and try again.', 'brikpanel' ),
 			], 502 );
 		}
 

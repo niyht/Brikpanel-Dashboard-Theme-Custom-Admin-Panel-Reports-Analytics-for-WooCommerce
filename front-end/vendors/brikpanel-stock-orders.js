@@ -38,9 +38,15 @@
             return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[m];
         });
     }
+    // The store's price format (symbol side, separators, decimals) through
+    // front-end/shared/brikpanel-format.js; it was always "$1,234.56".
     function fmtMoney(n) {
         n = parseFloat(n) || 0;
-        return cfg.currency + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return window.brikpanelFormat ? window.brikpanelFormat.money(n) : cfg.currency + n.toFixed(2);
+    }
+    // A stored Y-m-d in the store's short date format.
+    function fmtDate(ymd) {
+        return window.brikpanelFormat ? window.brikpanelFormat.dateShort(ymd) : String(ymd || '');
     }
     function toast(message, isError) {
         var el = document.createElement('div');
@@ -81,10 +87,19 @@
             sumRecv:  $('brikpanel-so-recv-90d'),
         };
 
+        // Rows turn into stacked cards when the table cannot show every column
+        // in its card (field test B6). Labels come from the header texts.
+        var listTable = $('brikpanel-so-table');
+        var listFit = (listTable && window.brikpanelFitTable) ? window.brikpanelFitTable(listTable, { labels: 'head', slack: 0 }) : null;
+        function setBody(html) {
+            dom.tbody.innerHTML = html;
+            if (listFit) listFit.refit();
+        }
+
         function load() {
             if (state.loading) return;
             state.loading = true;
-            dom.tbody.innerHTML = '<tr><td colspan="8" class="brikpanel-so-empty">Loading…</td></tr>';
+            setBody('<tr><td colspan="8" class="brikpanel-so-empty">' + escapeHtml(cfg.i18n.loading) + '</td></tr>');
             ajax('brikpanel_so_list', {
                 search:    state.search,
                 status:    state.status,
@@ -102,7 +117,7 @@
 
         function renderRows(items) {
             if (!items.length) {
-                dom.tbody.innerHTML = '<tr><td colspan="8" class="brikpanel-so-empty">' + escapeHtml(cfg.i18n.no_orders) + '</td></tr>';
+                setBody('<tr><td colspan="8" class="brikpanel-so-empty">' + escapeHtml(cfg.i18n.no_orders) + '</td></tr>');
                 return;
             }
             var html = '';
@@ -111,26 +126,26 @@
                 var url = cfg.edit_url + po.id;
                 html +=
                 '<tr>' +
-                    '<td><a class="brikpanel-so-ref-link" href="' + url + '">' + escapeHtml(po.reference || ('#' + po.id)) + '</a></td>' +
+                    '<td class="brikpanel-fit-lead"><a class="brikpanel-so-ref-link" href="' + url + '">' + escapeHtml(po.reference || ('#' + po.id)) + '</a></td>' +
                     '<td>' + escapeHtml(po.vendor_name) + '</td>' +
                     '<td><span class="brikpanel-so-status brikpanel-so-status--' + escapeHtml(po.status) + '">' + escapeHtml(po.status_label) + '</span></td>' +
-                    '<td>' + (po.order_date    || '<span style="color:#8a8a8a;">—</span>') + '</td>' +
-                    '<td>' + (po.expected_date || '<span style="color:#8a8a8a;">—</span>') + '</td>' +
-                    '<td>' + (po.received_date || '<span style="color:#8a8a8a;">—</span>') + '</td>' +
-                    '<td class="brikpanel-so-num">' + escapeHtml(po.total_fmt) + '</td>' +
-                    '<td class="brikpanel-so-num">' +
+                    '<td>' + (po.order_date    ? escapeHtml(fmtDate(po.order_date))    : '<span style="color:#8a8a8a;">—</span>') + '</td>' + // contrast-ok: empty-value marker.
+                    '<td>' + (po.expected_date ? escapeHtml(fmtDate(po.expected_date)) : '<span style="color:#8a8a8a;">—</span>') + '</td>' + // contrast-ok: empty-value marker.
+                    '<td>' + (po.received_date ? escapeHtml(fmtDate(po.received_date)) : '<span style="color:#8a8a8a;">—</span>') + '</td>' + // contrast-ok: empty-value marker.
+                    '<td class="brikpanel-so-num brikpanel-fit-headline">' + escapeHtml(po.total_fmt) + '</td>' +
+                    '<td class="brikpanel-so-num brikpanel-fit-full">' +
                         '<div class="brikpanel-so-row-actions">' +
-                            '<a class="brikpanel-so-btn brikpanel-so-btn-icon" href="' + url + '" title="' + escapeHtml(cfg.i18n.open || 'Open') + '">' +
+                            '<a class="brikpanel-so-btn brikpanel-so-btn-icon" href="' + url + '" title="' + escapeHtml(cfg.i18n.open || 'Open') + '" aria-label="' + escapeHtml(cfg.i18n.open || 'Open') + '">' +
                                 '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 2l7 6-7 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
                             '</a>' +
-                            '<button type="button" class="brikpanel-so-btn brikpanel-so-btn-icon" data-action="delete" data-id="' + po.id + '" title="' + escapeHtml(cfg.i18n.delete || 'Delete') + '">' +
+                            '<button type="button" class="brikpanel-so-btn brikpanel-so-btn-icon" data-action="delete" data-id="' + po.id + '" title="' + escapeHtml(cfg.i18n.delete || 'Delete') + '" aria-label="' + escapeHtml(cfg.i18n.delete || 'Delete') + '">' +
                                 '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V2.5C6 2 6.5 2 7 2h2c.5 0 1 0 1 .5V4M5 4l.5 9.5c0 .5.5.5 1 .5h3c.5 0 1 0 1-.5L11 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
                             '</button>' +
                         '</div>' +
                     '</td>' +
                 '</tr>';
             }
-            dom.tbody.innerHTML = html;
+            setBody(html);
 
             var delBtns = dom.tbody.querySelectorAll('[data-action="delete"]');
             for (var j = 0; j < delBtns.length; j++) {
@@ -159,7 +174,7 @@
             dom.next.disabled = d.page >= d.pages;
         }
         function renderError() {
-            dom.tbody.innerHTML = '<tr><td colspan="8" class="brikpanel-so-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>';
+            setBody('<tr><td colspan="8" class="brikpanel-so-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>');
         }
 
         if (dom.search) {
@@ -209,10 +224,28 @@
         var locked = !!cfg.locked;
         var items  = (cfg.items_seed || []).map(function (it) { return Object.assign({}, it); });
 
+        // Line items stack into cards on a narrow screen (field test B6: Unit
+        // cost, Line total and Remove were cut off on phones). A flip only
+        // restyles the rows, so the typed quantities stay where they are.
+        var itemsTable = $('brikpanel-so-items');
+        var itemsFit = (itemsTable && window.brikpanelFitTable) ? window.brikpanelFitTable(itemsTable, { labels: 'head', slack: 0 }) : null;
+        function setLines(html) {
+            dom.tbody.innerHTML = html;
+            if (itemsFit) itemsFit.refit();
+            // Once the header row is hidden in card view, the boxes need
+            // their own names: take the column label the helper just stamped.
+            var boxes = dom.tbody.querySelectorAll('input[data-field]');
+            for (var b = 0; b < boxes.length; b++) {
+                var cell = boxes[b].closest('td');
+                var label = cell ? cell.getAttribute('data-bp-label') : '';
+                if (label && !boxes[b].hasAttribute('aria-label')) boxes[b].setAttribute('aria-label', label);
+            }
+        }
+
         // ─── render lines ────────────────────────────────────────────────
         function renderLines() {
             if (!items.length) {
-                dom.tbody.innerHTML = '<tr class="brikpanel-so-items-empty"><td colspan="6">' + escapeHtml((cfg.i18n && cfg.i18n.empty_items) || 'No items yet — search above to add a product.') + '</td></tr>';
+                setLines('<tr class="brikpanel-so-items-empty"><td colspan="6">' + escapeHtml((cfg.i18n && cfg.i18n.empty_items) || '') + '</td></tr>');
                 recalcTotals();
                 return;
             }
@@ -220,27 +253,27 @@
             for (var i = 0; i < items.length; i++) {
                 var it = items[i];
                 var meta = [];
-                if (it.sku) meta.push('SKU: ' + escapeHtml(it.sku));
+                if (it.sku) meta.push(escapeHtml(cfg.i18n.sku) + ': ' + escapeHtml(it.sku));
                 // i18n-ignore: variation_label is _x()-wrapped in class-brikpanel-stock-orders.php:446; scanner can't trace the &&-guarded key chain.
                 if (it.variation_id) meta.push(((cfg.i18n && cfg.i18n.variation_label) || 'Variation #') + it.variation_id);
                 html +=
                 '<tr data-idx="' + i + '">' +
-                    '<td>' +
+                    '<td class="brikpanel-fit-lead">' +
                         '<div class="brikpanel-so-item-title">' + escapeHtml(it.title || ('#' + it.product_id)) + '</div>' +
                         (meta.length ? '<div class="brikpanel-so-item-meta">' + meta.join(' · ') + '</div>' : '') +
                     '</td>' +
                     '<td class="brikpanel-so-num"><input type="number" min="0" step="1" value="' + (it.qty_ordered || 0) + '" data-field="qty_ordered" ' + (locked ? 'disabled' : '') + ' /></td>' +
                     '<td class="brikpanel-so-num"><input type="number" min="0" step="1" value="' + (it.qty_received || 0) + '" data-field="qty_received" ' + (locked ? 'disabled' : '') + ' /></td>' +
                     '<td class="brikpanel-so-num"><input type="number" min="0" step="0.01" value="' + (it.unit_cost || 0) + '" data-field="unit_cost" ' + (locked ? 'disabled' : '') + ' /></td>' +
-                    '<td class="brikpanel-so-num"><strong data-line-total>' + fmtMoney(it.line_total || 0) + '</strong></td>' +
-                    '<td class="brikpanel-so-num">' +
-                        (locked ? '' : '<button type="button" class="brikpanel-so-btn brikpanel-so-btn-icon" data-remove>' +
+                    '<td class="brikpanel-so-num brikpanel-fit-headline"><strong data-line-total>' + fmtMoney(it.line_total || 0) + '</strong></td>' +
+                    '<td class="brikpanel-so-num brikpanel-so-remove-cell">' +
+                        (locked ? '' : '<button type="button" class="brikpanel-so-btn brikpanel-so-btn-icon" data-remove aria-label="' + escapeHtml(cfg.i18n.remove) + '" title="' + escapeHtml(cfg.i18n.remove) + '">' +
                             '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
                         '</button>') +
                     '</td>' +
                 '</tr>';
             }
-            dom.tbody.innerHTML = html;
+            setLines(html);
 
             // Wire inputs
             var inputs = dom.tbody.querySelectorAll('input[data-field]');
@@ -435,7 +468,12 @@
                         var anchor = dom.orderDate && dom.orderDate.value ? new Date(dom.orderDate.value + 'T00:00:00') : new Date();
                         if (!isNaN(anchor.getTime())) {
                             anchor.setDate(anchor.getDate() + parseInt(v.default_lead_time_days, 10));
-                            dom.expDate.value = anchor.toISOString().slice(0, 10);
+                            // The anchor was built from local calendar fields, so read it
+                            // back the same way. toISOString() re-expresses it in UTC and
+                            // pushed the date back a day for every browser east of UTC.
+                            dom.expDate.value = anchor.getFullYear() + '-' +
+                                ('0' + (anchor.getMonth() + 1)).slice(-2) + '-' +
+                                ('0' + anchor.getDate()).slice(-2);
                             applied = true;
                         }
                     }

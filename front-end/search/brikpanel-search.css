@@ -1,6 +1,12 @@
 /* =========================================================================
    BrikPanel command palette
    Monochrome, Shopify-inspired. Smooth + modern.
+
+   This file loads on every admin page, so a rule on a generic class name
+   (.text-sm, .result-list, .ab-icon) also restyles WordPress core and other
+   plugins. Scope those with :where(.brikpanel-search-modal) or
+   :where(.brikpanel-search-menu-item): it adds no specificity, so the rules
+   inside the palette resolve exactly as before.
    ========================================================================= */
 
 /* Admin-bar menu item ----------------------------------------------------- */
@@ -13,7 +19,9 @@
 	display: none;
 }
 
-.ab-icon::before {
+/* Unscoped, this gave the search glyph to every admin-bar icon without an
+   ID-level rule of its own, including BrikPanel's own power switch. */
+:where(.brikpanel-search-menu-item) .ab-icon::before {
 	content: "\f179";
 }
 
@@ -65,7 +73,7 @@
 	--bp-bg: #ffffff;
 	--bp-text: #303030;
 	--bp-text-2: #616161;
-	--bp-muted: #8a8a8a;
+	--bp-placeholder: #8a8a8a;
 	--bp-border: #e3e3e3;
 	--bp-hover: #f6f6f7;
 	--bp-active: #eef0f2;
@@ -187,7 +195,7 @@
 }
 
 .brikpanel-search-modal input::placeholder {
-	color: var(--bp-muted);
+	color: var(--bp-placeholder);
 }
 
 /* Section heading + source icon ------------------------------------------ */
@@ -196,15 +204,15 @@
 	display: flex;
 	align-items: center;
 	gap: 0.4rem;
-	color: var(--bp-muted);
+	color: var(--bp-text-2, #616161);
 	margin: 1.1rem 0 0.3rem 0.65rem !important;
 }
 
 .brikpanel-search-modal .bp-sec-label {
 	font-size: 0.7rem !important;
 	font-weight: 600 !important;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
+	letter-spacing: normal;
+	text-transform: none;
 }
 
 .brikpanel-search-modal .bp-sec-ic {
@@ -248,7 +256,7 @@
 
 /* Result rows ------------------------------------------------------------- */
 
-.result-list {
+:where(.brikpanel-search-modal) .result-list {
 	overflow-y: auto;
 }
 
@@ -294,7 +302,7 @@
 	width: 0.8rem;
 	height: 0.8rem;
 	transform: translateY(-50%) translateX(-2px);
-	background-color: var(--bp-muted);
+	background-color: var(--bp-placeholder);
 	opacity: 0;
 	transition: opacity 0.12s ease, transform 0.12s ease;
 	-webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='9 6 15 12 9 18'/></svg>") no-repeat center / contain;
@@ -336,7 +344,7 @@
 
 .brikpanel-search-modal .matching-order-product {
 	margin-top: 0.25rem !important;
-	color: var(--bp-muted);
+	color: var(--bp-text-2, #616161);
 }
 
 .brikpanel-search-modal .hint-text {
@@ -352,7 +360,7 @@
 	opacity: 0.7;
 }
 
-section:has(.result-list ul) + .section-divider {
+:where(.brikpanel-search-modal) section:has(.result-list ul) + .section-divider {
 	margin-top: 0.7rem !important;
 }
 
@@ -395,7 +403,7 @@ section:has(.result-list ul) + .section-divider {
 	flex-direction: column;
 	align-items: center;
 	gap: 0.55rem;
-	color: var(--bp-muted);
+	color: var(--bp-text-2, #616161);
 	padding: 2rem 1rem 1.75rem;
 	text-align: center;
 }
@@ -423,7 +431,7 @@ section:has(.result-list ul) + .section-divider {
 	padding: 0.6rem 0.7rem 0.35rem;
 	margin-top: 0.35rem;
 	border-top: 1px solid var(--bp-border);
-	color: var(--bp-muted);
+	color: var(--bp-text-2, #616161);
 }
 
 .bp-modal-footer span {
@@ -450,11 +458,14 @@ section:has(.result-list ul) + .section-divider {
 
 /* Utility ----------------------------------------------------------------- */
 
+/* Deliberately global. It matches core's own .hidden, but it is also what
+   beats .brikpanel-search-overlay { display: flex } above, so the palette
+   closes; the top bar toggles it as well. */
 .hidden {
 	display: none;
 }
 
-.text-sm {
+:where(.brikpanel-search-modal) .text-sm {
 	font-size: 0.8rem !important;
 }
 
@@ -487,7 +498,7 @@ section:has(.result-list ul) + .section-divider {
 		max-width: 92%;
 		margin-top: 4.5rem !important;
 	}
-	.results li {
+	:where(.brikpanel-search-modal) .results li {
 		display: flex !important;
 	}
 	.brikpanel-search-menu-item {

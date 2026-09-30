@@ -33,6 +33,203 @@ CSS;
 }
 
 // =============================================================================
+// SHARED "FIT THE TABLE OR STACK ITS ROWS" HELPER
+// =============================================================================
+/**
+ * Registers the shared table-fit helper once, so any screen can list it as a
+ * dependency. Field tests B2 and B6: tables inside a card lost their last
+ * columns to an `overflow-x:auto` box without any hint. The helper measures
+ * an invisible copy of the table and stacks its rows into cards when it does
+ * not fit (CLAUDE.md, "Tablo sığma kuralı").
+ *
+ * @return void
+ */
+function brikpanel_register_fit_table_assets() {
+    if ( wp_script_is( 'brikpanel_fit_table', 'registered' ) ) {
+        return;
+    }
+    $js  = 'front-end/shared/brikpanel-fit-table.js';
+    $css = 'front-end/shared/brikpanel-fit-table.css';
+    // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+    wp_register_script( 'brikpanel_fit_table', BRIKPANEL_URL . $js, [], @filemtime( BRIKPANEL_PATH . $js ) ?: BRIKPANEL_VERSION, true );
+    if ( file_exists( BRIKPANEL_PATH . $css ) ) {
+        // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+        wp_register_style( 'brikpanel_fit_table', BRIKPANEL_URL . $css, [], @filemtime( BRIKPANEL_PATH . $css ) ?: BRIKPANEL_VERSION );
+    }
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_register_fit_table_assets', 1 );
+
+/**
+ * Dependency list for a screen that uses the table-fit helper. Empty when the
+ * helper is not registered: WordPress drops a script whose dependency is
+ * missing, and a lost helper must never take the whole screen with it (the
+ * screen then keeps its plain scrolling table).
+ *
+ * @param string $type 'script' or 'style'.
+ * @return string[]
+ */
+function brikpanel_fit_table_dep( $type = 'script' ) {
+    brikpanel_register_fit_table_assets();
+    $ok = ( 'style' === $type )
+        ? wp_style_is( 'brikpanel_fit_table', 'registered' )
+        : wp_script_is( 'brikpanel_fit_table', 'registered' );
+    return $ok ? [ 'brikpanel_fit_table' ] : [];
+}
+
+// =============================================================================
+// SHARED "HEADER ROW GIVES WAY IN PRIORITY ORDER" HELPER
+// =============================================================================
+/**
+ * Registers the shared header-row fit helper once. Field test B10: the product
+ * editor's sticky header let its title give way first ("Edit / product" on two
+ * lines at 1280px, Update alone on a second row) and the order edit bar pushed
+ * Save off the screen. The helper tries a row's compact states in the row's own
+ * priority order and keeps the first one that fits the real width
+ * (CLAUDE.md, "Başlık satırı kuralı").
+ *
+ * Printed in <head>, not in the footer: a screen calls it right after its
+ * header markup, so the header is fitted before it is first painted.
+ *
+ * @return void
+ */
+function brikpanel_register_fit_row_assets() {
+    if ( wp_script_is( 'brikpanel_fit_row', 'registered' ) ) {
+        return;
+    }
+    $js = 'front-end/shared/brikpanel-fit-row.js';
+    // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+    wp_register_script( 'brikpanel_fit_row', BRIKPANEL_URL . $js, [], @filemtime( BRIKPANEL_PATH . $js ) ?: BRIKPANEL_VERSION, false );
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_register_fit_row_assets', 1 );
+
+/**
+ * Dependency list for a screen whose header row uses the fit helper. Empty when
+ * the helper is not registered, so a lost helper never takes the screen with it
+ * (the screen's own script then falls back to the breakpoint layout).
+ *
+ * @return string[]
+ */
+function brikpanel_fit_row_dep() {
+    brikpanel_register_fit_row_assets();
+    return wp_script_is( 'brikpanel_fit_row', 'registered' ) ? [ 'brikpanel_fit_row' ] : [];
+}
+
+// =============================================================================
+// SHARED NARROW-SCREEN PARTS (field test C)
+// =============================================================================
+/**
+ * The shared parts that keep a screen inside a phone's width, each a script and
+ * a stylesheet under front-end/shared/:
+ * - `brikpanel_scroll_strip`: a tab row that scrolls inside itself and fades
+ *   only where more tabs are hidden (the Google Sheets tabs pushed the page
+ *   sideways, the Customer Analytics tabs wrapped their labels);
+ * - `brikpanel_overflow`: the "More actions" menu secondary buttons fold into
+ *   (CLAUDE.md, "Başlık satırı kuralı");
+ * - `brikpanel_tiles`: summary tiles that never leave one stretched tile alone
+ *   on a line;
+ * - `brikpanel_tip`: "?" and "!" bubbles placed by measurement, fixed and kept
+ *   inside the visible screen (the dashboard's Copy everything "?" opened off
+ *   the phone's edge), plus `brikpanelTip.nudge()` for popovers that stay under
+ *   their button and the WooCommerce help-tip fix.
+ * - `brikpanel_ui` (stylesheet only): the shared form control, field and filter
+ *   row, button, row links, badge, bullet list, type scale and page shell
+ *   (field test D: every screen had drawn its own copy of these).
+ *
+ * @return void
+ */
+function brikpanel_register_narrow_assets() {
+    // The shared formatter (numbers, percentages, money, dates; field test E2).
+    // In the head, so a script printed inside the page can use it too. Its
+    // data is printed right before its tag (brikpanel_format_l10n_tag()), only
+    // on the pages that load it.
+    if ( ! wp_script_is( 'brikpanel_format', 'registered' ) && file_exists( BRIKPANEL_PATH . 'front-end/shared/brikpanel-format.js' ) ) {
+        // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+        wp_register_script( 'brikpanel_format', BRIKPANEL_URL . 'front-end/shared/brikpanel-format.js', [], @filemtime( BRIKPANEL_PATH . 'front-end/shared/brikpanel-format.js' ) ?: BRIKPANEL_VERSION, false );
+    }
+    if ( wp_style_is( 'brikpanel_ui', 'registered' ) ) {
+        return;
+    }
+    foreach ( [ 'scroll_strip' => 'scroll-strip', 'overflow' => 'overflow', 'tiles' => 'tiles', 'tip' => 'tip', 'ui' => 'ui' ] as $handle => $file ) {
+        $js  = 'front-end/shared/brikpanel-' . $file . '.js';
+        $css = 'front-end/shared/brikpanel-' . $file . '.css';
+        if ( file_exists( BRIKPANEL_PATH . $js ) ) {
+            // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+            wp_register_script( 'brikpanel_' . $handle, BRIKPANEL_URL . $js, [], @filemtime( BRIKPANEL_PATH . $js ) ?: BRIKPANEL_VERSION, true );
+        }
+        if ( file_exists( BRIKPANEL_PATH . $css ) ) {
+            // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+            wp_register_style( 'brikpanel_' . $handle, BRIKPANEL_URL . $css, [], @filemtime( BRIKPANEL_PATH . $css ) ?: BRIKPANEL_VERSION );
+        }
+    }
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_register_narrow_assets', 1 );
+
+/**
+ * Prints the formatter's settings (store separators and date formats, the
+ * viewer's month names, where their language puts the percent sign) right
+ * before brikpanel-format.js. Built only when the tag is actually printed.
+ *
+ * @param string $tag    Script tag.
+ * @param string $handle Script handle.
+ * @return string
+ */
+function brikpanel_format_l10n_tag( $tag, $handle ) {
+    if ( 'brikpanel_format' !== $handle || ! function_exists( 'brikpanel_format_l10n' ) ) {
+        return $tag;
+    }
+    $data = wp_json_encode( brikpanel_format_l10n(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE );
+    return wp_get_inline_script_tag( 'window.brikpanelFormatL10n = ' . $data . ';' ) . $tag;
+}
+add_filter( 'script_loader_tag', 'brikpanel_format_l10n_tag', 10, 2 );
+
+/**
+ * Dependency list for one of the shared narrow-screen parts. Empty when it is
+ * not registered, so a lost file never takes the screen's own script or style
+ * with it (the screen keeps its plain layout).
+ *
+ * @param string $part 'scroll_strip', 'overflow', 'tiles', 'tip', 'format' (script only) or 'ui' (style only).
+ * @param string $type 'script' or 'style'.
+ * @return string[]
+ */
+function brikpanel_narrow_dep( $part, $type = 'script' ) {
+    brikpanel_register_narrow_assets();
+    $handle = 'brikpanel_' . $part;
+    $ok     = ( 'style' === $type ) ? wp_style_is( $handle, 'registered' ) : wp_script_is( $handle, 'registered' );
+    return $ok ? [ $handle ] : [];
+}
+
+/**
+ * Prints the trigger of a "More actions" menu (front-end/shared/brikpanel-overflow.js):
+ * a "..." button, hidden until the menu folds. The label is also its tooltip.
+ *
+ * @param string $menu_id Id of the menu element the trigger opens.
+ * @return void
+ */
+function brikpanel_overflow_trigger( $menu_id ) {
+    $label = __( 'More actions', 'brikpanel' );
+    printf(
+        '<button type="button" class="brikpanel-overflow__trigger" aria-expanded="false" aria-controls="%1$s" aria-label="%2$s" title="%2$s"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>',
+        esc_attr( $menu_id ),
+        esc_attr( $label )
+    );
+}
+
+/**
+ * Several parts at once, e.g. brikpanel_narrow_deps( [ 'overflow', 'scroll_strip' ], 'style' ).
+ *
+ * @param string[] $parts Part names.
+ * @param string   $type  'script' or 'style'.
+ * @return string[]
+ */
+function brikpanel_narrow_deps( $parts, $type = 'script' ) {
+    $out = [];
+    foreach ( (array) $parts as $part ) {
+        $out = array_merge( $out, brikpanel_narrow_dep( $part, $type ) );
+    }
+    return $out;
+}
+
+// =============================================================================
 // CUSTOM DASHBOARD PAGE ASSETS
 // =============================================================================
 function brikpanel_enqueue_custom_dashboard_assets($hook) {
@@ -150,7 +347,7 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
     wp_enqueue_style(
         'brikpanel_dashboard_styles',
         BRIKPANEL_URL . 'front-end/dashboard/brikpanel-dashboard.css',
-        [],
+        array_merge( brikpanel_fit_table_dep( 'style' ), brikpanel_narrow_deps( [ 'overflow', 'tip', 'ui' ], 'style' ) ),
         $dash_css_ver
     );
 
@@ -158,58 +355,10 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
     wp_enqueue_script(
         'brikpanel_dashboard_scripts',
         BRIKPANEL_URL . 'front-end/dashboard/brikpanel-dashboard.js',
-        [ 'flatpickr-js', 'chart-js', 'cobe-globe' ],
+        array_merge( [ 'flatpickr-js', 'chart-js', 'cobe-globe' ], brikpanel_fit_table_dep(), brikpanel_fit_row_dep(), brikpanel_narrow_deps( [ 'overflow', 'tip', 'format' ] ) ),
         $dash_js_ver,
         true
     );
-
-    // Localization data for legacy backend chart JS files (conversion-count, order-rates, etc.)
-    wp_localize_script('brikpanel_dashboard_scripts', 'brikpanelConversionCount', [
-        'i18n' => [
-            'visitor'         => __('Visitor', 'brikpanel'),
-            'product'         => __('Product', 'brikpanel'),
-            'add_to_cart'     => __('Add to Cart', 'brikpanel'),
-            'checkout'        => __('Checkout', 'brikpanel'),
-            'order'           => __('Order', 'brikpanel'),
-            'customers'       => __('Customers', 'brikpanel'),
-            'calculating'     => __('Calculating...', 'brikpanel'),
-            'error'           => __('Error', 'brikpanel'),
-            'conversion_rate' => __('Conversion Rate', 'brikpanel'),
-            'select_date'     => __('Please select a valid custom date range.', 'brikpanel'),
-        ],
-    ]);
-
-    wp_localize_script('brikpanel_dashboard_scripts', 'brikpanelOrderRates', [
-        'i18n' => [
-            'successful'      => __('Successful', 'brikpanel'),
-            'failed'          => __('Failed', 'brikpanel'),
-            'refunded'        => __('Refunded', 'brikpanel'),
-            'cancelled'       => __('Cancelled', 'brikpanel'),
-            'order_statuses'  => __('Order Statuses', 'brikpanel'),
-            'of_total_orders' => __('% of total orders', 'brikpanel'),
-        ],
-    ]);
-
-    wp_localize_script('brikpanel_dashboard_scripts', 'brikpanelMostAddtocart', [
-        'i18n' => [
-            'label'       => __('Add To Cart Count', 'brikpanel'),
-            'select_date' => __('Please select a valid date range.', 'brikpanel'),
-        ],
-    ]);
-
-    wp_localize_script('brikpanel_dashboard_scripts', 'brikpanelMostSale', [
-        'i18n' => [
-            'label'       => __('Total Sales Count', 'brikpanel'),
-            'select_date' => __('Please select a valid date range.', 'brikpanel'),
-        ],
-    ]);
-
-    wp_localize_script('brikpanel_dashboard_scripts', 'brikpanelMostView', [
-        'i18n' => [
-            'label'       => __('View Count', 'brikpanel'),
-            'select_date' => __('Please select a valid date range.', 'brikpanel'),
-        ],
-    ]);
 
     // The date range this user last looked at. Seeds the JS state so the first
     // fetch already asks for the remembered period; the matching preset button
@@ -217,6 +366,17 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
     $bp_saved_range = class_exists('Brikpanel_Dashboard')
         ? Brikpanel_Dashboard::get_range_preference()
         : ['range' => 'today', 'start' => '', 'end' => ''];
+
+    // Recent Orders names each status the way WooCommerce does, in this
+    // user's language, keyed like $order->get_status() (no "wc-"). Built per
+    // page load rather than inside the cached dashboard data, which admins
+    // using different languages share.
+    $bp_order_statuses = [];
+    if (function_exists('wc_get_order_statuses')) {
+        foreach (wc_get_order_statuses() as $bp_status_key => $bp_status_label) {
+            $bp_order_statuses[ 0 === strpos($bp_status_key, 'wc-') ? substr($bp_status_key, 3) : $bp_status_key ] = $bp_status_label;
+        }
+    }
 
     wp_localize_script('brikpanel_dashboard_scripts', 'brikpanelDashboard', [
         'ajax_url' => admin_url('admin-ajax.php'),
@@ -238,45 +398,60 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'revenue'       => __('Revenue', 'brikpanel'),
             'orders'        => __('Orders', 'brikpanel'),
             'visitors'      => __('Visitors', 'brikpanel'),
-            'product_views' => __('Product Views', 'brikpanel'),
-            'add_to_cart'   => __('Add to Cart', 'brikpanel'),
+            'product_views' => __('Product views', 'brikpanel'),
+            'add_to_cart'   => __('Add to cart', 'brikpanel'),
             'checkout'      => __('Checkout', 'brikpanel'),
             'successful'    => __('Successful', 'brikpanel'),
             'failed'        => __('Failed', 'brikpanel'),
-            'refunded'      => __('Returns & Refunds', 'brikpanel'),
+            'refunded'      => __('Returns & refunds', 'brikpanel'),
             'cancelled'     => __('Cancelled', 'brikpanel'),
             'no_orders'     => __('No orders', 'brikpanel'),
             'no_data'       => __('No data for this period', 'brikpanel'),
             'no_visitors'   => __('No active visitors', 'brikpanel'),
             'product'       => __('Product', 'brikpanel'),
-            'qty_sold'      => __('Qty Sold', 'brikpanel'),
+            'qty_sold'      => __('Qty sold', 'brikpanel'),
             'order'         => __('Order', 'brikpanel'),
             'customer'      => __('Customer', 'brikpanel'),
             'source'        => __('Source', 'brikpanel'),
             'status'        => __('Status', 'brikpanel'),
+            'status_labels' => $bp_order_statuses,
             'total'         => __('Total', 'brikpanel'),
             'country'       => __('Country', 'brikpanel'),
             'city'          => __('City', 'brikpanel'),
             'page'          => __('Page', 'brikpanel'),
             'views'         => __('Views', 'brikpanel'),
-            'cart_count'    => __('Cart Adds', 'brikpanel'),
+            'cart_count'    => __('Cart adds', 'brikpanel'),
             'has_cart'       => __('Cart', 'brikpanel'),
             'browsing'       => __('Browsing', 'brikpanel'),
-            'added_to_cart'  => __('Added to Cart', 'brikpanel'),
-            'order_received' => __('Order Received', 'brikpanel'),
+            'added_to_cart'  => __('Added to cart', 'brikpanel'),
+            'order_received' => __('Order received', 'brikpanel'),
+            // Live visitors hover card: where the visitor came from. %s is the
+            // value taken from their referrer or campaign link.
+            /* translators: %s: traffic channel and source, e.g. "Paid · bing.com". */
+            'live_src_source'   => __('Source: %s', 'brikpanel'),
+            /* translators: %s: campaign medium from the visitor's link (utm_medium), e.g. "cpc". */
+            'live_src_medium'   => __('Medium: %s', 'brikpanel'),
+            /* translators: %s: campaign name from the visitor's link (utm_campaign). */
+            'live_src_campaign' => __('Campaign: %s', 'brikpanel'),
+            /* translators: %s: paid search keyword from the visitor's link (utm_term). */
+            'live_src_term'     => __('Search term: %s', 'brikpanel'),
+            /* translators: %s: path of the first page of the visit, e.g. "/shop/". */
+            'live_src_landing'  => __('Landing page: %s', 'brikpanel'),
+            // Live visitors list after the page's security token expired.
+            'live_reload'       => __('Reload the page to see live visitors.', 'brikpanel'),
             'aov'            => __('AOV', 'brikpanel'),
             'category'       => __('Category', 'brikpanel'),
             'share'          => __('Share', 'brikpanel'),
             'vs_prev'        => __('vs. prev.', 'brikpanel'),
             'mp_of_total'    => __('of', 'brikpanel'),
             'mp_combined'    => __('combined revenue', 'brikpanel'),
-            'mp_no_categories' => __('No category data — marketplace items must be linked to your WooCommerce catalog (by product or SKU) for category breakdown to appear.', 'brikpanel'),
+            'mp_no_categories' => __('No category data. Marketplace items must be linked to your WooCommerce catalog (by product or SKU) for the category breakdown to appear.', 'brikpanel'),
             'device_desktop'   => __('Desktop', 'brikpanel'),
             'device_mobile'    => __('Mobile', 'brikpanel'),
             'device_tablet'    => __('Tablet', 'brikpanel'),
-            'device_title_visitors' => __('Visitors by Device', 'brikpanel'),
-            'device_title_orders'   => __('Orders by Device', 'brikpanel'),
-            'src_title'        => __('Traffic Sources', 'brikpanel'),
+            'device_title_visitors' => __('Visitors by device', 'brikpanel'),
+            'device_title_orders'   => __('Orders by device', 'brikpanel'),
+            'src_title'        => __('Traffic sources', 'brikpanel'),
             'src_direct'       => __('Direct', 'brikpanel'),
             'src_search'       => __('Organic Search', 'brikpanel'),
             'src_social'       => __('Social', 'brikpanel'),
@@ -287,7 +462,6 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'src_no_referrers' => __('No external referrers yet for this period.', 'brikpanel'),
             'ctype_new'        => __('New customers', 'brikpanel'),
             'ctype_repeat'     => __('Repeat customers', 'brikpanel'),
-            'all_stocked'      => __('All products are sufficiently stocked', 'brikpanel'),
             'return_rate'      => __('return & refund rate', 'brikpanel'),
             'returns_refunds'  => __('Returns & refunds', 'brikpanel'),
             'total_orders'     => __('Total orders', 'brikpanel'),
@@ -302,34 +476,27 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'total_subscriptions'  => __('total subscriptions', 'brikpanel'),
             'loc_orders'           => __('Orders', 'brikpanel'),
             'loc_customers'        => __('Customers', 'brikpanel'),
-            'loc_order_locations'  => __('Order Locations', 'brikpanel'),
-            'loc_cust_locations'   => __('Customer Locations', 'brikpanel'),
-            'loc_top_countries_orders'    => __('Top Countries by Orders', 'brikpanel'),
-            'loc_top_countries_customers' => __('Top Countries by Customers', 'brikpanel'),
-            'loc_top_cities_orders'       => __('Top Cities by Orders', 'brikpanel'),
-            'loc_top_cities_customers'    => __('Top Cities by Customers', 'brikpanel'),
+            'loc_order_locations'  => __('Order locations', 'brikpanel'),
+            'loc_cust_locations'   => __('Customer locations', 'brikpanel'),
+            'loc_top_countries_orders'    => __('Top countries by orders', 'brikpanel'),
+            'loc_top_countries_customers' => __('Top countries by customers', 'brikpanel'),
+            'loc_top_cities_orders'       => __('Top cities by orders', 'brikpanel'),
+            'loc_top_cities_customers'    => __('Top cities by customers', 'brikpanel'),
             'customers'            => __('customers', 'brikpanel'),
             'summary_button'        => __('Copy everything', 'brikpanel'),
             'summary_collecting'    => __('Collecting data…', 'brikpanel'),
             'summary_copied'        => __('Copied to clipboard!', 'brikpanel'),
-            'summary_failed'        => __('Failed — try again', 'brikpanel'),
-            'profit_margin'         => __('margin', 'brikpanel'),
+            'summary_failed'        => __('Failed, try again', 'brikpanel'),
             'profit_loss'           => __('Loss', 'brikpanel'),
             'profit_cogs_hint'      => __('Set “Cost of goods” on products', 'brikpanel'),
-            'profit_cogs_partial'   => __('cost missing on %d items — profit overstated', 'brikpanel'),
             'profit_cogs_missing_title' => __('Products without a cost', 'brikpanel'),
-            'profit_cogs_missing_aria'  => __('%d products are missing a cost', 'brikpanel'),
             'profit_cogs_missing_unlinked' => __('no longer in catalog', 'brikpanel'),
-            'profit_estimate_tip'   => __('%d sold items have no cost set. Add their “Cost of goods” so Net profit is accurate.', 'brikpanel'),
-            /* translators: %d: number of orders with no payment fee recorded. */
-            'profit_fees_partial'   => __('%d orders have no payment fee recorded, so processing costs are only counted on the rest.', 'brikpanel'),
-            /* translators: %d: number of orders whose payment fee could not be converted. */
-            'profit_fees_unconverted' => __('Processing fees on %d orders are in a currency with no exchange rate, so they are not counted. Add a rate to include them.', 'brikpanel'),
-            'profit_fees_none'      => __('Payment fees are turned on, but none of the orders in this period record a processing fee. Your payment gateway may not store one, so this cost is not included.', 'brikpanel'),
-            'profit_revenue_note'   => __('Same as Total Sales', 'brikpanel'),
+            'profit_revenue_note'   => __('Same as total sales', 'brikpanel'),
             'profit_revenue_net_note' => __('Net of returns', 'brikpanel'),
+            // "Tax in the Profit section" takes tax out of Revenue (Settings, Dashboard).
+            'profit_revenue_tax_note'     => __('Excluding tax', 'brikpanel'),
+            'profit_revenue_net_tax_note' => __('Net of returns and tax', 'brikpanel'),
             'profit_net_revenue'    => __('Net revenue', 'brikpanel'),
-            'profit_of_revenue'     => __('of revenue', 'brikpanel'),
             'exp_saving'            => __('Saving…', 'brikpanel'),
             'exp_saved'             => __('Expense added', 'brikpanel'),
             'exp_error'             => __('Could not save. Please try again.', 'brikpanel'),
@@ -343,7 +510,26 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'export_preparing'      => __('Preparing…', 'brikpanel'),
             'export_select_dates'   => __('Pick a custom date range first.', 'brikpanel'),
             'period_loading'        => __('Loading…', 'brikpanel'),
-            'globe_alt'             => __('Order Locations Globe', 'brikpanel'),
+            'globe_alt'             => __('Order locations globe', 'brikpanel'),
+            // Empty cards and charts say why they are empty (brand new store,
+            // quiet period, visitor tracking off or waiting for consent).
+            'empty_new_orders'       => __('No orders yet. Your first order will show up here.', 'brikpanel'),
+            /* translators: %s: number of orders, already formatted (e.g. 3). */
+            'empty_admin_orders'     => brikpanel_js_plural(_n_noop('%s order was placed from an administrator account, so it is not counted.', '%s orders were placed from administrator accounts, so they are not counted.', 'brikpanel')),
+            'empty_no_paid'          => __('No paid orders yet.', 'brikpanel'),
+            /* translators: %s: day of the latest paid order, e.g. "Sep 24" (with the year when it is not this year). */
+            'empty_quiet'            => __('No paid orders in this period. Last order: %s.', 'brikpanel'),
+            // Quiet period on a store whose latest paid order is older than a year.
+            'empty_quiet_nodate'     => __('No paid orders in this period.', 'brikpanel'),
+            'empty_show_7days'     => __('Show last 7 days', 'brikpanel'),
+            'empty_show_30days'      => __('Show last 30 days', 'brikpanel'),
+            'empty_show_90days'      => __('Show last 90 days', 'brikpanel'),
+            'empty_tracking_off'     => __('Visitor tracking is off.', 'brikpanel'),
+            'empty_visits_consent'   => __('No visits yet. Visits are counted after visitors accept cookies.', 'brikpanel'),
+            'empty_visits_none'      => __('No visits recorded yet. Your own visits as an administrator are not counted.', 'brikpanel'),
+            'empty_rfm_new'          => __('Customer segments appear after your first customers.', 'brikpanel'),
+            'empty_ltv_new'          => __('Lifetime value appears after your first orders.', 'brikpanel'),
+            'empty_no_subscriptions' => __('No subscriptions yet.', 'brikpanel'),
         ],
     ]);
 }
@@ -365,14 +551,14 @@ function brikpanel_enqueue_segments_assets($hook) {
     wp_enqueue_style(
         'brikpanel_segments_styles',
         BRIKPANEL_URL . 'front-end/segments/brikpanel-segments.css',
-        [],
+        brikpanel_narrow_deps( [ 'tiles', 'ui' ], 'style' ),
         $seg_css_ver
     );
 
     wp_enqueue_script(
         'brikpanel_segments_scripts',
         BRIKPANEL_URL . 'front-end/segments/brikpanel-segments.js',
-        [],
+        array_merge( brikpanel_fit_table_dep(), brikpanel_narrow_deps( [ 'tiles', 'format' ] ) ),
         $seg_js_ver,
         true
     );
@@ -385,6 +571,9 @@ function brikpanel_enqueue_segments_assets($hook) {
             'error'              => __('Something went wrong.', 'brikpanel'),
             'no_results'         => __('No orders match these filters.', 'brikpanel'),
             'no_customers'       => __('No customers match these filters.', 'brikpanel'),
+            // Empty table with no filter, preset or search narrowing it.
+            'no_orders_yet'      => __('No orders yet.', 'brikpanel'),
+            'no_customers_yet'   => __('No customers yet.', 'brikpanel'),
             'no_products'        => __('No products found.', 'brikpanel'),
             'guest'              => __('Guest', 'brikpanel'),
             'total_revenue'      => __('Total revenue', 'brikpanel'),
@@ -448,18 +637,24 @@ function brikpanel_enqueue_customer_analytics_assets($hook) {
         true
     );
 
+    // filemtime version, like the segments assets above: a CSS fix reaches a
+    // browser that already cached this page without waiting for a release.
+    $ca_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/customer-analytics/brikpanel-customer-analytics.css' ) ?: BRIKPANEL_VERSION;
+
+    $ca_js_ver  = @filemtime( BRIKPANEL_PATH . 'front-end/customer-analytics/brikpanel-customer-analytics.js' ) ?: BRIKPANEL_VERSION;
+
     wp_enqueue_style(
         'brikpanel_customer_analytics_styles',
         BRIKPANEL_URL . 'front-end/customer-analytics/brikpanel-customer-analytics.css',
-        [],
-        BRIKPANEL_VERSION
+        array_merge( brikpanel_fit_table_dep( 'style' ), brikpanel_narrow_deps( [ 'overflow', 'scroll_strip', 'tiles', 'ui' ], 'style' ) ),
+        $ca_css_ver
     );
 
     wp_enqueue_script(
         'brikpanel_customer_analytics_scripts',
         BRIKPANEL_URL . 'front-end/customer-analytics/brikpanel-customer-analytics.js',
-        [ 'chart-js' ],
-        BRIKPANEL_VERSION,
+        array_merge( [ 'chart-js' ], brikpanel_fit_table_dep(), brikpanel_fit_row_dep(), brikpanel_narrow_deps( [ 'overflow', 'scroll_strip', 'tiles', 'format' ] ) ),
+        $ca_js_ver,
         true
     );
 
@@ -486,7 +681,6 @@ function brikpanel_enqueue_customer_analytics_assets($hook) {
             'empty'             => __('No customers yet.', 'brikpanel'),
             'guest'             => __('Guest', 'brikpanel'),
             'customers'         => __('Customers', 'brikpanel'),
-            'repeat_customers'  => __('repeat', 'brikpanel'),
             'today'             => __('Today', 'brikpanel'),
             'yesterday'         => __('1 day', 'brikpanel'),
             'days_ago'          => _x('d', 'short for days', 'brikpanel'),
@@ -498,6 +692,12 @@ function brikpanel_enqueue_customer_analytics_assets($hook) {
             'cohort_month'      => __('Cohort', 'brikpanel'),
             'cohort_size'       => __('Size', 'brikpanel'),
             'cohort_empty'      => __('Not enough order history to build cohorts yet.', 'brikpanel'),
+            'cohort_line_empty' => __('Retention appears after customers come back for a second month.', 'brikpanel'),
+            'ltv_zero_spend'    => __('All customers have zero spend so far.', 'brikpanel'),
+            'rfm_no_customers'  => __('No customers yet. Segments appear after your first customers.', 'brikpanel'),
+            'rfm_not_scored'    => __('Customers are not scored yet. Use Recompute now to score them.', 'brikpanel'),
+            'rfm_unsupported'   => __('Customer segments need MySQL 8.0 or MariaDB 10.2 or newer. Your host can upgrade the database.', 'brikpanel'),
+            'rfm_segment_empty' => __('No customers in this segment.', 'brikpanel'),
             'avg_retention'     => __('Avg retention', 'brikpanel'),
             'rfm_recency'       => __('Recency', 'brikpanel'),
             'rfm_frequency'     => __('Frequency', 'brikpanel'),
@@ -517,7 +717,6 @@ function brikpanel_enqueue_customer_analytics_assets($hook) {
             'excl_saved'        => __('Exclusions saved', 'brikpanel'),
             'excl_button'       => __('Exclude customers', 'brikpanel'),
             /* translators: %d: number of excluded accounts */
-            'excl_count'        => __('%d account(s) excluded', 'brikpanel'),
             'members'           => __('members', 'brikpanel'),
         ],
     ]);
@@ -572,18 +771,25 @@ function brikpanel_enqueue_global_assets() {
         // filemtime version → CSS edits (e.g. the classic-nav re-skin) bust the
         // browser cache immediately, matching the dashboard/segments assets above.
         $nav_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/navigation/brikpanel-navigation.css' ) ?: BRIKPANEL_VERSION;
+        // The shared UI parts (badge, controls, buttons, page shell) ride along,
+        // so every screen that shows BrikPanel has them.
         wp_enqueue_style(
             'brikpanel_navigation_styles',
             BRIKPANEL_URL . 'front-end/navigation/brikpanel-navigation.css',
-            [],
+            brikpanel_narrow_dep( 'ui', 'style' ),
             $nav_css_ver
         );
     }
 
     // --- Cmd+K search palette ------------------------------------------------
-    // Searches orders, so it keeps the narrower `manage_woocommerce` gate its
-    // own AJAX handler enforces (front-end/search/brikpanel-search.php).
-    if ( ! current_user_can( 'manage_woocommerce' ) ) {
+    // Same gate as its trigger and its AJAX handler: `manage_woocommerce` (it
+    // searches orders), and not for a user a multisite network denied
+    // BrikPanel to, whose palette AJAX is refused anyway. The class file is
+    // always loaded; the fallback only covers a module that failed to load.
+    $brikpanel_can_search = class_exists( 'Brikpanel_Pro_Search' )
+        ? Brikpanel_Pro_Search::user_can_search()
+        : current_user_can( 'manage_woocommerce' );
+    if ( ! $brikpanel_can_search ) {
         return;
     }
 
@@ -828,7 +1034,7 @@ function brikpanel_enqueue_woo_assets($hook) {
             wp_enqueue_script(
                 'brikpanel_order_edit',
                 BRIKPANEL_URL . 'front-end/order/brikpanel-order.js',
-                [],
+                array_merge( brikpanel_fit_row_dep(), brikpanel_narrow_dep( 'format' ) ),
                 $order_js_ver,
                 true
             );
@@ -856,7 +1062,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 // an order that went back to pending or on hold does not count.
                 $paid_statuses        = array_merge( wc_get_is_paid_statuses(), [ 'refunded' ] );
                 $summary['paid']      = $date_paid && in_array( $order->get_status(), $paid_statuses, true );
-                $summary['date_paid'] = $date_paid ? $date_paid->date_i18n( get_option( 'date_format' ) ) : '';
+                $summary['date_paid'] = $date_paid ? $date_paid->date_i18n( brikpanel_date_format() ) : '';
                 $summary['payment']   = (string) $order->get_payment_method_title();
                 $summary['customer_name'] = trim( $order->get_formatted_billing_full_name() );
                 if ( '' === $summary['customer_name'] ) {
@@ -870,7 +1076,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                     }
                 }
                 if ( function_exists( 'brikpanel_whatsapp_visible_for_user' ) && brikpanel_whatsapp_visible_for_user() && function_exists( 'brikpanel_order_whatsapp_url' ) ) {
-                    $summary['whatsapp_url'] = (string) brikpanel_order_whatsapp_url( $order );
+                    $summary['whatsapp_url']      = (string) brikpanel_order_whatsapp_url( $order );
+                    $summary['whatsapp_followup'] = function_exists( 'brikpanel_whatsapp_order_is_followup' ) && brikpanel_whatsapp_order_is_followup( $order );
                 }
             }
 
@@ -886,7 +1093,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'order_number'   => $order instanceof WC_Order ? (string) $order->get_order_number() : '',
                 'current_status' => $current_status,
                 'status_label'   => $status_label,
-                'order_date'     => ($order && $order->get_date_created()) ? $order->get_date_created()->date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) : '',
+                'order_date'     => ($order && $order->get_date_created()) ? $order->get_date_created()->date_i18n( brikpanel_datetime_format() ) : '',
                 'statuses'       => $all_statuses,
                 'orders_url'     => $order_screen['legacy'] ? admin_url( 'edit.php?post_type=shop_order' ) : admin_url( 'admin.php?page=wc-orders' ),
                 'is_new'         => (bool) $order_screen['new'],
@@ -912,9 +1119,10 @@ function brikpanel_enqueue_woo_assets($hook) {
                     'note_added'          => __( 'Note added', 'brikpanel' ),
                     'error'               => __( 'An error occurred. Please try again.', 'brikpanel' ),
                     'downloads'           => __( 'Downloads', 'brikpanel' ),
-                    'download_one'        => __( '%d download', 'brikpanel' ),
-                    'download_many'       => __( '%d downloads', 'brikpanel' ),
-                    'remaining'           => __( '%s left', 'brikpanel' ),
+                    /* translators: %s: how many times the file was downloaded. */
+                    'download_count'      => brikpanel_js_plural( _n_noop( '%s download', '%s downloads', 'brikpanel' ) ),
+                    /* translators: %s: downloads the customer has left. */
+                    'remaining'           => brikpanel_js_plural( _n_noop( '%s left', '%s left', 'brikpanel' ) ),
                     'unlimited'           => __( 'Unlimited', 'brikpanel' ),
                     'expires'             => __( 'Expires %s', 'brikpanel' ),
                     'never_expires'       => __( 'Never expires', 'brikpanel' ),
@@ -933,6 +1141,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                     /* translators: %d: number of orders the customer has placed. */
                     'customer_orders'     => __( 'Orders: %d', 'brikpanel' ),
                     'whatsapp'            => __( 'Message the customer on WhatsApp', 'brikpanel' ),
+                    'whatsapp_followup'   => __( 'Send the customer a follow-up on WhatsApp', 'brikpanel' ),
                     'access_granted'      => __( 'Download access granted', 'brikpanel' ),
                     'access_revoked'      => __( 'Download access revoked', 'brikpanel' ),
                 ],
@@ -946,7 +1155,7 @@ function brikpanel_enqueue_woo_assets($hook) {
             wp_enqueue_script(
                 'brikpanel_orders_scripts',
                 BRIKPANEL_URL . 'front-end/orders/brikpanel-orders.js',
-                ['jquery', 'wc-enhanced-select'],
+                array_merge( ['jquery', 'wc-enhanced-select'], brikpanel_narrow_deps( [ 'scroll_strip', 'format' ] ) ),
                 $orders_js_ver,
                 true
             );
@@ -954,7 +1163,7 @@ function brikpanel_enqueue_woo_assets($hook) {
             wp_enqueue_style(
                 'brikpanel_orders_styles',
                 BRIKPANEL_URL . 'front-end/orders/brikpanel-orders.css',
-                ['woocommerce_admin_styles'],
+                array_merge( ['woocommerce_admin_styles'], brikpanel_narrow_dep( 'scroll_strip', 'style' ) ),
                 $orders_css_ver
             );
 
@@ -1183,17 +1392,21 @@ function brikpanel_enqueue_woo_assets($hook) {
         $pl_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/products/brikpanel-products-list.css' ) ?: BRIKPANEL_VERSION;
         $pl_js_ver  = @filemtime( BRIKPANEL_PATH . 'front-end/products/brikpanel-products-list.js' ) ?: BRIKPANEL_VERSION;
 
+        // Narrow screens (field test C2): the header gives way in order
+        // (fit-row), secondary buttons fold into "More actions" (overflow), the
+        // status tabs scroll in one row (scroll strip).
         wp_enqueue_style(
             'brikpanel_products_list_styles',
             BRIKPANEL_URL . 'front-end/products/brikpanel-products-list.css',
-            [],
+            brikpanel_narrow_deps( [ 'overflow', 'scroll_strip', 'ui' ], 'style' ),
             $pl_css_ver
         );
 
         wp_enqueue_script(
             'brikpanel_products_list_scripts',
             BRIKPANEL_URL . 'front-end/products/brikpanel-products-list.js',
-            ['jquery', 'jquery-ui-sortable'],
+            // fit_table: the rows stack into cards when the table does not fit its card.
+            array_merge( ['jquery', 'jquery-ui-sortable'], brikpanel_fit_row_dep(), brikpanel_fit_table_dep(), brikpanel_narrow_deps( [ 'overflow', 'scroll_strip', 'tip', 'format' ] ) ),
             $pl_js_ver,
             true
         );
@@ -1226,8 +1439,10 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'trashed'             => __('Trash', 'brikpanel'),
                 'trashed_tab'         => __('Trash', 'brikpanel'),
                 'variable'            => __('Variable', 'brikpanel'),
-                /* translators: %d: number of variations on the product. */
-                'variations_count'    => __('%d variations', 'brikpanel'),
+                /* translators: %s: number of variations on the product. */
+                'variations_count'    => brikpanel_js_plural(_n_noop('%s variation', '%s variations', 'brikpanel')),
+                /* translators: %s: number of variations saved from the price and stock popup. */
+                'variations_saved'    => brikpanel_js_plural(_n_noop('%s variation saved.', '%s variations saved.', 'brikpanel')),
                 'quick_edit'          => __('Quick edit', 'brikpanel'),
                 'duplicate'           => __('Duplicate', 'brikpanel'),
                 'duplicating'         => __('Duplicating...', 'brikpanel'),
@@ -1239,16 +1454,22 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'deleted_permanently' => __('Product permanently deleted.', 'brikpanel'),
                 'confirm_delete'      => __('Are you sure you want to trash "%s"?', 'brikpanel'),
                 'confirm_permanent_delete' => __('Are you sure? This cannot be undone.', 'brikpanel'),
-                'confirm_bulk'        => __('Are you sure you want to update %d products?', 'brikpanel'),
-                'confirm_bulk_trash'  => __('Are you sure you want to trash %d products?', 'brikpanel'),
-                'confirm_bulk_delete_perm' => __('Are you sure you want to permanently delete %d products? This cannot be undone.', 'brikpanel'),
+                // Counted in the browser: every plural form goes along (brikpanelFormat.count()).
+                /* translators: %s: number of selected products. */
+                'confirm_bulk'        => brikpanel_js_plural(_n_noop('Are you sure you want to update %s product?', 'Are you sure you want to update %s products?', 'brikpanel')),
+                /* translators: %s: number of selected products. */
+                'confirm_bulk_trash'  => brikpanel_js_plural(_n_noop('Are you sure you want to trash %s product?', 'Are you sure you want to trash %s products?', 'brikpanel')),
+                /* translators: %s: number of selected products. */
+                'confirm_bulk_delete_perm' => brikpanel_js_plural(_n_noop('Are you sure you want to permanently delete %s product? This cannot be undone.', 'Are you sure you want to permanently delete %s products? This cannot be undone.', 'brikpanel')),
                 'confirm_bulk_delete_perm_2' => __('FINAL WARNING: This will permanently delete the selected products. Are you absolutely sure?', 'brikpanel'),
                 'click_to_toggle'     => __('Click to toggle status', 'brikpanel'),
                 'product_id'          => __('Product ID', 'brikpanel'),
                 'mark_featured'       => __('Mark as featured', 'brikpanel'),
-                'unmark_featured'     => __('Featured — click to remove', 'brikpanel'),
-                'showing'             => __('Showing %1$d of %2$d products', 'brikpanel'),
-                'showing_range'       => __('Showing %1$d–%2$d of %3$d products', 'brikpanel'),
+                'unmark_featured'     => __('Featured. Click to remove.', 'brikpanel'),
+                /* translators: 1: products shown, 2: all matching products. */
+                'showing'             => brikpanel_js_plural(_n_noop('Showing %1$s of %2$s product', 'Showing %1$s of %2$s products', 'brikpanel')),
+                /* translators: 1: first product on the page, 2: last product on the page, 3: all matching products. */
+                'showing_range'       => brikpanel_js_plural(_n_noop('Showing %1$s-%2$s of %3$s product', 'Showing %1$s-%2$s of %3$s products', 'brikpanel')),
                 'bulk_confirm'        => __('Apply this action to the selected products? This cannot be undone.', 'brikpanel'),
                 'bulk_cat_confirm'    => __('Apply this action to all products in the selected category? This cannot be undone.', 'brikpanel'),
                 'bulk_all_confirm'    => __('Apply this action to ALL products in the store? This cannot be undone.', 'brikpanel'),
@@ -1256,7 +1477,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'bulk_no_selection'   => __('No products selected. Select products from the table first.', 'brikpanel'),
                 'bulk_select_terms'   => __('Please select at least one item to add.', 'brikpanel'),
                 'bulk_select_terms_remove' => __('Please select at least one item to remove.', 'brikpanel'),
-                'bulk_selected_count' => __('%d products selected', 'brikpanel'),
+                /* translators: %s: number of selected products. */
+                'bulk_selected_count' => brikpanel_js_plural(_n_noop('%s product selected', '%s products selected', 'brikpanel')),
                 'applying'            => __('Applying...', 'brikpanel'),
                 'apply'               => __('Apply', 'brikpanel'),
                 'loading_attrs'       => __('Loading attributes...', 'brikpanel'),
@@ -1279,28 +1501,37 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'cancel'              => __('Cancel', 'brikpanel'),
                 'delete_confirm_1'    => __('Are you sure you want to delete these products?', 'brikpanel'),
                 'delete_confirm_all'  => __('Are you sure you want to delete ALL products in the store? This is extremely dangerous!', 'brikpanel'),
-                'delete_confirm_2'    => __('PERMANENT DELETE — This cannot be undone. Are you absolutely sure?', 'brikpanel'),
+                'delete_confirm_2'    => __('PERMANENT DELETE. This cannot be undone. Are you absolutely sure?', 'brikpanel'),
                 'bulk_preparing'      => __('Preparing...', 'brikpanel'),
-                'bulk_progress'       => __('%1$d / %2$d processed', 'brikpanel'),
+                /* translators: 1: products processed so far, 2: products in the job. */
+                'bulk_progress'       => __('%1$s / %2$s processed', 'brikpanel'),
                 'bulk_title_update'   => __('Bulk update in progress', 'brikpanel'),
                 'bulk_title_delete'   => __('Bulk delete in progress', 'brikpanel'),
-                'bulk_complete_update' => __('Update complete: %d items.', 'brikpanel'),
-                'bulk_complete_delete' => __('Delete complete: %d items.', 'brikpanel'),
+                /* translators: %s: number of items the bulk job updated. */
+                'bulk_complete_update' => brikpanel_js_plural(_n_noop('Update complete: %s item.', 'Update complete: %s items.', 'brikpanel')),
+                /* translators: %s: number of items the bulk job deleted. */
+                'bulk_complete_delete' => brikpanel_js_plural(_n_noop('Delete complete: %s item.', 'Delete complete: %s items.', 'brikpanel')),
                 'bulk_cancelled'      => __('Cancelled.', 'brikpanel'),
                 'bulk_cancel_btn'     => __('Cancel', 'brikpanel'),
                 'bulk_done_btn'       => __('Done', 'brikpanel'),
-                'bulk_errors_count'   => __('%d errors occurred.', 'brikpanel'),
+                /* translators: %s: number of items that failed in the bulk job. */
+                'bulk_errors_count'   => brikpanel_js_plural(_n_noop('%s error occurred.', '%s errors occurred.', 'brikpanel')),
                 'bulk_retrying'       => __('Network error, retrying...', 'brikpanel'),
                 'bulk_failed'         => __('Bulk job failed.', 'brikpanel'),
                 'bulk_confirm_cancel' => __('Cancel the running bulk job? Items processed so far will remain changed.', 'brikpanel'),
-                'fast_delete_confirm' => __('FAST DELETE — This bypasses all plugin hooks and is IRREVERSIBLE. Image files will remain on disk. SEO/search/cache plugins will show stale data until re-indexed. Continue?', 'brikpanel'),
+                'fast_delete_confirm' => __('FAST DELETE. This bypasses all plugin hooks and is IRREVERSIBLE. Image files will remain on disk. SEO/search/cache plugins will show stale data until re-indexed. Continue?', 'brikpanel'),
                 'tax_only_confirm'    => __('Wipe the selected taxonomies (categories/tags/attributes/brands)? This cannot be undone.', 'brikpanel'),
                 'export_starting'     => __('Preparing export...', 'brikpanel'),
                 'export_no_selection' => __('No products selected for export.', 'brikpanel'),
-                'more_categories'     => __('%d more categories', 'brikpanel'),
+                /* translators: %s: number of further categories the product is in. */
+                'more_categories'     => brikpanel_js_plural(_n_noop('%s more category', '%s more categories', 'brikpanel')),
+                'more_actions'        => __('More actions', 'brikpanel'),
+                /* translators: %d: how many product list filters are set. The search and filter button's accessible name. */
+                'filters_active'      => __('Filters, %d active', 'brikpanel'),
+                'search_and_filter'   => __('Search and filter (F)', 'brikpanel'),
+                /* translators: %d: number of selected products. */
+                'selected_count'      => __('Selected: %d', 'brikpanel'),
                 'plugin_columns'      => __('Plugin columns', 'brikpanel'),
-                'cogs_partial'        => __('%d variations have no cost on file', 'brikpanel'),
-                'profit_partial'      => __('%d variations have no cost or price on file', 'brikpanel'),
                 // Digital product (downloadable) — quick edit drawer
                 'select_file'         => __('Select downloadable file', 'brikpanel'),
                 'select'              => __('Select', 'brikpanel'),
@@ -1821,14 +2052,14 @@ function brikpanel_enqueue_woo_assets($hook) {
         wp_enqueue_style(
             'brikpanel_product_editor_styles',
             BRIKPANEL_URL . 'front-end/products/brikpanel-product-editor.css',
-            [],
+            brikpanel_narrow_dep( 'tip', 'style' ),
             $pe_css_ver
         );
 
         wp_enqueue_script(
             'brikpanel_product_editor_scripts',
             BRIKPANEL_URL . 'front-end/products/brikpanel-product-editor.js',
-            ['jquery', 'jquery-ui-sortable', 'flatpickr-js'],
+            array_merge(['jquery', 'jquery-ui-sortable', 'flatpickr-js'], brikpanel_fit_table_dep(), brikpanel_fit_row_dep(), brikpanel_narrow_deps( [ 'tip', 'format' ] )),
             $pe_js_ver,
             true
         );
@@ -1840,9 +2071,10 @@ function brikpanel_enqueue_woo_assets($hook) {
             'currency'    => get_woocommerce_currency_symbol(),
             'decimal_sep' => wc_get_price_decimal_separator(),
             'variation_gallery_enabled' => get_option('brikpanel_variation_gallery_enabled', 'yes') === 'yes' ? '1' : '0',
-            // Surface the Blocksy per-image video editor only when Blocksy is
-            // the active theme (its render path reads the same attachment meta).
-            'blocksy_video' => (function_exists('brikpanel_blocksy_video_active') && brikpanel_blocksy_video_active()) ? '1' : '0',
+            // Product video controls for the active theme or plugin (WoodMart,
+            // Blocksy Pro, Minimog, CommerceKit, Flatsome, Porto), null when
+            // none of them plays videos. See Brikpanel_Video::js_schema().
+            'video' => class_exists('Brikpanel_Video') ? Brikpanel_Video::js_schema() : null,
             // Whether future-dating a live product promotes it to a scheduled
             // publish. Drives the header's "Publish"/"Schedule" button label.
             'scheduling_enabled' => get_option('brikpanel_pe_enable_scheduling', 'yes') === 'yes' ? '1' : '0',
@@ -1877,6 +2109,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'fill_required'  => __('Please fill in the required fields', 'brikpanel'),
                 'fill_name'      => __('Please fill in the product name', 'brikpanel'),
                 'fill_price'     => __('Please fill in the price field', 'brikpanel'),
+                // Under the price box when only a sale price is filled in.
+                'sale_needs_price' => __('Add a price here, or the sale price will not be saved.', 'brikpanel'),
                 'saving'         => __('Saving...', 'brikpanel'),
                 'error'          => __('An error occurred. Please try again.', 'brikpanel'),
                 'link_title'     => __('Insert link', 'brikpanel'),
@@ -1916,14 +2150,15 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'error_no_response' => __('Could not save: the server did not reply. The request may have timed out or been blocked by a firewall or security plugin. Please try again.', 'brikpanel'),
                 /* translators: 1: HTTP status the server returned, e.g. "500 Internal Server Error". 2: first readable line of the server's reply, may be empty. */
                 'error_status'   => __('Could not save. The server replied %1$s. %2$s', 'brikpanel'),
-                /* translators: %d: how many attribute values were pasted in. */
-                'values_added'   => __('%d values added', 'brikpanel'),
-                /* translators: %d: how many tags were pasted in. */
-                'tags_added'     => __('%d tags added', 'brikpanel'),
+                // Counted in the browser: every plural form goes along (brikpanelFormat.count()).
+                /* translators: %s: how many attribute values were pasted in. */
+                'values_added'   => brikpanel_js_plural(_n_noop('%s value added', '%s values added', 'brikpanel')),
+                /* translators: %s: how many tags were pasted in. */
+                'tags_added'     => brikpanel_js_plural(_n_noop('%s tag added', '%s tags added', 'brikpanel')),
                 /* translators: %s: the value the merchant typed. */
                 'add_new_value'  => __('Add “%s”', 'brikpanel'),
-                /* translators: %d: how many attribute values are not on the product yet. */
-                'select_all_terms' => __('Select all (%d)', 'brikpanel'),
+                /* translators: %s: how many attribute values are not on the product yet. */
+                'select_all_terms' => __('Select all (%s)', 'brikpanel'),
                 'clear_all_terms'  => __('Clear all', 'brikpanel'),
                 /* translators: %s: attribute name, e.g. "Any Color". */
                 'any_attribute'  => __('Any %s', 'brikpanel'),
@@ -1934,6 +2169,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'brand_added'      => __('Brand added', 'brikpanel'),
                 'field_required'   => __('This field is required', 'brikpanel'),
                 'update'           => __('Update', 'brikpanel'),
+                'edit_product'     => __('Edit product', 'brikpanel'),
                 'view_product'     => __('View product', 'brikpanel'),
                 'select_attribute' => __('Select existing attribute...', 'brikpanel'),
                 'or_create_new'    => __('or create new', 'brikpanel'),
@@ -1956,8 +2192,8 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'backorder_notify' => __('Allow and notify customer', 'brikpanel'),
                 /* translators: date input hint, must stay a 4-2-2 digit mask */
                 'date_placeholder' => __('YYYY-MM-DD', 'brikpanel'),
-                /* translators: %d is the maximum number of variations */
-                'too_many_variations' => __('That combination would create more than %d variations. Reduce the number of attribute values, then try again.', 'brikpanel'),
+                /* translators: %s is the maximum number of variations */
+                'too_many_variations' => brikpanel_js_plural(_n_noop('That combination would create more than %s variation. Reduce the number of attribute values, then try again.', 'That combination would create more than %s variations. Reduce the number of attribute values, then try again.', 'brikpanel')),
                 'preview_failed'   => __('Could not load extra variation fields. Saving still works.', 'brikpanel'),
                 'reorder_attribute' => __('Drag to reorder', 'brikpanel'),
                 'reorder_attr_value' => __('Drag to reorder. This is the order shoppers see on the product page.', 'brikpanel'),
@@ -1976,7 +2212,7 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'immediately'      => __('Immediately', 'brikpanel'),
                 'schedule_start'   => __('Schedule start', 'brikpanel'),
                 'schedule_end'     => __('Schedule end', 'brikpanel'),
-                'schedule_hint'    => __('Optional — leave empty to keep the sale active indefinitely.', 'brikpanel'),
+                'schedule_hint'    => __('Optional. Leave empty to keep the sale active indefinitely.', 'brikpanel'),
                 'size'             => __('Size', 'brikpanel'),
                 'color'            => __('Color', 'brikpanel'),
                 'use_for_variations' => __('Use for variations', 'brikpanel'),
@@ -1985,17 +2221,15 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'need_variation_attr' => __('Switch on “Use for variations” for at least one attribute, then add its values.', 'brikpanel'),
                 'delete_variation' => __('Delete variation', 'brikpanel'),
                 'confirm_delete_variation' => __('Delete this variation? This change is applied when you save the product.', 'brikpanel'),
-                /* translators: %d is the number of variations that will be deleted */
-                'confirm_clear_variations' => __('Delete all %d variations? They are removed immediately and this cannot be undone. The product stays a variable product and its attributes are kept.', 'brikpanel'),
-                /* translators: %d is the number of variations that will be deleted */
-                'confirm_convert_to_simple' => __('This product has %d variations. Changing it to a simple product deletes them permanently and this cannot be undone.', 'brikpanel'),
+                /* translators: %s is the number of variations that will be deleted */
+                'confirm_clear_variations' => brikpanel_js_plural(_n_noop('Delete the %s variation? It is removed immediately and this cannot be undone. The product stays a variable product and its attributes are kept.', 'Delete all %s variations? They are removed immediately and this cannot be undone. The product stays a variable product and its attributes are kept.', 'brikpanel')),
+                /* translators: %s is the number of variations that will be deleted */
+                'confirm_convert_to_simple' => brikpanel_js_plural(_n_noop('This product has %s variation. Changing it to a simple product deletes it permanently and this cannot be undone.', 'This product has %s variations. Changing it to a simple product deletes them permanently and this cannot be undone.', 'brikpanel')),
                 'clearing_variations'      => __('Deleting…', 'brikpanel'),
-                /* translators: %d is how many variations are still waiting to be deleted */
-                'clearing_variations_left' => __('Deleting… %d left', 'brikpanel'),
-                /* translators: %d is the number of variations that were deleted */
-                'variations_cleared_one'   => __('%d variation deleted.', 'brikpanel'),
-                /* translators: %d is the number of variations that were deleted */
-                'variations_cleared_many'  => __('%d variations deleted.', 'brikpanel'),
+                /* translators: %s is how many variations are still waiting to be deleted */
+                'clearing_variations_left' => brikpanel_js_plural(_n_noop('Deleting… %s left', 'Deleting… %s left', 'brikpanel')),
+                /* translators: %s is the number of variations that were deleted */
+                'variations_cleared'       => brikpanel_js_plural(_n_noop('%s variation deleted.', '%s variations deleted.', 'brikpanel')),
                 'variations_cleared_local' => __('Variation list cleared.', 'brikpanel'),
                 'clear_variations_failed'  => __('Could not delete the variations. Please try again.', 'brikpanel'),
                 'variation_active' => __('Active', 'brikpanel'),
@@ -2004,33 +2238,105 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'reorder_variation' => __('Drag to reorder this variation', 'brikpanel'),
                 'variations_reordered' => __('Order updated. Save the product to keep it.', 'brikpanel'),
                 'sort_choose'      => __('Choose how to sort the variations first.', 'brikpanel'),
-                /* translators: %d is the number of variations just added to the list */
-                'variations_generated_one'  => __('%d new variation added at the end of the list.', 'brikpanel'),
-                /* translators: %d is the number of variations just added to the list */
-                'variations_generated_many' => __('%d new variations added at the end of the list.', 'brikpanel'),
-                'variations_generated_none' => __('No new combinations to add — every variation already exists.', 'brikpanel'),
-                /* translators: %d is the number of variations whose combination no longer exists */
-                'variations_orphaned_one'   => __('%d variation no longer matches your attribute values. It is marked in the list and kept until you delete it.', 'brikpanel'),
-                /* translators: %d is the number of variations whose combination no longer exists */
-                'variations_orphaned_many'  => __('%d variations no longer match your attribute values. They are marked in the list and kept until you delete them.', 'brikpanel'),
+                /* translators: %s is the number of variations just added to the list */
+                'variations_generated'      => brikpanel_js_plural(_n_noop('%s new variation added at the end of the list.', '%s new variations added at the end of the list.', 'brikpanel')),
+                'variations_generated_none' => __('No new combinations to add. Every variation already exists.', 'brikpanel'),
+                /* translators: %s is the number of variations whose combination no longer exists */
+                'variations_orphaned'       => brikpanel_js_plural(_n_noop('%s variation no longer matches your attribute values. It is marked in the list and kept until you delete it.', '%s variations no longer match your attribute values. They are marked in the list and kept until you delete them.', 'brikpanel')),
                 'variation_orphan_badge' => __('Not in your attributes', 'brikpanel'),
                 'variation_orphan_title' => __('This combination is no longer among your attribute values.', 'brikpanel'),
                 'chip_remove'      => __('Remove', 'brikpanel'),
                 'more_fields'      => __('More fields', 'brikpanel'),
+                // Variation table (field test B6): column names reused as the
+                // labels of stacked cards, details tiles and input aria-labels.
+                'var_details'        => __('Details', 'brikpanel'),
+                'var_show_all'       => __('Show all details', 'brikpanel'),
+                'var_hide_all'       => __('Hide all details', 'brikpanel'),
+                'var_price'          => __('Price', 'brikpanel'),
+                'var_sale_price'     => __('Sale price', 'brikpanel'),
+                'var_stock'          => __('Stock', 'brikpanel'),
+                'var_stock_qty'      => __('Stock quantity', 'brikpanel'),
+                'var_stock_status'   => __('Stock status', 'brikpanel'),
+                'var_track_stock'    => __('Track stock quantity for this variation', 'brikpanel'),
+                'var_sale_start'     => __('Sale start', 'brikpanel'),
+                'var_sale_end'       => __('Sale end', 'brikpanel'),
+                'var_clear_date'     => __('Clear', 'brikpanel'),
+                'var_sku'            => __('SKU', 'brikpanel'),
+                'var_gtin'           => __('GTIN', 'brikpanel'),
+                'var_tax_class'      => __('Tax class', 'brikpanel'),
+                'var_shipping_class' => __('Shipping class', 'brikpanel'),
+                'var_supplier'       => __('Supplier', 'brikpanel'),
+                'var_image'          => __('Image', 'brikpanel'),
+                'var_other_fields'   => __('Fields from your other plugins', 'brikpanel'),
                 'analyze'          => __('Re-analyze', 'brikpanel'),
                 'analyzing'        => __('Analyzing...', 'brikpanel'),
-                'default_form_values'      => __('Default Form Values', 'brikpanel'),
+                'default_form_values'      => __('Default form values', 'brikpanel'),
                 'default_form_values_help' => __('Choose which options are pre-selected on the product page. Leave blank for no default.', 'brikpanel'),
                 /* translators: %s is the attribute name, e.g. "No default Color…" */
                 'no_default_for'   => __('No default %s…', 'brikpanel'),
-                // Blocksy product video editor.
+                // Product video editor (see front-end/products/video/).
                 'video_edit'       => __('Video', 'brikpanel'),
                 'video_title'      => __('Product video', 'brikpanel'),
-                'video_help'       => __('Attach a video to this image. It plays in the product gallery when your theme supports it.', 'brikpanel'),
+                'video_title_image' => __('Video for this image', 'brikpanel'),
+                /* translators: %s: theme or plugin name, e.g. WoodMart */
+                'video_help_image' => __('Plays in the product gallery. Shown by %s.', 'brikpanel'),
+                /* translators: %s: theme or plugin name, e.g. Flatsome */
+                'video_help_product' => __('Plays on the product page. Shown by %s.', 'brikpanel'),
                 'video_source'     => __('Video source', 'brikpanel'),
                 'video_youtube'    => __('YouTube', 'brikpanel'),
                 'video_vimeo'      => __('Vimeo', 'brikpanel'),
-                'video_upload'     => __('Self-hosted', 'brikpanel'),
+                'video_src_file'   => __('Media library', 'brikpanel'),
+                'video_src_url'    => __('Video link', 'brikpanel'),
+                'video_url_label'  => __('Link to the video file', 'brikpanel'),
+                'video_url_ph'     => __('https://example.com/video.mp4', 'brikpanel'),
+                /* translators: %s: list of file types, e.g. "mp4, webm" */
+                'video_file_types' => __('Supported files: %s', 'brikpanel'),
+                'video_invalid_youtube' => __('This is not a YouTube video link.', 'brikpanel'),
+                'video_invalid_vimeo' => __('This is not a Vimeo video link, like https://vimeo.com/123456789.', 'brikpanel'),
+                'video_invalid_url' => __('This link does not point to a supported video file.', 'brikpanel'),
+                'video_invalid_file' => __('Choose a video file in a supported format.', 'brikpanel'),
+                'video_invalid_size' => __('Enter the size as width x height, for example 900x900.', 'brikpanel'),
+                'video_other_label' => __('Current video', 'brikpanel'),
+                'video_other_help' => __('This video was set up outside BrikPanel. It stays as it is unless you choose a new source.', 'brikpanel'),
+                'video_btn_add'    => __('Add a video to this image', 'brikpanel'),
+                'video_btn_edit'   => __('Edit the video of this image', 'brikpanel'),
+                'video_var_btn_add' => __('Add a video to this variation image', 'brikpanel'),
+                'video_var_btn_edit' => __('Edit the video of this variation image', 'brikpanel'),
+                'video_note_shared' => __('The video is saved on the image itself, so it also plays wherever this image is used.', 'brikpanel'),
+                /* translators: %s: theme or plugin name, e.g. CommerceKit */
+                'video_note_gallery_only' => __('%s plays videos on gallery images only. You can remove this one.', 'brikpanel'),
+                'video_note_minimog_variation' => __('On the product page this plays when the variation also has its own gallery.', 'brikpanel'),
+                'video_note_locked' => __('You cannot change this video because the image belongs to another user.', 'brikpanel'),
+                'video_note_360'   => __('This image shows a 360° view. Adding a video replaces it on the product page.', 'brikpanel'),
+                'video_product_added' => __('Product video set', 'brikpanel'),
+                'video_product_removed' => __('Product video removed', 'brikpanel'),
+                'video_row_none'   => __('No video yet', 'brikpanel'),
+                'video_row_add'    => __('Add video', 'brikpanel'),
+                'video_row_edit'   => __('Edit video', 'brikpanel'),
+                /* translators: 1: video source (YouTube, Vimeo…), 2: the video link or file name */
+                'video_row_meta'   => _x('%1$s · %2$s', 'product video source and link', 'brikpanel'),
+                'video_opt_autoplay' => __('Play automatically (muted)', 'brikpanel'),
+                'video_opt_player' => _x('Player', 'video player style', 'brikpanel'),
+                'video_opt_player_theme' => _x('Simple', 'video player style', 'brikpanel'),
+                'video_opt_player_native' => _x('Standard', 'video player style', 'brikpanel'),
+                'video_opt_fit'    => __('Video size', 'brikpanel'),
+                'video_opt_fit_contain' => _x('Fit', 'video size', 'brikpanel'),
+                'video_opt_fit_cover' => _x('Fill', 'video size', 'brikpanel'),
+                'video_opt_hide_image' => __('Show the player instead of the image', 'brikpanel'),
+                'video_opt_sound'  => _x('Sound', 'video sound', 'brikpanel'),
+                'video_opt_sound_on' => _x('On', 'video sound', 'brikpanel'),
+                'video_opt_sound_off' => _x('Muted', 'video sound', 'brikpanel'),
+                'video_opt_hide_overlay' => __('Hide labels and buttons while the video plays', 'brikpanel'),
+                'video_opt_hover_revert' => __('Show the image again when the pointer leaves', 'brikpanel'),
+                'video_opt_placement' => __('Where to show it', 'brikpanel'),
+                'video_opt_placement_lightbox' => __('Button (lightbox)', 'brikpanel'),
+                'video_opt_placement_tab' => __('Product tab', 'brikpanel'),
+                'video_opt_size'   => __('Lightbox size', 'brikpanel'),
+                'video_opt_display' => _x('Display', 'product video display', 'brikpanel'),
+                'video_opt_display_popup' => _x('Popup', 'product video display', 'brikpanel'),
+                'video_opt_display_slide' => __('Gallery slide', 'brikpanel'),
+                'video_opt_position' => __('Position in the gallery', 'brikpanel'),
+                'video_opt_position_last' => _x('Last', 'position in the gallery', 'brikpanel'),
                 'video_youtube_url' => __('YouTube URL', 'brikpanel'),
                 'video_vimeo_url'  => __('Vimeo URL', 'brikpanel'),
                 'video_youtube_ph' => __('https://www.youtube.com/watch?v=…', 'brikpanel'),
@@ -2059,18 +2365,26 @@ function brikpanel_enqueue_woo_assets($hook) {
 
     // Coupons List (AJAX)
     if ('admin_page_brikpanel-coupons' === $hook && get_option('brikpanel_modern_coupons', 'yes') === 'yes') {
+        // filemtime-based version so any edit to the coupons assets busts the
+        // browser cache together (falls back to the plugin version).
+        $cp_css_ver = @filemtime( BRIKPANEL_PATH . 'front-end/coupons/brikpanel-coupons.css' ) ?: BRIKPANEL_VERSION;
+        $cp_js_ver  = @filemtime( BRIKPANEL_PATH . 'front-end/coupons/brikpanel-coupons.js' ) ?: BRIKPANEL_VERSION;
+
+        // Shared parts (field test C4): the table stacks its rows when it does
+        // not fit, the header gives way in order (fit-row, printed in <head>),
+        // the status tabs scroll inside themselves.
         wp_enqueue_style(
             'brikpanel_coupons_styles',
             BRIKPANEL_URL . 'front-end/coupons/brikpanel-coupons.css',
-            [],
-            BRIKPANEL_VERSION . '.3'
+            array_merge( brikpanel_fit_table_dep( 'style' ), brikpanel_narrow_deps( [ 'scroll_strip', 'ui' ], 'style' ) ),
+            $cp_css_ver
         );
 
         wp_enqueue_script(
             'brikpanel_coupons_scripts',
             BRIKPANEL_URL . 'front-end/coupons/brikpanel-coupons.js',
-            ['jquery'],
-            BRIKPANEL_VERSION . '.3',
+            array_merge( ['jquery'], brikpanel_fit_table_dep(), brikpanel_fit_row_dep(), brikpanel_narrow_deps( [ 'scroll_strip', 'format' ] ) ),
+            $cp_js_ver,
             true
         );
 
@@ -2100,13 +2414,18 @@ function brikpanel_enqueue_woo_assets($hook) {
                 'delete_permanently'      => __('Delete permanently', 'brikpanel'),
                 'confirm_delete'          => __('Are you sure you want to trash "%s"?', 'brikpanel'),
                 'confirm_permanent_delete' => __('Are you sure? This cannot be undone.', 'brikpanel'),
-                'confirm_bulk'            => __('Are you sure you want to update %d coupons?', 'brikpanel'),
-                'confirm_bulk_trash'      => __('Are you sure you want to trash %d coupons?', 'brikpanel'),
+                // Counted in the browser: every plural form goes along (brikpanelFormat.count()).
+                /* translators: %s: number of selected coupons. */
+                'confirm_bulk'            => brikpanel_js_plural(_n_noop('Are you sure you want to update %s coupon?', 'Are you sure you want to update %s coupons?', 'brikpanel')),
+                /* translators: %s: number of selected coupons. */
+                'confirm_bulk_trash'      => brikpanel_js_plural(_n_noop('Are you sure you want to trash %s coupon?', 'Are you sure you want to trash %s coupons?', 'brikpanel')),
                 'bulk_updated'            => __('Coupons updated!', 'brikpanel'),
                 'bulk_trashed'            => __('Coupons moved to trash!', 'brikpanel'),
                 'click_to_toggle'         => __('Click to toggle status', 'brikpanel'),
-                'showing'                 => __('Showing %1$d of %2$d coupons', 'brikpanel'),
-                'showing_range'           => __('Showing %1$d-%2$d of %3$d coupons', 'brikpanel'),
+                /* translators: 1: coupons shown, 2: all matching coupons. */
+                'showing'                 => brikpanel_js_plural(_n_noop('Showing %1$s of %2$s coupon', 'Showing %1$s of %2$s coupons', 'brikpanel')),
+                /* translators: 1: first coupon on the page, 2: last coupon on the page, 3: all matching coupons. */
+                'showing_range'           => brikpanel_js_plural(_n_noop('Showing %1$s-%2$s of %3$s coupon', 'Showing %1$s-%2$s of %3$s coupons', 'brikpanel')),
                 'add_coupon'              => __('Add coupon', 'brikpanel'),
                 'edit_coupon'             => __('Edit coupon', 'brikpanel'),
                 'code_required'           => __('Coupon code is required.', 'brikpanel'),
@@ -2131,7 +2450,7 @@ function brikpanel_enqueue_woo_assets($hook) {
         wp_enqueue_style(
             'brikpanel_cartshare_admin',
             BRIKPANEL_URL . 'front-end/cart-share/cart-share-admin.css',
-            [],
+            brikpanel_narrow_dep( 'ui', 'style' ),
             file_exists($cs_dir . 'cart-share-admin.css') ? (string) filemtime($cs_dir . 'cart-share-admin.css') : BRIKPANEL_VERSION
         );
 
@@ -2172,9 +2491,98 @@ add_action('admin_enqueue_scripts', 'brikpanel_enqueue_woo_assets', 99);
 // =============================================================================
 // BODY CLASS FOR MODERN ORDER EDIT
 // =============================================================================
+/**
+ * The page shell each BrikPanel screen uses (field test D2): 'wide' for the
+ * lists and reports, which use the whole content area, 'narrow' for the form
+ * and connection pages, a centred 820px column. The rules are in
+ * front-end/shared/brikpanel-ui.css; the screen puts `brikpanel-shell__page`
+ * on its outer box. Before this every screen drew its own width and gutters
+ * and the page title moved up to 190px between screens.
+ *
+ * Not listed on purpose: the product editor (its own full-width sticky header
+ * over an 820px column, plus the widescreen option), the "turned off" card
+ * (a small card that must also look right without BrikPanel's styles) and
+ * WooCommerce's own screens (orders, settings).
+ *
+ * @return array<string,string> Page slug => 'wide' or 'narrow'.
+ */
+function brikpanel_shell_pages() {
+    $pages = [
+        'brikpanel-dashboard'          => 'wide',
+        'brikpanel-products'           => 'wide',
+        'brikpanel-coupons'            => 'wide',
+        'brikpanel-segments'           => 'wide',
+        'brikpanel-customer-analytics' => 'wide',
+        'brikpanel-abandoned-carts'    => 'wide',
+        'brikpanel-expenses'           => 'wide',
+        'brikpanel-vendors'            => 'wide',
+        'brikpanel-stock-orders'       => 'wide',
+        'brikpanel-cron'               => 'wide',
+        'brikpanel-google-sheets'      => 'narrow',
+        'brikpanel-ad-platforms'       => 'narrow',
+        'brikpanel-brikcontrol'        => 'narrow',
+        'brikpanel-cart-share'         => 'narrow',
+        'brikpanel-brikmentor'         => 'narrow',
+        'brikpanel-merge-orders'       => 'narrow',
+        // The explanation cards (a module switched off, a page the Navigation
+        // rules close): one centred card, see brikpanel_render_notice_card().
+        'brikpanel-module-off'         => 'narrow',
+        'brikpanel-page-blocked'       => 'narrow',
+    ];
+
+    /**
+     * Filters which page shell each BrikPanel screen uses.
+     *
+     * @param array<string,string> $pages Page slug => 'wide' or 'narrow'.
+     */
+    return (array) apply_filters( 'brikpanel_shell_pages', $pages );
+}
+
+/**
+ * The page shell of the current admin request: 'wide', 'narrow' or '' when
+ * the screen has none (or BrikPanel is switched off for this user).
+ *
+ * @return string
+ */
+function brikpanel_shell_kind() {
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen lookup.
+    $page = isset( $_GET['page'] ) && is_string( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+    if ( '' === $page ) {
+        return '';
+    }
+    if ( function_exists( 'brikpanel_access_should_neutralize' ) && brikpanel_access_should_neutralize() ) {
+        return '';
+    }
+    $pages = brikpanel_shell_pages();
+    $kind  = isset( $pages[ $page ] ) ? $pages[ $page ] : '';
+    return in_array( $kind, [ 'wide', 'narrow' ], true ) ? $kind : '';
+}
+
+/**
+ * The shell's stylesheet on every screen that has a shell, also when that
+ * screen's own stylesheet does not list it.
+ *
+ * @return void
+ */
+function brikpanel_enqueue_shell_style() {
+    if ( '' === brikpanel_shell_kind() ) {
+        return;
+    }
+    $dep = brikpanel_narrow_dep( 'ui', 'style' );
+    if ( $dep ) {
+        wp_enqueue_style( $dep[0] );
+    }
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_enqueue_shell_style', 5 );
+
 function brikpanel_admin_body_class( $classes ) {
     $screen = get_current_screen();
     if ( ! $screen ) return $classes;
+
+    $shell = brikpanel_shell_kind();
+    if ( '' !== $shell ) {
+        $classes .= ' brikpanel-shell brikpanel-shell--' . $shell;
+    }
 
     $is_order_edit = null !== brikpanel_order_screen_context();
 
@@ -2189,14 +2597,24 @@ function brikpanel_admin_body_class( $classes ) {
         }
     }
 
+    $native_nav = false;
     if ( get_option( 'brikpanel_modern_navigation', 'yes' ) === 'no' ) {
         // Modern nav off: keep the native WordPress menu either re-skinned to
         // match BrikPanel (default) or left in its original WordPress look.
         if ( get_option( 'brikpanel_native_menu_styled', 'yes' ) === 'no' ) {
-            $classes .= ' brikpanel-native-nav';
+            $classes   .= ' brikpanel-native-nav';
+            $native_nav = true;
         } else {
             $classes .= ' brikpanel-classic-nav';
         }
+    }
+
+    // BrikPanel's own look is on (its sidebar or WordPress's menu re-skinned),
+    // so WordPress's color scheme is not: brikpanel-navigation.css gives
+    // WordPress's accent color BrikPanel's value under this class (field test
+    // D4/D8). Not for a user BrikPanel is switched off for.
+    if ( ! $native_nav && ! ( function_exists( 'brikpanel_access_should_neutralize' ) && brikpanel_access_should_neutralize() ) ) {
+        $classes .= ' brikpanel-chrome';
     }
 
     // Single shared hook for every styled product taxonomy term screen
@@ -2240,14 +2658,14 @@ function brikpanel_enqueue_expenses_assets( $hook ) {
     wp_enqueue_style(
         'brikpanel_expenses_styles',
         BRIKPANEL_URL . 'front-end/expenses/brikpanel-expenses.css',
-        [],
+        array_merge( brikpanel_fit_table_dep( 'style' ), brikpanel_narrow_deps( [ 'tiles', 'ui' ], 'style' ) ),
         $exp_css_ver
     );
 
     wp_enqueue_script(
         'brikpanel_expenses_scripts',
         BRIKPANEL_URL . 'front-end/expenses/brikpanel-expenses.js',
-        [],
+        array_merge( brikpanel_fit_table_dep(), brikpanel_narrow_dep( 'tiles' ) ),
         $exp_js_ver,
         true
     );
@@ -2270,14 +2688,14 @@ function brikpanel_enqueue_cartab_assets( $hook ) {
     wp_enqueue_style(
         'brikpanel_cartab_admin_styles',
         BRIKPANEL_URL . 'front-end/cart-abandonment/cart-abandonment-admin.css',
-        [],
+        brikpanel_narrow_deps( [ 'tiles', 'ui' ], 'style' ),
         $css_ver
     );
 
     wp_enqueue_script(
         'brikpanel_cartab_admin_scripts',
         BRIKPANEL_URL . 'front-end/cart-abandonment/cart-abandonment-admin.js',
-        [],
+        array_merge( brikpanel_fit_table_dep(), brikpanel_narrow_dep( 'tiles' ) ),
         $js_ver,
         true
     );
@@ -2292,18 +2710,25 @@ function brikpanel_enqueue_cron_assets( $hook ) {
         return;
     }
 
+    // filemtime-based version, like the other screens: with the fixed plugin
+    // version an edited stylesheet kept being served from the browser cache.
+    $cron_css_ver = @filemtime( BRIKPANEL_PATH . 'includes/cron/brikpanel-cron-page.css' ) ?: BRIKPANEL_VERSION; // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+    $cron_js_ver  = @filemtime( BRIKPANEL_PATH . 'includes/cron/brikpanel-cron-page.js' ) ?: BRIKPANEL_VERSION; // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
+
+    // The four counts are shared summary tiles (brikpanel-tiles): 4, 2 x 2 or
+    // a short list, never 3 + 1 or one tall card per row.
     wp_enqueue_style(
         'brikpanel_cron_styles',
         BRIKPANEL_URL . 'includes/cron/brikpanel-cron-page.css',
-        [],
-        BRIKPANEL_VERSION
+        brikpanel_narrow_deps( [ 'ui', 'tiles' ], 'style' ),
+        $cron_css_ver
     );
 
     wp_enqueue_script(
         'brikpanel_cron_scripts',
         BRIKPANEL_URL . 'includes/cron/brikpanel-cron-page.js',
-        [],
-        BRIKPANEL_VERSION,
+        array_merge( brikpanel_fit_table_dep(), brikpanel_narrow_dep( 'tiles' ) ),
+        $cron_js_ver,
         true
     );
 }

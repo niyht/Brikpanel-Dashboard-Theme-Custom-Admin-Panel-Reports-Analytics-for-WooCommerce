@@ -34,6 +34,20 @@
 
 	function el( id ) { return document.getElementById( id ); }
 
+	// Numbers and percentages in the store's format, the percent sign where
+	// the viewer's language writes it (front-end/shared/brikpanel-format.js).
+	// It was the browser's language and "0 tekrar (0%)" (field test E2/E9).
+	var BF = window.brikpanelFormat || null;
+	function fmtNum( n, decimals ) {
+		return BF ? BF.number( n || 0, decimals || 0, true ) : String( Number( n ) || 0 );
+	}
+	function fmtPct( v, decimals ) {
+		return BF ? BF.percent( v || 0, decimals == null ? 1 : decimals ) : String( Number( v ) || 0 );
+	}
+	if ( BF && window.Chart ) {
+		BF.chart( window.Chart );
+	}
+
 	function escapeHtml( str ) {
 		if ( str === null || typeof str === 'undefined' ) { return ''; }
 		return String( str )
@@ -80,6 +94,38 @@
 		}, 3500 );
 	}
 
+	// A chart with nothing to draw gives way to one line saying why (field
+	// test F3: empty axes and ten empty cards read as broken). The box around
+	// the chart is hidden, never the canvas: Chart.js writes display:block on
+	// the canvas itself. It is shown again before a chart is built, so the
+	// chart measures a visible box.
+	function showEmpty( boxId, msgId, isEmpty, message ) {
+		var box = el( boxId ), msg = el( msgId );
+		if ( box ) { box.hidden = !! isEmpty; }
+		if ( msg ) {
+			msg.textContent = isEmpty ? ( message || '' ) : '';
+			msg.hidden = ! isEmpty;
+		}
+	}
+
+	function dropChart( key ) {
+		if ( state[ key ] ) {
+			state[ key ].destroy();
+			state[ key ] = null;
+		}
+	}
+
+	// The line under the title, sent back by the server after a recompute
+	// ("Not calculated yet" can become "No customers yet." or a date). The
+	// header row is fitted by width, so it is measured again.
+	function setMeta( text ) {
+		var meta = el( 'bp-ca-meta' );
+		if ( ! meta || typeof text !== 'string' || text === '' ) { return; }
+		meta.textContent = text;
+		var fit = window.brikpanelFitRow && window.brikpanelFitRow.auto( el( 'bp-ca-header' ) );
+		if ( fit && typeof fit.refit === 'function' ) { fit.refit(); }
+	}
+
 	// =========================================================================
 	// LTV Summary
 	// =========================================================================
@@ -88,9 +134,10 @@
 		fetchJSON( 'brikpanel_ca_ltv_summary' ).then( function ( res ) {
 			if ( ! res || ! res.success ) { return; }
 			var d = res.data;
-			el( 'bp-ca-stat-customers' ).textContent = ( d.total_customers || 0 ).toLocaleString();
-			var repeatLine = ( d.repeat_customers || 0 ).toLocaleString() + ' ' + ( i18n.repeat_customers || 'repeat' ) + ' (' + ( d.repeat_rate || 0 ) + '%)';
-			el( 'bp-ca-stat-repeat' ).textContent = repeatLine;
+			el( 'bp-ca-stat-customers' ).textContent = fmtNum( d.total_customers );
+			// Built on the server: plural form for the count, the rate as a
+			// finished percentage.
+			el( 'bp-ca-stat-repeat' ).textContent = d.repeat_line || '';
 			el( 'bp-ca-stat-avg-ltv' ).textContent = d.avg_ltv_display || '—';
 			el( 'bp-ca-stat-median-ltv' ).textContent = d.median_ltv_display || '—';
 			el( 'bp-ca-stat-total-ltv' ).textContent = d.total_ltv_display || '—';
@@ -99,20 +146,55 @@
 		} );
 	}
 
+	// Both customer tables stack into cards when they cannot show every column
+	// in their card (field test B6: on a phone AOV, LTV and Last order scrolled
+	// out of sight). Labels come from the header texts.
+	var topFit = null, rfmFit = null;
+	function fitFor( tableId, current ) {
+		if ( current || ! window.brikpanelFitTable ) { return current; }
+		var table = el( tableId );
+		return table ? window.brikpanelFitTable( table, { labels: 'head', slack: 0 } ) : null;
+	}
+	function setTopBody( html ) {
+		var body = el( 'bp-ca-top-customers-body' );
+		if ( ! body ) { return; }
+		body.innerHTML = html;
+		topFit = fitFor( 'bp-ca-top-customers', topFit );
+		if ( topFit ) { topFit.refit(); }
+	}
+	function setRfmBody( html ) {
+		var body = el( 'bp-ca-rfm-tbody' );
+		if ( ! body ) { return; }
+		body.innerHTML = html;
+		rfmFit = fitFor( 'bp-ca-rfm-table', rfmFit );
+		if ( rfmFit ) { rfmFit.refit(); }
+	}
+
+	// A long e-mail breaks only at its joints (after "@", before a dot), never
+	// mid-word (CLAUDE.md table rule). Callers wrap it, and a phone number, in
+	// an inline <span dir="ltr">: the characters keep their order on an RTL
+	// screen while the line itself still lines up with the name above it.
+	function emailHtml( email ) {
+		email = String( email || '' );
+		var at = email.indexOf( '@' );
+		var dotBreak = function ( part ) { return escapeHtml( part ).split( '.' ).join( '<wbr>.' ); };
+		if ( at < 0 ) { return escapeHtml( email ); }
+		return dotBreak( email.slice( 0, at ) ) + '@<wbr>' + dotBreak( email.slice( at + 1 ) );
+	}
+
 	// =========================================================================
 	// Top customers table
 	// =========================================================================
 
 	function loadTopCustomers() {
-		var body = el( 'bp-ca-top-customers-body' );
-		body.innerHTML = '<tr><td class="bp-ca-empty" colspan="6">' + escapeHtml( i18n.loading || 'Loading…' ) + '</td></tr>';
+		setTopBody( '<tr><td class="bp-ca-empty" colspan="6">' + escapeHtml( i18n.loading || 'Loading…' ) + '</td></tr>' );
 
 		fetchJSON( 'brikpanel_ca_ltv_top_customers', {
 			page: state.topPage,
 			per_page: state.topPerPage
 		} ).then( function ( res ) {
 			if ( ! res || ! res.success ) {
-				body.innerHTML = '<tr><td class="bp-ca-empty" colspan="6">' + escapeHtml( i18n.error || 'Could not load.' ) + '</td></tr>';
+				setTopBody( '<tr><td class="bp-ca-empty" colspan="6">' + escapeHtml( i18n.error || 'Could not load.' ) + '</td></tr>' );
 				return;
 			}
 			var data = res.data;
@@ -122,9 +204,8 @@
 	}
 
 	function renderTopRows( items ) {
-		var body = el( 'bp-ca-top-customers-body' );
 		if ( ! items.length ) {
-			body.innerHTML = '<tr><td class="bp-ca-empty" colspan="6">' + escapeHtml( i18n.empty || 'No customers yet.' ) + '</td></tr>';
+			setTopBody( '<tr><td class="bp-ca-empty" colspan="6">' + escapeHtml( i18n.empty || 'No customers yet.' ) + '</td></tr>' );
 			return;
 		}
 
@@ -134,8 +215,8 @@
 				+ '<div class="bp-ca-customer-name">' + escapeHtml( c.name )
 				+ ( c.is_guest ? '<span class="bp-ca-guest-pill">' + escapeHtml( i18n.guest || 'Guest' ) + '</span>' : '' )
 				+ '</div>'
-				+ '<div class="bp-ca-customer-email">' + escapeHtml( c.email ) + '</div>'
-				+ ( c.phone ? '<div class="bp-ca-customer-phone">' + escapeHtml( c.phone ) + '</div>' : '' )
+				+ '<div class="bp-ca-customer-email"><span dir="ltr">' + emailHtml( c.email ) + '</span></div>'
+				+ ( c.phone ? '<div class="bp-ca-customer-phone"><span dir="ltr">' + escapeHtml( c.phone ) + '</span></div>' : '' )
 				+ '</div>';
 
 			if ( c.edit_url ) {
@@ -154,15 +235,15 @@
 			}
 
 			html += '<tr>'
-				+ '<td>' + customerCell + '</td>'
+				+ '<td class="brikpanel-fit-lead">' + customerCell + '</td>'
 				+ '<td class="num">' + c.order_count + '</td>'
 				+ '<td class="num">' + escapeHtml( c.aov_display ) + '</td>'
-				+ '<td class="num"><strong>' + escapeHtml( c.total_spent_display ) + '</strong></td>'
+				+ '<td class="num brikpanel-fit-headline"><strong>' + escapeHtml( c.total_spent_display ) + '</strong></td>'
 				+ '<td>' + escapeHtml( c.last_order || '—' ) + '</td>'
 				+ '<td class="num">' + escapeHtml( recencyText ) + '</td>'
 				+ '</tr>';
 		} );
-		body.innerHTML = html;
+		setTopBody( html );
 	}
 
 	function renderPagination( data ) {
@@ -184,11 +265,22 @@
 	function loadHistogram() {
 		fetchJSON( 'brikpanel_ca_ltv_distribution' ).then( function ( res ) {
 			if ( ! res || ! res.success ) { return; }
-			renderHistogram( res.data.bins || [] );
+			renderHistogram( res.data || {} );
 		} );
 	}
 
-	function renderHistogram( bins ) {
+	function renderHistogram( payload ) {
+		var bins = payload.bins || [];
+		if ( ! bins.length ) {
+			// Brackets exist only once someone has spent money: either there
+			// are no customers, or none of them has spent anything yet.
+			dropChart( 'histogramChart' );
+			showEmpty( 'bp-ca-ltv-wrap', 'bp-ca-ltv-empty', true,
+				Number( payload.customers ) > 0 ? i18n.ltv_zero_spend : i18n.empty );
+			return;
+		}
+		showEmpty( 'bp-ca-ltv-wrap', 'bp-ca-ltv-empty', false );
+
 		var canvas = el( 'bp-ca-ltv-histogram' );
 		if ( ! canvas || typeof Chart === 'undefined' ) { return; }
 
@@ -197,7 +289,7 @@
 			return b.hi_display;
 		} );
 		var data = bins.map( function ( b ) { return b.customers; } );
-		var tooltipLabels = bins.map( function ( b ) { return b.lo_display + ' – ' + b.hi_display; } );
+		var tooltipLabels = bins.map( function ( b ) { return BF ? BF.range( b.lo_display, b.hi_display ) : b.lo_display + ' / ' + b.hi_display; } );
 
 		if ( state.histogramChart ) {
 			state.histogramChart.destroy();
@@ -225,7 +317,7 @@
 						callbacks: {
 							title: function ( ctx ) { return tooltipLabels[ ctx[ 0 ].dataIndex ]; },
 							label: function ( ctx ) {
-								return ( i18n.customers || 'Customers' ) + ': ' + ctx.parsed.y;
+								return ( i18n.customers || 'Customers' ) + ': ' + fmtNum( ctx.parsed.y );
 							}
 						}
 					}
@@ -233,11 +325,11 @@
 				scales: {
 					x: {
 						grid: { display: false },
-						ticks: { color: '#8a8a8a', font: { size: 11 }, maxRotation: 0, autoSkip: true }
+						ticks: { color: '#616161', font: { size: 11 }, maxRotation: 0, autoSkip: true }
 					},
 					y: {
 						beginAtZero: true,
-						ticks: { color: '#8a8a8a', font: { size: 11 }, precision: 0 },
+						ticks: { color: '#616161', font: { size: 11 }, precision: 0 },
 						grid: { color: '#f1f1f1' }
 					}
 				}
@@ -255,10 +347,25 @@
 
 		fetchJSON( 'brikpanel_ca_rfm_summary' ).then( function ( res ) {
 			if ( ! res || ! res.success ) {
+				showEmpty( 'bp-ca-rfm-layout', 'bp-ca-rfm-empty', false );
 				grid.innerHTML = '<div class="bp-ca-empty">' + escapeHtml( i18n.error || 'Could not load.' ) + '</div>';
 				return;
 			}
-			state.rfmSegments = res.data.segments || [];
+			var d = res.data || {};
+			state.rfmSegments = d.segments || [];
+
+			// No customers, or customers the scoring pass has not placed in a
+			// segment yet (the server says which): one line instead of ten
+			// empty cards and a blank ring.
+			var noCustomers = ! ( Number( d.total_customers ) > 0 );
+			if ( noCustomers || d.scored === false ) {
+				dropChart( 'rfmDonut' );
+				if ( state.rfmActiveSegment ) { clearRfmSelection(); }
+				showEmpty( 'bp-ca-rfm-layout', 'bp-ca-rfm-empty', true,
+					noCustomers ? i18n.rfm_no_customers : ( d.rfm_supported === false ? i18n.rfm_unsupported : i18n.rfm_not_scored ) );
+				return;
+			}
+			showEmpty( 'bp-ca-rfm-layout', 'bp-ca-rfm-empty', false );
 			renderRfmGrid();
 			renderRfmDonut();
 		} );
@@ -281,11 +388,11 @@
 				+ '<span class="bp-ca-rfm-dot" style="background:' + escapeHtml( s.color ) + '"></span>'
 				+ escapeHtml( s.label )
 				+ '</span>'
-				+ '<span class="bp-ca-rfm-card-count">' + s.customers + '<span class="bp-ca-rfm-card-share">' + s.share + '%</span></span>'
+				+ '<span class="bp-ca-rfm-card-count">' + escapeHtml( fmtNum( s.customers ) ) + '<span class="bp-ca-rfm-card-share">' + escapeHtml( fmtPct( s.share ) ) + '</span></span>'
 				+ '</div>'
 				+ '<div class="bp-ca-rfm-card-meta">'
 				+ '<span>' + ( i18n.avg_ltv_short || 'LTV' ) + ': <strong>' + escapeHtml( s.avg_ltv_display ) + '</strong></span>'
-				+ '<span>' + ( i18n.avg_orders_short || 'Orders' ) + ': <strong>' + s.avg_orders + '</strong></span>'
+				+ '<span>' + ( i18n.avg_orders_short || 'Orders' ) + ': <strong>' + escapeHtml( fmtNum( s.avg_orders, 1 ) ) + '</strong></span>'
 				+ '</div>'
 				+ '<div class="bp-ca-rfm-card-desc">' + escapeHtml( s.description ) + '</div>'
 				+ '</button>';
@@ -337,7 +444,7 @@
 							label: function ( ctx ) {
 								var total = ctx.dataset.data.reduce( function ( a, b ) { return a + b; }, 0 );
 								var pct   = total > 0 ? Math.round( ctx.parsed / total * 100 ) : 0;
-								return ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
+								return ctx.label + ': ' + fmtNum( ctx.parsed ) + ' (' + fmtPct( pct, 0 ) + ')';
 							}
 						}
 					}
@@ -371,8 +478,7 @@
 	}
 
 	function loadRfmCustomers() {
-		var body = el( 'bp-ca-rfm-tbody' );
-		body.innerHTML = '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.loading || 'Loading…' ) + '</td></tr>';
+		setRfmBody( '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.loading || 'Loading…' ) + '</td></tr>' );
 
 		fetchJSON( 'brikpanel_ca_rfm_customers', {
 			segment: state.rfmActiveSegment,
@@ -380,7 +486,7 @@
 			per_page: state.rfmPerPage
 		} ).then( function ( res ) {
 			if ( ! res || ! res.success ) {
-				body.innerHTML = '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.error || 'Could not load.' ) + '</td></tr>';
+				setRfmBody( '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.error || 'Could not load.' ) + '</td></tr>' );
 				return;
 			}
 			renderRfmRows( res.data.items || [] );
@@ -389,9 +495,10 @@
 	}
 
 	function renderRfmRows( items ) {
-		var body = el( 'bp-ca-rfm-tbody' );
 		if ( ! items.length ) {
-			body.innerHTML = '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.empty || 'No customers in this segment.' ) + '</td></tr>';
+			// Its own sentence: the shared `empty` key says the store has no
+			// customers at all.
+			setRfmBody( '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.rfm_segment_empty ) + '</td></tr>' );
 			return;
 		}
 		var html = '';
@@ -411,8 +518,8 @@
 				+ '<div class="bp-ca-customer-name">' + escapeHtml( c.name )
 				+ ( c.is_guest ? '<span class="bp-ca-guest-pill">' + escapeHtml( i18n.guest || 'Guest' ) + '</span>' : '' )
 				+ '</div>'
-				+ '<div class="bp-ca-customer-email">' + escapeHtml( c.email ) + '</div>'
-				+ ( c.phone ? '<div class="bp-ca-customer-phone">' + escapeHtml( c.phone ) + '</div>' : '' )
+				+ '<div class="bp-ca-customer-email"><span dir="ltr">' + emailHtml( c.email ) + '</span></div>'
+				+ ( c.phone ? '<div class="bp-ca-customer-phone"><span dir="ltr">' + escapeHtml( c.phone ) + '</span></div>' : '' )
 				+ '</div>';
 			if ( c.edit_url ) {
 				customerCell = '<a href="' + escapeHtml( c.edit_url ) + '" style="color: inherit; text-decoration: none;">' + customerCell + '</a>';
@@ -426,16 +533,16 @@
 			}
 
 			html += '<tr>'
-				+ '<td>' + customerCell + '</td>'
+				+ '<td class="brikpanel-fit-lead">' + customerCell + '</td>'
 				+ '<td>' + pills + '</td>'
 				+ '<td class="num">' + c.order_count + '</td>'
 				+ '<td class="num">' + escapeHtml( c.aov_display ) + '</td>'
-				+ '<td class="num"><strong>' + escapeHtml( c.total_spent_display ) + '</strong></td>'
+				+ '<td class="num brikpanel-fit-headline"><strong>' + escapeHtml( c.total_spent_display ) + '</strong></td>'
 				+ '<td>' + escapeHtml( c.last_order || '—' ) + '</td>'
 				+ '<td class="num">' + escapeHtml( recencyText ) + '</td>'
 				+ '</tr>';
 		} );
-		body.innerHTML = html;
+		setRfmBody( html );
 	}
 
 	function renderRfmPagination( data ) {
@@ -470,7 +577,7 @@
 				return;
 			}
 			renderCohortHeatmap( res.data );
-			renderCohortLine( res.data.avg_by_offset );
+			renderCohortLine( res.data );
 		} );
 	}
 
@@ -480,7 +587,7 @@
 	 * because the BrikPanel UI is monochrome — higher rate = darker cell.
 	 */
 	function cohortColor( rate ) {
-		if ( rate <= 0 ) { return { bg: '#f7f7f7', fg: '#8a8a8a' }; }
+		if ( rate <= 0 ) { return { bg: '#f7f7f7', fg: '#616161' }; }
 		// Easing curve so the mid-range (15-50%) gets meaningful contrast.
 		var t = Math.min( 1, rate / 100 );
 		var eased = Math.pow( t, 0.6 );
@@ -488,8 +595,20 @@
 		var r = Math.round( 241 - eased * ( 241 - 48 ) );
 		var g = Math.round( 241 - eased * ( 241 - 48 ) );
 		var b = Math.round( 241 - eased * ( 241 - 48 ) );
-		var fg = eased > 0.45 ? '#ffffff' : '#303030';
+		// The text colour with the higher contrast on this shade: a fixed
+		// switch point left 27-46% cells between 2.8:1 and 4.5:1.
+		var fg = contrastRatio( r, 255 ) > contrastRatio( r, 48 ) ? '#ffffff' : '#303030';
 		return { bg: 'rgb(' + r + ',' + g + ',' + b + ')', fg: fg };
+	}
+
+	/** WCAG contrast between two greys given by one channel value (0-255). */
+	function contrastRatio( a, b ) {
+		var lum = function ( v ) {
+			v /= 255;
+			return v <= 0.03928 ? v / 12.92 : Math.pow( ( v + 0.055 ) / 1.055, 2.4 );
+		};
+		var la = lum( a ), lb = lum( b );
+		return ( Math.max( la, lb ) + 0.05 ) / ( Math.min( la, lb ) + 0.05 );
 	}
 
 	function renderCohortHeatmap( data ) {
@@ -515,7 +634,7 @@
 		data.cohorts.forEach( function ( cohort ) {
 			html += '<div class="bp-ca-cohort-row">';
 			html += '<div class="bp-ca-cohort-cell bp-ca-cohort-cell-month">' + escapeHtml( cohort.cohort_month_label ) + '</div>';
-			html += '<div class="bp-ca-cohort-cell bp-ca-cohort-cell-size">' + cohort.cohort_size + '</div>';
+			html += '<div class="bp-ca-cohort-cell bp-ca-cohort-cell-size">' + escapeHtml( fmtNum( cohort.cohort_size ) ) + '</div>';
 			for ( var j = 0; j <= maxOffset; j++ ) {
 				var cell = cohort.cells[ j ];
 				if ( ! cell ) {
@@ -524,11 +643,11 @@
 					continue;
 				}
 				var c = cohortColor( cell.rate );
-				var tooltip = cohort.cohort_month_label + ' → M+' + j + ': ' + cell.customers + '/' + cohort.cohort_size + ' (' + cell.rate + '%)';
+				var tooltip = cohort.cohort_month_label + ' → M+' + j + ': ' + fmtNum( cell.customers ) + '/' + fmtNum( cohort.cohort_size ) + ' (' + fmtPct( cell.rate ) + ')';
 				html += '<div class="bp-ca-cohort-cell bp-ca-cohort-cell-data" '
 					+ 'style="background:' + c.bg + ';color:' + c.fg + ';" '
 					+ 'title="' + escapeHtml( tooltip ) + '">'
-					+ cell.rate + '%</div>';
+					+ escapeHtml( fmtPct( cell.rate ) ) + '</div>';
 			}
 			html += '</div>';
 		} );
@@ -536,10 +655,21 @@
 		heat.innerHTML = html;
 	}
 
-	function renderCohortLine( avgByOffset ) {
+	function renderCohortLine( payload ) {
+		// Month 0 is every cohort's first month (always all of it), so a line
+		// needs someone who came back in a later month. Without that it was
+		// a single dot on an empty axis.
+		if ( ! payload.cohorts || ! payload.cohorts.length || ! ( Number( payload.max_offset ) > 0 ) ) {
+			dropChart( 'cohortLine' );
+			showEmpty( 'bp-ca-cohort-line-wrap', 'bp-ca-cohort-line-empty', true, i18n.cohort_line_empty );
+			return;
+		}
+		showEmpty( 'bp-ca-cohort-line-wrap', 'bp-ca-cohort-line-empty', false );
+
 		var canvas = el( 'bp-ca-cohort-line' );
 		if ( ! canvas || typeof Chart === 'undefined' ) { return; }
 
+		var avgByOffset = payload.avg_by_offset || [];
 		var labels = avgByOffset.map( function ( a ) { return 'M+' + a.offset; } );
 		var data   = avgByOffset.map( function ( a ) { return a.avg; } );
 
@@ -569,7 +699,7 @@
 					tooltip: {
 						callbacks: {
 							label: function ( ctx ) {
-								return ( i18n.avg_retention || 'Avg retention' ) + ': ' + ctx.parsed.y + '%';
+								return ( i18n.avg_retention || 'Avg retention' ) + ': ' + fmtPct( ctx.parsed.y );
 							}
 						}
 					}
@@ -577,15 +707,15 @@
 				scales: {
 					x: {
 						grid: { display: false },
-						ticks: { color: '#8a8a8a', font: { size: 11 } }
+						ticks: { color: '#616161', font: { size: 11 } }
 					},
 					y: {
 						beginAtZero: true,
 						suggestedMax: 100,
 						ticks: {
-							color: '#8a8a8a',
+							color: '#616161',
 							font: { size: 11 },
-							callback: function ( v ) { return v + '%'; }
+							callback: function ( v ) { return fmtPct( v, 0 ); }
 						},
 						grid: { color: '#f1f1f1' }
 					}
@@ -608,6 +738,7 @@
 			btn.disabled = false;
 			btn.textContent = originalText;
 			if ( res && res.success ) {
+				setMeta( res.data.meta_text );
 				showToast( ( i18n.recomputed || 'Recomputed' ) + ' (' + res.data.rows_written + ' ' + ( i18n.rows || 'rows' ) + ', ' + res.data.duration + 's)' );
 				// Reload everything.
 				loadSummary();
@@ -816,6 +947,7 @@
 			btn.textContent = original;
 			if ( res && res.success ) {
 				updateExclBadge( res.data.resolved_count );
+				setMeta( res.data.meta_text );
 				showToast( i18n.excl_saved || 'Exclusions saved' );
 				closeExclModal();
 				// Reflect the new metrics everywhere on the page.

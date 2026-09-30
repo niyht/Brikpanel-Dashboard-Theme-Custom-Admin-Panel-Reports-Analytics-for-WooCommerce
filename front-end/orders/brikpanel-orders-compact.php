@@ -87,10 +87,26 @@ add_action( 'wp_ajax_brikpanel_orders_row_columns', 'brikpanel_orders_compact_sa
  * builds the table from it, so the amount keeps its place ahead of columns
  * other plugins add.
  *
+ * @param string $status_key Key of the column showing the order status, when a
+ *                           plugin replaced WooCommerce's order_status (see
+ *                           brikpanel_orders_status_column_key()); '' when the
+ *                           list has none.
  * @return string[]
  */
-function brikpanel_orders_compact_base_row_columns() {
-	return array( 'cb', 'order_number', 'brikpanel_whatsapp', 'brikpanel_customer', 'order_date', 'order_status', 'payment_method', 'brikpanel_shipping_method', 'order_total' );
+function brikpanel_orders_compact_base_row_columns( $status_key = 'order_status' ) {
+	$status = '' === (string) $status_key ? array() : array( (string) $status_key );
+	return array_merge( array( 'cb', 'order_number', 'brikpanel_whatsapp', 'brikpanel_customer', 'order_date' ), $status, array( 'payment_method', 'brikpanel_shipping_method', 'order_total' ) );
+}
+
+/**
+ * Key of the status column in a column list, falling back to WooCommerce's when
+ * the orders module that finds it did not load.
+ *
+ * @param array $columns Column key => heading.
+ * @return string
+ */
+function brikpanel_orders_compact_status_key( $columns ) {
+	return function_exists( 'brikpanel_orders_status_column_key' ) ? brikpanel_orders_status_column_key( $columns ) : 'order_status';
 }
 
 /**
@@ -142,7 +158,7 @@ function brikpanel_orders_compact_screen_settings( $settings, $screen ) {
 		return $settings;
 	}
 
-	$base    = brikpanel_orders_compact_base_row_columns();
+	$base    = brikpanel_orders_compact_base_row_columns( brikpanel_orders_compact_status_key( $columns ) );
 	$picked  = brikpanel_orders_compact_user_row_columns();
 	$options = '';
 	foreach ( $columns as $key => $title ) {
@@ -247,7 +263,9 @@ function brikpanel_orders_compact_columns( $columns ) {
 	// added (a profit or tracking number column) reads after the amount, both
 	// in the detail panel and when the user keeps it in the row through
 	// "Show in the row". Only Actions stays behind everything.
-	$lead = brikpanel_orders_compact_base_row_columns();
+	// The status keeps its place even when a plugin swapped WooCommerce's column
+	// for its own (Flexible Refund, priority 20).
+	$lead = brikpanel_orders_compact_base_row_columns( brikpanel_orders_compact_status_key( $columns ) );
 	$tail = array( 'wc_actions' );
 
 	$out = array();
@@ -302,6 +320,30 @@ function brikpanel_orders_compact_buyer_name( $buyer, $order ) {
 }
 
 /**
+ * The buyer name again, beside the order number, for when the Customer column
+ * cannot show it.
+ *
+ * brikpanel_orders_compact_buyer_name() takes the name out of the "#1234 Name"
+ * link because the Customer column carries it. When that column is switched
+ * off in Screen Options, or another plugin removed it, the name would be gone
+ * from the row, which plain WooCommerce never allows. The stylesheet keeps
+ * this copy hidden while the row's Customer cell is shown and reveals it
+ * otherwise, so ticking or unticking the box needs no reload.
+ *
+ * Only a name taken out of the link is printed, so nothing doubles up when
+ * compact mode is off.
+ *
+ * @param int $order_id Order ID.
+ */
+function brikpanel_orders_compact_number_buyer( $order_id ) {
+	$name = brikpanel_orders_compact_buyer_store( (int) $order_id );
+	if ( '' === $name ) {
+		return;
+	}
+	echo '<span class="bp-order-buyer">' . brikpanel_orders_compact_bdi( $name ) . '</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped by brikpanel_orders_compact_bdi().
+}
+
+/**
  * The customer name shown in the Customer column.
  *
  * Mirrors WooCommerce's order column: billing name, then company, then the
@@ -337,6 +379,11 @@ function brikpanel_orders_compact_fill_column( $column, $order ) {
 		return;
 	}
 	switch ( $column ) {
+		case 'order_number':
+			// WooCommerce printed the number at priority 10; the name it left out is stored by now.
+			brikpanel_orders_compact_number_buyer( $order->get_id() );
+			break;
+
 		case 'brikpanel_customer':
 			$name = brikpanel_orders_compact_customer_name( $order );
 			echo '<span class="bp-order-customer">' . ( '' !== $name ? esc_html( $name ) : '&ndash;' ) . '</span>';
@@ -359,6 +406,10 @@ function brikpanel_orders_compact_fill_column( $column, $order ) {
  * @param int    $post_id Order ID.
  */
 function brikpanel_orders_compact_fill_column_legacy( $column, $post_id ) {
+	if ( 'order_number' === $column ) {
+		brikpanel_orders_compact_number_buyer( (int) $post_id );
+		return;
+	}
 	if ( 'brikpanel_customer' !== $column && 'brikpanel_shipping_method' !== $column ) {
 		return;
 	}
@@ -453,7 +504,7 @@ function brikpanel_orders_compact_plain( $text ) {
  */
 function brikpanel_orders_compact_address_lines( $formatted, $skip = '', $street = array() ) {
 	$lower = static function ( $value ) {
-		return function_exists( 'mb_strtolower' ) ? mb_strtolower( $value, 'UTF-8' ) : strtolower( $value );
+		return brikpanel_strtolower( $value );
 	};
 
 	$street_values = array();
@@ -683,14 +734,20 @@ function brikpanel_orders_compact_detail_html( $order ) {
 	$actions = '<a class="bp-od-btn bp-od-btn-primary bp-open-order" href="' . esc_url( $order->get_edit_order_url() ) . '">' . esc_html__( 'Open order', 'brikpanel' ) . '</a>';
 	$wa_url  = ( brikpanel_orders_compact_whatsapp_visible() && function_exists( 'brikpanel_order_whatsapp_url' ) ) ? brikpanel_order_whatsapp_url( $order ) : '';
 	if ( '' !== $wa_url ) {
-		$actions .= '<a class="bp-od-btn bp-od-btn-secondary bp-od-wa" href="' . brikpanel_whatsapp_esc_url( $wa_url ) . '" target="_blank" rel="noopener">'
+		// After the first press in a status with a follow-up, the button opens the follow-up (brikpanel-order-whatsapp.php).
+		$wa_followup = function_exists( 'brikpanel_whatsapp_order_is_followup' ) && brikpanel_whatsapp_order_is_followup( $order );
+		$actions    .= '<a class="bp-od-btn bp-od-btn-secondary bp-od-wa" href="' . brikpanel_whatsapp_esc_url( $wa_url ) . '" target="_blank" rel="noopener" data-bp-wa-order="' . absint( $order->get_id() ) . '"' . ( $wa_followup ? ' data-bp-wa-followup="1"' : '' ) . '>'
 			. ( function_exists( 'brikpanel_order_whatsapp_icon_svg' ) ? brikpanel_order_whatsapp_icon_svg( 16 ) : '' )
-			. esc_html__( 'WhatsApp', 'brikpanel' ) . '</a>';
+			. '<span class="bp-od-wa-label">' . ( $wa_followup ? esc_html__( 'Send follow-up', 'brikpanel' ) : esc_html__( 'WhatsApp', 'brikpanel' ) ) . '</span></a>';
 	}
 	// WooCommerce's quick preview, which the short row no longer shows. Its
 	// click handler is delegated on the document, so it works from here too.
 	if ( 'trash' !== $order->get_status() ) {
 		$actions .= '<button type="button" class="bp-od-btn bp-od-btn-secondary order-preview" data-order-id="' . absint( $order->get_id() ) . '">' . esc_html__( 'Preview', 'brikpanel' ) . '</button>';
+	}
+	// Trakoo's tracking number, without opening the order (front-end/orders/brikpanel-order-tracking.php).
+	if ( function_exists( 'brikpanel_order_tracking_button_html' ) ) {
+		$actions .= brikpanel_order_tracking_button_html( $order );
 	}
 
 	return '<template class="bp-order-detail-tpl"><div class="bp-od">'

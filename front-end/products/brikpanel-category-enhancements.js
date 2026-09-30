@@ -1075,7 +1075,8 @@
             $('body').append($container);
         }
 
-        var $toast = $('<div class="brikpanel-cat-toast"></div>').addClass(type).text(message);
+        // is-*, never a bare `error`: WordPress styles every div.error as an admin notice.
+        var $toast = $('<div class="brikpanel-cat-toast"></div>').addClass('is-' + (type || 'success')).text(message);
         $container.append($toast);
 
         window.setTimeout(function () { $toast.addClass('show'); }, 10);

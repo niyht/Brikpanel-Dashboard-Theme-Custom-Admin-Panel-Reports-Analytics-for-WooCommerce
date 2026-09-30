@@ -1,0 +1,504 @@
+/**
+ * BrikPanel - shared UI parts (field test D, 2026-09-27).
+ *
+ * The 22 September field test found the same control drawn a dozen ways: filter
+ * boxes 34 to 60px tall in one row, selects that lost their arrow, a "New" badge
+ * in two looks on one screen, prose lists with an indent but no bullet, page
+ * titles in four sizes, content columns starting at eight different places.
+ * Each screen had its own copy of the rule, so each copy drifted. This file is
+ * the one copy; a screen adds the class (or reads the variable) and keeps only
+ * its own widths and placement.
+ *
+ * Loaded on every admin page that shows BrikPanel (it is a dependency of the
+ * navigation stylesheet) and explicitly by each screen that uses a part, so it
+ * is listed in GLOBAL_FILES of tools/css-collision-audit.php. Every selector
+ * carries a BrikPanel class, a BrikPanel body class or a custom property.
+ *
+ * Never restyle these classes from a screen stylesheet (the collision audit
+ * reports that as [XFILE]): put a screen class on the same element instead.
+ */
+
+/* ── Tokens ─────────────────────────────────────────────────────────────────── */
+:root {
+	--brikpanel-ui-text: #303030;
+	--brikpanel-ui-text-secondary: #616161;
+	--brikpanel-ui-text-placeholder: #8a8a8a;
+	--brikpanel-ui-border: #e3e3e3;
+	--brikpanel-ui-input-border: #8a8a8a;
+	--brikpanel-ui-focus: #303030;
+	--brikpanel-ui-primary: #303030;
+	--brikpanel-ui-primary-hover: #1a1a1a;
+	--brikpanel-ui-error: #d72c0d;
+
+	/* Form controls: one height for text, date, number and select boxes and for
+	   the buttons that sit in a row with them. */
+	--brikpanel-control-h: 2.5rem;
+	--brikpanel-control-radius: 0.5rem;
+	--brikpanel-control-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	--brikpanel-control-arrow-muted: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%23b5b5b5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+	/* Type scale. Screens read these in their own title, label and table header
+	   rules, so one change here reaches every screen. The two "caps" values are
+	   the only switch between sentence case (default) and small capitals. */
+	--brikpanel-title-size: 1.125rem;
+	--brikpanel-title-weight: 600;
+	--brikpanel-title-line: 1.3;
+	--brikpanel-card-title-size: 0.9375rem;
+	--brikpanel-card-title-weight: 600;
+	--brikpanel-label-size: 0.8125rem;
+	--brikpanel-label-weight: 550;
+	--brikpanel-th-size: 0.75rem;
+	--brikpanel-th-weight: 600;
+	--brikpanel-caps-case: none;
+	--brikpanel-caps-track: normal;
+
+	/* Page shell: one gutter and one narrow column for every BrikPanel screen. */
+	--brikpanel-gutter: 20px;
+	--brikpanel-narrow: 820px;
+	--brikpanel-page-top: 1.25rem;
+}
+
+@media screen and (max-width: 782px) {
+	:root {
+		--brikpanel-gutter: 14px;
+	}
+}
+
+/* ── Form controls ──────────────────────────────────────────────────────────── */
+/* (0,2,1) beats WordPress's own input and select rules (0,1,1), which include
+   the WP 7.1 square select and its 25rem cap. A fixed height (not padding) makes
+   date, text, number and select boxes equal whatever line box the browser gives
+   the inside of a date box. The select keeps WordPress's appearance:none and
+   draws its own arrow with longhand properties: the `background` shorthand is
+   what erased the arrow on several screens. */
+.wp-core-ui input.brikpanel-control,
+.wp-core-ui select.brikpanel-control {
+	box-sizing: border-box;
+	height: var(--brikpanel-control-h);
+	min-height: var(--brikpanel-control-h);
+	max-width: 100%;
+	margin: 0;
+	padding: 0 0.75rem;
+	font-family: inherit;
+	font-size: 0.875rem;
+	font-weight: 400;
+	line-height: 1.5;
+	color: var(--brikpanel-ui-text);
+	background-color: #fff;
+	border: 1px solid var(--brikpanel-ui-input-border);
+	border-radius: var(--brikpanel-control-radius);
+	box-shadow: none;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wp-core-ui select.brikpanel-control:not([multiple]) {
+	-webkit-appearance: none;
+	appearance: none;
+	padding-inline-end: 2rem;
+	background-image: var(--brikpanel-control-arrow);
+	background-repeat: no-repeat;
+	background-position: right 0.75rem center;
+	background-size: 12px 12px;
+	cursor: pointer;
+}
+
+.rtl.wp-core-ui select.brikpanel-control:not([multiple]) {
+	background-position: left 0.75rem center;
+}
+
+.wp-core-ui select.brikpanel-control[multiple] {
+	height: auto;
+	padding-block: 0.375rem;
+}
+
+.wp-core-ui textarea.brikpanel-control {
+	box-sizing: border-box;
+	max-width: 100%;
+	min-height: 5rem;
+	margin: 0;
+	padding: 0.625rem 0.75rem;
+	font-family: inherit;
+	font-size: 0.875rem;
+	line-height: 1.5;
+	color: var(--brikpanel-ui-text);
+	background-color: #fff;
+	border: 1px solid var(--brikpanel-ui-input-border);
+	border-radius: var(--brikpanel-control-radius);
+	box-shadow: none;
+	resize: vertical;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wp-core-ui select.brikpanel-control:hover {
+	color: var(--brikpanel-ui-text);
+	border-color: var(--brikpanel-ui-text-secondary);
+}
+
+.wp-core-ui input.brikpanel-control:focus,
+.wp-core-ui select.brikpanel-control:focus,
+.wp-core-ui textarea.brikpanel-control:focus {
+	color: var(--brikpanel-ui-text);
+	border-color: var(--brikpanel-ui-focus);
+	box-shadow: 0 0 0 1px var(--brikpanel-ui-focus);
+	outline: 2px solid transparent;
+}
+
+.wp-core-ui input.brikpanel-control::placeholder,
+.wp-core-ui textarea.brikpanel-control::placeholder {
+	color: var(--brikpanel-ui-text-placeholder);
+	opacity: 1;
+}
+
+.wp-core-ui input.brikpanel-control:disabled,
+.wp-core-ui select.brikpanel-control:disabled,
+.wp-core-ui textarea.brikpanel-control:disabled {
+	color: var(--brikpanel-ui-text-placeholder);
+	background-color: #f7f7f7;
+	border-color: var(--brikpanel-ui-border);
+	box-shadow: none;
+	text-shadow: none;
+	cursor: not-allowed;
+}
+
+.wp-core-ui select.brikpanel-control:not([multiple]):disabled {
+	background-image: var(--brikpanel-control-arrow-muted);
+}
+
+.wp-core-ui input.brikpanel-control.is-error,
+.wp-core-ui select.brikpanel-control.is-error,
+.wp-core-ui textarea.brikpanel-control.is-error {
+	border-color: var(--brikpanel-ui-error);
+	box-shadow: 0 0 0 1px var(--brikpanel-ui-error);
+}
+
+/* On a phone WordPress sets 16px text in form boxes so iOS does not zoom the
+   page when one is focused; the shared box keeps that. */
+@media screen and (max-width: 782px) {
+	.wp-core-ui input.brikpanel-control,
+	.wp-core-ui select.brikpanel-control,
+	.wp-core-ui textarea.brikpanel-control {
+		font-size: 16px;
+	}
+}
+
+/* List toolbars (Products, Coupons, Abandoned carts, Orders): the same box with
+   the soft edge that darkens one step on focus, so a row of filters stays quiet
+   next to the table. Same height as every other control. */
+.wp-core-ui input.brikpanel-control--quiet,
+.wp-core-ui select.brikpanel-control--quiet {
+	border-color: var(--brikpanel-ui-border);
+}
+
+.wp-core-ui select.brikpanel-control--quiet:hover {
+	border-color: var(--brikpanel-ui-text-placeholder);
+}
+
+.wp-core-ui input.brikpanel-control--quiet:focus,
+.wp-core-ui select.brikpanel-control--quiet:focus {
+	border-color: var(--brikpanel-ui-text-placeholder);
+	box-shadow: none;
+}
+
+/* ── Field (label above its control) and filter row ─────────────────────────── */
+.brikpanel-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	min-width: 0;
+	margin: 0;
+}
+
+.brikpanel-field[hidden] {
+	display: none;
+}
+
+.brikpanel-field > label,
+.brikpanel-field__label {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	line-height: 1.5;
+	color: var(--brikpanel-ui-text);
+}
+
+.brikpanel-field > .brikpanel-control {
+	width: 100%;
+}
+
+/* Fields sit on one line and wrap as a whole when the card is narrow. Labels
+   are one line tall and every control is one height, so the labels line up and
+   the controls line up. The actions box is exactly one control tall and
+   stretches its buttons to it. */
+.brikpanel-filter-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 0.75rem;
+}
+
+.brikpanel-filter-bar__actions {
+	display: flex;
+	flex-shrink: 0;
+	align-items: stretch;
+	gap: 0.5rem;
+	height: var(--brikpanel-control-h);
+}
+
+.brikpanel-filter-bar__actions[hidden] {
+	display: none;
+}
+
+/* On a phone every field gets its own full-width line. A column that may wrap
+   stretches its children only to the widest of them, not to the card (field
+   test C7), so the column does not wrap. */
+@media screen and (max-width: 640px) {
+	.brikpanel-filter-bar {
+		flex-direction: column;
+		flex-wrap: nowrap;
+		align-items: stretch;
+	}
+
+	.brikpanel-filter-bar > .brikpanel-field,
+	.brikpanel-filter-bar > .brikpanel-filter-bar__actions {
+		width: 100%;
+	}
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+/* One button for spots that used WordPress's own `.button` classes, which follow
+   the user's admin colour scheme (blue, or red under Midnight). Never wrapped in
+   :where(): at zero specificity the core `a` colour would win. nowrap and
+   flex-shrink keep a button one line tall when its row is short of room. */
+.brikpanel-btn {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	gap: 0.375rem;
+	box-sizing: border-box;
+	min-height: 0;
+	margin: 0;
+	padding: 0.5rem 1rem;
+	font-family: inherit;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.4;
+	white-space: nowrap;
+	text-decoration: none;
+	vertical-align: middle;
+	border: 0;
+	border-radius: var(--brikpanel-control-radius);
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.brikpanel-btn[hidden] {
+	display: none;
+}
+
+.brikpanel-btn:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.brikpanel-btn:focus-visible {
+	outline: 2px solid var(--brikpanel-ui-focus);
+	outline-offset: 2px;
+}
+
+.brikpanel-btn:disabled,
+.brikpanel-btn[aria-disabled="true"] {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+/* Each kind carries the base class in its selector, one step heavier than a
+   bare `.brikpanel-btn`: a sibling plugin's admin stylesheet (BrikMarket, on the
+   orders and product screens) styles that class unscoped after this file, and
+   painted every primary button white with a grey border. */
+.brikpanel-btn.brikpanel-btn--primary,
+.brikpanel-btn.brikpanel-btn--primary:visited {
+	color: #fff;
+	background-color: var(--brikpanel-ui-primary);
+	border: 0;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-btn.brikpanel-btn--primary:hover,
+.brikpanel-btn.brikpanel-btn--primary:active,
+.brikpanel-btn.brikpanel-btn--primary:focus {
+	color: #fff;
+	background-color: var(--brikpanel-ui-primary-hover);
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-btn.brikpanel-btn--secondary,
+.brikpanel-btn.brikpanel-btn--secondary:visited {
+	color: var(--brikpanel-ui-text);
+	background-color: #fff;
+	border: 0;
+	box-shadow: inset 0 0 0 1px var(--brikpanel-ui-border), 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.brikpanel-btn.brikpanel-btn--secondary:hover,
+.brikpanel-btn.brikpanel-btn--secondary:active,
+.brikpanel-btn.brikpanel-btn--secondary:focus {
+	color: var(--brikpanel-ui-text);
+	background-color: #f7f7f7;
+	box-shadow: inset 0 0 0 1px var(--brikpanel-ui-border), 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Text-only actions: a plain link look in the monochrome palette. */
+.brikpanel-btn.brikpanel-btn--link,
+.brikpanel-btn.brikpanel-btn--link:visited,
+.brikpanel-btn.brikpanel-btn--danger-link,
+.brikpanel-btn.brikpanel-btn--danger-link:visited {
+	padding: 0;
+	background: none;
+	border: 0;
+	box-shadow: none;
+}
+
+.brikpanel-btn.brikpanel-btn--link,
+.brikpanel-btn.brikpanel-btn--link:visited {
+	color: var(--brikpanel-ui-text);
+}
+
+.brikpanel-btn.brikpanel-btn--danger-link,
+.brikpanel-btn.brikpanel-btn--danger-link:visited {
+	color: var(--brikpanel-ui-error);
+}
+
+.brikpanel-btn.brikpanel-btn--link:hover,
+.brikpanel-btn.brikpanel-btn--link:active,
+.brikpanel-btn.brikpanel-btn--link:focus,
+.brikpanel-btn.brikpanel-btn--danger-link:hover,
+.brikpanel-btn.brikpanel-btn--danger-link:active,
+.brikpanel-btn.brikpanel-btn--danger-link:focus {
+	background: none;
+	box-shadow: none;
+	text-decoration: underline;
+}
+
+.brikpanel-btn.brikpanel-btn--link:hover,
+.brikpanel-btn.brikpanel-btn--link:active,
+.brikpanel-btn.brikpanel-btn--link:focus {
+	color: var(--brikpanel-ui-primary-hover);
+}
+
+.brikpanel-btn.brikpanel-btn--danger-link:hover,
+.brikpanel-btn.brikpanel-btn--danger-link:active,
+.brikpanel-btn.brikpanel-btn--danger-link:focus {
+	color: #b3260b;
+}
+
+/* ── Row links (actions other plugins add under a list row's name) ──────────── */
+/* Always start at the cell's edge on their own line, grey, no underline until
+   hovered, so every row lines up whatever sits next to the name. */
+.brikpanel-row-links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem 0.75rem;
+	margin: 0.25rem 0 0;
+	font-size: 0.75rem;
+	font-weight: 550;
+	line-height: 1.5;
+	color: var(--brikpanel-ui-text-secondary);
+}
+
+.brikpanel-row-links[hidden] {
+	display: none;
+}
+
+.brikpanel-row-links a,
+.brikpanel-row-links a:visited {
+	color: var(--brikpanel-ui-text-secondary);
+	text-decoration: none;
+}
+
+.brikpanel-row-links a:hover,
+.brikpanel-row-links a:focus {
+	color: var(--brikpanel-ui-text);
+	text-decoration: underline;
+}
+
+/* ── Badge ──────────────────────────────────────────────────────────────────── */
+/* One pill for short labels. `--new` is the dark "New" badge used by the
+   sidebar, the welcome tour, the menu editor and the settings menu. The 1rem
+   line keeps a sidebar row as tall as the count bubbles. */
+.brikpanel-badge {
+	display: inline-block;
+	flex: 0 0 auto;
+	box-sizing: border-box;
+	padding: 0 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 550;
+	line-height: 1rem;
+	letter-spacing: normal;
+	text-transform: none;
+	white-space: nowrap;
+	vertical-align: middle;
+	color: var(--brikpanel-ui-text-secondary);
+	background: #f1f1f1;
+	border-radius: 0.5rem;
+}
+
+.brikpanel-badge--new {
+	color: #fff;
+	background: var(--brikpanel-ui-primary);
+}
+
+.brikpanel-badge[hidden] {
+	display: none;
+}
+
+/* ── Bullet list ────────────────────────────────────────────────────────────── */
+/* WordPress removes list markers on every admin page (`ul { list-style: none }`)
+   but keeps the indent a list asks for, so prose lists read as indented orphan
+   sentences. This puts the grey bullet back; the logical indent flips in
+   right-to-left languages by itself. */
+.brikpanel-bullets {
+	margin: 0;
+	padding: 0;
+	padding-inline-start: 1.25rem;
+	list-style: disc outside;
+}
+
+.brikpanel-bullets > li {
+	margin: 0;
+}
+
+.brikpanel-bullets > li + li {
+	margin-top: 0.375rem;
+}
+
+.brikpanel-bullets > li::marker {
+	color: var(--brikpanel-ui-text-placeholder);
+}
+
+/* ── Page shell ─────────────────────────────────────────────────────────────── */
+/* Two widths for every BrikPanel screen (the body class comes from
+   brikpanel_admin_body_class()): lists use the whole content area, form and
+   connection pages a centred column. WordPress pads the content area on the
+   start side only (and BrikPanel's RTL rule zeroes it), so the shell takes that
+   padding away and gives the page one symmetric gutter; !important is needed to
+   beat those rules and WooCommerce's embed rule. (0,2,1) beats core `.wrap`
+   margins without it. The top spacing is shared too, so every page title sits
+   at the same height (it was 72, 76 or 82px); the bottom stays the screen's. */
+body.brikpanel-shell #wpcontent {
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+}
+
+body.brikpanel-shell .brikpanel-shell__page {
+	box-sizing: border-box;
+	max-width: none;
+	margin: 0 auto;
+	padding-top: var(--brikpanel-page-top);
+	padding-left: var(--brikpanel-gutter);
+	padding-right: var(--brikpanel-gutter);
+}
+
+body.brikpanel-shell--narrow .brikpanel-shell__page {
+	max-width: calc(var(--brikpanel-narrow) + 2 * var(--brikpanel-gutter));
+}

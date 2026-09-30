@@ -6,6 +6,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Brikpanel_Login {
 
+    /**
+     * Heading text resolved for this request, or null before it is worked out.
+     *
+     * @var string|null
+     */
+    private $heading_cache = null;
+
     public function __construct() {
         if ( get_option( 'brikpanel_modern_login', 'yes' ) !== 'yes' ) {
             return;
@@ -134,12 +141,19 @@ class Brikpanel_Login {
 
     /**
      * Hide WordPress default login branding via CSS.
+     *
+     * The heading anchor is NOT hidden here any more. wp-login.php prints
+     * `<h1><a>{login_headertext}</a></h1>`, so that anchor is the element
+     * that carries the heading — and whether it ends up empty is only
+     * settled after every plugin has had its turn on `login_headertext`,
+     * which fires after `login_head`. The stylesheet hides it with
+     * `#login h1 a:empty` instead, which is decided by the final markup
+     * rather than by a guess made earlier in the request.
      */
     public function hide_default_styles() {
         ?>
         <style>
             /* Hide default WP elements that we replace */
-            .login h1 a { display: none !important; }
             .language-switcher { display: none !important; }
         </style>
         <?php
@@ -153,10 +167,129 @@ class Brikpanel_Login {
     }
 
     /**
-     * Change the logo alt text to the site name.
+     * The heading text rendered inside the login logo anchor.
+     *
+     * wp-login.php echoes this value WITHOUT escaping it, so the escaping
+     * happens here and nowhere else.
      */
     public function logo_title() {
-        return get_bloginfo( 'name' );
+        $text = $this->heading_text();
+
+        return $text === '' ? '' : esc_html( $text );
+    }
+
+    /**
+     * Which login screen is being rendered.
+     *
+     * `login_headertext` fires before the `login_body_class` filter, so the
+     * action cannot be taken from a filter argument. wp-login.php declares
+     * `global $action` inside login_header() and validates it before the
+     * header renders, which makes the global reliable — but a plugin that
+     * registers a `login_form_{$action}` filter lets an arbitrary string
+     * through core's validation, so it is re-checked against our own list
+     * before it is ever used as an array key.
+     *
+     * @return string One of the known action slugs; `login` as the fallback.
+     */
+    private function current_action() {
+        $action = isset( $GLOBALS['action'] ) && is_string( $GLOBALS['action'] ) ? $GLOBALS['action'] : 'login';
+
+        $known = array(
+            'login',
+            'lostpassword',
+            'retrievepassword',
+            'resetpass',
+            'rp',
+            'register',
+            'checkemail',
+            'confirmaction',
+            'confirm_admin_email',
+        );
+
+        return in_array( $action, $known, true ) ? $action : 'login';
+    }
+
+    /**
+     * Resolve the heading once per request.
+     *
+     * Both `login_head` (which decides whether the anchor stays hidden) and
+     * the `login_headertext` filter need the answer, and they run at
+     * different points of the same page render.
+     *
+     * @return string Unescaped heading text; empty string means "no heading".
+     */
+    private function heading_text() {
+        if ( $this->heading_cache === null ) {
+            $this->heading_cache = $this->resolve_heading_text();
+        }
+
+        return $this->heading_cache;
+    }
+
+    /**
+     * Work out what belongs above the login card.
+     *
+     * Two axes decide it: the admin's heading choice, and which screen is
+     * being rendered. Password reset and registration screens always get
+     * their own wording — a store's "Welcome back" (or its name) above a
+     * "choose a new password" form reads as a mistake.
+     *
+     * @return string
+     */
+    private function resolve_heading_text() {
+        $mode = brikpanel_login_clean_heading_mode( get_option( 'brikpanel_login_heading', 'default' ) );
+
+        if ( 'none' === $mode ) {
+            return '';
+        }
+
+        // A brand logo with the heading left on its default is the look this
+        // plugin has shipped since the logo picker landed: the logo carries
+        // the identity and nothing is written underneath it. Only an explicit
+        // choice — site name or custom text — puts a heading back under it,
+        // so existing installs are not redesigned by an update.
+        $has_logo = function_exists( 'brikpanel_brand_logo_get_url' )
+            && brikpanel_brand_logo_get_url() !== '';
+
+        if ( 'default' === $mode && $has_logo ) {
+            return '';
+        }
+
+        $action = $this->current_action();
+
+        if ( 'login' !== $action ) {
+            $per_action = array(
+                'lostpassword'        => __( 'Reset your password', 'brikpanel' ),
+                'retrievepassword'    => __( 'Reset your password', 'brikpanel' ),
+                'resetpass'           => __( 'Choose a new password', 'brikpanel' ),
+                'rp'                  => __( 'Choose a new password', 'brikpanel' ),
+                'register'            => __( 'Create an account', 'brikpanel' ),
+                'checkemail'          => __( 'Check your email', 'brikpanel' ),
+                'confirmaction'       => __( 'Confirm your action', 'brikpanel' ),
+                'confirm_admin_email' => __( 'Confirm your email address', 'brikpanel' ),
+            );
+
+            if ( isset( $per_action[ $action ] ) ) {
+                return $per_action[ $action ];
+            }
+        }
+
+        if ( 'site_name' === $mode ) {
+            // Decoded before it is re-escaped by the caller: get_bloginfo()
+            // hands back a display-filtered name, so an ampersand would
+            // otherwise ship as `&amp;amp;`.
+            return wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
+        }
+
+        if ( 'custom' === $mode ) {
+            $custom = trim( (string) get_option( 'brikpanel_login_heading_text', '' ) );
+
+            if ( '' !== $custom ) {
+                return $custom;
+            }
+        }
+
+        return __( 'Welcome back', 'brikpanel' );
     }
 
     /**
@@ -170,7 +303,7 @@ class Brikpanel_Login {
                 <?php
                 printf(
                     /* translators: %s: site name */
-                    esc_html__( '%s — Powered by WordPress', 'brikpanel' ),
+                    esc_html__( '%s · Powered by WordPress', 'brikpanel' ),
                     esc_html( $site_name )
                 );
                 ?>
@@ -262,3 +395,134 @@ class Brikpanel_Login {
 }
 
 new Brikpanel_Login();
+
+// =============================================================================
+// LOGIN SETTINGS GLUE — heading sanitizer + brand logo pointer row
+// =============================================================================
+// These sit at file scope, outside the class, because the settings screen
+// renders whether or not the modern login page is switched on.
+
+/**
+ * The heading modes the setting accepts.
+ *
+ * @return string[]
+ */
+function brikpanel_login_heading_modes() {
+    return array( 'default', 'site_name', 'custom', 'none' );
+}
+
+/**
+ * Clean a heading mode. Anything unrecognised falls back to the default,
+ * which is what an unset option resolves to anyway.
+ *
+ * @param mixed $value Candidate mode.
+ * @return string
+ */
+function brikpanel_login_clean_heading_mode( $value ) {
+    $value = is_scalar( $value ) ? (string) $value : '';
+
+    return in_array( $value, brikpanel_login_heading_modes(), true ) ? $value : 'default';
+}
+
+/**
+ * Clean the custom heading text.
+ *
+ * WooCommerce's default text sanitizer runs sanitize_text_field(), which
+ * strips anything shaped like a percent-encoded octet — a heading such as
+ * "%20 off today" would silently lose its "%20". Same reasoning, and the same
+ * shape, as the cart abandonment popup copy sanitizer.
+ *
+ * Takes a single argument so the settings screen, the importer and any future
+ * caller all clean the value exactly the same way.
+ *
+ * @param mixed $text Candidate heading.
+ * @return string
+ */
+function brikpanel_login_clean_heading_text( $text ) {
+    $clean = wp_strip_all_tags( is_scalar( $text ) ? (string) $text : '' );
+    // Drop control characters; keep printable punctuation.
+    $clean = preg_replace( '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', (string) $clean );
+    // One line, one space between words: the heading renders on a single row,
+    // so a pasted newline or tab would only show up as a ragged gap.
+    $clean = preg_replace( '/\s+/u', ' ', (string) $clean );
+    $clean = trim( (string) $clean );
+
+    // Counted in characters, not bytes, so a multibyte heading is not cut
+    // mid-character.
+    return brikpanel_substr( $clean, 0, 100 );
+}
+
+/**
+ * WooCommerce settings hook — clean the submitted heading before it is saved.
+ *
+ * @param mixed $value     Value WooCommerce prepared.
+ * @param array $option    Field definition.
+ * @param mixed $raw_value Raw submitted value.
+ * @return string
+ */
+function brikpanel_login_sanitize_heading_text( $value, $option, $raw_value ) {
+    return brikpanel_login_clean_heading_text( $raw_value );
+}
+add_filter( 'woocommerce_admin_settings_sanitize_option_brikpanel_login_heading_text', 'brikpanel_login_sanitize_heading_text', 10, 3 );
+
+/**
+ * Own both heading keys in the export registry.
+ *
+ * The settings-field walk would otherwise classify the text field by its
+ * WooCommerce type and clean it with sanitize_text_field() on import — which
+ * eats a percent sign, so a heading that survived being typed would not
+ * survive being carried to another site. Registered at file scope, above
+ * every module gate, the way the export coverage audit requires.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+function brikpanel_login_register_export_keys( $map ) {
+    $map['brikpanel_login_heading'] = array(
+        'class'    => 'portable',
+        'group'    => 'login',
+        'sanitize' => 'brikpanel_login_clean_heading_mode',
+        'default'  => 'default',
+    );
+    $map['brikpanel_login_heading_text'] = array(
+        'class'    => 'portable',
+        'group'    => 'login',
+        'sanitize' => 'brikpanel_login_clean_heading_text',
+        'default'  => '',
+    );
+
+    return $map;
+}
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_login_register_export_keys' );
+
+/**
+ * Render the pointer row that sends the admin to the brand logo picker.
+ *
+ * The logo shown on the login page has always been the Appearance brand logo,
+ * but nothing on the Login settings screen said so, so it read as a missing
+ * feature.
+ *
+ * @param array $field Field definition.
+ * @return void
+ */
+function brikpanel_login_render_logo_hint( $field ) {
+    $name = isset( $field['name'] ) ? $field['name'] : __( 'Login page logo', 'brikpanel' );
+    $url  = admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=appearance' );
+    ?>
+    <tr valign="top">
+        <th scope="row" class="titledesc"><?php echo esc_html( $name ); ?></th>
+        <td class="forminp forminp-brikpanel_login_logo_hint">
+            <p class="description">
+                <?php
+                printf(
+                    /* translators: %s: link to the Appearance settings section. */
+                    esc_html__( 'The login page uses your brand logo. Set it under %s.', 'brikpanel' ),
+                    '<a href="' . esc_url( $url ) . '">' . esc_html__( 'Appearance', 'brikpanel' ) . '</a>'
+                );
+                ?>
+            </p>
+        </td>
+    </tr>
+    <?php
+}
+add_action( 'woocommerce_admin_field_brikpanel_login_logo_hint', 'brikpanel_login_render_logo_hint' );

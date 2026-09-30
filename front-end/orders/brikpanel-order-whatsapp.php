@@ -175,11 +175,18 @@ function brikpanel_order_whatsapp_number( $order ) {
 //
 //   brikpanel_whatsapp_order_message           string — the general template.
 //   brikpanel_whatsapp_order_status_messages   array  — bare status slug =>
-//                                                       [ enabled, message ].
+//                                                       [ enabled, message, followup ].
 //
 // A status with an enabled, non-empty override wins; everything else falls back
 // to the general template. An empty general template means no `?text=` at all,
 // i.e. exactly the pre-3.2.62 behaviour of opening a blank conversation.
+//
+// An enabled status may also carry a follow-up. The first press of a WhatsApp
+// button on an order in that status opens its message and is noted on the order
+// (BRIKPANEL_WHATSAPP_META_PRESSED); every later press opens the follow-up, until
+// the order's status changes (brikpanel-order-whatsapp-press.php, loaded on every
+// request, drops the note). BrikPanel cannot see whether the merchant pressed
+// send in WhatsApp, so the press itself counts.
 
 const BRIKPANEL_WHATSAPP_OPT_ORDER_MESSAGE  = 'brikpanel_whatsapp_order_message';
 const BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES = 'brikpanel_whatsapp_order_status_messages';
@@ -215,7 +222,7 @@ function brikpanel_whatsapp_register_export_keys( $map ) {
  * nothing and saves retyping.
  *
  * @param mixed $value
- * @return array<string, array{enabled:bool, message:string}>
+ * @return array<string, array{enabled:bool, message:string, followup:string}>
  */
 function brikpanel_whatsapp_sanitize_import_status_messages( $value ) {
 	if ( ! is_array( $value ) ) {
@@ -227,14 +234,15 @@ function brikpanel_whatsapp_sanitize_import_status_messages( $value ) {
 		if ( '' === $slug || ! is_array( $cfg ) ) {
 			continue;
 		}
-		$message = isset( $cfg['message'] ) && is_scalar( $cfg['message'] ) ? (string) $cfg['message'] : '';
+		$message  = isset( $cfg['message'] ) && is_scalar( $cfg['message'] ) ? (string) $cfg['message'] : '';
+		$followup = isset( $cfg['followup'] ) && is_scalar( $cfg['followup'] ) ? (string) $cfg['followup'] : '';
+		// The cleaner the settings screen uses, so an imported message can
+		// never carry markup a typed one could not.
+		$clean        = function_exists( 'brikpanel_whatsapp_clean_message' ) ? 'brikpanel_whatsapp_clean_message' : 'sanitize_textarea_field';
 		$out[ $slug ] = [
-			'enabled' => ! empty( $cfg['enabled'] ),
-			// The cleaner the settings screen uses, so an imported message can
-			// never carry markup a typed one could not.
-			'message' => function_exists( 'brikpanel_whatsapp_clean_message' )
-				? brikpanel_whatsapp_clean_message( $message )
-				: sanitize_textarea_field( $message ),
+			'enabled'  => ! empty( $cfg['enabled'] ),
+			'message'  => $clean( $message ),
+			'followup' => $clean( $followup ),
 		];
 	}
 	return $out;
@@ -319,7 +327,7 @@ function brikpanel_whatsapp_order_statuses() {
  * Cached per request: the orders list calls this once per visible row.
  *
  * @param bool $reset Internal — drop the cache after the option changes.
- * @return array<string,array{enabled:bool,message:string}>
+ * @return array<string,array{enabled:bool,message:string,followup:string}>
  */
 function brikpanel_whatsapp_order_status_messages( $reset = false ) {
 	static $cache = null;
@@ -339,8 +347,9 @@ function brikpanel_whatsapp_order_status_messages( $reset = false ) {
 			continue;
 		}
 		$cache[ $slug ] = array(
-			'enabled' => ! empty( $cfg['enabled'] ),
-			'message' => isset( $cfg['message'] ) ? brikpanel_whatsapp_normalise_newlines( (string) $cfg['message'] ) : '',
+			'enabled'  => ! empty( $cfg['enabled'] ),
+			'message'  => isset( $cfg['message'] ) ? brikpanel_whatsapp_normalise_newlines( (string) $cfg['message'] ) : '',
+			'followup' => isset( $cfg['followup'] ) && is_scalar( $cfg['followup'] ) ? brikpanel_whatsapp_normalise_newlines( (string) $cfg['followup'] ) : '',
 		);
 	}
 	return $cache;
@@ -359,8 +368,57 @@ add_action( 'delete_option_' . BRIKPANEL_WHATSAPP_OPT_ORDER_STATUSES, $brikpanel
 unset( $brikpanel_wa_status_reset );
 
 /**
- * The template that applies to one order: its status override when that override
- * is switched on and actually says something, otherwise the general template.
+ * The follow-up an order's current status has, or '' when there is none.
+ *
+ * Only a status switched on has one: the switch covers both of its messages.
+ *
+ * @param WC_Order $order
+ * @return string
+ */
+function brikpanel_whatsapp_order_followup_template( $order ) {
+	$per_status = brikpanel_whatsapp_order_status_messages();
+	$slug       = $order->get_status();
+
+	if ( isset( $per_status[ $slug ] ) && $per_status[ $slug ]['enabled'] && '' !== trim( $per_status[ $slug ]['followup'] ) ) {
+		return $per_status[ $slug ]['followup'];
+	}
+	return '';
+}
+
+/**
+ * Whether the WhatsApp buttons of an order open its follow-up: its status has
+ * one and a button was already pressed while the order was in that status.
+ *
+ * @param WC_Order $order
+ * @return bool
+ */
+function brikpanel_whatsapp_order_is_followup( $order ) {
+	if ( ! is_a( $order, 'WC_Order' ) || '' === brikpanel_whatsapp_order_followup_template( $order ) ) {
+		return false;
+	}
+	$pressed = $order->get_meta( BRIKPANEL_WHATSAPP_META_PRESSED );
+	return is_array( $pressed ) && isset( $pressed['status'] ) && (string) $pressed['status'] === $order->get_status();
+}
+
+/**
+ * Whether any status has a follow-up, so the page needs the script that notes
+ * a press. Stores that never write one load nothing extra.
+ *
+ * @return bool
+ */
+function brikpanel_whatsapp_followups_configured() {
+	foreach ( brikpanel_whatsapp_order_status_messages() as $cfg ) {
+		if ( $cfg['enabled'] && '' !== trim( $cfg['followup'] ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * The template that applies to one order: the follow-up once its first message
+ * was opened in this status, else the status override when that override is
+ * switched on and actually says something, otherwise the general template.
  *
  * @param WC_Order $order
  * @return string
@@ -369,6 +427,9 @@ function brikpanel_whatsapp_order_template_for( $order ) {
 	$per_status = brikpanel_whatsapp_order_status_messages();
 	$slug       = $order->get_status();
 
+	if ( brikpanel_whatsapp_order_is_followup( $order ) ) {
+		return $per_status[ $slug ]['followup'];
+	}
 	if ( isset( $per_status[ $slug ] ) && $per_status[ $slug ]['enabled'] && '' !== trim( $per_status[ $slug ]['message'] ) ) {
 		return $per_status[ $slug ]['message'];
 	}
@@ -752,11 +813,14 @@ function brikpanel_wa_render_list_icon( $order ) {
 	if ( $url === '' ) {
 		return;
 	}
-	$title = __( 'Message the customer on WhatsApp', 'brikpanel' );
+	$followup = brikpanel_whatsapp_order_is_followup( $order );
+	$title    = $followup ? __( 'Send the customer a follow-up on WhatsApp', 'brikpanel' ) : __( 'Message the customer on WhatsApp', 'brikpanel' );
 	printf(
-		'<a href="%1$s" target="_blank" rel="noopener" class="brikpanel-wa-list-link" title="%2$s" aria-label="%2$s">%3$s</a>',
+		'<a href="%1$s" target="_blank" rel="noopener" class="brikpanel-wa-list-link" title="%2$s" aria-label="%2$s" data-bp-wa-order="%3$d"%4$s>%5$s</a>',
 		brikpanel_whatsapp_esc_url( $url ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped inside; esc_url would eat the draft's line breaks.
 		esc_attr( $title ),
+		absint( $order->get_id() ),
+		$followup ? ' data-bp-wa-followup="1"' : '',
 		brikpanel_order_whatsapp_icon_svg( 18 ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static inline SVG.
 	);
 }
@@ -780,11 +844,130 @@ function brikpanel_wa_render_order_screen_button( $order ) {
 	if ( $url === '' ) {
 		return;
 	}
+	$followup = brikpanel_whatsapp_order_is_followup( $order );
 	printf(
-		'<p class="brikpanel-wa-order-screen"><a href="%1$s" target="_blank" rel="noopener" class="button brikpanel-wa-btn">%2$s<span>%3$s</span></a></p>',
+		'<p class="brikpanel-wa-order-screen"><a href="%1$s" target="_blank" rel="noopener" class="button brikpanel-wa-btn" data-bp-wa-order="%2$d"%3$s>%4$s<span>%5$s</span></a></p>',
 		brikpanel_whatsapp_esc_url( $url ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped inside; esc_url would eat the draft's line breaks.
+		absint( $order->get_id() ),
+		$followup ? ' data-bp-wa-followup="1"' : '',
 		brikpanel_order_whatsapp_icon_svg( 16 ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static inline SVG.
-		esc_html__( 'Message on WhatsApp', 'brikpanel' )
+		$followup ? esc_html__( 'Send follow-up on WhatsApp', 'brikpanel' ) : esc_html__( 'Message on WhatsApp', 'brikpanel' )
+	);
+}
+
+// =============================================================================
+// FOLLOW-UPS — note the first press, so the next one opens the follow-up
+// =============================================================================
+
+add_action( 'wp_ajax_brikpanel_whatsapp_pressed', 'brikpanel_whatsapp_ajax_pressed' );
+add_action( 'admin_enqueue_scripts', 'brikpanel_whatsapp_enqueue_followups', 100 );
+
+/**
+ * AJAX: a WhatsApp button of an order was pressed. When the order's status has
+ * a follow-up, the press is noted on the order and the answer carries the
+ * follow-up link the page swaps in for the next press.
+ *
+ * The note keeps the status it was made in; a status change drops it
+ * (brikpanel_whatsapp_forget_press), so the next status, or the same one
+ * reached again, starts with its first message.
+ */
+function brikpanel_whatsapp_ajax_pressed() {
+	check_ajax_referer( 'brikpanel_whatsapp', 'nonce' );
+	$order_id = isset( $_POST['order_id'] ) ? absint( wp_unslash( $_POST['order_id'] ) ) : 0;
+	if ( ! $order_id || ! brikpanel_whatsapp_visible_for_user() || ! current_user_can( 'edit_shop_order', $order_id ) ) {
+		wp_send_json_error( null, 403 );
+	}
+	$order = wc_get_order( $order_id );
+	if ( ! $order instanceof WC_Order ) {
+		wp_send_json_error( null, 404 );
+	}
+	if ( '' === brikpanel_whatsapp_order_followup_template( $order ) ) {
+		wp_send_json_success( array( 'followup' => false ) );
+	}
+	if ( ! brikpanel_whatsapp_order_is_followup( $order ) ) {
+		$order->update_meta_data( BRIKPANEL_WHATSAPP_META_PRESSED, array( 'status' => $order->get_status(), 'at' => time() ) );
+		// Meta only: a full save() would run every order-update hook for a note.
+		$order->save_meta_data();
+	}
+	$state = brikpanel_whatsapp_order_state( $order );
+	wp_send_json_success( array(
+		'followup' => true,
+		'url'      => isset( $state['whatsapp'] ) ? $state['whatsapp'] : '',
+	) );
+}
+
+/**
+ * An order's WhatsApp draft as its buttons should show it now, for a script
+ * that just changed the order (an inline status change, a tracking number):
+ * the link and whether it is the status's follow-up. brikpanel-order-whatsapp.js
+ * applies it. Empty when the user does not see the buttons, or the link is not
+ * the shape this module builds (a filter rewrote it): the page keeps its own.
+ *
+ * @param WC_Order $order
+ * @return array{whatsapp?:string, whatsapp_followup?:bool}
+ */
+function brikpanel_whatsapp_order_state( $order ) {
+	if ( ! is_a( $order, 'WC_Order' ) || ! brikpanel_whatsapp_visible_for_user() ) {
+		return array();
+	}
+	$url = (string) brikpanel_order_whatsapp_url( $order );
+	if ( ! preg_match( '#^https://wa\.me/\d+(\?text=[A-Za-z0-9\-_.~%]*)?$#', $url ) ) {
+		return array();
+	}
+	return array(
+		'whatsapp'          => $url,
+		'whatsapp_followup' => brikpanel_whatsapp_order_is_followup( $order ),
+	);
+}
+
+/**
+ * The buttons' script, on the orders list and the single order screen. It
+ * notes presses only while some status has a follow-up; it always takes the
+ * new draft when another script changes an order (an inline status change, a
+ * tracking number), so the buttons never keep an old status's message.
+ */
+function brikpanel_whatsapp_enqueue_followups() {
+	if ( ! brikpanel_whatsapp_visible_for_user() ) {
+		return;
+	}
+	$screen   = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+	$id       = $screen ? (string) $screen->id : '';
+	$hpos     = function_exists( 'wc_get_page_screen_id' ) ? wc_get_page_screen_id( 'shop-order' ) : 'woocommerce_page_wc-orders';
+	$context  = function_exists( 'brikpanel_order_screen_context' ) ? brikpanel_order_screen_context() : null;
+	$is_edit  = $context && empty( $context['new'] ) && ! empty( $context['order_id'] );
+	$is_list  = ! $context && ( 'edit-shop_order' === $id || $hpos === $id );
+	if ( ! $is_edit && ! $is_list ) {
+		return;
+	}
+	wp_enqueue_script(
+		'brikpanel_order_whatsapp',
+		BRIKPANEL_URL . 'front-end/orders/brikpanel-order-whatsapp.js',
+		array(),
+		@filemtime( BRIKPANEL_PATH . 'front-end/orders/brikpanel-order-whatsapp.js' ) ?: BRIKPANEL_VERSION, // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		true
+	);
+	wp_localize_script(
+		'brikpanel_order_whatsapp',
+		'brikpanelWhatsApp',
+		array(
+			'ajax_url'  => admin_url( 'admin-ajax.php' ),
+			'nonce'     => wp_create_nonce( 'brikpanel_whatsapp' ),
+			'order_id'  => $is_edit ? (int) $context['order_id'] : 0,
+			'followups' => brikpanel_whatsapp_followups_configured(),
+			// The same words the buttons are printed with: first message, follow-up.
+			'i18n'      => array(
+				'first'    => array(
+					'panel'  => __( 'WhatsApp', 'brikpanel' ),
+					'button' => __( 'Message on WhatsApp', 'brikpanel' ),
+					'icon'   => __( 'Message the customer on WhatsApp', 'brikpanel' ),
+				),
+				'followup' => array(
+					'panel'  => __( 'Send follow-up', 'brikpanel' ),
+					'button' => __( 'Send follow-up on WhatsApp', 'brikpanel' ),
+					'icon'   => __( 'Send the customer a follow-up on WhatsApp', 'brikpanel' ),
+				),
+			),
+		)
 	);
 }
 
@@ -926,6 +1109,8 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'id'       => BRIKPANEL_WHATSAPP_OPT_HIDDEN_ROLES,
 			'type'     => 'multiselect',
 			'class'    => 'wc-enhanced-select',
+			// What an empty box means, written inside it (field test D13).
+			'placeholder' => __( 'No roles selected: everyone sees it', 'brikpanel' ),
 			'desc'     => __( 'Users with any of the selected roles no longer see the WhatsApp shortcut, while everyone else keeps it. A user hidden this way can switch it back on for their own account from their WordPress profile page. Leave empty to show it to everyone who can manage WooCommerce orders.', 'brikpanel' ),
 			'desc_tip' => true,
 			'options'  => brikpanel_whatsapp_collect_roles(),
@@ -967,15 +1152,16 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 /**
  * The placeholders offered in the UI helper, as token => human description.
  *
- * Intentionally the same vocabulary as the status-change emails helper
+ * The same vocabulary as the status-change emails helper
  * (brikpanel_status_email_placeholder_help), so a merchant who has written one
  * already knows the other. Only the resolved values differ: plain text here,
- * HTML there.
+ * HTML there. The drafts add the tracking tokens while a tracking plugin is
+ * installed (front-end/orders/brikpanel-order-tracking.php).
  *
  * @return array<string,string>
  */
 function brikpanel_whatsapp_order_placeholder_help() {
-	return [
+	$help = [
 		'{customer_first_name}' => __( 'Customer first name', 'brikpanel' ),
 		'{customer_full_name}'  => __( 'Customer full name', 'brikpanel' ),
 		'{order_number}'        => __( 'Order number', 'brikpanel' ),
@@ -987,6 +1173,29 @@ function brikpanel_whatsapp_order_placeholder_help() {
 		'{billing_email}'       => __( 'Customer email', 'brikpanel' ),
 		'{site_title}'          => __( 'Store name', 'brikpanel' ),
 	];
+
+	/**
+	 * Filter the placeholders offered under the WhatsApp messages.
+	 *
+	 * Pairs with brikpanel_whatsapp_order_tokens: a token a developer fills
+	 * there can be offered here, as a button that inserts it.
+	 *
+	 * @param array<string,string> $help Token => description.
+	 */
+	$filtered = apply_filters( 'brikpanel_whatsapp_order_placeholder_help', $help );
+	if ( ! is_array( $filtered ) ) {
+		return $help;
+	}
+
+	// Only real tokens: each is printed as an insert button and listed under the
+	// Message field.
+	$clean = [];
+	foreach ( $filtered as $token => $description ) {
+		if ( is_string( $token ) && preg_match( '/^\{[A-Za-z0-9_]+\}$/', $token ) && is_scalar( $description ) ) {
+			$clean[ $token ] = wp_strip_all_tags( (string) $description );
+		}
+	}
+	return $clean;
 }
 
 /**
@@ -1014,7 +1223,7 @@ function brikpanel_render_whatsapp_status_messages_field() {
 	}
 	?>
 	</table>
-	<section class="bp-cse-card">
+	<section class="bp-settings-card bp-settings-card--custom bp-cse-card">
 		<header class="bp-cos-card__head">
 			<div>
 				<h3 class="bp-cos-card__title"><?php esc_html_e( 'Message per order status', 'brikpanel' ); ?></h3>
@@ -1029,7 +1238,8 @@ function brikpanel_render_whatsapp_status_messages_field() {
 				<?php foreach ( $statuses as $slug => $label ) :
 					$cfg     = isset( $saved[ $slug ] ) ? $saved[ $slug ] : [];
 					$enabled = ! empty( $cfg['enabled'] );
-					$message = isset( $cfg['message'] ) ? $cfg['message'] : '';
+					$message  = isset( $cfg['message'] ) ? $cfg['message'] : '';
+					$followup = isset( $cfg['followup'] ) ? $cfg['followup'] : '';
 					// BrikPanel's own statuses carry a colour; core and
 					// third-party ones get a neutral dot rather than a made-up one.
 					$color   = isset( $custom[ $slug ]['color'] ) ? $custom[ $slug ]['color'] : '#8a8a8a';
@@ -1055,6 +1265,12 @@ function brikpanel_render_whatsapp_status_messages_field() {
 								<div class="bp-cse-field">
 									<label class="bp-cse-label" for="<?php echo esc_attr( $field ); ?>"><?php esc_html_e( 'Message', 'brikpanel' ); ?></label>
 									<textarea id="<?php echo esc_attr( $field ); ?>" class="bp-cse-textarea" name="<?php echo $base; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped above. ?>[message]" rows="5" data-cse-insertable placeholder="<?php echo esc_attr( $fallback ); ?>"><?php echo esc_textarea( $message ); ?></textarea>
+								</div>
+
+								<div class="bp-cse-field">
+									<label class="bp-cse-label" for="<?php echo esc_attr( $field . '-followup' ); ?>"><?php esc_html_e( 'Follow-up message', 'brikpanel' ); ?></label>
+									<textarea id="<?php echo esc_attr( $field . '-followup' ); ?>" class="bp-cse-textarea" name="<?php echo $base; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped above. ?>[followup]" rows="3" data-cse-insertable aria-describedby="<?php echo esc_attr( $field . '-followup-hint' ); ?>"><?php echo esc_textarea( $followup ); ?></textarea>
+									<p class="bp-cse-hint" id="<?php echo esc_attr( $field . '-followup-hint' ); ?>"><?php esc_html_e( 'Opens from the second press of a WhatsApp button on an order in this status, so the customer does not get the first message twice. Leave it empty to open the message above every time.', 'brikpanel' ); ?></p>
 								</div>
 
 								<div class="bp-cse-field">
@@ -1143,18 +1359,20 @@ add_action( 'woocommerce_update_options_brikpanel', function () {
 		if ( '' === $slug || ! is_array( $cfg ) || ! in_array( $slug, $valid, true ) ) {
 			continue;
 		}
-		$message = isset( $cfg['message'] ) ? brikpanel_whatsapp_clean_message( $cfg['message'] ) : '';
-		$enabled = ! empty( $cfg['enabled'] );
+		$message  = isset( $cfg['message'] ) ? brikpanel_whatsapp_clean_message( $cfg['message'] ) : '';
+		$followup = isset( $cfg['followup'] ) ? brikpanel_whatsapp_clean_message( $cfg['followup'] ) : '';
+		$enabled  = ! empty( $cfg['enabled'] );
 
 		// Nothing written and switched off is the default state; not storing it
 		// keeps the option from growing a row for every status a merchant
 		// merely scrolled past.
-		if ( ! $enabled && '' === $message ) {
+		if ( ! $enabled && '' === $message && '' === $followup ) {
 			continue;
 		}
 		$clean[ $slug ] = [
-			'enabled' => $enabled,
-			'message' => $message,
+			'enabled'  => $enabled,
+			'message'  => $message,
+			'followup' => $followup,
 		];
 	}
 

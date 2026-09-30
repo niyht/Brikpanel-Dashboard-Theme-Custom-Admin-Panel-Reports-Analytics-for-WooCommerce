@@ -10,7 +10,7 @@
     --ven-card:           #ffffff;
     --ven-text:           #303030;
     --ven-text-secondary: #616161;
-    --ven-text-muted:     #8a8a8a;
+    --ven-text-placeholder:     #8a8a8a;
     --ven-border:         #e3e3e3;
     --ven-input-border:   #8a8a8a;
     --ven-input-focus:    #303030;
@@ -23,10 +23,10 @@
 }
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
+/* Width, gutters and top spacing: the wide page shell
+   (front-end/shared/brikpanel-ui.css, `brikpanel-shell__page`). */
 .brikpanel-ven-wrap {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 0 0 2rem;
+    padding-bottom: 2rem;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     color: var(--ven-text);
     box-sizing: border-box;
@@ -40,15 +40,16 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    padding: 1.5rem 0 1rem;
+    padding: 0 0 1rem;
     gap: 1rem;
     flex-wrap: wrap;
 }
 .brikpanel-ven-header h1 {
     margin: 0 0 0.25rem;
-    font-size: 1.125rem;
-    font-weight: 600;
-    line-height: 1.3;
+    font-size: var(--brikpanel-title-size, 1.125rem);
+    font-weight: var(--brikpanel-title-weight, 600);
+    line-height: var(--brikpanel-title-line, 1.3);
+    padding: 0;
     color: var(--ven-text);
 }
 .brikpanel-ven-subtitle {
@@ -59,27 +60,52 @@
 }
 
 /* ── Summary bar ────────────────────────────────────────────────────────── */
+/* Equal tiles side by side while each fits, otherwise a short list
+   (front-end/shared/brikpanel-tiles.js, data-bp-tiles): growing cards wrapped
+   2 + 1 on a phone with the last one stretched. The template is the look
+   without the script. */
 .brikpanel-ven-summary {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 1rem;
     margin-bottom: 1rem;
-    flex-wrap: wrap;
 }
 .brikpanel-ven-summary-card {
     background: var(--ven-card);
     border: 1px solid var(--ven-border);
     border-radius: var(--ven-radius-card);
     padding: 1rem 1.25rem;
-    min-width: 160px;
-    flex: 1 1 160px;
+    min-width: 0;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
+:is(.brikpanel-ven-summary, .brikpanel-ven-detail-stats).is-tiles-list {
+    gap: 0.5rem;
+}
+:is(.brikpanel-ven-summary, .brikpanel-ven-detail-stats).is-tiles-list .brikpanel-ven-summary-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.625rem 1rem;
+}
+:is(.brikpanel-ven-summary, .brikpanel-ven-detail-stats).is-tiles-list .brikpanel-ven-summary-label {
+    margin-bottom: 0;
+}
+:is(.brikpanel-ven-summary, .brikpanel-ven-detail-stats).is-tiles-list .brikpanel-ven-summary-value {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 1rem;
+    text-align: end;
+}
+:is(.brikpanel-ven-summary, .brikpanel-ven-detail-stats).is-tiles-list .brikpanel-ven-summary-sub {
+    grid-column: 1 / -1;
+}
 .brikpanel-ven-summary-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--ven-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: var(--brikpanel-label-size, 0.8125rem);
+    font-weight: var(--brikpanel-label-weight, 550);
+    color: #616161;
+    text-transform: var(--brikpanel-caps-case, none);
+    letter-spacing: var(--brikpanel-caps-track, normal);
     margin-bottom: 0.375rem;
 }
 .brikpanel-ven-summary-value {
@@ -99,62 +125,25 @@
 }
 
 /* ── Filters ────────────────────────────────────────────────────────────── */
+/* Row, fields, labels and boxes are the shared parts in
+   front-end/shared/brikpanel-ui.css (.brikpanel-filter-bar, .brikpanel-field,
+   .brikpanel-control): one control height on every screen (field test D1). */
 .brikpanel-ven-filters { padding: 1.125rem 1.25rem; }
-.brikpanel-ven-filter-row {
-    display: flex;
-    gap: 0.75rem;
-    align-items: flex-end;
-    flex-wrap: wrap;
+/* Only on a wide row: in the phone column a flex basis would become a height. */
+@media (min-width: 641px) {
+    .brikpanel-ven-filter-row .brikpanel-ven-field { flex: 0 1 11rem; }
+    .brikpanel-ven-filter-row .brikpanel-ven-field-grow { flex: 1 1 280px; }
 }
-.brikpanel-ven-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-    min-width: 0;
-}
-.brikpanel-ven-field-grow { flex: 1 1 280px; }
 .brikpanel-ven-field-full { grid-column: 1 / -1; }
-.brikpanel-ven-field label {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--ven-text);
-    line-height: 1;
-}
 .brikpanel-ven-req { color: var(--ven-error); }
-.brikpanel-ven-field input[type="date"],
-.brikpanel-ven-field input[type="text"],
-.brikpanel-ven-field input[type="search"],
-.brikpanel-ven-field input[type="email"],
-.brikpanel-ven-field input[type="url"],
-.brikpanel-ven-field input[type="number"],
-.brikpanel-ven-field select,
-.brikpanel-ven-field textarea {
-    border: 1px solid var(--ven-input-border);
-    border-radius: var(--ven-radius);
-    padding: 0.625rem 0.75rem;
-    font-size: 0.875rem;
-    color: var(--ven-text);
-    background: #fff;
-    line-height: 1.4;
-    transition: border-color 0.15s, box-shadow 0.15s;
-    width: 100%;
-    font-family: inherit;
-}
-.brikpanel-ven-field input:focus,
-.brikpanel-ven-field select:focus,
-.brikpanel-ven-field textarea:focus {
-    outline: none;
-    border-color: var(--ven-input-focus);
-    box-shadow: 0 0 0 1px var(--ven-input-focus);
-}
-.brikpanel-ven-field input::placeholder,
-.brikpanel-ven-field textarea::placeholder { color: var(--ven-text-muted); }
-.brikpanel-ven-field textarea { resize: vertical; }
 
 /* ── Input group (prefix) ───────────────────────────────────────────────── */
 .brikpanel-ven-input-group {
     display: flex;
     align-items: stretch;
+    box-sizing: border-box;
+    height: var(--brikpanel-control-h, 2.5rem);
+    background: #fff;
     border: 1px solid var(--ven-input-border);
     border-radius: var(--ven-radius);
     overflow: hidden;
@@ -175,7 +164,21 @@
     border-right: 1px solid var(--ven-border);
     flex-shrink: 0;
 }
-.brikpanel-ven-input-group input { border: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+.brikpanel-ven-input-group input {
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--ven-text);
+    background: transparent;
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+}
 
 /* ── Checkbox label ─────────────────────────────────────────────────────── */
 .brikpanel-ven-checkbox-label {
@@ -240,11 +243,11 @@
 .brikpanel-ven-table thead th {
     text-align: left;
     padding: 0.75rem 1rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--ven-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: var(--brikpanel-th-size, 0.75rem);
+    font-weight: var(--brikpanel-th-weight, 600);
+    color: #616161;
+    text-transform: var(--brikpanel-caps-case, none);
+    letter-spacing: var(--brikpanel-caps-track, normal);
     border-bottom: 1px solid var(--ven-border);
     background: #fafafa;
     white-space: nowrap;
@@ -256,12 +259,15 @@
 }
 .brikpanel-ven-table tbody tr:last-child td { border-bottom: 0; }
 .brikpanel-ven-table tbody tr:hover { background: #fafafa; }
-.brikpanel-ven-num { text-align: right; }
+/* Short values (money, days, counts) stay on one line; names, contacts and
+   notes wrap at spaces (CLAUDE.md table rule). */
+.brikpanel-ven-num { text-align: right; white-space: nowrap; }
+.brikpanel-ven-nowrap { white-space: nowrap; }
 .brikpanel-ven-actions-th { width: 90px; text-align: right; }
 .brikpanel-ven-empty {
     text-align: center;
     padding: 2.5rem 1rem !important;
-    color: var(--ven-text-muted);
+    color: var(--ven-text-secondary, #616161);
     font-style: italic;
 }
 .brikpanel-ven-vendor-name {
@@ -270,7 +276,7 @@
 }
 .brikpanel-ven-vendor-meta {
     font-size: 0.75rem;
-    color: var(--ven-text-muted);
+    color: var(--ven-text-secondary, #616161);
     margin-top: 2px;
 }
 .brikpanel-ven-archived-pill {
@@ -278,18 +284,24 @@
     margin-left: 0.5rem;
     padding: 1px 6px;
     border-radius: 999px;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 600;
     background: #f1f1f1;
     color: var(--ven-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    text-transform: none;
+    letter-spacing: normal;
 }
 .brikpanel-ven-row-actions {
     display: inline-flex;
     gap: 0.25rem;
     justify-content: flex-end;
     width: 100%;
+}
+
+/* Stacked rows (field test B6; brikpanel-fit-table.css draws the card): the
+   row buttons start at the left of their tile. */
+.brikpanel-ven-table.is-stacked .brikpanel-ven-row-actions {
+    justify-content: flex-start;
 }
 
 /* ── Pagination ─────────────────────────────────────────────────────────── */
@@ -410,7 +422,7 @@
     color: var(--ven-text);
     border-bottom-color: var(--ven-text);
 }
-.brikpanel-ven-muted { color: var(--ven-text-muted); }
+.brikpanel-ven-muted { color: var(--ven-text-secondary, #616161); }
 
 /* ── Lead time delta pill (used in list + detail) ──────────────────────── */
 .brikpanel-ven-delta {
@@ -428,7 +440,7 @@
     margin-top: 0.25rem;
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--ven-text-muted);
+    color: var(--ven-text-secondary, #616161);
     line-height: 1.3;
     min-height: 1em;
 }
@@ -438,10 +450,8 @@
  * DETAIL PAGE
  * ────────────────────────────────────────────────────────────────────── */
 
-.brikpanel-ven-detail-wrap { max-width: 1100px; }
-
 .brikpanel-ven-detail-topbar {
-    padding: 1rem 0 0;
+    padding: 0;
 }
 .brikpanel-ven-back {
     display: inline-flex;
@@ -470,9 +480,10 @@
 }
 .brikpanel-ven-detail-header h1 {
     margin: 0 0 0.25rem;
-    font-size: 1.375rem;
-    font-weight: 600;
-    line-height: 1.2;
+    font-size: var(--brikpanel-title-size, 1.125rem);
+    font-weight: var(--brikpanel-title-weight, 600);
+    line-height: var(--brikpanel-title-line, 1.3);
+    padding: 0;
 }
 .brikpanel-ven-detail-header-right {
     display: inline-flex;
@@ -486,10 +497,8 @@
     gap: 0.75rem;
     margin-bottom: 1rem;
 }
-.brikpanel-ven-detail-stats .brikpanel-ven-summary-card {
-    min-width: 0;
-    flex: none;
-}
+/* data-bp-tiles picks five in a row or a list (3 + 2 and 2 + 2 + 1 left tiles
+   alone); the breakpoints are the look without the script. */
 @media (max-width: 1024px) { .brikpanel-ven-detail-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 640px)  { .brikpanel-ven-detail-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -511,8 +520,8 @@
 }
 .brikpanel-ven-card__header h2 {
     margin: 0;
-    font-size: 0.9375rem;
-    font-weight: 600;
+    font-size: var(--brikpanel-card-title-size, 0.9375rem);
+    font-weight: var(--brikpanel-card-title-weight, 600);
     color: var(--ven-text);
 }
 .brikpanel-ven-card__desc {
@@ -550,8 +559,8 @@
 .brikpanel-ven-info-list dt {
     color: var(--ven-text-secondary);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    text-transform: none;
+    letter-spacing: normal;
     font-size: 0.75rem;
     padding-top: 0.125rem;
 }
@@ -580,7 +589,7 @@
 .brikpanel-ven-chart-empty {
     text-align: center;
     padding: 2.5rem 1rem;
-    color: var(--ven-text-muted);
+    color: var(--ven-text-secondary, #616161);
     font-size: 0.8125rem;
     font-style: italic;
 }
@@ -590,10 +599,10 @@
     display: inline-block;
     padding: 0.125rem 0.5rem;
     border-radius: 999px;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    text-transform: none;
+    letter-spacing: normal;
     background: #f1f1f1;
     color: var(--ven-text-secondary);
     border: 1px solid var(--ven-border);

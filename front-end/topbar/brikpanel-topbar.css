@@ -9,7 +9,7 @@
     --bp-topbar-bg: #ffffff;
     --bp-topbar-text: #303030;
     --bp-topbar-text-2: #616161;
-    --bp-topbar-text-3: #8a8a8a;
+    --bp-topbar-placeholder: #8a8a8a;
     --bp-topbar-border: #e3e3e3;
     --bp-topbar-primary: #303030;
     --bp-topbar-primary-hover: #1a1a1a;
@@ -141,6 +141,19 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     color: var(--bp-topbar-text);
 }
 
+/* `hidden` must hide inside the bar. The browser applies [hidden] through its
+   own stylesheet, and any `display` a stylesheet sets beats that: the count
+   bubble is inline-flex, so `badge.hidden = true` left a red "0" on the bell
+   of every store with no orders waiting, and a count that dropped to zero kept
+   its old number. The id keeps this above every class rule in the bar, so it
+   covers both bubbles and anything added later. Not !important: controls other
+   plugins add through `brikpanel_topbar_items` may reveal an element with an
+   inline style (jQuery .show()), and that has to keep working. `until-found`
+   is left to the browser, which reveals it on find-in-page. */
+#brikpanel-topbar [hidden]:not([hidden="until-found"]) {
+    display: none;
+}
+
 .brikpanel-topbar-inner {
     display: flex;
     align-items: center;
@@ -230,7 +243,7 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 .brikpanel-topbar-brand-sub {
     font-size: 0.6875rem;
     font-weight: 500;
-    color: var(--bp-topbar-text-3);
+    color: var(--bp-topbar-text-2, #616161);
     /* A multi-word translation must not wrap when the brand gives way. */
     white-space: nowrap;
 }
@@ -270,10 +283,10 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 .brikpanel-topbar-live-pill.is-empty {
     background: #f7f7f7;
     border-color: var(--bp-topbar-border);
-    color: var(--bp-topbar-text-3);
+    color: var(--bp-topbar-text-2, #616161);
 }
 .brikpanel-topbar-live-pill.is-empty .brikpanel-topbar-live-dot {
-    background: var(--bp-topbar-text-3);
+    background: var(--bp-topbar-placeholder);
     animation: none;
     box-shadow: none;
 }
@@ -315,6 +328,10 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 .brikpanel-topbar-coming-soon svg { flex-shrink: 0; }
 .brikpanel-topbar-coming-soon.is-compact { width: 28px; padding: 0; }
 .brikpanel-topbar-coming-soon.is-compact .brikpanel-topbar-coming-soon-label { display: none; }
+/* Without a link (the settings screen is closed to this user by "Block pages
+   hidden from the menu") the badge is a plain notice and does not react. */
+.brikpanel-topbar-coming-soon.is-static,
+.brikpanel-topbar-coming-soon.is-static:hover { cursor: default; background: #fff6e6; border-color: #f3dcae; color: #7a4f01; }
 
 /* ---------- Right ---------- */
 
@@ -357,7 +374,7 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     align-items: center;
     gap: 0.125rem;
     font-size: 0.6875rem;
-    color: var(--bp-topbar-text-3);
+    color: var(--bp-topbar-text-2, #616161);
 }
 
 .brikpanel-topbar-kbd-key {
@@ -496,7 +513,13 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 /* Hidden-notices badge: these are low-priority, suppressed notices, so use a
    muted grey instead of the alarming red the order/alert badges use. */
 #brikpanel-topbar [data-topbar-menu="hidden-notices"] .brikpanel-topbar-badge {
-    background: #646970;
+    background: #616161;
+}
+
+/* No hidden notices on this page: the button keeps its place, muted like the
+   store health shield in its "all good" state (field test D19). */
+#brikpanel-topbar .brikpanel-fn-menu.is-empty .brikpanel-topbar-icon-btn {
+    color: var(--bp-topbar-placeholder, #8a8a8a);
 }
 
 /* ---------- Dropdowns ---------- */
@@ -565,11 +588,11 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 
 .brikpanel-topbar-dropdown-header {
     padding: 0.5rem 0.625rem 0.375rem;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    color: var(--bp-topbar-text-3);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+    color: var(--bp-topbar-text-2, #616161);
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 .brikpanel-topbar-dropdown-row {
@@ -647,7 +670,7 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 .brikpanel-fn-panel-hint {
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--bp-topbar-text-3);
+    color: var(--bp-topbar-text-2, #616161);
     white-space: nowrap;
 }
 
@@ -659,6 +682,18 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     gap: 0.625rem;
 }
 
+.brikpanel-fn-panel-empty {
+    margin: 0;
+    padding: 1rem 1.125rem;
+    font-size: 0.8125rem;
+    color: var(--bp-topbar-text-2, #616161);
+}
+
+#brikpanel-topbar .brikpanel-fn-menu.is-empty .brikpanel-fn-panel-list,
+#brikpanel-topbar .brikpanel-fn-menu:not(.is-empty) .brikpanel-fn-panel-empty {
+    display: none;
+}
+
 /* Normalize the relocated WordPress admin notices so they read cleanly inside
    the panel: no giant default margins, rounded card, but keep the coloured left
    accent WP core gives each notice type.
@@ -667,11 +702,18 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
    every BrikPanel declutter rule already excludes via `:not(.brikpanel-notice)`
    — so the panel notices stay visible on custom screens without an !important
    tug-of-war. The `#brikpanel-topbar` prefix is belt-and-suspenders against any
-   future global rule. */
+   future global rule.
+
+   `position: relative` makes each card the box its own absolutely positioned
+   parts sit in. WordPress only positions `.is-dismissible` notices; in any other
+   notice a plugin's absolute "Dismiss" link climbed to the dropdown (itself
+   positioned) and landed on the panel's top corner, over the header, cut at the
+   window edge, and stayed there while the list scrolled (field test B9). */
 #brikpanel-topbar .brikpanel-fn-panel-list > .notice,
 #brikpanel-topbar .brikpanel-fn-panel-list > .updated,
 #brikpanel-topbar .brikpanel-fn-panel-list > .error,
 #brikpanel-topbar .brikpanel-fn-panel-list > .update-nag {
+    position: relative;
     display: block !important;
     height: auto !important;
     margin: 0 !important;
@@ -732,7 +774,7 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 }
 
 .brikpanel-topbar-user-caret {
-    color: var(--bp-topbar-text-3);
+    color: var(--bp-topbar-placeholder);
     transition: transform 0.15s ease;
 }
 
@@ -770,7 +812,7 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 }
 .brikpanel-topbar-user-card-text span {
     font-size: 0.75rem;
-    color: var(--bp-topbar-text-3);
+    color: var(--bp-topbar-text-2, #616161);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

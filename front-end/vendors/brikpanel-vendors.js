@@ -43,13 +43,27 @@
         });
     }
     function escapeAttr(s) { return escapeHtml(s); }
+    // A long e-mail breaks only at its joints (after "@", before a dot),
+    // never mid-word (CLAUDE.md table rule).
+    function emailHtml(email) {
+        var at = email.indexOf('@');
+        if (at < 0) return escapeHtml(email);
+        var dotBreak = function (part) { return escapeHtml(part).split('.').join('<wbr>.'); };
+        return dotBreak(email.slice(0, at)) + '@<wbr>' + dotBreak(email.slice(at + 1));
+    }
     function truncate(s, n) {
         s = String(s || '');
         return s.length > n ? s.slice(0, n - 1) + '…' : s;
     }
+    // The store's price format (symbol side, separators, decimals) through
+    // front-end/shared/brikpanel-format.js; it was always "$1,234.56".
     function fmtMoney(n) {
         n = parseFloat(n) || 0;
-        return cfg.currency + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return window.brikpanelFormat ? window.brikpanelFormat.money(n) : cfg.currency + n.toFixed(2);
+    }
+    // A stored Y-m-d in the store's short date format.
+    function fmtDate(ymd) {
+        return window.brikpanelFormat ? window.brikpanelFormat.dateShort(ymd) : String(ymd || '');
     }
     function toast(message, isError) {
         var el = document.createElement('div');
@@ -143,13 +157,23 @@
             if (e.key === 'Escape' && dom.overlay && !dom.overlay.hidden) closeModal();
         });
 
+        // Rows turn into stacked cards when the table cannot show every column
+        // in its card (field test B6: View, Edit and Delete were cut off on
+        // tablets). Labels come from the header texts.
+        var listTable = $('brikpanel-ven-table');
+        var listFit = (listTable && window.brikpanelFitTable) ? window.brikpanelFitTable(listTable, { labels: 'head', slack: 0 }) : null;
+        function setBody(html) {
+            dom.tbody.innerHTML = html;
+            if (listFit) listFit.refit();
+        }
+
         load();
 
         // ─── List operations ─────────────────────────────────────────────
         function load() {
             if (state.loading) return;
             state.loading = true;
-            dom.tbody.innerHTML = '<tr><td colspan="6" class="brikpanel-ven-empty">Loading…</td></tr>';
+            setBody('<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.loading) + '</td></tr>');
             ajax('brikpanel_vendors_list', {
                 search: state.search,
                 status: state.status,
@@ -168,14 +192,14 @@
 
         function renderRows(items) {
             if (!items.length) {
-                dom.tbody.innerHTML = '<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.no_vendors) + '</td></tr>';
+                setBody('<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.no_vendors) + '</td></tr>');
                 return;
             }
             var html = '';
             for (var i = 0; i < items.length; i++) {
                 html += renderRow(items[i]);
             }
-            dom.tbody.innerHTML = html;
+            setBody(html);
 
             var editBtns = dom.tbody.querySelectorAll('[data-action="edit"]');
             for (var e = 0; e < editBtns.length; e++) {
@@ -194,7 +218,13 @@
         }
 
         function renderRow(v) {
-            var contact = [v.contact_name, v.email, v.phone].filter(Boolean).join(' · ');
+            // Built from parts so each can wrap on its own terms: the e-mail
+            // breaks only after "@" and before a dot, the phone stays whole.
+            var contactParts = [];
+            if (v.contact_name) contactParts.push(escapeHtml(v.contact_name));
+            if (v.email) contactParts.push('<span dir="ltr">' + emailHtml(v.email) + '</span>');
+            if (v.phone) contactParts.push('<span class="brikpanel-ven-nowrap" dir="ltr">' + escapeHtml(v.phone) + '</span>');
+            var contact = contactParts.join(' · ');
             var leadHtml;
             if (v.avg_lead_time !== null && typeof v.avg_lead_time !== 'undefined') {
                 var avg = Math.round(v.avg_lead_time);
@@ -206,7 +236,7 @@
                     leadHtml += ' <span class="brikpanel-ven-delta ' + cls + '">' + sign + Math.abs(diff) + escapeHtml(cfg.i18n.days_short) + '</span>';
                 }
             } else if (v.default_lead_time_days > 0) {
-                leadHtml = '<span class="brikpanel-ven-muted">' + v.default_lead_time_days + escapeHtml(cfg.i18n.days_short) + ' ' + escapeHtml('default') + '</span>';
+                leadHtml = '<span class="brikpanel-ven-muted">' + v.default_lead_time_days + escapeHtml(cfg.i18n.days_short) + ' ' + escapeHtml(cfg.i18n.lead_default) + '</span>';
             } else {
                 leadHtml = '<span class="brikpanel-ven-muted">—</span>';
             }
@@ -219,24 +249,24 @@
 
             return '' +
                 '<tr>' +
-                    '<td>' +
+                    '<td class="brikpanel-fit-lead">' +
                         '<a class="brikpanel-ven-vendor-name brikpanel-ven-vendor-link" href="' + escapeAttr(detailUrl) + '">' + escapeHtml(v.name) + '</a>' + archived +
                         (v.address ? '<div class="brikpanel-ven-vendor-meta">' + escapeHtml(truncate(v.address, 60)) + '</div>' : '') +
                         (v.default_shipping_fee_fmt ? '<div class="brikpanel-ven-vendor-meta">' + escapeHtml(cfg.i18n.ship || 'Shipping') + ': ' + escapeHtml(v.default_shipping_fee_fmt) + '</div>' : '') +
                     '</td>' +
-                    '<td>' + (contact ? escapeHtml(contact) : '<span style="color:#8a8a8a;">—</span>') + '</td>' +
+                    '<td>' + (contact ? contact : '<span style="color:#8a8a8a;">—</span>') + '</td>' + // contrast-ok: empty-value marker.
                     '<td class="brikpanel-ven-num">' + escapeHtml(v.spend_90d_fmt) + '</td>' +
                     '<td class="brikpanel-ven-num">' + leadHtml + '</td>' +
-                    '<td class="brikpanel-ven-num">' + (v.open_pos > 0 ? v.open_pos : '<span style="color:#8a8a8a;">0</span>') + '</td>' +
-                    '<td class="brikpanel-ven-num">' +
+                    '<td class="brikpanel-ven-num">' + (v.open_pos > 0 ? v.open_pos : '<span style="color:#616161;">0</span>') + '</td>' +
+                    '<td class="brikpanel-ven-num brikpanel-fit-full">' +
                         '<div class="brikpanel-ven-row-actions">' +
-                            '<a class="brikpanel-ven-btn brikpanel-ven-btn-icon" href="' + escapeAttr(detailUrl) + '" title="' + escapeAttr(cfg.i18n.view || 'View') + '">' +
+                            '<a class="brikpanel-ven-btn brikpanel-ven-btn-icon" href="' + escapeAttr(detailUrl) + '" title="' + escapeAttr(cfg.i18n.view || 'View') + '" aria-label="' + escapeAttr(cfg.i18n.view || 'View') + '">' +
                                 '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 2l7 6-7 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
                             '</a>' +
-                            '<button type="button" class="brikpanel-ven-btn brikpanel-ven-btn-icon" data-action="edit" data-id="' + v.id + '" title="' + escapeAttr(cfg.i18n.edit || 'Edit') + '">' +
+                            '<button type="button" class="brikpanel-ven-btn brikpanel-ven-btn-icon" data-action="edit" data-id="' + v.id + '" title="' + escapeAttr(cfg.i18n.edit || 'Edit') + '" aria-label="' + escapeAttr(cfg.i18n.edit || 'Edit') + '">' +
                                 '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.5 2.5a1.414 1.414 0 1 1 2 2L5 13l-3 1 1-3 8.5-8.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
                             '</button>' +
-                            '<button type="button" class="brikpanel-ven-btn brikpanel-ven-btn-icon" data-action="delete" data-id="' + v.id + '" title="' + escapeAttr(cfg.i18n.delete || 'Delete') + '">' +
+                            '<button type="button" class="brikpanel-ven-btn brikpanel-ven-btn-icon" data-action="delete" data-id="' + v.id + '" title="' + escapeAttr(cfg.i18n.delete || 'Delete') + '" aria-label="' + escapeAttr(cfg.i18n.delete || 'Delete') + '">' +
                                 '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 4h10M6 4V2.5C6 2 6.5 2 7 2h2c.5 0 1 0 1 .5V4M5 4l.5 9.5c0 .5.5.5 1 .5h3c.5 0 1 0 1-.5L11 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
                             '</button>' +
                         '</div>' +
@@ -260,7 +290,7 @@
         }
 
         function renderError() {
-            dom.tbody.innerHTML = '<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>';
+            setBody('<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>');
         }
 
         // ─── Modal (add/edit) ────────────────────────────────────────────
@@ -386,6 +416,21 @@
             }
         };
 
+        // Same fit for the two detail tables (purchase orders, products).
+        var posTable = $('brikpanel-ven-detail-pos'), productsTable = $('brikpanel-ven-detail-products');
+        var posFit = (posTable && window.brikpanelFitTable) ? window.brikpanelFitTable(posTable, { labels: 'head', slack: 0 }) : null;
+        var productsFit = (productsTable && window.brikpanelFitTable) ? window.brikpanelFitTable(productsTable, { labels: 'head', slack: 0 }) : null;
+        function setPos(html) {
+            if (!dom.posTbody) return;
+            dom.posTbody.innerHTML = html;
+            if (posFit) posFit.refit();
+        }
+        function setProducts(html) {
+            if (!dom.productsTbody) return;
+            dom.productsTbody.innerHTML = html;
+            if (productsFit) productsFit.refit();
+        }
+
         load();
 
         if (dom.editBtn) dom.editBtn.addEventListener('click', openEditModal);
@@ -400,8 +445,8 @@
         function load() {
             ajax('brikpanel_vendors_detail', { id: cfg.vendor_id }).then(function (res) {
                 if (!res || !res.success) {
-                    if (dom.posTbody)      dom.posTbody.innerHTML      = '<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>';
-                    if (dom.productsTbody) dom.productsTbody.innerHTML = '<tr><td colspan="5" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>';
+                    setPos('<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>');
+                    setProducts('<tr><td colspan="5" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>');
                     return;
                 }
                 renderStats(res.data.vendor || {}, res.data.stats || {});
@@ -409,8 +454,8 @@
                 renderProducts(res.data.products || []);
                 renderTrend(res.data.trend || []);
             }).catch(function () {
-                if (dom.posTbody)      dom.posTbody.innerHTML      = '<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>';
-                if (dom.productsTbody) dom.productsTbody.innerHTML = '<tr><td colspan="5" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>';
+                setPos('<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>');
+                setProducts('<tr><td colspan="5" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.error) + '</td></tr>');
             });
         }
 
@@ -466,7 +511,7 @@
             } else {
                 if (vendor.default_lead_time_days > 0) {
                     setStatHtml('avg_lead_time', '<span class="brikpanel-ven-muted">' + vendor.default_lead_time_days + escapeHtml(cfg.i18n.days_short) + '</span>');
-                    setStatSub('default_lead_time', '<span class="brikpanel-ven-muted">' + escapeHtml(cfg.i18n.default_no_pos || 'default — no received POs yet') + '</span>');
+                    setStatSub('default_lead_time', '<span class="brikpanel-ven-muted">' + escapeHtml(cfg.i18n.default_no_pos || '') + '</span>');
                 } else {
                     setStatHtml('avg_lead_time', '—');
                     setStatSub('default_lead_time', '');
@@ -477,7 +522,7 @@
         function renderPos(pos) {
             if (!dom.posTbody) return;
             if (!pos.length) {
-                dom.posTbody.innerHTML = '<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.no_pos) + '</td></tr>';
+                setPos('<tr><td colspan="6" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.no_pos) + '</td></tr>');
                 return;
             }
             var html = '';
@@ -488,21 +533,24 @@
                     : '<span class="brikpanel-ven-muted">—</span>';
                 html +=
                     '<tr>' +
-                        '<td><a class="brikpanel-ven-vendor-link" href="' + escapeAttr(cfg.so_edit_url + p.id) + '">' + escapeHtml(p.reference) + '</a></td>' +
+                        // No link while stock orders is switched off: its page does not exist then.
+                        '<td class="brikpanel-fit-lead">' + (cfg.so_edit_url
+                            ? '<a class="brikpanel-ven-vendor-link" href="' + escapeAttr(cfg.so_edit_url + p.id) + '">' + escapeHtml(p.reference) + '</a>'
+                            : escapeHtml(p.reference)) + '</td>' +
                         '<td><span class="brikpanel-ven-status brikpanel-ven-status--' + escapeAttr(p.status) + '">' + escapeHtml(p.status_label) + '</span></td>' +
-                        '<td>' + (p.order_date    ? escapeHtml(p.order_date)    : '<span class="brikpanel-ven-muted">—</span>') + '</td>' +
-                        '<td>' + (p.received_date ? escapeHtml(p.received_date) : '<span class="brikpanel-ven-muted">—</span>') + '</td>' +
+                        '<td>' + (p.order_date    ? escapeHtml(fmtDate(p.order_date))    : '<span class="brikpanel-ven-muted">—</span>') + '</td>' +
+                        '<td>' + (p.received_date ? escapeHtml(fmtDate(p.received_date)) : '<span class="brikpanel-ven-muted">—</span>') + '</td>' +
                         '<td class="brikpanel-ven-num">' + lead + '</td>' +
-                        '<td class="brikpanel-ven-num">' + escapeHtml(p.total_fmt) + '</td>' +
+                        '<td class="brikpanel-ven-num brikpanel-fit-headline">' + escapeHtml(p.total_fmt) + '</td>' +
                     '</tr>';
             }
-            dom.posTbody.innerHTML = html;
+            setPos(html);
         }
 
         function renderProducts(products) {
             if (!dom.productsTbody) return;
             if (!products.length) {
-                dom.productsTbody.innerHTML = '<tr><td colspan="5" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.no_products) + '</td></tr>';
+                setProducts('<tr><td colspan="5" class="brikpanel-ven-empty">' + escapeHtml(cfg.i18n.no_products) + '</td></tr>');
                 return;
             }
             var html = '';
@@ -513,14 +561,14 @@
                     : escapeHtml(p.title);
                 html +=
                     '<tr>' +
-                        '<td>' + titleCell + '</td>' +
+                        '<td class="brikpanel-fit-lead">' + titleCell + '</td>' +
                         '<td>' + (p.sku   ? escapeHtml(p.sku)   : '<span class="brikpanel-ven-muted">—</span>') + '</td>' +
                         '<td class="brikpanel-ven-num">' + (p.stock !== '' ? escapeHtml(p.stock) : '<span class="brikpanel-ven-muted">—</span>') + '</td>' +
                         '<td class="brikpanel-ven-num">' + (p.cost  ? escapeHtml(p.cost)  : '<span class="brikpanel-ven-muted">—</span>') + '</td>' +
                         '<td class="brikpanel-ven-num">' + (p.price ? escapeHtml(p.price) : '<span class="brikpanel-ven-muted">—</span>') + '</td>' +
                     '</tr>';
             }
-            dom.productsTbody.innerHTML = html;
+            setProducts(html);
         }
 
         function renderTrend(trend) {
@@ -560,7 +608,7 @@
                 svg += '<title>' + escapeHtml(t.label + ': ' + t.value_fmt) + '</title>';
                 svg += '</rect>';
                 // Month label
-                svg += '<text x="' + (x + barW / 2) + '" y="' + (h - 8) + '" text-anchor="middle" font-size="10" fill="#8a8a8a" font-family="-apple-system, Segoe UI, sans-serif">' + escapeHtml(t.label) + '</text>';
+                svg += '<text x="' + (x + barW / 2) + '" y="' + (h - 8) + '" text-anchor="middle" font-size="10" fill="#616161" font-family="-apple-system, Segoe UI, sans-serif">' + escapeHtml(t.label) + '</text>';
             }
             svg += '</svg>';
             dom.chart.innerHTML = svg;

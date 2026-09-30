@@ -188,12 +188,33 @@ add_action( 'transition_post_status', static function ( $new_status, $old_status
     // which fires no order-specific hook.
     if ( $new_status !== $old_status && $post instanceof WP_Post && ( 'product' === $post->post_type || 'shop_order' === $post->post_type ) ) {
         brikpanel_flush_topbar_counts();
+        // Into or out of the trash only: the legacy orders screen trashes
+        // with wp_trash_post() and restores with wp_untrash_post(), which
+        // fire no order hook. Every other transition already reaches
+        // brikpanel_bust_data_caches() through one.
+        if ( 'shop_order' === $post->post_type && ( 'trash' === $old_status || 'trash' === $new_status ) ) {
+            brikpanel_bust_data_caches();
+        }
     }
 }, 10, 3 );
+// Legacy permanent delete (wp_delete_post() from the orders screen) fires no
+// order hook either. The post still exists here, so its type is known.
+add_action( 'delete_post', static function ( $post_id ) {
+    if ( 'shop_order' === get_post_type( $post_id ) ) {
+        brikpanel_bust_data_caches();
+    }
+} );
 
 add_action( 'woocommerce_new_order',            'brikpanel_bust_data_caches' );
 add_action( 'woocommerce_order_status_changed', 'brikpanel_bust_data_caches' );
 add_action( 'woocommerce_order_refunded',       'brikpanel_bust_data_caches' );
+// Trashing, restoring or deleting an order changes no status through
+// set_status(), so the hooks above miss it: without these a deleted test
+// order kept counting (and kept the new-store guide away) until the cached
+// figures expired.
+add_action( 'woocommerce_trash_order',          'brikpanel_bust_data_caches' );
+add_action( 'woocommerce_untrash_order',        'brikpanel_bust_data_caches' );
+add_action( 'woocommerce_delete_order',         'brikpanel_bust_data_caches' );
 
 /**
  * Bust the shared data cache when a product's cost of goods changes so the
@@ -579,8 +600,10 @@ function brikpanel_cogs_sql_join_set( $alias_prefix, $post_id_expr, $extra_on = 
  * WooCommerce product screen on the other. Whichever the merchant uses, this
  * copies the value across so the cost shows up everywhere at once and the
  * dashboard never reports a costed catalogue as zero-cost. It also covers the
- * case where WC's Cost of Goods feature flag is off, which makes
- * WC_Product::set_cogs_value() a silent no-op.
+ * case where WC's Cost of Goods feature flag is off. WC_Product::set_cogs_value()
+ * then stores nothing and, on AJAX and REST requests, also writes a
+ * "called incorrectly" line to the PHP error log, which is why BrikPanel checks
+ * brikpanel_wc_cogs_enabled() before calling it.
  *
  * Scope is deliberately brikpanel_cogs_owned_meta_keys(), NOT every key
  * BrikPanel can read — see that function for why writing near a third-party
@@ -944,6 +967,20 @@ function brikpanel_live_ping_interval() {
  */
 function brikpanel_live_customer_details_enabled() {
     return get_option( 'brikpanel_live_customer_details', 'yes' ) !== 'no';
+}
+
+/**
+ * Whether the Live visitors list shows where each visitor came from
+ * (channel and source, with the campaign and search term on hover).
+ *
+ * The storefront tracker reads it too: when off, it neither remembers the
+ * visit's entry source in the browser nor sends it, and the server stores
+ * none. Defaults to on.
+ *
+ * @return bool
+ */
+function brikpanel_live_traffic_source_enabled() {
+    return get_option( 'brikpanel_live_traffic_source', 'yes' ) !== 'no';
 }
 
 /**
@@ -1489,7 +1526,7 @@ function brikpanel_collect_order_item_downloads( $order ) {
     // variation land together against the same line item.
     $by_product = [];
     $product_cache = [];
-    $date_format   = get_option( 'date_format' );
+    $date_format   = brikpanel_date_format();
 
     foreach ( $records as $record ) {
         if ( ! $record instanceof WC_Customer_Download ) {
@@ -2244,7 +2281,7 @@ function brikpanel_bidi_isolate_numbers( $text ) {
  */
 function brikpanel_money_text( $amount, $args = array() ) {
 	if ( ! function_exists( 'wc_price' ) ) {
-		return brikpanel_bidi_isolate_numbers( number_format_i18n( (float) $amount, 2 ) );
+		return brikpanel_bidi_isolate_numbers( brikpanel_number( (float) $amount, 2 ) );
 	}
 
 	return brikpanel_bidi_isolate_numbers(
@@ -2537,5 +2574,703 @@ if ( ! function_exists( 'brikpanel_order_numbers_for_ids' ) ) {
 		}
 
 		return $map;
+	}
+}
+
+// =============================================================================
+// DATES & TIMEZONE — one clock for every screen
+// =============================================================================
+//
+// WordPress pins PHP's default timezone to UTC, which makes two mistakes easy
+// to write and impossible to see:
+//
+//   1. mysql2date( $fmt, $gmt ) reads its input as SITE-local, because it does
+//      date_create( $date, wp_timezone() ). Feeding it date_created_gmt prints
+//      the UTC clock wearing the store's format. Order #84551 (11:56:01 UTC)
+//      rendered as "11:56 am" on the Segments screen while the WooCommerce
+//      order screen said "2:56 pm" — the bug reported against 3.3.17.
+//
+//   2. gmdate( 'Y-m-d 00:00:00', strtotime( $localDay ) ) looks like a
+//      conversion but is a no-op round trip, so a day the merchant typed gets
+//      compared against a UTC column as if the store were in London. For the
+//      local day 2026-08-10 on a UTC+3 store that window pulled in an order
+//      belonging to 9 August and missed the one belonging to 10 August: the
+//      same row count, entirely the wrong rows.
+//
+// The rule these functions enforce: a *_gmt / user_registered value is UTC and
+// only reaches a screen through brikpanel_local_datetime(); a Y-m-d the
+// merchant typed or a preset produced is a STORE day and only reaches SQL
+// through brikpanel_local_range_bounds_utc(). Each name carries the basis of
+// its input, so a wrong pairing reads wrong.
+//
+// Columns that are NOT UTC, and must never go through the *_utc helpers:
+// brikpanel_visitors.date_column, brikpanel_referrers.date_column,
+// brikpanel_visited_pages.date_column, brikpanel_cart_tracking.date_column,
+// brikpanel_expenses.expense_date, brikpanel_stock_orders.*_date and
+// brikpanel_ad_spend.date are all written in site-local time on purpose.
+
+if ( ! function_exists( 'brikpanel_date_format' ) ) {
+	/**
+	 * The store's date format, with a sane fallback.
+	 *
+	 * Memoized per blog id: on multisite the same PHP process serves several
+	 * stores across switch_to_blog(), and an unkeyed static would hand blog 1's
+	 * format to every other site in the network.
+	 *
+	 * @return string
+	 */
+	function brikpanel_date_format() {
+		static $cache = array();
+
+		$blog = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 0;
+
+		if ( ! isset( $cache[ $blog ] ) ) {
+			$fmt            = (string) get_option( 'date_format' );
+			$cache[ $blog ] = '' !== $fmt ? $fmt : 'F j, Y';
+		}
+
+		return $cache[ $blog ];
+	}
+}
+
+if ( ! function_exists( 'brikpanel_time_format' ) ) {
+	/**
+	 * The store's time format, with a sane fallback. Memoized per blog id.
+	 *
+	 * @return string
+	 */
+	function brikpanel_time_format() {
+		static $cache = array();
+
+		$blog = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 0;
+
+		if ( ! isset( $cache[ $blog ] ) ) {
+			$fmt            = (string) get_option( 'time_format' );
+			$cache[ $blog ] = '' !== $fmt ? $fmt : 'g:i a';
+		}
+
+		return $cache[ $blog ];
+	}
+}
+
+if ( ! function_exists( 'brikpanel_datetime_format' ) ) {
+	/**
+	 * The store's date + time format.
+	 *
+	 * Replaces the literal get_option('date_format') . ' ' . get_option('time_format')
+	 * that was written out at thirteen separate call sites, two of which had
+	 * drifted into their own fallback spellings.
+	 *
+	 * @return string
+	 */
+	function brikpanel_datetime_format() {
+		return brikpanel_date_format() . ' ' . brikpanel_time_format();
+	}
+}
+
+if ( ! function_exists( 'brikpanel_short_date_format' ) ) {
+	/**
+	 * The store's date format with short month and weekday names, for a date
+	 * in a narrow column: "F j, Y" becomes "M j, Y" (Sep 10, 2026, as the
+	 * WooCommerce orders list writes it), "l, j F Y" becomes "D, j M Y". The
+	 * store keeps its own order and separators; escaped letters stay as they are.
+	 *
+	 * @return string
+	 */
+	function brikpanel_short_date_format() {
+		return (string) preg_replace( array( '/(?<!\\\\)F/', '/(?<!\\\\)l/' ), array( 'M', 'D' ), brikpanel_date_format() );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_utc_datetime' ) ) {
+	/**
+	 * Parse a UTC datetime string out of the database, strictly.
+	 *
+	 * Deliberately stricter than the strtotime( $s . ' +00:00' ) idiom used
+	 * elsewhere in the plugin. That idiom is correct but fragile: strtotime()
+	 * accepts relative text, so a stray 'yesterday' parses happily, and
+	 * strtotime( ' +00:00' ) on an empty column returns NOW — which is why
+	 * every call site using it has to guard the empty string separately.
+	 * Concentrating the strictness here is the whole point of a shared helper.
+	 *
+	 * @param mixed $utc_sql 'Y-m-d H:i:s' (or 'Y-m-dTH:i:s') in UTC.
+	 * @return DateTimeImmutable|null Null for empty, zero or unparseable input.
+	 */
+	function brikpanel_utc_datetime( $utc_sql ) {
+		if ( ! is_string( $utc_sql ) && ! is_numeric( $utc_sql ) ) {
+			return null;
+		}
+
+		$s = trim( (string) $utc_sql );
+
+		// '0000-00-00 00:00:00' is truthy in PHP, so a bare `$row->col ? ... : ''`
+		// guard lets it through, and every conversion path then renders it as
+		// '-0001-11-30'. MIN()/MAX() over a table holding one zero row returns
+		// exactly this.
+		if ( '' === $s || 0 === strncmp( $s, '0000-00-00', 10 ) ) {
+			return null;
+		}
+
+		// Must LOOK like a stored datetime. Without this, DateTimeImmutable
+		// accepts relative phrases: 'yesterday' parses to an actual date.
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}([ T]\d{1,2}:\d{2}(:\d{2})?)?$/', $s ) ) {
+			return null;
+		}
+
+		try {
+			return new DateTimeImmutable( $s, new DateTimeZone( 'UTC' ) );
+		} catch ( Exception $e ) {
+			return null;
+		}
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_datetime' ) ) {
+	/**
+	 * Render a UTC datetime column the way the store's staff read the clock.
+	 *
+	 * Use this for date_created_gmt, post_date_gmt, user_registered, and any
+	 * MIN()/MAX() of those. NEVER for a site-local column.
+	 *
+	 * wp_date() rather than get_date_from_gmt(): the latter formats with
+	 * DateTime::format(), which does not translate month or day names, so a
+	 * Turkish or Arabic admin would be served a bare "September".
+	 *
+	 * @param mixed       $utc_sql  UTC 'Y-m-d H:i:s' as stored.
+	 * @param string|null $format   PHP date format. Null = brikpanel_datetime_format().
+	 * @param string      $fallback Returned for empty / zero / unparseable input.
+	 * @return string
+	 */
+	function brikpanel_local_datetime( $utc_sql, $format = null, $fallback = '' ) {
+		$dt = brikpanel_utc_datetime( $utc_sql );
+
+		if ( null === $dt ) {
+			return (string) $fallback;
+		}
+
+		return (string) wp_date( null === $format ? brikpanel_datetime_format() : (string) $format, $dt->getTimestamp() );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_date' ) ) {
+	/**
+	 * Date-only rendering of a UTC column, in the store's timezone and format.
+	 *
+	 * @param mixed  $utc_sql  UTC 'Y-m-d H:i:s' as stored.
+	 * @param string $fallback Returned for empty / zero / unparseable input.
+	 * @return string
+	 */
+	function brikpanel_local_date( $utc_sql, $fallback = '' ) {
+		return brikpanel_local_datetime( $utc_sql, brikpanel_date_format(), $fallback );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_day' ) ) {
+	/**
+	 * The store-local calendar day of a UTC stamp, as machine-readable 'Y-m-d'.
+	 *
+	 * format(), not wp_date(): the result is a key or a bucket label, not prose,
+	 * so it must never be translated.
+	 *
+	 * @param mixed $utc_sql UTC 'Y-m-d H:i:s' as stored.
+	 * @return string 'Y-m-d', or '' on bad input.
+	 */
+	function brikpanel_local_day( $utc_sql ) {
+		$dt = brikpanel_utc_datetime( $utc_sql );
+
+		if ( null === $dt ) {
+			return '';
+		}
+
+		return $dt->setTimezone( wp_timezone() )->format( 'Y-m-d' );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_store_date' ) ) {
+	/**
+	 * Now in the STORE's timezone, optionally shifted, formatted.
+	 *
+	 * Replaces gmdate( 'Y-m-d', strtotime( '-29 days' ) ), which is the UTC day:
+	 * on a UTC+3 store between local midnight and 03:00 that is yesterday, and
+	 * on a UTC-5 store after 19:00 it is tomorrow.
+	 *
+	 * The modifier is applied INSIDE wp_timezone(), so '-29 days' means 29 store
+	 * days and stays correct across a daylight-saving transition.
+	 *
+	 * Note '-1 month' keeps PHP's documented overflow behaviour: on 31 March it
+	 * lands on 3 March, not 28 February. The strtotime() code this replaces did
+	 * exactly the same, so the quirk is preserved rather than introduced. Do not
+	 * "fix" it into 'last day of previous month' — that would silently move every
+	 * monthly window in the plugin.
+	 *
+	 * @param string $format   PHP date format. Default 'Y-m-d'.
+	 * @param string $modifier DateTime::modify() string, e.g. '-29 days'. '' = now.
+	 * @return string
+	 */
+	function brikpanel_store_date( $format = 'Y-m-d', $modifier = '' ) {
+		try {
+			$dt = new DateTimeImmutable( 'now', wp_timezone() );
+
+			if ( '' !== $modifier ) {
+				$moved = $dt->modify( $modifier );
+				if ( $moved instanceof DateTimeImmutable ) {
+					$dt = $moved;
+				}
+			}
+		} catch ( Exception $e ) {
+			return (string) wp_date( $format );
+		}
+
+		return $dt->format( (string) $format );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_store_days_range' ) ) {
+	/**
+	 * A window of whole STORE days ending today, today included.
+	 *
+	 * Matches the semantics already shipped in
+	 * Brikpanel_Cart_Abandonment::resolve_date_bounds(): "Last 7 days" is seven
+	 * day buckets, not a rolling 168 hours.
+	 *
+	 * @param int $days How many days, minimum 1. 1 = today only.
+	 * @return array{from:string,to:string} Local 'Y-m-d' pair.
+	 */
+	function brikpanel_store_days_range( $days ) {
+		$days = max( 1, (int) $days );
+
+		return array(
+			'from' => brikpanel_store_date( 'Y-m-d', '-' . ( $days - 1 ) . ' days' ),
+			'to'   => brikpanel_store_date( 'Y-m-d' ),
+		);
+	}
+}
+
+if ( ! function_exists( 'brikpanel_store_month_start' ) ) {
+	/**
+	 * The first day of a STORE month, N whole months back, formatted.
+	 *
+	 * Month arithmetic in PHP overflows: on 31 March, modify('-1 month') lands
+	 * on 3 March, so gmdate('Y-m-01', strtotime('-1 month')) returns MARCH, not
+	 * February. Every monthly window and axis in the plugin was built that way,
+	 * which on the 29th to 31st of a month produced a duplicate month key and a
+	 * missing one. Anchoring to the first of the month before stepping back
+	 * removes the overflow entirely.
+	 *
+	 * @param int    $months_back Whole months back. 0 = the current month.
+	 * @param string $format      PHP date format, e.g. 'Y-m-01' or 'Y-m'.
+	 * @return string
+	 */
+	function brikpanel_store_month_start( $months_back = 0, $format = 'Y-m-01' ) {
+		try {
+			$dt = ( new DateTimeImmutable( 'now', wp_timezone() ) )->modify( 'first day of this month' );
+
+			if ( (int) $months_back !== 0 ) {
+				$moved = $dt->modify( '-' . (int) $months_back . ' months' );
+				if ( $moved instanceof DateTimeImmutable ) {
+					$dt = $moved;
+				}
+			}
+		} catch ( Exception $e ) {
+			return (string) wp_date( $format );
+		}
+
+		return $dt->format( (string) $format );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_day_start_utc' ) ) {
+	/**
+	 * The UTC instant at which a store-local calendar day begins.
+	 *
+	 * @param mixed $day Strict local 'Y-m-d'. Anything else yields '' (NO bound),
+	 *                   never an epoch date, so a malformed filter widens the
+	 *                   result set rather than silently emptying it.
+	 * @return string 'Y-m-d H:i:s' in UTC, or ''.
+	 */
+	function brikpanel_local_day_start_utc( $day ) {
+		$dt = brikpanel_local_day_object( $day );
+
+		if ( null === $dt ) {
+			return '';
+		}
+
+		return $dt->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_day_end_utc' ) ) {
+	/**
+	 * The UTC instant at which the day AFTER a store-local day begins.
+	 *
+	 * This is an EXCLUSIVE upper bound. Pair it with `<`, never with `<=` — a
+	 * `<=` would swallow the first second of the next day.
+	 *
+	 * '+1 day' is applied while the value is still in wp_timezone(), so it lands
+	 * on the next local midnight whatever that day's length: the 23-hour
+	 * spring-forward day and the 25-hour autumn day are both handled, which a
+	 * "start plus 86400 seconds" formulation would get wrong twice a year.
+	 *
+	 * @param mixed $day Strict local 'Y-m-d'. Anything else yields ''.
+	 * @return string 'Y-m-d H:i:s' in UTC, or ''.
+	 */
+	function brikpanel_local_day_end_utc( $day ) {
+		$dt = brikpanel_local_day_object( $day );
+
+		if ( null === $dt ) {
+			return '';
+		}
+
+		return $dt->modify( '+1 day' )->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_range_bounds_utc' ) ) {
+	/**
+	 * Both ends of an inclusive store-day range, as half-open UTC bounds.
+	 *
+	 * Half-open rather than '00:00:00' / '23:59:59' because it TILES: the range
+	 * covering local days D1..D2 is always [ dayStart(D1), dayStart(D2 + 1) ),
+	 * one formula built one way, so adjacent windows meet with no gap and no
+	 * overlap by construction. The closed form is what produced the 45-hour
+	 * "Yesterday" row that overlapped "Today" on the Store Summary screen.
+	 *
+	 * @param mixed $from Local 'Y-m-d', or '' for no lower bound.
+	 * @param mixed $to   Local 'Y-m-d' (INCLUSIVE day), or '' for no upper bound.
+	 * @return array{start:string,end_exclusive:string} Either may be '' (no bound).
+	 */
+	function brikpanel_local_range_bounds_utc( $from, $to ) {
+		return array(
+			'start'         => brikpanel_local_day_start_utc( $from ),
+			'end_exclusive' => brikpanel_local_day_end_utc( $to ),
+		);
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_day_object' ) ) {
+	/**
+	 * Strictly parse a local 'Y-m-d' into midnight in the store's timezone.
+	 *
+	 * Shared core of the two bound helpers. strtotime() is deliberately not used:
+	 * it would accept 'yesterday' and '+1 week' from a hand-edited export URL,
+	 * and the Segments CSV export is a shareable GET whose six date keys are
+	 * accepted as free text.
+	 *
+	 * @param mixed $day Local 'Y-m-d'.
+	 * @return DateTimeImmutable|null Midnight in wp_timezone(), or null.
+	 */
+	function brikpanel_local_day_object( $day ) {
+		if ( ! is_string( $day ) ) {
+			return null;
+		}
+
+		$day = trim( $day );
+
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $day ) || '0000-00-00' === $day ) {
+			return null;
+		}
+
+		// The leading '!' zeroes every field the format does not state. Without
+		// it createFromFormat() fills the time from NOW, which drops the orders
+		// placed earlier in the day.
+		$dt = DateTimeImmutable::createFromFormat( '!Y-m-d', $day, wp_timezone() );
+
+		// createFromFormat() rolls impossible dates over rather than failing:
+		// '2026-02-31' becomes 3 March. The round trip rejects those.
+		if ( ! $dt instanceof DateTimeImmutable || $dt->format( 'Y-m-d' ) !== $day ) {
+			return null;
+		}
+
+		return $dt;
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_label_date' ) ) {
+	/**
+	 * Render a date LABEL that is already local wall clock, such as 'Y-m-01'.
+	 *
+	 * For values that were never an instant: a cohort month key, or the
+	 * start_local/end_local strings a range resolver produced. Passing one of
+	 * these through strtotime() parses it as UTC, and wp_date() then adds the
+	 * site offset on top, which prints the previous day on every store west of
+	 * UTC. Constructing it in wp_timezone() keeps the label as written.
+	 *
+	 * @param mixed       $local_date 'Y-m-d' (or 'Y-m-d H:i:s') in store time.
+	 * @param string|null $format     PHP date format. Null = brikpanel_date_format().
+	 * @param string      $fallback   Returned when the input cannot be read.
+	 * @return string
+	 */
+	function brikpanel_local_label_date( $local_date, $format = null, $fallback = '' ) {
+		if ( ! is_string( $local_date ) ) {
+			return (string) $fallback;
+		}
+
+		$s = trim( $local_date );
+
+		if ( ! preg_match( '/^(\d{4}-\d{2}-\d{2})/', $s, $m ) || '0000-00-00' === $m[1] ) {
+			return (string) $fallback;
+		}
+
+		$dt = brikpanel_local_day_object( $m[1] );
+
+		if ( null === $dt ) {
+			return (string) $fallback;
+		}
+
+		return (string) wp_date( null === $format ? brikpanel_date_format() : (string) $format, $dt->getTimestamp() );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_utc_bucket_sql' ) ) {
+	/**
+	 * A 15-minute UTC bucket expression for GROUP BY, safe inside $wpdb->prepare().
+	 *
+	 * Two traps this avoids, both of which fail silently:
+	 *
+	 *   CONVERT_TZ( col, '+00:00', 'Europe/London' ) returns NULL unless the
+	 *   mysql.time_zone_* tables are populated, and on most shared hosts they are
+	 *   empty. NULL does not shift a chart, it blanks it.
+	 *
+	 *   $wpdb->prepare() consumes a single '%', so a DATE_FORMAT mask has to be
+	 *   written with '%%' or the query errors out and get_results() returns NULL.
+	 *
+	 * So bucket in SQL with pure string formatting and fold the buckets into
+	 * local days in PHP with brikpanel_local_day(). Every real UTC offset is a
+	 * whole multiple of 15 minutes, so a bucket can never straddle a local
+	 * midnight: exact for +03:00, +05:30 and +05:45 alike, and correct across a
+	 * daylight-saving change because each bucket converts on its own timestamp.
+	 *
+	 * @param string $column   Fully qualified UTC column, e.g. 'o.date_created_gmt'.
+	 * @param bool   $prepared  True (default) when the expression is going into a
+	 *                          $wpdb->prepare() string, which needs '%%'. False for
+	 *                          a raw query. Getting this wrong does not error: the
+	 *                          mask survives as literal text and every bucket comes
+	 *                          back unparseable, so the result silently folds to
+	 *                          nothing.
+	 * @return string
+	 */
+	function brikpanel_utc_bucket_sql( $column, $prepared = true ) {
+		$column = (string) $column;
+		$pc     = $prepared ? '%%' : '%';
+
+		return "CONCAT(DATE_FORMAT({$column}, '{$pc}Y-{$pc}m-{$pc}d {$pc}H:'), LPAD(FLOOR(MINUTE({$column})/15)*15, 2, '0'))";
+	}
+}
+
+if ( ! function_exists( 'brikpanel_db_clock_offset_to_utc' ) ) {
+	/**
+	 * Seconds to add to a MySQL CURRENT_TIMESTAMP value to reach UTC.
+	 *
+	 * brikpanel_customer_metrics.computed_at defaults to CURRENT_TIMESTAMP, which
+	 * is the database session's timezone — deliberately, because the stale-row
+	 * prune compares against that same clock. That makes the column neither UTC
+	 * nor store-local, so it cannot be rendered by either rule until it is first
+	 * moved onto a known basis.
+	 *
+	 * One query per request, memoized. Returns 0 if the query fails, which
+	 * degrades to today's behaviour rather than to a wrong offset.
+	 *
+	 * @return int
+	 */
+	function brikpanel_db_clock_offset_to_utc() {
+		static $offset = null;
+
+		if ( null !== $offset ) {
+			return $offset;
+		}
+
+		global $wpdb;
+
+		$offset = 0;
+
+		if ( $wpdb instanceof wpdb ) {
+			$value = $wpdb->get_var( 'SELECT TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP, UTC_TIMESTAMP())' ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+			if ( null !== $value ) {
+				$offset = (int) $value;
+			}
+		}
+
+		return $offset;
+	}
+}
+
+if ( ! function_exists( 'brikpanel_db_clock_to_utc' ) ) {
+	/**
+	 * Move a database-clock timestamp (CURRENT_TIMESTAMP) onto the UTC basis.
+	 *
+	 * @param mixed $db_sql 'Y-m-d H:i:s' as written by CURRENT_TIMESTAMP.
+	 * @return string UTC 'Y-m-d H:i:s', or '' when the input cannot be read.
+	 */
+	function brikpanel_db_clock_to_utc( $db_sql ) {
+		$dt = brikpanel_utc_datetime( $db_sql );
+
+		if ( null === $dt ) {
+			return '';
+		}
+
+		return gmdate( 'Y-m-d H:i:s', $dt->getTimestamp() + brikpanel_db_clock_offset_to_utc() );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_month_bucket_sql' ) ) {
+	/**
+	 * A GROUP BY expression that lets a UTC column be folded into STORE months.
+	 *
+	 * Grouping a *_gmt column with DATE_FORMAT(col, '%Y-%m') buckets by the UTC
+	 * month, so every order placed within the store's UTC offset of a month
+	 * boundary is counted in the wrong month. On the test data that moved money
+	 * in 4 of 35 months.
+	 *
+	 * The obvious fix, 15-minute buckets everywhere (see
+	 * brikpanel_utc_bucket_sql), is exact but returns up to 96 rows per day.
+	 * That is unnecessary here: an order on a UTC day in the MIDDLE of a month
+	 * lands in the same store month whatever the offset, because no real offset
+	 * reaches 24 hours. Only the first and last UTC day of a month can straddle
+	 * a store month boundary, so those alone need fine resolution. Measured on
+	 * the same data, that is 602 rows where 15-minute buckets returned 2326, and
+	 * it folds to exactly the same totals.
+	 *
+	 * Both shapes come back as parseable UTC datetime strings, so the caller
+	 * folds them with brikpanel_local_day() and takes the first seven
+	 * characters. They also still sort lexicographically in date order, which
+	 * keeps any ORDER BY on the alias meaningful.
+	 *
+	 * The %% are mandatory: $wpdb->prepare() consumes a single %.
+	 *
+	 * @param string $column   Fully qualified UTC column, e.g. 'o.date_created_gmt'.
+	 * @param bool   $prepared  True (default) when the expression is going into a
+	 *                          $wpdb->prepare() string. See brikpanel_utc_bucket_sql().
+	 * @return string
+	 */
+	function brikpanel_month_bucket_sql( $column, $prepared = true ) {
+		$column = (string) $column;
+		$pc     = $prepared ? '%%' : '%';
+
+		return "CASE WHEN DAYOFMONTH({$column}) = 1 OR DATE({$column}) = LAST_DAY({$column})
+		             THEN " . brikpanel_utc_bucket_sql( $column, $prepared ) . "
+		             ELSE DATE_FORMAT({$column}, '{$pc}Y-{$pc}m-{$pc}d 12:00') END";
+	}
+}
+
+if ( ! function_exists( 'brikpanel_local_month_case_sql' ) ) {
+	/**
+	 * A SQL expression mapping a UTC column to the STORE month it falls in.
+	 *
+	 * For places that must resolve the month inside SQL because the whole
+	 * aggregation happens there and pulling every row into PHP is not an option
+	 * (the cohort-retention job self-joins its source three times).
+	 *
+	 * The month boundaries are computed here, in wp_timezone(), one per month,
+	 * and emitted as literal UTC instants. That makes the mapping exact and
+	 * daylight-saving correct, unlike adding a single fixed offset in SQL, which
+	 * is wrong for half the year on any store that changes its clocks. It also
+	 * avoids CONVERT_TZ, which returns NULL wherever mysql.time_zone_* is empty.
+	 *
+	 * Rows older than the enumerated window fall back to the UTC month. That
+	 * fallback is never used for a row inside the caller's window, because the
+	 * enumeration deliberately reaches one month further back than asked; it only
+	 * has to be good enough to establish that a row is older than the window.
+	 *
+	 * The boundary strings are generated from DateTimeImmutable, never from
+	 * user input, and are additionally escaped.
+	 *
+	 * @param string $column      Fully qualified UTC column, e.g. 'o.date_created_gmt'.
+	 * @param int    $months_back How many whole months back the window reaches.
+	 * @return string SQL expression yielding 'Y-m-01'.
+	 */
+	function brikpanel_local_month_case_sql( $column, $months_back ) {
+		$column      = (string) $column;
+		$months_back = max( 1, (int) $months_back );
+		$utc         = new DateTimeZone( 'UTC' );
+
+		// One month further back than asked, so a caller's own cutoff never lands
+		// on the fallback branch.
+		$branches = array();
+
+		for ( $i = $months_back + 1; $i >= 0; $i-- ) {
+			$month_start = brikpanel_local_day_object( brikpanel_store_month_start( $i ) );
+
+			if ( null === $month_start ) {
+				continue;
+			}
+
+			$label = $month_start->format( 'Y-m-d' );
+			$from  = $month_start->setTimezone( $utc )->format( 'Y-m-d H:i:s' );
+			$to    = $month_start->modify( '+1 month' )->setTimezone( $utc )->format( 'Y-m-d H:i:s' );
+
+			$branches[] = sprintf(
+				"WHEN %s >= '%s' AND %s < '%s' THEN '%s'",
+				$column,
+				esc_sql( $from ),
+				$column,
+				esc_sql( $to ),
+				esc_sql( $label )
+			);
+		}
+
+		$fallback = "DATE_FORMAT({$column}, '%Y-%m-01')";
+
+		if ( ! $branches ) {
+			return $fallback;
+		}
+
+		return 'CASE ' . implode( ' ', $branches ) . ' ELSE ' . $fallback . ' END';
+	}
+}
+
+if ( ! function_exists( 'brikpanel_out_of_stock_url' ) ) {
+	/**
+	 * The products list filtered to published, out-of-stock products: the same
+	 * set the top bar's "Out of stock" count and the dashboard's Low stock card
+	 * count, so the number and the rows on the target screen agree. BrikPanel's
+	 * products list when it is on, WooCommerce's otherwise.
+	 *
+	 * @return string
+	 */
+	function brikpanel_out_of_stock_url() {
+		$modern = function_exists( 'brikpanel_module_available' )
+			? brikpanel_module_available( 'brikpanel-products' )
+			: 'yes' === get_option( 'brikpanel_modern_products_list', 'yes' );
+		return $modern
+			? admin_url( 'admin.php?page=brikpanel-products&bpl_stock=outofstock&bpl_status=publish' )
+			: admin_url( 'edit.php?post_type=product&stock_status=outofstock&post_status=publish' );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_db_supports_window_functions' ) ) {
+	/**
+	 * Whether the database server runs window functions (NTILE() OVER ...),
+	 * which the customer RFM scoring needs: MySQL 8.0+ or MariaDB 10.2+.
+	 *
+	 * $wpdb->db_version() alone is not enough. With mysqlnd older than PHP
+	 * 8.0.16 / 8.1.3, a MariaDB server reports "5.5.5-10.x.y-MariaDB", so
+	 * db_version() says "5.5.5" and a MariaDB 10.x store looked unsupported.
+	 * MariaDB 10.0/10.1 report "10.x", which passed an "8.0" check but has
+	 * no window functions. So MariaDB is read from the server string (same
+	 * "5.5.5-" rule as wpdb::has_cap()) and held to its own minimum.
+	 *
+	 * @return bool
+	 */
+	function brikpanel_db_supports_window_functions() {
+		static $supported = null;
+		if ( null !== $supported ) {
+			return $supported;
+		}
+
+		global $wpdb;
+		$info = method_exists( $wpdb, 'db_server_info' ) ? (string) $wpdb->db_server_info() : '';
+
+		if ( '' !== $info && false !== stripos( $info, 'MariaDB' ) ) {
+			$info      = preg_replace( '/^5\.5\.5-/', '', $info );
+			$version   = (string) preg_replace( '/[^0-9.].*/', '', $info );
+			$supported = '' !== $version && version_compare( $version, '10.2', '>=' );
+			return $supported;
+		}
+
+		// MySQL, or no server string (a db drop-in): the version WordPress reads.
+		$version   = (string) $wpdb->db_version();
+		$supported = '' !== $version && version_compare( $version, '8.0', '>=' );
+		return $supported;
 	}
 }

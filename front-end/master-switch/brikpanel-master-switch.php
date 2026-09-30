@@ -317,11 +317,17 @@ class Brikpanel_Master_Switch {
 		}
 
 		// Static slug -> native screen map. Anything not listed falls back to the
-		// stock dashboard below.
+		// stock dashboard below. WooCommerce's Customers report belongs to its
+		// Analytics app, which a store can switch off (WooCommerce Admin as a
+		// whole, or Analytics alone); then the WordPress customer list is the
+		// closest screen, the same fallback the top bar's bell uses.
+		$customers_screen = ( function_exists( 'brikpanel_wc_analytics_enabled' ) && brikpanel_wc_analytics_enabled() )
+			? 'admin.php?page=wc-admin&path=/customers'
+			: 'users.php?role=customer';
 		$map = array(
 			'brikpanel-products'          => 'edit.php?post_type=product',
 			'brikpanel-coupons'           => 'edit.php?post_type=shop_coupon',
-			'brikpanel-customer-analytics' => 'admin.php?page=wc-admin&path=/customers',
+			'brikpanel-customer-analytics' => $customers_screen,
 		);
 
 		/**
@@ -376,7 +382,7 @@ class Brikpanel_Master_Switch {
    control that turns BrikPanel back on is always styled while the panel is off
    and the topbar CSS has been swept. */
 /* ---- In-top-bar switch (shown while BrikPanel is on) ---- */
-.brikpanel-topbar-masterswitch{display:inline-flex;align-items:center;gap:6px;padding:0 4px;height:32px;flex:0 0 auto;color:var(--bp-topbar-text-3,#8a8a8a);}
+.brikpanel-topbar-masterswitch{display:inline-flex;align-items:center;gap:6px;padding:0 4px;height:32px;flex:0 0 auto;color:var(--bp-topbar-placeholder,#8a8a8a);} /* contrast-ok: icon and switch only, no text. */
 .brikpanel-topbar-masterswitch-icon{flex:0 0 auto;}
 .brikpanel-masterswitch-toggle{position:relative;display:inline-block;width:40px;height:22px;flex:0 0 auto;border:0;padding:0;margin:0;border-radius:22px;background:#cccccc;cursor:pointer;transition:background .15s ease;-webkit-appearance:none;appearance:none;}
 .brikpanel-masterswitch-toggle.is-on{background:var(--bp-topbar-primary,#303030);}

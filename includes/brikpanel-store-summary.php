@@ -199,16 +199,21 @@ class Brikpanel_Store_Summary {
 	 */
 	private function money( $amount ) {
 		$amount = (float) $amount;
-		$decimals = function_exists( 'wc_get_price_decimals' ) ? wc_get_price_decimals() : 2;
-		return $this->currency_symbol() . number_format_i18n( $amount, $decimals );
+		// The store's price layout (symbol side, separators, decimals), as
+		// plain text: wc_price() with its markup and entities taken out. It was
+		// always "<symbol><number>" (field test E2).
+		if ( function_exists( 'wc_price' ) ) {
+			return trim( html_entity_decode( wp_strip_all_tags( wc_price( $amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		}
+		return $this->currency_symbol() . brikpanel_number( $amount, 2 );
 	}
 
 	private function pct( $part, $whole, $decimals = 1 ) {
 		$whole = (float) $whole;
 		if ( $whole <= 0 ) {
-			return '0%';
+			return brikpanel_percent( 0, 0 );
 		}
-		return number_format_i18n( ( (float) $part / $whole ) * 100, $decimals ) . '%';
+		return brikpanel_percent( ( (float) $part / $whole ) * 100, $decimals, false );
 	}
 
 	/**
@@ -226,20 +231,77 @@ class Brikpanel_Store_Summary {
 	}
 
 	/**
-	 * GMT date string for "now - $months months, midnight". Used as $start_date_gmt
-	 * for brikpanel_get_total_revenue() etc. Returns null for "all time".
+	 * GMT instant at which the store day $months months back began. Used as
+	 * $start_date_gmt for brikpanel_get_total_revenue() etc. Null for "all time".
+	 *
+	 * This used to truncate to gmdate( 'Y-m-d 00:00:00' ), i.e. UTC midnight, so
+	 * every window started at 03:00 local on a UTC+3 store and at 19:00 the
+	 * previous day on a UTC-5 one.
 	 */
 	private function months_ago_gmt( $months ) {
 		if ( $months === null ) {
 			return null;
 		}
-		$ts = strtotime( '-' . (int) $months . ' months', current_time( 'timestamp', true ) );
-		return gmdate( 'Y-m-d 00:00:00', $ts );
+		return brikpanel_local_day_start_utc( brikpanel_store_date( 'Y-m-d', '-' . (int) $months . ' months' ) );
 	}
 
+	/**
+	 * GMT instant at which the store day $days days back began.
+	 */
 	private function days_ago_gmt( $days ) {
-		$ts = strtotime( '-' . (int) $days . ' days', current_time( 'timestamp', true ) );
-		return gmdate( 'Y-m-d 00:00:00', $ts );
+		return brikpanel_local_day_start_utc( brikpanel_store_date( 'Y-m-d', '-' . (int) $days . ' days' ) );
+	}
+
+	/**
+	 * Fold rows bucketed with brikpanel_month_bucket_sql() into STORE months.
+	 *
+	 * The SQL groups by a UTC bucket because MySQL cannot convert a named
+	 * timezone here: CONVERT_TZ returns NULL wherever mysql.time_zone_* is empty,
+	 * which is most shared hosts, and that blanks a table rather than shifting
+	 * it. So the conversion happens in PHP, on each bucket's own instant, which
+	 * also keeps it right across a daylight-saving change.
+	 *
+	 * Returns the row shape the callers already expect: objects whose $key
+	 * property is a 'Y-m' string and whose listed columns are summed.
+	 *
+	 * @param mixed    $rows     Result set from $wpdb->get_results().
+	 * @param string[] $sum_cols Numeric columns to add up.
+	 * @param string   $key      Bucket column name.
+	 * @return array<int,object>
+	 */
+	private function fold_to_months( $rows, array $sum_cols, $key = 'ym' ) {
+		$out = [];
+
+		foreach ( (array) $rows as $r ) {
+			if ( ! is_object( $r ) || ! isset( $r->$key ) ) {
+				continue;
+			}
+
+			$day = brikpanel_local_day( $r->$key );
+			if ( '' === $day ) {
+				continue;
+			}
+
+			$month = substr( $day, 0, 7 );
+
+			if ( ! isset( $out[ $month ] ) ) {
+				$fresh       = new stdClass();
+				$fresh->$key = $month;
+				foreach ( $sum_cols as $col ) {
+					$fresh->$col = 0;
+				}
+				$out[ $month ] = $fresh;
+			}
+
+			foreach ( $sum_cols as $col ) {
+				$out[ $month ]->$col += isset( $r->$col ) ? (float) $r->$col : 0;
+			}
+		}
+
+		// 'Y-m' sorts chronologically as a string.
+		ksort( $out );
+
+		return array_values( $out );
 	}
 
 	private function today_start_gmt() {
@@ -475,7 +537,7 @@ class Brikpanel_Store_Summary {
 		foreach ( $by_ccy as $ccy => $vals ) {
 			$v = isset( $vals[ $field ] ) ? (float) $vals[ $field ] : 0;
 			if ( $v <= 0 && $field === 'revenue' ) { continue; }
-			$parts[] = number_format_i18n( $v, $field === 'orders' ? 0 : $decimals ) . ' ' . $ccy;
+			$parts[] = brikpanel_number( $v, $field === 'orders' ? 0 : $decimals ) . ' ' . $ccy;
 		}
 		return $parts ? implode( ' · ', $parts ) : '—';
 	}
@@ -491,8 +553,9 @@ class Brikpanel_Store_Summary {
 			if ( $current == 0 ) { return '—'; }
 			return $current > 0 ? '+∞' : '-∞';
 		}
-		$delta = ( ( $current - $previous ) / $previous ) * 100;
-		return ( $delta >= 0 ? '+' : '' ) . number_format_i18n( $delta, 1 ) . '%';
+		// Net of refunds a month can be negative: divide by the size of the baseline.
+		$delta = ( ( $current - $previous ) / abs( $previous ) ) * 100;
+		return ( $delta >= 0 ? '+' : '' ) . brikpanel_percent( $delta, 1, false );
 	}
 
 	/**
@@ -613,11 +676,11 @@ class Brikpanel_Store_Summary {
 				'wc_attribution'   => __( 'Source: WooCommerce Order Attribution (introduced in WC 8.5).', 'brikpanel' ),
 				'wc_subscriptions' => __( 'Source: WooCommerce Subscriptions plugin.', 'brikpanel' ),
 				'wc_addresses'     => __( 'Source: order shipping addresses (HPOS wc_order_addresses or postmeta on legacy).', 'brikpanel' ),
-				'wc_op_data'       => __( 'Source: HPOS wc_order_operational_data — captures fulfillment timestamps and origin (created_via).', 'brikpanel' ),
+				'wc_op_data'       => __( 'Source: HPOS wc_order_operational_data, which captures fulfillment timestamps and origin (created_via).', 'brikpanel' ),
 				'bp_expenses'      => __( 'Source: BrikPanel expenses table (manually entered by the merchant).', 'brikpanel' ),
 				'wc_coupons'       => __( 'Source: WooCommerce shop_coupon posts and order line items of type=coupon.', 'brikpanel' ),
-				'bp_cogs'          => __( 'Source: product cost of goods — WooCommerce native COGS, BrikPanel\'s own cost field, or a detected third-party cost plugin. Resolved per line as the variation\'s cost with a fallback to the parent product, the same way the Dashboard profit card resolves it.', 'brikpanel' ),
-				'bp_ads'           => __( 'Source: BrikPanel Ad Platforms — daily spend imported from the connected Google Ads / Meta Ads accounts. Account-level only: no campaign, ad-set, keyword or product breakdown is imported.', 'brikpanel' ),
+				'bp_cogs'          => __( 'Source: product cost of goods (WooCommerce native COGS, BrikPanel\'s own cost field, or a detected third-party cost plugin). Resolved per line as the variation\'s cost with a fallback to the parent product, the same way the Dashboard profit card resolves it.', 'brikpanel' ),
+				'bp_ads'           => __( 'Source: BrikPanel Ad Platforms, daily spend imported from the connected Google Ads / Meta Ads accounts. Account-level only: no campaign, ad-set, keyword or product breakdown is imported.', 'brikpanel' ),
 			];
 		}
 		$msg = $map[ $key ] ?? '';
@@ -676,9 +739,11 @@ class Brikpanel_Store_Summary {
 		$bounds = $this->all_time_bounds();
 
 		$lines = [];
-		$lines[] = '# ' . sprintf( __( 'Store Summary — %s', 'brikpanel' ), $site_name );
+		/* translators: %s: site name. */
+		$lines[] = '# ' . brikpanel_safe_sprintf( __( 'Store Summary: %s', 'brikpanel' ), brikpanel_plain_name( $site_name ) );
 		$lines[] = '';
-		$lines[] = '> ' . sprintf( __( 'Generated %s by BrikPanel %s.', 'brikpanel' ), $generated, BRIKPANEL_VERSION );
+		/* translators: 1: date and time the summary was made, 2: BrikPanel version number. */
+		$lines[] = '> ' . sprintf( __( 'Generated %1$s by BrikPanel %2$s.', 'brikpanel' ), $generated, BRIKPANEL_VERSION );
 		$lines[] = '';
 		$lines[] = '## ' . __( 'Store Identity', 'brikpanel' );
 		$lines[] = '- **' . __( 'Name', 'brikpanel' ) . ':** ' . $this->md_cell( $site_name );
@@ -698,17 +763,17 @@ class Brikpanel_Store_Summary {
 		// Catalogue size
 		$product_counts = wp_count_posts( 'product' );
 		$published_products = isset( $product_counts->publish ) ? (int) $product_counts->publish : 0;
-		$lines[] = '- **' . __( 'Published products', 'brikpanel' ) . ':** ' . number_format_i18n( $published_products );
+		$lines[] = '- **' . __( 'Published products', 'brikpanel' ) . ':** ' . brikpanel_number( $published_products );
 
 		if ( $bounds ) {
 			$lines[] = '- **' . __( 'First order', 'brikpanel' ) . ':** ' . $bounds['first'] . ' | **' . __( 'Last order', 'brikpanel' ) . ':** ' . $bounds['last'] . ' | **' . __( 'Lifetime span', 'brikpanel' ) . ':** ' . $bounds['span_label'];
 			$active_12m = $this->active_customers_count( $this->months_ago_gmt( 12 ) );
 			$active_30d = $this->active_customers_count( $this->days_ago_gmt( 30 ) );
 			$total_customers = (int) $bounds['customers'];
-			$lines[] = '- **' . __( 'Customers tracked (all-time)', 'brikpanel' ) . ':** ' . number_format_i18n( $total_customers )
-				. ' | **' . __( 'active last 12m', 'brikpanel' ) . ':** ' . number_format_i18n( $active_12m )
+			$lines[] = '- **' . __( 'Customers tracked (all-time)', 'brikpanel' ) . ':** ' . brikpanel_number( $total_customers )
+				. ' | **' . __( 'active last 12m', 'brikpanel' ) . ':** ' . brikpanel_number( $active_12m )
 				. ' (' . $this->pct( $active_12m, $total_customers ) . ')'
-				. ' | **' . __( 'active last 30d', 'brikpanel' ) . ':** ' . number_format_i18n( $active_30d );
+				. ' | **' . __( 'active last 30d', 'brikpanel' ) . ':** ' . brikpanel_number( $active_30d );
 			$this->register_tldr( 'active_customers_12m', $active_12m );
 			$this->register_tldr( 'active_customers_30d', $active_30d );
 			$this->register_tldr( 'total_customers_alltime', $total_customers );
@@ -719,14 +784,14 @@ class Brikpanel_Store_Summary {
 		// figure.
 		$active_ccys = $this->currencies_in_use();
 		if ( count( $active_ccys ) > 0 ) {
-			$lines[] = '- **' . __( 'Active currencies on paid orders', 'brikpanel' ) . ':** ' . implode( ', ', $active_ccys ) . ( count( $active_ccys ) > 1 ? ' — *' . __( 'mixed-currency store; per-period tables show each currency separately, no conversion is applied', 'brikpanel' ) . '*' : '' );
+			$lines[] = '- **' . __( 'Active currencies on paid orders', 'brikpanel' ) . ':** ' . implode( ', ', $active_ccys ) . ( count( $active_ccys ) > 1 ? ' · *' . __( 'mixed-currency store; per-period tables show each currency separately, no conversion is applied', 'brikpanel' ) . '*' : '' );
 		}
 
 		// BrikPanel tracking start. Pre-tracking orders (from WooCommerce
 		// alone) don't have funnel/device/visitor data attached.
 		$track_start = $this->tracking_start_date();
 		if ( $track_start ) {
-			$lines[] = '- **' . __( 'BrikPanel analytics tracking active since', 'brikpanel' ) . ':** ' . $track_start . ' — *' . __( 'orders before this date come from WooCommerce only; visitor / funnel / device metrics apply to this date forward', 'brikpanel' ) . '*';
+			$lines[] = '- **' . __( 'BrikPanel analytics tracking active since', 'brikpanel' ) . ':** ' . $track_start . ' · *' . __( 'orders before this date come from WooCommerce only; visitor / funnel / device metrics apply to this date forward', 'brikpanel' ) . '*';
 		} else {
 			$lines[] = '- **' . __( 'BrikPanel analytics tracking', 'brikpanel' ) . ':** ' . __( 'no visitor data captured yet', 'brikpanel' ) . '*';
 		}
@@ -771,12 +836,15 @@ class Brikpanel_Store_Summary {
 		$years    = floor( $months / 12 );
 		$rem_m    = $months - $years * 12;
 		$span     = $years > 0
-			? sprintf( _n( '%dy %dm', '%dy %dm', $years, 'brikpanel' ), $years, $rem_m )
-			: sprintf( _n( '%d month', '%d months', $months, 'brikpanel' ), $months );
+			/* translators: 1: whole years, 2: remaining months, a compact age like "2y 3m". */
+			? sprintf( _n( '%1$sy %2$sm', '%1$sy %2$sm', (int) $years, 'brikpanel' ), brikpanel_number( $years ), brikpanel_number( $rem_m ) )
+			/* translators: %s: number of months. */
+			: sprintf( _n( '%s month', '%s months', $months, 'brikpanel' ), brikpanel_number( $months ) );
 
 		return [
-			'first'       => mysql2date( 'Y-m-d', $row->first_dt ),
-			'last'        => mysql2date( 'Y-m-d', $row->last_dt ),
+			// MIN()/MAX() of a *_gmt column, so these are UTC instants.
+			'first'       => brikpanel_local_day( $row->first_dt ),
+			'last'        => brikpanel_local_day( $row->last_dt ),
 			'span_months' => $months,
 			'span_label'  => $span,
 			'customers'   => $customers,
@@ -790,7 +858,13 @@ class Brikpanel_Store_Summary {
 	private function section_sales_periods() {
 		$now_gmt    = $this->now_gmt();
 		$today_gmt  = $this->today_start_gmt();
-		$y_start    = gmdate( 'Y-m-d 00:00:00', strtotime( '-1 day', strtotime( $today_gmt ) ) );
+
+		// $today_gmt is already the UTC instant of local midnight (21:00 the day
+		// before, on a UTC+3 store). Truncating that back to gmdate('Y-m-d 00:00:00')
+		// is what made the Yesterday row a 45-hour window overlapping Today, so the
+		// two rows double-counted every order placed in the small hours.
+		$y_start    = brikpanel_local_day_start_utc( brikpanel_store_date( 'Y-m-d', '-1 day' ) );
+		$d2_start   = brikpanel_local_day_start_utc( brikpanel_store_date( 'Y-m-d', '-2 days' ) );
 
 		// Each entry: label, current-window [start, end], previous-window [start, end].
 		// Previous-window is the equivalent prior period for MoM/YoY delta. Today
@@ -798,7 +872,7 @@ class Brikpanel_Store_Summary {
 		// separate row), so its delta column shows the same yesterday revenue.
 		$periods = [
 			[ __( 'Today', 'brikpanel' ),         $today_gmt,                  $now_gmt,    $y_start,                          $today_gmt ],
-			[ __( 'Yesterday', 'brikpanel' ),     $y_start,                    $today_gmt,  gmdate( 'Y-m-d 00:00:00', strtotime( '-2 days', strtotime( $today_gmt ) ) ), $y_start ],
+			[ __( 'Yesterday', 'brikpanel' ),     $y_start,                    $today_gmt,  $d2_start,                         $y_start ],
 			[ __( 'Last 7 days', 'brikpanel' ),   $this->days_ago_gmt( 7 ),    $now_gmt,    $this->days_ago_gmt( 14 ),         $this->days_ago_gmt( 7 ) ],
 			[ __( 'Last 30 days', 'brikpanel' ),  $this->days_ago_gmt( 30 ),   $now_gmt,    $this->days_ago_gmt( 60 ),         $this->days_ago_gmt( 30 ) ],
 			[ __( 'Last 90 days', 'brikpanel' ),  $this->days_ago_gmt( 90 ),   $now_gmt,    $this->days_ago_gmt( 180 ),        $this->days_ago_gmt( 90 ) ],
@@ -812,7 +886,7 @@ class Brikpanel_Store_Summary {
 		$lines = [];
 		$lines[] = '## ' . __( 'Sales by Period', 'brikpanel' );
 		if ( $multi_ccy ) {
-			$lines[] = '*' . __( 'Multi-currency store — revenue and AOV columns list every active currency.', 'brikpanel' ) . '*';
+			$lines[] = '*' . __( 'Multi-currency store: revenue and AOV columns list every active currency.', 'brikpanel' ) . '*';
 			$lines[] = '';
 		}
 		$lines[] = '| ' . __( 'Period', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Orders', 'brikpanel' ) . ' | ' . __( 'AOV', 'brikpanel' ) . ' | ' . __( 'Δ vs prev', 'brikpanel' ) . ' |';
@@ -841,7 +915,7 @@ class Brikpanel_Store_Summary {
 			$rev_cell = $multi_ccy ? $this->format_currency_cell( $current, 'revenue' ) : $this->money( $cur_rev );
 			$aov_cell = $multi_ccy ? $this->format_currency_cell( $current, 'aov' )     : $this->money( $cur_orders > 0 ? $cur_rev / $cur_orders : 0 );
 
-			$lines[] = '| ' . $label . ' | ' . $rev_cell . ' | ' . number_format_i18n( $cur_orders ) . ' | ' . $aov_cell . ' | ' . $delta_label . ' |';
+			$lines[] = '| ' . $label . ' | ' . $rev_cell . ' | ' . brikpanel_number( $cur_orders ) . ' | ' . $aov_cell . ' | ' . $delta_label . ' |';
 
 			// Stash the headline number for TL;DR.
 			if ( $start === $this->days_ago_gmt( 30 ) ) {
@@ -867,8 +941,9 @@ class Brikpanel_Store_Summary {
 	private function section_yearly_sales() {
 		global $wpdb;
 
-		// Single grouped query: last 5 calendar years.
-		$current_year = (int) gmdate( 'Y' );
+		// Single grouped query: last 5 calendar years. The store's year, not the
+		// UTC one: on a UTC+3 store after 21:00 on 31 December those differ.
+		$current_year = (int) brikpanel_store_date( 'Y' );
 		$start_year   = $current_year - 4;
 		$start_dt     = $start_year . '-01-01 00:00:00';
 
@@ -936,7 +1011,7 @@ class Brikpanel_Store_Summary {
 
 			$yoy = $prev_rev === null ? '—' : $this->mom_yoy_delta_label( $rev, $prev_rev );
 
-			$lines[] = '| ' . $y . ' | ' . $this->money( $rev ) . ' | ' . number_format_i18n( $ord ) . ' | ' . $this->money( $aov ) . ' | ' . $yoy . ' |';
+			$lines[] = '| ' . $y . ' | ' . $this->money( $rev ) . ' | ' . brikpanel_number( $ord ) . ' | ' . $this->money( $aov ) . ' | ' . $yoy . ' |';
 			$prev_rev = $rev;
 		}
 
@@ -957,7 +1032,7 @@ class Brikpanel_Store_Summary {
 
 		if ( $this->is_hpos() ) {
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(date_created_gmt, '%%Y-%%m') AS ym,
+				"SELECT " . brikpanel_month_bucket_sql( 'date_created_gmt' ) . " AS ym,
 				        SUM(total_amount) AS revenue,
 				        COUNT(*) AS orders
 				 FROM {$wpdb->prefix}wc_orders
@@ -969,7 +1044,7 @@ class Brikpanel_Store_Summary {
 			) ); // phpcs:ignore
 		} else {
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
+				"SELECT " . brikpanel_month_bucket_sql( 'p.post_date_gmt' ) . " AS ym,
 				        SUM(pm.meta_value) AS revenue,
 				        COUNT(p.ID) AS orders
 				 FROM {$wpdb->posts} p
@@ -981,6 +1056,9 @@ class Brikpanel_Store_Summary {
 				$start_dt
 			) ); // phpcs:ignore
 		}
+
+		// The query grouped by UTC buckets; roll them up into the store's months.
+		$rows = $this->fold_to_months( $rows, [ 'revenue', 'orders' ] );
 
 		if ( empty( $rows ) ) {
 			return '';
@@ -1022,8 +1100,9 @@ class Brikpanel_Store_Summary {
 		// Older summary row — only when we actually have older months to show.
 		if ( ! empty( $older_keys ) && ! $this->is_zero_row( [ $older_rev, $older_ord ] ) ) {
 			$older_aov = $older_ord > 0 ? $older_rev / $older_ord : 0;
-			$older_label = sprintf( __( '%s → %s (%d months, %d active)', 'brikpanel' ), reset( $older_keys ), end( $older_keys ), count( $older_keys ), $older_nonzero );
-			$lines[] = '| *' . $older_label . '* | ' . $this->money( $older_rev ) . ' | ' . number_format_i18n( $older_ord ) . ' | ' . $this->money( $older_aov ) . ' |';
+			/* translators: 1: first month, 2: last month, 3: number of months in the span, 4: months that had orders. */
+			$older_label = sprintf( _n( '%1$s → %2$s (%3$s month, %4$s active)', '%1$s → %2$s (%3$s months, %4$s active)', count( $older_keys ), 'brikpanel' ), reset( $older_keys ), end( $older_keys ), brikpanel_number( count( $older_keys ) ), brikpanel_number( $older_nonzero ) );
+			$lines[] = '| *' . $older_label . '* | ' . $this->money( $older_rev ) . ' | ' . brikpanel_number( $older_ord ) . ' | ' . $this->money( $older_aov ) . ' |';
 		}
 
 		// Strict collapse: hide every all-zero month (leading, interior, or
@@ -1038,15 +1117,20 @@ class Brikpanel_Store_Summary {
 			}
 			$shown++;
 			$aov = $r['orders'] > 0 ? $r['revenue'] / $r['orders'] : 0;
-			$lines[] = '| ' . $ym . ' | ' . $this->money( $r['revenue'] ) . ' | ' . number_format_i18n( $r['orders'] ) . ' | ' . $this->money( $aov ) . ' |';
+			$lines[] = '| ' . $ym . ' | ' . $this->money( $r['revenue'] ) . ' | ' . brikpanel_number( $r['orders'] ) . ' | ' . $this->money( $aov ) . ' |';
 		}
 		$total_recent = count( $recent_keys );
 		if ( $shown < $total_recent ) {
 			$lines[] = '';
-			$lines[] = '*' . sprintf(
+			$lines[] = '*' . brikpanel_safe_sprintf(
 				/* translators: 1: months shown, 2: total months in detail window */
-				__( 'Showing %1$d active month(s) out of %2$d in the recent-12 window — months with zero revenue and zero orders are hidden.', 'brikpanel' ),
-				$shown,
+				_n(
+					'Showing %1$s active month out of %2$s in the recent-12 window. Months with zero revenue and zero orders are hidden.',
+					'Showing %1$s active months out of %2$s in the recent-12 window. Months with zero revenue and zero orders are hidden.',
+					$shown,
+					'brikpanel'
+				),
+				brikpanel_number( $shown ),
 				$total_recent
 			) . '*';
 		}
@@ -1105,7 +1189,7 @@ class Brikpanel_Store_Summary {
 
 		foreach ( $all_time as $r ) {
 			$label = $status_labels[ $r->status ] ?? $r->status;
-			$lines[] = '| ' . $this->md_cell( $label ) . ' | ' . number_format_i18n( $r->cnt ) . ' | ' . $this->pct( $r->cnt, $total_orders ) . ' | ' . $this->money( $r->rev ) . ' |';
+			$lines[] = '| ' . $this->md_cell( $label ) . ' | ' . brikpanel_number( $r->cnt ) . ' | ' . $this->pct( $r->cnt, $total_orders ) . ' | ' . $this->money( $r->rev ) . ' |';
 		}
 
 		$fn = $this->footnote( 'wc_orders_all' );
@@ -1292,7 +1376,7 @@ class Brikpanel_Store_Summary {
 		foreach ( array_slice( $enriched, 0, 10 ) as $p ) {
 			$avg = $p['qty'] > 0 ? $p['revenue'] / $p['qty'] : 0;
 			$row = '| ' . $i . ' | ' . $this->md_cell( $p['name'] ) . ' | ' . $this->md_cell( '' !== $p['sku'] ? $p['sku'] : '—' )
-				. ' | ' . number_format_i18n( $p['qty'] )
+				. ' | ' . brikpanel_number( $p['qty'] )
 				. ' | ' . $this->money( $p['revenue'] )
 				. ' | ' . $this->money( $avg );
 			if ( $has_cost_column ) {
@@ -1303,7 +1387,7 @@ class Brikpanel_Store_Summary {
 					: ( $p['has_cost'] ? __( 'partial', 'brikpanel' ) : __( 'NO', 'brikpanel' ) );
 				$row .= ' | ' . ( $p['has_cost'] ? $this->money( $p['cogs'] ) : '—' )
 					. ' | ' . ( $p['has_cost'] ? $this->money( $p['gross'] ) : '—' )
-					. ' | ' . ( $p['has_cost'] ? number_format_i18n( $p['margin'] * 100, 1 ) . '%' : '—' )
+					. ' | ' . ( $p['has_cost'] ? brikpanel_percent( $p['margin'] * 100, 1, false ) : '—' )
 					. ' | ' . $flag;
 			}
 			$out[] = $row . ' |';
@@ -1326,11 +1410,11 @@ class Brikpanel_Store_Summary {
 				$out[] = '|---|---|---:|---:|---:|---:|---:|';
 				foreach ( array_slice( $costed, 0, 5 ) as $p ) {
 					$out[] = '| ' . $this->md_cell( $p['name'] ) . ' | ' . $this->md_cell( '' !== $p['sku'] ? $p['sku'] : '—' )
-						. ' | ' . number_format_i18n( $p['qty'] )
+						. ' | ' . brikpanel_number( $p['qty'] )
 						. ' | ' . $this->money( $p['revenue'] )
 						. ' | ' . $this->money( $p['cogs'] )
 						. ' | ' . $this->money( $p['gross'] )
-						. ' | ' . number_format_i18n( $p['margin'] * 100, 1 ) . '% |';
+						. ' | ' . brikpanel_percent( $p['margin'] * 100, 1, false ) . ' |';
 				}
 			}
 		}
@@ -1430,7 +1514,7 @@ class Brikpanel_Store_Summary {
 				$this->register_tldr( 'top1_customer_name', $name );
 			}
 			$rec = $r->recency_days !== null ? sprintf( __( '%d days ago', 'brikpanel' ), (int) $r->recency_days ) : '—';
-			$lines[] = '| ' . $i . ' | ' . $this->md_cell( $name ) . ' | ' . $this->md_cell( $r->customer_email ) . ' | ' . number_format_i18n( $r->order_count ) . ' | ' . $this->money( $r->total_spent ) . ' | ' . $this->money( $r->aov ) . ' | ' . $rec . ' |';
+			$lines[] = '| ' . $i . ' | ' . $this->md_cell( $name ) . ' | ' . $this->md_cell( $r->customer_email ) . ' | ' . brikpanel_number( $r->order_count ) . ' | ' . $this->money( $r->total_spent ) . ' | ' . $this->money( $r->aov ) . ' | ' . $rec . ' |';
 			$i++;
 		}
 
@@ -1491,7 +1575,7 @@ class Brikpanel_Store_Summary {
 			}
 			$r = $by_seg[ $k ];
 			$label = $labels[ $k ]['label'] ?? $k;
-			$lines[] = '| ' . $this->md_cell( $label ) . ' | ' . number_format_i18n( $r->customers ) . ' | ' . $this->pct( $r->customers, $total ) . ' | ' . $this->money( $r->avg_ltv ) . ' | ' . $this->money( $r->total_ltv ) . ' | ' . number_format_i18n( $r->avg_orders, 1 ) . ' | ' . number_format_i18n( (int) round( $r->avg_recency ) ) . ' |';
+			$lines[] = '| ' . $this->md_cell( $label ) . ' | ' . brikpanel_number( $r->customers ) . ' | ' . $this->pct( $r->customers, $total ) . ' | ' . $this->money( $r->avg_ltv ) . ' | ' . $this->money( $r->total_ltv ) . ' | ' . brikpanel_number( $r->avg_orders, 1 ) . ' | ' . brikpanel_number( (int) round( $r->avg_recency ) ) . ' |';
 		}
 
 		$fn = $this->footnote( 'bp_metrics' );
@@ -1508,13 +1592,16 @@ class Brikpanel_Store_Summary {
 		global $wpdb;
 		$tbl = $wpdb->prefix . 'brikpanel_cohort_retention';
 
-		$rows = $wpdb->get_results(
+		// CURDATE() is the database server's clock, a third one on top of UTC and
+		// store time. The cutoff is computed in PHP instead and bound as a value.
+		$rows = $wpdb->get_results( $wpdb->prepare(
 			"SELECT cohort_month, period_offset, cohort_size, retained_customers, retention_rate
 			 FROM {$tbl}
-			 WHERE cohort_month >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+			 WHERE cohort_month >= %s
 			   AND period_offset <= 6
-			 ORDER BY cohort_month DESC, period_offset ASC"
-		); // phpcs:ignore
+			 ORDER BY cohort_month DESC, period_offset ASC",
+			brikpanel_store_month_start( 12 )
+		) ); // phpcs:ignore
 
 		if ( empty( $rows ) ) {
 			return '';
@@ -1523,7 +1610,10 @@ class Brikpanel_Store_Summary {
 		// Pivot rows into matrix: cohort → [size, m0..m6 retention %]
 		$matrix = [];
 		foreach ( $rows as $r ) {
-			$ck = mysql2date( 'Y-m', $r->cohort_month );
+			// cohort_month is a plain 'Y-m-01' label, not an instant, so it is cut
+			// rather than parsed: running a label through a date function is how
+			// the cohort headings ended up a month early west of UTC.
+			$ck = substr( (string) $r->cohort_month, 0, 7 );
 			if ( ! isset( $matrix[ $ck ] ) ) {
 				$matrix[ $ck ] = [ 'size' => (int) $r->cohort_size, 'm' => array_fill( 0, 7, null ) ];
 			}
@@ -1538,11 +1628,11 @@ class Brikpanel_Store_Summary {
 		$lines[] = '|---|---:|---:|---:|---:|---:|---:|---:|---:|:---:|';
 
 		foreach ( $matrix as $cohort => $data ) {
-			$row = '| ' . $cohort . ' | ' . number_format_i18n( $data['size'] );
+			$row = '| ' . $cohort . ' | ' . brikpanel_number( $data['size'] );
 			$spark = '';
 			for ( $m = 0; $m <= 6; $m++ ) {
 				$v = $data['m'][ $m ];
-				$row .= ' | ' . ( $v === null ? '—' : number_format_i18n( $v, 1 ) . '%' );
+				$row .= ' | ' . ( $v === null ? '—' : brikpanel_percent( $v, 1, false ) );
 				$spark .= ( $v === null ? ' ' : $this->unicode_spark( $v ) );
 			}
 			$row .= ' | ' . $spark . ' |';
@@ -1566,7 +1656,7 @@ class Brikpanel_Store_Summary {
 		}
 
 		$out = [];
-		$out[] = '## ' . __( 'Conversion Funnel', 'brikpanel' );
+		$out[] = '## ' . __( 'Conversion funnel', 'brikpanel' );
 		$out[] = '*' . __( 'Add-to-cart count can exceed product views due to bot traffic, direct add-to-cart links, listing-page tracking, and same-product re-adds. Successful orders include WooCommerce-imported orders that may pre-date BrikPanel tracking; the funnel windows below are clamped to dates after tracking started so the rates stay meaningful.', 'brikpanel' ) . '*';
 		$out[] = '';
 		$out[] = $this->funnel_window( __( 'Last 30 days', 'brikpanel' ), 30 );
@@ -1580,8 +1670,13 @@ class Brikpanel_Store_Summary {
 	}
 
 	private function funnel_window( $label, $days_back ) {
-		$end_date   = gmdate( 'Y-m-d' );
-		$raw_start  = gmdate( 'Y-m-d', strtotime( '-' . (int) $days_back . ' days', current_time( 'timestamp', true ) ) );
+		// Two clocks meet in this function, so both are named. The tracking tables
+		// (brikpanel_visitors and friends) store SITE-LOCAL days; the orders table
+		// stores UTC. Feeding a UTC day to one and a local day to the other put the
+		// numerator and the denominator on different clocks, which made the funnel
+		// RATES wrong, not merely the labels.
+		$end_date   = brikpanel_store_date( 'Y-m-d' );
+		$raw_start  = brikpanel_store_date( 'Y-m-d', '-' . (int) $days_back . ' days' );
 
 		// Clamp to tracking_start_date — without this, "successful orders"
 		// pulls historical WC orders while visitor counts remain zero,
@@ -1597,7 +1692,8 @@ class Brikpanel_Store_Summary {
 		$add_cart  = function_exists( 'brikpanel_get_add_to_cart_count' )   ? (int) brikpanel_get_add_to_cart_count( $start_date, $end_date ) : 0;
 		$checkout  = function_exists( 'brikpanel_get_checkout_count' )      ? (int) brikpanel_get_checkout_count( $start_date, $end_date ) : 0;
 
-		$start_gmt = $start_date . ' 00:00:00';
+		// $start_date is a store day; the orders query needs the UTC instant it began.
+		$start_gmt = brikpanel_local_day_start_utc( $start_date );
 		$end_gmt   = $this->now_gmt();
 		$success   = function_exists( 'brikpanel_get_successful_order_count' ) ? (int) brikpanel_get_successful_order_count( $start_gmt, $end_gmt ) : 0;
 
@@ -1608,18 +1704,23 @@ class Brikpanel_Store_Summary {
 		// Caveat the label when clamping kicked in (window shorter than asked).
 		$effective_days = (int) round( ( strtotime( $end_date ) - strtotime( $start_date ) ) / DAY_IN_SECONDS );
 		if ( $effective_days < $days_back ) {
-			$label .= ' — ' . sprintf( __( 'clamped to %d days since tracking start (%s)', 'brikpanel' ), $effective_days, $start_date );
+			$label .= ', ' . brikpanel_safe_sprintf(
+				/* translators: 1: number of days, 2: the date tracking started (Y-m-d). */
+				_n( 'clamped to %1$s day since tracking start (%2$s)', 'clamped to %1$s days since tracking start (%2$s)', $effective_days, 'brikpanel' ),
+				brikpanel_number( $effective_days ),
+				$start_date
+			);
 		}
 
 		$lines = [];
 		$lines[] = '### ' . $label;
 		$lines[] = '| ' . __( 'Stage', 'brikpanel' ) . ' | ' . __( 'Count', 'brikpanel' ) . ' | ' . __( 'Conv. from Visitor', 'brikpanel' ) . ' |';
 		$lines[] = '|---|---:|---:|';
-		$lines[] = '| ' . __( 'Visitors', 'brikpanel' ) . ' | ' . number_format_i18n( $visitors ) . ' | 100% |';
-		$lines[] = '| ' . __( 'Product views', 'brikpanel' ) . ' | ' . number_format_i18n( $products ) . ' | ' . $this->pct( $products, $visitors ) . ' |';
-		$lines[] = '| ' . __( 'Add to cart', 'brikpanel' ) . ' | ' . number_format_i18n( $add_cart ) . ' | ' . $this->pct( $add_cart, $visitors ) . ' |';
-		$lines[] = '| ' . __( 'Checkout reached', 'brikpanel' ) . ' | ' . number_format_i18n( $checkout ) . ' | ' . $this->pct( $checkout, $visitors ) . ' |';
-		$lines[] = '| ' . __( 'Successful orders', 'brikpanel' ) . ' | ' . number_format_i18n( $success ) . ' | ' . $this->pct( $success, $visitors ) . ' |';
+		$lines[] = '| ' . __( 'Visitors', 'brikpanel' ) . ' | ' . brikpanel_number( $visitors ) . ' | 100% |';
+		$lines[] = '| ' . __( 'Product views', 'brikpanel' ) . ' | ' . brikpanel_number( $products ) . ' | ' . $this->pct( $products, $visitors ) . ' |';
+		$lines[] = '| ' . __( 'Add to cart', 'brikpanel' ) . ' | ' . brikpanel_number( $add_cart ) . ' | ' . $this->pct( $add_cart, $visitors ) . ' |';
+		$lines[] = '| ' . __( 'Checkout reached', 'brikpanel' ) . ' | ' . brikpanel_number( $checkout ) . ' | ' . $this->pct( $checkout, $visitors ) . ' |';
+		$lines[] = '| ' . __( 'Successful orders', 'brikpanel' ) . ' | ' . brikpanel_number( $success ) . ' | ' . $this->pct( $success, $visitors ) . ' |';
 
 		return implode( "\n", $lines );
 	}
@@ -1632,7 +1733,9 @@ class Brikpanel_Store_Summary {
 		global $wpdb;
 		$tbl = $wpdb->prefix . 'brikpanel_visitors';
 
-		$start_date = gmdate( 'Y-m-d', strtotime( '-12 months', current_time( 'timestamp', true ) ) );
+		// brikpanel_visitors.date_column is written in SITE-LOCAL time, so the
+		// cutoff has to be a store day too, not a UTC one.
+		$start_date = brikpanel_store_date( 'Y-m-d', '-12 months' );
 		$row = $wpdb->get_row( $wpdb->prepare(
 			"SELECT
 				COALESCE(SUM(mobile_count),0)  AS mobile,
@@ -1662,13 +1765,13 @@ class Brikpanel_Store_Summary {
 		$lines[] = '## ' . __( 'Device Split (last 12 months)', 'brikpanel' );
 		$lines[] = '| ' . __( 'Device', 'brikpanel' ) . ' | ' . __( 'Visitors', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' |';
 		$lines[] = '|---|---:|---:|';
-		$lines[] = '| ' . __( 'Mobile', 'brikpanel' ) . ' | ' . number_format_i18n( $mobile ) . ' | ' . $this->pct( $mobile, $total ) . ' |';
-		$lines[] = '| ' . __( 'Tablet', 'brikpanel' ) . ' | ' . number_format_i18n( $tablet ) . ' | ' . $this->pct( $tablet, $total ) . ' |';
-		$lines[] = '| ' . __( 'Desktop', 'brikpanel' ) . ' | ' . number_format_i18n( $desktop ) . ' | ' . $this->pct( $desktop, $total ) . ' |';
+		$lines[] = '| ' . __( 'Mobile', 'brikpanel' ) . ' | ' . brikpanel_number( $mobile ) . ' | ' . $this->pct( $mobile, $total ) . ' |';
+		$lines[] = '| ' . __( 'Tablet', 'brikpanel' ) . ' | ' . brikpanel_number( $tablet ) . ' | ' . $this->pct( $tablet, $total ) . ' |';
+		$lines[] = '| ' . __( 'Desktop', 'brikpanel' ) . ' | ' . brikpanel_number( $desktop ) . ' | ' . $this->pct( $desktop, $total ) . ' |';
 		if ( $unknown > 0 ) {
-			$lines[] = '| ' . __( 'Unknown / pre-tracking', 'brikpanel' ) . ' | ' . number_format_i18n( $unknown ) . ' | ' . $this->pct( $unknown, $total ) . ' |';
+			$lines[] = '| ' . __( 'Unknown / pre-tracking', 'brikpanel' ) . ' | ' . brikpanel_number( $unknown ) . ' | ' . $this->pct( $unknown, $total ) . ' |';
 		}
-		$lines[] = '| **' . __( 'Total', 'brikpanel' ) . '** | **' . number_format_i18n( $total ) . '** | 100% |';
+		$lines[] = '| **' . __( 'Total', 'brikpanel' ) . '** | **' . brikpanel_number( $total ) . '** | 100% |';
 
 		$fn = $this->footnote( 'bp_visitors' );
 		if ( $fn ) { $lines[] = ''; $lines[] = $fn; }
@@ -1722,11 +1825,11 @@ class Brikpanel_Store_Summary {
 		foreach ( $rows as $r ) {
 			$amount_str = '';
 			if ( strpos( (string) $r->discount_type, 'percent' ) !== false ) {
-				$amount_str = number_format_i18n( (float) $r->amount, 0 ) . '%';
+				$amount_str = brikpanel_percent( (float) $r->amount, 0, false );
 			} else {
 				$amount_str = $this->money( $r->amount );
 			}
-			$lines[] = '| ' . $this->md_cell( $r->code ) . ' | ' . $this->md_cell( $r->discount_type ?: '—' ) . ' | ' . $amount_str . ' | ' . number_format_i18n( $r->usage_count ) . ' | ' . $this->md_cell( $r->status ) . ' |';
+			$lines[] = '| ' . $this->md_cell( $r->code ) . ' | ' . $this->md_cell( $r->discount_type ?: '—' ) . ' | ' . $amount_str . ' | ' . brikpanel_number( $r->usage_count ) . ' | ' . $this->md_cell( $r->status ) . ' |';
 		}
 
 		$fn = $this->footnote( 'wc_coupons' );
@@ -1992,7 +2095,7 @@ class Brikpanel_Store_Summary {
 		if ( $denominator <= 0 ) {
 			return '—';
 		}
-		return number_format_i18n( (float) $numerator / $denominator, $decimals ) . 'x';
+		return brikpanel_number( (float) $numerator / $denominator, $decimals ) . 'x';
 	}
 
 	// =========================================================================
@@ -2022,11 +2125,16 @@ class Brikpanel_Store_Summary {
 			// some. A store with none at all needs the blunter wording below,
 			// or the reader is told a 100% margin is merely "overstated".
 			if ( $any_cogs && $missing > 0 ) {
-				$notes[] = '- **' . __( 'Cost of goods is incomplete', 'brikpanel' ) . ':** ' . sprintf(
+				$notes[] = '- **' . __( 'Cost of goods is incomplete', 'brikpanel' ) . ':** ' . brikpanel_safe_sprintf(
 					/* translators: 1: coverage percentage, 2: number of order lines with no cost */
-					__( 'only %1$s of the period\'s revenue has a product cost on file (%2$s order line(s) have none). Lines without a cost count as zero, so the reported COGS is a FLOOR and gross margin is overstated.', 'brikpanel' ),
-					number_format_i18n( $coverage, 1 ) . '%',
-					number_format_i18n( $missing )
+					_n(
+						'only %1$s of the period\'s revenue has a product cost on file (%2$s order line has none). Lines without a cost count as zero, so the reported COGS is a FLOOR and gross margin is overstated.',
+						'only %1$s of the period\'s revenue has a product cost on file (%2$s order lines have none). Lines without a cost count as zero, so the reported COGS is a FLOOR and gross margin is overstated.',
+						$missing,
+						'brikpanel'
+					),
+					brikpanel_percent( $coverage, 1, false ),
+					brikpanel_number( $missing )
 				);
 				$missing_products = isset( $snap['cogs_missing_products'] ) && is_array( $snap['cogs_missing_products'] )
 					? array_slice( $snap['cogs_missing_products'], 0, 10 )
@@ -2039,7 +2147,7 @@ class Brikpanel_Store_Summary {
 					$notes[] = '  - ' . __( 'Biggest uncosted sellers', 'brikpanel' ) . ': ' . implode( '; ', array_filter( $names ) );
 				}
 			} elseif ( $any_cogs ) {
-				$notes[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . __( 'every sold line has a cost on file — margins below are complete.', 'brikpanel' );
+				$notes[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . __( 'every sold line has a cost on file, so the margins below are complete.', 'brikpanel' );
 			} else {
 				$notes[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . __( 'no product has a cost on file, so COGS is zero and every margin below is really a revenue figure. Treat gross margin as unknown, not as 100%.', 'brikpanel' );
 			}
@@ -2051,18 +2159,28 @@ class Brikpanel_Store_Summary {
 				$fee_missing = isset( $snap['payment_fees_missing'] ) ? (int) $snap['payment_fees_missing'] : 0;
 				$fee_unconv  = isset( $snap['payment_fees_unconverted'] ) ? (int) $snap['payment_fees_unconverted'] : 0;
 				if ( $fee_unconv > 0 ) {
-					$notes[] = '- **' . __( 'Payment fees are understated', 'brikpanel' ) . ':** ' . sprintf(
+					$notes[] = '- **' . __( 'Payment fees are understated', 'brikpanel' ) . ':** ' . brikpanel_safe_sprintf(
 						/* translators: %s: number of orders */
-						__( '%s order(s) carry a fee in a currency with no conversion rate on file, so those fees are missing from the total.', 'brikpanel' ),
-						number_format_i18n( $fee_unconv )
+						_n(
+							'%s order carries a fee in a currency with no conversion rate on file, so that fee is missing from the total.',
+							'%s orders carry a fee in a currency with no conversion rate on file, so those fees are missing from the total.',
+							$fee_unconv,
+							'brikpanel'
+						),
+						brikpanel_number( $fee_unconv )
 					);
 				}
 				if ( $fee_missing > 0 ) {
-					$notes[] = '- ' . sprintf(
+					$notes[] = '- ' . brikpanel_safe_sprintf(
 						/* translators: 1: number of orders, 2: coverage percentage */
-						__( 'Payment fees: %1$s order(s) carry no processor fee (normal for bank transfer / cash on delivery). Coverage %2$s.', 'brikpanel' ),
-						number_format_i18n( $fee_missing ),
-						number_format_i18n( isset( $snap['payment_fees_coverage_pct'] ) ? (float) $snap['payment_fees_coverage_pct'] : 0, 1 ) . '%'
+						_n(
+							'Payment fees: %1$s order carries no processor fee (normal for bank transfer / cash on delivery). Coverage %2$s.',
+							'Payment fees: %1$s orders carry no processor fee (normal for bank transfer / cash on delivery). Coverage %2$s.',
+							$fee_missing,
+							'brikpanel'
+						),
+						brikpanel_number( $fee_missing ),
+						brikpanel_percent( isset( $snap['payment_fees_coverage_pct'] ) ? (float) $snap['payment_fees_coverage_pct'] : 0, 1, false )
 					);
 				}
 			}
@@ -2089,7 +2207,7 @@ class Brikpanel_Store_Summary {
 			if ( ! empty( $ads['foreign'] ) ) {
 				$parts = [];
 				foreach ( $ads['foreign'] as $cur => $amount ) {
-					$parts[] = number_format_i18n( $amount, 2 ) . ' ' . $this->md_cell( $cur );
+					$parts[] = brikpanel_number( $amount, 2 ) . ' ' . $this->md_cell( $cur );
 				}
 				$notes[] = '- **' . __( 'Foreign-currency ad spend is excluded', 'brikpanel' ) . ':** ' . sprintf(
 					/* translators: 1: list of amounts and currencies, 2: store currency code */
@@ -2101,7 +2219,7 @@ class Brikpanel_Store_Summary {
 			// Only worth saying when spend was actually imported — on a store
 			// with the module on but nothing connected it is pure noise.
 			if ( '' !== $ads['first'] ) {
-				$notes[] = '- ' . __( 'Ad spend is imported at account level per day. There is no campaign, ad-set, keyword or product breakdown, and no click-to-order attribution — any cost-per-order below is blended, not attributed.', 'brikpanel' );
+				$notes[] = '- ' . __( 'Ad spend is imported at account level per day. There is no campaign, ad-set, keyword or product breakdown, and no click-to-order attribution, so any cost-per-order below is blended, not attributed.', 'brikpanel' );
 			}
 		}
 
@@ -2116,7 +2234,7 @@ class Brikpanel_Store_Summary {
 		}
 
 		$lines[] = '## ' . __( 'Data Quality & Caveats', 'brikpanel' );
-		$lines[] = '*' . __( 'Read this before drawing conclusions from the money sections — these are the gaps that are otherwise silent.', 'brikpanel' ) . '*';
+		$lines[] = '*' . __( 'Read this before drawing conclusions from the money sections: these are the gaps that are otherwise silent.', 'brikpanel' ) . '*';
 		$lines[] = '';
 		foreach ( $notes as $n ) {
 			$lines[] = $n;
@@ -2156,9 +2274,9 @@ class Brikpanel_Store_Summary {
 			$spend  = (float) $r['spend'];
 			$imp    = (int) $r['impressions'];
 			$clicks = (int) $r['clicks'];
-			$ctr    = $imp > 0 ? number_format_i18n( ( $clicks / $imp ) * 100, 2 ) . '%' : '—';
-			$cpc    = $clicks > 0 ? number_format_i18n( $spend / $clicks, 2 ) . ' ' . $cur : '—';
-			$cpm    = $imp > 0 ? number_format_i18n( ( $spend / $imp ) * 1000, 2 ) . ' ' . $cur : '—';
+			$ctr    = $imp > 0 ? brikpanel_percent( ( $clicks / $imp ) * 100, 2, false ) : '—';
+			$cpc    = $clicks > 0 ? brikpanel_number( $spend / $clicks, 2 ) . ' ' . $cur : '—';
+			$cpm    = $imp > 0 ? brikpanel_number( ( $spend / $imp ) * 1000, 2 ) . ' ' . $cur : '—';
 
 			$currencies[ $cur ] = true;
 			if ( $cur === $store_cur ) {
@@ -2167,9 +2285,9 @@ class Brikpanel_Store_Summary {
 
 			$lines[] = '| ' . $this->md_cell( $this->ad_platform_label( $r['platform'] ) )
 				. ' | ' . $this->md_cell( $cur )
-				. ' | ' . number_format_i18n( $spend, 2 )
-				. ' | ' . number_format_i18n( $imp )
-				. ' | ' . number_format_i18n( $clicks )
+				. ' | ' . brikpanel_number( $spend, 2 )
+				. ' | ' . brikpanel_number( $imp )
+				. ' | ' . brikpanel_number( $clicks )
 				. ' | ' . $ctr . ' | ' . $cpc . ' | ' . $cpm . ' |';
 		}
 
@@ -2188,14 +2306,14 @@ class Brikpanel_Store_Summary {
 		$lines[] = '- **' . __( 'Total ad spend (store currency)', 'brikpanel' ) . ':** ' . $this->money( $total_store );
 		if ( $single_currency ) {
 			$lines[] = '- **' . __( 'ROAS (blended)', 'brikpanel' ) . ':** ' . $this->ratio( $revenue, $total_store )
-				. ' — *' . __( 'total revenue divided by total ad spend across the whole store, not attributed to ads.', 'brikpanel' ) . '*';
+				. ' · *' . __( 'total revenue divided by total ad spend across the whole store, not attributed to ads.', 'brikpanel' ) . '*';
 			$lines[] = '- **' . __( 'Ad cost as share of revenue', 'brikpanel' ) . ':** ' . $this->pct( $total_store, $revenue );
 			if ( $orders > 0 ) {
 				$lines[] = '- **' . __( 'Ad spend per paid order (blended)', 'brikpanel' ) . ':** ' . $this->money( $total_store / $orders )
-					. ' — *' . __( 'this is NOT cost per acquisition: no click-to-order attribution is imported.', 'brikpanel' ) . '*';
+					. ' · *' . __( 'this is NOT cost per acquisition: no click-to-order attribution is imported.', 'brikpanel' ) . '*';
 			}
 		} else {
-			$lines[] = '- **' . __( 'ROAS', 'brikpanel' ) . ':** — *' . sprintf(
+			$lines[] = '- **' . __( 'ROAS', 'brikpanel' ) . ':** *' . sprintf(
 				/* translators: %s: store currency code */
 				__( 'not calculated: spend is billed in more than one currency, or in a currency other than the store currency (%s), and BrikPanel does not convert ad spend.', 'brikpanel' ),
 				$this->currency_code()
@@ -2336,7 +2454,7 @@ class Brikpanel_Store_Summary {
 			$has_cost = $t['costed'] > 0;
 
 			$lines[] = '| ' . $this->md_cell( $cat )
-				. ' | ' . number_format_i18n( $t['units'] )
+				. ' | ' . brikpanel_number( $t['units'] )
 				. ' | ' . $this->money( $revenue )
 				. ' | ' . $this->pct( $revenue, $total_revenue )
 				. ' | ' . ( $has_cost ? $this->money( $t['cogs'] ) : '—' )
@@ -2428,7 +2546,7 @@ class Brikpanel_Store_Summary {
 			$lines[] = '| ' . __( 'Title', 'brikpanel' ) . ' | ' . __( 'Entries', 'brikpanel' ) . ' | ' . __( 'Total', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' |';
 			$lines[] = '|---|---:|---:|---:|';
 			foreach ( $by_cat as $r ) {
-				$lines[] = '| ' . $this->md_cell( $r->category ) . ' | ' . number_format_i18n( $r->entries ) . ' | ' . $this->money( $r->total ) . ' | ' . $this->pct( $r->total, $total_12m ) . ' |';
+				$lines[] = '| ' . $this->md_cell( $r->category ) . ' | ' . brikpanel_number( $r->entries ) . ' | ' . $this->money( $r->total ) . ' | ' . $this->pct( $r->total, $total_12m ) . ' |';
 			}
 		}
 
@@ -2492,10 +2610,15 @@ class Brikpanel_Store_Summary {
 				$remaining = count( $detail ) - count( $shown );
 				if ( $remaining > 0 ) {
 					$lines[] = '';
-					$lines[] = '*' . sprintf(
+					$lines[] = '*' . brikpanel_safe_sprintf(
 						/* translators: %s: number of expense lines not listed */
-						__( '%s further expense line(s) not listed — they are included in every total above.', 'brikpanel' ),
-						number_format_i18n( $remaining )
+						_n(
+							'%s further expense line is not listed. It is included in every total above.',
+							'%s further expense lines are not listed. They are included in every total above.',
+							$remaining,
+							'brikpanel'
+						),
+						brikpanel_number( $remaining )
 					) . '*';
 				}
 			}
@@ -2524,7 +2647,7 @@ class Brikpanel_Store_Summary {
 				$lines[] = '|---|---:|---:|';
 				foreach ( $percent['items'] as $item ) {
 					$lines[] = '| ' . $this->md_cell( isset( $item['title'] ) ? $item['title'] : '' )
-						. ' | ' . number_format_i18n( isset( $item['rate'] ) ? (float) $item['rate'] : 0, 2 ) . '%'
+						. ' | ' . brikpanel_percent( isset( $item['rate'] ) ? (float) $item['rate'] : 0, 2, false )
 						. ' | ' . $this->money( isset( $item['amount'] ) ? $item['amount'] : 0 ) . ' |';
 				}
 				$lines[] = '| **' . __( 'Total', 'brikpanel' ) . '** | | **' . $this->money( isset( $percent['total'] ) ? $percent['total'] : 0 ) . '** |';
@@ -2548,7 +2671,7 @@ class Brikpanel_Store_Summary {
 					$lines[] = '| ' . $this->md_cell( isset( $item['title'] ) ? $item['title'] : '' )
 						. ' | ' . $this->md_cell( isset( $item['scope_label'] ) && '' !== $item['scope_label'] ? $item['scope_label'] : __( 'Every order', 'brikpanel' ) )
 						. ' | ' . $this->money( isset( $item['unit'] ) ? $item['unit'] : 0 )
-						. ' | ' . number_format_i18n( isset( $item['orders'] ) ? (int) $item['orders'] : 0 )
+						. ' | ' . brikpanel_number( isset( $item['orders'] ) ? (int) $item['orders'] : 0 )
 						. ' | ' . $this->money( isset( $item['amount'] ) ? $item['amount'] : 0 ) . ' |';
 				}
 				$lines[] = '| **' . __( 'Total', 'brikpanel' ) . '** | | | | **' . $this->money( isset( $per_order['total'] ) ? $per_order['total'] : 0 ) . '** |';
@@ -2691,35 +2814,39 @@ class Brikpanel_Store_Summary {
 		$lines[] = '| ' . __( 'Type', 'brikpanel' ) . ' | ' . __( 'Count', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' |';
 		$lines[] = '|---|---:|---:|';
 		foreach ( $by_type as $type => $count ) {
-			$lines[] = '| ' . $this->md_cell( ucfirst( $type ) ) . ' | ' . number_format_i18n( $count ) . ' | ' . $this->pct( $count, $total_published ) . ' |';
+			$lines[] = '| ' . $this->md_cell( ucfirst( $type ) ) . ' | ' . brikpanel_number( $count ) . ' | ' . $this->pct( $count, $total_published ) . ' |';
 		}
-		$lines[] = '| ' . __( 'Variations (across variable products)', 'brikpanel' ) . ' | ' . number_format_i18n( $variations_count ) . ' | — |';
+		$lines[] = '| ' . __( 'Variations (across variable products)', 'brikpanel' ) . ' | ' . brikpanel_number( $variations_count ) . ' | |';
 		$lines[] = '';
 
 		// Physical vs digital
 		$lines[] = '### ' . __( 'Physical vs Digital', 'brikpanel' );
-		$lines[] = '- **' . __( 'Physical products', 'brikpanel' ) . ':** ' . number_format_i18n( $physical ) . ' (' . $this->pct( $physical, $total_published ) . ')';
-		$lines[] = '- **' . __( 'Virtual products', 'brikpanel' ) . ':** ' . number_format_i18n( $virtual ) . ' (' . $this->pct( $virtual, $total_published ) . ') — ' . __( 'no shipping required', 'brikpanel' );
-		$lines[] = '- **' . __( 'Downloadable products', 'brikpanel' ) . ':** ' . number_format_i18n( $downloadable );
+		$lines[] = '- **' . __( 'Physical products', 'brikpanel' ) . ':** ' . brikpanel_number( $physical ) . ' (' . $this->pct( $physical, $total_published ) . ')';
+		$lines[] = '- **' . __( 'Virtual products', 'brikpanel' ) . ':** ' . brikpanel_number( $virtual ) . ' (' . $this->pct( $virtual, $total_published ) . '), ' . __( 'no shipping required', 'brikpanel' );
+		$lines[] = '- **' . __( 'Downloadable products', 'brikpanel' ) . ':** ' . brikpanel_number( $downloadable );
 		$lines[] = '- **' . __( 'Average product price', 'brikpanel' ) . ':** ' . $this->money( $avg_price );
 		$lines[] = '';
 
 		// Stock
 		$lines[] = '### ' . __( 'Stock & Inventory', 'brikpanel' );
-		$lines[] = '- **' . __( 'In stock', 'brikpanel' ) . ':** ' . number_format_i18n( $stock_by_state['instock'] ?? 0 );
-		$lines[] = '- **' . __( 'Out of stock', 'brikpanel' ) . ':** ' . number_format_i18n( $stock_by_state['outofstock'] ?? 0 );
-		$lines[] = '- **' . __( 'On backorder', 'brikpanel' ) . ':** ' . number_format_i18n( $stock_by_state['onbackorder'] ?? 0 );
-		$lines[] = '- **' . __( 'Total stock units', 'brikpanel' ) . ':** ' . number_format_i18n( (float) $inv_row->units );
+		$lines[] = '- **' . __( 'In stock', 'brikpanel' ) . ':** ' . brikpanel_number( $stock_by_state['instock'] ?? 0 );
+		$lines[] = '- **' . __( 'Out of stock', 'brikpanel' ) . ':** ' . brikpanel_number( $stock_by_state['outofstock'] ?? 0 );
+		$lines[] = '- **' . __( 'On backorder', 'brikpanel' ) . ':** ' . brikpanel_number( $stock_by_state['onbackorder'] ?? 0 );
+		$lines[] = '- **' . __( 'Total stock units', 'brikpanel' ) . ':** ' . brikpanel_number( (float) $inv_row->units );
 		$lines[] = '- **' . __( 'Inventory retail value', 'brikpanel' ) . ':** ' . $this->money( $inv_row->retail_value );
 
 		if ( $products_with_cogs > 0 ) {
-			$lines[] = '- **' . __( 'Inventory at cost (COGS)', 'brikpanel' ) . ':** ' . $this->money( $inv_row->cogs_value ) . ' — *' . sprintf( __( 'across %d products with cost set', 'brikpanel' ), $products_with_cogs ) . '*';
+			$lines[] = '- **' . __( 'Inventory at cost (COGS)', 'brikpanel' ) . ':** ' . $this->money( $inv_row->cogs_value ) . ' · *' . brikpanel_safe_sprintf(
+				/* translators: %s: number of products. */
+				_n( 'across %s product with cost set', 'across %s products with cost set', $products_with_cogs, 'brikpanel' ),
+				brikpanel_number( $products_with_cogs )
+			) . '*';
 			if ( (float) $inv_row->retail_value > 0 ) {
 				$potential_margin = ( (float) $inv_row->retail_value - (float) $inv_row->cogs_value ) / (float) $inv_row->retail_value * 100;
-				$lines[] = '- **' . __( 'Implied catalog margin', 'brikpanel' ) . ':** ' . number_format_i18n( $potential_margin, 1 ) . '%';
+				$lines[] = '- **' . __( 'Implied catalog margin', 'brikpanel' ) . ':** ' . brikpanel_percent( $potential_margin, 1, false );
 			}
 		} else {
-			$lines[] = '- *' . __( 'COGS not configured for any product — sell-through margin cannot be inferred.', 'brikpanel' ) . '*';
+			$lines[] = '- *' . __( 'COGS not configured for any product, so sell-through margin cannot be inferred.', 'brikpanel' ) . '*';
 		}
 
 		$fn = $this->footnote( 'bp_cogs' );
@@ -2867,9 +2994,9 @@ class Brikpanel_Store_Summary {
 			$lines[] = '- **' . __( 'Shipping tax collected', 'brikpanel' ) . ':** ' . $this->money( $ship_row->tax );
 		}
 		if ( $avg_hours > 0 ) {
-			$lines[] = '- **' . __( 'Avg fulfillment time (created → completed)', 'brikpanel' ) . ':** ' . number_format_i18n( $avg_hours, 1 ) . ' ' . __( 'hours', 'brikpanel' ) . ' (' . number_format_i18n( $avg_hours / 24, 1 ) . ' ' . __( 'days', 'brikpanel' ) . ')';
+			$lines[] = '- **' . __( 'Avg fulfillment time (created → completed)', 'brikpanel' ) . ':** ' . brikpanel_number( $avg_hours, 1 ) . ' ' . __( 'hours', 'brikpanel' ) . ' (' . brikpanel_safe_sprintf( _n( '%s day', '%s days', brikpanel_plural_n( $avg_hours / 24, 1 ), 'brikpanel' ), brikpanel_number( $avg_hours / 24, 1 ) ) . ')';
 		}
-		$lines[] = '- **' . __( 'Configured shipping zones', 'brikpanel' ) . ':** ' . number_format_i18n( $zone_count ) . ' (' . sprintf( _n( '%d enabled method', '%d enabled methods', $method_count, 'brikpanel' ), $method_count ) . ')';
+		$lines[] = '- **' . __( 'Configured shipping zones', 'brikpanel' ) . ':** ' . brikpanel_number( $zone_count ) . ' (' . sprintf( _n( '%d enabled method', '%d enabled methods', $method_count, 'brikpanel' ), $method_count ) . ')';
 
 		if ( ! empty( $method_rows ) ) {
 			$lines[] = '';
@@ -2877,7 +3004,7 @@ class Brikpanel_Store_Summary {
 			$lines[] = '| ' . __( 'Method', 'brikpanel' ) . ' | ' . __( 'Times Used', 'brikpanel' ) . ' | ' . __( 'Total Charged', 'brikpanel' ) . ' |';
 			$lines[] = '|---|---:|---:|';
 			foreach ( $method_rows as $r ) {
-				$lines[] = '| ' . $this->md_cell( $r->method ?: '—' ) . ' | ' . number_format_i18n( $r->uses ) . ' | ' . $this->money( $r->revenue ) . ' |';
+				$lines[] = '| ' . $this->md_cell( $r->method ?: '—' ) . ' | ' . brikpanel_number( $r->uses ) . ' | ' . $this->money( $r->revenue ) . ' |';
 			}
 		}
 
@@ -2889,7 +3016,7 @@ class Brikpanel_Store_Summary {
 			foreach ( $dest_rows as $r ) {
 				$aov = $r->orders > 0 ? (float) $r->revenue / (int) $r->orders : 0;
 				$country_label = function_exists( 'WC' ) && WC()->countries ? ( WC()->countries->get_countries()[ $r->country ] ?? $r->country ) : $r->country;
-				$lines[] = '| ' . $this->md_cell( $country_label ) . ' (' . $r->country . ') | ' . number_format_i18n( $r->orders ) . ' | ' . $this->money( $r->revenue ) . ' | ' . $this->money( $aov ) . ' |';
+				$lines[] = '| ' . $this->md_cell( $country_label ) . ' (' . $r->country . ') | ' . brikpanel_number( $r->orders ) . ' | ' . $this->money( $r->revenue ) . ' | ' . $this->money( $aov ) . ' |';
 			}
 		}
 
@@ -2925,7 +3052,8 @@ class Brikpanel_Store_Summary {
 
 		$axis = [];
 		for ( $i = 11; $i >= 0; $i-- ) {
-			$key = gmdate( 'Y-m', strtotime( '-' . $i . ' months', current_time( 'timestamp' ) ) );
+			// Month-safe: a plain '-N months' on the 31st lands in the wrong month.
+			$key = brikpanel_store_month_start( $i, 'Y-m' );
 			$axis[ $key ] = [ 'rev' => 0.0, 'ref' => 0.0, 'cogs' => 0.0, 'ads' => 0.0, 'exp' => 0.0 ];
 		}
 
@@ -2938,7 +3066,7 @@ class Brikpanel_Store_Summary {
 		// --- Revenue -------------------------------------------------------
 		if ( $is_hpos ) {
 			$fx  = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount' );
-			$sql = "SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym, COALESCE(SUM({$fx['expr']}),0) AS v
+			$sql = "SELECT " . brikpanel_month_bucket_sql( 'o.date_created_gmt' ) . " AS ym, COALESCE(SUM({$fx['expr']}),0) AS v
 					FROM {$wpdb->prefix}wc_orders o{$fx['join']}
 					WHERE o.type='shop_order' AND o.status IN ({$kpi_sp})
 					  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
@@ -2948,7 +3076,7 @@ class Brikpanel_Store_Summary {
 			}
 		} else {
 			$fx  = brikpanel_base_total_sql( false, 'o.ID', 'pm.meta_value' );
-			$sql = "SELECT DATE_FORMAT(o.post_date_gmt, '%%Y-%%m') AS ym, COALESCE(SUM({$fx['expr']}),0) AS v
+			$sql = "SELECT " . brikpanel_month_bucket_sql( 'o.post_date_gmt' ) . " AS ym, COALESCE(SUM({$fx['expr']}),0) AS v
 					FROM {$wpdb->posts} o
 					LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=o.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "{$fx['join']}
 					WHERE o.post_type='shop_order' AND o.post_status IN ({$kpi_sp})
@@ -2959,21 +3087,21 @@ class Brikpanel_Store_Summary {
 			}
 		}
 		$args = array_merge( $kpi_statuses, [ $w['start_gmt'], $w['end_gmt'] ], empty( $excl['sql'] ) ? [] : $excl['args'] );
-		foreach ( (array) $wpdb->get_results( $wpdb->prepare( $sql . ' GROUP BY ym', $args ) ) as $r ) { // phpcs:ignore
+		foreach ( $this->fold_to_months( $wpdb->get_results( $wpdb->prepare( $sql . ' GROUP BY ym', $args ) ), [ 'v' ] ) as $r ) { // phpcs:ignore
 			if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['rev'] = (float) $r->v; }
 		}
 
 		// --- Refunds (bucketed by the parent order's month) ------------------
 		$pred = $this->paid_order_predicate( 'o' );
 		if ( $is_hpos ) {
-			$sql = "SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym, COALESCE(SUM(ABS(r.total_amount)),0) AS v
+			$sql = "SELECT " . brikpanel_month_bucket_sql( 'o.date_created_gmt' ) . " AS ym, COALESCE(SUM(ABS(r.total_amount)),0) AS v
 					FROM {$wpdb->prefix}wc_orders r
 					INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = r.parent_order_id
 					WHERE r.type='shop_order_refund' AND {$pred['where']}
 					  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
 					GROUP BY ym";
 		} else {
-			$sql = "SELECT DATE_FORMAT(o.post_date_gmt, '%%Y-%%m') AS ym, COALESCE(SUM(CAST(IFNULL(ra.meta_value,'0') AS DECIMAL(20,4))),0) AS v
+			$sql = "SELECT " . brikpanel_month_bucket_sql( 'o.post_date_gmt' ) . " AS ym, COALESCE(SUM(CAST(IFNULL(ra.meta_value,'0') AS DECIMAL(20,4))),0) AS v
 					FROM {$wpdb->posts} r
 					INNER JOIN {$wpdb->posts} o ON o.ID = r.post_parent
 					LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key='_refund_amount' AND " . brikpanel_sql_first_meta_guard( 'post', 'ra' ) . "
@@ -2982,7 +3110,7 @@ class Brikpanel_Store_Summary {
 					GROUP BY ym";
 		}
 		$args = array_merge( $pred['args'], [ $w['start_gmt'], $w['end_gmt'] ] );
-		foreach ( (array) $wpdb->get_results( $wpdb->prepare( $sql, $args ) ) as $r ) { // phpcs:ignore
+		foreach ( $this->fold_to_months( $wpdb->get_results( $wpdb->prepare( $sql, $args ) ), [ 'v' ] ) as $r ) { // phpcs:ignore
 			if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['ref'] = (float) $r->v; }
 		}
 
@@ -2991,7 +3119,7 @@ class Brikpanel_Store_Summary {
 		if ( null !== $cost ) {
 			$ord = $is_hpos ? "{$wpdb->prefix}wc_orders" : $wpdb->posts;
 			$oid = $is_hpos ? 'o.id' : 'o.ID';
-			$sql = "SELECT DATE_FORMAT({$pred['date_col']}, '%%Y-%%m') AS ym,
+			$sql = "SELECT " . brikpanel_month_bucket_sql( $pred['date_col'] ) . " AS ym,
 						COALESCE(SUM(CAST(qtym.meta_value AS DECIMAL(20,4)) * ({$cost['unit']})),0) AS v
 					FROM {$wpdb->prefix}woocommerce_order_items oi
 					INNER JOIN {$ord} o ON {$oid} = oi.order_id
@@ -3002,7 +3130,7 @@ class Brikpanel_Store_Summary {
 					  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
 					GROUP BY ym";
 			$args = array_merge( $pred['args'], [ $w['start_gmt'], $w['end_gmt'] ] );
-			foreach ( (array) $wpdb->get_results( $wpdb->prepare( $sql, $args ) ) as $r ) { // phpcs:ignore
+			foreach ( $this->fold_to_months( $wpdb->get_results( $wpdb->prepare( $sql, $args ) ), [ 'v' ] ) as $r ) { // phpcs:ignore
 				if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['cogs'] = (float) $r->v; }
 			}
 		}
@@ -3061,7 +3189,7 @@ class Brikpanel_Store_Summary {
 			$lines[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . $this->money( $cogs ) . ' (' . $this->pct( $cogs, $revenue_net ) . ' ' . __( 'of net revenue', 'brikpanel' ) . ')';
 			$lines[] = '- **' . __( 'Gross profit', 'brikpanel' ) . ':** ' . $this->money( $gross ) . ' (' . __( 'gross margin', 'brikpanel' ) . ' ' . $this->pct( $gross, $revenue_net ) . ')';
 		} else {
-			$lines[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . __( 'not available — no sold product has a cost on file, so gross margin cannot be stated.', 'brikpanel' );
+			$lines[] = '- **' . __( 'Cost of goods', 'brikpanel' ) . ':** ' . __( 'not available: no sold product has a cost on file, so gross margin cannot be stated.', 'brikpanel' );
 		}
 		$lines[] = '- **' . __( 'Total costs', 'brikpanel' ) . ':** ' . $this->money( $expenses ) . ' (' . $this->pct( $expenses, $revenue_net ) . ' ' . __( 'of net revenue', 'brikpanel' ) . ')';
 		$lines[] = '- **' . __( 'Net profit', 'brikpanel' ) . ':** ' . $this->money( $net ) . ' (' . __( 'net margin', 'brikpanel' ) . ' ' . $this->pct( $net, $revenue_net ) . ')';
@@ -3151,7 +3279,7 @@ class Brikpanel_Store_Summary {
 		if ( ! empty( $active_ym ) ) {
 			$lines[] = '';
 			$lines[] = '### ' . __( 'Monthly Trend', 'brikpanel' );
-			$lines[] = '*' . __( 'Trend only. Costs that are computed for the period as a whole — percentage-based costs, per-order costs, payment fees, shipping cost and tax — are not split per month, so the monthly Net is higher than the true one. The headline figures above are the complete ones.', 'brikpanel' ) . '*';
+			$lines[] = '*' . __( 'Trend only. Costs that are computed for the period as a whole (percentage-based costs, per-order costs, payment fees, shipping cost and tax) are not split per month, so the monthly Net is higher than the true one. The headline figures above are the complete ones.', 'brikpanel' ) . '*';
 			$lines[] = '| ' . __( 'Month', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'Refunds', 'brikpanel' ) . ' | ' . __( 'COGS', 'brikpanel' ) . ' | ' . __( 'Ad spend', 'brikpanel' ) . ' | ' . __( 'Expenses', 'brikpanel' ) . ' | ' . __( 'Gross', 'brikpanel' ) . ' | ' . __( 'Net (partial)', 'brikpanel' ) . ' |';
 			$lines[] = '|---|---:|---:|---:|---:|---:|---:|---:|';
 			foreach ( $active_ym as $ym => $r ) {
@@ -3171,10 +3299,15 @@ class Brikpanel_Store_Summary {
 			$total_months = count( $axis );
 			if ( $shown < $total_months ) {
 				$lines[] = '';
-				$lines[] = '*' . sprintf(
+				$lines[] = '*' . brikpanel_safe_sprintf(
 					/* translators: 1: months shown, 2: total months in window */
-					__( 'Showing %1$d active month(s) out of %2$d in the 12-month window — months with zero across every column are hidden.', 'brikpanel' ),
-					$shown,
+					_n(
+						'Showing %1$s active month out of %2$s in the 12-month window. Months with zero across every column are hidden.',
+						'Showing %1$s active months out of %2$s in the 12-month window. Months with zero across every column are hidden.',
+						$shown,
+						'brikpanel'
+					),
+					brikpanel_number( $shown ),
 					$total_months
 				) . '*';
 			}
@@ -3227,7 +3360,7 @@ class Brikpanel_Store_Summary {
 				        SUM(new_rev) AS new_rev, SUM(ret_rev) AS ret_rev,
 				        SUM(new_orders) AS new_orders, SUM(ret_orders) AS ret_orders
 				 FROM (
-				   SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym,
+				   SELECT " . brikpanel_month_bucket_sql( 'o.date_created_gmt' ) . " AS ym,
 				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN o.total_amount ELSE 0 END) AS new_rev,
 				          SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN o.total_amount ELSE 0 END) AS ret_rev,
 				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
@@ -3239,7 +3372,7 @@ class Brikpanel_Store_Summary {
 				     AND o.date_created_gmt >= %s
 				   GROUP BY ym
 				   UNION ALL
-				   SELECT DATE_FORMAT(o.date_created_gmt, '%%Y-%%m') AS ym,
+				   SELECT " . brikpanel_month_bucket_sql( 'o.date_created_gmt' ) . " AS ym,
 				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN o.total_amount ELSE 0 END) AS new_rev,
 				          SUM(CASE WHEN o.date_created_gmt > m.first_order_date THEN o.total_amount ELSE 0 END) AS ret_rev,
 				          SUM(CASE WHEN o.date_created_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
@@ -3267,7 +3400,7 @@ class Brikpanel_Store_Summary {
 				        SUM(new_rev) AS new_rev, SUM(ret_rev) AS ret_rev,
 				        SUM(new_orders) AS new_orders, SUM(ret_orders) AS ret_orders
 				 FROM (
-				   SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
+				   SELECT " . brikpanel_month_bucket_sql( 'p.post_date_gmt' ) . " AS ym,
 				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS new_rev,
 				          SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS ret_rev,
 				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
@@ -3280,7 +3413,7 @@ class Brikpanel_Store_Summary {
 				     AND p.post_date_gmt >= %s
 				   GROUP BY ym
 				   UNION ALL
-				   SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
+				   SELECT " . brikpanel_month_bucket_sql( 'p.post_date_gmt' ) . " AS ym,
 				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS new_rev,
 				          SUM(CASE WHEN p.post_date_gmt > m.first_order_date THEN CAST(pm_t.meta_value AS DECIMAL(20,4)) ELSE 0 END) AS ret_rev,
 				          SUM(CASE WHEN p.post_date_gmt = m.first_order_date THEN 1 ELSE 0 END) AS new_orders,
@@ -3302,6 +3435,10 @@ class Brikpanel_Store_Summary {
 			) ); // phpcs:ignore
 		}
 
+		// Outer GROUP BY collapsed the two UNION legs per bucket; this collapses
+		// the buckets into the store's months.
+		$rows = $this->fold_to_months( $rows, [ 'new_rev', 'ret_rev', 'new_orders', 'ret_orders' ] );
+
 		if ( empty( $rows ) ) {
 			return '';
 		}
@@ -3319,15 +3456,15 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'New vs Returning Revenue (last 12 months)', 'brikpanel' );
-		$lines[] = '- **' . __( 'New customer revenue', 'brikpanel' ) . ':** ' . $this->money( $tot_new_rev ) . ' (' . $this->pct( $tot_new_rev, $grand_rev ) . '), ' . number_format_i18n( $tot_new_o ) . ' ' . __( 'orders', 'brikpanel' );
-		$lines[] = '- **' . __( 'Returning customer revenue', 'brikpanel' ) . ':** ' . $this->money( $tot_ret_rev ) . ' (' . $this->pct( $tot_ret_rev, $grand_rev ) . '), ' . number_format_i18n( $tot_ret_o ) . ' ' . __( 'orders', 'brikpanel' );
+		$lines[] = '- **' . __( 'New customer revenue', 'brikpanel' ) . ':** ' . $this->money( $tot_new_rev ) . ' (' . $this->pct( $tot_new_rev, $grand_rev ) . '), ' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $tot_new_o, 'brikpanel' ), brikpanel_number( $tot_new_o ) );
+		$lines[] = '- **' . __( 'Returning customer revenue', 'brikpanel' ) . ':** ' . $this->money( $tot_ret_rev ) . ' (' . $this->pct( $tot_ret_rev, $grand_rev ) . '), ' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $tot_ret_o, 'brikpanel' ), brikpanel_number( $tot_ret_o ) );
 		$lines[] = '';
 		$lines[] = '| ' . __( 'Month', 'brikpanel' ) . ' | ' . __( 'New revenue', 'brikpanel' ) . ' | ' . __( 'Returning revenue', 'brikpanel' ) . ' | ' . __( 'New orders', 'brikpanel' ) . ' | ' . __( 'Returning orders', 'brikpanel' ) . ' | ' . __( 'Returning %', 'brikpanel' ) . ' |';
 		$lines[] = '|---|---:|---:|---:|---:|---:|';
 		foreach ( $rows as $r ) {
 			$tot_rev_m = (float) $r->new_rev + (float) $r->ret_rev;
-			$ret_pct = $tot_rev_m > 0 ? number_format_i18n( ( (float) $r->ret_rev / $tot_rev_m ) * 100, 1 ) . '%' : '—';
-			$lines[] = '| ' . $r->ym . ' | ' . $this->money( $r->new_rev ) . ' | ' . $this->money( $r->ret_rev ) . ' | ' . number_format_i18n( $r->new_orders ) . ' | ' . number_format_i18n( $r->ret_orders ) . ' | ' . $ret_pct . ' |';
+			$ret_pct = $tot_rev_m > 0 ? brikpanel_percent( ( (float) $r->ret_rev / $tot_rev_m ) * 100, 1, false ) : '—';
+			$lines[] = '| ' . $r->ym . ' | ' . $this->money( $r->new_rev ) . ' | ' . $this->money( $r->ret_rev ) . ' | ' . brikpanel_number( $r->new_orders ) . ' | ' . brikpanel_number( $r->ret_orders ) . ' | ' . $ret_pct . ' |';
 		}
 
 		$this->register_tldr( 'returning_revenue_share_12m', $grand_rev > 0 ? $tot_ret_rev / $grand_rev : 0 );
@@ -3346,45 +3483,61 @@ class Brikpanel_Store_Summary {
 		global $wpdb;
 		$start_dt = $this->months_ago_gmt( 12 );
 
+		// DAYOFWEEK() and HOUR() read the UTC column, so "Monday" meant the UTC
+		// Monday and the peak hour was a London hour. A merchant reads this
+		// section to decide when to run ads or staff support, which makes the
+		// store's own clock the only useful one. The hour labels used to carry a
+		// "(UTC)" caveat; the day-of-week table carried none at all.
+		//
+		// The conversion cannot happen in SQL (CONVERT_TZ returns NULL wherever
+		// mysql.time_zone_* is empty), so one 15-minute-bucket query replaces the
+		// two grouped ones and the buckets are folded here. Quarter-hour
+		// resolution is exact for every real offset, +05:30 and +05:45 included.
+		$bucket = brikpanel_utc_bucket_sql( $this->is_hpos() ? 'date_created_gmt' : 'p.post_date_gmt' );
+
 		if ( $this->is_hpos() ) {
-			$dow_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DAYOFWEEK(date_created_gmt) AS dow, COUNT(*) AS orders, COALESCE(SUM(total_amount),0) AS revenue
+			$bucket_rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT {$bucket} AS b, COUNT(*) AS orders, COALESCE(SUM(total_amount),0) AS revenue
 				 FROM {$wpdb->prefix}wc_orders
 				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND date_created_gmt >= %s
-				 GROUP BY dow",
-				$start_dt
-			) ); // phpcs:ignore
-			$hr_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT HOUR(date_created_gmt) AS hr, COUNT(*) AS orders, COALESCE(SUM(total_amount),0) AS revenue
-				 FROM {$wpdb->prefix}wc_orders
-				 WHERE type='shop_order' AND status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND date_created_gmt >= %s
-				 GROUP BY hr",
+				 GROUP BY b",
 				$start_dt
 			) ); // phpcs:ignore
 		} else {
-			$dow_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DAYOFWEEK(post_date_gmt) AS dow, COUNT(*) AS orders, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS revenue
+			$bucket_rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT {$bucket} AS b, COUNT(*) AS orders, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS revenue
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
 				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
 				   AND p.post_date_gmt >= %s
-				 GROUP BY dow",
-				$start_dt
-			) ); // phpcs:ignore
-			$hr_rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT HOUR(post_date_gmt) AS hr, COUNT(*) AS orders, COALESCE(SUM(CAST(pm.meta_value AS DECIMAL(20,4))),0) AS revenue
-				 FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
-				 WHERE p.post_type='shop_order' AND p.post_status IN (" . brikpanel_paid_statuses_sql() . ")
-				   AND p.post_date_gmt >= %s
-				 GROUP BY hr",
+				 GROUP BY b",
 				$start_dt
 			) ); // phpcs:ignore
 		}
 
-		if ( empty( $dow_rows ) || empty( $hr_rows ) ) {
+		$local   = wp_timezone();
+		$dow_agg = [];
+		$hr_agg  = [];
+
+		foreach ( (array) $bucket_rows as $r ) {
+			$when = brikpanel_utc_datetime( $r->b );
+			if ( null === $when ) {
+				continue;
+			}
+
+			$when = $when->setTimezone( $local );
+			// MySQL DAYOFWEEK is 1=Sunday; PHP 'w' is 0=Sunday.
+			$dow  = (int) $when->format( 'w' ) + 1;
+			$hour = (int) $when->format( 'G' );
+
+			$dow_agg[ $dow ]['orders']   = ( $dow_agg[ $dow ]['orders'] ?? 0 ) + (int) $r->orders;
+			$dow_agg[ $dow ]['revenue']  = ( $dow_agg[ $dow ]['revenue'] ?? 0.0 ) + (float) $r->revenue;
+			$hr_agg[ $hour ]['orders']   = ( $hr_agg[ $hour ]['orders'] ?? 0 ) + (int) $r->orders;
+			$hr_agg[ $hour ]['revenue']  = ( $hr_agg[ $hour ]['revenue'] ?? 0.0 ) + (float) $r->revenue;
+		}
+
+		if ( empty( $dow_agg ) || empty( $hr_agg ) ) {
 			return '';
 		}
 
@@ -3395,14 +3548,10 @@ class Brikpanel_Store_Summary {
 			7 => __( 'Sat', 'brikpanel' ),
 		];
 
-		$dow_data = [];
-		foreach ( $dow_rows as $r ) {
-			$dow_data[ (int) $r->dow ] = [ 'orders' => (int) $r->orders, 'revenue' => (float) $r->revenue ];
-		}
-		$hr_data = [];
-		foreach ( $hr_rows as $r ) {
-			$hr_data[ (int) $r->hr ] = [ 'orders' => (int) $r->orders, 'revenue' => (float) $r->revenue ];
-		}
+		$dow_data = $dow_agg;
+		$hr_data  = $hr_agg;
+		ksort( $dow_data );
+		ksort( $hr_data );
 
 		// "Best/worst" can rank by revenue OR by orders — these can disagree
 		// (e.g. Saturday has more orders but lower AOV → Mon wins by revenue).
@@ -3427,24 +3576,24 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Best & Worst Sales Times (last 12 months)', 'brikpanel' );
-		$lines[] = '- **' . __( 'Best day by revenue', 'brikpanel' ) . ':** ' . ( $dow_names[ $best_dow_rev ] ?? '?' ) . ' — ' . $this->money( $dow_data[ $best_dow_rev ]['revenue'] ) . ' (' . number_format_i18n( $dow_data[ $best_dow_rev ]['orders'] ) . ' ' . __( 'orders', 'brikpanel' ) . ')';
-		$lines[] = '- **' . __( 'Best day by order count', 'brikpanel' ) . ':** ' . ( $dow_names[ $best_dow_orders ] ?? '?' ) . ' — ' . number_format_i18n( $dow_data[ $best_dow_orders ]['orders'] ) . ' ' . __( 'orders', 'brikpanel' ) . ' (' . $this->money( $dow_data[ $best_dow_orders ]['revenue'] ) . ')';
-		$lines[] = '- **' . __( 'Worst day by revenue', 'brikpanel' ) . ':** ' . ( $dow_names[ $worst_dow_rev ] ?? '?' ) . ' — ' . $this->money( $dow_data[ $worst_dow_rev ]['revenue'] );
-		$lines[] = '- **' . __( 'Peak hour (UTC) by revenue', 'brikpanel' ) . ':** ' . sprintf( '%02d:00', $best_hr_rev ) . ' — ' . $this->money( $hr_data[ $best_hr_rev ]['revenue'] ) . ' (' . number_format_i18n( $hr_data[ $best_hr_rev ]['orders'] ) . ' ' . __( 'orders', 'brikpanel' ) . ')';
+		$lines[] = '- **' . __( 'Best day by revenue', 'brikpanel' ) . ':** ' . ( $dow_names[ $best_dow_rev ] ?? '?' ) . ', ' . $this->money( $dow_data[ $best_dow_rev ]['revenue'] ) . ' (' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $dow_data[ $best_dow_rev ]['orders'], 'brikpanel' ), brikpanel_number( $dow_data[ $best_dow_rev ]['orders'] ) ) . ')';
+		$lines[] = '- **' . __( 'Best day by order count', 'brikpanel' ) . ':** ' . ( $dow_names[ $best_dow_orders ] ?? '?' ) . ', ' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $dow_data[ $best_dow_orders ]['orders'], 'brikpanel' ), brikpanel_number( $dow_data[ $best_dow_orders ]['orders'] ) ) . ' (' . $this->money( $dow_data[ $best_dow_orders ]['revenue'] ) . ')';
+		$lines[] = '- **' . __( 'Worst day by revenue', 'brikpanel' ) . ':** ' . ( $dow_names[ $worst_dow_rev ] ?? '?' ) . ', ' . $this->money( $dow_data[ $worst_dow_rev ]['revenue'] );
+		$lines[] = '- **' . __( 'Peak hour by revenue', 'brikpanel' ) . ':** ' . sprintf( '%02d:00', $best_hr_rev ) . ', ' . $this->money( $hr_data[ $best_hr_rev ]['revenue'] ) . ' (' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $hr_data[ $best_hr_rev ]['orders'], 'brikpanel' ), brikpanel_number( $hr_data[ $best_hr_rev ]['orders'] ) ) . ')';
 		if ( $best_hr_orders !== $best_hr_rev ) {
-			$lines[] = '- **' . __( 'Peak hour (UTC) by order count', 'brikpanel' ) . ':** ' . sprintf( '%02d:00', $best_hr_orders ) . ' — ' . number_format_i18n( $hr_data[ $best_hr_orders ]['orders'] ) . ' ' . __( 'orders', 'brikpanel' );
+			$lines[] = '- **' . __( 'Peak hour by order count', 'brikpanel' ) . ':** ' . sprintf( '%02d:00', $best_hr_orders ) . ', ' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $hr_data[ $best_hr_orders ]['orders'], 'brikpanel' ), brikpanel_number( $hr_data[ $best_hr_orders ]['orders'] ) );
 		}
-		$lines[] = '- **' . __( 'Quietest hour (UTC) by revenue', 'brikpanel' ) . ':** ' . sprintf( '%02d:00', $worst_hr_rev ) . ' — ' . $this->money( $hr_data[ $worst_hr_rev ]['revenue'] );
+		$lines[] = '- **' . __( 'Quietest hour by revenue', 'brikpanel' ) . ':** ' . sprintf( '%02d:00', $worst_hr_rev ) . ', ' . $this->money( $hr_data[ $worst_hr_rev ]['revenue'] );
 		$lines[] = '';
 		$lines[] = '### ' . __( 'Day of week breakdown', 'brikpanel' );
 		$lines[] = '| ' . __( 'Day', 'brikpanel' ) . ' | ' . __( 'Orders', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' |';
 		$lines[] = '|---|---:|---:|';
 		for ( $d = 2; $d <= 7; $d++ ) { // Mon..Sat
 			$row = $dow_data[ $d ] ?? [ 'orders' => 0, 'revenue' => 0 ];
-			$lines[] = '| ' . $dow_names[ $d ] . ' | ' . number_format_i18n( $row['orders'] ) . ' | ' . $this->money( $row['revenue'] ) . ' |';
+			$lines[] = '| ' . $dow_names[ $d ] . ' | ' . brikpanel_number( $row['orders'] ) . ' | ' . $this->money( $row['revenue'] ) . ' |';
 		}
 		$row = $dow_data[ 1 ] ?? [ 'orders' => 0, 'revenue' => 0 ];
-		$lines[] = '| ' . $dow_names[ 1 ] . ' | ' . number_format_i18n( $row['orders'] ) . ' | ' . $this->money( $row['revenue'] ) . ' |';
+		$lines[] = '| ' . $dow_names[ 1 ] . ' | ' . brikpanel_number( $row['orders'] ) . ' | ' . $this->money( $row['revenue'] ) . ' |';
 
 		$fn = $this->footnote( 'wc_orders' );
 		if ( $fn ) { $lines[] = ''; $lines[] = $fn; }
@@ -3505,19 +3654,19 @@ class Brikpanel_Store_Summary {
 			$lines[] = sprintf(
 				/* translators: 1: failed count, 2: payment method, 3: revenue */
 				__( '%1$s orders failed, all via **%2$s**. **%3$s** in revenue at risk.', 'brikpanel' ),
-				number_format_i18n( $total ),
+				brikpanel_number( $total ),
 				$this->md_cell( $only->method ?: __( '(none)', 'brikpanel' ) ),
 				$this->money( $at_risk_total )
 			);
 		} else {
-			$lines[] = '- **' . __( 'Total failed', 'brikpanel' ) . ':** ' . number_format_i18n( $total ) . ' ' . __( 'orders', 'brikpanel' );
+			$lines[] = '- **' . __( 'Total failed', 'brikpanel' ) . ':** ' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $total, 'brikpanel' ), brikpanel_number( $total ) );
 			$lines[] = '- **' . __( 'Revenue at risk', 'brikpanel' ) . ':** ' . $this->money( $at_risk_total );
 			$lines[] = '- *' . __( 'WooCommerce does not store a structured failure reason; the table below groups failures by payment method (the only reliable signal). Look for one gateway dominating to spot integration issues.', 'brikpanel' ) . '*';
 			$lines[] = '';
 			$lines[] = '| ' . __( 'Payment method', 'brikpanel' ) . ' | ' . __( 'Failed', 'brikpanel' ) . ' | ' . __( 'Share', 'brikpanel' ) . ' | ' . __( 'Revenue at risk', 'brikpanel' ) . ' |';
 			$lines[] = '|---|---:|---:|---:|';
 			foreach ( $rows as $r ) {
-				$lines[] = '| ' . $this->md_cell( $r->method ?: __( '(none)', 'brikpanel' ) ) . ' | ' . number_format_i18n( $r->cnt ) . ' | ' . $this->pct( $r->cnt, $total ) . ' | ' . $this->money( $r->at_risk ) . ' |';
+				$lines[] = '| ' . $this->md_cell( $r->method ?: __( '(none)', 'brikpanel' ) ) . ' | ' . brikpanel_number( $r->cnt ) . ' | ' . $this->pct( $r->cnt, $total ) . ' | ' . $this->money( $r->at_risk ) . ' |';
 			}
 		}
 
@@ -3543,7 +3692,7 @@ class Brikpanel_Store_Summary {
 				$start_dt
 			) ); // phpcs:ignore
 			$monthly = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(date_created_gmt, '%%Y-%%m') AS ym,
+				"SELECT " . brikpanel_month_bucket_sql( 'date_created_gmt' ) . " AS ym,
 				        COUNT(*) AS cnt, COALESCE(SUM(ABS(total_amount)),0) AS amt
 				 FROM {$wpdb->prefix}wc_orders
 				 WHERE type='shop_order_refund' AND date_created_gmt >= %s
@@ -3569,7 +3718,7 @@ class Brikpanel_Store_Summary {
 				$start_dt
 			) ); // phpcs:ignore
 			$monthly = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DATE_FORMAT(p.post_date_gmt, '%%Y-%%m') AS ym,
+				"SELECT " . brikpanel_month_bucket_sql( 'p.post_date_gmt' ) . " AS ym,
 				        COUNT(*) AS cnt, COALESCE(SUM(ABS(CAST(pm.meta_value AS DECIMAL(20,4)))),0) AS amt
 				 FROM {$wpdb->posts} p
 				 LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'pm' ) . "
@@ -3598,17 +3747,21 @@ class Brikpanel_Store_Summary {
 			return '';
 		}
 
+		// UTC buckets from the query above, rolled up into the store's months.
+		$monthly = $this->fold_to_months( $monthly, [ 'cnt', 'amt' ] );
+
 		$lines = [];
 		$lines[] = '## ' . __( 'Refund Metrics (last 12 months)', 'brikpanel' );
-		$lines[] = '- **' . __( 'Refund count', 'brikpanel' ) . ':** ' . number_format_i18n( $cnt ) . ' (' . $this->pct( $cnt, $total_orders ) . ' ' . __( 'of paid orders', 'brikpanel' ) . ')';
-		$lines[] = '- **' . __( 'Refunded amount', 'brikpanel' ) . ':** ' . $this->money( $amt ) . ' (' . $this->pct( $amt, $total_revenue ) . ' ' . __( 'of revenue', 'brikpanel' ) . ')';
+		$lines[] = '- **' . __( 'Refund count', 'brikpanel' ) . ':** ' . brikpanel_number( $cnt ) . ' (' . $this->pct( $cnt, $total_orders ) . ' ' . __( 'of paid orders', 'brikpanel' ) . ')';
+		/* translators: %s: a percentage of revenue, already formatted with its percent sign, e.g. "12.5%". */
+		$lines[] = '- **' . __( 'Refunded amount', 'brikpanel' ) . ':** ' . $this->money( $amt ) . ' (' . brikpanel_safe_sprintf( __( '%s of revenue', 'brikpanel' ), $this->pct( $amt, $total_revenue ) ) . ')';
 
 		if ( ! empty( $monthly ) ) {
 			$lines[] = '';
 			$lines[] = '| ' . __( 'Month', 'brikpanel' ) . ' | ' . __( 'Refunds', 'brikpanel' ) . ' | ' . __( 'Amount', 'brikpanel' ) . ' |';
 			$lines[] = '|---|---:|---:|';
 			foreach ( $monthly as $r ) {
-				$lines[] = '| ' . $r->ym . ' | ' . number_format_i18n( $r->cnt ) . ' | ' . $this->money( $r->amt ) . ' |';
+				$lines[] = '| ' . $r->ym . ' | ' . brikpanel_number( $r->cnt ) . ' | ' . $this->money( $r->amt ) . ' |';
 			}
 		}
 
@@ -3638,7 +3791,7 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Customer Concentration', 'brikpanel' );
-		$lines[] = '*' . __( 'Share of revenue held by top customers — a high number means the business is fragile to losing a few accounts. We show two windows because all-time and last-12m can diverge sharply when a SaaS-style customer mix is rotating.', 'brikpanel' ) . '*';
+		$lines[] = '*' . __( 'Share of revenue held by top customers. A high number means the business is fragile to losing a few accounts. We show two windows because all-time and last-12m can diverge sharply when a SaaS-style customer mix is rotating.', 'brikpanel' ) . '*';
 		$lines[] = '';
 		$lines[] = '| ' . __( 'Cohort', 'brikpanel' ) . ' | ' . __( 'All-time LTV share', 'brikpanel' ) . ' | ' . __( 'Last 12m revenue share', 'brikpanel' ) . ' |';
 		$lines[] = '|---|---:|---:|';
@@ -3719,7 +3872,7 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Repeat Purchase Rate', 'brikpanel' );
-		$lines[] = '- **' . __( 'Repeat customers', 'brikpanel' ) . ':** ' . number_format_i18n( $agg['repeat_count'] ) . ' / ' . number_format_i18n( $agg['total'] ) . ' (' . number_format_i18n( $rate * 100, 1 ) . '%)';
+		$lines[] = '- **' . __( 'Repeat customers', 'brikpanel' ) . ':** ' . brikpanel_number( $agg['repeat_count'] ) . ' / ' . brikpanel_number( $agg['total'] ) . ' (' . brikpanel_percent( $rate * 100, 1, false ) . ')';
 		$lines[] = '- *' . __( 'Customers who placed at least 2 orders. A higher rate means lower acquisition pressure on growth.', 'brikpanel' ) . '*';
 
 		$this->register_tldr( 'repeat_rate', $rate );
@@ -3744,8 +3897,8 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Time to First Purchase', 'brikpanel' );
-		$lines[] = '- **' . __( 'Average time from registration to first order', 'brikpanel' ) . ':** ' . number_format_i18n( $days, 1 ) . ' ' . __( 'days', 'brikpanel' ) . ' (' . __( 'sample', 'brikpanel' ) . ': ' . number_format_i18n( $agg['ttf_sample'] ) . ' ' . __( 'registered customers', 'brikpanel' ) . ')';
-		$lines[] = '- *' . __( 'Limited to customers with a WordPress account. Most stores have many guest checkouts (user_id = 0) which are excluded — this metric reflects the registered-account funnel only.', 'brikpanel' ) . '*';
+		$lines[] = '- **' . __( 'Average time from registration to first order', 'brikpanel' ) . ':** ' . brikpanel_safe_sprintf( _n( '%s day', '%s days', brikpanel_plural_n( $days, 1 ), 'brikpanel' ), brikpanel_number( $days, 1 ) ) . ' (' . __( 'sample', 'brikpanel' ) . ': ' . brikpanel_number( $agg['ttf_sample'] ) . ' ' . __( 'registered customers', 'brikpanel' ) . ')';
+		$lines[] = '- *' . __( 'Limited to customers with a WordPress account. Most stores have many guest checkouts (user_id = 0) which are excluded, so this metric reflects the registered-account funnel only.', 'brikpanel' ) . '*';
 
 		$fn = $this->footnote( 'bp_metrics' );
 		if ( $fn ) { $lines[] = ''; $lines[] = $fn; }
@@ -3761,16 +3914,18 @@ class Brikpanel_Store_Summary {
 		// Needs both BrikPanel checkout tracking AND order data; clamp window.
 		$track = $this->tracking_start_date();
 		if ( $track === null ) { return ''; }
-		$end_date = gmdate( 'Y-m-d' );
+		// Store days: the checkout counter reads a SITE-LOCAL column.
+		$end_date = brikpanel_store_date( 'Y-m-d' );
 
 		// Compute against the larger of "last 12 months" and "since tracking start".
-		$ideal_start = gmdate( 'Y-m-d', strtotime( '-12 months', current_time( 'timestamp', true ) ) );
+		$ideal_start = brikpanel_store_date( 'Y-m-d', '-12 months' );
 		$start_date  = $ideal_start > $track ? $ideal_start : $track;
 
 		$checkout = function_exists( 'brikpanel_get_checkout_count' )
 			? (int) brikpanel_get_checkout_count( $start_date, $end_date )
 			: 0;
-		$success  = brikpanel_get_successful_order_count( $start_date . ' 00:00:00', $this->now_gmt() );
+		// Orders are UTC, so the same store day has to be converted before use.
+		$success  = brikpanel_get_successful_order_count( brikpanel_local_day_start_utc( $start_date ), $this->now_gmt() );
 
 		if ( $checkout === 0 ) {
 			return '';
@@ -3784,10 +3939,11 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Cart Abandonment Rate', 'brikpanel' );
-		$lines[] = '- **' . __( 'Checkout reached', 'brikpanel' ) . ':** ' . number_format_i18n( $checkout );
-		$lines[] = '- **' . __( 'Successful orders', 'brikpanel' ) . ':** ' . number_format_i18n( $success );
-		$lines[] = '- **' . __( 'Abandonment rate', 'brikpanel' ) . ':** ' . number_format_i18n( $rate * 100, 1 ) . '%';
-		$lines[] = '- *' . sprintf( __( 'Window: %s → %s. Abandonment = (checkout reached − successful orders) / checkout reached.', 'brikpanel' ), $start_date, $end_date ) . '*';
+		$lines[] = '- **' . __( 'Checkout reached', 'brikpanel' ) . ':** ' . brikpanel_number( $checkout );
+		$lines[] = '- **' . __( 'Successful orders', 'brikpanel' ) . ':** ' . brikpanel_number( $success );
+		$lines[] = '- **' . __( 'Abandonment rate', 'brikpanel' ) . ':** ' . brikpanel_percent( $rate * 100, 1, false );
+		/* translators: 1: first day of the window, 2: last day of the window. */
+		$lines[] = '- *' . sprintf( __( 'Window: %1$s → %2$s. Abandonment = (checkout reached − successful orders) / checkout reached.', 'brikpanel' ), $start_date, $end_date ) . '*';
 
 		$fn = $this->footnote( 'bp_visitors' );
 		if ( $fn ) { $lines[] = ''; $lines[] = $fn; }
@@ -3895,12 +4051,12 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Coupon Performance (last 12 months)', 'brikpanel' );
-		$lines[] = '- **' . __( 'Orders with a coupon', 'brikpanel' ) . ':** ' . number_format_i18n( $with_cnt ) . ' (' . $this->pct( $with_cnt, $all_cnt ) . ')';
+		$lines[] = '- **' . __( 'Orders with a coupon', 'brikpanel' ) . ':** ' . brikpanel_number( $with_cnt ) . ' (' . $this->pct( $with_cnt, $all_cnt ) . ')';
 		$lines[] = '- **' . __( 'AOV with coupon', 'brikpanel' ) . ':** ' . $this->money( $with_aov ) . ' | **' . __( 'AOV without coupon', 'brikpanel' ) . ':** ' . $this->money( $without_aov );
 		if ( $avg_discount_per_use > 0 ) {
 			$lines[] = '- **' . __( 'Avg discount per coupon use', 'brikpanel' ) . ':** ' . $this->money( $avg_discount_per_use )
-				. ' (' . number_format_i18n( $discount_pct * 100, 1 ) . '% '
-				. __( 'off the pre-discount AOV', 'brikpanel' ) . ')';
+				/* translators: %s: a percentage, already formatted with its percent sign, e.g. "12.5%". */
+				. ' (' . brikpanel_safe_sprintf( __( '%s off the pre-discount AOV', 'brikpanel' ), brikpanel_percent( $discount_pct * 100, 1, false ) ) . ')';
 		}
 
 		if ( ! empty( $rows ) ) {
@@ -3913,7 +4069,7 @@ class Brikpanel_Store_Summary {
 				// Per-coupon discount % uses the same denominator as the
 				// global figure so the column adds up cleanly.
 				$pct_off = $pre_discount_aov > 0 ? $avg / $pre_discount_aov : 0;
-				$lines[] = '| ' . $this->md_cell( $r->code ) . ' | ' . number_format_i18n( $r->uses ) . ' | ' . $this->money( $r->total_discount ) . ' | ' . $this->money( $avg ) . ' | ' . number_format_i18n( $pct_off * 100, 1 ) . '% |';
+				$lines[] = '| ' . $this->md_cell( $r->code ) . ' | ' . brikpanel_number( $r->uses ) . ' | ' . $this->money( $r->total_discount ) . ' | ' . $this->money( $avg ) . ' | ' . brikpanel_percent( $pct_off * 100, 1, false ) . ' |';
 			}
 		}
 
@@ -3986,12 +4142,12 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Geographic Split (last 12 months)', 'brikpanel' );
-		$lines[] = '### ' . __( 'Top Cities', 'brikpanel' );
+		$lines[] = '### ' . __( 'Top cities', 'brikpanel' );
 		$lines[] = '| ' . __( 'City', 'brikpanel' ) . ' | ' . __( 'State', 'brikpanel' ) . ' | ' . __( 'Country', 'brikpanel' ) . ' | ' . __( 'Orders', 'brikpanel' ) . ' | ' . __( 'Revenue', 'brikpanel' ) . ' | ' . __( 'AOV', 'brikpanel' ) . ' |';
 		$lines[] = '|---|---|---|---:|---:|---:|';
 		foreach ( $cities as $r ) {
 			$aov = $r->orders > 0 ? (float) $r->revenue / (int) $r->orders : 0;
-			$lines[] = '| ' . $this->md_cell( $r->city ?: '—' ) . ' | ' . $this->md_cell( $r->state ?: '—' ) . ' | ' . $this->md_cell( $r->country ?: '—' ) . ' | ' . number_format_i18n( $r->orders ) . ' | ' . $this->money( $r->revenue ) . ' | ' . $this->money( $aov ) . ' |';
+			$lines[] = '| ' . $this->md_cell( $r->city ?: '—' ) . ' | ' . $this->md_cell( $r->state ?: '—' ) . ' | ' . $this->md_cell( $r->country ?: '—' ) . ' | ' . brikpanel_number( $r->orders ) . ' | ' . $this->money( $r->revenue ) . ' | ' . $this->money( $aov ) . ' |';
 		}
 
 		$fn = $this->footnote( 'wc_addresses' );
@@ -4049,7 +4205,7 @@ class Brikpanel_Store_Summary {
 		foreach ( $cv_rows as $r ) { $cv_total += (int) $r->orders; }
 		foreach ( $cv_rows as $r ) {
 			$cv_summary[] = ( $r->source ?: __( '(unknown)', 'brikpanel' ) )
-				. ' ' . number_format_i18n( $r->orders )
+				. ' ' . brikpanel_number( $r->orders )
 				. ' (' . $this->pct( $r->orders, $cv_total ) . ')';
 		}
 
@@ -4113,7 +4269,7 @@ class Brikpanel_Store_Summary {
 				$lines[] = '|---|---|---|---:|---:|';
 				foreach ( array_slice( $by_combo, 0, 10, true ) as $key => $v ) {
 					list( $st, $utm, $med ) = explode( '||', $key );
-					$lines[] = '| ' . $this->md_cell( $st ) . ' | ' . $this->md_cell( $utm ) . ' | ' . $this->md_cell( $med ) . ' | ' . number_format_i18n( $v['orders'] ) . ' | ' . $this->money( $v['revenue'] ) . ' |';
+					$lines[] = '| ' . $this->md_cell( $st ) . ' | ' . $this->md_cell( $utm ) . ' | ' . $this->md_cell( $med ) . ' | ' . brikpanel_number( $v['orders'] ) . ' | ' . $this->money( $v['revenue'] ) . ' |';
 				}
 			}
 		}
@@ -4174,20 +4330,23 @@ class Brikpanel_Store_Summary {
 		}
 		$arr = $mrr * 12;
 
-		$cancelled_12m = (int) $wpdb->get_var(
+		// NOW() is the database server's clock; post_modified_gmt is UTC. The two
+		// only agree on a server whose session timezone happens to be UTC.
+		$cancelled_12m = (int) $wpdb->get_var( $wpdb->prepare(
 			"SELECT COUNT(*) FROM {$wpdb->posts}
 			 WHERE post_type='shop_subscription' AND post_status='wc-cancelled'
-			   AND post_modified_gmt >= DATE_SUB(NOW(), INTERVAL 12 MONTH)"
-		); // phpcs:ignore
+			   AND post_modified_gmt >= %s",
+			brikpanel_local_day_start_utc( brikpanel_store_date( 'Y-m-d', '-12 months' ) )
+		) ); // phpcs:ignore
 
 		$logo_churn = ( $active_count + $cancelled_12m ) > 0 ? $cancelled_12m / ( $active_count + $cancelled_12m ) : 0;
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Subscriptions (WooCommerce Subscriptions)', 'brikpanel' );
-		$lines[] = '- **' . __( 'Active subscriptions', 'brikpanel' ) . ':** ' . number_format_i18n( $active_count );
+		$lines[] = '- **' . __( 'Active subscriptions', 'brikpanel' ) . ':** ' . brikpanel_number( $active_count );
 		$lines[] = '- **MRR:** ' . $this->money( $mrr ) . ' | **ARR:** ' . $this->money( $arr );
-		$lines[] = '- **' . __( 'Cancellations (last 12m)', 'brikpanel' ) . ':** ' . number_format_i18n( $cancelled_12m );
-		$lines[] = '- **' . __( 'Logo churn (12m)', 'brikpanel' ) . ':** ' . number_format_i18n( $logo_churn * 100, 1 ) . '%';
+		$lines[] = '- **' . __( 'Cancellations (last 12m)', 'brikpanel' ) . ':** ' . brikpanel_number( $cancelled_12m );
+		$lines[] = '- **' . __( 'Logo churn (12m)', 'brikpanel' ) . ':** ' . brikpanel_percent( $logo_churn * 100, 1, false );
 		$lines[] = '- *' . __( 'MRR normalized: yearly ÷ 12, weekly × 4.33, daily × 30.4. Revenue churn / NRR require expansion-revenue tracking BrikPanel does not capture yet.', 'brikpanel' ) . '*';
 
 		$this->register_tldr( 'arr', $arr );
@@ -4347,17 +4506,17 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Subscriptions (inferred from product names)', 'brikpanel' );
-		$lines[] = '*' . __( 'WC Subscriptions plugin not detected — these metrics are inferred from period markers in product titles (Yıllık / Aylık / Yearly / Monthly etc.). Each paid line item is treated as one billing cycle. Numbers are estimates, not contracts.', 'brikpanel' ) . '*';
+		$lines[] = '*' . __( 'WC Subscriptions plugin not detected, so these metrics are inferred from period markers in product titles (Yıllık / Aylık / Yearly / Monthly etc.). Each paid line item is treated as one billing cycle. Numbers are estimates, not contracts.', 'brikpanel' ) . '*';
 		$lines[] = '';
-		$lines[] = '- **' . __( 'Active subscription lines', 'brikpanel' ) . ':** ' . number_format_i18n( $active_count );
+		$lines[] = '- **' . __( 'Active subscription lines', 'brikpanel' ) . ':** ' . brikpanel_number( $active_count );
 		$lines[] = '- **ARR:** ' . $this->money( $arr ) . ' | **MRR:** ' . $this->money( $mrr );
 		if ( $renewal_rate !== null ) {
-			$lines[] = '- **' . __( 'Yearly renewal rate (current vs 13–24m ago cohort)', 'brikpanel' ) . ':** ' . number_format_i18n( $renewal_rate * 100, 1 ) . '% (' . number_format_i18n( $renewed ) . ' / ' . number_format_i18n( $prior_total ) . ')';
-			$lines[] = '- **' . __( 'Logo churn (12m, yearly cohort)', 'brikpanel' ) . ':** ' . number_format_i18n( $logo_churn * 100, 1 ) . '%';
+			$lines[] = '- **' . __( 'Yearly renewal rate (current vs 13 to 24 months ago cohort)', 'brikpanel' ) . ':** ' . brikpanel_percent( $renewal_rate * 100, 1, false ) . ' (' . brikpanel_number( $renewed ) . ' / ' . brikpanel_number( $prior_total ) . ')';
+			$lines[] = '- **' . __( 'Logo churn (12m, yearly cohort)', 'brikpanel' ) . ':** ' . brikpanel_percent( $logo_churn * 100, 1, false );
 		} else {
-			$lines[] = '- *' . __( 'Renewal rate cannot be computed yet — no prior-year cohort exists (store is younger than 12 months or has no yearly products purchased before that window).', 'brikpanel' ) . '*';
+			$lines[] = '- *' . __( 'Renewal rate cannot be computed yet: no prior-year cohort exists (store is younger than 12 months or has no yearly products purchased before that window).', 'brikpanel' ) . '*';
 		}
-		$lines[] = '- *' . __( 'NRR is intentionally omitted — it requires per-account expansion / contraction tracking which BrikPanel does not capture.', 'brikpanel' ) . '*';
+		$lines[] = '- *' . __( 'NRR is intentionally omitted: it requires per-account expansion / contraction tracking which BrikPanel does not capture.', 'brikpanel' ) . '*';
 
 		$this->register_tldr( 'arr', $arr );
 		$this->register_tldr( 'mrr', $mrr );
@@ -4389,8 +4548,12 @@ class Brikpanel_Store_Summary {
 
 		$lines = [];
 		$lines[] = '## ' . __( 'Average Customer Lifespan', 'brikpanel' );
-		$lines[] = '- **' . __( 'Average days from first to last order', 'brikpanel' ) . ':** ' . number_format_i18n( $days, 1 ) . ' ' . __( 'days', 'brikpanel' ) . ' (' . number_format_i18n( $days / 30.4, 1 ) . ' ' . __( 'months', 'brikpanel' ) . ')';
-		$lines[] = '- **' . __( 'Sample size', 'brikpanel' ) . ':** N = ' . number_format_i18n( $sample ) . ' ' . __( 'customers with ≥2 orders', 'brikpanel' ) . ( $small ? ' — ⚠ ' . __( 'too small for a confident average; treat as a directional indicator only', 'brikpanel' ) : '' );
+		/* translators: %s: number of days, may have one decimal. */
+		$lifespan_days   = brikpanel_safe_sprintf( _n( '%s day', '%s days', brikpanel_plural_n( $days, 1 ), 'brikpanel' ), brikpanel_number( $days, 1 ) );
+		/* translators: %s: number of months, may have one decimal. */
+		$lifespan_months = brikpanel_safe_sprintf( _n( '%s month', '%s months', brikpanel_plural_n( $days / 30.4, 1 ), 'brikpanel' ), brikpanel_number( $days / 30.4, 1 ) );
+		$lines[] = '- **' . __( 'Average days from first to last order', 'brikpanel' ) . ':** ' . $lifespan_days . ' (' . $lifespan_months . ')';
+		$lines[] = '- **' . __( 'Sample size', 'brikpanel' ) . ':** N = ' . brikpanel_number( $sample ) . ' ' . __( 'customers with ≥2 orders', 'brikpanel' ) . ( $small ? ' · ⚠ ' . __( 'too small for a confident average; treat as a directional indicator only', 'brikpanel' ) : '' );
 		$lines[] = '- *' . __( 'For subscription-style stores expect this to converge near 365 days (annual renewals) once the cohort is mature; an unexpectedly short lifespan suggests one-and-done buyers dominate.', 'brikpanel' ) . '*';
 
 		$fn = $this->footnote( 'bp_metrics' );
@@ -4406,7 +4569,7 @@ class Brikpanel_Store_Summary {
 	private function section_tldr() {
 		$lines = [];
 		$lines[] = '## TL;DR';
-		$lines[] = '*' . __( 'Headline numbers — paste this block alone into an AI prompt for a quick-take read.', 'brikpanel' ) . '*';
+		$lines[] = '*' . __( 'Headline numbers: paste this block alone into an AI prompt for a quick-take read.', 'brikpanel' ) . '*';
 
 		$bullet = function ( $label, $value ) use ( &$lines ) {
 			$lines[] = '- **' . $label . ':** ' . $value;
@@ -4419,26 +4582,26 @@ class Brikpanel_Store_Summary {
 		if ( $is_saas ) {
 			$bullet( 'ARR', $this->money( $this->tldr_inputs['arr'] ) . ' (MRR ' . $this->money( $this->tldr_inputs['mrr'] ?? 0 ) . ')' );
 			if ( isset( $this->tldr_inputs['subs_active'] ) ) {
-				$bullet( __( 'Active subscription lines', 'brikpanel' ), number_format_i18n( $this->tldr_inputs['subs_active'] ) );
+				$bullet( __( 'Active subscription lines', 'brikpanel' ), brikpanel_number( $this->tldr_inputs['subs_active'] ) );
 			}
 			if ( isset( $this->tldr_inputs['subs_renewal_rate'] ) ) {
-				$bullet( __( 'Yearly renewal rate', 'brikpanel' ), number_format_i18n( $this->tldr_inputs['subs_renewal_rate'] * 100, 1 ) . '%' );
+				$bullet( __( 'Yearly renewal rate', 'brikpanel' ), brikpanel_percent( $this->tldr_inputs['subs_renewal_rate'] * 100, 1, false ) );
 			}
 			if ( isset( $this->tldr_inputs['subs_logo_churn'] ) ) {
-				$bullet( __( 'Logo churn (12m)', 'brikpanel' ), number_format_i18n( $this->tldr_inputs['subs_logo_churn'] * 100, 1 ) . '%' );
+				$bullet( __( 'Logo churn (12m)', 'brikpanel' ), brikpanel_percent( $this->tldr_inputs['subs_logo_churn'] * 100, 1, false ) );
 			}
 		}
 
 		if ( isset( $this->tldr_inputs['last_30d_revenue_cell'] ) ) {
 			$bullet(
 				__( 'Last 30 days', 'brikpanel' ),
-				$this->tldr_inputs['last_30d_revenue_cell'] . ' / ' . number_format_i18n( $this->tldr_inputs['last_30d_orders'] ?? 0 ) . ' ' . __( 'orders', 'brikpanel' )
+				$this->tldr_inputs['last_30d_revenue_cell'] . ' / ' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $this->tldr_inputs['last_30d_orders'] ?? 0, 'brikpanel' ), brikpanel_number( $this->tldr_inputs['last_30d_orders'] ?? 0 ) )
 			);
 		}
 		if ( isset( $this->tldr_inputs['last_12m_revenue_cell'] ) ) {
 			$bullet(
 				__( 'Last 12 months', 'brikpanel' ),
-				$this->tldr_inputs['last_12m_revenue_cell'] . ' / ' . number_format_i18n( $this->tldr_inputs['last_12m_orders'] ?? 0 ) . ' ' . __( 'orders', 'brikpanel' )
+				$this->tldr_inputs['last_12m_revenue_cell'] . ' / ' . brikpanel_safe_sprintf( _n( '%s order', '%s orders', (int) $this->tldr_inputs['last_12m_orders'] ?? 0, 'brikpanel' ), brikpanel_number( $this->tldr_inputs['last_12m_orders'] ?? 0 ) )
 			);
 		}
 
@@ -4452,38 +4615,46 @@ class Brikpanel_Store_Summary {
 				sprintf(
 					/* translators: 1: active count, 2: total tracked, 3: percentage, 4: 30d active */
 					__( '%1$s active in last 12m / %2$s tracked all-time (%3$s); %4$s active in last 30d', 'brikpanel' ),
-					number_format_i18n( $active ),
-					number_format_i18n( $total ),
+					brikpanel_number( $active ),
+					brikpanel_number( $total ),
 					$this->pct( $active, $total ),
-					number_format_i18n( $this->tldr_inputs['active_customers_30d'] ?? 0 )
+					brikpanel_number( $this->tldr_inputs['active_customers_30d'] ?? 0 )
 				)
 			);
 		}
 
 		if ( isset( $this->tldr_inputs['repeat_rate'] ) ) {
-			$bullet( __( 'Repeat purchase rate', 'brikpanel' ), number_format_i18n( $this->tldr_inputs['repeat_rate'] * 100, 1 ) . '%' );
+			$bullet( __( 'Repeat purchase rate', 'brikpanel' ), brikpanel_percent( $this->tldr_inputs['repeat_rate'] * 100, 1, false ) );
 		}
 
 		if ( isset( $this->tldr_inputs['returning_revenue_share_12m'] ) ) {
-			$bullet( __( 'Returning revenue share (12m)', 'brikpanel' ), number_format_i18n( $this->tldr_inputs['returning_revenue_share_12m'] * 100, 1 ) . '%' );
+			$bullet( __( 'Returning revenue share (12m)', 'brikpanel' ), brikpanel_percent( $this->tldr_inputs['returning_revenue_share_12m'] * 100, 1, false ) );
 		}
 
 		// Concentration: prefer 12m share when available — it's what
 		// investors actually ask about. Fall back to all-time if 12m is
 		// missing or zero.
 		if ( isset( $this->tldr_inputs['top1_share_12m'] ) && $this->tldr_inputs['top1_share_12m'] > 0 ) {
-			$top1_pct = number_format_i18n( $this->tldr_inputs['top1_share_12m'] * 100, 1 ) . '%';
-			$top10_pct = isset( $this->tldr_inputs['top10_share_12m'] ) ? number_format_i18n( $this->tldr_inputs['top10_share_12m'] * 100, 1 ) . '%' : '?';
-			$bullet( __( 'Customer concentration (last 12m revenue)', 'brikpanel' ), sprintf( __( 'top customer = %s; top 10 = %s', 'brikpanel' ), $top1_pct, $top10_pct ) );
+			$top1_pct = brikpanel_percent( $this->tldr_inputs['top1_share_12m'] * 100, 1, false );
+			$top10_pct = isset( $this->tldr_inputs['top10_share_12m'] ) ? brikpanel_percent( $this->tldr_inputs['top10_share_12m'] * 100, 1, false ) : '?';
+			/* translators: 1: the top customer's share of revenue, e.g. "12.5%", 2: the top 10 customers' share. */
+			$bullet( __( 'Customer concentration (last 12m revenue)', 'brikpanel' ), sprintf( __( 'top customer = %1$s; top 10 = %2$s', 'brikpanel' ), $top1_pct, $top10_pct ) );
 		} elseif ( isset( $this->tldr_inputs['top1_share'] ) ) {
-			$top1_pct = number_format_i18n( $this->tldr_inputs['top1_share'] * 100, 1 ) . '%';
-			$top10_pct = isset( $this->tldr_inputs['top10_share'] ) ? number_format_i18n( $this->tldr_inputs['top10_share'] * 100, 1 ) . '%' : '?';
+			$top1_pct = brikpanel_percent( $this->tldr_inputs['top1_share'] * 100, 1, false );
+			$top10_pct = isset( $this->tldr_inputs['top10_share'] ) ? brikpanel_percent( $this->tldr_inputs['top10_share'] * 100, 1, false ) : '?';
 			$top1_name = $this->tldr_inputs['top1_customer_name'] ?? '';
-			$bullet( __( 'Customer concentration (all-time LTV)', 'brikpanel' ), sprintf( __( 'top customer = %s%s; top 10 = %s', 'brikpanel' ), $top1_pct, $top1_name ? ' (' . $top1_name . ')' : '', $top10_pct ) );
+			$bullet(
+				__( 'Customer concentration (all-time LTV)', 'brikpanel' ),
+				$top1_name
+					/* translators: 1: the top customer's share of lifetime revenue, e.g. "12.5%", 2: that customer's name, 3: the top 10 customers' share. */
+					? sprintf( __( 'top customer = %1$s (%2$s); top 10 = %3$s', 'brikpanel' ), $top1_pct, $top1_name, $top10_pct )
+					/* translators: 1: the top customer's share of revenue, e.g. "12.5%", 2: the top 10 customers' share. */
+					: sprintf( __( 'top customer = %1$s; top 10 = %2$s', 'brikpanel' ), $top1_pct, $top10_pct )
+			);
 		}
 
 		if ( isset( $this->tldr_inputs['refund_rate_12m'] ) && $this->tldr_inputs['refund_rate_12m'] > 0 ) {
-			$bullet( __( 'Refund rate (12m)', 'brikpanel' ), number_format_i18n( $this->tldr_inputs['refund_rate_12m'] * 100, 1 ) . '%' );
+			$bullet( __( 'Refund rate (12m)', 'brikpanel' ), brikpanel_percent( $this->tldr_inputs['refund_rate_12m'] * 100, 1, false ) );
 		}
 
 		// Money lines last so the reader ends on the bottom line. Net profit is
@@ -4492,7 +4663,7 @@ class Brikpanel_Store_Summary {
 		if ( isset( $this->tldr_inputs['ad_spend_12m'] ) && $this->tldr_inputs['ad_spend_12m'] > 0 ) {
 			$ads_line = $this->money( $this->tldr_inputs['ad_spend_12m'] );
 			if ( isset( $this->tldr_inputs['roas_12m'] ) ) {
-				$ads_line .= ' (' . __( 'blended ROAS', 'brikpanel' ) . ' ' . number_format_i18n( $this->tldr_inputs['roas_12m'], 2 ) . 'x)';
+				$ads_line .= ' (' . __( 'blended ROAS', 'brikpanel' ) . ' ' . brikpanel_number( $this->tldr_inputs['roas_12m'], 2 ) . 'x)';
 			}
 			$bullet( __( 'Ad spend (12m)', 'brikpanel' ), $ads_line );
 		}
@@ -4500,13 +4671,13 @@ class Brikpanel_Store_Summary {
 		if ( isset( $this->tldr_inputs['net_profit_12m'] ) ) {
 			$net_line = $this->money( $this->tldr_inputs['net_profit_12m'] );
 			if ( isset( $this->tldr_inputs['net_margin_12m'] ) ) {
-				$net_line .= ' (' . __( 'net margin', 'brikpanel' ) . ' ' . number_format_i18n( $this->tldr_inputs['net_margin_12m'] * 100, 1 ) . '%)';
+				$net_line .= ' (' . __( 'net margin', 'brikpanel' ) . ' ' . brikpanel_percent( $this->tldr_inputs['net_margin_12m'] * 100, 1, false ) . ')';
 			}
 			if ( isset( $this->tldr_inputs['cogs_coverage_pct'] ) && $this->tldr_inputs['cogs_coverage_pct'] < 99.5 ) {
-				$net_line .= ' — ' . sprintf(
+				$net_line .= ', ' . sprintf(
 					/* translators: %s: percentage of revenue with a product cost on file */
 					__( 'overstated: only %s of revenue has a product cost on file', 'brikpanel' ),
-					number_format_i18n( $this->tldr_inputs['cogs_coverage_pct'], 1 ) . '%'
+					brikpanel_percent( $this->tldr_inputs['cogs_coverage_pct'], 1, false )
 				);
 			}
 			$bullet( __( 'Net profit (12m)', 'brikpanel' ), $net_line );
@@ -4529,7 +4700,7 @@ class Brikpanel_Store_Summary {
 			'brikpanel_modern_dashboard'      => __( 'Modern Dashboard', 'brikpanel' ),
 			'brikpanel_modern_navigation'     => __( 'Modern Navigation', 'brikpanel' ),
 			'brikpanel_modern_login'          => __( 'Modern Login', 'brikpanel' ),
-			'brikpanel_modern_segments'       => __( 'Customer Segments', 'brikpanel' ),
+			'brikpanel_modern_segments'       => __( 'Customer segments', 'brikpanel' ),
 			'brikpanel_modern_coupons'        => __( 'Modern Coupons UI', 'brikpanel' ),
 			'brikpanel_simple_product_editor' => __( 'Simple Product Editor', 'brikpanel' ),
 			'brikpanel_modern_products_list'  => __( 'Modern Products List', 'brikpanel' ),

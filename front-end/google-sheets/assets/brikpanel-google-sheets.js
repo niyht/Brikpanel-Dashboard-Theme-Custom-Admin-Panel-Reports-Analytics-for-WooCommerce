@@ -21,7 +21,10 @@
 	tabs.forEach(function (btn) {
 		btn.addEventListener('click', function () {
 			var target = btn.getAttribute('data-tab');
-			tabs.forEach(function (b) { b.classList.toggle('is-active', b === btn); });
+			tabs.forEach(function (b) {
+				b.classList.toggle('is-active', b === btn);
+				b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+			});
 			panels.forEach(function (p) {
 				p.classList.toggle('is-active', p.getAttribute('data-panel') === target);
 			});
@@ -203,7 +206,7 @@
 		ajax('brikpanel_gs_validate_spreadsheet', { input: id })
 			.then(function (data) {
 				dismissToast();
-				toast('success', i18n.validated + ' — ' + (data.spreadsheet_title || data.spreadsheet_id));
+				toast('success', i18n.validated + ': ' + (data.spreadsheet_title || data.spreadsheet_id));
 				setTimeout(function () { window.location.reload(); }, 800);
 			})
 			.catch(function (e) {
@@ -291,7 +294,7 @@
 			toast('info', i18n.creating || 'Creating spreadsheet…');
 			ajax('brikpanel_gs_create_spreadsheet', { title: title })
 				.then(function (data) {
-					toast('success', i18n.created + ' — ' + (data.spreadsheet_title || ''));
+					toast('success', i18n.created + ': ' + (data.spreadsheet_title || ''));
 					setTimeout(function () { window.location.reload(); }, 700);
 				})
 				.catch(function (e) { toast('error', e.message); })
@@ -382,12 +385,13 @@
 				var matched = Number(data.matched) || 0;
 				var total = Number(data.total) || 0;
 
+				// The sentence comes finished from the server, in the plural
+				// form for these counts and with the store's separators.
+				countEl.textContent = data.text || '';
 				if (!data.filtered) {
-					countEl.textContent = format(i18n.scope_all, [total.toLocaleString()]);
 					warnEl.textContent = '';
 					return;
 				}
-				countEl.textContent = format(i18n.scope_filtered, [matched.toLocaleString(), total.toLocaleString()]);
 				if (matched === 0) {
 					warnEl.textContent = i18n.scope_none || '';
 					scopeEl.setAttribute('data-tone', 'warn');
@@ -542,15 +546,18 @@
 			});
 		}
 
+		// "Orders: 12, rows: 30": the counts add up in the browser pass by pass,
+		// so the text names them instead of needing a plural form per language.
 		function formatProgress(orders, rows, finished) {
+			var num = function (n) { return window.brikpanelFormat ? window.brikpanelFormat.number(n || 0) : String(Number(n) || 0); };
 			if (flow === 'products') {
 				var ptpl = finished ? i18n.sync_done_products : i18n.sync_progress_products;
 				if (!ptpl) { return i18n.syncing; }
-				return ptpl.replace('%1$d', rows);
+				return ptpl.replace('%1$s', num(rows));
 			}
 			var tpl = finished ? i18n.sync_done : i18n.sync_progress;
 			if (!tpl) { return i18n.syncing; }
-			return tpl.replace('%1$d', orders).replace('%2$d', rows);
+			return tpl.replace('%1$s', num(orders)).replace('%2$s', num(rows));
 		}
 
 		runPass(1)
@@ -730,11 +737,12 @@
 					setTimeout(function () { window.location.reload(); }, 500);
 				}
 			}
+			// A long email ends in "…" in the pill; the tooltip keeps it whole.
+			if (pillText) { pill.setAttribute('title', pillText.textContent); }
 			var expiresEl = document.getElementById('bp-gs-expires');
 			if (expiresEl && s.expires_in > 0) {
 				var mins = Math.max(0, Math.ceil(s.expires_in / 60));
-				var tpl = i18n.expires_template || 'in %d min (auto-refreshed)';
-				expiresEl.textContent = tpl.replace('%d', String(mins));
+				expiresEl.textContent = window.brikpanelFormat ? window.brikpanelFormat.count(i18n.expires_template, mins) : '';
 			}
 		}).catch(function () { /* silent */ });
 	}

@@ -12,36 +12,62 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 ?>
-<div class="wrap">
+<div class="wrap brikpanel-shell__page">
 	<div class="bp-ca" id="bp-ca">
 
-		<div class="bp-ca-header">
+		<?php
+		// The header gives way in its own order, measured
+		// (front-end/shared/brikpanel-fit-row.js, CLAUDE.md "Başlık satırı
+		// kuralı"): one line while it fits; then Exclude and Recompute fold into
+		// "More actions"; then the buttons take their own row under the title.
+		// On a phone the three buttons wrapped into two-line buttons and the
+		// title block was squeezed (field test C8).
+		$bp_ca_header_fit = [
+			'title'  => 'h1',
+			'lines'  => [ '' ],
+			'levels' => [
+				'',
+				'is-fold',
+				[ 'cls' => 'is-fold is-two-rows', 'lines' => [ '.bp-ca-header-right' ] ],
+			],
+		];
+		?>
+		<div class="bp-ca-header" id="bp-ca-header" data-bp-fit-row="<?php echo esc_attr( wp_json_encode( $bp_ca_header_fit ) ); ?>">
+			<?php
+			// Fit as soon as the header opens (the helper is printed in <head>).
+			wp_print_inline_script_tag( 'if(window.brikpanelFitRow){window.brikpanelFitRow.auto(document.getElementById("bp-ca-header"));}' );
+			?>
 			<div class="bp-ca-header-left">
 				<h1><?php esc_html_e( 'Customer Analytics', 'brikpanel' ); ?></h1>
-				<span class="bp-ca-meta" id="bp-ca-meta">
-					<?php
-					if ( $metrics['last_computed_iso'] ) {
-						/* translators: %s: timestamp */
-						printf( esc_html__( 'Last refreshed: %s', 'brikpanel' ), esc_html( $metrics['last_computed'] ) );
-					} else {
-						esc_html_e( 'Not computed yet — running first sync…', 'brikpanel' );
-					}
-					?>
-				</span>
+				<span class="bp-ca-meta" id="bp-ca-meta"><?php
+					// Built by the class so Recompute now can send the same line
+					// back (never run / ran with no customers / last refreshed).
+					echo esc_html( $this->meta_text( $metrics ) );
+				?></span>
 			</div>
 			<div class="bp-ca-header-right">
-				<button type="button" class="bp-ca-btn bp-ca-btn-secondary" id="bp-ca-exclude">
-					<?php esc_html_e( 'Exclude customers', 'brikpanel' ); ?>
-					<span class="bp-ca-excl-badge" id="bp-ca-excl-badge" hidden></span>
-				</button>
-				<button type="button" class="bp-ca-btn bp-ca-btn-secondary" id="bp-ca-refresh">
-					<?php esc_html_e( 'Recompute now', 'brikpanel' ); ?>
-				</button>
+				<div class="brikpanel-overflow">
+					<?php
+					if ( function_exists( 'brikpanel_overflow_trigger' ) ) {
+						brikpanel_overflow_trigger( 'bp-ca-more-menu' );
+					}
+					?>
+					<div class="brikpanel-overflow__menu" id="bp-ca-more-menu">
+						<button type="button" class="bp-ca-btn bp-ca-btn-secondary" id="bp-ca-exclude">
+							<?php esc_html_e( 'Exclude customers', 'brikpanel' ); ?>
+							<span class="bp-ca-excl-badge" id="bp-ca-excl-badge" hidden></span>
+						</button>
+						<button type="button" class="bp-ca-btn bp-ca-btn-secondary" id="bp-ca-refresh" data-bp-fit-labels="<?php echo esc_attr( wp_json_encode( [ __( 'Recompute now', 'brikpanel' ), __( 'Refreshing…', 'brikpanel' ) ] ) ); ?>">
+							<?php esc_html_e( 'Recompute now', 'brikpanel' ); ?>
+						</button>
+					</div>
+				</div>
 				<button type="button" class="bp-ca-btn bp-ca-btn-primary" id="bp-ca-export">
 					<?php esc_html_e( 'Export CSV', 'brikpanel' ); ?>
 				</button>
 			</div>
 		</div>
+		<?php brikpanel_header_end(); ?>
 
 		<?php
 		/**
@@ -53,15 +79,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 		do_action( 'brikpanel_ca_after_header' );
 		?>
 
-		<div class="bp-ca-tabs" role="tablist">
+		<div class="bp-ca-tabs" role="tablist" data-bp-strip>
 			<button type="button" class="bp-ca-tab is-active" data-tab="ltv" role="tab" aria-selected="true">
-				<?php esc_html_e( 'Lifetime Value', 'brikpanel' ); ?>
+				<?php esc_html_e( 'Lifetime value', 'brikpanel' ); ?>
 			</button>
 			<button type="button" class="bp-ca-tab" data-tab="rfm" role="tab" aria-selected="false">
-				<?php esc_html_e( 'RFM Segments', 'brikpanel' ); ?>
+				<?php esc_html_e( 'RFM segments', 'brikpanel' ); ?>
 			</button>
 			<button type="button" class="bp-ca-tab" data-tab="cohort" role="tab" aria-selected="false">
-				<?php esc_html_e( 'Cohort Retention', 'brikpanel' ); ?>
+				<?php esc_html_e( 'Cohort retention', 'brikpanel' ); ?>
 			</button>
 		</div>
 
@@ -70,7 +96,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<!-- ========================================================== -->
 		<div class="bp-ca-tabpanel" data-panel="ltv">
 
-			<div class="bp-ca-stats">
+			<div class="bp-ca-stats" data-bp-tiles>
 				<div class="bp-ca-stat">
 					<div class="bp-ca-stat-label"><?php esc_html_e( 'Total customers', 'brikpanel' ); ?></div>
 					<div class="bp-ca-stat-value" id="bp-ca-stat-customers">—</div>
@@ -104,9 +130,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 					<h2><?php esc_html_e( 'LTV distribution', 'brikpanel' ); ?></h2>
 					<p class="bp-ca-card-sub"><?php esc_html_e( 'How many customers fall into each lifetime-spend bracket.', 'brikpanel' ); ?></p>
 				</div>
-				<div class="bp-ca-chart-wrap">
+				<?php
+				// With nothing to draw the JS hides the chart box (never the
+				// canvas: Chart.js writes display:block on it) and puts the
+				// reason in the line below it.
+				?>
+				<div class="bp-ca-chart-wrap" id="bp-ca-ltv-wrap">
 					<canvas id="bp-ca-ltv-histogram" height="80"></canvas>
 				</div>
+				<div class="bp-ca-empty" id="bp-ca-ltv-empty" hidden></div>
 			</div>
 
 			<div class="bp-ca-card">
@@ -115,7 +147,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 					<p class="bp-ca-card-sub"><?php esc_html_e( 'Sorted by lifetime spend, descending. Click a row to open the customer profile.', 'brikpanel' ); ?></p>
 				</div>
 				<div class="bp-ca-table-wrap">
-					<table class="bp-ca-table" id="bp-ca-top-customers">
+					<table class="bp-ca-table brikpanel-fit-table" id="bp-ca-top-customers">
 						<thead>
 							<tr>
 								<th><?php esc_html_e( 'Customer', 'brikpanel' ); ?></th>
@@ -147,9 +179,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 			<div class="bp-ca-card">
 				<div class="bp-ca-card-header">
 					<h2><?php esc_html_e( 'Customer segments', 'brikpanel' ); ?></h2>
-					<p class="bp-ca-card-sub"><?php esc_html_e( 'Each customer is scored 1–5 on Recency, Frequency, and Monetary value, then placed into one of the RFM segments below. Click a card to drill into its customers.', 'brikpanel' ); ?></p>
+					<p class="bp-ca-card-sub"><?php esc_html_e( 'Each customer is scored from 1 to 5 on Recency, Frequency, and Monetary value, then placed into one of the RFM segments below. Click a card to drill into its customers.', 'brikpanel' ); ?></p>
 				</div>
-				<div class="bp-ca-rfm-layout">
+				<div class="bp-ca-rfm-layout" id="bp-ca-rfm-layout">
 					<div class="bp-ca-rfm-grid" id="bp-ca-rfm-grid">
 						<div class="bp-ca-empty"><?php esc_html_e( 'Loading…', 'brikpanel' ); ?></div>
 					</div>
@@ -157,6 +189,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 						<canvas id="bp-ca-rfm-donut" height="220"></canvas>
 					</div>
 				</div>
+				<?php // No customers, or none scored yet: the cards and the ring give way to this line. ?>
+				<div class="bp-ca-empty" id="bp-ca-rfm-empty" hidden></div>
 			</div>
 
 			<div class="bp-ca-card" id="bp-ca-rfm-customers-card" hidden>
@@ -173,7 +207,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 					</button>
 				</div>
 				<div class="bp-ca-table-wrap">
-					<table class="bp-ca-table" id="bp-ca-rfm-table">
+					<table class="bp-ca-table brikpanel-fit-table" id="bp-ca-rfm-table">
 						<thead>
 							<tr>
 								<th><?php esc_html_e( 'Customer', 'brikpanel' ); ?></th>
@@ -213,7 +247,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 					</div>
 					<div class="bp-ca-cohort-controls">
 						<label for="bp-ca-cohort-window"><?php esc_html_e( 'Window:', 'brikpanel' ); ?></label>
-						<select id="bp-ca-cohort-window">
+						<select id="bp-ca-cohort-window" class="brikpanel-control">
 							<option value="6"><?php esc_html_e( 'Last 6 months', 'brikpanel' ); ?></option>
 							<option value="12" selected><?php esc_html_e( 'Last 12 months', 'brikpanel' ); ?></option>
 							<option value="24"><?php esc_html_e( 'Last 24 months', 'brikpanel' ); ?></option>
@@ -230,11 +264,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 			<div class="bp-ca-card">
 				<div class="bp-ca-card-header">
 					<h2><?php esc_html_e( 'Average retention by month offset', 'brikpanel' ); ?></h2>
-					<p class="bp-ca-card-sub"><?php esc_html_e( 'Across all cohorts in the selected window — useful for spotting where the typical drop-off happens.', 'brikpanel' ); ?></p>
+					<p class="bp-ca-card-sub"><?php esc_html_e( 'Across all cohorts in the selected window. Useful for spotting where the typical drop-off happens.', 'brikpanel' ); ?></p>
 				</div>
-				<div class="bp-ca-chart-wrap">
+				<div class="bp-ca-chart-wrap" id="bp-ca-cohort-line-wrap">
 					<canvas id="bp-ca-cohort-line" height="80"></canvas>
 				</div>
+				<?php // No cohorts, or nobody came back in a later month: this line stands in for the chart. ?>
+				<div class="bp-ca-empty" id="bp-ca-cohort-line-empty" hidden></div>
 				<div class="bp-ca-rfm-actions" style="margin-top:1rem;">
 					<button type="button" class="bp-ca-btn bp-ca-btn-secondary" id="bp-ca-cohort-export">
 						<?php esc_html_e( 'Export matrix (CSV)', 'brikpanel' ); ?>

@@ -338,6 +338,7 @@ function brikpanel_network_access_render_page() {
     ?>
     <div class="wrap brikpanel-net-access-wrap">
         <h1><?php esc_html_e( 'BrikPanel Access Rules', 'brikpanel' ); ?></h1>
+        <?php brikpanel_header_end(); ?>
 
         <?php if ( $updated ) : ?>
             <div class="notice notice-success brikpanel-notice is-dismissible">
@@ -365,7 +366,7 @@ function brikpanel_network_access_render_page() {
                         </span>
                     </label>
                     <p class="bp-field__help">
-                        <?php esc_html_e( 'When off (default), nothing changes — BrikPanel works for every site admin and shop manager as usual. When on, only users whose role appears in the list below see the BrikPanel UI, settings tab, and AJAX endpoints.', 'brikpanel' ); ?>
+                        <?php esc_html_e( 'When off (default), nothing changes: BrikPanel works for every site admin and shop manager as usual. When on, only users whose role appears in the list below see the BrikPanel UI, settings tab, and AJAX endpoints.', 'brikpanel' ); ?>
                     </p>
                 </div>
             </section>
@@ -409,7 +410,7 @@ function brikpanel_network_access_render_page() {
                 <header class="bp-card__header">
                     <h2><?php esc_html_e( 'Lock BrikPanel settings on subsites', 'brikpanel' ); ?></h2>
                     <p class="bp-card__desc">
-                        <?php esc_html_e( 'When on, subsite owners can still use BrikPanel (dashboard, reports, product and coupon tools) but cannot open or change the BrikPanel settings tab. Only the subsites you grant below — and Network Super Admins — may manage BrikPanel settings.', 'brikpanel' ); ?>
+                        <?php esc_html_e( 'When on, subsite owners can still use BrikPanel (dashboard, reports, product and coupon tools) but cannot open or change the BrikPanel settings tab. Only the subsites you grant below, and Network Super Admins, may manage BrikPanel settings.', 'brikpanel' ); ?>
                     </p>
                 </header>
                 <div class="bp-card__body">
@@ -421,7 +422,7 @@ function brikpanel_network_access_render_page() {
                         </span>
                     </label>
                     <p class="bp-field__help">
-                        <?php esc_html_e( 'Off by default — turning this on never affects how BrikPanel works elsewhere, it only hides and blocks the settings tab for subsites that are not granted below.', 'brikpanel' ); ?>
+                        <?php esc_html_e( 'Off by default. Turning this on never affects how BrikPanel works elsewhere; it only hides and blocks the settings tab for subsites that are not granted below.', 'brikpanel' ); ?>
                     </p>
                 </div>
             </section>
@@ -488,7 +489,7 @@ function brikpanel_network_access_render_page() {
         .bp-card__body { padding: 0.75rem 1.5rem 1.25rem; }
         .bp-field { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; }
         .bp-field__label { font-size: 0.8125rem; font-weight: 600; color: #303030; }
-        .bp-field__help { margin: 0.5rem 0 0; font-size: 0.75rem; color: #8a8a8a; line-height: 1.5; }
+        .bp-field__help { margin: 0.5rem 0 0; font-size: 0.75rem; color: #616161; line-height: 1.5; }
         .bp-toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
         .bp-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
         .bp-toggle__slider { position: absolute; inset: 0; background: #ccc; border-radius: 22px; transition: background 0.15s ease; cursor: pointer; }
@@ -501,7 +502,7 @@ function brikpanel_network_access_render_page() {
         .bp-roles-list__item input[type="checkbox"] { margin: 0; }
         .bp-roles-list__item input[type="checkbox"]:disabled + .bp-roles-list__name { color: #616161; }
         .bp-roles-list__name { font-size: 0.875rem; color: #303030; font-weight: 500; }
-        .bp-roles-list__slug { font-size: 0.75rem; color: #8a8a8a; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
+        .bp-roles-list__slug { font-size: 0.75rem; color: #616161; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
         .bp-roles-list__pill { margin-left: auto; font-size: 0.6875rem; font-weight: 550; padding: 0.125rem 0.5rem; background: #f1f1f1; color: #616161; border-radius: 999px; }
         .bp-actions { display: flex; justify-content: flex-end; padding: 0 0.25rem; }
         .bp-btn { font: inherit; font-size: 0.8125rem; font-weight: 550; line-height: 1.4; padding: 0.5rem 1rem; border-radius: 0.5rem; border: 0; cursor: pointer; transition: background 0.15s ease; }

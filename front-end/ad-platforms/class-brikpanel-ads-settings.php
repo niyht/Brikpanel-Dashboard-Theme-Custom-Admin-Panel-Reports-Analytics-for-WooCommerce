@@ -3,8 +3,8 @@
  * BrikPanel — Ad Platforms settings page + AJAX + asset enqueue.
  *
  * Registers the top-level admin page (slug: brikpanel-ad-platforms) where
- * users connect Google Ads + Meta, pick a primary account per platform,
- * and trigger manual syncs.
+ * users connect Google Ads + Meta, tick the ad accounts each platform pulls
+ * spend from, and trigger manual syncs.
  *
  * @package BrikPanel
  * @since   3.0.0
@@ -19,6 +19,14 @@ class Brikpanel_Ads_Settings {
 	const PAGE_SLUG    = 'brikpanel-ad-platforms';
 	const NONCE_ACTION = 'brikpanel_ads_nonce';
 
+	/**
+	 * Transient prefix for the last account list a platform returned.
+	 *
+	 * Account names shown on the card come from here, never from the browser:
+	 * the save request only carries IDs.
+	 */
+	const ACCOUNT_LIST_TRANSIENT = 'brikpanel_ads_account_list_';
+
 	public function __construct() {
 		add_action( 'admin_menu',            [ $this, 'register_page' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
@@ -26,7 +34,7 @@ class Brikpanel_Ads_Settings {
 		// AJAX endpoints (oauth_start / oauth_disconnect live in the OAuth class).
 		add_action( 'wp_ajax_brikpanel_ads_status',              [ $this, 'ajax_status' ] );
 		add_action( 'wp_ajax_brikpanel_ads_list_accounts',       [ $this, 'ajax_list_accounts' ] );
-		add_action( 'wp_ajax_brikpanel_ads_save_primary',        [ $this, 'ajax_save_primary' ] );
+		add_action( 'wp_ajax_brikpanel_ads_save_accounts',       [ $this, 'ajax_save_accounts' ] );
 		add_action( 'wp_ajax_brikpanel_ads_save_login_customer', [ $this, 'ajax_save_login_customer' ] );
 		add_action( 'wp_ajax_brikpanel_ads_sync_now',            [ $this, 'ajax_sync_now' ] );
 		add_action( 'wp_ajax_brikpanel_ads_spend_breakdown',     [ $this, 'ajax_spend_breakdown' ] );
@@ -68,8 +76,15 @@ class Brikpanel_Ads_Settings {
 		$google_last_sync = (array) get_option( 'brikpanel_ads_last_sync_' . Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, [] );
 		$meta_last_sync   = (array) get_option( 'brikpanel_ads_last_sync_' . Brikpanel_Ads_Tokens::PLATFORM_META, [] );
 
-		$google_backfill = (array) get_option( 'brikpanel_ads_backfill_status_' . Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, [] );
-		$meta_backfill   = (array) get_option( 'brikpanel_ads_backfill_status_' . Brikpanel_Ads_Tokens::PLATFORM_META, [] );
+		$google_backfill = Brikpanel_Ads_Sync::backfill_progress( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, $google_desc['accounts'] );
+		$meta_backfill   = Brikpanel_Ads_Sync::backfill_progress( Brikpanel_Ads_Tokens::PLATFORM_META, $meta_desc['accounts'] );
+
+		// The rows of each card's account list: ticked accounts, then accounts
+		// that still have imported spend but are not ticked (their spend still
+		// counts on the dashboard, so the card must show them).
+		$google_rows = $google_desc['connected'] ? self::account_rows( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, $google_desc ) : [];
+		$meta_rows   = $meta_desc['connected'] ? self::account_rows( Brikpanel_Ads_Tokens::PLATFORM_META, $meta_desc ) : [];
+		$store_currency = function_exists( 'get_woocommerce_currency' ) ? (string) get_woocommerce_currency() : '';
 
 		// Set when a token renewal failed permanently. Surfaced as a banner so
 		// a dead connection never hides behind a green "Connected" pill.
@@ -122,26 +137,34 @@ class Brikpanel_Ads_Settings {
 			&& $hook !== 'toplevel_page_' . self::PAGE_SLUG ) {
 			return;
 		}
+		// filemtime versions: with the plain plugin version an edited file
+		// kept being served from the browser cache between releases.
+		$ads_dir = BRIKPANEL_PATH . 'front-end/ad-platforms/assets/';
+		$fit_dep = function_exists( 'brikpanel_fit_table_dep' );
 		wp_enqueue_style(
 			'brikpanel-ads',
 			BRIKPANEL_ADS_URL . 'assets/brikpanel-ad-platforms.css',
-			[],
-			BRIKPANEL_VERSION
+			array_merge(
+				$fit_dep ? brikpanel_fit_table_dep( 'style' ) : [],
+				function_exists( 'brikpanel_narrow_dep' ) ? brikpanel_narrow_dep( 'ui', 'style' ) : []
+			),
+			@filemtime( $ads_dir . 'brikpanel-ad-platforms.css' ) ?: BRIKPANEL_VERSION // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
 		);
 		wp_enqueue_script(
 			'brikpanel-ads',
 			BRIKPANEL_ADS_URL . 'assets/brikpanel-ad-platforms.js',
-			[],
-			BRIKPANEL_VERSION,
+			array_merge( $fit_dep ? brikpanel_fit_table_dep() : [], function_exists( 'brikpanel_narrow_dep' ) ? brikpanel_narrow_dep( 'format' ) : [] ),
+			@filemtime( $ads_dir . 'brikpanel-ad-platforms.js' ) ?: BRIKPANEL_VERSION, // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- falls back to the plugin version.
 			true
 		);
 		wp_localize_script(
 			'brikpanel-ads',
 			'BrikpanelAds',
 			[
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( self::NONCE_ACTION ),
-				'i18n'    => [
+				'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+				'nonce'         => wp_create_nonce( self::NONCE_ACTION ),
+				'storeCurrency' => function_exists( 'get_woocommerce_currency' ) ? (string) get_woocommerce_currency() : '',
+				'i18n'          => [
 					'connecting'         => __( 'Connecting…', 'brikpanel' ),
 					'disconnect_confirm' => __( 'Disconnect this platform? Your synced spend data will be deleted.', 'brikpanel' ),
 					'syncing'            => __( 'Syncing…', 'brikpanel' ),
@@ -159,7 +182,10 @@ class Brikpanel_Ads_Settings {
 					'manager_picked'     => __( 'This is a manager account. It usually holds no spend of its own, so the import may come back empty. If it does, use the ID of the ad account you advertise from instead.', 'brikpanel' ),
 					'connected_label'    => __( 'Connected', 'brikpanel' ),
 					'not_connected_label'=> __( 'Not connected', 'brikpanel' ),
-					'pick_account_first' => __( 'Pick a primary account first.', 'brikpanel' ),
+					'pick_accounts_first'=> __( 'Tick at least one ad account first.', 'brikpanel' ),
+					'remove_confirm'     => __( 'The spend imported from the accounts you unticked will be deleted. Continue?', 'brikpanel' ),
+					'not_selected'       => _x( 'Not selected', 'ad account that has imported spend but is not ticked', 'brikpanel' ),
+					'currency_note'      => function_exists( 'brikpanel_js_plural' ) ? brikpanel_js_plural( self::currency_note_noop() ) : [ 'forms' => [ '%s' ], 'en' => true ],
 					'manual_empty'       => __( 'Enter an ad account ID first.', 'brikpanel' ),
 					'manager_suffix'     => __( 'Manager', 'brikpanel' ),
 					/* translators: %1$d = chunks completed, %2$d = total chunks (each chunk is 90 days). */
@@ -190,6 +216,7 @@ class Brikpanel_Ads_Settings {
 						'col_cpc'      => __( 'CPC', 'brikpanel' ),
 						'col_days'     => __( 'Days', 'brikpanel' ),
 						'total_row'    => __( 'All time', 'brikpanel' ),
+						'months'       => __( 'Monthly breakdown', 'brikpanel' ),
 					],
 				],
 			]
@@ -221,7 +248,7 @@ class Brikpanel_Ads_Settings {
 	 * so a merchant can paste just the number from Ads Manager. Google: the
 	 * numeric customer ID, digits only ("123-456-7890" dashes are stripped).
 	 */
-	private function normalize_account_id( $platform, $id ) {
+	private static function normalize_account_id( $platform, $id ) {
 		$id = trim( (string) $id );
 		if ( $platform === Brikpanel_Ads_Tokens::PLATFORM_META ) {
 			$id = preg_replace( '/\s+/', '', $id );
@@ -248,11 +275,12 @@ class Brikpanel_Ads_Settings {
 		foreach ( [ Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, Brikpanel_Ads_Tokens::PLATFORM_META ] as $p ) {
 			$desc = Brikpanel_Ads_Tokens::describe( $p );
 			$last = (array) get_option( 'brikpanel_ads_last_sync_' . $p, [] );
-			$back = (array) get_option( 'brikpanel_ads_backfill_status_' . $p, [] );
+			$back = Brikpanel_Ads_Sync::backfill_progress( $p, $desc['accounts'] );
 			$out[ $p ] = [
 				'connected'         => (bool) $desc['connected'],
 				'email'             => (string) $desc['email'],
 				'primary_account'   => (string) $desc['primary_account'],
+				'accounts'          => $desc['accounts'],
 				'login_customer_id' => (string) $desc['login_customer_id'],
 				'needs_reconnect'   => Brikpanel_Ads_Tokens::needs_reconnect( $p ) !== '',
 				'vault_unreadable'  => $unreadable,
@@ -298,62 +326,258 @@ class Brikpanel_Ads_Settings {
 			wp_send_json_error( [ 'message' => $e->getMessage() ], 502 );
 		}
 
+		// Remembered for an hour so the card can name the accounts the merchant
+		// ticks. The save request that follows carries IDs only.
+		$known = [];
+		foreach ( (array) $accounts as $acc ) {
+			$id = (string) ( $acc['id'] ?? '' );
+			if ( $id === '' ) {
+				continue;
+			}
+			$known[ $id ] = [
+				'name'         => (string) ( $acc['name'] ?? '' ),
+				'currency'     => strtoupper( (string) ( $acc['currency'] ?? '' ) ),
+				'status_label' => (string) ( $acc['status_label'] ?? '' ),
+				'is_manager'   => ! empty( $acc['is_manager'] ),
+			];
+		}
+		set_transient( self::ACCOUNT_LIST_TRANSIENT . $platform, $known, HOUR_IN_SECONDS );
+
 		wp_send_json_success( [ 'accounts' => $accounts ] );
 	}
 
+	/** Drop the remembered account list (disconnect). */
+	public static function forget_account_list( $platform ) {
+		delete_transient( self::ACCOUNT_LIST_TRANSIENT . $platform );
+	}
+
+	/**
+	 * What the platform last said about its accounts (name, currency, state).
+	 *
+	 * @param string $platform
+	 * @return array<string, array{name:string, currency:string, status_label:string, is_manager:bool}>
+	 */
+	private static function known_accounts( $platform ) {
+		$known = get_transient( self::ACCOUNT_LIST_TRANSIENT . $platform );
+		return is_array( $known ) ? $known : [];
+	}
+
 	// =========================================================================
-	// AJAX — save primary account selection (kicks backfill if first pick)
+	// AJAX — save the ticked ad accounts (queues the history they miss)
 	// =========================================================================
 
-	public function ajax_save_primary() {
+	/**
+	 * Save the account selection from the card.
+	 *
+	 * POST: platform, mode (replace | add), account_ids[], base_ids[].
+	 *   - replace: the ticked list becomes the selection. base_ids is the list
+	 *     the page was showing; if the stored list has changed since (another
+	 *     tab, another admin) the save is refused, so a stale page can never
+	 *     delete spend of an account it did not even show.
+	 *   - add: the IDs are appended ("Can't find your account?"). Nothing is
+	 *     removed, so this mode never deletes anything.
+	 */
+	public function ajax_save_accounts() {
 		$this->check_auth();
 		$platform = $this->sanitize_platform( $_POST['platform'] ?? '' );
-		$raw_id   = sanitize_text_field( wp_unslash( $_POST['account_id'] ?? '' ) );
+		if ( $platform === '' ) {
+			wp_send_json_error( [ 'message' => __( 'Unknown platform.', 'brikpanel' ) ], 400 );
+		}
+		$mode = isset( $_POST['mode'] ) && 'add' === $_POST['mode'] ? 'add' : 'replace';
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- every entry is sanitised in apply_account_selection().
+		$ids  = isset( $_POST['account_ids'] ) && is_array( $_POST['account_ids'] ) ? wp_unslash( $_POST['account_ids'] ) : [];
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- as above.
+		$base = isset( $_POST['base_ids'] ) && is_array( $_POST['base_ids'] ) ? wp_unslash( $_POST['base_ids'] ) : [];
 
-		if ( $platform === '' || $raw_id === '' ) {
-			wp_send_json_error( [ 'message' => __( 'Pick an account before saving.', 'brikpanel' ) ], 400 );
+		$result = self::apply_account_selection( $platform, $mode, $ids, $base );
+		if ( empty( $result['ok'] ) ) {
+			wp_send_json_error( [ 'message' => $result['message'] ], (int) ( $result['status'] ?? 400 ) );
 		}
-		$account_id = $this->normalize_account_id( $platform, $raw_id );
-		if ( $account_id === '' ) {
-			wp_send_json_error( [ 'message' => __( 'That does not look like a valid ad account ID.', 'brikpanel' ) ], 400 );
-		}
+		wp_send_json_success( [ 'message' => $result['message'] ] );
+	}
+
+	/**
+	 * Validate and apply an account selection. Separate from the AJAX wrapper
+	 * so it can be tested without a request.
+	 *
+	 * Order matters, as it did with the single account: the new selection is
+	 * stored first, because a history chunk running in a worker right now
+	 * checks it before and after its fetch, and only then is the spend of the
+	 * accounts that left the list deleted. If the selection cannot be stored,
+	 * nothing is deleted.
+	 *
+	 * @param string $platform
+	 * @param string $mode     'replace' or 'add'.
+	 * @param array  $raw_ids  Unsanitised IDs from the request.
+	 * @param array  $base_ids The list the page was showing (replace mode).
+	 * @return array{ok:bool, message:string, status?:int}
+	 */
+	public static function apply_account_selection( $platform, $mode, array $raw_ids, array $base_ids = [] ) {
+		$fail = static function ( $message, $status = 400 ) {
+			return [ 'ok' => false, 'message' => $message, 'status' => $status ];
+		};
 		if ( ! Brikpanel_Ads_Tokens::is_connected( $platform ) ) {
-			wp_send_json_error( [ 'message' => __( 'Connect this platform first.', 'brikpanel' ) ], 400 );
+			return $fail( __( 'Connect this platform first.', 'brikpanel' ) );
 		}
 
-		// If the user switched to a different account, wipe data for the
-		// previous account so the dashboard doesn't show mixed totals.
-		$desc = Brikpanel_Ads_Tokens::describe( $platform );
-		$prev = (string) ( $desc['primary_account'] ?? '' );
-		$switched = ( $prev !== '' && $prev !== $account_id );
+		// What is stored right now, not what this request's cache remembers.
+		$stored = Brikpanel_Ads_Tokens::selected_accounts_fresh( $platform );
 
-		// Set the new primary BEFORE clearing old rows. A backfill chunk for
-		// the previous account can be mid-flight in an Action Scheduler worker
-		// right now, and the guard that makes it a no-op reads the stored
-		// primary account — so flipping that first is what actually stops it
-		// from re-inserting rows behind us.
-		Brikpanel_Ads_Tokens::set_meta( $platform, 'primary_account', $account_id );
-
-		if ( $switched ) {
-			// Sweep everything that is not the newly-chosen account, not just
-			// the one we know about: an earlier switch may have left rows from
-			// an account that is no longer recorded anywhere.
-			Brikpanel_Ads_Store::delete_other_accounts( $platform, [ $account_id ] );
+		$ids = [];
+		foreach ( array_slice( $raw_ids, 0, 200 ) as $raw ) {
+			if ( ! is_scalar( $raw ) ) {
+				continue;
+			}
+			$raw = trim( sanitize_text_field( (string) $raw ) );
+			if ( $raw === '' ) {
+				continue;
+			}
+			// An ID that is already stored is taken as it is: it was accepted
+			// once, possibly by an older build with other rules, and the
+			// merchant did not type it now.
+			$id = in_array( $raw, $stored, true ) ? $raw : self::normalize_account_id( $platform, $raw );
+			if ( $id === '' ) {
+				return $fail( __( 'That does not look like a valid ad account ID.', 'brikpanel' ) );
+			}
+			if ( ! in_array( $id, $ids, true ) ) {
+				$ids[] = $id;
+			}
 		}
 
-		// Trigger a backfill if this account has no rows yet.
-		if ( ! Brikpanel_Ads_Store::has_data( $platform, $account_id ) ) {
-			( new Brikpanel_Ads_Sync() )->schedule_backfill( $platform, $account_id );
-			$message = __( 'Account saved. Loading 3 years of history in the background. Refresh the page in a few minutes to see it.', 'brikpanel' );
+		if ( $mode === 'add' ) {
+			if ( ! $ids ) {
+				return $fail( __( 'Enter an ad account ID first.', 'brikpanel' ) );
+			}
+			$new = $stored;
+			foreach ( $ids as $id ) {
+				if ( ! in_array( $id, $new, true ) ) {
+					$new[] = $id;
+				}
+			}
 		} else {
-			// No new backfill to queue, so nothing is going to overwrite a
-			// halted record left by an earlier run. Clear it here or the card
-			// keeps reporting an import that stopped long ago.
-			Brikpanel_Ads_Sync::clear_halted_backfill( $platform );
-			$message = __( 'Account saved.', 'brikpanel' );
+			$base = [];
+			foreach ( array_slice( $base_ids, 0, 200 ) as $raw ) {
+				if ( is_scalar( $raw ) && trim( (string) $raw ) !== '' ) {
+					$base[] = trim( sanitize_text_field( (string) $raw ) );
+				}
+			}
+			$base = array_values( array_unique( $base ) );
+			sort( $base );
+			$now = $stored;
+			sort( $now );
+			if ( $base !== $now ) {
+				return $fail( __( 'The account list was changed in another tab. Reload the page and try again.', 'brikpanel' ), 409 );
+			}
+			$new = $ids;
 		}
 
-		wp_send_json_success( [ 'message' => $message ] );
+		if ( ! $new ) {
+			return $fail( __( 'Choose at least one ad account.', 'brikpanel' ) );
+		}
+		if ( count( $new ) > Brikpanel_Ads_Tokens::MAX_ACCOUNTS ) {
+			return $fail( sprintf(
+				/* translators: %d: the most ad accounts one platform can pull spend from */
+				__( 'You can choose up to %d ad accounts.', 'brikpanel' ),
+				Brikpanel_Ads_Tokens::MAX_ACCOUNTS
+			) );
+		}
+
+		// Names come from the account list this server fetched, never from the
+		// request; an account without one keeps the name it had.
+		$known = self::known_accounts( $platform );
+		$names = Brikpanel_Ads_Tokens::describe( $platform )['account_names'];
+		foreach ( $new as $id ) {
+			if ( isset( $known[ $id ]['name'] ) && $known[ $id ]['name'] !== '' ) {
+				$names[ $id ] = $known[ $id ]['name'];
+			}
+		}
+
+		if ( ! Brikpanel_Ads_Tokens::set_accounts( $platform, $new, $names ) ) {
+			return $fail( __( 'Could not save the ad accounts. Please try again.', 'brikpanel' ), 500 );
+		}
+
+		if ( $mode !== 'add' ) {
+			// Every account with stored spend that is not in the new list: the
+			// ones just unticked, and any left over from before a reconnect,
+			// which the card listed as "Not selected".
+			$removed = array_values( array_diff( Brikpanel_Ads_Store::accounts_with_data( $platform ), $new ) );
+			if ( $removed ) {
+				$deleted = Brikpanel_Ads_Store::delete_other_accounts( $platform, $new );
+				// The dashboard keeps its figures for up to ten minutes; without
+				// this the deleted spend would still show there.
+				if ( function_exists( 'brikpanel_bust_data_caches' ) ) {
+					brikpanel_bust_data_caches();
+				}
+				Brikpanel_Ads_Logger::note(
+					'sync',
+					'Ad accounts changed on ' . $platform . ': removed ' . implode( ', ', $removed ) . ', deleted ' . (int) $deleted . ' stored spend row(s).'
+				);
+			}
+		}
+
+		$queued = Brikpanel_Ads_Sync::queue_history( $platform, $new );
+
+		$message = _n( 'Ad account saved.', 'Ad accounts saved.', count( $new ), 'brikpanel' );
+		if ( $queued ) {
+			$message .= ' ' . sprintf(
+				/* translators: %d: number of ad accounts whose spend history is being imported */
+				_n(
+					'Loading the spend history of %d account in the background. Refresh the page in a few minutes to see it.',
+					'Loading the spend history of %d accounts in the background. Refresh the page in a few minutes to see it.',
+					count( $queued ),
+					'brikpanel'
+				),
+				count( $queued )
+			);
+		}
+		return [ 'ok' => true, 'message' => $message ];
+	}
+
+	/**
+	 * Rows of one card's account list.
+	 *
+	 * @param string $platform
+	 * @param array  $desc Brikpanel_Ads_Tokens::describe() of the platform.
+	 * @return array<int, array{id:string, name:string, currency:string, status_label:string, is_manager:bool, selected:bool, has_data:bool}>
+	 */
+	private static function account_rows( $platform, array $desc ) {
+		$known     = self::known_accounts( $platform );
+		$summaries = Brikpanel_Ads_Store::account_summaries( $platform );
+		$ids       = array_values( array_unique( array_merge( $desc['accounts'], array_keys( $summaries ) ) ) );
+		$rows      = [];
+		foreach ( $ids as $id ) {
+			$id   = (string) $id;
+			$name = (string) ( $desc['account_names'][ $id ] ?? ( $known[ $id ]['name'] ?? '' ) );
+			$rows[] = [
+				'id'           => $id,
+				'name'         => $name !== $id ? $name : '',
+				'currency'     => strtoupper( (string) ( $summaries[ $id ]['currency'] ?? ( $known[ $id ]['currency'] ?? '' ) ) ),
+				'status_label' => (string) ( $known[ $id ]['status_label'] ?? '' ),
+				'is_manager'   => ! empty( $known[ $id ]['is_manager'] ),
+				'selected'     => in_array( $id, $desc['accounts'], true ),
+				'has_data'     => isset( $summaries[ $id ] ),
+			];
+		}
+		return $rows;
+	}
+
+	/**
+	 * The card's note about ticked accounts in another currency. One message
+	 * for PHP (_n) and JS (brikpanel_js_plural), so both share a translation.
+	 *
+	 * ROAS has one figure for the whole store and no exchange rate to bring
+	 * the spend into the store currency, so the dashboard leaves it empty for
+	 * a period with such spend, and Net profit leaves that spend out.
+	 *
+	 * @return array Nooped plural.
+	 */
+	public static function currency_note_noop() {
+		/* translators: %s: ad account names or IDs, comma separated */
+		return _n_noop(
+			'%s uses a different currency from your store. Its spend is left out of Net profit, and ROAS stays empty for periods with its spend.',
+			'%s use a different currency from your store. Their spend is left out of Net profit, and ROAS stays empty for periods with their spend.',
+			'brikpanel'
+		);
 	}
 
 	// =========================================================================
@@ -390,22 +614,38 @@ class Brikpanel_Ads_Settings {
 
 		// Bump time limit so the 7-day pull comfortably finishes inline. The
 		// PHP default 30s is enough for a 7-day window in both APIs, but the
-		// retry / refresh loop can push it over on slow networks.
+		// retry / refresh loop can push it over on slow networks. The pull
+		// itself resets it per account and stops starting new accounts once
+		// its budget is spent.
 		@set_time_limit( 90 );
 
 		try {
-			$result = ( new Brikpanel_Ads_Sync() )->run_inline( $platform );
+			$result = ( new Brikpanel_Ads_Sync() )->run_inline( $platform, time() + Brikpanel_Ads_Sync::INLINE_BUDGET_SECONDS );
 		} catch ( \Throwable $e ) {
 			wp_send_json_error( [ 'message' => $e->getMessage() ], 502 );
 		}
 
+		// Distinct days, not rows: two accounts synced over the same week are
+		// still one week of spend data.
+		$message = sprintf(
+			/* translators: %d = number of days of spend data imported. */
+			_n( 'Synced %d day of spend data.', 'Synced %d days of spend data.', (int) $result['days'], 'brikpanel' ),
+			(int) $result['days']
+		);
+		$tone = 'success';
+		if ( ! empty( $result['failed'] ) ) {
+			$account_id = (string) array_key_first( $result['failed'] );
+			$message   .= ' ' . Brikpanel_Ads_Sync::account_error( $account_id, (string) $result['failed'][ $account_id ] );
+			$tone       = 'error';
+		}
+		if ( ! empty( $result['deferred'] ) ) {
+			$message .= ' ' . __( 'The other accounts will be updated by the next daily sync.', 'brikpanel' );
+		}
+
 		wp_send_json_success( [
-			'message' => sprintf(
-				/* translators: %d = number of days of spend data imported. */
-				_n( 'Synced %d day of spend data.', 'Synced %d days of spend data.', (int) $result['rows'], 'brikpanel' ),
-				(int) $result['rows']
-			),
-			'result' => $result,
+			'message' => $message,
+			'tone'    => $tone,
+			'result'  => $result,
 		] );
 	}
 
@@ -419,23 +659,52 @@ class Brikpanel_Ads_Settings {
 		$out = [];
 		foreach ( [ Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, Brikpanel_Ads_Tokens::PLATFORM_META ] as $p ) {
 			$desc = Brikpanel_Ads_Tokens::describe( $p );
-			$account_id = (string) $desc['primary_account'];
-
-			if ( ! $desc['connected'] || $account_id === '' ) {
+			if ( ! $desc['connected'] ) {
 				$out[ $p ] = [ 'connected' => false ];
 				continue;
 			}
 
-			$summary = Brikpanel_Ads_Store::account_summary( $p, $account_id );
-			$months  = Brikpanel_Ads_Store::monthly_breakdown( $p, $account_id );
+			// One query each for every account of the platform. Ticked accounts
+			// come first in their own order, then any account whose spend is
+			// still stored although it is not ticked: that spend still counts on
+			// the dashboard, so it is shown here too, marked.
+			$summaries = Brikpanel_Ads_Store::account_summaries( $p );
+			$months    = Brikpanel_Ads_Store::monthly_breakdown_by_account( $p );
+			$ids       = array_values( array_unique( array_merge( $desc['accounts'], array_keys( $summaries ) ) ) );
+
+			$accounts = [];
+			$symbols  = [];
+			foreach ( $ids as $id ) {
+				$id = (string) $id;
+				if ( ! isset( $summaries[ $id ] ) ) {
+					continue; // nothing imported yet
+				}
+				$account_months = $months[ $id ] ?? [];
+
+				// Symbols of the account's currencies: spend is shown in the ad
+				// account's own currency, laid out like the store's prices.
+				foreach ( array_merge( [ (string) $summaries[ $id ]['currency'] ], wp_list_pluck( $account_months, 'currency' ) ) as $code ) {
+					$code = strtoupper( (string) $code );
+					if ( '' !== $code && ! isset( $symbols[ $code ] ) && function_exists( 'get_woocommerce_currency_symbol' ) ) {
+						$symbols[ $code ] = html_entity_decode( get_woocommerce_currency_symbol( $code ), ENT_QUOTES, 'UTF-8' );
+					}
+				}
+
+				$accounts[] = [
+					'account_id' => $id,
+					'name'       => (string) ( $desc['account_names'][ $id ] ?? '' ),
+					'selected'   => in_array( $id, $desc['accounts'], true ),
+					'currency'   => (string) $summaries[ $id ]['currency'],
+					'summary'    => $summaries[ $id ],
+					'months'     => $account_months,
+				];
+			}
 
 			$out[ $p ] = [
-				'connected'  => true,
-				'account_id' => $account_id,
-				'email'      => (string) $desc['email'],
-				'currency'   => $summary ? (string) $summary['currency'] : '',
-				'summary'    => $summary,   // null until the first row lands
-				'months'     => $months,
+				'connected' => true,
+				'email'     => (string) $desc['email'],
+				'symbols'   => $symbols,
+				'accounts'  => $accounts,
 			];
 		}
 
@@ -466,7 +735,7 @@ class Brikpanel_Ads_Settings {
 
 		foreach ( $keep as &$e ) {
 			$e['ts_display'] = $e['ts']
-				? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $e['ts'] )
+				? wp_date( brikpanel_datetime_format(), $e['ts'] )
 				: '';
 		}
 		wp_send_json_success( [ 'entries' => $keep ] );

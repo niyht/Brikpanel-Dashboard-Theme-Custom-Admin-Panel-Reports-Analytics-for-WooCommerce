@@ -50,7 +50,7 @@ class Brikpanel_Sheets_Customers_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK,
 			[ $this, 'handle' ],
-			static function () { return [ 'label' => __( 'Sheets — customers + RFM snapshot', 'brikpanel' ) ]; }
+			static function () { return [ 'label' => __( 'Sheets: customers + RFM snapshot', 'brikpanel' ) ]; }
 		);
 	}
 
@@ -137,7 +137,8 @@ class Brikpanel_Sheets_Customers_Sync {
 			foreach ( $rows_raw as $r ) {
 				$name = trim( trim( (string) $r->billing_first_name . ' ' . (string) $r->billing_last_name ) );
 				if ( $name === '' ) {
-					$name = (string) $r->display_name;
+					// WordPress stores display names HTML-encoded ("&amp;").
+					$name = brikpanel_plain_name( (string) $r->display_name );
 				}
 				if ( $name === '' ) {
 					$name = (string) $r->customer_email;

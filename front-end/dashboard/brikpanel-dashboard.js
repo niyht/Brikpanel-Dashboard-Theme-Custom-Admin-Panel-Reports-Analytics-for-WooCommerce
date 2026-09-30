@@ -31,6 +31,36 @@
         }, 3500);
     }
 
+    // Inbound control channel for dashboard add-ons (Ad Platforms today).
+    //
+    // This file already BROADCASTS its payload on document as
+    // `brikpanel:dashboardData` (see fetchDashboardData), so these two
+    // listeners are the return leg of a channel that already exists: a module
+    // living in its own inline <script> can ask for a refetch or a toast
+    // without this IIFE exporting anything onto `window`. In wp-admin `window`
+    // is shared with WooCommerce, Gutenberg and every other plugin, so a
+    // global here would be a permanent collision surface and a permanent API
+    // promise for a plugin that ships to wordpress.org.
+    //
+    // Registered at IIFE scope rather than inside DOMContentLoaded so an early
+    // dispatch is never missed, and deliberately fire-and-forget: a module
+    // that loads before this file gets a silent no-op, where a call on an
+    // undefined global would throw and take the rest of its handler with it.
+    //
+    // fetchDashboardData and showToast are function declarations, so both are
+    // hoisted and safe to reference from up here.
+    document.addEventListener('brikpanel:refresh', function () {
+        fetchDashboardData();
+    });
+
+    // detail: { message: <already-translated string>, type: 'success' | 'error' }
+    // The text is translated server-side by whoever dispatches it; this only
+    // places it, exactly like every other caller of showToast.
+    document.addEventListener('brikpanel:toast', function (e) {
+        var d = (e && e.detail) ? e.detail : {};
+        showToast(d.message, d.type);
+    });
+
     // State. The range is seeded from the user's remembered selection (see
     // Brikpanel_Dashboard::get_range_preference) so a refresh, or leaving the
     // dashboard and coming back, resumes the period the user actually picked
@@ -60,12 +90,32 @@
     let isLoading = false;
     let currentFetchController = null; // aborts an in-flight request when a newer one starts
     let fetchSeq = 0;                  // sequence token so stale responses can't overwrite newer ones
+    // From the last payload, for the empty states: store-wide facts (any
+    // order ever, the latest paid day, any visit ever), visitor tracking
+    // settings, the window shown, whether that window has paid orders and its
+    // visitor count. See emptyReason().
+    let emptyCtx = { store: null, tracking: null, period: null, paid: null, visitors: 0 };
+    let liveListEmpty = false;         // the Live list last showed nobody
+    let liveStale = false;             // the server refused the Live request; polling stopped
+
+    // Numbers, percentages, money and dates in the store's format, the percent
+    // sign where the viewer's language writes it (front-end/shared/
+    // brikpanel-format.js, field test E2/E9). The browser's language used to
+    // decide ("1.234" on a Turkish computer, "0% gelirin" in Turkish).
+    var BF = window.brikpanelFormat || null;
+    function fmtPct(v, decimals) {
+        return BF ? BF.percent(v, decimals == null ? 1 : decimals) : String(Number(v) || 0);
+    }
+    function fillText(pattern, value) {
+        return BF ? BF.fill(pattern || '%s', value) : String(value);
+    }
 
     // Chart.js defaults
     if (typeof Chart !== 'undefined') {
         Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         Chart.defaults.font.size = 12;
         Chart.defaults.color = '#616161';
+        if (BF) BF.chart(Chart);
     }
 
     // =========================================================================
@@ -83,7 +133,8 @@
         initProfitBreakdownToggle();
         initAddExpense();
         initRemoveExpense();
-        initHintTooltips();
+        initEmptyStates();
+        initNewStoreGuide();
         fetchDashboardData();
         startLivePolling();
 
@@ -104,63 +155,6 @@
             }
         });
     });
-
-    // =========================================================================
-    // HELP HINTS
-    // =========================================================================
-
-    // Flip a hint's tooltip to open leftward only when opening rightward (the
-    // default) would spill past the viewport edge. Recomputed on each hover /
-    // focus so it stays correct regardless of card wrapping or window width.
-    function initHintTooltips() {
-        function place(hint) {
-            var tip = hint.querySelector('.brikpanel-dash-hint-tip');
-            if (!tip) return;
-            // Reset any prior placement so each open recomputes cleanly.
-            hint.classList.remove('brikpanel-dash-hint--end');
-            tip.style.left = '';
-            tip.style.right = '';
-            var hintRect = hint.getBoundingClientRect();
-            var tipWidth = tip.offsetWidth;
-            var margin = 12;
-            // Use the document client width, not window.innerWidth: the dashboard
-            // scrolls inside <body> (the topbar layout), so a vertical scrollbar
-            // makes innerWidth ~15px wider than the usable content area. Clamping
-            // to innerWidth left the tip a few px past the real right edge.
-            var vw = document.documentElement.clientWidth || window.innerWidth;
-            if (vw <= 600) {
-                // Phone: a left/right flip alone can't keep a ~270px tip inside a
-                // ~375px screen for centre/right cards — it clips against the
-                // dashboard's overflow-x:clip box. Anchor near the icon but clamp
-                // the whole tip into the viewport so it is always fully readable.
-                var desiredLeft = hintRect.left - 8;
-                var maxLeft = vw - margin - tipWidth;
-                var clampedLeft = Math.max(margin, Math.min(desiredLeft, maxLeft));
-                tip.style.left = (clampedLeft - hintRect.left) + 'px';
-                tip.style.right = 'auto';
-                return;
-            }
-            // Desktop/tablet: flip leftward only if opening rightward would spill.
-            if (hintRect.left - 8 + tipWidth + margin > vw) {
-                hint.classList.add('brikpanel-dash-hint--end');
-            }
-        }
-        // Delegate from the document: most hints (the KPI cards in particular)
-        // are rendered later by the dashboard AJAX load, so binding directly to
-        // the elements present at init missed them entirely — their tooltips
-        // never got placed and overflowed the viewport on mobile. `pointerover`
-        // and `focusin` both bubble, so a single delegated pair covers hints
-        // added at any time. Recomputed on every open, so width/viewport changes
-        // stay correct.
-        document.addEventListener('pointerover', function (e) {
-            var hint = e.target.closest && e.target.closest('.brikpanel-dash-hint');
-            if (hint) place(hint);
-        });
-        document.addEventListener('focusin', function (e) {
-            var hint = e.target.closest && e.target.closest('.brikpanel-dash-hint');
-            if (hint) place(hint);
-        });
-    }
 
     // =========================================================================
     // DATE PRESETS
@@ -199,9 +193,14 @@
         var input = document.getElementById('brikpanel-dash-datepicker');
         if (!input || typeof flatpickr === 'undefined') return;
 
-        datepickerInstance = flatpickr(input, {
+        // The calendar in the viewer's language from the store's first
+        // weekday; the field shows the range in the store's short date format
+        // ("1 Eyl 2026 - 22 Eyl 2026") while the picker itself keeps Y-m-d.
+        var pickerOptions = {
             mode: 'range',
             dateFormat: 'Y-m-d',
+            altInput: true,
+            altInputClass: 'brikpanel-dash-range-field',
             maxDate: 'today',
             onOpen: function (selectedDates, dateStr, instance) {
                 // Start every reopen fresh — whether the picker was opened via the
@@ -230,7 +229,8 @@
                 currentRange = 'custom';
                 fetchDashboardData();
             }
-        });
+        };
+        datepickerInstance = BF ? BF.datePicker(input, pickerOptions) : flatpickr(input, pickerOptions);
 
         // Restore a remembered custom range into the field so it reads the same
         // as when it was picked. `false` = do not fire onChange, this is state
@@ -289,6 +289,13 @@
             if (!res.success) return;
             var d = res.data;
 
+            // What the empty cards below explain themselves with.
+            emptyCtx.store    = d.store || null;
+            emptyCtx.tracking = d.tracking || null;
+            emptyCtx.period   = d.period || null;
+            emptyCtx.paid     = windowPaid(d);
+            emptyCtx.visitors = Number(d.visitor_count) || 0;
+
             // Date-range subtitle — always states which dates / how long.
             renderPeriod(d.period);
 
@@ -305,7 +312,10 @@
             updateCard('card-orders', d.order_count_display != null ? d.order_count_display : formatNumber(d.order_count));
             updateCard('card-aov', d.aov);
             updateCard('card-visitors', d.visitor_count_display != null ? d.visitor_count_display : formatNumber(d.visitor_count));
-            updateCard('card-conversion', (d.conversion_rate_display != null ? d.conversion_rate_display : d.conversion_rate) + '%');
+            // The server sends the rate as a finished percentage (store
+            // separators, the viewer's sign position); a payload cached before
+            // that still carries the bare number.
+            updateCard('card-conversion', d.conversion_rate_pct != null ? d.conversion_rate_pct : fmtPct(d.conversion_rate, 2));
 
             // Deltas
             updateDelta('delta-total-sales', d.deltas.sales);
@@ -313,6 +323,11 @@
             updateDelta('delta-aov', d.deltas.aov);
             updateDelta('delta-visitors', d.deltas.visitors);
             updateDelta('delta-conversion', d.deltas.conversion);
+
+            // Units sold in the same paid orders: beside the Orders change
+            // and at the head of the Order Rates card.
+            setItemsSold('card-items-sold', d.items_sold_label);
+            setItemsSold('rates-items-sold', d.items_sold_label);
 
             // Profit (Revenue − Cost of goods − Expenses)
             renderProfit(d.profit);
@@ -348,7 +363,7 @@
 
             // Low stock + LTV summary panel (Returns & Refunds % is now
             // surfaced in the Order Rates donut alongside cancelled/failed).
-            renderLowStock(d.low_stock);
+            renderLowStock(d.low_stock, d.low_stock_empty);
             renderLtvPanel(d.ltv_panel);
 
             // Subscriptions.
@@ -356,6 +371,10 @@
 
             // Marketplace analytics (BrikMarket-only).
             renderMarketplaceAnalytics(d.marketplace);
+
+            // An empty Live list drawn before this data arrived can now say
+            // whether tracking is off. A stopped list keeps its reload line.
+            if (liveListEmpty && !liveStale) renderLiveVisitors([]);
         })
         .catch(function (err) {
             // An aborted request is expected (a newer selection took over); it
@@ -375,6 +394,23 @@
     function updateCard(id, value) {
         var el = document.getElementById(id);
         if (el) el.innerHTML = value;
+    }
+
+    // "5,361 items sold" comes ready from the server (plural form and number
+    // format). Nothing sold, or a payload cached before the key existed,
+    // hides the line instead of printing a blank or "undefined".
+    function setItemsSold(id, label) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var text = typeof label === 'string' ? label : '';
+        // Inside <bdi> the phrase keeps its own reading order on a
+        // right-to-left screen ("10 items sold", not "items sold 10"), while
+        // the box and the dot before it stay on the page's side.
+        var phrase = document.createElement('bdi');
+        phrase.textContent = text;
+        el.textContent = '';
+        el.appendChild(phrase);
+        el.hidden = text === '';
     }
 
     function updateDelta(id, value) {
@@ -406,12 +442,13 @@
     // drops the noisy decimal; small moves keep one decimal of precision.
     function formatDeltaPct(abs) {
         if (abs >= 1000) {
-            return (Math.round((abs / 100 + 1) * 10) / 10) + '\u00d7';
+            var times = Math.round((abs / 100 + 1) * 10) / 10;
+            return (BF ? BF.number(times, 1, true) : String(times)) + '\u00d7';
         }
         if (abs >= 100) {
-            return Math.round(abs) + '%';
+            return fmtPct(Math.round(abs), 0);
         }
-        return abs + '%';
+        return fmtPct(abs, 1);
     }
 
     function setLoadingState(loading) {
@@ -426,8 +463,287 @@
     }
 
     function formatNumber(n) {
-        if (n === null || n === undefined) return '0';
-        return Number(n).toLocaleString();
+        if (n === null || n === undefined) n = 0;
+        return BF ? BF.number(n) : String(Number(n) || 0);
+    }
+
+    // =========================================================================
+    // EMPTY STATES (field test F1: say why a card is empty)
+    // =========================================================================
+
+    var DAY_MS = 86400000;
+
+    // A 'Y-m-d' as a UTC day stamp, so days compare and subtract exactly.
+    function ymdStamp(ymd) {
+        var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+        return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : NaN;
+    }
+
+    // The store's today, read from the window the server resolved: the
+    // preset windows end today, "Yesterday" the day before. NaN for a custom
+    // window, which says nothing about today.
+    function storeTodayStamp(period) {
+        if (!period) return NaN;
+        var end = ymdStamp(period.to_iso);
+        if (period.range === 'yesterday') return end + DAY_MS;
+        return ['today', '7days', '30days', '90days'].indexOf(period.range) !== -1 ? end : NaN;
+    }
+
+    // The smallest preset whose window holds the given day, to offer as a
+    // one-click way to it. None from the widest preset or a custom window.
+    function presetFor(day, period) {
+        if (!period || period.range === '90days' || period.range === 'custom') return '';
+        var today = storeTodayStamp(period);
+        var stamp = ymdStamp(day);
+        if (isNaN(today) || isNaN(stamp) || stamp > today) return '';
+        var spans = [['7days', 7], ['30days', 30], ['90days', 90]];
+        for (var i = 0; i < spans.length; i++) {
+            if (today - stamp <= (spans[i][1] - 1) * DAY_MS) {
+                return spans[i][0] === period.range ? '' : spans[i][0];
+            }
+        }
+        return '';
+    }
+
+    // "Sep 24", with the year when it is not this year's.
+    function emptyDayLabel(day, period) {
+        if (!BF) return String(day);
+        var sameYear = period && String(period.to_iso || '').slice(0, 4) === String(day).slice(0, 4);
+        return sameYear ? BF.dayMonth(day) : BF.date(day);
+    }
+
+    // Whether the window shown has paid orders, from the window's own counts.
+    // 'site' is the Orders card (marketplace orders left out while BrikMarket
+    // is active); 'all' adds the window's marketplace orders, the marketplace
+    // section's total (no section without BrikMarket, when the Orders card
+    // already counts every order).
+    function windowPaid(d) {
+        var site = Number(d.order_count) > 0;
+        var mp = !!(d.marketplace && d.marketplace.totals) && Number(d.marketplace.totals.orders) > 0;
+        return { site: site, all: site || mp };
+    }
+
+    // Why a card has nothing to show, as { text, note, preset }.
+    //
+    // kind 'orders': the card counts paid orders. A window that has paid
+    //   orders keeps the card's own sentence: something else emptied the
+    //   card (no marketplace sale, orders without a country or a browser).
+    //   Otherwise a store that never had an order says so (and how many
+    //   administrator orders were left out); a quiet window names the latest
+    //   paid day and offers the smallest preset that reaches it, or only says
+    //   the window is quiet when that day is over a year back. basis 'site'
+    //   is the card's own marketplace-free count (BrikMarket), 'all' counts
+    //   marketplace orders too.
+    // kind 'visits': the card counts BrikPanel's visitor tracking: off, or,
+    //   on a store that never counted a visit, waiting for cookie consent or
+    //   nothing counted yet. A store with visits keeps the card's own
+    //   sentence for a window without any.
+    // fallback: the card's own sentence, kept whenever none of that is the
+    //   reason.
+    function emptyReason(kind, basis, fallback) {
+        var r = { text: fallback || i18n.no_data || '', note: '', preset: '' };
+
+        if (kind === 'visits') {
+            var t = emptyCtx.tracking;
+            if (!t) return r;
+            if (!t.enabled) {
+                r.text = i18n.empty_tracking_off || r.text;
+                return r;
+            }
+            if (emptyCtx.visitors > 0) return r;
+            var vs = emptyCtx.store;
+            if (!vs || vs.has_any_visit !== false) return r;
+            r.text = (t.consent ? i18n.empty_visits_consent : i18n.empty_visits_none) || r.text;
+            return r;
+        }
+
+        var paid = emptyCtx.paid;
+        if (paid && (basis === 'all' ? paid.all : paid.site)) return r;
+
+        var s = emptyCtx.store;
+        if (!s) return r;
+        if (!s.has_any_order) {
+            r.text = i18n.empty_new_orders || r.text;
+            var admins = Number(s.admin_orders) || 0;
+            if (admins > 0 && BF && i18n.empty_admin_orders) {
+                r.note = BF.count(i18n.empty_admin_orders, admins);
+            }
+            return r;
+        }
+        if (!s.has_paid_orders) {
+            r.text = i18n.empty_no_paid || r.text;
+            return r;
+        }
+
+        var p = emptyCtx.period;
+        if (!p) return r;
+        var day = basis === 'all' ? s.last_paid_day_all : s.last_paid_day_site;
+        if (!day) {
+            // The server looks a year back; an older last order is not named.
+            r.text = i18n.empty_quiet_nodate || r.text;
+            return r;
+        }
+        var stamp = ymdStamp(day);
+        // A latest paid day inside the window means the window does have
+        // paid orders, counted in a way the counts above do not share: never
+        // name a day of the window as the last order before it.
+        if (stamp >= ymdStamp(p.from_iso) && stamp <= ymdStamp(p.to_iso)) return r;
+        if (!i18n.empty_quiet) return r;
+
+        r.text = fillText(i18n.empty_quiet, emptyDayLabel(day, p));
+        r.preset = presetFor(day, p);
+        return r;
+    }
+
+    // Fill an element with a reason: the sentence, the administrator note on
+    // its own line, then the preset link. Text nodes only, never markup.
+    function fillEmpty(el, r) {
+        if (!el) return;
+        el.textContent = '';
+        el.appendChild(document.createTextNode(r.text || ''));
+        if (r.note) {
+            var note = document.createElement('span');
+            note.className = 'brikpanel-dash-empty-note';
+            note.textContent = r.note;
+            el.appendChild(note);
+        }
+        var labels = {
+            '7days': i18n.empty_show_7days,
+            '30days': i18n.empty_show_30days,
+            '90days': i18n.empty_show_90days
+        };
+        var label = r.preset ? labels[r.preset] : '';
+        if (label) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'brikpanel-dash-empty-link brikpanel-dash-empty-range';
+            btn.setAttribute('data-bp-range', r.preset);
+            btn.textContent = label;
+            el.appendChild(document.createElement('br'));
+            el.appendChild(btn);
+        }
+    }
+
+    // Replace a card's content with a reason.
+    function showEmpty(wrap, r) {
+        if (!wrap) return;
+        var p = document.createElement('p');
+        p.className = 'brikpanel-dash-empty';
+        fillEmpty(p, r);
+        wrap.textContent = '';
+        wrap.appendChild(p);
+    }
+
+    // A chart with nothing to draw hides its box and shows the reason in the
+    // line the page prints right after it; given no reason, the line hides
+    // and the box comes back. The box is shown BEFORE Chart.js draws, which
+    // measures it. Returns true when the box was hidden until now.
+    function setChartEmpty(canvas, r) {
+        var chartBox = canvas ? canvas.parentElement : null;
+        var msg = chartBox ? chartBox.nextElementSibling : null;
+        if (!msg || !msg.classList.contains('brikpanel-dash-chart-empty')) msg = null;
+        if (r) {
+            if (msg) {
+                fillEmpty(msg, r);
+                msg.hidden = false;
+                chartBox.hidden = true;
+            }
+            return false;
+        }
+        var wasHidden = !!(chartBox && chartBox.hidden);
+        if (msg) msg.hidden = true;
+        if (chartBox) chartBox.hidden = false;
+        return wasHidden;
+    }
+
+    // The preset link inside an empty card clicks the matching date button.
+    function initEmptyStates() {
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest && e.target.closest('.brikpanel-dash-empty-range');
+            if (!btn) return;
+            var range = btn.getAttribute('data-bp-range');
+            if (['7days', '30days', '90days'].indexOf(range) === -1) return;
+            var preset = document.querySelector('.brikpanel-dash-preset[data-range="' + range + '"]');
+            if (preset) preset.click();
+        });
+    }
+
+    // =========================================================================
+    // NEW STORE GUIDE ("Your store is ready for its first order")
+    // =========================================================================
+
+    function initNewStoreGuide() {
+        var guide = document.getElementById('brikpanel-dash-guide');
+        if (!guide) return;
+        guide.addEventListener('click', function (e) {
+            if (!e.target.closest) return;
+            if (e.target.closest('.brikpanel-dash-guide__close')) {
+                var fd = new FormData();
+                fd.append('action', 'brikpanel_dash_guide_dismiss');
+                fd.append('security', guide.getAttribute('data-nonce') || '');
+                fetch(CFG.ajax_url, {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin',
+                    keepalive: true
+                }).catch(function () {});
+                if (guide.parentNode) guide.parentNode.removeChild(guide);
+                return;
+            }
+            // "Add your monthly expenses" opens the Expenses card's own window.
+            if (e.target.closest('[data-bp-guide-action="add-expense"]')) {
+                var add = document.getElementById('profit-exp-add');
+                if (add) add.click();
+            }
+        });
+    }
+
+    // An expense was just saved from the quick window: tick the guide's
+    // "Add your monthly expenses" step the way the server draws a done step
+    // (check mark, quiet row, "Done: ..." for screen readers), so it stops
+    // asking for something already done. The sentence comes with the page.
+    function markGuideExpenseDone() {
+        var guide = document.getElementById('brikpanel-dash-guide');
+        var btn = guide ? guide.querySelector('[data-bp-guide-action="add-expense"]') : null;
+        var step = btn ? btn.closest('.brikpanel-dash-guide__step') : null;
+        var labelEl = btn ? btn.querySelector('.brikpanel-dash-guide__label') : null;
+        if (!step || !labelEl) return;
+
+        var SVG_NS = 'http://www.w3.org/2000/svg';
+        var tick = document.createElementNS(SVG_NS, 'svg');
+        [['width', '12'], ['height', '12'], ['viewBox', '0 0 24 24'], ['fill', 'none'],
+            ['stroke', 'currentColor'], ['stroke-width', '3'], ['stroke-linecap', 'round'],
+            ['stroke-linejoin', 'round'], ['aria-hidden', 'true'], ['focusable', 'false']
+        ].forEach(function (a) { tick.setAttribute(a[0], a[1]); });
+        var line = document.createElementNS(SVG_NS, 'polyline');
+        line.setAttribute('points', '20 6 9 17 4 12');
+        tick.appendChild(line);
+
+        var mark = document.createElement('span');
+        mark.className = 'brikpanel-dash-guide__mark';
+        mark.appendChild(tick);
+
+        var label = document.createElement('span');
+        label.className = 'brikpanel-dash-guide__label';
+        var spoken = btn.getAttribute('data-bp-done-label') || '';
+        var shown = document.createElement('span');
+        shown.textContent = labelEl.textContent;
+        if (spoken) {
+            var sr = document.createElement('span');
+            sr.className = 'screen-reader-text';
+            sr.textContent = spoken;
+            label.appendChild(sr);
+            shown.setAttribute('aria-hidden', 'true');
+        }
+        label.appendChild(shown);
+
+        var item = document.createElement('span');
+        item.className = 'brikpanel-dash-guide__item';
+        item.appendChild(mark);
+        item.appendChild(label);
+
+        step.replaceChild(item, btn);
+        step.classList.add('is-done');
     }
 
     // =========================================================================
@@ -437,12 +753,16 @@
     function renderProfit(p) {
         if (!p) return;
 
-        var ofRev = i18n.profit_of_revenue || 'of revenue';
+        // Sentences built on the server: plural forms by count, the share of
+        // revenue as one translated phrase with the percent sign where the
+        // language writes it. Empty when there is nothing to say.
+        var tx = p.texts || {};
 
         updateCard('card-profit-revenue', p.revenue);
         updateCard('card-profit-cogs', p.cogs);
         updateCard('card-profit-expenses', p.expenses);
         updateCard('card-profit-net', p.net);
+
 
         // Revenue here is the SAME figure as the "Total Sales" KPI card and
         // is just the top line of the P&L — repeating its trend arrow makes
@@ -454,9 +774,25 @@
             // Total Sales KPI, so label it accordingly instead of claiming they
             // match. The breakdown below spells out gross minus returns.
             var netted = p.returns_on && Number(p.returns_raw) > 0;
-            revDelta.textContent = netted
-                ? (i18n.profit_revenue_net_note || 'Net of returns')
-                : (i18n.profit_revenue_note || 'Same as Total Sales');
+            // "Tax in the Profit section" set to take tax out of Revenue takes
+            // it off this figure too, so it no longer matches Total Sales either.
+            var noTax = !!p.tax_excluded && Number(p.tax_raw) > 0;
+            // "Tax in the Profit section" kept tax in Revenue: the line names
+            // the amount (server-built, translated), and the returns stay in
+            // the breakdown below. The title carries it when the line is cut.
+            var taxNote = (p.tax_in_revenue && typeof p.tax_note === 'string') ? p.tax_note : '';
+            revDelta.title = taxNote;
+            if (taxNote) {
+                revDelta.textContent = taxNote;
+            } else if (netted && noTax) {
+                revDelta.textContent = i18n.profit_revenue_net_tax_note || 'Net of returns and tax';
+            } else if (noTax) {
+                revDelta.textContent = i18n.profit_revenue_tax_note || 'Excluding tax';
+            } else {
+                revDelta.textContent = netted
+                    ? (i18n.profit_revenue_net_note || 'Net of returns')
+                    : (i18n.profit_revenue_note || 'Same as total sales');
+            }
             revDelta.className = 'brikpanel-dash-card-delta brikpanel-dash-card-delta-static';
         }
         renderRevenueBreakdown(p);
@@ -472,18 +808,19 @@
         if (cogsDelta) {
             var cogsWarn = false;
             var cogsList = null;
-            if (!p.has_cogs) {
+            // No cost in a window without sales is no news: the hint used to
+            // tell a fully costed catalog to set costs on every quiet day.
+            if (!p.has_cogs && Number(p.revenue_raw) > 0) {
                 cogsDelta.textContent = i18n.profit_cogs_hint || 'Set “Cost of goods” on products';
                 cogsWarn = true;
             } else if (p.cogs_incomplete) {
-                var tpl = i18n.profit_cogs_partial || 'cost missing on %d items — profit overstated';
-                cogsDelta.textContent = tpl.replace('%d', p.cogs_missing_lines);
+                cogsDelta.textContent = tx.cogs_partial || '';
                 cogsWarn = true;
                 if (Array.isArray(p.cogs_missing_products) && p.cogs_missing_products.length) {
                     cogsList = p.cogs_missing_products;
                 }
             } else {
-                cogsDelta.textContent = p.cogs_pct + '% ' + ofRev;
+                cogsDelta.textContent = tx.cogs_share || '';
             }
             cogsDelta.className = 'brikpanel-dash-card-delta brikpanel-dash-card-delta-static'
                 + (cogsWarn ? ' warn' : '');
@@ -495,7 +832,7 @@
             // mirroring the Net Profit card's estimate "!".
             var cogsCard = cogsDelta.closest('.brikpanel-dash-card');
             var cogsLabel = cogsCard ? cogsCard.querySelector('.brikpanel-dash-card-label') : null;
-            setMissingCogsListFlag(cogsLabel, cogsList);
+            setMissingCogsListFlag(cogsLabel, cogsList, tx.cogs_missing_aria || '');
         }
 
         // Expenses: share of revenue under the card; the composition itself
@@ -503,37 +840,20 @@
         // perfectly uniform in height.
         var expDelta = document.getElementById('delta-profit-expenses');
         if (expDelta) {
-            expDelta.textContent = p.expenses_pct + '% ' + ofRev;
+            expDelta.textContent = tx.expenses_share || '';
             expDelta.className = 'brikpanel-dash-card-delta brikpanel-dash-card-delta-static';
         }
         renderExpenseBreakdown(p);
 
         // Payment fees are read per order, so the total can be built from only
         // part of them. Flag that on the Expenses card rather than in its delta
-        // line, which already carries the share-of-revenue figure.
+        // line, which already carries the share-of-revenue figure. The server
+        // picks the case: fees in a currency with no rate (the total
+        // understates), some orders without a fee, or a gateway that records
+        // none at all (which used to look like the feature being broken).
         var expCard = document.getElementById('profit-expenses-card');
         if (expCard) {
-            var feeTip = '';
-            if (p.payment_fees_unconverted > 0) {
-                // Actionable: those fees exist and are NOT in the total, so the
-                // figure understates. Ranked above the merely-missing case.
-                feeTip = (i18n.profit_fees_unconverted
-                    || 'Processing fees on %d orders are in a currency with no exchange rate, so they are not counted. Add a rate to include them.')
-                    .replace('%d', p.payment_fees_unconverted);
-            } else if (p.payment_fees_missing > 0 && p.payment_fees_raw > 0) {
-                // Some fees WERE found, so the total is real but partial.
-                feeTip = (i18n.profit_fees_partial
-                    || '%d orders have no payment fee recorded, so processing costs are only counted on the rest.')
-                    .replace('%d', p.payment_fees_missing);
-            } else if (p.payment_fees_missing > 0) {
-                // Nothing found at all. payment_fees_missing is only non-zero
-                // when the setting is ON and the period had orders, so this is
-                // exactly "enabled but the gateway records no fee" — the case
-                // that used to render as a silently absent row and read as the
-                // feature being broken. Say it instead of hiding it.
-                feeTip = i18n.profit_fees_none
-                    || 'Payment fees are turned on, but none of the orders in this period record a processing fee. Your payment gateway may not store one, so this cost is not included.';
-            }
+            var feeTip = tx.fees_tip || '';
             setEstimateFlag(expCard, !!feeTip, feeTip);
         }
 
@@ -543,27 +863,29 @@
             netCard.classList.toggle('is-loss', p.net_raw < 0);
             netCard.classList.toggle('is-profit', p.net_raw > 0);
             // Missing costs make this optimistic, not exact. Instead of a
-            // loud border, mark it with a quiet "!" that explains — on
-            // hover/focus — exactly what to do to make it accurate.
-            var estTip = (i18n.profit_estimate_tip
-                || '%d sold items have no cost set. Add their “Cost of goods” so Net profit is accurate.')
-                .replace('%d', p.cogs_missing_lines);
-            setEstimateFlag(netCard, !!p.cogs_incomplete, estTip);
+            // loud border, mark it with a quiet "!" that explains, on
+            // hover/focus, exactly what to do to make it accurate.
+            var estTip = tx.estimate_tip || '';
+            setEstimateFlag(netCard, !!p.cogs_incomplete && !!estTip, estTip);
         }
         var netDelta = document.getElementById('delta-profit-net');
-        if (netDelta && (p.margin || p.margin === 0)) {
-            var marginTxt = (p.net_raw < 0 ? (i18n.profit_loss || 'Loss') + ' · ' : '')
-                + p.margin + '% ' + ofRev;
-            var base = netDelta.textContent && netDelta.textContent !== '--'
-                ? netDelta.textContent + ' · ' : '';
-            netDelta.textContent = base + marginTxt;
+        if (netDelta) {
+            var parts = [];
+            if (p.net_raw < 0) parts.push(i18n.profit_loss || 'Loss');
+            if (tx.margin_share) parts.push(tx.margin_share);
+            if (parts.length) {
+                var base = netDelta.textContent && netDelta.textContent !== '--'
+                    ? netDelta.textContent + ' · ' : '';
+                netDelta.textContent = base + parts.join(' · ');
+            }
         }
     }
 
-    // Add/remove a small "!" marker (with a hover/focus tooltip telling the
-    // user what to fix) next to a card's label. Idempotent — safe to call
+    // Add/remove a small "!" marker (with a hover/focus/tap tooltip telling
+    // the user what to fix) next to a card's label. Idempotent — safe to call
     // on every render. Keyboard-reachable via tabindex; the styled tooltip
     // is the only visible one (no native `title` so it doesn't double up).
+    // front-end/shared/brikpanel-tip.js opens and places it (data-bp-tip).
     function setEstimateFlag(card, show, msg) {
         if (!card) return;
         var label = card.querySelector('.brikpanel-dash-card-label');
@@ -579,9 +901,10 @@
             flag.className = 'brikpanel-dash-flag';
             flag.setAttribute('tabindex', '0');
             flag.setAttribute('role', 'note');
+            flag.setAttribute('data-bp-tip', '');
             flag.innerHTML =
                 '<span class="brikpanel-dash-flag-mark" aria-hidden="true">!</span>'
-                + '<span class="brikpanel-dash-flag-tip"></span>';
+                + '<span class="brikpanel-dash-flag-tip brikpanel-tip"></span>';
             label.appendChild(flag);
         }
         flag.setAttribute('aria-label', msg);
@@ -596,7 +919,7 @@
     // use textContent (untrusted user input); the per-row amount is the
     // server's already-formatted wc_price() HTML so the currency symbol/decimal
     // style matches the rest of the UI.
-    function setMissingCogsListFlag(host, products) {
+    function setMissingCogsListFlag(host, products, ariaText) {
         if (!host) return;
         var existing = host.querySelector('.brikpanel-dash-flag');
         if (existing) existing.parentNode.removeChild(existing);
@@ -606,6 +929,7 @@
         flag.className = 'brikpanel-dash-flag brikpanel-dash-flag-list';
         flag.setAttribute('tabindex', '0');
         flag.setAttribute('role', 'note');
+        flag.setAttribute('data-bp-tip', '');
 
         var mark = document.createElement('span');
         mark.className = 'brikpanel-dash-flag-mark';
@@ -613,7 +937,8 @@
         mark.textContent = '!';
 
         var tip = document.createElement('span');
-        tip.className = 'brikpanel-dash-flag-tip brikpanel-dash-flag-tip-list';
+        // Interactive: the pointer may enter it to scroll the list.
+        tip.className = 'brikpanel-dash-flag-tip brikpanel-dash-flag-tip-list brikpanel-tip brikpanel-tip--interactive';
 
         var title = document.createElement('strong');
         title.className = 'brikpanel-dash-flag-tip-title';
@@ -650,8 +975,8 @@
         });
         tip.appendChild(list);
 
-        var ariaTpl = i18n.profit_cogs_missing_aria || '%d products are missing a cost';
-        flag.setAttribute('aria-label', ariaTpl.replace('%d', products.length));
+        // Server-built, with the plural form for this count.
+        flag.setAttribute('aria-label', ariaText || title.textContent);
 
         flag.appendChild(mark);
         flag.appendChild(tip);
@@ -717,7 +1042,7 @@
                 var pct = Math.round((b.raw / total) * 100);
                 var v = document.createElement('span');
                 v.className = 'brikpanel-dash-bd-v';
-                v.innerHTML = b.amount + ' <span class="brikpanel-dash-bd-pct">' + pct + '%</span>';
+                v.innerHTML = b.amount + ' <span class="brikpanel-dash-bd-pct">' + escapeHtml(fmtPct(pct, 0)) + '</span>';
                 row.appendChild(v);
             }
 
@@ -1037,6 +1362,7 @@
                     saveBtn.textContent = original;
                     if (j && j.success) {
                         closeModal();
+                        markGuideExpenseDone();
                         // Reset for next time.
                         if (amountEl) amountEl.value = '';
                         // The expense just saved is itself something the next
@@ -1283,7 +1609,21 @@
         var ctx = document.getElementById('brikpanel-sales-chart');
         if (!ctx || typeof Chart === 'undefined') return;
 
-        var labels = data.map(function (d) { return d.date; });
+        // The server lists every day of the window, days without sales at 0.
+        // All zero is an empty window: the reason instead of a flat line on a
+        // bare 0 to 1 axis.
+        data = Array.isArray(data) ? data : [];
+        var hasSales = data.some(function (d) { return Number(d.revenue) !== 0 || Number(d.orders) !== 0; });
+        if (!hasSales) {
+            setChartEmpty(ctx, emptyReason('orders', 'site'));
+            return;
+        }
+        var wasHidden = setChartEmpty(ctx, null);
+
+        // Axis: short day and month in the viewer's language ("22 Eyl"), was
+        // the raw "2026-09-22". The tooltip title names the full date.
+        var days = data.map(function (d) { return d.date; });
+        var labels = days.map(function (day) { return BF ? BF.dayMonth(day) : day; });
         var revenue = data.map(function (d) { return d.revenue; });
         var orders = data.map(function (d) { return d.orders; });
 
@@ -1295,6 +1635,7 @@
         var ordRadius = data.length === 1 ? 4 : 0;
 
         if (salesChart) {
+            salesChart.$bpDays = days;
             salesChart.data.labels = labels;
             salesChart.data.datasets[0].data = revenue;
             salesChart.data.datasets[1].data = orders;
@@ -1302,6 +1643,8 @@
             // to "Today" otherwise kept the old radii and hid the single point.
             salesChart.data.datasets[0].pointRadius = revRadius;
             salesChart.data.datasets[1].pointRadius = ordRadius;
+            // Back from hidden: measure the box again before drawing.
+            if (wasHidden) salesChart.resize();
             salesChart.update();
             return;
         }
@@ -1357,8 +1700,7 @@
                         ticks: {
                             font: { size: 11 },
                             callback: function (v) {
-                                if (v >= 1000) return (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
-                                return v;
+                                return BF ? BF.compact(v) : v;
                             }
                         }
                     },
@@ -1384,11 +1726,23 @@
                         titleFont: { size: 12, weight: '600' },
                         bodyFont: { size: 12 },
                         cornerRadius: 6,
-                        padding: 10
+                        padding: 10,
+                        callbacks: {
+                            title: function (items) {
+                                var day = items.length && salesChart && salesChart.$bpDays ? salesChart.$bpDays[items[0].dataIndex] : '';
+                                return day && BF ? BF.dateShort(day) : (items.length ? items[0].label : '');
+                            },
+                            label: function (ctx) {
+                                var v = ctx.parsed ? ctx.parsed.y : 0;
+                                var shown = !BF ? String(v) : (ctx.dataset.yAxisID === 'y' ? BF.money(v) : BF.number(v));
+                                return (ctx.dataset.label ? ctx.dataset.label + ': ' : '') + shown;
+                            }
+                        }
                     }
                 }
             }
         });
+        salesChart.$bpDays = days;
     }
 
     // =========================================================================
@@ -1401,16 +1755,25 @@
 
         var labels = [
             i18n.visitors || 'Visitors',
-            i18n.product_views || 'Product Views',
-            i18n.add_to_cart || 'Add to Cart',
+            i18n.product_views || 'Product views',
+            i18n.add_to_cart || 'Add to cart',
             i18n.checkout || 'Checkout',
             i18n.orders || 'Orders'
         ];
+        funnel = funnel || {};
         var values = [funnel.visitors, funnel.products, funnel.cart, funnel.checkout, funnel.orders];
         var colors = ['#303030', '#4a4a4a', '#6a6a6a', '#8a8a8a', '#1a8917'];
 
+        // Nothing at any step: why, instead of empty bars on a 0 to 1 axis.
+        if (values.every(function (v) { return !Number(v); })) {
+            setChartEmpty(ctx, emptyReason('visits'));
+            return;
+        }
+        var wasHidden = setChartEmpty(ctx, null);
+
         if (funnelChart) {
             funnelChart.data.datasets[0].data = values;
+            if (wasHidden) funnelChart.resize();
             funnelChart.update();
             return;
         }
@@ -1446,7 +1809,12 @@
                     tooltip: {
                         backgroundColor: '#303030',
                         cornerRadius: 6,
-                        padding: 10
+                        padding: 10,
+                        callbacks: {
+                            label: function (ctx) {
+                                return BF ? BF.tooltipValue(ctx) : ctx.formattedValue;
+                            }
+                        }
                     }
                 }
             }
@@ -1462,26 +1830,27 @@
         if (!ctx || typeof Chart === 'undefined') return;
 
         var labels = [
-            (i18n.successful || 'Successful') + ' (' + rates.successful + '%)',
-            (i18n.failed || 'Failed') + ' (' + rates.failed + '%)',
-            (i18n.refunded || 'Returns & Refunds') + ' (' + rates.refunded + '%)',
-            (i18n.cancelled || 'Cancelled') + ' (' + rates.cancelled + '%)'
+            (i18n.successful || 'Successful') + ' (' + fmtPct(rates.successful) + ')',
+            (i18n.failed || 'Failed') + ' (' + fmtPct(rates.failed) + ')',
+            (i18n.refunded || 'Returns & refunds') + ' (' + fmtPct(rates.refunded) + ')',
+            (i18n.cancelled || 'Cancelled') + ' (' + fmtPct(rates.cancelled) + ')'
         ];
         var values = [rates.successful, rates.failed, rates.refunded, rates.cancelled];
         var colors = ['#303030', '#d72c0d', '#8a8a8a', '#616161'];
 
-        // If all values are 0, show a placeholder
-        var allZero = values.every(function (v) { return v === 0; });
-        if (allZero) {
-            values = [1];
-            labels = [i18n.no_orders || 'No orders'];
-            colors = ['#e3e3e3'];
+        // No orders in the window: the reason instead of a grey placeholder
+        // ring with a "No orders" legend.
+        if (values.every(function (v) { return !Number(v); })) {
+            setChartEmpty(ctx, emptyReason('orders', 'site'));
+            return;
         }
+        var wasHidden = setChartEmpty(ctx, null);
 
         if (ratesChart) {
             ratesChart.data.labels = labels;
             ratesChart.data.datasets[0].data = values;
             ratesChart.data.datasets[0].backgroundColor = colors;
+            if (wasHidden) ratesChart.resize();
             ratesChart.update();
             return;
         }
@@ -1514,7 +1883,11 @@
                     tooltip: {
                         backgroundColor: '#303030',
                         cornerRadius: 6,
-                        padding: 10
+                        padding: 10,
+                        callbacks: {
+                            // The label already carries its percentage.
+                            label: function (ctx) { return ctx.label; }
+                        }
                     }
                 }
             }
@@ -1525,19 +1898,38 @@
     // TABLES
     // =========================================================================
 
+    // Tables turn into stacked cards when they cannot show every column in
+    // their box (field test B6: on a phone the right-hand totals scrolled out
+    // of sight). Each box is watched once; its table is re-rendered in place,
+    // so the shared helper looks it up again on every measurement.
+    // floor: stack below this room even when the table would squeeze in
+    // (see renderRecentOrders).
+    function refitDashTable(wrap, floor) {
+        if (!wrap || !window.brikpanelFitTable) return;
+        var table = wrap.querySelector('table.brikpanel-dash-table');
+        if (table) table.classList.add('brikpanel-fit-table');
+        var fit = window.brikpanelFitTable(wrap, { labels: 'head', slack: 0, floor: floor || 0 });
+        if (fit) fit.refit();
+    }
+
+    // A long SKU may break after a hyphen, never mid-word.
+    function skuHtml(sku) {
+        return escapeHtml(sku).replace(/-/g, '-<wbr>');
+    }
+
     function renderTopProducts(products) {
         var wrap = document.getElementById('top-products-table');
         if (!wrap) return;
 
         if (!products || products.length === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+            showEmpty(wrap, emptyReason('orders', 'site'));
             return;
         }
 
         var html = '<table class="brikpanel-dash-table"><thead><tr>' +
             '<th>#</th>' +
             '<th>' + (i18n.product || 'Product') + '</th>' +
-            '<th>' + (i18n.qty_sold || 'Qty Sold') + '</th>' +
+            '<th>' + (i18n.qty_sold || 'Qty sold') + '</th>' +
             '</tr></thead><tbody>';
 
         products.forEach(function (p, i) {
@@ -1546,13 +1938,14 @@
                 : '';
             html += '<tr' + rowAttr + '>' +
                 '<td class="rank">' + (i + 1) + '</td>' +
-                '<td>' + escapeHtml(p.name) + '</td>' +
-                '<td>' + formatNumber(p.qty) + '</td>' +
+                '<td class="brikpanel-fit-lead">' + escapeHtml(p.name) + '</td>' +
+                '<td class="brikpanel-fit-headline">' + formatNumber(p.qty) + '</td>' +
                 '</tr>';
         });
 
         html += '</tbody></table>';
         wrap.innerHTML = html;
+        refitDashTable(wrap);
     }
 
     function initRowLinks() {
@@ -1590,12 +1983,25 @@
         });
     }
 
+    // WooCommerce's name for an order status (i18n.status_labels, keyed like
+    // $order->get_status()), or '' when it has none.
+    function statusLabelFor(slug) {
+        var labels = i18n.status_labels;
+        if (!labels || typeof labels !== 'object' || !Object.prototype.hasOwnProperty.call(labels, slug)) return '';
+        return typeof labels[slug] === 'string' ? labels[slug] : '';
+    }
+
     function renderRecentOrders(orders) {
         var wrap = document.getElementById('recent-orders-table');
         if (!wrap) return;
 
         if (!orders || orders.length === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_orders || 'No orders') + '</p>';
+            // All-time list: only the new-store reason applies; a store that
+            // has orders keeps its own sentence.
+            var st = emptyCtx.store;
+            showEmpty(wrap, (st && !st.has_any_order)
+                ? emptyReason('orders', 'all')
+                : { text: i18n.no_orders || '', note: '', preset: '' });
             return;
         }
 
@@ -1610,24 +2016,44 @@
         orders.forEach(function (o) {
             var sourceHtml = '';
             if (o.source && o.source.label) {
-                sourceHtml = '<span class="brikpanel-dash-source" style="background:' + escapeHtml(o.source.color) + ';">' + escapeHtml(o.source.label) + '</span>';
+                // title: a long source name can shorten with "…" in the two-line rows.
+                sourceHtml = '<span class="brikpanel-dash-source" style="background:' + escapeHtml(o.source.color) + ';" title="' + escapeAttr(o.source.label) + '">' + escapeHtml(o.source.label) + '</span>';
             }
 
             var rowAttr = o.edit_url
                 ? ' class="brikpanel-dash-row-link" data-href="' + escapeAttr(o.edit_url) + '" tabindex="0" role="link"'
                 : '';
 
+            // WooCommerce's own name for the status, in the admin's language;
+            // a status it does not list keeps its short name.
+            var statusLabel = statusLabelFor(o.status);
+            var dateHtml = o.date ? '<span class="brikpanel-dash-order-date">' + escapeHtml(o.date) + '</span>' : '';
+            // Units on the order, under its total: the row already has two
+            // lines (number + date), so this adds no height.
+            // <bdi>: "3 items" keeps its order on a right-to-left screen.
+            var itemsHtml = o.items_label ? '<span class="brikpanel-dash-order-items"><bdi>' + escapeHtml(o.items_label) + '</bdi></span>' : '';
+            // The same count beside the customer, shown only when the table
+            // turns into two-line rows (phone, half-width card): "Name · 3 items".
+            var whoItemsHtml = o.items_label ? '<span class="brikpanel-dash-order-who-items"><bdi>' + escapeHtml(o.items_label) + '</bdi></span>' : '';
+
             html += '<tr' + rowAttr + '>' +
-                '<td>#' + escapeHtml(String(o.number || o.id)) + '</td>' +
-                '<td>' + escapeHtml(o.customer) + '</td>' +
+                // <bdi>: an order number with letters ("#2026-INV-0001") keeps
+                // its order on a right-to-left screen. The space keeps number
+                // and date two words for screen readers.
+                '<td class="brikpanel-fit-lead"><bdi>#' + escapeHtml(String(o.number || o.id)) + '</bdi> ' + dateHtml + '</td>' +
+                '<td class="brikpanel-dash-order-who"><span class="brikpanel-dash-order-who-name">' + escapeHtml(o.customer) + '</span>' + whoItemsHtml + '</td>' +
                 '<td>' + sourceHtml + '</td>' +
-                '<td><span class="brikpanel-dash-status ' + escapeHtml(o.status) + '">' + escapeHtml(o.status) + '</span></td>' +
-                '<td>' + o.total + (o.total_base ? '<div class="brikpanel-dash-total-base">≈ ' + o.total_base + '</div>' : '') + '</td>' +
+                '<td><span class="brikpanel-dash-status ' + escapeHtml(o.status) + (statusLabel ? '' : ' brikpanel-dash-status--slug') + '">' + escapeHtml(statusLabel || o.status) + '</span></td>' +
+                '<td class="brikpanel-fit-headline">' + o.total + (o.total_base ? '<div class="brikpanel-dash-total-base">≈ ' + o.total_base + '</div>' : '') + itemsHtml + '</td>' +
                 '</tr>';
         });
 
         html += '</tbody></table>';
         wrap.innerHTML = html;
+        // Five columns squeezed under 340px only fit by breaking the date over
+        // three lines (short status names, as in Arabic); rows read better.
+        // Stacked, each order is two lines (brikpanel-dashboard.css).
+        refitDashTable(wrap, 340);
     }
 
     function renderMostViewed(pages) {
@@ -1635,7 +2061,7 @@
         if (!wrap) return;
 
         if (!pages || pages.length === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+            showEmpty(wrap, emptyReason('visits'));
             return;
         }
 
@@ -1658,6 +2084,7 @@
 
         html += '</tbody></table>';
         wrap.innerHTML = html;
+        refitDashTable(wrap);
     }
 
     function renderMostCart(products) {
@@ -1665,14 +2092,14 @@
         if (!wrap) return;
 
         if (!products || products.length === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+            showEmpty(wrap, emptyReason('visits'));
             return;
         }
 
         var html = '<table class="brikpanel-dash-table"><thead><tr>' +
             '<th>#</th>' +
             '<th>' + (i18n.product || 'Product') + '</th>' +
-            '<th>' + (i18n.cart_count || 'Cart Adds') + '</th>' +
+            '<th>' + (i18n.cart_count || 'Cart adds') + '</th>' +
             '</tr></thead><tbody>';
 
         products.forEach(function (p, i) {
@@ -1688,22 +2115,20 @@
 
         html += '</tbody></table>';
         wrap.innerHTML = html;
+        refitDashTable(wrap);
     }
 
-    function renderDevices(data) {
+    // view: 'visitors' (tracking) or 'orders' (the orders' own browser).
+    function renderDevices(data, view) {
         var wrap = document.getElementById('brikpanel-device-breakdown');
         if (!wrap) return;
-        if (!data) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
-            return;
-        }
-        var mobile  = data.mobile  || 0;
-        var tablet  = data.tablet  || 0;
-        var desktop = data.desktop || 0;
+        var mobile  = data ? (data.mobile  || 0) : 0;
+        var tablet  = data ? (data.tablet  || 0) : 0;
+        var desktop = data ? (data.desktop || 0) : 0;
         var total   = mobile + tablet + desktop;
 
         if (total === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+            showEmpty(wrap, view === 'orders' ? emptyReason('orders', 'site') : emptyReason('visits'));
             return;
         }
 
@@ -1722,7 +2147,7 @@
                 + '<div class="brikpanel-device-bar-wrap">'
                 +   '<div class="brikpanel-device-bar" style="width:' + r.p + '%"></div>'
                 + '</div>'
-                + '<span class="brikpanel-device-pct">' + r.p + '%</span>'
+                + '<span class="brikpanel-device-pct">' + escapeHtml(fmtPct(r.p, 0)) + '</span>'
                 + '<span class="brikpanel-device-count brikpanel-dash-muted">(' + formatNumber(r.count) + ')</span>'
                 + '</div>';
         });
@@ -1733,16 +2158,15 @@
     function renderCustomerTypes(data) {
         var wrap = document.getElementById('brikpanel-customer-types');
         if (!wrap) return;
-        if (!data) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
-            return;
-        }
-        var newC    = data['new']    || 0;
-        var repeatC = data['repeat'] || 0;
+        var newC    = data ? (data['new']    || 0) : 0;
+        var repeatC = data ? (data['repeat'] || 0) : 0;
         var total   = newC + repeatC;
 
+        // Read from WooCommerce's analytics table, which can lag behind new
+        // orders: emptyReason() keeps the plain sentence while the window
+        // does have paid orders.
         if (total === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+            showEmpty(wrap, emptyReason('orders', 'all'));
             return;
         }
 
@@ -1760,7 +2184,7 @@
                 + '<div class="brikpanel-device-bar-wrap">'
                 +   '<div class="brikpanel-device-bar" style="width:' + r.p + '%"></div>'
                 + '</div>'
-                + '<span class="brikpanel-device-pct">' + r.p + '%</span>'
+                + '<span class="brikpanel-device-pct">' + escapeHtml(fmtPct(r.p, 0)) + '</span>'
                 + '<span class="brikpanel-device-count brikpanel-dash-muted">(' + formatNumber(r.count) + ')</span>'
                 + '</div>';
         });
@@ -1782,23 +2206,25 @@
         return map[channel] || channel;
     }
 
+    // Returns true when it said no visits were counted at all, so the empty
+    // referrer list under it need not say so a second time.
     function renderSources(data) {
         // Shares the breakdown container with the device views (same panel, tabbed).
         var wrap = document.getElementById('brikpanel-device-breakdown');
-        if (!wrap) return;
-        if (!data) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
-            return;
-        }
+        if (!wrap) return false;
 
         // Fixed display order; hide empty channels so the card stays clean.
         var order = ['direct', 'search', 'social', 'referral', 'paid', 'email'];
         var total = 0;
-        order.forEach(function (k) { total += (data[k] || 0); });
+        if (data) {
+            order.forEach(function (k) { total += (data[k] || 0); });
+        }
 
         if (total === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.src_empty || 'No visits with a known source yet for this period.') + '</p>';
-            return;
+            // Visits counted but none with a known source keeps its own sentence.
+            showEmpty(wrap, emptyReason('visits', null, i18n.src_empty));
+            var t = emptyCtx.tracking;
+            return !!t && (!t.enabled || emptyCtx.visitors <= 0);
         }
 
         var pct = function (n) { return total > 0 ? Math.round((n / total) * 100) : 0; };
@@ -1815,19 +2241,20 @@
                 + '<div class="brikpanel-device-bar-wrap">'
                 +   '<div class="brikpanel-device-bar" style="width:' + r.p + '%"></div>'
                 + '</div>'
-                + '<span class="brikpanel-device-pct">' + r.p + '%</span>'
+                + '<span class="brikpanel-device-pct">' + escapeHtml(fmtPct(r.p, 0)) + '</span>'
                 + '<span class="brikpanel-device-count brikpanel-dash-muted">(' + formatNumber(r.count) + ')</span>'
                 + '</div>';
         });
         html += '</div>';
         wrap.innerHTML = html;
+        return false;
     }
 
     function renderTopReferrers(list) {
         var wrap = document.getElementById('brikpanel-top-referrers');
         if (!wrap) return;
         if (!list || !list.length) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.src_no_referrers || 'No external referrers yet for this period.') + '</p>';
+            showEmpty(wrap, { text: i18n.src_no_referrers || '', note: '', preset: '' });
             return;
         }
 
@@ -1848,7 +2275,15 @@
         var wrap = document.getElementById('brikpanel-rfm-segments');
         if (!wrap) return;
         if (!segments || segments.length === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No customer data yet — the nightly recompute hasn\'t populated metrics.') + '</p>';
+            // The card covers all time, so not the "this period" sentence: the
+            // same one the lifetime value card shows (field test D7). A store
+            // with no order yet has no customers to wait for.
+            var st = emptyCtx.store;
+            showEmpty(wrap, {
+                text: (st && !st.has_any_order ? i18n.empty_rfm_new : i18n.ltv_empty) || i18n.ltv_empty || '',
+                note: '',
+                preset: ''
+            });
             return;
         }
 
@@ -1858,7 +2293,7 @@
             legendHtml += '<div style="display:flex;align-items:center;gap:0.5rem;">'
                 + '<span style="width:8px;height:8px;border-radius:50%;background:' + s.color + ';flex-shrink:0"></span>'
                 + '<span style="flex:1;color:#303030;">' + escapeHtml(s.label) + '</span>'
-                + '<span style="color:#616161;font-variant-numeric:tabular-nums;">' + s.customers + ' (' + s.share + '%)</span>'
+                + '<span style="color:#616161;font-variant-numeric:tabular-nums;">' + escapeHtml(formatNumber(s.customers) + ' (' + fmtPct(s.share) + ')') + '</span>'
                 + '</div>';
         });
         legendHtml += '</div>';
@@ -1891,7 +2326,7 @@
                             label: function (ctx) {
                                 var total = ctx.dataset.data.reduce(function (a, b) { return a + b; }, 0);
                                 var pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
-                                return ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
+                                return ctx.label + ': ' + formatNumber(ctx.parsed) + ' (' + fmtPct(pct, 0) + ')';
                             }
                         }
                     }
@@ -1900,12 +2335,26 @@
         });
     }
 
-    function renderLowStock(products) {
+    function renderLowStock(products, empty) {
         var wrap = document.getElementById('low-stock-table');
         if (!wrap) return;
 
         if (!products || products.length === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.all_stocked || 'All products are sufficiently stocked') + '</p>';
+            // The server says why nothing is listed: no products, stock not
+            // tracked, or nothing low (plus how many ran out, with a link).
+            var p = document.createElement('p');
+            p.className = 'brikpanel-dash-empty';
+            p.textContent = (empty && empty.text) || '';
+            if (empty && empty.link && empty.url) {
+                var a = document.createElement('a');
+                a.className = 'brikpanel-dash-empty-link';
+                a.href = empty.url;
+                a.textContent = empty.link;
+                p.appendChild(document.createElement('br'));
+                p.appendChild(a);
+            }
+            wrap.textContent = '';
+            wrap.appendChild(p);
             return;
         }
 
@@ -1920,14 +2369,15 @@
                 ? '<a href="' + escapeAttr(p.edit_url) + '" style="color:#303030;text-decoration:none;font-weight:500;">' + escapeHtml(p.name) + '</a>'
                 : escapeHtml(p.name);
             html += '<tr>' +
-                '<td>' + nameCell + '</td>' +
-                '<td class="brikpanel-dash-muted">' + (p.sku ? escapeHtml(p.sku) : '&mdash;') + '</td>' +
+                '<td class="brikpanel-fit-lead">' + nameCell + '</td>' +
+                '<td class="brikpanel-dash-muted">' + (p.sku ? skuHtml(p.sku) : '&mdash;') + '</td>' +
                 '<td><span class="brikpanel-dash-badge-warning">' + p.stock + '</span></td>' +
                 '</tr>';
         });
 
         html += '</tbody></table>';
         wrap.innerHTML = html;
+        refitDashTable(wrap);
     }
 
     function renderLtvPanel(data) {
@@ -1935,7 +2385,12 @@
         if (!wrap) return;
 
         if (!data || !data.total_customers) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.ltv_empty || 'Customer metrics will appear after the nightly recompute.') + '</p>';
+            var st = emptyCtx.store;
+            showEmpty(wrap, {
+                text: (st && !st.has_any_order ? i18n.empty_ltv_new : i18n.ltv_empty) || i18n.ltv_empty || '',
+                note: '',
+                preset: ''
+            });
             return;
         }
 
@@ -1946,7 +2401,7 @@
             '</div>' +
             '<table class="brikpanel-dash-table brikpanel-dash-returns-breakdown"><tbody>' +
                 '<tr><td>' + (i18n.total_customers || 'Total customers') + '</td><td><strong>' + formatNumber(data.total_customers) + '</strong></td></tr>' +
-                '<tr><td>' + (i18n.repeat_customers || 'Repeat customers') + '</td><td><strong>' + formatNumber(data.repeat_customers) + ' (' + data.repeat_rate + '%)</strong></td></tr>' +
+                '<tr><td>' + (i18n.repeat_customers || 'Repeat customers') + '</td><td><strong>' + escapeHtml(formatNumber(data.repeat_customers) + ' (' + fmtPct(data.repeat_rate) + ')') + '</strong></td></tr>' +
                 '<tr><td>' + (i18n.total_lifetime_value || 'Total lifetime value') + '</td><td><strong>' + data.total_ltv + '</strong></td></tr>' +
                 '<tr><td>' + (i18n.top_customer_ltv || 'Top customer') + '</td><td><strong>' + data.max_ltv + '</strong></td></tr>' +
             '</tbody></table>' +
@@ -1959,8 +2414,13 @@
         var wrap = document.getElementById('brikpanel-subscriptions-wrap');
         if (!wrap) return;
 
-        if (!data || !data.length) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+        var subsTotal = 0;
+        if (Array.isArray(data)) {
+            data.forEach(function (it) { subsTotal += Number(it.count) || 0; });
+        }
+        // The server always lists every status, so "empty" is a zero total.
+        if (subsTotal === 0) {
+            showEmpty(wrap, { text: i18n.empty_no_subscriptions || i18n.no_data || '', note: '', preset: '' });
             return;
         }
 
@@ -1991,7 +2451,7 @@
             html += '<span class="brikpanel-subs-card-count">' + formatNumber(item.count) + '</span>';
             html += '<span class="brikpanel-subs-card-label">' + escHtml(item.label) + '</span>';
             if (total > 0) {
-                html += '<span class="brikpanel-subs-card-pct">' + pct + '%</span>';
+                html += '<span class="brikpanel-subs-card-pct">' + escapeHtml(fmtPct(pct, 0)) + '</span>';
             }
             html += '</div>';
         }
@@ -2335,7 +2795,7 @@
 
         var img = document.createElement('img');
         img.src = dataURL;
-        img.alt = i18n.globe_alt || 'Order Locations Globe';
+        img.alt = i18n.globe_alt || 'Order locations globe';
         img.className = 'brikpanel-globe-static';
         img.style.cssText = 'width:100%;height:100%;';
 
@@ -2368,6 +2828,54 @@
             tag.textContent = data.code;
             anchor.appendChild(tag);
         });
+    }
+
+    // Undo what the last globe left on its box: the circle size
+    // setupGlobeLabels() wrote on it and the slow-device picture that
+    // createStaticGlobeFallback() put in place of the canvas.
+    function resetGlobeBox(container, keepSize) {
+        if (!keepSize) {
+            ['width', 'height', 'borderRadius', 'overflow', 'margin'].forEach(function (k) {
+                container.style[k] = '';
+            });
+        }
+        var stills = container.querySelectorAll('.brikpanel-globe-static-wrap');
+        for (var i = 0; i < stills.length; i++) {
+            stills[i].parentNode.removeChild(stills[i]);
+        }
+        var canvas = document.getElementById('brikpanel-globe');
+        if (canvas) canvas.style.display = '';
+    }
+
+    // No order to place: remove the globe, hide its box and show why (r).
+    // With r = null the box comes back first, visible and measurable, for
+    // createGlobeInstance() (which reads its size) to draw in.
+    function setGlobeEmpty(r) {
+        var container = document.getElementById('globe-container');
+        if (!container) return;
+        var panel = container.parentElement;
+        var msg = panel ? panel.querySelector('.brikpanel-dash-globe-empty') : null;
+
+        if (r) {
+            if (globeInstance) {
+                globeInstance.destroy();
+                globeInstance = null;
+            }
+            resetGlobeBox(container, false);
+            if (msg) {
+                fillEmpty(msg, r);
+                msg.hidden = false;
+                container.hidden = true;
+            }
+            return;
+        }
+
+        if (msg) msg.hidden = true;
+        // Back from hidden: measure the panel afresh. A globe that is simply
+        // redrawn (Orders / Customers) keeps its box as it is.
+        var wasHidden = container.hidden;
+        container.hidden = false;
+        resetGlobeBox(container, !wasHidden);
     }
 
     function countryFlag(code) {
@@ -2425,20 +2933,22 @@
         var refWrap = document.getElementById('brikpanel-source-referrers');
 
         if (view === 'sources') {
-            if (title) { title.textContent = i18n.src_title || 'Traffic Sources'; }
-            renderSources(sourceData);
+            if (title) { title.textContent = i18n.src_title || 'Traffic sources'; }
+            // No visits at all: the sources line already says why, so the
+            // referrer list under it stays out of sight.
+            var noVisits = renderSources(sourceData);
             renderTopReferrers(topReferrersData);
-            if (refWrap) { refWrap.style.display = ''; }
+            if (refWrap) { refWrap.style.display = noVisits ? 'none' : ''; }
             return;
         }
 
         if (title) {
             title.textContent = view === 'orders'
-                ? (i18n.device_title_orders   || 'Orders by Device')
-                : (i18n.device_title_visitors || 'Visitors by Device');
+                ? (i18n.device_title_orders   || 'Orders by device')
+                : (i18n.device_title_visitors || 'Visitors by device');
         }
         if (refWrap) { refWrap.style.display = 'none'; }
-        renderDevices(deviceData[view]);
+        renderDevices(deviceData[view], view);
     }
 
     function applyLocView(view) {
@@ -2478,24 +2988,32 @@
             });
         });
 
-        // Rebuild globe with new marker sizes (always recreate to update arc routing too)
+        // Rebuild globe with new marker sizes (always recreate to update arc
+        // routing too). Nothing to place: the reason instead of a blank
+        // 450px box (field test F3).
         if (globeMarkers.length > 0) {
+            setGlobeEmpty(null);
             createGlobeInstance();
-        } else if (globeInstance) {
-            globeInstance.destroy();
-            globeInstance = null;
+        } else {
+            setGlobeEmpty(emptyReason('orders', 'site'));
         }
 
         // Update titles
         var globeTitle = document.getElementById('globe-panel-title');
         var countriesTitle = document.getElementById('loc-panel-countries-title');
         var citiesTitle = document.getElementById('loc-panel-cities-title');
-        if (globeTitle) globeTitle.textContent = view === 'customers' ? (i18n.loc_cust_locations || 'Customer Locations') : (i18n.loc_order_locations || 'Order Locations');
-        if (countriesTitle) countriesTitle.textContent = view === 'customers' ? (i18n.loc_top_countries_customers || 'Top Countries by Customers') : (i18n.loc_top_countries_orders || 'Top Countries by Orders');
-        if (citiesTitle) citiesTitle.textContent = view === 'customers' ? (i18n.loc_top_cities_customers || 'Top Cities by Customers') : (i18n.loc_top_cities_orders || 'Top Cities by Orders');
+        if (globeTitle) globeTitle.textContent = view === 'customers' ? (i18n.loc_cust_locations || 'Customer locations') : (i18n.loc_order_locations || 'Order locations');
+        if (countriesTitle) countriesTitle.textContent = view === 'customers' ? (i18n.loc_top_countries_customers || 'Top countries by customers') : (i18n.loc_top_countries_orders || 'Top countries by orders');
+        if (citiesTitle) citiesTitle.textContent = view === 'customers' ? (i18n.loc_top_cities_customers || 'Top cities by customers') : (i18n.loc_top_cities_orders || 'Top cities by orders');
 
         renderTopCountries(countries, view);
         renderTopCities(cities, view);
+
+        // No country means no city either: one reason in this panel, not two.
+        var noPlaces = countries.length === 0;
+        var citiesWrap = document.getElementById('top-cities-table');
+        if (citiesTitle) citiesTitle.hidden = noPlaces;
+        if (citiesWrap) citiesWrap.hidden = noPlaces;
     }
 
     function renderTopCountries(countries, view) {
@@ -2503,7 +3021,7 @@
         if (!wrap) return;
 
         if (!countries || countries.length === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+            showEmpty(wrap, emptyReason('orders', 'site'));
             return;
         }
 
@@ -2542,7 +3060,7 @@
         if (!wrap) return;
 
         if (!cities || cities.length === 0) {
-            wrap.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+            showEmpty(wrap, emptyReason('orders', 'site'));
             return;
         }
 
@@ -2562,6 +3080,7 @@
 
         html += '</tbody></table>';
         wrap.innerHTML = html;
+        refitDashTable(wrap);
     }
 
     // =========================================================================
@@ -2569,7 +3088,7 @@
     // =========================================================================
 
     function startLivePolling() {
-        if (liveInterval) return;
+        if (liveInterval || liveStale) return;
         fetchLiveVisitors();
         // 30s: a visitor stays "live" for at least 75s after their last ping,
         // so a faster poll only adds server load without showing anything new.
@@ -2586,6 +3105,7 @@
     function fetchLiveVisitors() {
         var fd = new FormData();
         fd.append('action', 'brikpanel_dashboard_live');
+        fd.append('security', CFG.nonce || '');
 
         fetch(CFG.ajax_url, {
             method: 'POST',
@@ -2594,10 +3114,39 @@
         })
         .then(function (r) { return r.json(); })
         .then(function (res) {
-            if (!res.success) return;
+            if (liveStale) return;
+            if (!res || !res.success) {
+                // Refused: the nonce printed with the page expired (a tab left
+                // open for a day) or the session ended. Every later poll would
+                // be refused too, and the last list would stay on screen as if
+                // it were live. Stop, and say how to get it back.
+                liveStale = true;
+                stopLivePolling();
+                renderLiveStale();
+                return;
+            }
             renderLiveVisitors(res.data);
         })
         .catch(function () {});
+    }
+
+    // The Live list after the server refused it: no count (it is no longer
+    // known) and a line asking for a reload, which brings a fresh nonce.
+    function renderLiveStale() {
+        var countEl = document.getElementById('live-count');
+        var listEl = document.getElementById('live-visitors-list');
+        liveListEmpty = false;
+        if (countEl) countEl.hidden = true;
+        if (listEl) showEmpty(listEl, { text: i18n.live_reload || '', note: '', preset: '' });
+    }
+
+    // Why the Live list is empty. It shows who is on the store right now, so
+    // the selected window says nothing about it: only tracking being off is
+    // a reason; otherwise nobody happens to be on the store.
+    function liveEmptyReason() {
+        var t = emptyCtx.tracking;
+        var text = (t && !t.enabled && i18n.empty_tracking_off) ? i18n.empty_tracking_off : (i18n.no_visitors || '');
+        return { text: text, note: '', preset: '' };
     }
 
     // Device icon for a live visitor row.
@@ -2647,10 +3196,13 @@
         var listEl = document.getElementById('live-visitors-list');
         if (!countEl || !listEl) return;
 
-        countEl.textContent = visitors.length;
+        visitors = Array.isArray(visitors) ? visitors : [];
+        countEl.textContent = formatNumber(visitors.length);
+        countEl.hidden = false;
+        liveListEmpty = visitors.length === 0;
 
         if (visitors.length === 0) {
-            listEl.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_visitors || 'No active visitors') + '</p>';
+            showEmpty(listEl, liveEmptyReason());
             return;
         }
 
@@ -2668,10 +3220,10 @@
 
             if (status === 'order_received') {
                 badgeClass = 'order-received';
-                badgeText = i18n.order_received || 'Order Received';
+                badgeText = i18n.order_received || 'Order received';
             } else if (status === 'cart') {
                 badgeClass = 'added-to-cart';
-                badgeText = i18n.added_to_cart || 'Added to Cart';
+                badgeText = i18n.added_to_cart || 'Added to cart';
             } else {
                 badgeClass = 'browsing';
                 badgeText = i18n.browsing || 'Browsing';
@@ -2681,13 +3233,44 @@
             var displayName = v.customer_name ? escapeHtml(v.customer_name) : (v.ip_address || '');
             var ipLabel = v.ip_address ? '<span class="brikpanel-dash-live-ip">' + escapeHtml(v.ip_address) + '</span>' : '';
 
+            // The page's name (product, page, category) when the server could
+            // find one; the address otherwise (search results, older trackers).
+            var pageTitle = (typeof v.page_title === 'string') ? v.page_title : '';
+
+            // Where the visitor came from ("Traffic source in Live view"): the
+            // channel as a small pill, then the source, campaign and search
+            // term, cut with "…" when long.
+            //
+            // dir="auto" here and on the page name: the line takes the
+            // direction of its own text, so a long English name on a
+            // right-to-left screen is cut at its end, not at its start.
+            var src = (v.source && typeof v.source === 'object' && v.source.channel) ? v.source : null;
+            var srcChannel = src ? sourceChannelLabel(src.channel) : '';
+            var srcBits = src ? [src.name, src.campaign, src.term].filter(function (b) {
+                return typeof b === 'string' && b !== '';
+            }) : [];
+            var srcHtml = src
+                ? '<span class="brikpanel-dash-live-src">' +
+                    '<span class="brikpanel-dash-live-src-ch">' + escapeHtml(srcChannel) + '</span>' +
+                    (srcBits.length ? '<span class="brikpanel-dash-live-src-name" dir="auto">' + escapeHtml(srcBits.join(' · ')) + '</span>' : '') +
+                  '</span>'
+                : '';
+
             // Tooltip data for hover
             var tooltipParts = [];
             var deviceLabel = liveDeviceLabel(v.device);
             if (deviceLabel) tooltipParts.push(deviceLabel);
             if (v.customer_email) tooltipParts.push(v.customer_email);
             if (v.customer_phone) tooltipParts.push(v.customer_phone);
+            if (pageTitle) tooltipParts.push(pageTitle);
             if (v.page_url) tooltipParts.push(v.page_url);
+            if (src) {
+                tooltipParts.push(liveSourceLine(i18n.live_src_source, srcChannel + (src.name ? ' · ' + src.name : '')));
+                if (src.medium) tooltipParts.push(liveSourceLine(i18n.live_src_medium, src.medium));
+                if (src.campaign) tooltipParts.push(liveSourceLine(i18n.live_src_campaign, src.campaign));
+                if (src.term) tooltipParts.push(liveSourceLine(i18n.live_src_term, src.term));
+                if (src.landing) tooltipParts.push(liveSourceLine(i18n.live_src_landing, src.landing));
+            }
             var tooltipData = tooltipParts.length > 0 ? ' data-bp-tooltip="' + escapeAttr(tooltipParts.join('\n')) + '"' : '';
 
             html += '<div class="brikpanel-dash-live-item"' + tooltipData + '>' +
@@ -2695,7 +3278,11 @@
                 '<div class="brikpanel-dash-live-info">' +
                     '<span class="brikpanel-dash-live-name">' + displayName + '</span>' +
                     (v.customer_name ? ipLabel : '') +
-                    '<span class="brikpanel-dash-live-page" title="' + escapeAttr(v.page_url) + '">' + escapeHtml(pagePath) + '</span>' +
+                    // No title attribute: the row's own hover card already
+                    // carries the full name and address, and a native tooltip
+                    // would open on top of it.
+                    '<span class="brikpanel-dash-live-page" dir="auto">' + escapeHtml(pageTitle || pagePath) + '</span>' +
+                    srcHtml +
                 '</div>' +
                 '<span class="brikpanel-dash-live-badge ' + badgeClass + '">' + badgeText + '</span>' +
                 '</div>';
@@ -2710,6 +3297,18 @@
         });
     }
 
+    // One hover-card line for a live visitor's source ("Campaign: %s"). The
+    // template is translated server-side; without it the bare value still
+    // reads fine, so no English is baked in here.
+    // A function replacement, because the value comes from a link: a string
+    // one would treat "$&" or "$1" inside a campaign name as patterns.
+    function liveSourceLine(tpl, value) {
+        var text = String(value);
+        return (typeof tpl === 'string' && tpl.indexOf('%s') !== -1)
+            ? tpl.replace('%s', function () { return text; })
+            : text;
+    }
+
     function showTooltip(e) {
         hideTooltip();
         var text = e.currentTarget.getAttribute('data-bp-tooltip');
@@ -2722,6 +3321,10 @@
         var lines = text.split('\n');
         lines.forEach(function (line) {
             var p = document.createElement('div');
+            // Each line takes the direction of its own text, so on a
+            // right-to-left screen "Landing page: /" or an email address is
+            // not reordered around its punctuation.
+            p.dir = 'auto';
             p.textContent = line;
             tip.appendChild(p);
         });
@@ -2761,7 +3364,7 @@
         updateCard('card-mp-sales',  totals.revenue_html || '--');
         updateCard('card-mp-orders', formatNumber(totals.orders || 0));
         updateCard('card-mp-aov',    totals.aov_html || '--');
-        updateCard('card-mp-share',  (totals.share_total_pct || 0) + '%');
+        updateCard('card-mp-share',  escapeHtml(fmtPct(totals.share_total_pct || 0)));
 
         var deltas = mp.deltas || {};
         updateDelta('delta-mp-sales',  deltas.revenue);
@@ -2777,17 +3380,20 @@
         }
 
         // Per-marketplace list.
+        // No marketplace order in the window: every marketplace card below
+        // gives the same reason (no order ever, or the latest paid day).
+        var mpRows = mp.by_marketplace || [];
         var listEl = document.getElementById('brikpanel-mp-list');
         if (listEl) {
-            var rows = mp.by_marketplace || [];
+            var rows = mpRows;
             if (rows.length === 0) {
-                listEl.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+                showEmpty(listEl, emptyReason('orders', 'all'));
             } else {
                 var html = '';
                 rows.forEach(function (row) {
                     var initial = (row.label || '?').charAt(0).toUpperCase();
                     var deltaClass = row.delta_revenue > 0 ? 'positive' : (row.delta_revenue < 0 ? 'negative' : 'neutral');
-                    var deltaText  = row.delta_revenue === 0 ? '--' : (row.delta_revenue > 0 ? '+' : '') + row.delta_revenue + '%';
+                    var deltaText  = row.delta_revenue === 0 ? '--' : (row.delta_revenue > 0 ? '+' : '') + fmtPct(row.delta_revenue);
                     var cats = '';
                     if (row.top_categories && row.top_categories.length) {
                         cats = '<div class="brikpanel-dash-mp-cats">';
@@ -2802,7 +3408,7 @@
                           '<div class="brikpanel-dash-mp-item-head">' +
                             '<span class="brikpanel-dash-mp-badge" style="background:' + escapeHtml(row.color) + ';">' + escapeHtml(initial) + '</span>' +
                             '<span class="brikpanel-dash-mp-name">' + escapeHtml(row.label) + '</span>' +
-                            '<span class="brikpanel-dash-mp-share">' + row.revenue_share + '%</span>' +
+                            '<span class="brikpanel-dash-mp-share">' + escapeHtml(fmtPct(row.revenue_share)) + '</span>' +
                           '</div>' +
                           '<div class="brikpanel-dash-mp-bar"><span style="width:' + Math.min(100, row.revenue_share) + '%;background:' + escapeHtml(row.color) + ';"></span></div>' +
                           '<div class="brikpanel-dash-mp-stats">' +
@@ -2825,12 +3431,14 @@
         var catEl = document.getElementById('brikpanel-mp-categories');
         if (catEl) {
             var cats = mp.categories || [];
-            if (cats.length === 0) {
+            if (cats.length === 0 && mpRows.length === 0) {
+                showEmpty(catEl, emptyReason('orders', 'all'));
+            } else if (cats.length === 0) {
                 // Categories require marketplace items to be linked to a WC
                 // product (via _product_id or _marketplace_sku). Make the
                 // empty state explain that — generic "No data" is misleading
                 // when the user has marketplace orders but no mapped catalog.
-                catEl.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.mp_no_categories || 'No category data — marketplace items must be linked to your WooCommerce catalog (by product or SKU) for category breakdown to appear.') + '</p>';
+                showEmpty(catEl, { text: i18n.mp_no_categories || '', note: '', preset: '' });
             } else {
                 var ch = '<table class="brikpanel-dash-table"><thead><tr>' +
                     '<th>#</th>' +
@@ -2845,11 +3453,12 @@
                         '<td>' + escapeHtml(c.name) + '</td>' +
                         '<td>' + formatNumber(c.orders) + '</td>' +
                         '<td>' + c.revenue_html + '</td>' +
-                        '<td>' + c.share + '%</td>' +
+                        '<td>' + escapeHtml(fmtPct(c.share)) + '</td>' +
                         '</tr>';
                 });
                 ch += '</tbody></table>';
                 catEl.innerHTML = ch;
+                refitDashTable(catEl);
             }
         }
 
@@ -2858,7 +3467,7 @@
         if (prEl) {
             var products = mp.top_products || [];
             if (products.length === 0) {
-                prEl.innerHTML = '<p class="brikpanel-dash-empty">' + (i18n.no_data || 'No data for this period') + '</p>';
+                showEmpty(prEl, emptyReason('orders', 'all'));
             } else {
                 var ph = '<table class="brikpanel-dash-table"><thead><tr>' +
                     '<th>#</th>' +
@@ -2878,6 +3487,7 @@
                 });
                 ph += '</tbody></table>';
                 prEl.innerHTML = ph;
+                refitDashTable(prEl);
             }
         }
     }
@@ -2886,14 +3496,23 @@
         var canvas = document.getElementById('brikpanel-mp-share-chart');
         if (!canvas || typeof Chart === 'undefined') return;
 
+        rows = Array.isArray(rows) ? rows : [];
         var labels = rows.map(function (r) { return r.label; });
         var data   = rows.map(function (r) { return r.revenue; });
         var colors = rows.map(function (r) { return r.color; });
+
+        // No marketplace revenue: the reason instead of an empty ring.
+        if (!data.some(function (v) { return Number(v) > 0; })) {
+            setChartEmpty(canvas, emptyReason('orders', 'all'));
+            return;
+        }
+        var wasHidden = setChartEmpty(canvas, null);
 
         if (mpShareChart) {
             mpShareChart.data.labels = labels;
             mpShareChart.data.datasets[0].data = data;
             mpShareChart.data.datasets[0].backgroundColor = colors;
+            if (wasHidden) mpShareChart.resize();
             mpShareChart.update();
             return;
         }
@@ -2924,8 +3543,8 @@
                         callbacks: {
                             label: function (ctx) {
                                 var total = ctx.dataset.data.reduce(function (a, b) { return a + b; }, 0);
-                                var pct   = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : 0;
-                                return ctx.label + ': ' + pct + '%';
+                                var pct   = total > 0 ? (ctx.parsed / total) * 100 : 0;
+                                return ctx.label + ': ' + fmtPct(pct, 1);
                             }
                         }
                     }
@@ -3064,7 +3683,7 @@
             console.error('[BrikPanel] Store summary failed:', err);
             btn.classList.remove('is-loading');
             btn.classList.add('is-error');
-            if (labelEl) labelEl.textContent = (i18n.summary_failed || 'Failed — try again');
+            if (labelEl) labelEl.textContent = (i18n.summary_failed || '');
             if (progressEl) progressEl.style.width = '0%';
             setTimeout(function () { resetCopyButton(originalLabel); }, 3500);
         });

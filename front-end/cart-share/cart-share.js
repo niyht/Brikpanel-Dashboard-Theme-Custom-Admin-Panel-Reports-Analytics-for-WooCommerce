@@ -55,11 +55,19 @@
 
         var btn = document.createElement( 'button' );
         btn.type = 'button';
-        btn.className = 'brikpanel-cshare-btn';
+        // WooCommerce's own cart button classes (see enqueue_frontend), so the
+        // theme paints this button like "Apply coupon" and "Update cart". A page
+        // cached before buttonClass existed still gets the plain "button".
+        var themeClass = typeof cfg.buttonClass === 'string' ? cfg.buttonClass : 'button';
+        btn.className = 'brikpanel-cshare-btn' + ( themeClass ? ' ' + themeClass : '' );
+        // Icon and label sit in an inner box of our own: themes give the button
+        // itself display:inline-block or block, which would break the row.
         btn.innerHTML =
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
-            '<span></span>';
-        btn.querySelector( 'span' ).textContent = t( 'button' );
+            '<span class="brikpanel-cshare-btn__inner">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
+            '<span class="brikpanel-cshare-btn__label"></span>' +
+            '</span>';
+        btn.querySelector( '.brikpanel-cshare-btn__label' ).textContent = t( 'button' );
         btn.addEventListener( 'click', openPanel );
 
         wrap.appendChild( btn );

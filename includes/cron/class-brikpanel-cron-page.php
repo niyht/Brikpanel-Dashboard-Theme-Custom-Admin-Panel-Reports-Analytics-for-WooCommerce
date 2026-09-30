@@ -67,7 +67,7 @@ class Brikpanel_Cron_Page {
 		$known    = Brikpanel_Cron::get_registered_hooks();
 		$as_ready = Brikpanel_Cron::is_available();
 		?>
-		<div class="wrap brikpanel-cron-wrap" id="brikpanel-cron">
+		<div class="wrap brikpanel-cron-wrap brikpanel-shell__page" id="brikpanel-cron">
 			<div class="brikpanel-cron-header">
 				<div class="brikpanel-cron-header-left">
 					<h1><?php esc_html_e( 'Scheduled Tasks', 'brikpanel' ); ?></h1>
@@ -81,6 +81,7 @@ class Brikpanel_Cron_Page {
 					</button>
 				</div>
 			</div>
+			<?php brikpanel_header_end(); ?>
 
 			<?php if ( ! $as_ready ) : ?>
 				<div class="brikpanel-cron-card brikpanel-cron-warning">
@@ -90,7 +91,7 @@ class Brikpanel_Cron_Page {
 			<?php endif; ?>
 
 			<!-- KPI cards -->
-			<div class="brikpanel-cron-kpis" id="brikpanel-cron-kpis">
+			<div class="brikpanel-cron-kpis" id="brikpanel-cron-kpis" data-bp-tiles>
 				<div class="brikpanel-cron-kpi" data-kpi="pending">
 					<div class="brikpanel-cron-kpi-label"><?php esc_html_e( 'Pending', 'brikpanel' ); ?></div>
 					<div class="brikpanel-cron-kpi-value">—</div>
@@ -111,10 +112,10 @@ class Brikpanel_Cron_Page {
 
 			<!-- Filters -->
 			<div class="brikpanel-cron-card brikpanel-cron-filters">
-				<div class="brikpanel-cron-filter-row">
-					<div class="brikpanel-cron-field">
+				<div class="brikpanel-cron-filter-row brikpanel-filter-bar">
+					<div class="brikpanel-cron-field brikpanel-cron-field--status brikpanel-field">
 						<label for="brikpanel-cron-status-filter"><?php esc_html_e( 'Status', 'brikpanel' ); ?></label>
-						<select id="brikpanel-cron-status-filter">
+						<select id="brikpanel-cron-status-filter" class="brikpanel-control">
 							<option value=""><?php esc_html_e( 'All statuses', 'brikpanel' ); ?></option>
 							<option value="pending"><?php esc_html_e( 'Pending', 'brikpanel' ); ?></option>
 							<option value="in-progress"><?php esc_html_e( 'Running', 'brikpanel' ); ?></option>
@@ -123,9 +124,9 @@ class Brikpanel_Cron_Page {
 							<option value="canceled"><?php esc_html_e( 'Cancelled', 'brikpanel' ); ?></option>
 						</select>
 					</div>
-					<div class="brikpanel-cron-field">
+					<div class="brikpanel-cron-field brikpanel-cron-field--hook brikpanel-field">
 						<label for="brikpanel-cron-hook-filter"><?php esc_html_e( 'Job type', 'brikpanel' ); ?></label>
-						<select id="brikpanel-cron-hook-filter">
+						<select id="brikpanel-cron-hook-filter" class="brikpanel-control">
 							<option value=""><?php esc_html_e( 'All job types', 'brikpanel' ); ?></option>
 							<?php foreach ( $known as $hook => $meta ) : ?>
 								<option value="<?php echo esc_attr( $hook ); ?>">
@@ -134,7 +135,7 @@ class Brikpanel_Cron_Page {
 							<?php endforeach; ?>
 						</select>
 					</div>
-					<div class="brikpanel-cron-filter-actions">
+					<div class="brikpanel-cron-filter-actions brikpanel-filter-bar__actions">
 						<button type="button" class="brikpanel-cron-btn brikpanel-cron-btn-secondary" id="brikpanel-cron-apply-btn">
 							<?php esc_html_e( 'Apply', 'brikpanel' ); ?>
 						</button>
@@ -142,7 +143,9 @@ class Brikpanel_Cron_Page {
 				</div>
 			</div>
 
-			<!-- Actions table -->
+			<!-- Actions table. Four columns: the args preview sits under the hook
+			     slug and the recurring note under the date, so the row buttons
+			     keep their room; a card too narrow for the table gets stacked rows. -->
 			<div class="brikpanel-cron-card brikpanel-cron-table-card">
 				<div class="brikpanel-cron-table-wrap">
 					<table class="brikpanel-cron-table" id="brikpanel-cron-table">
@@ -151,13 +154,11 @@ class Brikpanel_Cron_Page {
 								<th><?php esc_html_e( 'Job type', 'brikpanel' ); ?></th>
 								<th><?php esc_html_e( 'Status', 'brikpanel' ); ?></th>
 								<th><?php esc_html_e( 'Scheduled', 'brikpanel' ); ?></th>
-								<th><?php esc_html_e( 'Recurring', 'brikpanel' ); ?></th>
-								<th><?php esc_html_e( 'Args', 'brikpanel' ); ?></th>
 								<th class="brikpanel-cron-actions-th"></th>
 							</tr>
 						</thead>
 						<tbody id="brikpanel-cron-tbody">
-							<tr><td colspan="6" class="brikpanel-cron-empty"><?php esc_html_e( 'Loading…', 'brikpanel' ); ?></td></tr>
+							<tr><td colspan="4" class="brikpanel-cron-empty"><?php esc_html_e( 'Loading…', 'brikpanel' ); ?></td></tr>
 						</tbody>
 					</table>
 				</div>
@@ -193,14 +194,17 @@ class Brikpanel_Cron_Page {
 					confirm_cancel: <?php echo wp_json_encode( __( 'Cancel this scheduled job?', 'brikpanel' ) ); ?>,
 					confirm_run:    <?php echo wp_json_encode( __( 'Run this job now?', 'brikpanel' ) ); ?>,
 					error:          <?php echo wp_json_encode( __( 'Something went wrong.', 'brikpanel' ) ); ?>,
+					loading:        <?php echo wp_json_encode( __( 'Loading…', 'brikpanel' ) ); ?>,
 					no_jobs:        <?php echo wp_json_encode( __( 'No scheduled jobs match these filters.', 'brikpanel' ) ); ?>,
 					no_logs:        <?php echo wp_json_encode( __( 'No log entries for this action.', 'brikpanel' ) ); ?>,
 					run_now:        <?php echo wp_json_encode( __( 'Run now', 'brikpanel' ) ); ?>,
 					retry:          <?php echo wp_json_encode( __( 'Retry', 'brikpanel' ) ); ?>,
 					cancel:         <?php echo wp_json_encode( __( 'Cancel', 'brikpanel' ) ); ?>,
 					view_logs:      <?php echo wp_json_encode( __( 'Logs', 'brikpanel' ) ); ?>,
-					recurring_yes:  <?php echo wp_json_encode( __( 'Yes', 'brikpanel' ) ); ?>,
-					recurring_no:   <?php echo wp_json_encode( __( 'No', 'brikpanel' ) ); ?>,
+					recurring:      <?php echo wp_json_encode( __( 'Recurring', 'brikpanel' ) ); ?>,
+					// Labels a row shows once it is stacked into a card (narrow screens).
+					col_status:     <?php echo wp_json_encode( __( 'Status', 'brikpanel' ) ); ?>,
+					col_scheduled:  <?php echo wp_json_encode( __( 'Scheduled', 'brikpanel' ) ); ?>,
 					done_running:   <?php echo wp_json_encode( __( 'Job executed.', 'brikpanel' ) ); ?>,
 					done_retried:   <?php echo wp_json_encode( __( 'Job re-queued.', 'brikpanel' ) ); ?>,
 					done_cancelled: <?php echo wp_json_encode( __( 'Job cancelled.', 'brikpanel' ) ); ?>,
@@ -231,8 +235,16 @@ class Brikpanel_Cron_Page {
 	}
 
 	/**
-	 * Count actions in our group with the given status whose date_gmt is
-	 * within the last $window seconds.
+	 * Count actions in our group with the given status whose last attempt
+	 * (the time they failed or finished) is within the last $window seconds.
+	 *
+	 * The cut-off must be a \DateTime. Action Scheduler applies `modified`
+	 * and `date` only to a DateTime (not even a DateTimeImmutable) and
+	 * silently drops anything else: this used to pass a date string, so the
+	 * "Failed (24h)" and "Done (24h)" tiles counted every row ever kept, and
+	 * one failure from weeks ago still read as a failure today. `modified`
+	 * filters last_attempt_gmt, which is indexed; `date` would filter when the
+	 * job was due, not when it ran.
 	 *
 	 * @param string $status
 	 * @param int    $window
@@ -243,17 +255,15 @@ class Brikpanel_Cron_Page {
 			return 0;
 		}
 		try {
-			$store = ActionScheduler::store();
+			return (int) ActionScheduler::store()->query_actions( [
+				'group'            => Brikpanel_Cron::GROUP,
+				'status'           => $status,
+				'modified'         => new \DateTime( '@' . ( time() - (int) $window ) ),
+				'modified_compare' => '>=',
+			], 'count' );
 		} catch ( \Throwable $e ) {
 			return 0;
 		}
-		$since = gmdate( 'Y-m-d H:i:s', time() - (int) $window );
-		return (int) $store->query_actions( [
-			'group'         => Brikpanel_Cron::GROUP,
-			'status'        => $status,
-			'date'          => $since,
-			'date_compare'  => '>=',
-		], 'count' );
 	}
 
 	// =========================================================================
@@ -302,7 +312,7 @@ class Brikpanel_Cron_Page {
 
 		$items   = [];
 		$known   = Brikpanel_Cron::get_registered_hooks();
-		$dt_fmt  = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+		$dt_fmt  = brikpanel_datetime_format();
 
 		foreach ( (array) $action_ids as $aid ) {
 			$aid = (int) $aid;
@@ -372,16 +382,24 @@ class Brikpanel_Cron_Page {
 		return ucwords( strtolower( $hook ) );
 	}
 
+	/**
+	 * One-line JSON preview of an action's args, or '' when it has none (the
+	 * row then shows no args line at all). Cut by characters, not bytes: a byte
+	 * cut can split a multibyte character and break the JSON response.
+	 *
+	 * @param mixed $args
+	 * @return string
+	 */
 	private function args_preview( $args ) {
 		if ( empty( $args ) ) {
-			return '—';
+			return '';
 		}
 		$json = wp_json_encode( $args, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 		if ( $json === false ) {
-			return '—';
+			return '';
 		}
-		if ( strlen( $json ) > 80 ) {
-			$json = substr( $json, 0, 77 ) . '…';
+		if ( brikpanel_strlen( $json ) > 80 ) {
+			$json = brikpanel_substr( $json, 0, 77 ) . '…';
 		}
 		return $json;
 	}

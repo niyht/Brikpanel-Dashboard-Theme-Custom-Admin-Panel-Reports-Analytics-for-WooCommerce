@@ -81,7 +81,7 @@ class Brikpanel_Sheets_Logger {
 	public static function log_request_error( $flow, $action, $error, $code = 0 ) {
 		$msg = $action . ': ';
 		if ( is_wp_error( $error ) ) {
-			$msg .= $error->get_error_code() . ' — ' . $error->get_error_message();
+			$msg .= $error->get_error_code() . ': ' . $error->get_error_message();
 		} elseif ( is_array( $error ) ) {
 			if ( $code === 0 && isset( $error['response']['code'] ) ) {
 				$code = (int) $error['response']['code'];

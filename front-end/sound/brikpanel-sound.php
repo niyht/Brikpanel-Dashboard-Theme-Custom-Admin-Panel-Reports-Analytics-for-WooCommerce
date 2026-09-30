@@ -283,7 +283,8 @@ function brikpanel_order_notify_ajax_check() {
             ),
             'itemCount' => (int) $order->get_item_count(),
             'customer'  => $customer,
-            'payment'   => $order->get_payment_method_title(),
+            // Gateway titles are saved through wp_kses_post(): "&" is "&amp;".
+            'payment'   => brikpanel_plain_label( $order->get_payment_method_title() ),
             'editUrl'   => $order->get_edit_order_url(),
         ];
     }

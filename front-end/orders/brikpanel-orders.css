@@ -764,8 +764,13 @@ html {
 
 /* Meta that other plugins append to the order column (invoice number, a
    "Chat on WhatsApp" link, etc.) sits below the order link row and stacks
-   vertically inside the column instead of spreading across it. */
-.wp-list-table tbody .column-order_number > .brikpanel-order-number ~ *:not(.toggle-row):not(.small-screen-only) {
+   vertically inside the column instead of spreading across it. Elements a
+   plugin keeps hidden (the `hidden` attribute, WordPress's .hidden class) are
+   skipped: this display would otherwise put them on screen. So are tags that
+   never render: PeproDev Ultimate Invoice prints `<script>var
+   CURRENT_ORDER_MAIL = [];</script>` into the first order's cell, and a
+   display value on a script, style or template shows its source as text. */
+.wp-list-table tbody .column-order_number > .brikpanel-order-number ~ *:not(.toggle-row):not(.small-screen-only):not([hidden]):not(.hidden):not(script):not(style):not(template):not(link):not(noscript):not([type="hidden"]) {
 	display: block;
 	margin-top: .25rem;
 	max-width: 40vw;
@@ -1696,6 +1701,11 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	height: 28px;
 }
 
+/* No activity in the range (or no data yet): keep the box, draw nothing. */
+.brikpanel-metric-spark.is-flat {
+	visibility: hidden;
+}
+
 .brikpanel-spark-svg {
 	display: block;
 	width: 100%;
@@ -2231,9 +2241,15 @@ html.brikpanel-modal-lock {
 	transition: background-color .15s ease, color .15s ease;
 }
 
+/* Counts read at 4.5:1 or more: #8a8a8a was 3.3:1 on white and 2.9:1 on
+   the selected tab. */
 .brikpanel-orders-table-header-1 .subsubsub a .count {
-	color: #8a8a8a;
+	color: #616161;
 	font-weight: 400;
+}
+
+.brikpanel-orders-table-header-1 .subsubsub a.current .count {
+	color: inherit;
 }
 
 .brikpanel-orders-table-header-1 .subsubsub a:hover {
@@ -2523,17 +2539,8 @@ html.brikpanel-modal-lock {
 	pointer-events: none !important;
 }
 
-/* Tabs that run under the search button fade out instead of being cut off
-   (is-overflowing is set by brikpanelTableHeader). */
-.brikpanel-orders-table-header-1 .subsubsub.is-overflowing {
-	-webkit-mask-image: linear-gradient(to left, transparent 58px, #000 96px);
-	mask-image: linear-gradient(to left, transparent 58px, #000 96px);
-}
-
-.rtl .brikpanel-orders-table-header-1 .subsubsub.is-overflowing {
-	-webkit-mask-image: linear-gradient(to right, transparent 58px, #000 96px);
-	mask-image: linear-gradient(to right, transparent 58px, #000 96px);
-}
+/* Tabs that run under the search button fade out at that edge only while
+   more tabs are hidden there: brikpanel-scroll-strip.js/.css (brikpanelTableHeader). */
 
 /* No animation while the page sets itself up (search already open on load). */
 .bp-anim-off,
@@ -2842,7 +2849,7 @@ body.post-type-shop_order .wp-list-table tbody th.column-primary {
 }
 
 .wp-list-table td.column-order_total del {
-	color: #8a8a8a;
+	color: #616161;
 	font-weight: 400;
 }
 
@@ -2887,7 +2894,7 @@ body.post-type-shop_order .wp-list-table tbody th.column-primary {
 .wp-list-table .order-status.status-failed { background-color: #fce4e4; color: #c62828; }
 .wp-list-table .order-status.status-trash { background-color: #fce4e4; color: #c62828; }
 .wp-list-table .order-status.status-checkout-draft,
-.wp-list-table .order-status.status-draft { background-color: #f1f1f1; color: #8a8a8a; }
+.wp-list-table .order-status.status-draft { background-color: #f1f1f1; color: #616161; }
 
 .wp-list-table .order-status.status-pending::before,
 .wp-list-table .order-status.status-checkout-draft::before,
@@ -3082,13 +3089,40 @@ body.bp-orders-compact .wp-list-table .column-payment_method {
 }
 
 .bp-order-muted {
-	color: #8a8a8a;
+	color: #616161;
 }
 
 body.bp-orders-compact .brikpanel-order-number {
 	justify-content: flex-start;
 	gap: 4px;
 	padding-right: 12px !important;
+}
+
+/* The buyer name beside the order number (brikpanel_orders_compact_number_buyer()).
+   The Customer column carries the name, so this copy shows only while that
+   column is switched off in Screen Options (WordPress puts .hidden on its
+   cells, live) or another plugin removed it: the name never leaves the row.
+   WooCommerce sizes this column narrow, so the name asks for its one-line
+   width (up to 16em) and only a longer one wraps, at its spaces. */
+body.bp-orders-compact .bp-order-buyer {
+	display: none;
+	width: max-content;
+	max-width: 16em;
+	min-width: 0;
+	margin-inline-start: 4px;
+	color: #303030;
+	font-weight: 400;
+	white-space: normal;
+}
+
+body.bp-orders-compact #the-list > tr:has(> .column-brikpanel_customer.hidden) .bp-order-buyer,
+body.bp-orders-compact #the-list > tr:not(:has(> .column-brikpanel_customer)) .bp-order-buyer {
+	display: inline;
+}
+
+/* A long name gives way, the order number never does. */
+body.bp-orders-compact .brikpanel-order-number:has(> .bp-order-buyer) > .order-view {
+	flex-shrink: 0;
 }
 
 /* Quick actions in the short row: the preview beside the order number and
@@ -3180,6 +3214,14 @@ body.bp-orders-compact #the-list .brikpanel-order-number .order-preview.disabled
 	color: #616161;
 	cursor: pointer;
 	transition: background-color .15s ease, color .15s ease;
+}
+
+/* With the order number column hidden the arrow sits in another cell, where
+   the negative margin that tucks it into the number cell's padding would
+   push it under the column before it. */
+body.bp-orders-compact .wp-list-table td:not(.column-order_number) > .bp-order-toggle {
+	margin-block: -6px;
+	margin-inline: 0 6px;
 }
 
 .bp-order-toggle:hover {
@@ -3288,7 +3330,7 @@ body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail:not(.inline-edit-
 
 .bp-od-via {
 	margin-top: 2px;
-	color: #8a8a8a;
+	color: #616161;
 }
 
 .bp-od-items {
@@ -3308,7 +3350,7 @@ body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail:not(.inline-edit-
 }
 
 .bp-od-qty {
-	color: #8a8a8a;
+	color: #616161;
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
@@ -3319,7 +3361,7 @@ body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail:not(.inline-edit-
 
 .bp-od-options {
 	display: block;
-	color: #8a8a8a;
+	color: #616161;
 	font-size: .75rem;
 }
 
@@ -3529,21 +3571,28 @@ body.bp-orders-compact .wp-list-table td.column-wc_actions .wc-action-button {
 	}
 
 	body.bp-orders-compact .wp-list-table thead tr > .check-column,
-	body.bp-orders-compact .wp-list-table thead tr > .column-order_number {
+	body.bp-orders-compact .wp-list-table thead tr > .column-order_number:not(.hidden) {
 		display: block !important;
-		position: static !important;
 		box-sizing: border-box;
 		width: auto !important;
 		border-bottom: 0 !important;
 	}
 
+	/* Relative, never static: WordPress stretches the invisible "Select All"
+	   label over the nearest positioned box. A static cell handed it the whole
+	   card, so the status tabs could not be swiped and tapping one selected
+	   every order (wp.org, motografik). Same trap as the RTL rule in
+	   assets/css/brikpanel-rtl.css. */
 	body.bp-orders-compact .wp-list-table thead tr > .check-column#cb {
+		position: relative !important;
 		width: auto !important;
 		padding: 8px 0 !important;
 		padding-inline: 12px 10px !important;
 	}
 
+	/* Static so the pinned-column offsets of the wide table do not shift it. */
 	body.bp-orders-compact .wp-list-table thead tr > .column-order_number {
+		position: static !important;
 		flex: 1 1 auto;
 		padding: 8px 0 !important;
 		padding-inline-end: 12px !important;
@@ -3598,7 +3647,7 @@ body.bp-orders-compact .wp-list-table td.column-wc_actions .wc-action-button {
 		padding-inline: 12px 10px !important;
 	}
 
-	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_number {
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_number:not(.hidden) {
 		display: block !important;
 		position: static !important;
 		order: 1;
@@ -3606,6 +3655,9 @@ body.bp-orders-compact .wp-list-table td.column-wc_actions .wc-action-button {
 		padding: 0 !important;
 	}
 
+	/* contain: a long name fills what is left of the line and ends in "…";
+	   without it the name's full width stretched the whole list past the
+	   card and pushed every arrow off the edge. */
 	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-brikpanel_customer:not(.hidden) {
 		display: block !important;
 		order: 2;
@@ -3617,6 +3669,32 @@ body.bp-orders-compact .wp-list-table td.column-wc_actions .wc-action-button {
 		color: #616161;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		contain: inline-size;
+	}
+
+	/* Customer column off: the order number cell takes its place on the first
+	   line, and the name beside the number is cut like the Customer cell's,
+	   clear of the arrow. */
+	body.bp-orders-compact .wp-list-table #the-list > tr:has(> .column-brikpanel_customer.hidden):not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_number:not(.hidden),
+	body.bp-orders-compact .wp-list-table #the-list > tr:not(:has(> .column-brikpanel_customer)):not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_number:not(.hidden) {
+		flex: 1 1 0;
+		min-width: 0;
+		padding-inline-end: 48px !important;
+	}
+
+	body.bp-orders-compact #the-list .brikpanel-order-number:has(> .bp-order-buyer) {
+		max-width: none;
+	}
+
+	body.bp-orders-compact #the-list .brikpanel-order-number .bp-order-buyer {
+		flex: 1 1 0;
+		width: auto;
+		max-width: none;
+		overflow: hidden;
+		color: #616161;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		contain: inline-size;
 	}
 
 	body.bp-orders-compact .wp-list-table #the-list > tr:not(.bp-order-detail):not(.inline-edit-row):not(.no-items) > .column-order_status:not(.hidden) {

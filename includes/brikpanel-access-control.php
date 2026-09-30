@@ -277,7 +277,9 @@ function brikpanel_access_role_defaults_off( WP_User $user ) {
 /**
  * The admin-forced ("hard") disable rules only, evaluated for a user.
  *
- * These are the store-owner rules a user can never override for themselves:
+ * These are the rules a user can never override for themselves:
+ *   0. On a multisite network, the Super Admin's role allowlist denies this
+ *      user BrikPanel (brikpanel_user_can_access()).
  *   1. The user's ID is in the explicit "disabled users" list.
  *   2. One of the user's roles is in the "disabled roles" list.
  *   3. "Disable for administrators" is on and the user has the
@@ -292,6 +294,17 @@ function brikpanel_access_role_defaults_off( WP_User $user ) {
 function brikpanel_access_hard_disabled_for_user( WP_User $user ) {
 	$uid   = (int) $user->ID;
 	$roles = array_map( 'strval', (array) $user->roles );
+
+	// 0. Network denial. includes/brikpanel-network-access.php unregisters
+	// every BrikPanel page and refuses every brikpanel_* AJAX call for such a
+	// user, but the sidebar, the top bar and the palette used to render anyway,
+	// full of links into those refused pages. Treating the denial as "BrikPanel
+	// off" hands the user the native admin, the same path the per-user rules
+	// below take. It answers true (allowed) on a single site and whenever the
+	// network does not enforce the allowlist, so it costs nothing there.
+	if ( function_exists( 'brikpanel_user_can_access' ) && ! brikpanel_user_can_access( $uid ) ) {
+		return true;
+	}
 
 	// 1. Explicit per-user list.
 	$disabled_users = array_map( 'absint', (array) get_option( BRIKPANEL_ACCESS_OPT_USERS, [] ) );
@@ -564,8 +577,10 @@ function brikpanel_user_is_backoffice( $user = null ) {
  *
  * Plain shoppers (customer / subscriber, `read` only) never qualify and keep the
  * untouched native admin. This gate grants no access of its own: the sidebar
- * only ever renders the entries WordPress already put in that user's own
- * capability-filtered $menu.
+ * only renders rows this user may open. Those are WordPress's own
+ * capability-filtered $menu plus the rows BrikPanel adds to it afterwards
+ * (the "More" group, the nav customizer's rows), which WordPress never
+ * checked and brikpanel_nav_resolve_submenu_rows() therefore re-checks.
  *
  * @since 3.2.37
  *
@@ -574,8 +589,8 @@ function brikpanel_user_is_backoffice( $user = null ) {
  */
 function brikpanel_user_can_use_interface( $user = null ) {
 	// Per-user memo: this is consulted several times per admin request (the two
-	// footer filters, the admin_head CSS, both menu_order filters and the footer
-	// renderer), and each miss costs a capability walk plus two filter passes.
+	// footer filters, both menu_order filters and the footer renderer), and each
+	// miss costs a capability walk plus two filter passes.
 	static $cache = [];
 
 	if ( null === $user ) {
@@ -743,6 +758,100 @@ function brikpanel_access_save_personal_profile_field( $user_id ) {
 add_action( 'personal_options_update', 'brikpanel_access_save_personal_profile_field' );
 
 // =============================================================================
+// ADMIN COLOR SCHEME ON THE PROFILE SCREEN
+// =============================================================================
+//
+// Field test D8: WordPress's color scheme only paints WordPress's own admin
+// menu, and a user who gets the BrikPanel sidebar never sees that menu. The
+// scheme's accent color still leaked into a few core buttons (blue by default,
+// red under Midnight); brikpanel-navigation.css now sets it back to BrikPanel's.
+// What remained was a picker that changed nothing. For such a user the profile
+// shows a short note instead, and the saved choice is kept for the day
+// BrikPanel is turned off for them.
+
+/**
+ * Whether WordPress's admin color scheme has no visible effect for a user: the
+ * master switch is on, the user gets the BrikPanel interface, and the sidebar
+ * is BrikPanel's (modern, or WordPress's menu re-skinned), not the untouched
+ * WordPress menu.
+ *
+ * Always false on multisite: the scheme is stored once for the whole network
+ * and still colors the network admin and every site without BrikPanel.
+ *
+ * @param WP_User $user The user whose profile is shown.
+ * @return bool
+ */
+function brikpanel_admin_scheme_is_inert( WP_User $user ) {
+	$native_menu = get_option( 'brikpanel_modern_navigation', 'yes' ) === 'no'
+		&& get_option( 'brikpanel_native_menu_styled', 'yes' ) === 'no';
+
+	$inert = ! is_multisite()
+		&& $user->ID
+		&& ! $native_menu
+		&& brikpanel_master_enabled()
+		&& brikpanel_user_can_use_interface( $user )
+		&& ! brikpanel_access_is_disabled_for_user( $user )
+		&& ! ( function_exists( 'brikpanel_is_desktop_mode' ) && brikpanel_is_desktop_mode() );
+
+	/**
+	 * Filters whether the admin color scheme picker is replaced by a note on
+	 * this user's profile.
+	 *
+	 * @param bool    $inert True when the scheme has no visible effect.
+	 * @param WP_User $user  The user whose profile is shown.
+	 */
+	return (bool) apply_filters( 'brikpanel_admin_scheme_is_inert', $inert, $user );
+}
+
+/**
+ * On the profile screens, route WordPress's color scheme picker through
+ * brikpanel_admin_scheme_picker(), which decides per shown user.
+ *
+ * @return void
+ */
+function brikpanel_admin_scheme_picker_swap() {
+	if ( false === has_action( 'admin_color_scheme_picker', 'admin_color_scheme_picker' ) ) {
+		return;
+	}
+	remove_action( 'admin_color_scheme_picker', 'admin_color_scheme_picker' );
+	add_action( 'admin_color_scheme_picker', 'brikpanel_admin_scheme_picker' );
+}
+add_action( 'load-profile.php', 'brikpanel_admin_scheme_picker_swap' );
+add_action( 'load-user-edit.php', 'brikpanel_admin_scheme_picker_swap' );
+
+/**
+ * WordPress's picker for a user the scheme matters to; for anyone else a note
+ * and the saved scheme in a hidden field. The field is required: when
+ * `admin_color` is missing from the submitted profile, WordPress saves
+ * "modern" over the user's choice (wp-admin/includes/user.php, edit_user()).
+ *
+ * @param int $user_id The user whose profile is shown.
+ * @return void
+ */
+function brikpanel_admin_scheme_picker( $user_id ) {
+	global $_wp_admin_css_colors;
+
+	$user = get_userdata( (int) $user_id );
+	if ( ! $user instanceof WP_User || ! brikpanel_admin_scheme_is_inert( $user ) ) {
+		if ( function_exists( 'admin_color_scheme_picker' ) ) {
+			admin_color_scheme_picker( $user_id );
+		}
+		return;
+	}
+
+	// Same fallback as WordPress's own picker, so saving the profile writes
+	// back exactly what the untouched picker would have sent.
+	$current = (string) get_user_option( 'admin_color', $user->ID );
+	if ( '' === $current || ! isset( $_wp_admin_css_colors[ $current ] ) ) {
+		$current = 'modern';
+	}
+	?>
+	<input type="hidden" name="admin_color" value="<?php echo esc_attr( $current ); ?>" />
+	<p class="description"><?php esc_html_e( 'BrikPanel uses its own look, so the color scheme has no effect here. The saved choice is kept and applies again if BrikPanel is turned off for this account.', 'brikpanel' ); ?></p>
+	<?php
+}
+
+// =============================================================================
 // SETTINGS-PAGE ADMIN LOCK
 // =============================================================================
 //
@@ -791,6 +900,20 @@ function brikpanel_user_can_open_settings( $user = null ) {
 	}
 
 	if ( ! user_can( $user, 'manage_woocommerce' ) ) {
+		return false;
+	}
+
+	// On a multisite network the Super Admin can deny BrikPanel to a role, or
+	// lock its settings for a subsite. includes/brikpanel-network-access.php
+	// already removes the tab and bounces its URL in both cases, so asking here
+	// changes no access. It keeps every shortcut to the tab (the top bar user
+	// menu, the welcome tour, the Abandoned Carts button, the Suppliers menu, the
+	// Plugins screen link) from pointing at a page that only redirects. Both
+	// helpers answer true on a single site.
+	if ( function_exists( 'brikpanel_user_can_access' ) && ! brikpanel_user_can_access( (int) $user->ID ) ) {
+		return false;
+	}
+	if ( function_exists( 'brikpanel_user_can_manage_settings' ) && ! brikpanel_user_can_manage_settings( (int) $user->ID ) ) {
 		return false;
 	}
 
@@ -1149,7 +1272,7 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'name' => __( 'Access control', 'brikpanel' ),
 			'type' => 'title',
 			'id'   => 'brk_access_title',
-			'desc' => __( 'Choose who sees the BrikPanel interface. Anyone disabled below gets the default WordPress / WooCommerce admin — native menu, dashboard, product and order screens, no BrikPanel styling — while everyone else keeps BrikPanel. Ideal for agencies that want clients (shop managers) on BrikPanel while their own administrator account stays untouched. This only changes the interface; BrikPanel analytics, tracking and background jobs keep running for the store. You can always reach this page to change it back, even while disabled for yourself.', 'brikpanel' ),
+			'desc' => __( 'Choose who sees the BrikPanel interface. Anyone disabled below gets the default WordPress / WooCommerce admin (native menu, dashboard, product and order screens, no BrikPanel styling), while everyone else keeps BrikPanel. Ideal for agencies that want clients (shop managers) on BrikPanel while their own administrator account stays untouched. This only changes the interface; BrikPanel analytics, tracking and background jobs keep running for the store. You can always reach this page to change it back, even while disabled for yourself.', 'brikpanel' ),
 		],
 		[
 			'name'    => __( 'BrikPanel interface', 'brikpanel' ),
@@ -1163,6 +1286,8 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'id'       => BRIKPANEL_MASTER_SWITCH_ROLES,
 			'type'     => 'multiselect',
 			'class'    => 'wc-enhanced-select',
+			// What an empty box means, written inside it (field test D13).
+			'placeholder' => __( 'No roles selected: only administrators see it', 'brikpanel' ),
 			'desc'     => __( 'Choose which roles, besides administrators, can see and use the BrikPanel on/off (power) switch in the top bar. The switch turns BrikPanel off for the whole store, so administrators always keep it; everyone else only sees it if their role is selected here. Leave empty so only administrators can reach it. This hides the control from shop managers even if they were granted the "manage options" capability elsewhere.', 'brikpanel' ),
 			'desc_tip' => true,
 			'options'  => brikpanel_access_collect_roles(),
@@ -1180,6 +1305,7 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'id'       => BRIKPANEL_ACCESS_OPT_DEFAULT_OFF_ROLES,
 			'type'     => 'multiselect',
 			'class'    => 'wc-enhanced-select',
+			'placeholder' => __( 'No roles selected: everyone starts with BrikPanel on', 'brikpanel' ),
 			'desc'     => __( 'Only used when per-user control is on. Users with any of the selected roles start with BrikPanel switched off and can turn it on for their own account; everyone else starts with it on. For example select Administrator so administrators start on the native admin while shop managers keep BrikPanel, and each administrator can opt their own account back in. Leave empty to start everyone with BrikPanel on.', 'brikpanel' ),
 			'desc_tip' => true,
 			'options'  => brikpanel_access_collect_roles(),
@@ -1204,6 +1330,7 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'id'       => BRIKPANEL_ACCESS_OPT_ROLES,
 			'type'     => 'multiselect',
 			'class'    => 'wc-enhanced-select',
+			'placeholder' => __( 'No roles selected: no role is excluded', 'brikpanel' ),
 			'desc'     => __( 'Users with any of the selected roles get the default admin instead of BrikPanel. Leave empty to apply no role rule.', 'brikpanel' ),
 			'desc_tip' => true,
 			'options'  => brikpanel_access_collect_roles(),
@@ -1214,6 +1341,7 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'id'       => BRIKPANEL_ACCESS_OPT_USERS,
 			'type'     => 'multiselect',
 			'class'    => 'wc-enhanced-select',
+			'placeholder' => __( 'No users selected: no user is excluded', 'brikpanel' ),
 			'desc'     => __( 'Hand-pick individual staff accounts that should always get the default admin, regardless of their role. Customers and subscribers are not listed.', 'brikpanel' ),
 			'desc_tip' => true,
 			'options'  => brikpanel_access_collect_staff_users(),
@@ -1224,6 +1352,7 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'id'       => BRIKPANEL_ACCESS_OPT_OVERVIEW_ROLES,
 			'type'     => 'multiselect',
 			'class'    => 'wc-enhanced-select',
+			'placeholder' => __( 'No roles selected: everyone sees it', 'brikpanel' ),
 			'desc'     => __( 'Users with any of the selected roles keep the BrikPanel orders list but no longer see the analytics summary above it (the last 30 days revenue and order counts). Ideal for multi-branch stores where branch staff process orders without seeing the whole store\'s totals. What you select is exactly what is hidden, so adding Administrator hides it from administrators too; you can always reopen this page to change it back. Leave empty to show it to everyone.', 'brikpanel' ),
 			'desc_tip' => true,
 			'options'  => brikpanel_access_collect_roles(),

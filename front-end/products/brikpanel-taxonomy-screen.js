@@ -368,7 +368,8 @@
             BODY.appendChild(container);
         }
 
-        var item = make('div', { 'class': 'brikpanel-cat-toast ' + (type || 'success') }, message);
+        // is-*, never a bare `error`: WordPress styles every div.error as an admin notice.
+        var item = make('div', { 'class': 'brikpanel-cat-toast is-' + (type || 'success') }, message);
         container.appendChild(item);
 
         window.setTimeout(function () { item.classList.add('show'); }, 10);

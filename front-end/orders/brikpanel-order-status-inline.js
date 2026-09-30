@@ -15,13 +15,39 @@
 	const statuses = brikpanelStatusInline.statuses;
 	const i18n = brikpanelStatusInline.i18n || {};
 
+	// ── Status column ───────────────────────────────────────────────────
+	// WooCommerce names it order_status. A plugin can swap it for a column of
+	// its own that prints the same pill (Flexible Refund: fr_order_status); the
+	// server then names it here (brikpanel-orders.php). Its cells also get
+	// WooCommerce's class, so every rule written for the status column (this
+	// file, the compact row, its phone card) covers them. The class goes last:
+	// the compact row reads a cell's key from its first column- class.
+	const renamedColumn = typeof brikpanelStatusInline.column === 'string' && brikpanelStatusInline.column !== 'order_status' ? brikpanelStatusInline.column : '';
+	const renamedCell = renamedColumn ? 'td.column-' + CSS.escape(renamedColumn) : ''; // i18n-ignore: CSS selector
+
+	function markStatusColumn() {
+		if (!renamedColumn) return;
+		var cells = '.wp-list-table th.column-' + CSS.escape(renamedColumn) + ', .wp-list-table ' + renamedCell; // i18n-ignore: CSS selector
+		document.querySelectorAll(cells).forEach(function ($cell) {
+			$cell.classList.add('column-order_status');
+		});
+	}
+	// Loaded in the footer, so the table is normally there already.
+	if (document.querySelector('.wp-list-table')) {
+		markStatusColumn();
+	} else {
+		document.addEventListener('DOMContentLoaded', markStatusColumn);
+	}
+
 	// activeContext is set while the dropdown is open OR while a pending
 	// change is staged on a badge. pendingStatus !== null means staged.
 	let activeContext = null;
 
 	// ── Build dropdown ──────────────────────────────────────────────────
+	// Not .brikpanel-status-dropdown: that is the single-order header menu, and
+	// this script also runs on that screen.
 	const $dropdown = document.createElement('div');
-	$dropdown.className = 'brikpanel-status-dropdown';
+	$dropdown.className = 'brikpanel-status-inline-dropdown';
 
 	Object.entries(statuses).forEach(([key, label]) => {
 		const slug = key.replace('wc-', '');
@@ -71,18 +97,72 @@
 
 	document.body.appendChild($bar);
 
+	// ── Keep clear of the bulk-actions bar ──────────────────────────────
+	// Both bars sit at the bottom centre of the window. With rows selected
+	// while a status change waited for Save, the bulk-actions bar came up
+	// under this one and its buttons were hidden. While this bar is open it
+	// rises to 8px above the bulk bar whenever the two would meet, and drops
+	// back when they no longer do (the bulk bar is sticky, so scrolling moves it).
+	var bulkBar = null, liftFrame = 0, liftWatch = null;
+	var BAR_GAP = 24; // the bar's own distance from the bottom edge (CSS)
+
+	function placeBar() {
+		liftFrame = 0;
+		var lift = 0;
+		if (bulkBar && bulkBar.classList.contains('show')) {
+			var r = bulkBar.getBoundingClientRect();
+			var w = $bar.offsetWidth, h = $bar.offsetHeight;
+			var bottom = window.innerHeight - BAR_GAP, left = (window.innerWidth - w) / 2;
+			if (r.height > 0 && r.top < bottom && r.bottom > bottom - h && r.left < left + w && r.right > left) {
+				lift = Math.max(0, Math.round(bottom - r.top + 8));
+			}
+		}
+		$bar.style.setProperty('--bp-status-lift', lift + 'px');
+	}
+
+	function schedulePlace() {
+		if (!liftFrame) liftFrame = window.requestAnimationFrame(placeBar);
+	}
+
+	function watchBulkBar(on) {
+		if (on && !liftWatch) {
+			bulkBar = document.querySelector('.brikpanel-bulk-actions');
+			if (!bulkBar) return;
+			liftWatch = {
+				mo: new MutationObserver(schedulePlace),
+				ro: window.ResizeObserver ? new ResizeObserver(schedulePlace) : null,
+			};
+			liftWatch.mo.observe(bulkBar, { attributes: true, attributeFilter: ['class'] });
+			if (liftWatch.ro) liftWatch.ro.observe(bulkBar);
+			document.addEventListener('scroll', schedulePlace, { capture: true, passive: true });
+			window.addEventListener('resize', schedulePlace);
+			placeBar();
+		} else if (!on && liftWatch) {
+			liftWatch.mo.disconnect();
+			if (liftWatch.ro) liftWatch.ro.disconnect();
+			document.removeEventListener('scroll', schedulePlace, { capture: true });
+			window.removeEventListener('resize', schedulePlace);
+			liftWatch = null;
+		}
+	}
+
 	// ── Event delegation (capture phase to intercept before <a> navigates) ──
 	document.addEventListener('click', function (e) {
 		if (e.target.closest('.brikpanel-status-bar')) return;
 
 		var $status = e.target.closest('td.column-order_status .order-status'); // i18n-ignore: CSS selector
+		if (!$status && renamedCell) {
+			// A row drawn after load (a plugin refreshing the list) is not marked yet.
+			$status = e.target.closest(renamedCell + ' .order-status');
+			if ($status) $status.closest('td').classList.add('column-order_status');
+		}
 		if ($status) {
 			e.preventDefault();
 			e.stopPropagation();
 			toggleDropdown($status);
 			return;
 		}
-		if (!e.target.closest('.brikpanel-status-dropdown')) {
+		if (!e.target.closest('.brikpanel-status-inline-dropdown')) {
 			closeDropdown();
 		}
 	}, true);
@@ -144,6 +224,8 @@
 			items[i].classList.toggle('current', items[i].dataset.status === highlight);
 		}
 
+		paintDots();
+
 		// Position
 		var rect = $status.getBoundingClientRect();
 		$dropdown.classList.add('open');
@@ -156,7 +238,32 @@
 		} else {
 			$dropdown.style.top = (rect.bottom + window.scrollY + 4) + 'px';
 		}
-		$dropdown.style.left = rect.left + 'px';
+		// Starts under the pill (under its right edge in RTL) and stays inside
+		// the window. The page itself can scroll sideways when other plugins'
+		// columns make the table wider than the screen.
+		var dw = $dropdown.offsetWidth;
+		var rtl = getComputedStyle(document.body).direction === 'rtl';
+		var x = rtl ? rect.right - dw : rect.left;
+		x = Math.max(8, Math.min(x, document.documentElement.clientWidth - dw - 8));
+		$dropdown.style.left = (x + window.scrollX) + 'px';
+	}
+
+	// A status BrikPanel has no colour for (another plugin's) takes the colour
+	// its pill has in the list, so the menu matches the table. BrikPanel's own
+	// dot colours still win: the fallback sits in a zero-specificity rule
+	// (brikpanel-order-status-inline.css). Read once, on the first open.
+	var dotsPainted = false;
+	function paintDots() {
+		if (dotsPainted) return;
+		dotsPainted = true;
+		var items = $dropdown.querySelectorAll('.brikpanel-status-dropdown-item');
+		for (var i = 0; i < items.length; i++) {
+			var $pill = document.querySelector('.wp-list-table .order-status.status-' + CSS.escape(items[i].dataset.status) + ':not(.brikpanel-status-pending)'); // i18n-ignore: CSS selector
+			var $dot = items[i].querySelector('.brikpanel-sdi-dot');
+			if ($pill && $dot) {
+				$dot.style.setProperty('--bp-sdi-pill', getComputedStyle($pill).color);
+			}
+		}
 	}
 
 	function closeDropdown() {
@@ -217,10 +324,12 @@
 		$bar.classList.add('open');
 		$barSave.disabled = false;
 		$barSave.textContent = i18n.save || 'Save';
+		watchBulkBar(true);
 	}
 
 	function hideBar() {
 		$bar.classList.remove('open');
+		watchBulkBar(false);
 	}
 
 	function labelForStatus(slug) {
@@ -297,6 +406,14 @@
 					if (el.hasAttribute('data-tip') && res.data && res.data.label) {
 						el.setAttribute('data-tip', res.data.label);
 					}
+					// The new status can have its own WhatsApp message, or the note of an
+					// earlier press is gone: the order's WhatsApp buttons take the new draft
+					// (brikpanel-order-whatsapp.js).
+					if (res.data && typeof res.data.whatsapp === 'string') {
+						document.dispatchEvent(new CustomEvent('brikpanel:order-whatsapp', {
+							detail: { orderId: orderId, url: res.data.whatsapp, followup: !!res.data.whatsapp_followup },
+						}));
+					}
 					hideBar();
 					activeContext = null;
 				} else {
@@ -316,4 +433,44 @@
 				window.alert(i18n.error || 'Error');
 			});
 	}
+
+	// ── Status changed by another script ────────────────────────────────
+	// The tracking window (brikpanel-order-tracking.js) lets Trakoo move an
+	// order to a new status. The badge follows it, and a change staged on that
+	// same badge is dropped: saving or discarding it later would undo the
+	// status the order has now.
+	document.addEventListener('brikpanel:order-status-changed', function (e) {
+		var detail = e.detail || {};
+		var orderId = parseInt(detail.orderId, 10);
+		var slug = typeof detail.slug === 'string' && /^[a-z0-9_-]+$/.test(detail.slug) ? detail.slug : '';
+		if (!orderId || !slug) return;
+		var $row = document.getElementById('order-' + orderId) || document.getElementById('post-' + orderId);
+		if (!$row) return;
+		var el = $row.querySelector('td.column-order_status .order-status'); // i18n-ignore: CSS selector
+		if (!el && renamedCell) el = $row.querySelector(renamedCell + ' .order-status');
+		if (!el) return;
+
+		if (activeContext && activeContext.el === el) {
+			$dropdown.classList.remove('open');
+			hideBar();
+			activeContext = null;
+		}
+
+		var label = typeof detail.label === 'string' && detail.label ? detail.label : labelForStatus(slug);
+		var classes = el.className.split(/\s+/);
+		for (var i = 0; i < classes.length; i++) {
+			if (classes[i].indexOf('status-') === 0 && classes[i] !== 'order-status') {
+				el.classList.remove(classes[i]);
+			}
+		}
+		el.classList.remove('brikpanel-status-pending');
+		el.classList.add('status-' + slug);
+		var $span = el.querySelector('span');
+		if ($span) {
+			$span.textContent = label;
+		}
+		if (el.hasAttribute('data-tip')) {
+			el.setAttribute('data-tip', label);
+		}
+	});
 })();

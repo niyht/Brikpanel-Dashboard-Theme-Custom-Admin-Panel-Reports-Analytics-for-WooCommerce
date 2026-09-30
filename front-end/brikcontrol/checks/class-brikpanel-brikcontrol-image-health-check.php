@@ -2,27 +2,47 @@
 /**
  * BrikPanel — BrikControl Image Health Check
  *
- * Walks every published / private product (including variations) and scores
- * the store's product imagery on two axes:
+ * Walks every published / private product (including variations) and looks
+ * at the store's product imagery on three axes:
  *  - oversize  : how many product images are larger than 1 MB.
+ *  - missing   : how many point to a file that is no longer on disk.
  *  - modernity : what share of product images are served as WebP / AVIF.
  *
- * Both signals predict perceived load speed on product pages, which Google
- * weighs heavily for e-commerce SEO and which directly correlates with
- * conversion. The check ships recommendations (and a "no optimizer found"
- * critical flag) so the user knows what to install — BrikPanel intentionally
- * does NOT do the conversion itself.
+ * Only the first two grade the card (status and score): a large image slows
+ * the product page down and a missing one breaks it. The WebP / AVIF share is
+ * shown as a grey tip and never changes the status or the score (field test
+ * F2: a store of small JPEGs was rated Critical and told to install a plugin
+ * whose free version cannot convert). The install suggestion appears only
+ * when the share of large images reaches the Warning line by itself (missing
+ * files can colour the card too, but an optimizer cannot bring them back),
+ * and it talks about compressing them. BrikPanel intentionally does NOT do
+ * the work itself.
+ *
+ * Filters on the percentages:
+ *  - brikpanel_brikcontrol_image_warning_oversized_pct / _critical_oversized_pct
+ *    set the Warning and Critical lines for the oversized share.
+ *  - brikpanel_brikcontrol_image_warning_modern_pct is informational: below
+ *    this WebP / AVIF share the card shows the tip. It grades nothing.
+ *  - brikpanel_brikcontrol_image_critical_modern_pct is informational too: it
+ *    is still read and stored in `thresholds` for code that uses it, and
+ *    grades nothing.
+ * Any missing file makes the card at least Warning, and Critical from 5% up.
  *
  * Batching: products → 200 per batch. The cursor counts product offsets, not
  * attachment offsets, because the unique attachment set is computed per
  * product (avoiding cross-batch deduplication state).
  *
- * Storage shape inside metadata:
+ * Storage shape inside `facts` (schema 3; schema 2 had the same keys but its
+ * status and score also graded the WebP / AVIF share; results written before
+ * 3.3.25 kept the same keys under `metadata`, next to sentences in the scan's
+ * language):
  *   {
+ *     no_products?: true,
  *     totals: { products, attachments, oversized, webp_avif, legacy, missing_files },
  *     percentages: { oversized_pct, modern_pct, missing_pct },
- *     largest: [ { id, post_id, product_title, edit_url, size_mb, mime } ... ],
- *     plugins: { active: { slug => label }, recommendations: [ ... ] }
+ *     thresholds: { oversize_bytes, warn_oversized, crit_oversized, warn_modern, crit_modern },
+ *     largest: [ { id, post_id, bytes, size_mb, mime } ... ],
+ *     plugins: { active: { slug => label }, recommendations: [ { slug, label, search } ... ] }
  *   }
  *
  * Hem basit hem variable ürünler taranır:
@@ -42,11 +62,12 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
 
     const PARTIAL_OPTION = 'brikpanel_brikcontrol_image_partial';
     const DEFAULT_THRESHOLD_BYTES   = 1048576;   // 1 MB
-    const DEFAULT_MODERN_THRESHOLD  = 60;        // % WebP/AVIF needed for "ok"
+    const DEFAULT_MODERN_THRESHOLD  = 60;        // Not read here; kept for code that uses it. Grades nothing.
     const DEFAULT_WARN_OVERSIZED_PCT = 10;
     const DEFAULT_CRIT_OVERSIZED_PCT = 25;
-    const DEFAULT_WARN_MODERN_PCT    = 60;
-    const DEFAULT_CRIT_MODERN_PCT    = 20;
+    const DEFAULT_WARN_MODERN_PCT    = 60;       // Informational: the tip's line.
+    const DEFAULT_CRIT_MODERN_PCT    = 20;       // Informational: stored, grades nothing.
+    const CRIT_MISSING_PCT           = 5;        // Missing files: Warning from one file, Critical from this share up.
     const LARGEST_KEEP               = 10;
 
     public function get_id() {
@@ -54,7 +75,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
     }
 
     public function get_label() {
-        return __( 'Product Image Health', 'brikpanel' );
+        return __( 'Product image health', 'brikpanel' );
     }
 
     public function get_category() {
@@ -71,6 +92,19 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
 
     public function get_priority() {
         return 10;
+    }
+
+    /**
+     * Figures only; the card writes the sentences (see bc_present()).
+     *
+     * 3: status and score come from oversized and missing images only; a
+     *    stored schema 2 result still graded the WebP / AVIF share, so it is
+     *    rescanned once (Storage::maybe_heal()).
+     *
+     * @return int
+     */
+    public function bc_schema() {
+        return 3;
     }
 
     /**
@@ -149,14 +183,9 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
         // Free per-batch memory (keeps long scans flat).
         wp_cache_flush_runtime();
 
+        // bc_present() turns batch_state into "Scanning… 200 / 1,000 products".
         $result = $this->make_result_skeleton();
         $result['status']      = 'unknown';
-        $result['summary']     = $this->safe_sprintf(
-            /* translators: 1: scanned products, 2: total products */
-            __( 'Scanning… %1$s / %2$s products', 'brikpanel' ),
-            number_format_i18n( $partial['products_scanned'] ),
-            number_format_i18n( $partial['total_products'] )
-        );
         $result['scanned_at']  = time();
         $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
         $result['batch_state'] = [
@@ -441,14 +470,15 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
             return;
         }
 
+        // Ids only: the links are built for the viewer when the card is drawn.
+        // get_edit_post_link() checks the current user, and a scan worker has
+        // none, so a link stored here was always empty.
         $entry = [
             'id'         => $att_id,
             'post_id'    => $product_id,
             'bytes'      => (int) $size,
             'size_mb'    => round( $size / 1048576, 2 ),
             'mime'       => $mime,
-            'edit_url'   => get_edit_post_link( $product_id, 'raw' ),
-            'media_url'  => admin_url( 'post.php?post=' . $att_id . '&action=edit' ),
         ];
 
         $largest[] = $entry;
@@ -534,6 +564,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
         delete_option( self::PARTIAL_OPTION );
     }
 
+
     private function finalise( array $partial, $started_at ) {
         $totals       = $partial['totals'];
         $attachments  = (int) $totals['attachments'];
@@ -547,70 +578,52 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
 
         $crit_over = (float) apply_filters( 'brikpanel_brikcontrol_image_critical_oversized_pct', self::DEFAULT_CRIT_OVERSIZED_PCT );
         $warn_over = (float) apply_filters( 'brikpanel_brikcontrol_image_warning_oversized_pct', self::DEFAULT_WARN_OVERSIZED_PCT );
+        // Informational since schema 3: stored with the result, read by the
+        // tip in bc_present(), never part of the status or the score.
         $crit_mod  = (float) apply_filters( 'brikpanel_brikcontrol_image_critical_modern_pct', self::DEFAULT_CRIT_MODERN_PCT );
         $warn_mod  = (float) apply_filters( 'brikpanel_brikcontrol_image_warning_modern_pct', self::DEFAULT_WARN_MODERN_PCT );
 
-        // Status
-        $status = 'ok';
-        if ( $oversized_pct >= $crit_over || $modern_pct < $crit_mod || $missing_pct >= 5 ) {
-            $status = 'critical';
-        } elseif ( $oversized_pct >= $warn_over || $modern_pct < $warn_mod ) {
-            $status = 'warning';
-        }
-
-        // Composite score (0-100). Heavier weight on oversize since it's the
-        // metric most directly tied to bandwidth/LCP.
-        $oversize_score = max( 0, 100 - ( $oversized_pct * 4 ) );
-        $modern_score   = min( 100, $modern_pct + 20 );
-        $score          = (int) round( ( $oversize_score * 0.6 ) + ( $modern_score * 0.4 ) );
-
-        // Summary line
         if ( $attachments === 0 ) {
-            $summary = __( 'No product images found yet.', 'brikpanel' );
+            // Products without a single image: nothing is slow and there is
+            // nothing to grade. "0% modern format" out of zero images used to
+            // rate this store Critical, with a score of 68 and three install
+            // suggestions beside "No product images found yet" (field test E6).
+            $status = 'ok';
+            $score  = null;
         } else {
-            $summary = $this->safe_sprintf(
-                /* translators: 1: oversize percent, 2: oversize count, 3: total attachments, 4: modern format percent */
-                __( '%1$s%% oversized (%2$s of %3$s) · %4$s%% modern format', 'brikpanel' ),
-                number_format_i18n( $oversized_pct, 1 ),
-                number_format_i18n( $oversized ),
-                number_format_i18n( $attachments ),
-                number_format_i18n( $modern_pct, 1 )
+            // Graded by what slows a page down or breaks it: images over the
+            // size limit and files missing from disk. The WebP / AVIF share
+            // used to count too, so a store of small JPEGs could never score
+            // above 68 and was rated Critical (field test F2).
+            // Any missing file is at least a Warning: it is a broken image on
+            // a product page, and a green OK card used to sit beside the red
+            // "missing files" row and tile. The count decides, not the rounded
+            // share, so 1 missing image out of 5,000 still counts.
+            $status = 'ok';
+            if ( $oversized_pct >= $crit_over || $missing_pct >= self::CRIT_MISSING_PCT ) {
+                $status = 'critical';
+            } elseif ( $oversized_pct >= $warn_over || $missing > 0 ) {
+                $status = 'warning';
+            }
+
+            // Score (0-100): the worse of the two problems decides. 4 points
+            // per oversized percent (10% gives 60, 25% gives 0), 10 per missing
+            // percent (5% gives 50). bc_band_score() keeps it inside the status
+            // band, so a few missing files score at most 79, never an OK 80+.
+            $oversize_score = max( 0, 100 - ( $oversized_pct * 4 ) );
+            $missing_score  = max( 0, 100 - ( $missing_pct * 10 ) );
+            $score          = self::bc_band_score(
+                $status,
+                max( 0, min( 100, (int) round( min( $oversize_score, $missing_score ) ) ) )
             );
         }
 
-        // Plugin context
         $active_plugins = Brikpanel_BrikControl_Image_Plugins::get_active();
-        $any_active     = ! empty( $active_plugins );
-        $recommended    = $any_active ? [] : Brikpanel_BrikControl_Image_Plugins::get_recommendations();
 
-        // Recommendations
-        $recommendations = $this->build_recommendations(
-            $status,
-            $oversized,
-            $oversized_pct,
-            $modern_pct,
-            $missing,
-            $any_active,
-            $recommended
-        );
-
-        $message = $attachments === 0
-            ? __( 'Add product images to start the health check.', 'brikpanel' )
-            : $this->safe_sprintf(
-                /* translators: 1: oversized count, 2: modern format percent, 3: missing files */
-                __( '%1$s product images are larger than 1 MB. Modern formats (WebP / AVIF) cover %2$s%% of your library. Missing files: %3$s.', 'brikpanel' ),
-                number_format_i18n( $oversized ),
-                number_format_i18n( $modern_pct, 1 ),
-                number_format_i18n( $missing )
-            );
-
-        $result                  = $this->make_result_skeleton();
-        $result['status']        = $status;
-        $result['score']         = max( 0, min( 100, $score ) );
-        $result['summary']       = $summary;
-        $result['message']       = $message;
-        $result['recommendations'] = $recommendations;
-        $result['metadata']      = [
+        $result           = $this->make_result_skeleton();
+        $result['status'] = $status;
+        $result['score']  = $score;
+        $result['facts']  = [
             'totals'      => [
                 'attachments'      => $attachments,
                 'oversized'        => $oversized,
@@ -635,7 +648,7 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
             'largest'     => $partial['largest'],
             'plugins'     => [
                 'active'          => $active_plugins,
-                'recommendations' => $recommended,
+                'recommendations' => empty( $active_plugins ) ? Brikpanel_BrikControl_Image_Plugins::get_recommendations() : [],
             ],
         ];
         $result['scanned_at']    = time();
@@ -653,11 +666,9 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
     private function build_empty_result( $started_at ) {
         $result                = $this->make_result_skeleton();
         $result['status']      = 'ok';
-        $result['score']       = 100;
-        $result['summary']     = __( 'No products yet — nothing to check.', 'brikpanel' );
-        $result['message']     = __( 'Add at least one published product to enable image health checks.', 'brikpanel' );
-        $result['metadata']    = [
-            'totals' => [
+        $result['facts']       = [
+            'no_products' => true,
+            'totals'      => [
                 'attachments'   => 0,
                 'oversized'     => 0,
                 'webp_avif'     => 0,
@@ -666,8 +677,8 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
                 'products'      => 0,
             ],
             'percentages' => [ 'oversized_pct' => 0, 'modern_pct' => 0, 'missing_pct' => 0 ],
-            'largest'  => [],
-            'plugins'  => [
+            'largest'     => [],
+            'plugins'     => [
                 'active'          => Brikpanel_BrikControl_Image_Plugins::get_active(),
                 'recommendations' => [],
             ],
@@ -678,123 +689,232 @@ class Brikpanel_BrikControl_Image_Health_Check extends Brikpanel_BrikControl_Che
     }
 
     /**
-     * @return array<int, array{text:string, priority:string, link?:array{url:string,label:string}}>
+     * Sentences for the stored figures, in the viewer's language.
+     *
+     * Results written before schema 2 carry the same figures under
+     * `metadata`, so they are shown in the viewer's language as well.
+     *
+     * @param array  $r       Stored result.
+     * @param string $context 'page' or 'summary'.
+     * @return array
      */
-    private function build_recommendations(
-        $status,
-        $oversized,
-        $oversized_pct,
-        $modern_pct,
-        $missing,
-        $optimizer_active,
-        array $recommended_plugins
-    ) {
-        $out = [];
+    public function bc_present( array $r, $context = 'page' ) {
+        $r = parent::bc_present( $r, $context );
 
-        if ( ! $optimizer_active && $status !== 'ok' ) {
-            // Top-line: install an optimiser. We pick the first 3 from the
-            // catalogue and emit a recommendation per plugin so users can
-            // pick the one that matches their stack. URL is left empty here
-            // — the renderer resolves it per viewer via
-            // Brikpanel_BrikControl_Image_Plugins::resolve_install_url(),
-            // because scans run inside AS workers where current_user_can()
-            // is always false and we want the in-admin install link for
-            // capable viewers.
-            foreach ( $recommended_plugins as $plugin ) {
-                $out[] = [
-                    'text'     => $this->safe_sprintf(
-                        /* translators: %s: plugin name */
-                        __( 'Install %s to compress images and convert to WebP/AVIF automatically.', 'brikpanel' ),
-                        $plugin['label']
+        $batch = ( isset( $r['batch_state'] ) && is_array( $r['batch_state'] ) ) ? $r['batch_state'] : null;
+        if ( $batch && empty( $batch['done'] ) ) {
+            $total                = (int) ( $batch['total'] ?? 0 );
+            $r['summary']         = brikpanel_safe_sprintf(
+                /* translators: 1: products scanned so far, 2: products to scan in total. */
+                _n( 'Scanning… %1$s / %2$s product', 'Scanning… %1$s / %2$s products', $total, 'brikpanel' ),
+                brikpanel_number( (int) ( $batch['cursor'] ?? 0 ) ),
+                brikpanel_number( $total )
+            );
+            $r['message']         = '';
+            $r['recommendations'] = [];
+            $r['metadata']        = [];
+            return $r;
+        }
+
+        $f = ! empty( $r['facts'] ) ? (array) $r['facts'] : (array) ( $r['metadata'] ?? [] );
+        if ( empty( $f['totals'] ) || ! is_array( $f['totals'] ) ) {
+            return $r; // Nothing this check can read: show what was stored.
+        }
+
+        $totals      = $f['totals'];
+        $pct         = isset( $f['percentages'] ) ? (array) $f['percentages'] : [];
+        $attachments = (int) ( $totals['attachments'] ?? 0 );
+        $oversized   = (int) ( $totals['oversized'] ?? 0 );
+        $missing     = (int) ( $totals['missing_files'] ?? 0 );
+        // Missing files make the card Critical from 5% up and Warning below
+        // that (finalise()); the row and the tile follow the same level.
+        $missing_bad = (float) ( $pct['missing_pct'] ?? 0 ) >= self::CRIT_MISSING_PCT;
+        $over_pct    = (float) ( $pct['oversized_pct'] ?? 0 );
+        $modern_pct  = (float) ( $pct['modern_pct'] ?? 0 );
+
+        $r['message']         = '';
+        $r['recommendations'] = [];
+        $r['metadata']        = [];
+
+        if ( 0 === $attachments ) {
+            $r['score']   = null;
+            $r['summary'] = ( ! empty( $f['no_products'] ) || 0 === (int) ( $totals['products'] ?? 0 ) )
+                ? __( 'No products to check yet.', 'brikpanel' )
+                : __( 'No product images to check yet.', 'brikpanel' );
+            return $r;
+        }
+
+        $r['summary'] = brikpanel_safe_sprintf(
+            /* translators: 1: share of images over 1 MB, e.g. "12%", 2: number of those images, 3: all product images, 4: share in WebP or AVIF, e.g. "40%". */
+            __( '%1$s oversized (%2$s of %3$s) · %4$s modern format', 'brikpanel' ),
+            brikpanel_percent( $over_pct ),
+            brikpanel_number( $oversized ),
+            brikpanel_number( $attachments ),
+            brikpanel_percent( $modern_pct )
+        );
+
+        if ( 'page' !== $context ) {
+            return $r;
+        }
+
+        $t         = isset( $f['thresholds'] ) ? (array) $f['thresholds'] : [];
+        $crit_over = (float) ( $t['crit_oversized'] ?? self::DEFAULT_CRIT_OVERSIZED_PCT );
+        $warn_over = (float) ( $t['warn_oversized'] ?? self::DEFAULT_WARN_OVERSIZED_PCT );
+        $warn_mod  = (float) ( $t['warn_modern'] ?? self::DEFAULT_WARN_MODERN_PCT );
+        $legacy    = (int) ( $totals['legacy'] ?? 0 );
+        $plugins   = isset( $f['plugins'] ) ? (array) $f['plugins'] : [];
+        $active    = isset( $plugins['active'] ) ? (array) $plugins['active'] : [];
+
+        $recs = [];
+
+        if ( $oversized > 0 ) {
+            $recs[] = [
+                'text'     => brikpanel_safe_sprintf(
+                    /* translators: 1: number of product images, 2: their share of all product images, e.g. "12%". */
+                    _n(
+                        '%1$s product image (%2$s) is larger than 1 MB. It slows down your product pages and hurts SEO. Compress it to under 200 KB where possible.',
+                        '%1$s product images (%2$s) are larger than 1 MB. They slow down your product pages and hurt SEO. Compress them to under 200 KB where possible.',
+                        $oversized,
+                        'brikpanel'
                     ),
-                    'priority' => 'high',
-                    'link'     => [
-                        'plugin_slug'   => $plugin['slug'],
-                        'plugin_search' => $plugin['search'],
-                        'label'         => __( 'Install plugin', 'brikpanel' ),
-                    ],
+                    brikpanel_number( $oversized ),
+                    brikpanel_percent( $over_pct )
+                ),
+                'priority' => $over_pct >= $crit_over ? 'high' : 'medium',
+            ];
+        }
+
+        // One row with a button per plugin (it used to be one row per plugin,
+        // three sentences that differed by a single word, field test E6).
+        // Only when the share of large images reaches the Warning line by
+        // itself, never because of the card status: missing files also make
+        // the card Warning or Critical, but an optimizer does not bring back a
+        // missing file, and the free Smush compresses but cannot convert to
+        // WebP (field test F2). Its colour follows the large-images row, so
+        // the suggestion is never louder than the problem it fixes.
+        if ( empty( $active ) && $oversized > 0 && $over_pct >= $warn_over ) {
+            $links = [];
+            foreach ( (array) ( $plugins['recommendations'] ?? [] ) as $plugin ) {
+                if ( empty( $plugin['slug'] ) || empty( $plugin['label'] ) ) {
+                    continue;
+                }
+                $links[] = [
+                    'plugin_slug'   => (string) $plugin['slug'],
+                    'plugin_search' => (string) ( $plugin['search'] ?? '' ),
+                    'label'         => (string) $plugin['label'],
+                    'aria_label'    => brikpanel_safe_sprintf(
+                        /* translators: %s: plugin name, e.g. "Smush". */
+                        __( 'Install %s', 'brikpanel' ),
+                        (string) $plugin['label']
+                    ),
+                ];
+            }
+            if ( ! empty( $links ) ) {
+                $recs[] = [
+                    'text'     => __( 'Install an image optimizer. It compresses large product images automatically, including the ones you upload later.', 'brikpanel' ),
+                    'priority' => $over_pct >= $crit_over ? 'high' : 'medium',
+                    'links'    => $links,
                 ];
             }
         }
 
-        if ( $oversized > 0 ) {
-            $out[] = [
-                'text'     => $this->safe_sprintf(
-                    /* translators: 1: count, 2: percent */
-                    __( '%1$s product images (%2$s%%) are larger than 1 MB. These slow down your product pages and hurt SEO. Compress them to under 200 KB where possible.', 'brikpanel' ),
-                    number_format_i18n( $oversized ),
-                    number_format_i18n( $oversized_pct, 1 )
-                ),
-                'priority' => $oversized_pct >= 25 ? 'high' : 'medium',
-            ];
-        }
-
-        if ( $modern_pct < 60 ) {
-            $out[] = [
-                'text'     => $this->safe_sprintf(
-                    /* translators: %s: modern format percent */
-                    __( 'Only %s%% of your product images use WebP / AVIF. Modern formats are 30–50%% smaller than JPEG/PNG with no visible quality loss.', 'brikpanel' ),
-                    number_format_i18n( $modern_pct, 1 )
-                ),
-                'priority' => $modern_pct < 20 ? 'high' : 'medium',
-            ];
-        }
-
         if ( $missing > 0 ) {
-            $out[] = [
-                'text'     => $this->safe_sprintf(
-                    /* translators: %s: missing file count */
-                    __( '%s product images point to files that no longer exist on disk. Re-upload them or detach the missing media references.', 'brikpanel' ),
-                    number_format_i18n( $missing )
+            $recs[] = [
+                'text'     => brikpanel_safe_sprintf(
+                    /* translators: %s: number of product images. */
+                    _n(
+                        '%s product image points to a file that no longer exists on disk. Upload it again or remove it from the product.',
+                        '%s product images point to files that no longer exist on disk. Upload them again or remove them from their products.',
+                        $missing,
+                        'brikpanel'
+                    ),
+                    brikpanel_number( $missing )
                 ),
-                'priority' => 'high',
+                'priority' => $missing_bad ? 'high' : 'medium',
             ];
         }
 
-        if ( empty( $out ) ) {
-            $out[] = [
-                'text'     => __( 'Your product images are well-optimised. Keep an eye on this metric as you upload new products.', 'brikpanel' ),
+        // WebP / AVIF is a tip, never a problem: a grey row that changes
+        // neither the status nor the score. Not shown once an optimizer is
+        // active (converting is its job) or when there is nothing to convert.
+        $tip = null;
+        if ( empty( $active ) && $legacy > 0 && $modern_pct < $warn_mod ) {
+            $tip = [
+                'text'     => ( $legacy >= $attachments )
+                    ? brikpanel_safe_sprintf(
+                        /* translators: %s: number of product images, all of them JPEG or PNG. */
+                        _n(
+                            'Tip: your %s product image is a JPEG or PNG. Saving it as WebP makes it smaller. This does not affect the score.',
+                            'Tip: all %s of your product images are JPEG or PNG. Saving them as WebP makes them smaller. This does not affect the score.',
+                            $attachments,
+                            'brikpanel'
+                        ),
+                        brikpanel_number( $attachments )
+                    )
+                    : brikpanel_safe_sprintf(
+                        /* translators: 1: number of product images in JPEG or PNG, 2: number of all product images. */
+                        _n(
+                            'Tip: %1$s of your %2$s product images is a JPEG or PNG. Saving it as WebP makes it smaller. This does not affect the score.',
+                            'Tip: %1$s of your %2$s product images are JPEG or PNG. Saving them as WebP makes them smaller. This does not affect the score.',
+                            $legacy,
+                            'brikpanel'
+                        ),
+                        brikpanel_number( $legacy ),
+                        brikpanel_number( $attachments )
+                    ),
+                'priority' => 'info',
+            ];
+        }
+
+        if ( empty( $recs ) ) {
+            $recs[] = [
+                'text'     => ( null !== $tip )
+                    ? __( 'No product image is over 1 MB and none is missing.', 'brikpanel' )
+                    : __( 'Your product images are well optimised. Keep an eye on this metric as you upload new products.', 'brikpanel' ),
                 'priority' => 'low',
             ];
         }
-
-        return $out;
-    }
-
-    /**
-     * Translation-safe sprintf.
-     *
-     * Every recommendation / summary line runs its copy through __() before
-     * formatting. Translations ship in community-editable .po files (wp.org /
-     * GlotPress), and a translator who adds, drops, or mis-escapes a printf
-     * placeholder makes PHP 8's sprintf() throw ArgumentCountError /
-     * ValueError. Because this code runs inside an Action Scheduler scan
-     * worker, an uncaught throw aborts the entire Store Health sweep — a
-     * single localized typo would silently break the feature for every user
-     * in that locale (exactly the tr_TR "%30" → unescaped "%" bug that
-     * surfaced here). A localized mistake must degrade, never crash, so we
-     * catch the throw and fall back to a placeholder-stripped rendering of
-     * the same translated sentence.
-     *
-     * @param string $format Translated, already-localized format string.
-     * @param mixed  ...$args printf arguments.
-     * @return string
-     */
-    private function safe_sprintf( $format, ...$args ) {
-        $format = (string) $format;
-        try {
-            return vsprintf( $format, $args );
-        } catch ( \Throwable $e ) {
-            // Degrade, don't die: drop every printf conversion from the
-            // translated copy so the sentence still reads (minus the
-            // numbers) and collapse escaped %% to a literal %.
-            $stripped = preg_replace(
-                '/%(?:\d+\$)?[-+ 0#\']*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/',
-                '',
-                $format
-            );
-            $stripped = str_replace( '%%', '%', (string) $stripped );
-            return trim( (string) $stripped );
+        if ( null !== $tip ) {
+            $recs[] = $tip;
         }
+
+        $stats = [
+            [
+                'label' => __( 'Total images', 'brikpanel' ),
+                'value' => $attachments,
+                'tone'  => '',
+            ],
+            [
+                'label' => __( 'Over 1 MB', 'brikpanel' ),
+                'value' => $oversized,
+                'tone'  => $oversized > 0 ? 'warn' : '',
+            ],
+            [
+                'label' => __( 'WebP / AVIF', 'brikpanel' ),
+                'value' => (int) ( $totals['webp_avif'] ?? 0 ),
+                'tone'  => (int) ( $totals['webp_avif'] ?? 0 ) > 0 ? 'good' : '',
+            ],
+            [
+                'label' => __( 'JPEG / PNG', 'brikpanel' ),
+                'value' => (int) ( $totals['legacy'] ?? 0 ),
+                'tone'  => '',
+            ],
+        ];
+        if ( $missing > 0 ) {
+            $stats[] = [
+                'label' => __( 'Missing files', 'brikpanel' ),
+                'value' => $missing,
+                'tone'  => $missing_bad ? 'error' : 'warn',
+            ];
+        }
+
+        $r['recommendations'] = $recs;
+        $r['metadata']        = [
+            'stats'   => $stats,
+            'largest' => isset( $f['largest'] ) && is_array( $f['largest'] ) ? $f['largest'] : [],
+            'plugins' => [ 'active' => $active ],
+        ];
+
+        return $r;
     }
 }

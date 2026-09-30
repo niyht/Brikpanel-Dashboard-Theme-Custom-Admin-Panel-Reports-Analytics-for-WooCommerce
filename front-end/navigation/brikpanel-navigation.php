@@ -79,23 +79,6 @@ add_filter('update_footer', function ( $text ) {
 	return $text;
 }, 999);
 
-// If HPOS (High-Performance Order Storage) is not active, add CSS to customize WooCommerce menu
-add_action('admin_head', function() {
-    if ( brikpanel_navigation_skip_super_admin_chrome() ) {
-        return;
-    }
-    // If HPOS is not active, hide main WooCommerce title and icon
-    if (get_option('woocommerce_custom_orders_table_enabled') !== 'yes') { ?>
-        <style>
-            /* Hide WooCommerce main title and icon */
-            #toplevel_page_woocommerce > .brikpanel-menu-icon-title-chevron-container > .brikpanel-menu-icon-title-container {
-                display: none !important;
-            }
-        </style>
-    <?php }
-});
-
-
 /**
  * Allows us to manually change menu order.
  */
@@ -136,6 +119,16 @@ add_filter( 'menu_order', 'brikpanel_move_dashboard_to_top', 999 );
  * Moved submenu slugs are rewritten to the `admin.php?page=<slug>` form (the
  * shape the renderer links them with); Orders / Customers / Subscriptions stay
  * under WooCommerce with their original slugs.
+ *
+ * This runs in admin_footer, long after WordPress removed every menu row the
+ * current user may not open (add_submenu_page() refuses them outright, and
+ * wp-admin/includes/menu.php drops the inaccessible top-levels). Anything added
+ * here skips that clean-up, so every row carries the capability of the page it
+ * links to, and a row BrikPanel creates itself (Cart share) is only added for a
+ * user who holds it, exactly as add_submenu_page() would have decided. The one
+ * deliberate exception is the synthetic "More" container: the nav customizer
+ * keys its whole "More" section on that row existing, and the renderer never
+ * draws it when nothing visible landed inside.
  *
  * @param array $menu    The $menu global / snapshot, by reference (mutated).
  * @param array $submenu The $submenu global / snapshot, by reference (mutated).
@@ -180,11 +173,17 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 			'wc-admin&path=/extensions',
 		);
 
-		// Kept directly under WooCommerce (surfaced for quick access).
+		// Kept directly under WooCommerce (surfaced for quick access). Orders and
+		// Subscriptions are listed in both shapes WooCommerce registers them in:
+		// its own screens when orders live in its tables (HPOS), the post type
+		// lists on every store that keeps them in posts. The legacy Subscriptions
+		// slug was missing, so on those stores Subscriptions was filed under
+		// "More" while HPOS stores kept it next to Orders.
 		$skip_slugs = array(
 			'wc-orders',
 			'edit.php?post_type=shop_order',
 			'wc-orders--shop_subscription',
+			'edit.php?post_type=shop_subscription',
 			'wc-admin&path=/customers',
 		);
 
@@ -242,7 +241,9 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 		if ( isset( $exp_item[2] ) && 'brikpanel-expenses' === $exp_item[2] ) {
 			$submenu['woocommerce-more'][] = array(
 				isset( $exp_item[0] ) ? $exp_item[0] : __( 'Expenses', 'brikpanel' ),
-				'manage_woocommerce',
+				// Keep the capability the page was registered with, so the moved
+				// row can never drift from what the Expenses screen itself checks.
+				( isset( $exp_item[1] ) && is_string( $exp_item[1] ) && '' !== $exp_item[1] ) ? $exp_item[1] : 'manage_woocommerce',
 				'admin.php?page=brikpanel-expenses',
 				isset( $exp_item[3] ) ? $exp_item[3] : __( 'Operational Expenses', 'brikpanel' ),
 			);
@@ -256,7 +257,12 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 	// the "More" group so the screen has a real home in the navigation — and do
 	// it here, in the shared relocation truth, so the live sidebar and the nav
 	// customizer (where it can be renamed, reordered or hidden) agree.
-	if ( class_exists( 'Brikpanel_Cart_Share' ) && Brikpanel_Cart_Share::is_enabled() ) {
+	//
+	// Only for a user who may open that page. Added unconditionally, it was the
+	// sole child of "More" for editors, authors and contributors, which gave them
+	// a row with a dropdown arrow, an empty list and a link that answered 403.
+	if ( class_exists( 'Brikpanel_Cart_Share' ) && Brikpanel_Cart_Share::is_enabled()
+		&& current_user_can( Brikpanel_Cart_Share::CAPABILITY ) ) {
 		$cart_share_target = 'admin.php?page=brikpanel-cart-share';
 		$has_cart_share    = false;
 		if ( ! empty( $submenu['woocommerce-more'] ) && is_array( $submenu['woocommerce-more'] ) ) {
@@ -270,12 +276,136 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 		if ( ! $has_cart_share ) {
 			$submenu['woocommerce-more'][] = array(
 				__( 'Cart share', 'brikpanel' ),
-				'manage_woocommerce',
+				Brikpanel_Cart_Share::CAPABILITY,
 				$cart_share_target,
 				__( 'Cart share', 'brikpanel' ),
 			);
 		}
 	}
+}
+
+/**
+ * Split a parent's submenu rows into what the sidebar prints and where the
+ * parent's own link points.
+ *
+ * WordPress hands the sidebar a $submenu that only holds rows the current user
+ * may open. BrikPanel breaks that promise itself: the relocation above and the
+ * nav customizer both add rows afterwards (the synthetic "More" group, promoted
+ * items that keep their original capability, custom links). The renderer used
+ * to decide a parent's whole shape (its dropdown arrow, whether it is drawn at
+ * all, the page its link opens) from the raw array, and only filtered the
+ * children while printing them. Two rules for one question: when every child
+ * was filtered out, the parent kept its arrow, opened an empty list and linked
+ * to the first child's page, which the user was not allowed to open. That is
+ * the dead "More" row editors saw, with Cart share as its only child.
+ *
+ * So both answers come from here, in one pass:
+ *
+ *  - $header: the first row the user may OPEN. It is where the parent's own
+ *    link goes, which is WordPress core's rule too (_wp_menu_output() links a
+ *    parent to its first accessible child). Its absence means the parent has
+ *    nothing to lead to.
+ *  - $listed: the rows the dropdown SHOWS. Openable, minus the rows the sidebar
+ *    hides on purpose: WooCommerce Home (the BrikPanel dashboard replaces it),
+ *    raw WooCommerce slugs the relocation already re-homed, and rows WordPress
+ *    marks `hide-if-js` (registered only so the page resolves, never shown).
+ *
+ * Every listed row is openable, so a parent with a dropdown always links to a
+ * page the user can open. A parent whose openable children are all hidden
+ * becomes a plain link, without an arrow and an empty list.
+ *
+ * A row is openable when it is a customizer custom link (its audience rule was
+ * applied in brikpanel_nav_customizer_apply() and it carries its own URL) or
+ * when the user passes its capability, the same test WordPress applies in
+ * add_submenu_page(). A capability must be a string, or an int user level as
+ * core still accepts from very old plugins; a missing one never passes, which
+ * is what the print loop did before this function existed. Arrays and other
+ * junk are refused up front instead of reaching current_user_can().
+ *
+ * @param array $rows Raw $submenu[ $parent ] rows.
+ * @return array{0: array, 1: array|null} [ $listed (re-indexed), $header ].
+ */
+function brikpanel_nav_resolve_submenu_rows( $rows ) {
+	$listed = array();
+	$header = null;
+
+	if ( empty( $rows ) || ! is_array( $rows ) ) {
+		return array( $listed, $header );
+	}
+
+	static $relocated = array(
+		'wc-reports'                => true,
+		'wc-settings'               => true,
+		'wc-status'                 => true,
+		'wc-admin&path=/extensions' => true,
+	);
+	$ame = brikpanel_nav_ame_active();
+
+	foreach ( $rows as $row ) {
+		// A row without a slug has no destination: printed, it was an empty
+		// link, and as a parent's link target it raised an undefined-key warning.
+		if ( ! is_array( $row ) || ! isset( $row[2] ) || ! is_scalar( $row[2] ) || '' === (string) $row[2] ) {
+			continue;
+		}
+
+		$custom = function_exists( 'brikpanel_nav_customizer_extract_meta' )
+			&& brikpanel_nav_customizer_extract_meta( $row );
+
+		if ( ! $custom && ! ( isset( $row[1] ) && ( is_string( $row[1] ) || is_int( $row[1] ) ) && current_user_can( $row[1] ) ) ) {
+			continue;
+		}
+
+		if ( null === $header ) {
+			$header = $row;
+		}
+
+		if ( ! $custom ) {
+			$slug = isset( $row[2] ) ? (string) $row[2] : '';
+			if ( 'wc-admin' === $slug
+				|| ( ! $ame && isset( $relocated[ $slug ] ) )
+				|| ( isset( $row[4] ) && is_string( $row[4] ) && preg_match( '/(?:^|\s)hide-if-js(?:\s|$)/', $row[4] ) ) ) {
+				continue;
+			}
+		}
+
+		$listed[] = $row;
+	}
+
+	return array( $listed, $header );
+}
+
+/**
+ * A menu title as it may be printed inside a sidebar row's link.
+ *
+ * WordPress prints menu titles as raw HTML, and some plugins put list or link
+ * markup in them. WP Bulk Delete and the other Xylus Themes plugins register
+ * their last row as `<li class="current" style="...">Upgrade to Pro</li>`.
+ * Inside our `li > div > a` row, a browser closes the row at that `<li>`,
+ * rebuilds the link after it and leaves a stray copy of the link directly under
+ * the submenu list. The copy's full-row click layer (a::after in
+ * brikpanel-navigation.css) is laid against the parent row, so it covered every
+ * row of the plugin, and a mouse click there reached no link at all (wp.org
+ * support, 2026-09-25). WordPress's own menu gets the same stray markup but has
+ * no such layer, which is why the native sidebar still worked.
+ *
+ * `li` and `a` tags are dropped and what they wrap is kept: they are the tags
+ * that take a row apart (`<li>` closes it, a nested `<a>` splits its link). The
+ * row keeps its plain label, without the list item's own background. What is
+ * left is balanced, so a stray closing tag (`</div>`, `</ul>`, `</p>`) cannot
+ * end our row early and an unclosed one is closed inside the link. Count
+ * bubbles and badge spans pass unchanged.
+ *
+ * @param string $title Raw title from $menu or $submenu.
+ * @return string
+ */
+function brikpanel_nav_inline_title( $title ) {
+	$title = (string) $title;
+	if ( false === strpos( $title, '<' ) ) {
+		return $title;
+	}
+	$clean = preg_replace( '#</?(?:li|a)(?:\s(?:[^>"\']++|"[^"]*"|\'[^\']*\')*)?/?>#i', '', $title );
+	// A regex failure returns null: keep the label rather than print nothing.
+	return force_balance_tags( null === $clean ? $title : $clean );
 }
 
 /**
@@ -326,10 +456,6 @@ function brikpanel_render_navigation() {
                     const li = event.target.closest("li");
                     if (li) {
                         li.classList.toggle("brikpanel-has-open-submenu");
-                        const submenu = li.querySelector(".brikpanel-submenu");
-                        if (submenu) {
-                            submenu.classList.toggle("visible");
-                        }
                     }
                 });
             }
@@ -424,10 +550,17 @@ add_action( 'admin_footer', 'brikpanel_render_navigation' );
 function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 	global $menu, $submenu, $self, $parent_file, $submenu_file, $plugin_page, $typenow;
 
-	// If Admin Menu Editor plugin is active, load custom menus.
-	if ( is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+	// If Admin Menu Editor is active, load its custom menu. The three methods
+	// are checked up front because this now also runs for Admin Menu Editor
+	// Pro, which the old folder check never let through, and a menu swapped in
+	// here is only ever put back by restore_wp_menu() at the end.
+	if ( brikpanel_nav_ame_active() ) {
 		global $wp_menu_editor;
-		if ( isset( $wp_menu_editor ) && $wp_menu_editor->load_custom_menu() ) {
+		if ( is_object( $wp_menu_editor )
+			&& method_exists( $wp_menu_editor, 'load_custom_menu' )
+			&& method_exists( $wp_menu_editor, 'replace_wp_menu' )
+			&& method_exists( $wp_menu_editor, 'restore_wp_menu' )
+			&& $wp_menu_editor->load_custom_menu() ) {
 			$wp_menu_editor->replace_wp_menu();
 		}
 	}
@@ -437,58 +570,16 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 	// If Admin Menu Editor is not active, fold WooCommerce's crowded submenu into
 	// a synthetic "More" item (shared with the settings-page customizer so both
 	// stay in lockstep), then apply the default top-level reordering.
-	if ( ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+	if ( ! brikpanel_nav_ame_active() ) {
 		brikpanel_nav_relocate_wc_submenus( $menu, $submenu );
 
-				// Pin the Products top-level into the store section, directly below
-				// WooCommerce (Orders). WooCommerce only repositions Products via a
-				// menu_order (display-time) filter, which this renderer — reading the
-				// raw $menu registration order — never sees. On installs where the
-				// product menu registers below the "Site management" anchor (edit.php
-				// / Posts), Products and the whole BrikPanel cluster pinned beneath it
-				// (Segments, Customer Analytics, Sheets) would otherwise be swept into
-				// Site management. Done before the cluster moves so they follow it.
-				$menu = brikpanel_move_item_after( $menu, 'edit.php?post_type=product', 'woocommerce' );
-
-				$menu = brikpanel_move_item_after( $menu, 'woocommerce-more', 'woocommerce-marketing' );
-				$menu = brikpanel_move_item_after( $menu, 'admin.php?page=wc-settings', 'woocommerce-marketing' );
-				$menu = brikpanel_move_item_after( $menu, 'admin.php?page=wc-settings&tab=checkout', 'edit.php?post_type=product' );
-				$menu = brikpanel_move_item_after( $menu, 'wf_woocommerce_packing_list', 'edit.php?post_type=product' );
-
-				// BrikPanel custom analytics: Segments and Customer Analytics
-				// sit directly under Products in the sidebar.
-				$menu = brikpanel_move_item_after( $menu, 'brikpanel-segments', 'edit.php?post_type=product' );
-				$menu = brikpanel_move_item_after( $menu, 'brikpanel-customer-analytics', 'brikpanel-segments' );
-				$menu = brikpanel_move_item_after( $menu, 'brikpanel-google-sheets', 'brikpanel-customer-analytics' );
-
-				// Abandoned Carts joins the analytics cluster: after Sheets when
-				// present, otherwise directly after Customer Analytics. Two calls
-				// on purpose — the second is a no-op when Sheets is missing.
-				$menu = brikpanel_move_item_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-customer-analytics' );
-				$menu = brikpanel_move_item_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-google-sheets' );
-
-				/**
-				 * Companion plugins (e.g. BrikMentor) pin their own top-levels
-				 * into the store cluster here, now that BrikPanel's analytics
-				 * surfaces are in place. $menu is passed by reference; use
-				 * brikpanel_move_item_after() to position a slug. Runs before the
-				 * foreign-top-level demotion so pinned items are treated as store
-				 * (paired with the `brikpanel_nav_is_store_slug` filter).
-				 *
-				 * @param array $menu The $menu-shaped array (by reference).
-				 */
-				do_action_ref_array( 'brikpanel_nav_store_cluster_ready', array( &$menu ) );
-
-				// Third-party plugins (Elementor, Multi Currency, Hezarfen, ...)
-				// often register their top-level menu with a tiny menu position,
-				// which sorts them above the Posts (edit.php) anchor and makes
-				// them render inside BrikPanel's store cluster. Demote any such
-				// foreign top-level into the Site management section. Runs before
-				// the customizer so an explicit saved placement still wins.
-				if ( function_exists( 'brikpanel_nav_demote_foreign_toplevels' ) ) {
-					brikpanel_nav_demote_foreign_toplevels( $menu );
-				}
-			}
+		// The default store order (Products and BrikPanel's rows under WooCommerce,
+		// Settings and More closing the store part, the companion-plugin hook,
+		// the demotion of foreign top-levels) comes from one function that the
+		// Navigation settings snapshot calls too. See
+		// brikpanel-nav-icon-helpers.php.
+		brikpanel_nav_apply_store_order( $menu );
+	}
 
 			// Apply user-defined sidebar customization (reorder / hide / inject
 			// custom links / promote items into More / hide individual submenus
@@ -544,6 +635,10 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				$brikpanel_group_rows = 0;
 			};
 
+			// WooCommerce's Analytics top-level, whatever report this version names
+			// it after: it gets the BrikPanel analytics icon and opens on its reports.
+			$brikpanel_analytics_slug = brikpanel_nav_wc_analytics_slug( $menu );
+
 			// Loop through each top-level menu and build HTML.
 			foreach ( $menu as $key => $item ) {
 				// Third-party plugins can leave a non-array (scalar) entry in the
@@ -584,7 +679,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				// collapse toggle with nothing to collapse. Every branch that skips a
 				// row therefore emits $heading first.
 				$heading = '';
-				if ( $item_slug === $brikpanel_sitemgmt_anchor && ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+				if ( $item_slug === $brikpanel_sitemgmt_anchor && ! brikpanel_nav_ame_active() ) {
 					// Custom heading label (falls back to the translated default).
 					// Fetched only on the anchor row, never for every menu item.
 					$brikpanel_sitemgmt_label = function_exists( 'brikpanel_nav_config_sitemgmt_label' )
@@ -600,7 +695,16 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					$brikpanel_close_group();
 				}
 
-				$submenu_items = ! empty( $submenu[ $item_slug ] ) ? $submenu[ $item_slug ] : array();
+				// $submenu_items: the children the dropdown shows. $brikpanel_header_row:
+				// the first child the user may open, i.e. where this row's own link
+				// goes. Everything below decides the row's shape from these two and
+				// never from the raw $submenu array, which can hold rows BrikPanel
+				// added after WordPress's own capability clean-up. See
+				// brikpanel_nav_resolve_submenu_rows().
+				list( $submenu_items, $brikpanel_header_row ) = brikpanel_nav_resolve_submenu_rows(
+					isset( $submenu[ $item_slug ] ) ? $submenu[ $item_slug ] : array()
+				);
+				$brikpanel_container_open = false;
 
 				if ( ! empty( $submenu_items ) ) {
 					$class[] = 'wp-has-submenu';
@@ -631,7 +735,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				// the row does lead somewhere — Admin Menu Editor repurposes it,
 				// and a third-party plugin may attach a real callback to the slug.
 				if ( $item_slug === 'woocommerce' && empty( $submenu_items ) ) {
-					$brikpanel_wc_has_page = is_plugin_active( 'admin-menu-editor/menu-editor.php' )
+					$brikpanel_wc_has_page = brikpanel_nav_ame_active()
 						|| (bool) get_plugin_page_hook( 'woocommerce', 'admin.php' );
 					if ( ! $brikpanel_wc_has_page ) {
 						$html .= $heading;
@@ -640,11 +744,26 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					$class[] = 'brikpanel-nav-standalone';
 				}
 
+				// Silent: none of the row itself is printed, only its list. Decided
+				// here, once, because the link code further down has two branches (the
+				// first child is a plugin page, or a plain admin file) and the rule
+				// used to live in only one of them. Orders is `wc-orders`, a plugin
+				// page, only where orders live in WooCommerce's own tables. On every
+				// store that keeps them in posts, WooCommerce 4.0 included, it is
+				// `edit.php?post_type=shop_order`, which took the other branch: the
+				// "WooCommerce" heading and icon were printed and their row container
+				// was never closed, so Orders and Customers were laid out inside it,
+				// beside the heading and cut off by the sidebar edge.
+				$brikpanel_wc_silent = 'woocommerce' === $item_slug
+					&& ! empty( $submenu_items )
+					&& ! brikpanel_nav_ame_active();
+
 				// The synthetic "More" group is a pure dropdown container — it has
-				// no page of its own. When nothing landed under it (all children
-				// hidden, or none registered), skip the row entirely instead of
-				// emitting a top-level link to the non-existent `woocommerce-more`
-				// screen, which resolves to a 404.
+				// no page of its own. When it lists nothing for this user (all
+				// children hidden, none registered, or none this user may open),
+				// skip the row entirely instead of emitting a top-level link to the
+				// non-existent `woocommerce-more` screen, which resolves to a 404,
+				// or to a child page the user is not allowed to open (403).
 				if ( $item_slug === 'woocommerce-more' && empty( $submenu_items ) ) {
 					$html .= $heading;
 					continue;
@@ -658,13 +777,17 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		// WooCommerce sayfaları için özel kontroller
 		$viewing_add_product_page = $item_slug === 'edit.php?post_type=product' && strpos($path, '/add-product') !== false;
 		$viewing_payments_page = $item_slug === 'wc-admin&path=/payments/overview' && strpos($path, '/payments') !== false;
-		$viewing_analytics_page = $item_slug === 'wc-admin&path=/analytics/overview' && strpos($path, '/analytics') !== false;
+		// The Analytics top-level is named after WooCommerce's landing report,
+		// which differs by version (see brikpanel_nav_wc_analytics_slug()).
+		$viewing_analytics_page = '' !== $brikpanel_analytics_slug && $item_slug === $brikpanel_analytics_slug && strpos($path, '/analytics') !== false;
 		$viewing_marketing_page = $item_slug === 'woocommerce-marketing' && strpos($path, '/marketing') !== false;
+		// Extensions is `wc-addons` before WooCommerce moved it into wc-admin.
 		$viewing_more_page =
 			strpos($item_slug, 'woocommerce-more') !== false &&
 			(
 				strpos($page, 'wc-reports') !== false ||
 				strpos($page, 'wc-status') !== false ||
+				strpos($page, 'wc-addons') !== false ||
 				strpos($path, '/extensions') !== false
 			);
 
@@ -718,7 +841,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		}
 
 		// Admin Menu Editor aktifse küçük bir ek class ekliyoruz.
-		if ( is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+		if ( brikpanel_nav_ame_active() ) {
 			$class[] = 'admin-menu-editor-active';
 		}
 
@@ -733,7 +856,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 		// Sadece Admin Menu Editor devredeyse menüdeki separator’ları (bölüm ayırıcıları) render ediyoruz.
 		if ( str_contains( $class, 'wp-menu-separator' ) ) {
-			if ( is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+			if ( brikpanel_nav_ame_active() ) {
 				$is_separator = true;
 			} else {
 				continue;
@@ -764,7 +887,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			}
 		}
 
-		$title = wptexturize( $item[0] ?? '' );
+		$title = wptexturize( brikpanel_nav_inline_title( $item[0] ?? '' ) );
 
 		/**
 		 * Filter a top-level item's sidebar label. Companion surfaces add a
@@ -804,12 +927,17 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		//
 		// A row whose capability slot is missing or is not a plain string (third
 		// party plugins do push short / malformed $menu arrays) is KEPT: WordPress
-		// has already dropped everything the user may not reach, so "unknown" must
-		// never mean "hide". The capability test itself is the same one WordPress
-		// core applies in _wp_menu_output(), so this can never hide a row the
-		// native admin menu would have shown.
+		// has already dropped every TOP-LEVEL row the user may not reach, so
+		// "unknown" must never mean "hide". The capability test itself is the same
+		// one WordPress core applies in _wp_menu_output(), so this can never hide
+		// a row the native admin menu would have shown.
+		//
+		// A parent counts through its first child the user may OPEN, not through
+		// the raw submenu array: children can be rows BrikPanel added after
+		// WordPress's own clean-up, and a parent drawn for children nobody may
+		// open is exactly the dead "More" row (arrow, empty list, 403 link).
 		$brikpanel_row_renders = $is_separator
-			|| ( $submenu_as_parent && ! empty( $submenu_items ) )
+			|| ( $submenu_as_parent && null !== $brikpanel_header_row )
 			|| (
 				$item_slug !== ''
 				&& (
@@ -933,6 +1061,11 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			'options-general.php' => 'settings',
 			'settings.php' => 'settings',
 		);
+		// Analytics under the slug this WooCommerce version registered
+		// (`/analytics/revenue` before 4.2), not only the one above.
+		if ( '' !== $brikpanel_analytics_slug ) {
+			$has_custom_icon[ $brikpanel_analytics_slug ] = 'analytics';
+		}
 
 		$icon = '';
 		// User-defined icon override (from the customizer) takes precedence
@@ -964,9 +1097,10 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		// Separator ise, altındaki submenü vs yok.
 		if ( $is_separator ) {
 			$html .= '<div class="separator"></div>';
-		} elseif ( $submenu_as_parent && ! empty( $submenu_items ) ) {
-			// Alt menü var, ilk alt menü öğesini üst seviye gibi bağla:
-			$submenu_items = array_values( $submenu_items );
+		} elseif ( $submenu_as_parent && null !== $brikpanel_header_row ) {
+			// Link the row itself to its first child the user may open, the way
+			// WordPress core's _wp_menu_output() does. That child is resolved by
+			// brikpanel_nav_resolve_submenu_rows(), never read from the raw array.
 
 			// A custom-link child (only possible under the synthetic "More" group)
 			// keeps its real destination in row metadata (index 7); its index-2
@@ -976,14 +1110,14 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			// bug). Resolve the child's real URL so the header always points at a
 			// valid destination.
 			$first_child_meta = function_exists( 'brikpanel_nav_customizer_extract_meta' )
-				? brikpanel_nav_customizer_extract_meta( $submenu_items[0] )
+				? brikpanel_nav_customizer_extract_meta( $brikpanel_header_row )
 				: null;
 			$first_child_href = ( $first_child_meta && ! empty( $first_child_meta['url'] ) )
 				? esc_url( (string) $first_child_meta['url'] )
 				: '';
 
-			$menu_hook     = get_plugin_page_hook( $submenu_items[0][2], $item_slug );
-			$menu_file     = $submenu_items[0][2];
+			$menu_hook     = get_plugin_page_hook( $brikpanel_header_row[2], $item_slug );
+			$menu_file     = $brikpanel_header_row[2];
 			$pos           = strpos( $menu_file, '?' );
 
 			if ( false !== $pos ) {
@@ -993,7 +1127,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			if (
 				! empty( $menu_hook )
 				|| (
-					( 'index.php' !== $submenu_items[0][2] )
+					( 'index.php' !== $brikpanel_header_row[2] )
 					&& file_exists( WP_PLUGIN_DIR . "/$menu_file" )
 					&& ! file_exists( ABSPATH . "/wp-admin/$menu_file" )
 				)
@@ -1004,22 +1138,23 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				// "WooCommerce" branding so the sidebar reads as clean Shopify-style
 				// items. Everything else that used to live under WooCommerce has been
 				// relocated to the "More" item by brikpanel_nav_relocate_wc_submenus().
-				if ( $item_slug !== 'woocommerce' || is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+				if ( ! $brikpanel_wc_silent ) {
 					$style = $item_slug === 'meowapps-main-menu' ? 'style="padding-left: 24px;"' : '';
 					$html .= "
 						<div class='brikpanel-menu-icon-title-chevron-container'>
 							<div class='brikpanel-menu-icon-title-container $toplevel_page_class'>
 								$icon
-								<a href='admin.php?page={$submenu_items[0][2]}' $class $style $aria_attributes>
+								<a href='admin.php?page={$brikpanel_header_row[2]}' $class $style $aria_attributes>
 									$title
 								</a>
 							</div>
 					";
+					$brikpanel_container_open = true;
 				}
-			} else {
+			} elseif ( ! $brikpanel_wc_silent ) {
 				// Prefer a custom-link child's real URL over its synthetic slug so
 				// the "More" header never links to a non-existent screen.
-				$parent_href = $first_child_href !== '' ? $first_child_href : $submenu_items[0][2];
+				$parent_href = $first_child_href !== '' ? $first_child_href : $brikpanel_header_row[2];
 				$html .= "
 					<div class='brikpanel-menu-icon-title-chevron-container'>
 						<div class='brikpanel-menu-icon-title-container $toplevel_page_class'>
@@ -1029,9 +1164,15 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 							</a>
 						</div>
 				";
+				$brikpanel_container_open = true;
 			}
 
-			if ( ! empty( $submenu_items ) && ( $item_slug !== 'woocommerce' || is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) ) {
+			// A container opened above is closed here, exactly once: by the arrow's
+			// markup when there is a list to open, otherwise by a bare </div>
+			// (every child this user may open is one the sidebar hides on purpose,
+			// such as WooCommerce Home or a `hide-if-js` row, so the row is a plain
+			// link with no arrow and no empty list). A silent row opened nothing.
+			if ( $brikpanel_container_open && ! empty( $submenu_items ) ) {
 				$html .= '
 						<img
 							class="brikpanel-menu-chevron"
@@ -1041,6 +1182,8 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 						>
 					</div>
 				';
+			} elseif ( $brikpanel_container_open ) {
+				$html .= '</div>';
 			}
 			$html .= '</a>';
 		} elseif ( ! empty( $item_slug ) && current_user_can( $item[1] ) ) {
@@ -1084,14 +1227,19 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 		// Alt menü render
 		if ( ! empty( $submenu_items ) ) {
-			if ( $item_slug === 'woocommerce' && ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+			if ( $item_slug === 'woocommerce' && ! brikpanel_nav_ame_active() ) {
 				$html .= "\n\t<ul class='wp-submenu wp-submenu-wrap'>";
 			} else {
 				$html .= "\n\t<ul class='wp-submenu wp-submenu-wrap brikpanel-submenu'>";
 			}
 
-			$first = true;
-
+			// $submenu_items is already exactly the list to print (see
+			// brikpanel_nav_resolve_submenu_rows()): no capability, WooCommerce Home,
+			// relocated-slug or hide-if-js test is repeated here. Filtering again at
+			// print time is how a parent once ended up with an arrow over an empty
+			// list. This block also no longer touches $first: resetting it here left
+			// it true after a list whose rows were all skipped, so the NEXT top-level
+			// row was wrongly marked `wp-first-item`.
 			foreach ( $submenu_items as $sub_key => $sub_item ) {
 				// Ensure all submenu item indices are strings (PHP 8.1+ null deprecation fix)
 				$sub_item[0] = $sub_item[0] ?? '';
@@ -1130,30 +1278,8 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					continue;
 				}
 
-				// ---------------------------------------------------
-				// --- WooCommerce Home (wc-admin) alt menüsünü kaldır ---
-				// ---------------------------------------------------
-				if ( $sub_item_slug === 'wc-admin' ) {
-					continue;
-				}
-				// ---------------------------------------------------
-
-				if ( ! current_user_can( $sub_item[1] ) ) {
-					continue;
-				}
-
-				// Daha önce "top level"e taşınan alt menüler burada atlanıyor.
-				$moved_submenu_items = array( 'wc-reports', 'wc-settings', 'wc-status', 'wc-admin&path=/extensions' );
-				if ( in_array( $sub_item_slug, $moved_submenu_items ) && ! is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
-					continue;
-				}
-
 				$class           = array();
 				$aria_attributes = '';
-
-				if ( $first ) {
-					$first = false;
-				}
 
 				$menu_file = $item_slug;
 				$pos       = strpos( $menu_file, '?' );
@@ -1215,6 +1341,12 @@ if (strpos($sub_item_slug, 'wc-reports') !== false && $page === 'wc-reports') {
 if (strpos($sub_item_slug, 'wc-status') !== false && $page === 'wc-status') {
     $class[] = 'brikpanel-current';
 }
+// Extensions before WooCommerce moved it into wc-admin (its relocated slug,
+// matched exactly: Appearance > Customize carries the current page in its
+// return= argument and would match a substring test).
+if ($sub_item_slug === 'admin.php?page=wc-addons' && $page === 'wc-addons') {
+    $class[] = 'brikpanel-current';
+}
 if (strpos($sub_item_slug, '/extensions') !== false && $path === '/extensions') {
     $class[] = 'brikpanel-current';
 }
@@ -1265,7 +1397,7 @@ if (!empty($sub_item[4])) {
 					$sub_file = substr( $sub_file, 0, $pos );
 				}
 
-				$title = wptexturize( $sub_item[0] ?? '' );
+				$title = wptexturize( brikpanel_nav_inline_title( $sub_item[0] ?? '' ) );
 
 				// WooCommerce alt menülerine özel ikonlar.
 				$woocommerce_submenu_has_custom_icon = array(
@@ -1311,7 +1443,7 @@ if (!empty($sub_item[4])) {
 						break;
 					}
 				}
-				if ( is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+				if ( brikpanel_nav_ame_active() ) {
 					$icon = '';
 				}
 
@@ -1368,9 +1500,13 @@ if (!empty($sub_item[4])) {
 	// browser closes it at </ul>, exactly as it always has.)
 	$brikpanel_close_group();
 
-	if ( is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+	if ( brikpanel_nav_ame_active() ) {
 		global $wp_menu_editor;
-		if ( isset( $wp_menu_editor ) && $wp_menu_editor->load_custom_menu() ) {
+		if ( is_object( $wp_menu_editor )
+			&& method_exists( $wp_menu_editor, 'load_custom_menu' )
+			&& method_exists( $wp_menu_editor, 'replace_wp_menu' )
+			&& method_exists( $wp_menu_editor, 'restore_wp_menu' )
+			&& $wp_menu_editor->load_custom_menu() ) {
 			$wp_menu_editor->restore_wp_menu();
 		}
 	}
@@ -1388,9 +1524,14 @@ function brikpanel_move_woocommerce_to_top( $menu_order ) {
 	if ( brikpanel_navigation_skip_super_admin_chrome() ) {
 		return $menu_order;
 	}
-	if ( is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+	if ( brikpanel_nav_ame_active() ) {
 		return $menu_order;
 	}
+
+	// Analytics under whichever report this WooCommerce names it after
+	// (`/analytics/revenue` before 4.2). The fixed `/analytics/overview` left it
+	// at its registered position on older stores, below Posts.
+	$analytics = brikpanel_nav_wc_analytics_slug( $menu_order );
 
 	$new_positions = array(
 		'woocommerce',
@@ -1399,7 +1540,7 @@ function brikpanel_move_woocommerce_to_top( $menu_order ) {
 		'wc-admin&path=/wc-pay-welcome-page',
 		'wc-admin&path=/payments/connect',
 		'wc-admin&path=/payments/overview',
-		'wc-admin&path=/analytics/overview',
+		'' !== $analytics ? $analytics : 'wc-admin&path=/analytics/overview',
 		'woocommerce-marketing',
 	);
 
@@ -1427,47 +1568,19 @@ function brikpanel_move_woocommerce_to_top( $menu_order ) {
 add_filter( 'menu_order', 'brikpanel_move_woocommerce_to_top' );
 
 /**
- * Bir öğeyi, başka bir öğeden hemen sonra taşımak için yardımcı fonksiyon.
+ * Move one top-level row directly after another.
+ *
+ * Kept under this name for companion plugins: BrikMentor calls it from the
+ * `brikpanel_nav_store_cluster_ready` hook and reads its existence as "the
+ * modern sidebar is on", which is why it stays in this conditionally loaded
+ * file. The work is done by brikpanel_nav_move_after(), the one implementation
+ * the renderer and the Navigation settings snapshot share.
+ *
+ * @param array  $array            $menu-shaped rows.
+ * @param string $item_to_move     Slug of the row to move.
+ * @param string $after_item_value Slug of the row it should follow.
+ * @return array
  */
 function brikpanel_move_item_after( $array, $item_to_move, $after_item_value ) {
-	$item_to_move_index = null;
-	$after_item_index   = null;
-	$item_to_move_item  = null;
-
-	// Hangi index'lerin taşınacağını bul.
-	foreach ( $array as $index => $inner_array ) {
-		// Skip scalar entries a third-party plugin may have left in $menu.
-		if ( ! is_array( $inner_array ) || ! isset( $inner_array[2] ) ) {
-			continue;
-		}
-		if ( $inner_array[2] === $item_to_move ) {
-			$item_to_move_index = $index;
-			$item_to_move_item  = $inner_array;
-		}
-		if ( $inner_array[2] === $after_item_value ) {
-			$after_item_index = $index;
-		}
-	}
-
-	if ( null === $item_to_move_index || null === $after_item_index ) {
-		return $array;
-	}
-
-	unset( $array[ $item_to_move_index ] );
-
-	if ( $item_to_move_index < $after_item_index ) {
-		$after_item_index--;
-	}
-
-	if ( $after_item_index === count( $array ) - 1 ) {
-		$array[] = $item_to_move_item;
-	} else {
-		$array = array_merge(
-			array_slice( $array, 0, $after_item_index + 1 ),
-			array( $item_to_move_item ),
-			array_slice( $array, $after_item_index + 1 )
-		);
-	}
-
-	return array_values( $array );
+	return brikpanel_nav_move_after( $array, $item_to_move, $after_item_value );
 }

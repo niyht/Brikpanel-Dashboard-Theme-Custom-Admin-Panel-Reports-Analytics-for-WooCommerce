@@ -206,6 +206,21 @@ function brikpanel_appearance_shade( $hex, $factor ) {
 }
 
 /**
+ * The "r, g, b" triplet of a #RGB / #RRGGBB color, the form WordPress's
+ * `--wp-admin-theme-color--rgb` variables take.
+ *
+ * @param string $hex Validated hex color.
+ * @return string
+ */
+function brikpanel_appearance_rgb( $hex ) {
+	$hex = ltrim( $hex, '#' );
+	if ( strlen( $hex ) === 3 ) {
+		$hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+	}
+	return hexdec( substr( $hex, 0, 2 ) ) . ', ' . hexdec( substr( $hex, 2, 2 ) ) . ', ' . hexdec( substr( $hex, 4, 2 ) );
+}
+
+/**
  * Sanitize an admin-supplied custom CSS blob before it is stored or printed.
  *
  * Custom CSS is a privileged input — only users with `manage_woocommerce` can
@@ -241,8 +256,14 @@ function brikpanel_appearance_get_custom_css() {
  * Build the runtime CSS that applies the chosen font + accent color across
  * BrikPanel surfaces. Returns an empty string when both settings are at
  * their default values, so we don't print a no-op `<style>` tag.
+ *
+ * @param string $context `admin` for wp-admin, `login` for the modern login
+ *                        page. Only the font selector list differs: wp-admin
+ *                        is full of foreign markup that must keep its own
+ *                        font, while the login page is ours end to end.
+ * @return string
  */
-function brikpanel_appearance_build_css() {
+function brikpanel_appearance_build_css( $context = 'admin' ) {
 	$font_key  = brikpanel_appearance_get_font_key();
 	$color     = brikpanel_appearance_get_primary_color();
 	$is_def_f  = ( $font_key === BRIKPANEL_APPEARANCE_DEFAULT_FONT );
@@ -268,7 +289,26 @@ function brikpanel_appearance_build_css() {
 			. '--bp-topbar-primary:' . $color . ';'
 			. '--bp-topbar-primary-hover:' . $hover . ';'
 			. '--brikpanel-primary:' . $color . ';'
+			. '--brikpanel-ui-primary:' . $color . ';'
+			. '--brikpanel-ui-primary-hover:' . $hover . ';'
+			. '--brikpanel-ui-focus:' . $color . ';'
 			. '}';
+
+		// WordPress's own accent (core buttons, focus rings), set to #303030
+		// by brikpanel-navigation.css with this same selector; this later
+		// rule hands it the custom color instead. Admin only: the login page
+		// has no such body class.
+		if ( 'admin' === $context ) {
+			$darker = brikpanel_appearance_shade( $color, 0.6 );
+			$css   .= 'body.wp-admin.brikpanel-chrome{'
+				. '--wp-admin-theme-color:' . $color . ';'
+				. '--wp-admin-theme-color--rgb:' . brikpanel_appearance_rgb( $color ) . ';'
+				. '--wp-admin-theme-color-darker-10:' . $hover . ';'
+				. '--wp-admin-theme-color-darker-10--rgb:' . brikpanel_appearance_rgb( $hover ) . ';'
+				. '--wp-admin-theme-color-darker-20:' . $darker . ';'
+				. '--wp-admin-theme-color-darker-20--rgb:' . brikpanel_appearance_rgb( $darker ) . ';'
+				. '}';
+		}
 
 		// The product editor scopes its variables to .brikpanel-pe rather
 		// than :root, so override that scope explicitly.
@@ -322,11 +362,27 @@ function brikpanel_appearance_build_css() {
 		// overridden). Real BrikPanel wrappers like `.brikpanel-dashboard` and
 		// `.brikpanel-topbar-*` still match and receive the font; only the
 		// body/html sentinels are excluded.
-		$css .= '[class*="brikpanel-"]:not(body):not(html),'
+		//
+		// The login page needs its own selector: it carries no
+		// `brikpanel-`-prefixed wrapper, so the list above reaches only the
+		// footer credit and the toast. This used to be `.bp-login`, a class
+		// that exists nowhere in the plugin or in wp-login.php's markup, so
+		// the chosen font was downloaded on the login screen and then applied
+		// to nothing.
+		$selectors = '[class*="brikpanel-"]:not(body):not(html),'
 			. '[class*="brikpanel-"]:not(body):not(html) *,'
-			. '.brikpanel-pe,.brikpanel-pe *,'
-			. '.bp-login,.bp-login *'
-			. '{font-family:' . $stack . ' !important;}';
+			. '.brikpanel-pe,.brikpanel-pe *';
+
+		if ( 'login' === $context ) {
+			// Dashicons are excluded for the same reason the admin list
+			// excludes body/html: `font-family !important` on every
+			// descendant also overrides the icon font, and WordPress paints
+			// the show-password eye and the checkbox tick with dashicons —
+			// they render as tofu boxes the moment the rule reaches them.
+			$selectors .= ',body.login #login,body.login #login *:not([class*="dashicons"])';
+		}
+
+		$css .= $selectors . '{font-family:' . $stack . ' !important;}';
 	}
 
 	return $css;
@@ -352,7 +408,25 @@ function brikpanel_appearance_print_admin_styles() {
 	echo "<style id=\"brikpanel-appearance-overrides\">{$css}</style>"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — values are sanitized in helpers above.
 }
 add_action( 'admin_head', 'brikpanel_appearance_print_admin_styles', 9999 );
-add_action( 'login_head', 'brikpanel_appearance_print_admin_styles', 9999 );
+
+/**
+ * Print the same runtime CSS on wp-login.php, with the login selector list.
+ *
+ * Gated on the modern login page being active: with it switched off the
+ * stock WordPress login screen is somebody else's design and BrikPanel has
+ * no business restyling it.
+ */
+function brikpanel_appearance_print_login_styles() {
+	if ( get_option( 'brikpanel_modern_login', 'yes' ) !== 'yes' ) {
+		return;
+	}
+	$css = brikpanel_appearance_build_css( 'login' );
+	if ( $css === '' ) {
+		return;
+	}
+	echo "<style id=\"brikpanel-appearance-overrides\">{$css}</style>"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — values are sanitized in helpers above.
+}
+add_action( 'login_head', 'brikpanel_appearance_print_login_styles', 9999 );
 
 /**
  * Enqueue the chosen Google Font (if any). Skipped for the `system` default
@@ -464,7 +538,7 @@ function brikpanel_appearance_register_fields( $fields ) {
 			'name' => __( 'Custom CSS', 'brikpanel' ),
 			'id'   => 'brikpanel_custom_css',
 			'type' => 'brikpanel_custom_css',
-			'desc' => __( 'Add your own CSS to fine-tune the BrikPanel interface — change button colors, backgrounds, spacing, and more. Your rules load last, so they override the built-in styles. Tip: prefix your selectors with a BrikPanel class (for example .brikpanel-dashboard, .brikpanel-topbar, .brikpanel-pe) so the changes stay inside BrikPanel and leave the rest of the admin untouched.', 'brikpanel' ),
+			'desc' => __( 'Add your own CSS to fine-tune the BrikPanel interface: change button colors, backgrounds, spacing, and more. Your rules load last, so they override the built-in styles. Tip: prefix your selectors with a BrikPanel class (for example .brikpanel-dashboard, .brikpanel-topbar, .brikpanel-pe) so the changes stay inside BrikPanel and leave the rest of the admin untouched.', 'brikpanel' ),
 		],
 		[
 			'type' => 'sectionend',
@@ -550,10 +624,10 @@ function brikpanel_brand_logo_render_field( $field ) {
 					<?php endif; ?>
 				</div>
 				<div class="brikpanel-logo-picker__actions">
-					<button type="button" class="button brikpanel-logo-picker__select">
+					<button type="button" class="brikpanel-btn brikpanel-btn--secondary brikpanel-logo-picker__select">
 						<?php echo $has_logo ? esc_html__( 'Replace logo', 'brikpanel' ) : esc_html__( 'Select logo', 'brikpanel' ); ?>
 					</button>
-					<button type="button" class="button-link brikpanel-logo-picker__remove" <?php echo $has_logo ? '' : 'hidden'; ?>>
+					<button type="button" class="brikpanel-btn brikpanel-btn--danger-link brikpanel-logo-picker__remove" <?php echo $has_logo ? '' : 'hidden'; ?>>
 						<?php esc_html_e( 'Remove', 'brikpanel' ); ?>
 					</button>
 				</div>
@@ -655,14 +729,12 @@ add_action( 'admin_enqueue_scripts', function () {
 			display:flex; align-items:center; justify-content:center; gap:0.5rem;
 			width:120px; height:80px; padding:0.5rem;
 			background:#fafafa; border:1px solid #e3e3e3; border-radius:0.5rem;
-			color:#8a8a8a; font-size:0.75rem; text-align:center; line-height:1.3;
+			color:#616161; font-size:0.75rem; text-align:center; line-height:1.3;
 		}
 		.brikpanel-logo-picker__preview.has-logo { padding:4px; background:#ffffff; }
 		.brikpanel-logo-picker__preview img { max-width:100%; max-height:100%; object-fit:contain; display:block; }
 		.brikpanel-logo-picker__preview.is-empty { flex-direction:column; }
 		.brikpanel-logo-picker__actions { display:flex; align-items:center; gap:0.75rem; }
-		.brikpanel-logo-picker__remove { color:#d72c0d; text-decoration:none; font-size:0.8125rem; }
-		.brikpanel-logo-picker__remove:hover { color:#a02009; text-decoration:underline; }
 			.brikpanel-logo-picker__url { flex:1 1 100%; display:flex; flex-direction:column; gap:0.375rem; margin-top:0.25rem; }
 			.brikpanel-logo-picker__url label { font-size:0.8125rem; font-weight:600; color:#616161; }
 			.brikpanel-logo-picker__url input { max-width:420px; }
@@ -798,10 +870,11 @@ function brikpanel_brand_logo_print_login_styles() {
 		. 'background-position:center !important;'
 		. 'background-size:contain !important;'
 		. 'border-radius:0 !important;'
-		. '}'
-		// Drop the "Welcome back" subtitle so the custom logo carries the
-		// brand identity without a redundant label underneath.
-		. '#login h1::after{display:none !important;}';
+		. '}';
+	// Whether a heading sits under the logo is decided in
+	// Brikpanel_Login::resolve_heading_text() — with the heading left on its
+	// default the logo still carries the brand identity alone, but an admin
+	// who picks the site name or their own wording now gets it.
 	echo '<style id="brikpanel-brand-logo-login">' . $css . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- URL escaped above.
 }
 add_action( 'login_head', 'brikpanel_brand_logo_print_login_styles', 10000 );

@@ -429,6 +429,108 @@ class Brikpanel_Ads_Store {
 		];
 	}
 
+	/**
+	 * Accounts of a platform that have at least one stored row.
+	 *
+	 * Includes accounts that are no longer selected (left over from before a
+	 * reconnect): their rows still feed the dashboard totals, so the settings
+	 * card has to be able to show them.
+	 *
+	 * @param string $platform
+	 * @return string[]
+	 */
+	public static function accounts_with_data( $platform ) {
+		global $wpdb;
+		if ( ! self::is_valid_platform( $platform ) ) {
+			return [];
+		}
+		$table = self::table();
+		$ids   = $wpdb->get_col( $wpdb->prepare(
+			"SELECT DISTINCT account_id FROM {$table} WHERE platform = %s",
+			$platform
+		) );
+		return array_values( array_map( 'strval', (array) $ids ) );
+	}
+
+	/**
+	 * account_summary() for every account of a platform, in one query.
+	 *
+	 * @param string $platform
+	 * @return array<string, array{first_date:string, last_date:string, days:int, spend:float, impressions:int, clicks:int, currency:string}>
+	 */
+	public static function account_summaries( $platform ) {
+		global $wpdb;
+		if ( ! self::is_valid_platform( $platform ) ) {
+			return [];
+		}
+		$table = self::table();
+		$rows  = $wpdb->get_results( $wpdb->prepare(
+			"SELECT account_id, MIN(date) AS first_date, MAX(date) AS last_date,
+				COUNT(*) AS days,
+				SUM(spend_amount) AS spend,
+				SUM(impressions) AS impressions,
+				SUM(clicks) AS clicks,
+				MAX(spend_currency) AS currency
+			FROM {$table}
+			WHERE platform = %s
+			GROUP BY account_id",
+			$platform
+		), ARRAY_A );
+
+		$out = [];
+		foreach ( (array) $rows as $r ) {
+			$out[ (string) $r['account_id'] ] = [
+				'first_date'  => (string) $r['first_date'],
+				'last_date'   => (string) $r['last_date'],
+				'days'        => (int) $r['days'],
+				'spend'       => (float) $r['spend'],
+				'impressions' => (int) $r['impressions'],
+				'clicks'      => (int) $r['clicks'],
+				'currency'    => (string) $r['currency'],
+			];
+		}
+		return $out;
+	}
+
+	/**
+	 * monthly_breakdown() for every account of a platform, in one query.
+	 *
+	 * @param string $platform
+	 * @return array<string, array<int, array{month:string, currency:string, spend:float, impressions:int, clicks:int, days:int}>>
+	 */
+	public static function monthly_breakdown_by_account( $platform ) {
+		global $wpdb;
+		if ( ! self::is_valid_platform( $platform ) ) {
+			return [];
+		}
+		$table = self::table();
+		$rows  = $wpdb->get_results( $wpdb->prepare(
+			"SELECT account_id, DATE_FORMAT(date, '%%Y-%%m') AS month, spend_currency AS currency,
+				SUM(spend_amount) AS spend,
+				SUM(impressions) AS impressions,
+				SUM(clicks) AS clicks,
+				COUNT(*) AS days
+			FROM {$table}
+			WHERE platform = %s
+			GROUP BY account_id, month, spend_currency
+			ORDER BY month DESC",
+			$platform
+		), ARRAY_A );
+
+		$out = [];
+		foreach ( (array) $rows as $r ) {
+			$out[ (string) $r['account_id'] ][] = [
+				'month'       => (string) $r['month'],
+				'currency'    => (string) $r['currency'],
+				'spend'       => (float) $r['spend'],
+				'impressions' => (int) $r['impressions'],
+				'clicks'      => (int) $r['clicks'],
+				'days'        => (int) $r['days'],
+			];
+		}
+		return $out;
+	}
+
 	// =========================================================================
 	// Cache-busting
 	// =========================================================================

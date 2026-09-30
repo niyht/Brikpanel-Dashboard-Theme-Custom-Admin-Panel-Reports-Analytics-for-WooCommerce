@@ -114,7 +114,7 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
         'name' => __( 'Currency', 'brikpanel' ),
         'type' => 'title',
         'id'   => 'brk_currency_title',
-        'desc' => __( 'When your store takes orders in more than one currency, BrikPanel converts every order to your store currency before adding it up, so Revenue, Average Order Value and the sales chart are never a meaningless mix of currencies. If you use a multi-currency plugin such as CURCY, the exact rate from the day of each sale is read automatically from the order — you only need the rates below for currencies that arrive without one.', 'brikpanel' ),
+        'desc' => __( 'When your store takes orders in more than one currency, BrikPanel converts every order to your store currency before adding it up, so Revenue, Average Order Value and the sales chart are never a meaningless mix of currencies. If you use a multi-currency plugin such as CURCY, the exact rate from the day of each sale is read automatically from the order; you only need the rates below for currencies that arrive without one.', 'brikpanel' ),
     ];
     $fields[] = [
         // The id is the option this card writes, so the settings export walker
@@ -141,7 +141,7 @@ function brikpanel_render_fx_rates_field() {
     $rates      = brikpanel_manual_fx_rates();
     ?>
     </table>
-    <section class="bp-fx-card">
+    <section class="bp-settings-card bp-settings-card--custom bp-fx-card">
         <header class="bp-fx-card__head">
             <h3 class="bp-fx-card__title"><?php esc_html_e( 'Exchange rates to your store currency', 'brikpanel' ); ?></h3>
             <p class="bp-fx-card__sub">
@@ -200,8 +200,8 @@ function brikpanel_render_fx_rates_field() {
 add_action( 'woocommerce_admin_field_brikpanel_fx_rates', 'brikpanel_render_fx_rates_field' );
 
 /**
- * Inline styles for the rate card. Kept scoped and tiny; matches the BrikPanel
- * settings card design language.
+ * Inline styles for the rate card's inside. The card itself is the shared
+ * settings card (.bp-settings-card--custom in the settings tab styles).
  */
 function brikpanel_fx_rates_styles() {
     if ( ! function_exists( 'brikpanel_settings_get_current_section' )
@@ -210,17 +210,17 @@ function brikpanel_fx_rates_styles() {
     }
     ?>
     <style>
-        .bp-fx-card{background:#fff;border:1px solid #e3e3e3;border-radius:.75rem;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:1.25rem 1.5rem;max-width:560px;margin:0 0 1rem}
-        .bp-fx-card__title{margin:0 0 .25rem;font-size:1rem;font-weight:600;color:#303030}
+        .bp-fx-card__title{margin:0 0 .25rem;font-size:var(--brikpanel-card-title-size,.9375rem);font-weight:600;color:#303030}
         .bp-fx-card__sub{margin:0 0 1rem;font-size:.8125rem;color:#616161}
         .bp-fx-list{display:flex;flex-direction:column;gap:.625rem}
         .bp-fx-row{display:flex;align-items:center;gap:.625rem}
         .bp-fx-unit{min-width:84px;font-weight:600;font-size:.875rem;color:#303030}
+        /* contrast-ok: the "=" between a currency and its rate, decoration. */
         .bp-fx-eq{color:#8a8a8a;font-weight:600}
         .bp-fx-input{width:160px;padding:.5rem .625rem;border:1px solid #8a8a8a;border-radius:.5rem;font-size:.875rem}
         .bp-fx-input:focus{border-color:#303030;box-shadow:0 0 0 1px #303030;outline:none}
         .bp-fx-base{font-weight:600;font-size:.875rem;color:#616161}
-        .bp-fx-hint,.bp-fx-empty{margin:1rem 0 0;font-size:.75rem;color:#8a8a8a;line-height:1.5}
+        .bp-fx-hint,.bp-fx-empty{margin:1rem 0 0;font-size:.75rem;color:#616161;line-height:1.5}
         .bp-fx-empty{margin-top:0}
     </style>
     <?php

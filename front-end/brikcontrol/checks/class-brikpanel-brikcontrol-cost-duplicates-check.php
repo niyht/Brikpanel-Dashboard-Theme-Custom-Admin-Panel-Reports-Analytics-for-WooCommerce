@@ -80,7 +80,7 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
      * @return string
      */
     public function get_label() {
-        return __( 'Product Cost Records', 'brikpanel' );
+        return __( 'Product cost records', 'brikpanel' );
     }
 
     /**
@@ -120,6 +120,15 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
         return __( 'Remove extra copies', 'brikpanel' );
     }
 
+    /**
+     * Figures only; the card writes the sentences (see bc_present()).
+     *
+     * @return int
+     */
+    public function bc_schema() {
+        return 2;
+    }
+
     /* ---------------------------------------------------------------------
      * Scan
      * ------------------------------------------------------------------ */
@@ -151,14 +160,55 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
         $backup    = $this->read_backup_index();
 
         if ( $extra < 1 ) {
-            $result['status']  = 'ok';
-            $result['score']   = 100;
-            $result['summary'] = __( 'Every product cost is saved once.', 'brikpanel' );
-            $result['message'] = __( 'No product or variation has a copy of its cost stored more than once.', 'brikpanel' );
+            $result['status'] = 'ok';
+            $result['score']  = 100;
         } else {
-            $result['status']  = 'warning';
-            $result['score']   = 80;
-            $result['summary'] = $this->safe_sprintf(
+            $result['status'] = 'warning';
+            $result['score']  = 79;
+        }
+
+        $result['facts'] = [
+            'extra'     => $extra,
+            'products'  => $products,
+            'differing' => $differing,
+            'undoable'  => $backup['count'],
+            'undo_at'   => (int) $backup['time'],
+            'samples'   => $extra > 0 ? $this->build_samples( $base ) : [],
+        ];
+
+        $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
+
+        return $result;
+    }
+
+    /**
+     * Sentences for the stored figures, in the viewer's language.
+     *
+     * @param array  $r       Stored result.
+     * @param string $context 'page' or 'summary'.
+     * @return array
+     */
+    public function bc_present( array $r, $context = 'page' ) {
+        $r = parent::bc_present( $r, $context );
+
+        $f = isset( $r['facts'] ) && is_array( $r['facts'] ) ? $r['facts'] : [];
+        if ( empty( $f ) || (int) ( $r['schema'] ?? 1 ) < 2 ) {
+            return $r; // Written before 3.3.25: show what was stored.
+        }
+
+        $extra     = (int) ( $f['extra'] ?? 0 );
+        $products  = (int) ( $f['products'] ?? 0 );
+        $differing = (int) ( $f['differing'] ?? 0 );
+        $undoable  = (int) ( $f['undoable'] ?? 0 );
+
+        $r['recommendations'] = [];
+        $r['metadata']        = [];
+
+        if ( $extra < 1 ) {
+            $r['summary'] = __( 'Every product cost is saved once.', 'brikpanel' );
+            $r['message'] = __( 'No product or variation has a copy of its cost stored more than once.', 'brikpanel' );
+        } else {
+            $r['summary'] = brikpanel_safe_sprintf(
                 /* translators: %s: number of products and variations. */
                 _n(
                     '%s product has its cost saved more than once',
@@ -166,12 +216,12 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
                     $products,
                     'brikpanel'
                 ),
-                number_format_i18n( $products )
+                brikpanel_number( $products )
             );
-            $result['message'] = __( 'Your reports already count each cost once, so your profit figures are correct. The extra copies can still confuse exports and other plugins. Removing them keeps the copy your product pages show today, so no cost changes.', 'brikpanel' );
+            $r['message'] = __( 'Your reports already count each cost once, so your profit figures are correct. The extra copies can still confuse exports and other plugins. Removing them keeps the copy your product pages show today, so no cost changes.', 'brikpanel' );
 
             if ( $differing > 0 ) {
-                $result['message'] .= ' ' . $this->safe_sprintf(
+                $r['message'] .= ' ' . brikpanel_safe_sprintf(
                     /* translators: %s: number of cost fields. */
                     _n(
                         '%s of these holds different numbers in its copies; the first saved number is the one in use and the one that stays.',
@@ -179,11 +229,17 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
                         $differing,
                         'brikpanel'
                     ),
-                    number_format_i18n( $differing )
+                    brikpanel_number( $differing )
                 );
             }
+        }
 
-            $result['recommendations'] = [
+        if ( 'page' !== $context ) {
+            return $r;
+        }
+
+        if ( $extra > 0 ) {
+            $r['recommendations'] = [
                 [
                     'text'     => __( 'Open the list below to see which products are affected. Products are often copied this way by an import or by duplicating a product.', 'brikpanel' ),
                     'priority' => 'medium',
@@ -191,19 +247,31 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
             ];
         }
 
-        $result['metadata'] = [
-            'fixable'      => $extra,
-            'undoable'     => $backup['count'],
-            'undo_at'      => (int) $backup['time'],
-            'fix_confirm'  => $this->safe_sprintf(
-                /* translators: 1: number of extra copies, 2: number of products. */
-                __( 'Remove %1$s extra cost copies from %2$s product(s)? The cost each product shows today does not change, and the removed copies are kept so you can undo this.', 'brikpanel' ),
-                number_format_i18n( $extra ),
-                number_format_i18n( $products )
+        $r['metadata'] = [
+            'fixable'       => $extra,
+            'undoable'      => $undoable,
+            'undo_at'       => (int) ( $f['undo_at'] ?? 0 ),
+            'fix_confirm'   => brikpanel_safe_sprintf(
+                /* translators: %s: number of extra cost copies. */
+                _n(
+                    'Remove %s extra cost copy? The cost each product shows today does not change, and the removed copy is kept so you can undo this.',
+                    'Remove %s extra cost copies? The cost each product shows today does not change, and the removed copies are kept so you can undo this.',
+                    $extra,
+                    'brikpanel'
+                ),
+                brikpanel_number( $extra )
             ),
-            /* translators: {count} is replaced in the browser with the number of rows to restore. Keep it as is. */
-            'undo_confirm' => __( 'Put the removed cost copies back? This restores {count} row(s) exactly as they were.', 'brikpanel' ),
-            'stats'        => [
+            'undo_confirm'  => brikpanel_safe_sprintf(
+                /* translators: %s: number of rows to put back. */
+                _n(
+                    'Put the removed cost copies back? This restores %s row exactly as it was.',
+                    'Put the removed cost copies back? This restores %s rows exactly as they were.',
+                    $undoable,
+                    'brikpanel'
+                ),
+                brikpanel_number( $undoable )
+            ),
+            'stats'         => [
                 [
                     'label' => __( 'Products affected', 'brikpanel' ),
                     'value' => $products,
@@ -220,7 +288,7 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
                     'tone'  => $differing > 0 ? 'warn' : '',
                 ],
             ],
-            'samples'       => $extra > 0 ? $this->build_samples( $base ) : [],
+            'samples'       => $this->present_samples( (array) ( $f['samples'] ?? [] ) ),
             'samples_title' => __( 'Affected products', 'brikpanel' ),
             'samples_cols'  => [
                 __( 'Product', 'brikpanel' ),
@@ -230,9 +298,33 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
             ],
         ];
 
-        $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
+        return $r;
+    }
 
-        return $result;
+    /**
+     * @param array $outcome run_fix() result.
+     * @return string
+     */
+    public function bc_fix_done( array $outcome ) {
+        $removed = (int) ( $outcome['removed'] ?? 0 );
+        return brikpanel_safe_sprintf(
+            /* translators: %s: number of extra cost copies removed. */
+            _n( '%s extra cost copy removed.', '%s extra cost copies removed.', $removed, 'brikpanel' ),
+            brikpanel_number( $removed )
+        );
+    }
+
+    /**
+     * @param array $outcome run_undo() result.
+     * @return string
+     */
+    public function bc_undo_done( array $outcome ) {
+        $restored = (int) ( $outcome['restored'] ?? 0 );
+        return brikpanel_safe_sprintf(
+            /* translators: %s: number of cost copies put back. */
+            _n( '%s cost copy put back.', '%s cost copies put back.', $restored, 'brikpanel' ),
+            brikpanel_number( $restored )
+        );
     }
 
     /**
@@ -283,7 +375,9 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
     }
 
     /**
-     * Detail rows, groups with conflicting numbers first.
+     * Detail rows, groups with conflicting numbers first: product id, meta
+     * key, number of rows and the raw saved values, oldest first. Names and
+     * labels are added when the card is drawn (present_samples()).
      *
      * @param string $base Output of groups_sql().
      * @return array
@@ -306,8 +400,6 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
         $ids  = array_values( array_unique( array_map( static function ( $g ) { return (int) $g->post_id; }, $groups ) ) );
         $keys = array_values( array_unique( array_map( static function ( $g ) { return (string) $g->meta_key; }, $groups ) ) );
 
-        _prime_post_caches( $ids, false, false );
-
         $id_list  = implode( ',', array_map( 'absint', $ids ) );
         $key_list = "'" . implode( "','", array_map( 'esc_sql', $keys ) ) . "'";
 
@@ -321,9 +413,7 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
 
         $values = [];
         foreach ( (array) $rows as $row ) {
-            $values[ (int) $row->post_id ][ (string) $row->meta_key ][] = '' === (string) $row->meta_value
-                ? __( '(empty)', 'brikpanel' )
-                : (string) $row->meta_value;
+            $values[ (int) $row->post_id ][ (string) $row->meta_key ][] = (string) $row->meta_value;
         }
 
         $samples = [];
@@ -332,14 +422,51 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
             $key = (string) $group->meta_key;
 
             $samples[] = [
-                $this->product_label( $pid ),
-                $this->field_label( $key ),
-                number_format_i18n( (int) $group->n ),
-                implode( ' / ', $values[ $pid ][ $key ] ?? [] ),
+                'post_id' => $pid,
+                'key'     => $key,
+                'n'       => (int) $group->n,
+                'values'  => $values[ $pid ][ $key ] ?? [],
             ];
         }
 
         return $samples;
+    }
+
+    /**
+     * Stored sample rows as table cells, in the viewer's language.
+     *
+     * @param array $rows build_samples() output.
+     * @return array
+     */
+    private function present_samples( array $rows ) {
+        $ids = [];
+        foreach ( $rows as $row ) {
+            if ( is_array( $row ) && ! empty( $row['post_id'] ) ) {
+                $ids[] = (int) $row['post_id'];
+            }
+        }
+        if ( ! empty( $ids ) ) {
+            _prime_post_caches( array_values( array_unique( $ids ) ), false, false );
+        }
+
+        $out = [];
+        foreach ( $rows as $row ) {
+            if ( ! is_array( $row ) || empty( $row['post_id'] ) ) {
+                continue;
+            }
+            $values = [];
+            foreach ( (array) ( $row['values'] ?? [] ) as $value ) {
+                $values[] = '' === (string) $value ? __( '(empty)', 'brikpanel' ) : (string) $value;
+            }
+            $out[] = [
+                $this->product_label( (int) $row['post_id'] ),
+                $this->field_label( (string) ( $row['key'] ?? '' ) ),
+                brikpanel_number( (int) ( $row['n'] ?? 0 ) ),
+                implode( ' / ', $values ),
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -355,7 +482,7 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
             case '_cogs_value_is_additive':
                 return __( 'Adds to parent cost', 'brikpanel' );
             default:
-                return $this->safe_sprintf(
+                return brikpanel_safe_sprintf(
                     /* translators: %s: meta key used by another cost plugin. */
                     __( 'Cost of goods (%s)', 'brikpanel' ),
                     $key
@@ -373,13 +500,13 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
         if ( is_string( $title ) && '' !== trim( $title ) ) {
             // get_the_title() is texturized (a variation's dash arrives as
             // &#8211;); the card escapes on output, so hand it plain text.
-            return html_entity_decode( wp_strip_all_tags( $title ), ENT_QUOTES, get_bloginfo( 'charset' ) );
+            return brikpanel_plain_label( $title );
         }
 
-        return $this->safe_sprintf(
+        return brikpanel_safe_sprintf(
             /* translators: %s: product ID. */
             __( 'Product #%s', 'brikpanel' ),
-            number_format_i18n( (int) $post_id )
+            (string) (int) $post_id
         );
     }
 
@@ -659,7 +786,7 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
 
         $message = '';
         if ( $skipped > 0 ) {
-            $message = $this->safe_sprintf(
+            $message = brikpanel_safe_sprintf(
                 /* translators: %s: number of cost copies that were not restored. */
                 _n(
                     '%s copy was not put back because that cost was changed or cleared after the cleanup.',
@@ -667,7 +794,7 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
                     $skipped,
                     'brikpanel'
                 ),
-                number_format_i18n( $skipped )
+                brikpanel_number( $skipped )
             );
         }
 
@@ -797,34 +924,5 @@ class Brikpanel_BrikControl_Cost_Duplicates_Check extends Brikpanel_BrikControl_
         foreach ( (array) $stale as $name ) {
             delete_option( $name );
         }
-    }
-
-    /**
-     * sprintf() that cannot be brought down by a bad translation.
-     *
-     * @param string $format Translated format string.
-     * @param mixed  ...$args printf arguments.
-     * @return string
-     */
-    private function safe_sprintf( $format, ...$args ) {
-        $format = (string) $format;
-        try {
-            // PHP 8 throws on a placeholder mismatch; PHP 7.4 warns and
-            // returns false. Both fall through to the stripped text below.
-            $out = @vsprintf( $format, $args );
-            if ( false !== $out ) {
-                return $out;
-            }
-        } catch ( \Throwable $e ) {
-            unset( $e );
-        }
-
-        $stripped = preg_replace(
-            '/%(?:\d+\$)?[-+ 0#\']*\d*(?:\.\d+)?[bcdeEfFgGosuxX]/',
-            '',
-            $format
-        );
-        $stripped = str_replace( '%%', '%', (string) $stripped );
-        return trim( (string) $stripped );
     }
 }

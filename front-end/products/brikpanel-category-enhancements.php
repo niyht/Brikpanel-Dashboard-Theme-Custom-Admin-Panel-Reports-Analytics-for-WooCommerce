@@ -513,19 +513,20 @@ class Brikpanel_Category_Enhancements {
 
         if ($parent_id > 0) {
             $parent_term = get_term($parent_id, $taxonomy);
-            $parent_name = ($parent_term && !is_wp_error($parent_term)) ? $parent_term->name : '';
+            $parent_name = ($parent_term && !is_wp_error($parent_term)) ? brikpanel_plain_name($parent_term->name) : '';
 
+            // Shown as text by the toast; term names are stored encoded.
             $message = sprintf(
                 /* translators: %1$s: category name, %2$s: parent category name */
                 __('"%1$s" moved under "%2$s"', 'brikpanel'),
-                $term->name,
+                brikpanel_plain_name($term->name),
                 $parent_name
             );
         } else {
             $message = sprintf(
                 /* translators: %s: category name */
                 __('"%s" moved to the top level', 'brikpanel'),
-                $term->name
+                brikpanel_plain_name($term->name)
             );
         }
 

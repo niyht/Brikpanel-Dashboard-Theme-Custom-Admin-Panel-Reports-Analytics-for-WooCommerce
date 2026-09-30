@@ -141,14 +141,34 @@ function brikpanel_brikcontrol_sync_schedule_on_save() {
     Brikpanel_Cron::cancel( 'brikpanel_brikcontrol_scan_batch' );
 }
 
+/**
+ * While the module is off, stand its scan jobs down on every request's
+ * reconcile pass, not only on the settings save above. The switch also
+ * arrives through a settings import, the CLI or a database sync, which never
+ * fire that save hook, and a scan that was running at the time can queue its
+ * next batch after the cancel. Without this the daily scan stayed queued with
+ * no handler and failed with "no callbacks are registered" every day.
+ *
+ * Hook names are written out: the runner class that owns the constants is
+ * exactly what the disabled module does not load.
+ */
+function brikpanel_brikcontrol_stand_down() {
+    if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
+        return;
+    }
+    Brikpanel_Cron::stand_down( [ 'brikpanel_brikcontrol_scan', 'brikpanel_brikcontrol_scan_batch' ] );
+}
+
 // =============================================================================
 // Hard short-circuit when Store Health is disabled. Nothing below loads: no
 // classes, no admin page, no AJAX handlers, no topbar/dashboard render hooks,
 // and no Action Scheduler handler registration. External callers in the
 // dashboard + topbar guard their render with class_exists( 'Brikpanel_BrikControl' ),
-// which stays false while the class file is never required.
+// which stays false while the class file is never required. Its jobs are
+// stood down instead (see brikpanel_brikcontrol_stand_down()).
 // =============================================================================
 if ( ! brikpanel_brikcontrol_is_enabled() ) {
+    add_action( 'brikpanel_cron_register', 'brikpanel_brikcontrol_stand_down' );
     return;
 }
 

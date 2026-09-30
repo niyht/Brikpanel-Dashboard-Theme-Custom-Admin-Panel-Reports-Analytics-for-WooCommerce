@@ -8,8 +8,13 @@
  * one place.
  *
  * Stored shapes:
- *   - results       (option, autoload=no): full per-check report bundle.
- *   - topbar cache  (transient, 5 min):    lean payload the topbar JS reads.
+ *   - results       (option, autoload=no): full per-check report bundle. Since
+ *                                          3.3.25 a check stores figures
+ *                                          (`facts`), never sentences; the
+ *                                          sentences are written when the
+ *                                          result is shown (present_bundle()).
+ *   - topbar cache  (transient, 5 min):    lean, language-free copy of the
+ *                                          bundle the topbar reads.
  *   - progress      (option, autoload=no): in-flight scan cursor / total.
  *   - dismissed     (user meta):           per-user dismissal map, each entry
  *                                          { at: timestamp, ids: [check ids
@@ -27,7 +32,15 @@ class Brikpanel_BrikControl_Storage {
 
     const OPT_RESULTS      = 'brikpanel_brikcontrol_results';
     const OPT_PROGRESS     = 'brikpanel_brikcontrol_progress';
-    const TRANSIENT_TOPBAR = 'brikpanel_brikcontrol_topbar_v1';
+    /**
+     * v2 holds figures, not text: v1 cached finished sentences, so the first
+     * admin to load a page after a scan fixed the language for everyone for
+     * five minutes. v1 simply expires.
+     */
+    const TRANSIENT_TOPBAR = 'brikpanel_brikcontrol_topbar_v2';
+
+    /** Throttle for the rescan that replaces results stored in an older shape. */
+    const TRANSIENT_HEAL   = 'brikpanel_brikcontrol_heal';
     const USER_META_KEY    = 'brikpanel_brikcontrol_dismissed';
 
     const TRANSIENT_TTL    = 300;        // 5 minutes
@@ -152,24 +165,38 @@ class Brikpanel_BrikControl_Storage {
     // =========================================================================
 
     /**
-     * Lean payload for the topbar dropdown. Cached for 5 min so a page load
-     * doesn't pay for the option read + payload build on every request.
+     * Payload for the topbar dropdown, in the current language.
      *
-     * @return array
+     * The cache holds figures only (the language-free lean bundle); the
+     * sentences are written here, on every read, for whoever is looking. The
+     * cache still spares each page load the option read of the full bundle.
+     *
+     * @return array { last_scan, summary: status counts, checks: [ { id, label, status, summary } ] }
      */
     public static function get_topbar_payload() {
-        $cached = get_transient( self::TRANSIENT_TOPBAR );
-        if ( is_array( $cached ) ) {
-            return $cached;
+        $lean = get_transient( self::TRANSIENT_TOPBAR );
+        if ( ! is_array( $lean ) || ! isset( $lean['checks'] ) ) {
+            $bundle = self::get_results();
+            self::maybe_heal( $bundle );
+            $lean = [
+                'last_scan'      => (int) $bundle['last_scan'],
+                'status_summary' => $bundle['status_summary'],
+                'checks'         => [],
+            ];
+            foreach ( (array) $bundle['checks'] as $id => $result ) {
+                $lean['checks'][ (string) $id ] = self::lean_result( (array) $result );
+            }
+            set_transient( self::TRANSIENT_TOPBAR, $lean, self::TRANSIENT_TTL );
         }
 
-        $bundle  = self::get_results();
+        $presented = self::present_bundle( 'summary', $lean );
+
         $payload = [
-            'last_scan' => (int) $bundle['last_scan'],
-            'summary'   => $bundle['status_summary'],
+            'last_scan' => (int) $presented['last_scan'],
+            'summary'   => $presented['status_summary'],
             'checks'    => [],
         ];
-        foreach ( $bundle['checks'] as $id => $result ) {
+        foreach ( $presented['checks'] as $id => $result ) {
             $payload['checks'][] = [
                 'id'      => (string) $id,
                 'label'   => isset( $result['label'] ) ? (string) $result['label'] : (string) $id,
@@ -177,9 +204,93 @@ class Brikpanel_BrikControl_Storage {
                 'summary' => isset( $result['summary'] ) ? (string) $result['summary'] : '',
             ];
         }
-
-        set_transient( self::TRANSIENT_TOPBAR, $payload, self::TRANSIENT_TTL );
         return $payload;
+    }
+
+    /**
+     * A stored result without what only the full page needs (sample rows,
+     * the largest-images list): enough to write the one-line summary.
+     *
+     * @param array $result Stored result.
+     * @return array
+     */
+    private static function lean_result( array $result ) {
+        unset( $result['recommendations'] );
+        if ( ! empty( $result['facts'] ) && is_array( $result['facts'] ) ) {
+            unset( $result['metadata'], $result['facts']['samples'], $result['facts']['largest'] );
+        } elseif ( isset( $result['metadata'] ) && is_array( $result['metadata'] ) ) {
+            // Written before 3.3.25: the image check still reads its figures
+            // from here, so only the lists go.
+            unset( $result['metadata']['samples'], $result['metadata']['largest'] );
+        }
+        return $result;
+    }
+
+    /**
+     * The bundle as the viewer should read it: every check's own
+     * bc_present() writes its sentences in the current language.
+     *
+     * @param string     $context 'page' or 'summary'.
+     * @param array|null $bundle  Bundle to present; the stored one when null.
+     * @return array
+     */
+    public static function present_bundle( $context = 'page', ?array $bundle = null ) {
+        if ( null === $bundle ) {
+            $bundle = self::get_results();
+        }
+        $bundle = wp_parse_args( $bundle, self::default_results() );
+
+        foreach ( (array) $bundle['checks'] as $id => $result ) {
+            $check = class_exists( 'Brikpanel_BrikControl_Registry' ) ? Brikpanel_BrikControl_Registry::get( (string) $id ) : null;
+            if ( ! $check || ! is_array( $result ) || ! method_exists( $check, 'bc_present' ) ) {
+                continue;
+            }
+            try {
+                $bundle['checks'][ $id ] = $check->bc_present( $result, $context );
+            } catch ( \Throwable $e ) {
+                // A check that cannot present its result still shows what was
+                // stored, rather than taking the whole page down with it.
+                unset( $e );
+            }
+        }
+
+        return $bundle;
+    }
+
+    /**
+     * Queue one rescan when a check's stored result is older than the shape it
+     * writes now (a result from before 3.3.25 holds sentences in the language
+     * of whoever ran that scan). Runs where the bundle is read anyway; at most
+     * once an hour, never while a scan is in flight.
+     *
+     * @param array|null $bundle Stored bundle, to save a second option read.
+     * @return bool Whether a rescan was requested.
+     */
+    public static function maybe_heal( ?array $bundle = null ) {
+        if ( ! class_exists( 'Brikpanel_BrikControl_Registry' ) || ! class_exists( 'Brikpanel_BrikControl_Runner' ) ) {
+            return false;
+        }
+        if ( null === $bundle ) {
+            $bundle = self::get_results();
+        }
+
+        $outdated = false;
+        foreach ( Brikpanel_BrikControl_Registry::get_all() as $id => $check ) {
+            $stored = isset( $bundle['checks'][ $id ] ) && is_array( $bundle['checks'][ $id ] ) ? $bundle['checks'][ $id ] : null;
+            if ( null === $stored || ! method_exists( $check, 'bc_schema' ) ) {
+                continue; // Never scanned: the first scan writes the new shape.
+            }
+            if ( (int) ( $stored['schema'] ?? 1 ) < (int) $check->bc_schema() ) {
+                $outdated = true;
+                break;
+            }
+        }
+        if ( ! $outdated || get_transient( self::TRANSIENT_HEAL ) || self::is_scan_active() ) {
+            return false;
+        }
+
+        set_transient( self::TRANSIENT_HEAL, 1, HOUR_IN_SECONDS );
+        return false !== Brikpanel_BrikControl_Runner::trigger_manual_scan();
     }
 
     // =========================================================================

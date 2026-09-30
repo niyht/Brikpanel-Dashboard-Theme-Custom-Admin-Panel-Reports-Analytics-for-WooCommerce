@@ -545,7 +545,7 @@ class Brikpanel_Sheets_Client {
 				// is the problem — and the connection is still perfectly valid.
 				if ( Brikpanel_Sheets_Tokens::had_service_outage() ) {
 					throw new Brikpanel_Sheets_Exception(
-						__( 'The BrikPanel service that renews your Google session is temporarily unreachable, so this sync was skipped. Your connection is still in place — it will resume on its own, or you can click Sync now again in a few minutes.', 'brikpanel' ),
+						__( 'The BrikPanel service that renews your Google session is temporarily unreachable, so this sync was skipped. Your connection is still in place. It will resume on its own, or you can click Sync now again in a few minutes.', 'brikpanel' ),
 						0,
 						'service_unavailable'
 					);

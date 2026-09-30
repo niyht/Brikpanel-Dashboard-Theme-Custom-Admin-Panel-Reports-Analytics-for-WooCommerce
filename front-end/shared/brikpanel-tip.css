@@ -1,0 +1,119 @@
+/**
+ * BrikPanel - tooltips placed by brikpanel-tip.js (field report 2026-09-26).
+ * That file has the markup. This one owns where a bubble sits and when it
+ * shows; the screen's class gives the look (background, colour, border,
+ * padding, radius, shadow, type) and `--bp-tip-w`, the widest it gets
+ * (border-box; set on the trigger or the bubble, it inherits).
+ *
+ * Closed, a bubble is `display: none`: no box, so it never adds scrollable
+ * overflow or widens a phone's layout viewport, even before the script runs.
+ * Open, it is `position: fixed` where the script measured it. Left, top and
+ * the arrow offset are physical on purpose: they are measured screen
+ * coordinates, already right in RTL. Text follows the page direction.
+ */
+
+/* What a bubble would inherit from where its trigger sits (a heading, a bold
+   label, a nowrap card label). Zero weight: the screen's class wins. */
+:where([data-bp-tip] > .brikpanel-tip) {
+	font-size: .75rem;
+	font-style: normal;
+	font-weight: 400;
+	line-height: 1.45;
+	letter-spacing: normal;
+	text-align: start;
+	text-indent: 0;
+	text-transform: none;
+	white-space: normal;
+	overflow-wrap: break-word;
+	cursor: default;
+}
+
+[data-bp-tip] > .brikpanel-tip {
+	display: none;
+	position: fixed;
+	top: var(--bp-tip-y, 0px);
+	right: auto;
+	bottom: auto;
+	left: var(--bp-tip-x, 0px);
+	z-index: 100010;
+	box-sizing: border-box;
+	width: var(--bp-tip-width, max-content);
+	max-width: min(var(--bp-tip-w, 300px), var(--bp-tip-room, calc(100vw - 24px)));
+	max-height: var(--bp-tip-h, none);
+	margin: 0;
+	transform: none;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity .15s ease;
+	transition: opacity .15s ease, display .15s allow-discrete;
+}
+
+/* Open, it takes the pointer: it can be hovered and read without closing,
+   and a tap on it closes it instead of reaching what lies under it. */
+[data-bp-tip].is-bp-tip-open > .brikpanel-tip {
+	display: block;
+	visibility: visible;
+	opacity: 1;
+	pointer-events: auto;
+}
+
+@starting-style {
+	[data-bp-tip].is-bp-tip-open > .brikpanel-tip {
+		opacity: 0;
+	}
+}
+
+/* Taller than the room on either side of its trigger (a phone on its side):
+   it scrolls and drops the arrow, which a scrolling box would cut off. */
+[data-bp-tip] > .brikpanel-tip[data-bp-tip-capped] {
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+/* The arrow: a square turned 45 degrees in the bubble's own background and
+   border, drawn on its two outer sides, centred on --bp-tip-arrow. */
+[data-bp-tip] > .brikpanel-tip::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: var(--bp-tip-arrow, 50%);
+	box-sizing: border-box;
+	width: 10px;
+	height: 10px;
+	margin: -5px 0 0 -5px;
+	background: inherit;
+	border: inherit;
+	border-right-color: transparent;
+	border-bottom-color: transparent;
+	border-radius: 2px 0 0;
+	transform: rotate(45deg);
+	pointer-events: none;
+}
+
+[data-bp-tip] > .brikpanel-tip[data-bp-tip-side="top"]::before {
+	top: auto;
+	bottom: 0;
+	margin: 0 0 -5px -5px;
+	border-color: inherit;
+	border-top-color: transparent;
+	border-left-color: transparent;
+	border-radius: 0 0 2px;
+}
+
+[data-bp-tip] > .brikpanel-tip[data-bp-tip-capped]::before {
+	display: none;
+}
+
+/* iOS passes a tap to a delegated click listener only when the element
+   looks clickable. (0,1,1) beats a screen's `cursor: help`. */
+@media (hover: none) {
+	html [data-bp-tip] {
+		cursor: pointer;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	[data-bp-tip] > .brikpanel-tip {
+		transition: none;
+	}
+}

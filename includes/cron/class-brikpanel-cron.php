@@ -541,6 +541,54 @@ class Brikpanel_Cron {
 	}
 
 	/**
+	 * Stand down the jobs of a feature that is switched off.
+	 *
+	 * A module that is off loads none of its handlers, and Action Scheduler
+	 * fails any of its jobs that still come due with "no callbacks are
+	 * registered" (a recurring one on every turn, for weeks). Cancelling alone
+	 * cannot close that: the switch can arrive through a settings import, the
+	 * CLI or a database sync that no save hook sees, and a run that started
+	 * before the switch can queue its successor after the cancel. So each hook
+	 * gets a do-nothing listener, and a leftover finishes quietly instead of
+	 * failing; the cancel then clears what is pending.
+	 *
+	 * Call it from the `brikpanel_cron_register` hook, where the cancel joins
+	 * reconcile() and reaches the database only when the job set changed or
+	 * once an hour. Never stand a hook down in the same request that schedules
+	 * it: every apply would cancel the job and create it again, resetting its
+	 * first run. A hook with a live handler is skipped, since a live handler
+	 * means the feature is on.
+	 *
+	 * No label is registered: the job type of a feature that is off stays out
+	 * of the Scheduled Tasks filter, and has_handler() keeps meaning "a real
+	 * handler exists".
+	 *
+	 * @since 3.3.25
+	 * @param string[] $hooks Hooks of the switched-off feature.
+	 * @return void
+	 */
+	public static function stand_down( array $hooks ) {
+		foreach ( $hooks as $hook ) {
+			$hook = (string) $hook;
+			if ( '' === $hook || isset( self::$registered_hooks[ $hook ] ) ) {
+				continue;
+			}
+			add_action( $hook, [ __CLASS__, 'discard' ], 10, 0 );
+			self::cancel( $hook );
+		}
+	}
+
+	/**
+	 * The listener stand_down() leaves on a switched-off feature's hooks. A
+	 * named method rather than a shared `__return_*` callback, so it can be
+	 * found and removed by identity.
+	 *
+	 * @since 3.3.25
+	 * @return void
+	 */
+	public static function discard() {}
+
+	/**
 	 * All registered job types, keyed by hook.
 	 *
 	 * Resolves any lazy metadata callables (see register_handler()) and

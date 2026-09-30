@@ -326,3 +326,119 @@ if ( ! function_exists( 'brikpanel_title_case' ) ) {
 			: ucwords( $text );
 	}
 }
+
+/*
+ * NAMES AS PLAIN TEXT.
+ *
+ * WordPress stores many names HTML-encoded: product titles saved through the
+ * WooCommerce REST API or by a user without `unfiltered_html` keep `&` as
+ * `&amp;`, term names, display names and gateway titles are always stored
+ * encoded, get_the_title() adds `&#8211;`/`&#8217;`, and order item names can
+ * carry markup (TranslatePress wraps the variation separator in a <span>).
+ * Core screens print them with esc_html(), which does not double-encode, so
+ * they look right there. JSON for our screens, CSV files and Sheets cells need
+ * the plain text, or "One &amp; One" reaches the merchant (wp.org report).
+ * Every JS consumer escapes on insert, so the decoded text stays inert.
+ */
+
+if ( ! function_exists( 'brikpanel_plain_name' ) ) {
+	/**
+	 * Decode a stored name (product title, term name, display name) to plain text.
+	 *
+	 * @param string $text Name as stored.
+	 * @return string
+	 */
+	function brikpanel_plain_name( $text ) {
+		$text = (string) $text;
+		if ( false === strpos( $text, '&' ) ) {
+			return $text;
+		}
+
+		return html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_plain_label' ) ) {
+	/**
+	 * Plain text for a name that may also carry markup (order item names,
+	 * variation titles, get_the_title(), get_formatted_name()).
+	 *
+	 * Tags go before the entities are decoded, otherwise a title that reads
+	 * "Size &lt;5cm" would decode to "<5cm" and the strip would eat it. A lone
+	 * "<" typed into a title ("I <3 NY") is kept, and each tag boundary becomes
+	 * a space so "Tee (SKU)<span>Color: Red</span>" does not glue two words.
+	 *
+	 * @param string $html Name as stored or rendered.
+	 * @return string
+	 */
+	function brikpanel_plain_label( $html ) {
+		$text = (string) $html;
+		if ( false === strpbrk( $text, '&<' ) ) {
+			return trim( $text );
+		}
+
+		if ( false !== strpos( $text, '<' ) ) {
+			$text = wp_pre_kses_less_than( $text );
+			$text = wp_strip_all_tags( str_replace( '<', ' <', $text ) );
+			$text = preg_replace( '/[ \t\r\n]{2,}/', ' ', $text );
+		}
+
+		return trim( html_entity_decode( (string) $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_product_label' ) ) {
+	/**
+	 * A product's name as plain text for a list that has its own SKU column
+	 * or line: the name, plus for a variation the options its title does not
+	 * already carry. Never the SKU or ID.
+	 *
+	 * WooCommerce's get_formatted_name() appends "(SKU)" (or "(#123)"), so the
+	 * dashboard's Low stock table read "Notebook 6 - White, S (BPT-V-0006-wh-s)"
+	 * next to a SKU column with the same code (field test E3). A variation's
+	 * title holds up to two option values ("Notebook 6 - White, S"); with more
+	 * options it is just the parent's name and the options follow here.
+	 *
+	 * @param WC_Product|false|null $product Product or variation.
+	 * @return string
+	 */
+	function brikpanel_product_label( $product ) {
+		if ( ! $product instanceof WC_Product ) {
+			return '';
+		}
+		$name = brikpanel_plain_label( $product->get_name() );
+		if ( $product->is_type( 'variation' ) && function_exists( 'wc_get_formatted_variation' ) ) {
+			// Flat, values only, skipping the options already in the title.
+			$extra = brikpanel_plain_label( wc_get_formatted_variation( $product, true, false, true ) );
+			if ( '' !== $extra ) {
+				$sep  = (string) apply_filters( 'woocommerce_product_variation_title_attributes_separator', ' - ', $product );
+				$name = ( '' !== $name ? $name . $sep : '' ) . $extra;
+			}
+		}
+		return $name;
+	}
+}
+
+if ( ! function_exists( 'brikpanel_term_ref' ) ) {
+	/**
+	 * A term name the browser will send back to be matched against the stored
+	 * term (product editor attribute values and tags), or a CSV term cell.
+	 *
+	 * Only `&` and quotes are decoded. `<` and `>` stay encoded because the save
+	 * path runs sanitize_text_field(), which would strip "<XL>" from a value the
+	 * merchant never touched, and WooCommerce's CSV importer reads ">" as a
+	 * category hierarchy. Rarer entities (`&eacute;`) are left alone so the
+	 * lookup by name still finds the same term.
+	 *
+	 * @param string $name Term name as stored.
+	 * @return string
+	 */
+	function brikpanel_term_ref( $name ) {
+		$name = (string) $name;
+		if ( false === strpos( $name, '&' ) ) {
+			return $name;
+		}
+
+		return str_replace( array( '<', '>' ), array( '&lt;', '&gt;' ), wp_specialchars_decode( $name, ENT_QUOTES ) );
+	}
+}

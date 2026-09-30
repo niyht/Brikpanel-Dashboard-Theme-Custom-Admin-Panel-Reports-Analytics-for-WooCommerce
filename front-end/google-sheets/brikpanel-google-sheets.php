@@ -270,43 +270,47 @@ function brikpanel_gs_sanitize_import_columns( $value ) {
 
 if ( ! brikpanel_gs_module_is_enabled() ) {
 	// The short-circuit above is what makes "dormant" true for everything that
-	// runs per-request — but the recurring Action Scheduler jobs were already
-	// registered while the module was on, and nothing below this line loads to
-	// cancel them. They stayed pending forever, waking every 2-15 minutes to
-	// fire a hook with no listener, and came back at the OLD cadence the moment
-	// the module was re-enabled. Sweep them once, here, where we know the
-	// module is off. Hook names are inlined deliberately: the classes that own
-	// the constants are exactly what we are refusing to load.
+	// runs per-request — but the Action Scheduler jobs were already queued
+	// while the module was on, and nothing below this line loads to handle or
+	// cancel them. The recurring ones stayed pending forever, waking every
+	// 2-15 minutes to fire a hook with no listener, and came back at the OLD
+	// cadence the moment the module was re-enabled. Stand them down here,
+	// where we know the module is off. Hook names are inlined deliberately:
+	// the classes that own the constants are exactly what we are refusing to
+	// load.
 	add_action( 'brikpanel_cron_register', 'brikpanel_gs_unschedule_when_disabled' );
 	return;
 }
 
 /**
- * Cancel the module's recurring jobs while it is switched off.
+ * Stand down every job of the module while it is switched off.
  *
- * Runs from the register hook, so Brikpanel_Cron::reconcile() only lets it
- * reach Action Scheduler when the job set changed or once an hour.
+ * Runs from the register hook, so Brikpanel_Cron::reconcile() only lets the
+ * cancel reach Action Scheduler when the job set changed or once an hour.
+ * The list is every hook the module queues, one-off ones included: a flush,
+ * row update or snapshot still waiting when the module goes off used to fail
+ * with "no callbacks are registered". tools/test-as-floor.php checks it
+ * against the HOOK constants of the Sheets classes.
  */
 function brikpanel_gs_unschedule_when_disabled() {
 	if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
 		return;
 	}
-	$hooks = [
+	// Through the wrapper, never as_* directly: the declared floor
+	// (WooCommerce 4.0) ships Action Scheduler 3.1.2, where a direct call from
+	// this `init` path was a fatal on every front-end page view.
+	Brikpanel_Cron::stand_down( [
+		'brikpanel_gs_order_realtime_flush',
 		'brikpanel_gs_order_bulk_export',
+		'brikpanel_gs_order_update_rows',
 		'brikpanel_gs_order_pull',
 		'brikpanel_gs_products_push',
 		'brikpanel_gs_products_pull',
 		'brikpanel_gs_expenses_push',
 		'brikpanel_gs_expenses_pull',
 		'brikpanel_gs_reports_snapshot',
-	];
-	foreach ( $hooks as $hook ) {
-		// Through the wrapper, never as_* directly: the declared floor
-		// (WooCommerce 4.0) ships Action Scheduler 3.1.2, where a direct call
-		// from this `init` path was a fatal on every front-end page view.
-		// cancel() is already a no-op when nothing is pending.
-		Brikpanel_Cron::cancel( $hook );
-	}
+		'brikpanel_gs_customers_snapshot',
+	] );
 }
 
 // =============================================================================

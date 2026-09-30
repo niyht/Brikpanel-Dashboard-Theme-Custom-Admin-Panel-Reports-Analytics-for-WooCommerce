@@ -383,7 +383,7 @@ class Brikpanel_Product_Editor {
             $sku = $p->get_sku();
             $results[] = [
                 'id'   => (int) $pid,
-                'text' => $p->get_name() . ($sku !== '' ? ' (' . $sku . ')' : ''),
+                'text' => brikpanel_plain_label($p->get_name()) . ($sku !== '' ? ' (' . $sku . ')' : ''),
             ];
         }
         wp_send_json_success(['results' => $results]);
@@ -798,7 +798,7 @@ class Brikpanel_Product_Editor {
         $shipping_class_terms   = get_terms(['taxonomy' => 'product_shipping_class', 'hide_empty' => false]);
         if (!is_wp_error($shipping_class_terms)) {
             foreach ($shipping_class_terms as $sc_term) {
-                $shipping_class_options[$sc_term->slug] = $sc_term->name;
+                $shipping_class_options[$sc_term->slug] = brikpanel_plain_name($sc_term->name);
             }
         }
         $shipping_class_options_variation = ['' => __('Same as parent', 'brikpanel')]
@@ -878,6 +878,9 @@ class Brikpanel_Product_Editor {
         if (is_wp_error($all_tags)) {
             $all_tags = [];
         }
+        // Same form as the product's own tags below, so the autocomplete
+        // dedupe compares like with like.
+        $all_tags = array_map('brikpanel_term_ref', $all_tags);
 
         // Per-variation third-party fields (if any plugin added any, and admin
         // opted in via brikpanel_pe_wc_variation_sections). The HTML preserves
@@ -927,11 +930,22 @@ class Brikpanel_Product_Editor {
         $scheduling_on = (get_option('brikpanel_pe_enable_scheduling', 'yes') === 'yes')
             || ($data['status'] === 'future');
 
+        // "Require a price to publish" (on by default). Off lets a store publish
+        // a product with no price, which WooCommerce's own editor allows: the
+        // product shows in the store but cannot be added to the cart. Drafts and
+        // variations never needed a price; this only marks the simple price box.
+        $require_price = get_option('brikpanel_pe_require_price', 'yes') === 'yes';
+
         // Backorder "Notify customer" sub-option — opt-in via settings.
         // When on, selecting "On backorder" reveals a radio group letting
         // the merchant pick between silent backorders and ones that flag
         // an order note for the customer (WC's `notify` value).
         $backorder_notify_on = get_option('brikpanel_pe_backorder_notify', 'no') === 'yes';
+
+        // Product videos in the active theme's or plugin's storage, null when
+        // none of them plays videos (see Brikpanel_Video). Read once, used by
+        // the JS data and by the product video row in the images card.
+        $bpe_video_payload = class_exists('Brikpanel_Video') ? Brikpanel_Video::payload_for_editor($product_id) : null;
 
         // JS data for existing product
         $js_data = wp_json_encode([
@@ -944,6 +958,7 @@ class Brikpanel_Product_Editor {
             'non_variation_attributes' => $data['non_variation_attributes'],
             'variations'        => $data['variations'],
             'gallery'           => $data['gallery'],
+            'videos'            => $bpe_video_payload,
             'global_attributes' => $global_attributes,
             'downloads'         => $data['downloads'],
             'is_downloadable'   => $data['is_downloadable'],
@@ -1132,12 +1147,51 @@ class Brikpanel_Product_Editor {
         <div class="brikpanel-pe<?php echo $bpe_widescreen ? ' brikpanel-pe-widescreen' : ''; ?>">
             <input type="hidden" id="bpe-product-id" value="<?php echo esc_attr($product_id); ?>" data-live="<?php echo $is_live ? '1' : '0'; ?>">
 
+            <?php
+            // The header gives way in its own priority order, measured on the
+            // real width instead of guessed from breakpoints (field test B10,
+            // CLAUDE.md "Başlık satırı kuralı"). The title and the primary
+            // button never give way. First View product / Duplicate / Add new
+            // fold behind "More actions", then the header takes two rows (title
+            // row, action row), and only then does each row drop text on its
+            // own: the title row the word after the back arrow, then the date;
+            // the action row the visibility label, then the end of the status
+            // label, then a second line that never leaves one button alone.
+            // front-end/shared/brikpanel-fit-row.js reads this and picks the
+            // first level that fits.
+            $bpe_header_fit = [
+                'title'  => 'h1',
+                'lines'  => ['', '.brikpanel-pe-header-left', '.brikpanel-pe-header-right'],
+                'levels' => [
+                    '',
+                    'is-fold',
+                    [
+                        'cls'   => 'is-fold is-two-rows',
+                        'lines' => [
+                            ['sel' => '.brikpanel-pe-header-left', 'steps' => ['', 'is-bare-back', 'is-bare-back is-tight-date']],
+                            // The short status shrinks to fill the row, so it is
+                            // not asked to leave room spare (fit-row.js).
+                            ['sel' => '.brikpanel-pe-header-right', 'steps' => ['', 'is-tight-vis', ['cls' => 'is-tight-vis is-short-status', 'spare' => false], ['cls' => 'is-tight-vis', 'max' => 2]]],
+                        ],
+                    ],
+                ],
+            ];
+            ?>
             <!-- Header -->
-            <div class="brikpanel-pe-header">
+            <div class="brikpanel-pe-header" id="bpe-header" data-bp-fit-row="<?php echo esc_attr(wp_json_encode($bpe_header_fit)); ?>">
+                <?php
+                // Start fitting as soon as the header opens. The page arrives in
+                // pieces (the server's output buffer), and the browser paints
+                // what it has: started here, the helper refits each piece before
+                // it is painted. The helper is printed in <head>
+                // (brikpanel_fit_row_dep()); without it the editor script falls
+                // back to the breakpoint layout.
+                wp_print_inline_script_tag('if(window.brikpanelFitRow){window.brikpanelFitRow.auto(document.getElementById("bpe-header"));}');
+                ?>
                 <div class="brikpanel-pe-header-left">
                     <a href="<?php echo esc_url($back_url); ?>" class="brikpanel-pe-back">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        <?php esc_html_e('Products', 'brikpanel'); ?>
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span class="brikpanel-pe-back-label"><?php esc_html_e('Products', 'brikpanel'); ?></span>
                     </a>
                     <h1><?php echo esc_html($page_title); ?></h1>
                     <?php
@@ -1155,8 +1209,16 @@ class Brikpanel_Product_Editor {
                         $pd = date_create($data['post_date'], wp_timezone());
                         if ($pd) { $pubdate_ts = $pd->getTimestamp(); }
                     }
+                    // The store's short date (F→M, l→D) and time format on the
+                    // store's clock, in the viewer's language. The editor script
+                    // writes the very same text at init and when the picker
+                    // changes (formatPubDateLabel() through brikpanelFormat), so
+                    // the header is measured once with its final label. The full
+                    // date format ("September 22, 2026 12:49 pm") took the header
+                    // to two rows (field test B10); the browser's language wrote
+                    // "22 Eyl 2026" on an English store (field test E2).
                     $pubdate_label = $pubdate_ts
-                        ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), $pubdate_ts)
+                        ? wp_date(brikpanel_short_date_format() . ' ' . brikpanel_time_format(), $pubdate_ts)
                         : __('Immediately', 'brikpanel');
                     ?>
                     <div class="brikpanel-pe-pubdate-wrap" id="bpe-pubdate-wrap">
@@ -1173,32 +1235,29 @@ class Brikpanel_Product_Editor {
                 </div>
                 <div class="brikpanel-pe-header-right">
                     <?php
-                    // Secondary navigation actions (View product / Duplicate /
-                    // Add new). On desktop they render inline; on mobile they
-                    // collapse behind the "More actions" overflow menu (CSS +
-                    // initHeaderOverflow()) so the sticky header stays compact.
-                    // The overflow wrapper is only emitted for an existing
-                    // product, where at least the Duplicate action is available.
+                    // Secondary actions (View product / Duplicate / Add new). They
+                    // sit inline while the header has room and fold behind the
+                    // "More actions" trigger when it does not (the fit levels
+                    // above), a disclosure button with aria-expanded in both
+                    // states. Printed for every product and hidden until they
+                    // apply: a new product's first save only fills in the id and
+                    // the link and shows them (saveProduct() in the editor JS).
+                    // A new product has no id yet, even though an auto-draft
+                    // backs it, so Duplicate's id stays empty until that save.
                     ?>
-                    <?php if ($is_edit) : ?>
-                    <div class="brikpanel-pe-header-overflow" id="bpe-header-overflow">
-                        <button type="button" class="brikpanel-pe-overflow-trigger" id="bpe-overflow-trigger" aria-haspopup="true" aria-expanded="false" aria-label="<?php esc_attr_e('More actions', 'brikpanel'); ?>" title="<?php esc_attr_e('More actions', 'brikpanel'); ?>">
+                    <div class="brikpanel-pe-header-overflow" id="bpe-header-overflow"<?php echo $is_edit ? '' : ' hidden'; ?>>
+                        <button type="button" class="brikpanel-pe-overflow-trigger" id="bpe-overflow-trigger" aria-expanded="false" aria-controls="bpe-overflow-menu" aria-label="<?php esc_attr_e('More actions', 'brikpanel'); ?>" title="<?php esc_attr_e('More actions', 'brikpanel'); ?>">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
                         </button>
-                        <div class="brikpanel-pe-overflow-menu" role="menu">
-                            <?php if ($is_live) : ?>
-                            <a href="<?php echo esc_url(get_permalink($product_id)); ?>" class="brikpanel-pe-btn secondary" id="bpe-view-product" role="menuitem" target="_blank"><?php esc_html_e('View product', 'brikpanel'); ?></a>
-                            <?php endif; ?>
-                            <button type="button" class="brikpanel-pe-btn secondary" id="bpe-duplicate" role="menuitem" data-id="<?php echo esc_attr($product_id); ?>"><?php esc_html_e('Duplicate', 'brikpanel'); ?></button>
-                            <?php if ($is_live) : ?>
-                            <a href="<?php echo esc_url(admin_url('admin.php?page=brikpanel-product-editor')); ?>" class="brikpanel-pe-btn secondary" id="bpe-add-new" role="menuitem">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        <div class="brikpanel-pe-overflow-menu" id="bpe-overflow-menu">
+                            <a<?php echo $is_live ? ' href="' . esc_url(get_permalink($product_id)) . '"' : ' hidden'; ?> class="brikpanel-pe-btn secondary" id="bpe-view-product" target="_blank" rel="noopener"><?php esc_html_e('View product', 'brikpanel'); ?></a>
+                            <button type="button" class="brikpanel-pe-btn secondary" id="bpe-duplicate" data-id="<?php echo $is_edit ? esc_attr($product_id) : ''; ?>"><?php esc_html_e('Duplicate', 'brikpanel'); ?></button>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=brikpanel-product-editor')); ?>" class="brikpanel-pe-btn secondary" id="bpe-add-new"<?php echo $is_live ? '' : ' hidden'; ?>>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                 <?php esc_html_e('Add new', 'brikpanel'); ?>
                             </a>
-                            <?php endif; ?>
                         </div>
                     </div>
-                    <?php endif; ?>
                     <?php
                     // Password-protected is not a real WP status — it's "publish"
                     // with a non-empty post_password.  We use a virtual "password"
@@ -1300,7 +1359,7 @@ class Brikpanel_Product_Editor {
                     $cv_val = $data['catalog_visibility'];
                     ?>
                     <div class="brikpanel-pe-catvis-wrap" id="bpe-catvis-wrap">
-                        <button type="button" class="brikpanel-pe-catvis-trigger" id="bpe-catvis-trigger" aria-haspopup="listbox" aria-expanded="false">
+                        <button type="button" class="brikpanel-pe-catvis-trigger" id="bpe-catvis-trigger" aria-haspopup="listbox" aria-expanded="false" title="<?php esc_attr_e('Catalog visibility', 'brikpanel'); ?>">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             <span class="brikpanel-pe-catvis-label"><?php echo esc_html($cv_labels[$cv_val] ?? $cv_labels['visible']); ?></span>
                             <svg class="brikpanel-pe-catvis-chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1315,7 +1374,19 @@ class Brikpanel_Product_Editor {
                             <?php endforeach; ?>
                         </ul>
                     </div>
-                    <button type="button" class="brikpanel-pe-btn primary" id="bpe-publish">
+                    <?php
+                    // Every text this button can show, so the header is fitted
+                    // for the widest: "Saving..." on each save and autosave must
+                    // never fold or unfold the header while it lasts.
+                    $bpe_publish_labels = [
+                        __('Publish', 'brikpanel'),
+                        __('Update', 'brikpanel'),
+                        __('Save', 'brikpanel'),
+                        __('Schedule', 'brikpanel'),
+                        __('Saving...', 'brikpanel'),
+                    ];
+                    ?>
+                    <button type="button" class="brikpanel-pe-btn primary" id="bpe-publish" data-bp-fit-labels="<?php echo esc_attr(wp_json_encode($bpe_publish_labels)); ?>">
                         <?php
                         // Existing live (or password-protected) product → Update.
                         // Brand-new product with the default Published status →
@@ -1334,6 +1405,17 @@ class Brikpanel_Product_Editor {
                     </button>
                 </div>
             </div>
+            <?php
+            // The whole header is here now: fit it once more, at once. The date
+            // label already holds its final text (the server prints what
+            // formatPubDateLabel() writes), so the level chosen here stays.
+            wp_print_inline_script_tag(
+                '(function(){'
+                . 'var h=document.getElementById("bpe-header");'
+                . 'if(window.brikpanelFitRow&&h){var c=window.brikpanelFitRow.get(h)||window.brikpanelFitRow.auto(h);if(c){c.refit();}}'
+                . '})();'
+            );
+            ?>
 
             <?php
             // Product types whose own product-data panel this editor cannot show
@@ -1375,6 +1457,15 @@ class Brikpanel_Product_Editor {
             // layout does when it runs out of room, WordPress's own post editor
             // included. ?>
             <?php if ($bpe_widescreen) : ?><div class="brikpanel-pe-col-main"><?php endif; ?>
+
+                <?php
+                // Notices (only red errors are shown on this screen, see the CSS)
+                // go here, on top of the card column: without a marker WordPress
+                // put them in the sticky title bar, next to the title. Inside the
+                // main column, not before it, so the widescreen grid never gets
+                // them as an extra cell.
+                brikpanel_header_end();
+                ?>
 
                 <?php if ($bpe_unrepresented) : ?>
                 <div class="brikpanel-pe-typenote">
@@ -1437,6 +1528,23 @@ class Brikpanel_Product_Editor {
                         </div>
                         <div class="brikpanel-pe-gallery" id="bpe-gallery"></div>
                     </div>
+                    <?php
+                    // One video per product (Flatsome, Porto): a row under the
+                    // images. Themes with a video per image get a button on
+                    // each image instead (drawn by the JS).
+                    if (is_array($bpe_video_payload) && is_array($bpe_video_payload['product'] ?? null)) :
+                        $bpe_pv         = $bpe_video_payload['product'];
+                        $bpe_pv_summary = Brikpanel_Video::summary($bpe_pv);
+                        ?>
+                    <div class="brikpanel-pe-prodvideo" id="bpe-prodvideo">
+                        <span class="brikpanel-pe-prodvideo-icon<?php echo $bpe_pv_summary !== '' ? ' is-active' : ''; ?>" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+                        <span class="brikpanel-pe-prodvideo-info">
+                            <span class="brikpanel-pe-prodvideo-label"><?php esc_html_e('Product video', 'brikpanel'); ?></span>
+                            <span class="brikpanel-pe-prodvideo-meta" id="bpe-prodvideo-meta"><?php echo esc_html($bpe_pv_summary !== '' ? $bpe_pv_summary : __('No video yet', 'brikpanel')); ?></span>
+                        </span>
+                        <button type="button" class="brikpanel-pe-btn secondary small" id="bpe-prodvideo-edit"><?php echo $bpe_pv_summary !== '' ? esc_html__('Edit video', 'brikpanel') : esc_html__('Add video', 'brikpanel'); ?></button>
+                    </div>
+                    <?php endif; ?>
                 </div>
                 <?php $section_html['images'] = ob_get_clean(); endif; ?>
 
@@ -1641,7 +1749,7 @@ class Brikpanel_Product_Editor {
                                             <?php // Short placeholder: "Sale Price" in full overruns this box in
                                                   // longer languages. The aria-label and the tooltip still carry
                                                   // the full name. ?>
-                                            <input type="text" id="bpe-bulk-sale-price" data-price="1" placeholder="<?php echo esc_attr($bpe_ph_sale); ?>" aria-label="<?php esc_attr_e('Sale Price', 'brikpanel'); ?>" title="<?php esc_attr_e('Sale price for every variation', 'brikpanel'); ?>">
+                                            <input type="text" id="bpe-bulk-sale-price" data-price="1" placeholder="<?php echo esc_attr($bpe_ph_sale); ?>" aria-label="<?php esc_attr_e('Sale price', 'brikpanel'); ?>" title="<?php esc_attr_e('Sale price for every variation', 'brikpanel'); ?>">
                                         </div>
                                         <input type="number" id="bpe-bulk-stock" class="brikpanel-pe-input small brikpanel-pe-var-bulk-item" min="0" style="--bpe-ph:<?php echo (int) $bpe_ph_w($bpe_ph_stock); ?>" placeholder="<?php echo esc_attr($bpe_ph_stock); ?>" aria-label="<?php esc_attr_e('Stock', 'brikpanel'); ?>" title="<?php esc_attr_e('Stock quantity for every variation', 'brikpanel'); ?>">
                                         <select id="bpe-bulk-active" class="brikpanel-pe-select small brikpanel-pe-var-bulk-item" aria-label="<?php esc_attr_e('Active', 'brikpanel'); ?>" title="<?php esc_attr_e('Active state for every variation', 'brikpanel'); ?>">
@@ -1685,7 +1793,7 @@ class Brikpanel_Product_Editor {
                                       // onto a second line. The button carries a dot while any default
                                       // is set, so the collapsed state still reports itself. ?>
                                 <div class="brikpanel-pe-var-defaults" id="bpe-var-defaults" style="display:none">
-                                    <button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-var-defaults-toggle" id="bpe-var-defaults-toggle" aria-expanded="false" aria-controls="bpe-var-defaults-pop" aria-label="<?php esc_attr_e('Default Form Values', 'brikpanel'); ?>" title="<?php esc_attr_e('Choose which options are pre-selected on the product page. Leave blank for no default.', 'brikpanel'); ?>">
+                                    <button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-var-defaults-toggle" id="bpe-var-defaults-toggle" aria-expanded="false" aria-controls="bpe-var-defaults-pop" aria-label="<?php esc_attr_e('Default form values', 'brikpanel'); ?>" title="<?php esc_attr_e('Choose which options are pre-selected on the product page. Leave blank for no default.', 'brikpanel'); ?>">
                                         <span class="brikpanel-pe-var-defaults-dot" aria-hidden="true"></span>
                                         <?php // Short label on purpose: the strip is one line and the full
                                               // name would be its widest item by far. The popover title, the
@@ -1694,34 +1802,33 @@ class Brikpanel_Product_Editor {
                                         <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                                     </button>
                                     <div class="brikpanel-pe-var-defaults-pop" id="bpe-var-defaults-pop" hidden>
-                                        <span class="brikpanel-pe-var-defaults-title"><?php esc_html_e('Default Form Values', 'brikpanel'); ?></span>
+                                        <span class="brikpanel-pe-var-defaults-title"><?php esc_html_e('Default form values', 'brikpanel'); ?></span>
                                         <p class="brikpanel-pe-var-defaults-help"><?php esc_html_e('Choose which options are pre-selected on the product page. Leave blank for no default.', 'brikpanel'); ?></p>
                                         <div class="brikpanel-pe-var-defaults-row" id="bpe-var-defaults-row"></div>
                                     </div>
                                 </div>
                                 </div><!-- /.brikpanel-pe-var-tools-right -->
                             </div>
+                            <?php // Field test B6: the row keeps only what is edited on every
+                                  // variation (image, active, name, price, sale price, stock,
+                                  // cost). The sale schedule, SKU and the optional fields (GTIN,
+                                  // tax class, shipping class, supplier) live in the row's
+                                  // details panel behind ▾. Up to 18 columns used to be crammed
+                                  // into a ~770px card, and the overflow hid COGS, SKU, Image and
+                                  // Delete in a scroll box nobody noticed. When even the slim row
+                                  // does not fit (tablet, phone, long translations) the rows turn
+                                  // into cards: front-end/shared/brikpanel-fit-table.js. ?>
                             <div class="brikpanel-pe-var-table-wrap">
                                 <table class="brikpanel-pe-var-table" id="bpe-var-table">
                                     <thead>
                                         <tr>
                                             <th class="var-drag-col" aria-hidden="true"></th>
-                                            <th class="var-expand-col" aria-hidden="true"></th>
+                                            <th class="var-expand-col"><button type="button" class="var-expand-all" id="bpe-var-expand-all" aria-expanded="false" aria-label="<?php esc_attr_e('Show all details', 'brikpanel'); ?>" title="<?php esc_attr_e('Show all details', 'brikpanel'); ?>"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="6 9 12 15 18 9"/></svg></button></th>
                                             <th><?php esc_html_e('Variation', 'brikpanel'); ?></th>
                                             <th><?php esc_html_e('Price', 'brikpanel'); ?></th>
-                                            <th><?php esc_html_e('Sale Price', 'brikpanel'); ?></th>
-                                            <th><?php esc_html_e('Sale start', 'brikpanel'); ?></th>
-                                            <th><?php esc_html_e('Sale end', 'brikpanel'); ?></th>
-                                            <th class="var-track-col" title="<?php esc_attr_e('Track stock quantity for this variation', 'brikpanel'); ?>"><?php esc_html_e('Track', 'brikpanel'); ?></th>
+                                            <th><?php esc_html_e('Sale price', 'brikpanel'); ?></th>
                                             <th><?php esc_html_e('Stock', 'brikpanel'); ?></th>
-                                            <th><?php esc_html_e('Status', 'brikpanel'); ?></th>
                                             <?php if ($cogs_enabled) : ?><th><?php esc_html_e('COGS', 'brikpanel'); ?></th><?php endif; ?>
-                                            <?php if ($bp_vendor_field_on) : ?><th class="bpe-var-vendor-th"><?php esc_html_e('Supplier', 'brikpanel'); ?></th><?php endif; ?>
-                                            <th><?php esc_html_e('SKU', 'brikpanel'); ?></th>
-                                            <?php if (in_array('gtin', $visible, true)) : ?><th><?php esc_html_e('GTIN', 'brikpanel'); ?></th><?php endif; ?>
-                                            <?php if (in_array('tax', $visible, true)) : ?><th><?php esc_html_e('Tax class', 'brikpanel'); ?></th><?php endif; ?>
-                                            <?php if (in_array('shipping_class', $visible, true)) : ?><th><?php esc_html_e('Shipping class', 'brikpanel'); ?></th><?php endif; ?>
-                                            <th><?php esc_html_e('Image', 'brikpanel'); ?></th>
                                             <th class="var-delete-col" aria-hidden="true"></th>
                                         </tr>
                                     </thead>
@@ -1753,7 +1860,7 @@ class Brikpanel_Product_Editor {
                             <label for="bpe-price"><?php esc_html_e('Price', 'brikpanel'); ?></label>
                             <div class="brikpanel-pe-input-group">
                                 <span class="brikpanel-pe-input-prefix"><?php echo esc_html($currency); ?></span>
-                                <input type="text" id="bpe-price" value="<?php echo esc_attr($reg_price); ?>" placeholder="0<?php echo esc_attr($decimal_sep); ?>00" data-required="1" data-price="1">
+                                <input type="text" id="bpe-price" value="<?php echo esc_attr($reg_price); ?>" placeholder="0<?php echo esc_attr($decimal_sep); ?>00"<?php echo $require_price ? ' data-required="1"' : ''; ?> data-price="1">
                             </div>
                             <div class="brikpanel-pe-field-error"></div>
                         </div>
@@ -1776,7 +1883,7 @@ class Brikpanel_Product_Editor {
                             <input type="text" id="bpe-sale-to" value="<?php echo esc_attr($data['sale_to']); ?>" placeholder="<?php esc_attr_e('YYYY-MM-DD (optional)', 'brikpanel'); ?>" autocomplete="off">
                         </div>
                     </div>
-                    <p class="brikpanel-pe-help-text"><?php esc_html_e('Schedule your sale in advance — leave the dates empty to start it immediately or keep it running indefinitely.', 'brikpanel'); ?></p>
+                    <p class="brikpanel-pe-help-text"><?php esc_html_e('Schedule your sale in advance. Leave the dates empty to start it immediately or keep it running indefinitely.', 'brikpanel'); ?></p>
                 </div>
                 <?php $section_html['pricing'] = ob_get_clean(); endif; ?>
 
@@ -1804,7 +1911,7 @@ class Brikpanel_Product_Editor {
                                 <?php esc_html_e('Supplier', 'brikpanel'); ?>
                             </label>
                             <select id="bpe-vendor" class="brikpanel-pe-select brikpanel-pe-vendor-select" name="bp_vendor_id" data-vendor-current="<?php echo esc_attr((string) $bp_current_vendor); ?>">
-                                <option value="0"><?php esc_html_e('— None —', 'brikpanel'); ?></option>
+                                <option value="0"><?php esc_html_e('None', 'brikpanel'); ?></option>
                                 <?php foreach ($bp_vendor_options as $v_id => $v_name) : ?>
                                     <option value="<?php echo esc_attr((string) $v_id); ?>" <?php selected($bp_current_vendor, $v_id); ?>><?php echo esc_html($v_name); ?></option>
                                 <?php endforeach; ?>
@@ -1818,7 +1925,7 @@ class Brikpanel_Product_Editor {
                         <div class="brikpanel-pe-field brikpanel-pe-field-vendor">
                             <label for="bpe-vendor-sku">
                                 <?php esc_html_e('Supplier SKU', 'brikpanel'); ?>
-                                <span class="brikpanel-pe-tooltip" data-tip="<?php esc_attr_e('The supplier\'s product code. Optional — used by stock orders to match this product on incoming POs.', 'brikpanel'); ?>">?</span>
+                                <span class="brikpanel-pe-tooltip" data-bp-tip="top" tabindex="0" role="button" aria-expanded="false" aria-label="<?php esc_attr_e('More information', 'brikpanel'); ?>" aria-describedby="bpe-tip-vendor-sku">?<span class="brikpanel-pe-tooltip-tip brikpanel-tip" id="bpe-tip-vendor-sku" role="tooltip"><?php esc_html_e('The supplier\'s product code. Optional; stock orders use it to match this product on incoming POs.', 'brikpanel'); ?></span></span>
                             </label>
                             <input type="text" id="bpe-vendor-sku" name="bp_vendor_sku" value="<?php echo esc_attr($bp_current_v_sku); ?>" placeholder="<?php esc_attr_e('Optional', 'brikpanel'); ?>">
                         </div>
@@ -1882,7 +1989,7 @@ class Brikpanel_Product_Editor {
                         <div class="brikpanel-pe-field">
                             <label for="bpe-sku">
                                 <?php esc_html_e('SKU', 'brikpanel'); ?>
-                                <span class="brikpanel-pe-tooltip" data-tip="<?php esc_attr_e('Important for marketplace synchronization. Should match your Trendyol/Hepsiburada product code.', 'brikpanel'); ?>">?</span>
+                                <span class="brikpanel-pe-tooltip" data-bp-tip="top" tabindex="0" role="button" aria-expanded="false" aria-label="<?php esc_attr_e('More information', 'brikpanel'); ?>" aria-describedby="bpe-tip-sku">?<span class="brikpanel-pe-tooltip-tip brikpanel-tip" id="bpe-tip-sku" role="tooltip"><?php esc_html_e('Important for marketplace synchronization. Should match your Trendyol/Hepsiburada product code.', 'brikpanel'); ?></span></span>
                             </label>
                             <input type="text" id="bpe-sku" value="<?php echo esc_attr($data['sku']); ?>" placeholder="<?php esc_attr_e('e.g.: TSH-001', 'brikpanel'); ?>">
                         </div>
@@ -1925,7 +2032,7 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-field">
                         <label for="bpe-gtin">
                             <?php esc_html_e('GTIN, UPC, EAN, or ISBN', 'brikpanel'); ?>
-                            <span class="brikpanel-pe-tooltip" data-tip="<?php esc_attr_e('The global product barcode. Used by Google Shopping and marketplace feeds. Leave empty if you do not have one.', 'brikpanel'); ?>">?</span>
+                            <span class="brikpanel-pe-tooltip" data-bp-tip="top" tabindex="0" role="button" aria-expanded="false" aria-label="<?php esc_attr_e('More information', 'brikpanel'); ?>" aria-describedby="bpe-tip-gtin">?<span class="brikpanel-pe-tooltip-tip brikpanel-tip" id="bpe-tip-gtin" role="tooltip"><?php esc_html_e('The global product barcode. Used by Google Shopping and marketplace feeds. Leave empty if you do not have one.', 'brikpanel'); ?></span></span>
                         </label>
                         <input type="text" id="bpe-gtin" value="<?php echo esc_attr($data['global_unique_id']); ?>" placeholder="<?php esc_attr_e('e.g.: 0012345678905', 'brikpanel'); ?>" inputmode="numeric" autocomplete="off">
                     </div>
@@ -1979,7 +2086,7 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-field">
                         <label for="bpe-upsells-search">
                             <?php esc_html_e('Upsells', 'brikpanel'); ?>
-                            <span class="brikpanel-pe-tooltip" data-tip="<?php esc_attr_e('Products promoted on the product page as a higher-value alternative.', 'brikpanel'); ?>">?</span>
+                            <span class="brikpanel-pe-tooltip" data-bp-tip="top" tabindex="0" role="button" aria-expanded="false" aria-label="<?php esc_attr_e('More information', 'brikpanel'); ?>" aria-describedby="bpe-tip-upsells">?<span class="brikpanel-pe-tooltip-tip brikpanel-tip" id="bpe-tip-upsells" role="tooltip"><?php esc_html_e('Products promoted on the product page as a higher-value alternative.', 'brikpanel'); ?></span></span>
                         </label>
                         <div class="brikpanel-pe-linked" data-field="upsells">
                             <div class="brikpanel-pe-linked-chips" id="bpe-upsells-chips"></div>
@@ -1990,7 +2097,7 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-field">
                         <label for="bpe-crosssells-search">
                             <?php esc_html_e('Cross-sells', 'brikpanel'); ?>
-                            <span class="brikpanel-pe-tooltip" data-tip="<?php esc_attr_e('Products promoted in the cart alongside this one.', 'brikpanel'); ?>">?</span>
+                            <span class="brikpanel-pe-tooltip" data-bp-tip="top" tabindex="0" role="button" aria-expanded="false" aria-label="<?php esc_attr_e('More information', 'brikpanel'); ?>" aria-describedby="bpe-tip-crosssells">?<span class="brikpanel-pe-tooltip-tip brikpanel-tip" id="bpe-tip-crosssells" role="tooltip"><?php esc_html_e('Products promoted in the cart alongside this one.', 'brikpanel'); ?></span></span>
                         </label>
                         <div class="brikpanel-pe-linked" data-field="cross_sells">
                             <div class="brikpanel-pe-linked-chips" id="bpe-crosssells-chips"></div>
@@ -2075,7 +2182,7 @@ class Brikpanel_Product_Editor {
                             <div class="brikpanel-pe-inline-form">
                                 <input type="text" id="bpe-new-cat-name" placeholder="<?php esc_attr_e('Category name', 'brikpanel'); ?>">
                                 <select id="bpe-new-cat-parent">
-                                    <option value="0"><?php esc_html_e('— No parent —', 'brikpanel'); ?></option>
+                                    <option value="0"><?php esc_html_e('No parent', 'brikpanel'); ?></option>
                                     <?php $this->render_category_parent_options($categories); ?>
                                 </select>
                                 <button type="button" class="brikpanel-pe-btn secondary small" id="bpe-add-cat-btn"><?php esc_html_e('Add', 'brikpanel'); ?></button>
@@ -2103,7 +2210,7 @@ class Brikpanel_Product_Editor {
                                 <input type="text" id="bpe-new-brand-name" placeholder="<?php esc_attr_e('Brand name', 'brikpanel'); ?>">
                                 <?php if ($brand_hierarchical) : ?>
                                 <select id="bpe-new-brand-parent">
-                                    <option value="0"><?php esc_html_e('— No parent —', 'brikpanel'); ?></option>
+                                    <option value="0"><?php esc_html_e('No parent', 'brikpanel'); ?></option>
                                     <?php $this->render_category_parent_options($brands); ?>
                                 </select>
                                 <?php endif; ?>
@@ -2132,7 +2239,7 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-toggle-row">
                         <span class="brikpanel-pe-toggle-label">
                             <?php esc_html_e('Virtual (no shipping)', 'brikpanel'); ?>
-                            <small class="brikpanel-pe-toggle-help"><?php esc_html_e('Service or intangible product — no physical shipping.', 'brikpanel'); ?></small>
+                            <small class="brikpanel-pe-toggle-help"><?php esc_html_e('Service or intangible product, no physical shipping.', 'brikpanel'); ?></small>
                         </span>
                         <label class="brikpanel-pe-switch">
                             <input type="checkbox" id="bpe-virtual-toggle" <?php checked(!empty($data['is_virtual'])); ?>>
@@ -2378,7 +2485,7 @@ class Brikpanel_Product_Editor {
                     <div class="brikpanel-pe-toggle-row">
                         <span>
                             <strong><?php esc_html_e('Hide from search engines', 'brikpanel'); ?></strong>
-                            <small style="display:block;color:#616161;font-weight:400;"><?php esc_html_e('Adds noindex — the product stays accessible but search engines will not list it.', 'brikpanel'); ?></small>
+                            <small style="display:block;color:#616161;font-weight:400;"><?php esc_html_e('Adds noindex: the product stays accessible but search engines will not list it.', 'brikpanel'); ?></small>
                         </span>
                         <label class="brikpanel-pe-switch">
                             <input type="checkbox" id="bpe-seo-noindex" <?php checked(!empty($data['seo_noindex'])); ?>>
@@ -3344,21 +3451,21 @@ class Brikpanel_Product_Editor {
         ?>
         <div class="brikpanel-pe-sr-summary">
             <?php if ($s['error'] > 0) : ?>
-                <span class="brikpanel-pe-sr-pill error"><?php
+                <span class="brikpanel-pe-sr-pill is-error"><?php
                     /* translators: %d: number of critical SEO issues */
                     echo esc_html(sprintf(_n('%d critical', '%d critical', $s['error'], 'brikpanel'), $s['error'])); ?></span>
             <?php endif; ?>
             <?php if ($s['warning'] > 0) : ?>
-                <span class="brikpanel-pe-sr-pill warning"><?php
+                <span class="brikpanel-pe-sr-pill is-warning"><?php
                     /* translators: %d: number of SEO warnings */
                     echo esc_html(sprintf(_n('%d warning', '%d warnings', $s['warning'], 'brikpanel'), $s['warning'])); ?></span>
             <?php endif; ?>
             <?php if ($s['suggestion'] > 0) : ?>
-                <span class="brikpanel-pe-sr-pill suggestion"><?php
+                <span class="brikpanel-pe-sr-pill is-suggestion"><?php
                     /* translators: %d: number of SEO suggestions */
                     echo esc_html(sprintf(_n('%d suggestion', '%d suggestions', $s['suggestion'], 'brikpanel'), $s['suggestion'])); ?></span>
             <?php endif; ?>
-            <span class="brikpanel-pe-sr-pill success"><?php
+            <span class="brikpanel-pe-sr-pill is-success"><?php
                 /* translators: %d: number of passed SEO checks */
                 echo esc_html(sprintf(_n('%d passed', '%d passed', $s['success'], 'brikpanel'), $s['success'])); ?></span>
         </div>
@@ -3661,16 +3768,16 @@ class Brikpanel_Product_Editor {
         </div>
         <div class="brikpanel-pe-sr-summary">
             <?php if ($s['warning'] > 0) : ?>
-                <span class="brikpanel-pe-sr-pill warning"><?php
+                <span class="brikpanel-pe-sr-pill is-warning"><?php
                     /* translators: %d: number of SEO checks that need work */
                     echo esc_html(sprintf(_n('%d to improve', '%d to improve', $s['warning'], 'brikpanel'), $s['warning'])); ?></span>
             <?php endif; ?>
             <?php if ($s['suggestion'] > 0) : ?>
-                <span class="brikpanel-pe-sr-pill suggestion"><?php
+                <span class="brikpanel-pe-sr-pill is-suggestion"><?php
                     /* translators: %d: number of SEO suggestions */
                     echo esc_html(sprintf(_n('%d suggestion', '%d suggestions', $s['suggestion'], 'brikpanel'), $s['suggestion'])); ?></span>
             <?php endif; ?>
-            <span class="brikpanel-pe-sr-pill success"><?php
+            <span class="brikpanel-pe-sr-pill is-success"><?php
                 /* translators: %d: number of passed SEO checks */
                 echo esc_html(sprintf(_n('%d passed', '%d passed', $s['success'], 'brikpanel'), $s['success'])); ?></span>
         </div>
@@ -6284,8 +6391,8 @@ class Brikpanel_Product_Editor {
             return $defaults;
         }
 
-        // Gallery data
-        $blocksy_video = function_exists('brikpanel_blocksy_video_active') && brikpanel_blocksy_video_active();
+        // Gallery data. Product videos travel separately (js_data.videos), in
+        // the shape of whichever theme or plugin plays them.
         $gallery = [];
         $image_id = $product->get_image_id();
         // Alt text travels with each image so the SEO analysers can assess the
@@ -6296,7 +6403,6 @@ class Brikpanel_Product_Editor {
                 'id'    => (int) $image_id,
                 'url'   => wp_get_attachment_image_url($image_id, 'thumbnail'),
                 'alt'   => (string) get_post_meta((int) $image_id, '_wp_attachment_image_alt', true),
-                'video' => $blocksy_video ? brikpanel_blocksy_get_video_for_attachment((int) $image_id) : null,
             ];
         }
         foreach ($product->get_gallery_image_ids() as $gid) {
@@ -6304,7 +6410,6 @@ class Brikpanel_Product_Editor {
                 'id'    => (int) $gid,
                 'url'   => wp_get_attachment_image_url($gid, 'thumbnail'),
                 'alt'   => (string) get_post_meta((int) $gid, '_wp_attachment_image_alt', true),
-                'video' => $blocksy_video ? brikpanel_blocksy_get_video_for_attachment((int) $gid) : null,
             ];
         }
 
@@ -6325,15 +6430,21 @@ class Brikpanel_Product_Editor {
             if ($is_tax) {
                 $taxonomy = $attr_name;
                 $values = [];
+                // Term names go to the browser through brikpanel_term_ref()
+                // ("Black &amp; White" shows as "Black & White"). The JS matches
+                // values, defaults, suggestions and existing variations by
+                // name, so every producer (here, the default and variation
+                // rows below, build_global_attributes_payload()) must use the
+                // same form, or saves drop defaults and duplicate variations.
                 $assigned_terms = wp_get_post_terms($product->get_id(), $taxonomy, ['fields' => 'all']);
                 if (!is_wp_error($assigned_terms) && !empty($assigned_terms)) {
                     foreach ($assigned_terms as $term) {
-                        $values[] = $term->name;
+                        $values[] = brikpanel_term_ref($term->name);
                     }
                 } else {
                     foreach ((array) $attr->get_options() as $opt) {
                         $term = is_numeric($opt) ? get_term((int) $opt, $taxonomy) : get_term_by('slug', $opt, $taxonomy);
-                        $values[] = ($term && !is_wp_error($term)) ? $term->name : $opt;
+                        $values[] = ($term && !is_wp_error($term)) ? brikpanel_term_ref($term->name) : $opt;
                     }
                 }
                 $display_name = wc_attribute_label($taxonomy);
@@ -6390,7 +6501,7 @@ class Brikpanel_Product_Editor {
                 if ($def_raw !== '') {
                     if ($is_tax) {
                         $def_term = get_term_by('slug', $def_raw, $attr_name);
-                        $def_name = ($def_term && !is_wp_error($def_term)) ? $def_term->name : $def_raw;
+                        $def_name = ($def_term && !is_wp_error($def_term)) ? brikpanel_term_ref($def_term->name) : $def_raw;
                     } else {
                         $def_name = $def_raw;
                     }
@@ -6418,7 +6529,7 @@ class Brikpanel_Product_Editor {
                 foreach ($this->read_variation_attribute_meta($variation->get_id()) as $key => $val) {
                     if (strpos($key, 'pa_') === 0 && $val !== '' && taxonomy_exists($key)) {
                         $term = get_term_by('slug', $val, $key);
-                        $var_attrs[$key] = $term ? $term->name : $val;
+                        $var_attrs[$key] = $term ? brikpanel_term_ref($term->name) : $val;
                     } else {
                         $var_attrs[$key] = $val;
                     }
@@ -6489,7 +6600,7 @@ class Brikpanel_Product_Editor {
                     // in/out/backorder status instead of a tracked quantity.
                     'manage_stock'   => (bool) $variation->get_manage_stock(),
                     'sku'            => $variation->get_sku() ?? '',
-                    'global_unique_id' => $variation->get_global_unique_id() ?? '',
+                    'global_unique_id' => brikpanel_wc_gtin($variation),
                     'tax_class'      => (string) $variation->get_tax_class('edit'),
                     'shipping_class' => $var_ship_class,
                     'images'         => $var_images,
@@ -6719,11 +6830,16 @@ class Brikpanel_Product_Editor {
                 $sku = $lp->get_sku();
                 $out[] = [
                     'id'   => (int) $lid,
-                    'text' => $lp->get_name() . ($sku !== '' ? ' (' . $sku . ')' : ''),
+                    'text' => brikpanel_plain_label($lp->get_name()) . ($sku !== '' ? ' (' . $sku . ')' : ''),
                 ];
             }
             return $out;
         };
+
+        // Tags are posted back by name, so they use the same form as the
+        // autocomplete list ($all_tags) and the attribute values.
+        $tag_names = wp_get_object_terms($product->get_id(), 'product_tag', ['fields' => 'names']);
+        $tag_names = is_wp_error($tag_names) ? [] : array_map('brikpanel_term_ref', $tag_names);
 
         return [
             'name'              => $name,
@@ -6735,7 +6851,7 @@ class Brikpanel_Product_Editor {
             'sale_price'        => $sale_price,
             'stock_quantity'    => $stock_qty,
             'sku'               => $product->get_sku() ?? '',
-            'global_unique_id'  => $product->get_global_unique_id() ?? '',
+            'global_unique_id'  => brikpanel_wc_gtin($product),
             'short_description' => $product->get_short_description() ?? '',
             'description'       => $product->get_description() ?? '',
             'weight'            => $product->get_weight() ?? '',
@@ -6796,7 +6912,7 @@ class Brikpanel_Product_Editor {
             'is_virtual'        => $is_variable ? $this->variations_all_have_flag($product, 'is_virtual')      : $product->is_virtual(),
             'downloads'         => $downloads,
             'gallery'           => $gallery,
-            'tags'              => wp_get_object_terms($product->get_id(), 'product_tag', ['fields' => 'names']),
+            'tags'              => $tag_names,
             'stock_status'      => $product->get_stock_status() ?: 'instock',
             // Whether WC stock management is enabled at product level. The
             // editor's "Track quantity" toggle reads this; when off the
@@ -7176,6 +7292,16 @@ class Brikpanel_Product_Editor {
                 && has_action('woocommerce_process_product_meta', $bp_sp_callback)) {
                 remove_action('woocommerce_process_product_meta', $bp_sp_callback);
             }
+        }
+
+        // Same doctrine for themes whose product fields are rebuilt from $_POST
+        // on every save: Flatsome (all ten `wc_productdata_options` fields went
+        // null), Porto (every Porto product field deleted) and CommerceKit
+        // (the gallery-video map emptied). Their guards live with the product
+        // video providers, which also parse this save's product video here,
+        // before the first post write fires save_post.
+        if (class_exists('Brikpanel_Video')) {
+            Brikpanel_Video::begin_save($product_id);
         }
 
         $is_variable = !empty($_POST['is_variable']);
@@ -7559,8 +7685,8 @@ class Brikpanel_Product_Editor {
         if (array_key_exists('global_unique_id', $_POST)) {
             $gtin = sanitize_text_field(wp_unslash($_POST['global_unique_id']));
             try {
-                $product->set_global_unique_id($gtin);
-            } catch (\Exception $e) {
+                brikpanel_wc_set_gtin($product, $gtin);
+            } catch (\Throwable $e) {
                 // Duplicate/invalid GTIN — save the rest but tell the merchant
                 // why the barcode did not stick (same rationale as SKU above).
                 if ($gtin !== '') {
@@ -7613,17 +7739,20 @@ class Brikpanel_Product_Editor {
             $product->set_menu_order((int) $_POST['menu_order']);
         }
 
-        // Weight
-        $weight = sanitize_text_field($_POST['weight'] ?? '');
-        $product->set_weight($weight !== '' ? wc_format_decimal($weight) : '');
-
-        // Dimensions
-        $length = sanitize_text_field($_POST['length'] ?? '');
-        $width  = sanitize_text_field($_POST['width'] ?? '');
-        $height = sanitize_text_field($_POST['height'] ?? '');
-        $product->set_length($length !== '' ? wc_format_decimal($length) : '');
-        $product->set_width($width !== '' ? wc_format_decimal($width) : '');
-        $product->set_height($height !== '' ? wc_format_decimal($height) : '');
+        // Weight and dimensions: written only when the editor sent them. Their
+        // sections are opt-in and hidden by default, and a missing key used to
+        // mean '' here, which wiped every product's weight and dimensions on
+        // save. An empty value that IS sent still clears (toggle switched off).
+        if (array_key_exists('weight', $_POST)) {
+            $weight = sanitize_text_field(wp_unslash($_POST['weight']));
+            $product->set_weight($weight !== '' ? wc_format_decimal($weight) : '');
+        }
+        foreach (['length', 'width', 'height'] as $bp_dim) {
+            if (array_key_exists($bp_dim, $_POST)) {
+                $bp_dim_val = sanitize_text_field(wp_unslash($_POST[$bp_dim]));
+                $product->{'set_' . $bp_dim}($bp_dim_val !== '' ? wc_format_decimal($bp_dim_val) : '');
+            }
+        }
 
         // Images
         //
@@ -7635,40 +7764,18 @@ class Brikpanel_Product_Editor {
         // silently strip the product's featured image and gallery. Removing
         // them on purpose still works — that posts an explicit empty value.
         if (isset($_POST['image_id'])) {
-            $image_id = intval($_POST['image_id']);
-            $product->set_image_id($image_id);
-        } else {
-            $image_id = (int) $product->get_image_id();
+            $product->set_image_id(intval($_POST['image_id']));
         }
 
         if (isset($_POST['gallery_ids'])) {
             $gallery_ids_raw = sanitize_text_field($_POST['gallery_ids']);
             $gallery_ids = $gallery_ids_raw ? array_map('intval', explode(',', $gallery_ids_raw)) : [];
             $product->set_gallery_image_ids($gallery_ids);
-        } else {
-            $gallery_ids = array_map('intval', (array) $product->get_gallery_image_ids());
         }
 
-        // Blocksy product videos: attachments carry their own video meta. Only
-        // the images the merchant actually touched are posted, so untouched
-        // media is never rewritten. Ignored entirely when Blocksy is inactive.
-        if (function_exists('brikpanel_blocksy_video_active') && brikpanel_blocksy_video_active()) {
-            $videos_raw = isset($_POST['blocksy_videos']) ? wp_unslash($_POST['blocksy_videos']) : '';
-            if (is_string($videos_raw) && $videos_raw !== '') {
-                $videos = json_decode($videos_raw, true);
-                if (is_array($videos)) {
-                    $allowed_ids = array_merge([$image_id], $gallery_ids);
-                    foreach ($videos as $att_id => $video) {
-                        $att_id = (int) $att_id;
-                        // Guard: only write video meta for images that belong to
-                        // this product's gallery, never arbitrary attachments.
-                        if ($att_id > 0 && is_array($video) && in_array($att_id, $allowed_ids, true)) {
-                            brikpanel_blocksy_save_video_for_attachment($att_id, $video);
-                        }
-                    }
-                }
-            }
-        }
+        // Product videos are written at the end of the save, once the images
+        // and variations are stored (Brikpanel_Video::apply_changes()), and
+        // only for images the saved product really has.
 
         // Categories
         $cat_ids_raw = sanitize_text_field($_POST['category_ids'] ?? '');
@@ -7736,7 +7843,8 @@ class Brikpanel_Product_Editor {
             $cogs_raw       = sanitize_text_field( $_POST['cogs_value'] );
             $cogs_decimal   = brikpanel_set_product_cogs_raw( $product->get_id(), $cogs_raw );
             $cogs_submitted = $cogs_decimal;
-            if ( method_exists( $product, 'set_cogs_value' ) ) {
+            // Feature off, the setter stores nothing and writes to the error log.
+            if ( brikpanel_wc_cogs_enabled( $product ) ) {
                 $product->set_cogs_value( $cogs_decimal !== '' ? $cogs_decimal : null );
             }
             // A cost plugin's own input rides along in this submission (we
@@ -8011,10 +8119,12 @@ class Brikpanel_Product_Editor {
             }
         }
 
-        // Tags
-        $tag_names_raw = sanitize_text_field(wp_unslash($_POST['tag_names'] ?? ''));
+        // Tags. Each one is sanitized on its own: on the joined string
+        // "<5kg,>10kg", sanitize_text_field() saw a tag and the two merged
+        // into a single "10kg".
+        $tag_names_raw = isset($_POST['tag_names']) && is_scalar($_POST['tag_names']) ? (string) wp_unslash($_POST['tag_names']) : '';
         if ($tag_names_raw !== '') {
-            $tags = array_filter(array_map('trim', explode(',', $tag_names_raw)));
+            $tags = array_values(array_filter(array_map('sanitize_text_field', explode(',', $tag_names_raw)), 'strlen'));
             wp_set_object_terms($saved_id, $tags, 'product_tag');
         } else {
             wp_set_object_terms($saved_id, [], 'product_tag');
@@ -8316,6 +8426,11 @@ class Brikpanel_Product_Editor {
         } else {
             unset($_POST['post_type']);
         }
+        // Every product-level save hook has fired: put back the $_POST values
+        // the theme guards filled in (see Brikpanel_Video::begin_save()).
+        if (class_exists('Brikpanel_Video')) {
+            Brikpanel_Video::end_dispatch();
+        }
 
         // Reload a fresh product instance before the attribute/variation branch
         // saves it a second time. The parent was already persisted above
@@ -8361,6 +8476,19 @@ class Brikpanel_Product_Editor {
             }
         }
 
+        // Product videos go in last, once the images and variations are stored,
+        // so no other save handler of this request can overwrite them and only
+        // images the saved product really has are accepted. A video problem is
+        // a warning; it never fails the product save.
+        $video_state = null;
+        if (class_exists('Brikpanel_Video')) {
+            try {
+                $video_state = Brikpanel_Video::apply_changes($saved_id, $this->save_warnings);
+            } catch (\Throwable $e) {
+                $this->save_warnings[] = __('The product was saved, but its video changes could not be stored. Try saving again.', 'brikpanel');
+            }
+        }
+
         /**
          * Fires after the BrikPanel editor has fully persisted a product,
          * including its variations. Hook in here to sync to external systems,
@@ -8389,6 +8517,12 @@ class Brikpanel_Product_Editor {
             // still promise to destroy variations that are already gone.
             'variation_count' => $final_product ? count($final_product->get_children()) : 0,
         ];
+
+        // The videos as stored now, so the editor shows what the theme will
+        // play rather than what it sent.
+        if ($video_state !== null) {
+            $response['videos'] = $video_state;
+        }
 
         // Non-fatal issues (duplicate SKU/GTIN…): the product saved, but some
         // values were rejected. Hand them back so the editor can tell the
@@ -8759,7 +8893,8 @@ class Brikpanel_Product_Editor {
             $term_names = [];
             if (!is_wp_error($terms)) {
                 foreach ($terms as $term) {
-                    $term_names[] = $term->name;
+                    // Same form as $build_attr_record() values (see there).
+                    $term_names[] = brikpanel_term_ref($term->name);
                 }
             }
             $global_attributes[] = [
@@ -9708,13 +9843,20 @@ class Brikpanel_Product_Editor {
             $var_sale = isset($var_data['sale_price']) && $var_data['sale_price'] !== '' ? wc_format_decimal(sanitize_text_field($var_data['sale_price'])) : '';
             $variation->set_sale_price($var_sale);
 
-            // Sale schedule dates per variation
-            $var_sale_from_raw = isset($var_data['sale_from']) ? sanitize_text_field($var_data['sale_from']) : '';
-            $var_sale_to_raw   = isset($var_data['sale_to'])   ? sanitize_text_field($var_data['sale_to'])   : '';
-            $var_sale_from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $var_sale_from_raw) ? $var_sale_from_raw : '';
-            $var_sale_to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $var_sale_to_raw)   ? $var_sale_to_raw   : '';
-            $variation->set_date_on_sale_from($var_sale_from !== '' ? $var_sale_from : null);
-            $variation->set_date_on_sale_to($var_sale_to     !== '' ? $var_sale_to   : null);
+            // Sale schedule dates per variation. Written only when the payload
+            // carries the key: the dates live in the row's details panel, and a
+            // missing key has to leave a stored schedule alone, not clear it.
+            // An empty value that IS sent still clears (the date's × button).
+            if (array_key_exists('sale_from', $var_data)) {
+                $var_sale_from_raw = sanitize_text_field((string) $var_data['sale_from']);
+                $var_sale_from     = preg_match('/^\d{4}-\d{2}-\d{2}$/', $var_sale_from_raw) ? $var_sale_from_raw : '';
+                $variation->set_date_on_sale_from($var_sale_from !== '' ? $var_sale_from : null);
+            }
+            if (array_key_exists('sale_to', $var_data)) {
+                $var_sale_to_raw = sanitize_text_field((string) $var_data['sale_to']);
+                $var_sale_to     = preg_match('/^\d{4}-\d{2}-\d{2}$/', $var_sale_to_raw) ? $var_sale_to_raw : '';
+                $variation->set_date_on_sale_to($var_sale_to !== '' ? $var_sale_to : null);
+            }
 
             // Stock. Each variation carries its own "Track" checkbox — the
             // explicit source of truth for manage_stock, mirroring the
@@ -9745,20 +9887,23 @@ class Brikpanel_Product_Editor {
                 $variation->set_backorders($var_backorders_value);
             }
 
-            // SKU
-            $var_sku = sanitize_text_field($var_data['sku'] ?? '');
-            try {
-                $variation->set_sku($var_sku);
-            } catch (\Exception $e) {
-                // Duplicate/invalid variation SKU — persist the rest of the
-                // variation but report why the SKU was dropped (mirrors the
-                // simple-product path so variable products behave the same).
-                if ($var_sku !== '') {
-                    $this->save_warnings[] = sprintf(
-                        /* translators: %s: the variation SKU the merchant tried to save */
-                        __('The variation SKU "%s" was not saved because it is already used by another product. SKUs must be unique.', 'brikpanel'),
-                        $var_sku
-                    );
+            // SKU. Same rule as the dates: it sits in the details panel now, so
+            // only a submitted key is written and a missing one keeps the SKU.
+            if (array_key_exists('sku', $var_data)) {
+                $var_sku = sanitize_text_field((string) $var_data['sku']);
+                try {
+                    $variation->set_sku($var_sku);
+                } catch (\Exception $e) {
+                    // Duplicate/invalid variation SKU — persist the rest of the
+                    // variation but report why the SKU was dropped (mirrors the
+                    // simple-product path so variable products behave the same).
+                    if ($var_sku !== '') {
+                        $this->save_warnings[] = sprintf(
+                            /* translators: %s: the variation SKU the merchant tried to save */
+                            __('The variation SKU "%s" was not saved because it is already used by another product. SKUs must be unique.', 'brikpanel'),
+                            $var_sku
+                        );
+                    }
                 }
             }
 
@@ -9768,8 +9913,8 @@ class Brikpanel_Product_Editor {
             if (array_key_exists('global_unique_id', $var_data)) {
                 $var_gtin = sanitize_text_field($var_data['global_unique_id']);
                 try {
-                    $variation->set_global_unique_id($var_gtin);
-                } catch (\Exception $e) {
+                    brikpanel_wc_set_gtin($variation, $var_gtin);
+                } catch (\Throwable $e) {
                     // Duplicate/invalid variation GTIN — keep the rest, warn why.
                     if ($var_gtin !== '') {
                         $this->save_warnings[] = sprintf(
@@ -9805,7 +9950,7 @@ class Brikpanel_Product_Editor {
                 $var_cogs_raw       = sanitize_text_field( $var_data['cogs_value'] );
                 $var_cogs_decimal   = brikpanel_set_product_cogs_raw( $variation->get_id(), $var_cogs_raw );
                 $var_cogs_submitted = $var_cogs_decimal;
-                if ( method_exists( $variation, 'set_cogs_value' ) ) {
+                if ( brikpanel_wc_cogs_enabled( $variation ) ) {
                     $variation->set_cogs_value( $var_cogs_decimal !== '' ? $var_cogs_decimal : null );
                 }
                 // A cost plugin's per-variation input is re-emitted into $_POST
@@ -9815,9 +9960,11 @@ class Brikpanel_Product_Editor {
                 brikpanel_cogs_sync_posted_third_party_inputs( $var_cogs_decimal, $loop_index );
             }
 
-            // Per-variation vendor override. 0 (or unset) means "inherit
-            // parent" — persist_meta() handles the delete branch.
-            if ( class_exists( 'Brikpanel_Vendor_Product_Editor' ) && Brikpanel_Vendor_Product_Editor::vendor_field_enabled() ) {
+            // Per-variation vendor override. 0 means "inherit parent" and
+            // persist_meta() handles that delete branch. A missing key used to
+            // mean 0 as well, which deleted every variation's supplier on any
+            // save that did not carry the field; now it leaves it alone.
+            if ( array_key_exists( 'vendor_id', $var_data ) && class_exists( 'Brikpanel_Vendor_Product_Editor' ) && Brikpanel_Vendor_Product_Editor::vendor_field_enabled() ) {
                 Brikpanel_Vendor_Product_Editor::persist_meta(
                     $variation->get_id(),
                     isset( $var_data['vendor_id'] ) ? (int) $var_data['vendor_id'] : 0,
@@ -10307,19 +10454,20 @@ class Brikpanel_Product_Editor {
 
             // Parent-level value covers simple products and variable products
             // whose GTIN is set on the parent.
-            $value = (string) $product->get_global_unique_id();
+            $value = brikpanel_wc_gtin($product);
 
             if ($value === '' && $product->is_type('variable')) {
                 // GTIN is usually stored per variation. Collect the distinct
                 // non-empty values so the column stays meaningful for
                 // variable products too.
+                // Each child's GTIN is read straight from post meta instead of
+                // hydrating a WC_Product per variation. It is the same key
+                // WooCommerce stores the prop in, so the answer is identical on
+                // every version, and it saves a full product load per variation
+                // on every row of the list.
                 $found = [];
                 foreach ($product->get_children() as $child_id) {
-                    $variation = wc_get_product($child_id);
-                    if (!$variation) {
-                        continue;
-                    }
-                    $vid = trim((string) $variation->get_global_unique_id());
+                    $vid = trim(brikpanel_wc_gtin($child_id));
                     if ($vid !== '') {
                         $found[$vid] = true;
                     }

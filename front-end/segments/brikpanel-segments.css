@@ -8,7 +8,7 @@
 	--bp-seg-card: #ffffff;
 	--bp-seg-text: #303030;
 	--bp-seg-text-secondary: #616161;
-	--bp-seg-text-muted: #8a8a8a;
+	--bp-seg-text-placeholder: #8a8a8a;
 	--bp-seg-border: #e3e3e3;
 	--bp-seg-input-border: #8a8a8a;
 	--bp-seg-primary: #303030;
@@ -18,8 +18,10 @@
 	--bp-seg-row-hover: #f7f7f7;
 }
 
+/* Width, gutters and top spacing: the wide page shell on the .wrap
+   (front-end/shared/brikpanel-ui.css, `brikpanel-shell__page`). */
 .brikpanel-segments {
-	padding: 1.25rem 1rem 3rem;
+	padding: 0 0 3rem;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 	color: var(--bp-seg-text);
 	line-height: 1.5;
@@ -46,8 +48,10 @@
 }
 
 .bp-seg-header h1 {
-	font-size: 1.375rem;
-	font-weight: 600;
+	font-size: var(--brikpanel-title-size, 1.125rem);
+	font-weight: var(--brikpanel-title-weight, 600);
+	line-height: var(--brikpanel-title-line, 1.3);
+	padding: 0;
 	margin: 0;
 	color: var(--bp-seg-text);
 }
@@ -149,30 +153,25 @@
 	color: #fff;
 }
 
+/* The search box shrinks down to 10rem, then the "More filters" button goes
+   under it. A search box that kept its own width (min-width: auto) and a
+   button that cannot wrap pushed the card past a 360px screen (field test C7). */
 .bp-seg-quick-search {
 	display: flex;
-	align-items: center;
+	flex-wrap: wrap;
+	align-items: stretch;
 	gap: 0.5rem;
 	flex: 1;
 	max-width: 420px;
-	min-width: 260px;
+	min-width: min(260px, 100%);
 	justify-content: flex-end;
 }
 
+/* The search box is the shared .brikpanel-control; the button beside it
+   stretches to the box's height (field test D1). */
 .bp-seg-quick-search input[type="search"] {
-	flex: 1;
-	padding: 0.5rem 0.75rem;
-	font-size: 0.875rem;
-	border: 1px solid var(--bp-seg-input-border);
-	border-radius: 0.5rem;
-	color: var(--bp-seg-text);
-	background: #fff;
-}
-
-.bp-seg-quick-search input[type="search"]:focus {
-	outline: none;
-	border-color: var(--bp-seg-primary);
-	box-shadow: 0 0 0 1px var(--bp-seg-primary);
+	flex: 1 1 10rem;
+	min-width: 0;
 }
 
 /* ===== Buttons ===== */
@@ -256,46 +255,17 @@
 	gap: 0.875rem 1rem;
 }
 
-.bp-seg-field {
-	display: flex;
-	flex-direction: column;
-	gap: 0.375rem;
-}
-
+/* Fields, labels and boxes are the shared parts in
+   front-end/shared/brikpanel-ui.css (.brikpanel-field, .brikpanel-control):
+   the text boxes were 36px and the date boxes 46px (field test D1). */
 .bp-seg-field.bp-seg-full {
 	grid-column: 1 / -1;
 }
 
-.bp-seg-field label {
-	font-size: 0.8125rem;
-	font-weight: 600;
-	color: var(--bp-seg-text);
-}
-
-.bp-seg-field input[type="text"],
-.bp-seg-field input[type="search"],
-.bp-seg-field input[type="number"],
-.bp-seg-field input[type="date"],
-.bp-seg-field select {
-	padding: 0.5rem 0.625rem;
-	font-size: 0.875rem;
-	font-family: inherit;
-	border: 1px solid var(--bp-seg-input-border);
-	border-radius: 0.5rem;
-	color: var(--bp-seg-text);
-	background: #fff;
-	min-height: 36px;
+.bp-seg-range .brikpanel-control {
 	width: 100%;
+	min-width: 0;
 }
-
-.bp-seg-field input:focus,
-.bp-seg-field select:focus {
-	outline: none;
-	border-color: var(--bp-seg-primary);
-	box-shadow: 0 0 0 1px var(--bp-seg-primary);
-}
-
-.bp-seg-field input::placeholder { color: var(--bp-seg-text-muted); }
 
 .bp-seg-range {
 	display: grid;
@@ -306,6 +276,8 @@
 .bp-seg-input-group {
 	display: flex;
 	align-items: stretch;
+	box-sizing: border-box;
+	height: var(--brikpanel-control-h, 2.5rem);
 	border: 1px solid var(--bp-seg-input-border);
 	border-radius: 0.5rem;
 	overflow: hidden;
@@ -333,7 +305,15 @@
 	border-radius: 0 !important;
 	box-shadow: none !important;
 	flex: 1;
-	padding: 0.5rem 0.625rem;
+	min-width: 0;
+	height: auto;
+	min-height: 0;
+	margin: 0;
+	padding: 0 0.625rem;
+	font-size: 0.875rem;
+	line-height: 1.5;
+	color: var(--bp-seg-text);
+	background: transparent;
 }
 
 .bp-seg-input-group input:focus { box-shadow: none !important; }
@@ -343,8 +323,9 @@
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.25rem;
+	box-sizing: border-box;
 	padding: 0.375rem;
-	min-height: 36px;
+	min-height: var(--brikpanel-control-h, 2.5rem);
 	border: 1px solid var(--bp-seg-input-border);
 	border-radius: 0.5rem;
 	background: #fff;
@@ -438,7 +419,7 @@
 .bp-seg-selected-chip button {
 	background: none;
 	border: none;
-	color: var(--bp-seg-text-muted);
+	color: var(--bp-seg-text-secondary, #616161);
 	font-size: 0.875rem;
 	line-height: 1;
 	cursor: pointer;
@@ -453,11 +434,36 @@
 .bp-seg-selected-chip button:hover { color: var(--bp-seg-error); }
 
 /* ===== Stats row ===== */
+/* Three figures: side by side while each fits its tile, otherwise a short
+   list (front-end/shared/brikpanel-tiles.js, never 2 + 1). The template below
+   is the look without the script. */
 .bp-seg-stats {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 	gap: 0.75rem;
 	margin-bottom: 1rem;
+}
+
+.bp-seg-stats.is-tiles-list {
+	gap: 0.5rem;
+}
+
+.bp-seg-stats.is-tiles-list .bp-seg-stat {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.625rem 1rem;
+}
+
+.bp-seg-stats.is-tiles-list .bp-seg-stat-label {
+	margin-bottom: 0;
+}
+
+.bp-seg-stats.is-tiles-list .bp-seg-stat-value {
+	font-size: 1rem;
+	text-align: end;
+	overflow-wrap: anywhere;
 }
 
 .bp-seg-stat {
@@ -469,8 +475,10 @@
 }
 
 .bp-seg-stat-label {
-	font-size: 0.75rem;
-	font-weight: 500;
+	font-size: var(--brikpanel-label-size, 0.8125rem);
+	font-weight: var(--brikpanel-label-weight, 550);
+	text-transform: var(--brikpanel-caps-case, none);
+	letter-spacing: var(--brikpanel-caps-track, normal);
 	color: var(--bp-seg-text-secondary);
 	margin-bottom: 0.25rem;
 }
@@ -495,28 +503,33 @@
 }
 
 .bp-seg-table thead th {
-	text-align: left;
+	text-align: start;
 	padding: 0.625rem 1rem;
-	font-size: 0.75rem;
-	font-weight: 600;
+	font-size: var(--brikpanel-th-size, 0.75rem);
+	font-weight: var(--brikpanel-th-weight, 600);
+	text-transform: var(--brikpanel-caps-case, none);
+	letter-spacing: var(--brikpanel-caps-track, normal);
 	color: var(--bp-seg-text-secondary);
 	background: #fafafa;
 	border-bottom: 1px solid var(--bp-seg-border);
 	white-space: nowrap;
 }
 
+/* Cells wrap at their spaces (dates, names, locations, payment titles). They
+   used to be nowrap across the board, which gave the table a minimum width
+   wider than the card, so Total fell off the right edge (field test B2).
+   Addresses break only at "@" and dots through <wbr> from the JS. */
 .bp-seg-table tbody td {
 	padding: 0.75rem 1rem;
 	border-bottom: 1px solid #f3f3f3;
 	color: var(--bp-seg-text);
 	vertical-align: middle;
-	white-space: nowrap;
 }
 
-/* Allow only the customer name/email cell to wrap so long emails don't blow up the row width. */
-.bp-seg-table tbody td.bp-seg-customer {
-	white-space: normal;
-	max-width: 220px;
+/* Short values that must stay on one line. */
+.bp-seg-table td.bp-seg-order-no,
+.bp-seg-table td.bp-seg-phone {
+	white-space: nowrap;
 }
 
 .bp-seg-table tbody tr:last-child td { border-bottom: none; }
@@ -525,7 +538,7 @@
 
 .bp-seg-table td.bp-seg-num,
 .bp-seg-table th.bp-seg-num {
-	text-align: right;
+	text-align: end;
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
@@ -544,13 +557,79 @@
 .bp-seg-empty {
 	text-align: center;
 	padding: 2.5rem 1rem !important;
-	color: var(--bp-seg-text-muted);
+	color: var(--bp-seg-text-secondary, #616161);
 	font-size: 0.875rem;
 }
 
 .bp-seg-subtle {
-	color: var(--bp-seg-text-muted);
+	color: var(--bp-seg-text-secondary, #616161);
 	font-size: 0.75rem;
+}
+
+/* ===== Stacked rows =====
+   brikpanel-segments.js adds .is-stacked when the table cannot show every
+   column inside the card. Each row becomes a card: the order number or the
+   customer on top, then label-over-value tiles, the amount first. Only the
+   generic cell rule sets display, and it comes after the row hover rule above
+   so its transparent background wins the tie. */
+.bp-seg-table.is-stacked,
+.bp-seg-table.is-stacked > tbody {
+	display: block;
+}
+
+.bp-seg-table.is-stacked > thead {
+	display: none;
+}
+
+.bp-seg-table.is-stacked > tbody > tr {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+	gap: 0.625rem 1rem;
+	padding: 0.875rem 1rem;
+}
+
+.bp-seg-table.is-stacked > tbody > tr + tr {
+	border-top: 1px solid #f3f3f3;
+}
+
+.bp-seg-table.is-stacked > tbody > tr > td {
+	display: block;
+	min-width: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	text-align: start;
+	overflow-wrap: anywhere;
+}
+
+@media (hover: hover) {
+	.bp-seg-table.is-stacked > tbody > tr:hover {
+		background: var(--bp-seg-row-hover);
+	}
+}
+
+.bp-seg-table.is-stacked td[data-bp-label]::before {
+	content: attr(data-bp-label);
+	display: block;
+	margin-bottom: 0.125rem;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--bp-seg-text-secondary);
+}
+
+.bp-seg-table.is-stacked .bp-seg-cell-title {
+	grid-column: 1 / -1;
+	order: -2;
+}
+
+.bp-seg-table.is-stacked .bp-seg-cell-headline {
+	order: -1;
+	font-weight: 600;
+}
+
+.bp-seg-table.is-stacked .bp-seg-empty {
+	grid-column: 1 / -1;
+	text-align: center;
 }
 
 /* ===== Status pill ===== */
@@ -609,32 +688,15 @@
 .brikpanel-segments[data-tab="orders"] .bp-seg-customers-only { display: none; }
 
 /* ===== Small screens ===== */
-/* On tablet/phone (≤782, where the admin menu collapses) WordPress gives
-   #wpcontent a 10px-left padding and .wrap a ~12px right margin, which leave
-   the panel a few px off-centre. Zero both and let .brikpanel-segments' own
-   1rem padding be the single symmetric gutter. */
-@media (max-width: 782px) {
-	body.toplevel_page_brikpanel-segments #wpcontent { padding-left: 0 !important; }
-	body.toplevel_page_brikpanel-segments .wrap { margin: 0 !important; }
-}
-
 @media (max-width: 720px) {
 	.bp-seg-header { flex-direction: column; align-items: flex-start; }
-	.bp-seg-filter-bar { flex-direction: column; align-items: stretch; }
+	/* One line per child: in a column that may wrap, "stretch" only reaches
+	   the width of the widest child, not the card's. */
+	.bp-seg-filter-bar { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
 	.bp-seg-quick-search { max-width: none; min-width: 0; justify-content: flex-start; }
 	.bp-seg-grid { grid-template-columns: 1fr; }
 	.bp-seg-header-right { width: 100%; justify-content: flex-end; }
 
-	/* Tighten table cell padding on phones so more columns fit before the user must scroll. */
-	.bp-seg-table thead th { padding: 0.5rem 0.625rem; }
-	.bp-seg-table tbody td { padding: 0.625rem 0.625rem; }
-	.bp-seg-table tbody td.bp-seg-customer { max-width: 160px; }
-
-	/* Visual affordance that the table scrolls horizontally. */
-	.bp-seg-table-wrap {
-		-webkit-overflow-scrolling: touch;
-		scrollbar-width: thin;
-	}
-	.bp-seg-table-wrap::-webkit-scrollbar { height: 6px; }
-	.bp-seg-table-wrap::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+	/* The results table needs no phone rules here: on a card this narrow
+	   brikpanel-segments.js always stacks its rows (see "Stacked rows"). */
 }

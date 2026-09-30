@@ -1,0 +1,48 @@
+/**
+ * BrikPanel - a row of tabs that scrolls inside itself (field test C).
+ * Paired with brikpanel-scroll-strip.js, which sets the fade stops.
+ *
+ * Kept at :where() weight so a screen's own rules (tab padding, the underline)
+ * win without a fight. One line, never wider than its box: the row scrolls, the
+ * page does not.
+ */
+/* A hidden row stays hidden: only the display carries the :not([hidden]). */
+:where([data-bp-strip]):not([hidden]) {
+	display: flex;
+}
+
+:where([data-bp-strip]) {
+	flex-wrap: nowrap;
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+}
+
+:where([data-bp-strip])::-webkit-scrollbar {
+	display: none;
+}
+
+:where([data-bp-strip]) > * {
+	flex: none;
+	white-space: nowrap;
+}
+
+/* Fades only where more tabs are hidden (the script sets the four stops). A
+   mask, not a painted gradient, so the row works on any background; it only
+   exists while something is hidden, since a mask also cuts focus rings. */
+[data-bp-strip].bp-strip--masked {
+	-webkit-mask-image: linear-gradient(to right,
+		transparent var(--bp-strip-l0, 0px),
+		#000 var(--bp-strip-l1, 0px),
+		#000 calc(100% - var(--bp-strip-r1, 0px)),
+		transparent calc(100% - var(--bp-strip-r0, 0px)));
+	mask-image: linear-gradient(to right,
+		transparent var(--bp-strip-l0, 0px),
+		#000 var(--bp-strip-l1, 0px),
+		#000 calc(100% - var(--bp-strip-r1, 0px)),
+		transparent calc(100% - var(--bp-strip-r0, 0px)));
+}

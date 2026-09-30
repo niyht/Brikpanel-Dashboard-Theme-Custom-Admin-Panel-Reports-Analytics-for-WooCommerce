@@ -10,7 +10,7 @@
 	--card: #ffffff;
 	--text: #303030;
 	--text-secondary: #616161;
-	--text-muted: #8a8a8a;
+	--text-placeholder: #8a8a8a;
 	--border: #e3e3e3;
 	--input-border: #8a8a8a;
 	--input-focus: #303030;
@@ -19,9 +19,9 @@
 	--success: #1a8917;
 	--error: #d72c0d;
 
-	max-width: 1100px;
-	margin: 1.5rem auto;
-	padding: 0 1rem;
+	/* Width, gutters and top spacing: the narrow page shell
+	   (front-end/shared/brikpanel-ui.css, `brikpanel-shell__page`). */
+	padding-bottom: 1.5rem;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	color: var(--text);
 	line-height: 1.5;
@@ -36,8 +36,10 @@
 	margin-bottom: 1rem;
 }
 .bp-ads-header h1 {
-	font-size: 1.5rem;
-	font-weight: 700;
+	font-size: var(--brikpanel-title-size, 1.125rem);
+	font-weight: var(--brikpanel-title-weight, 600);
+	line-height: var(--brikpanel-title-line, 1.3);
+	padding: 0;
 	margin: 0 0 0.25rem;
 	display: inline-flex;
 	align-items: center;
@@ -77,14 +79,39 @@
 }
 
 /* ---------- Grid + Cards ---------- */
+/* Two connect cards side by side while each gets at least 20rem of the page
+   column, one under the other below that. Measured on the column, not the
+   window: the page is the narrow 820px shell, so a window-width breakpoint
+   squeezed the cards on a mid-size screen. */
 .bp-ads-grid {
 	display: grid;
-	grid-template-columns: repeat(2, 1fr);
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 	gap: 1rem;
 	margin-bottom: 1rem;
 }
-@media (max-width: 880px) {
-	.bp-ads-grid { grid-template-columns: 1fr; }
+
+/* The connect button sits at the bottom of each card, so the two cards'
+   buttons line up whatever the text above them says (field test D10: they
+   were 78px apart). Only the platform cards: the insights card outside the
+   grid is toggled with `hidden` and keeps its own display. */
+.bp-ads-grid > .bp-ads-card {
+	display: flex;
+	flex-direction: column;
+}
+.bp-ads-grid > .bp-ads-card[hidden] {
+	display: none;
+}
+.bp-ads-grid > .bp-ads-card > .bp-ads-card-body {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+}
+.bp-ads-grid .bp-ads-card-body > .bp-ads-actions:last-child {
+	margin-top: auto;
+	padding-top: 1rem;
+}
+.bp-ads-card-body > .bp-ads-card-sub + .bp-ads-card-sub {
+	margin-top: 0.5rem;
 }
 
 .bp-ads-card {
@@ -107,8 +134,8 @@
 	gap: 1rem;
 }
 .bp-ads-card-header-left h2 {
-	font-size: 1rem;
-	font-weight: 600;
+	font-size: var(--brikpanel-card-title-size, 0.9375rem);
+	font-weight: var(--brikpanel-card-title-weight, 600);
 	margin: 0 0 0.125rem;
 }
 .bp-ads-card-sub {
@@ -139,7 +166,7 @@
 	width: 0.5rem;
 	height: 0.5rem;
 	border-radius: 50%;
-	background: var(--text-muted);
+	background: var(--text-placeholder);
 }
 .bp-ads-pill[data-state="live"] {
 	background: #e8f5e9;
@@ -262,23 +289,11 @@
 	font-size: 0.75rem;
 	margin: 0 0 0.5rem;
 }
+/* The boxes are the shared .brikpanel-control (front-end/shared/brikpanel-ui.css):
+   a single-class rule here lost to WordPress 7.1's square select (field test D5). */
 .bp-ads-input {
 	width: 100%;
-	padding: 0.625rem 0.75rem;
-	border: 1px solid var(--input-border);
-	border-radius: 0.5rem;
-	font-size: 0.875rem;
-	color: var(--text);
-	background: var(--card);
-	font-family: inherit;
-	box-sizing: border-box;
 }
-.bp-ads-input:focus {
-	outline: none;
-	border-color: var(--input-focus);
-	box-shadow: 0 0 0 1px var(--input-focus);
-}
-.bp-ads-input::placeholder { color: var(--text-muted); }
 .bp-ads-input-row {
 	display: flex;
 	gap: 0.5rem;
@@ -297,19 +312,75 @@
 	user-select: none;
 }
 .bp-ads-manual-summary::-webkit-details-marker { display: none; }
-.bp-ads-manual-summary::before { content: "+ "; color: var(--text-muted); }
+.bp-ads-manual-summary::before { content: "+ "; color: var(--text-placeholder); }
 .bp-ads-manual[open] .bp-ads-manual-summary::before { content: "- "; }
 .bp-ads-manual-summary:hover { color: var(--text); }
 .bp-ads-manual-body { margin-top: 0.5rem; }
-select.bp-ads-input {
+
+/* ---------- Ad account list ---------- */
+/* A fieldset groups the boxes for screen readers; the browser's frame and
+   padding around it are not wanted here. */
+.bp-ads-accounts-field {
+	margin: 1rem 0 0;
+	padding: 0;
+	border: 0;
+	min-width: 0;
+}
+.bp-ads-accounts-field > .bp-ads-label { padding: 0; }
+.bp-ads-accounts {
+	list-style: none;
+	margin: 0 0 0.75rem;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	background: #fafafa;
+	/* An agency can see dozens of accounts: the list scrolls, the card does not grow. */
+	max-height: 18rem;
+	overflow-y: auto;
+}
+.bp-ads-account {
+	margin: 0;
+	border-bottom: 1px solid #efefef;
+}
+.bp-ads-account:last-child { border-bottom: 0; }
+.bp-ads-account-label {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.625rem;
+	padding: 0.625rem 0.75rem;
 	cursor: pointer;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%23303030' d='M6 8.5L1.5 4h9z'/%3E%3C/svg%3E");
-	background-repeat: no-repeat;
-	background-position: right 0.75rem center;
-	background-size: 12px;
-	padding-right: 2rem;
-	appearance: none;
-	-webkit-appearance: none;
+}
+.bp-ads-account-label:hover { background: #f4f4f4; }
+/* Two classes: WordPress's own checkbox rule (input[type=checkbox]) carries a
+   negative margin and would win over a single class. */
+.bp-ads-account-label .bp-ads-account-check {
+	flex: 0 0 auto;
+	margin: 0.1875rem 0 0;
+	accent-color: var(--primary);
+}
+.bp-ads-account-text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.bp-ads-account-name {
+	font-size: 0.875rem;
+	color: var(--text);
+	overflow-wrap: anywhere;
+}
+.bp-ads-account-meta {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
+}
+.bp-ads-account-label .bp-ads-account-badge { align-self: center; }
+.bp-ads-accounts-empty {
+	margin: 0 0 0.75rem;
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
 }
 
 /* ---------- Buttons ---------- */
@@ -397,13 +468,13 @@ select.bp-ads-input {
 	color: var(--text);
 }
 .bp-ads-bad { color: var(--error); }
+/* Bullets, indent and item spacing: the shared list (.brikpanel-bullets in
+   front-end/shared/brikpanel-ui.css). WordPress removes list markers, so this
+   list read as indented sentences with no bullet (field test D11). */
 .bp-ads-list {
-	margin: 0;
-	padding-left: 1.25rem;
 	font-size: 0.875rem;
 	color: var(--text-secondary);
 }
-.bp-ads-list li + li { margin-top: 0.375rem; }
 
 /* ---------- Backfill progress ---------- */
 .bp-ads-backfill {
@@ -460,9 +531,20 @@ select.bp-ads-input {
 	font-weight: 600;
 	color: var(--text);
 }
+.bp-ads-insight-name .bp-ads-account-badge { margin-inline-start: 0.375rem; }
+/* Month tables folded when there are more than three accounts. */
+.bp-ads-insight-months { margin-top: 0.75rem; }
+.bp-ads-insight-months-toggle {
+	cursor: pointer;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	color: var(--text-secondary);
+}
+.bp-ads-insight-months-toggle:hover { color: var(--text); }
+.bp-ads-insight-months[open] > .bp-ads-insight-months-toggle { margin-bottom: 0.625rem; }
 .bp-ads-insight-meta {
 	font-size: 0.75rem;
-	color: var(--text-muted);
+	color: var(--text-secondary, #616161);
 	font-variant-numeric: tabular-nums;
 }
 
@@ -499,10 +581,11 @@ select.bp-ads-input {
 	text-overflow: ellipsis;
 }
 .bp-ads-kpi-l {
-	font-size: 0.6875rem;
-	color: var(--text-secondary);
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	font-size: var(--brikpanel-label-size, 0.8125rem);
+	color: #616161;
+	text-transform: var(--brikpanel-caps-case, none);
+	letter-spacing: var(--brikpanel-caps-track, normal);
+	font-weight: var(--brikpanel-label-weight, 550);
 }
 
 /* Monthly table */
@@ -522,15 +605,30 @@ select.bp-ads-input {
 	padding: 0.5rem 0.875rem;
 	text-align: left;
 	border-bottom: 1px solid var(--border);
+}
+
+/* Only the figures stay on one line; headers wrap at spaces (CLAUDE.md table
+   rule). A month table that still cannot fit stacks into cards (field test
+   B6, brikpanel-fit-table.js). */
+.bp-ads-table td {
 	white-space: nowrap;
+}
+
+/* Narrower tiles than the default keep two figures per line on a phone. */
+.bp-ads-table.is-stacked {
+	--bp-fit-tile: 7rem;
+}
+
+.bp-ads-table.is-stacked > tbody > tr.bp-ads-table-total {
+	background: #fafafa;
 }
 .bp-ads-table th {
 	background: #fafafa;
-	font-weight: 600;
-	color: var(--text-secondary);
-	font-size: 0.75rem;
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	font-weight: var(--brikpanel-th-weight, 600);
+	color: #616161;
+	font-size: var(--brikpanel-th-size, 0.75rem);
+	text-transform: var(--brikpanel-caps-case, none);
+	letter-spacing: var(--brikpanel-caps-track, normal);
 }
 .bp-ads-table td.num,
 .bp-ads-table th.num {
@@ -566,21 +664,21 @@ select.bp-ads-input {
 .bp-ads-log-meta {
 	display: flex;
 	gap: 0.5rem;
-	color: var(--text-muted);
+	color: var(--text-secondary, #616161);
 	margin-bottom: 0.25rem;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	font-size: 0.6875rem;
 }
 .bp-ads-log-flow {
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	text-transform: none;
+	letter-spacing: normal;
 	color: var(--text-secondary);
 	font-weight: 600;
 }
 .bp-ads-log-code { color: var(--error); }
 .bp-ads-log-sev {
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	text-transform: none;
+	letter-spacing: normal;
 	font-weight: 600;
 	padding: 0.05rem 0.375rem;
 	border-radius: 0.25rem;
@@ -593,6 +691,6 @@ select.bp-ads-input {
 .bp-ads-log-empty {
 	padding: 1rem;
 	text-align: center;
-	color: var(--text-muted);
+	color: var(--text-secondary, #616161);
 	font-style: italic;
 }

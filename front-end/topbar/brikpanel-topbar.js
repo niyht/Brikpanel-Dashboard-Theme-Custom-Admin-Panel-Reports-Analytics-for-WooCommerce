@@ -144,17 +144,18 @@
 
         var badge = menu.querySelector('.brikpanel-topbar-badge');
 
-        // Sync the badge with the live notice count, and retire the button once
-        // every notice has been dismissed (WP core removes each .notice node on
-        // dismiss, so a MutationObserver keeps us honest without per-button wiring).
+        // Sync the badge with the live notice count. The button stays in place
+        // and only mutes while there is nothing to show (field test D19); after
+        // the last notice is dismissed an open panel says so instead of
+        // vanishing (WP core removes each .notice node on dismiss, so a
+        // MutationObserver keeps us honest without per-button wiring).
         var refresh = function () {
             var n = panelList.querySelectorAll(COUNT_SEL).length;
             if (badge) {
                 badge.hidden = n === 0;
                 badge.textContent = n > 99 ? '99+' : String(n);
             }
-            menu.style.display = n === 0 ? 'none' : '';
-            if (n === 0) menu.classList.remove('is-open');
+            menu.classList.toggle('is-empty', n === 0);
         };
 
         // 2) Sweep up any foreign notices the server-side buffer could not
@@ -199,8 +200,25 @@
             if (isErrorNotice(n)) return;                          // red/error notices stay on screen
             if (!noticeHasContent(n)) return;                      // empty placeholder, leave in place
             n.classList.add('brikpanel-notice');
+            // "Hide third-party admin notices" is off: the notice stays on the
+            // page. The class above keeps the screens' own notice-hiding rules
+            // (products, coupons, taxonomy) off it, so it is shown as promised.
+            if (!hidesForeignNotices()) return;
+            // `inline` too, like the server-side collector: this first sweep runs
+            // before WordPress's common.js, which on jQuery ready moves every
+            // notice that is not `.inline` under the page header. Without it the
+            // notice left the bell again and landed in the title row (B5).
+            n.classList.add('inline');
             panelList.appendChild(n);
         });
+    }
+
+    /**
+     * Whether the store owner keeps "Hide third-party admin notices" on (the
+     * default). Missing settings mean off, so nothing is hidden by mistake.
+     */
+    function hidesForeignNotices() {
+        return !!(window.brikpanelTopbar && window.brikpanelTopbar.hide_foreign);
     }
 
     /**
@@ -771,9 +789,10 @@
         }
     }
 
+    // The store's separators, not the browser's language (field test E2).
     function formatNumber(n) {
         n = Number(n) || 0;
-        return n.toLocaleString();
+        return window.brikpanelFormat ? window.brikpanelFormat.number(n) : String(n);
     }
 
 })();

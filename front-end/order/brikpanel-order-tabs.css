@@ -351,7 +351,7 @@
 
 .brikpanel-modern-edit.bp-order-tabs #woocommerce-order-data .woocommerce-order-data__meta {
 	margin: 0 0 16px;
-	color: #8a8a8a;
+	color: #616161;
 	font-size: .75rem;
 }
 
@@ -481,7 +481,7 @@
 .brikpanel-modern-edit.bp-order-tabs #woocommerce-order-notes ul.order_notes li .meta {
 	margin: 4px 0 0;
 	padding: 0;
-	color: #8a8a8a !important;
+	color: #616161 !important;
 	font-size: .75rem;
 }
 
@@ -595,7 +595,7 @@
 }
 
 .bp-osummary__method {
-	color: #8a8a8a;
+	color: #616161;
 	font-size: .75rem;
 }
 
@@ -636,7 +636,7 @@
 }
 
 .bp-osummary__orders {
-	color: #8a8a8a;
+	color: #616161;
 	font-size: .75rem;
 }
 
@@ -672,8 +672,14 @@
 	outline-offset: 2px;
 }
 
-/* ---- Narrower screens ---- */
-@media screen and (max-width: 1100px) {
+/* ---- Narrower screens ----
+   Keyed on the content column, not the window: the admin menu eats a fixed
+   slice of the window, so a window rule fires at a width that has nothing to
+   do with how much room the page actually has.
+   The side column only gives up its 40px once 320px would squeeze the items
+   under the width they need to stay a table. Narrowing it any earlier would
+   step on a 1366px laptop, which has room to spare. */
+@container bp-order (max-width: 1000px) {
 	.brikpanel-modern-edit.bp-order-tabs #poststuff #post-body {
 		grid-template-columns: minmax(0, 1fr) 280px;
 	}
@@ -726,8 +732,13 @@
 }
 
 /* One column: summary first (total, payment, customer at a glance), then the
-   tabs, then order actions and the side boxes. */
-@container bp-order (max-width: 1080px) {
+   tabs, then order actions and the side boxes.
+   The threshold is the narrowest content column that still leaves the items a
+   real table rather than the stacked cards: 280px of side column plus the 16px
+   gap plus the 640px the items table needs. Above it the two columns are kept,
+   which on a 1200px-wide window is still side by side. It used to be 1080px,
+   which dropped the right column on a 1355px window with room to spare. */
+@container bp-order (max-width: 940px) {
 	.brikpanel-modern-edit.bp-order-tabs #poststuff #post-body {
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-areas:
@@ -776,7 +787,7 @@
 }
 
 /* Below the tabs, the side boxes sit two by two instead of stretching. */
-@container bp-order (min-width: 700px) and (max-width: 1080px) {
+@container bp-order (min-width: 700px) and (max-width: 940px) {
 	/* `auto-fit` rather than a fixed two, and no `:only-child` rule, because
 	   a box switched off in Screen Options is still a child: with two boxes
 	   and one hidden, `:only-child` never matched and the surviving box sat
@@ -883,7 +894,7 @@
 }
 
 .brikpanel-modern-edit.bp-order-tabs .woocommerce_order_items td.item_cost_of_goods {
-	color: #8a8a8a;
+	color: #616161;
 }
 
 /* Inline editing (pencil on an item, refund quantities). */
@@ -989,7 +1000,7 @@
 .brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items .wc-order-data-row .description {
 	float: none;
 	margin: 0 auto 0 0;
-	color: #8a8a8a;
+	color: #616161;
 	font-size: .75rem;
 }
 
@@ -1079,7 +1090,7 @@
 
 .brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals td .description {
 	display: block;
-	color: #8a8a8a;
+	color: #616161;
 	font-size: .75rem;
 	white-space: normal;
 }
@@ -1094,7 +1105,7 @@
 }
 
 .brikpanel-modern-edit.bp-order-tabs #woocommerce-order-items table.wc-order-totals .cost-total {
-	color: #8a8a8a !important;
+	color: #616161 !important;
 	font-weight: 400 !important;
 }
 
@@ -1677,14 +1688,14 @@
 		padding-right: 10px !important;
 	}
 
+	/* Tighter gaps only. What gives way is a header level decided from the
+	   bar's real width (brikpanel-order.css, "Header levels"); a
+	   `flex-shrink:1 !important` on the left side here used to let the order
+	   number shrink before anything else. */
 	.brikpanel-order-header__left,
 	.brikpanel-order-header__right {
 		gap: 6px !important;
 		min-width: 0;
-	}
-
-	.brikpanel-order-header__left {
-		flex-shrink: 1 !important;
 	}
 
 	.brikpanel-order-header__status-badge {

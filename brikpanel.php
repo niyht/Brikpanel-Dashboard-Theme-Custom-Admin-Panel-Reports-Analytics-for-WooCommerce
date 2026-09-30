@@ -2,14 +2,14 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.3.15
+ * Version: 3.3.26
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
  * Domain Path: /languages
  * Requires Plugins: woocommerce
- * WC requires at least: 4.0
- * WC tested up to: 9.4
+ * WC requires at least: 9.2
+ * WC tested up to: 11.1
  * Requires PHP: 7.4
  * License: GPL-2.0+
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.3.15');
+define('BRIKPANEL_VERSION', '3.3.26');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -113,10 +113,317 @@ brikpanel_require('includes/brikpanel-str.php');
 brikpanel_require('includes/brikpanel-network-access.php');
 
 // =============================================================================
+// LOAD TEXT DOMAIN
+//
+// Registered ahead of the WooCommerce guard below, not behind it: when the
+// guard bails, its notice is the one thing BrikPanel still prints, and it has
+// to be translated too. WordPress registers a plugin's language folder on its
+// own only for site-activated plugins, and only on recent versions, so on a
+// network-activated BrikPanel (or an older WordPress) this call is the only
+// route to the translations. Behind the guard, that notice was always English.
+// =============================================================================
+function brikpanel_load_textdomain() {
+    load_plugin_textdomain('brikpanel', false, dirname(BRIKPANEL_BASENAME) . '/languages');
+}
+add_action('init', 'brikpanel_load_textdomain', 1);
+
+// =============================================================================
+// WOOCOMMERCE HPOS COMPATIBILITY
+//
+// Declared ahead of the WooCommerce guard below. WooCommerce lists every active
+// plugin that never declares compatibility as incompatible with its order
+// tables, store-wide, and that also blocks the HPOS switch in its settings. So
+// if the guard ever stands BrikPanel down while WooCommerce is running, the
+// merchant must not be told BrikPanel is the problem: that notice was the
+// second symptom of the renamed-folder bug. Without WooCommerce the action
+// never fires, so this costs nothing there.
+// =============================================================================
+add_action('before_woocommerce_init', function () {
+    if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+    }
+});
+
+// =============================================================================
+// PLUGIN LIFECYCLE: DEACTIVATION AND SUBSITE DELETION
+//
+// Registered ahead of the WooCommerce guard below, not behind it. The guard
+// returns early whenever the request cannot see WooCommerce: a store that
+// switched WooCommerce off before BrikPanel, or the network admin of a
+// multisite whose main site never ran it. Behind the guard, deactivating
+// BrikPanel there skipped the job cleanup, and deleting a subsite left its
+// BrikPanel tables and per-site user options behind.
+//
+// There is deliberately no uninstall routine (no uninstall.php, no
+// register_uninstall_hook). Deleting the plugin keeps every table and option,
+// so a reinstall picks up where the store left off, and WordPress does not
+// ask the merchant to confirm deleting "BrikPanel and its data".
+// =============================================================================
+/**
+ * Stop the current site's BrikPanel background jobs. All data is kept.
+ *
+ * Action Scheduler keeps its queue when a plugin is switched off. Each
+ * pending BrikPanel job that falls due while BrikPanel is inactive fails
+ * because no callbacks are registered for its hook, and the failed rows pile
+ * up in WooCommerce > Status > Scheduled Actions (a recurring job adds one
+ * every interval) for as long as the plugin stays off. So the pending jobs of
+ * the 'brikpanel' group are cancelled, and the reconcile fingerprint is
+ * dropped so the first request after reactivation schedules the recurring
+ * jobs again (Brikpanel_Cron::reconcile()) instead of trusting the stale
+ * fingerprint for up to an hour.
+ *
+ * Nothing else is touched, on purpose: no table, option, progress marker or
+ * WP-Cron event. Deactivating is often a troubleshooting step, and a merchant
+ * who turns BrikPanel back on expects expenses, suppliers, visitor history and
+ * settings exactly as they left them.
+ *
+ * Action Scheduler's API does the cancelling when it is running. When it is
+ * not (this request has no WooCommerce, or the queue has not initialised),
+ * the same change is made in SQL: pending rows of the group become
+ * 'canceled', which is all the API does too. The table check comes first
+ * either way: a subsite that never ran WooCommerce has no queue tables, and a
+ * query against a missing table can print a database error in the middle of
+ * the deactivation redirect.
+ *
+ * Never throws: a failure here must not stop the plugin from deactivating.
+ *
+ * @return void
+ */
+function brikpanel_stop_site_jobs() {
+    global $wpdb;
+
+    try {
+        $actions_table = $wpdb->prefix . 'actionscheduler_actions';
+        $groups_table  = $wpdb->prefix . 'actionscheduler_groups';
+
+        $has_queue = true;
+        foreach ( array( $actions_table, $groups_table ) as $table ) {
+            if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
+                $has_queue = false;
+                break;
+            }
+        }
+
+        if ( $has_queue ) {
+            $api_ready = class_exists( 'ActionScheduler', false )
+                && ( ! method_exists( 'ActionScheduler', 'is_initialized' ) || ActionScheduler::is_initialized() );
+
+            // function_exists() sits right above the call: tools/test-as-floor.php
+            // looks for it there (not in REQUIRED_FUNCTIONS, so WC 4.0 is safe).
+            if ( $api_ready && function_exists( 'as_unschedule_all_actions' ) ) {
+                as_unschedule_all_actions( '', array(), 'brikpanel' );
+            } else {
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE {$actions_table} a
+                         INNER JOIN {$groups_table} g ON a.group_id = g.group_id
+                         SET a.status = %s
+                         WHERE g.slug = %s AND a.status = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                        'canceled',
+                        'brikpanel',
+                        'pending'
+                    )
+                );
+            }
+        }
+
+        delete_option( 'brikpanel_cron_reconciled' );
+    } catch ( \Throwable $e ) {
+        if ( function_exists( 'error_log' ) ) {
+            error_log( 'BrikPanel: stopping background jobs on deactivation failed: ' . $e->getMessage() );
+        }
+    }
+}
+
+/**
+ * Deactivation handler. Network-aware like brikpanel_activate(): a network
+ * deactivation walks every site of that network, skipping sites BrikPanel never set up and
+ * sites where it stays active on its own (a site-level activation survives a
+ * network deactivation, and the jobs of a running plugin must keep running).
+ *
+ * @param bool $network_wide True when deactivating across the whole network.
+ * @return void
+ */
+function brikpanel_deactivate( $network_wide = false ) {
+    // Read by Store Health's plugin-change listener: a rescan queued by the
+    // plugin that is switching itself off would only fail later.
+    $GLOBALS['brikpanel_self_deactivating'] = true;
+
+    if ( is_multisite() && $network_wide ) {
+        // Only the network being deactivated: on a multi-network install the
+        // plugin can still be network-active on the other networks.
+        $site_ids = get_sites( array(
+            'fields'                 => 'ids',
+            'number'                 => 0,
+            'network_id'             => get_current_network_id(),
+            'update_site_cache'      => false,
+            'update_site_meta_cache' => false,
+        ) );
+        foreach ( $site_ids as $site_id ) {
+            switch_to_blog( (int) $site_id );
+            if ( false !== get_option( 'brikpanel_db_version', false )
+                && ! in_array( BRIKPANEL_BASENAME, (array) get_option( 'active_plugins', array() ), true ) ) {
+                brikpanel_stop_site_jobs();
+            }
+            restore_current_blog();
+        }
+        return;
+    }
+
+    // A site-level deactivation of a copy that is also network-active leaves
+    // BrikPanel running on this site.
+    if ( is_multisite() && function_exists( 'is_plugin_active_for_network' )
+        && is_plugin_active_for_network( BRIKPANEL_BASENAME ) ) {
+        return;
+    }
+
+    brikpanel_stop_site_jobs();
+}
+register_deactivation_hook( __FILE__, 'brikpanel_deactivate' );
+
+/**
+ * Drop a subsite's BrikPanel tables when the subsite itself is deleted.
+ * Without this, the custom tables would linger as orphans after
+ * `wpmu_delete_blog` finishes, since WordPress only drops core tables and
+ * those registered through the `wpmu_drop_tables` filter.
+ *
+ * Using the filter rather than `wp_uninitialize_site` is the documented path
+ * because core hands us the in-progress drop list: by appending our table
+ * names we get the same prefix-aware DROP that core uses for wp_posts etc.
+ * The list mirrors the tables brikpanel_create_table() creates.
+ *
+ * @param string[] $tables  Tables core will drop.
+ * @param int      $blog_id ID of the blog being deleted.
+ * @return string[]
+ */
+function brikpanel_drop_subsite_tables($tables, $blog_id) {
+    global $wpdb;
+    $prefix = $wpdb->get_blog_prefix((int) $blog_id);
+    foreach ([
+        'brikpanel_visitors',
+        'brikpanel_cart_tracking',
+        'brikpanel_visited_pages',
+        'brikpanel_referrers',
+        'brikpanel_expenses',
+        'brikpanel_expense_skips',
+        'brikpanel_cohort_retention',
+        'brikpanel_customer_metrics',
+        'brikpanel_vendors',
+        'brikpanel_stock_orders',
+        'brikpanel_stock_order_items',
+        'brikpanel_ad_spend',
+        'brikpanel_abandoned_carts',
+    ] as $name) {
+        $tables[] = $prefix . $name;
+    }
+    return $tables;
+}
+add_filter('wpmu_drop_tables', 'brikpanel_drop_subsite_tables', 10, 2);
+
+// Orders list "Show in the row" choice (front-end/orders/brikpanel-orders-compact.php)
+// is a per-site user option in the shared user meta table; a deleted subsite
+// must take it along on every request type, WP-CLI included.
+add_action( 'wp_delete_site', function ( $old_site ) {
+    global $wpdb;
+    if ( ! is_object( $old_site ) || empty( $old_site->blog_id ) ) {
+        return;
+    }
+    $brikpanel_blog_prefix = $wpdb->get_blog_prefix( (int) $old_site->blog_id );
+    delete_metadata( 'user', 0, $brikpanel_blog_prefix . 'brikpanel_orders_row_columns', '', true );
+    // Order screen "Show in the sidebar" choice
+    // (front-end/order/brikpanel-order-box-placement.php), stored the same way.
+    delete_metadata( 'user', 0, $brikpanel_blog_prefix . 'brikpanel_order_side_boxes', '', true );
+    // Dashboard "new store" guide dismissal
+    // (front-end/dashboard/brikpanel-dashboard.php), stored the same way.
+    delete_metadata( 'user', 0, $brikpanel_blog_prefix . 'brikpanel_new_store_guide_dismissed', '', true );
+} );
+
+// =============================================================================
 // WOOCOMMERCE DEPENDENCY GUARD (multisite-critical)
 // =============================================================================
 /**
- * Bail completely when WooCommerce is not active on the current site.
+ * The active-plugin entry WordPress will load WooCommerce from, or ''.
+ *
+ * Matched on WooCommerce's MAIN FILE NAME, never on its folder. The folder is
+ * `woocommerce/` only when the store installed it from wp.org: hosts ship it
+ * as `wc-core/`, a GitHub zip unpacks to `woocommerce-9.4.1/`, and on those
+ * stores the old check for the literal `woocommerce/woocommerce.php` switched
+ * BrikPanel off and told a merchant with a running shop that WooCommerce was
+ * not active. The file name is how WooCommerce recognises itself (its own
+ * `activated_plugin()` compares against `'/woocommerce.php'`), WordPress never
+ * cares about the folder, and since WooCommerce 9.0 neither does the
+ * `Requires Plugins` check: WooCommerce maps its slug to its real folder. So
+ * this guard was the only thing refusing. Nothing deeper is asked, such as an
+ * internal file or the header's plugin name: a WooCommerce refactor or a
+ * white-label rebrand can change either, and a false "no" here is exactly the
+ * bug this replaces.
+ *
+ * An entry only counts when WordPress will really include it, checked the way
+ * wp_get_active_and_valid_plugins() checks before it does: no per-site plugins
+ * while installing, a path that validates, a file that is actually there, and
+ * not paused by recovery mode. An entry left behind by a deleted folder or a
+ * half-finished update is not a WooCommerce that will run, and loading on top
+ * of it fatals on the first WooCommerce call: the storefront answered 500 with
+ * `is_checkout()` undefined.
+ *
+ * Not memoized, so tools/test-wc-detect.php can move the lists through the
+ * core `option_active_plugins` / `site_option_active_sitewide_plugins`
+ * filters. The guard calls it once per request.
+ *
+ * @return string e.g. 'woocommerce/woocommerce.php' or 'wc-core/woocommerce.php'; '' when none will load.
+ */
+function brikpanel_wc_plugin_file() {
+    $entries = array();
+    if ( ! wp_installing() ) {
+        $entries = (array) get_option( 'active_plugins', array() );
+    }
+    if ( is_multisite() ) {
+        $entries = array_merge( $entries, array_keys( (array) get_site_option( 'active_sitewide_plugins', array() ) ) );
+    }
+
+    $found = '';
+    foreach ( $entries as $entry ) {
+        if ( ! is_string( $entry ) || false === strpos( $entry, '/' )
+            || 'woocommerce.php' !== strtolower( basename( $entry ) ) ) {
+            continue;
+        }
+        $path = WP_PLUGIN_DIR . '/' . $entry;
+        if ( 0 !== validate_file( $entry ) || ! file_exists( $path ) ) {
+            continue;
+        }
+        if ( wp_is_recovery_mode() && ! wp_skip_paused_plugins( array( $path ) ) ) {
+            continue;
+        }
+        // The wp.org folder wins outright: active_plugins has no guaranteed
+        // order, and a leftover copy must not shadow the real install.
+        if ( 'woocommerce/woocommerce.php' === $entry ) {
+            return $entry;
+        }
+        if ( '' === $found ) {
+            $found = $entry;
+        }
+    }
+
+    return $found;
+}
+
+/**
+ * Whether WooCommerce runs in this request, whatever folder it lives in.
+ *
+ * The class is asked first because WooCommerce can load BEFORE this file: from
+ * a must-use loader (which no activation list ever mentions), network-activated
+ * under a per-site BrikPanel, or from a folder that sorts ahead of ours. In the
+ * usual order ('brikpanel-…' before 'woocommerce/') it has not loaded yet, and
+ * the activation lists are what WordPress is about to load it from.
+ *
+ * @return bool
+ */
+function brikpanel_wc_present() {
+    return class_exists( 'WooCommerce', false ) || '' !== brikpanel_wc_plugin_file();
+}
+
+/**
+ * Bail completely when WooCommerce is not going to run on the current site.
  *
  * Why this matters: on multisite, BrikPanel can be Network-Activated while
  * WooCommerce is only active on a subset of subsites (per-site activation,
@@ -127,15 +434,15 @@ brikpanel_require('includes/brikpanel-network-access.php');
  * the activation action, not execution on subsites where WC was later
  * deactivated.
  *
- * We use `is_plugin_active()` rather than `class_exists( 'WooCommerce' )`
- * because plugins load alphabetically — at this point WC's main class is
- * not yet defined, but its `active_plugins` option entry already is.
- * `is_plugin_active()` already covers the network-active case internally.
+ * plugin.php is no longer needed by the check itself. It stays loaded because
+ * this guard has always loaded it on every request, front end included, and
+ * code elsewhere may have come to rely on that; recent WordPress versions load
+ * it before plugins anyway.
  */
 if ( ! function_exists( 'is_plugin_active' ) ) {
     require_once ABSPATH . 'wp-admin/includes/plugin.php';
 }
-if ( ! is_plugin_active( 'woocommerce/woocommerce.php' ) ) {
+if ( ! brikpanel_wc_present() ) {
     add_action( 'admin_notices', function () {
         if ( ! current_user_can( 'activate_plugins' ) ) {
             return;
@@ -144,6 +451,15 @@ if ( ! is_plugin_active( 'woocommerce/woocommerce.php' ) ) {
             . esc_html__( 'WooCommerce is not active on this site, so BrikPanel features are disabled here. Activate WooCommerce to enable BrikPanel.', 'brikpanel' )
             . '</p></div>';
     } );
+    // None of BrikPanel's job handlers load past this point. When another
+    // plugin still ships Action Scheduler (WP Mail SMTP, MailPoet and others
+    // bundle it), its queue runner picks up BrikPanel's pending jobs and fails
+    // each one with "no callbacks are registered", a recurring one on every
+    // turn. Stop them just before a queue run claims anything: the hook fires
+    // only in queue-runner requests (WP-Cron, async, WP-CLI), never on a page
+    // view. All data is kept, and the recurring jobs come back on the first
+    // request after WooCommerce does (the reconcile stamp is dropped).
+    add_action( 'action_scheduler_before_process_queue', 'brikpanel_stop_site_jobs', 10, 0 );
     return;
 }
 
@@ -198,6 +514,105 @@ if (!function_exists('brikpanel_update_option')) {
 // queries, so loading it on a storefront request costs nothing.
 // =============================================================================
 brikpanel_require('includes/brikpanel-export-registry.php');
+
+// =============================================================================
+// WOOCOMMERCE VERSION COMPATIBILITY (must load before any module that calls WC)
+//
+// Wrappers for the WooCommerce APIs that are newer than the WooCommerce a
+// merchant may still be running. A missing method is a PHP Error, not an
+// Exception, so it walks straight through the try/catch blocks the call sites
+// already have and white-screens the page. It sits here, at file scope, for
+// the same reason the two registries above do: it has to exist before the
+// first module is required, because modules call into it while being included
+// and from hooks that fire long before plugins_loaded. It is after the
+// WooCommerce dependency guard, so a WC-less multisite subsite never loads it,
+// and it is pure functions with no hooks and no queries at load time.
+// =============================================================================
+brikpanel_require('includes/brikpanel-wc-compat.php');
+
+/**
+ * Safety net for the WooCommerce compatibility wrappers.
+ *
+ * Same reasoning as the brikpanel_update_option() fallback above, and the same
+ * risk: brikpanel_require() soft-fails on a missing file, and routing fifteen
+ * call sites through one module means a half-finished upload of that one file
+ * would white-screen the product editor, both product lists, the search box,
+ * the coupons screen and the Sheets sync at once. This is the whole point of
+ * the soft-fail design, so the wrappers have to survive their own module going
+ * missing.
+ *
+ * The fallbacks are the plain modern-WooCommerce behaviour, which is what
+ * these call sites did before the module existed. A store on a current
+ * WooCommerce keeps working exactly as it did; a store below the floor is back
+ * to the old breakage, which is no worse than it was and is already announced
+ * by the missing-module notice.
+ */
+if (!function_exists('brikpanel_wc_gtin')) {
+    if (!defined('BRIKPANEL_GTIN_META_KEY')) {
+        define('BRIKPANEL_GTIN_META_KEY', '_global_unique_id');
+    }
+    function brikpanel_wc_supports_gtin() {
+        // wc-floor-ignore: this block IS the compat layer, inlined for the case where its own file is missing.
+        return method_exists('WC_Product', 'get_global_unique_id');
+    }
+    function brikpanel_wc_gtin($product) {
+        if (is_numeric($product)) {
+            return (int) $product > 0 ? (string) get_post_meta((int) $product, BRIKPANEL_GTIN_META_KEY, true) : '';
+        }
+        if (!is_object($product) || !method_exists($product, 'get_global_unique_id')) {
+            return '';
+        }
+        // wc-floor-ignore: guarded on the line above, and this block IS the inlined compat layer.
+        return (string) $product->get_global_unique_id();
+    }
+    function brikpanel_wc_set_gtin($product, $gtin) {
+        if (!is_object($product) || !method_exists($product, 'set_global_unique_id')) {
+            return '';
+        }
+        // wc-floor-ignore: guarded on the line above, and this block IS the inlined compat layer.
+        $product->set_global_unique_id($gtin);
+        // wc-floor-ignore: reads back what the line above just set.
+        return (string) $product->get_global_unique_id('edit');
+    }
+    function brikpanel_wc_coupon_set_status($coupon, $status) {
+        if (is_object($coupon) && method_exists($coupon, 'set_status')) {
+            $coupon->set_status($status);
+            return true;
+        }
+        return false;
+    }
+    function brikpanel_wc_coupon_sync_status($coupon_id, $status) {
+        $coupon_id = (int) $coupon_id;
+        if ($coupon_id <= 0 || '' === $status || get_post_status($coupon_id) === $status) {
+            return false;
+        }
+        wp_update_post(['ID' => $coupon_id, 'post_status' => $status]);
+        return true;
+    }
+    function brikpanel_wc_hpos_enabled() {
+        if (!class_exists('\Automattic\WooCommerce\Utilities\OrderUtil')) {
+            return false;
+        }
+        // wc-floor-ignore: guarded on the line above, and this block IS the inlined compat layer.
+        return \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+    }
+}
+// Guarded one by one: these two joined the compat module later, so a copy of
+// that module older than this file must not skip them along with the rest.
+if (!function_exists('brikpanel_wc_orders_list_url')) {
+    function brikpanel_wc_orders_list_url($status = '') {
+        $status = preg_replace('/^wc-/', '', sanitize_key((string) $status));
+        if (brikpanel_wc_hpos_enabled()) {
+            return admin_url('admin.php?page=wc-orders' . ('' !== $status ? '&status=' . $status : ''));
+        }
+        return admin_url('edit.php?post_type=shop_order' . ('' !== $status ? '&post_status=wc-' . $status : ''));
+    }
+}
+if (!function_exists('brikpanel_wc_analytics_landing_url')) {
+    function brikpanel_wc_analytics_landing_url() {
+        return admin_url('admin.php?page=wc-admin&path=/analytics/overview');
+    }
+}
 
 // =============================================================================
 // SEO PLUGIN COMPATIBILITY BOOTSTRAP (must run before plugins_loaded listeners)
@@ -255,14 +670,8 @@ add_action('plugins_loaded', function () {
     }
 }, 0);
 
-// =============================================================================
-// WOOCOMMERCE HPOS COMPATIBILITY
-// =============================================================================
-add_action('before_woocommerce_init', function () {
-    if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
-        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
-    }
-});
+// WooCommerce HPOS compatibility is declared above the WooCommerce dependency
+// guard, near the top of this file, so it holds even when the guard bails.
 
 // =============================================================================
 // CUSTOM ORDER STATUSES
@@ -293,13 +702,12 @@ brikpanel_require('front-end/order-statuses/brikpanel-order-statuses.php');
 // admin-gated. See front-end/order-statuses/brikpanel-status-emails.php.
 brikpanel_require('front-end/order-statuses/brikpanel-status-emails.php');
 
-// =============================================================================
-// LOAD TEXT DOMAIN
-// =============================================================================
-function brikpanel_load_textdomain() {
-    load_plugin_textdomain('brikpanel', false, dirname(BRIKPANEL_BASENAME) . '/languages');
-}
-add_action('init', 'brikpanel_load_textdomain', 1);
+// WhatsApp follow-ups: a status change drops an order's press note. Global for
+// the same reason: statuses change outside wp-admin too.
+brikpanel_require('front-end/orders/brikpanel-order-whatsapp-press.php');
+
+// The text domain is loaded above the WooCommerce dependency guard, near the
+// top of this file, so the guard's own notice is translated too.
 
 // =============================================================================
 // ADMIN SIDE FILES - Load on init (same timing as 1.4.0)
@@ -334,6 +742,9 @@ function brikpanel_init_admin() {
     // when modern navigation is off so admins can pre-configure the layout
     // before flipping the toggle.
     brikpanel_require('front-end/navigation/brikpanel-nav-customizer.php');
+    // Pages hidden from the sidebar: the palette leaves them out, and with
+    // "Block pages hidden from the menu" on they cannot be opened by link.
+    brikpanel_require('front-end/navigation/brikpanel-nav-page-access.php');
     // Command palette: the module file is required outside this gate (see
     // below) so its per-user index cleanup hooks exist on WP-CLI / REST user
     // deletions too. The class itself still only boots on admin requests.
@@ -344,6 +755,8 @@ function brikpanel_init_admin() {
     // downloaded and installed by the merchant from the relay's own welcome page,
     // never pushed from inside wp-admin (keeps BrikPanel within wp.org Guideline 8).
     brikpanel_require('front-end/orders/brikpanel-order-whatsapp.php');
+    // Trakoo tracking numbers: WhatsApp placeholders and the orders list window.
+    brikpanel_require('front-end/orders/brikpanel-order-tracking.php');
     brikpanel_require('front-end/orders/brikpanel-orders-compact.php');
     brikpanel_require('front-end/orders/brikpanel-orders-stats.php');
     brikpanel_require('front-end/orders/brikpanel-order-merge.php');
@@ -354,7 +767,7 @@ function brikpanel_init_admin() {
     brikpanel_require('front-end/import-export/brikpanel-import-export.php');
     brikpanel_require('front-end/products/brikpanel-section-order.php');
     brikpanel_require('front-end/products/brikpanel-qe-order.php');
-    brikpanel_require('front-end/products/brikpanel-blocksy-video.php');
+    brikpanel_require('front-end/products/video/brikpanel-product-video.php');
     brikpanel_require('front-end/products/brikpanel-product-editor.php');
     brikpanel_require('front-end/products/brikpanel-products-list.php');
     brikpanel_require('front-end/products/brikpanel-product-code.php');
@@ -606,6 +1019,51 @@ function brikpanel_suppress_foreign_notices() {
 }
 add_action('admin_init', 'brikpanel_suppress_foreign_notices');
 
+// =============================================================================
+// HIDE WOOCOMMERCE ADS (opt-out via settings)
+// =============================================================================
+/**
+ * Hide the ads WooCommerce.com pushes into wp-admin, using WooCommerce's own
+ * switches. Controlled by the `brikpanel_hide_wc_ads` option, defaulting to
+ * enabled.
+ *
+ * - Promotions: the promo cards (above the Orders list since WooCommerce 11.0,
+ *   plus Home, Marketing, Coupons and the Extensions page), the "Sale" badge
+ *   on the Extensions menu, and the twice-daily woocommerce.com fetch that
+ *   feeds them.
+ * - Suggestions: the "get this extension" boxes (the product data "Get more
+ *   options" tab, the empty Orders list, the Marketing and Coupons
+ *   recommendations, WooPayments offers).
+ *
+ * Registered at file scope rather than in an admin module: WooCommerce asks
+ * during init and inside WP-Cron, where the admin modules are not loaded. The
+ * option is only read when WooCommerce asks, and a "hide" that came from
+ * another plugin is never undone.
+ *
+ * @return bool
+ */
+function brikpanel_hide_wc_ads_enabled() {
+    return get_option('brikpanel_hide_wc_ads', 'yes') === 'yes';
+}
+
+/**
+ * @param bool $suppress Whether promotions are already suppressed.
+ * @return bool
+ */
+function brikpanel_suppress_wc_promotions($suppress) {
+    return $suppress || brikpanel_hide_wc_ads_enabled();
+}
+add_filter('woocommerce_marketplace_suppress_promotions', 'brikpanel_suppress_wc_promotions');
+
+/**
+ * @param bool $allow Whether suggestions are still allowed.
+ * @return bool
+ */
+function brikpanel_allow_wc_suggestions($allow) {
+    return $allow && !brikpanel_hide_wc_ads_enabled();
+}
+add_filter('woocommerce_allow_marketplace_suggestions', 'brikpanel_allow_wc_suggestions');
+
 /**
  * Render the small "hidden notices" reveal toggle plus the suppressed
  * third-party notice markup tucked inside it.
@@ -644,7 +1102,7 @@ function brikpanel_render_hidden_notices_box($notices_html, $count) {
     $chevron = '<svg class="brikpanel-fn-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg>';
 
     echo '<style>
-        /* On topbar screens the topbar owns this UI — hide the inline
+        /* On topbar screens the topbar owns this UI: hide the inline
            fallback up front so it never flashes before the script relocates
            the notices into the topbar panel. */
         body.brikpanel-has-topbar .brikpanel-foreign-notices { display: none !important; }
@@ -687,6 +1145,33 @@ function brikpanel_render_hidden_notices_box($notices_html, $count) {
     echo '<summary title="' . $title . '">' . $bell . '<span>' . esc_html($label) . '</span>' . $chevron . '</summary>';
     echo '<div class="brikpanel-fn-list">' . $notices_html . '</div>';
     echo '</details>';
+}
+
+/**
+ * Mark where a BrikPanel screen's header ends, so admin notices land under it.
+ *
+ * When an admin page is ready, WordPress core (wp-admin/js/common.js) moves every
+ * notice that is not `.inline` (`div.notice`, `div.updated`, `div.error`) to right
+ * after `.wp-header-end`. A page without that marker gets them right after its
+ * first `.wrap h1`, which on BrikPanel's screens sits inside the header row: the
+ * review request split the title row of Products, Coupons and Segments and shrank
+ * to a 109px text column on phones, and a red error squeezed into the product
+ * editor's sticky title bar (field test B5).
+ *
+ * Call it right after the screen's header block closes (title, count, subtitle and
+ * header buttons), outside any row that lays its children side by side. Once per
+ * page: with two markers jQuery clones every notice, so each one shows twice. The
+ * `hidden` attribute keeps the rule out of the layout even where no BrikPanel
+ * stylesheet loads (core gives `.wp-header-end` only visibility and a margin). The
+ * gap under the notices is set in brikpanel-navigation.css.
+ *
+ * A header built by JS must place its marker synchronously or in a plain
+ * DOMContentLoaded listener: common.js moves the notices in a jQuery ready
+ * callback, which jQuery 3 runs after both. tools/header-end-audit.php checks that
+ * every page title is followed by a marker.
+ */
+function brikpanel_header_end() {
+    echo '<hr class="wp-header-end brikpanel-header-end" hidden>';
 }
 
 // =============================================================================
@@ -734,6 +1219,9 @@ brikpanel_require('front-end/welcome/brikpanel-welcome.php');
 // HELPER FUNCTIONS
 // =============================================================================
 brikpanel_require('includes/brikpanel-helpers.php');
+// Numbers, percentages, money and dates: one rule on the server and in the
+// browser (field test E2/E9). Needs the date format helpers above.
+brikpanel_require('includes/brikpanel-format.php');
 brikpanel_require('includes/brikpanel-languages.php');
 brikpanel_require('includes/brikpanel-currency.php');
 brikpanel_require('includes/brikpanel-profit.php');
@@ -801,6 +1289,15 @@ brikpanel_require('includes/brikpanel-bot-filter.php');
 brikpanel_require('includes/brikpanel-access-control.php');
 
 // =============================================================================
+// SWITCHED-OFF SCREENS
+//
+// A BrikPanel screen whose module is off answers with a BrikPanel page that says
+// so (and links to the switch) instead of WordPress's bare 403 (field test C5).
+// Also the one place other screens ask before linking to a module's page.
+// =============================================================================
+brikpanel_require('includes/brikpanel-module-pages.php');
+
+// =============================================================================
 // THIRD-PARTY COMPATIBILITY: ASE (Admin and Site Enhancements) bridge
 // =============================================================================
 brikpanel_require('includes/brikpanel-ase-bridge.php');
@@ -817,8 +1314,9 @@ brikpanel_require('includes/brikpanel-enqueue.php');
 
 // =============================================================================
 // FOREIGN ASSET ISOLATION
-// Keep other plugins' (and the theme's) render-blocking payloads off BrikPanel's
-// own full-screen app pages, where they serve no purpose and only slow the page.
+// Keep other plugins' (and the theme's) scripts off BrikPanel's own full-screen
+// app pages, where they serve no purpose and only slow the page. Their
+// stylesheets stay: their notices and icons still show on those pages.
 // =============================================================================
 brikpanel_require('includes/brikpanel-asset-isolation.php');
 
@@ -866,21 +1364,6 @@ brikpanel_require('front-end/brikcontrol/brikpanel-brikcontrol.php');
 // =============================================================================
 brikpanel_require('front-end/search/brikpanel-search.php');
 
-// Orders list "Show in the row" choice (front-end/orders/brikpanel-orders-compact.php)
-// is a per-site user option in the shared user meta table; a deleted subsite
-// must take it along on every request type, WP-CLI included.
-add_action( 'wp_delete_site', function ( $old_site ) {
-    global $wpdb;
-    if ( ! is_object( $old_site ) || empty( $old_site->blog_id ) ) {
-        return;
-    }
-    $brikpanel_blog_prefix = $wpdb->get_blog_prefix( (int) $old_site->blog_id );
-    delete_metadata( 'user', 0, $brikpanel_blog_prefix . 'brikpanel_orders_row_columns', '', true );
-    // Order screen "Show in the sidebar" choice
-    // (front-end/order/brikpanel-order-box-placement.php), stored the same way.
-    delete_metadata( 'user', 0, $brikpanel_blog_prefix . 'brikpanel_order_side_boxes', '', true );
-} );
-
 // =============================================================================
 // GOOGLE SHEETS — must load outside is_admin so:
 //   1. Action Scheduler workers (WP-Cron / CLI context) can resolve the sync
@@ -924,6 +1407,18 @@ brikpanel_require('front-end/cart-abandonment/brikpanel-cart-abandonment.php');
 // and the settings fields self-gate to admin context inside the class.
 // =============================================================================
 brikpanel_require('front-end/cart-share/brikpanel-cart-share.php');
+
+// =============================================================================
+// PERSONAL CODE RESERVATIONS: a shopper whose payment did not finish gets
+// their own single-use discount code back when they return, instead of
+// "Usage limit for coupon … has been reached".
+//
+// Loaded outside the is_admin gate and independent of the cart abandonment
+// switch: it runs when WooCommerce loads the cart (front-end, AJAX and Store
+// API requests), and BrikMentor codes or popup codes issued earlier still
+// exist while that module is switched off.
+// =============================================================================
+brikpanel_require('includes/brikpanel-coupon-hold.php');
 
 // =============================================================================
 // STORE SUMMARY (on-demand Markdown digest, triggered from dashboard "Copy
@@ -1323,15 +1818,41 @@ function brikpanel_enable_payment_fees_default() {
 }
 
 /**
+ * Whether BrikPanel has never been set up on the current site.
+ *
+ * A missing brikpanel_db_version alone does not prove it. The stamp arrived in
+ * 2.5.0, but the legacy "Return Draft" / "Change" statuses shipped in 2.0.0, so
+ * a store that last ran 2.0.0-2.1.8 has no stamp either and may well have
+ * orders sitting in those statuses. What every one of those versions did do on
+ * activation is create the visitors table (1.5.1 through 2.1.8 had no
+ * WooCommerce guard that could skip it). A site with neither the stamp nor that
+ * table has therefore genuinely never been set up.
+ *
+ * Must be asked BEFORE brikpanel_create_table(), which creates the table. The
+ * query only runs while the stamp is missing, so once per site.
+ *
+ * @return bool
+ */
+function brikpanel_site_never_set_up() {
+    if (false !== get_option('brikpanel_db_version')) {
+        return false;
+    }
+    global $wpdb;
+    $table = $wpdb->prefix . 'brikpanel_visitors';
+    return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))) !== $table;
+}
+
+/**
  * Run the per-site bootstrap work (create tables, set defaults, stamp
  * db_version). Called from both single-site activation and the per-blog loop
  * during network activation, as well as from `wp_initialize_site` when a new
  * subsite is created on a network where BrikPanel is already active.
  */
 function brikpanel_provision_site() {
-    // A truly fresh install has no db_version stamped yet; an existing site
-    // being reactivated already does. We capture this before stamping below.
-    $is_fresh_install = ( false === get_option('brikpanel_db_version') );
+    // A truly fresh install was never set up; an existing site being
+    // reactivated was, even one from before the db_version stamp existed. We
+    // capture this before create_table() and the stamp below change the answer.
+    $is_fresh_install = brikpanel_site_never_set_up();
 
     brikpanel_create_table();
     brikpanel_enable_cogs_default();
@@ -1419,42 +1940,10 @@ function brikpanel_on_new_subsite($new_site) {
 }
 add_action('wp_initialize_site', 'brikpanel_on_new_subsite', 99);
 
-/**
- * Drop a subsite's BrikPanel tables when the subsite itself is deleted.
- * Without this, the custom tables would linger as orphans after
- * `wpmu_delete_blog` finishes, since WordPress only drops core tables and
- * those registered through the `wpmu_drop_tables` filter.
- *
- * Using the filter rather than `wp_uninitialize_site` is the documented path
- * because core hands us the in-progress drop list — by appending our table
- * names we get the same prefix-aware DROP that core uses for wp_posts etc.
- *
- * @param string[] $tables  Tables core will drop.
- * @param int      $blog_id ID of the blog being deleted.
- * @return string[]
- */
-function brikpanel_drop_subsite_tables($tables, $blog_id) {
-    global $wpdb;
-    $prefix = $wpdb->get_blog_prefix((int) $blog_id);
-    foreach ([
-        'brikpanel_visitors',
-        'brikpanel_cart_tracking',
-        'brikpanel_visited_pages',
-        'brikpanel_expenses',
-        'brikpanel_expense_skips',
-        'brikpanel_cohort_retention',
-        'brikpanel_customer_metrics',
-        'brikpanel_vendors',
-        'brikpanel_stock_orders',
-        'brikpanel_stock_order_items',
-        'brikpanel_ad_spend',
-        'brikpanel_abandoned_carts',
-    ] as $name) {
-        $tables[] = $prefix . $name;
-    }
-    return $tables;
-}
-add_filter('wpmu_drop_tables', 'brikpanel_drop_subsite_tables', 10, 2);
+// Subsite deletion (brikpanel_drop_subsite_tables() and the wp_delete_site
+// user meta cleanup) is registered near the top of this file, ahead of the
+// WooCommerce guard, so it also runs on a network whose main site has no
+// WooCommerce.
 
 /**
  * Safety net: also run the COGS default once on `plugins_loaded` so existing
@@ -1544,6 +2033,13 @@ function brikpanel_maybe_upgrade_db() {
     if ($stored === BRIKPANEL_VERSION) {
         return;
     }
+    // A site BrikPanel was never set up on arrives here instead of at
+    // activation whenever the activation hook did not run: the WooCommerce
+    // guard used to bail during activation on stores whose WooCommerce folder
+    // is not `woocommerce/`, and a network subsite can be created while the
+    // main site has no WooCommerce. Asked before create_table() below creates
+    // the table the answer depends on.
+    $never_set_up = brikpanel_site_never_set_up();
     brikpanel_create_table();
     brikpanel_backfill_native_cogs();
     brikpanel_unify_cogs_to_native();
@@ -1553,6 +2049,7 @@ function brikpanel_maybe_upgrade_db() {
     // marker inside makes running it from both call sites harmless.
     brikpanel_enable_payment_fees_default();
     brikpanel_cartab_dedupe_recovery_credit();
+    brikpanel_timezone_fix_rebuild();
     // Re-assert autoload on the write-once markers. Idempotent, and running it
     // on every version bump means a call site that drifts one back to
     // autoload=off self-corrects on the next release instead of silently
@@ -1561,6 +2058,14 @@ function brikpanel_maybe_upgrade_db() {
         brikpanel_apply_option_autoload_policy();
     }
     update_option('brikpanel_db_version', BRIKPANEL_VERSION);
+
+    // Give that site what activation would have given it: a clean status list,
+    // without the legacy "Return Draft" / "Change" pair. Same marker
+    // brikpanel_provision_site() sets, and it lands before init:4, where
+    // brikpanel_cos_migrate_legacy_statuses() reads it.
+    if ($never_set_up) {
+        update_option('brikpanel_cos_legacy_migrated', 1);
+    }
 
     // Trigger an immediate first computation of customer metrics + cohort
     // retention. Both handlers are idempotent (UPSERT keyed on unique cols),
@@ -1602,6 +2107,46 @@ add_action('plugins_loaded', 'brikpanel_cartab_repair_zeroed_rows', 7);
  *
  * Runs once, guarded by brikpanel_cartab_credit_dedupe_done.
  */
+/**
+ * One-shot cleanup for the 3.3.19 timezone correction.
+ *
+ * Two kinds of stored state describe a date and therefore have to be discarded
+ * rather than corrected in place:
+ *
+ *   brikpanel_cohort_retention is keyed on cohort_month, which now means the
+ *   STORE month rather than the UTC one. The recompute upserts, so without a
+ *   truncate the table would hold rows written under both definitions at once
+ *   and the heatmap would silently mix them. The recompute itself is already
+ *   enqueued by brikpanel_maybe_upgrade_db() right after this runs.
+ *
+ *   The dashboard and customer-analytics caches store RENDERED date strings
+ *   under keys that do not include the timezone, so without a version bump a
+ *   merchant would upgrade and still be shown the old, wrong times for hours.
+ *
+ * Nothing here touches a stored instant: every *_gmt column stays UTC. Only
+ * derived, rebuildable state is dropped.
+ */
+function brikpanel_timezone_fix_rebuild() {
+    if (get_option('brikpanel_tz_cohort_rebuild_done') === '1') {
+        return;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'brikpanel_cohort_retention';
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table) {
+        $wpdb->query("TRUNCATE TABLE {$table}"); // phpcs:ignore WordPress.DB
+    }
+
+    if (function_exists('brikpanel_bump_data_cache_ver')) {
+        brikpanel_bump_data_cache_ver();
+    }
+    if (class_exists('Brikpanel_Customer_Analytics')) {
+        Brikpanel_Customer_Analytics::bust_cache();
+    }
+
+    update_option('brikpanel_tz_cohort_rebuild_done', '1', false);
+}
+
 function brikpanel_cartab_dedupe_recovery_credit() {
     if (get_option('brikpanel_cartab_credit_dedupe_done') === '1') {
         return;
@@ -2783,6 +3328,12 @@ add_action('admin_init', 'brikpanel_fix_variable_parent_stock');
 // PLUGIN ACTION LINKS — add "Settings" next to the Deactivate link
 // =============================================================================
 add_filter('plugin_action_links_' . BRIKPANEL_BASENAME, function ($links) {
+    // Same gate as the settings tab itself and the top bar's settings link: for
+    // anyone the settings lock keeps out, this link only bounced them to
+    // WooCommerce → General.
+    if ( function_exists( 'brikpanel_user_can_open_settings' ) && ! brikpanel_user_can_open_settings() ) {
+        return $links;
+    }
     $settings_url = admin_url('admin.php?page=wc-settings&tab=brikpanel');
     $settings_link = '<a href="' . esc_url($settings_url) . '">' . esc_html__('Settings', 'brikpanel') . '</a>';
     $links[] = $settings_link;

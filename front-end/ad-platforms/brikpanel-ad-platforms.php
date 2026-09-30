@@ -284,7 +284,7 @@ function brikpanel_ads_map_settings_title( $map ) {
  * these keys while it is switched off.
  *
  * Nothing here travels. The token record holds access and refresh tokens for
- * one Google/Meta account and also names the ad account they were granted for;
+ * one Google/Meta login and also names the ad accounts selected under it;
  * everything else is sync bookkeeping. The module's on/off switch is a declared
  * settings field, so it travels through the normal walk.
  *
@@ -316,13 +316,14 @@ function brikpanel_ads_register_export_keys( $map ) {
 if ( ! brikpanel_ads_module_is_enabled() ) {
 	// On the register hook so the sweep joins Brikpanel_Cron::reconcile() and
 	// stops querying Action Scheduler on every admin request once it is clean.
+	// stand_down() also leaves a listener, so a backfill chunk queued by an
+	// admin request that raced the switch-off finishes quietly instead of
+	// failing with "no callbacks are registered".
 	add_action( 'brikpanel_cron_register', function () {
 		if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
 			return;
 		}
-		foreach ( [ 'brikpanel_ads_daily_sync', 'brikpanel_ads_backfill_chunk' ] as $hook ) {
-			Brikpanel_Cron::cancel( $hook );
-		}
+		Brikpanel_Cron::stand_down( [ 'brikpanel_ads_daily_sync', 'brikpanel_ads_backfill_chunk' ] );
 	} );
 	return;
 }

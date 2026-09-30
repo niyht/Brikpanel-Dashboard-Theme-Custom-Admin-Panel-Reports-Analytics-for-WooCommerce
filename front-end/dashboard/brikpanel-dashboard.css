@@ -7,7 +7,7 @@
     --bp-card: #ffffff;
     --bp-text: #303030;
     --bp-text-secondary: #616161;
-    --bp-text-muted: #8a8a8a;
+    --bp-text-placeholder: #8a8a8a;
     --bp-border: #e3e3e3;
     --bp-input-border: #8a8a8a;
     --bp-input-focus: #303030;
@@ -17,10 +17,10 @@
     --bp-error: #d72c0d;
 }
 
-/* Layout */
+/* Layout. Width, gutters and top spacing: the wide page shell
+   (front-end/shared/brikpanel-ui.css, `brikpanel-shell__page`). */
 .brikpanel-dashboard {
-    padding: 1.5rem 1rem 3rem;
-    max-width: 100%;
+    padding-bottom: 3rem;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     color: var(--bp-text);
     line-height: 1.5;
@@ -36,32 +36,99 @@
     overflow-x: clip;
 }
 
-/* Header */
+/* Header
+   Levels set by brikpanel-fit-row.js (the PHP lists them): one line while it
+   fits (title, Copy everything, ad platforms, Export Excel, date buttons);
+   `is-fold` puts ad platforms and Export in "More actions"; `is-two-rows`
+   gives the date buttons their own row; `is-preset-grid` makes them an even
+   3 x 2 grid; `is-stacked-main` puts the buttons under the title;
+   `is-icon-copy` shows Copy everything as its icon (last resort). The main
+   group is `display: contents` on one line. */
 .brikpanel-dash-header {
+    --bp-overflow-size: 1.875rem; /* "More actions" as tall as the buttons */
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 1rem;
+    flex-wrap: nowrap;
+    gap: 0.75rem;
     margin-bottom: 1.25rem;
 }
 
-.brikpanel-dash-header h1 {
-    font-size: 1.375rem;
-    font-weight: 600;
-    margin: 0;
-    color: var(--bp-text);
+.brikpanel-dash-header-main {
+    display: contents;
 }
 
-.brikpanel-dash-filters {
+.brikpanel-dash-header h1 {
+    font-size: var(--brikpanel-title-size, 1.125rem);
+    font-weight: var(--brikpanel-title-weight, 600);
+    line-height: var(--brikpanel-title-line, 1.3);
+    padding: 0;
+    margin: 0;
+    margin-inline-end: auto;
+    color: var(--bp-text);
+    white-space: nowrap;
+    order: 0;
+}
+
+.brikpanel-dash-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
+    gap: 0.5rem;
+    flex: none;
+    order: 1;
 }
 
 .brikpanel-dash-range-wrap {
     position: relative;
+    flex: none;
+    order: 2;
+}
+
+.brikpanel-dash-header.is-two-rows {
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
+}
+
+.brikpanel-dash-header.is-two-rows .brikpanel-dash-header-main {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+.brikpanel-dash-header.is-two-rows .brikpanel-dash-range-wrap {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+.brikpanel-dash-header.is-stacked-main .brikpanel-dash-header-main {
+    flex-wrap: wrap;
+    row-gap: 0.625rem;
+}
+
+.brikpanel-dash-header.is-stacked-main .brikpanel-dash-header-main h1 {
+    flex: 1 1 100%;
+}
+
+.brikpanel-dash-header.is-stacked-main .brikpanel-dash-actions {
+    flex: 1 1 100%;
+    justify-content: space-between;
+}
+
+.brikpanel-dash-header.is-icon-copy .brikpanel-dash-copy-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.brikpanel-dash-header.is-icon-copy .brikpanel-dash-copy-summary {
+    padding-inline: 0.5rem;
 }
 
 .brikpanel-dash-presets {
@@ -73,12 +140,13 @@
     background: var(--bp-card);
 }
 
+/* Dividers on the end side: the same rule serves right-to-left pages. */
 .brikpanel-dash-preset {
-    padding: 0.4375rem 0.875rem;
+    padding: 0.4375rem 0.75rem;
     font-size: 0.8125rem;
     font-weight: 500;
     border: none;
-    border-right: 1px solid var(--bp-border);
+    border-inline-end: 1px solid var(--bp-border);
     background: transparent;
     color: var(--bp-text-secondary);
     cursor: pointer;
@@ -87,7 +155,34 @@
 }
 
 .brikpanel-dash-preset:last-child {
-    border-right: none;
+    border-inline-end: none;
+}
+
+/* Narrow: six equal buttons in three columns, each with its own frame; a
+   wrapped segmented control lost its dividers and corners (field test C6). */
+.brikpanel-dash-header.is-preset-grid .brikpanel-dash-presets {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.375rem;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+}
+
+.brikpanel-dash-header.is-preset-grid .brikpanel-dash-preset {
+    padding: 0.5rem 0.375rem;
+    border: 1px solid var(--bp-border);
+    border-radius: 0.5rem;
+    background: var(--bp-card);
+    text-align: center;
+    white-space: normal;
+    line-height: 1.2;
+}
+
+.brikpanel-dash-header.is-preset-grid .brikpanel-dash-preset.active {
+    border-color: var(--bp-primary);
+    background: var(--bp-primary);
 }
 
 .brikpanel-dash-preset:hover {
@@ -103,7 +198,7 @@
 .brikpanel-dash-custom-range {
     position: absolute;
     top: calc(100% + 0.375rem);
-    right: 0;
+    inset-inline-end: 0;
     z-index: 100;
 }
 
@@ -149,9 +244,52 @@
 }
 
 .brikpanel-dash-card-label {
-    font-size: 0.8125rem;
-    font-weight: 550;
+    font-size: var(--brikpanel-label-size, 0.8125rem);
+    font-weight: var(--brikpanel-label-weight, 550);
+    text-transform: var(--brikpanel-caps-case, none);
+    letter-spacing: var(--brikpanel-caps-track, normal);
     color: var(--bp-text-secondary);
+}
+
+/* A card's first line: its name, "?" and "!" on the start side, its buttons
+   ("+", the breakdown chevron, ROAS refresh) on the end side, in the flow.
+   The buttons used to sit in the corner by absolute position with space held
+   back in the label for them: a translated label or the "!" ran under the "+"
+   on a phone, or the "!" dropped to a second line and made that card taller
+   than its neighbours (field test C9). The name ends in "…" only when the line
+   has no room at all. */
+.brikpanel-dash-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.brikpanel-dash-card-head > .brikpanel-dash-card-label {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.brikpanel-dash-card-label-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brikpanel-dash-card-head .brikpanel-dash-card-label > :not(.brikpanel-dash-card-label-text) {
+    flex: none;
+}
+
+.brikpanel-dash-card-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    flex: none;
+    margin-block: -0.1875rem;
+    margin-inline-end: -0.375rem;
 }
 
 .brikpanel-dash-card-value {
@@ -181,7 +319,7 @@
 }
 
 .brikpanel-dash-card-delta.neutral {
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
 }
 
 /* No-baseline period ("New"): distinct from a flat "--" but not styled as
@@ -199,6 +337,37 @@
     font-weight: 600;
 }
 
+/* Orders card: the change and the units sold share one line, so the card
+   stays as tall as its neighbours. When the card is too narrow the units
+   drop under the change instead of being cut. The dot between them sits in
+   the column gap; on a wrapped line that gap is outside the box, so
+   overflow clips the dot instead of leaving it at the start of the line. */
+.brikpanel-dash-card-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.75rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.brikpanel-dash-card-items {
+    position: relative;
+    min-width: 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.125rem;
+    color: var(--bp-text-secondary, #616161);
+    overflow-wrap: anywhere;
+}
+
+.brikpanel-dash-card-items::before {
+    content: "\00B7";
+    position: absolute;
+    inset-inline-start: -0.5rem;
+    font-weight: 700;
+}
+
 /* Compact catalog-size line under the Low Stock heading: quiet, monochrome
    reference info (products / variations / sellable items), not a headline
    metric — it sits right below the panel title without its own card. */
@@ -206,24 +375,27 @@
     margin: -0.25rem 0 0.875rem;
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     line-height: 1.4;
     cursor: default;
 }
 
 /* Net profit shown while some sold items have no cost on file: a quiet,
    monochrome "!" next to the label instead of a loud card border. It
-   reveals what to fix on hover/focus. */
+   reveals what to fix on hover, focus or a tap; the bubble is placed by
+   front-end/shared/brikpanel-tip.js (a phone's half-width card used to cut
+   it down to a sliver). */
 .brikpanel-dash-flag {
+    --bp-tip-w: 242px;
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 15px;
     height: 15px;
-    margin-left: 0.375rem;
+    margin-inline-start: 0.375rem;
     border-radius: 50%;
-    border: 1px solid var(--bp-text-muted);
+    border: 1px solid var(--bp-text-placeholder);
     color: var(--bp-text-secondary);
     cursor: help;
     vertical-align: middle;
@@ -231,7 +403,8 @@
 }
 
 .brikpanel-dash-flag:hover,
-.brikpanel-dash-flag:focus-visible {
+.brikpanel-dash-flag:focus-visible,
+.brikpanel-dash-flag.is-bp-tip-open {
     border-color: var(--bp-text);
     color: var(--bp-text);
     outline: none;
@@ -243,77 +416,27 @@
     line-height: 1;
 }
 
+/* The look only; the shared arrow takes this background and border. */
 .brikpanel-dash-flag-tip {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%) translateY(-4px);
-    width: max-content;
-    max-width: 220px;
     padding: 0.5rem 0.625rem;
     background: var(--bp-card);
     color: var(--bp-text-secondary);
     font-size: 0.75rem;
     font-weight: 500;
     line-height: 1.45;
-    text-align: left;
-    white-space: normal;
     border: 1px solid var(--bp-border);
     border-radius: 0.5rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.15s ease, transform 0.15s ease;
-    z-index: 20;
 }
 
-/* Small arrow above the tooltip pointing up at the "!" */
-.brikpanel-dash-flag-tip::after {
-    content: "";
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border: 5px solid transparent;
-    border-bottom-color: var(--bp-border);
-}
-
-.brikpanel-dash-flag:hover .brikpanel-dash-flag-tip,
-.brikpanel-dash-flag:focus-visible .brikpanel-dash-flag-tip {
-    opacity: 1;
-    visibility: visible;
-    transform: translateX(-50%) translateY(0);
-}
-
-/* "Cost missing on N items" tooltip — same anchor as the simple one but
-   wider, with a heading + scrollable list of product names so the merchant
-   can see exactly which products to fix without leaving the dashboard.
-   Width covers typical product names (incl. variant suffixes and the
-   "no longer in catalog" tag) without forcing the merchant to read an
-   ellipsis. Caps at viewport-32 so it never overflows on narrow screens. */
+/* "Cost missing on N items": wider, a heading and a scrolling list of the
+   products to fix, so the merchant sees which ones without leaving the
+   dashboard. Both widths are border-box (340 content + padding + border);
+   brikpanel-tip--interactive lets the pointer into it to scroll the list. */
 .brikpanel-dash-flag-tip-list {
-    width: 340px;
-    max-width: min(420px, calc(100vw - 32px));
+    --bp-tip-width: 366px;
+    --bp-tip-w: 446px;
     padding: 0.625rem 0.75rem;
-    /* The simple tooltip is read-only, but this one has a scrollable product
-       list, so the cursor must be able to enter it and spin the wheel. */
-    pointer-events: auto;
-}
-
-/* Invisible bridge spanning the 8px gap between the "!" and the tooltip. The
-   bridge is a descendant of the flag, so while the cursor travels down across
-   it the flag stays `:hover` and the tooltip never closes mid-trip — without
-   it the merchant loses hover in the gap and can't reach the list to scroll.
-   Only shown while the tooltip is, since the hidden tooltip has no pointer
-   events (visibility: hidden), keeping the bridge inert when not needed. */
-.brikpanel-dash-flag-tip-list::before {
-    content: "";
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    right: 0;
-    height: 10px;
 }
 
 .brikpanel-dash-flag-tip-title {
@@ -330,6 +453,7 @@
     list-style: none;
     max-height: 220px;
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .brikpanel-dash-flag-tip-item {
@@ -358,7 +482,7 @@
 
 .brikpanel-dash-flag-tip-item-meta {
     flex-shrink: 0;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-variant-numeric: tabular-nums;
 }
 
@@ -369,7 +493,7 @@
 }
 
 .brikpanel-dash-flag-tip-item-unlinked {
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-style: normal;
     font-weight: 400;
     font-size: 0.6875rem;
@@ -404,7 +528,7 @@
 }
 
 .brikpanel-dash-cards-profit .brikpanel-dash-card-delta-static {
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-weight: 500;
 }
 
@@ -430,23 +554,20 @@
     position: relative;
 }
 
-/* Icon-only affordance in the card's top-right corner. Absolutely
-   positioned so it adds NO flow height — all four cards stay identical
-   when collapsed; only expanding grows the Expenses card. */
+/* Icon-only buttons in the card's head row (.brikpanel-dash-card-tools): no
+   taller than the label line, so every card keeps the same height; only
+   expanding grows the Expenses card. */
 .brikpanel-dash-bd-toggle {
     appearance: none;
     -webkit-appearance: none;
     background: none;
     border: 0;
-    padding: 0.2rem;
-    position: absolute;
-    top: 0.7rem;
-    right: 0.7rem;
+    padding: 0.1875rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     line-height: 0;
     border-radius: 0.375rem;
     transition: color 0.15s ease, background-color 0.15s ease;
@@ -466,22 +587,18 @@
     display: none;
 }
 
-/* "+" quick add-expense button — sits just left of the breakdown chevron,
-   absolutely positioned so it adds no flow height (cards stay uniform). */
+/* "+" quick add-expense button, before the breakdown chevron in the head row. */
 .brikpanel-dash-bd-add {
     appearance: none;
     -webkit-appearance: none;
     background: none;
     border: 0;
-    padding: 0.2rem;
-    position: absolute;
-    top: 0.7rem;
-    right: 2.3rem;
+    padding: 0.1875rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     line-height: 0;
     border-radius: 0.375rem;
     transition: color 0.15s ease, background-color 0.15s ease;
@@ -542,9 +659,10 @@
 
 .brikpanel-dash-bd-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.125rem 0.75rem;
     font-size: 0.75rem;
     line-height: 1.4;
 }
@@ -571,7 +689,7 @@
 .brikpanel-dash-bd-row.is-child .brikpanel-dash-bd-k {
     position: relative;
     padding-inline-start: 1rem;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-secondary, #616161);
     font-weight: 400;
 }
 
@@ -605,7 +723,7 @@
 /* A parent name that has no expense of its own in the viewed window: a heading
    with nothing to show on the right. Muted so it never reads as a zero cost. */
 .brikpanel-dash-bd-row.is-label .brikpanel-dash-bd-k {
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-secondary, #616161);
     font-weight: 600;
 }
 
@@ -613,6 +731,7 @@
     color: var(--bp-text-secondary);
     font-weight: 550;
     min-width: 0;
+    overflow-wrap: break-word;
 }
 
 /* Remove control on a breakdown line. Always in the layout so hovering never
@@ -630,7 +749,7 @@
     border: 0;
     border-radius: 0.25rem;
     background: transparent;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-placeholder, #8a8a8a);
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
@@ -667,10 +786,13 @@
     .brikpanel-dash-bd-x { opacity: 1; }
 }
 
+/* margin-inline-start: auto keeps the amount at the end of its line, also
+   when the row wraps and it sits under the name on a line of its own. */
 .brikpanel-dash-bd-v {
     color: var(--bp-text);
     font-weight: 650;
     white-space: nowrap;
+    margin-inline-start: auto;
 }
 
 .brikpanel-dash-bd-v .woocommerce-Price-amount {
@@ -679,9 +801,9 @@
 }
 
 .brikpanel-dash-bd-pct {
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-weight: 550;
-    margin-left: 0.25rem;
+    margin-inline-start: 0.25rem;
 }
 
 /* Revenue breakdown row variants: a deduction (Returns) reads in the error
@@ -705,7 +827,7 @@
 
 .brikpanel-dash-bd-row-info .brikpanel-dash-bd-k,
 .brikpanel-dash-bd-row-info .brikpanel-dash-bd-v {
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-weight: 550;
 }
 
@@ -758,7 +880,7 @@
     border: 0;
     padding: 0.25rem;
     cursor: pointer;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-placeholder, #8a8a8a);
     line-height: 0;
     border-radius: 0.375rem;
 }
@@ -768,49 +890,31 @@
 /* An explicit display on the grid/flex rows beats the UA `[hidden]{display:none}`
    rule, so the JS `.hidden = true` (used to drop Date+Repeats for a percentage
    cost) would otherwise leave them visible. Re-assert display:none for [hidden]. */
-.brikpanel-exp-row2[hidden], .brikpanel-exp-field[hidden] { display: none; }
-.brikpanel-exp-field { display: flex; flex-direction: column; gap: 0.375rem; }
-.brikpanel-exp-field label {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--bp-text, #303030);
-}
-.brikpanel-exp-field input,
-.brikpanel-exp-field select {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 0.625rem 0.75rem;
-    font-size: 0.875rem;
-    color: var(--bp-text, #303030);
-    background: #fff;
-    border: 1px solid var(--bp-input-border, #8a8a8a);
-    border-radius: 0.5rem;
-    line-height: 1.4;
-}
+.brikpanel-exp-row2[hidden] { display: none; }
+/* Fields, labels and boxes are the shared parts in
+   front-end/shared/brikpanel-ui.css (.brikpanel-field, .brikpanel-control),
+   the same as on the Expenses page (field test D1). */
 /* One quiet line under the "Part of" picker. It carries the only thing the
    label cannot say on its own — that filing a cost under another one does not
    merge the two amounts. */
 .brikpanel-exp-hint {
     margin: 0.375rem 0 0;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-secondary, #616161);
     font-size: 0.6875rem;
     font-weight: 400;
     line-height: 1.4;
 }
 .brikpanel-exp-optional {
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-secondary, #616161);
     font-size: 0.6875rem;
     font-weight: 400;
-}
-.brikpanel-exp-field input:focus,
-.brikpanel-exp-field select:focus {
-    outline: none;
-    border-color: var(--bp-input-focus, #303030);
-    box-shadow: 0 0 0 1px var(--bp-input-focus, #303030);
 }
 .brikpanel-exp-input-group {
     display: flex;
     align-items: stretch;
+    box-sizing: border-box;
+    height: var(--brikpanel-control-h, 2.5rem);
+    background: #fff;
     border: 1px solid var(--bp-input-border, #8a8a8a);
     border-radius: 0.5rem;
     overflow: hidden;
@@ -838,6 +942,14 @@
     box-shadow: none !important;
     flex: 1;
     min-width: 0;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--bp-text, #303030);
+    background: transparent;
 }
 .brikpanel-exp-recurring-hint {
     margin: 0;
@@ -1052,8 +1164,8 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-panel h2 {
-    font-size: 0.875rem;
-    font-weight: 600;
+    font-size: var(--brikpanel-card-title-size, 0.9375rem);
+    font-weight: var(--brikpanel-card-title-weight, 600);
     color: var(--bp-text);
     margin: 0 0 1rem;
     padding: 0;
@@ -1101,6 +1213,11 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     font-weight: 600;
 }
 
+/* Hidden once the server refuses the Live request: the count is not known. */
+.brikpanel-dash-live-count[hidden] {
+    display: none;
+}
+
 .brikpanel-dash-live-list {
     flex: 1;
     overflow-y: auto;
@@ -1133,7 +1250,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     justify-content: center;
     width: 16px;
     height: 16px;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-secondary, #616161);
 }
 
 .brikpanel-dash-live-device svg {
@@ -1161,18 +1278,59 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 
 .brikpanel-dash-live-ip {
     font-size: 0.6875rem;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-family: monospace;
     margin-left: 0.375rem;
     font-weight: 400;
 }
 
+/* The page name and the source line carry dir="auto", so each is cut at the
+   end of its own text. match-parent keeps them on the screen's side: an
+   English name on a right-to-left screen still sits on the right. Chrome only
+   knows the -webkit- spelling, so both are written. */
 .brikpanel-dash-live-page {
     color: var(--bp-text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.75rem;
+    text-align: -webkit-match-parent; /* Chrome, Safari */
+    text-align: match-parent;
+}
+
+/* Where the visitor came from, under the page: the channel as a small pill
+   (same look as the Traffic Sources list), then the source, campaign and
+   search term, cut with an ellipsis when long. The full details are in the
+   hover card. */
+.brikpanel-dash-live-src {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: 0;
+    margin-top: 0.125rem;
+    font-size: 0.6875rem;
+    color: var(--bp-text-secondary, #616161);
+}
+
+.brikpanel-dash-live-src-ch {
+    flex: none;
+    font-weight: 550;
+    line-height: 1.125rem;
+    color: var(--bp-text-secondary);
+    background: var(--bp-bg, #f1f1f1);
+    border: 1px solid var(--bp-border, #e3e3e3);
+    border-radius: 999px;
+    padding: 0 0.4375rem;
+    white-space: nowrap;
+}
+
+.brikpanel-dash-live-src-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: -webkit-match-parent; /* Chrome, Safari */
+    text-align: match-parent;
 }
 
 .brikpanel-dash-live-badge {
@@ -1187,7 +1345,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 
 .brikpanel-dash-live-badge.browsing {
     background: #f1f1f1;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
 }
 
 .brikpanel-dash-live-badge.added-to-cart {
@@ -1227,14 +1385,14 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-table th {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--bp-text-muted);
+    font-size: var(--brikpanel-th-size, 0.75rem);
+    font-weight: var(--brikpanel-th-weight, 600);
+    color: #616161;
     text-align: left;
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--bp-border);
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
+    text-transform: var(--brikpanel-caps-case, none);
+    letter-spacing: var(--brikpanel-caps-track, normal);
 }
 
 .brikpanel-dash-table th:last-child {
@@ -1277,26 +1435,58 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-table .rank {
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-weight: 550;
     width: 2rem;
 }
 
-/* Order status badges */
+/* Order status badges. The text is WooCommerce's own status name; only a
+   status it does not list falls back to the short name, capitalized. A badge
+   never breaks (translated names such as "На удержании" are long); a table
+   that cannot fit then turns into cards. */
 .brikpanel-dash-status {
     display: inline-block;
     padding: 0.125rem 0.5rem;
     border-radius: 1rem;
     font-size: 0.6875rem;
     font-weight: 550;
+    white-space: nowrap;
+}
+
+.brikpanel-dash-status--slug {
     text-transform: capitalize;
+}
+
+/* Recent Orders: the order's date under its number. */
+.brikpanel-dash-order-date {
+    display: block;
+    margin-top: 0.125rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--bp-text-secondary);
 }
 
 .brikpanel-dash-total-base {
     margin-top: 0.125rem;
     font-size: 0.6875rem;
-    color: #8a8a8a;
+    color: var(--bp-text-secondary, #616161);
     white-space: nowrap;
+}
+
+/* Recent Orders: units on the order, under its total (same weight as the
+   date under the number). */
+.brikpanel-dash-order-items {
+    display: block;
+    margin-top: 0.125rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--bp-text-secondary);
+    white-space: nowrap;
+}
+
+/* The same count beside the customer: only the two-line rows below show it. */
+.brikpanel-dash-order-who-items {
+    display: none;
 }
 
 .brikpanel-dash-status.completed,
@@ -1343,7 +1533,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     border: 1px solid var(--bp-border);
     border-radius: 0.375rem;
     background: transparent;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     cursor: pointer;
     transition: all 0.15s ease;
 }
@@ -1353,15 +1543,24 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     color: var(--bp-text);
 }
 
+/* The globe's box. One rule (it used to be written twice, the later copy's
+   450px floor winning over the 320px height); the phone floor further down
+   now applies. With no order to place the box is hidden and the line after
+   it says why (field test F3). */
 .brikpanel-dash-globe-wrap {
     position: relative;
     height: 320px;
+    min-height: 450px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 0.5rem;
     overflow: hidden;
     transition: background 0.3s ease;
+}
+
+.brikpanel-dash-globe-wrap[hidden] {
+    display: none;
 }
 
 .brikpanel-dash-globe-wrap canvas {
@@ -1407,6 +1606,12 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     margin-top: 1.25rem !important;
 }
 
+/* No country means no city: the script hides this title with the table.
+   WordPress gives every admin h2 display: block, which beats [hidden]. */
+.brikpanel-dash-locations-h2[hidden] {
+    display: none;
+}
+
 /* Order source badges */
 .brikpanel-dash-source {
     display: inline-block;
@@ -1418,13 +1623,313 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     white-space: nowrap;
 }
 
-/* Empty state */
+/* Empty state. Full width also inside a flex row or a grid, or the text
+   shrinks to its own width and sits at the start of the card however it is
+   aligned (field test D7: the RFM card). */
 .brikpanel-dash-empty {
+    box-sizing: border-box;
+    width: 100%;
+    grid-column: 1 / -1;
     text-align: center;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-size: 0.8125rem;
     padding: 2rem 0;
     margin: 0;
+}
+
+/* Low stock with nothing low: "12 products are out of stock", linking to
+   exactly those products (field test E3). Also the "Show last 30 days"
+   button of a quiet window (field test F1), drawn as the same link. */
+.brikpanel-dash-empty .brikpanel-dash-empty-link {
+    display: inline-block;
+    margin-top: 0.375rem;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: var(--bp-text);
+    font-weight: 550;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+
+.brikpanel-dash-empty .brikpanel-dash-empty-link:hover {
+    color: var(--bp-text);
+    text-decoration-thickness: 2px;
+}
+
+.brikpanel-dash-empty .brikpanel-dash-empty-link:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+/* "3 orders were placed from administrator accounts": its own line under
+   the reason. */
+.brikpanel-dash-empty .brikpanel-dash-empty-note {
+    display: block;
+    margin-top: 0.25rem;
+}
+
+/* ===== New store guide (field test F1) =====
+   "Your store is ready for its first order": above the cards while the store
+   has never had a real order. A checklist in the panel's own card style;
+   open steps are rows that lead to the screen (dashed circle, arrow), done
+   steps are ticked and quiet. */
+.brikpanel-dash-guide {
+    margin-bottom: 1.25rem;
+    padding: 1.25rem 1.5rem;
+    background: var(--bp-card);
+    border: 1px solid var(--bp-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.brikpanel-dash-guide__head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.brikpanel-dash-guide__intro {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.brikpanel-dash-guide__title {
+    margin: 0;
+    padding: 0;
+    font-size: var(--brikpanel-card-title-size, 0.9375rem);
+    font-weight: var(--brikpanel-card-title-weight, 600);
+    line-height: 1.4;
+    color: var(--bp-text);
+}
+
+.brikpanel-dash-guide__lead {
+    margin: 0.25rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--bp-text-secondary);
+}
+
+.brikpanel-dash-guide__close {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    margin-block-start: -0.375rem;
+    margin-inline-end: -0.5rem;
+    padding: 0;
+    color: var(--bp-text-secondary);
+    background: none;
+    border: 0;
+    border-radius: 0.5rem;
+    cursor: pointer;
+}
+
+.brikpanel-dash-guide__close:hover {
+    color: var(--bp-text);
+    background: #f1f1f1;
+}
+
+.brikpanel-dash-guide__close:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+.brikpanel-dash-guide__close:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: 0;
+}
+
+.brikpanel-dash-guide__steps {
+    margin: 1rem 0 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--bp-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.brikpanel-dash-guide__step {
+    margin: 0;
+    padding: 0;
+}
+
+.brikpanel-dash-guide__step + .brikpanel-dash-guide__step {
+    border-top: 1px solid var(--bp-border);
+}
+
+/* The row itself: a link, a button (Add expense) or, once done, plain text. */
+.brikpanel-dash-guide__item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 550;
+    line-height: 1.4;
+    text-align: start;
+    color: var(--bp-text);
+    text-decoration: none;
+    background: none;
+    border: 0;
+    border-radius: 0;
+}
+
+a.brikpanel-dash-guide__item,
+button.brikpanel-dash-guide__item {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+a.brikpanel-dash-guide__item:hover,
+button.brikpanel-dash-guide__item:hover {
+    color: var(--bp-text);
+    background: #f7f7f7;
+}
+
+a.brikpanel-dash-guide__item:focus,
+button.brikpanel-dash-guide__item:focus {
+    color: var(--bp-text);
+    outline: none;
+    box-shadow: none;
+}
+
+a.brikpanel-dash-guide__item:focus-visible,
+button.brikpanel-dash-guide__item:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: -2px;
+}
+
+.brikpanel-dash-guide__mark {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 1.25rem;
+    height: 1.25rem;
+    color: #fff;
+    border: 1.5px dashed var(--bp-input-border);
+    border-radius: 50%;
+}
+
+.brikpanel-dash-guide__step.is-done .brikpanel-dash-guide__mark {
+    background: var(--bp-text);
+    border: 1.5px solid var(--bp-text);
+}
+
+.brikpanel-dash-guide__mark svg {
+    display: block;
+}
+
+.brikpanel-dash-guide__label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.brikpanel-dash-guide__step.is-done .brikpanel-dash-guide__item {
+    font-weight: 400;
+    color: var(--bp-text-secondary);
+}
+
+.brikpanel-dash-guide__chev {
+    flex: 0 0 auto;
+    color: var(--bp-text-secondary);
+}
+
+/* The arrow points the way the text reads. */
+.rtl .brikpanel-dash-guide__chev,
+.rtl .brikpanel-dash-guide__demo svg {
+    transform: scaleX(-1);
+}
+
+.brikpanel-dash-guide__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    margin-top: 1rem;
+}
+
+.brikpanel-dash-guide__note {
+    flex: 1 1 22rem;
+    min-width: 0;
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--bp-text-secondary);
+}
+
+/* Only administrators' test orders so far: say how many. */
+.brikpanel-dash-guide__admin {
+    display: block;
+    margin-top: 0.25rem;
+    font-weight: 550;
+    color: var(--bp-text);
+}
+
+.brikpanel-dash-guide__demo,
+.brikpanel-dash-guide__demo:visited {
+    flex: 0 1 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: 0;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    line-height: 1.4;
+    color: var(--bp-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.brikpanel-dash-guide__demo:hover,
+.brikpanel-dash-guide__demo:focus {
+    color: var(--bp-text);
+    text-decoration-thickness: 2px;
+    box-shadow: none;
+    outline: none;
+}
+
+.brikpanel-dash-guide__demo:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+.brikpanel-dash-guide__demo svg {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+    .brikpanel-dash-guide {
+        padding: 1rem 1.125rem;
+    }
+
+    .brikpanel-dash-guide__item {
+        padding: 0.75rem 0.875rem;
+    }
+}
+
+/* Customer segments (RFM): the donut beside its legend. */
+.brikpanel-dash-rfm {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
 }
 
 /* Loading skeleton */
@@ -1502,9 +2007,9 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     margin: 0 0 0.5rem;
     font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--bp-text-muted, #8a8a8a);
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--bp-text-secondary, #616161);
 }
 
 .brikpanel-referrer-list {
@@ -1581,7 +2086,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-badge-ok      { color: var(--bp-success, #1a8917); }
-.brikpanel-dash-badge-warning  { color: #d07000; }
+.brikpanel-dash-badge-warning  { color: #a35200; } /* 5.6:1 on the card; #d07000 read at 3.5:1 */
 .brikpanel-dash-badge-danger   { color: var(--bp-error, #d72c0d); }
 
 /* ===== Customer LTV widget (replaces Returns & Refunds panel) ===== */
@@ -1665,6 +2170,14 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     margin: 0;
 }
 
+/* Order Rates head: units sold, quiet, beside the title. */
+.brikpanel-dash-rates-items {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--bp-text-secondary, #616161);
+    white-space: nowrap;
+}
+
 /* ===== Subscriptions widget ===== */
 .brikpanel-subs-total {
     display: flex;
@@ -1706,7 +2219,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 
 .brikpanel-subs-card-icon {
     font-size: 0.75rem;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-placeholder, #8a8a8a);
     line-height: 1;
     margin-bottom: 0.125rem;
 }
@@ -1726,7 +2239,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 
 .brikpanel-subs-card-pct {
     font-size: 0.75rem;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-secondary, #616161);
     margin-top: 0.125rem;
 }
 
@@ -1761,97 +2274,24 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
         grid-template-columns: repeat(2, 1fr);
     }
 
-    /* Drop the filter bar onto its own full-width row beneath the title so the
-       controls have room to breathe instead of fighting the heading for space. */
-    .brikpanel-dash-filters {
-        flex: 1 1 100%;
-        width: 100%;
-    }
-
-    .brikpanel-dash-range-wrap {
-        flex: 1 1 100%;
-        width: 100%;
-    }
-
-    /* The joined segmented control turns ragged the moment it wraps (stray
-       internal dividers, a chopped border-radius). Below tablet width, recast
-       the presets as individual rounded pills that wrap cleanly and stretch to
-       fill each row. */
-    .brikpanel-dash-presets {
+    /* Without the fit helper (a caching plugin dropped it) the header
+       wraps: title, buttons, then the date buttons on their own row. */
+    .brikpanel-dash-header:not([data-bp-fit-level]) {
         flex-wrap: wrap;
-        gap: 0.375rem;
-        border: 0;
-        background: transparent;
-        border-radius: 0;
-        overflow: visible;
     }
 
-    .brikpanel-dash-preset {
-        flex: 1 1 auto;
-        justify-content: center;
-        text-align: center;
-        border: 1px solid var(--bp-border);
-        border-radius: 0.5rem;
-        background: var(--bp-card);
+    .brikpanel-dash-header:not([data-bp-fit-level]) .brikpanel-dash-range-wrap {
+        flex: 1 1 100%;
     }
 
-    .brikpanel-dash-preset.active {
-        border-color: var(--bp-primary);
-    }
-}
-
-/* WordPress' mobile #wpcontent padding is 10px-left / 0-right (it kicks in
-   at 782px, where the admin menu collapses), which shoves the whole dashboard
-   off-centre on BOTH tablet and phone. Zero it and let the wrapper's own
-   symmetric padding be the gutter. */
-@media (max-width: 782px) {
-    body.admin_page_brikpanel-dashboard #wpcontent {
-        padding-left: 0 !important;
+    .brikpanel-dash-header:not([data-bp-fit-level]) .brikpanel-dash-presets {
+        flex-wrap: wrap;
     }
 }
 
 @media (max-width: 600px) {
     .brikpanel-dashboard {
-        padding: 1rem;
-    }
-
-    /* Keep help tooltips inside the viewport on phones: a fixed 300px tip is
-       almost the full screen width and, once flipped, could clip against the
-       dashboard's clip box. Cap it to the viewport minus a small gutter so the
-       whole tip stays readable whichever way it opens. */
-    /* `.brikpanel-dashboard` prefix lifts specificity above the base tooltip
-       rule, which sits later in the file and would otherwise win the tie. */
-    .brikpanel-dashboard .brikpanel-dash-hint-tip,
-    .brikpanel-dashboard .brikpanel-dash-copy-help-tip {
-        max-width: min(270px, calc(100vw - 32px));
-    }
-
-    .brikpanel-dash-header {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.75rem;
-    }
-
-    /* Stack the action buttons full-width so each is a comfortable tap target
-       instead of three controls crammed onto one squeezed row. */
-    .brikpanel-dash-filters {
-        gap: 0.5rem;
-    }
-
-    .brikpanel-dash-copy-wrap {
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .brikpanel-dash-copy-summary {
-        flex: 1 1 auto;
-        justify-content: center;
-    }
-
-    .brikpanel-dash-ads-cta {
-        flex: 1 1 auto;
-        margin-left: 0;
-        justify-content: center;
+        padding-bottom: 1rem;
     }
 
     /* Keep KPI cards two-up on phones — a single column wastes half the
@@ -1895,9 +2335,14 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     }
     .brikpanel-dash-table-wrap::-webkit-scrollbar { height: 6px; }
     .brikpanel-dash-table-wrap::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
-    /* Keep cells from wrapping awkwardly so the table reads cleanly when scrolled. */
-    .brikpanel-dash-table th,
-    .brikpanel-dash-table td { white-space: nowrap; }
+    /* Only short values stay on one line; names wrap at spaces (CLAUDE.md
+       table rule). Making every cell nowrap pushed the right-hand totals out
+       of the box; a table that still cannot fit turns into cards (field test
+       B6, brikpanel-fit-table.js). */
+    .brikpanel-dash-table td.rank,
+    .brikpanel-dash-table td:last-child,
+    .brikpanel-dash-table .brikpanel-dash-status,
+    .brikpanel-dash-table .brikpanel-dash-source { white-space: nowrap; }
 
     .brikpanel-dash-globe-wrap {
         min-height: 300px;
@@ -1909,18 +2354,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     display: none;
 }
 
-/* ===== Globe Container ===== */
-.brikpanel-dash-globe-wrap {
-    min-height: 450px;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.brikpanel-dash-globe-wrap canvas {
-    display: block;
-}
+/* Globe container: .brikpanel-dash-globe-wrap above (one rule). */
 
 /* Static globe fallback for slow WebGL devices */
 .brikpanel-globe-static-wrap {
@@ -2052,7 +2486,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 
 .country-meta {
     font-size: 0.6875rem;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
 }
 
 /* =============================================================================
@@ -2268,7 +2702,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.3;
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     margin-top: 0.125rem;
     letter-spacing: 0.005em;
 }
@@ -2278,7 +2712,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-card-delta-static {
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
     font-weight: 500;
 }
 
@@ -2370,11 +2804,11 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-mp-stats span {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 500;
-    color: var(--bp-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
+    color: var(--bp-text-secondary, #616161);
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 .brikpanel-dash-mp-stats strong {
@@ -2397,7 +2831,7 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-mp-delta.neutral {
-    color: var(--bp-text-muted);
+    color: var(--bp-text-secondary, #616161);
 }
 
 .brikpanel-dash-mp-cats {
@@ -2459,15 +2893,19 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     appearance: none;
 }
 
-/* Help icon — sits next to the Copy everything button */
+/* Help icon — sits next to the Copy everything button. Its bubble is placed
+   by front-end/shared/brikpanel-tip.js (field report 2026-09-26: on a phone
+   the header levels moved the icon to the left edge and the bubble, pinned to
+   the icon's right edge, opened off the screen). */
 .brikpanel-dash-copy-help {
+    --bp-tip-w: 304px;
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 18px;
     height: 18px;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-secondary, #616161);
     border-radius: 50%;
     cursor: help;
     transition: color 0.15s ease, background 0.15s ease;
@@ -2475,7 +2913,8 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-copy-help:hover,
-.brikpanel-dash-copy-help:focus-visible {
+.brikpanel-dash-copy-help:focus-visible,
+.brikpanel-dash-copy-help.is-bp-tip-open {
     color: var(--bp-text, #303030);
     background: rgba(48,48,48,0.08);
 }
@@ -2489,49 +2928,19 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     pointer-events: none;
 }
 
-.brikpanel-dash-copy-help-tip {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%) translateY(-4px);
-    z-index: 100;
-    display: block;
-    width: max-content;
-    max-width: 280px;
+/* "?" bubbles (Copy everything and the hints). Where and when they open:
+   front-end/shared/brikpanel-tip.js; the widest they get comes from the
+   trigger (--bp-tip-w). */
+.brikpanel-dash-copy-help-tip,
+.brikpanel-dash-hint-tip {
     padding: 0.625rem 0.75rem;
     background: #303030;
     color: #fff;
     border-radius: 0.5rem;
     box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12);
     font-size: 0.75rem;
+    font-weight: 400;
     line-height: 1.45;
-    text-align: left;
-    white-space: normal;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
-}
-
-/* Arrow */
-.brikpanel-dash-copy-help-tip::before {
-    content: '';
-    position: absolute;
-    top: -4px;
-    left: 50%;
-    transform: translateX(-50%) rotate(45deg);
-    width: 8px;
-    height: 8px;
-    background: #303030;
-    border-radius: 1px;
-}
-
-.brikpanel-dash-copy-help:hover .brikpanel-dash-copy-help-tip,
-.brikpanel-dash-copy-help:focus-visible .brikpanel-dash-copy-help-tip,
-.brikpanel-dash-copy-help:focus-within .brikpanel-dash-copy-help-tip {
-    opacity: 1;
-    visibility: visible;
-    transform: translateX(-50%) translateY(0);
 }
 
 .brikpanel-dash-copy-help-title {
@@ -2547,38 +2956,21 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     color: rgba(255,255,255,0.85);
 }
 
-/* When the wrapper is near the right edge of the viewport on smaller screens,
-   anchor the tooltip to the right so it doesn't get clipped. */
-@media (max-width: 900px) {
-    .brikpanel-dash-copy-help-tip {
-        left: auto;
-        right: -4px;
-        transform: translateY(-4px);
-    }
-    .brikpanel-dash-copy-help-tip::before {
-        left: auto;
-        right: 8px;
-        transform: rotate(45deg);
-    }
-    .brikpanel-dash-copy-help:hover .brikpanel-dash-copy-help-tip,
-    .brikpanel-dash-copy-help:focus-visible .brikpanel-dash-copy-help-tip,
-    .brikpanel-dash-copy-help:focus-within .brikpanel-dash-copy-help-tip {
-        transform: translateY(0);
-    }
-}
-
 /* Generic inline help hint — a small "?" with a dark tooltip, reused next to
-   metric labels and panel headings to explain where a figure comes from. */
+   metric labels and panel headings to explain where a figure comes from. The
+   bubble hangs from the icon's start edge (data-bp-tip="start") or, for the
+   last card in a row, its end edge; brikpanel-tip.js keeps it on screen. */
 .brikpanel-dash-hint {
+    --bp-tip-w: 324px;
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 16px;
     height: 16px;
-    margin-left: 0.25rem;
+    margin-inline-start: 0.25rem;
     vertical-align: middle;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-secondary, #616161);
     border-radius: 50%;
     cursor: help;
     transition: color 0.15s ease, background 0.15s ease;
@@ -2586,7 +2978,8 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 }
 
 .brikpanel-dash-hint:hover,
-.brikpanel-dash-hint:focus-visible {
+.brikpanel-dash-hint:focus-visible,
+.brikpanel-dash-hint.is-bp-tip-open {
     color: var(--bp-text, #303030);
     background: rgba(48,48,48,0.08);
 }
@@ -2598,66 +2991,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 .brikpanel-dash-hint-icon {
     display: block;
     pointer-events: none;
-}
-
-/* Opens rightward from the icon by default. The icon sits to the left of (or
-   centred in) almost every label, so opening right keeps the box on screen.
-   The --end modifier flips it for the right-most card (Conversion rate). */
-.brikpanel-dash-hint-tip {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: -8px;
-    right: auto;
-    transform: translateY(-4px);
-    z-index: 100;
-    display: block;
-    width: max-content;
-    max-width: 300px;
-    padding: 0.625rem 0.75rem;
-    background: #303030;
-    color: #fff;
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12);
-    font-size: 0.75rem;
-    font-weight: 400;
-    line-height: 1.45;
-    text-align: left;
-    white-space: normal;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
-}
-
-.brikpanel-dash-hint-tip::before {
-    content: '';
-    position: absolute;
-    top: -4px;
-    left: 12px;
-    right: auto;
-    transform: rotate(45deg);
-    width: 8px;
-    height: 8px;
-    background: #303030;
-    border-radius: 1px;
-}
-
-.brikpanel-dash-hint--end .brikpanel-dash-hint-tip {
-    left: auto;
-    right: -8px;
-}
-
-.brikpanel-dash-hint--end .brikpanel-dash-hint-tip::before {
-    left: auto;
-    right: 12px;
-}
-
-.brikpanel-dash-hint:hover .brikpanel-dash-hint-tip,
-.brikpanel-dash-hint:focus-visible .brikpanel-dash-hint-tip,
-.brikpanel-dash-hint:focus-within .brikpanel-dash-hint-tip {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
 }
 
 .brikpanel-dash-hint-title {
@@ -2790,17 +3123,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     display: none;
 }
 
-@media (max-width: 600px) {
-    .brikpanel-dash-copy-wrap {
-        order: -1;
-        flex: 1 1 100%;
-        justify-content: center;
-    }
-    .brikpanel-dash-copy-summary {
-        flex: 1 1 auto;
-        justify-content: center;
-    }
-}
 
 /* =========================================================================
    EXPORT CSV BUTTON  (secondary style — mirrors the design system)
@@ -2849,6 +3171,43 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     color: var(--bp-text-secondary, #616161);
 }
 
+/* The ad platforms link beside Export: the same secondary button. Its style
+   used to be printed inline by the ads module, where a margin-left beat the
+   phone rules and pushed it out of line (field test C6). */
+.brikpanel-dash-ads-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    line-height: 1;
+    color: var(--bp-text, #303030);
+    background: var(--bp-card, #fff);
+    border-radius: 0.5rem;
+    box-shadow: inset 0 0 0 1px var(--bp-border, #e3e3e3), 0 1px 0 rgba(0,0,0,0.05);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 0.15s ease;
+}
+
+.brikpanel-dash-ads-cta:hover,
+.brikpanel-dash-ads-cta:focus {
+    background: #f7f7f7;
+    color: var(--bp-text, #303030);
+}
+
+.brikpanel-dash-ads-cta:focus-visible {
+    outline: 2px solid var(--bp-primary, #303030);
+    outline-offset: 1px;
+    box-shadow: inset 0 0 0 1px var(--bp-border, #e3e3e3);
+}
+
+.brikpanel-dash-ads-cta-icon {
+    display: inline-flex;
+    color: var(--bp-text-secondary, #616161);
+}
+
 /* =========================================================================
    PERIOD SUBTITLE  (which dates / how long the report covers)
    ========================================================================= */
@@ -2865,12 +3224,160 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
 .brikpanel-dash-period-icon {
     display: inline-flex;
     align-items: center;
-    color: var(--bp-text-muted, #8a8a8a);
+    color: var(--bp-text-placeholder, #8a8a8a);
 }
 
-@media (max-width: 600px) {
-    .brikpanel-dash-export {
-        flex: 1 1 auto;
-        justify-content: center;
-    }
+
+/* Stacked dashboard tables (field test B6; brikpanel-fit-table.css draws the
+   card). Narrower tiles than the default keep two per line in a phone-width
+   widget. The cards keep the ranking order, so the rank column can go. */
+.brikpanel-dash-table.is-stacked {
+    --bp-fit-tile: 7rem;
+}
+
+.brikpanel-dash-table.is-stacked td.rank {
+    display: none;
+}
+
+/* A stacked row is one card: the hover and focus fill cover the whole row.
+   The table rule above paints each cell (0,3,2), which left grey patches with
+   white gaps between the tiles. */
+.brikpanel-dash-table.is-stacked tr.brikpanel-dash-row-link:hover,
+.brikpanel-dash-table.is-stacked tr.brikpanel-dash-row-link:focus-visible {
+    background-color: #f7f7f7;
+}
+
+.brikpanel-dash-table.is-stacked tr.brikpanel-dash-row-link:hover td,
+.brikpanel-dash-table.is-stacked tr.brikpanel-dash-row-link:focus-visible td {
+    background-color: transparent;
+}
+
+/* Recent Orders on a phone or in a half-width card: two lines per order, the
+   way Shopify lists orders on a phone (user choice, 2026-09-26). Five orders
+   went from 947px of labelled tiles to about 350px.
+     line 1: #number  date ............................ total
+     line 2: customer · 3 items .......... [source] [status]
+   The labels go (the layout says what each value is). Source keeps the
+   phone rule above that hides it at 600px and below. A wrapping flex row,
+   not a grid: each line shares its width only with its own cells, so a long
+   status name never squeezes the order number. RTL mirrors by itself. */
+#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr:not([hidden]) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0;
+    padding: 0.75rem 0.25rem;
+}
+
+/* Ends line 1 whatever its width. */
+#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr:not([hidden])::after {
+    content: "";
+    order: 3;
+    flex-basis: 100%;
+}
+
+#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td[data-bp-label]::before {
+    display: none;
+}
+
+/* The number is never cut: with no room the date drops under it, and a
+   number wider than the whole line breaks as a last resort. Line 1 lines up
+   on the first baseline, so a "≈ base currency" line under the total hangs
+   below instead of pushing the number down. */
+#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td.brikpanel-fit-lead {
+    order: 1;
+    flex: 1 1 0;
+    align-self: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.375rem;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+
+#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-date {
+    display: inline;
+    margin: 0;
+    white-space: nowrap;
+}
+
+#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td.brikpanel-fit-headline {
+    order: 2;
+    flex: none;
+    align-self: baseline;
+    padding-inline-start: 0.75rem;
+    text-align: end;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-items {
+    display: none;
+}
+
+/* The name shortens with "…", the item count after it stays whole. The
+   6rem start width keeps the name readable: when it and the badges do not
+   fit, the status moves to a line of its own. (A zero start width would also
+   fit beside the line break above and sit there with no width at all.) */
+#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td.brikpanel-dash-order-who {
+    order: 4;
+    flex: 1 1 6rem;
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+    margin-top: 0.25rem;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    font-size: 0.75rem;
+    color: var(--bp-text-secondary);
+}
+
+#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-who-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-who-items {
+    display: inline;
+    flex: none;
+}
+
+#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-who-items::before {
+    content: "\00B7";
+    margin-inline: 0.3125rem;
+}
+
+/* A long source name ("Referral: news.example.com") shortens with "…"; the
+   badge's title holds the whole name. */
+#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td:nth-child(3) {
+    order: 5;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 8rem;
+    margin-top: 0.25rem;
+    margin-inline-start: 0.5rem;
+}
+
+/* The status gives way last: a very long name shortens with "…". */
+#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td:nth-child(4) {
+    order: 6;
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-top: 0.25rem;
+    margin-inline-start: 0.5rem;
+}
+
+#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-status,
+#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-source {
+    display: inline-block;
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    vertical-align: middle;
 }

@@ -56,7 +56,7 @@ class Brikpanel_Sheets_Reports_Sync {
 		Brikpanel_Cron::register_handler(
 			self::HOOK,
 			[ $this, 'handle' ],
-			static function () { return [ 'label' => __( 'Sheets — reports snapshot', 'brikpanel' ) ]; }
+			static function () { return [ 'label' => __( 'Sheets: reports snapshot', 'brikpanel' ) ]; }
 		);
 		if ( self::is_enabled() ) {
 			Brikpanel_Cron::schedule_recurring( self::HOOK, self::interval_seconds(), [] );
@@ -188,8 +188,9 @@ class Brikpanel_Sheets_Reports_Sync {
 				if ( $seconds === null ) {
 					$visitors = (int) brikpanel_get_visitor_count();
 				} else {
-					$start_date = gmdate( 'Y-m-d', time() - $seconds );
-					$end_date   = gmdate( 'Y-m-d' );
+					// brikpanel_visitors.date_column holds SITE-LOCAL days.
+					$start_date = brikpanel_store_date( 'Y-m-d', '-' . (int) round( $seconds / DAY_IN_SECONDS ) . ' days' );
+					$end_date   = brikpanel_store_date( 'Y-m-d' );
 					$visitors   = (int) brikpanel_get_visitor_count( $start_date, $end_date );
 				}
 			}
@@ -313,16 +314,19 @@ class Brikpanel_Sheets_Reports_Sync {
 		$status_in = "'" . implode( "','", array_map( 'esc_sql', $statuses ) ) . "'";
 
 		for ( $i = $days - 1; $i >= 0; $i-- ) {
-			$date     = gmdate( 'Y-m-d', time() - ( $i * DAY_IN_SECONDS ) );
-			$day_lo   = $date . ' 00:00:00';
-			$day_hi   = $date . ' 23:59:59';
+			// One row per STORE day. gmdate() bucketed by the UTC day while the row
+			// was labelled with the store's date, so the merchant's own spreadsheet
+			// carried revenue attributed to the wrong day.
+			$date     = brikpanel_store_date( 'Y-m-d', '-' . $i . ' days' );
+			$day_lo   = brikpanel_local_day_start_utc( $date );
+			$day_hi   = brikpanel_local_day_end_utc( $date );
 
 			if ( $is_hpos ) {
 				$sql = $wpdb->prepare(
 					"SELECT COALESCE(SUM(total_amount),0) AS rev, COUNT(*) AS cnt
 					 FROM {$wpdb->prefix}wc_orders
 					 WHERE type='shop_order' AND status IN ({$status_in})
-					   AND date_created_gmt BETWEEN %s AND %s",
+					   AND date_created_gmt >= %s AND date_created_gmt < %s",
 					$day_lo, $day_hi
 				);
 			} else {
@@ -331,7 +335,7 @@ class Brikpanel_Sheets_Reports_Sync {
 					 FROM {$wpdb->posts} p
 					 LEFT JOIN {$wpdb->postmeta} meta_total ON meta_total.post_id = p.ID AND meta_total.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'meta_total' ) . "
 					 WHERE p.post_type='shop_order' AND p.post_status IN ({$status_in})
-					   AND p.post_date_gmt BETWEEN %s AND %s",
+					   AND p.post_date_gmt >= %s AND p.post_date_gmt < %s",
 					$day_lo, $day_hi
 				);
 			}
@@ -420,7 +424,7 @@ class Brikpanel_Sheets_Reports_Sync {
 			$product = $pid ? wc_get_product( $pid ) : null;
 			$rows[] = [
 				$pid,
-				$product ? wp_strip_all_tags( $product->get_name() ) : '',
+				$product ? brikpanel_plain_label( $product->get_name() ) : '',
 				$product ? (string) $product->get_sku() : '',
 				(float) $r->units,
 				round( (float) $r->revenue, 4 ),
@@ -440,7 +444,8 @@ class Brikpanel_Sheets_Reports_Sync {
 
 		global $wpdb;
 		$tbl = $wpdb->prefix . 'brikpanel_visitors';
-		$since_date = gmdate( 'Y-m-d', time() - ( $days * DAY_IN_SECONDS ) );
+		// SITE-LOCAL column, so a store day, not a UTC one.
+		$since_date = brikpanel_store_date( 'Y-m-d', '-' . (int) $days . ' days' );
 
 		$rows_raw = $wpdb->get_results( $wpdb->prepare(
 			"SELECT date_column, visitor_count, product_count, add_to_cart_count, checkout_count

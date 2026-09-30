@@ -81,10 +81,13 @@
         initStatusDropdown();
         initCatalogVisibility();
         initPubDate();
+        initHeaderFitFallback();
         initHeaderOverflow();
+        guardHeaderNotices();
         initFeaturedStar();
         initToggles();
         initImages();
+        initProductVideo();
         initCharCounter();
         initPriceInputs();
         initCategorySearch();
@@ -449,12 +452,45 @@
     }
 
     /* Sale schedule date pickers (flatpickr) */
+    /* Calendars and name sorting go through the shared formatter
+       (front-end/shared/brikpanel-format.js): the viewer's language and the
+       store's first weekday, never the browser's. Plain flatpickr and code
+       point order only if that file failed to load. */
+    function datePicker(el, opts) {
+        if (window.brikpanelFormat) return window.brikpanelFormat.datePicker(el, opts);
+        return typeof flatpickr === 'function' ? flatpickr(el, opts) : null;
+    }
+
+    function compareNames(a, b) {
+        if (window.brikpanelFormat) return window.brikpanelFormat.compare(a, b);
+        a = String(a);
+        b = String(b);
+        return a < b ? -1 : (a > b ? 1 : 0);
+    }
+
+    /* Counts made in the browser ("3 values added"): the message comes from
+       brikpanel_js_plural() with every plural form of the translation, and the
+       shared formatter picks the one the language needs (field test E7). */
+    function countText(msg, n) {
+        return window.brikpanelFormat ? window.brikpanelFormat.count(msg, n) : '';
+    }
+
+    function fmtCount(n) {
+        return window.brikpanelFormat ? window.brikpanelFormat.number(n) : String(n);
+    }
+
+    function fillText(pattern, value) {
+        return window.brikpanelFormat ? window.brikpanelFormat.fill(pattern || '', value) : String(pattern || '').replace('%s', value);
+    }
+
     function initSaleDates() {
         if (typeof flatpickr !== 'function') return;
         var $from = $('#bpe-sale-from'), $to = $('#bpe-sale-to');
         if (!$from.length || !$to.length) return;
 
-        var fpFrom = flatpickr($from.get(0), {
+        // The fields keep WooCommerce's YYYY-MM-DD; the calendar speaks the
+        // viewer's language and starts on the store's first weekday.
+        var fpFrom = datePicker($from.get(0), {
             dateFormat: 'Y-m-d',
             allowInput: false,
             onChange: function (dates) {
@@ -463,7 +499,7 @@
                 }
             }
         });
-        var fpTo = flatpickr($to.get(0), {
+        var fpTo = datePicker($to.get(0), {
             dateFormat: 'Y-m-d',
             allowInput: false,
             minDate: $from.val() || null
@@ -521,6 +557,19 @@
         // Bound once on the persistent table body: initialising inside
         // renderVarTable() would stack another sortable instance per render.
         initVarSortable();
+        // Header ▾: open or close every variation's details at once, handy
+        // when filling in many SKUs. Lives in the persistent <thead>, so it is
+        // bound once here; each render only re-syncs its label.
+        $('#bpe-var-expand-all').on('click', function () {
+            var $rows = $('#bpe-var-table-body tr.var-main-row');
+            var openAll = $rows.filter('.is-open').length !== $rows.length;
+            // Animating dozens of rows at once costs more than it shows.
+            var animate = $rows.length <= 30;
+            $rows.each(function () {
+                if ($(this).hasClass('is-open') !== openAll) { setVarDetailsOpen($(this), openAll, animate); }
+            });
+            syncVarExpandAll();
+        });
 
         // Default Form Values selects (delegated — rebuilt on every table render).
         $('#bpe-var-defaults').on('change', '.bpe-var-default', function () {
@@ -553,6 +602,16 @@
         // [data-required] selector would match those wrappers too — see the
         // note in validateAll().
         $(':input[data-required]').on('blur', function () { validateField($(this)); });
+        // "Require a price to publish" off: the price box is optional, so all it
+        // can show is the sale-price warning from validateSalePrice(). Leaving
+        // the price box re-checks it; leaving the sale price box only re-checks
+        // a warning already on screen, so typing the sale price first does not
+        // flag the price box before the merchant gets to it.
+        $('#bpe-price').not('[data-required]').on('blur', function () { validateSalePrice(); });
+        $('#bpe-sale-price').on('blur', function () {
+            var $p = $('#bpe-price');
+            if (!$p.data('required') && $p.hasClass('has-error')) validateSalePrice();
+        });
 
         // Ctrl+S shortcut
         $(document).on('keydown', function (e) {
@@ -643,12 +702,40 @@
         });
     }
 
-    /* Build a datetime-local value (Y-m-d\TH:i) for ~24h from now, in the
-       browser's local time — used to seed the schedule picker when the merchant
-       first switches to "Scheduled" and the field is empty. */
+    /* Keep a header popover that is opening inside the window. Each one hangs
+       from its own control, so where the header puts that control (it moves
+       between the header levels, and sits at the other end in RTL) decides
+       whether the popover fits: the date popover ran past the right edge on
+       phones. The shift is a CSS variable the popovers' `translate` reads, so
+       their open/close transform animation is left alone. */
+    function clampPopover($pop) {
+        var pop = $pop && $pop[0];
+        if (!pop) return;
+        pop.style.removeProperty('--bpe-pop-shift');
+        var r = pop.getBoundingClientRect();
+        if (!r.width) return;
+        var edge = document.documentElement.clientWidth;
+        var gap = 8;
+        var shift = 0;
+        if (r.right > edge - gap) shift = (edge - gap) - r.right;
+        if (r.left + shift < gap) shift = gap - r.left;
+        if (shift) pop.style.setProperty('--bpe-pop-shift', Math.round(shift) + 'px');
+    }
+
+    /* Build a datetime-local value (Y-m-d\TH:i) for ~24h from now on the
+       store's clock (the publish date is store time) — used to seed the
+       schedule picker when the merchant first switches to "Scheduled" and the
+       field is empty. The browser's clock is only a fallback. */
     function defaultScheduleValue() {
-        var d = new Date(Date.now() + 24 * 60 * 60 * 1000);
         function p(n) { return (n < 10 ? '0' : '') + n; }
+        var s = window.brikpanelFormat ? window.brikpanelFormat.now() : null;
+        var d = s
+            ? new Date(Date.UTC(s.y, s.m - 1, s.d + 1, s.H, s.i))
+            : new Date(Date.now() + 24 * 60 * 60 * 1000);
+        if (s) {
+            return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) +
+                   'T' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+        }
         return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
                'T' + p(d.getHours()) + ':' + p(d.getMinutes());
     }
@@ -660,21 +747,18 @@
        the single #bpe-schedule-date input with the scheduling flow. */
 
     /* Format the datetime-local value for the trigger label. Empty → the
-       localized "Immediately". Uses the browser locale for the date/time so it
-       reads naturally; the word "Immediately" comes from the server i18n bag. */
+       localized "Immediately" (server i18n bag). The date is the store's short
+       date format plus its time format in the viewer's language, character for
+       character what the server prints into the label
+       (brikpanel_short_date_format() . ' ' . brikpanel_time_format() in
+       brikpanel-product-editor.php), so the header measured at load keeps its
+       level when init and the picker rewrite the label. It used to be the
+       browser's language: "22 Eyl 2026" on an English store (field test E2). */
     function formatPubDateLabel(val) {
         var immediately = (PE.i18n && PE.i18n.immediately) || 'Immediately';
         if (!val) return immediately;
-        var d = new Date(val);
-        if (isNaN(d.getTime())) return immediately;
-        try {
-            return d.toLocaleString(undefined, {
-                year: 'numeric', month: 'short', day: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-            });
-        } catch (e) {
-            return val.replace('T', ' ');
-        }
+        if (!window.brikpanelFormat) return String(val).replace('T', ' ');
+        return window.brikpanelFormat.dateShortTime(val) || immediately;
     }
 
     function syncPubDateLabel() {
@@ -689,6 +773,7 @@
         closeHeaderPopovers($wrap);
         $wrap.addClass('is-open');
         $('#bpe-pubdate-trigger').attr('aria-expanded', 'true');
+        clampPopover($('#bpe-pubdate-pop'));
         // Defer focus so the popover has painted before the picker opens.
         window.setTimeout(function () { $('#bpe-schedule-date').focus(); }, 0);
     }
@@ -787,6 +872,7 @@
         function open() {
             $wrap.addClass('is-open');
             $trigger.attr('aria-expanded', 'true');
+            clampPopover($menu);
         }
 
         $trigger.on('click', function (e) {
@@ -817,7 +903,10 @@
             if (v === 'future') {
                 var $date = $('#bpe-schedule-date');
                 if (!$date.val()) { $date.val(defaultScheduleValue()); syncPubDateLabel(); }
-                openPubDate();
+                // After this click has finished: opened here, the date popover
+                // was closed again by its own outside-click handler as the same
+                // click reached the document.
+                window.setTimeout(openPubDate, 0);
             }
             updatePublishLabel(v);
             close();
@@ -866,7 +955,7 @@
         var $hidden = $('#bpe-catalog-visibility');
 
         function close() { $wrap.removeClass('is-open'); $trigger.attr('aria-expanded', 'false'); }
-        function open()  { $wrap.addClass('is-open');  $trigger.attr('aria-expanded', 'true');  }
+        function open()  { $wrap.addClass('is-open');  $trigger.attr('aria-expanded', 'true'); clampPopover($menu); }
 
         $trigger.on('click', function (e) {
             e.stopPropagation();
@@ -892,37 +981,106 @@
         });
     }
 
-    /* Header overflow ("More actions") menu — only interactive on mobile,
-       where View product / Duplicate / Add new collapse behind a kebab
-       trigger. On desktop the menu is display:contents, so the trigger is
-       hidden and the actions render inline; the handlers below are harmless
-       there. Mirrors the status / catalog-visibility dropdown pattern. */
+    /* Header overflow ("More actions") — a disclosure button. While the header
+       has room the menu is display:contents, so the trigger is hidden and View
+       product / Duplicate / Add new sit inline; the `is-fold` header level
+       turns them into a menu under the trigger (brikpanel-fit-row.js decides
+       which, from the real width). Mirrors the status / catalog-visibility
+       dropdown pattern: Escape and a click or focus outside close it. */
     function initHeaderOverflow() {
         var $wrap = $('#bpe-header-overflow');
         if (!$wrap.length) return;
         var $trigger = $('#bpe-overflow-trigger');
+        var $menu = $wrap.find('.brikpanel-pe-overflow-menu');
 
-        function close() { $wrap.removeClass('is-open'); $trigger.attr('aria-expanded', 'false'); }
-        function open()  { $wrap.addClass('is-open');  $trigger.attr('aria-expanded', 'true');  }
+        function close(returnFocus) {
+            if (!$wrap.hasClass('is-open')) return;
+            $wrap.removeClass('is-open');
+            $trigger.attr('aria-expanded', 'false');
+            if (returnFocus) $trigger.trigger('focus');
+        }
+        function open() {
+            $wrap.addClass('is-open');
+            $trigger.attr('aria-expanded', 'true');
+            clampPopover($menu);
+        }
 
         $trigger.on('click', function (e) {
             e.stopPropagation();
             closeHeaderPopovers($wrap);
-            $wrap.hasClass('is-open') ? close() : open();
+            $wrap.hasClass('is-open') ? close(false) : open();
         });
 
         // Collapse the menu once an action is chosen (Duplicate stays on the
         // page; View product / Add new navigate away anyway).
-        $wrap.find('.brikpanel-pe-overflow-menu').on('click', 'a, button', function () {
-            close();
+        $menu.on('click', 'a, button', function () {
+            close(false);
         });
 
         $(document).on('click', function (e) {
-            if (!$(e.target).closest('#bpe-header-overflow').length) close();
+            if (!$(e.target).closest('#bpe-header-overflow').length) close(false);
         });
         $(document).on('keydown', function (e) {
-            if (e.key === 'Escape' && $wrap.hasClass('is-open')) close();
+            if (e.key === 'Escape' && $wrap.hasClass('is-open')) close(true);
         });
+        // Tabbing out of the open menu closes it, so it never stays open
+        // behind the focus.
+        $wrap.on('focusout', function (e) {
+            var to = e.relatedTarget;
+            if (to && !$.contains($wrap[0], to)) close(false);
+        });
+        // The menu is only a menu while the header is folded: when the header
+        // gets room again, its items are back inline and nothing is open.
+        $('#bpe-header').on('brikpanel:fit-row', function () {
+            if (!$(this).hasClass('is-fold')) close(false);
+        });
+    }
+
+    /* The header's level when brikpanel-fit-row.js did not load (a caching or
+       optimisation plugin dropped it): the breakpoint layout the header had
+       before, folded with two rows below 782px and icon-only date and
+       visibility controls below 480px. */
+    function initHeaderFitFallback() {
+        var header = document.getElementById('bpe-header');
+        if (!header || window.brikpanelFitRow || !window.matchMedia) return;
+        var narrow = window.matchMedia('(max-width: 782px)');
+        var phone = window.matchMedia('(max-width: 480px)');
+        function apply() {
+            header.classList.toggle('is-fold', narrow.matches);
+            header.classList.toggle('is-two-rows', narrow.matches);
+            header.classList.toggle('is-tight-vis', phone.matches);
+            header.classList.toggle('is-tight-date', phone.matches);
+        }
+        apply();
+        [narrow, phone].forEach(function (mq) {
+            if (mq.addEventListener) mq.addEventListener('change', apply);
+            else if (mq.addListener) mq.addListener(apply);
+        });
+    }
+
+    /* Admin notices belong under the header: WordPress moves them there
+       (brikpanel_header_end(), field test B5). A script that inserts one into
+       the sticky header itself would squeeze the title again (field test B10),
+       so such a notice is moved under the marker too, marked `inline` so
+       WordPress does not move it back. */
+    function guardHeaderNotices() {
+        var header = document.getElementById('bpe-header');
+        var end = document.querySelector('.brikpanel-pe-content .brikpanel-header-end');
+        if (!header || !end) return;
+        function move() {
+            var found = header.querySelectorAll('div.notice, div.error, div.updated, div.update-nag'); // i18n-ignore: CSS selector list, not user text
+            if (!found.length) return;
+            var after = end;
+            Array.prototype.forEach.call(found, function (n) {
+                n.classList.add('inline');
+                after.parentNode.insertBefore(n, after.nextSibling);
+                after = n;
+            });
+        }
+        move();
+        if (typeof window.MutationObserver === 'function') {
+            new window.MutationObserver(move).observe(header, { childList: true, subtree: true });
+        }
     }
 
     /* Toggles */
@@ -949,6 +1107,9 @@
             $('#bpe-var-build').toggle(isVar);
             // The table only makes sense once variations have been generated.
             $('#bpe-var-table-section').toggle(isVar && !!(state.variations && state.variations.length));
+            // Measured now that the section has a width; waiting for the
+            // resize observer would show one frame of overflowing table.
+            refitVarTable();
             $('.brikpanel-pe-attr-help-var').toggle(isVar);
             $('.brikpanel-pe-attr-help-simple').toggle(!isVar);
             updateVarStartView();
@@ -979,9 +1140,7 @@
             var local  = (state.variations || []).filter(function (v) { return v && v.id; }).length;
             var n = Math.max(stored, local);
             if (n < 1) return true;
-            var msg = PE.i18n.confirm_convert_to_simple
-                || 'This product has %d variations. Changing it to a simple product deletes them permanently and this cannot be undone.';
-            return window.confirm(msg.replace('%d', n));
+            return window.confirm(countText(PE.i18n.confirm_convert_to_simple, n));
         }
 
         // Bound to `click`, not `change`, on purpose: the editor flips this
@@ -1128,7 +1287,7 @@
         frame.on('close', disableClickToToggle);
         frame.on('select', function () {
             frame.state().get('selection').toJSON().forEach(function (att) {
-                addImage(att.id, (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url, null, att.alt);
+                addImage(att.id, (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url, att.alt);
             });
         });
         frame.open();
@@ -1260,31 +1419,194 @@
         });
     }
 
-    // Whether the Blocksy per-image video editor is available on this site.
-    var blocksyVideo = String(PE.blocksy_video) === '1';
-    // Attachment ids whose video was edited this session; only these are sent.
+    // ---- Product videos -----------------------------------------------------
+    // Controls for whichever theme or plugin plays product videos on this site
+    // (PE.video, built by Brikpanel_Video::js_schema()), null when none does.
+    // Image videos are keyed by attachment id, so a gallery image and a
+    // variation cell showing the same image share one video.
+    var VID = (PE.video && typeof PE.video === 'object' && PE.video.id) ? PE.video : null;
+    var videoByAtt = {};
     var videoDirty = {};
+    var productVideo = null;
+    var productVideoDirty = false;
+    var VIDEO_PLAY_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>';
 
-    function defaultVideo() {
-        return { has: false, source: 'youtube', upload: 0, upload_url: '', upload_name: '', youtube: '', vimeo: '', event: 'click', loop: false, player: false };
+    function videoBlank() {
+        var v = { has: false, source: '', youtube: '', vimeo: '', file_id: 0, file_url: '', file_name: '', url: '', other: '', options: {} };
+        if (VID) {
+            VID.options.forEach(function (o) { v.options[o.key] = o['default']; });
+        }
+        return v;
+    }
+
+    function videoCopy(v) {
+        var out = $.extend(true, videoBlank(), (v && typeof v === 'object') ? v : {});
+        out.file_id = parseInt(out.file_id, 10) || 0;
+        return out;
+    }
+
+    function videoHasSlot(slot) {
+        return !!VID && VID.kind === 'image' && VID.slots.indexOf(slot) !== -1;
+    }
+
+    // Stored videos of this product, as the page loaded them.
+    (function hydrateVideos() {
+        var pv = productData && productData.videos;
+        if (!VID || !pv || typeof pv !== 'object' || pv.provider !== VID.id) return;
+        if (pv.items && typeof pv.items === 'object') {
+            Object.keys(pv.items).forEach(function (id) { videoByAtt[id] = videoCopy(pv.items[id]); });
+        }
+        if (VID.kind === 'product') productVideo = videoCopy(pv.product);
+    })();
+
+    // Link checks. Keep in sync with Brikpanel_Video::youtube_ref(),
+    // vimeo_ref() and file_link() in PHP, which have the final say on save.
+    function videoUrl(raw) {
+        var s = $.trim(String(raw || ''));
+        if (!s || s.length > 2048) return null;
+        if (!/^https?:\/\//i.test(s)) s = 'https://' + s.replace(/^\/+/, '');
+        try { return new URL(s); } catch (e) { return null; }
+    }
+
+    function videoParseYouTube(raw) {
+        var u = videoUrl(raw);
+        if (!u) return null;
+        var host = u.hostname.toLowerCase(), path = u.pathname, id = '', shorts = false, m;
+        if (host === 'youtu.be' || host === 'www.youtu.be') {
+            id = path.replace(/^\/+/, '').split('/')[0];
+        } else if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com'].indexOf(host) !== -1) {
+            m = path.match(/^\/(embed|shorts|live|v)\/([^\/?#]+)/i);
+            if (m) {
+                id = m[2];
+                shorts = m[1].toLowerCase() === 'shorts';
+            } else if (path.replace(/\/+$/, '') === '/watch') {
+                id = u.searchParams.get('v') || '';
+            }
+        }
+        return /^[A-Za-z0-9_-]{11}$/.test(id) ? { id: id, shorts: shorts } : null;
+    }
+
+    function videoYouTubeLink(ref) {
+        return (VID.shorts && ref.shorts) ? 'https://www.youtube.com/shorts/' + ref.id : 'https://www.youtube.com/watch?v=' + ref.id;
+    }
+
+    function videoParseVimeo(raw) {
+        var u = videoUrl(raw);
+        if (!u || ['vimeo.com', 'www.vimeo.com', 'player.vimeo.com'].indexOf(u.hostname.toLowerCase()) === -1) return null;
+        var segs = u.pathname.split('/').filter(function (s) { return s !== ''; });
+        var id = '', hash = '', h;
+        for (var i = 0; i < segs.length; i++) {
+            if (/^\d{1,12}$/.test(segs[i])) {
+                id = segs[i];
+                if (segs[i + 1] && /^[0-9a-f]{6,20}$/i.test(segs[i + 1])) hash = segs[i + 1].toLowerCase();
+                break;
+            }
+        }
+        h = u.searchParams.get('h') || '';
+        if (!hash && /^[0-9a-f]{6,20}$/i.test(h)) hash = h.toLowerCase();
+        return id ? { id: id, hash: hash } : null;
+    }
+
+    function videoVimeoLink(ref) {
+        return 'https://vimeo.com/' + ref.id + ((VID.vimeo_hash && ref.hash) ? '/' + ref.hash : '');
+    }
+
+    function videoExtOk(path) {
+        var m = String(path || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+        return !!m && VID.exts.indexOf(m[1]) !== -1;
+    }
+
+    function videoFileLinkOk(raw) {
+        var s = $.trim(String(raw || ''));
+        if (!/^https?:\/\//i.test(s) || s.length > 2048) return false;
+        try { return videoExtOk(new URL(s).pathname); } catch (e) { return false; }
+    }
+
+    function videoShortLink(url) {
+        return String(url || '').replace(/^https?:\/\/(www\.)?/i, '');
+    }
+
+    // One line for the product video row; Brikpanel_Video::summary() prints
+    // the same line on page load.
+    function videoSummary(v) {
+        var t = PE.i18n, label, detail;
+        switch (v.source) {
+            case 'youtube': label = t.video_youtube; detail = videoShortLink(v.youtube); break;
+            case 'vimeo': label = t.video_vimeo; detail = videoShortLink(v.vimeo); break;
+            case 'file': label = t.video_src_file; detail = v.file_name || videoShortLink(v.file_url); break;
+            case 'url': label = t.video_src_url; detail = videoShortLink(v.url); break;
+            default: label = t.video_other_label; detail = videoShortLink(v.other);
+        }
+        return t.video_row_meta.replace('%1$s', label).replace('%2$s', detail);
+    }
+
+    // The play button on an image. A gallery slot the theme does not play
+    // videos on keeps its button only while it has a video, so it can be
+    // removed; variation cells only get one where the theme plays them.
+    function videoButtonHtml(attId, slot, cls, forVariation) {
+        if (!VID || VID.kind !== 'image' || !attId) return '';
+        var v = videoByAtt[attId];
+        var has = !!(v && v.has);
+        if (!videoHasSlot(slot) && (forVariation || !has)) return '';
+        var t = PE.i18n;
+        var label = forVariation ? (has ? t.video_var_btn_edit : t.video_var_btn_add) : (has ? t.video_btn_edit : t.video_btn_add);
+        return '<button type="button" class="' + cls + (has ? ' is-active' : '') + '" data-video-att="' + esc(attId) + '" data-video-slot="' + esc(slot) + '" title="' + esc(label) + '" aria-label="' + esc(label) + '">' + VIDEO_PLAY_SVG + '</button>';
+    }
+
+    function onVideoButtonClick(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openVideoDialog({ att: parseInt($(this).attr('data-video-att'), 10), slot: String($(this).attr('data-video-slot')), opener: this });
+    }
+
+    function varVideoButtonHtml(images) {
+        return (images && images.length) ? videoButtonHtml(images[0].id, 'variation', 'var-image-video', true) : '';
+    }
+
+    function refreshVarVideoButtons() {
+        $('#bpe-var-table-body .var-image-wrap[data-idx]').each(function () {
+            var $wrap = $(this);
+            var v = state.variations[parseInt($wrap.attr('data-idx'), 10)];
+            $wrap.find('.var-image-video').remove();
+            var html = v ? varVideoButtonHtml(v.images) : '';
+            if (html) $(html).appendTo($wrap).on('click', onVideoButtonClick);
+        });
+    }
+
+    function refreshVideoBadges() {
+        if (!VID || VID.kind !== 'image') return;
+        renderGallery();
+        refreshVarVideoButtons();
+    }
+
+    function refreshProductRow() {
+        if (!VID || VID.kind !== 'product') return;
+        var t = PE.i18n, has = !!(productVideo && productVideo.has);
+        $('#bpe-prodvideo .brikpanel-pe-prodvideo-icon').toggleClass('is-active', has);
+        $('#bpe-prodvideo-meta').text(has ? videoSummary(productVideo) : t.video_row_none);
+        $('#bpe-prodvideo-edit').text(has ? t.video_row_edit : t.video_row_add);
+    }
+
+    function initProductVideo() {
+        if (!VID || VID.kind !== 'product' || !$('#bpe-prodvideo').length) return;
+        if (!productVideo) productVideo = videoBlank();
+        $('#bpe-prodvideo-edit').on('click', function () { openVideoDialog({ product: true, opener: this }); });
+        refreshProductRow();
     }
 
     // `alt` is carried purely so the SEO analysers can read the featured
     // image the way they would on the native editor; it is never saved here.
-    function addImage(id, url, video, alt) {
+    function addImage(id, url, alt) {
         if (state.images.some(function (i) { return i.id === id; })) return;
-        state.images.push({
-            id: id,
-            url: url,
-            alt: alt ? String(alt) : '',
-            video: (video && typeof video === 'object') ? video : defaultVideo()
-        });
+        state.images.push({ id: id, url: url, alt: alt ? String(alt) : '' });
         renderGallery();
+        state.dirty = true;
     }
 
     function removeImage(id) {
         state.images = state.images.filter(function (i) { return i.id !== id; });
         renderGallery();
+        state.dirty = true;
     }
 
     function renderGallery() {
@@ -1293,19 +1615,12 @@
             var $item = $('<div class="brikpanel-pe-gallery-item" data-id="' + img.id + '">');
             $item.append('<img src="' + esc(img.url) + '" alt="">');
             if (idx === 0) $item.append('<span class="brikpanel-pe-gallery-item-badge">' + (PE.i18n.featured || 'Featured') + '</span>');
-            var $rm = $('<button type="button" class="brikpanel-pe-gallery-item-remove">&times;</button>');
+            var $rm = $('<button type="button" class="brikpanel-pe-gallery-item-remove">&times;</button>')
+                .attr({ title: PE.i18n.remove_image, 'aria-label': PE.i18n.remove_image });
             $rm.on('click', function (e) { e.stopPropagation(); removeImage(img.id); });
             $item.append($rm);
-            if (blocksyVideo) {
-                if (!img.video || typeof img.video !== 'object') img.video = defaultVideo();
-                var hasVid = !!img.video.has;
-                var $vb = $('<button type="button" class="brikpanel-pe-gallery-item-video' + (hasVid ? ' is-active' : '') + '">' +
-                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>');
-                $vb.attr('title', hasVid ? (PE.i18n.video_badge || 'Has video') : (PE.i18n.video_edit || 'Video'));
-                $vb.attr('aria-label', hasVid ? (PE.i18n.video_badge || 'Has video') : (PE.i18n.video_edit || 'Video'));
-                $vb.on('click', function (e) { e.stopPropagation(); openVideoDialog(img.id); });
-                $item.append($vb);
-            }
+            var vb = videoButtonHtml(img.id, idx === 0 ? 'featured' : 'gallery', 'brikpanel-pe-gallery-item-video', false);
+            if (vb) $(vb).appendTo($item).on('click', onVideoButtonClick);
             $g.append($item);
         });
         $g.sortable('refresh');
@@ -1322,175 +1637,467 @@
         });
         state.images = o;
         renderGallery();
+        state.dirty = true;
     }
 
-    // ---- Blocksy per-image video dialog -----------------------------------
-    var $videoDlg = null;
-    var videoDlgState = { id: 0, video: null };
-    var videoMediaFrame = null;
+    // ---- Video dialog ----------------------------------------------------
+    // Built once from the provider schema; edits a copy, so Cancel drops them.
+    var $vdlg = null;
+    var vdlg = { ctx: null, video: null, opener: null, mediaFrame: null };
+
+    function videoOptionsHtml() {
+        var t = PE.i18n;
+        return VID.options.map(function (o) {
+            var id = 'bpe-viddlg-opt-' + o.key;
+            var key = esc(o.key);
+            var label = esc(t[o.label]);
+            var choices = o.choices || [];
+            var choiceText = function (c) { return esc(c.label ? t[c.label] : c.text); };
+            if (o.type === 'switch') {
+                return '<div class="brikpanel-pe-toggle-row brikpanel-pe-viddlg-opt" data-opt="' + key + '">' +
+                    '<span id="' + esc(id) + '-lbl">' + label + '</span>' +
+                    '<label class="brikpanel-pe-switch"><input type="checkbox" id="' + esc(id) + '" aria-labelledby="' + esc(id) + '-lbl"><span class="brikpanel-pe-slider"></span></label>' +
+                '</div>';
+            }
+            if (o.type === 'text') {
+                return '<div class="brikpanel-pe-viddlg-opt" data-opt="' + key + '">' +
+                    '<label class="brikpanel-pe-linkdlg-lbl" for="' + esc(id) + '">' + label + '</label>' +
+                    '<input type="text" id="' + esc(id) + '" class="brikpanel-pe-linkdlg-url" placeholder="' + esc(o.placeholder || '') + '" autocomplete="off" spellcheck="false">' +
+                '</div>';
+            }
+            if (choices.length > 4) {
+                return '<div class="brikpanel-pe-viddlg-opt" data-opt="' + key + '">' +
+                    '<label class="brikpanel-pe-linkdlg-lbl" for="' + esc(id) + '">' + label + '</label>' +
+                    '<select id="' + esc(id) + '" class="brikpanel-pe-viddlg-select">' + choices.map(function (c) {
+                        return '<option value="' + esc(c.value) + '">' + choiceText(c) + '</option>';
+                    }).join('') + '</select>' +
+                '</div>';
+            }
+            return '<div class="brikpanel-pe-viddlg-opt" data-opt="' + key + '">' +
+                '<span class="brikpanel-pe-linkdlg-lbl" id="' + esc(id) + '-lbl">' + label + '</span>' +
+                '<div class="brikpanel-pe-imgdlg-align brikpanel-pe-viddlg-seg" role="group" aria-labelledby="' + esc(id) + '-lbl">' + choices.map(function (c) {
+                    return '<button type="button" data-value="' + esc(c.value) + '" aria-pressed="false">' + choiceText(c) + '</button>';
+                }).join('') + '</div>' +
+            '</div>';
+        }).join('');
+    }
 
     function buildVideoDialog() {
-        if ($videoDlg) return $videoDlg;
+        if ($vdlg) return $vdlg;
         var t = PE.i18n;
+        var names = { youtube: t.video_youtube, vimeo: t.video_vimeo, file: t.video_src_file, url: t.video_src_url };
+        var types = esc(t.video_file_types.replace('%s', VID.exts.join(', ')));
         var html = '' +
             '<div class="brikpanel-pe-linkdlg brikpanel-pe-viddlg" hidden>' +
                 '<div class="brikpanel-pe-linkdlg-backdrop"></div>' +
-                '<div class="brikpanel-pe-linkdlg-box">' +
-                    '<h3 class="brikpanel-pe-linkdlg-title">' + esc(t.video_title || 'Product video') + '</h3>' +
-                    '<p class="brikpanel-pe-viddlg-help">' + esc(t.video_help || '') + '</p>' +
-                    '<label class="brikpanel-pe-linkdlg-lbl">' + esc(t.video_source || 'Video source') + '</label>' +
-                    '<div class="brikpanel-pe-imgdlg-align brikpanel-pe-viddlg-source" style="grid-template-columns:repeat(3,1fr)">' +
-                        '<button type="button" data-source="youtube">' + esc(t.video_youtube || 'YouTube') + '</button>' +
-                        '<button type="button" data-source="vimeo">' + esc(t.video_vimeo || 'Vimeo') + '</button>' +
-                        '<button type="button" data-source="upload">' + esc(t.video_upload || 'Self-hosted') + '</button>' +
-                    '</div>' +
-                    '<div class="brikpanel-pe-viddlg-field" data-for="youtube" style="margin-top:.875rem">' +
-                        '<label class="brikpanel-pe-linkdlg-lbl">' + esc(t.video_youtube_url || 'YouTube URL') + '</label>' +
-                        '<input type="url" class="brikpanel-pe-linkdlg-url brikpanel-pe-viddlg-youtube" placeholder="' + esc(t.video_youtube_ph || '') + '" spellcheck="false">' +
-                    '</div>' +
-                    '<div class="brikpanel-pe-viddlg-field" data-for="vimeo" style="margin-top:.875rem" hidden>' +
-                        '<label class="brikpanel-pe-linkdlg-lbl">' + esc(t.video_vimeo_url || 'Vimeo URL') + '</label>' +
-                        '<input type="url" class="brikpanel-pe-linkdlg-url brikpanel-pe-viddlg-vimeo" placeholder="' + esc(t.video_vimeo_ph || '') + '" spellcheck="false">' +
-                    '</div>' +
-                    '<div class="brikpanel-pe-viddlg-field" data-for="upload" style="margin-top:.875rem" hidden>' +
-                        '<div class="brikpanel-pe-viddlg-filerow">' +
-                            '<span class="brikpanel-pe-viddlg-filename">' + esc(t.video_no_file || 'No video selected') + '</span>' +
-                            '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-choose">' + esc(t.video_choose_file || 'Choose video') + '</button>' +
+                '<div class="brikpanel-pe-linkdlg-box" role="dialog" aria-modal="true" aria-labelledby="bpe-viddlg-title" aria-describedby="bpe-viddlg-help">' +
+                    '<h3 class="brikpanel-pe-linkdlg-title" id="bpe-viddlg-title"></h3>' +
+                    '<p class="brikpanel-pe-viddlg-help" id="bpe-viddlg-help"></p>' +
+                    '<div class="brikpanel-pe-viddlg-main">' +
+                        '<div class="brikpanel-pe-viddlg-other" hidden>' +
+                            '<span class="brikpanel-pe-linkdlg-lbl">' + esc(t.video_other_label) + '</span>' +
+                            '<code class="brikpanel-pe-viddlg-other-value"></code>' +
+                            '<p class="brikpanel-pe-viddlg-note">' + esc(t.video_other_help) + '</p>' +
                         '</div>' +
+                        '<span class="brikpanel-pe-linkdlg-lbl" id="bpe-viddlg-src-lbl">' + esc(t.video_source) + '</span>' +
+                        '<div class="brikpanel-pe-imgdlg-align brikpanel-pe-viddlg-seg brikpanel-pe-viddlg-source" role="group" aria-labelledby="bpe-viddlg-src-lbl">' +
+                            VID.sources.map(function (s) {
+                                return '<button type="button" data-source="' + esc(s) + '" aria-pressed="false">' + esc(names[s]) + '</button>';
+                            }).join('') +
+                        '</div>' +
+                        '<div class="brikpanel-pe-viddlg-field" data-for="youtube" hidden>' +
+                            '<label class="brikpanel-pe-linkdlg-lbl" for="bpe-viddlg-youtube">' + esc(t.video_youtube_url) + '</label>' +
+                            '<input type="url" id="bpe-viddlg-youtube" class="brikpanel-pe-linkdlg-url" placeholder="' + esc(t.video_youtube_ph) + '" spellcheck="false" autocomplete="off">' +
+                        '</div>' +
+                        '<div class="brikpanel-pe-viddlg-field" data-for="vimeo" hidden>' +
+                            '<label class="brikpanel-pe-linkdlg-lbl" for="bpe-viddlg-vimeo">' + esc(t.video_vimeo_url) + '</label>' +
+                            '<input type="url" id="bpe-viddlg-vimeo" class="brikpanel-pe-linkdlg-url" placeholder="' + esc(t.video_vimeo_ph) + '" spellcheck="false" autocomplete="off">' +
+                        '</div>' +
+                        '<div class="brikpanel-pe-viddlg-field" data-for="file" hidden>' +
+                            '<div class="brikpanel-pe-viddlg-filerow">' +
+                                '<span class="brikpanel-pe-viddlg-filename"></span>' +
+                                '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-choose"></button>' +
+                            '</div>' +
+                            '<p class="brikpanel-pe-viddlg-note">' + types + '</p>' +
+                        '</div>' +
+                        '<div class="brikpanel-pe-viddlg-field" data-for="url" hidden>' +
+                            '<label class="brikpanel-pe-linkdlg-lbl" for="bpe-viddlg-url">' + esc(t.video_url_label) + '</label>' +
+                            '<input type="url" id="bpe-viddlg-url" class="brikpanel-pe-linkdlg-url" placeholder="' + esc(t.video_url_ph) + '" spellcheck="false" autocomplete="off">' +
+                            '<p class="brikpanel-pe-viddlg-note">' + types + '</p>' +
+                        '</div>' +
+                        '<p class="brikpanel-pe-viddlg-error" role="alert" hidden></p>' +
+                        '<div class="brikpanel-pe-viddlg-opts">' + videoOptionsHtml() + '</div>' +
                     '</div>' +
-                    '<label class="brikpanel-pe-linkdlg-lbl" style="margin-top:.875rem">' + esc(t.video_playback || 'Playback') + '</label>' +
-                    '<div class="brikpanel-pe-imgdlg-align brikpanel-pe-viddlg-event" style="grid-template-columns:repeat(3,1fr)">' +
-                        '<button type="button" data-event="click">' + esc(t.video_on_click || 'Play on click') + '</button>' +
-                        '<button type="button" data-event="autoplay">' + esc(t.video_autoplay || 'Autoplay') + '</button>' +
-                        '<button type="button" data-event="hover">' + esc(t.video_on_hover || 'Play on hover') + '</button>' +
-                    '</div>' +
-                    '<div class="brikpanel-pe-toggle-row" style="margin-top:.875rem">' +
-                        '<span>' + esc(t.video_loop || 'Loop the video') + '</span>' +
-                        '<label class="brikpanel-pe-switch"><input type="checkbox" class="brikpanel-pe-viddlg-loop"><span class="brikpanel-pe-slider"></span></label>' +
-                    '</div>' +
-                    '<div class="brikpanel-pe-toggle-row">' +
-                        '<span>' + esc(t.video_simple_player || 'Hide player controls') + '</span>' +
-                        '<label class="brikpanel-pe-switch"><input type="checkbox" class="brikpanel-pe-viddlg-player"><span class="brikpanel-pe-slider"></span></label>' +
-                    '</div>' +
+                    '<div class="brikpanel-pe-viddlg-notes"></div>' +
                     '<div class="brikpanel-pe-linkdlg-actions brikpanel-pe-viddlg-actions">' +
-                        '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-remove" style="margin-right:auto">' + esc(t.video_remove || 'Remove video') + '</button>' +
-                        '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-cancel">' + esc(t.video_cancel || 'Cancel') + '</button>' +
-                        '<button type="button" class="brikpanel-pe-btn primary small brikpanel-pe-viddlg-ok">' + esc(t.video_save || 'Save video') + '</button>' +
+                        '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-remove">' + esc(t.video_remove) + '</button>' +
+                        '<button type="button" class="brikpanel-pe-btn secondary small brikpanel-pe-viddlg-cancel">' + esc(t.video_cancel) + '</button>' +
+                        '<button type="button" class="brikpanel-pe-btn primary small brikpanel-pe-viddlg-ok">' + esc(t.video_save) + '</button>' +
                     '</div>' +
                 '</div>' +
             '</div>';
-        $videoDlg = $(html).appendTo('body');
+        $vdlg = $(html).appendTo('body');
 
-        function close() { $videoDlg.attr('hidden', true); }
-
-        function syncSource() {
-            var src = videoDlgState.video.source || 'youtube';
-            $videoDlg.find('.brikpanel-pe-viddlg-source button').each(function () {
-                $(this).toggleClass('is-active', $(this).data('source') === src);
-            });
-            $videoDlg.find('.brikpanel-pe-viddlg-field').each(function () {
-                $(this).prop('hidden', $(this).data('for') !== src);
-            });
-        }
-        function syncEvent() {
-            var ev = videoDlgState.video.event || 'click';
-            $videoDlg.find('.brikpanel-pe-viddlg-event button').each(function () {
-                $(this).toggleClass('is-active', $(this).data('event') === ev);
-            });
-        }
-        function syncFile() {
-            var v = videoDlgState.video;
-            var name = v.upload_name || v.upload_url || '';
-            $videoDlg.find('.brikpanel-pe-viddlg-filename').text(name || (PE.i18n.video_no_file || 'No video selected'));
-            $videoDlg.find('.brikpanel-pe-viddlg-choose').text(name ? (PE.i18n.video_replace_file || 'Replace video') : (PE.i18n.video_choose_file || 'Choose video'));
-        }
-        function syncAll() {
-            var v = videoDlgState.video;
-            $videoDlg.find('.brikpanel-pe-viddlg-youtube').val(v.youtube || '');
-            $videoDlg.find('.brikpanel-pe-viddlg-vimeo').val(v.vimeo || '');
-            $videoDlg.find('.brikpanel-pe-viddlg-loop').prop('checked', !!v.loop);
-            $videoDlg.find('.brikpanel-pe-viddlg-player').prop('checked', !!v.player);
-            syncSource(); syncEvent(); syncFile();
-        }
-        $videoDlg.data('sync', syncAll);
-
-        $videoDlg.find('.brikpanel-pe-viddlg-cancel, .brikpanel-pe-linkdlg-backdrop').on('click', close);
-        $videoDlg.on('keydown', function (e) { if (e.key === 'Escape') close(); });
-
-        $videoDlg.find('.brikpanel-pe-viddlg-source').on('click', 'button', function () {
-            videoDlgState.video.source = $(this).data('source'); syncSource();
+        $vdlg.find('.brikpanel-pe-viddlg-source').on('click', 'button', function () {
+            vdlg.video.source = String($(this).attr('data-source'));
+            videoDlgClearError();
+            videoDlgSync();
+            var $in = $vdlg.find('.brikpanel-pe-viddlg-field').filter(function () {
+                return $(this).attr('data-for') === vdlg.video.source;
+            }).find('input');
+            if ($in.length) $in.trigger('focus');
         });
-        $videoDlg.find('.brikpanel-pe-viddlg-event').on('click', 'button', function () {
-            videoDlgState.video.event = $(this).data('event'); syncEvent();
+        var $opts = $vdlg.find('.brikpanel-pe-viddlg-opts');
+        $opts.on('click', '.brikpanel-pe-viddlg-seg button', function () {
+            vdlg.video.options[$(this).closest('.brikpanel-pe-viddlg-opt').attr('data-opt')] = String($(this).attr('data-value'));
+            videoDlgSync();
         });
-
-        $videoDlg.find('.brikpanel-pe-viddlg-choose').on('click', function () {
-            if (typeof wp === 'undefined' || !wp.media) return;
-            if (!videoMediaFrame) {
-                videoMediaFrame = wp.media({
-                    title: PE.i18n.video_choose_file || 'Choose video',
-                    button: { text: PE.i18n.video_select || 'Use this video' },
-                    library: { type: 'video' },
-                    multiple: false
-                });
-                videoMediaFrame.on('select', function () {
-                    var a = videoMediaFrame.state().get('selection').first();
-                    if (!a) return;
-                    a = a.toJSON();
-                    videoDlgState.video.upload = a.id;
-                    videoDlgState.video.upload_url = a.url || '';
-                    videoDlgState.video.upload_name = a.title || a.filename || '';
-                    syncFile();
-                });
-            }
-            videoMediaFrame.open();
+        $opts.on('change', 'input[type="checkbox"], select', function () {
+            vdlg.video.options[$(this).closest('.brikpanel-pe-viddlg-opt').attr('data-opt')] = this.type === 'checkbox' ? this.checked : String($(this).val());
+            videoDlgSync();
         });
-
-        $videoDlg.find('.brikpanel-pe-viddlg-remove').on('click', function () {
-            var img = state.images.find(function (i) { return i.id === videoDlgState.id; });
-            if (img) { img.video = defaultVideo(); videoDirty[videoDlgState.id] = true; renderGallery(); }
-            close();
-            showToast(PE.i18n.video_removed || 'Video removed from image', 'success');
+        $opts.on('input', 'input[type="text"]', function () {
+            vdlg.video.options[$(this).closest('.brikpanel-pe-viddlg-opt').attr('data-opt')] = this.value;
+            $(this).removeClass('has-error');
+            videoDlgClearError();
         });
-
-        $videoDlg.find('.brikpanel-pe-viddlg-ok').on('click', function () {
-            var v = videoDlgState.video;
-            v.youtube = ($videoDlg.find('.brikpanel-pe-viddlg-youtube').val() || '').trim();
-            v.vimeo = ($videoDlg.find('.brikpanel-pe-viddlg-vimeo').val() || '').trim();
-            v.loop = $videoDlg.find('.brikpanel-pe-viddlg-loop').is(':checked');
-            v.player = $videoDlg.find('.brikpanel-pe-viddlg-player').is(':checked');
-
-            var src = v.source || 'youtube';
-            if (src === 'youtube') {
-                if (!v.youtube) { showToast(PE.i18n.video_url_required || 'Please enter a video URL first.', 'error'); return; }
-                v.has = true;
-            } else if (src === 'vimeo') {
-                if (!v.vimeo) { showToast(PE.i18n.video_url_required || 'Please enter a video URL first.', 'error'); return; }
-                v.has = true;
-            } else if (src === 'upload') {
-                if (!v.upload && !v.upload_url) { showToast(PE.i18n.video_file_required || 'Please choose a video file first.', 'error'); return; }
-                v.has = true;
-            }
-
-            var img = state.images.find(function (i) { return i.id === videoDlgState.id; });
-            if (img) { img.video = v; videoDirty[videoDlgState.id] = true; renderGallery(); }
-            close();
-            showToast(PE.i18n.video_added || 'Video added to image', 'success');
+        $vdlg.find('#bpe-viddlg-youtube, #bpe-viddlg-vimeo, #bpe-viddlg-url').on('input', function () {
+            $(this).removeClass('has-error');
+            videoDlgClearError();
         });
-
-        return $videoDlg;
+        $vdlg.find('.brikpanel-pe-viddlg-choose').on('click', videoDlgChooseFile);
+        $vdlg.find('.brikpanel-pe-viddlg-cancel, .brikpanel-pe-linkdlg-backdrop').on('click', closeVideoDialog);
+        $vdlg.on('keydown', function (e) {
+            if (e.key === 'Escape') { e.preventDefault(); closeVideoDialog(); return; }
+            if (e.key === 'Tab') videoDlgTrapFocus(e);
+        });
+        $vdlg.find('.brikpanel-pe-viddlg-remove').on('click', function () { videoDlgCommit(videoBlank(), true); });
+        $vdlg.find('.brikpanel-pe-viddlg-ok').on('click', videoDlgSave);
+        return $vdlg;
     }
 
-    function openVideoDialog(id) {
-        var img = state.images.find(function (i) { return i.id === id; });
-        if (!img) return;
-        if (!img.video || typeof img.video !== 'object') img.video = defaultVideo();
-        var $dlg = buildVideoDialog();
-        // Work on a copy so Cancel discards changes.
-        videoDlgState.id = id;
-        videoDlgState.video = $.extend({}, defaultVideo(), img.video);
-        $dlg.data('sync')();
-        $dlg.removeAttr('hidden');
+    function videoDlgSync() {
+        var v = vdlg.video, t = PE.i18n, ctx = vdlg.ctx;
+        var editable = v.editable !== false;
+        var removeOnly = !ctx.product && !videoHasSlot(ctx.slot);
+
+        $vdlg.find('.brikpanel-pe-viddlg-source button').each(function () {
+            var on = $(this).attr('data-source') === v.source;
+            $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
+        });
+        $vdlg.find('.brikpanel-pe-viddlg-field').each(function () { this.hidden = $(this).attr('data-for') !== v.source; });
+        $vdlg.find('.brikpanel-pe-viddlg-other').prop('hidden', v.source !== 'other');
+        $vdlg.find('.brikpanel-pe-viddlg-other-value').text(v.other || '');
+
+        var name = v.file_id ? (v.file_name || v.file_url) : '';
+        $vdlg.find('.brikpanel-pe-viddlg-filename').text(name || t.video_no_file);
+        $vdlg.find('.brikpanel-pe-viddlg-choose').text(name ? t.video_replace_file : t.video_choose_file);
+
+        VID.options.forEach(function (o) {
+            var $row = $vdlg.find('.brikpanel-pe-viddlg-opt[data-opt="' + o.key + '"]');
+            var val = v.options[o.key];
+            if (o.type === 'switch') {
+                $row.find('input').prop('checked', !!val);
+            } else if (o.type === 'text') {
+                var $in = $row.find('input');
+                if (!$in.is(':focus')) $in.val(val === null || val === undefined ? '' : String(val));
+            } else if ((o.choices || []).length > 4) {
+                $row.find('select').val(String(val));
+            } else {
+                $row.find('button').each(function () {
+                    var on = String($(this).attr('data-value')) === String(val);
+                    $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
+                });
+            }
+            var show = true;
+            if (o.show_if) {
+                var cur = v.options[o.show_if.key];
+                show = (typeof o.show_if.eq === 'boolean') ? (!!cur === o.show_if.eq) : (String(cur) === String(o.show_if.eq));
+            }
+            $row.prop('hidden', !show);
+        });
+
+        $vdlg.find('.brikpanel-pe-viddlg-main').prop('hidden', removeOnly);
+        $vdlg.find('.brikpanel-pe-viddlg-main :input').prop('disabled', !editable);
+        $vdlg.find('.brikpanel-pe-viddlg-ok').prop('hidden', !editable || removeOnly);
+        $vdlg.find('.brikpanel-pe-viddlg-remove').prop('hidden', !editable || !v.has);
+
+        var notes = [];
+        if (!editable) notes.push(t.video_note_locked);
+        if (removeOnly) notes.push(t.video_note_gallery_only.replace('%s', VID.label));
+        if (v.note && t[v.note]) notes.push(t[v.note]);
+        (VID.notes || []).forEach(function (n) {
+            if ((n.when === 'always' || (n.when === 'variation' && ctx.slot === 'variation')) && t[n.key]) notes.push(t[n.key]);
+        });
+        var $notes = $vdlg.find('.brikpanel-pe-viddlg-notes').empty();
+        notes.forEach(function (n) { $('<p class="brikpanel-pe-viddlg-note"></p>').text(n).appendTo($notes); });
+    }
+
+    function videoDlgError(msg, $field) {
+        $vdlg.find('.brikpanel-pe-viddlg-error').text(msg).prop('hidden', false);
+        if ($field && $field.length) $field.addClass('has-error').trigger('focus');
+    }
+
+    function videoDlgClearError() {
+        if (!$vdlg) return;
+        $vdlg.find('.brikpanel-pe-viddlg-error').text('').prop('hidden', true);
+        $vdlg.find('.has-error').removeClass('has-error');
+    }
+
+    function videoDlgFocusable() {
+        return $vdlg.find('.brikpanel-pe-linkdlg-box').find('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])').filter(function () {
+            return !this.disabled && this.offsetParent !== null;
+        });
+    }
+
+    // Tab and Shift+Tab stay inside the dialog while it is open.
+    function videoDlgTrapFocus(e) {
+        var $f = videoDlgFocusable();
+        if (!$f.length) return;
+        var first = $f[0], last = $f[$f.length - 1], active = document.activeElement;
+        if (!$.contains($vdlg[0], active)) {
+            e.preventDefault();
+            first.focus();
+        } else if (e.shiftKey && active === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && active === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    }
+
+    function videoDlgChooseFile() {
+        if (typeof wp === 'undefined' || !wp.media) return;
+        if (!vdlg.mediaFrame) {
+            vdlg.mediaFrame = wp.media({
+                title: PE.i18n.video_choose_file,
+                button: { text: PE.i18n.video_select },
+                library: { type: (VID.mimes && VID.mimes.length) ? VID.mimes : 'video' },
+                multiple: false
+            });
+            vdlg.mediaFrame.on('select', function () {
+                var a = vdlg.mediaFrame.state().get('selection').first();
+                if (!a) return;
+                a = a.toJSON();
+                var path = a.filename || '';
+                try { path = new URL(a.url).pathname; } catch (e) { /* keep the file name */ }
+                if (!videoExtOk(path)) {
+                    videoDlgError(PE.i18n.video_invalid_file);
+                    return;
+                }
+                vdlg.video.file_id = parseInt(a.id, 10) || 0;
+                vdlg.video.file_url = a.url || '';
+                vdlg.video.file_name = a.title || a.filename || '';
+                videoDlgClearError();
+                videoDlgSync();
+            });
+            vdlg.mediaFrame.on('close', function () {
+                if ($vdlg && !$vdlg.prop('hidden')) $vdlg.find('.brikpanel-pe-viddlg-choose').trigger('focus');
+            });
+        }
+        vdlg.mediaFrame.open();
+    }
+
+    function openVideoDialog(ctx) {
+        if (!VID) return;
+        var t = PE.i18n;
+        var $d = buildVideoDialog();
+        vdlg.ctx = ctx;
+        vdlg.opener = ctx.opener || null;
+        vdlg.video = videoCopy(ctx.product ? productVideo : videoByAtt[ctx.att]);
+        if (vdlg.video.source !== 'other' && VID.sources.indexOf(vdlg.video.source) === -1) vdlg.video.source = VID.sources[0];
+
+        $d.find('#bpe-viddlg-title').text(ctx.product ? t.video_title : t.video_title_image);
+        $d.find('#bpe-viddlg-help').text((ctx.product ? t.video_help_product : t.video_help_image).replace('%s', VID.label));
+        $d.find('#bpe-viddlg-youtube').val(vdlg.video.youtube || '');
+        $d.find('#bpe-viddlg-vimeo').val(vdlg.video.vimeo || '');
+        $d.find('#bpe-viddlg-url').val(vdlg.video.url || '');
+        VID.options.forEach(function (o) {
+            if (o.type === 'text') {
+                var val = vdlg.video.options[o.key];
+                $d.find('#bpe-viddlg-opt-' + o.key).val(val === null || val === undefined ? '' : String(val));
+            }
+        });
+        videoDlgClearError();
+        videoDlgSync();
+        $d.prop('hidden', false);
+
+        var $first = $d.find('.brikpanel-pe-viddlg-field:not([hidden]) input').first();
+        if (!$first.length || $first.prop('disabled') || $d.find('.brikpanel-pe-viddlg-main').prop('hidden')) $first = videoDlgFocusable().first();
+        if ($first.length) $first.trigger('focus');
+    }
+
+    function closeVideoDialog() {
+        if (!$vdlg) return;
+        $vdlg.prop('hidden', true);
+        var opener = vdlg.opener, ctx = vdlg.ctx;
+        vdlg.opener = null;
+        // The gallery may have been redrawn while the dialog was open: find
+        // the button of the same image again so focus goes back where it was.
+        if (opener && !document.body.contains(opener) && ctx && !ctx.product) {
+            opener = $('[data-video-att="' + ctx.att + '"]').get(0) || null;
+        }
+        if (opener && typeof opener.focus === 'function') opener.focus();
+    }
+
+    function videoDlgSave() {
+        var t = PE.i18n, v = vdlg.video, ref, $in, i;
+        videoDlgClearError();
+        switch (v.source) {
+            case 'youtube':
+                $in = $vdlg.find('#bpe-viddlg-youtube');
+                if (!$.trim($in.val())) return videoDlgError(t.video_url_required, $in);
+                ref = videoParseYouTube($in.val());
+                if (!ref) return videoDlgError(t.video_invalid_youtube, $in);
+                v.youtube = videoYouTubeLink(ref);
+                break;
+            case 'vimeo':
+                $in = $vdlg.find('#bpe-viddlg-vimeo');
+                if (!$.trim($in.val())) return videoDlgError(t.video_url_required, $in);
+                ref = videoParseVimeo($in.val());
+                if (!ref) return videoDlgError(t.video_invalid_vimeo, $in);
+                v.vimeo = videoVimeoLink(ref);
+                break;
+            case 'file':
+                if (!v.file_id) return videoDlgError(t.video_file_required, $vdlg.find('.brikpanel-pe-viddlg-choose'));
+                break;
+            case 'url':
+                $in = $vdlg.find('#bpe-viddlg-url');
+                if (!$.trim($in.val())) return videoDlgError(t.video_url_required, $in);
+                if (!videoFileLinkOk($in.val())) return videoDlgError(t.video_invalid_url, $in);
+                v.url = $.trim($in.val());
+                break;
+            case 'other':
+                break;
+            default:
+                return;
+        }
+        for (i = 0; i < VID.options.length; i++) {
+            var o = VID.options[i];
+            if (o.type !== 'text') continue;
+            var $t = $vdlg.find('#bpe-viddlg-opt-' + o.key);
+            var val = $.trim($t.val() || '');
+            if (!$t.closest('.brikpanel-pe-viddlg-opt').prop('hidden') && val && o.pattern && !(new RegExp(o.pattern)).test(val)) {
+                return videoDlgError(t['video_' + (o.error || 'invalid_size')], $t);
+            }
+            v.options[o.key] = val;
+        }
+        v.has = true;
+        videoDlgCommit(v, false);
+    }
+
+    function videoDlgCommit(v, removed) {
+        var ctx = vdlg.ctx, t = PE.i18n;
+        v = videoCopy(v);
+        if (removed) v.has = false;
+        if (ctx.product) {
+            productVideo = v;
+            productVideoDirty = true;
+            refreshProductRow();
+        } else {
+            videoByAtt[ctx.att] = v;
+            videoDirty[ctx.att] = true;
+            refreshVideoBadges();
+        }
+        state.dirty = true;
+        closeVideoDialog();
+        showToast(ctx.product ? (removed ? t.video_product_removed : t.video_product_added) : (removed ? t.video_removed : t.video_added), 'success');
+    }
+
+    // ---- Video save payload ---------------------------------------------
+    function videoPostShape(v) {
+        if (!v || !v.has) return { remove: 1 };
+        return { source: v.source, youtube: v.youtube, vimeo: v.vimeo, file_id: v.file_id, url: v.url, options: v.options };
+    }
+
+    // Ids of the third-party product-data panels and metaboxes on this form.
+    // Theme save handlers that clear fields missing from a save are only let
+    // loose on boxes that were really here (see Brikpanel_Video::begin_save()).
+    function renderedThirdPartyBoxes() {
+        var ids = [];
+        // Panels sit in per-tab groups inside the product-data card.
+        $('.brikpanel-pe-wc-fields').find('.brikpanel-pe-wc-panel[id], .panel[id]').each(function () {
+            if (ids.indexOf(this.id) === -1) ids.push(this.id);
+        });
+        $('.brikpanel-pe-metaboxes-wrap .postbox[id]').each(function () { ids.push(this.id); });
+        return ids;
+    }
+
+    function videoTargets() {
+        var map = {};
+        state.images.forEach(function (img, idx) { map[img.id] = idx === 0 ? 'featured' : 'gallery'; });
+        if (videoHasSlot('variation')) {
+            (state.variations || []).forEach(function (v) {
+                if (v && v.images && v.images[0] && !map[v.images[0].id]) map[v.images[0].id] = 'variation';
+            });
+        }
+        return map;
+    }
+
+    // Adds the video fields to a save and returns what was sent, so the reply
+    // can tell an edit made during the save from the one it confirms.
+    function collectVideoPayload(data) {
+        data.bp_rendered_boxes = JSON.stringify(renderedThirdPartyBoxes());
+        if (!VID) return null;
+        data.video_provider = VID.id;
+        if (VID.kind === 'product') {
+            if (!productVideoDirty || !$('#bpe-prodvideo').length) return null;
+            data.product_video = JSON.stringify(videoPostShape(productVideo));
+            return { product: JSON.stringify(productVideo) };
+        }
+        if (!state.imagesReady) return null;
+        var targets = videoTargets(), map = {}, snap = {}, n = 0;
+        Object.keys(videoDirty).forEach(function (id) {
+            if (!targets[id]) return;
+            map[id] = videoPostShape(videoByAtt[id]);
+            snap[id] = JSON.stringify(videoByAtt[id]);
+            n++;
+        });
+        if (!n) return null;
+        data.gallery_videos = JSON.stringify(map);
+        return { items: snap };
+    }
+
+    // The theme's own panel may be on the page too (Flatsome, Porto): give its
+    // inputs the stored values so the next save does not post stale ones back.
+    function applyVideoMirror(mirror) {
+        if (!mirror || typeof mirror !== 'object') return;
+        var $inputs = $('.brikpanel-pe-wc-fields :input[name], .brikpanel-pe-metaboxes-wrap :input[name]');
+        Object.keys(mirror).forEach(function (name) {
+            $inputs.filter(function () { return this.name === name && this.type !== 'checkbox' && this.type !== 'radio'; }).val(String(mirror[name]));
+        });
+    }
+
+    // Adopts the videos as stored by the save, except any edited while the
+    // save was running (they stay dirty for the next one).
+    function syncVideosFromServer(videos, sent) {
+        if (!VID || !videos || typeof videos !== 'object' || videos.provider !== VID.id) return;
+        if (VID.kind === 'product') {
+            if (videos.product) {
+                var editedDuring = productVideoDirty && (!sent || !sent.product || JSON.stringify(productVideo) !== sent.product);
+                if (!editedDuring) {
+                    productVideo = videoCopy(videos.product);
+                    productVideoDirty = false;
+                }
+                applyVideoMirror(videos.product.mirror);
+                refreshProductRow();
+            }
+            if (productVideoDirty) state.dirty = true;
+            return;
+        }
+        var items = (videos.items && typeof videos.items === 'object') ? videos.items : {};
+        var sentItems = (sent && sent.items) ? sent.items : {};
+        Object.keys(items).forEach(function (id) {
+            if (videoDirty[id] && (sentItems[id] === undefined || JSON.stringify(videoByAtt[id]) !== sentItems[id])) return;
+            videoByAtt[id] = videoCopy(items[id]);
+            delete videoDirty[id];
+        });
+        Object.keys(sentItems).forEach(function (id) {
+            if (items[id] === undefined && JSON.stringify(videoByAtt[id]) === sentItems[id]) delete videoDirty[id];
+        });
+        refreshVideoBadges();
+        if (Object.keys(videoDirty).length) state.dirty = true;
     }
 
     function initPriceInputs() {
@@ -1906,7 +2513,7 @@
                     // Whitespace-only text between table-structural elements is
                     // layout cruft from the source — keep the grid markup clean.
                     if (/^(TABLE|THEAD|TBODY|TFOOT|TR)$/.test(parentTag) && !child.nodeValue.trim()) continue;
-                    out += esc(child.nodeValue); continue;
+                    out += escText(child.nodeValue); continue;
                 }
                 if (child.nodeType !== 1) continue;
                 var tag = child.tagName;
@@ -2426,6 +3033,11 @@
                 closeFmtMenus();
                 $fmt.toggleClass('is-open', willOpen);
                 $btn.attr('aria-expanded', willOpen ? 'true' : 'false');
+                // A wrapped toolbar can put the trigger near the card's far
+                // edge (and RTL mirrors it): keep the menu inside the editor.
+                if (willOpen && window.brikpanelTip) {
+                    window.brikpanelTip.nudge($fmt.find('.brikpanel-pe-fmt-menu')[0], $fmt.closest('.brikpanel-pe')[0]);
+                }
                 return;
             }
             if ($btn.hasClass('brikpanel-pe-fmt-item')) {
@@ -2443,6 +3055,9 @@
                 closeFmtMenus();
                 $cp.toggleClass('is-open', cpOpen);
                 $btn.attr('aria-expanded', cpOpen ? 'true' : 'false');
+                if (cpOpen && window.brikpanelTip) {
+                    window.brikpanelTip.nudge($cp.find('.brikpanel-pe-colorpick-menu')[0], $cp.closest('.brikpanel-pe')[0]);
+                }
                 return;
             }
             if ($btn.hasClass('brikpanel-pe-color-swatch')) {
@@ -2683,8 +3298,8 @@
                 $selectAll
                     .attr('data-mode', remaining ? 'all' : 'none')
                     .text(remaining
-                        ? (PE.i18n.select_all_terms || 'Select all (%d)').replace('%d', remaining)
-                        : (PE.i18n.clear_all_terms || 'Clear all'));
+                        ? fillText(PE.i18n.select_all_terms, fmtCount(remaining))
+                        : (PE.i18n.clear_all_terms || ''));
             };
             $selectAll.on('click', function (e) {
                 e.preventDefault();
@@ -2747,7 +3362,7 @@
             e.preventDefault();
             var n = addValues(text);
             if (n) {
-                showToast((PE.i18n.values_added || '%d values added').replace('%d', n), 'success');
+                showToast(countText(PE.i18n.values_added, n), 'success');
             }
         });
 
@@ -2823,8 +3438,8 @@
     }
 
     function createTag(value) {
-        // Title set via .attr(), not interpolated: esc() escapes &, < and > but
-        // not quotes, and a translated string is free to contain one.
+        // Title set via .attr(), not interpolated: a translated string is free
+        // to contain quotes, and .attr() needs no escaping at all.
         var $tag = $('<span class="brikpanel-pe-tag">' + esc(value) + '</span>');
         if (PE.i18n.reorder_attr_value) { $tag.attr('title', PE.i18n.reorder_attr_value); }
         var $rm = $('<button type="button" class="brikpanel-pe-tag-remove">&times;</button>');
@@ -3203,20 +3818,27 @@
         $('#bpe-var-table-body tr.var-main-row').each(function (idx) {
             var v = state.variations[idx]; if (!v) return;
             var $row = $(this);
+            // Sale dates, SKU and the optional fields sit in the details row
+            // (field test B6). A control that is not there keeps the state
+            // value: reading a missing box as '' would blank it on re-render.
+            var $scope = varRowScope($row);
             v.regular_price  = parsePrice($row.find('.var-price').val(), sep);
             v.sale_price     = parsePrice($row.find('.var-sale-price').val(), sep);
-            v.sale_from      = $row.find('.var-sale-from').val() || '';
-            v.sale_to        = $row.find('.var-sale-to').val()   || '';
+            var $vfrom = $scope.find('.var-sale-from');
+            if ($vfrom.length) v.sale_from = $vfrom.val() || '';
+            var $vto = $scope.find('.var-sale-to');
+            if ($vto.length) v.sale_to = $vto.val() || '';
             v.manage_stock   = $row.find('.var-manage').is(':checked');
             v.enabled        = $row.find('.var-enabled').is(':checked');
             v.stock_quantity = $row.find('.var-stock').val();
             v.stock_status   = $row.find('.var-stock-status').val() || 'instock';
-            v.sku            = $row.find('.var-sku').val();
-            var $vgtin = $row.find('.var-gtin');
+            var $vsku = $scope.find('.var-sku');
+            if ($vsku.length) v.sku = $vsku.val();
+            var $vgtin = $scope.find('.var-gtin');
             if ($vgtin.length) v.global_unique_id = $vgtin.val();
-            var $vtax = $row.find('.var-tax-class');
+            var $vtax = $scope.find('.var-tax-class');
             if ($vtax.length) v.tax_class = $vtax.val();
-            var $vship = $row.find('.var-shipping-class');
+            var $vship = $scope.find('.var-shipping-class');
             if ($vship.length) v.shipping_class = $vship.val();
             var $cogs = $row.find('.var-cogs');
             if ($cogs.length) v.cogs_value = parsePrice($cogs.val(), sep);
@@ -3232,7 +3854,7 @@
                 v.attributes = picked;
                 v.name = varDisplayName(v);
             }
-            var $vendor = $row.find('.var-vendor');
+            var $vendor = $scope.find('.var-vendor');
             if ($vendor.length) v.vendor_id = parseInt($vendor.val(), 10) || 0;
             if (v.stock_status === 'onbackorder') {
                 var $back = $('#bpe-var-table-body tr.var-backorder-row[data-idx="' + idx + '"] input[type="radio"]:checked');
@@ -3295,7 +3917,7 @@
         // the server caps the save anyway). Refuse and tell the user to trim.
         var MAX_GEN = 500;
         if (combos.length > MAX_GEN) {
-            showToast((PE.i18n.too_many_variations || 'That combination would create more than %d variations. Reduce the number of attribute values, then try again.').replace('%d', MAX_GEN), 'error');
+            showToast(countText(PE.i18n.too_many_variations, MAX_GEN), 'error');
             return;
         }
         var existing = state.variations || [];
@@ -3342,6 +3964,7 @@
 
         renderVarTable();
         $('#bpe-var-table-section').show();
+        refitVarTable();
         // Snapshot the attribute set this table was built from so later edits
         // to the attribute rows can surface a "regenerate" hint.
         state.varSignature = variationAttrSignature();
@@ -3349,18 +3972,12 @@
         fetchVariationPreviews();
 
         if (appended.length) {
-            var addedMsg = appended.length === 1
-                ? (PE.i18n.variations_generated_one  || '%d new variation added at the end of the list.')
-                : (PE.i18n.variations_generated_many || '%d new variations added at the end of the list.');
-            showToast(addedMsg.replace('%d', appended.length), 'success');
+            showToast(countText(PE.i18n.variations_generated, appended.length), 'success');
         } else {
-            showToast(PE.i18n.variations_generated_none || 'No new combinations to add — every variation already exists.', 'success');
+            showToast(PE.i18n.variations_generated_none || '', 'success');
         }
         if (orphans) {
-            var orphanMsg = orphans === 1
-                ? (PE.i18n.variations_orphaned_one  || '%d variation no longer matches your attribute values. It is marked in the list and kept until you delete it.')
-                : (PE.i18n.variations_orphaned_many || '%d variations no longer match your attribute values. They are marked in the list and kept until you delete them.');
-            showToast(orphanMsg.replace('%d', orphans), 'error', 7000);
+            showToast(countText(PE.i18n.variations_orphaned, orphans), 'error', 7000);
         }
     }
 
@@ -3400,9 +4017,14 @@
             tolerance: 'pointer',
             forcePlaceholderSize: true,
             // A cloned <tr> loses its column widths the moment it leaves the
-            // table's layout, so freeze them onto the helper.
+            // table's layout, so freeze them onto the helper. A stacked row is
+            // a card, not a table row: it only needs the card's width.
             helper: function (e, $tr) {
-                var $orig = $tr.children(), $helper = $tr.clone();
+                var $helper = $tr.clone();
+                if ($tr.closest('table').hasClass('is-stacked')) {
+                    return $helper.width($tr.outerWidth());
+                }
+                var $orig = $tr.children();
                 $helper.children().each(function (i) { $(this).width($orig.eq(i).width()); });
                 return $helper;
             },
@@ -3416,16 +4038,20 @@
                 update: $.noop
             },
             start: function (e, ui) {
+                // The DOM order and the state order disagree until `stop`
+                // re-renders; a background save in between would pair rows
+                // with the wrong variations.
+                state.varDragging = true;
                 // Pull the live table into state before anything moves — the
                 // drop triggers a full re-render, which would otherwise restore
                 // every row from the last snapshot and wipe in-flight edits.
                 captureVarTableInputs();
                 captureVarExtraInputs();
-                // The backorder and extras rows are siblings of the main row,
-                // not children, so they would stay behind and visually detach
-                // from their variation. Drop them now; `stop` re-renders and
-                // rebuilds them in the new order.
-                $tb.find('tr.var-backorder-row, tr.var-extras-row').remove(); // i18n-ignore: CSS selector, not user-facing text
+                // The backorder, details and extras rows are siblings of the
+                // main row, not children, so they would stay behind and
+                // visually detach from their variation. Drop them now; `stop`
+                // re-renders and rebuilds them in the new order.
+                $tb.find('tr.var-backorder-row, tr.var-details-row, tr.var-extras-row').remove(); // i18n-ignore: CSS selector, not user-facing text
                 ui.placeholder.height(ui.item.outerHeight());
             },
             update: function () {
@@ -3438,7 +4064,7 @@
             },
             // Fires on every drop, moved or not, so one render path restores the
             // companion rows either way.
-            stop: function () { renderVarTable(); }
+            stop: function () { state.varDragging = false; renderVarTable(); }
         });
     }
 
@@ -3498,11 +4124,9 @@
             var dir = (mode === 'name-desc') ? -1 : 1;
             src.forEach(function (v, i) { v.__s = i; });
             src.sort(function (a, b) {
-                // `numeric` so "Size 2" sorts before "Size 10"; `base`
-                // sensitivity so case and accents don't split otherwise equal
-                // labels. Locale comes from the browser, which gets Turkish
-                // i/İ and German umlauts right without a lookup table here.
-                var c = String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' });
+                // Numeric ("Size 2" before "Size 10"), case and accents
+                // ignored, in the viewer's language (Turkish i/İ, umlauts).
+                var c = compareNames(a.name || '', b.name || '');
                 return c !== 0 ? dir * c : a.__s - b.__s; // stable
             });
         }
@@ -3583,6 +4207,7 @@
         }]);
         renderVarTable();
         $('#bpe-var-table-section').show();
+        refitVarTable();
         state.dirty = true;
         // Adding a row does not change which attributes the table was built
         // from, so the "regenerate" hint must not start crying about drift.
@@ -3602,9 +4227,7 @@
     function clearAllVariations() {
         var n = (state.variations || []).length;
         if (!n) return;
-        var confirmMsg = PE.i18n.confirm_clear_variations
-            || 'Delete all %d variations? They are removed immediately and this cannot be undone. The product stays a variable product and its attributes are kept.';
-        if (!window.confirm(confirmMsg.replace('%d', n))) return;
+        if (!window.confirm(countText(PE.i18n.confirm_clear_variations, n))) return;
 
         var pid = parseInt($('#bpe-product-id').val() || 0, 10) || 0;
         if (!pid) {
@@ -3651,7 +4274,7 @@
                     // would loop forever (a variation some plugin refuses to
                     // delete). Stop and say so instead of hanging the button.
                     if (batch < 1) { failed(); return; }
-                    $btn.text((PE.i18n.clearing_variations_left || 'Deleting… %d left').replace('%d', remaining));
+                    $btn.text(countText(PE.i18n.clearing_variations_left, remaining));
                     runBatch();
                     return;
                 }
@@ -3667,12 +4290,9 @@
                 // reports 0, so say what actually happened instead.
                 var doneMsg;
                 if (!totalDeleted) {
-                    doneMsg = PE.i18n.variations_cleared_local || 'Variation list cleared.';
+                    doneMsg = PE.i18n.variations_cleared_local || '';
                 } else {
-                    doneMsg = (totalDeleted === 1
-                        ? (PE.i18n.variations_cleared_one  || '%d variation deleted.')
-                        : (PE.i18n.variations_cleared_many || '%d variations deleted.')
-                    ).replace('%d', totalDeleted);
+                    doneMsg = countText(PE.i18n.variations_cleared, totalDeleted);
                 }
                 showToast(doneMsg, 'success');
                 release();
@@ -3963,6 +4583,8 @@
             // move a merchant's edit onto a different variation.
             if (!lv || !sv) return merged;
             if (sv.id && v.id && String(sv.id) !== String(v.id)) return merged;
+            // A details panel the merchant had open stays open after the save.
+            if (lv._detailsOpen) { merged._detailsOpen = true; }
             // Only a field that drifted from what was submitted counts as an
             // in-flight edit. Everything else defers to the server, so values
             // it normalised or rejected (a duplicate SKU, say) still win.
@@ -3999,7 +4621,7 @@
         // and inline they would be the thing that pushes the strip onto a
         // second line. Each select still names its own axis ("No default
         // Color…"), so the popover needs no per-field labels.
-        var groupLabel = i18n.default_form_values || 'Default Form Values';
+        var groupLabel = i18n.default_form_values || 'Default form values';
 
         $row.empty();
         attrs.forEach(function (a) {
@@ -4010,7 +4632,7 @@
 
             var $sel = $('<select class="brikpanel-pe-select bpe-var-default"></select>').attr('data-key', key);
             var noneLabel = (i18n.no_default_for || 'No default %s…').replace('%s', a.name);
-            $sel.attr('aria-label', groupLabel + ' — ' + a.name);
+            $sel.attr('aria-label', groupLabel + ': ' + a.name);
             $sel.append($('<option value=""></option>').text(noneLabel));
             a.values.forEach(function (val) {
                 var $opt = $('<option></option>').attr('value', val).text(val);
@@ -4041,8 +4663,171 @@
         $pop.prop('hidden', !open);
     }
 
+    /* ------------------------------------------------------------------
+       Variation table (field test B6)
+
+       A row keeps what is edited on every variation: image, active, name,
+       price, sale price, stock and cost. The sale schedule, SKU and the
+       optional per-variation fields (GTIN, tax class, shipping class,
+       supplier) live in a details row behind the ▾ button. Up to 18 columns
+       used to be crammed into a ~770px card, and the overflow hid COGS, SKU,
+       Image and Delete in a scroll box nobody noticed. When even the slim
+       row does not fit (tablet, phone, long translations) the shared helper
+       (front-end/shared/brikpanel-fit-table.js) stacks the rows into cards.
+
+       One variation is up to four sibling rows, all carrying its data-idx:
+       main, backorder (optional), details (always rendered, [hidden] while
+       closed) and extras (third-party fields, optional).
+       ------------------------------------------------------------------ */
+
+    // The controls of one variation: its main row plus its details row.
+    // Everything that reads a moved field (sale dates, SKU, GTIN, tax class,
+    // shipping class, supplier) must read through this scope.
+    function varRowScope($main) {
+        var idx = $main.attr('data-idx');
+        return $main.add($main.siblings('tr.var-details-row[data-idx="' + idx + '"]'));
+    }
+
+    function toggleVarStockControl($el, active) {
+        $el.prop('disabled', !active).toggleClass('is-off', !active);
+        if (active) {
+            $el.removeAttr('aria-hidden').removeAttr('tabindex');
+        } else {
+            $el.attr({ 'aria-hidden': 'true', tabindex: '-1' });
+        }
+    }
+
+    /* Track on: the quantity box is live and WooCommerce derives the status.
+       Track off: the status select is live. Both sit in one grid cell, so the
+       column keeps its width whichever one shows. Switching tracking off with
+       "On backorder" already chosen brings its backorder row back. */
+    function setVarTracking($main, on) {
+        var $status = $main.find('.var-stock-status');
+        $main.find('.var-manage').prop('checked', on);
+        toggleVarStockControl($main.find('.var-stock'), on);
+        toggleVarStockControl($status, !on);
+        var idx = $main.attr('data-idx');
+        var $back = $main.siblings('tr.var-backorder-row[data-idx="' + idx + '"]');
+        var showBack = !on && $back.length > 0 && $status.val() === 'onbackorder';
+        if ($back.length) { $back.prop('hidden', !showBack); }
+        $main.toggleClass('has-backorder', showBack);
+    }
+
+    // Whether anything behind ▾ holds a value, so a closed row still says so.
+    function varStateHasDetails(v) {
+        if (v.sale_from || v.sale_to || v.sku) return true;
+        if (productData.gtin_enabled && v.global_unique_id) return true;
+        if (productData.tax_enabled && v.tax_class !== undefined && v.tax_class !== null && ('' + v.tax_class) !== 'parent') return true;
+        if (productData.shipping_class_enabled && v.shipping_class) return true;
+        if (productData.vendor_field_enabled && (parseInt(v.vendor_id, 10) || 0) > 0) return true;
+        return false;
+    }
+
+    function varScopeHasDetails($scope) {
+        var filled = false;
+        $scope.find('.var-sale-from, .var-sale-to, .var-sku, .var-gtin').each(function () {
+            if ($.trim($(this).val() || '') !== '') { filled = true; }
+        });
+        var $tax = $scope.find('.var-tax-class');
+        if ($tax.length && ($tax.val() || 'parent') !== 'parent') { filled = true; }
+        var $ship = $scope.find('.var-shipping-class');
+        if ($ship.length && ($ship.val() || '') !== '') { filled = true; }
+        var $vendor = $scope.find('.var-vendor');
+        if ($vendor.length && (parseInt($vendor.val(), 10) || 0) > 0) { filled = true; }
+        return filled;
+    }
+
+    function markVarDetailsDot($main) {
+        $main.find('.var-expand-btn').toggleClass('has-details', varScopeHasDetails(varRowScope($main)));
+    }
+
+    function prefersReducedMotion() {
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    /* Open or close one variation's details. The panel slides open with a
+       0fr → 1fr grid-row transition; closing waits for the transition before
+       the row goes back to [hidden]. Third-party fields close with it. */
+    function setVarDetailsOpen($main, open, animate) {
+        var idx = $main.attr('data-idx');
+        var $det = $main.siblings('tr.var-details-row[data-idx="' + idx + '"]');
+        var v = state.variations[parseInt(idx, 10)];
+        if (v) { v._detailsOpen = !!open; }
+        $main.toggleClass('is-open', !!open);
+        $main.find('.var-expand-btn').attr('aria-expanded', open ? 'true' : 'false');
+        if (!$det.length) return;
+        var det = $det[0];
+        window.clearTimeout(det._bpCloseTimer);
+        if (open) {
+            det.classList.remove('is-closing');
+            det.hidden = false;
+            if (animate && !prefersReducedMotion()) { void det.offsetHeight; }
+            det.classList.add('is-open');
+            return;
+        }
+        $main.siblings('tr.var-extras-row[data-idx="' + idx + '"]').prop('hidden', true);
+        $det.find('.var-extras-toggle').attr('aria-expanded', 'false');
+        det.classList.remove('is-open');
+        if (!animate || prefersReducedMotion() || det.hidden) {
+            det.classList.remove('is-closing');
+            det.hidden = true;
+            return;
+        }
+        det.classList.add('is-closing');
+        det._bpCloseTimer = window.setTimeout(function () {
+            if (det.classList.contains('is-open')) return; // reopened meanwhile
+            det.classList.remove('is-closing');
+            det.hidden = true;
+        }, 300);
+    }
+
+    function syncVarExpandAll() {
+        var $btn = $('#bpe-var-expand-all');
+        if (!$btn.length) return;
+        var $rows = $('#bpe-var-table-body tr.var-main-row');
+        var allOpen = $rows.length > 0 && $rows.filter('.is-open').length === $rows.length;
+        var label = allOpen ? PE.i18n.var_hide_all : PE.i18n.var_show_all;
+        $btn.attr({ 'aria-expanded': allOpen ? 'true' : 'false', 'aria-label': label, title: label });
+    }
+
+    // Fit or stack (field test B6). Created lazily: the table is on the page
+    // from the start, but only a variable product ever renders rows into it.
+    var varFit = null;
+    function refitVarTable() {
+        if (!varFit && window.brikpanelFitTable) {
+            var table = document.getElementById('bpe-var-table');
+            if (table) {
+                varFit = window.brikpanelFitTable(table, { slack: 0, hysteresis: 16, prepareClone: prepareVarTableClone });
+            }
+        }
+        if (varFit) { varFit.refit(); }
+    }
+
+    // Only the main rows decide the width, and on a long list a handful of
+    // them is enough: every cell but the name is the same size on every row,
+    // so keep the longest names, a manual row (its dropdowns) and an orphan
+    // row (its badge).
+    function prepareVarTableClone(copy) {
+        $(copy).find('tr.var-backorder-row, tr.var-details-row, tr.var-extras-row').remove(); // i18n-ignore: CSS selector, not user-facing text
+        var rows = Array.prototype.slice.call(copy.querySelectorAll('tbody tr.var-main-row')); // i18n-ignore: CSS selector, not user-facing text
+        if (rows.length <= 24) return;
+        var nameLen = function (tr) {
+            var t = tr.querySelector('.var-name-text');
+            return t ? (t.textContent || '').length : 0;
+        };
+        var keep = rows.slice().sort(function (a, b) { return nameLen(b) - nameLen(a); }).slice(0, 3);
+        var manual = copy.querySelector('tbody tr.var-main-row td.var-name-manual'); // i18n-ignore: CSS selector, not user-facing text
+        var orphan = copy.querySelector('tbody tr.var-main-row.is-orphan'); // i18n-ignore: CSS selector, not user-facing text
+        if (manual) { keep.push(manual.parentNode); }
+        if (orphan) { keep.push(orphan); }
+        rows.forEach(function (tr) {
+            if (keep.indexOf(tr) === -1) { tr.parentNode.removeChild(tr); }
+        });
+    }
+
     function renderVarTable() {
         var $tb = $('#bpe-var-table-body').empty(), sep = PE.decimal_sep || ',';
+        var t = PE.i18n || {};
         renderDefaultFormValues();
         var hasCogs   = productData.cogs_enabled || false;
         var hasGtin   = !!productData.gtin_enabled;
@@ -4072,80 +4857,36 @@
         });
         // Live axes, for the per-axis dropdowns a manually added row renders.
         var varAttrRows = collectVariationAttributes();
-        // colspan for the extras row — main row has 9 base cols + optional gtin + optional tax class + optional cogs + optional vendor + drag + expander + delete
-        var baseCols = 10 + (hasGtin ? 1 : 0) + (hasTax ? 1 : 0) + (hasShipping ? 1 : 0) + (hasCogs ? 1 : 0) + (hasVendor ? 1 : 0) + 3; // 10 base (incl. Track) +1 drag handle, +1 expander toggle, +1 delete cell
+        // Sub-rows span the whole table; the header is the one place that
+        // knows how many columns there are.
+        var baseCols = $('#bpe-var-table thead th').length || 8;
+        var chevronSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="6 9 12 15 18 9"/></svg>';
+        var clearSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true" focusable="false"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        var moreSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false"><polyline points="9 6 15 12 9 18"/></svg>';
+        var detailField = function (label, control) {
+            return '<label class="brikpanel-pe-var-detail"><span class="brikpanel-pe-var-detail-label">' + esc(label) + '</span>' + control + '</label>';
+        };
+        var dateField = function (cls, label, val) {
+            return detailField(label, '<span class="var-date-field"><input type="text" class="' + cls + ' var-date" value="' + esc(val || '') + '" placeholder="' + esc(t.date_placeholder) + '" autocomplete="off">' +
+                '<button type="button" class="var-date-clear" aria-label="' + esc(t.var_clear_date) + '" title="' + esc(t.var_clear_date) + '"' + (val ? '' : ' hidden') + '>' + clearSvg + '</button></span>');
+        };
         state.variations.forEach(function (v, idx) {
             var pv = v.regular_price ? ('' + v.regular_price).replace('.', sep) : '';
             var sv = v.sale_price ? ('' + v.sale_price).replace('.', sep) : '';
-            var stk = v.stock_quantity !== '' && v.stock_quantity !== null ? v.stock_quantity : '';
+            var stk = (v.stock_quantity !== '' && v.stock_quantity !== null && v.stock_quantity !== undefined) ? v.stock_quantity : '';
             var cogsv = hasCogs && v.cogs_value ? ('' + v.cogs_value).replace('.', sep) : '';
             var varStatus = v.stock_status || 'instock';
             // Per-variation stock tracking. When on, the quantity input is
-            // active and the status select is disabled (WC derives it); when
-            // off, the reverse. Mirrors the simple-product "Track quantity".
+            // active and WC derives the status; when off, the status select
+            // is. Mirrors the simple-product "Track quantity".
             var varManage = !!v.manage_stock;
             // "Active" state. Undefined (freshly generated rows) defaults to on,
             // matching WooCommerce, so new variations are purchasable by default.
             var varEnabled = (v.enabled === undefined) ? true : !!v.enabled;
-            var trackTd = '<td class="var-track-cell"><label class="brikpanel-pe-switch brikpanel-pe-switch-sm">' +
-                '<input type="checkbox" class="var-manage"' + (varManage ? ' checked' : '') + '>' +
-                '<span class="brikpanel-pe-slider"></span></label></td>';
-            var imgCellHtml = buildVarImageCell(v.images, idx);
-            var cogsTd = hasCogs ? '<td><input type="text" class="var-cogs" value="' + esc(cogsv) + '" data-price="1" placeholder="0' + sep + '00"></td>' : '';
-            var taxTd = '';
-            if (hasTax) {
-                var vtc = (v.tax_class === undefined || v.tax_class === null) ? 'parent' : ('' + v.tax_class);
-                var taxOptsHtml = '';
-                Object.keys(taxClassOpts).forEach(function (slug) {
-                    taxOptsHtml += '<option value="' + esc(slug) + '"' + (slug === vtc ? ' selected' : '') + '>' + esc(taxClassOpts[slug]) + '</option>';
-                });
-                taxTd = '<td><select class="var-tax-class brikpanel-pe-select">' + taxOptsHtml + '</select></td>';
-            }
-            var shipTd = '';
-            if (hasShipping) {
-                var vsc = (v.shipping_class === undefined || v.shipping_class === null) ? '' : ('' + v.shipping_class);
-                var shipOptsHtml = '';
-                Object.keys(shippingClassOpts).forEach(function (slug) {
-                    shipOptsHtml += '<option value="' + esc(slug) + '"' + (slug === vsc ? ' selected' : '') + '>' + esc(shippingClassOpts[slug]) + '</option>';
-                });
-                shipTd = '<td><select class="var-shipping-class brikpanel-pe-select">' + shipOptsHtml + '</select></td>';
-            }
-            // Vendor select per variation. The "(parent)" option keeps cells
-            // visually clean when most variations share the parent vendor.
-            var vendorTd = '';
-            if (hasVendor) {
-                var vid = parseInt(v.vendor_id, 10) || 0;
-                var inheritLabel = parentVendorName
-                    ? (PE.i18n.inherit_parent_named || '(parent: %s)').replace('%s', parentVendorName)
-                    : (PE.i18n.inherit_parent || '(parent)');
-                var opts = '<option value="0"' + (vid === 0 ? ' selected' : '') + '>' + esc(inheritLabel) + '</option>';
-                for (var oi = 0; oi < vendorOpts.length; oi++) {
-                    var o = vendorOpts[oi];
-                    opts += '<option value="' + o.id + '"' + (vid === o.id ? ' selected' : '') + '>' + esc(o.name) + '</option>';
-                }
-                vendorTd = '<td class="var-vendor-cell"><select class="var-vendor brikpanel-pe-vendor-select">' + opts + '</select></td>';
-            }
-            var statusTd = '<td><select class="var-stock-status"' + (varManage ? ' disabled' : '') + '>' +
-                '<option value="instock"' + (varStatus === 'instock' ? ' selected' : '') + '>' + (PE.i18n.in_stock || 'In stock') + '</option>' +
-                '<option value="outofstock"' + (varStatus === 'outofstock' ? ' selected' : '') + '>' + (PE.i18n.out_of_stock || 'Out of stock') + '</option>' +
-                '<option value="onbackorder"' + (varStatus === 'onbackorder' ? ' selected' : '') + '>' + (PE.i18n.on_backorder || 'On backorder') + '</option>' +
-                '</select></td>';
-            // Per-variation backorder mode — only injected when the merchant
-            // enabled the sub-option in settings. Hidden until the row's
-            // stock status is "On backorder".
-            var backorderRow = '';
-            if (hasBackorderNotify) {
-                var varBackVal = (v.backorders === 'notify') ? 'notify' : 'yes';
-                var showBack   = (varStatus === 'onbackorder');
-                backorderRow = '<tr class="var-backorder-row" data-idx="' + idx + '"' + (showBack ? '' : ' hidden') + '>' +
-                    '<td colspan="' + baseCols + '">' +
-                    '<div class="brikpanel-pe-var-backorder">' +
-                    '<span class="brikpanel-pe-var-backorder-label">' + esc(PE.i18n.backorder_label || 'Backorder') + '</span>' +
-                    '<div class="brikpanel-pe-radio-group">' +
-                    '<label class="brikpanel-pe-radio"><input type="radio" name="var-backorders-' + idx + '" value="yes"' + (varBackVal === 'yes' ? ' checked' : '') + '><span>' + esc(PE.i18n.backorder_silent || 'Allow without notification') + '</span></label>' +
-                    '<label class="brikpanel-pe-radio"><input type="radio" name="var-backorders-' + idx + '" value="notify"' + (varBackVal === 'notify' ? ' checked' : '') + '><span>' + esc(PE.i18n.backorder_notify || 'Allow and notify customer') + '</span></label>' +
-                    '</div></div></td></tr>';
-            }
+            var open = !!v._detailsOpen;
+            var detailsId = 'bpe-var-details-' + idx;
+            var extrasId = 'bpe-var-extras-' + idx;
+
             // Saved variations read their real per-variation 3rd-party fields
             // (keyed by variation ID). Variations not yet persisted fall back to
             // the preview HTML, keyed by the slot it was fetched for and pinned
@@ -4161,25 +4902,21 @@
                 ? (savedLoopById[v.id] === undefined ? idx : savedLoopById[v.id])
                 : previewKey;
             var hasExtra = !!extraHtml;
-            var expanderTd = hasExtra
-                ? '<td class="var-expand-cell"><button type="button" class="var-expand-btn" data-idx="' + idx + '" aria-label="' + esc(PE.i18n.more_fields || 'More fields') + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button></td>'
-                : '<td class="var-expand-cell"></td>';
+
             // Reorder handle. Grabbed by the sortable, and focusable so the
             // order can also be changed from the keyboard with the arrow keys.
-            var varDragLabel = esc(PE.i18n.reorder_variation || 'Drag to reorder this variation');
+            var varDragLabel = esc(t.reorder_variation);
             var dragTd = '<td class="var-drag-cell"><span class="var-drag-handle" role="button" tabindex="0" aria-label="' + varDragLabel + '" title="' + varDragLabel + '">' +
                 '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="3" r="1.4"/><circle cx="11" cy="3" r="1.4"/><circle cx="5" cy="8" r="1.4"/><circle cx="11" cy="8" r="1.4"/><circle cx="5" cy="13" r="1.4"/><circle cx="11" cy="13" r="1.4"/></svg>' +
                 '</span></td>';
-            var rowClasses = 'var-main-row';
-            if (hasExtra) rowClasses += ' has-extra';
-            if (hasBackorderNotify && varStatus === 'onbackorder') rowClasses += ' has-backorder';
-            if (!varEnabled) rowClasses += ' is-disabled';
-            if (v._orphan) rowClasses += ' is-orphan';
+            var expandTd = '<td class="var-expand-cell"><button type="button" class="var-expand-btn' + (varStateHasDetails(v) ? ' has-details' : '') + '" data-idx="' + idx + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + detailsId + '" aria-label="' + esc(t.var_details) + '" title="' + esc(t.var_details) + '">' +
+                chevronSvg + '<span class="var-details-dot" aria-hidden="true"></span></button></td>';
+
             // "Active" toggle sits at the head of the variation name cell —
             // where WooCommerce's own "Enabled" checkbox lives — so merchants
             // working only in this dashboard can turn a variation on/off.
-            var enabledSwitch = '<label class="brikpanel-pe-switch brikpanel-pe-switch-xs var-enabled-switch" title="' + esc(PE.i18n.variation_active || 'Active') + '">' +
-                '<input type="checkbox" class="var-enabled"' + (varEnabled ? ' checked' : '') + ' aria-label="' + esc(PE.i18n.variation_active || 'Active') + '">' +
+            var enabledSwitch = '<label class="brikpanel-pe-switch brikpanel-pe-switch-xs var-enabled-switch" title="' + esc(t.variation_active) + '">' +
+                '<input type="checkbox" class="var-enabled"' + (varEnabled ? ' checked' : '') + ' aria-label="' + esc(t.variation_active) + '">' +
                 '<span class="brikpanel-pe-slider"></span></label>';
             // A row added with "Add manually" has no combination yet, so the
             // name cell turns into one dropdown per axis. Once it is saved the
@@ -4191,34 +4928,103 @@
             // attribute values, so a merchant who removed a value can see which
             // variations are now stranded instead of losing them silently.
             var orphanBadge = v._orphan
-                ? '<span class="var-orphan-badge" title="' + esc(PE.i18n.variation_orphan_title || 'This combination is no longer among your attribute values.') + '">' +
-                  esc(PE.i18n.variation_orphan_badge || 'Not in your attributes') + '</span>'
+                ? '<span class="var-orphan-badge" title="' + esc(t.variation_orphan_title) + '">' + esc(t.variation_orphan_badge) + '</span>'
                 : '';
+            var nameTd = '<td class="var-name' + (v.manual ? ' var-name-manual' : '') + '"><span class="var-name-inner">' +
+                buildVarImageCell(v.images, idx) + enabledSwitch +
+                '<span class="var-name-text-wrap">' + nameCellHtml + orphanBadge + '</span></span></td>';
+
+            var priceTd = '<td class="var-num-cell" data-bp-label="' + esc(t.var_price) + '"><input type="text" class="var-price" value="' + esc(pv) + '" data-price="1" placeholder="0' + sep + '00" aria-label="' + esc(t.var_price) + '"></td>';
+            var saleTd = '<td class="var-num-cell" data-bp-label="' + esc(t.var_sale_price) + '"><input type="text" class="var-sale-price" value="' + esc(sv) + '" data-price="1" placeholder="0' + sep + '00" aria-label="' + esc(t.var_sale_price) + '"></td>';
+
+            var statusOpts = '<option value="instock"' + (varStatus === 'instock' ? ' selected' : '') + '>' + esc(t.in_stock) + '</option>' +
+                '<option value="outofstock"' + (varStatus === 'outofstock' ? ' selected' : '') + '>' + esc(t.out_of_stock) + '</option>' +
+                '<option value="onbackorder"' + (varStatus === 'onbackorder' ? ' selected' : '') + '>' + esc(t.on_backorder) + '</option>';
+            var offAttrs = ' disabled aria-hidden="true" tabindex="-1"';
+            var stockTd = '<td class="var-stock-cell" data-bp-label="' + esc(t.var_stock) + '"><span class="var-stock-ctl">' +
+                '<label class="brikpanel-pe-switch brikpanel-pe-switch-sm var-track-switch" title="' + esc(t.var_track_stock) + '">' +
+                '<input type="checkbox" class="var-manage"' + (varManage ? ' checked' : '') + ' aria-label="' + esc(t.var_track_stock) + '">' +
+                '<span class="brikpanel-pe-slider"></span></label>' +
+                '<span class="var-stock-pair">' +
+                '<input type="number" class="var-stock' + (varManage ? '' : ' is-off') + '" value="' + esc('' + stk) + '" min="0" placeholder="0" aria-label="' + esc(t.var_stock_qty) + '"' + (varManage ? '' : offAttrs) + '>' +
+                '<select class="var-stock-status' + (varManage ? ' is-off' : '') + '" aria-label="' + esc(t.var_stock_status) + '"' + (varManage ? offAttrs : '') + '>' + statusOpts + '</select>' +
+                '</span></span></td>';
+            var cogsTd = hasCogs ? '<td class="var-num-cell" data-bp-label="' + esc(t.cogs) + '"><input type="text" class="var-cogs" value="' + esc(cogsv) + '" data-price="1" placeholder="0' + sep + '00" aria-label="' + esc(t.cogs) + '"></td>' : '';
+            var deleteTd = '<td class="var-delete-cell"><button type="button" class="var-delete-btn" data-idx="' + idx + '" aria-label="' + esc(t.delete_variation) + '" title="' + esc(t.delete_variation) + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button></td>';
+
+            var rowClasses = 'var-main-row';
+            if (hasExtra) rowClasses += ' has-extra';
+            if (hasBackorderNotify && !varManage && varStatus === 'onbackorder') rowClasses += ' has-backorder';
+            if (!varEnabled) rowClasses += ' is-disabled';
+            if (v._orphan) rowClasses += ' is-orphan';
+            if (open) rowClasses += ' is-open';
             $tb.append('<tr data-idx="' + idx + '" class="' + rowClasses + '">' +
-                dragTd +
-                expanderTd +
-                '<td class="var-name' + (v.manual ? ' var-name-manual' : '') + '">' + enabledSwitch + nameCellHtml + orphanBadge + '</td>' +
-                '<td><input type="text" class="var-price" value="' + esc(pv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
-                '<td><input type="text" class="var-sale-price" value="' + esc(sv) + '" data-price="1" placeholder="0' + sep + '00"></td>' +
-                '<td><input type="text" class="var-sale-from" value="' + esc(v.sale_from || '') + '" placeholder="' + esc(PE.i18n.date_placeholder || 'YYYY-MM-DD') + '" autocomplete="off"></td>' +
-                '<td><input type="text" class="var-sale-to"   value="' + esc(v.sale_to   || '') + '" placeholder="' + esc(PE.i18n.date_placeholder || 'YYYY-MM-DD') + '" autocomplete="off"></td>' +
-                trackTd +
-                '<td><input type="number" class="var-stock" value="' + esc('' + stk) + '" min="0" placeholder="0"' + (varManage ? '' : ' disabled') + '></td>' +
-                statusTd +
-                cogsTd +
-                vendorTd +
-                '<td><input type="text" class="var-sku" value="' + esc(v.sku) + '"></td>' +
-                (hasGtin ? '<td><input type="text" class="var-gtin" value="' + esc(v.global_unique_id || '') + '" inputmode="numeric" autocomplete="off"></td>' : '') +
-                taxTd +
-                shipTd +
-                '<td>' + imgCellHtml + '</td>' +
-                '<td class="var-delete-cell"><button type="button" class="var-delete-btn" data-idx="' + idx + '" aria-label="' + esc(PE.i18n.delete_variation || 'Delete variation') + '" title="' + esc(PE.i18n.delete_variation || 'Delete variation') + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button></td>' +
-                '</tr>');
-            if (backorderRow) {
-                $tb.append(backorderRow);
+                dragTd + expandTd + nameTd + priceTd + saleTd + stockTd + cogsTd + deleteTd + '</tr>');
+
+            // Per-variation backorder mode — only injected when the merchant
+            // enabled the sub-option in settings. Shown while the row's own
+            // status (tracking off) is "On backorder".
+            if (hasBackorderNotify) {
+                var varBackVal = (v.backorders === 'notify') ? 'notify' : 'yes';
+                var showBack = !varManage && varStatus === 'onbackorder';
+                $tb.append('<tr class="var-backorder-row" data-idx="' + idx + '"' + (showBack ? '' : ' hidden') + '>' +
+                    '<td colspan="' + baseCols + '">' +
+                    '<div class="brikpanel-pe-var-backorder">' +
+                    '<span class="brikpanel-pe-var-backorder-label">' + esc(t.backorder_label) + '</span>' +
+                    '<div class="brikpanel-pe-radio-group">' +
+                    '<label class="brikpanel-pe-radio"><input type="radio" name="var-backorders-' + idx + '" value="yes"' + (varBackVal === 'yes' ? ' checked' : '') + '><span>' + esc(t.backorder_silent) + '</span></label>' +
+                    '<label class="brikpanel-pe-radio"><input type="radio" name="var-backorders-' + idx + '" value="notify"' + (varBackVal === 'notify' ? ' checked' : '') + '><span>' + esc(t.backorder_notify) + '</span></label>' +
+                    '</div></div></td></tr>');
             }
+
+            // Details: always rendered, so the save payload always finds the
+            // moved fields, and kept [hidden] while closed.
+            var fields = dateField('var-sale-from', t.var_sale_start, v.sale_from) +
+                dateField('var-sale-to', t.var_sale_end, v.sale_to) +
+                detailField(t.var_sku, '<input type="text" class="var-sku" value="' + esc(v.sku || '') + '">');
+            if (hasGtin) {
+                fields += detailField(t.var_gtin, '<input type="text" class="var-gtin" value="' + esc(v.global_unique_id || '') + '" inputmode="numeric" autocomplete="off">');
+            }
+            if (hasTax) {
+                var vtc = (v.tax_class === undefined || v.tax_class === null) ? 'parent' : ('' + v.tax_class);
+                var taxOptsHtml = '';
+                Object.keys(taxClassOpts).forEach(function (slug) {
+                    taxOptsHtml += '<option value="' + esc(slug) + '"' + (slug === vtc ? ' selected' : '') + '>' + esc(taxClassOpts[slug]) + '</option>';
+                });
+                fields += detailField(t.var_tax_class, '<select class="var-tax-class">' + taxOptsHtml + '</select>');
+            }
+            if (hasShipping) {
+                var vsc = (v.shipping_class === undefined || v.shipping_class === null) ? '' : ('' + v.shipping_class);
+                var shipOptsHtml = '';
+                Object.keys(shippingClassOpts).forEach(function (slug) {
+                    shipOptsHtml += '<option value="' + esc(slug) + '"' + (slug === vsc ? ' selected' : '') + '>' + esc(shippingClassOpts[slug]) + '</option>';
+                });
+                fields += detailField(t.var_shipping_class, '<select class="var-shipping-class">' + shipOptsHtml + '</select>');
+            }
+            // Vendor select per variation. The "(parent)" option keeps rows
+            // visually clean when most variations share the parent vendor.
+            if (hasVendor) {
+                var vid = parseInt(v.vendor_id, 10) || 0;
+                var inheritLabel = parentVendorName
+                    ? (t.inherit_parent_named || '').replace('%s', parentVendorName)
+                    : t.inherit_parent;
+                var vendorOptsHtml = '<option value="0"' + (vid === 0 ? ' selected' : '') + '>' + esc(inheritLabel) + '</option>';
+                for (var oi = 0; oi < vendorOpts.length; oi++) {
+                    var o = vendorOpts[oi];
+                    vendorOptsHtml += '<option value="' + esc('' + o.id) + '"' + (vid === o.id ? ' selected' : '') + '>' + esc(o.name) + '</option>';
+                }
+                fields += detailField(t.var_supplier, '<select class="var-vendor brikpanel-pe-vendor-select">' + vendorOptsHtml + '</select>');
+            }
+            var moreToggle = hasExtra
+                ? '<div class="brikpanel-pe-var-details-more"><button type="button" class="var-extras-toggle" data-idx="' + idx + '" aria-expanded="false" aria-controls="' + extrasId + '">' + moreSvg + esc(t.var_other_fields) + '</button></div>'
+                : '';
+            $tb.append('<tr class="var-details-row' + (open ? ' is-open' : '') + '" id="' + detailsId + '" data-idx="' + idx + '"' + (open ? '' : ' hidden') + '>' +
+                '<td colspan="' + baseCols + '" class="var-details-cell"><div class="var-details-anim"><div class="var-details-clip">' +
+                '<div class="brikpanel-pe-var-details"><div class="brikpanel-pe-var-details-grid">' + fields + '</div>' + moreToggle + '</div>' +
+                '</div></div></td></tr>');
+
             if (hasExtra) {
-                $tb.append('<tr class="var-extras-row" data-idx="' + idx + '" data-loop="' + extraLoop + '" data-variation-id="' + v.id + '" hidden>' +
+                $tb.append('<tr class="var-extras-row" id="' + extrasId + '" data-idx="' + idx + '" data-loop="' + extraLoop + '" data-variation-id="' + v.id + '" hidden>' +
                     '<td colspan="' + baseCols + '" class="var-extras-cell">' +
                     '<div class="brikpanel-pe-var-extras">' + extraHtml + '</div>' +
                     '</td></tr>');
@@ -4240,6 +5046,7 @@
         });
         $tb.find('.var-image-btn').on('click', function () { openVarImagePicker($(this).data('idx')); });
         $tb.find('.var-image-remove').on('click', function (e) { e.stopPropagation(); removeVarImage($(this).data('idx')); });
+        $tb.find('.var-image-video').on('click', onVideoButtonClick);
         // Keyboard reordering: focus a drag handle, then arrow up/down. Gives
         // the sortable a non-pointer equivalent without adding two buttons to
         // every row.
@@ -4251,7 +5058,7 @@
         });
         $tb.find('.var-delete-btn').on('click', function () {
             var idx = $(this).data('idx');
-            var confirmMsg = PE.i18n.confirm_delete_variation || 'Delete this variation? This change is applied when you save the product.';
+            var confirmMsg = t.confirm_delete_variation;
             if (!window.confirm(confirmMsg)) return;
             // Pull live DOM edits back into state.variations BEFORE the splice
             // so unsaved price/stock/SKU edits on sibling rows survive the
@@ -4277,16 +5084,40 @@
             // simple product server-side).
             if (!state.variations.length) { $('#bpe-var-table-section').hide(); }
         });
+        // ▾ opens the row's details (sale schedule, SKU, optional fields).
         $tb.find('.var-expand-btn').on('click', function () {
-            var idx = $(this).data('idx');
-            var $row = $tb.find('.var-extras-row[data-idx="' + idx + '"]');
-            var open = $row.is('[hidden]');
-            if (open) { $row.removeAttr('hidden'); $(this).addClass('open'); }
-            else      { $row.attr('hidden', 'hidden'); $(this).removeClass('open'); }
+            var $main = $(this).closest('tr.var-main-row');
+            setVarDetailsOpen($main, $(this).attr('aria-expanded') !== 'true', true);
+            syncVarExpandAll();
         });
-        // Per-variation "Track" toggle: enables the quantity input and lets
-        // WC derive the status (status select disabled), or vice-versa.
-        // Bound on fresh checkboxes each render — no event stacking.
+        // Third-party fields sit under their own switch inside the details, so
+        // a tall foreign form does not open every time a date is changed.
+        $tb.find('.var-extras-toggle').on('click', function () {
+            var $btn = $(this);
+            var $row = $tb.find('tr.var-extras-row[data-idx="' + $btn.attr('data-idx') + '"]');
+            var show = $row.prop('hidden');
+            $row.prop('hidden', !show);
+            $btn.attr('aria-expanded', show ? 'true' : 'false');
+        });
+        // A value typed or picked behind ▾ updates the row's dot at once.
+        $tb.find('tr.var-details-row').on('input change', ':input', function () {
+            var $det = $(this).closest('tr.var-details-row');
+            var $main = $tb.find('tr.var-main-row[data-idx="' + $det.attr('data-idx') + '"]');
+            if ($(this).hasClass('var-date')) {
+                $(this).siblings('.var-date-clear').prop('hidden', !$(this).val());
+            }
+            markVarDetailsDot($main);
+        });
+        // A sale date cannot be typed (the picker owns the field), so × is the
+        // only way to take one off again.
+        $tb.find('.var-date-clear').on('click', function (e) {
+            e.preventDefault();
+            var input = $(this).siblings('input.var-date')[0];
+            if (!input) return;
+            if (input._flatpickr) { input._flatpickr.clear(); } else { $(input).val('').trigger('change'); }
+            $(this).prop('hidden', true);
+            state.dirty = true;
+        });
         // Per-variation "Active" toggle: reflect the on/off state visually
         // (dim the row when disabled) and mark the editor dirty so the change
         // is persisted on the next save. Bound fresh each render.
@@ -4295,18 +5126,9 @@
             $row.toggleClass('is-disabled', !$cb.is(':checked'));
             state.dirty = true;
         });
+        // Per-variation "Track" toggle: the quantity box or the status select.
         $tb.find('.var-manage').on('change', function () {
-            var $cb = $(this), $row = $cb.closest('tr.var-main-row');
-            var on = $cb.is(':checked');
-            $row.find('.var-stock').prop('disabled', !on);
-            $row.find('.var-stock-status').prop('disabled', on);
-            if (on) {
-                // Tracking on: status is derived, so collapse any open
-                // backorder sub-row tied to a manual "On backorder" choice.
-                var idx = $row.data('idx');
-                $tb.find('tr.var-backorder-row[data-idx="' + idx + '"]').attr('hidden', 'hidden');
-                $row.removeClass('has-backorder');
-            }
+            setVarTracking($(this).closest('tr.var-main-row'), $(this).is(':checked'));
             state.dirty = true;
         });
         // Reveal the per-variation backorder sub-row only when the row's
@@ -4331,7 +5153,7 @@
         if (typeof flatpickr === 'function') {
             $tb.find('.var-sale-from, .var-sale-to').each(function () {
                 if (this._flatpickr) return;
-                flatpickr(this, { dateFormat: 'Y-m-d', allowInput: false });
+                datePicker(this, { dateFormat: 'Y-m-d', allowInput: false });
             });
         }
 
@@ -4350,6 +5172,9 @@
         // Driven from here rather than from each caller because every path
         // that changes the row count ends in a render.
         $('#bpe-clear-vars').prop('hidden', !state.variations.length);
+
+        syncVarExpandAll();
+        refitVarTable();
     }
 
     /* One dropdown per variation axis for a manually added row. The empty
@@ -4394,18 +5219,20 @@
     function buildVarImageCell(images, idx) {
         var count = images ? images.length : 0;
         var badge = count > 1 ? '<span class="var-image-count">' + count + '</span>' : '';
+        var imageLabel = esc(PE.i18n.var_image);
         if (count > 0) {
             var removeLabel = esc(PE.i18n.remove_image || 'Remove image');
             return '<span class="var-image-wrap" data-idx="' + idx + '">' +
-                '<button type="button" class="var-image-btn has-images" data-idx="' + idx + '">' +
+                '<button type="button" class="var-image-btn has-images" data-idx="' + idx + '" aria-label="' + imageLabel + '" title="' + imageLabel + '">' +
                 '<img src="' + esc(images[0].url) + '" alt="">' + badge + '</button>' +
                 '<button type="button" class="var-image-remove" data-idx="' + idx + '" aria-label="' + removeLabel + '" title="' + removeLabel + '">' +
                 '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
+                varVideoButtonHtml(images) +
                 '</span>';
         }
         return '<span class="var-image-wrap" data-idx="' + idx + '">' +
-            '<button type="button" class="var-image-btn" data-idx="' + idx + '">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>' +
+            '<button type="button" class="var-image-btn" data-idx="' + idx + '" aria-label="' + imageLabel + '" title="' + imageLabel + '">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>' +
             '</span>';
     }
 
@@ -4417,6 +5244,7 @@
             e.stopPropagation();
             removeVarImage(idx);
         });
+        $wrap.find('.var-image-video').off('click').on('click', onVideoButtonClick);
     }
 
     // Clear all images for a variation. The change is committed on product save
@@ -4425,6 +5253,7 @@
         state.variations[idx].images = [];
         $('#bpe-var-table-body .var-image-wrap[data-idx="' + idx + '"]').replaceWith(buildVarImageCell([], idx));
         bindVarImageCell(idx);
+        state.dirty = true;
     }
 
     function openVarImagePicker(idx) {
@@ -4470,6 +5299,7 @@
             // Re-render just this cell, then rebind its picker + remove handlers.
             $('#bpe-var-table-body .var-image-wrap[data-idx="' + idx + '"]').replaceWith(buildVarImageCell(newImages, idx));
             bindVarImageCell(idx);
+            state.dirty = true;
         });
 
         frame.open();
@@ -4487,12 +5317,8 @@
             // select) before applying the value.
             $('#bpe-var-table-body tr.var-main-row').each(function () {
                 var $row = $(this);
-                $row.find('.var-manage').prop('checked', true);
-                $row.find('.var-stock').prop('disabled', false).val(stock);
-                $row.find('.var-stock-status').prop('disabled', true);
-                $row.removeClass('has-backorder');
-                var idx = $row.data('idx');
-                $('#bpe-var-table-body tr.var-backorder-row[data-idx="' + idx + '"]').attr('hidden', 'hidden');
+                setVarTracking($row, true);
+                $row.find('.var-stock').val(stock);
             });
         }
         // Bulk Active/Inactive — flip every row's toggle and its dimmed state.
@@ -4534,11 +5360,26 @@
         $(':input[data-required]:visible').each(function () { if (!validateField($(this))) ok = false; });
         return ok;
     }
+    /* With "Require a price to publish" off the price box may stay empty, but
+       not behind a sale price: WooCommerce drops a sale price that has no
+       regular price, so the product would go live with no price at all while
+       the merchant believes it is on sale. With the setting on, validateAll()
+       has already stopped an empty price before this runs. */
+    function validateSalePrice() {
+        var $p = $('#bpe-price');
+        if (!$p.length || !$p.is(':visible')) return true;
+        var $e = $p.closest('.brikpanel-pe-field').find('.brikpanel-pe-field-error');
+        if (!$.trim($p.val()) && $.trim($('#bpe-sale-price').val())) {
+            $p.addClass('has-error'); $e.text(PE.i18n.sale_needs_price); return false;
+        }
+        $p.removeClass('has-error'); $e.text(''); return true;
+    }
 
     /* Save */
     function saveProduct(status, silent) {
         if (state.saving) return;
         if (!silent && (status === 'publish' || status === 'future') && !validateAll()) { showToast(PE.i18n.fill_required || 'Please fill in the required fields', 'error'); return; }
+        if (!silent && (status === 'publish' || status === 'future') && !validateSalePrice()) { showToast(PE.i18n.fill_price, 'error'); return; }
         var name = $.trim($('#bpe-name').val());
         if (!name) { if (!silent) { showToast(PE.i18n.fill_name || 'Please fill in the product name', 'error'); validateField($('#bpe-name')); } return; }
 
@@ -4736,14 +5577,25 @@
             data.bp_vendor_id  = parseInt($bpVendor.val(), 10) || 0;
             data.bp_vendor_sku = ($('#bpe-vendor-sku').val() || '').trim();
         }
-        data.weight = $('#bpe-weight-toggle').is(':checked') ? parsePrice($('#bpe-weight').val(), sep) : '';
+        // Weight and dimensions are opt-in sections, hidden by default. When a
+        // section is not on the page the editor cannot speak for its values:
+        // sending '' wiped the product's weight and dimensions on every save
+        // (found while testing field test B6). Same rule as COGS and the
+        // vendor above; switching a rendered toggle off still clears.
+        var $weightToggle = $('#bpe-weight-toggle');
+        if ($weightToggle.length) {
+            data.weight = $weightToggle.is(':checked') ? parsePrice($('#bpe-weight').val(), sep) : '';
+        }
 
         // Dimensions
-        if ($('#bpe-dims-toggle').is(':checked')) {
-            data.length = parsePrice($('#bpe-length').val(), sep);
-            data.width = parsePrice($('#bpe-width').val(), sep);
-            data.height = parsePrice($('#bpe-height').val(), sep);
-        } else { data.length = ''; data.width = ''; data.height = ''; }
+        var $dimsToggle = $('#bpe-dims-toggle');
+        if ($dimsToggle.length) {
+            if ($dimsToggle.is(':checked')) {
+                data.length = parsePrice($('#bpe-length').val(), sep);
+                data.width = parsePrice($('#bpe-width').val(), sep);
+                data.height = parsePrice($('#bpe-height').val(), sep);
+            } else { data.length = ''; data.width = ''; data.height = ''; }
+        }
 
         // SEO
         data.seo_title = $('#bpe-seo-title').val() || '';
@@ -4780,17 +5632,10 @@
             data.image_id = state.images.length ? state.images[0].id : 0;
             data.gallery_ids = state.images.slice(1).map(function (i) { return i.id; }).join(',');
         }
-        else { data.image_id = 0; data.gallery_ids = ''; }
 
-        // Blocksy per-image videos: only send the images the merchant edited,
-        // and only those still present in the gallery.
-        if (blocksyVideo) {
-            var vidMap = {};
-            state.images.forEach(function (i) {
-                if (videoDirty[i.id] && i.video && typeof i.video === 'object') { vidMap[i.id] = i.video; }
-            });
-            if (Object.keys(vidMap).length) { data.blocksy_videos = JSON.stringify(vidMap); }
-        }
+        // Product videos the merchant edited (plus the list of third-party
+        // boxes on this form, which the theme save guards need either way).
+        var videoSent = collectVideoPayload(data);
 
         var cats = []; $('input[name="category_ids[]"]:checked').each(function () { cats.push($(this).val()); });
         data.category_ids = cats.join(',');
@@ -5098,24 +5943,35 @@
             $('#bpe-var-table-body tr.var-main-row').each(function (idx) {
                 var v = state.variations[idx]; if (!v) return;
                 var $mainRow = $(this);
+                // The sale schedule, SKU and the optional fields live in the
+                // row's details (field test B6). A missing control sends the
+                // state value, never '': the server clears a date or SKU it is
+                // sent empty. It now also keeps a field whose key is absent,
+                // but neither side relies on the other.
+                var $scope = varRowScope($mainRow);
+                var pickVar = function (sel, fallback) {
+                    var $c = $scope.find(sel);
+                    if ($c.length) return $c.val() || '';
+                    return (fallback === undefined || fallback === null) ? '' : String(fallback);
+                };
                 var varManageStock = $mainRow.find('.var-manage').is(':checked');
                 var varStockStatus = $mainRow.find('.var-stock-status').val() || 'instock';
                 var varObj = { id: v.id || 0, attributes: v.attributes,
                     enabled: $mainRow.find('.var-enabled').is(':checked') ? 1 : 0,
                     regular_price: parsePrice($mainRow.find('.var-price').val(), sep),
                     sale_price: parsePrice($mainRow.find('.var-sale-price').val(), sep),
-                    sale_from: $mainRow.find('.var-sale-from').val() || '',
-                    sale_to:   $mainRow.find('.var-sale-to').val()   || '',
+                    sale_from: pickVar('.var-sale-from', v.sale_from),
+                    sale_to:   pickVar('.var-sale-to', v.sale_to),
                     manage_stock: varManageStock ? 1 : 0,
                     stock_quantity: $mainRow.find('.var-stock').val(),
                     stock_status: varStockStatus,
-                    sku: $mainRow.find('.var-sku').val(),
+                    sku: pickVar('.var-sku', v.sku),
                     image_ids: (v.images || []).map(function(img) { return img.id; }) };
-                var $varGtin = $mainRow.find('.var-gtin');
+                var $varGtin = $scope.find('.var-gtin');
                 if ($varGtin.length) varObj.global_unique_id = $varGtin.val();
-                var $varTax = $mainRow.find('.var-tax-class');
+                var $varTax = $scope.find('.var-tax-class');
                 if ($varTax.length) varObj.tax_class = $varTax.val();
-                var $varShip = $mainRow.find('.var-shipping-class');
+                var $varShip = $scope.find('.var-shipping-class');
                 if ($varShip.length) varObj.shipping_class = $varShip.val();
                 // Backorder mode. When tracking is on, WC derives the status,
                 // so we roundtrip the stored backorder rule (preserving any
@@ -5132,7 +5988,7 @@
                 }
                 var $cogsInput = $(this).find('.var-cogs');
                 if ($cogsInput.length) varObj.cogs_value = parsePrice($cogsInput.val(), sep);
-                var $varVendor = $(this).find('.var-vendor');
+                var $varVendor = $scope.find('.var-vendor');
                 if ($varVendor.length) {
                     varObj.vendor_id  = parseInt($varVendor.val(), 10) || 0;
                     varObj.vendor_sku = v.vendor_sku || '';
@@ -5172,6 +6028,9 @@
             state.saving = false; $pub.prop('disabled', false).text(op);
             if (r.success) {
                 state.dirty = false;
+                // Before the variation rows are redrawn, so their video
+                // buttons already show what was stored.
+                syncVideosFromServer(r.data.videos, videoSent);
                 showToast(r.data.message + ' \u2713', 'success');
                 // Surface non-fatal save warnings (e.g. a duplicate SKU/GTIN
                 // that WooCommerce rejected). The product saved, but these
@@ -5215,29 +6074,31 @@
                     $('#bpe-product-id').data('live', (status === 'publish' || status === 'private' || status === 'password') ? 1 : 0);
                     var newUrl = PE.admin_url + 'admin.php?page=brikpanel-product-editor&product_id=' + r.data.product_id;
                     window.history.replaceState(null, '', newUrl);
-                    // Status dropdown lives in the header and is the anchor
-                    // new buttons get inserted before.
-                    var $statusAnchor = $('.brikpanel-pe-status-wrap');
+                    // The header's secondary actions (View product / Duplicate /
+                    // Add new) are printed for every product and hidden until
+                    // they apply, inside "More actions" so the header levels
+                    // fold them like any other (field test B10: they used to
+                    // be built here as bare buttons in the action row, on
+                    // phones too). A save only fills in the id and the link
+                    // and shows what now applies.
+                    var $dup = $('#bpe-duplicate');
                     // Duplicate is available as soon as the product has an ID
                     // (draft, publish, private — all valid).
-                    if (!$('#bpe-duplicate').length && $statusAnchor.length) {
-                        $('<button type="button" class="brikpanel-pe-btn secondary" id="bpe-duplicate" data-id="' + r.data.product_id + '">' + (PE.i18n.duplicate || 'Duplicate') + '</button>').insertBefore($statusAnchor);
-                    } else {
-                        $('#bpe-duplicate').attr('data-id', r.data.product_id);
-                    }
+                    $dup.attr('data-id', r.data.product_id).data('id', r.data.product_id).prop('hidden', false);
                     if (status === 'publish' || status === 'private' || status === 'password') {
                         $pub.text(PE.i18n.update || 'Update');
-                        // View product
-                        if (!$('#bpe-view-product').length && $statusAnchor.length) {
-                            var viewUrl = r.data.permalink || (PE.admin_url.replace(/wp-admin\/?$/, '') + '?p=' + r.data.product_id);
-                            $('<a href="' + viewUrl + '" class="brikpanel-pe-btn secondary" id="bpe-view-product" target="_blank">' + (PE.i18n.view_product || 'View product') + '</a>').insertBefore($('#bpe-duplicate'));
-                        } else if ($('#bpe-view-product').length && r.data.permalink) {
-                            $('#bpe-view-product').attr('href', r.data.permalink);
+                        // The label a Scheduled status switches back to.
+                        $pub.data('origLabel', PE.i18n.update || 'Update');
+                        var viewUrl = String(r.data.permalink || (PE.admin_url.replace(/wp-admin\/?$/, '') + '?p=' + r.data.product_id));
+                        if (/^https?:\/\//i.test(viewUrl)) {
+                            $('#bpe-view-product').attr('href', viewUrl).prop('hidden', false);
                         }
-                        // Add new
-                        if (!$('#bpe-add-new').length && $statusAnchor.length) {
-                            $('<a href="' + PE.admin_url + 'admin.php?page=brikpanel-product-editor" class="brikpanel-pe-btn secondary" id="bpe-add-new"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ' + (PE.i18n.add_new || 'Add new') + '</a>').insertBefore($statusAnchor);
-                        }
+                        $('#bpe-add-new').prop('hidden', false);
+                    }
+                    $('#bpe-header-overflow').prop('hidden', false);
+                    // A new product becomes an existing one with this save.
+                    if (PE.i18n.edit_product) {
+                        $('#bpe-header h1').text(PE.i18n.edit_product);
                     }
                 }
             } else showToast(r.data.message || PE.i18n.error || 'An error occurred', 'error');
@@ -5308,7 +6169,7 @@
             e.preventDefault();
             var n = addTags(text);
             if (n) {
-                showToast((PE.i18n.tags_added || '%d tags added').replace('%d', n), 'success');
+                showToast(countText(PE.i18n.tags_added, n), 'success');
             }
         });
 
@@ -5384,7 +6245,7 @@
             return;
         }
         if (productData.gallery && productData.gallery.length) {
-            productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url, alt: i.alt ? String(i.alt) : '', video: (i.video && typeof i.video === 'object') ? i.video : defaultVideo() }); });
+            productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url, alt: i.alt ? String(i.alt) : '' }); });
             renderGallery();
         }
         // From here the gallery mirrors the saved product, so a save is
@@ -5456,6 +6317,8 @@
             // persist it behind the user's back — auto-save only protects
             // already-live (publish/private) products from losing edits.
             if ($('#bpe-product-id').data('live') != 1) return;
+            // Mid-drag the variation rows are out of state order; wait.
+            if (state.varDragging) return;
             if (state.dirty && !state.saving && $.trim($('#bpe-name').val())) {
                 var status = $('#bpe-status').val() || 'draft';
                 saveProduct(status, true); // silent = true
@@ -5851,7 +6714,15 @@
             .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     }
 
-    function esc(s) { if (!s) return ''; var d = document.createElement('div'); d.appendChild(document.createTextNode(s)); return d.innerHTML; }
+    // Text node → innerHTML escapes &, < and > only. That is enough between
+    // tags, and it is what the description serializer stores, so stored
+    // content keeps its plain quotes.
+    function escText(s) { if (!s) return ''; var d = document.createElement('div'); d.appendChild(document.createTextNode(s)); return d.innerHTML; }
+    // Safe in text AND in quoted attributes. The row builders put esc() output
+    // inside value="…", title="…" and aria-label="…"; with quotes left alone a
+    // SKU like `x" onfocus="…` closed the attribute and ran script in this
+    // editor (field test B6 review, proven on a test store before the fix).
+    function esc(s) { return escText(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
     $(document).ready(init);
 })(jQuery);

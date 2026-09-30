@@ -22,17 +22,19 @@ body.rtl .brikpanel-cron-page {
     direction: rtl;
 }
 
+/* Stacked table rows (front-end/shared/brikpanel-fit-table.css): every tile
+   reads from the start edge. The figure alignments further down (numbers to
+   the left) belong to the table layout only; a message row stays centred. */
+body.rtl .brikpanel-fit-table.is-stacked > tbody > tr > td:not([colspan]) {
+    text-align: start;
+}
+
 
 /* =============================================================================
    FILE: front-end/products/brikpanel-products-list.css
    ============================================================================= */
-body.rtl .brikpanel-pl-search-icon { left: auto; right: 0.75rem; }
-body.rtl .brikpanel-pl input[type="text"].brikpanel-pl-search { padding: 8px 36px 8px 12px; }
-
-body.rtl .brikpanel-pl-select {
-    padding: 0.375rem 0.625rem 0.375rem 2rem;
-    background-position: left 0.5rem center;
-}
+/* The card top (tabs, search, filter chips), the rows and the pager use
+   logical properties and their own body.rtl rules in the screen's file. */
 
 body.rtl .brikpanel-pl-progress { left: auto; right: 0; }
 body.rtl .brikpanel-pl-progress::after { left: auto; right: 0; animation-direction: reverse; }
@@ -44,16 +46,8 @@ body.rtl .brikpanel-pl-progress::after { left: auto; right: 0; animation-directi
 body.rtl .brikpanel-pl-progress::after { animation-name: bpl-progress-slide-rtl; }
 
 body.rtl .brikpanel-pl-table thead th { text-align: right; }
-body.rtl .brikpanel-pl-table thead th:first-child { padding-left: 1rem; padding-right: 1.25rem; }
-body.rtl .brikpanel-pl-row td:first-child { padding-left: 1rem; padding-right: 1.25rem; }
 body.rtl .brikpanel-pl-ss-thumb { left: auto; right: 2px; }
 body.rtl .brikpanel-pl-ss-toggle.is-on .brikpanel-pl-ss-thumb { transform: translateX(-12px); }
-
-body.rtl .brikpanel-pl-actions-cell {
-    text-align: left;
-    padding-right: 1rem !important;
-    padding-left: 1.25rem !important;
-}
 
 body.rtl .brikpanel-pl-drawer {
     right: auto;
@@ -73,7 +67,6 @@ body.rtl .brikpanel-pl-toast { transform: translateX(-110%); }
 body.rtl .brikpanel-pl-toast.show { transform: translateX(0); }
 body.rtl .brikpanel-pl-toast-close { margin-left: 0; margin-right: auto; }
 
-body.rtl .bpl-fast-warning-list { padding-left: 0; padding-right: 1.125rem; }
 
 body.rtl .brikpanel-pl-stock-popover-actions { justify-content: flex-start; }
 
@@ -83,10 +76,8 @@ body.rtl .brikpanel-pl-switch input:checked + .brikpanel-pl-switch-slider::befor
 body.rtl .brikpanel-pl-var-popup-input { text-align: left; }
 body.rtl .brikpanel-pl-var-popup.is-price .brikpanel-pl-var-popup-input { text-align: right; }
 
-body.rtl .brikpanel-pl-columns-popover { right: auto; left: 0; }
 
 body.rtl .brikpanel-pl-cat-more { margin-left: 0; margin-right: 0.375rem; }
-body.rtl .brikpanel-pl-row-actions { margin-left: 0; margin-right: 0.5rem; }
 body.rtl .brikpanel-pl-th-ase { text-align: right; }
 
 body.rtl .brikpanel-pl-qe-term-children {
@@ -97,20 +88,7 @@ body.rtl .brikpanel-pl-qe-term-children {
     margin-right: 0.625rem;
 }
 
-body.rtl .brikpanel-pl.is-sort-mode .brikpanel-pl-th-handle,
-body.rtl .brikpanel-pl.is-sort-mode .brikpanel-pl-cell-handle {
-    padding: 0.625rem 0.5rem 0.625rem 0 !important;
-}
-
 @media screen and (max-width: 782px) {
-    body.rtl .brikpanel-pl-table thead th,
-    body.rtl .brikpanel-pl-row td { padding-left: 0.375rem; padding-right: 0.375rem; }
-
-    body.rtl .brikpanel-pl-table thead th:first-child,
-    body.rtl .brikpanel-pl-row td:first-child { padding-left: 0.375rem; padding-right: 0.625rem; }
-
-    body.rtl .brikpanel-pl-actions-cell { padding-right: 0.5rem !important; padding-left: 0.5rem !important; }
-
     body.rtl .brikpanel-pl-drawer { left: 0; right: 0; }
 }
 
@@ -216,7 +194,9 @@ body.rtl .brk-item-downloads__file::before { left: auto; right: 0.25rem; }
    FILE: front-end/products/brikpanel-product-editor.css
    ============================================================================= */
 body.rtl .brikpanel-pe-back svg { transform: scaleX(-1); }
-body.rtl .brikpanel-pe-header-right { justify-content: flex-start; }
+/* No justify-content override for .brikpanel-pe-header-right: its flex-end
+   already means the left in RTL, the mirror of LTR. A flex-start here put the
+   action row under the title on the same side (field test B10 check). */
 
 body.rtl .brikpanel-pe-input-prefix,
 body.rtl .brikpanel-pe-input-suffix { border-right: none; }
@@ -226,10 +206,12 @@ body.rtl .brikpanel-pe-input-suffix { border-left: none; border-right: 1px solid
 body.rtl .brikpanel-pe-slider::before { left: auto; right: 3px; }
 body.rtl .brikpanel-pe-switch input:checked + .brikpanel-pe-slider::before { transform: translateX(-18px); }
 
-body.rtl .brikpanel-pe-tooltip { margin-left: 0; margin-right: 0.25rem; }
 body.rtl .brikpanel-pe-char-count { text-align: left; }
 
-body.rtl .brikpanel-pe-gallery-item-remove { right: auto; left: 2px; }
+/* No override for the remove and video buttons on product and variation
+   images: they sit on logical sides (inset-inline-*) and mirror by themselves.
+   Flipping only the remove button put it under the video button, which then
+   took every click meant for it (nikash70, 3.3.23). */
 
 body.rtl .brikpanel-pe-cat-children {
     padding: 0 1rem 0 0;
@@ -285,7 +267,14 @@ body.rtl .brikpanel-pe-wc-fields-content .select2-container--default .select2-se
 }
 
 body.rtl .brikpanel-pe-var-table th { text-align: right; }
-body.rtl .brikpanel-pe-var-table .var-stock-status { background-position: left 0.5rem center; }
+body.rtl .brikpanel-pe-var-table .var-stock-status,
+body.rtl .brikpanel-pe-var-details select { background-position: left 0.5rem center; padding-right: 0.5rem; padding-left: 1.5rem; }
+/* Variation image: the stacked-card edges fan out to the left, so the room
+   the image keeps beside the Active switch moves to the left too. */
+body.rtl .brikpanel-pe-var-table .var-image-wrap { margin-right: 0; margin-left: 10px; }
+body.rtl .brikpanel-pe-no-var-gallery .brikpanel-pe-var-table .var-image-wrap { margin-left: 0; }
+body.rtl .brikpanel-pe-var-table .var-image-btn::before { transform: translate(-5px, 2px); }
+body.rtl .brikpanel-pe-var-table .var-image-btn::after { transform: translate(-10px, 4px); }
 
 body.rtl .var-image-count { right: auto; left: -6px; }
 
@@ -319,7 +308,6 @@ body.rtl .brikpanel-pe-metaboxes-wrap .tagsdiv ul.tagchecklist li {
 }
 
 @media screen and (max-width: 480px) {
-    body.rtl .brikpanel-pe-header-right { justify-content: flex-start; }
     body.rtl .brikpanel-pe-status-trigger { padding: 0.4375rem 0.625rem 0.4375rem 0.5rem; }
     body.rtl .brikpanel-pe-status-menu { right: 0; left: auto; }
 }
@@ -347,8 +335,7 @@ body.rtl p.search-box { float: left; }
 /* =============================================================================
    FILE: front-end/dashboard/brikpanel-dashboard.css
    ============================================================================= */
-body.rtl .brikpanel-dash-preset { border-right: none; border-left: 1px solid var(--bp-border); }
-body.rtl .brikpanel-dash-preset:last-child { border-left: none; }
+/* The date buttons' dividers use border-inline-end (brikpanel-dashboard.css). */
 
 body.rtl .brikpanel-dash-table th { text-align: right; }
 body.rtl .brikpanel-dash-table th:last-child,
@@ -519,23 +506,11 @@ body.rtl .bp-ca-toast.is-visible { transform: translateX(0); }
    FILE: front-end/coupons/brikpanel-coupons.css
    ============================================================================= */
 body.rtl .brikpanel-cp-search-icon { left: auto; right: 0.75rem; }
-body.rtl .brikpanel-cp input[type="text"].brikpanel-cp-search { padding: 8px 36px 8px 12px; }
+/* The search box and the sort select are the shared control: logical padding
+   and its own RTL arrow rule mirror them. */
 
-body.rtl .brikpanel-cp-select {
-    padding: 0.375rem 0.625rem 0.375rem 2rem;
-    background-position: left 0.5rem center;
-}
-
-body.rtl .brikpanel-cp-table thead th { text-align: right; }
-body.rtl .brikpanel-cp-table thead th:first-child { padding-left: 1rem; padding-right: 1.25rem; }
-body.rtl .brikpanel-cp-row td:first-child { padding-left: 1rem; padding-right: 1.25rem; }
-
-body.rtl .brikpanel-cp-actions-cell {
-    text-align: left;
-    padding-right: 1rem !important;
-    padding-left: 1.25rem !important;
-}
-body.rtl .brikpanel-cp-actions { justify-content: flex-start; }
+/* Table cells, the row buttons and their cell use start/end sides in
+   brikpanel-coupons.css (field test C4), so they need no mirror here. */
 
 body.rtl .brikpanel-cp-drawer {
     right: auto;
@@ -559,8 +534,6 @@ body.rtl .brikpanel-cp-toast { transform: translateX(-110%); }
 body.rtl .brikpanel-cp-toast.show { transform: translateX(0); }
 body.rtl .brikpanel-cp-toast-close { margin-left: 0; margin-right: auto; }
 
-body.rtl .brikpanel-cp-th-ase { text-align: right; }
-body.rtl .brikpanel-cp-row-actions { margin-left: 0; margin-right: 0.5rem; }
 
 
 /* =============================================================================
@@ -615,9 +588,9 @@ body.rtl .bp-seg-prefix {
 
 body.rtl .bp-seg-selected-chip { padding: 0.25rem 0.625rem 0.25rem 0.5rem; }
 
-body.rtl .bp-seg-table thead th { text-align: right; }
-body.rtl .bp-seg-table td.bp-seg-num,
-body.rtl .bp-seg-table th.bp-seg-num { text-align: left; }
+/* Results table: header and number cells use logical alignment (start / end)
+   in brikpanel-segments.css, so they mirror here without an override. The old
+   `left` rule also beat the stacked cards, where numbers read from the start. */
 
 @media (max-width: 720px) {
     body.rtl .bp-seg-quick-search { justify-content: flex-end; }
@@ -642,10 +615,11 @@ body.rtl .brikpanel-ex-table th.brikpanel-ex-actions-th,
 body.rtl .brikpanel-ex-actions-cell { text-align: left; }
 
 body.rtl .brikpanel-ex-actions-cell {
-    justify-content: flex-start;
     padding-right: 0;
     padding-left: 0.75rem;
 }
+
+body.rtl .brikpanel-ex-row-actions { justify-content: flex-start; }
 
 body.rtl .brikpanel-ex-modal-footer { justify-content: flex-start; }
 
@@ -711,6 +685,15 @@ body.rtl .brikpanel-topbar-cache-item { text-align: right; }
         margin-left: auto !important;
         margin-right: 0 !important;
     }
+
+    /* brikpanel-navigation.css gives the content 10px on the left from 960px
+       down, and `body.rtl #wpcontent` below zeroes the right: RTL pages that
+       keep this padding (Coupons, WordPress' own screens) touched the right
+       edge of a phone and had 10px on the other side (field test C4). */
+    body.rtl.auto-fold #wpcontent {
+        padding-left: 0;
+        padding-right: 10px;
+    }
 }
 
 /* Phone-only, and deliberately left at 782px: this pairs with the LTR rule
@@ -747,24 +730,12 @@ body.rtl .brikpanel-welcome-kbd { margin-left: 0; margin-right: 4px; }
 
 
 /* =============================================================================
-   FILE: front-end/login/brikpanel-login.css
-   ============================================================================= */
-body.rtl.login .wp-pwd input[type="password"],
-body.rtl.login .wp-pwd input[type="text"] {
-    padding-right: 0.75rem;
-    padding-left: 2.75rem;
-}
-body.rtl.login .wp-pwd .button.wp-hide-pw { right: auto; left: 0.5rem; }
-body.rtl.login .forgetmenot input[type="checkbox"] { margin: 0 0 0 0.25rem; }
-body.rtl.login .forgetmenot input[type="checkbox"]:checked::after { left: auto; right: 0.3rem; }
-
-
-/* =============================================================================
    FILE: includes/cron/brikpanel-cron-page.css
    ============================================================================= */
-body.rtl .brikpanel-cron-table thead th { text-align: right; }
-body.rtl .brikpanel-cron-filter-actions { margin-left: 0; margin-right: auto; }
-body.rtl .brikpanel-cron-row-actions { justify-content: flex-start; }
+/* Header cells and row buttons use logical alignment (start / flex-end) in the
+   cron stylesheet itself, so they mirror without an override here. The old
+   `flex-start` override pushed one-button rows to the inner edge. Apply sits
+   right after the filter boxes in both directions (shared filter row, D5). */
 body.rtl .brikpanel-cron-toast { right: auto; left: 20px; transform: translateX(-110%); }
 body.rtl .brikpanel-cron-toast.is-visible { transform: translateX(0); }
 
@@ -871,7 +842,7 @@ body.rtl #wpcontent {
 
 body.rtl .sb-customizer-sidebar { left: auto; right: var(--brikpanel-sidebar-width); }
 
-body.rtl #brikpanel-navigation a::after { left: 0; right: 0; }
+body.rtl #brikpanel-navigation :is(li, .brikpanel-menu-icon-title-container) > a::after { left: 0; right: 0; }
 
 body.rtl #brikpanel-navigation .wp-submenu:where(
     :not(#toplevel_page_woocommerce ul),
@@ -954,30 +925,15 @@ body.rtl .bp-order-notify__progress { transform-origin: right center; }
 /* =============================================================================
    ABANDONED CARTS — list table + "Columns" popover
    ============================================================================= */
-body.rtl .brikpanel-cartab-table th { text-align: right; }
+/* .brikpanel-cartab-table th uses text-align: start, so it mirrors without an override. */
 
 body.rtl .brikpanel-cartab-columns-popover { right: auto; left: 0; }
 
 body.rtl .brikpanel-cartab-search > svg,
 body.rtl .brikpanel-cartab-select > svg:first-child { left: auto; right: 0.625rem; }
 
-body.rtl .brikpanel-cartab-select-arrow { right: auto; left: 0.625rem; }
-
-body.rtl .brikpanel-cartab-wrap .brikpanel-cartab-search input[type="search"] {
-    padding-left: 0.75rem;
-    padding-right: 2rem;
-}
-
-body.rtl .brikpanel-cartab-wrap .brikpanel-cartab-select select {
-    padding-left: 1.75rem;
-    padding-right: 0.75rem;
-}
-
-body.rtl .brikpanel-cartab-wrap .brikpanel-cartab-select-icon select {
-    padding-right: 2rem;
-}
-
-body.rtl .brikpanel-cartab-filter-actions { margin-left: 0; margin-right: auto; }
+/* The filter boxes are the shared control (logical padding, its own RTL arrow)
+   and the actions use margin-inline-start, so they mirror by themselves. */
 
 body.rtl .brikpanel-cartab-range-sep { transform: scaleX(-1); display: inline-block; }
 

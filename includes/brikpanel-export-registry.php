@@ -178,6 +178,9 @@ function brikpanel_export_placeholder_field_ids() {
 		'brikpanel_brikmentor_promo_field',
 		'brikpanel_dev_docs_field',
 		'brikpanel_ea_settings_field',
+		// Renders a sentence pointing at the brand logo picker. No value of
+		// its own, in either direction.
+		'brk_login_logo_hint',
 	];
 }
 
@@ -244,6 +247,7 @@ function brikpanel_export_core_table() {
 		'brikpanel_var_stock_fix2_cursor',
 		'brikpanel_var_stock_fix2_done',
 		'brikpanel_cartab_credit_dedupe_done',
+		'brikpanel_tz_cohort_rebuild_done',
 		'brikpanel_cartab_failed_recovery_repair_done',
 		'brikpanel_cartab_failed_recovery_repair_stats',
 		'brikpanel_cartab_zeroed_repair_done',
@@ -258,6 +262,9 @@ function brikpanel_export_core_table() {
 		'brikpanel_data_cache_ver',
 		'brikpanel_data_cache_version',
 		'brikpanel_ca_cache_ver',
+		// When the customer metrics job last finished. Only tells "never ran"
+		// apart from "ran, no customers" in the Customer Analytics header.
+		'brikpanel_ca_last_run',
 		'brikpanel_order_notify_latest_id',
 		'brikpanel_completed_orders_count',
 		'brikpanel_last_new_order',
@@ -304,8 +311,12 @@ function brikpanel_export_core_table() {
 	foreach ( [
 		'brikpanel_sidebar_hidden',
 		'brikpanel_dash_range',
+		// The new-store guide this admin closed on the dashboard.
+		'brikpanel_new_store_guide_dismissed',
 		'brikpanel_whatsapp_optin',
 		'brikpanel_brikcontrol_dismissed',
+		// The old-WooCommerce notice this admin closed, keyed by the version it named.
+		'brikpanel_wc_min_notice_dismissed',
 	] as $key ) {
 		$map[ $key ] = [ 'class' => 'internal' ];
 	}

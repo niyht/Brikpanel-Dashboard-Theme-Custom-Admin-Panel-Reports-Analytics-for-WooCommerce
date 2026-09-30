@@ -75,13 +75,19 @@ class Brikpanel_Vendors {
 		wp_enqueue_style(
 			'brikpanel-vendors',
 			$base . 'brikpanel-vendors.css',
-			[],
+			array_merge(
+				function_exists( 'brikpanel_fit_table_dep' ) ? brikpanel_fit_table_dep( 'style' ) : [],
+				function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'tiles', 'ui' ], 'style' ) : []
+			),
 			file_exists( $path . 'brikpanel-vendors.css' ) ? filemtime( $path . 'brikpanel-vendors.css' ) : BRIKPANEL_VERSION
 		);
 		wp_enqueue_script(
 			'brikpanel-vendors',
 			$base . 'brikpanel-vendors.js',
-			[],
+			array_merge(
+				function_exists( 'brikpanel_fit_table_dep' ) ? brikpanel_fit_table_dep() : [],
+				function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'tiles', 'format' ] ) : []
+			),
 			file_exists( $path . 'brikpanel-vendors.js' ) ? filemtime( $path . 'brikpanel-vendors.js' ) : BRIKPANEL_VERSION,
 			true
 		);
@@ -128,7 +134,7 @@ class Brikpanel_Vendors {
 		$so_url   = admin_url( 'admin.php?page=' . Brikpanel_Stock_Orders::PAGE_SLUG );
 		$detail_url = admin_url( 'admin.php?page=' . self::PAGE_SLUG . '&action=detail&id=' );
 		?>
-		<div class="wrap brikpanel-ven-wrap" id="brikpanel-vendors">
+		<div class="wrap brikpanel-ven-wrap brikpanel-shell__page" id="brikpanel-vendors">
 			<div class="brikpanel-ven-header">
 				<div class="brikpanel-ven-header-left">
 					<h1><?php esc_html_e( 'Suppliers', 'brikpanel' ); ?></h1>
@@ -140,9 +146,10 @@ class Brikpanel_Vendors {
 					</button>
 				</div>
 			</div>
+			<?php brikpanel_header_end(); ?>
 
 			<!-- Summary bar -->
-			<div class="brikpanel-ven-summary" id="brikpanel-ven-summary">
+			<div class="brikpanel-ven-summary" id="brikpanel-ven-summary" data-bp-tiles>
 				<div class="brikpanel-ven-summary-card">
 					<div class="brikpanel-ven-summary-label"><?php esc_html_e( 'Active suppliers', 'brikpanel' ); ?></div>
 					<div class="brikpanel-ven-summary-value" id="brikpanel-ven-active-count">—</div>
@@ -159,14 +166,14 @@ class Brikpanel_Vendors {
 
 			<!-- Search / filters -->
 			<div class="brikpanel-ven-card brikpanel-ven-filters">
-				<div class="brikpanel-ven-filter-row">
-					<div class="brikpanel-ven-field brikpanel-ven-field-grow">
+				<div class="brikpanel-ven-filter-row brikpanel-filter-bar">
+					<div class="brikpanel-ven-field brikpanel-field brikpanel-ven-field-grow">
 						<label for="brikpanel-ven-search"><?php esc_html_e( 'Search', 'brikpanel' ); ?></label>
-						<input type="search" id="brikpanel-ven-search" placeholder="<?php esc_attr_e( 'Name, contact, email…', 'brikpanel' ); ?>" autocomplete="off" />
+						<input type="search" class="brikpanel-control" id="brikpanel-ven-search" placeholder="<?php esc_attr_e( 'Name, contact, email…', 'brikpanel' ); ?>" autocomplete="off" />
 					</div>
-					<div class="brikpanel-ven-field">
+					<div class="brikpanel-ven-field brikpanel-field">
 						<label for="brikpanel-ven-status-filter"><?php esc_html_e( 'Status', 'brikpanel' ); ?></label>
-						<select id="brikpanel-ven-status-filter">
+						<select class="brikpanel-control" id="brikpanel-ven-status-filter">
 							<option value="active"><?php esc_html_e( 'Active', 'brikpanel' ); ?></option>
 							<option value="archived"><?php esc_html_e( 'Archived', 'brikpanel' ); ?></option>
 							<option value="all"><?php esc_html_e( 'All', 'brikpanel' ); ?></option>
@@ -178,7 +185,7 @@ class Brikpanel_Vendors {
 			<!-- Table -->
 			<div class="brikpanel-ven-card brikpanel-ven-table-card">
 				<div class="brikpanel-ven-table-wrap">
-					<table class="brikpanel-ven-table" id="brikpanel-ven-table">
+					<table class="brikpanel-ven-table brikpanel-fit-table" id="brikpanel-ven-table">
 						<thead>
 							<tr>
 								<th><?php esc_html_e( 'Supplier', 'brikpanel' ); ?></th>
@@ -212,48 +219,48 @@ class Brikpanel_Vendors {
 						<input type="hidden" id="brikpanel-ven-edit-id" value="" />
 						<div class="brikpanel-ven-modal-body">
 							<div class="brikpanel-ven-modal-grid">
-								<div class="brikpanel-ven-field brikpanel-ven-field-full">
+								<div class="brikpanel-ven-field brikpanel-field brikpanel-ven-field-full">
 									<label for="brikpanel-ven-name"><?php esc_html_e( 'Supplier name', 'brikpanel' ); ?> <span class="brikpanel-ven-req">*</span></label>
-									<input type="text" id="brikpanel-ven-name" required maxlength="190" placeholder="<?php esc_attr_e( 'e.g. Acme Wholesale Co.', 'brikpanel' ); ?>" />
+									<input type="text" class="brikpanel-control" id="brikpanel-ven-name" required maxlength="190" placeholder="<?php esc_attr_e( 'e.g. Acme Wholesale Co.', 'brikpanel' ); ?>" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-contact"><?php esc_html_e( 'Contact name', 'brikpanel' ); ?></label>
-									<input type="text" id="brikpanel-ven-contact" maxlength="190" />
+									<input type="text" class="brikpanel-control" id="brikpanel-ven-contact" maxlength="190" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-email"><?php esc_html_e( 'Email', 'brikpanel' ); ?></label>
-									<input type="email" id="brikpanel-ven-email" maxlength="190" />
+									<input type="email" class="brikpanel-control" id="brikpanel-ven-email" maxlength="190" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-phone"><?php esc_html_e( 'Phone', 'brikpanel' ); ?></label>
-									<input type="text" id="brikpanel-ven-phone" maxlength="60" />
+									<input type="text" class="brikpanel-control" id="brikpanel-ven-phone" maxlength="60" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-website"><?php esc_html_e( 'Website', 'brikpanel' ); ?></label>
-									<input type="url" id="brikpanel-ven-website" maxlength="255" placeholder="https://" />
+									<input type="url" class="brikpanel-control" id="brikpanel-ven-website" maxlength="255" placeholder="https://" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-tax-id"><?php esc_html_e( 'Tax ID / VAT', 'brikpanel' ); ?></label>
-									<input type="text" id="brikpanel-ven-tax-id" maxlength="60" />
+									<input type="text" class="brikpanel-control" id="brikpanel-ven-tax-id" maxlength="60" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-lead-time"><?php esc_html_e( 'Default lead time (days)', 'brikpanel' ); ?></label>
-									<input type="number" id="brikpanel-ven-lead-time" min="0" step="1" placeholder="0" />
+									<input type="number" class="brikpanel-control" id="brikpanel-ven-lead-time" min="0" step="1" placeholder="0" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-shipping-fee"><?php esc_html_e( 'Default shipping fee', 'brikpanel' ); ?></label>
 									<div class="brikpanel-ven-input-group">
 										<span class="brikpanel-ven-prefix"><?php echo esc_html( $currency ); ?></span>
 										<input type="number" id="brikpanel-ven-shipping-fee" min="0" step="0.01" placeholder="0.00" />
 									</div>
 								</div>
-								<div class="brikpanel-ven-field brikpanel-ven-field-full">
+								<div class="brikpanel-ven-field brikpanel-field brikpanel-ven-field-full">
 									<label for="brikpanel-ven-address"><?php esc_html_e( 'Address', 'brikpanel' ); ?></label>
-									<textarea id="brikpanel-ven-address" rows="2"></textarea>
+									<textarea class="brikpanel-control" id="brikpanel-ven-address" rows="2"></textarea>
 								</div>
-								<div class="brikpanel-ven-field brikpanel-ven-field-full">
+								<div class="brikpanel-ven-field brikpanel-field brikpanel-ven-field-full">
 									<label for="brikpanel-ven-notes"><?php esc_html_e( 'Notes', 'brikpanel' ); ?></label>
-									<textarea id="brikpanel-ven-notes" rows="2" placeholder="<?php esc_attr_e( 'Internal notes — payment terms, packaging preferences…', 'brikpanel' ); ?>"></textarea>
+									<textarea class="brikpanel-control" id="brikpanel-ven-notes" rows="2" placeholder="<?php esc_attr_e( 'Internal notes: payment terms, packaging preferences…', 'brikpanel' ); ?>"></textarea>
 								</div>
 								<div class="brikpanel-ven-field brikpanel-ven-field-full">
 									<label class="brikpanel-ven-checkbox-label">
@@ -287,14 +294,14 @@ class Brikpanel_Vendors {
 			i18n: {
 				confirm_delete:   <?php echo wp_json_encode( __( 'Delete this supplier? Linked products and POs will keep working but will be unassigned.', 'brikpanel' ) ); ?>,
 				error:            <?php echo wp_json_encode( __( 'Something went wrong.', 'brikpanel' ) ); ?>,
-				no_vendors:       <?php echo wp_json_encode( __( 'No suppliers yet — click "Add supplier" to create your first.', 'brikpanel' ) ); ?>,
+				no_vendors:       <?php echo wp_json_encode( __( 'No suppliers yet. Click "Add supplier" to create your first.', 'brikpanel' ) ); ?>,
 				edit_title:       <?php echo wp_json_encode( __( 'Edit supplier', 'brikpanel' ) ); ?>,
 				add_title:        <?php echo wp_json_encode( __( 'Add supplier', 'brikpanel' ) ); ?>,
 				name_required:    <?php echo wp_json_encode( __( 'Supplier name is required.', 'brikpanel' ) ); ?>,
 				saved:            <?php echo wp_json_encode( __( 'Supplier saved.', 'brikpanel' ) ); ?>,
 				deleted:          <?php echo wp_json_encode( __( 'Supplier deleted.', 'brikpanel' ) ); ?>,
 				days_short:       <?php echo wp_json_encode( __( 'd', 'brikpanel' ) ); ?>,
-				not_enough_data:  <?php echo wp_json_encode( __( '—', 'brikpanel' ) ); ?>,
+				not_enough_data:  <?php echo wp_json_encode( '—' ); // i18n-ignore: empty-value marker, not text to translate. ?>,
 				active:           <?php echo wp_json_encode( __( 'Active', 'brikpanel' ) ); ?>,
 				archived:         <?php echo wp_json_encode( __( 'Archived', 'brikpanel' ) ); ?>,
 				view:             <?php echo wp_json_encode( __( 'View', 'brikpanel' ) ); ?>,
@@ -302,6 +309,8 @@ class Brikpanel_Vendors {
 				delete:           <?php echo wp_json_encode( __( 'Delete', 'brikpanel' ) ); ?>,
 				ship:             <?php echo wp_json_encode( __( 'Shipping', 'brikpanel' ) ); ?>,
 				default_shipping: <?php echo wp_json_encode( __( 'Default shipping:', 'brikpanel' ) ); ?>,
+				loading:          <?php echo wp_json_encode( __( 'Loading…', 'brikpanel' ) ); ?>,
+				lead_default:     <?php /* translators: shown after the lead time a supplier has by default, e.g. "7d default" */ echo wp_json_encode( _x( 'default', 'supplier default lead time, e.g. 7d default', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>
@@ -318,7 +327,7 @@ class Brikpanel_Vendors {
 		$table = $wpdb->prefix . self::TABLE;
 		$vendor = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ) ); // phpcs:ignore
 		if ( ! $vendor ) {
-			echo '<div class="wrap brikpanel-ven-wrap"><div class="brikpanel-ven-card" style="padding:1.5rem;">';
+			echo '<div class="wrap brikpanel-ven-wrap brikpanel-shell__page"><div class="brikpanel-ven-card" style="padding:1.5rem;">';
 			echo esc_html__( 'Supplier not found.', 'brikpanel' );
 			echo ' <a href="' . esc_url( admin_url( 'admin.php?page=' . self::PAGE_SLUG ) ) . '">' . esc_html__( 'Back to suppliers', 'brikpanel' ) . '</a>';
 			echo '</div></div>';
@@ -331,6 +340,12 @@ class Brikpanel_Vendors {
 		$so_url     = admin_url( 'admin.php?page=' . Brikpanel_Stock_Orders::PAGE_SLUG );
 		$so_new_url = $so_url . '&action=new&vendor_id=' . $id;
 		$so_edit_url = $so_url . '&action=edit&id=';
+		// Stock orders has its own switch: while it is off its page is not
+		// registered, so no link here may lead to it (field test C5).
+		$so_on = function_exists( 'brikpanel_module_available' ) ? brikpanel_module_available( Brikpanel_Stock_Orders::PAGE_SLUG ) : true;
+		if ( ! $so_on ) {
+			$so_edit_url = '';
+		}
 		$currency   = function_exists( 'get_woocommerce_currency_symbol' )
 			? html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES | ENT_HTML5, 'UTF-8' )
 			: '$';
@@ -346,7 +361,7 @@ class Brikpanel_Vendors {
 			$vendor->phone,
 		] );
 		?>
-		<div class="wrap brikpanel-ven-wrap brikpanel-ven-detail-wrap" id="brikpanel-vendors">
+		<div class="wrap brikpanel-ven-wrap brikpanel-ven-detail-wrap brikpanel-shell__page" id="brikpanel-vendors">
 			<div class="brikpanel-ven-detail-topbar">
 				<a class="brikpanel-ven-back" href="<?php echo esc_url( $back_url ); ?>">&larr; <?php esc_html_e( 'Suppliers', 'brikpanel' ); ?></a>
 			</div>
@@ -362,13 +377,16 @@ class Brikpanel_Vendors {
 					<?php endif; ?>
 				</div>
 				<div class="brikpanel-ven-detail-header-right">
+					<?php if ( $so_on ) : ?>
 					<a class="brikpanel-ven-btn brikpanel-ven-btn-secondary" href="<?php echo esc_url( $so_new_url ); ?>"><?php esc_html_e( 'New stock order', 'brikpanel' ); ?></a>
+					<?php endif; ?>
 					<button type="button" class="brikpanel-ven-btn brikpanel-ven-btn-secondary" id="brikpanel-ven-detail-edit-btn"><?php esc_html_e( 'Edit supplier', 'brikpanel' ); ?></button>
 				</div>
 			</div>
+			<?php brikpanel_header_end(); ?>
 
 			<!-- Stats grid -->
-			<div class="brikpanel-ven-detail-stats" id="brikpanel-ven-detail-stats">
+			<div class="brikpanel-ven-detail-stats" id="brikpanel-ven-detail-stats" data-bp-tiles>
 				<div class="brikpanel-ven-summary-card"><div class="brikpanel-ven-summary-label"><?php esc_html_e( 'Lifetime spend', 'brikpanel' ); ?></div><div class="brikpanel-ven-summary-value" data-stat="lifetime_spend">—</div></div>
 				<div class="brikpanel-ven-summary-card"><div class="brikpanel-ven-summary-label"><?php esc_html_e( 'Spend (90d)', 'brikpanel' ); ?></div><div class="brikpanel-ven-summary-value" data-stat="spend_90d">—</div></div>
 				<div class="brikpanel-ven-summary-card"><div class="brikpanel-ven-summary-label"><?php esc_html_e( 'Open POs', 'brikpanel' ); ?></div><div class="brikpanel-ven-summary-value" data-stat="open_pos">—</div><div class="brikpanel-ven-summary-sub" data-stat-sub="open_value"></div></div>
@@ -430,10 +448,12 @@ class Brikpanel_Vendors {
 			<div class="brikpanel-ven-card">
 				<header class="brikpanel-ven-card__header brikpanel-ven-card__header--row">
 					<h2><?php esc_html_e( 'Recent stock orders', 'brikpanel' ); ?></h2>
+					<?php if ( $so_on ) : ?>
 					<a class="brikpanel-ven-card__link" href="<?php echo esc_url( $so_url . '&search=' . rawurlencode( $vendor->name ) ); ?>"><?php esc_html_e( 'View all →', 'brikpanel' ); ?></a>
+					<?php endif; ?>
 				</header>
 				<div class="brikpanel-ven-table-wrap">
-					<table class="brikpanel-ven-table" id="brikpanel-ven-detail-pos">
+					<table class="brikpanel-ven-table brikpanel-fit-table" id="brikpanel-ven-detail-pos">
 						<thead>
 							<tr>
 								<th><?php esc_html_e( 'Reference', 'brikpanel' ); ?></th>
@@ -458,7 +478,7 @@ class Brikpanel_Vendors {
 					<p class="brikpanel-ven-card__desc"><?php esc_html_e( 'Products and variations whose supplier is set to this supplier.', 'brikpanel' ); ?></p>
 				</header>
 				<div class="brikpanel-ven-table-wrap">
-					<table class="brikpanel-ven-table" id="brikpanel-ven-detail-products">
+					<table class="brikpanel-ven-table brikpanel-fit-table" id="brikpanel-ven-detail-products">
 						<thead>
 							<tr>
 								<th><?php esc_html_e( 'Product', 'brikpanel' ); ?></th>
@@ -486,48 +506,48 @@ class Brikpanel_Vendors {
 						<input type="hidden" id="brikpanel-ven-edit-id" value="<?php echo esc_attr( (string) $id ); ?>" />
 						<div class="brikpanel-ven-modal-body">
 							<div class="brikpanel-ven-modal-grid">
-								<div class="brikpanel-ven-field brikpanel-ven-field-full">
+								<div class="brikpanel-ven-field brikpanel-field brikpanel-ven-field-full">
 									<label for="brikpanel-ven-name"><?php esc_html_e( 'Supplier name', 'brikpanel' ); ?> <span class="brikpanel-ven-req">*</span></label>
-									<input type="text" id="brikpanel-ven-name" required maxlength="190" />
+									<input type="text" class="brikpanel-control" id="brikpanel-ven-name" required maxlength="190" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-contact"><?php esc_html_e( 'Contact name', 'brikpanel' ); ?></label>
-									<input type="text" id="brikpanel-ven-contact" maxlength="190" />
+									<input type="text" class="brikpanel-control" id="brikpanel-ven-contact" maxlength="190" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-email"><?php esc_html_e( 'Email', 'brikpanel' ); ?></label>
-									<input type="email" id="brikpanel-ven-email" maxlength="190" />
+									<input type="email" class="brikpanel-control" id="brikpanel-ven-email" maxlength="190" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-phone"><?php esc_html_e( 'Phone', 'brikpanel' ); ?></label>
-									<input type="text" id="brikpanel-ven-phone" maxlength="60" />
+									<input type="text" class="brikpanel-control" id="brikpanel-ven-phone" maxlength="60" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-website"><?php esc_html_e( 'Website', 'brikpanel' ); ?></label>
-									<input type="url" id="brikpanel-ven-website" maxlength="255" placeholder="https://" />
+									<input type="url" class="brikpanel-control" id="brikpanel-ven-website" maxlength="255" placeholder="https://" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-tax-id"><?php esc_html_e( 'Tax ID / VAT', 'brikpanel' ); ?></label>
-									<input type="text" id="brikpanel-ven-tax-id" maxlength="60" />
+									<input type="text" class="brikpanel-control" id="brikpanel-ven-tax-id" maxlength="60" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-lead-time"><?php esc_html_e( 'Default lead time (days)', 'brikpanel' ); ?></label>
-									<input type="number" id="brikpanel-ven-lead-time" min="0" step="1" placeholder="0" />
+									<input type="number" class="brikpanel-control" id="brikpanel-ven-lead-time" min="0" step="1" placeholder="0" />
 								</div>
-								<div class="brikpanel-ven-field">
+								<div class="brikpanel-ven-field brikpanel-field">
 									<label for="brikpanel-ven-shipping-fee"><?php esc_html_e( 'Default shipping fee', 'brikpanel' ); ?></label>
 									<div class="brikpanel-ven-input-group">
 										<span class="brikpanel-ven-prefix"><?php echo esc_html( $currency ); ?></span>
 										<input type="number" id="brikpanel-ven-shipping-fee" min="0" step="0.01" placeholder="0.00" />
 									</div>
 								</div>
-								<div class="brikpanel-ven-field brikpanel-ven-field-full">
+								<div class="brikpanel-ven-field brikpanel-field brikpanel-ven-field-full">
 									<label for="brikpanel-ven-address"><?php esc_html_e( 'Address', 'brikpanel' ); ?></label>
-									<textarea id="brikpanel-ven-address" rows="2"></textarea>
+									<textarea class="brikpanel-control" id="brikpanel-ven-address" rows="2"></textarea>
 								</div>
-								<div class="brikpanel-ven-field brikpanel-ven-field-full">
+								<div class="brikpanel-ven-field brikpanel-field brikpanel-ven-field-full">
 									<label for="brikpanel-ven-notes"><?php esc_html_e( 'Notes', 'brikpanel' ); ?></label>
-									<textarea id="brikpanel-ven-notes" rows="2"></textarea>
+									<textarea class="brikpanel-control" id="brikpanel-ven-notes" rows="2"></textarea>
 								</div>
 								<div class="brikpanel-ven-field brikpanel-ven-field-full">
 									<label class="brikpanel-ven-checkbox-label">
@@ -570,8 +590,8 @@ class Brikpanel_Vendors {
 				faster:          <?php echo wp_json_encode( __( 'faster', 'brikpanel' ) ); ?>,
 				no_pos:          <?php echo wp_json_encode( __( 'No stock orders yet for this supplier.', 'brikpanel' ) ); ?>,
 				no_products:     <?php echo wp_json_encode( __( 'No products are sourced from this supplier yet.', 'brikpanel' ) ); ?>,
-				default_no_pos:  <?php echo wp_json_encode( __( 'default — no received POs yet', 'brikpanel' ) ); ?>,
-				open_value:      <?php echo wp_json_encode( _x( 'open value', 'sub-label under "open purchase orders" stat — total monetary value of open POs', 'brikpanel' ) ); ?>,
+				default_no_pos:  <?php echo wp_json_encode( __( 'default, no received POs yet', 'brikpanel' ) ); ?>,
+				open_value:      <?php echo wp_json_encode( _x( 'open value', 'sub-label under "open purchase orders" stat: total monetary value of open POs', 'brikpanel' ) ); ?>,
 			}
 		};
 		</script>
@@ -622,7 +642,8 @@ class Brikpanel_Vendors {
 
 		// List with aggregated stats — single query, GROUP BY vendor.
 		// 90d window for spend; lead time averaged across received POs only.
-		$cutoff = gmdate( 'Y-m-d', strtotime( '-90 days' ) );
+		// received_date is a SITE-LOCAL DATE column, so the cutoff is a store day.
+		$cutoff = brikpanel_store_date( 'Y-m-d', '-90 days' );
 
 		$list_sql = "
 			SELECT
@@ -893,7 +914,7 @@ class Brikpanel_Vendors {
 			wp_send_json_error( [ 'message' => __( 'Supplier not found.', 'brikpanel' ) ] );
 		}
 
-		$cutoff_90d = gmdate( 'Y-m-d', strtotime( '-90 days' ) );
+		$cutoff_90d = brikpanel_store_date( 'Y-m-d', '-90 days' );
 
 		// Stats — single aggregated query.
 		$stats_sql = "
@@ -958,9 +979,10 @@ class Brikpanel_Vendors {
 
 			$is_variation = $product->is_type( 'variation' );
 			$parent       = $is_variation ? wc_get_product( $product->get_parent_id() ) : null;
+			// Plain text: stored names and term names can hold "&amp;".
 			$title        = $is_variation
-				? ( ( $parent ? $parent->get_name() : '' ) . ' — ' . wp_strip_all_tags( wc_get_formatted_variation( $product, true ) ) )
-				: $product->get_name();
+				? ( ( $parent ? brikpanel_plain_label( $parent->get_name() ) : '' ) . ', ' . brikpanel_plain_label( wc_get_formatted_variation( $product, true ) ) )
+				: brikpanel_plain_label( $product->get_name() );
 
 			// Raw meta read (native first, legacy fallback) — unlike
 			// get_cogs_value() it keeps working when the WC COGS feature
@@ -985,7 +1007,7 @@ class Brikpanel_Vendors {
 		usort( $products, static function ( $a, $b ) { return strcasecmp( $a['title'], $b['title'] ); } );
 
 		// 12-month spend trend.
-		$start_month = gmdate( 'Y-m-01', strtotime( '-11 months' ) );
+		$start_month = brikpanel_store_month_start( 11 );
 		$rows = $wpdb->get_results( $wpdb->prepare(
 			"SELECT DATE_FORMAT(received_date, '%%Y-%%m') AS month, COALESCE(SUM(total),0) AS spend
 			   FROM {$so_t}
@@ -1002,9 +1024,10 @@ class Brikpanel_Vendors {
 		}
 		$trend = [];
 		for ( $i = 11; $i >= 0; $i-- ) {
-			$ts    = strtotime( "-{$i} months" );
-			$key   = gmdate( 'Y-m', $ts );
-			$label = gmdate( 'M', $ts );
+			// Store months, matched against DATE_FORMAT(received_date) which is also
+			// local. The label goes through wp_date() so the month name translates.
+			$key   = brikpanel_store_month_start( $i, 'Y-m' );
+			$label = brikpanel_local_label_date( $key . '-01', 'M' );
 			$value = isset( $by_month[ $key ] ) ? (float) $by_month[ $key ] : 0.0;
 			$trend[] = [
 				'month'    => $key,
@@ -1067,7 +1090,7 @@ class Brikpanel_Vendors {
 		if ( function_exists( 'wc_price' ) ) {
 			return html_entity_decode( wp_strip_all_tags( wc_price( (float) $amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		}
-		return number_format_i18n( (float) $amount, 2 );
+		return brikpanel_number( (float) $amount, 2 );
 	}
 
 	/**

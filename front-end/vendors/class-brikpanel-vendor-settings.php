@@ -86,7 +86,7 @@ class Brikpanel_Vendor_Settings {
 				'name'    => __( 'Enable supplier management', 'brikpanel' ),
 				'id'      => 'brikpanel_vendors_enabled',
 				'type'    => 'checkbox',
-				'desc'    => __( 'Master switch — turns the entire suppliers / procurement feature on or off. Off by default; enable it to see the Suppliers menu in the WordPress sidebar.', 'brikpanel' ),
+				'desc'    => __( 'Master switch: turns the entire suppliers / procurement feature on or off. Off by default; enable it to see the Suppliers menu in the WordPress sidebar.', 'brikpanel' ),
 				'default' => 'no',
 			],
 			[
@@ -228,6 +228,13 @@ class Brikpanel_Vendor_Settings {
 			return;
 		}
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
+		// The row opens the BrikPanel settings tab, which is locked to
+		// administrators by default (and can be locked by a network). A shop
+		// manager who clicked it was silently bounced to WooCommerce → General,
+		// so the row follows the tab's own gate, as the top bar's settings link does.
+		if ( function_exists( 'brikpanel_user_can_open_settings' ) && ! brikpanel_user_can_open_settings() ) {
 			return;
 		}
 

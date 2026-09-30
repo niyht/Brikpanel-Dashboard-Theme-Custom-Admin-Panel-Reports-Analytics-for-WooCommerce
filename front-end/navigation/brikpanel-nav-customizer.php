@@ -194,6 +194,15 @@ add_action( 'admin_page_access_denied', 'brikpanel_nav_redirect_synthetic_slug' 
 //   - audience 'admins'     → visible to administrators only (hidden from every
 //                             non-administrator).
 //   - audience 'roles'      → hidden from any user holding one of `hide_roles`.
+//   - audience 'only_roles' → visible only to users holding one of `show_roles`
+//                             (a network administrator counts as 'administrator').
+//   - audience 'caps'       → visible only to users who have at least one of the
+//                             capabilities in `show_caps`.
+//
+// The editor shows 'roles' and 'only_roles' as one "Specific roles" choice with
+// a hide / show-only switch. An empty list is no rule at all, as it always was
+// for 'roles'. An unknown audience value is treated as 'all', so a config saved
+// by a newer version never hides anything on an older one.
 //
 // Resolution is per current user, evaluated at sidebar render time. The settings
 // page itself stays administrator-gated, so an administrator can always reach it
@@ -201,12 +210,25 @@ add_action( 'admin_page_access_denied', 'brikpanel_nav_redirect_synthetic_slug' 
 
 /**
  * Whether the current user counts as an administrator for audience rules.
- * Uses `manage_options`, which also covers multisite super admins.
+ *
+ * Deliberately role-based, NOT capability-based. Stores routinely grant
+ * `manage_options` to the shop_manager role with a role editor, so a bare
+ * capability check let those managers walk straight past every "Admins only"
+ * rule written in this editor. brikpanel_user_is_administrator() tests the real
+ * `administrator` role plus multisite super admins (is_super_admin(), which is
+ * stronger than the `manage_network` capability a role editor can also hand
+ * out). It is the same helper the settings lock and the dashboard widget gate
+ * use, so every BrikPanel audience system now answers "is this an
+ * administrator?" the same way. The function_exists() guard is belt-and-braces:
+ * includes/brikpanel-access-control.php is required at file scope in
+ * brikpanel.php, long before this file loads on `init`.
  *
  * @return bool
  */
 function brikpanel_nav_current_user_is_admin() {
-	return current_user_can( 'manage_options' );
+	return function_exists( 'brikpanel_user_is_administrator' )
+		? brikpanel_user_is_administrator()
+		: current_user_can( 'manage_options' );
 }
 
 /**
@@ -226,18 +248,29 @@ function brikpanel_nav_current_user_roles() {
  * Validate a list of role slugs against the registered roles. Caps the list and
  * drops duplicates / unknown slugs.
  *
- * @param mixed $roles Raw role list.
+ * `$keep` lets a show-only list hold on to roles it was saved with that no
+ * longer exist (a plugin removed its role, or the config came from another
+ * site). Dropping them would empty the list and turn "only these roles" into
+ * "everyone" on the next unrelated save; kept, they match nobody, and the
+ * editor lists them so the administrator can remove them on purpose. A hide
+ * list gets no `$keep`: an unknown role there hides nothing either way.
+ *
+ * @param mixed              $roles Raw role list.
+ * @param array<string,true> $keep  Previously saved values accepted even when unknown.
  * @return string[]
  */
-function brikpanel_nav_sanitize_roles( $roles ) {
+function brikpanel_nav_sanitize_roles( $roles, array $keep = [] ) {
 	if ( ! is_array( $roles ) ) {
 		return [];
 	}
 	$valid = function_exists( 'wp_roles' ) ? array_keys( wp_roles()->roles ) : [];
 	$out   = [];
 	foreach ( $roles as $role ) {
+		if ( ! is_scalar( $role ) ) {
+			continue;
+		}
 		$role = sanitize_key( (string) $role );
-		if ( $role !== '' && in_array( $role, $valid, true ) && ! in_array( $role, $out, true ) ) {
+		if ( $role !== '' && ( in_array( $role, $valid, true ) || isset( $keep[ $role ] ) ) && ! in_array( $role, $out, true ) ) {
 			$out[] = $role;
 		}
 		if ( count( $out ) >= 30 ) {
@@ -245,6 +278,140 @@ function brikpanel_nav_sanitize_roles( $roles ) {
 		}
 	}
 	return $out;
+}
+
+/**
+ * A stored list of role or capability names, cleaned to what the visibility
+ * check and the editor can use: non-empty strings of at most 191 characters,
+ * no duplicates, at most `$max` of them. Anything else yields an empty list.
+ *
+ * Import / Export writes the navigation config as it finds it in the file,
+ * without going through brikpanel_nav_config_save(), so the render-time check
+ * cannot assume the lists are clean: a nested array would raise "Array to
+ * string conversion" and a number would reach current_user_can()'s old user
+ * level path.
+ *
+ * @param mixed $value Raw list.
+ * @param int   $max   Most entries to keep.
+ * @return string[]
+ */
+function brikpanel_nav_string_list( $value, $max ) {
+	if ( ! is_array( $value ) ) {
+		return [];
+	}
+	$out = [];
+	foreach ( $value as $entry ) {
+		if ( ! is_string( $entry ) ) {
+			continue;
+		}
+		$entry = trim( $entry );
+		if ( $entry === '' || strlen( $entry ) > 191 || isset( $out[ $entry ] ) ) {
+			continue;
+		}
+		$out[ $entry ] = true;
+		if ( count( $out ) >= $max ) {
+			break;
+		}
+	}
+	return array_keys( $out );
+}
+
+/**
+ * Capabilities that only mean something for one object: "edit_post" asks "may
+ * this user edit THIS post". Asked without the object, current_user_can()
+ * answers false for everyone and logs a _doing_it_wrong() notice. WooCommerce
+ * grants several of them to its roles by name (edit_product, read_shop_order,
+ * delete_shop_coupon...), so they show up when the roles' capabilities are
+ * listed. They are kept out of the picker, refused on save and skipped by the
+ * visibility check.
+ *
+ * @return array<string,true>
+ */
+function brikpanel_nav_object_bound_caps() {
+	static $caps = null;
+	if ( null !== $caps ) {
+		return $caps;
+	}
+	$caps = array_fill_keys( [
+		'edit_post', 'read_post', 'delete_post', 'publish_post',
+		'edit_page', 'read_page', 'delete_page',
+		'edit_comment', 'edit_term', 'delete_term', 'assign_term',
+		'edit_block_binding',
+		'edit_post_meta', 'delete_post_meta', 'add_post_meta',
+		'edit_comment_meta', 'delete_comment_meta', 'add_comment_meta',
+		'edit_term_meta', 'delete_term_meta', 'add_term_meta',
+		'edit_user_meta', 'delete_user_meta', 'add_user_meta',
+	], true );
+	// Every post type registers its own single-object names here ("edit_product"
+	// for products, and so on).
+	if ( ! empty( $GLOBALS['post_type_meta_caps'] ) && is_array( $GLOBALS['post_type_meta_caps'] ) ) {
+		foreach ( array_keys( $GLOBALS['post_type_meta_caps'] ) as $cap ) {
+			$caps[ (string) $cap ] = true;
+		}
+	}
+	return $caps;
+}
+
+/**
+ * Every capability the site's roles grant, for the "Users with a permission"
+ * picker: single-object capabilities and the old numbered user levels
+ * (level_0 ... level_10) left out, sorted.
+ *
+ * @param bool $refresh Rebuild instead of returning the copy for this request.
+ * @return string[]
+ */
+function brikpanel_nav_capability_options( $refresh = false ) {
+	static $options = null;
+	if ( null !== $options && ! $refresh ) {
+		return $options;
+	}
+	$skip = brikpanel_nav_object_bound_caps();
+	$all  = [];
+	if ( function_exists( 'wp_roles' ) ) {
+		foreach ( wp_roles()->roles as $role ) {
+			if ( empty( $role['capabilities'] ) || ! is_array( $role['capabilities'] ) ) {
+				continue;
+			}
+			foreach ( $role['capabilities'] as $cap => $granted ) {
+				$cap = (string) $cap;
+				if ( ! $granted || $cap === '' || strlen( $cap ) > 191 || isset( $skip[ $cap ] ) || preg_match( '/^level_\d+$/', $cap ) ) {
+					continue;
+				}
+				$all[ $cap ] = true;
+			}
+		}
+	}
+	$options = array_keys( $all );
+	natcasesort( $options );
+	$options = array_values( $options );
+	return $options;
+}
+
+/**
+ * Validate a list of capability names for a "Users with a permission" rule.
+ *
+ * Names are matched exactly against brikpanel_nav_capability_options(). No
+ * sanitize_key() or character filter: that would lowercase or strip real names
+ * ("NextGEN Manage gallery", "manage_MyPlugin") so they never matched. `$keep`
+ * works as in brikpanel_nav_sanitize_roles(). At most 20, sorted.
+ *
+ * @param mixed              $caps Raw capability list.
+ * @param array<string,true> $keep Previously saved values accepted even when unknown.
+ * @return string[]
+ */
+function brikpanel_nav_sanitize_caps( $caps, array $keep = [] ) {
+	$valid = array_fill_keys( brikpanel_nav_capability_options(), true );
+	$out   = [];
+	foreach ( brikpanel_nav_string_list( $caps, 100 ) as $cap ) {
+		if ( isset( $valid[ $cap ] ) || isset( $keep[ $cap ] ) ) {
+			$out[] = $cap;
+		}
+		if ( count( $out ) >= 20 ) {
+			break;
+		}
+	}
+	natcasesort( $out );
+	return array_values( $out );
 }
 
 /**
@@ -275,20 +442,52 @@ function brikpanel_nav_cfg_hidden_for_current_user( $cfg ) {
 		return (bool) array_intersect( brikpanel_nav_current_user_roles(), $hide_roles );
 	}
 
+	if ( $audience === 'only_roles' ) {
+		$show_roles = brikpanel_nav_string_list( isset( $cfg['show_roles'] ) ? $cfg['show_roles'] : null, 30 );
+		if ( empty( $show_roles ) ) {
+			return false;
+		}
+		$mine = brikpanel_nav_current_user_roles();
+		// A network administrator may hold no role on this site; for "only
+		// these roles" they are an administrator, as everywhere else.
+		if ( brikpanel_nav_current_user_is_admin() ) {
+			$mine[] = 'administrator';
+		}
+		return ! array_intersect( $mine, $show_roles );
+	}
+
+	if ( $audience === 'caps' ) {
+		$show_caps = brikpanel_nav_string_list( isset( $cfg['show_caps'] ) ? $cfg['show_caps'] : null, 20 );
+		if ( empty( $show_caps ) ) {
+			return false;
+		}
+		$object_bound = brikpanel_nav_object_bound_caps();
+		foreach ( $show_caps as $cap ) {
+			if ( ! isset( $object_bound[ $cap ] ) && current_user_can( $cap ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	return false;
 }
 
 /**
  * Normalize the audience fields of a raw config row into a clean target array.
- * Writes `audience` (+ `hide_roles` when applicable) onto $row only when the
- * rule is non-default, keeping saved configs small and backward compatible.
+ * Writes `audience` (+ `hide_roles` / `show_roles` / `show_caps` when
+ * applicable) onto $row only when the rule is non-default, keeping saved
+ * configs small and backward compatible.
  *
- * @param array $raw Raw decoded item/submenu.
- * @param array $row Target row to enrich (passed by reference).
+ * @param array $raw  Raw decoded item/submenu.
+ * @param array $row  Target row to enrich (passed by reference).
+ * @param array $keep Values the saved config already holds, per list:
+ *                    [ 'show_roles' => [ name => true ], 'show_caps' => [ name => true ] ].
+ *                    See brikpanel_nav_sanitize_roles().
  */
-function brikpanel_nav_apply_audience_to_row( $raw, &$row ) {
+function brikpanel_nav_apply_audience_to_row( $raw, &$row, array $keep = [] ) {
 	$audience = isset( $raw['audience'] ) ? sanitize_key( (string) $raw['audience'] ) : 'all';
-	if ( ! in_array( $audience, [ 'all', 'admins', 'roles' ], true ) ) {
+	if ( ! in_array( $audience, [ 'all', 'admins', 'roles', 'only_roles', 'caps' ], true ) ) {
 		$audience = 'all';
 	}
 	if ( $audience === 'all' ) {
@@ -304,7 +503,106 @@ function brikpanel_nav_apply_audience_to_row( $raw, &$row ) {
 		$row['hide_roles'] = $roles;
 		return;
 	}
+	if ( $audience === 'only_roles' ) {
+		$roles = brikpanel_nav_sanitize_roles(
+			isset( $raw['show_roles'] ) ? $raw['show_roles'] : [],
+			isset( $keep['show_roles'] ) ? $keep['show_roles'] : []
+		);
+		if ( empty( $roles ) ) {
+			return;
+		}
+		$row['audience']   = 'only_roles';
+		$row['show_roles'] = $roles;
+		return;
+	}
+	if ( $audience === 'caps' ) {
+		$caps = brikpanel_nav_sanitize_caps(
+			isset( $raw['show_caps'] ) ? $raw['show_caps'] : [],
+			isset( $keep['show_caps'] ) ? $keep['show_caps'] : []
+		);
+		if ( empty( $caps ) ) {
+			return;
+		}
+		$row['audience']  = 'caps';
+		$row['show_caps'] = $caps;
+		return;
+	}
 	$row['audience'] = 'admins';
+}
+
+/**
+ * A submenu slug in the form used to compare saved rows with live ones.
+ *
+ * WordPress registers taxonomy submenus with an HTML entity in the slug
+ * ("edit-tags.php?taxonomy=product_cat&amp;post_type=product"), while the
+ * editor saves what the browser reads back from the row's attribute, a plain
+ * "&". The two never matched, so a submenu such as Products > Categories or
+ * Tags could not be hidden (by its switch or by a rule) and the editor showed
+ * it switched on again after a reload.
+ *
+ * @param mixed $slug Submenu slug, saved or live.
+ * @return string
+ */
+function brikpanel_nav_slug_key( $slug ) {
+	return str_replace( '&amp;', '&', (string) $slug );
+}
+
+/**
+ * The slug a saved top-level item has in the current user's menu.
+ *
+ * When a user cannot open a top-level row's own page, WordPress hands the row
+ * the slug of its first submenu row the user can open, and keeps old => new in
+ * $_wp_real_parent_file (wp-admin/includes/menu.php). A role that may edit
+ * product categories but not products sees Products as the Categories screen.
+ * The editor saves the slug an administrator sees, so for that role the saved
+ * item matched nothing: its rules never applied and it was treated as a new,
+ * unreviewed row.
+ *
+ * @param string              $slug    Saved slug.
+ * @param array<string,mixed> $by_slug The current menu's rows keyed by slug.
+ * @return string The slug to look the row up with.
+ */
+function brikpanel_nav_renamed_parent_slug( $slug, array $by_slug ) {
+	$renamed = ( isset( $GLOBALS['_wp_real_parent_file'] ) && is_array( $GLOBALS['_wp_real_parent_file'] ) )
+		? $GLOBALS['_wp_real_parent_file']
+		: [];
+	if ( isset( $renamed[ $slug ] ) && is_string( $renamed[ $slug ] ) && isset( $by_slug[ $renamed[ $slug ] ] ) ) {
+		return $renamed[ $slug ];
+	}
+	return (string) $slug;
+}
+
+/**
+ * The show-only role and capability names the saved config holds anywhere
+ * (items and submenus), for the `$keep` argument of the sanitizers.
+ *
+ * @return array{show_roles: array<string,true>, show_caps: array<string,true>}
+ */
+function brikpanel_nav_saved_show_values() {
+	$keep   = [ 'show_roles' => [], 'show_caps' => [] ];
+	$config = brikpanel_nav_config_get();
+	$rows   = [];
+	foreach ( $config['items'] as $item ) {
+		if ( ! is_array( $item ) ) {
+			continue;
+		}
+		$rows[] = $item;
+		if ( ! empty( $item['submenus'] ) && is_array( $item['submenus'] ) ) {
+			foreach ( $item['submenus'] as $sub ) {
+				if ( is_array( $sub ) ) {
+					$rows[] = $sub;
+				}
+			}
+		}
+	}
+	foreach ( $rows as $row ) {
+		foreach ( [ 'show_roles' => 30, 'show_caps' => 20 ] as $key => $max ) {
+			foreach ( brikpanel_nav_string_list( isset( $row[ $key ] ) ? $row[ $key ] : null, $max ) as $value ) {
+				$keep[ $key ][ $value ] = true;
+			}
+		}
+	}
+	return $keep;
 }
 
 /**
@@ -325,6 +623,9 @@ function brikpanel_nav_config_save( $config ) {
 
 	$valid_sections = [ 'store', 'site_management', 'more' ];
 	$icon_options   = brikpanel_nav_customizer_icon_options();
+	// Show-only names the stored config already holds stay valid even when the
+	// role or capability is gone (see brikpanel_nav_sanitize_roles()).
+	$keep           = brikpanel_nav_saved_show_values();
 
 	foreach ( $items as $item ) {
 		if ( ! is_array( $item ) ) {
@@ -399,8 +700,8 @@ function brikpanel_nav_config_save( $config ) {
 				'hidden'  => $hidden,
 			];
 
-			// Optional audience rule (visible to admins only / hidden from roles).
-			brikpanel_nav_apply_audience_to_row( $item, $row );
+			// Optional audience rule (see PER-AUDIENCE VISIBILITY above).
+			brikpanel_nav_apply_audience_to_row( $item, $row, $keep );
 
 			// Optional icon override — must be one of the picker's known slugs.
 			if ( isset( $item['icon_override'] ) ) {
@@ -447,7 +748,7 @@ function brikpanel_nav_config_save( $config ) {
 						'slug'   => $sub_slug,
 						'hidden' => ! empty( $sub['hidden'] ),
 					];
-					brikpanel_nav_apply_audience_to_row( $sub, $sub_row );
+					brikpanel_nav_apply_audience_to_row( $sub, $sub_row, $keep );
 					$subs[] = $sub_row;
 					$count++;
 				}
@@ -490,7 +791,7 @@ function brikpanel_nav_config_save( $config ) {
 					$custom_row['icon_svg'] = $icon_svg;
 				}
 			}
-			brikpanel_nav_apply_audience_to_row( $item, $custom_row );
+			brikpanel_nav_apply_audience_to_row( $item, $custom_row, $keep );
 			$cleaned[] = $custom_row;
 			continue;
 		}
@@ -732,7 +1033,7 @@ function brikpanel_nav_customizer_collect_menu_items() {
 	// Customers, everything else lands under "More"). The renderer skips this when
 	// Admin Menu Editor owns the menu or the modern navigation is switched off, so
 	// honour the same conditions here.
-	$relocate = ! ( function_exists( 'is_plugin_active' ) && is_plugin_active( 'admin-menu-editor/menu-editor.php' ) )
+	$relocate = ! ( function_exists( 'brikpanel_nav_ame_active' ) && brikpanel_nav_ame_active() )
 		&& get_option( 'brikpanel_modern_navigation', 'yes' ) !== 'no';
 	if ( $relocate && function_exists( 'brikpanel_nav_relocate_wc_submenus' ) ) {
 		brikpanel_nav_relocate_wc_submenus( $menu_snapshot, $submenu_snapshot );
@@ -794,11 +1095,18 @@ function brikpanel_nav_customizer_collect_menu_items() {
 }
 
 /**
- * Apply the same default top-level reorderings the navigation renderer uses,
- * to a copy of $menu. Skips the moves entirely when Admin Menu Editor is
- * active (its custom order takes precedence). Inlined locally rather than
- * relying on `brikpanel_move_item_after()` so the customizer also works when
- * the modern-navigation toggle is off.
+ * Apply the renderer's default top-level order to a copy of $menu. Skips the
+ * moves entirely when Admin Menu Editor is active (its custom order takes
+ * precedence), exactly as the renderer does.
+ *
+ * The order itself comes from brikpanel_nav_apply_store_order(), the same
+ * function the live sidebar calls, loaded on every admin request so this works
+ * while the modern-navigation toggle is off. This used to be a hand-kept copy of
+ * the renderer's moves, and the copy drifted: it never fired the store-cluster
+ * hook, so the editor listed BrikMentor under "Site management" while the sidebar
+ * showed it in the store section, and saving unchanged moved it. Any difference
+ * between the two makes saving an unmodified config silently re-order the
+ * sidebar, because the saved order then diverges from the live default.
  *
  * @param array $menu Reference to the menu array to reorder in place.
  */
@@ -806,71 +1114,18 @@ function brikpanel_nav_customizer_apply_default_reorder( &$menu ) {
 	if ( ! is_array( $menu ) ) {
 		return;
 	}
-	if ( function_exists( 'is_plugin_active' ) && is_plugin_active( 'admin-menu-editor/menu-editor.php' ) ) {
+	if ( function_exists( 'brikpanel_nav_ame_active' ) && brikpanel_nav_ame_active() ) {
+		return;
+	}
+	if ( ! function_exists( 'brikpanel_nav_apply_store_order' ) ) {
 		return;
 	}
 
-	$move_after = static function ( array $arr, $item_to_move, $after_item_value ) {
-		$idx_move = null;
-		$idx_after = null;
-		$item_value = null;
-		foreach ( $arr as $i => $row ) {
-			if ( ! isset( $row[2] ) ) {
-				continue;
-			}
-			if ( $row[2] === $item_to_move ) {
-				$idx_move = $i;
-				$item_value = $row;
-			}
-			if ( $row[2] === $after_item_value ) {
-				$idx_after = $i;
-			}
-		}
-		if ( $idx_move === null || $idx_after === null ) {
-			return $arr;
-		}
-		unset( $arr[ $idx_move ] );
-		if ( $idx_move < $idx_after ) {
-			$idx_after--;
-		}
-		if ( $idx_after === count( $arr ) - 1 ) {
-			$arr[] = $item_value;
-		} else {
-			$arr = array_merge(
-				array_slice( $arr, 0, $idx_after + 1 ),
-				[ $item_value ],
-				array_slice( $arr, $idx_after + 1 )
-			);
-		}
-		return array_values( $arr );
-	};
+	brikpanel_nav_apply_store_order( $menu );
 
-	// Mirrors — in the SAME ORDER — every move applied by
-	// brikpanel_get_navigation_items() so the customizer's snapshot reflects what
-	// users actually see in the sidebar. Any move that exists here but not there
-	// (or vice versa) makes saving an unmodified config silently re-order the
-	// sidebar, because the saved order then diverges from the live default.
-	$menu = $move_after( $menu, 'edit.php?post_type=product', 'woocommerce' );
-	$menu = $move_after( $menu, 'woocommerce-more', 'woocommerce-marketing' );
-	$menu = $move_after( $menu, 'admin.php?page=wc-settings', 'woocommerce-marketing' );
-	$menu = $move_after( $menu, 'admin.php?page=wc-settings&tab=checkout', 'edit.php?post_type=product' );
-	$menu = $move_after( $menu, 'wf_woocommerce_packing_list', 'edit.php?post_type=product' );
-	$menu = $move_after( $menu, 'brikpanel-segments', 'edit.php?post_type=product' );
-	$menu = $move_after( $menu, 'brikpanel-customer-analytics', 'brikpanel-segments' );
-	$menu = $move_after( $menu, 'brikpanel-google-sheets', 'brikpanel-customer-analytics' );
-	// Abandoned Carts — mirror of the renderer's two-step pin (after Sheets
-	// when present, else after Customer Analytics).
-	$menu = $move_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-customer-analytics' );
-	$menu = $move_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-google-sheets' );
 	// Vendors is pinned AFTER the customizer in the renderer; mirror it last so
 	// the snapshot order matches the rendered sidebar's final position.
-	$menu = $move_after( $menu, 'brikpanel-vendors', 'edit.php?post_type=product' );
-
-	// Push third-party top-levels that leaked above the "Site management"
-	// anchor down into that section — mirrors the same pass the live renderer
-	// runs, so the settings-page snapshot lists them exactly where the sidebar
-	// shows them and saving an unmodified config stays a true no-op.
-	brikpanel_nav_demote_foreign_toplevels( $menu );
+	$menu = brikpanel_nav_move_after( $menu, 'brikpanel-vendors', 'edit.php?post_type=product' );
 }
 
 /**
@@ -1029,12 +1284,27 @@ function brikpanel_nav_demote_foreign_toplevels( &$menu ) {
  *   $item[2] = unique slug 'brikpanel_custom__<id>'
  *   $item[7] = full custom item config (label, url, icon, new_tab)
  *
+ * When `$dropped` is an array, every page row this call leaves out of the
+ * sidebar is written to it as [ 'parent' => '' | parent slug, 'slug' => row
+ * slug, 'reason' => 'rule' | 'new' ]: 'rule' for an item or submenu row the
+ * editor hides from the current user, 'new' for a row "Hide new menu items by
+ * default" keeps out until it is reviewed. A dropped top-level takes its
+ * submenu rows with it; they are not listed one by one. Custom links are not
+ * pages and are never listed. Page access (brikpanel-nav-page-access.php)
+ * reads this instead of repeating the rules, so the sidebar and the page
+ * check cannot disagree.
+ *
  * @param array      $menu    The $menu global, by reference (mutated).
  * @param array|null $submenu The $submenu global, by reference (mutated when provided).
+ * @param array|null $dropped Receives the rows left out, when an array is passed.
  * @return array{0:string,1:array<string,string>} [ $sitemgmt_anchor_slug, $icon_override_map ]
  */
-function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
+function brikpanel_nav_customizer_apply( &$menu, &$submenu = null, &$dropped = null ) {
 	$config = brikpanel_nav_config_get();
+	$record = is_array( $dropped );
+	if ( $record ) {
+		$dropped = [];
+	}
 
 	if ( ! is_array( $menu ) || empty( $config['items'] ) ) {
 		// Nothing configured — leave $menu alone, anchor stays at the legacy
@@ -1149,11 +1419,17 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 
 		if ( $cfg['type'] === 'system' ) {
 			$slug = isset( $cfg['slug'] ) ? (string) $cfg['slug'] : '';
+			if ( $slug !== '' && ! isset( $by_slug[ $slug ] ) ) {
+				$slug = brikpanel_nav_renamed_parent_slug( $slug, $by_slug );
+			}
 			if ( $slug === '' || ! isset( $by_slug[ $slug ] ) ) {
 				continue;
 			}
 			$consumed[ $slug ] = true;
 			if ( brikpanel_nav_cfg_hidden_for_current_user( $cfg ) ) {
+				if ( $record ) {
+					$dropped[] = [ 'parent' => '', 'slug' => $slug, 'reason' => 'rule' ];
+				}
 				continue;
 			}
 
@@ -1230,8 +1506,9 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 			$slug = 'brikpanel_custom__' . $id;
 
 			if ( $section === 'more' ) {
-				// Inject as a synthetic submenu row under "More". Index 4 carries
-				// extra metadata (custom_url/icon/new_tab) the renderer reads.
+				// Inject as a synthetic submenu row under "More". Index 7 carries
+				// extra metadata (url/icon/new_tab) the renderer reads through
+				// brikpanel_nav_customizer_extract_meta(); index 4 holds the classes.
 				$submenu['woocommerce-more'][] = [
 					$label,
 					'read',
@@ -1321,6 +1598,9 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 		}
 		if ( $hide_new ) {
 			// Newly-detected item, not yet reviewed — keep it off the sidebar.
+			if ( $record ) {
+				$dropped[] = [ 'parent' => '', 'slug' => $slug, 'reason' => 'new' ];
+			}
 			continue;
 		}
 		if ( brikpanel_nav_is_store_slug( $slug ) ) {
@@ -1358,16 +1638,18 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null ) {
 			if ( ! isset( $submenu[ $parent_slug ] ) || ! is_array( $submenu[ $parent_slug ] ) ) {
 				continue;
 			}
-			$hide_lookup = array_flip( $hide_slugs );
-			$submenu[ $parent_slug ] = array_values( array_filter(
-				$submenu[ $parent_slug ],
-				static function ( $row ) use ( $hide_lookup ) {
-					if ( ! is_array( $row ) || ! isset( $row[2] ) ) {
-						return true;
+			$hide_lookup = array_flip( array_map( 'brikpanel_nav_slug_key', $hide_slugs ) );
+			$kept        = [];
+			foreach ( $submenu[ $parent_slug ] as $row ) {
+				if ( is_array( $row ) && isset( $row[2] ) && isset( $hide_lookup[ brikpanel_nav_slug_key( $row[2] ) ] ) ) {
+					if ( $record ) {
+						$dropped[] = [ 'parent' => (string) $parent_slug, 'slug' => (string) $row[2], 'reason' => 'rule' ];
 					}
-					return ! isset( $hide_lookup[ (string) $row[2] ] );
+					continue;
 				}
-			) );
+				$kept[] = $row;
+			}
+			$submenu[ $parent_slug ] = $kept;
 		}
 	}
 
@@ -1434,18 +1716,21 @@ function brikpanel_render_nav_customizer_field( $value ) {
 				if ( ! is_array( $row ) || empty( $row['slug'] ) ) {
 					continue;
 				}
-				$saved_lookup[ (string) $row['slug'] ] = $row;
+				$saved_lookup[ brikpanel_nav_slug_key( $row['slug'] ) ] = $row;
 			}
 		}
 		$out = [];
 		foreach ( $live_subs as $sub ) {
-			$saved = isset( $saved_lookup[ $sub['slug'] ] ) ? $saved_lookup[ $sub['slug'] ] : [];
+			$key   = brikpanel_nav_slug_key( $sub['slug'] );
+			$saved = isset( $saved_lookup[ $key ] ) ? $saved_lookup[ $key ] : [];
 			$out[] = [
 				'slug'       => $sub['slug'],
 				'title'      => $sub['title'],
 				'hidden'     => ! empty( $saved['hidden'] ),
 				'audience'   => isset( $saved['audience'] ) ? (string) $saved['audience'] : 'all',
 				'hide_roles' => isset( $saved['hide_roles'] ) && is_array( $saved['hide_roles'] ) ? array_map( 'strval', $saved['hide_roles'] ) : [],
+				'show_roles' => brikpanel_nav_string_list( isset( $saved['show_roles'] ) ? $saved['show_roles'] : null, 30 ),
+				'show_caps'  => brikpanel_nav_string_list( isset( $saved['show_caps'] ) ? $saved['show_caps'] : null, 20 ),
 			];
 		}
 		return $out;
@@ -1480,6 +1765,8 @@ function brikpanel_render_nav_customizer_field( $value ) {
 				'hidden'         => ! empty( $cfg['hidden'] ),
 				'audience'       => isset( $cfg['audience'] ) ? (string) $cfg['audience'] : 'all',
 				'hide_roles'     => isset( $cfg['hide_roles'] ) && is_array( $cfg['hide_roles'] ) ? array_map( 'strval', $cfg['hide_roles'] ) : [],
+				'show_roles'     => brikpanel_nav_string_list( isset( $cfg['show_roles'] ) ? $cfg['show_roles'] : null, 30 ),
+				'show_caps'      => brikpanel_nav_string_list( isset( $cfg['show_caps'] ) ? $cfg['show_caps'] : null, 20 ),
 				'icon_override'  => ! empty( $cfg['icon_override'] ) ? (string) $cfg['icon_override'] : '',
 				'icon_svg'       => ! empty( $cfg['icon_svg'] ) ? (string) $cfg['icon_svg'] : '',
 				'submenus'       => $merge_submenus( $live_subs, $saved_subs ),
@@ -1511,6 +1798,8 @@ function brikpanel_render_nav_customizer_field( $value ) {
 				'hidden'     => ! empty( $cfg['hidden'] ),
 				'audience'   => isset( $cfg['audience'] ) ? (string) $cfg['audience'] : 'all',
 				'hide_roles' => isset( $cfg['hide_roles'] ) && is_array( $cfg['hide_roles'] ) ? array_map( 'strval', $cfg['hide_roles'] ) : [],
+				'show_roles' => brikpanel_nav_string_list( isset( $cfg['show_roles'] ) ? $cfg['show_roles'] : null, 30 ),
+				'show_caps'  => brikpanel_nav_string_list( isset( $cfg['show_caps'] ) ? $cfg['show_caps'] : null, 20 ),
 				'new_tab'    => ! empty( $cfg['new_tab'] ),
 			];
 		}
@@ -1554,6 +1843,8 @@ function brikpanel_render_nav_customizer_field( $value ) {
 			'is_new'         => true,
 			'audience'       => 'all',
 			'hide_roles'     => [],
+			'show_roles'     => [],
+			'show_caps'      => [],
 			'icon_override'  => '',
 			'icon_svg'       => '',
 			'submenus'       => $merge_submenus( isset( $ci['submenus'] ) ? $ci['submenus'] : [], [] ),
@@ -1578,7 +1869,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 	?>
 	</table>
 	<div class="brikpanel-nav-customizer-wrap">
-		<div class="brikpanel-nav-customizer" data-icons-base="<?php echo esc_attr( $icons_url_base ); ?>">
+		<div class="brikpanel-nav-customizer" data-icons-base="<?php echo esc_attr( $icons_url_base ); ?>" data-capabilities="<?php echo esc_attr( wp_json_encode( brikpanel_nav_capability_options() ) ); ?>">
 				<input type="hidden"
 				       name="brikpanel_nav_config_json"
 				       id="brikpanel_nav_config_json"
@@ -1586,7 +1877,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 
 				<div class="brikpanel-navc-card">
 					<div class="brikpanel-navc-header">
-						<div>
+						<div class="brikpanel-navc-header-text">
 							<h3 class="brikpanel-navc-title"><?php esc_html_e( 'Sidebar navigation', 'brikpanel' ); ?></h3>
 							<p class="brikpanel-navc-subtitle">
 								<?php esc_html_e( 'Drag to reorder, toggle visibility, move items between sections, or add custom links.', 'brikpanel' ); ?>
@@ -1619,34 +1910,60 @@ function brikpanel_render_nav_customizer_field( $value ) {
 
 					<?php
 					$roles_list = brikpanel_access_collect_roles();
+					$caps_known = array_fill_keys( brikpanel_nav_capability_options(), true );
 
-					// Audience selector ("Everyone / Admins only / Specific roles")
-					// rendered inline inside a row.
+					// Audience selector ("Everyone / Admins only / Specific roles /
+					// Users with a permission") rendered inline inside a row. The
+					// show-only role rule is the "Specific roles" choice with its
+					// switch on "Show only to these roles".
 					$render_audience_select = function ( $audience ) {
-						$audience = in_array( $audience, [ 'all', 'admins', 'roles' ], true ) ? $audience : 'all';
+						$audience = in_array( $audience, [ 'all', 'admins', 'roles', 'only_roles', 'caps' ], true ) ? $audience : 'all';
+						if ( $audience === 'only_roles' ) {
+							$audience = 'roles';
+						}
 						?>
 						<select class="brikpanel-navc-audience" data-navc-audience aria-label="<?php esc_attr_e( 'Who can see this item', 'brikpanel' ); ?>">
 							<option value="all" <?php selected( $audience, 'all' ); ?>><?php esc_html_e( 'Everyone', 'brikpanel' ); ?></option>
 							<option value="admins" <?php selected( $audience, 'admins' ); ?>><?php esc_html_e( 'Admins only', 'brikpanel' ); ?></option>
 							<option value="roles" <?php selected( $audience, 'roles' ); ?>><?php esc_html_e( 'Specific roles', 'brikpanel' ); ?></option>
+							<option value="caps" <?php selected( $audience, 'caps' ); ?>><?php esc_html_e( 'Users with a permission', 'brikpanel' ); ?></option>
 						</select>
 						<?php
 					};
 
 					// Role checklist block, rendered as a full-width strip right
 					// after the row it belongs to. Revealed only when the matching
-					// selector is set to "Specific roles".
-					$render_audience_roles = function ( $audience, $hide_roles ) use ( $roles_list ) {
-						$audience   = in_array( $audience, [ 'all', 'admins', 'roles' ], true ) ? $audience : 'all';
+					// selector is set to "Specific roles". Its switch decides what
+					// the checked roles mean: hidden from them, or the only ones who
+					// see the item. The strip's data-navc-role-mode is the one source
+					// of truth the script reads.
+					$render_audience_roles = function ( $audience, $hide_roles, $show_roles ) use ( $roles_list ) {
+						$audience   = in_array( $audience, [ 'all', 'admins', 'roles', 'only_roles', 'caps' ], true ) ? $audience : 'all';
+						$show_mode  = ( $audience === 'only_roles' );
 						$hide_roles = is_array( $hide_roles ) ? array_map( 'strval', $hide_roles ) : [];
+						$show_roles = is_array( $show_roles ) ? $show_roles : [];
+						$checked    = $show_mode ? $show_roles : $hide_roles;
+						// A show-only role this site no longer has stays listed and
+						// checked, so the rule does not quietly widen to everyone.
+						$missing    = $show_mode ? array_diff( $show_roles, array_map( 'strval', array_keys( $roles_list ) ) ) : [];
 						?>
-						<div class="brikpanel-navc-roles" data-navc-roles <?php echo $audience === 'roles' ? '' : 'hidden'; ?>>
-							<span class="brikpanel-navc-roles-title"><?php esc_html_e( 'Hide from these roles', 'brikpanel' ); ?></span>
+						<div class="brikpanel-navc-roles" data-navc-roles data-navc-role-mode="<?php echo $show_mode ? 'show' : 'hide'; ?>" <?php echo ( $audience === 'roles' || $show_mode ) ? '' : 'hidden'; ?>>
+							<div class="brikpanel-navc-rolemode" role="group" aria-label="<?php esc_attr_e( 'Rule for the checked roles', 'brikpanel' ); ?>">
+								<button type="button" class="brikpanel-navc-rolemode-btn" data-navc-action="role-mode" data-mode="hide" aria-pressed="<?php echo $show_mode ? 'false' : 'true'; ?>"><?php esc_html_e( 'Hide from these roles', 'brikpanel' ); ?></button>
+								<button type="button" class="brikpanel-navc-rolemode-btn" data-navc-action="role-mode" data-mode="show" aria-pressed="<?php echo $show_mode ? 'true' : 'false'; ?>"><?php esc_html_e( 'Show only to these roles', 'brikpanel' ); ?></button>
+							</div>
+							<p class="brikpanel-navc-rolemode-hint" data-navc-role-hint <?php echo $show_mode ? '' : 'hidden'; ?>><?php esc_html_e( 'Only the checked roles see this item. If you leave your own role unchecked, it disappears for you too.', 'brikpanel' ); ?></p>
 							<div class="brikpanel-navc-roles-grid">
 								<?php foreach ( $roles_list as $role_slug => $role_name ) : ?>
 									<label class="brikpanel-navc-role">
-										<input type="checkbox" data-navc-role value="<?php echo esc_attr( $role_slug ); ?>" <?php checked( in_array( (string) $role_slug, $hide_roles, true ) ); ?>>
+										<input type="checkbox" data-navc-role value="<?php echo esc_attr( $role_slug ); ?>" <?php checked( in_array( (string) $role_slug, $checked, true ) ); ?>>
 										<span><?php echo esc_html( $role_name ); ?></span>
+									</label>
+								<?php endforeach; ?>
+								<?php foreach ( $missing as $missing_role ) : ?>
+									<label class="brikpanel-navc-role brikpanel-navc-role--missing">
+										<input type="checkbox" data-navc-role value="<?php echo esc_attr( $missing_role ); ?>" checked>
+										<span><?php /* translators: %s: role or permission name that no longer exists on this site. */ echo esc_html( sprintf( __( '%s (not on this site)', 'brikpanel' ), $missing_role ) ); ?></span>
 									</label>
 								<?php endforeach; ?>
 							</div>
@@ -1654,7 +1971,27 @@ function brikpanel_render_nav_customizer_field( $value ) {
 						<?php
 					};
 
-					$render_section = function( $section_key, $heading_text, $hint_text, $items ) use ( $icons_url_base, $icon_options, $render_audience_select, $render_audience_roles ) {
+					// Permission picker strip for "Users with a permission". Only the
+					// saved permissions are printed as options; the script adds the
+					// full list (data-capabilities on the root) the first time the
+					// picker opens, so ~180 rows never carry ~400 options each. The
+					// select has no name: the rule travels in the hidden JSON field.
+					$render_audience_caps = function ( $audience, $show_caps ) use ( $caps_known ) {
+						$show_caps = is_array( $show_caps ) ? $show_caps : [];
+						$title     = __( 'Show only to users who have one of these permissions', 'brikpanel' );
+						?>
+						<div class="brikpanel-navc-caps bp-select2-skin" data-navc-caps <?php echo $audience === 'caps' ? '' : 'hidden'; ?>>
+							<span class="brikpanel-navc-rule-title"><?php echo esc_html( $title ); ?></span>
+							<select multiple class="brikpanel-navc-caps-select" data-navc-caps-select data-placeholder="<?php esc_attr_e( 'No permission selected: everyone sees this item', 'brikpanel' ); ?>" aria-label="<?php echo esc_attr( $title ); ?>">
+								<?php foreach ( $show_caps as $cap ) : ?>
+									<option value="<?php echo esc_attr( $cap ); ?>" selected><?php /* translators: %s: role or permission name that no longer exists on this site. */ echo esc_html( isset( $caps_known[ $cap ] ) ? $cap : sprintf( __( '%s (not on this site)', 'brikpanel' ), $cap ) ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</div>
+						<?php
+					};
+
+					$render_section = function( $section_key, $heading_text, $hint_text, $items ) use ( $icons_url_base, $icon_options, $render_audience_select, $render_audience_roles, $render_audience_caps ) {
 						?>
 						<div class="brikpanel-navc-section" data-section="<?php echo esc_attr( $section_key ); ?>">
 							<div class="brikpanel-navc-section-header">
@@ -1781,7 +2118,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 												<span class="brikpanel-navc-label-text">
 													<?php echo esc_html( $display_label ); ?>
 													<?php if ( ! empty( $row['is_new'] ) ) : ?>
-														<span class="brikpanel-navc-new-badge" title="<?php esc_attr_e( 'Newly detected — not yet reviewed', 'brikpanel' ); ?>"><?php esc_html_e( 'New', 'brikpanel' ); ?></span>
+														<span class="brikpanel-badge brikpanel-badge--new brikpanel-navc-new-badge" title="<?php esc_attr_e( 'Newly detected, not yet reviewed', 'brikpanel' ); ?>"><?php esc_html_e( 'New', 'brikpanel' ); ?></span>
 													<?php endif; ?>
 													<?php if ( $is_unavailable ) : ?>
 														<span class="brikpanel-navc-missing-badge" title="<?php echo esc_attr( $unavailable_hint ); ?>"><?php esc_html_e( 'Not available on this site', 'brikpanel' ); ?></span>
@@ -1826,7 +2163,8 @@ function brikpanel_render_nav_customizer_field( $value ) {
 												<?php endif; ?>
 											<?php endif; ?>
 										</div>
-										<?php $render_audience_roles( isset( $row['audience'] ) ? $row['audience'] : 'all', isset( $row['hide_roles'] ) ? $row['hide_roles'] : [] ); ?>
+										<?php $render_audience_roles( isset( $row['audience'] ) ? $row['audience'] : 'all', isset( $row['hide_roles'] ) ? $row['hide_roles'] : [], isset( $row['show_roles'] ) ? $row['show_roles'] : [] ); ?>
+										<?php $render_audience_caps( isset( $row['audience'] ) ? $row['audience'] : 'all', isset( $row['show_caps'] ) ? $row['show_caps'] : [] ); ?>
 										<?php if ( $has_submenus ) : ?>
 											<div class="brikpanel-navc-submenus" hidden>
 												<div class="brikpanel-navc-submenus-inner">
@@ -1842,7 +2180,8 @@ function brikpanel_render_nav_customizer_field( $value ) {
 																	</span>
 																</label>
 																<?php $render_audience_select( isset( $sub['audience'] ) ? $sub['audience'] : 'all' ); ?>
-																<?php $render_audience_roles( isset( $sub['audience'] ) ? $sub['audience'] : 'all', isset( $sub['hide_roles'] ) ? $sub['hide_roles'] : [] ); ?>
+																<?php $render_audience_roles( isset( $sub['audience'] ) ? $sub['audience'] : 'all', isset( $sub['hide_roles'] ) ? $sub['hide_roles'] : [], isset( $sub['show_roles'] ) ? $sub['show_roles'] : [] ); ?>
+																<?php $render_audience_caps( isset( $sub['audience'] ) ? $sub['audience'] : 'all', isset( $sub['show_caps'] ) ? $sub['show_caps'] : [] ); ?>
 															</li>
 														<?php endforeach; ?>
 													</ul>
@@ -1890,15 +2229,15 @@ function brikpanel_render_nav_customizer_field( $value ) {
 						<div class="brikpanel-navc-dialog-body">
 							<label class="brikpanel-navc-field">
 								<span><?php esc_html_e( 'Label', 'brikpanel' ); ?></span>
-								<input type="text" data-navc-field="label" placeholder="<?php esc_attr_e( 'Customer support', 'brikpanel' ); ?>">
+								<input type="text" class="brikpanel-control" data-navc-field="label" placeholder="<?php esc_attr_e( 'Customer support', 'brikpanel' ); ?>">
 							</label>
 							<label class="brikpanel-navc-field">
 								<span><?php esc_html_e( 'URL', 'brikpanel' ); ?></span>
-								<input type="text" data-navc-field="url" placeholder="https://example.com">
+								<input type="text" class="brikpanel-control" data-navc-field="url" placeholder="https://example.com">
 							</label>
 							<label class="brikpanel-navc-field">
 								<span><?php esc_html_e( 'Icon', 'brikpanel' ); ?></span>
-								<select data-navc-field="icon">
+								<select class="brikpanel-control" data-navc-field="icon">
 									<?php foreach ( $icon_options as $slug => $label ) : ?>
 										<option value="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $label ); ?></option>
 									<?php endforeach; ?>
@@ -1910,7 +2249,7 @@ function brikpanel_render_nav_customizer_field( $value ) {
 									<span class="brikpanel-navc-svg-preview" aria-hidden="true"></span>
 									<textarea data-navc-field="icon_svg" rows="3" placeholder="<?php esc_attr_e( 'Paste SVG code or a data:image/svg+xml;base64,… URI', 'brikpanel' ); ?>"></textarea>
 								</div>
-								<span class="brikpanel-navc-svg-hint"><?php esc_html_e( 'Paste an SVG from Icons8, SVG Repo or anywhere — it overrides the icon chosen above. Leave empty to use the icon above.', 'brikpanel' ); ?></span>
+								<span class="brikpanel-navc-svg-hint"><?php esc_html_e( 'Paste an SVG from Icons8, SVG Repo or anywhere. It overrides the icon chosen above. Leave empty to use the icon above.', 'brikpanel' ); ?></span>
 							</div>
 							<label class="brikpanel-navc-field brikpanel-navc-field-checkbox">
 								<input type="checkbox" data-navc-field="new_tab">
@@ -1978,13 +2317,21 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 	wp_enqueue_style(
 		'brikpanel-nav-customizer',
 		plugins_url( 'brikpanel-nav-customizer.css', __FILE__ ),
-		[],
+		function_exists( 'brikpanel_narrow_dep' ) ? brikpanel_narrow_dep( 'ui', 'style' ) : [],
 		$navc_css_ver
 	);
+	// selectWoo drives the "Users with a permission" picker. WooCommerce
+	// registers it on its screens; an unregistered dependency would make
+	// WordPress drop this whole script, so it is only listed when present (the
+	// picker falls back to a plain multiple select without it).
+	$navc_js_deps = [ 'jquery', 'jquery-ui-sortable' ];
+	if ( wp_script_is( 'selectWoo', 'registered' ) ) {
+		$navc_js_deps[] = 'selectWoo';
+	}
 	wp_enqueue_script(
 		'brikpanel-nav-customizer',
 		plugins_url( 'brikpanel-nav-customizer.js', __FILE__ ),
-		[ 'jquery', 'jquery-ui-sortable' ],
+		$navc_js_deps,
 		$navc_js_ver,
 		true
 	);
@@ -2012,7 +2359,19 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 			'audienceAll'   => __( 'Everyone', 'brikpanel' ),
 			'audienceAdmins'=> __( 'Admins only', 'brikpanel' ),
 			'audienceRoles' => __( 'Specific roles', 'brikpanel' ),
+			'audienceCaps'  => __( 'Users with a permission', 'brikpanel' ),
 			'hideFromRoles' => __( 'Hide from these roles', 'brikpanel' ),
+			'showOnlyRoles' => __( 'Show only to these roles', 'brikpanel' ),
+			'rolesRule'     => __( 'Rule for the checked roles', 'brikpanel' ),
+			'showOnlyHint'  => __( 'Only the checked roles see this item. If you leave your own role unchecked, it disappears for you too.', 'brikpanel' ),
+			'capsTitle'     => __( 'Show only to users who have one of these permissions', 'brikpanel' ),
+			'capsPlaceholder' => __( 'No permission selected: everyone sees this item', 'brikpanel' ),
+			'capsNoMatch'   => __( 'No matching permissions', 'brikpanel' ),
+			'capsMax'       => sprintf(
+				/* translators: %s: the most permissions one rule can hold. */
+				_n( 'You can choose up to %s permission.', 'You can choose up to %s permissions.', 20, 'brikpanel' ),
+				function_exists( 'brikpanel_number' ) ? brikpanel_number( 20 ) : '20'
+			),
 			'spacer'        => __( 'Spacer', 'brikpanel' ),
 			'spacerStyle'   => __( 'Spacer style', 'brikpanel' ),
 			'spacerSpace'   => __( 'Blank space', 'brikpanel' ),

@@ -104,10 +104,12 @@
 		} );
 
 		function insertToken( tokenText, chip ) {
-			var field = lastField;
+			// The field last used in the chip's own status (a status can hold more
+			// than one: the WhatsApp drafts have a message and a follow-up), else
+			// that status's first message field.
+			var item  = chip.closest( '[data-cse-item]' );
+			var field = lastField && ( ! item || item.contains( lastField ) ) ? lastField : null;
 			if ( ! field ) {
-				// Fall back to the Message textarea in the same item as the chip.
-				var item = chip.closest( '[data-cse-item]' );
 				field = item ? item.querySelector( 'textarea[data-cse-insertable]' ) : null;
 			}
 			if ( ! field ) {

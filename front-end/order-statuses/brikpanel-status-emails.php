@@ -203,7 +203,9 @@ function brikpanel_status_email_clean_recipients( $value ) {
 function brikpanel_status_email_tokens( $order ) {
 	$items = [];
 	foreach ( $order->get_items() as $item ) {
-		$name = $item->get_name();
+		// Plain text first: a TranslatePress variation name carries a <span>
+		// that esc_html() below would print as text.
+		$name = brikpanel_plain_label( $item->get_name() );
 		$qty  = method_exists( $item, 'get_quantity' ) ? (int) $item->get_quantity() : 1;
 		$items[] = esc_html( $name ) . ' &times; ' . $qty;
 	}
@@ -463,8 +465,7 @@ function brikpanel_status_email_persisted_status( $order_id ) {
 	}
 
 	$status = '';
-	if ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
-		&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+	if ( brikpanel_wc_hpos_enabled() ) {
 		global $wpdb;
 		$table  = $wpdb->prefix . 'wc_orders';
 		$status = $wpdb->get_var( $wpdb->prepare( "SELECT status FROM {$table} WHERE id = %d", $order_id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
@@ -600,7 +601,7 @@ function brikpanel_render_status_emails_field() {
 	$help     = brikpanel_status_email_placeholder_help();
 	?>
 	</table>
-	<section class="bp-cse-card">
+	<section class="bp-settings-card bp-settings-card--custom bp-cse-card">
 		<header class="bp-cos-card__head">
 			<div>
 				<h3 class="bp-cos-card__title"><?php esc_html_e( 'Status change emails', 'brikpanel' ); ?></h3>

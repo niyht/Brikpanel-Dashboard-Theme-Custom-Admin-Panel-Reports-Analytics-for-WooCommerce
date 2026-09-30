@@ -1,6 +1,11 @@
 /**
  * BrikPanel - Cart Share (storefront) styles
- * Neutral, theme-friendly. Monochrome to blend with most storefronts.
+ *
+ * The "Share cart" button carries WooCommerce's own cart button classes
+ * ("button", plus "wp-element-button" on block themes), so the theme paints it
+ * like "Apply coupon": colours, size and hover. Nothing here sets its look; a
+ * fixed white look of our own read as faint next to a theme's coloured buttons.
+ * Only the share panel that opens from it keeps its own neutral style.
  */
 
 /* Keep the [hidden] attribute authoritative over our own display rules
@@ -15,29 +20,41 @@
     display: flex;
 }
 
-.brikpanel-cshare-btn {
+/* Zero weight: any theme rule for its buttons wins. */
+:where(.brikpanel-cshare-btn) {
+    cursor: pointer;
+}
+
+/* Icon + label row, on an inner box of our own so the display the theme gives
+   the button (inline-block, block) cannot break it. The icon is 1em, so the row
+   stays one line tall and the button keeps the theme's height. */
+.brikpanel-cshare-btn__inner {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.6rem 1.1rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    line-height: 1.2;
-    color: #303030;
-    background: #fff;
-    border: 1px solid #d5d5d5;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-    transition: background 0.15s ease, border-color 0.15s ease;
-    font-family: inherit;
+    gap: 0.5em;
+    vertical-align: top;
 }
-.brikpanel-cshare-btn:hover {
-    background: #f6f6f6;
-    border-color: #bfbfbf;
-}
-.brikpanel-cshare-btn svg {
+.brikpanel-cshare-btn__inner svg {
     flex-shrink: 0;
+    width: 1em;
+    height: 1em;
+}
+
+/* The icons are drawn with fill/stroke attributes, which lose to any page CSS:
+   a theme rule such as "button svg { fill: … }" would fill the outlines or blank
+   them. Restate the drawing model on exactly the shapes that declare it, so the
+   icons always follow the text colour. */
+:is(.brikpanel-cshare-btn, .brikpanel-cshare-overlay) svg[fill="none"],
+:is(.brikpanel-cshare-btn, .brikpanel-cshare-overlay) svg[fill="none"] *:not([fill]) {
+    fill: none !important;
+}
+:is(.brikpanel-cshare-btn, .brikpanel-cshare-overlay) svg[fill="currentColor"],
+:is(.brikpanel-cshare-btn, .brikpanel-cshare-overlay) svg[fill="currentColor"] *:not([fill]) {
+    fill: currentColor !important;
+}
+:is(.brikpanel-cshare-btn, .brikpanel-cshare-overlay) svg[stroke="currentColor"],
+:is(.brikpanel-cshare-btn, .brikpanel-cshare-overlay) svg[stroke="currentColor"] *:not([stroke]) {
+    stroke: currentColor !important;
 }
 
 /* Overlay + panel */
