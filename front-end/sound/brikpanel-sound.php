@@ -2,10 +2,15 @@
 /**
  * BrikPanel - New Order Notifications
  *
- * Slide-in popup, chime sound, and confetti burst whenever a new paid order
+ * Slide-in popup, chime sound, and confetti burst whenever a new order
  * arrives. Driven by an admin-side poll against an HPOS-compatible AJAX
- * endpoint that returns every "processing" order created since the
- * caller's last-seen ID.
+ * endpoint that returns every order in a new-order status
+ * (brikpanel_new_order_statuses(): processing, completed, on-hold) created
+ * since the caller's last-seen ID.
+ *
+ * One tab per site and user polls, also while it sits in the background
+ * (front-end/sound/brikpanel-order-notify.js): the sound plays once and the
+ * card shows once, in whichever tab is on screen.
  *
  * Behaviour is fully gated by the BrikPanel settings tab:
  *   - brikpanel_order_notify_popup     (yes/no, default yes)
@@ -97,7 +102,9 @@ function brikpanel_order_notify_enqueue( $hook ) {
         );
     }
 
-    $deps = [];
+    // brikpanelFormat counts the items in the store's number format and with
+    // the right plural form of the admin language.
+    $deps = function_exists( 'brikpanel_narrow_dep' ) ? brikpanel_narrow_dep( 'format' ) : [];
     if ( $settings['confetti'] ) {
         $confetti_path = BRIKPANEL_PATH . 'assets/js/confetti.browser.min.js';
         $confetti_url  = BRIKPANEL_URL . 'assets/js/confetti.browser.min.js';
@@ -135,6 +142,11 @@ function brikpanel_order_notify_enqueue( $hook ) {
         [
             'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'brikpanel_order_notify' ),
+            // Shared state (last seen order, waiting cards, which tab polls)
+            // is kept per site and person: subdirectory multisite sites share
+            // one browser origin.
+            'blog'     => get_current_blog_id(),
+            'user'     => get_current_user_id(),
             'soundUrl' => $sound_url,
             'popup'    => $settings['popup'] ? '1' : '0',
             'sound'    => ( $settings['sound'] && $sound_url ) ? '1' : '0',
@@ -150,8 +162,11 @@ function brikpanel_order_notify_enqueue( $hook ) {
                 'paymentLabel'  => __( 'Payment', 'brikpanel' ),
                 'view'          => __( 'View order', 'brikpanel' ),
                 'dismiss'       => __( 'Dismiss', 'brikpanel' ),
-                'itemSingular'  => __( '1 item', 'brikpanel' ),
-                'itemPlural'    => __( '%count% items', 'brikpanel' ),
+                // Plural forms of the admin language (Russian and Polish have three).
+                'items'         => function_exists( 'brikpanel_js_plural' )
+                    ? brikpanel_js_plural( _n_noop( '%s item', '%s items', 'brikpanel' ) )
+                    : [ 'forms' => [ '%s' ], 'en' => true ],
+                'awaiting'      => __( 'Awaiting payment', 'brikpanel' ),
             ],
         ]
     );
@@ -179,7 +194,8 @@ function brikpanel_order_notify_track_processing( $order_id ) {
 add_action( 'woocommerce_order_status_processing', 'brikpanel_order_notify_track_processing', 10, 1 );
 
 /**
- * AJAX endpoint — return every "processing" order created since `last_seen`.
+ * AJAX endpoint — return every new order (brikpanel_new_order_statuses())
+ * created since `last_seen`.
  *
  * Request:
  *   action     = brikpanel_check_new_orders
@@ -189,9 +205,10 @@ add_action( 'woocommerce_order_status_processing', 'brikpanel_order_notify_track
  * Response (success):
  *   {
  *     firstRun: bool,
- *     baseline: int,        // newest processing-order ID known
+ *     baseline: int,        // newest new-order ID known
+ *     nonce:    string,     // fresh nonce: tabs left open for days keep working
  *     orders:   array<{
- *       id, number, total, itemCount, customer, payment, editUrl
+ *       id, number, total, itemCount, customer, payment, awaiting, editUrl
  *     }>
  *   }
  */
@@ -202,6 +219,8 @@ function brikpanel_order_notify_ajax_check() {
     check_ajax_referer( 'brikpanel_order_notify', 'security' );
 
     $last_seen = isset( $_POST['last_seen'] ) ? absint( $_POST['last_seen'] ) : 0;
+    $statuses  = function_exists( 'brikpanel_new_order_statuses' ) ? brikpanel_new_order_statuses() : [ 'processing' ];
+    $nonce     = wp_create_nonce( 'brikpanel_order_notify' );
 
     // Resolve the newest processing order ID once — used both as the baseline
     // and as an early-exit when there is nothing new to report.
@@ -215,7 +234,8 @@ function brikpanel_order_notify_ajax_check() {
     // newest-by-date order is an OLD low-ID order — that desync silently
     // suppressed real notifications and replayed stale orders as if new.
     $latest_ids = wc_get_orders( [
-        'status'  => [ 'processing' ],
+        'status'  => $statuses,
+        'type'    => 'shop_order',
         'limit'   => 1,
         'orderby' => 'ID',
         'order'   => 'DESC',
@@ -227,6 +247,7 @@ function brikpanel_order_notify_ajax_check() {
         wp_send_json_success( [
             'firstRun' => true,
             'baseline' => $baseline,
+            'nonce'    => $nonce,
             'orders'   => [],
         ] );
     }
@@ -235,17 +256,19 @@ function brikpanel_order_notify_ajax_check() {
         wp_send_json_success( [
             'firstRun' => false,
             'baseline' => $baseline,
+            'nonce'    => $nonce,
             'orders'   => [],
         ] );
     }
 
-    // Fetch up to 5 newest unseen processing orders. We cap so a long-idle tab
+    // Fetch up to 5 newest unseen new orders. We cap so a long-idle tab
     // returning from sleep can't trigger dozens of toasts at once. Ordered by
     // ID DESC for the same reason as the baseline above — the comparison that
     // gates each toast ( $id > $last_seen ) is an ID comparison, so the
     // candidate set must be the highest IDs, never the newest dates.
     $unseen_ids = wc_get_orders( [
-        'status'  => [ 'processing' ],
+        'status'  => $statuses,
+        'type'    => 'shop_order',
         'limit'   => 5,
         'orderby' => 'ID',
         'order'   => 'DESC',
@@ -285,6 +308,8 @@ function brikpanel_order_notify_ajax_check() {
             'customer'  => $customer,
             // Gateway titles are saved through wp_kses_post(): "&" is "&amp;".
             'payment'   => brikpanel_plain_label( $order->get_payment_method_title() ),
+            // A bank transfer waits on-hold: the card says the money is not in yet.
+            'awaiting'  => $order->has_status( 'on-hold' ),
             'editUrl'   => $order->get_edit_order_url(),
         ];
     }
@@ -295,6 +320,7 @@ function brikpanel_order_notify_ajax_check() {
     wp_send_json_success( [
         'firstRun' => false,
         'baseline' => $baseline,
+        'nonce'    => $nonce,
         'orders'   => $orders,
     ] );
 }

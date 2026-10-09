@@ -745,6 +745,9 @@ function brikpanel_bm_ajax_card_dismiss() {
         wp_send_json_error( array( 'reason' => 'forbidden' ), 403 );
     }
     update_option( 'brikpanel_bm_live_card_dismissed', 1, false );
+    if ( function_exists( 'brikpanel_ask_closed' ) ) {
+        brikpanel_ask_closed( 'bm_live' );
+    }
     wp_send_json_success();
 }
 
@@ -954,8 +957,8 @@ if ( ! defined( 'BRIKPANEL_BM_ANNOUNCE_GRACE_DAYS' ) ) {
 /**
  * True on one of BrikPanel's own admin pages.
  *
- * A pure $_GET read, like brikpanel_ea_is_dashboard(), so the footer of every
- * other admin screen leaves before an option or a user meta is touched.
+ * A pure $_GET read, like brikpanel_ea_is_settings_page(), so the footer of
+ * every other admin screen leaves before an option or a user meta is touched.
  *
  * WooCommerce ▸ Settings ▸ BrikPanel is deliberately NOT included even though
  * it is a BrikPanel screen: the newsletter modal and the developer-docs modal
@@ -979,36 +982,22 @@ function brikpanel_brikmentor_announce_is_panel_screen() {
 }
 
 /**
- * Should the launch announcement render on this request?
+ * Does the launch announcement apply to this user and store, wherever they
+ * are? Everything but the screen: the one-ask-at-a-time rule
+ * (includes/brikpanel-asks.php) asks this on any admin screen to decide whose
+ * turn it is.
  *
- * Six gates, cheapest first. Any one of them failing means the markup is never
- * printed at all — nothing is rendered hidden and toggled later, so a merchant
- * this does not apply to pays nothing for it.
- *
+ * @param int|null $now Unix time; the ask rule passes its own clock.
  * @return bool
  */
-function brikpanel_brikmentor_announce_should_render() {
-    if ( ! brikpanel_brikmentor_announce_is_panel_screen() ) {
-        return false;
-    }
+function brikpanel_brikmentor_announce_eligible( $now = null ) {
+    $now = null === $now ? time() : (int) $now;
     if ( ! current_user_can( 'manage_woocommerce' ) ) {
         return false;
     }
     // The gate every launch surface shares: kill switch off, or BrikMentor
     // already installed here, and nothing promotional renders.
     if ( ! brikpanel_brikmentor_promo_active() ) {
-        return false;
-    }
-
-    // NEVER on top of the welcome tour.
-    //
-    // The tour (front-end/welcome/brikpanel-welcome.php) renders in the footer
-    // of EVERY admin screen, with no screen restriction, and keeps rendering
-    // until the user closes it. Nothing in the plugin sequences popups: there
-    // is no queue, no latch and no shared registry. Without this test a
-    // first-time installer meets two dialogs at once on their very first
-    // pageview. Read-only — the tour keeps sole ownership of its own meta.
-    if ( function_exists( 'brikpanel_should_show_welcome' ) && brikpanel_should_show_welcome() ) {
         return false;
     }
 
@@ -1024,12 +1013,38 @@ function brikpanel_brikmentor_announce_should_render() {
     // piece of state to avoid.
     $installed_at = (int) get_option( 'brikpanel_activated_at' );
     if ( $installed_at > 0
-        && ( time() - $installed_at ) < ( BRIKPANEL_BM_ANNOUNCE_GRACE_DAYS * DAY_IN_SECONDS ) ) {
+        && ( $now - $installed_at ) < ( BRIKPANEL_BM_ANNOUNCE_GRACE_DAYS * DAY_IN_SECONDS ) ) {
         return false;
     }
 
     $seen = get_user_meta( get_current_user_id(), BRIKPANEL_BM_ANNOUNCE_META, true );
     return BRIKPANEL_BM_ANNOUNCE_CAMPAIGN !== $seen;
+}
+
+/**
+ * Should the launch announcement render on this request?
+ *
+ * Cheapest first. Any gate failing means the markup is never printed at all:
+ * nothing is rendered hidden and toggled later, so a merchant this does not
+ * apply to pays nothing for it.
+ *
+ * @return bool
+ */
+function brikpanel_brikmentor_announce_should_render() {
+    if ( ! brikpanel_brikmentor_announce_is_panel_screen() ) {
+        return false;
+    }
+    // NEVER on top of the welcome tour, and never next to another ask: the
+    // tour, the cards and the review request take turns
+    // (includes/brikpanel-asks.php). The welcome test stays as a second line
+    // of defence. Read-only: the tour keeps sole ownership of its own meta.
+    if ( function_exists( 'brikpanel_should_show_welcome' ) && brikpanel_should_show_welcome() ) {
+        return false;
+    }
+    if ( ! function_exists( 'brikpanel_ask_allows' ) || ! brikpanel_ask_allows( 'bm_announce' ) ) {
+        return false;
+    }
+    return brikpanel_brikmentor_announce_eligible( brikpanel_asks_now() );
 }
 
 add_action( 'admin_footer', 'brikpanel_brikmentor_render_announce' );
@@ -1046,6 +1061,7 @@ function brikpanel_brikmentor_render_announce() {
     if ( ! brikpanel_brikmentor_announce_should_render() ) {
         return;
     }
+    brikpanel_ask_shown( 'bm_announce' );
 
     $cta_url      = brikpanel_brikmentor_url();
     $checkout_url = brikpanel_brikmentor_checkout_url( 'announce' );
@@ -1265,6 +1281,9 @@ function brikpanel_bm_ajax_announce_dismiss() {
         wp_send_json_error( array( 'reason' => 'forbidden' ), 403 );
     }
     update_user_meta( get_current_user_id(), BRIKPANEL_BM_ANNOUNCE_META, BRIKPANEL_BM_ANNOUNCE_CAMPAIGN );
+    if ( function_exists( 'brikpanel_ask_closed' ) ) {
+        brikpanel_ask_closed( 'bm_announce' );
+    }
     wp_send_json_success();
 }
 
@@ -1381,10 +1400,16 @@ function brikpanel_brikmentor_pitch_label( array $pitch ) {
     );
 }
 
-/** Has this user put the dashboard pitch card away for a while? */
-function brikpanel_brikmentor_pitch_snoozed() {
+/**
+ * Has this user put the dashboard pitch card away for a while?
+ *
+ * @param int|null $now Unix time; the one-ask-at-a-time rule passes its own clock.
+ * @return bool
+ */
+function brikpanel_brikmentor_pitch_snoozed( $now = null ) {
+    $now   = null === $now ? time() : (int) $now;
     $until = (int) get_user_meta( get_current_user_id(), BRIKPANEL_BM_PITCH_META, true );
-    return $until > time();
+    return $until > $now;
 }
 
 /**
@@ -1423,6 +1448,10 @@ add_action( 'brikpanel_dashboard_after_kpis', 'brikpanel_brikmentor_render_dashb
  * @return void
  */
 function brikpanel_brikmentor_render_dashboard_pitch() {
+    // One ask at a time (includes/brikpanel-asks.php).
+    if ( ! function_exists( 'brikpanel_ask_allows' ) || ! brikpanel_ask_allows( 'bm_pitch_dash' ) ) {
+        return;
+    }
     if ( ! brikpanel_brikmentor_promo_active() ) {
         return;
     }
@@ -1434,8 +1463,12 @@ function brikpanel_brikmentor_render_dashboard_pitch() {
     }
     $pitch = brikpanel_brikmentor_cart_pitch();
     if ( ! $pitch ) {
+        // No figure to show: the turn passes on for a day without a quiet
+        // period, so the next card can take it on this same page view.
+        brikpanel_ask_skip( 'bm_pitch_dash', DAY_IN_SECONDS );
         return;
     }
+    brikpanel_ask_shown( 'bm_pitch_dash' );
     brikpanel_brikmentor_pitch_rendered( true );
 
     $cta_url      = brikpanel_brikmentor_url();
@@ -1477,6 +1510,11 @@ function brikpanel_bm_ajax_pitch_dismiss() {
         BRIKPANEL_BM_PITCH_META,
         time() + BRIKPANEL_BM_PITCH_SNOOZE_DAYS * DAY_IN_SECONDS
     );
+    // One X puts both pitch cards away (shared snooze), so both asks close.
+    if ( function_exists( 'brikpanel_ask_closed' ) ) {
+        brikpanel_ask_closed( 'bm_pitch_dash' );
+        brikpanel_ask_closed( 'bm_pitch_ca' );
+    }
     wp_send_json_success();
 }
 
@@ -1631,6 +1669,10 @@ add_action( 'brikpanel_ca_after_header', 'brikpanel_brikmentor_render_analytics_
  * @return void
  */
 function brikpanel_brikmentor_render_analytics_pitch() {
+    // One ask at a time (includes/brikpanel-asks.php).
+    if ( ! function_exists( 'brikpanel_ask_allows' ) || ! brikpanel_ask_allows( 'bm_pitch_ca' ) ) {
+        return;
+    }
     if ( ! brikpanel_brikmentor_promo_active() ) {
         return;
     }
@@ -1642,8 +1684,10 @@ function brikpanel_brikmentor_render_analytics_pitch() {
     }
     $pitch = brikpanel_brikmentor_rfm_pitch();
     if ( ! $pitch ) {
+        brikpanel_ask_skip( 'bm_pitch_ca', DAY_IN_SECONDS );
         return;
     }
+    brikpanel_ask_shown( 'bm_pitch_ca' );
 
     $screens      = brikpanel_brikmentor_fab_screens();
     $body         = isset( $screens['brikpanel-customer-analytics']['variants']['rfm'] ) ? $screens['brikpanel-customer-analytics']['variants']['rfm'] : '';

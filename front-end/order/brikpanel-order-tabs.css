@@ -49,6 +49,16 @@
 	top: calc(var(--bp-otabs-top, 104px) + 16px);
 }
 
+/* A control reached with Tab, or a #link, scrolls into view below the fixed
+   order header and the sticky tab bar instead of under them: WordPress only
+   keeps the admin bar clear. Set on both boxes, since at some widths <body>
+   scrolls instead of the window; both lengths are measured by
+   brikpanel-order.js (syncSticky). */
+html:has(> body.bp-order-tabs),
+body.bp-order-tabs {
+	scroll-padding-top: calc(var(--bp-otabs-top, 104px) + var(--bp-otabs-bar-h, 50px) + 8px);
+}
+
 .brikpanel-modern-edit.bp-order-tabs #poststuff #post-body #side-sortables,
 .brikpanel-modern-edit.bp-order-tabs #normal-sortables,
 .brikpanel-modern-edit.bp-order-tabs #advanced-sortables {

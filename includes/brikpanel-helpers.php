@@ -4,13 +4,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Check if the current user is a site administrator.
- * Used to skip tracking for admin actions (cart, checkout, visits, etc.).
+ * Whether the current user runs the store: an administrator or anyone who
+ * manages WooCommerce (shop managers), the same people the abandoned-cart
+ * module treats as staff. Storefront analytics skip them, so the team
+ * checking products, testing the cart or placing a test order never shows up
+ * as visitors, product views or add-to-carts. Administrators only until 3.3.30.
  *
  * @return bool
  */
 function brikpanel_is_admin_user() {
-    return is_user_logged_in() && current_user_can( 'manage_options' );
+    if ( ! is_user_logged_in() ) {
+        return false;
+    }
+    $is_staff = current_user_can( 'manage_options' ) || current_user_can( 'manage_woocommerce' );
+
+    /**
+     * Filters whether the signed-in user is left out of storefront analytics.
+     *
+     * @since 3.3.30
+     *
+     * @param bool $is_staff True for administrators and shop managers.
+     * @param int  $user_id  Current user.
+     */
+    return (bool) apply_filters( 'brikpanel_tracking_excluded_user', $is_staff, get_current_user_id() );
 }
 
 /**
@@ -1078,6 +1094,36 @@ function brikpanel_paid_order_statuses() {
 }
 
 /**
+ * Order statuses that announce a new order: the new-order popup and sound,
+ * and the phone notifications. The same entry points as WooCommerce's own
+ * "New order" email, so a bank transfer that waits on-hold is announced too.
+ *
+ * Not the paid statuses above: those are an analytics setting a merchant
+ * edits for reporting, and that must not change who gets told about orders.
+ *
+ * @return string[] Status slugs without the "wc-" prefix.
+ */
+function brikpanel_new_order_statuses() {
+    $default = array( 'processing', 'completed', 'on-hold' );
+
+    /**
+     * Filter the order statuses that announce a new order.
+     *
+     * @param string[] $statuses Status slugs without the "wc-" prefix.
+     */
+    $statuses = apply_filters( 'brikpanel_new_order_statuses', $default );
+
+    $out = array();
+    foreach ( (array) $statuses as $status ) {
+        $status = sanitize_key( preg_replace( '/^wc-/', '', (string) $status ) );
+        if ( '' !== $status && ! in_array( $status, $out, true ) ) {
+            $out[] = $status;
+        }
+    }
+    return $out ? $out : $default;
+}
+
+/**
  * Order statuses a merchant treats as refunds. Used by the refund counters
  * and folded into the lifetime-value set so refunded customers still register
  * as having ordered.
@@ -1740,6 +1786,85 @@ function brikpanel_is_variable_product_type( $type ) {
         return true;
     }
     return strpos( $type, 'variable-' ) === 0 || strpos( $type, 'variable_' ) === 0;
+}
+
+/**
+ * Whether the current user may publish products. WooCommerce maps the
+ * product post type's `publish_posts` to `publish_products`. A role can edit
+ * products without it, and WordPress then only lets that person send a
+ * product in for review ("Pending review").
+ *
+ * @return bool
+ */
+function brikpanel_user_can_publish_products() {
+    $type = get_post_type_object( 'product' );
+    $cap  = ( $type && ! empty( $type->cap->publish_posts ) ) ? $type->cap->publish_posts : 'publish_products';
+    return current_user_can( $cap );
+}
+
+/**
+ * The status a product save from the current user may write, by WordPress
+ * core's own rule for people who cannot publish (_wp_translate_postdata() in
+ * wp-admin/includes/post.php). A request to publish or schedule becomes
+ * "pending", unless the product is already live and the user may edit it.
+ * A request for "private" keeps the product's current status ("pending" for
+ * a new one). "password" is BrikPanel's virtual status for a published,
+ * password-protected product, so it counts as publishing.
+ *
+ * BrikPanel saves through WooCommerce's product objects and wp_update_post(),
+ * which check no capability, so every path that can change a product's
+ * status asks this first. People who may publish get their request back.
+ *
+ * @param string $requested  Requested status: draft, pending, publish, future, private or password.
+ * @param int    $product_id The product being saved, 0 for a new one.
+ * @return string
+ */
+function brikpanel_product_status_for_user( $requested, $product_id = 0 ) {
+    $requested = (string) $requested;
+    if ( brikpanel_user_can_publish_products() ) {
+        return $requested;
+    }
+
+    $product_id = (int) $product_id;
+    $previous   = $product_id > 0 ? (string) get_post_status( $product_id ) : '';
+
+    if ( 'private' === $requested ) {
+        // An auto-draft or a trashed product counts as new.
+        return in_array( $previous, [ 'publish', 'future', 'draft', 'pending', 'private' ], true ) ? $previous : 'pending';
+    }
+    if ( in_array( $requested, [ 'publish', 'future', 'password' ], true ) ) {
+        $live = in_array( $previous, [ 'publish', 'future' ], true );
+        return ( $live && current_user_can( 'edit_post', $product_id ) ) ? $requested : 'pending';
+    }
+    return $requested;
+}
+
+/**
+ * A product status as BrikPanel's screens name it. A status another plugin
+ * registered keeps that plugin's own label.
+ *
+ * @param string $status Post status.
+ * @return string
+ */
+function brikpanel_product_status_label( $status ) {
+    $status = (string) $status;
+    switch ( $status ) {
+        case 'publish':
+            return __( 'Published', 'brikpanel' );
+        case 'future':
+            return __( 'Scheduled', 'brikpanel' );
+        case 'draft':
+            return __( 'Draft', 'brikpanel' );
+        case 'pending':
+            /* translators: product status: sent in for review, waiting for a store manager to publish it. */
+            return _x( 'Pending review', 'product status', 'brikpanel' );
+        case 'private':
+            return __( 'Private', 'brikpanel' );
+        case 'trash':
+            return __( 'Trash', 'brikpanel' );
+    }
+    $object = 'auto-draft' === $status ? null : get_post_status_object( $status );
+    return ( $object && ! empty( $object->label ) ) ? (string) $object->label : __( 'Draft', 'brikpanel' );
 }
 
 /**

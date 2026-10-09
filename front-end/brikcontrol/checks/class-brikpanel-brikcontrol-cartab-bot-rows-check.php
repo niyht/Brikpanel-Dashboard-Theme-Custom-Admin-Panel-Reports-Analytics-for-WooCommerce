@@ -65,9 +65,8 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
     /**
      * What uniqid( 'bp_', true ) produces: `bp_`, thirteen lowercase hex
      * digits, one or two decimal digits, a dot, eight decimal digits.
-     * Always bound as a %s parameter, never interpolated. Compared against a
-     * BINARY cast because the table collation is case-insensitive and would
-     * let an upper-case forgery through.
+     * Always bound as a %s parameter, never interpolated. Matched
+     * case-exactly, see MALFORMED_SQL.
      */
     const ID_REGEXP = '^bp_[0-9a-f]{13}[0-9]{1,2}[.][0-9]{8}$';
 
@@ -82,6 +81,18 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
      * never touched after it was written.
      */
     const SHELL_SQL = "item_count = 0 AND first_name = '' AND last_name = '' AND phone = '' AND updated_at = created_at";
+
+    /**
+     * An entry whose browser id this plugin never issued. Takes ID_REGEXP as
+     * its one %s parameter. The match has to be case-exact, because the table
+     * collation is case-insensitive and would let an upper-case forgery
+     * through. A BINARY cast used to do that, but MySQL 8.0.22 and later
+     * refuse a binary string in REGEXP (error 3995), so the column is
+     * compared under an explicit binary collation instead, which MySQL 5.7,
+     * MySQL 8 and MariaDB all accept. CONVERT() comes first because a bare
+     * COLLATE utf8mb4_bin fails on a table that is still utf8mb3.
+     */
+    const MALFORMED_SQL = "visitor_id <> '' AND CONVERT(visitor_id USING utf8mb4) COLLATE utf8mb4_bin NOT REGEXP %s";
 
     /**
      * Minute bucket of created_at (UTC, hard-edged: a burst straddling :59/:00
@@ -642,7 +653,7 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
             $wpdb->prepare(
                 "SELECT visitor_id, email, created_at
                    FROM {$table}
-                  WHERE " . self::SCOPE_SQL . " AND visitor_id <> '' AND CAST(visitor_id AS BINARY) NOT REGEXP %s
+                  WHERE " . self::SCOPE_SQL . ' AND ' . self::MALFORMED_SQL . "
                ORDER BY id DESC
                   LIMIT %d",
                 self::ID_REGEXP,
@@ -760,7 +771,7 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
      */
     private function malformed_predicate( array &$params ) {
         $params[] = self::ID_REGEXP;
-        return "(visitor_id <> '' AND CAST(visitor_id AS BINARY) NOT REGEXP %s)";
+        return '(' . self::MALFORMED_SQL . ')';
     }
 
     /**

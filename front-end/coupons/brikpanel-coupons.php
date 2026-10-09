@@ -57,17 +57,17 @@ class Brikpanel_Coupons {
     // PAGE REGISTRATION & REDIRECT
     // =========================================================================
 
+    /**
+     * Registers the list under the menu WooCommerce keeps coupons in (Marketing
+     * on current versions), as a row only access plugins see
+     * (includes/brikpanel-screen-menu.php).
+     */
     public function register_page() {
-        $hook = add_submenu_page(
-            '',
-            __('Coupons', 'brikpanel'),
-            '',
-            'manage_woocommerce',
-            'brikpanel-coupons',
-            [$this, 'render_page']
-        );
+        $hooks = function_exists('brikpanel_add_screen_page')
+            ? brikpanel_add_screen_page(brikpanel_screen_coupons_parent(), __('Coupons', 'brikpanel'), 'manage_woocommerce', 'brikpanel-coupons', [$this, 'render_page'])
+            : array_filter([add_submenu_page('', __('Coupons', 'brikpanel'), '', 'manage_woocommerce', 'brikpanel-coupons', [$this, 'render_page'])]);
 
-        if ($hook) {
+        foreach ($hooks as $hook) {
             add_action('load-' . $hook, function () {
                 global $title;
                 $title = __('Coupons', 'brikpanel');

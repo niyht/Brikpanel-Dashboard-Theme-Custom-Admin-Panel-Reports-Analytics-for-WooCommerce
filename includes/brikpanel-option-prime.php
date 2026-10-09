@@ -100,6 +100,9 @@ function brikpanel_prime_keys_always() {
 		// Front-end tracking emitter.
 		'brikpanel_frontend_tracking',
 		'brikpanel_tracking_require_consent',
+		// Start of the person check's transition window, read on init by
+		// brikpanel_human_proof_maybe_roll_out() (autoloaded once written).
+		'brikpanel_human_proof_since',
 
 		// Measured hitting the database on a plain storefront request, on a
 		// store that has never saved the matching settings section. Both
@@ -185,7 +188,8 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_var_stock_fix2_done',
 		'brikpanel_var_stock_fix2_cursor',
 
-		// Review nag + newsletter capture.
+		// Review nag, newsletter lead outbox, and what the one-ask-at-a-time
+		// rule reads on every admin screen (includes/brikpanel-asks.php).
 		'brikpanel_activated_at',
 		'brikpanel_completed_orders_count',
 		'brikpanel_review_dismissed',
@@ -193,7 +197,6 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_ea_outbox',
 		'brikpanel_ea_last_flush',
 		'brikpanel_ea_subscribed',
-		'brikpanel_newsletter_card_dismissed',
 		'brikpanel_bm_live_card_dismissed',
 
 		// Topbar rendering (in_admin_header on every admin screen).
@@ -242,6 +245,11 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_order_notify_volume',
 		'brikpanel_order_notify_interval',
 
+		// Phone notifications (front-end/push/): the switch and the server
+		// check, read on admin pages for the dashboard card and the scripts.
+		'brikpanel_push_enabled',
+		'brikpanel_push_env',
+
 		// Ad platform backfill flags, read on every admin request.
 		'brikpanel_ads_needs_backfill_google_ads',
 		'brikpanel_ads_needs_backfill_meta_ads',
@@ -271,6 +279,9 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_settings_admins_only',
 		'brikpanel_hide_screen_options',
 		'brikpanel_hide_screen_options_non_admins',
+		// "Ignore BrikPanel's access rules": asked by the sidebar, page blocking,
+		// top bar, dashboard widget and orders analytics gates once a rule exists.
+		'brikpanel_access_ignore_rules',
 
 		// Notice suppression, admin_init on every screen.
 		'brikpanel_hide_foreign_notices',
@@ -385,6 +396,9 @@ function brikpanel_option_autoload_denylist() {
 		'brikpanel_completed_orders_count'              => 'write-hot',
 		'brikpanel_ea_last_flush'                       => 'write-hot',
 		'brikpanel_order_notify_latest_id'              => 'write-hot',
+		'brikpanel_push_vapid'                          => 'signing key (encrypted private half)',
+		'brikpanel_push_vapid_unreadable'               => 'signing key (quarantined ciphertext)',
+		'brikpanel_push_jwt'                            => 'signed tokens, rewritten twice a day',
 		'brikpanel_brikcontrol_progress'                => 'write-hot during a scan',
 	);
 }

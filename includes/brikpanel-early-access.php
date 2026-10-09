@@ -13,9 +13,12 @@
  * them would unsubscribe everyone who already joined and would need a data
  * migration for zero user-visible benefit. Read `ea` as "email address".
  *
- * Two entry points, both opt-in and both click-triggered (nothing auto-opens):
- *   1. A dismissible card at the bottom of the BrikPanel dashboard.
- *   2. A row in WooCommerce > Settings > BrikPanel (General).
+ * One entry point, opt-in and click-triggered (nothing auto-opens): a row in
+ * WooCommerce > Settings > BrikPanel (General) that opens the signup window.
+ * The dashboard card that used to offer the newsletter was removed in 3.3.32,
+ * when the dashboard's cards started taking turns (includes/brikpanel-asks.php).
+ * This file still draws the BrikMentor card at the bottom of the dashboard and
+ * still delivers every lead that earlier versions queued.
  *
  * Reliability contract — a submitted email must NEVER be lost:
  *   1. On submit the lead is written to a durable local store immediately.
@@ -74,32 +77,6 @@ function brikpanel_ea_sources() {
 }
 
 /**
- * Is the dismissible dashboard card available?
- *
- * Uses its own dismissal flag rather than the waitlist-era
- * `brikpanel_ea_card_dismissed`: a merchant who turned down a closed beta was
- * not turning down a product newsletter, so the new offer gets a fresh
- * hearing. (Same reasoning the launch card already uses for
- * `brikpanel_bm_live_card_dismissed`.)
- *
- * @return bool
- */
-function brikpanel_ea_card_available() {
-    if ( get_option( 'brikpanel_ea_subscribed' ) ) {
-        return false;
-    }
-    if ( get_option( 'brikpanel_newsletter_card_dismissed' ) ) {
-        return false;
-    }
-    return true;
-}
-
-/** True on the BrikPanel dashboard screen (where the card lives). */
-function brikpanel_ea_is_dashboard() {
-    return isset( $_GET['page'] ) && 'brikpanel-dashboard' === $_GET['page']; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen check.
-}
-
-/**
  * True on the WooCommerce > Settings > BrikPanel > General screen, the one
  * section that carries the newsletter row.
  *
@@ -125,12 +102,11 @@ function brikpanel_ea_is_settings_page() {
 /* ── Render the modal ───────────────────────────────────────────────────────── */
 add_action( 'admin_footer', 'brikpanel_ea_render_modal' );
 function brikpanel_ea_render_modal() {
-    // Cheapest checks first: this runs in the footer of EVERY admin screen, and
-    // the two screen tests are pure $_GET reads, so every other admin page
-    // short-circuits before a single option is touched.
-    $on_dashboard = brikpanel_ea_is_dashboard();
-    $on_settings  = brikpanel_ea_is_settings_page();
-    if ( ! $on_dashboard && ! $on_settings ) {
+    // Cheapest check first: this runs in the footer of EVERY admin screen, and
+    // the screen test is a pure $_GET read, so every other admin page
+    // short-circuits before a single option is touched. The settings row is
+    // the only thing that opens this window.
+    if ( ! brikpanel_ea_is_settings_page() ) {
         return;
     }
     if ( ! current_user_can( 'manage_options' ) ) {
@@ -138,11 +114,6 @@ function brikpanel_ea_render_modal() {
     }
     if ( get_option( 'brikpanel_ea_subscribed' ) ) {
         return; // Already subscribed: no trigger renders, so no modal is needed.
-    }
-    // The dashboard only carries a trigger while its card is undismissed; the
-    // settings row always does.
-    if ( ! $on_settings && ! brikpanel_ea_card_available() ) {
-        return;
     }
 
     $nonce = wp_create_nonce( 'brikpanel_ea_nonce' );
@@ -275,10 +246,7 @@ function brikpanel_ea_render_modal() {
             post('brikpanel_ea_submit', { email: email, consent: '1', source: source }).then(function (res) {
                 submitBtn.disabled = false;
                 if (res && res.success) {
-                    // Stored locally for sure. Subscribed, so the always-on card
-                    // is no longer relevant.
-                    var card = document.querySelector('[data-ea-card]');
-                    if (card && card.parentNode) card.parentNode.removeChild(card);
+                    // Stored locally for sure.
                     show('done');
                     // Could not reach our server on the first try: offer WhatsApp
                     // as a safety net (the lead also keeps retrying in the queue).
@@ -303,20 +271,12 @@ function brikpanel_ea_render_modal() {
             if (e.key === 'Escape' && !overlay.hidden) close();
         });
 
-        // Triggers (dashboard card CTA, settings row button). Each carries its
-        // own source via data-ea-source.
+        // Trigger: the settings row button, which carries its source via
+        // data-ea-source.
         document.querySelectorAll('[data-ea-open]').forEach(function (el) {
             el.addEventListener('click', function (e) {
                 e.preventDefault();
                 open(el.getAttribute('data-ea-source'));
-            });
-        });
-        document.querySelectorAll('[data-ea-card-dismiss]').forEach(function (el) {
-            el.addEventListener('click', function (e) {
-                e.preventDefault();
-                post('brikpanel_ea_card_dismiss', {});
-                var card = el.closest('[data-ea-card]');
-                if (card && card.parentNode) card.parentNode.removeChild(card);
             });
         });
 
@@ -510,26 +470,13 @@ function brikpanel_ea_ajax_submit() {
     wp_send_json_success( array( 'delivered' => (bool) $delivered ) );
 }
 
-/* ── AJAX: permanently dismiss the dashboard card ───────────────────────────── */
-add_action( 'wp_ajax_brikpanel_ea_card_dismiss', 'brikpanel_ea_ajax_card_dismiss' );
-function brikpanel_ea_ajax_card_dismiss() {
-    check_ajax_referer( 'brikpanel_ea_nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( array( 'reason' => 'forbidden' ), 403 );
-    }
-    update_option( 'brikpanel_newsletter_card_dismissed', 1, false );
-    wp_send_json_success();
-}
-
-/* ── Dashboard cards ────────────────────────────────────────────────────────── */
+/* ── Dashboard card (BrikMentor, bottom of the dashboard) ───────────────────── */
 
 /**
- * Render the dashboard cards, in priority order.
- *
- * The two cards are independent offers with independent dismissal flags, so
- * both can be on screen at once: the BrikMentor launch CTA first (it is the
- * revenue surface), the newsletter below it in a quieter treatment so the pair
- * does not read as two competing pitches.
+ * The BrikMentor launch card at the bottom of the dashboard. It is one of the
+ * asks that take turns (includes/brikpanel-asks.php): it shows only when it is
+ * its turn, and the pitch card with the store's own figures, which comes
+ * earlier in the order, is never on the same page as it.
  *
  * @return void
  */
@@ -538,42 +485,21 @@ function brikpanel_ea_render_card() {
     if ( ! current_user_can( 'manage_options' ) ) {
         return;
     }
-    // The generic launch card stays down here only while the store has no
-    // cart figures to show. Once the pitch card with real numbers has rendered
-    // under the KPIs, a second card saying the same thing would be noise.
+    if ( ! function_exists( 'brikpanel_ask_allows' ) || ! brikpanel_ask_allows( 'bm_live' ) ) {
+        return;
+    }
+    // Second line of defence: once the pitch card with real numbers has
+    // rendered under the KPIs, a second card saying the same thing is noise.
     if ( function_exists( 'brikpanel_brikmentor_promo_active' ) && brikpanel_brikmentor_promo_active()
         && ! ( function_exists( 'brikpanel_brikmentor_pitch_rendered' ) && brikpanel_brikmentor_pitch_rendered() ) ) {
         brikpanel_ea_render_live_card();
     }
-    if ( ! brikpanel_ea_card_available() ) {
-        return;
-    }
-    ?>
-    <div class="brikpanel-ea-card brikpanel-ea-card--muted" data-ea-card>
-        <div class="brikpanel-ea-card__badge" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.75" y="5" width="18.5" height="14" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 7l8.5 6 8.5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="brikpanel-ea-card__text">
-            <p class="brikpanel-ea-card__title"><?php esc_html_e( 'Product news and store tips', 'brikpanel' ); ?></p>
-            <p class="brikpanel-ea-card__body"><?php esc_html_e( 'New features, WooCommerce tips and ideas for growing your store, in a short email now and then. Unsubscribe any time.', 'brikpanel' ); ?></p>
-        </div>
-        <button type="button" class="brikpanel-ea-card__cta" data-ea-open data-ea-source="newsletter_dashboard"><?php esc_html_e( 'Subscribe', 'brikpanel' ); ?></button>
-        <button type="button" class="brikpanel-ea-card__close" data-ea-card-dismiss aria-label="<?php esc_attr_e( 'Dismiss', 'brikpanel' ); ?>">
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </button>
-    </div>
-    <?php brikpanel_ea_print_card_styles(); ?>
-    <?php
 }
 
 /**
- * Card styles, shared by both dashboard cards (BrikMentor launch and
- * newsletter). Printed at most once per request.
- *
- * The base block is the union of what the two surfaces need; the `--muted`
- * modifier is the newsletter's quieter treatment (outlined badge, secondary
- * button) so the launch card keeps visual priority when both are on screen.
- * Styling the base restyles both.
+ * Card styles, shared by every dashboard card built on `.brikpanel-ea-card`:
+ * the BrikMentor launch and pitch cards and the survey card. Printed at most
+ * once per request. Styling the base restyles all of them.
  *
  * @return void
  */
@@ -616,13 +542,6 @@ function brikpanel_ea_print_card_styles() {
             transition: background 0.15s ease, color 0.15s ease;
         }
         .brikpanel-ea-card__close:hover { background: #f7f7f7; color: #303030; }
-        /* Quieter treatment: never competes with a paid-product CTA above it. */
-        .brikpanel-ea-card--muted .brikpanel-ea-card__badge { background: #f1f1f1; color: #616161; }
-        .brikpanel-ea-card--muted .brikpanel-ea-card__cta {
-            background: #fff; color: #303030;
-            box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0,0,0,0.05);
-        }
-        .brikpanel-ea-card--muted .brikpanel-ea-card__cta:hover { background: #f7f7f7; color: #303030; }
         @media (max-width: 600px) {
             .brikpanel-ea-card { flex-wrap: wrap; }
             .brikpanel-ea-card__text { flex-basis: 100%; order: 2; }
@@ -653,6 +572,9 @@ function brikpanel_ea_price_text( $format ) {
 function brikpanel_ea_render_live_card() {
     if ( get_option( 'brikpanel_bm_live_card_dismissed' ) ) {
         return;
+    }
+    if ( function_exists( 'brikpanel_ask_shown' ) ) {
+        brikpanel_ask_shown( 'bm_live' );
     }
     $nonce        = wp_create_nonce( 'brikpanel_bm_promo_nonce' );
     $cta_url      = function_exists( 'brikpanel_brikmentor_url' ) ? brikpanel_brikmentor_url() : 'https://brksoft.com/brikmentor';

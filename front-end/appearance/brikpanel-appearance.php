@@ -330,8 +330,7 @@ function brikpanel_appearance_build_css( $context = 'admin' ) {
 			. '.brikpanel-orders-add-btn,'
 			. '.brikpanel-segments-add-btn,'
 			. '.brikpanel-expenses-add-btn,'
-			. '.brikpanel-cron-action-btn,'
-			. '.brikpanel-welcome-cta'
+			. '.brikpanel-cron-action-btn'
 			. '{background-color:' . $color . ';}'
 			. '.brikpanel-topbar-search-submit:hover,'
 			. '.brikpanel-pe-btn-primary:hover,'
@@ -341,8 +340,7 @@ function brikpanel_appearance_build_css( $context = 'admin' ) {
 			. '.brikpanel-orders-add-btn:hover,'
 			. '.brikpanel-segments-add-btn:hover,'
 			. '.brikpanel-expenses-add-btn:hover,'
-			. '.brikpanel-cron-action-btn:hover,'
-			. '.brikpanel-welcome-cta:hover'
+			. '.brikpanel-cron-action-btn:hover'
 			. '{background-color:' . $hover . ';}';
 	}
 

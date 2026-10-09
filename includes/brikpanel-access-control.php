@@ -50,6 +50,18 @@ const BRIKPANEL_ACCESS_OPT_USERS  = 'brikpanel_access_disabled_users';
 // whole store's revenue. Empty by default, so every staff member sees it.
 const BRIKPANEL_ACCESS_OPT_OVERVIEW_ROLES = 'brikpanel_orders_overview_hidden_roles';
 
+// "Ignore BrikPanel's access rules". When 'yes', BrikPanel stops applying its
+// own per-person "who can see" rules and leaves that decision to WordPress and
+// to whatever role or access plugin the store runs (Advanced Access Manager,
+// User Role Editor, B2BKing...). Five rules step aside: the sidebar item
+// audiences, "Block pages hidden from the menu", the top bar and dashboard
+// widget audiences, and the orders analytics role hide above. Rows switched off
+// for everyone (sidebar and top bar on/off) stay hidden: that is a layout
+// choice, not a per-person rule. Saved rules are never touched, so turning it
+// off brings them all back. Off by default, so no existing store changes
+// (wp.org request, excellira, 2026-10-07).
+const BRIKPANEL_ACCESS_OPT_IGNORE_RULES = 'brikpanel_access_ignore_rules';
+
 // Settings-page admin lock. When 'yes' (the default) only administrators may
 // open and change the BrikPanel settings tab. Every other role, including shop
 // managers who hold WooCommerce's `manage_woocommerce` cap, is kept out.
@@ -240,6 +252,65 @@ function brikpanel_access_gated_options() {
  */
 function brikpanel_access_personal_mode_active() {
 	return get_option( BRIKPANEL_ACCESS_OPT_PERSONAL_MODE, 'no' ) === 'yes';
+}
+
+/**
+ * Whether "Ignore BrikPanel's access rules" is on for this site.
+ *
+ * Each rule gate asks this only after it has found a rule to apply, so a store
+ * without rules never reads the option. No static copy: WooCommerce saves the
+ * settings on `wp_loaded` and draws the page in the same request.
+ *
+ * @return bool
+ */
+function brikpanel_access_rules_ignored() {
+	return get_option( BRIKPANEL_ACCESS_OPT_IGNORE_RULES, 'no' ) === 'yes';
+}
+
+/**
+ * The note shown next to a rule while "Ignore BrikPanel's access rules" is on.
+ * Already escaped. The setting's name links to the setting itself (the
+ * settings search jump scrolls to it and highlights it) for anyone who may open
+ * the BrikPanel settings, and is plain text for everyone else.
+ *
+ * @param string $what          'choices' for "who can see" choices, 'pages' for page blocking.
+ * @param bool   $with_switches Add that rows switched off for everyone stay hidden.
+ * @return string HTML.
+ */
+function brikpanel_access_rules_ignored_note( $what = 'choices', $with_switches = false ) {
+	$label = esc_html__( 'Ignore BrikPanel\'s access rules', 'brikpanel' );
+	$url   = function_exists( 'brikpanel_module_settings_url' )
+		? brikpanel_module_settings_url( [ 'section' => 'access', 'option' => BRIKPANEL_ACCESS_OPT_IGNORE_RULES ] )
+		: '';
+	$name  = '' === $url ? $label : '<a href="' . esc_url( $url ) . '">' . $label . '</a>';
+
+	if ( 'pages' === $what ) {
+		/* translators: %s: name of the "Ignore BrikPanel's access rules" setting, linked to it. */
+		return sprintf( esc_html__( 'Pages are not blocked while %s is on.', 'brikpanel' ), $name );
+	}
+	/* translators: %s: name of the "Ignore BrikPanel's access rules" setting, linked to it. */
+	$note = sprintf( esc_html__( 'Choices about who can see what are not applied while %s is on.', 'brikpanel' ), $name );
+	if ( $with_switches ) {
+		$note .= ' ' . esc_html__( 'Anything switched off here stays hidden for everyone.', 'brikpanel' );
+	}
+	return $note;
+}
+
+/**
+ * Print the note above a rule editor, only while the rules are ignored.
+ *
+ * A <div>, never a <p>: WordPress core's `.form-table td p` outranks a single
+ * class inside a settings cell. No WordPress notice class (screen rules B4, B5).
+ *
+ * @param string $what          See brikpanel_access_rules_ignored_note().
+ * @param bool   $with_switches See brikpanel_access_rules_ignored_note().
+ * @return void
+ */
+function brikpanel_access_rules_ignored_print_note( $what = 'choices', $with_switches = false ) {
+	if ( ! brikpanel_access_rules_ignored() ) {
+		return;
+	}
+	echo '<div class="brikpanel-override-note">' . wp_kses_post( brikpanel_access_rules_ignored_note( $what, $with_switches ) ) . '</div>';
 }
 
 /**
@@ -437,6 +508,10 @@ function brikpanel_orders_overview_hidden_for_user( $user = null ) {
 
 	$hidden_roles = array_map( 'strval', (array) get_option( BRIKPANEL_ACCESS_OPT_OVERVIEW_ROLES, [] ) );
 	if ( ! $hidden_roles ) {
+		return false;
+	}
+	// "Ignore BrikPanel's access rules": the role list is kept but not applied.
+	if ( brikpanel_access_rules_ignored() ) {
 		return false;
 	}
 
@@ -1061,6 +1136,10 @@ unset( $brikpanel_access_opt );
  *
  * The Google Fonts handle for the appearance feature is matched separately
  * because its `src` points at fonts.googleapis.com, not the plugin folder.
+ *
+ * A part that must keep working with the interface off (the deactivation
+ * survey on the Plugins screen) names its handles through the
+ * `brikpanel_access_sweep_keep` filter, on that screen only.
  */
 function brikpanel_access_sweep_assets() {
 	if ( ! brikpanel_access_should_neutralize() ) {
@@ -1068,6 +1147,13 @@ function brikpanel_access_sweep_assets() {
 	}
 
 	$base = defined( 'BRIKPANEL_URL' ) ? BRIKPANEL_URL : '';
+
+	/**
+	 * Handles the sweep leaves registered and enqueued on this request.
+	 *
+	 * @param string[] $keep Handles (a style and a script may share one).
+	 */
+	$keep = array_flip( (array) apply_filters( 'brikpanel_access_sweep_keep', [] ) );
 
 	foreach ( [ wp_styles(), wp_scripts() ] as $assets ) {
 		if ( ! $assets instanceof WP_Dependencies ) {
@@ -1079,7 +1165,7 @@ function brikpanel_access_sweep_assets() {
 			$owned = ( $base !== '' && $src !== '' && strpos( $src, $base ) === 0 )
 				|| $handle === 'brikpanel-appearance-font'
 				|| strpos( (string) $handle, 'brikpanel' ) === 0;
-			if ( ! $owned ) {
+			if ( ! $owned || isset( $keep[ $handle ] ) ) {
 				continue;
 			}
 			if ( $is_styles ) {
@@ -1357,6 +1443,13 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'desc_tip' => true,
 			'options'  => brikpanel_access_collect_roles(),
 			'default'  => [],
+		],
+		[
+			'name'    => __( 'Ignore BrikPanel\'s access rules', 'brikpanel' ),
+			'id'      => BRIKPANEL_ACCESS_OPT_IGNORE_RULES,
+			'type'    => 'checkbox',
+			'desc'    => __( 'Turn this on when a role or access plugin such as Advanced Access Manager, User Role Editor or B2BKing already decides who sees what. BrikPanel then stops applying its own rules about who can see menu items, top bar controls, dashboard widgets and orders analytics. It also stops blocking pages hidden from the menu. Items switched off for everyone stay hidden, the other settings here still apply and your saved rules are kept. Off by default.', 'brikpanel' ),
+			'default' => 'no',
 		],
 		[
 			'type' => 'sectionend',

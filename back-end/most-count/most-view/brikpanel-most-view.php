@@ -70,6 +70,30 @@ function brikpanel_current_view_target() {
 }
 
 /**
+ * Whether a page id sent by a browser is something a visitor can actually be
+ * looking at: a publicly viewable post, or a term of a public taxonomy. The
+ * id arrives in a public request, so without this a script could fill "Most
+ * viewed pages" with drafts, private posts or ids that do not exist (3.3.30).
+ * Same rule the Live list uses to name a page (brikpanel_live_page_names()).
+ *
+ * @param int    $id   Post or term id.
+ * @param string $type 'post' or 'term'.
+ * @return bool
+ */
+function brikpanel_view_target_is_public( $id, $type ) {
+    $id = (int) $id;
+    if ( $id <= 0 ) {
+        return false;
+    }
+    if ( 'term' === $type ) {
+        $term = get_term( $id );
+        return $term instanceof WP_Term && is_taxonomy_viewable( $term->taxonomy );
+    }
+    $post = get_post( $id );
+    return $post instanceof WP_Post && is_post_publicly_viewable( $post );
+}
+
+/**
  * Sayfa görüntülenmesini veritabanına kaydeder (kayıt çekirdeği).
  * Not: Veriler Yerel Zaman (Local Time) olarak kaydediliyor.
  *
@@ -140,6 +164,9 @@ function brikpanel_track_page_view() {
     // cached pages that still carry the old tracker JS after the merchant
     // turned tracking off or switched the consent gate on.
     if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'endpoint' ) ) {
+        wp_send_json_success();
+    }
+    if ( function_exists( 'brikpanel_legacy_tracker_allowed' ) && ! brikpanel_legacy_tracker_allowed() ) {
         wp_send_json_success();
     }
     if ( brikpanel_is_admin_user() ) {

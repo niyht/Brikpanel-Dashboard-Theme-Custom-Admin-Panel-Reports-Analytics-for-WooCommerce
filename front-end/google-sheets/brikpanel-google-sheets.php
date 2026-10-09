@@ -318,6 +318,7 @@ function brikpanel_gs_unschedule_when_disabled() {
 // =============================================================================
 require_once BRIKPANEL_PATH . 'includes/class-brikpanel-secret-vault.php';
 require_once BRIKPANEL_PATH . 'includes/class-brikpanel-proxy-envelope.php';
+require_once BRIKPANEL_PATH . 'includes/class-brikpanel-proxy-errors.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-logger.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-tokens.php';
 require_once BRIKPANEL_GS_DIR . 'class-brikpanel-sheets-proxy.php';

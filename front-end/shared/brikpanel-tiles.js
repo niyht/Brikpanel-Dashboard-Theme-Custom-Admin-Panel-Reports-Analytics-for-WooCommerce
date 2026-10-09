@@ -50,14 +50,85 @@
 		return out;
 	}
 
+	// Whether a box's own content is drawn past its padding box by more than a
+	// pixel: its children by their border box (looking through display:
+	// contents, skipping what is hidden or fixed to the screen), its text by its
+	// range. Measured as drawn, fractions kept.
+	function spills(box) {
+		if (box.namespaceURI === 'http://www.w3.org/2000/svg') {
+			return false; // an icon's or chart's own drawing is not its box's content
+		}
+		var r = box.getBoundingClientRect();
+		var cs = window.getComputedStyle(box);
+		// A CSS zoom above scales the rects but not the computed borders.
+		var s = box.offsetWidth && Math.abs(r.width - box.offsetWidth) > 1 ? r.width / box.offsetWidth : 1;
+		var left = r.left + (parseFloat(cs.borderLeftWidth) || 0) * s - 1;
+		var right = r.right - (parseFloat(cs.borderRightWidth) || 0) * s + 1;
+		var range = document.createRange();
+		var out = false;
+		(function walk(parent) {
+			for (var n = parent.firstChild; n && !out; n = n.nextSibling) {
+				var b = null;
+				if (n.nodeType === 3) {
+					if (!/\S/.test(n.nodeValue)) {
+						continue;
+					}
+					range.selectNodeContents(n);
+					b = range.getBoundingClientRect();
+				} else if (n.nodeType === 1) {
+					var ns = window.getComputedStyle(n);
+					if (ns.display === 'none' || ns.position === 'fixed') {
+						continue;
+					}
+					if (ns.display === 'contents') {
+						walk(n);
+						continue;
+					}
+					b = n.getBoundingClientRect();
+				}
+				if (b && (b.width >= 0.5 || b.height >= 0.5) && (b.left < left || b.right > right)) {
+					out = true;
+				}
+			}
+		})(box);
+		return out;
+	}
+
+	// A box reading 2 or 3 pixels wider than it is may only be rounding: once a
+	// page is zoomed (Safari's page zoom, a CSS zoom), Safari rounds scrollWidth
+	// and clientWidth separately, so a box holding its content exactly reads a
+	// pixel or two over (Firefox reads a flex row with a negative margin 2px
+	// over). With a one pixel margin every tile could then fail every column
+	// count and fall back to the list on a wide screen. So such a box is checked
+	// as drawn. 4 pixels and
+	// more count as they are: spills() cannot see a ::before or ::after box, and
+	// the empty line the dashboard's narrow store cards draw with ::after to ask
+	// for fewer columns overflows by far more than that.
+	function overflowsBox(k, isTile) {
+		var over = k.scrollWidth - k.clientWidth;
+		if (over <= 1) {
+			return false;
+		}
+		if (!isTile) {
+			var cs = window.getComputedStyle(k);
+			// Text inside a box (a price's own spans) has no box to overflow:
+			// Firefox reports its width as scrollWidth against a clientWidth of 0,
+			// so every tile read as overflowing and every row became the list in
+			// Firefox (field report 2026-10-05). The box around it is checked.
+			if (cs.overflowX !== 'visible' || cs.display === 'inline') {
+				return false;
+			}
+		}
+		return over > 3 || spills(k);
+	}
+
 	function overflows(tile) {
-		if (tile.scrollWidth > tile.clientWidth + 1) {
+		if (overflowsBox(tile, true)) {
 			return true;
 		}
 		var kids = tile.querySelectorAll('*');
 		for (var i = 0; i < kids.length; i++) {
-			var k = kids[i];
-			if (k.scrollWidth > k.clientWidth + 1 && window.getComputedStyle(k).overflowX === 'visible') {
+			if (overflowsBox(kids[i], false)) {
 				return true;
 			}
 		}

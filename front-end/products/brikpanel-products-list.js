@@ -8,6 +8,11 @@
 
     var PL = window.brikpanelPL || {};
 
+    // False for someone who may only send products in for review (no
+    // publish_products): the server refuses every publish from them, so the
+    // list offers none (bulk Publish, the status badge, quick edit).
+    var canPublish = PL.can_publish !== '0';
+
     // Numbers and percentages with the store's separators, the percent sign
     // where the viewer's language writes it (front-end/shared/brikpanel-format.js).
     var BF = window.brikpanelFormat || null;
@@ -39,9 +44,14 @@
         // filters carried in from a taxonomy "product count" link. Surfaced
         // as removable chips; sent to the server as `tax_filters`.
         tax_filters: {},
-        sort: 'date-desc',
+        // The sort this user picked last (saved per user); a sort in the URL
+        // overrides it in readStateFromUrl().
+        sort: PL.sort || 'date-desc',
         selected: [],
         products: [],
+        // Phones add pages as the list scrolls; `page` stays 1 there, so the
+        // address, the editor's back link and the sort order offset hold.
+        loadedPages: 1,
         loading: false,
         total: 0,
         pages: 0,
@@ -77,6 +87,21 @@
     // of being silently dropped — without this the dropdown shows the new
     // value while the table renders the old query's results.
     var currentFetchXhr = null;
+
+    // Phones (782px and narrower) get the app layout: rows that open the
+    // product, sheets from the bottom edge, more rows as the list scrolls
+    // (the "PHONE" section below). Wider screens keep the table as it is.
+    var phoneMq = window.matchMedia ? window.matchMedia('(max-width: 782px)') : null;
+    function isPhoneList() {
+        return !!(phoneMq && phoneMq.matches);
+    }
+
+    // "Low stock" is the store's own threshold (WooCommerce > Settings >
+    // Products > Inventory), the same one the Low stock filter uses.
+    function lowStockAmount() {
+        var n = parseInt(PL.low_stock_amount, 10);
+        return isNaN(n) ? 2 : n;
+    }
 
     // =========================================================================
     // PROGRESS BAR
@@ -158,6 +183,11 @@
         } catch (e) {}
     }
 
+    function isSortOption(val) {
+        var select = document.getElementById('bpl-sort');
+        return !!select && Array.prototype.some.call(select.options, function (o) { return o.value === val; });
+    }
+
     // Read filter params from the current URL into state and reflect them in
     // the filter controls. Runs once on boot, before the first fetch.
     function readStateFromUrl() {
@@ -167,11 +197,15 @@
 
         Object.keys(URL_PARAM_MAP).forEach(function (key) {
             var val = params.get(URL_PARAM_MAP[key]);
-            if (val !== null) { state[key] = val; }
+            // A sort the dropdown does not offer (a hand-edited URL) is left
+            // out: the list keeps the saved sort instead of an empty dropdown.
+            if (val !== null && (key !== 'sort' || isSortOption(val))) { state[key] = val; }
         });
 
+        // A phone's list grows from its first page as it scrolls (the PHONE
+        // part below), so a page number in the URL counts on wider screens only.
         var paged = parseInt(params.get('bpl_paged'), 10);
-        if (paged > 0) { state.page = paged; }
+        if (paged > 0 && !isPhoneList()) { state.page = paged; }
 
         $('#bpl-search').val(state.search);
         $('#bpl-cat-filter').val(state.category);
@@ -258,9 +292,13 @@
         badge.textContent = n ? String(n) : '';
         badge.hidden = !n;
         btn.classList.toggle('has-count', n > 0);
+        // On a phone the search is always open beside it: it opens the filters only.
+        var idle = isPhoneList()
+            ? (PL.i18n.m_filters || '')
+            : (PL.i18n.search_and_filter || btn.getAttribute('title') || '');
         btn.setAttribute('aria-label', (n && PL.i18n.filters_active)
             ? PL.i18n.filters_active.replace('%d', n)
-            : (PL.i18n.search_and_filter || btn.getAttribute('title') || ''));
+            : idle);
     }
 
     // =========================================================================
@@ -350,6 +388,30 @@
         return hasActiveFilters() ? window.location.href : '';
     }
 
+    // Save a sort picked in the dropdown as the one the list opens with next
+    // time, for this user. The Sort button's drag mode only borrows "Custom
+    // order" through .val(), which fires no change, so it is never saved.
+    // One save in flight at a time; a pick made meanwhile follows it, so the
+    // saves reach the server in the order they were made.
+    var sortPickSaving = false;
+    var sortPickQueued = null;
+    function rememberSort(sort) {
+        if (sortPickSaving) {
+            sortPickQueued = sort;
+            return;
+        }
+        sortPickSaving = true;
+        $.post(PL.ajax_url, { action: 'brikpanel_pl_save_sort', security: PL.nonce, sort: sort })
+            .always(function () {
+                sortPickSaving = false;
+                var next = sortPickQueued;
+                sortPickQueued = null;
+                if (next !== null && next !== sort) {
+                    rememberSort(next);
+                }
+            });
+    }
+
     // =========================================================================
     // INIT
     // =========================================================================
@@ -373,6 +435,10 @@
 
         // Search and filters open from the button at the end of the tab row.
         $('#bpl-find-open').on('click', function () {
+            if (isPhoneList()) {
+                openFilterSheet();
+                return;
+            }
             setFindOpen(true, { focus: true });
         });
         $('#bpl-find-cancel').on('click', cancelFind);
@@ -482,7 +548,9 @@
 
         $('#bpl-sort').on('change', function () {
             state.sort = $(this).val();
+            $('#bpl-msort-label').text($(this).find('option:selected').text());
             state.page = 1;
+            rememberSort(state.sort);
             // Switching to "Custom order" from the dropdown also engages
             // sort mode so the drag handles appear immediately. Switching
             // away while sort mode is active gracefully exits it.
@@ -849,9 +917,13 @@
             e.stopPropagation();
             var id = parseInt($(this).closest('tr').data('id'));
             var name = $(this).closest('tr').find('.brikpanel-pl-product-name-text').text();
-            if (confirm(PL.i18n.confirm_delete.replace('%s', name))) {
-                deleteProduct(id);
+            if (isPhoneList() && state.status !== 'trash') {
+                trashWithUndo(id);
+                return;
             }
+            askThen(PL.i18n.confirm_delete.replace('%s', name), PL.i18n.trash, true, function () {
+                deleteProduct(id);
+            });
         });
 
         // Duplicate product
@@ -876,8 +948,22 @@
                 }
                 return;
             }
+            // Trash, or a badge this person may not publish from (renderProductRow()).
+            if ($(this).hasClass('brikpanel-pl-status-static')) {
+                return;
+            }
             var id = parseInt($tr.data('id'));
             toggleStatus(id);
+        });
+
+        // The same toggle from the row's phone sheet ("Mark as featured").
+        $(document).on('click', '.brikpanel-pl-action-feature', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var $star = $(this).closest('tr').find('.brikpanel-pl-featured-star');
+            if ($star.length) {
+                toggleFeatured($star);
+            }
         });
 
         // Toggle featured (inline star in the name cell). Optimistic UI:
@@ -1180,7 +1266,33 @@
             escHtml(message || PL.i18n.error) + '</td></tr>');
     }
 
+    // What the server needs for one page of the list as it is filtered now.
+    function buildFetchData(page, perPage) {
+        return {
+            action: 'brikpanel_fetch_products',
+            security: PL.nonce,
+            page: page,
+            per_page: perPage,
+            search: state.search,
+            status: state.status,
+            category: state.category,
+            brand: state.brand,
+            stock_filter: state.stock_filter,
+            product_type: state.product_type,
+            featured: state.featured,
+            tax_filters: state.tax_filters,
+            sort: state.sort
+        };
+    }
+
     function fetchProducts(silent) {
+        // A phone that has scrolled through several pages keeps them: a quiet
+        // refresh after a trash, a bulk action or a restore reloads all of
+        // them in place instead of dropping the list back to its first page.
+        if (silent && isPhoneList() && state.loadedPages > 1) {
+            reloadLoaded();
+            return;
+        }
         // Abort any in-flight request — its response would render stale data
         // for the previous filter/sort and overwrite whatever we're about to
         // load. The aborted request's error handler short-circuits on
@@ -1189,6 +1301,7 @@
             try { currentFetchXhr.abort(); } catch (e) {}
             currentFetchXhr = null;
         }
+        mNextLoading = false;
 
         // Keep the URL in step with what we are about to render, so a reload
         // or the editor back link reproduces this exact view.
@@ -1201,29 +1314,26 @@
         var $body = $('#bpl-table-body');
         // `silent` mode: skip the spinner row so an optimistic local update
         // (e.g. just-removed rows after a bulk action) stays visible while
-        // the background fetch syncs counts and pagination.
+        // the background fetch syncs counts and pagination. A phone shows
+        // the shape of the rows to come instead of a spinner.
         if (!silent) {
-            $body.html('<tr class="brikpanel-pl-loading-row"><td colspan="' + visibleColumnCount() + '"><div class="brikpanel-pl-spinner"></div></td></tr>');
+            if (isPhoneList()) {
+                $body.html(skeletonRows(5));
+            } else {
+                $body.html('<tr class="brikpanel-pl-loading-row"><td colspan="' + visibleColumnCount() + '"><div class="brikpanel-pl-spinner"></div></td></tr>');
+            }
         }
+
+        // A phone coming back from a product reloads the pages it had
+        // scrolled through (restorePhoneSpot), in one request.
+        var restoring = (!silent && mRestore) ? mRestore : null;
+        mRestore = null;
+        var perPage = restoring ? Math.min(100, state.per_page * restoring.loaded) : state.per_page;
 
         currentFetchXhr = $.ajax({
             url: PL.ajax_url,
             type: 'POST',
-            data: {
-                action: 'brikpanel_fetch_products',
-                security: PL.nonce,
-                page: state.page,
-                per_page: state.per_page,
-                search: state.search,
-                status: state.status,
-                category: state.category,
-                brand: state.brand,
-                stock_filter: state.stock_filter,
-                product_type: state.product_type,
-                featured: state.featured,
-                tax_filters: state.tax_filters,
-                sort: state.sort
-            },
+            data: buildFetchData(state.page, perPage),
             // Tolerate responses contaminated by upstream PHP output (notices,
             // deprecations, DB errors or debug echoes printed before the JSON).
             // Without this a single leading warning from a third-party plugin
@@ -1279,6 +1389,13 @@
                     state.products = res.data.products || [];
                     state.total = res.data.total;
                     state.pages = res.data.pages;
+                    state.loadedPages = 1;
+                    if (perPage !== state.per_page) {
+                        // Restored from the phone's last visit: as many pages
+                        // as fit in the one request.
+                        state.loadedPages = Math.max(1, Math.round(perPage / state.per_page));
+                        state.pages = Math.max(1, Math.ceil((state.total || 0) / state.per_page));
+                    }
                     state.extraColumns = res.data.extra_columns || {};
                     state.extraMeta = res.data.extra_columns_meta || {};
 
@@ -1301,6 +1418,12 @@
 
                     // Reset check-all
                     $('#bpl-check-all').prop('checked', false);
+                    if (restoring) {
+                        finishPhoneSpot(restoring);
+                    }
+                    if (isPhoneList()) {
+                        window.setTimeout(checkSentinel, 60);
+                    }
                 } catch (e) {
                     if (window.console && window.console.error) {
                         window.console.error('BrikPanel: products list render failed', e);
@@ -1601,10 +1724,16 @@
     // their own after the icons, so the row stays one line; once folded they
     // join the one menu under a line. Only one of the two copies ever shows,
     // and the folded one carries no ids.
-    function rowActionsWrap(id, buttonsHtml, extrasHtml) {
+    // `sheetFor` ({ title, sub, img }): on a phone the "..." opens the menu as a
+    // sheet from the bottom edge, headed by the product it acts on.
+    // `leadHtml`: a button that stands before the "..." (phones only, see CSS).
+    function rowActionsWrap(id, buttonsHtml, extrasHtml, sheetFor, leadHtml) {
         var menuId = 'bpl-row-more-' + id;
-        var html = '<div class="brikpanel-pl-actions">' +
-            '<div class="brikpanel-overflow brikpanel-pl-row-core">' +
+        var sheetAttrs = sheetFor
+            ? ' data-bp-sheet-title="' + escAttr(sheetFor.title || '') + '" data-bp-sheet-sub="' + escAttr(sheetFor.sub || '') + '" data-bp-sheet-img="' + escAttr(sheetFor.img || '') + '"'
+            : '';
+        var html = '<div class="brikpanel-pl-actions">' + (leadHtml || '') +
+            '<div class="brikpanel-overflow brikpanel-overflow--sheet brikpanel-pl-row-core"' + sheetAttrs + '>' +
                 rowMoreTrigger(menuId) +
                 '<div class="brikpanel-overflow__menu brikpanel-pl-row-menu" id="' + escAttr(menuId) + '">' +
                     buttonsHtml +
@@ -1638,6 +1767,12 @@
         } else if (p.status === 'trash') {
             statusClass = 'trashed';
             statusLabel = PL.i18n.trashed;
+        } else if (p.status === 'pending') {
+            // Sent in for review (an inventory integration, a contributor): a
+            // click approves it, i.e. publishes it.
+            statusClass = 'pending';
+            statusLabel = PL.i18n.pending;
+            statusTitle = PL.i18n.click_to_publish;
         } else if (p.status === 'private') {
             statusClass = 'private';
             statusLabel = PL.i18n.private_status || 'Private';
@@ -1645,13 +1780,22 @@
             statusClass = 'draft';
             statusLabel = PL.i18n.draft;
         }
+        // Not a toggle: Trash (Restore is the row's action), and for someone
+        // who may not publish, every badge but Published (unpublishing stays).
+        var staticBadge = p.status === 'trash'
+            || (!canPublish && p.status !== 'publish' && p.status !== 'future');
+        if (staticBadge) {
+            statusTitle = statusLabel;
+        }
 
         var stockHtml = '';
         if (p.stock !== null && p.stock !== '') {
+            // Red at none left (or fewer: a store that oversold shows -3),
+            // amber at the store's low stock threshold or below.
             var stockClass = '';
-            if (parseInt(p.stock) === 0) {
+            if (parseInt(p.stock) <= 0) {
                 stockClass = ' out';
-            } else if (parseInt(p.stock) <= 5) {
+            } else if (parseInt(p.stock) <= lowStockAmount()) {
                 stockClass = ' low';
             }
             stockHtml = '<span class="brikpanel-pl-stock-badge' + stockClass + ' brikpanel-pl-editable" data-field="stock" data-value="' + escAttr(p.stock) + '">' + escHtml(p.stock) + '</span>';
@@ -1745,7 +1889,7 @@
                 '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>' +
                 actionLabel(PL.i18n.restore) +
                 '</button>' +
-                '<button type="button" class="brikpanel-pl-action-delete-perm" title="' + escAttr(PL.i18n.delete_permanently) + '">' +
+                '<button type="button" class="brikpanel-pl-action-delete-perm" data-bp-danger="1" title="' + escAttr(PL.i18n.delete_permanently) + '">' +
                 '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d72c0d" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
                 actionLabel(PL.i18n.delete_permanently) +
                 '</button>';
@@ -1796,6 +1940,16 @@
                         '" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
                         '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>' +
                     '</svg>' +
+                '</button>';
+        }
+
+        // On a phone the star leaves the row; the sheet that the row's "..."
+        // opens carries it as an item instead. Never shown in the table.
+        var mFeatureItem = '';
+        if (PL.show_featured_star) {
+            mFeatureItem = '<button type="button" class="brikpanel-pl-action-feature brikpanel-pl-m-only">' +
+                '<svg width="15" height="15" viewBox="0 0 24 24" fill="' + (p.is_featured ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' +
+                actionLabel(p.is_featured ? PL.i18n.m_unfeature : PL.i18n.mark_featured) +
                 '</button>';
         }
 
@@ -1866,6 +2020,37 @@
             '<span class="brikpanel-pl-row-meta-price">' + priceDisplay + '</span>' +
             '</span>';
 
+        // The phone row (the "Phones" part of brikpanel-products-list.css):
+        // the price, then the stock with a coloured dot and the number of
+        // variations, a status pill first when the product is not published.
+        // Hidden on wider screens, where the columns show the same.
+        var mVariations = (isVariable && parseInt(p.variation_count, 10) > 0)
+            ? '<span class="brikpanel-pl-m-sep" aria-hidden="true">·</span><span>' + escHtml(countText(PL.i18n.variations_count, parseInt(p.variation_count, 10))) + '</span>'
+            : '';
+        var phoneLinesHtml = '<span class="brikpanel-pl-m-lines">' +
+            '<span class="brikpanel-pl-m-price">' + priceDisplay + '</span>' +
+            '<span class="brikpanel-pl-m-meta">' +
+                (p.status !== 'publish' ? '<span class="brikpanel-pl-m-status ' + statusClass + '">' + escHtml(statusLabel) + '</span>' : '') +
+                phoneStockHtml(p) + mVariations +
+            '</span>' +
+        '</span>';
+
+        // On a phone Quick edit also stands beside the "...", one tap away: the
+        // action used most on a list. Never shown in the table (CSS).
+        var mQuickHtml = p.status !== 'trash'
+            ? '<button type="button" class="brikpanel-pl-mquick" aria-label="' + escAttr(PL.i18n.quick_edit) + '" title="' + escAttr(PL.i18n.quick_edit) + '">' +
+                '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.5 4.5 15.5 7.5 7.5 15.5H4.5v-3l8-8Z"/></svg>' +
+              '</button>'
+            : '';
+
+        // Who the row's sheet (phone) is about: the product, its price and image.
+        var mPriceText = $('<div>').html(priceDisplay).text().replace(/\s+/g, ' ').trim();
+        var sheetFor = {
+            title: p.name,
+            sub: mPriceText + (isVariable && parseInt(p.variation_count, 10) > 0 ? ' · ' + countText(PL.i18n.variations_count, parseInt(p.variation_count, 10)) : ''),
+            img: p.image
+        };
+
         // Carry the active filtered list URL into the editor so its "Back to
         // products" link returns to this exact view instead of the full list.
         var ret = currentReturnUrl();
@@ -1885,6 +2070,7 @@
             '<td class="brikpanel-pl-cell-name brikpanel-pl-col brikpanel-pl-col-name">' +
                 '<div class="brikpanel-pl-name-line">' + featuredStarHtml + '<a href="' + escAttr(editHref) + '" class="brikpanel-pl-product-name-link" title="' + escAttr(p.name) + '"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text" dir="auto">' + escHtml(p.name) + '</span></a>' + typeLabel + '</div>' +
                 rowMetaHtml +
+                phoneLinesHtml +
             '</td>' +
             '<td class="brikpanel-pl-cell-id brikpanel-pl-col brikpanel-pl-col-id">' + escHtml(String(p.id)) + '</td>' +
             // A long SKU may wrap in a table short of room (`is-snug`), at its
@@ -1901,7 +2087,7 @@
             '<td class="brikpanel-pl-cell-shipclass brikpanel-pl-col brikpanel-pl-col-shipping_class">' + (p.shipping_class ? escHtml(p.shipping_class) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             '<td class="brikpanel-pl-cell-author brikpanel-pl-col brikpanel-pl-col-author">' + (p.author ? escHtml(p.author) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             '<td class="brikpanel-pl-cell-menu_order brikpanel-pl-col brikpanel-pl-col-menu_order"><span class="brikpanel-pl-editable brikpanel-pl-menu-order-cell" data-field="menu_order" data-value="' + escAttr(p.menu_order != null ? p.menu_order : 0) + '">' + escHtml(String(p.menu_order != null ? p.menu_order : 0)) + '</span></td>' +
-            '<td class="brikpanel-pl-cell-status brikpanel-pl-col brikpanel-pl-col-status"><span class="brikpanel-pl-status-badge ' + statusClass + '" title="' + escAttr(statusTitle) + '">' + escHtml(statusLabel) + '</span></td>' +
+            '<td class="brikpanel-pl-cell-status brikpanel-pl-col brikpanel-pl-col-status"><span class="brikpanel-pl-status-badge ' + statusClass + (staticBadge ? ' brikpanel-pl-status-static' : '') + '" title="' + escAttr(statusTitle) + '">' + escHtml(statusLabel) + '</span></td>' +
             '<td class="brikpanel-pl-cell-date brikpanel-pl-col brikpanel-pl-col-date">' + (p.date ? escHtml(p.date) : '<span class="brikpanel-pl-text-muted">—</span>') + '</td>' +
             aseCellsHtml +
             '<td class="brikpanel-pl-actions-cell">' +
@@ -1918,11 +2104,12 @@
                     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
                     actionLabel(PL.i18n.duplicate) +
                     '</button>' +
-                    '<button type="button" class="brikpanel-pl-action-delete" title="' + escAttr(PL.i18n.trash) + '">' +
+                    mFeatureItem +
+                    '<button type="button" class="brikpanel-pl-action-delete" data-bp-danger="1" title="' + escAttr(PL.i18n.trash) + '">' +
                     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
                     actionLabel(PL.i18n.trash) +
                     '</button>'
-                    : trashActions), aseActionsHtml) +
+                    : trashActions), aseActionsHtml, sheetFor, mQuickHtml) +
             '</td>' +
             '</tr>';
     }
@@ -2467,6 +2654,20 @@
         $('#bpl-qe-id').val(product.id);
         $('#bpl-qe-name').val(product.name);
         $('#bpl-qe-sku').val(product.sku || '');
+        // Offer what this person may pick, as the editor's status menu does:
+        // "Pending review" on a product already waiting for review (or to
+        // someone who may only send products in for review), and to that
+        // person Published, Scheduled and Private only as the product's
+        // current status. `disabled` is the real guard (Safari still lists
+        // hidden options); the server applies the same rule.
+        $('#bpl-qe-status option').each(function () {
+            var v = this.value;
+            var off = v !== product.status && (v === 'pending'
+                ? canPublish
+                : (!canPublish && (v === 'publish' || v === 'future' || v === 'private')));
+            this.hidden = off;
+            this.disabled = off;
+        });
         $('#bpl-qe-status').val(product.status);
 
         // Featured star — gated by the same opt-in setting as the row star;
@@ -2548,6 +2749,14 @@
         }
 
         $('#bpl-drawer, #bpl-drawer-overlay').addClass('open');
+        if (isPhoneList() && drawerSheet) {
+            // A sheet from the bottom edge, which locks the page itself. No
+            // field takes the focus: the phone's keyboard would cover the
+            // sheet the moment it slides up.
+            $('#bpl-drawer .brikpanel-pl-drawer-body').scrollTop(0);
+            drawerSheet.open();
+            return;
+        }
         $('body').addClass('brikpanel-pl-drawer-open');
 
         // Focus first field
@@ -2557,6 +2766,9 @@
     function closeDrawer() {
         $('#bpl-drawer, #bpl-drawer-overlay').removeClass('open');
         $('body').removeClass('brikpanel-pl-drawer-open');
+        if (drawerSheet && drawerSheet.isOpen()) {
+            drawerSheet.close();
+        }
     }
 
     function saveDrawer() {
@@ -2673,7 +2885,7 @@
                     refreshRow($row, merged);
                     closeDrawer();
                     showToast(res.data.message, 'success');
-                    fetchProducts();
+                    reconcileList();
                     return;
                 }
 
@@ -2683,7 +2895,7 @@
                 if (pending === 0) {
                     $btn.prop('disabled', false).text(PL.i18n.save_changes);
                     closeDrawer();
-                    fetchProducts();
+                    reconcileList();
                     return;
                 }
 
@@ -2706,7 +2918,7 @@
                                 $btn.prop('disabled', false).text(PL.i18n.save_changes);
                                 closeDrawer();
                                 showToast(PL.i18n.saved, 'success');
-                                fetchProducts();
+                                reconcileList();
                             }
                         }
                     });
@@ -2732,12 +2944,19 @@
         }
         if (action === 'delete') {
             confirmMsg = countText(PL.i18n.confirm_bulk_delete_perm, state.selected.length);
-            if (!confirm(confirmMsg)) return;
-            if (!confirm(PL.i18n.confirm_bulk_delete_perm_2)) return;
-        } else {
-            if (!confirm(confirmMsg)) return;
+            askThen(confirmMsg, PL.i18n.delete_permanently, true, function () {
+                askThen(PL.i18n.confirm_bulk_delete_perm_2, PL.i18n.delete_permanently, true, function () {
+                    runBulkAction(action, $btn);
+                });
+            });
+            return;
         }
+        askThen(confirmMsg, action === 'trash' ? PL.i18n.trash : PL.i18n.apply, action === 'trash', function () {
+            runBulkAction(action, $btn);
+        });
+    }
 
+    function runBulkAction(action, $btn) {
         setBulkLoading(true, $btn);
 
         // Optimistic UI update *before* the AJAX. The success callback can be
@@ -2762,6 +2981,9 @@
             renderProducts();
         }
         state.selected = [];
+        if (mSelecting) {
+            setPhoneSelecting(false);
+        }
         updateBulkBar();
 
         $.ajax({
@@ -2813,6 +3035,25 @@
         if (!bar) {
             return;
         }
+        if (isPhoneList()) {
+            // A phone's bar stays up for as long as Select is on, the count in
+            // the middle ("3 selected", or what to do while none is). It slides
+            // in and out (`is-m-shown`), so it stays in the page meanwhile.
+            $('#bpl-selected-count').text(count ? countText(PL.i18n.m_selected, count) : (PL.i18n.m_select_products || ''));
+            $(bar).find('.brikpanel-pl-bulk-more').prop('disabled', !count);
+            var on = mSelecting || count > 0;
+            bar.hidden = false;
+            if (on !== bar.classList.contains('is-m-shown')) {
+                bar.classList.toggle('is-m-shown', on);
+                if (!on && window.brikpanelOverflow) {
+                    window.brikpanelOverflow.close(null);
+                }
+            }
+            syncSnackLift();
+            return;
+        }
+        bar.classList.remove('is-m-shown');
+        $(bar).find('.brikpanel-pl-bulk-more').prop('disabled', false);
         $('#bpl-selected-count').text((PL.i18n.selected_count || '%d').replace('%d', count));
         if (count > 0) {
             bar.hidden = false;
@@ -2836,6 +3077,12 @@
         var bar = document.getElementById('bpl-bulk-bar');
         var inner = bar && bar.querySelector('.brikpanel-pl-bulk-inner');
         if (!inner || bar.hidden) {
+            return;
+        }
+        // A phone's bar is always the same three parts (Select all, the
+        // count, Bulk actions as a sheet): nothing to measure.
+        if (isPhoneList()) {
+            bar.classList.remove('is-fold', 'is-tight');
             return;
         }
         var room = bar.clientWidth;
@@ -2921,7 +3168,7 @@
             success: function (res) {
                 if (res.success) {
                     showToast(res.data.message || PL.i18n.duplicated, 'success');
-                    fetchProducts();
+                    reconcileList();
                 } else {
                     showToast(res.data.message || PL.i18n.error, 'error');
                 }
@@ -2947,21 +3194,20 @@
             success: function (res) {
                 $badge.removeClass('brikpanel-pl-status-saving');
                 if (res.success) {
-                    var newClass = res.data.status === 'publish' ? 'published' : 'draft';
-                    var newLabel = res.data.status === 'publish' ? PL.i18n.published : PL.i18n.draft;
-                    $badge.removeClass('published draft').addClass(newClass).text(newLabel);
-
-                    // Update state
-                    for (var i = 0; i < state.products.length; i++) {
-                        if (state.products[i].id === id) {
-                            state.products[i].status = res.data.status;
-                            break;
-                        }
+                    // Redraw the row from the status the server saved (a
+                    // product dated in the future comes back Scheduled): the
+                    // badge, the stacked line and the phone pill all follow.
+                    var product = getProductById(id);
+                    if (product) {
+                        product.status = res.data.status;
+                        refreshRow($('#bpl-table-body tr[data-id="' + id + '"]'), product); // i18n-ignore: selector fragment
                     }
-
                     showToast(res.data.message, 'success');
+                    // The tab counts move, and a product approved on the
+                    // Pending review tab (or published from Draft) leaves it.
+                    fetchProducts(true);
                 } else {
-                    showToast(res.data.message || PL.i18n.error, 'error');
+                    showToast((res.data && res.data.message) || PL.i18n.error, 'error');
                 }
             },
             error: function () {
@@ -3104,6 +3350,13 @@
 
     function renderPagination() {
         var $pag = $('#bpl-pagination');
+        if (isPhoneList()) {
+            var shown = (state.products || []).length;
+            $pag.html(state.total ? '<span class="brikpanel-pl-showing">' +
+                escHtml(pluralText(PL.i18n.showing, state.total, [fmtNum(shown), fmtNum(state.total)])) +
+                '</span>' : '');
+            return;
+        }
         if (state.pages <= 1) {
             $pag.html('<span class="brikpanel-pl-showing">' +
                 escHtml(pluralText(PL.i18n.showing, state.total, [fmtNum(state.total), fmtNum(state.total)])) +
@@ -3202,6 +3455,29 @@
             $('[data-status="future"]').remove();
         }
 
+        // Show/hide the Pending review tab, right after Draft as in WordPress's
+        // own list. Kept (at 0) while the user is on it, like Scheduled: the
+        // last product just approved should not pull the tab from under them.
+        var pendingCount = counts.pending || 0;
+        var $pendingTab = $('.brikpanel-pl-tab[data-status="pending"]');
+        if (pendingCount > 0 || state.status === 'pending') {
+            if (!$pendingTab.length) {
+                $pendingTab = $('<button class="brikpanel-pl-tab" data-status="pending"></button>')
+                    .text(PL.i18n.pending + ' ')
+                    .append($('<span class="brikpanel-pl-tab-count" data-count="pending"></span>'));
+                if (state.status === 'pending') {
+                    $('.brikpanel-pl-tab').removeClass('active');
+                    $pendingTab.addClass('active');
+                }
+                var $draftTabForPending = $('.brikpanel-pl-tab[data-status="draft"]');
+                if ($draftTabForPending.length) { $pendingTab.insertAfter($draftTabForPending); }
+                else { $('.brikpanel-pl-tabs').append($pendingTab); }
+            }
+            $pendingTab.find('[data-count="pending"]').text(pendingCount);
+        } else {
+            $pendingTab.remove();
+        }
+
         // Show/hide private tab (inserted before trash tab if present)
         if (counts.private > 0) {
             if (!$('[data-count="private"]').length) {
@@ -3249,6 +3525,12 @@
 
     function showToast(message, type) {
         type = type || 'success';
+        if (isPhoneList() && window.brikpanelSnack) {
+            if (message) {
+                window.brikpanelSnack.show(message, { tone: type });
+            }
+            return;
+        }
         var $container = $('#bpl-toast-container');
         // is-*, never a bare `error`: WordPress styles every div.error as an admin notice.
         var $toast = $('<div class="brikpanel-pl-toast is-' + type + '">' +
@@ -3341,7 +3623,12 @@
         e.stopPropagation();
         var $row = $(this).closest('tr');
         var id = parseInt($row.data('id'));
-        if (!confirm(PL.i18n.confirm_permanent_delete)) return;
+        askThen(PL.i18n.confirm_permanent_delete, PL.i18n.delete_permanently, true, function () {
+            deletePermanently($row, id);
+        });
+    });
+
+    function deletePermanently($row, id) {
         // Optimistic UI update before the AJAX — see bulkAction() for why.
         state.products = (state.products || []).filter(function (p) { return p.id !== id; });
         state.total = Math.max(0, (state.total || 0) - 1);
@@ -3367,7 +3654,7 @@
                 fetchProducts(true);
             }
         });
-    });
+    }
 
     // =========================================================================
     // VARIATION INLINE POPUP
@@ -3487,7 +3774,7 @@
                         if (pending <= 0) {
                             showToast(countText(PL.i18n.variations_saved, saved), 'success');
                             closeVariationPopup();
-                            fetchProducts();
+                            reconcileList();
                         }
                     }
                 });
@@ -4231,6 +4518,805 @@
     });
 
     // =========================================================================
+    // PHONE (782px and narrower): the list the way a phone app shows it
+    // =========================================================================
+    // A row opens its product in the same tab; a long press or Select turns on
+    // round checkboxes and the bar at the bottom; more rows load as the list
+    // scrolls; menus, the filters and the sort open as sheets from the bottom
+    // edge (front-end/shared/brikpanel-sheet.js); a trash shows Undo instead of
+    // asking first; coming back from a product finds the list where it was.
+    // Styles: the "Phones" part at the end of brikpanel-products-list.css.
+    // Wider screens: untouched.
+
+    var SHEET = window.brikpanelSheet || null;
+    // Per site: on a multisite every site's list has its own path.
+    var PHONE_SPOT_KEY = 'bplPhoneSpot:' + window.location.pathname;
+    var CHECK_SVG = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></svg>';
+    var mSelecting = false;
+    var mNextLoading = false;
+    var mRestore = null;
+    var drawerSheet = null;
+
+    // The shape of the rows to come, instead of a spinner.
+    function skeletonRows(n, extraClass) {
+        var cols = visibleColumnCount();
+        var html = '';
+        for (var i = 0; i < n; i++) {
+            html += '<tr class="brikpanel-pl-m-skel' + (extraClass ? ' ' + extraClass : '') + '" aria-hidden="true"><td colspan="' + cols + '">' +
+                '<span class="brikpanel-pl-m-skel-img"></span><span class="brikpanel-pl-m-skel-lines"><i></i><i></i><i></i></span></td></tr>';
+        }
+        return html;
+    }
+
+    // "● 12 in stock" (green; amber at the store's low stock threshold or
+    // below), "Out of stock" (red), or the status alone when stock is not counted.
+    function phoneStockHtml(p) {
+        var n = (p.stock !== null && p.stock !== undefined && p.stock !== '') ? parseInt(p.stock, 10) : null;
+        if (n !== null && isNaN(n)) {
+            n = null;
+        }
+        var cls = 'is-ok';
+        var txt = PL.i18n.in_stock;
+        if (p.stock_status === 'outofstock') {
+            cls = 'is-out';
+            txt = PL.i18n.out_of_stock;
+        } else if (n !== null && n > 0) {
+            cls = n <= lowStockAmount() ? 'is-low' : 'is-ok';
+            txt = countText(PL.i18n.m_in_stock, n);
+        } else if (p.stock_status === 'onbackorder') {
+            cls = 'is-low';
+            txt = PL.i18n.on_backorder;
+        } else if (n !== null) {
+            cls = 'is-out';
+            txt = PL.i18n.out_of_stock;
+        }
+        return '<span class="brikpanel-pl-m-stock ' + cls + '"><i aria-hidden="true"></i>' + escHtml(txt || '') + '</span>';
+    }
+
+    // "Are you sure?" as a sheet on a phone, the browser's box elsewhere.
+    function askThen(message, okLabel, danger, fn) {
+        if (isPhoneList() && SHEET) {
+            SHEET.confirm({ text: message, ok: okLabel || PL.i18n.apply, danger: !!danger }).then(function (yes) {
+                if (yes) {
+                    fn();
+                }
+            });
+            return;
+        }
+        if (window.confirm(message)) {
+            fn();
+        }
+    }
+
+    // After an edit: a phone keeps the rows it has loaded (and its place).
+    function reconcileList() {
+        if (isPhoneList()) {
+            reloadLoaded();
+            return;
+        }
+        fetchProducts();
+    }
+
+    // Reads every page a phone has loaded again, 100 rows a request at most,
+    // and redraws the rows in place.
+    function reloadLoaded() {
+        if (currentFetchXhr) {
+            try { currentFetchXhr.abort(); } catch (e) {}
+            currentFetchXhr = null;
+        }
+        mNextLoading = false;
+        var want = Math.max(1, state.loadedPages) * state.per_page;
+        var chunk = Math.min(100, want);
+        var chunks = Math.ceil(want / chunk);
+        var got = [];
+        var total = 0;
+        var counts = null;
+        var y = window.pageYOffset;
+        state.loading = true;
+        showProgress();
+        syncStateToUrl();
+        syncFiltersCount();
+
+        function done(ok) {
+            currentFetchXhr = null;
+            state.loading = false;
+            hideProgress();
+            if (!ok) {
+                return;
+            }
+            var seen = {};
+            state.products = got.filter(function (p) {
+                if (seen[p.id]) {
+                    return false;
+                }
+                seen[p.id] = true;
+                return true;
+            });
+            state.total = total;
+            state.pages = Math.max(1, Math.ceil((total || 0) / state.per_page));
+            state.loadedPages = Math.max(1, Math.ceil(state.products.length / state.per_page));
+            if (counts) {
+                updateCounts(counts);
+            }
+            renderProducts();
+            renderPagination();
+            updateBulkBar();
+            if (Math.abs(window.pageYOffset - y) > 1) {
+                window.scrollTo(0, y);
+            }
+        }
+
+        (function next(i) {
+            currentFetchXhr = $.ajax({
+                url: PL.ajax_url,
+                type: 'POST',
+                data: buildFetchData(i + 1, chunk),
+                dataType: 'json',
+                dataFilter: lenientJsonFilter,
+                timeout: 120000,
+                success: function (res) {
+                    if (!res || res.success !== true || !res.data) {
+                        done(false);
+                        return;
+                    }
+                    var rows = res.data.products || [];
+                    got = got.concat(rows);
+                    total = res.data.total;
+                    counts = res.data.counts;
+                    if (i + 1 < chunks && rows.length === chunk) {
+                        next(i + 1);
+                    } else {
+                        done(true);
+                    }
+                },
+                error: function (xhr, status) {
+                    if (status !== 'abort') {
+                        done(false);
+                    }
+                }
+            });
+        })(0);
+    }
+
+    // The next page, added under the rows already shown.
+    function fetchNextPage() {
+        if (!isPhoneList() || mNextLoading || state.loading || state.loadedPages >= state.pages) {
+            return;
+        }
+        mNextLoading = true;
+        var $body = $('#bpl-table-body');
+        var page = state.loadedPages + 1;
+        $body.append(skeletonRows(3, 'is-more'));
+        currentFetchXhr = $.ajax({
+            url: PL.ajax_url,
+            type: 'POST',
+            data: buildFetchData(page, state.per_page),
+            dataType: 'json',
+            dataFilter: lenientJsonFilter,
+            timeout: 120000,
+            success: function (res) {
+                currentFetchXhr = null;
+                mNextLoading = false;
+                $body.find('tr.brikpanel-pl-m-skel.is-more').remove();
+                if (!res || res.success !== true || !res.data) {
+                    return;
+                }
+                var have = {};
+                state.products.forEach(function (p) { have[p.id] = true; });
+                var fresh = (res.data.products || []).filter(function (p) { return !have[p.id]; });
+                state.products = state.products.concat(fresh);
+                state.total = res.data.total;
+                state.pages = res.data.pages;
+                state.loadedPages = page;
+                var html = '';
+                fresh.forEach(function (p) { html += renderProductRow(p); });
+                var $new = $(html).addClass('is-m-new');
+                $body.append($new);
+                state.selected.forEach(function (id) {
+                    $new.find('.brikpanel-pl-row-check[value="' + id + '"]').prop('checked', true);
+                });
+                updateCounts(res.data.counts);
+                refitTable();
+                renderPagination();
+                updateBulkBar();
+                window.setTimeout(checkSentinel, 60);
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') {
+                    return;
+                }
+                currentFetchXhr = null;
+                mNextLoading = false;
+                $body.find('tr.brikpanel-pl-m-skel.is-more').remove();
+            }
+        });
+    }
+
+    function checkSentinel() {
+        var el = document.getElementById('bpl-msentinel');
+        if (!el || !isPhoneList()) {
+            return;
+        }
+        if (el.getBoundingClientRect().top < window.innerHeight + 600) {
+            fetchNextPage();
+        }
+    }
+
+    function initSentinel() {
+        var el = document.getElementById('bpl-msentinel');
+        if (!el || typeof window.IntersectionObserver !== 'function') {
+            return;
+        }
+        new window.IntersectionObserver(function (entries) {
+            if (entries[0] && entries[0].isIntersecting) {
+                fetchNextPage();
+            }
+        }, { rootMargin: '0px 0px 600px 0px' }).observe(el);
+    }
+
+    // Select mode: round checkboxes, a tap ticks a row, the bar at the bottom.
+    function setPhoneSelecting(on) {
+        mSelecting = !!on;
+        $('#brikpanel-products-list').toggleClass('is-m-selecting', mSelecting);
+        $('#bpl-mselect')
+            .attr('aria-pressed', mSelecting ? 'true' : 'false')
+            .text(mSelecting ? (PL.i18n.done || '') : (PL.i18n.select || ''));
+        if (!mSelecting && state.selected.length) {
+            state.selected = [];
+            $('.brikpanel-pl-row-check, #bpl-check-all').prop('checked', false);
+        }
+        updateBulkBar();
+    }
+
+    // A bar fixed to the bottom lifts the message strip above it.
+    function syncSnackLift() {
+        var bar = document.getElementById('bpl-bulk-bar');
+        var lift = (isPhoneList() && bar && bar.classList.contains('is-m-shown')) ? Math.round(bar.offsetHeight || 0) : 0;
+        document.documentElement.style.setProperty('--bp-snack-lift', lift + 'px');
+    }
+
+    function phoneSignature() {
+        return JSON.stringify([state.search, state.status, state.category, state.brand, state.stock_filter, state.product_type, state.featured, state.sort, state.tax_filters]);
+    }
+
+    // Where the list was when a product was opened: the pages loaded and the
+    // scroll. The product page loads fresh (WordPress sends no-store), so the
+    // browser cannot bring the list back by itself.
+    function savePhoneSpot(id) {
+        try {
+            window.sessionStorage.setItem(PHONE_SPOT_KEY, JSON.stringify({
+                sig: phoneSignature(),
+                loaded: state.loadedPages,
+                y: window.pageYOffset,
+                id: id,
+                t: Date.now()
+            }));
+        } catch (e) {
+            // Storage off (private mode): the list simply opens at the top.
+        }
+    }
+
+    // The list was reached by going back: the browser's back (a history
+    // step) or the product's own back link. A fresh visit opens at the top.
+    function cameBack() {
+        try {
+            var nav = window.performance && window.performance.getEntriesByType ? window.performance.getEntriesByType('navigation')[0] : null;
+            if (nav && nav.type === 'back_forward') {
+                return true;
+            }
+        } catch (e) {
+            // No navigation timing: the referrer decides.
+        }
+        return (document.referrer || '').indexOf('page=brikpanel-product-editor') > -1;
+    }
+
+    function takePhoneSpot() {
+        var spot = null;
+        try {
+            spot = JSON.parse(window.sessionStorage.getItem(PHONE_SPOT_KEY) || 'null');
+            window.sessionStorage.removeItem(PHONE_SPOT_KEY);
+        } catch (e) {
+            spot = null;
+        }
+        if (!spot || !spot.t || Date.now() - spot.t > 30 * 60 * 1000 || spot.sig !== phoneSignature() || !cameBack()) {
+            return null;
+        }
+        spot.loaded = Math.max(1, Math.min(5, parseInt(spot.loaded, 10) || 1));
+        return spot;
+    }
+
+    function finishPhoneSpot(spot) {
+        var row = spot.id ? document.querySelector('#bpl-table-body tr[data-id="' + parseInt(spot.id, 10) + '"]') : null;
+        window.requestAnimationFrame(function () {
+            window.scrollTo(0, Math.max(0, parseInt(spot.y, 10) || 0));
+            if (row) {
+                row.classList.add('is-m-flash');
+            }
+        });
+    }
+
+    function openPhoneProduct(row) {
+        var url = row.getAttribute('data-edit-url');
+        if (!url) {
+            return;
+        }
+        savePhoneSpot(parseInt(row.getAttribute('data-id'), 10));
+        if (SHEET && SHEET.flagTransition) {
+            SHEET.flagTransition(url, 'forward');
+        }
+        row.classList.add('is-m-opening');
+        showProgress();
+        window.location.href = url;
+    }
+
+    function bindPhoneRows() {
+        var $body = $('#bpl-table-body');
+        var press = null;
+
+        function clearPress() {
+            if (press) {
+                window.clearTimeout(press.timer);
+                press.row.classList.remove('is-m-pressed');
+            }
+        }
+
+        $body.on('pointerdown', 'tr.brikpanel-pl-row', function (e) {
+            if (!isPhoneList() || (e.button !== undefined && e.button > 0)) {
+                return;
+            }
+            if ($(e.target).closest('.brikpanel-pl-actions, .brikpanel-pl-cell-check').length) {
+                return;
+            }
+            clearPress();
+            var row = this;
+            press = { row: row, x: e.clientX, y: e.clientY, fired: false, timer: 0 };
+            row.classList.add('is-m-pressed');
+            press.timer = window.setTimeout(function () {
+                if (!press || press.row !== row) {
+                    return;
+                }
+                press.fired = true;
+                row.classList.remove('is-m-pressed');
+                if (!mSelecting) {
+                    setPhoneSelecting(true);
+                }
+                var cb = row.querySelector('.brikpanel-pl-row-check');
+                if (cb && !cb.checked) {
+                    cb.checked = true;
+                    $(cb).trigger('change');
+                }
+                if (navigator.vibrate) {
+                    try { navigator.vibrate(10); } catch (x) {}
+                }
+            }, 480);
+        });
+
+        $body.on('pointermove', 'tr.brikpanel-pl-row', function (e) {
+            if (press && !press.fired && (Math.abs(e.clientX - press.x) > 8 || Math.abs(e.clientY - press.y) > 8)) {
+                clearPress();
+                press = null;
+            }
+        });
+
+        $body.on('pointerup pointercancel', 'tr.brikpanel-pl-row', function () {
+            if (press && !press.fired) {
+                window.clearTimeout(press.timer);
+            }
+            if (press) {
+                press.row.classList.remove('is-m-pressed');
+            }
+        });
+
+        // The browser's own long-press menu (copy link, preview) would cover
+        // the select mode a long press starts.
+        $body.on('contextmenu', 'tr.brikpanel-pl-row', function (e) {
+            if (isPhoneList()) {
+                e.preventDefault();
+            }
+        });
+
+        // A tap opens the product (same tab), or ticks the row while Select is on.
+        $body.on('click', 'tr.brikpanel-pl-row', function (e) {
+            if (!isPhoneList()) {
+                return;
+            }
+            var longPress = press && press.fired;
+            press = null;
+            if ($(e.target).closest('.brikpanel-pl-actions, .brikpanel-pl-cell-check').length) {
+                return;
+            }
+            e.preventDefault();
+            if (longPress) {
+                return;
+            }
+            if (mSelecting) {
+                var cb = this.querySelector('.brikpanel-pl-row-check');
+                if (cb) {
+                    cb.checked = !cb.checked;
+                    $(cb).trigger('change');
+                }
+                return;
+            }
+            openPhoneProduct(this);
+        });
+    }
+
+    // Filters: one sheet for all of them, applied together with one request.
+    function openFilterSheet() {
+        if (!SHEET) {
+            setFindOpen(true, { focus: true });
+            return;
+        }
+        var t = PL.i18n;
+        var draft = {
+            category: state.category,
+            brand: state.brand,
+            stock_filter: state.stock_filter,
+            product_type: state.product_type,
+            featured: state.featured
+        };
+        var controls = [];
+        var body = document.createElement('div');
+        body.className = 'brikpanel-pl-msheet';
+
+        function block(label, node, forId) {
+            var box = document.createElement('div');
+            box.className = 'brikpanel-pl-msheet-block';
+            var l = document.createElement(forId ? 'label' : 'span');
+            l.className = 'brikpanel-pl-msheet-label';
+            l.textContent = label || '';
+            if (forId) {
+                l.htmlFor = forId;
+            }
+            box.appendChild(l);
+            box.appendChild(node);
+            body.appendChild(box);
+        }
+
+        function selectFrom(srcId, key, label) {
+            var src = document.getElementById(srcId);
+            if (!src) {
+                return;
+            }
+            var sel = src.cloneNode(true);
+            sel.id = 'bpl-m-' + srcId.replace(/^bpl-/, '');
+            sel.className = 'brikpanel-control brikpanel-pl-msheet-select';
+            sel.removeAttribute('name');
+            sel.value = draft[key] || '';
+            sel.addEventListener('change', function () { draft[key] = sel.value; });
+            controls.push(function () { sel.value = draft[key] || ''; });
+            block(label, sel, sel.id);
+        }
+
+        function chipsFrom(srcId, key, label) {
+            var src = document.getElementById(srcId);
+            if (!src) {
+                return;
+            }
+            var wrap = document.createElement('div');
+            wrap.className = 'brikpanel-pl-mchips';
+            wrap.setAttribute('role', 'group');
+            wrap.setAttribute('aria-label', label || '');
+            var paint = function () {
+                Array.prototype.forEach.call(wrap.children, function (c) {
+                    c.setAttribute('aria-pressed', String(c.getAttribute('data-v') === (draft[key] || '')));
+                });
+            };
+            Array.prototype.forEach.call(src.options, function (o) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'brikpanel-pl-mchip';
+                b.textContent = o.textContent;
+                b.setAttribute('data-v', o.value);
+                b.addEventListener('click', function () {
+                    draft[key] = o.value;
+                    paint();
+                });
+                wrap.appendChild(b);
+            });
+            paint();
+            controls.push(paint);
+            block(label, wrap, '');
+        }
+
+        selectFrom('bpl-cat-filter', 'category', t.category);
+        selectFrom('bpl-brand-filter', 'brand', t.brand);
+        chipsFrom('bpl-stock-filter', 'stock_filter', t.stock_label);
+        chipsFrom('bpl-type-filter', 'product_type', t.product_type);
+        chipsFrom('bpl-featured-filter', 'featured', t.featured);
+
+        var clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'brikpanel-btn brikpanel-btn--link brikpanel-pl-msheet-clear';
+        clear.textContent = t.clear_all || '';
+        clear.addEventListener('click', function () {
+            Object.keys(draft).forEach(function (k) { draft[k] = ''; });
+            controls.forEach(function (fn) { fn(); });
+        });
+
+        var apply = document.createElement('button');
+        apply.type = 'button';
+        apply.className = 'brikpanel-btn brikpanel-btn--primary brikpanel-sheet__btn';
+        apply.textContent = t.m_show_results || '';
+        apply.addEventListener('click', function () {
+            SHEET.close();
+            applyPhoneFilters(draft);
+        });
+
+        SHEET.open({ title: t.m_filters, headEnd: clear, body: body, foot: apply });
+    }
+
+    function applyPhoneFilters(d) {
+        state.category = d.category || '';
+        state.brand = d.brand || '';
+        state.stock_filter = d.stock_filter || '';
+        state.product_type = d.product_type || '';
+        state.featured = d.featured || '';
+        $('#bpl-cat-filter').val(state.category);
+        $('#bpl-brand-filter').val(state.brand);
+        $('#bpl-stock-filter').val(state.stock_filter);
+        $('#bpl-type-filter').val(state.product_type);
+        $('#bpl-featured-filter').val(state.featured);
+        state.page = 1;
+        fetchProducts();
+    }
+
+    // Sort: a list of the same choices as the dropdown; a tick, then it closes.
+    function openSortSheet() {
+        var src = document.getElementById('bpl-sort');
+        if (!SHEET || !src) {
+            return;
+        }
+        var list = document.createElement('div');
+        list.className = 'brikpanel-pl-mradios';
+        list.setAttribute('role', 'radiogroup');
+        list.setAttribute('aria-label', PL.i18n.sort_by || '');
+        Array.prototype.forEach.call(src.options, function (o) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'brikpanel-pl-mradio';
+            b.setAttribute('role', 'radio');
+            b.setAttribute('aria-checked', String(o.value === state.sort));
+            var label = document.createElement('span');
+            label.className = 'brikpanel-pl-mradio-label';
+            label.textContent = o.textContent;
+            var tick = document.createElement('span');
+            tick.className = 'brikpanel-pl-mradio-tick';
+            tick.innerHTML = CHECK_SVG; // Static markup.
+            b.appendChild(label);
+            b.appendChild(tick);
+            b.addEventListener('click', function () {
+                Array.prototype.forEach.call(list.children, function (c) {
+                    c.setAttribute('aria-checked', String(c === b));
+                });
+                window.setTimeout(function () {
+                    SHEET.close();
+                    applyPhoneSort(o.value);
+                }, 160);
+            });
+            list.appendChild(b);
+        });
+        SHEET.open({ title: PL.i18n.sort_by, body: list });
+    }
+
+    // Custom order sorts here too, without the drag handles (dragging does
+    // not work by touch).
+    function applyPhoneSort(val) {
+        if (val === state.sort) {
+            return;
+        }
+        state.sort = val;
+        $('#bpl-sort').val(val);
+        $('#bpl-msort-label').text($('#bpl-sort option:selected').text());
+        rememberSort(val);
+        state.page = 1;
+        fetchProducts();
+    }
+
+    // Move to trash on a phone: the row slides away, and the strip at the
+    // bottom offers Undo (which restores the product to its earlier status).
+    function trashWithUndo(id) {
+        var idx = -1;
+        for (var i = 0; i < state.products.length; i++) {
+            if (state.products[i].id === id) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) {
+            return;
+        }
+        state.products.splice(idx, 1);
+        state.total = Math.max(0, (state.total || 0) - 1);
+        state.selected = state.selected.filter(function (s) { return s !== id; });
+        var $row = $('#bpl-table-body tr[data-id="' + id + '"]');
+        if ($row.length) {
+            if (reducedMotion()) {
+                $row.remove();
+                renderPagination();
+            } else {
+                $row.addClass('is-m-leaving');
+                window.setTimeout(function () {
+                    closeGapAfter($row);
+                    renderPagination();
+                }, 260);
+            }
+        }
+        updateBulkBar();
+        $.ajax({
+            url: PL.ajax_url,
+            type: 'POST',
+            data: { action: 'brikpanel_delete_product', security: PL.nonce, product_id: id },
+            dataType: 'json',
+            dataFilter: lenientJsonFilter,
+            success: function (res) {
+                if (!res || !res.success) {
+                    showToast(res && res.data && res.data.message ? res.data.message : PL.i18n.error, 'error');
+                    reloadLoaded();
+                    return;
+                }
+                if (window.brikpanelSnack) {
+                    window.brikpanelSnack.show((res.data && res.data.message) || '', {
+                        tone: 'success',
+                        undo: function () { undoTrash(id); }
+                    });
+                }
+                window.setTimeout(reloadLoaded, 520);
+            },
+            error: function () {
+                reloadLoaded();
+            }
+        });
+    }
+
+    function reducedMotion() {
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    // Removes a row and lets the rows under it glide up into its place: they
+    // jump at once, then are moved back by a transform and let go (FLIP).
+    // Only the rows on screen are measured.
+    function closeGapAfter($row) {
+        var below = [];
+        var limit = window.innerHeight + 200;
+        $row.nextAll('tr').each(function () {
+            var top = this.getBoundingClientRect().top;
+            if (top > limit) {
+                return false;
+            }
+            below.push({ el: this, top: top });
+        });
+        $row.remove();
+        var moved = [];
+        below.forEach(function (b) {
+            var dy = b.top - b.el.getBoundingClientRect().top;
+            if (Math.abs(dy) > 0.5) {
+                b.el.style.transition = 'none';
+                b.el.style.transform = 'translateY(' + dy + 'px)';
+                moved.push(b.el);
+            }
+        });
+        if (!moved.length) {
+            return;
+        }
+        void document.body.offsetHeight;
+        moved.forEach(function (el) {
+            el.style.transition = 'transform .28s cubic-bezier(.4, 0, .2, 1)';
+            el.style.transform = '';
+        });
+        window.setTimeout(function () {
+            moved.forEach(function (el) {
+                el.style.transition = '';
+            });
+        }, 320);
+    }
+
+    function undoTrash(id) {
+        $.ajax({
+            url: PL.ajax_url,
+            type: 'POST',
+            data: { action: 'brikpanel_bulk_action_products', security: PL.nonce, bulk_action: 'restore', product_ids: [id] },
+            dataType: 'json',
+            dataFilter: lenientJsonFilter,
+            success: function (res) {
+                showToast(res && res.success ? PL.i18n.restored : PL.i18n.error, res && res.success ? 'success' : 'error');
+                reloadLoaded();
+            },
+            error: function () {
+                showToast(PL.i18n.error, 'error');
+                reloadLoaded();
+            }
+        });
+    }
+
+    // Crossing 782px either way: rows as cards or the table, Select off,
+    // the tab strip's room for the search button, the bar and the count.
+    function onPhoneSwitch(e) {
+        var phone = isPhoneList();
+        if (fitTable) {
+            fitTable.floor = phone ? Infinity : 0;
+            fitTable.refit();
+        }
+        if (!phone && mSelecting) {
+            setPhoneSelecting(false);
+        }
+        if (phone && state.sortMode) {
+            exitSortMode(false);
+        }
+        var strip = document.querySelector('.brikpanel-pl-tabs');
+        if (strip && window.brikpanelScrollStrip) {
+            var ctl = window.brikpanelScrollStrip(strip);
+            if (ctl) {
+                ctl.endClear = phone ? 0 : 58;
+                if (typeof ctl.sync === 'function') {
+                    ctl.sync();
+                }
+            }
+        }
+        syncFiltersCount();
+        renderPagination();
+        updateBulkBar();
+        syncSnackLift();
+        // Turned into a phone on page 3 of the table (a window narrowed): the
+        // growing list starts from the top. Not at boot, where it already does.
+        if (e && phone && state.page > 1) {
+            state.page = 1;
+            fetchProducts();
+        }
+    }
+
+    function initPhone() {
+        if (!SHEET) {
+            $('#brikpanel-products-list').addClass('is-m-nosheet');
+        }
+        var drawer = document.getElementById('bpl-drawer');
+        if (drawer && SHEET) {
+            drawerSheet = SHEET.attach(drawer, {
+                dragHandles: drawer.querySelectorAll('.brikpanel-pl-drawer-header'),
+                onRequestClose: function () {
+                    closeDrawer();
+                    return false;
+                }
+            });
+        }
+        $('#bpl-mselect').on('click', function () {
+            setPhoneSelecting(!mSelecting);
+        });
+        $(document).on('click', '.brikpanel-pl-mquick', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openDrawer(parseInt($(this).closest('tr').data('id'), 10));
+        });
+        $('#bpl-msort').on('click', openSortSheet);
+        bindPhoneRows();
+        initSentinel();
+        window.addEventListener('pageshow', function (e) {
+            if (e.persisted) {
+                $('#bpl-table-body tr.is-m-pressed, #bpl-table-body tr.is-m-opening').removeClass('is-m-pressed is-m-opening');
+                hideProgress();
+            }
+        });
+        if (phoneMq) {
+            if (phoneMq.addEventListener) {
+                phoneMq.addEventListener('change', onPhoneSwitch);
+            } else if (phoneMq.addListener) {
+                phoneMq.addListener(onPhoneSwitch);
+            }
+        }
+        if (isPhoneList()) {
+            try {
+                if ('scrollRestoration' in window.history) {
+                    window.history.scrollRestoration = 'manual';
+                }
+            } catch (e) {
+                // Not settable here: the list restores its own place anyway.
+            }
+            mRestore = takePhoneSpot();
+        }
+        onPhoneSwitch();
+    }
+
+    // =========================================================================
     // BOOT
     // =========================================================================
 
@@ -4264,6 +5350,7 @@
             document.fonts.ready.then(syncBulkFold);
         }
         initFitTable();
+        initPhone();
         fetchProducts();
     }
 

@@ -153,6 +153,108 @@
 	color: #fff;
 }
 
+/* A saved segment: a chip that applies it and a small × that deletes it, in
+   one pill (a button cannot hold another button). */
+.bp-seg-saved {
+	display: inline-flex;
+	align-items: center;
+	border: 1px solid var(--bp-seg-border);
+	border-radius: 999px;
+	background: #fff;
+	color: var(--bp-seg-text-secondary);
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.bp-seg-saved:hover {
+	background: #f7f7f7;
+	color: var(--bp-seg-text);
+}
+
+.bp-seg-saved.is-active {
+	background: var(--bp-seg-primary);
+	border-color: var(--bp-seg-primary);
+	color: #fff;
+}
+
+.bp-seg-saved-apply,
+.bp-seg-saved-del {
+	background: none;
+	border: 0;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.bp-seg-saved-apply {
+	padding-block: 0.3125rem;
+	padding-inline: 0.75rem 0.25rem;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	border-radius: 999px;
+}
+
+.bp-seg-saved-del {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	margin-inline-end: 0.3125rem;
+	border-radius: 999px;
+	font-size: 0.9375rem;
+	line-height: 1;
+}
+
+.bp-seg-saved-del:hover {
+	background: rgba(0, 0, 0, 0.08);
+}
+
+.bp-seg-saved.is-active .bp-seg-saved-del:hover {
+	background: rgba(255, 255, 255, 0.2);
+}
+
+.bp-seg-chip-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3125rem;
+	border-style: dashed;
+}
+
+/* The name field opens in place of "Save as segment" and takes a line of its
+   own when the row is full. */
+.bp-seg-save-form {
+	display: inline-flex;
+	flex: 1 1 18rem;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.375rem;
+	min-width: 0;
+}
+
+.bp-seg-save-name {
+	flex: 1 1 10rem;
+	min-width: 0;
+	max-width: 18rem;
+}
+
+.bp-seg-save-status {
+	flex: 1 1 100%;
+	margin: 0;
+	font-size: 0.8125rem;
+	color: #616161;
+}
+
+.bp-seg-save-status.is-error {
+	color: var(--bp-seg-error);
+}
+
+.bp-seg-field-hint {
+	margin: 0.375rem 0 0;
+	font-size: 0.75rem;
+	line-height: 1.4;
+	color: #616161;
+}
+
 /* The search box shrinks down to 10rem, then the "More filters" button goes
    under it. A search box that kept its own width (min-width: auto) and a
    button that cannot wrap pushed the card past a 360px screen (field test C7). */

@@ -75,8 +75,9 @@ function brikpanel_live_store_lifetime() {
  * 1) Ziyaretçi ID (Cookie)
  * ---------------------------------------------------------- */
 function _brikpanel_get_visitor_id() {
-    if ( is_user_logged_in() && current_user_can( 'manage_options' ) ) {
-        return false; 
+    // Store staff are never tracked (brikpanel_is_admin_user()).
+    if ( function_exists( 'brikpanel_is_admin_user' ) ? brikpanel_is_admin_user() : ( is_user_logged_in() && current_user_can( 'manage_options' ) ) ) {
+        return false;
     }
     $cookie_name = 'brikpanel_vid';
     // A value this plugin never minted counts as no cookie: it is overwritten
@@ -128,7 +129,7 @@ function brikpanel_live_visitor_source( $referrer, $landing_url ) {
     }
     $clip = static function ( $value, $max ) {
         $value = trim( sanitize_text_field( (string) $value ) );
-        return function_exists( 'mb_substr' ) ? mb_substr( $value, 0, $max ) : substr( $value, 0, $max );
+        return brikpanel_substr( $value, 0, $max );
     };
     $tag = static function ( $key ) use ( $params, $clip ) {
         return ( isset( $params[ $key ] ) && is_string( $params[ $key ] ) ) ? $clip( $params[ $key ], 80 ) : '';
@@ -448,6 +449,11 @@ function brikpanel_track_live_visitor() {
     // rather than on anything the stale script did or did not send.
     if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'endpoint' ) ) {
         wp_send_json_success( 'Disabled' );
+    }
+    // A pre-3.2.20 script never proves a person; listed only during the
+    // 3.3.30 transition window, like the rest of the old trackers.
+    if ( function_exists( 'brikpanel_legacy_tracker_allowed' ) && ! brikpanel_legacy_tracker_allowed() ) {
+        wp_send_json_success( 'Skipped' );
     }
 
     // Guarded like every other call site: the detector moved to

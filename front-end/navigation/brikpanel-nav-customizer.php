@@ -427,6 +427,12 @@ function brikpanel_nav_cfg_hidden_for_current_user( $cfg ) {
 	}
 	$audience = isset( $cfg['audience'] ) ? (string) $cfg['audience'] : 'all';
 
+	// "Ignore BrikPanel's access rules": the per-person rule below is kept but
+	// not applied. The `hidden` flag above (off for everyone) still is.
+	if ( $audience !== 'all' && function_exists( 'brikpanel_access_rules_ignored' ) && brikpanel_access_rules_ignored() ) {
+		return false;
+	}
+
 	if ( $audience === 'admins' ) {
 		// Visible to administrators only.
 		return ! brikpanel_nav_current_user_is_admin();
@@ -1069,6 +1075,11 @@ function brikpanel_nav_customizer_collect_menu_items() {
 				if ( ! is_array( $sub ) || ! isset( $sub[2] ) ) {
 					continue;
 				}
+				// A BrikPanel screen kept in the menu for access plugins only
+				// (includes/brikpanel-screen-menu.php) is not a sidebar row.
+				if ( function_exists( 'brikpanel_is_menu_only_row' ) && brikpanel_is_menu_only_row( $sub ) ) {
+					continue;
+				}
 				$sub_slug = (string) $sub[2];
 				if ( $sub_slug === '' ) {
 					continue;
@@ -1465,14 +1476,47 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null, &$dropped = n
 				if ( ! empty( $cfg['label_override'] ) ) {
 					$title = (string) $cfg['label_override'];
 				}
-				$cap   = isset( $row[1] ) ? (string) $row[1] : 'read';
+				$top_cap = isset( $row[1] ) ? (string) $row[1] : 'read';
+				// WordPress keeps a top-level menu for a user who can open only some
+				// of its pages, under the top-level's own capability. The row inside
+				// "More" counts through the first page this user may open instead,
+				// so the menu does not vanish from "More" while its pages are open.
+				$cap = $top_cap;
+				if ( ! current_user_can( $top_cap ) && ! empty( $submenu[ $slug ] ) && is_array( $submenu[ $slug ] ) ) {
+					foreach ( $submenu[ $slug ] as $child_row ) {
+						// A BrikPanel screen kept for access plugins only is no page of the menu.
+						if ( function_exists( 'brikpanel_is_menu_only_row' ) && brikpanel_is_menu_only_row( $child_row ) ) {
+							continue;
+						}
+						if ( is_array( $child_row ) && isset( $child_row[1] ) && ( is_string( $child_row[1] ) || is_int( $child_row[1] ) ) && current_user_can( $child_row[1] ) ) {
+							$cap = (string) $child_row[1];
+							break;
+						}
+					}
+				}
 				// WP submenu row shape: [ title, cap, file, page_title, classes ].
 				// Use admin.php?page= prefix unless the slug already looks like a URL/file.
 				$target = $slug;
 				if ( strpos( $slug, '.php' ) === false && strpos( $slug, '?' ) === false ) {
 					$target = 'admin.php?page=' . $slug;
 				}
-				$submenu['woocommerce-more'][] = [ $title, $cap, $target, $title, 'brikpanel-more-promoted' ];
+				// Index 7 remembers the menu this row stands for. Its own pages stay
+				// in $submenu[ $slug ] (per-page hide rules still apply to them below)
+				// and the sidebar draws them as a dropdown under this row. See
+				// brikpanel_nav_more_plan(). extract_meta() ignores it: no is_custom.
+				$submenu['woocommerce-more'][] = [
+					$title,
+					$cap,
+					$target,
+					$title,
+					'brikpanel-more-promoted',
+					'',
+					'',
+					[
+						'more_parent' => $slug,
+						'top_cap'     => $top_cap,
+					],
+				];
 				continue;
 			}
 
@@ -1641,7 +1685,11 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null, &$dropped = n
 			$hide_lookup = array_flip( array_map( 'brikpanel_nav_slug_key', $hide_slugs ) );
 			$kept        = [];
 			foreach ( $submenu[ $parent_slug ] as $row ) {
-				if ( is_array( $row ) && isset( $row[2] ) && isset( $hide_lookup[ brikpanel_nav_slug_key( $row[2] ) ] ) ) {
+				// A BrikPanel screen kept for access plugins only stays, and is
+				// never reported: hiding it would close BrikPanel's own page
+				// through page access (includes/brikpanel-screen-menu.php).
+				if ( is_array( $row ) && isset( $row[2] ) && isset( $hide_lookup[ brikpanel_nav_slug_key( $row[2] ) ] )
+					&& ! ( function_exists( 'brikpanel_is_menu_only_row' ) && brikpanel_is_menu_only_row( $row ) ) ) {
 					if ( $record ) {
 						$dropped[] = [ 'parent' => (string) $parent_slug, 'slug' => (string) $row[2], 'reason' => 'rule' ];
 					}
@@ -1681,6 +1729,25 @@ function brikpanel_nav_customizer_extract_meta( $item ) {
 		return null;
 	}
 	return $item[7];
+}
+
+/**
+ * The real menu a row inside "More" stands for, when the nav customizer moved
+ * a whole top-level menu there (Tools, Settings, a plugin's menu).
+ *
+ * Returns that menu's slug, the key of its own pages in $submenu, or '' for
+ * every other row. "More" itself is refused, so a row can never open "More"
+ * inside "More".
+ *
+ * @param array $row A $submenu row.
+ * @return string
+ */
+function brikpanel_nav_more_parent( $row ) {
+	if ( ! is_array( $row ) || ! isset( $row[7] ) || ! is_array( $row[7] ) || ! empty( $row[7]['is_custom'] ) ) {
+		return '';
+	}
+	$slug = isset( $row[7]['more_parent'] ) && is_string( $row[7]['more_parent'] ) ? $row[7]['more_parent'] : '';
+	return ( '' === $slug || 'woocommerce-more' === $slug ) ? '' : $slug;
 }
 
 // =============================================================================
@@ -1882,6 +1949,11 @@ function brikpanel_render_nav_customizer_field( $value ) {
 							<p class="brikpanel-navc-subtitle">
 								<?php esc_html_e( 'Drag to reorder, toggle visibility, move items between sections, or add custom links.', 'brikpanel' ); ?>
 							</p>
+							<?php
+							if ( function_exists( 'brikpanel_access_rules_ignored_print_note' ) ) {
+								brikpanel_access_rules_ignored_print_note( 'choices', true );
+							}
+							?>
 						</div>
 						<button type="button" class="brikpanel-navc-btn brikpanel-navc-btn-secondary" data-navc-action="reset">
 							<?php esc_html_e( 'Reset to defaults', 'brikpanel' ); ?>

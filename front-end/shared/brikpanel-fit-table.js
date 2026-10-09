@@ -272,7 +272,9 @@
 		if (this.spanRows) {
 			syncSpans(table);
 		}
-		if (this.need < 0 || this.measuredTable !== table) {
+		// Below the floor the table stacks whatever it needs: no copy to measure
+		// (a phone's product list sets an endless floor and redraws often).
+		if (room >= this.floor && (this.need < 0 || this.measuredTable !== table)) {
 			this.measure(table);
 		}
 		var was = table.classList.contains(this.cls);

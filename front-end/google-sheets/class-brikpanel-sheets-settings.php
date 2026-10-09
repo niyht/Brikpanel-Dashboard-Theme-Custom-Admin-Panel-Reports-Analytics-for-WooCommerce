@@ -227,6 +227,21 @@ class Brikpanel_Sheets_Settings {
 			'message' => isset( $_GET['brikpanel_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['brikpanel_msg'] ) ) : '',
 		];
 
+		// A failed return from Google leaves a one-time record, not a sentence
+		// in the address bar. It fills the box beside the Connect button (the
+		// toast keeps only the headline). Without a record (a reload, or a
+		// link someone typed) there is nothing to show.
+		$connect_error = [];
+		if ( $flash['tone'] === 'error' ) {
+			$connect_error    = Brikpanel_Proxy_Errors::flash_box(
+				Brikpanel_Proxy_Errors::take_flash( Brikpanel_Sheets_OAuth::FLASH_PREFIX ),
+				BRIKPANEL_GS_PROXY_BASE
+			);
+			$flash['message'] = $connect_error
+				? ( $connect_error['title'] !== '' ? $connect_error['title'] : $connect_error['reason'] )
+				: '';
+		}
+
 		include BRIKPANEL_GS_DIR . 'views/page.php';
 	}
 
@@ -262,7 +277,11 @@ class Brikpanel_Sheets_Settings {
 			$js_ver,
 			true
 		);
-		$picker_cfg = self::picker_config();
+		// Only a connected site can open the Picker. Asking brksoft.com for its
+		// settings anyway cost a site that cannot reach brksoft.com two 10 s
+		// waits, so the page took 20 s to open, every 5 minutes, before the
+		// merchant had connected anything.
+		$picker_cfg = Brikpanel_Sheets_Tokens::is_connected() ? self::picker_config() : [];
 		wp_localize_script(
 			'brikpanel-gs',
 			'BrikpanelGS',
@@ -270,7 +289,7 @@ class Brikpanel_Sheets_Settings {
 				'ajaxUrl'         => admin_url( 'admin-ajax.php' ),
 				'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
 				'pickerAvailable' => ! empty( $picker_cfg['app_id'] ) && ! empty( $picker_cfg['api_key'] ),
-				'i18n'    => [
+				'i18n'    => array_merge( [
 					'connecting'         => __( 'Connecting to Google…', 'brikpanel' ),
 					'disconnect_confirm' => __( 'Disconnect from Google Sheets?', 'brikpanel' ),
 					'syncing'            => __( 'Syncing…', 'brikpanel' ),
@@ -310,7 +329,12 @@ class Brikpanel_Sheets_Settings {
 					'pulling'            => __( 'Pulling changes from Sheets…', 'brikpanel' ),
 					'reset_products_confirm' => __( "This will WIPE the current Products tab in Google Sheets and then re-push every product from scratch. Any rows you added manually to that tab will be lost. Continue?", 'brikpanel' ),
 					'reset_expenses_confirm' => __( "This will WIPE the current Expenses tab in Google Sheets and then re-write it from your BrikPanel expenses. Any rows you typed into that tab and have not pulled in yet will be lost. Continue?", 'brikpanel' ),
-				],
+					// Column headers of the "View error log" table.
+					'log_col_time'       => _x( 'Time', 'error log column: when the error happened', 'brikpanel' ),
+					'log_col_flow'       => _x( 'Flow', 'error log column: which part of the sync, such as orders or products', 'brikpanel' ),
+					'log_col_code'       => __( 'Code', 'brikpanel' ),
+					'log_col_message'    => __( 'Message', 'brikpanel' ),
+				], Brikpanel_Proxy_Errors::js_strings( Brikpanel_Proxy_Errors::host( BRIKPANEL_GS_PROXY_BASE ) ) ),
 			]
 		);
 	}
@@ -380,7 +404,7 @@ class Brikpanel_Sheets_Settings {
 			wp_send_json_error( [
 				'message'    => __( 'Picking an existing spreadsheet is not available yet. Create a new BrikPanel spreadsheet instead.', 'brikpanel' ),
 				'configured' => false,
-			], 503 );
+			] );
 		}
 		$token = Brikpanel_Sheets_Tokens::get_access_token();
 		if ( $token === null ) {
@@ -426,7 +450,7 @@ class Brikpanel_Sheets_Settings {
 			if ( $e->http_code === 404 ) {
 				wp_send_json_error( [ 'message' => __( 'Spreadsheet not found. Check the URL.', 'brikpanel' ) ], 404 );
 			}
-			wp_send_json_error( [ 'message' => $e->getMessage() ], 502 );
+			wp_send_json_error( [ 'message' => $e->getMessage() ] );
 		}
 
 		$title = (string) ( $meta['properties']['title'] ?? '' );
@@ -479,12 +503,12 @@ class Brikpanel_Sheets_Settings {
 				Brikpanel_Sheets_Reports_Sync::TAB_FUNNEL,
 			] );
 		} catch ( Brikpanel_Sheets_Exception $e ) {
-			wp_send_json_error( [ 'message' => $e->getMessage() ], 502 );
+			wp_send_json_error( [ 'message' => $e->getMessage() ] );
 		}
 		$id  = (string) ( $resp['spreadsheetId'] ?? '' );
 		$url = (string) ( $resp['spreadsheetUrl'] ?? '' );
 		if ( $id === '' ) {
-			wp_send_json_error( [ 'message' => __( 'Spreadsheet created but no ID returned.', 'brikpanel' ) ], 502 );
+			wp_send_json_error( [ 'message' => __( 'Spreadsheet created but no ID returned.', 'brikpanel' ) ] );
 		}
 		self::store_target_spreadsheet( $id, $url, $title );
 		wp_send_json_success( [
@@ -836,7 +860,7 @@ class Brikpanel_Sheets_Settings {
 						Brikpanel_Sheets_Mapping::set_columns( 'orders', $old_columns );
 						wp_send_json_error( [
 							'message' => __( 'Row layout was not changed: the target tab could not be wiped (rate limit or connection issue). Your other settings were saved. Wait a minute and try the layout switch again.', 'brikpanel' ),
-						], 502 );
+						] );
 					}
 					self::reset_sync_state();
 
@@ -1309,14 +1333,18 @@ class Brikpanel_Sheets_Settings {
 					wp_send_json_error( [ 'message' => __( 'Unknown flow.', 'brikpanel' ) ], 400 );
 			}
 		} catch ( Brikpanel_Sheets_Exception $e ) {
+			// Failures on this page are answered with HTTP 200 and
+			// success:false. A 5xx is replaced by a front server (Cloudflare, an
+			// nginx proxy) with its own HTML page, and the merchant then read a
+			// generic sentence instead of this one.
 			wp_send_json_error( [
 				'message'  => $e->getMessage(),
 				'http'     => $e->http_code,
 				'reason'   => $e->api_reason,
-			], 502 );
+			] );
 		} catch ( \Throwable $e ) {
 			Brikpanel_Sheets_Logger::log( $flow, 'manual sync threw: ' . $e->getMessage() );
-			wp_send_json_error( [ 'message' => $e->getMessage() ], 500 );
+			wp_send_json_error( [ 'message' => $e->getMessage() ] );
 		}
 
 		// Add a human-readable "X seconds ago" hint to the response so the JS
@@ -1430,10 +1458,10 @@ class Brikpanel_Sheets_Settings {
 				'message'  => $e->getMessage(),
 				'http'     => $e->http_code,
 				'reason'   => $e->api_reason,
-			], 502 );
+			] );
 		} catch ( \Throwable $e ) {
 			Brikpanel_Sheets_Logger::log( $flow, 'manual pull threw: ' . $e->getMessage() );
-			wp_send_json_error( [ 'message' => $e->getMessage() ], 500 );
+			wp_send_json_error( [ 'message' => $e->getMessage() ] );
 		}
 
 		wp_send_json_success( [
@@ -1530,7 +1558,7 @@ class Brikpanel_Sheets_Settings {
 		if ( ! $tab_cleared ) {
 			wp_send_json_error( [
 				'message' => __( 'The target tab could not be wiped (rate limit or connection issue), so the reset was cancelled to avoid duplicate rows. Nothing was changed. Wait a minute and try again.', 'brikpanel' ),
-			], 502 );
+			] );
 		}
 
 		wp_send_json_success( [

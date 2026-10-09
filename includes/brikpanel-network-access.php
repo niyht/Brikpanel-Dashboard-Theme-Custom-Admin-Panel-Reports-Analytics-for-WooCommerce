@@ -671,11 +671,14 @@ add_action( 'admin_menu', function () {
     }
 
     // Sub-menu entries — including those attached to BrikPanel's own parents
-    // (Vendors → Stock Orders / Expenses) and those parked under WooCommerce
-    // (Scheduled Tasks, Store Health) plus orphan-parent submenu pages
-    // registered with parent_slug = '' (Dashboard, Coupons, Products List,
-    // Product Editor, BrikControl) that remove_submenu_page can't reach
-    // because the empty parent slug short-circuits its lookup.
+    // (Vendors → Stock Orders / Expenses), those parked under WooCommerce
+    // (Scheduled Tasks, Ad Platforms) and BrikPanel's screens that sit under
+    // the menu they belong to as rows only access plugins see (Dashboard,
+    // Products List, Product Editor, Coupons, Store Health, Cart share, Merge
+    // orders; includes/brikpanel-screen-menu.php). A screen registered with
+    // parent_slug = '' (where its parent menu is missing) is reached here too,
+    // which remove_submenu_page can't do because the empty parent slug
+    // short-circuits its lookup.
     if ( is_array( $submenu ) ) {
         foreach ( $submenu as $parent => $children ) {
             if ( ! is_array( $children ) ) {
@@ -688,11 +691,14 @@ add_action( 'admin_menu', function () {
                 unset( $submenu[ $parent ][ $key ] );
 
                 // Block direct URL access — both via the standard hook map
-                // and via the per-parent "no privileges" allowlist.
+                // and via the per-parent "no privileges" allowlist. A screen
+                // under a menu also answers to its old name (admin_page_<slug>),
+                // which goes too.
                 $hook = get_plugin_page_hookname( $entry[2], (string) $parent );
                 if ( $hook ) {
                     unset( $_registered_pages[ $hook ] );
                 }
+                unset( $_registered_pages[ 'admin_page_' . $entry[2] ] );
                 if ( ! isset( $_wp_submenu_nopriv[ (string) $parent ] ) ) {
                     $_wp_submenu_nopriv[ (string) $parent ] = [];
                 }

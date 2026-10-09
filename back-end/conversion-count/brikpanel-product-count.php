@@ -6,12 +6,15 @@ if( ! defined( 'ABSPATH' ) ) exit;
  *
  * Shared by the unified tracker endpoint and the legacy standalone AJAX
  * action below. Callers apply the master-switch / admin / bot guards.
+ *
+ * @param bool $apply_gate Run the 3.3.11 once-a-day cap here; the 3.3.30
+ *                         tracker decides from the "this is a person" mark.
  */
-function brikpanel_record_product_view() {
+function brikpanel_record_product_view( $apply_gate = true ) {
     // Server-side once-per-day cap (3.3.11), same reason as
     // brikpanel_record_visitor_view(): the local-storage latch is not there
     // for a client that starts every page from a blank profile.
-    if ( function_exists( 'brikpanel_daily_counter_allowed' ) && ! brikpanel_daily_counter_allowed( 'product' ) ) {
+    if ( $apply_gate && function_exists( 'brikpanel_daily_counter_allowed' ) && ! brikpanel_daily_counter_allowed( 'product' ) ) {
         return;
     }
 
@@ -43,6 +46,9 @@ function brikpanel_product_view() {
     // cached pages that still carry the old tracker JS after the merchant
     // turned tracking off or switched the consent gate on.
     if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'endpoint' ) ) {
+        wp_send_json_success();
+    }
+    if ( function_exists( 'brikpanel_legacy_tracker_allowed' ) && ! brikpanel_legacy_tracker_allowed() ) {
         wp_send_json_success();
     }
     if ( brikpanel_is_admin_user() ) {

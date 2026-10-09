@@ -6,7 +6,9 @@
 #brikpanel-order-notify-stack {
     position: fixed;
     top: 44px;
-    right: 20px;
+    /* Logical side: in right-to-left languages the admin menu is on the
+       right, and a physical `right` parked the toast on top of it. */
+    inset-inline-end: 20px;
     z-index: 999999;
     display: flex;
     flex-direction: column;
@@ -39,6 +41,22 @@
 .bp-order-notify.is-leaving {
     transform: translateX(120%);
     opacity: 0;
+}
+
+/* Right-to-left: the toast slides in from the left edge, where it sits. */
+body.rtl .bp-order-notify,
+body.rtl .bp-order-notify.is-leaving {
+    transform: translateX(-120%);
+}
+
+body.rtl .bp-order-notify.is-visible {
+    transform: translateX(0);
+}
+
+/* The subtitle has dir="auto" (an untranslated English line keeps its own
+   order); it still lines up with the title on the right. */
+body.rtl .bp-order-notify__title small {
+    text-align: right;
 }
 
 .bp-order-notify__head {
@@ -80,6 +98,21 @@
     font-weight: 400;
     color: #616161;
     margin-top: 2px;
+}
+
+/* "Awaiting payment" on a bank-transfer order that waits on-hold. */
+.bp-order-notify__tag {
+    display: inline-block;
+    margin-inline-start: 0.375rem;
+    padding: 0 0.375rem;
+    border-radius: 0.375rem;
+    background: #f1f1f1;
+    color: #616161;
+    font-size: 0.6875rem;
+    font-weight: 550;
+    line-height: 1.5;
+    vertical-align: 1px;
+    white-space: nowrap;
 }
 
 .bp-order-notify__close {
@@ -129,7 +162,7 @@
     color: #303030;
     font-size: 0.8125rem;
     font-weight: 600;
-    text-align: right;
+    text-align: end;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -204,8 +237,7 @@
 
 @media (max-width: 600px) {
     #brikpanel-order-notify-stack {
-        right: 10px;
-        left: 10px;
+        inset-inline: 10px;
         max-width: none;
         top: 56px;
     }

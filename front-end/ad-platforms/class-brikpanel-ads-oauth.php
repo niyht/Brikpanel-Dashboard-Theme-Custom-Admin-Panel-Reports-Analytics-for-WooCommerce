@@ -32,6 +32,9 @@ class Brikpanel_Ads_OAuth {
 	const NONCE_ACTION           = 'brikpanel_ads_nonce';
 	const RETURN_PARAM           = 'brikpanel_ads_oauth_return';
 
+	/** Per-user transient a failed return leaves for the settings page (see Brikpanel_Proxy_Errors). */
+	const FLASH_PREFIX = 'brikpanel_ads_oauth_err_';
+
 	/**
 	 * Scopes per platform.
 	 *
@@ -105,6 +108,12 @@ class Brikpanel_Ads_OAuth {
 			wp_send_json_error( [ 'message' => __( 'This connection is not available yet, it is pending platform approval.', 'brikpanel' ) ], 403 );
 		}
 
+		// The browser asks a second time, once, when the first request could
+		// not reach the proxy; that one goes over IPv4 only, and so does the
+		// return trip after the consent screen (see Brikpanel_Proxy_Errors).
+		$attempt = Brikpanel_Proxy_Errors::attempt_from_request();
+		$ipv4    = $attempt > 1;
+
 		$state     = bin2hex( random_bytes( 16 ) );
 		$verifier  = self::base64url( random_bytes( 32 ) );
 		$challenge = self::base64url( hash( 'sha256', $verifier, true ) );
@@ -114,14 +123,16 @@ class Brikpanel_Ads_OAuth {
 			? self::SCOPES_GOOGLE
 			: self::SCOPES_META;
 
+		$state_key = self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state );
 		set_transient(
-			self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state ),
+			$state_key,
 			[
 				'platform'   => $platform,
 				'verifier'   => $verifier,
 				'return_url' => $return_url,
 				'user_id'    => get_current_user_id(),
 				'created_at' => time(),
+				'ipv4'       => $ipv4,
 			],
 			self::STATE_TTL
 		);
@@ -145,28 +156,33 @@ class Brikpanel_Ads_OAuth {
 			'reauth'                => $reauth ? 1 : 0,
 		];
 
-		$resp = wp_remote_post( BRIKPANEL_ADS_PROXY_BASE . '/oauth/start', [
-			'timeout'   => 20,
-			'sslverify' => true,
-			'headers'   => [ 'Content-Type' => 'application/json', 'Accept' => 'application/json' ],
-			'body'      => wp_json_encode( $payload ),
-		] );
+		$resp = Brikpanel_Proxy_Errors::post(
+			BRIKPANEL_ADS_PROXY_BASE . '/oauth/start',
+			[
+				'timeout'   => Brikpanel_Proxy_Errors::START_TIMEOUT,
+				'sslverify' => true,
+				'headers'   => [ 'Content-Type' => 'application/json', 'Accept' => 'application/json' ],
+				'body'      => wp_json_encode( $payload ),
+			],
+			BRIKPANEL_ADS_PROXY_BASE,
+			$ipv4
+		);
 
 		$open = Brikpanel_Ads_Proxy::open( $resp, 'oauth/start (' . $platform . ')' );
-		if ( $open['wp_error'] ) {
-			Brikpanel_Ads_Logger::log_request_error( 'oauth', 'oauth/start (' . $platform . ')', $resp );
-			wp_send_json_error( [ 'message' => __( 'Could not reach the BrikPanel proxy. Please try again in a moment.', 'brikpanel' ) ], 502 );
-		}
-		$code = (int) $open['code'];
 		$body = $open['data'];
-		if ( ! $open['ok'] || empty( $body['authorize_url'] ) ) {
-			Brikpanel_Ads_Logger::log_request_error( 'oauth', 'oauth/start (' . $platform . ')', $resp, $code );
-			$message = ( $open['error'] === 'unsigned' || $open['error'] === 'bad_sig' || $open['error'] === 'stale' || $open['error'] === 'malformed' )
-				? __( 'The BrikPanel proxy returned an unverifiable response and was rejected.', 'brikpanel' )
-				: ( is_array( $body ) && ! empty( $body['message'] )
-					? (string) $body['message']
-					: __( 'Could not start OAuth: proxy returned an error.', 'brikpanel' ) );
-			wp_send_json_error( [ 'message' => $message ], 502 );
+		if ( $open['wp_error'] || ! $open['ok'] || empty( $body['authorize_url'] ) ) {
+			// Nothing will come back for this state.
+			delete_transient( $state_key );
+			Brikpanel_Ads_Logger::log_request_error(
+				'oauth',
+				'oauth/start (' . $platform . ', attempt ' . $attempt . ( $ipv4 ? ', IPv4' : '' ) . ')',
+				$resp,
+				$open['wp_error'] ? 0 : (int) $open['code']
+			);
+			// HTTP 200 on purpose. A front server (Cloudflare, an nginx proxy)
+			// replaces a 502 body with its own page, and the card then showed
+			// the browser's raw "Unexpected token '<' ... is not valid JSON".
+			wp_send_json_error( Brikpanel_Proxy_Errors::payload( $resp, $open, BRIKPANEL_ADS_PROXY_BASE, 'start', $attempt ) );
 		}
 
 		wp_send_json_success( [ 'authorize_url' => (string) $body['authorize_url'] ] );
@@ -261,17 +277,26 @@ class Brikpanel_Ads_OAuth {
 		$state   = sanitize_text_field( wp_unslash( $_GET['state'] ) );
 		$handoff = $has_return ? sanitize_text_field( wp_unslash( $_GET[ self::RETURN_PARAM ] ) ) : '';
 
+		$trans_key = self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state );
+
 		// Proxy-reported error short-circuit (e.g. user denied consent).
 		if ( $has_error ) {
 			$err = sanitize_text_field( wp_unslash( $_GET['brikpanel_ads_oauth_error'] ) );
 			Brikpanel_Ads_Logger::log( 'oauth', 'Proxy reported error during consent: ' . $err );
-			// Burn the pending state so a stale one cannot be replayed.
-			delete_transient( self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state ) );
-			$this->finish_with_notice( 'error', self::consent_error_message( $err ) );
+			// Read the platform before the state goes, so the message lands in
+			// the card the merchant clicked, then burn the pending state so a
+			// stale one cannot be replayed.
+			$pending = get_transient( $trans_key );
+			delete_transient( $trans_key );
+			$this->finish_with_notice(
+				'error',
+				Brikpanel_Proxy_Errors::consent_error_message( $err, 'ads' ),
+				[],
+				is_array( $pending ) ? (string) ( $pending['platform'] ?? '' ) : ''
+			);
 		}
 
-		$trans_key = self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state );
-		$stash     = get_transient( $trans_key );
+		$stash = get_transient( $trans_key );
 		if ( ! is_array( $stash ) || empty( $stash['verifier'] ) || empty( $stash['platform'] ) ) {
 			Brikpanel_Ads_Logger::log( 'oauth', 'OAuth return with unknown / expired state.' );
 			$this->finish_with_notice( 'error', __( 'OAuth session expired. Please try connecting again.', 'brikpanel' ) );
@@ -287,40 +312,43 @@ class Brikpanel_Ads_OAuth {
 		// Refuse to redeem / persist tokens for a platform that got locked
 		// (e.g. unlock was reverted mid-flow). Mirrors the ajax_start gate.
 		if ( function_exists( 'brikpanel_ads_platform_locked' ) && brikpanel_ads_platform_locked( $platform ) ) {
-			$this->finish_with_notice( 'error', __( 'This connection is not available yet, it is pending platform approval.', 'brikpanel' ) );
+			$this->finish_with_notice( 'error', __( 'This connection is not available yet, it is pending platform approval.', 'brikpanel' ), [], $platform );
 		}
 
 		// User identity binding — refuse to apply tokens for a different WP user.
 		if ( (int) ( $stash['user_id'] ?? 0 ) !== get_current_user_id() ) {
 			Brikpanel_Ads_Logger::log( 'oauth', 'OAuth return user mismatch.' );
-			$this->finish_with_notice( 'error', __( 'OAuth callback was for a different user. Aborted.', 'brikpanel' ) );
+			$this->finish_with_notice( 'error', __( 'OAuth callback was for a different user. Aborted.', 'brikpanel' ), [], $platform );
 		}
 
-		$resp = wp_remote_post( BRIKPANEL_ADS_PROXY_BASE . '/oauth/redeem', [
-			'timeout'   => 20,
-			'sslverify' => true,
-			'headers'   => [ 'Content-Type' => 'application/json', 'Accept' => 'application/json' ],
-			'body'      => wp_json_encode( [
-				'platform'      => $platform,
-				'handoff_token' => $handoff,
-				'site_url'      => home_url(),
-				'code_verifier' => $stash['verifier'],
-			] ),
-		] );
+		$ipv4 = ! empty( $stash['ipv4'] );
+		$resp = Brikpanel_Proxy_Errors::post(
+			BRIKPANEL_ADS_PROXY_BASE . '/oauth/redeem',
+			[
+				'timeout'   => 20,
+				'sslverify' => true,
+				'headers'   => [ 'Content-Type' => 'application/json', 'Accept' => 'application/json' ],
+				'body'      => wp_json_encode( [
+					'platform'      => $platform,
+					'handoff_token' => $handoff,
+					'site_url'      => home_url(),
+					'code_verifier' => $stash['verifier'],
+				] ),
+			],
+			BRIKPANEL_ADS_PROXY_BASE,
+			$ipv4
+		);
 
 		$open = Brikpanel_Ads_Proxy::open( $resp, 'oauth/redeem' );
-		if ( $open['wp_error'] ) {
-			Brikpanel_Ads_Logger::log_request_error( 'oauth', 'oauth/redeem', $resp );
-			$this->finish_with_notice( 'error', __( 'Could not reach the BrikPanel proxy.', 'brikpanel' ) );
-		}
-		$code = (int) $open['code'];
 		$body = $open['data'];
-		if ( ! $open['ok'] || empty( $body['access_token'] ) ) {
-			Brikpanel_Ads_Logger::log_request_error( 'oauth', 'oauth/redeem', $resp, $code );
-			if ( in_array( $open['error'], [ 'unsigned', 'bad_sig', 'stale', 'malformed' ], true ) ) {
-				$this->finish_with_notice( 'error', __( 'The BrikPanel proxy returned an unverifiable response and was rejected.', 'brikpanel' ) );
-			}
-			$this->finish_with_notice( 'error', __( 'OAuth redemption failed. Please try connecting again.', 'brikpanel' ) );
+		if ( $open['wp_error'] || ! $open['ok'] || empty( $body['access_token'] ) ) {
+			Brikpanel_Ads_Logger::log_request_error(
+				'oauth',
+				'oauth/redeem (' . $platform . ( $ipv4 ? ', IPv4' : '' ) . ')',
+				$resp,
+				$open['wp_error'] ? 0 : (int) $open['code']
+			);
+			$this->finish_with_notice( 'error', '', Brikpanel_Proxy_Errors::classify( $resp, $open ), $platform );
 		}
 
 		// What the token endpoint actually told us was granted. Kept separate
@@ -349,7 +377,7 @@ class Brikpanel_Ads_OAuth {
 		] );
 
 		if ( ! $ok ) {
-			$this->finish_with_notice( 'error', __( 'Could not save tokens. Please try again.', 'brikpanel' ) );
+			$this->finish_with_notice( 'error', __( 'Could not save tokens. Please try again.', 'brikpanel' ), [], $platform );
 		}
 
 		// The card must stop announcing a stopped history import the moment the
@@ -380,7 +408,7 @@ class Brikpanel_Ads_OAuth {
 			? self::verify_google_permissions( $platform, $echoed_scope )
 			: self::verify_meta_permissions( $platform );
 		if ( $permission_warning !== '' ) {
-			$this->finish_with_notice( 'error', $permission_warning );
+			$this->finish_with_notice( 'error', $permission_warning, [], $platform );
 		}
 
 		$label = $platform === Brikpanel_Ads_Tokens::PLATFORM_GOOGLE
@@ -394,43 +422,35 @@ class Brikpanel_Ads_OAuth {
 	// Helpers
 	// =========================================================================
 
-	private function finish_with_notice( $tone, $message ) {
-		$url = add_query_arg(
-			[
-				'page'                   => 'brikpanel-ad-platforms',
-				'brikpanel_ads_flash'    => $tone,
-				'brikpanel_msg'          => rawurlencode( $message ),
-			],
-			admin_url( 'admin.php' )
-		);
-		wp_safe_redirect( $url );
-		exit;
-	}
-
 	/**
-	 * Translate the platform's OAuth error slug into a sentence the merchant
-	 * can act on. Unknown slugs pass through so we never swallow a real cause.
+	 * Redirect back to the settings page with a query flag the JS picks up
+	 * to surface a toast. Exits the request.
 	 *
-	 * @param string $err
-	 * @return string
+	 * An error does not travel in the address bar: it is left as a one-time
+	 * record for this user (with the platform, so it lands in the right card),
+	 * and the page builds the box from it in the viewer's language.
+	 *
+	 * @param string $tone     success|error
+	 * @param string $message  A finished sentence; unused when $error is given.
+	 * @param array  $error    [code, kind, detail] from Brikpanel_Proxy_Errors::classify().
+	 * @param string $platform The platform the merchant was connecting, when known.
 	 */
-	private static function consent_error_message( $err ) {
-		switch ( strtolower( trim( (string) $err ) ) ) {
-			case 'access_denied':
-			case 'user_denied':
-				return __( 'Connection cancelled: the permission request was declined on the platform’s consent screen. Nothing was saved. Click Connect to try again.', 'brikpanel' );
-			case 'consent_required':
-			case 'interaction_required':
-				return __( 'The platform needs you to complete the consent screen. Click Connect to try again.', 'brikpanel' );
-			case 'server_error':
-			case 'temporarily_unavailable':
-				return __( 'The advertising platform is temporarily unavailable. Please try connecting again in a few minutes.', 'brikpanel' );
+	private function finish_with_notice( $tone, $message, array $error = [], $platform = '' ) {
+		$args = [
+			'page'                => 'brikpanel-ad-platforms',
+			'brikpanel_ads_flash' => $tone,
+		];
+		if ( $tone === 'error' ) {
+			$record = $error
+				? [ 'code' => (string) $error[0], 'kind' => (string) $error[1], 'detail' => (string) $error[2] ]
+				: [ 'message' => (string) $message ];
+			$record['platform'] = sanitize_key( (string) $platform );
+			Brikpanel_Proxy_Errors::store_flash( self::FLASH_PREFIX, $record );
+		} else {
+			$args['brikpanel_msg'] = rawurlencode( $message );
 		}
-		if ( $err === '' ) {
-			return __( 'The connection did not complete. Nothing was saved. Please try again.', 'brikpanel' );
-		}
-		/* translators: %s = raw error code reported by the advertising platform. */
-		return sprintf( __( 'The connection did not complete (%s). Nothing was saved. Please try again.', 'brikpanel' ), $err );
+		wp_safe_redirect( add_query_arg( $args, admin_url( 'admin.php' ) ) );
+		exit;
 	}
 
 	/**

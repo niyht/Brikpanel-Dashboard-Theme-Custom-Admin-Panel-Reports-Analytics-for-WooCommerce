@@ -380,11 +380,16 @@ class Brikpanel_Cache_Clear {
      * baked into the page, so flipping it has to reach the cache or the
      * change silently does nothing until the cache expires on its own.
      *
+     * @param string[] $skip Cache ids to leave alone, e.g. 'redis-object-cache'
+     *                       when only page caches carry what changed.
      * @return string[] Labels of the caches that were purged.
      */
-    public static function purge_all() {
+    public static function purge_all( array $skip = [] ) {
         $targets = [];
         foreach ( self::get_supported() as $key => $def ) {
+            if ( in_array( $key, $skip, true ) ) {
+                continue;
+            }
             if ( call_user_func( $def['detect'] ) ) {
                 $targets[ $key ] = $def;
             }

@@ -34,6 +34,18 @@
        readable. `clip` (not `hidden`) is required so it does NOT turn the
        dashboard into its own scroll container. */
     overflow-x: clip;
+    /* The redesigned cards (end of this file) lay out by the width the
+       dashboard really has, admin menu or not: a script writes bp-dv-lt*
+       classes here (and is-w* on the cards). Not a size container: in
+       Chromium a container holds position:fixed boxes, so the help bubbles
+       were cut by their card and a modal would open inside the page box. */
+    --bp-dv-line-2: #ebebeb;
+    --bp-dv-soft: #f7f7f7;
+    --bp-dv-track: #f1f1f1;
+    --bp-dv-quiet: #b5b5b5;
+    --bp-dv-good-bg: #e4f5e1;
+    --bp-dv-good-fg: #1a6b15;
+    --bp-dv-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Header
@@ -1153,7 +1165,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     grid-template-columns: 1fr 1fr;
 }
 
-
 .brikpanel-dash-panel {
     background: var(--bp-card);
     border: 1px solid var(--bp-border);
@@ -1182,63 +1193,62 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     height: 240px;
 }
 
-/* ===== Live Visitors ===== */
-.brikpanel-dash-live {
+/* Abandoned carts: one line under the funnel chart. While two panels share
+   the row, the chart gives up the line's height, so the funnel panel stays as
+   tall as Order rates beside it. The dot before an item sits in the column
+   gap; on a wrapped line that gap is outside the box and the dot is clipped
+   instead of opening the line. */
+.brikpanel-dash-cartab {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.75rem;
+    row-gap: 0.125rem;
+    min-width: 0;
+    margin: 0.5rem 0 0;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    color: var(--bp-text-secondary, #616161);
 }
 
-.brikpanel-dash-live-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.75rem;
-}
-
-.brikpanel-dash-live-header h2 {
-    margin: 0;
-}
-
-.brikpanel-dash-live-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2rem;
-    height: 1.5rem;
-    padding: 0 0.5rem;
-    background: var(--bp-success);
-    color: #fff;
-    border-radius: 1rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-/* Hidden once the server refuses the Live request: the count is not known. */
-.brikpanel-dash-live-count[hidden] {
+.brikpanel-dash-cartab[hidden] {
     display: none;
 }
 
-.brikpanel-dash-live-list {
-    flex: 1;
-    overflow-y: auto;
-    max-height: 260px;
+.brikpanel-dash-cartab-label {
+    color: var(--bp-text, #303030);
+    font-weight: 550;
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
-.brikpanel-dash-live-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.625rem 0;
-    border-bottom: 1px solid var(--bp-border);
-    font-size: 0.8125rem;
-    cursor: default;
+.brikpanel-dash-cartab-item {
     position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    min-width: 0;
 }
 
-.brikpanel-dash-live-item:last-child {
-    border-bottom: none;
+.brikpanel-dash-cartab-item strong {
+    color: var(--bp-text, #303030);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
+
+.brikpanel-dash-cartab-sep::before {
+    content: "\00B7";
+    position: absolute;
+    inset-inline-start: -0.5rem;
+    font-weight: 700;
+}
+
+.brikpanel-dash-cartab .brikpanel-dash-card-delta {
+    min-height: 0;
+}
+
+/* ===== Live Visitors ===== */
 
 /* Device icon column. Fixed width so rows with no device recorded (entries
    written before the feature shipped, up to one transient cycle) keep the
@@ -1257,121 +1267,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     width: 14px;
     height: 14px;
     display: block;
-}
-
-.brikpanel-dash-live-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    overflow: hidden;
-    flex: 1;
-    min-width: 0;
-}
-
-.brikpanel-dash-live-name {
-    font-weight: 600;
-    color: var(--bp-text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.brikpanel-dash-live-ip {
-    font-size: 0.6875rem;
-    color: var(--bp-text-secondary, #616161);
-    font-family: monospace;
-    margin-left: 0.375rem;
-    font-weight: 400;
-}
-
-/* The page name and the source line carry dir="auto", so each is cut at the
-   end of its own text. match-parent keeps them on the screen's side: an
-   English name on a right-to-left screen still sits on the right. Chrome only
-   knows the -webkit- spelling, so both are written. */
-.brikpanel-dash-live-page {
-    color: var(--bp-text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.75rem;
-    text-align: -webkit-match-parent; /* Chrome, Safari */
-    text-align: match-parent;
-}
-
-/* Where the visitor came from, under the page: the channel as a small pill
-   (same look as the Traffic Sources list), then the source, campaign and
-   search term, cut with an ellipsis when long. The full details are in the
-   hover card. */
-.brikpanel-dash-live-src {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    min-width: 0;
-    margin-top: 0.125rem;
-    font-size: 0.6875rem;
-    color: var(--bp-text-secondary, #616161);
-}
-
-.brikpanel-dash-live-src-ch {
-    flex: none;
-    font-weight: 550;
-    line-height: 1.125rem;
-    color: var(--bp-text-secondary);
-    background: var(--bp-bg, #f1f1f1);
-    border: 1px solid var(--bp-border, #e3e3e3);
-    border-radius: 999px;
-    padding: 0 0.4375rem;
-    white-space: nowrap;
-}
-
-.brikpanel-dash-live-src-name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: -webkit-match-parent; /* Chrome, Safari */
-    text-align: match-parent;
-}
-
-.brikpanel-dash-live-badge {
-    display: inline-block;
-    padding: 0.1875rem 0.5rem;
-    border-radius: 1rem;
-    font-size: 0.6875rem;
-    font-weight: 550;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.brikpanel-dash-live-badge.browsing {
-    background: #f1f1f1;
-    color: var(--bp-text-secondary, #616161);
-}
-
-.brikpanel-dash-live-badge.added-to-cart {
-    background: #fff3cd;
-    color: #856404;
-}
-
-.brikpanel-dash-live-badge.order-received {
-    background: #e4f5e1;
-    color: #1a6b15;
-}
-
-/* Live visitor tooltip */
-.brikpanel-dash-tooltip {
-    position: absolute;
-    z-index: 99999;
-    background: var(--bp-primary);
-    color: #fff;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
-    font-size: 0.75rem;
-    line-height: 1.6;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    max-width: 300px;
-    word-break: break-all;
-    pointer-events: none;
 }
 
 /* ===== Tables ===== */
@@ -1438,78 +1333,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     color: var(--bp-text-secondary, #616161);
     font-weight: 550;
     width: 2rem;
-}
-
-/* Order status badges. The text is WooCommerce's own status name; only a
-   status it does not list falls back to the short name, capitalized. A badge
-   never breaks (translated names such as "На удержании" are long); a table
-   that cannot fit then turns into cards. */
-.brikpanel-dash-status {
-    display: inline-block;
-    padding: 0.125rem 0.5rem;
-    border-radius: 1rem;
-    font-size: 0.6875rem;
-    font-weight: 550;
-    white-space: nowrap;
-}
-
-.brikpanel-dash-status--slug {
-    text-transform: capitalize;
-}
-
-/* Recent Orders: the order's date under its number. */
-.brikpanel-dash-order-date {
-    display: block;
-    margin-top: 0.125rem;
-    font-size: 0.75rem;
-    font-weight: 400;
-    color: var(--bp-text-secondary);
-}
-
-.brikpanel-dash-total-base {
-    margin-top: 0.125rem;
-    font-size: 0.6875rem;
-    color: var(--bp-text-secondary, #616161);
-    white-space: nowrap;
-}
-
-/* Recent Orders: units on the order, under its total (same weight as the
-   date under the number). */
-.brikpanel-dash-order-items {
-    display: block;
-    margin-top: 0.125rem;
-    font-size: 0.75rem;
-    font-weight: 400;
-    color: var(--bp-text-secondary);
-    white-space: nowrap;
-}
-
-/* The same count beside the customer: only the two-line rows below show it. */
-.brikpanel-dash-order-who-items {
-    display: none;
-}
-
-.brikpanel-dash-status.completed,
-.brikpanel-dash-status.processing {
-    background: #e4f5e1;
-    color: #1a6b15;
-}
-
-.brikpanel-dash-status.on-hold,
-.brikpanel-dash-status.pending {
-    background: #fff3cd;
-    color: #856404;
-}
-
-.brikpanel-dash-status.cancelled,
-.brikpanel-dash-status.failed {
-    background: #fce4e4;
-    color: #c62828;
-}
-
-.brikpanel-dash-status.refunded {
-    background: #f1f1f1;
-    color: var(--bp-text-secondary);
 }
 
 /* ===== Globe - Order Locations ===== */
@@ -1924,14 +1747,6 @@ button.brikpanel-dash-guide__item:focus-visible {
     }
 }
 
-/* Customer segments (RFM): the donut beside its legend. */
-.brikpanel-dash-rfm {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    flex-wrap: wrap;
-}
-
 /* Loading skeleton */
 .brikpanel-dash-card-value.loading,
 .brikpanel-dash-loading {
@@ -1946,173 +1761,6 @@ button.brikpanel-dash-guide__item:focus-visible {
 @keyframes brikpanel-shimmer {
     0%   { background-position: 200% 0; }
     100% { background-position: -200% 0; }
-}
-
-/* ===== Device breakdown widget ===== */
-.brikpanel-device-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-    padding: 0.5rem 0;
-}
-
-.brikpanel-device-row {
-    display: grid;
-    grid-template-columns: 80px 1fr 40px 56px;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.brikpanel-device-label {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--bp-text);
-}
-
-.brikpanel-device-bar-wrap {
-    background: var(--bp-border);
-    border-radius: 999px;
-    height: 6px;
-    overflow: hidden;
-}
-
-.brikpanel-device-bar {
-    background: var(--bp-text);
-    height: 100%;
-    border-radius: 999px;
-    transition: width 0.4s ease;
-    min-width: 2px;
-}
-
-.brikpanel-device-pct {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--bp-text);
-    text-align: right;
-}
-
-.brikpanel-device-count {
-    font-size: 0.75rem;
-    text-align: right;
-}
-
-/* ===== Traffic Sources (third tab in the Visitors-by-Device panel) ===== */
-.brikpanel-source-referrers {
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--bp-border, #e3e3e3);
-}
-
-.brikpanel-sources-subhead {
-    margin: 0 0 0.5rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: none;
-    letter-spacing: normal;
-    color: var(--bp-text-secondary, #616161);
-}
-
-.brikpanel-referrer-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-}
-
-.brikpanel-referrer-row {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--bp-border, #e3e3e3);
-}
-
-.brikpanel-referrer-row:last-child {
-    border-bottom: none;
-}
-
-.brikpanel-referrer-host {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--bp-text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.brikpanel-referrer-channel {
-    font-size: 0.6875rem;
-    font-weight: 550;
-    color: var(--bp-text-secondary, #616161);
-    background: var(--bp-bg, #f1f1f1);
-    border: 1px solid var(--bp-border, #e3e3e3);
-    border-radius: 999px;
-    padding: 0.0625rem 0.5rem;
-    white-space: nowrap;
-}
-
-.brikpanel-referrer-hits {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    text-align: right;
-    min-width: 2.5rem;
-}
-
-/* ===== Returns & Refunds widget ===== */
-.brikpanel-dash-returns {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
-}
-
-.brikpanel-dash-returns-kpi {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-}
-
-.brikpanel-dash-returns-rate {
-    font-size: 1.5rem;
-    font-weight: 700;
-    line-height: 1;
-}
-
-.brikpanel-dash-returns-label {
-    font-size: 0.8125rem;
-    color: var(--bp-text-secondary);
-}
-
-.brikpanel-dash-badge-ok      { color: var(--bp-success, #1a8917); }
-.brikpanel-dash-badge-warning  { color: #a35200; } /* 5.6:1 on the card; #d07000 read at 3.5:1 */
-.brikpanel-dash-badge-danger   { color: var(--bp-error, #d72c0d); }
-
-/* ===== Customer LTV widget (replaces Returns & Refunds panel) ===== */
-.brikpanel-dash-ltv {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
-}
-
-.brikpanel-dash-ltv-headline {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-}
-
-.brikpanel-dash-ltv-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    line-height: 1;
-    color: #303030;
-}
-
-.brikpanel-dash-ltv-label {
-    font-size: 0.8125rem;
-    color: var(--bp-text-secondary, #616161);
 }
 
 /* ===== Globe location view tabs ===== */
@@ -2157,18 +1805,6 @@ button.brikpanel-dash-guide__item:focus-visible {
 }
 
 /* ===== Panel head row (h2 + inline tabs/actions) ===== */
-.brikpanel-dash-panel-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin: 0 0 1rem;
-    flex-wrap: wrap;
-}
-
-.brikpanel-dash-panel-head h2 {
-    margin: 0;
-}
 
 /* Order Rates head: units sold, quiet, beside the title. */
 .brikpanel-dash-rates-items {
@@ -2323,10 +1959,7 @@ button.brikpanel-dash-guide__item:focus-visible {
     }
 
     /* Hide Source column in Recent Orders on mobile */
-    #recent-orders-table .brikpanel-dash-table th:nth-child(3),
-    #recent-orders-table .brikpanel-dash-table td:nth-child(3) {
-        display: none;
-    }
+    
 
     .brikpanel-dash-table-wrap {
         overflow-x: auto;
@@ -2341,7 +1974,6 @@ button.brikpanel-dash-guide__item:focus-visible {
        B6, brikpanel-fit-table.js). */
     .brikpanel-dash-table td.rank,
     .brikpanel-dash-table td:last-child,
-    .brikpanel-dash-table .brikpanel-dash-status,
     .brikpanel-dash-table .brikpanel-dash-source { white-space: nowrap; }
 
     .brikpanel-dash-globe-wrap {
@@ -2681,7 +2313,6 @@ button.brikpanel-dash-guide__item:focus-visible {
     border-bottom: 1px solid #f1f1f1;
     padding-bottom: 0.375rem;
 }
-
 
 /* =============================================================================
    Marketplace Analytics (BrikMarket integration)
@@ -3123,7 +2754,6 @@ button.brikpanel-dash-guide__item:focus-visible {
     display: none;
 }
 
-
 /* =========================================================================
    EXPORT CSV BUTTON  (secondary style — mirrors the design system)
    ========================================================================= */
@@ -3169,6 +2799,27 @@ button.brikpanel-dash-guide__item:focus-visible {
     display: inline-flex;
     align-items: center;
     color: var(--bp-text-secondary, #616161);
+}
+
+/* "Keep screen on" (phones). Never in the unfolded row on wide screens: the
+   folded More menu shows it (brikpanel-overflow.css, :not([hidden])), and
+   brikpanel-wake-lock.js unhides it only on phones that can keep the screen on. */
+.brikpanel-wake-toggle {
+    display: none;
+}
+
+.brikpanel-wake-toggle[hidden] {
+    display: none;
+}
+
+.brikpanel-wake-toggle__icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--bp-text-secondary, #616161);
+}
+
+.brikpanel-wake-toggle[aria-pressed="true"] .brikpanel-wake-toggle__icon {
+    color: #1a8917;
 }
 
 /* The ad platforms link beside Export: the same secondary button. Its style
@@ -3227,6 +2878,17 @@ button.brikpanel-dash-guide__item:focus-visible {
     color: var(--bp-text-placeholder, #8a8a8a);
 }
 
+/* "Customize" (the Dashboard sections setting) at the far end of the date
+   line. Its look is the shared link button (brikpanel-ui.css); only the place
+   is set here. */
+.brikpanel-dash-customize {
+    margin-inline-start: auto;
+}
+
+.brikpanel-dash-customize-icon {
+    flex: none;
+    color: var(--bp-text-secondary, #616161);
+}
 
 /* Stacked dashboard tables (field test B6; brikpanel-fit-table.css draws the
    card). Narrower tiles than the default keep two per line in a phone-width
@@ -3252,132 +2914,1997 @@ button.brikpanel-dash-guide__item:focus-visible {
     background-color: transparent;
 }
 
-/* Recent Orders on a phone or in a half-width card: two lines per order, the
-   way Shopify lists orders on a phone (user choice, 2026-09-26). Five orders
-   went from 947px of labelled tiles to about 350px.
-     line 1: #number  date ............................ total
-     line 2: customer · 3 items .......... [source] [status]
-   The labels go (the layout says what each value is). Source keeps the
-   phone rule above that hides it at 600px and below. A wrapping flex row,
-   not a grid: each line shares its width only with its own cells, so a long
-   status name never squeezes the order number. RTL mirrors by itself. */
-#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr:not([hidden]) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0;
-    padding: 0.75rem 0.25rem;
+/* =============================================================================
+   Redesigned cards (October 2026)
+   Store and money rows, Sales over time, Live visitors, Conversion funnel,
+   Order rates, Products, Recent orders, Visitors, Customers, Low stock and
+   lifetime value. The charts are SVG drawn by brikpanel-dashboard-viz.js; their
+   colours live here and nowhere else. Layout follows the space the dashboard
+   really has, measured by the script (bp-dv-lt* on the page, is-w* on the
+   cards), not the window: the admin menu takes 160 to 220px of it. No
+   container queries: a container is the containing block of the fixed help
+   bubbles and windows inside it, which then get cut or misplaced.
+   ============================================================================= */
+
+/* ---- Store cards and money cards ---- */
+/* The store row: the shared tiles helper picks 6, 3 + 3 or 2 + 2 + 2 (the
+   widest the figures fit) and writes the columns inline. */
+.bp-dv-kpis {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-auto-rows: 1fr;
+    gap: 0.875rem;
+    margin-bottom: 1.25rem;
 }
 
-/* Ends line 1 whatever its width. */
-#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr:not([hidden])::after {
-    content: "";
-    order: 3;
-    flex-basis: 100%;
+.brikpanel-dash-cards.brikpanel-dash-cards-profit {
+    grid-auto-rows: 1fr;
 }
 
-#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td[data-bp-label]::before {
-    display: none;
-}
-
-/* The number is never cut: with no room the date drops under it, and a
-   number wider than the whole line breaks as a last resort. Line 1 lines up
-   on the first baseline, so a "≈ base currency" line under the total hangs
-   below instead of pushing the number down. */
-#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td.brikpanel-fit-lead {
-    order: 1;
-    flex: 1 1 0;
-    align-self: baseline;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    column-gap: 0.375rem;
+.brikpanel-dash-card.bp-dv-kpi {
+    position: relative;
     min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    font-weight: 600;
 }
 
-#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-date {
-    display: inline;
-    margin: 0;
+.bp-dv-kpi > .brikpanel-dash-card-label {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+    font-size: clamp(0.71875rem, 0.4rem + 0.42vw, 0.8125rem);
     white-space: nowrap;
 }
 
-#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td.brikpanel-fit-headline {
-    order: 2;
+/* Not cut with "…" (the shared label rule above does that): a name that
+   does not fit sticks out, which tells the tiles helper to give the cards
+   more room (2 + 2 + 2 on a phone). */
+.bp-dv-kpi > .brikpanel-dash-card-label .brikpanel-dash-card-label-text {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.bp-dv-kpi > .brikpanel-dash-card-label > :not(.brikpanel-dash-card-label-text) {
     flex: none;
-    align-self: baseline;
-    padding-inline-start: 0.75rem;
-    text-align: end;
+}
+
+/* The figure scales with its card and never breaks; a figure that does not
+   fit overflows, which is how the tiles helper sees a row is too tight. */
+.bp-dv-kpi .brikpanel-dash-card-value {
+    font-size: clamp(1rem, 0.5rem + 0.85vw, 1.5rem);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+}
+
+/* One size down for a row whose longest figure would not fit otherwise
+   (is-long, set by the script only when this size keeps the row whole). */
+[data-bp-tiles].is-long > .bp-dv-kpi .brikpanel-dash-card-value {
+    font-size: clamp(0.9375rem, 0.4rem + 0.72vw, 1.3125rem);
+}
+
+/* The head's buttons hang 6px past the label line (.brikpanel-dash-card-tools,
+   margin-inline-end); the head reaches into the card's padding by as much, so
+   nothing sticks out of it and the tiles helper does not read a full row. */
+.bp-dv-kpi > .brikpanel-dash-card-head {
+    margin-inline-end: -0.375rem;
+    padding-inline-end: 0.375rem;
+}
+
+.bp-dv-kpi-main {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.625rem;
+    min-width: 0;
+}
+
+/* The small line gives way first (it shrinks, never pushes the figure out);
+   a card too narrow for it hides it (is-narrow, set by the script). */
+.bp-dv-spark {
+    flex: 0 1 84px;
+    min-width: 0;
+    height: 30px;
+    margin-bottom: 3px;
+    overflow: hidden;
+}
+
+.bp-dv-spark.is-empty {
+    display: none;
+}
+
+.bp-dv-spark-svg {
+    display: block;
+    overflow: visible;
+}
+
+.bp-dv-spark-line {
+    fill: none;
+    stroke: #8a8a8a;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.bp-dv-spark-area {
+    fill: rgba(48, 48, 48, 0.06);
+}
+
+.bp-dv-spark-end {
+    fill: #303030;
+    stroke: #fff;
+    stroke-width: 1.5;
+}
+
+.bp-dv-kpi.is-narrow .bp-dv-spark {
+    display: none;
+}
+
+/* Below 800px of dashboard (a tablet) the store cards take 3 + 3, as in
+   the approved design: an empty line of 8.5rem inside each card tells the
+   tiles helper six columns are too narrow there. One pixel tall (an empty
+   box adds no overflow), its height and the card's gap taken back. */
+.brikpanel-dashboard.bp-dv-lt800 .bp-dv-kpis > .bp-dv-kpi::after {
+    content: "";
+    display: block;
+    width: 8.5rem;
+    height: 1px;
+    margin-top: calc(-0.25rem - 1px);
+}
+
+/* Six store cards on a small laptop leave no room for the "?" beside
+   Visitors and Conversion rate; the same note is in the funnel's title and
+   on the date line. A media query, not a measured class: the tiles helper
+   tries six columns with whatever is on screen at that moment. */
+@media (min-width: 783px) and (max-width: 1180px) {
+    .bp-dv-kpi > .brikpanel-dash-card-label .brikpanel-dash-hint {
+        display: none;
+    }
+}
+
+.brikpanel-dashboard.bp-dv-lt1300 .bp-dv-kpis > .brikpanel-dash-card,
+.brikpanel-dashboard.bp-dv-lt1300 .brikpanel-dash-cards-profit > .brikpanel-dash-card {
+    padding: 1rem;
+}
+
+.brikpanel-dashboard.bp-dv-lt1000 .bp-dv-kpis > .brikpanel-dash-card,
+.brikpanel-dashboard.bp-dv-lt1000 .brikpanel-dash-cards-profit > .brikpanel-dash-card {
+    padding: 0.875rem 0.75rem;
+}
+
+/* A row of one card per line (the tiles helper's last resort): the name and
+   the figure side by side. */
+.bp-dv-kpis.is-tiles-list,
+.brikpanel-dash-cards-profit.is-tiles-list {
+    gap: 0.5rem;
+}
+
+.bp-dv-kpis.is-tiles-list .bp-dv-spark {
+    display: none;
+}
+
+/* ---- Rows and cards ---- */
+.bp-dv-row {
+    display: grid;
+    gap: 0.875rem;
+    margin-bottom: 1.25rem;
+}
+
+.bp-dv-row--21 {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.bp-dv-row--11 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* A narrow card before a wide one (Live visitors moved above Sales over
+   time): the mirror of --21. */
+.bp-dv-row--12 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.bp-dv-row--1 {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+/* One card per line below 920px of dashboard; the media query covers the
+   first paint before the script has measured. */
+.brikpanel-dashboard.bp-dv-lt920 .bp-dv-row--21,
+.brikpanel-dashboard.bp-dv-lt920 .bp-dv-row--12,
+.brikpanel-dashboard.bp-dv-lt920 .bp-dv-row--11 {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 960px) {
+    .bp-dv-row--21,
+    .bp-dv-row--12,
+    .bp-dv-row--11 { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Subscriptions has no bottom margin of its own (it used to sit at the end);
+   a box placed right under it keeps the usual gap. */
+.brikpanel-dash-subs-panel + .bp-dv-row,
+.brikpanel-dash-subs-panel + .brikpanel-dash-row,
+.brikpanel-dash-subs-panel + .brikpanel-dash-profit,
+.brikpanel-dash-subs-panel + .bp-dv-kpis,
+.brikpanel-dash-subs-panel + .brikpanel-dash-marketplace {
+    margin-top: 1.25rem;
+}
+
+.bp-dv-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 1.25rem 1.5rem;
+    background: var(--bp-card);
+    border: 1px solid var(--bp-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.brikpanel-dashboard.bp-dv-lt560 .bp-dv-card {
+    padding: 1rem;
+}
+
+.bp-dv-card-h {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.375rem 0.625rem;
+    min-height: 1.625rem;
+    margin-bottom: 1rem;
+}
+
+.bp-dv-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0;
+    padding: 0;
+    color: var(--bp-text);
+    font-size: var(--brikpanel-card-title-size, 0.9375rem);
+    font-weight: var(--brikpanel-card-title-weight, 600);
+    line-height: 1.3;
+}
+
+.bp-dv-aside {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    min-width: 0;
+    max-width: 100%;
+    margin-inline-start: auto;
+    color: var(--bp-text-secondary);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+}
+
+.bp-dv-aside b {
+    color: var(--bp-text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-aside .brikpanel-dash-rates-items::before {
+    content: "\00B7";
+    margin-inline-end: 0.375rem;
+}
+
+.bp-dv-card-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+/* A list starts right under the head; only a message (nothing to list)
+   sits in the middle of the card. */
+.bp-dv-list-body:has(> ul) {
+    justify-content: flex-start;
+}
+
+.bp-dv-card-foot {
+    margin-top: auto;
+    padding-top: 0.75rem;
+}
+
+.bp-dv-muted {
+    color: var(--bp-text-secondary);
+}
+
+.bp-dv-note {
+    margin: -0.5rem 0 0.5rem;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+}
+
+.bp-dv-card .brikpanel-dash-empty {
+    margin: 0;
+}
+
+/* "View all ›": the shared link look (brikpanel-ui.css); only the gap to
+   the chevron is set here. */
+.bp-dv-more {
+    gap: 0.125rem;
+}
+
+.bp-dv-chev {
+    flex: none;
+    color: var(--bp-text-secondary);
+}
+
+[dir="rtl"] .bp-dv-more .bp-dv-chev {
+    transform: scaleX(-1);
+}
+
+/* ---- Tabs (a scroll strip: one line, scrolls inside itself) ---- */
+.bp-dv-tabs {
+    gap: 2px;
+    padding: 2px;
+    background: #f1f1f1;
+    border-radius: 0.5rem;
+}
+
+.bp-dv-tab {
+    padding: 0.3125rem 0.6875rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--bp-text-secondary);
+    font-size: 0.78125rem;
+    font-weight: 550;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.bp-dv-tab:hover {
+    color: var(--bp-text);
+}
+
+.bp-dv-tab[aria-selected="true"] {
+    background: #fff;
+    color: var(--bp-text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.bp-dv-tab:focus {
+    outline: none;
+}
+
+.bp-dv-tab:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: -2px;
+}
+
+.bp-dv-panel[hidden] {
+    display: none;
+}
+
+/* ---- Change arrows ---- */
+.bp-dv-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.75rem;
+    font-weight: 600;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
 
-#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-items {
+.bp-dv-delta.is-up {
+    color: var(--bp-success);
+}
+
+.bp-dv-delta.is-down {
+    color: var(--bp-error);
+}
+
+.bp-dv-delta[hidden] {
     display: none;
 }
 
-/* The name shortens with "…", the item count after it stays whole. The
-   6rem start width keeps the name readable: when it and the badges do not
-   fit, the status moves to a line of its own. (A zero start width would also
-   fit beside the line break above and sit there with no width at all.) */
-#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td.brikpanel-dash-order-who {
-    order: 4;
-    flex: 1 1 6rem;
+/* ---- Sales over time ---- */
+.bp-dv-sales-top {
     display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin: -0.25rem 0 0.625rem;
+}
+
+.bp-dv-sales-total {
+    display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    min-width: 0;
-    margin-top: 0.25rem;
-    white-space: nowrap;
-    overflow-wrap: normal;
+    gap: 0.5rem;
+}
+
+.bp-dv-sales-figure {
+    font-size: 1.375rem;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+}
+
+.bp-dv-sales-total .bp-dv-muted {
+    font-size: 0.78125rem;
+}
+
+.bp-dv-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.875rem;
+    color: var(--bp-text-secondary);
     font-size: 0.75rem;
+}
+
+.bp-dv-legend[hidden] {
+    display: none;
+}
+
+.bp-dv-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    white-space: nowrap;
+}
+
+.bp-dv-legend > span[hidden] {
+    display: none;
+}
+
+.bp-dv-legend i {
+    width: 16px;
+    border-top: 2px solid #303030;
+}
+
+.bp-dv-legend i.bp-dv-legend-prev {
+    border-top: 2px dashed var(--bp-dv-quiet);
+}
+
+.bp-dv-chart {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 250px;
+    touch-action: pan-y;
+}
+
+.bp-dv-chart[hidden] {
+    display: none;
+}
+
+.bp-dv-chart:focus {
+    outline: none;
+}
+
+.bp-dv-chart:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: 4px;
+    border-radius: 0.375rem;
+}
+
+.bp-dv-ch {
+    display: block;
+    overflow: visible;
+}
+
+.bp-dv-ch-grid { stroke: #efefef; stroke-width: 1; }
+.bp-dv-ch-axis { fill: #616161; font-size: 11px; font-family: inherit; }
+.bp-dv-ch-line { fill: none; stroke: #303030; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.bp-dv-ch-prev { fill: none; stroke: var(--bp-dv-quiet); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.bp-dv-ch-part { fill: none; stroke: #303030; stroke-width: 2; stroke-dasharray: 2 4; stroke-linecap: round; }
+.bp-dv-ch-cross { stroke: #303030; stroke-opacity: 0.25; stroke-width: 1; }
+.bp-dv-ch-dot { fill: #303030; stroke: #fff; stroke-width: 2; }
+.bp-dv-ch-dot-prev { fill: var(--bp-dv-quiet); stroke: #fff; stroke-width: 2; }
+.bp-dv-ch-single { fill: #303030; }
+.bp-dv-ch-stop-a { stop-color: #303030; stop-opacity: 0.12; }
+.bp-dv-ch-stop-b { stop-color: #303030; stop-opacity: 0; }
+
+/* ---- Live visitors ---- */
+.bp-dv-live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #f3f3f3;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.bp-dv-live-pill[hidden] {
+    display: none;
+}
+
+.bp-dv-live-pill i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--bp-dv-quiet);
+}
+
+.bp-dv-live-pill.is-on {
+    background: #f0faf0;
+    color: var(--bp-dv-good-fg);
+    box-shadow: inset 0 0 0 1px #d5ecd4;
+}
+
+.bp-dv-live-pill.is-on i {
+    background: var(--bp-success);
+    animation: bp-dv-live-pulse 2s ease-out infinite;
+}
+
+@keyframes bp-dv-live-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(26, 137, 23, 0.45); }
+    70% { box-shadow: 0 0 0 6px rgba(26, 137, 23, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(26, 137, 23, 0); }
+}
+
+.bp-dv-live-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.bp-dv-live-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.625rem;
+    background: var(--bp-dv-soft);
+    color: var(--bp-text-secondary);
+    font-size: 0.8125rem;
+}
+
+.bp-dv-live-empty svg {
+    flex: none;
+    color: #8a8a8a;
+}
+
+.bp-dv-live-list {
+    display: grid;
+}
+
+/* "N more on the store" opened: the whole list, scrolling inside the card. */
+.bp-dv-live-list.is-open {
+    max-height: 22rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.bp-dv-live-row {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    padding: 0.5rem 0;
+    border: 0;
+    border-top: 1px solid var(--bp-dv-line-2);
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8125rem;
+    text-align: start;
+    cursor: default;
+}
+
+.bp-dv-live-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.bp-dv-live-row:focus {
+    outline: none;
+}
+
+.bp-dv-live-row:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+}
+
+.bp-dv-live-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.bp-dv-live-who,
+.bp-dv-live-what {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: -webkit-match-parent; /* Chrome, Safari */
+    text-align: match-parent;
+}
+
+.bp-dv-live-who {
+    color: var(--bp-text);
+    font-weight: 550;
+}
+
+.bp-dv-live-what {
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+}
+
+.bp-dv-live-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.bp-dv-live-chip {
+    padding: 0 0.4375rem;
+    border-radius: 999px;
+    background: #fff1d6;
+    color: #7a5200;
+    font-weight: 550;
+    line-height: 1.125rem;
+}
+
+.bp-dv-live-chip.is-order {
+    background: var(--bp-dv-good-bg);
+    color: var(--bp-dv-good-fg);
+}
+
+.bp-dv-live-ago {
     color: var(--bp-text-secondary);
 }
 
-#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-who-name {
+.bp-dv-live-more {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.5625rem 0 0;
+    border: 0;
+    border-top: 1px solid var(--bp-dv-line-2);
+    background: none;
+    color: var(--bp-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    text-align: start;
+    cursor: pointer;
+}
+
+.bp-dv-live-more:hover {
+    text-decoration: underline;
+}
+
+.bp-dv-live-more .bp-dv-chev.is-up {
+    transform: rotate(180deg);
+}
+
+/* With visitors on the store, today's figures shrink to one line at the bottom. */
+.bp-dv-today-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.875rem;
+    margin: auto 0 0;
+    padding-top: 0.75rem;
+    color: var(--bp-text-secondary);
+    font-size: 0.78125rem;
+}
+
+.bp-dv-live-list + .bp-dv-today-line,
+.bp-dv-live-more + .bp-dv-today-line {
+    margin-top: auto;
+    border-top: 1px solid var(--bp-dv-line-2);
+}
+
+.bp-dv-today-line-h {
+    margin-inline-end: auto;
+    font-weight: 600;
+}
+
+.bp-dv-today-line b,
+.bp-dv-today-figs b,
+.bp-dv-last-order b {
+    color: var(--bp-text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-today-h {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: auto 0 0.5rem;
+    padding-top: 1rem;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.bp-dv-today-figs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.bp-dv-today-figs > div {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-who-items {
-    display: inline;
-    flex: none;
+.bp-dv-today-figs > div > span {
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
 }
 
-#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-order-who-items::before {
-    content: "\00B7";
-    margin-inline: 0.3125rem;
-}
-
-/* A long source name ("Referral: news.example.com") shortens with "…"; the
-   badge's title holds the whole name. */
-#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td:nth-child(3) {
-    order: 5;
-    flex: 0 1 auto;
-    min-width: 0;
-    max-width: 8rem;
-    margin-top: 0.25rem;
-    margin-inline-start: 0.5rem;
-}
-
-/* The status gives way last: a very long name shortens with "…". */
-#recent-orders-table .brikpanel-dash-table.is-stacked > tbody > tr > td:nth-child(4) {
-    order: 6;
-    flex: 0 1 auto;
-    min-width: 0;
-    margin-top: 0.25rem;
-    margin-inline-start: 0.5rem;
-}
-
-#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-status,
-#recent-orders-table .brikpanel-dash-table.is-stacked .brikpanel-dash-source {
-    display: inline-block;
-    box-sizing: border-box;
-    max-width: 100%;
-    overflow: hidden;
+.bp-dv-today-figs b {
+    font-size: 1.0625rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
     white-space: nowrap;
+}
+
+.bp-dv-hours-box {
+    margin-top: 0.75rem;
+    touch-action: pan-y;
+}
+
+.bp-dv-hours-box:focus {
+    outline: none;
+}
+
+.bp-dv-hours-box:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: 3px;
+    border-radius: 0.25rem;
+}
+
+.bp-dv-hours {
+    display: block;
+    overflow: visible;
+}
+
+.bp-dv-hb { fill: #d6d6d6; }
+.bp-dv-hb.is-now { fill: #303030; }
+.bp-dv-hb.is-later { fill: #f1f1f1; }
+.bp-dv-hb.is-hl { fill: #616161; }
+.bp-dv-hb-label { fill: #616161; font-size: 10.5px; font-family: inherit; }
+
+.bp-dv-last-order {
+    margin: 0.75rem 0 0;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+}
+
+.bp-dv-last-order a {
+    color: var(--bp-text);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: #c9c9c9;
+    text-underline-offset: 2px;
+}
+
+.bp-dv-last-order a:hover {
+    text-decoration-color: currentColor;
+}
+
+/* ---- Conversion funnel (B: a ribbon that narrows with the people left) ---- */
+.bp-dv-flow {
+    position: relative;
+    width: 100%;
+}
+
+.bp-dv-flow[hidden] {
+    display: none;
+}
+
+.bp-dv-flow-svg {
+    position: absolute;
+    inset: 0;
+    display: block;
+    overflow: visible;
+}
+
+.bp-dv-flow-env { fill: #f3f3f3; }
+.bp-dv-flow-strand { fill: none; stroke: #fff; stroke-opacity: 0.13; stroke-width: 1; }
+.bp-dv-flow-term { fill: #2b2b2b; }
+.bp-dv-flow-stop-a { stop-color: #6b6b6b; }
+.bp-dv-flow-stop-b { stop-color: #3f3f3f; }
+.bp-dv-flow-stop-c { stop-color: #262626; }
+
+.bp-dv-flow-cross {
+    stroke: #303030;
+    stroke-opacity: 0;
+    stroke-width: 1;
+    transition: stroke-opacity 0.15s var(--bp-dv-ease);
+}
+
+.bp-dv-flow-cross.is-on {
+    stroke-opacity: 0.28;
+}
+
+.bp-dv-flow-lab {
+    position: absolute;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    text-align: center;
+    transition: opacity 0.15s var(--bp-dv-ease);
+}
+
+.bp-dv-flow-vlab {
+    position: absolute;
+    inset-inline-end: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.625rem;
+    transition: opacity 0.15s var(--bp-dv-ease);
+}
+
+.bp-dv-flow-name {
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 550;
+    line-height: 1.3;
+}
+
+.bp-dv-flow-val {
+    font-size: 1.0625rem;
+    font-weight: 650;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-flow-vlab .bp-dv-flow-name { font-size: 0.8125rem; }
+.bp-dv-flow-vlab .bp-dv-flow-val { font-size: 0.9375rem; }
+
+.bp-dv-flow-bead {
+    position: absolute;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #fff;
+    font-size: 0.71875rem;
+    font-weight: 600;
+    line-height: 18px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.12);
+    transform: translate(-50%, -50%);
+    transition: opacity 0.15s var(--bp-dv-ease);
+    pointer-events: none;
+}
+
+.bp-dv-card.is-hl .bp-dv-flow-lab.is-dim,
+.bp-dv-card.is-hl .bp-dv-flow-vlab.is-dim,
+.bp-dv-card.is-hl .bp-dv-flow-bead.is-dim {
+    opacity: 0.4;
+}
+
+.bp-dv-flow-hit {
+    position: absolute;
+    padding: 0;
+    border: 0;
+    border-radius: 0.625rem;
+    background: transparent;
+    cursor: default;
+}
+
+.bp-dv-flow-hit:focus {
+    outline: none;
+}
+
+.bp-dv-flow-hit:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: -2px;
+}
+
+/* Abandoned carts: one line under the funnel, the link at the start and
+   the figures at the end. */
+.bp-dv-funnel .brikpanel-dash-cartab {
+    margin: 0.875rem 0 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--bp-dv-line-2);
+    column-gap: 1rem;
+    overflow: visible;
+}
+
+.bp-dv-funnel .brikpanel-dash-cartab-label {
+    white-space: nowrap;
+    text-decoration-color: #c9c9c9;
+    text-underline-offset: 3px;
+}
+
+.bp-dv-funnel .brikpanel-dash-cartab-label:hover {
+    text-decoration-color: currentColor;
+}
+
+.brikpanel-dash-cartab-vals {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.875rem;
+    min-width: 0;
+    margin-inline-start: auto;
+    overflow: hidden;
+}
+
+/* ---- Order rates (D: out of every 100 orders) ---- */
+.bp-dv-lead {
+    margin: -0.25rem 0 0.75rem;
+    color: var(--bp-text-secondary);
+    font-size: 0.8125rem;
+}
+
+.bp-dv-lead[hidden],
+.bp-dv-rates-box[hidden] {
+    display: none;
+}
+
+.bp-dv-rates-box {
+    display: flex;
+    align-items: center;
+    gap: 1.75rem;
+}
+
+.bp-dv-rates-box.is-narrow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.875rem;
+}
+
+.bp-dv-rates-box.is-narrow .bp-dv-waffle {
+    align-self: center;
+}
+
+.bp-dv-waffle {
+    flex: none;
+    display: block;
+    overflow: visible;
+}
+
+.bp-dv-sq {
+    transition: opacity 0.15s var(--bp-dv-ease);
+}
+
+.bp-dv-sq.is-successful, .bp-dv-sw.is-successful { fill: #303030; background: #303030; }
+.bp-dv-sq.is-refunded, .bp-dv-sw.is-refunded { fill: #8a8a8a; background: #8a8a8a; }
+.bp-dv-sq.is-cancelled, .bp-dv-sw.is-cancelled { fill: #c2c2c2; background: #c2c2c2; }
+.bp-dv-sq.is-failed, .bp-dv-sw.is-failed { fill: #d72c0d; background: #d72c0d; }
+
+.bp-dv-card.is-hl .bp-dv-sq.is-dim,
+.bp-dv-card.is-hl .bp-dv-rates-item.is-dim {
+    opacity: 0.22;
+}
+
+.bp-dv-rates-leg {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.bp-dv-rates-box.is-narrow .bp-dv-rates-leg {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1rem;
+}
+
+.bp-dv-rates-item {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) max-content;
+    align-items: center;
+    gap: 0.625rem;
+    min-height: 2.75rem;
+    margin: 0;
+    border-top: 1px solid var(--bp-dv-line-2);
+    transition: opacity 0.15s var(--bp-dv-ease);
+}
+
+.bp-dv-rates-item:first-child {
+    border-top: 0;
+}
+
+.bp-dv-rates-box.is-narrow .bp-dv-rates-item:nth-child(2) {
+    border-top: 0;
+}
+
+.bp-dv-rates-item:focus {
+    outline: none;
+}
+
+.bp-dv-rates-item:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+}
+
+.bp-dv-sw {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 2.5px;
+}
+
+.bp-dv-lname {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.3;
+}
+
+.bp-dv-lname small {
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-lpct {
+    font-size: 1rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-rates-item.is-zero .bp-dv-lname,
+.bp-dv-rates-item.is-zero .bp-dv-lpct {
+    color: var(--bp-text-secondary);
+}
+
+.bp-dv-rates-item.is-zero .bp-dv-sw {
+    opacity: 0.4;
+}
+
+/* ---- Products (Best sellers, Most viewed, Most added to cart) ---- */
+.bp-dv-plist,
+.bp-dv-olist,
+.bp-dv-srcs,
+.bp-dv-refs,
+.bp-dv-camps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.bp-dv-prow,
+.bp-dv-orow {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    margin: 0 -0.5rem;
+    padding: 0.5625rem 0.5rem;
+    border-radius: 0.5rem;
+}
+
+/* The rows share the list's columns (subgrid): names, badges, totals and
+   the ends of the bars line up from row to row, and each row keeps its own
+   box for the hover fill. Its padding and negative margin cancel out at the
+   edges of the columns. */
+.bp-dv-plist {
+    display: grid;
+    grid-template-columns: 18px 34px minmax(0, 1fr) max-content;
+    column-gap: 0.75rem;
+}
+
+.bp-dv-prow + .bp-dv-prow,
+.bp-dv-orow + .bp-dv-orow {
+    box-shadow: inset 0 1px 0 var(--bp-dv-line-2);
+}
+
+.bp-dv-prow.brikpanel-dash-row-link,
+.bp-dv-orow.brikpanel-dash-row-link {
+    cursor: pointer;
+}
+
+.bp-dv-prow.brikpanel-dash-row-link:hover,
+.bp-dv-orow.brikpanel-dash-row-link:hover {
+    background: var(--bp-dv-soft);
+    box-shadow: none;
+}
+
+.bp-dv-prow.brikpanel-dash-row-link:hover + .bp-dv-prow,
+.bp-dv-orow.brikpanel-dash-row-link:hover + .bp-dv-orow {
+    box-shadow: none;
+}
+
+.bp-dv-prow.brikpanel-dash-row-link:focus,
+.bp-dv-orow.brikpanel-dash-row-link:focus {
+    outline: none;
+}
+
+.bp-dv-prow.brikpanel-dash-row-link:focus-visible,
+.bp-dv-orow.brikpanel-dash-row-link:focus-visible {
+    outline: 2px solid var(--bp-input-focus);
+    outline-offset: -2px;
+}
+
+.bp-dv-rank {
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.bp-dv-ptile {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 0.5rem;
+    background: #f1f1f1;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+    color: var(--bp-text-secondary);
+    font-size: 0.6875rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+}
+
+.bp-dv-pmain {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 0;
+}
+
+.bp-dv-pname {
+    overflow: hidden;
+    color: var(--bp-text);
+    font-size: 0.8125rem;
+    font-weight: 550;
     text-overflow: ellipsis;
-    vertical-align: middle;
+    white-space: nowrap;
+    text-align: -webkit-match-parent; /* Chrome, Safari */
+    text-align: match-parent;
+}
+
+.bp-dv-pbar,
+.bp-dv-sbar {
+    overflow: hidden;
+    background: var(--bp-dv-track);
+}
+
+.bp-dv-pbar {
+    height: 4px;
+    border-radius: 2px;
+}
+
+.bp-dv-pbar i,
+.bp-dv-sbar i {
+    display: block;
+    height: 100%;
+    transform-origin: left center;
+}
+
+[dir="rtl"] .bp-dv-pbar i,
+[dir="rtl"] .bp-dv-sbar i {
+    transform-origin: right center;
+}
+
+.bp-dv-pbar i {
+    border-radius: 2px;
+    background: #303030;
+}
+
+.bp-dv-pval {
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    white-space: nowrap;
+}
+
+.bp-dv-pval b {
+    display: block;
+    font-weight: 600;
+}
+
+.bp-dv-pval > span {
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+}
+
+/* A page's type after its name (Product, Page, Category), in the Most viewed
+   pages window. */
+.bp-dv-pline {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.bp-dv-ptype {
+    flex: none;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+/* The Products foot keeps its line when the open tab has no link there (Most
+   viewed pages with no more pages than the card shows): the card never jumps
+   between tabs. */
+.bp-dv-foot-pages {
+    min-height: 1.21875rem;
+}
+
+/* ---- Recent orders: the Orders page rows ---- */
+.bp-dv-olist {
+    display: grid;
+    grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) max-content max-content;
+    column-gap: 0.875rem;
+}
+
+.bp-dv-orow {
+    font-size: 0.8125rem;
+}
+
+/* The badge keeps its own width in the shared column, beside the total. */
+.bp-dv-orow > .bp-dv-pill {
+    justify-self: end;
+}
+
+.bp-dv-ono b {
+    display: block;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-ono > span,
+.bp-dv-otot > span {
+    display: block;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.bp-dv-ocust {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.bp-dv-oname,
+.bp-dv-osrc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: -webkit-match-parent; /* Chrome, Safari */
+    text-align: match-parent;
+}
+
+.bp-dv-osrc {
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+}
+
+.bp-dv-otot {
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+}
+
+.bp-dv-otot b {
+    display: block;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.bp-dv-otot .woocommerce-Price-amount {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+.bp-dv-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #ebebeb;
+    color: #303030;
+    font-size: 0.75rem;
+    font-weight: 550;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.bp-dv-pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.bp-dv-pill.is-processing { background: var(--bp-dv-good-bg); color: var(--bp-dv-good-fg); }
+.bp-dv-pill.is-on-hold,
+.bp-dv-pill.is-pending { background: #fff1d6; color: #7a5200; }
+.bp-dv-pill.is-cancelled,
+.bp-dv-pill.is-failed { background: #fce4e4; color: #c62828; }
+
+.bp-dv-card.is-w470 .bp-dv-olist {
+    display: block;
+}
+
+.bp-dv-card.is-w470 .bp-dv-orow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.375rem 0.875rem;
+}
+
+.bp-dv-card.is-w470 .bp-dv-ocust {
+    grid-column: 1;
+    grid-row: 2;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+}
+
+.bp-dv-card.is-w470 .bp-dv-orow .bp-dv-pill {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+}
+
+/* ---- Visitors (devices, sources, campaigns) ---- */
+.bp-dv-visitors .bp-dv-panel {
+    min-height: 13.25rem;
+}
+
+.bp-dv-sub {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 0.625rem;
+    color: var(--bp-text-secondary);
+    font-size: 0.8125rem;
+}
+
+.bp-dv-dev-blk + .bp-dv-dev-blk {
+    margin-top: 1rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid var(--bp-dv-line-2);
+}
+
+.bp-dv-blk-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5625rem;
+}
+
+.bp-dv-blk-row.is-side {
+    flex-direction: row;
+    align-items: center;
+    gap: 1.75rem;
+}
+
+.bp-dv-strip {
+    flex: none;
+    line-height: 0;
+}
+
+.bp-dv-dots {
+    display: block;
+    overflow: visible;
+}
+
+.bp-dv-dot.is-k0, .bp-dv-dot-sw.is-k0 { fill: #303030; background: #303030; }
+.bp-dv-dot.is-k1, .bp-dv-dot-sw.is-k1 { fill: #8a8a8a; background: #8a8a8a; }
+.bp-dv-dot.is-k2, .bp-dv-dot-sw.is-k2 { fill: #c9c9c9; background: #c9c9c9; }
+.bp-dv-dot.is-k3, .bp-dv-dot-sw.is-k3 { fill: #a8a8a8; background: #a8a8a8; }
+.bp-dv-dot.is-loyal, .bp-dv-dot-sw.is-loyal { fill: #1a8917; background: #1a8917; }
+.bp-dv-dot.is-attention, .bp-dv-dot-sw.is-attention { fill: #b5b5b5; background: #b5b5b5; }
+.bp-dv-dot.is-risk, .bp-dv-dot-sw.is-risk { fill: #d72c0d; background: #d72c0d; }
+
+.bp-dv-dleg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1.125rem;
+    min-width: 0;
+}
+
+.bp-dv-blk-row.is-side .bp-dv-dleg {
+    flex-direction: column;
+    gap: 0.3125rem;
+}
+
+.bp-dv-dleg-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-dot-sw {
+    align-self: center;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+}
+
+.bp-dv-dleg-item b {
+    font-weight: 600;
+}
+
+.bp-dv-dleg-item em {
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-style: normal;
+}
+
+.bp-dv-src2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 1.75rem;
+}
+
+.bp-dv-src2 > [hidden] {
+    display: none;
+}
+
+.bp-dv-h3 {
+    margin: 0 0 0.5rem;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.bp-dv-srcs li {
+    display: grid;
+    grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr) 2.6rem;
+    align-items: center;
+    gap: 0.625rem;
+    margin: 0;
+    padding: 0.3125rem 0;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-src-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bp-dv-sbar {
+    height: 6px;
+    border-radius: 3px;
+}
+
+.bp-dv-sbar i {
+    border-radius: 3px;
+    background: #8a8a8a;
+}
+
+.bp-dv-srcs li:first-child .bp-dv-sbar i {
+    background: #303030;
+}
+
+.bp-dv-spct {
+    font-weight: 600;
+    text-align: end;
+}
+
+.bp-dv-refs li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.625rem;
+    margin: 0;
+    padding: 0.3125rem 0;
+    border-top: 1px solid var(--bp-dv-line-2);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-refs li:first-child {
+    border-top: 0;
+}
+
+.bp-dv-refs li > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bp-dv-refs b {
+    font-weight: 600;
+}
+
+/* Channel of a Top referrers row, only when the same site is listed twice
+   (from ads and from search, for example). */
+.bp-dv-ref-ch {
+    margin-inline-start: 0.5rem;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-style: normal;
+}
+
+.bp-dv-camps li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: baseline;
+    gap: 1rem;
+    margin: 0;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--bp-dv-line-2);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-camps li:first-child {
+    border-top: 0;
+    padding-top: 0.125rem;
+}
+
+.bp-dv-camp {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 550;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: -webkit-match-parent; /* Chrome, Safari */
+    text-align: match-parent;
+}
+
+.bp-dv-cmeta {
+    color: var(--bp-text-secondary);
+    font-size: 0.78125rem;
+    white-space: nowrap;
+}
+
+.bp-dv-crev {
+    font-weight: 600;
+    text-align: end;
+    white-space: nowrap;
+}
+
+.bp-dv-card.is-w560 .bp-dv-src2 { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.bp-dv-card.is-w560 .bp-dv-camps li { grid-template-columns: minmax(0, 1fr) auto; }
+.bp-dv-card.is-w560 .bp-dv-cmeta { grid-column: 1; grid-row: 2; }
+.bp-dv-card.is-w560 .bp-dv-crev { grid-row: 1 / span 2; align-self: center; }
+
+/* Sources with the campaigns (is-src3, fitVisitors() in brikpanel-dashboard.js):
+   on a card at least 740px wide the campaigns are a third column and the Top
+   campaigns tab steps aside. Every row stays one line, so the tallest column is
+   still the six channel rows and the card is no taller than before; a
+   narrower card keeps the tab. */
+.bp-dv-visitors:not(.is-src3) .bp-dv-src-camps,
+.bp-dv-visitors.is-src3 .bp-dv-tab[data-bp-dv-tab="campaigns"] {
+    display: none;
+}
+
+.bp-dv-visitors.is-src3 .bp-dv-src2 {
+    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) minmax(0, 1.5fr);
+    gap: 1.5rem;
+}
+
+/* Visitor tracking off: no referrers column, the other two share the row. */
+.bp-dv-visitors.is-src3 .bp-dv-src2.is-noref {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+}
+
+.bp-dv-visitors.is-src3 .bp-dv-srcs li {
+    grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr) 2.6rem;
+}
+
+.bp-dv-src-camps .bp-dv-h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.bp-dv-src-camps .bp-dv-camps li {
+    grid-template-columns: minmax(4.5rem, 1fr) minmax(0, max-content) max-content;
+    gap: 0.625rem;
+    padding: 0.3125rem 0;
+}
+
+.bp-dv-src-camps .bp-dv-cmeta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Customers (new and returning, segments in three groups) ---- */
+.bp-dv-cust-body {
+    justify-content: flex-start;
+}
+
+.bp-dv-blk + .bp-dv-blk {
+    margin-top: 1rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid var(--bp-dv-line-2);
+}
+
+.bp-dv-blk-h {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 0.625rem;
+    margin-bottom: 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.bp-dv-blk-h .bp-dv-muted {
+    font-size: 0.78125rem;
+    font-weight: 500;
+}
+
+.bp-dv-blk-meta > span + span:not(:empty)::before {
+    content: "\00B7";
+    margin-inline: 0.375rem;
+}
+
+.bp-dv-seg-detail {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.375rem 1.25rem;
+    margin-top: 0.75rem;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.bp-dv-seg-detail p {
+    margin: 0;
+}
+
+.bp-dv-seg-detail b {
+    color: var(--bp-text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Wraps inside only when the name alone is wider than its column. */
+.bp-dv-seg-item {
+    display: inline-block;
+    max-width: 100%;
+}
+
+.bp-dv-card.is-w560 .bp-dv-seg-detail { grid-template-columns: minmax(0, 1fr); }
+
+/* ---- Low stock + lifetime value ---- */
+.bp-dv-stock .brikpanel-dash-inv-line {
+    margin: -0.375rem 0 0.625rem;
+}
+
+.bp-dv-stock-name,
+.bp-dv-stock-name:visited {
+    color: var(--bp-text);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.bp-dv-stock-name:hover {
+    text-decoration: underline;
+}
+
+.bp-dv-stock-name small {
+    display: block;
+    color: var(--bp-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-align: -webkit-match-parent; /* Chrome, Safari */
+    text-align: match-parent;
+}
+
+/* A long SKU wraps at its dashes (the <wbr> skuHtml() puts after each) when
+   the card is short of room, never inside a letter group. Not `nowrap`:
+   Chrome breaks at <wbr> even then, Firefox does not, and the Low stock
+   table turned into cards on a phone in Firefox only. */
+.bp-dv-stock-sku {
+    white-space: normal;
+}
+
+/* The Products page stock badge. */
+.bp-dv-stock-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 1rem;
+    background: #fff3e0;
+    color: #b04a00;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-ltv-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.bp-dv-ltv-top b {
+    font-size: 1.5rem;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+}
+
+.bp-dv-ltv-top b .woocommerce-Price-amount {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+.bp-dv-ltv-top > span {
+    color: var(--bp-text-secondary);
+    font-size: 0.8125rem;
+}
+
+.bp-dv-kv-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.625rem 0;
+    border-top: 1px solid var(--bp-dv-line-2);
+    font-size: 0.8125rem;
+}
+
+.bp-dv-kv-row > span {
+    color: var(--bp-text-secondary);
+}
+
+.bp-dv-kv-row b {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.bp-dv-kv-row b .woocommerce-Price-amount {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+/* ---- Order locations: the two-letter badge where flags cannot be drawn ---- */
+.bp-dv-flag-code {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.625rem;
+    height: 1.125rem;
+    padding: 0 0.25rem;
+    border-radius: 0.25rem;
+    background: #f1f1f1;
+    box-shadow: inset 0 0 0 1px #e3e3e3;
+    color: #616161;
+    font-size: 0.6875rem;
+    font-weight: 650;
+    line-height: 1;
+    letter-spacing: 0.02em;
+}
+
+/* ---- Chart tooltips ----
+   One floating box for the charts (on <body>, outside the dashboard box) and
+   the same dark look for the bubbles of funnel steps, rate rows and live
+   visitors, which the shared help bubble places (front-end/shared/
+   brikpanel-tip.js; its arrow takes this background). */
+.bp-dv-tipbox {
+    --bp-tip-w: 300px;
+    padding: 0.5625rem 0.6875rem;
+    border: 1px solid #303030;
+    border-radius: 0.5rem;
+    background: #303030;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.45;
+    text-align: start;
+    white-space: normal;
+}
+
+.bp-dv-tip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100060;
+    max-width: 300px;
+    pointer-events: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.bp-dv-tip[hidden] {
+    display: none;
+}
+
+.bp-dv-tip-t {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #fff;
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.bp-dv-tip-r {
+    display: flex;
+    justify-content: space-between;
+    gap: 1.125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.bp-dv-tip-r b {
+    color: #fff;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.bp-dv-tip-p {
+    margin: 0;
+}
+
+.bp-dv-tip-n {
+    margin-top: 0.375rem;
+    padding-top: 0.375rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.bp-dv-tip-line {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+/* ---- Most viewed pages window (render_pages_window()) ---- */
+/* On <html>, with !important, like html.brikpanel-welcome-lock: the top bar
+   fixes <body>'s height, so a body lock jumps. */
+html.bp-dv-pages-lock {
+    overflow-y: hidden !important;
+}
+
+/* No display here: a closed <dialog> must keep the browser's display:none. */
+.bp-dv-pages {
+    box-sizing: border-box;
+    width: min(42rem, calc(100vw - 2rem));
+    max-width: none;
+    max-height: min(52rem, calc(100dvh - 4rem));
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    color: var(--bp-text);
+    background: var(--bp-card);
+    border: 0;
+    border-radius: 0.75rem;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+}
+
+.bp-dv-pages::backdrop {
+    background: rgba(48, 48, 48, 0.4);
+}
+
+.bp-dv-pages-box {
+    display: flex;
+    flex-direction: column;
+    max-height: min(52rem, calc(100dvh - 4rem));
+}
+
+.bp-dv-pages-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1.125rem 1.25rem 0.875rem;
+    border-bottom: 1px solid var(--bp-dv-line-2);
+}
+
+.bp-dv-pages-titles {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.bp-dv-pages-title {
+    margin: 0 0 0.125rem;
+    color: var(--bp-text);
+    font-size: var(--brikpanel-card-title-size, 1rem);
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.bp-dv-pages-sub {
+    margin: 0;
+    color: var(--bp-text-secondary);
+    font-size: 0.78125rem;
+}
+
+.bp-dv-pages-x {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    color: var(--bp-text);
+    background: #f1f1f1;
+    border: 0;
+    border-radius: 0.5rem;
+    cursor: pointer;
+}
+
+.bp-dv-pages-x:hover {
+    background: #e3e3e3;
+}
+
+.bp-dv-pages-x:focus-visible {
+    outline: 2px solid var(--bp-input-focus);
+    outline-offset: 2px;
+}
+
+.bp-dv-pages-tools {
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--bp-dv-line-2);
+}
+
+.bp-dv-pages-q {
+    width: 100%;
+}
+
+.bp-dv-pages-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0.375rem 1.25rem 1rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* Ranks run to three digits here. */
+.bp-dv-pages-list {
+    grid-template-columns: 2rem 34px minmax(0, 1fr) max-content;
+}
+
+.bp-dv-pages-note {
+    padding: 1.5rem 0;
+}
+
+.bp-dv-pages-foot {
+    display: flex;
+    justify-content: center;
+    padding-top: 0.75rem;
+}
+
+/* A phone: the whole screen. */
+@media (max-width: 782px) {
+    .bp-dv-pages {
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+    }
+
+    .bp-dv-pages-box {
+        height: 100%;
+        max-height: none;
+    }
+
+    .bp-dv-pages-head,
+    .bp-dv-pages-tools {
+        padding-inline: 1rem;
+    }
+
+    .bp-dv-pages-body {
+        padding-inline: 1rem;
+    }
+}
+
+/* ---- Motion: none at all when the system asks for it ---- */
+@media (prefers-reduced-motion: reduce) {
+    .bp-dv-live-pill.is-on i { animation: none; }
+    .bp-dv-flow-cross,
+    .bp-dv-flow-lab,
+    .bp-dv-flow-vlab,
+    .bp-dv-flow-bead,
+    .bp-dv-sq,
+    .bp-dv-rates-item { transition: none; }
 }

@@ -1,10 +1,12 @@
 <?php
 /**
- * BrikPanel — Welcome / Feature Tour Popup
+ * BrikPanel: welcome tour.
  *
- * A guided, two-pane onboarding modal: a navigable section rail on the left
- * and rich feature content on the right. Shown once per user, per version,
- * and dismissed via AJAX.
+ * A two-pane dialog shown to each admin until they dismiss it once. The left
+ * pane is the BrikPanel logo plate in 3D: every step of the tour lays one
+ * brick, and the last step flattens the plate into the logo. The right pane
+ * shows one feature area per step with a hand-drawn sketch, then a final panel
+ * with quick links. Dismissed via AJAX.
  *
  * @package BrikPanel
  * @since   2.1.0
@@ -18,10 +20,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action( 'wp_ajax_brikpanel_dismiss_welcome', function () {
     check_ajax_referer( 'brikpanel_welcome_nonce' );
     update_user_meta( get_current_user_id(), '_brikpanel_welcome_dismissed', BRIKPANEL_VERSION );
+    // The tour was the first ask: the next one (bar the new-store guide) waits
+    // its turn instead of opening on the very next page.
+    if ( function_exists( 'brikpanel_ask_closed' ) ) {
+        brikpanel_ask_closed( 'welcome' );
+    }
     wp_send_json_success();
 } );
 
-/* ── Reset (for testing / new versions) ──────────────────────────────────────── */
+/* ── Reset (for testing) ─────────────────────────────────────────────────────── */
 add_action( 'wp_ajax_brikpanel_reset_welcome', function () {
     check_ajax_referer( 'brikpanel_welcome_nonce' );
     if ( ! current_user_can( 'manage_options' ) ) {
@@ -31,7 +38,14 @@ add_action( 'wp_ajax_brikpanel_reset_welcome', function () {
     wp_send_json_success();
 } );
 
-/* ── Should we show the popup? ───────────────────────────────────────────────── */
+/* ── Should we show the tour? ────────────────────────────────────────────────── */
+/**
+ * Whether the current user gets the welcome tour on this request. Shown once
+ * per user: any stored dismissal, from whichever version, keeps it closed.
+ * BrikMentor's launch popup asks this too, to stay out of the tour's way.
+ *
+ * @return bool
+ */
 function brikpanel_should_show_welcome() {
     if ( ! is_admin() || wp_doing_ajax() ) {
         return false;
@@ -61,23 +75,23 @@ add_action( 'admin_enqueue_scripts', function () {
         return;
     }
 
-    // On a phone the step rail is one scrolling row under the close button
-    // (front-end/shared/brikpanel-scroll-strip.js).
-    // The shared UI parts carry the "New" badge of the step rail.
-    $strip_style  = function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'scroll_strip', 'ui' ], 'style' ) : [];
-    $strip_script = function_exists( 'brikpanel_narrow_dep' ) ? brikpanel_narrow_dep( 'scroll_strip' ) : [];
+    // The step row is the shared scroll strip: one line that scrolls inside
+    // itself when the step names do not fit (front-end/shared/brikpanel-scroll-strip.js).
+    // The shared UI parts carry the buttons.
+    $style_deps  = function_exists( 'brikpanel_narrow_deps' ) ? brikpanel_narrow_deps( [ 'scroll_strip', 'ui' ], 'style' ) : [];
+    $script_deps = function_exists( 'brikpanel_narrow_dep' ) ? brikpanel_narrow_dep( 'scroll_strip' ) : [];
 
     wp_enqueue_style(
         'brikpanel_welcome_styles',
         BRIKPANEL_URL . 'front-end/welcome/brikpanel-welcome.css',
-        $strip_style,
+        $style_deps,
         BRIKPANEL_VERSION
     );
 
     wp_enqueue_script(
         'brikpanel_welcome_scripts',
         BRIKPANEL_URL . 'front-end/welcome/brikpanel-welcome.js',
-        $strip_script,
+        $script_deps,
         BRIKPANEL_VERSION,
         true
     );
@@ -86,339 +100,239 @@ add_action( 'admin_enqueue_scripts', function () {
         'ajax_url' => admin_url( 'admin-ajax.php' ),
         'nonce'    => wp_create_nonce( 'brikpanel_welcome_nonce' ),
         'i18n'     => [
-            'next'        => __( 'Next', 'brikpanel' ),
-            'previous'    => __( 'Previous', 'brikpanel' ),
-            'get_started' => __( 'Get started', 'brikpanel' ),
-            'skip'        => __( 'Skip tour', 'brikpanel' ),
+            'next'   => _x( 'Next', 'welcome tour button', 'brikpanel' ),
+            'finish' => _x( 'Finish', 'welcome tour button', 'brikpanel' ),
         ],
     ] );
 } );
 
-/* ── Render HTML ─────────────────────────────────────────────────────────────── */
+/* ── Render ──────────────────────────────────────────────────────────────────── */
 add_action( 'admin_footer', function () {
     if ( ! brikpanel_should_show_welcome() ) {
         return;
     }
 
-    /* ── Icon helpers (trusted static SVG) ───────────────────────────────────── */
-    $icon_check      = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10l3 3 7-7"/></svg>';
-    $icon_close      = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15"/></svg>';
-    $icon_arrow_left = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 16l-6-6 6-6"/></svg>';
-    $icon_arrow_right = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4l6 6-6 6"/></svg>';
+    require_once __DIR__ . '/brikpanel-welcome-sketches.php';
 
-    $icon_logo      = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>';
-    $icon_sparkles  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14z"/></svg>';
-    $icon_dashboard = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="11" width="7" height="10" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>';
-    $icon_products  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>';
-    $icon_orders    = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>';
-    $icon_customers = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>';
-    $icon_integrations = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>';
-    $icon_operations = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>';
-    $icon_customize = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>';
-    $icon_rocket    = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>';
-
-    $icon_kbd = function ( $keys ) {
-        $out = '<span class="brikpanel-welcome-kbd">';
-        foreach ( $keys as $k ) {
-            $out .= '<kbd>' . esc_html( $k ) . '</kbd>';
-        }
-        return $out . '</span>';
-    };
-
-    /* ── Tour data: rail + content slides ─────────────────────────────────────── */
-    $sections = [
-        // 0 — Welcome (hero, rendered separately)
-        [
-            'rail_icon'  => $icon_sparkles,
-            'rail_title' => __( 'Welcome', 'brikpanel' ),
-            'hero'       => true,
-        ],
-        // 1 — Dashboard & insights
-        [
-            'rail_icon'  => $icon_dashboard,
-            'rail_title' => __( 'Dashboard & insights', 'brikpanel' ),
-            'icon'       => $icon_dashboard,
-            'title'      => __( 'Dashboard & insights', 'brikpanel' ),
-            'sub'        => __( 'A real-time, Shopify-style overview of everything happening in your store.', 'brikpanel' ),
-            'highlights' => [
-                __( 'Sales, orders, and conversion rate at a glance', 'brikpanel' ),
-                __( 'Net profit after cost of goods, ads, and expenses', 'brikpanel' ),
-                __( 'Interactive sales chart with flexible date ranges', 'brikpanel' ),
-                __( 'Live visitor counter updated in real time', 'brikpanel' ),
-                __( 'Your top products and best customers', 'brikpanel' ),
-                __( 'An interactive globe of where customers are', 'brikpanel' ),
-            ],
-        ],
-        // 2 — Products
-        [
-            'rail_icon'  => $icon_products,
-            'rail_title' => __( 'Products', 'brikpanel' ),
-            'icon'       => $icon_products,
-            'title'      => __( 'Products, your way', 'brikpanel' ),
-            'sub'        => __( 'Create and edit products in a clean, fast, distraction-free editor.', 'brikpanel' ),
-            'highlights' => [
-                __( 'A simplified editor built for speed, not clutter', 'brikpanel' ),
-                __( 'Modern list with inline price and stock editing', 'brikpanel' ),
-                __( 'Drag & drop image gallery with reordering', 'brikpanel' ),
-                __( 'Variation wizard with ready-made templates', 'brikpanel' ),
-                __( 'Quick-edit side drawer for one-off changes', 'brikpanel' ),
-                __( 'Duplicate, bulk-edit, and export in a click', 'brikpanel' ),
-            ],
-            'tags'       => [
-                [ 'text' => __( 'Works with simple & variable products', 'brikpanel' ), 'pos' => true ],
-            ],
-        ],
-        // 3 — Orders & coupons
-        [
-            'rail_icon'  => $icon_orders,
-            'rail_title' => __( 'Orders & coupons', 'brikpanel' ),
-            'icon'       => $icon_orders,
-            'title'      => __( 'Orders & coupons', 'brikpanel' ),
-            'sub'        => __( 'Process orders and run promotions without ever leaving the page.', 'brikpanel' ),
-            'highlights' => [
-                __( 'Change order status inline, right from the list', 'brikpanel' ),
-                __( 'Modern order edit page with a sticky action bar', 'brikpanel' ),
-                __( 'One-click copy of the customer address', 'brikpanel' ),
-                __( 'Sound, popup, and confetti on every new order', 'brikpanel' ),
-                __( 'Create and edit coupons in a fast side drawer', 'brikpanel' ),
-                __( 'Percentage, fixed cart, and fixed product discounts', 'brikpanel' ),
-            ],
-        ],
-        // 4 — Customers
-        [
-            'rail_icon'  => $icon_customers,
-            'rail_title' => __( 'Customers', 'brikpanel' ),
-            'icon'       => $icon_customers,
-            'title'      => __( 'Know your customers', 'brikpanel' ),
-            'sub'        => __( 'Understand who your best customers are and how they behave over time.', 'brikpanel' ),
-            'highlights' => [
-                __( 'Lifetime value (LTV) for every customer', 'brikpanel' ),
-                __( 'RFM segments: VIP, at-risk, and dormant', 'brikpanel' ),
-                __( 'Cohort retention shows who keeps coming back', 'brikpanel' ),
-                __( 'Build custom segments with powerful filters', 'brikpanel' ),
-                __( 'Export any view to CSV in one click', 'brikpanel' ),
-            ],
-        ],
-        // 5 — Integrations (NEW)
-        [
-            'rail_icon'  => $icon_integrations,
-            'rail_title' => __( 'Integrations', 'brikpanel' ),
-            'rail_badge' => __( 'New', 'brikpanel' ),
-            'icon'       => $icon_integrations,
-            'title'      => __( 'Connect & grow', 'brikpanel' ),
-            'sub'        => __( 'Plug BrikPanel into the tools you already use to grow your store.', 'brikpanel' ),
-            'highlights' => [
-                __( 'Sync orders, products, and customers to Google Sheets', 'brikpanel' ),
-                __( 'Real-time and scheduled exports, fully automated', 'brikpanel' ),
-                __( 'Pull ad spend from Google Ads and Meta', 'brikpanel' ),
-                __( 'See true ROAS and net profit on your dashboard', 'brikpanel' ),
-                __( 'Secure connection you can disconnect anytime', 'brikpanel' ),
-            ],
-            'tags'       => [
-                [ 'text' => __( 'Google Sheets', 'brikpanel' ) ],
-                [ 'text' => __( 'Google Ads', 'brikpanel' ) ],
-                [ 'text' => __( 'Meta Ads', 'brikpanel' ) ],
-            ],
-        ],
-        // 6 — Operations
-        [
-            'rail_icon'  => $icon_operations,
-            'rail_title' => __( 'Operations', 'brikpanel' ),
-            'icon'       => $icon_operations,
-            'title'      => __( 'Stock & operations', 'brikpanel' ),
-            'sub'        => __( 'Keep stock, suppliers, and costs under control from one place.', 'brikpanel' ),
-            'highlights' => [
-                __( 'Manage suppliers with full contact details', 'brikpanel' ),
-                __( 'Create purchase orders and track received stock', 'brikpanel' ),
-                __( 'Assign a supplier per product and per variation', 'brikpanel' ),
-                __( 'Log operating expenses for accurate profit', 'brikpanel' ),
-                __( 'BrikControl health checks keep your store in shape', 'brikpanel' ),
-            ],
-            'tags'       => [
-                [ 'text' => __( 'Suppliers work per variation', 'brikpanel' ), 'pos' => true ],
-            ],
-        ],
-        // 7 — Make it yours
-        [
-            'rail_icon'  => $icon_customize,
-            'rail_title' => __( 'Make it yours', 'brikpanel' ),
-            'icon'       => $icon_customize,
-            'title'      => __( 'Make it yours', 'brikpanel' ),
-            'sub'        => __( 'Search instantly, restyle the admin, and make BrikPanel feel like yours.', 'brikpanel' ),
-            'highlights' => [
-                [ 'text' => __( 'Global search from anywhere', 'brikpanel' ), 'kbd' => [ 'Ctrl', 'K' ] ],
-                __( 'Find orders, products, and customers instantly', 'brikpanel' ),
-                __( 'Custom fonts, an accent color, and your own logo', 'brikpanel' ),
-                __( 'A modern, on-brand login page for your team', 'brikpanel' ),
-                __( 'Reorder the sidebar and import or export settings', 'brikpanel' ),
-            ],
-        ],
-        // 8 — All set (final, rendered separately)
-        [
-            'rail_icon'  => $icon_rocket,
-            'rail_title' => __( 'You are all set', 'brikpanel' ),
-            'final'      => true,
-        ],
+    /* ── Icons (trusted static SVG) ──────────────────────────────────────────── */
+    $icon_close = '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M3 3l8 8M11 3l-8 8"/></svg>';
+    $icon_arrow = '<svg class="brikpanel-welcome-arrow" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8h10M9 4l4 4-4 4"/></svg>';
+    $icon_chev  = '<svg class="brikpanel-welcome-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5"/></svg>';
+    $icon_check = '<svg viewBox="0 0 20 20" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 10l3 3 7-7"/></svg>';
+    $link_icons = [
+        'dashboard' => '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="11" width="7" height="10" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>',
+        'orders'    => '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>',
+        'customers' => '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
+        'sheets'    => '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 9v12"/></svg>',
     ];
 
-    $total_slides = count( $sections );
+    /* ── The four steps ──────────────────────────────────────────────────────── */
+    $steps = [
+        [
+            'key'   => 'profit',
+            'tab'   => _x( 'Profit', 'welcome tour step name', 'brikpanel' ),
+            'area'  => __( 'Dashboard', 'brikpanel' ),
+            'title' => __( 'Know what you really earn', 'brikpanel' ),
+            'text'  => __( 'Your dashboard takes cost of goods, ad spend and expenses off your sales, so net profit is always one glance away.', 'brikpanel' ),
+            'chips' => [ __( 'Live visitors', 'brikpanel' ), __( 'Any date range', 'brikpanel' ), __( 'Top products', 'brikpanel' ) ],
+        ],
+        [
+            'key'   => 'orders',
+            'tab'   => _x( 'Orders', 'welcome tour step name', 'brikpanel' ),
+            'area'  => __( 'Orders and products', 'brikpanel' ),
+            'title' => __( 'Handle orders in seconds', 'brikpanel' ),
+            'text'  => __( 'Hear every new order, change its status right in the list, and edit price and stock without opening a single extra page.', 'brikpanel' ),
+            'chips' => [ __( 'Order alerts', 'brikpanel' ), __( 'Quick edit', 'brikpanel' ), __( 'Ctrl K search', 'brikpanel' ) ],
+        ],
+        [
+            'key'   => 'customers',
+            'tab'   => _x( 'Customers', 'welcome tour step name', 'brikpanel' ),
+            'area'  => __( 'Customers', 'brikpanel' ),
+            'title' => __( 'Meet your best customers', 'brikpanel' ),
+            'text'  => __( 'See lifetime value for every customer, spot your VIPs and notice the ones who might not come back.', 'brikpanel' ),
+            'chips' => [ __( 'VIP and at risk groups', 'brikpanel' ), __( 'Cohorts', 'brikpanel' ), __( 'CSV export', 'brikpanel' ) ],
+        ],
+        [
+            'key'   => 'connect',
+            'tab'   => _x( 'Connect', 'welcome tour step name', 'brikpanel' ),
+            'area'  => __( 'Integrations', 'brikpanel' ),
+            'title' => __( 'Connect the tools you use', 'brikpanel' ),
+            'text'  => __( 'Sync orders and customers to Google Sheets, and bring in Google Ads and Meta spend to see your true ROAS.', 'brikpanel' ),
+            'chips' => [ __( 'Google Sheets', 'brikpanel' ), __( 'Google Ads', 'brikpanel' ), __( 'Meta Ads', 'brikpanel' ) ],
+        ],
+    ];
+    $count = count( $steps );
+    $num   = function ( $n ) {
+        return function_exists( 'brikpanel_number' ) ? brikpanel_number( $n ) : (string) (int) $n;
+    };
+    foreach ( $steps as $i => $step ) {
+        /* translators: 1: step number, 2: number of steps, 3: area of the admin, for example "1 of 4 · Dashboard" */
+        $steps[ $i ]['kicker'] = sprintf( __( '%1$s of %2$s · %3$s', 'brikpanel' ), $num( $i + 1 ), $num( $count ), $step['area'] );
+    }
+
+    /* ── Quick links on the final panel ──────────────────────────────────────── */
+    // A switched-off module gets no link (CLAUDE.md, closed modules).
+    $dashboard_url = function_exists( 'brikpanel_module_url' )
+        ? brikpanel_module_url( 'brikpanel-dashboard', [], '', false )
+        : admin_url( 'admin.php?page=brikpanel-dashboard' );
+    // Already on the dashboard: its link only closes the tour.
+    $on_dashboard = isset( $_GET['page'] ) && 'brikpanel-dashboard' === sanitize_key( wp_unslash( $_GET['page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only comparison.
+
+    $links = [];
+    if ( '' !== $dashboard_url ) {
+        $links[] = [
+            'icon'  => 'dashboard',
+            'title' => __( 'Dashboard', 'brikpanel' ),
+            'desc'  => __( 'Sales, net profit and live visitors', 'brikpanel' ),
+            'cta'   => _x( 'Open', 'welcome tour link', 'brikpanel' ),
+            'url'   => $dashboard_url,
+            'here'  => $on_dashboard,
+        ];
+    }
+    $links[] = [
+        'icon'  => 'orders',
+        'title' => __( 'Orders', 'brikpanel' ),
+        'desc'  => __( 'New orders and quick status changes', 'brikpanel' ),
+        'cta'   => _x( 'Open', 'welcome tour link', 'brikpanel' ),
+        'url'   => function_exists( 'brikpanel_wc_orders_list_url' ) ? brikpanel_wc_orders_list_url() : admin_url( 'edit.php?post_type=shop_order' ),
+        'here'  => false,
+    ];
+    $links[] = [
+        'icon'  => 'customers',
+        'title' => __( 'Customers', 'brikpanel' ),
+        'desc'  => __( 'Lifetime value and segments', 'brikpanel' ),
+        'cta'   => _x( 'Open', 'welcome tour link', 'brikpanel' ),
+        'url'   => function_exists( 'brikpanel_module_url' ) ? brikpanel_module_url( 'brikpanel-customer-analytics' ) : admin_url( 'admin.php?page=brikpanel-customer-analytics' ),
+        'here'  => false,
+    ];
+    if ( ! function_exists( 'brikpanel_module_available' ) || brikpanel_module_available( 'brikpanel-google-sheets' ) ) {
+        $sheets_connected = class_exists( 'Brikpanel_Sheets_Tokens' ) && Brikpanel_Sheets_Tokens::is_connected();
+        $links[]          = [
+            'icon'  => 'sheets',
+            'title' => __( 'Google Sheets', 'brikpanel' ),
+            'desc'  => __( 'Sync your store to a sheet', 'brikpanel' ),
+            'cta'   => $sheets_connected ? _x( 'Open', 'welcome tour link', 'brikpanel' ) : _x( 'Connect', 'welcome tour link', 'brikpanel' ),
+            'url'   => admin_url( 'admin.php?page=brikpanel-google-sheets' ),
+            'here'  => false,
+        ];
+    }
+
+    // The bricks, in the order the steps lay them: their place on the plate
+    // and the colours of their top, front and left faces.
+    $bricks = [
+        [ 46, 46, '#fbfbfb', '#dadada', '#c2c2c2' ],
+        [ 130, 46, '#a8a8a8', '#929292', '#7b7b7b' ],
+        [ 46, 130, '#a8a8a8', '#929292', '#7b7b7b' ],
+        [ 130, 130, '#fbfbfb', '#dadada', '#c2c2c2' ],
+    ];
     ?>
-    <div id="brikpanel-welcome-overlay" class="brikpanel-welcome-overlay" style="display:none">
-        <div class="brikpanel-welcome-modal" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e( 'Welcome to BrikPanel', 'brikpanel' ); ?>">
+    <dialog id="brikpanel-welcome-overlay" class="brikpanel-welcome-overlay" aria-labelledby="brikpanel-welcome-title">
+        <div class="brikpanel-welcome-modal" tabindex="-1" data-bw-modal>
+            <?php echo brikpanel_welcome_sketch_defs(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?>
 
-            <!-- Progress bar -->
-            <div class="brikpanel-welcome-progress"><span class="brikpanel-welcome-progress-fill"></span></div>
+            <!-- Left: the plate and its bricks -->
+            <div class="brikpanel-welcome-left" data-bw-left>
+                <div class="brikpanel-welcome-intro">
+                    <span class="brikpanel-welcome-brand" dir="ltr">
+                        <span class="brikpanel-welcome-brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+                        BrikPanel
+                    </span>
+                    <h2 id="brikpanel-welcome-title" class="brikpanel-welcome-title">
+                        <span data-bw-start><?php esc_html_e( 'Welcome to BrikPanel', 'brikpanel' ); ?></span>
+                        <span data-bw-done hidden><?php esc_html_e( 'You are all set', 'brikpanel' ); ?></span>
+                    </h2>
+                    <p class="brikpanel-welcome-lead" data-bw-start><?php esc_html_e( 'Four things BrikPanel does for your store. Each one lays a brick.', 'brikpanel' ); ?></p>
+                    <p class="brikpanel-welcome-lead" data-bw-done hidden><?php esc_html_e( 'Every brick is in place, and everything is already switched on.', 'brikpanel' ); ?></p>
+                </div>
 
-            <button type="button" class="brikpanel-welcome-close" aria-label="<?php esc_attr_e( 'Close', 'brikpanel' ); ?>">
-                <?php echo $icon_close; ?>
-            </button>
+                <div class="brikpanel-welcome-stage" aria-hidden="true" dir="ltr" data-bw-stage>
+                    <span class="brikpanel-welcome-glow"></span>
+                    <span class="brikpanel-welcome-persp">
+                        <span class="brikpanel-welcome-iso">
+                            <span class="brikpanel-welcome-face brikpanel-welcome-ground"></span>
+                            <span class="brikpanel-welcome-box brikpanel-welcome-plate">
+                                <span class="brikpanel-welcome-face brikpanel-welcome-side brikpanel-welcome-plate-front"></span>
+                                <span class="brikpanel-welcome-face brikpanel-welcome-side brikpanel-welcome-plate-left"></span>
+                                <span class="brikpanel-welcome-face brikpanel-welcome-top brikpanel-welcome-plate-top"></span>
+                            </span>
+                            <?php foreach ( $bricks as $b ) : ?>
+                                <?php $pos = 'left:' . (int) $b[0] . 'px;top:' . (int) $b[1] . 'px'; ?>
+                                <span class="brikpanel-welcome-face brikpanel-welcome-slot" style="<?php echo esc_attr( $pos ); ?>" data-bw-slot></span>
+                                <span class="brikpanel-welcome-face brikpanel-welcome-shadow" style="<?php echo esc_attr( $pos ); ?>" data-bw-shadow></span>
+                                <span class="brikpanel-welcome-box brikpanel-welcome-brick" style="<?php echo esc_attr( $pos ); ?>" data-bw-brick>
+                                    <span class="brikpanel-welcome-face brikpanel-welcome-side brikpanel-welcome-brick-front" style="<?php echo esc_attr( 'background:' . $b[3] ); ?>"></span>
+                                    <span class="brikpanel-welcome-face brikpanel-welcome-side brikpanel-welcome-brick-left" style="<?php echo esc_attr( 'background:' . $b[4] ); ?>"></span>
+                                    <span class="brikpanel-welcome-face brikpanel-welcome-top brikpanel-welcome-brick-top" style="<?php echo esc_attr( 'background:' . $b[2] ); ?>"></span>
+                                </span>
+                            <?php endforeach; ?>
+                        </span>
+                    </span>
+                </div>
 
-            <div class="brikpanel-welcome-body">
-
-                <!-- ── Left rail ──────────────────────────────────────────────── -->
-                <nav class="brikpanel-welcome-rail" data-bp-strip data-bp-strip-end-clear="44" aria-label="<?php esc_attr_e( 'Tour sections', 'brikpanel' ); ?>">
-                    <div class="brikpanel-welcome-railhead">
-                        <span class="brikpanel-welcome-railhead-logo"><?php echo $icon_logo; ?></span>
-                        <span class="brikpanel-welcome-railhead-name">BrikPanel</span>
-                        <span class="brikpanel-welcome-railhead-ver">v<?php echo esc_html( BRIKPANEL_VERSION ); ?></span>
-                    </div>
-
-                    <?php foreach ( $sections as $i => $sec ) : ?>
-                        <button type="button"
-                                class="brikpanel-welcome-railitem<?php echo 0 === $i ? ' is-active' : ''; ?>"
-                                data-bw-goto="<?php echo (int) $i; ?>">
-                            <span class="brikpanel-welcome-rail-ico"><?php echo $sec['rail_icon']; ?></span>
-                            <span class="brikpanel-welcome-rail-title"><?php echo esc_html( $sec['rail_title'] ); ?></span>
-                            <?php if ( ! empty( $sec['rail_badge'] ) ) : ?>
-                                <span class="brikpanel-badge brikpanel-badge--new brikpanel-welcome-rail-badge"><?php echo esc_html( $sec['rail_badge'] ); ?></span>
-                            <?php endif; ?>
+                <nav class="brikpanel-welcome-steps" data-bp-strip aria-label="<?php esc_attr_e( 'Tour sections', 'brikpanel' ); ?>">
+                    <?php foreach ( $steps as $i => $step ) : ?>
+                        <button type="button" class="brikpanel-welcome-step<?php echo 0 === $i ? ' is-active' : ''; ?>" data-bw-goto="<?php echo (int) $i; ?>"<?php echo 0 === $i ? ' aria-current="step"' : ''; ?>>
+                            <span class="brikpanel-welcome-step-num" aria-hidden="true"><?php echo esc_html( $num( $i + 1 ) ); ?></span>
+                            <span class="brikpanel-welcome-step-name"><?php echo esc_html( $step['tab'] ); ?></span>
                         </button>
                     <?php endforeach; ?>
                 </nav>
-
-                <!-- ── Slides ─────────────────────────────────────────────────── -->
-                <div class="brikpanel-welcome-slides">
-                    <?php foreach ( $sections as $i => $sec ) : ?>
-
-                        <?php if ( ! empty( $sec['hero'] ) ) : ?>
-                            <!-- Hero / Welcome -->
-                            <div class="brikpanel-welcome-slide brikpanel-welcome-hero<?php echo 0 === $i ? ' is-active' : ''; ?>" data-slide="<?php echo (int) $i; ?>">
-                                <div class="brikpanel-welcome-logo"><?php echo $icon_logo; ?></div>
-                                <h2><?php esc_html_e( 'Welcome to BrikPanel', 'brikpanel' ); ?></h2>
-                                <p><?php esc_html_e( 'A modern, Shopify-inspired admin experience for WooCommerce. Run your whole store from one clean, fast place.', 'brikpanel' ); ?></p>
-                                <p class="brikpanel-welcome-hero-hint"><?php esc_html_e( 'Use the menu on the left to jump around, or click Next to take the quick tour.', 'brikpanel' ); ?></p>
-                            </div>
-
-                        <?php elseif ( ! empty( $sec['final'] ) ) : ?>
-                            <!-- Final / All set -->
-                            <div class="brikpanel-welcome-slide brikpanel-welcome-final" data-slide="<?php echo (int) $i; ?>">
-                                <div class="brikpanel-welcome-final-ico"><?php echo $icon_rocket; ?></div>
-                                <h2><?php esc_html_e( 'You are all set', 'brikpanel' ); ?></h2>
-                                <p><?php esc_html_e( 'That is the tour. Everything is on by default, so you can dive straight in. Here are a couple of great places to start.', 'brikpanel' ); ?></p>
-                                <div class="brikpanel-welcome-cta">
-                                    <a class="brikpanel-welcome-btn brikpanel-welcome-btn--primary" data-bw-cta href="<?php echo esc_url( function_exists( 'brikpanel_module_url' ) ? brikpanel_module_url( 'brikpanel-dashboard' ) : admin_url( 'admin.php?page=brikpanel-dashboard' ) ); ?>">
-                                        <?php esc_html_e( 'Open your dashboard', 'brikpanel' ); ?>
-                                        <?php echo $icon_arrow_right; ?>
-                                    </a>
-                                    <?php
-                                    // Only while Google Sheets is on: a switched-off module has no page to open.
-                                    if ( ! function_exists( 'brikpanel_module_available' ) || brikpanel_module_available( 'brikpanel-google-sheets' ) ) :
-                                        ?>
-                                    <a class="brikpanel-welcome-btn brikpanel-welcome-btn--secondary" data-bw-cta href="<?php echo esc_url( admin_url( 'admin.php?page=brikpanel-google-sheets' ) ); ?>">
-                                        <?php echo $icon_integrations; ?>
-                                        <?php esc_html_e( 'Connect Google Sheets', 'brikpanel' ); ?>
-                                    </a>
-                                    <?php endif; ?>
-                                </div>
-                                <a class="brikpanel-welcome-final-link" data-bw-cta href="<?php echo esc_url( admin_url( 'admin.php?page=wc-settings&tab=brikpanel' ) ); ?>">
-                                    <?php esc_html_e( 'Browse all settings', 'brikpanel' ); ?>
-                                </a>
-
-                                <!-- Confetti -->
-                                <div class="brikpanel-welcome-confetti">
-                                    <?php
-                                    $colors = [ '#303030', '#616161', '#8a8a8a', '#1a8917', '#e3e3e3', '#d72c0d' ];
-                                    for ( $c = 0; $c < 22; $c++ ) {
-                                        printf(
-                                            '<span style="left:%d%%;animation-delay:%.2fs;background:%s"></span>',
-                                            rand( 4, 96 ),
-                                            ( $c * 0.05 ),
-                                            $colors[ $c % count( $colors ) ]
-                                        );
-                                    }
-                                    ?>
-                                </div>
-                            </div>
-
-                        <?php else : ?>
-                            <!-- Feature slide -->
-                            <div class="brikpanel-welcome-slide" data-slide="<?php echo (int) $i; ?>">
-                                <div class="brikpanel-welcome-head">
-                                    <span class="brikpanel-welcome-head-ico"><?php echo $sec['icon']; ?></span>
-                                    <div class="brikpanel-welcome-head-txt">
-                                        <h3><?php echo esc_html( $sec['title'] ); ?></h3>
-                                        <p class="brikpanel-welcome-sub"><?php echo esc_html( $sec['sub'] ); ?></p>
-                                    </div>
-                                </div>
-
-                                <ul class="brikpanel-welcome-highlights">
-                                    <?php foreach ( $sec['highlights'] as $hl ) : ?>
-                                        <li>
-                                            <span class="bw-check"><?php echo $icon_check; ?></span>
-                                            <span class="bw-hl-text">
-                                                <?php
-                                                if ( is_array( $hl ) ) {
-                                                    echo esc_html( $hl['text'] );
-                                                    if ( ! empty( $hl['kbd'] ) ) {
-                                                        echo ' ' . $icon_kbd( $hl['kbd'] ); // already escaped
-                                                    }
-                                                } else {
-                                                    echo esc_html( $hl );
-                                                }
-                                                ?>
-                                            </span>
-                                        </li>
-                                    <?php endforeach; ?>
-                                </ul>
-
-                                <?php if ( ! empty( $sec['tags'] ) ) : ?>
-                                    <div class="brikpanel-welcome-tags">
-                                        <?php foreach ( $sec['tags'] as $tag ) : ?>
-                                            <span class="brikpanel-welcome-tag<?php echo ! empty( $tag['pos'] ) ? ' is-pos' : ''; ?>">
-                                                <?php if ( ! empty( $tag['pos'] ) ) : ?>
-                                                    <span class="bw-tag-check"><?php echo $icon_check; ?></span>
-                                                <?php endif; ?>
-                                                <?php echo esc_html( $tag['text'] ); ?>
-                                            </span>
-                                        <?php endforeach; ?>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        <?php endif; ?>
-
-                    <?php endforeach; ?>
-                </div><!-- /.brikpanel-welcome-slides -->
-
-            </div><!-- /.brikpanel-welcome-body -->
-
-            <!-- ── Footer ───────────────────────────────────────────────────── -->
-            <div class="brikpanel-welcome-footer">
-                <button type="button" class="brikpanel-welcome-skip">
-                    <?php esc_html_e( 'Skip tour', 'brikpanel' ); ?>
-                </button>
-                <div class="brikpanel-welcome-nav">
-                    <button type="button" class="brikpanel-welcome-btn brikpanel-welcome-btn--secondary" data-bw-prev style="visibility:hidden">
-                        <?php echo $icon_arrow_left; ?>
-                        <?php esc_html_e( 'Previous', 'brikpanel' ); ?>
-                    </button>
-                    <button type="button" class="brikpanel-welcome-btn brikpanel-welcome-btn--primary" data-bw-next>
-                        <?php esc_html_e( 'Next', 'brikpanel' ); ?>
-                        <?php echo $icon_arrow_right; ?>
-                    </button>
-                </div>
             </div>
 
-        </div><!-- /.brikpanel-welcome-modal -->
-    </div><!-- /#brikpanel-welcome-overlay -->
+            <!-- Right: one feature area at a time -->
+            <div class="brikpanel-welcome-right">
+                <button type="button" class="brikpanel-welcome-close" data-bw-close aria-label="<?php esc_attr_e( 'Close', 'brikpanel' ); ?>"><?php echo $icon_close; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?></button>
+                <p class="brikpanel-welcome-sr" aria-live="polite" data-bw-live></p>
+
+                <div class="brikpanel-welcome-panels">
+                    <?php foreach ( $steps as $i => $step ) : ?>
+                        <section class="brikpanel-welcome-panel" data-bw-panel="<?php echo (int) $i; ?>"<?php echo 0 === $i ? '' : ' hidden'; ?>>
+                            <p class="brikpanel-welcome-kicker" data-bw-kicker><?php echo esc_html( $step['kicker'] ); ?></p>
+                            <h3 class="brikpanel-welcome-heading"><?php echo esc_html( $step['title'] ); ?></h3>
+                            <p class="brikpanel-welcome-text"><?php echo esc_html( $step['text'] ); ?></p>
+                            <ul class="brikpanel-welcome-chips">
+                                <?php foreach ( $step['chips'] as $chip ) : ?>
+                                    <li class="brikpanel-welcome-chip"><?php echo $icon_check; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?><?php echo esc_html( $chip ); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <?php echo brikpanel_welcome_sketch( $step['key'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG, notes escaped inside. ?>
+                        </section>
+                    <?php endforeach; ?>
+
+                    <section class="brikpanel-welcome-panel brikpanel-welcome-panel--done" data-bw-panel="<?php echo (int) $count; ?>" hidden>
+                        <p class="brikpanel-welcome-kicker brikpanel-welcome-kicker--done" data-bw-kicker><?php esc_html_e( 'All set', 'brikpanel' ); ?></p>
+                        <h3 class="brikpanel-welcome-heading"><?php esc_html_e( 'You are ready to go', 'brikpanel' ); ?></h3>
+                        <p class="brikpanel-welcome-text"><?php esc_html_e( 'Everything is already switched on. Jump straight to the part you need.', 'brikpanel' ); ?></p>
+                        <ul class="brikpanel-welcome-links">
+                            <?php foreach ( $links as $link ) : ?>
+                                <li>
+                                    <a class="brikpanel-welcome-link" href="<?php echo esc_url( $link['url'] ); ?>" data-bw-cta<?php echo $link['here'] ? ' data-bw-here' : ''; ?>>
+                                        <span class="brikpanel-welcome-link-icon"><?php echo $link_icons[ $link['icon'] ]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?></span>
+                                        <span class="brikpanel-welcome-link-text">
+                                            <span class="brikpanel-welcome-link-title"><?php echo esc_html( $link['title'] ); ?></span>
+                                            <span class="brikpanel-welcome-link-desc"><?php echo esc_html( $link['desc'] ); ?></span>
+                                        </span>
+                                        <span class="brikpanel-welcome-link-cta"><?php echo esc_html( $link['cta'] ); ?><?php echo $icon_chev; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?></span>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </section>
+                </div>
+
+                <div class="brikpanel-welcome-footer">
+                    <button type="button" class="brikpanel-btn brikpanel-btn--link brikpanel-welcome-skip" data-bw-skip><?php esc_html_e( 'Skip tour', 'brikpanel' ); ?></button>
+                    <span class="brikpanel-welcome-footer-gap"></span>
+                    <button type="button" class="brikpanel-btn brikpanel-btn--secondary brikpanel-welcome-back" data-bw-prev hidden><?php echo esc_html_x( 'Back', 'welcome tour button', 'brikpanel' ); ?></button>
+                    <button type="button" class="brikpanel-btn brikpanel-btn--primary brikpanel-welcome-next" data-bw-next><span data-bw-next-label><?php echo esc_html_x( 'Next', 'welcome tour button', 'brikpanel' ); ?></span><?php echo $icon_arrow; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?></button>
+                    <?php if ( '' !== $dashboard_url ) : ?>
+                        <a class="brikpanel-btn brikpanel-btn--primary brikpanel-welcome-go" href="<?php echo esc_url( $dashboard_url ); ?>" data-bw-cta<?php echo $on_dashboard ? ' data-bw-here' : ''; ?> hidden><?php esc_html_e( 'Open your dashboard', 'brikpanel' ); ?><?php echo $icon_arrow; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG. ?></a>
+                    <?php else : ?>
+                        <button type="button" class="brikpanel-btn brikpanel-btn--primary brikpanel-welcome-go" data-bw-close hidden><?php esc_html_e( 'Close', 'brikpanel' ); ?></button>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </dialog>
     <?php
 } );

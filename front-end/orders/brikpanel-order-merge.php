@@ -999,33 +999,27 @@ function brikpanel_order_merge_read_token( $token ) {
 // =============================================================================
 
 /**
- * Register the preview screen as a hidden page: it is only ever reached from the
- * bulk action, never from the menu.
+ * Register the preview screen. It is only ever reached from the bulk action,
+ * never from the sidebar: it sits under WooCommerce's menu as a row only access
+ * plugins see (includes/brikpanel-screen-menu.php).
  *
  * @return void
  */
 function brikpanel_order_merge_register_page() {
-	$hook = add_submenu_page(
-		'',
-		__( 'Merge orders', 'brikpanel' ),
-		'',
-		'edit_shop_orders',
-		BRIKPANEL_ORDER_MERGE_PAGE,
-		'brikpanel_order_merge_render_page'
-	);
+	$hooks = function_exists( 'brikpanel_add_screen_page' )
+		? brikpanel_add_screen_page( 'woocommerce', __( 'Merge orders', 'brikpanel' ), 'edit_shop_orders', BRIKPANEL_ORDER_MERGE_PAGE, 'brikpanel_order_merge_render_page' )
+		: array_filter( array( add_submenu_page( '', __( 'Merge orders', 'brikpanel' ), '', 'edit_shop_orders', BRIKPANEL_ORDER_MERGE_PAGE, 'brikpanel_order_merge_render_page' ) ) );
 
-	if ( ! $hook ) {
-		return;
+	foreach ( $hooks as $hook ) {
+		add_action(
+			'load-' . $hook,
+			static function () {
+				// Set before admin-header.php runs, or WordPress strips a null title.
+				$GLOBALS['title'] = __( 'Merge orders', 'brikpanel' );
+				brikpanel_order_merge_maybe_run();
+			}
+		);
 	}
-
-	add_action(
-		'load-' . $hook,
-		static function () {
-			// Set before admin-header.php runs, or WordPress strips a null title.
-			$GLOBALS['title'] = __( 'Merge orders', 'brikpanel' );
-			brikpanel_order_merge_maybe_run();
-		}
-	);
 }
 add_action( 'admin_menu', 'brikpanel_order_merge_register_page', 30 );
 

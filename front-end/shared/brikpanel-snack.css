@@ -1,0 +1,95 @@
+/* =============================================================================
+   BrikPanel - the message strip at the bottom of a phone screen
+   (front-end/shared/brikpanel-snack.js). Above the sheets (100006), lifted
+   over a bar fixed to the bottom by --bp-snack-lift.
+   ============================================================================= */
+.brikpanel-snack {
+	position: fixed;
+	inset-inline: 14px;
+	bottom: calc(14px + env(safe-area-inset-bottom, 0px) + var(--bp-snack-lift, 0px));
+	z-index: 100006;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	box-sizing: border-box;
+	max-width: 560px;
+	margin: 0 auto;
+	padding: 12px 14px;
+	color: #1a6b15;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.4;
+	background: #e4f5e1;
+	border: 1px solid #b7e1b0;
+	border-radius: 12px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+	opacity: 0;
+	transform: translateY(calc(100% + 24px));
+	visibility: hidden;
+	pointer-events: none;
+	transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.28s;
+}
+
+.brikpanel-snack.is-shown {
+	opacity: 1;
+	transform: none;
+	visibility: visible;
+	pointer-events: auto;
+	transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.38s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
+}
+
+.brikpanel-snack.is-error {
+	color: #c62828;
+	background: #fce4e4;
+	border-color: #f1b0b0;
+}
+
+.brikpanel-snack.is-info {
+	color: #303030;
+	background: #fff;
+	border-color: #e3e3e3;
+}
+
+.brikpanel-snack__icon {
+	display: grid;
+	flex: none;
+	place-items: center;
+}
+
+.brikpanel-snack__text {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.brikpanel-snack__undo {
+	flex: none;
+	min-height: 32px;
+	margin: -6px -6px -6px 0;
+	padding: 4px 10px;
+	color: inherit;
+	font-family: inherit;
+	font-size: 14px;
+	font-weight: 700;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	background: transparent;
+	border: 0;
+	border-radius: 8px;
+	cursor: pointer;
+}
+
+.brikpanel-snack__undo[hidden] {
+	display: none;
+}
+
+.brikpanel-snack__undo:focus-visible {
+	outline: 2px solid currentColor;
+	outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-snack,
+	.brikpanel-snack.is-shown {
+		transition-duration: 0.01ms;
+	}
+}

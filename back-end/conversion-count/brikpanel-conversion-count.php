@@ -178,6 +178,82 @@ function brikpanel_record_traffic_source( $channel, $host ) {
 }
 
 /**
+ * A campaign name as it is stored and compared: the way WooCommerce keeps
+ * utm_campaign on an order (sanitize_text_field), spaces collapsed, at most
+ * 100 characters. '' for nothing, and for "(none)", which WooCommerce's own
+ * tracking writes when there was no campaign.
+ *
+ * @param mixed $raw Campaign from a landing address or an order.
+ * @return string
+ */
+function brikpanel_campaign_normalize( $raw ) {
+    if ( ! is_scalar( $raw ) ) {
+        return '';
+    }
+    $name = trim( (string) preg_replace( '/\s+/u', ' ', sanitize_text_field( (string) $raw ) ) );
+    if ( '' === $name || '(none)' === $name ) {
+        return '';
+    }
+    return function_exists( 'brikpanel_substr' ) ? brikpanel_substr( $name, 0, 100 ) : substr( $name, 0, 100 );
+}
+
+/**
+ * Counts one visit from a campaign for today: the dashboard's "Top campaigns"
+ * divides that campaign's orders by these visits.
+ *
+ * The browser sends a campaign once per campaign a day (its own latch); the
+ * server adds the same once-a-day lock the visitor counter uses for a browser
+ * that keeps no cookie, one lock for all campaigns, so a stream of invented
+ * names cannot leave a lock row each. The endpoint takes no nonce (pages are
+ * cached), so a day takes at most 200 different campaign names: a known one
+ * still counts after that, a new one does not.
+ *
+ * Callers apply the master-switch / consent / admin / bot guards.
+ *
+ * @param mixed $raw Campaign as the browser read it from the landing address.
+ * @return string The stored name, or '' when nothing was stored.
+ */
+function brikpanel_record_campaign_visit( $raw ) {
+    global $wpdb;
+
+    $campaign = brikpanel_campaign_normalize( $raw );
+    if ( '' === $campaign ) {
+        return '';
+    }
+    if ( function_exists( 'brikpanel_daily_counter_allowed' ) && ! brikpanel_daily_counter_allowed( 'campaign' ) ) {
+        return '';
+    }
+
+    $table = $wpdb->prefix . 'brikpanel_campaign_visits';
+    $today = wp_date( 'Y-m-d' );
+
+    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    $updated = $wpdb->query( $wpdb->prepare( "UPDATE {$table} SET hits = hits + 1 WHERE date_column = %s AND campaign = %s", $today, $campaign ) );
+    if ( $updated ) {
+        return $campaign;
+    }
+    if ( false === $updated ) {
+        return '';
+    }
+
+    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    $names_today = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE date_column = %s", $today ) );
+    if ( $names_today >= 200 ) {
+        return '';
+    }
+
+    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    $wpdb->query( $wpdb->prepare(
+        "INSERT INTO {$table} (date_column, campaign, hits)
+         VALUES (%s, %s, 1)
+         ON DUPLICATE KEY UPDATE hits = hits + 1",
+        $today,
+        $campaign
+    ) );
+    return $campaign;
+}
+
+/**
  * Records a visitor hit including device-type breakdown.
  *
  * Atomic INSERT...ON DUPLICATE KEY UPDATE replaces the previous SELECT-then-
@@ -193,15 +269,19 @@ function brikpanel_record_traffic_source( $channel, $host ) {
  *
  * @param string $referrer    document.referrer reported by the tracker.
  * @param string $landing_url location.href of the landing page.
+ * @param bool   $apply_gate  Run the 3.3.11 once-a-day cap here. The 3.3.30
+ *                            tracker passes false: it already decided from the
+ *                            "this is a person" mark, which counts once a day
+ *                            on the server's own clock.
  */
-function brikpanel_record_visitor_view( $referrer = '', $landing_url = '' ) {
+function brikpanel_record_visitor_view( $referrer = '', $landing_url = '', $apply_gate = true ) {
     // Server-side once-per-day cap (3.3.11). The browser's local-storage latch
     // is the only reason this used to fire once a day, and a client that
     // starts every page with a blank profile never carries it: each page it
     // opened became a new visitor, plus a traffic-source hit and a device
     // hit below. A client with no memory of us now gets one count per
     // identity per day; returning browsers and signed-in users are untouched.
-    if ( function_exists( 'brikpanel_daily_counter_allowed' ) && ! brikpanel_daily_counter_allowed( 'visitor' ) ) {
+    if ( $apply_gate && function_exists( 'brikpanel_daily_counter_allowed' ) && ! brikpanel_daily_counter_allowed( 'visitor' ) ) {
         return;
     }
 
@@ -258,6 +338,11 @@ function brikpanel_visitor_view() {
     // cached pages that still carry the old tracker JS after the merchant
     // turned tracking off or switched the consent gate on.
     if ( function_exists( 'brikpanel_frontend_tracking_allowed' ) && ! brikpanel_frontend_tracking_allowed( 'endpoint' ) ) {
+        wp_send_json_success();
+    }
+    // Counted the old way only while caches may still serve the old script
+    // (3.3.30); afterwards a request that never proved a person is refused.
+    if ( function_exists( 'brikpanel_legacy_tracker_allowed' ) && ! brikpanel_legacy_tracker_allowed() ) {
         wp_send_json_success();
     }
     if ( brikpanel_is_admin_user() ) {

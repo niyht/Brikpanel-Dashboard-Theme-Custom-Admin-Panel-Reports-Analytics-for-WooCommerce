@@ -1145,6 +1145,9 @@
 			var headerBottom = header ? header.getBoundingClientRect().bottom : 0;
 			var top = Math.max(0, Math.round(headerBottom - base));
 			document.documentElement.style.setProperty('--bp-otabs-top', top + 'px');
+			// The tab bar sticks under the header; the page keeps both clear when
+			// it scrolls to a focused control (brikpanel-order-tabs.css).
+			document.documentElement.style.setProperty('--bp-otabs-bar-h', Math.round(bar.getBoundingClientRect().height) + 'px');
 
 			// The right column follows the page only while it sits beside the
 			// tabs and fits on screen.

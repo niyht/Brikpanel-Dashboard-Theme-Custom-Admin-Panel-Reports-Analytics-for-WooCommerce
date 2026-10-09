@@ -64,10 +64,15 @@ if ( ! defined( 'BRIKPANEL_NAV_BLOCKED_SOURCES_META' ) ) {
 /**
  * Whether "Block pages hidden from the menu" is on.
  *
+ * "Ignore BrikPanel's access rules" switches the blocking off as a whole, rows
+ * hidden for everyone included: blocking spares administrators, so it is a
+ * per-person rule itself. The sidebar and the palette still leave those rows out.
+ *
  * @return bool
  */
 function brikpanel_nav_block_hidden_pages_enabled() {
-	return get_option( BRIKPANEL_NAV_BLOCK_OPTION, 'no' ) === 'yes';
+	return get_option( BRIKPANEL_NAV_BLOCK_OPTION, 'no' ) === 'yes'
+		&& ! ( function_exists( 'brikpanel_access_rules_ignored' ) && brikpanel_access_rules_ignored() );
 }
 
 /**
@@ -363,8 +368,8 @@ function brikpanel_nav_target_identity( array $target ) {
  *  - hidden_rule: a Navigation rule hides it from this user (with its
  *                 children, when it is a top-level row).
  *  - hidden_new:  "Hide new menu items by default" keeps it out.
- * Children of an item moved into "More" are drawn nowhere but hidden by no
- * rule, so they are in no list and stay open.
+ * The pages of a menu moved into "More" are drawn as that row's own dropdown,
+ * so they count as visible under their real menu (tools.php, not "More").
  *
  * The first call after admin_init is kept for the rest of the request: the
  * sidebar renderer rewrites the globals at admin_footer, after which hidden
@@ -395,6 +400,8 @@ function brikpanel_nav_page_rows( $refresh = false ) {
 		did_action( 'admin_init' ) ? 'after' : 'before',
 		md5( (string) wp_json_encode( $config ) ),
 		brikpanel_nav_hide_new_items_enabled() ? 'hide-new' : '',
+		// The answer changes with "Ignore BrikPanel's access rules" too.
+		( function_exists( 'brikpanel_access_rules_ignored' ) && brikpanel_access_rules_ignored() ) ? 'rules-ignored' : '',
 	] );
 	if ( isset( $memo[ $key ] ) ) {
 		return $memo[ $key ];
@@ -441,6 +448,12 @@ function brikpanel_nav_page_rows( $refresh = false ) {
 		$add( brikpanel_nav_row_target( $slug, '' ), $state );
 		if ( ! empty( $s[ $slug ] ) && is_array( $s[ $slug ] ) ) {
 			foreach ( $s[ $slug ] as $child ) {
+				// A BrikPanel screen kept in the menu for access plugins only is
+				// judged by the screens it replaces, as before it had a row
+				// (includes/brikpanel-screen-menu.php).
+				if ( function_exists( 'brikpanel_is_menu_only_row' ) && brikpanel_is_menu_only_row( $child ) ) {
+					continue;
+				}
 				// A hidden custom link is only a link: its target keeps its own rows.
 				if ( is_array( $child ) && isset( $child[2] ) && is_scalar( $child[2] ) && ! ( function_exists( 'brikpanel_nav_customizer_extract_meta' ) && brikpanel_nav_customizer_extract_meta( $child ) ) ) {
 					$add( brikpanel_nav_row_target( (string) $child[2], $slug ), $state );
@@ -472,6 +485,20 @@ function brikpanel_nav_page_rows( $refresh = false ) {
 					? $custom_url( $child )
 					: brikpanel_nav_row_target( (string) $child[2], $slug );
 				$add( $target, 'visible' );
+
+				// A whole menu moved into "More" lists its own pages under its
+				// row, so they are drawn too: the same rows the renderer prints
+				// (brikpanel_nav_more_plan()), against the menu they belong to.
+				$more_parent = function_exists( 'brikpanel_nav_more_parent' ) ? brikpanel_nav_more_parent( $child ) : '';
+				if ( '' !== $more_parent ) {
+					list( $grand, $grand_header ) = brikpanel_nav_resolve_submenu_rows( isset( $s[ $more_parent ] ) ? $s[ $more_parent ] : [] );
+					if ( is_array( $grand_header ) ) {
+						$grand[] = $grand_header;
+					}
+					foreach ( $grand as $grand_row ) {
+						$add( brikpanel_nav_row_target( (string) $grand_row[2], $more_parent ), 'visible' );
+					}
+				}
 			}
 			continue;
 		}

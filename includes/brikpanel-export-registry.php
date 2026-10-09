@@ -181,6 +181,9 @@ function brikpanel_export_placeholder_field_ids() {
 		// Renders a sentence pointing at the brand logo picker. No value of
 		// its own, in either direction.
 		'brk_login_logo_hint',
+		// Lists the person's own phones (front-end/push/brikpanel-push-admin.php).
+		// The devices live in their own table and never travel in a settings file.
+		'brikpanel_push_devices_card',
 	];
 }
 
@@ -288,6 +291,16 @@ function brikpanel_export_core_table() {
 		'brikpanel_cost_dupes_backup',
 		'brikpanel_bot_traffic_backup',
 		'brikpanel_cart_count_cleanup_backup',
+		// Nightly bot traffic cleanup (3.3.30): its last run, what it changed
+		// since the last undo, and what the merchant put back.
+		'brikpanel_bot_traffic_auto',
+		'brikpanel_bot_traffic_applied',
+		'brikpanel_bot_traffic_kept',
+		// Person check (3.3.30): when this site started it, and the cloud
+		// address rule's daily tally and pause.
+		'brikpanel_human_proof_since',
+		'brikpanel_dc_stats',
+		'brikpanel_dc_paused_until',
 		// Read-only escape hatches: nothing in the plugin ever writes these,
 		// they exist to be set by hand on one site for one reason.
 		'brikpanel_modern_segments',
@@ -311,12 +324,20 @@ function brikpanel_export_core_table() {
 	foreach ( [
 		'brikpanel_sidebar_hidden',
 		'brikpanel_dash_range',
+		// The tab this admin last opened in each dashboard card (3.3.33).
+		'brikpanel_dash_tabs',
+		// The products list's last sort (3.3.29), like the dashboard range.
+		'brikpanel_products_sort',
 		// The new-store guide this admin closed on the dashboard.
 		'brikpanel_new_store_guide_dismissed',
 		'brikpanel_whatsapp_optin',
 		'brikpanel_brikcontrol_dismissed',
 		// The old-WooCommerce notice this admin closed, keyed by the version it named.
 		'brikpanel_wc_min_notice_dismissed',
+		// Whose turn it is among the cards and windows (includes/brikpanel-asks.php):
+		// this admin on this site, and the same person across a network.
+		'brikpanel_asks',
+		'brikpanel_asks_person',
 	] as $key ) {
 		$map[ $key ] = [ 'class' => 'internal' ];
 	}

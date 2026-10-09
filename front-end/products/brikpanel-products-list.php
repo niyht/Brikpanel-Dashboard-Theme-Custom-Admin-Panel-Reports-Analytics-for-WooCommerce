@@ -43,6 +43,7 @@ class Brikpanel_Products_List {
         add_action('wp_ajax_brikpanel_bulk_job_process', [$this, 'ajax_bulk_job_process']);
         add_action('wp_ajax_brikpanel_bulk_job_cancel',  [$this, 'ajax_bulk_job_cancel']);
         add_action('wp_ajax_brikpanel_pl_save_columns',  [$this, 'ajax_save_columns']);
+        add_action('wp_ajax_brikpanel_pl_save_sort',     [$this, 'ajax_save_sort']);
         add_action('wp_ajax_brikpanel_save_product_order', [$this, 'ajax_save_product_order']);
 
         // Export selected products as CSV
@@ -251,6 +252,45 @@ class Brikpanel_Products_List {
         wp_send_json_success(['columns' => self::get_user_columns()]);
     }
 
+    // =========================================================================
+    // SORT ORDER (per-user preference)
+    // =========================================================================
+    // The list opens in the sort its user picked last, wherever it is opened
+    // from (the menu, a bookmark, another screen). A sort in the URL (a reload,
+    // the editor's back link) still wins for that view. Filters are not kept:
+    // they narrow one search, the sort is how someone likes to read the list.
+
+    const USER_SORT_META = 'brikpanel_products_sort';
+
+    // Every value the Sort dropdown offers, in its order.
+    const SORT_OPTIONS = ['date-desc', 'date-asc', 'title-asc', 'title-desc', 'price-asc', 'price-desc', 'menu-asc'];
+
+    /**
+     * The sort the list opens in for a user: the last one they picked in the
+     * Sort dropdown, or newest first.
+     *
+     * @param int $user_id User to resolve for; 0 means the current user.
+     * @return string One of SORT_OPTIONS.
+     */
+    public static function get_user_sort($user_id = 0) {
+        if (!$user_id) $user_id = get_current_user_id();
+        $saved = $user_id ? get_user_meta($user_id, self::USER_SORT_META, true) : '';
+        return in_array($saved, self::SORT_OPTIONS, true) ? $saved : 'date-desc';
+    }
+
+    public function ajax_save_sort() {
+        check_ajax_referer('brikpanel_products_list_nonce', 'security');
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')], 403);
+        }
+        $sort = isset($_POST['sort']) && is_string($_POST['sort']) ? sanitize_key(wp_unslash($_POST['sort'])) : '';
+        if (!in_array($sort, self::SORT_OPTIONS, true)) {
+            wp_send_json_error(null, 400);
+        }
+        update_user_meta(get_current_user_id(), self::USER_SORT_META, $sort);
+        wp_send_json_success(['sort' => $sort]);
+    }
+
     // Conservative defaults sized for shared hosting (low memory_limit and
     // short max_execution_time). Filterable per-job via brikpanel_bulk_batch_size.
     // Update touches WooCommerce object cache + variations per product, so it
@@ -266,17 +306,16 @@ class Brikpanel_Products_List {
     // PAGE REGISTRATION & REDIRECT
     // =========================================================================
 
+    /**
+     * Registers the list under WordPress's Products menu, as a row only access
+     * plugins see (includes/brikpanel-screen-menu.php).
+     */
     public function register_page() {
-        $hook = add_submenu_page(
-            '',
-            __('Products', 'brikpanel'),
-            '',
-            'edit_products',
-            'brikpanel-products',
-            [$this, 'render_page']
-        );
+        $hooks = function_exists('brikpanel_add_screen_page')
+            ? brikpanel_add_screen_page('edit.php?post_type=product', __('Products', 'brikpanel'), 'edit_products', 'brikpanel-products', [$this, 'render_page'])
+            : array_filter([add_submenu_page('', __('Products', 'brikpanel'), '', 'edit_products', 'brikpanel-products', [$this, 'render_page'])]);
 
-        if ($hook) {
+        foreach ($hooks as $hook) {
             add_action('load-' . $hook, function () {
                 global $title;
                 $title = __('Products', 'brikpanel');
@@ -381,12 +420,11 @@ class Brikpanel_Products_List {
                 $carry['bpl_stock'] = $stock_map[$stock_param];
             }
 
-            // Only statuses the list has a tab for. `pending` exists natively but
-            // has no tab here, so carrying it would put a filter in the URL that
-            // the query then ignores — the address bar would disagree with the
-            // rows on screen. Dropping it keeps the pre-existing "unfiltered"
-            // behaviour, which is at least honest.
-            $status_allow = ['publish', 'future', 'draft', 'private', 'trash'];
+            // Only statuses the list has a tab for, "Pending review" included:
+            // WordPress's own "Pending" link (and any integration that files new
+            // products for review) lands on that tab. Anything else would put a
+            // filter in the URL that the query then ignores, so it is dropped.
+            $status_allow = ['publish', 'future', 'draft', 'pending', 'private', 'trash'];
             $status_param = isset($_GET['post_status']) && is_string($_GET['post_status'])
                 ? sanitize_key(wp_unslash($_GET['post_status']))
                 : '';
@@ -456,17 +494,30 @@ class Brikpanel_Products_List {
         $backorders   = false;
 
         if ($product->is_type('variable')) {
-            $total = 0;
+            // A variation that leaves its stock to the product reports the
+            // product's quantity as its own (get_manage_stock() is 'parent'):
+            // that quantity is counted once, not once per variation (a product
+            // with 10 in stock and 6 such variations showed 60). A switched-off
+            // variation (status private) is not for sale and not counted.
+            $total       = 0;
+            $uses_parent = false;
             foreach ($product->get_children() as $cid) {
                 $v = wc_get_product($cid);
-                if (!$v) continue;
-                if ($v->get_manage_stock()) {
+                if (!$v || 'publish' !== $v->get_status()) continue;
+                $managed = $v->get_manage_stock();
+                if ('parent' === $managed) {
+                    $uses_parent = true;
+                } elseif ($managed) {
                     $manage_stock = true;
                     $total += (int) $v->get_stock_quantity();
                 }
                 if ($v->backorders_allowed()) {
                     $backorders = true;
                 }
+            }
+            if ($uses_parent) {
+                $manage_stock = true;
+                $total += (int) $product->get_stock_quantity();
             }
             $qty = $manage_stock ? $total : null;
         } else {
@@ -1390,6 +1441,10 @@ class Brikpanel_Products_List {
                               // quick-edit display it and leave the schedule intact on save. ?>
                         <option value="future"><?php esc_html_e('Scheduled', 'brikpanel'); ?></option>
                         <option value="draft"><?php esc_html_e('Draft', 'brikpanel'); ?></option>
+                        <?php // Offered like the editor's status menu: on a product that is
+                              // already pending, or to someone who may not publish (the script
+                              // hides it otherwise, and hides what that person cannot pick). ?>
+                        <option value="pending"><?php echo esc_html(brikpanel_product_status_label('pending')); ?></option>
                         <option value="private"><?php esc_html_e('Private', 'brikpanel'); ?></option>
                     </select>
                 </div>
@@ -1541,6 +1596,10 @@ class Brikpanel_Products_List {
             // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only view state.
             $bpl_req[$bpl_key] = isset($_GET[$bpl_param]) ? sanitize_text_field(wp_unslash($_GET[$bpl_param])) : '';
         }
+        // No sort in the URL (the menu, a bookmark): the one this user picked last.
+        if (!in_array($bpl_req['sort'], self::SORT_OPTIONS, true)) {
+            $bpl_req['sort'] = self::get_user_sort();
+        }
         $bpl_filters_set = count($tax_filter_chips);
         foreach (['cat', 'brand', 'stock', 'type', 'featured'] as $bpl_key) {
             if ('' !== $bpl_req[$bpl_key]) {
@@ -1579,8 +1638,14 @@ class Brikpanel_Products_List {
         $draft     = isset($counts->draft) ? (int) $counts->draft : 0;
         $private_c = isset($counts->private) ? (int) $counts->private : 0;
         $future    = isset($counts->future) ? (int) $counts->future : 0;
+        $pending   = isset($counts->pending) ? (int) $counts->pending : 0;
         $trash     = isset($counts->trash) ? (int) $counts->trash : 0;
-        $all_count = $total + $draft + $private_c + $future;
+        $all_count = $total + $draft + $pending + $private_c + $future;
+        // The Pending review tab is printed while products wait for review, and
+        // also when the address asks for that view (WordPress's own "Pending"
+        // link redirected here), so the tab the script marks active exists.
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only view state.
+        $bpl_status_req = isset($_GET['bpl_status']) && is_string($_GET['bpl_status']) ? sanitize_key(wp_unslash($_GET['bpl_status'])) : '';
         ?>
         <div class="wrap brikpanel-shell__page">
         <div class="brikpanel-pl" id="brikpanel-products-list" data-tax-filters="<?php echo esc_attr(wp_json_encode((object) $active_tax_filters)); ?>">
@@ -1626,10 +1691,14 @@ class Brikpanel_Products_List {
                                 <span class="brikpanel-pl-screen-label"><?php esc_html_e('Screen Options', 'brikpanel'); ?></span>
                             </button>
                         </div>
-                        <div class="brikpanel-overflow">
+                        <?php
+                        // --phone: on a phone the three always fold into "...",
+                        // which opens them as a sheet from the bottom edge (--sheet).
+                        ?>
+                        <div class="brikpanel-overflow brikpanel-overflow--phone brikpanel-overflow--sheet">
                             <?php
                             if (function_exists('brikpanel_overflow_trigger')) {
-                                brikpanel_overflow_trigger('bpl-header-more');
+                                brikpanel_overflow_trigger('bpl-header-more', 'brikpanel-pl-header-more');
                             }
                             ?>
                             <div class="brikpanel-overflow__menu" id="bpl-header-more">
@@ -1657,7 +1726,7 @@ class Brikpanel_Products_List {
                                 </button>
                             </div>
                         </div>
-                        <a href="<?php echo esc_url(admin_url('admin.php?page=brikpanel-product-editor')); ?>" class="brikpanel-pl-btn primary" id="bpl-add-new">
+                        <a href="<?php echo esc_url(admin_url('admin.php?page=brikpanel-product-editor')); ?>" class="brikpanel-pl-btn primary" id="bpl-add-new" data-bp-vt="forward">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             <span class="brikpanel-pl-add-label"><?php esc_html_e('Add product', 'brikpanel'); ?></span>
                         </a>
@@ -1696,6 +1765,12 @@ class Brikpanel_Products_List {
                             <?php esc_html_e('Draft', 'brikpanel'); ?>
                             <span class="brikpanel-pl-tab-count" data-count="draft"><?php echo esc_html($draft); ?></span>
                         </button>
+                        <?php if ($pending > 0 || 'pending' === $bpl_status_req) : ?>
+                        <button class="brikpanel-pl-tab" data-status="pending">
+                            <?php echo esc_html(brikpanel_product_status_label('pending')); ?>
+                            <span class="brikpanel-pl-tab-count" data-count="pending"><?php echo esc_html($pending); ?></span>
+                        </button>
+                        <?php endif; ?>
                         <?php if ($private_c > 0) : ?>
                         <button class="brikpanel-pl-tab" data-status="private">
                             <?php esc_html_e('Private', 'brikpanel'); ?>
@@ -1721,6 +1796,30 @@ class Brikpanel_Products_List {
                             <button type="button" class="brikpanel-pl-find-cancel" id="bpl-find-cancel"><?php esc_html_e('Cancel', 'brikpanel'); ?></button>
                         </div>
                     </div>
+                </div>
+                <?php
+                // Phones only (CSS shows it at 782px and below): the sort, which
+                // opens a sheet, and Select, which turns on the round checkboxes
+                // and the bar at the bottom. The label is the server's, so the
+                // row does not change once the script runs.
+                $bpl_sort_labels = [
+                    'date-desc'  => __('Newest first', 'brikpanel'),
+                    'date-asc'   => __('Oldest first', 'brikpanel'),
+                    'title-asc'  => __('Name A-Z', 'brikpanel'),
+                    'title-desc' => __('Name Z-A', 'brikpanel'),
+                    'price-asc'  => __('Price low-high', 'brikpanel'),
+                    'price-desc' => __('Price high-low', 'brikpanel'),
+                    'menu-asc'   => __('Custom order', 'brikpanel'),
+                ];
+                $bpl_sort_label = isset($bpl_sort_labels[$bpl_req['sort']]) ? $bpl_sort_labels[$bpl_req['sort']] : $bpl_sort_labels['date-desc'];
+                ?>
+                <div class="brikpanel-pl-mbar" id="bpl-mbar">
+                    <button type="button" class="brikpanel-pl-msort" id="bpl-msort" aria-haspopup="dialog">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.5 4.5v11M4 13l2.5 2.5L9 13M13.5 15.5v-11M11 7l2.5-2.5L16 7"/></svg>
+                        <span class="brikpanel-pl-msort-label" id="bpl-msort-label"><?php echo esc_html($bpl_sort_label); ?></span>
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 8 4 4 4-4"/></svg>
+                    </button>
+                    <button type="button" class="brikpanel-pl-mselect" id="bpl-mselect" aria-pressed="false"><?php esc_html_e('Select', 'brikpanel'); ?></button>
                 </div>
                 <div class="brikpanel-pl-refine" id="bpl-refine">
                     <div class="brikpanel-pl-refine-inner">
@@ -1889,6 +1988,8 @@ class Brikpanel_Products_List {
 
                 <!-- Pagination -->
                 <div class="brikpanel-pl-pagination" id="bpl-pagination"></div>
+                <?php // Phones load the next page when this comes near the screen. ?>
+                <div class="brikpanel-pl-msentinel" id="bpl-msentinel" aria-hidden="true"></div>
             </div>
 
             <?php
@@ -1907,9 +2008,14 @@ class Brikpanel_Products_List {
                     <button type="button" class="brikpanel-pl-bulk-link" id="bpl-deselect-all-btn"><?php esc_html_e('Deselect all', 'brikpanel'); ?></button>
                 </div>
                 <div class="brikpanel-pl-bulk-right">
-                    <div class="brikpanel-overflow">
+                    <?php
+                    // On a phone the bar is always the same three parts: the
+                    // buttons fold into "Actions" (--phone), a sheet (--sheet).
+                    ?>
+                    <div class="brikpanel-overflow brikpanel-overflow--phone brikpanel-overflow--sheet">
                         <button type="button" class="brikpanel-overflow__trigger brikpanel-pl-bulk-more" aria-expanded="false" aria-controls="bpl-bulk-more">
-                            <?php esc_html_e('Bulk actions', 'brikpanel'); ?>
+                            <span class="brikpanel-pl-bulk-more-label"><?php esc_html_e('Bulk actions', 'brikpanel'); ?></span>
+                            <span class="brikpanel-pl-bulk-more-short"><?php echo esc_html_x('Actions', 'button that opens the bulk actions on phones', 'brikpanel'); ?></span>
                             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l5-5 5 5"/></svg>
                         </button>
                         <div class="brikpanel-overflow__menu" id="bpl-bulk-more">
@@ -1936,7 +2042,10 @@ class Brikpanel_Products_List {
                                     <?php esc_html_e('Tags', 'brikpanel'); ?>
                                 </button>
                             <?php endif; ?>
+                            <?php // Someone who may only send products in for review gets no Publish (ajax_bulk_action refuses it too). ?>
+                            <?php if (brikpanel_user_can_publish_products()) : ?>
                             <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-publish"><?php esc_html_e('Publish', 'brikpanel'); ?></button>
+                            <?php endif; ?>
                             <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-draft"><?php esc_html_e('Set as draft', 'brikpanel'); ?></button>
                             <button type="button" class="brikpanel-pl-btn danger small" id="bpl-bulk-trash"><?php esc_html_e('Move to trash', 'brikpanel'); ?></button>
                             <button type="button" class="brikpanel-pl-btn danger small" id="bpl-bulk-delete-perm">
@@ -2359,6 +2468,43 @@ class Brikpanel_Products_List {
     }
 
     /**
+     * Price order for the product list, from WooCommerce's price lookup table.
+     *
+     * The same path as WooCommerce's own storefront sort: one row per product,
+     * joined on its primary key, so every product stays in the list (one with
+     * no price sorts as 0, one WooCommerce never indexed goes last) and no
+     * GROUP BY is needed. Low to high uses a variable product's lowest price,
+     * high to low its highest. The ID breaks ties, so equal prices keep one
+     * order and no product repeats or goes missing between pages.
+     *
+     * Attached only around the list query (ajax_fetch_products()), and even
+     * then it only touches a query carrying `brikpanel_pl_price_sort`: a query
+     * a third-party callback runs while it is attached is left alone.
+     *
+     * @param array    $clauses  The query's SQL clauses.
+     * @param WP_Query $wp_query The query being filtered.
+     * @return array
+     */
+    public static function filter_price_sort_clauses($clauses, $wp_query) {
+        if (!is_array($clauses) || !($wp_query instanceof WP_Query)) {
+            return $clauses;
+        }
+        $dir = $wp_query->get('brikpanel_pl_price_sort');
+        if ($dir !== 'ASC' && $dir !== 'DESC') {
+            return $clauses;
+        }
+
+        global $wpdb;
+        $lookup = !empty($wpdb->wc_product_meta_lookup) ? $wpdb->wc_product_meta_lookup : $wpdb->prefix . 'wc_product_meta_lookup';
+        $price  = 'ASC' === $dir ? 'bpl_price_lookup.min_price' : 'bpl_price_lookup.max_price';
+
+        $clauses['join']    = (isset($clauses['join']) ? $clauses['join'] : '') . " LEFT JOIN {$lookup} AS bpl_price_lookup ON bpl_price_lookup.product_id = {$wpdb->posts}.ID";
+        $clauses['orderby'] = "{$price} IS NULL ASC, {$price} {$dir}, {$wpdb->posts}.ID {$dir}";
+
+        return $clauses;
+    }
+
+    /**
      * Make the current product query language-agnostic under WPML.
      *
      * BrikPanel's product list is a store-management view, not a translation
@@ -2403,7 +2549,10 @@ class Brikpanel_Products_List {
         $stock_filter = sanitize_key($_POST['stock_filter'] ?? '');
         $product_type = sanitize_key($_POST['product_type'] ?? '');
         $featured     = sanitize_key($_POST['featured'] ?? '');
-        $sort     = sanitize_text_field($_POST['sort'] ?? 'date-desc');
+        $sort     = sanitize_text_field(wp_unslash($_POST['sort'] ?? 'date-desc'));
+        if (!in_array($sort, self::SORT_OPTIONS, true)) {
+            $sort = 'date-desc';
+        }
 
         // Parse sort
         $sort_parts = explode('-', $sort);
@@ -2424,14 +2573,18 @@ class Brikpanel_Products_List {
             $statuses = ['future'];
         } elseif ($status === 'draft') {
             $statuses = ['draft'];
+        } elseif ($status === 'pending') {
+            $statuses = ['pending'];
         } elseif ($status === 'private') {
             $statuses = ['private'];
         } elseif ($status === 'trash') {
             $statuses = ['trash'];
         } else {
-            // "All" includes scheduled (future) products so they are never
-            // hidden from the default view — mirrors WordPress's own edit list.
-            $statuses = ['publish', 'future', 'draft', 'private'];
+            // "All" holds every status WordPress's own product list counts in
+            // its "All": scheduled products, and products waiting for review
+            // (an inventory integration or a contributor files new products as
+            // "pending"; leaving them out made them impossible to find here).
+            $statuses = ['publish', 'future', 'draft', 'pending', 'private'];
         }
 
         $args = [
@@ -2439,12 +2592,16 @@ class Brikpanel_Products_List {
             'post_status'    => $statuses,
             'posts_per_page' => $per_page,
             'paged'          => $page,
-            'orderby'        => $orderby === 'price' ? 'meta_value_num' : $orderby,
+            'orderby'        => $orderby,
             'order'          => $order,
         ];
 
         if ($orderby === 'price') {
-            $args['meta_key'] = '_price';
+            // Ordered by WooCommerce's price lookup table, as the storefront
+            // is (filter_price_sort_clauses()). The `_price` meta join used
+            // before dropped every product without a price row from the list.
+            $args['orderby'] = ['ID' => $order];
+            $args['brikpanel_pl_price_sort'] = $order;
         } elseif ($orderby === 'menu') {
             // Custom storefront order: products without an explicit
             // menu_order (defaults to 0) tie-break by title so the list is
@@ -2591,7 +2748,11 @@ class Brikpanel_Products_List {
         // posts_clauses callback can throw out of WP_Query, and an escaped
         // Throwable would leave our posts_search filter attached with a stale
         // term for the rest of the request, silently widening every other
-        // search query on the page.
+        // search query on the page. The price order filter is scoped the same way.
+        $price_sort = $orderby === 'price';
+        if ($price_sort) {
+            add_filter('posts_clauses', [__CLASS__, 'filter_price_sort_clauses'], 10, 2);
+        }
         try {
             $query = new WP_Query($args);
         } finally {
@@ -2599,6 +2760,9 @@ class Brikpanel_Products_List {
             if ($search) {
                 remove_filter('posts_search', [__CLASS__, 'filter_search_include_sku'], 10);
                 self::$sku_search_term = '';
+            }
+            if ($price_sort) {
+                remove_filter('posts_clauses', [__CLASS__, 'filter_price_sort_clauses'], 10);
             }
         }
 
@@ -2828,6 +2992,7 @@ class Brikpanel_Products_List {
         $draft_count   = isset($counts->draft) ? (int) $counts->draft : 0;
         $private_count = isset($counts->private) ? (int) $counts->private : 0;
         $future_count  = isset($counts->future) ? (int) $counts->future : 0;
+        $pending_count = isset($counts->pending) ? (int) $counts->pending : 0;
         $trash_count   = isset($counts->trash) ? (int) $counts->trash : 0;
 
         // Labels, visibility and geometry for the dynamic columns. Resolved
@@ -2861,10 +3026,11 @@ class Brikpanel_Products_List {
             'extra_columns_state' => (object) $extra_state,
             'extra_columns_meta' => (object) $extra_meta,
             'counts'        => [
-                'all'     => $publish_count + $future_count + $draft_count + $private_count,
+                'all'     => $publish_count + $future_count + $draft_count + $pending_count + $private_count,
                 'publish' => $publish_count,
                 'future'  => $future_count,
                 'draft'   => $draft_count,
+                'pending' => $pending_count,
                 'private' => $private_count,
                 'trash'   => $trash_count,
             ],
@@ -2990,6 +3156,12 @@ class Brikpanel_Products_List {
             wp_send_json_error(['message' => __('Product not found.', 'brikpanel')]);
         }
 
+        // This product, not just products in general: a role that may edit its
+        // own products must not change someone else's (name, price, terms…).
+        if (!current_user_can('edit_post', $product_id)) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
         // Update fields that were sent. The drawer always posts the name, filled
         // with the decoded text of the stored one ("&amp;" shows as "&"), so an
         // untouched name is left exactly as stored: writing the decoded text
@@ -3053,13 +3225,15 @@ class Brikpanel_Products_List {
         }
 
         if (isset($_POST['status'])) {
-            $status = sanitize_key($_POST['status']);
+            // Someone who may not publish gets "pending" for a publish request,
+            // as in WordPress's own quick edit (brikpanel_product_status_for_user()).
+            $status = brikpanel_product_status_for_user(sanitize_key($_POST['status']), $product_id);
             // "future" is accepted but intentionally a no-op here: scheduling
             // needs a date, which quick-edit has no field for. Leaving a already
             // scheduled product on "Scheduled" keeps its existing future date
             // (the in-memory product still holds status=future, so save() below
             // persists it unchanged).
-            if (in_array($status, ['publish', 'draft', 'private'], true)) {
+            if (in_array($status, ['publish', 'draft', 'pending', 'private'], true)) {
                 // When moving a currently-scheduled product to a live status,
                 // reset its created date to now first — a future-dated post_date
                 // would otherwise make WordPress bounce the status straight back
@@ -3333,6 +3507,12 @@ class Brikpanel_Products_List {
             wp_send_json_error(['message' => __('Invalid request.', 'brikpanel')]);
         }
 
+        // The bar shows no Publish to someone who may only send products in for
+        // review; a hand-made request is refused the same way.
+        if ('publish' === $action && !brikpanel_user_can_publish_products()) {
+            wp_send_json_error(['message' => __('You are not allowed to publish products.', 'brikpanel')]);
+        }
+
         // Buffer everything wp_delete_post / wp_trash_post (and any third-party
         // hooks like cache plugins) might echo. A stray PHP notice or DB error
         // ahead of wp_send_json_* poisons the JSON body and breaks the client
@@ -3369,20 +3549,7 @@ class Brikpanel_Products_List {
             }
         }
 
-        // Bust wp_count_posts() cache so the silent fetch that follows this
-        // request returns fresh tab counters. WP normally invalidates these
-        // via _transition_post_status, but persistent object caches and some
-        // hosting setups miss the invalidation, leaving the user staring at
-        // stale "Trash 6" badges after the rows themselves have updated.
-        if (function_exists('_count_posts_cache_key')) {
-            $cache_keys = [
-                _count_posts_cache_key('product', 'readable'),
-                _count_posts_cache_key('product', ''),
-            ];
-            foreach (array_unique(array_filter($cache_keys)) as $cache_key) {
-                wp_cache_delete($cache_key, 'counts');
-            }
-        }
+        self::bust_product_counts();
 
         if (ob_get_level() > 0) {
             ob_end_clean();
@@ -3425,23 +3592,58 @@ class Brikpanel_Products_List {
             $message = __('Product moved to trash.', 'brikpanel');
         }
 
-        // Same count-cache busting as ajax_bulk_action — keep tab badges in
-        // sync when persistent object caches miss the core invalidation.
-        if (function_exists('_count_posts_cache_key')) {
-            $cache_keys = [
-                _count_posts_cache_key('product', 'readable'),
-                _count_posts_cache_key('product', ''),
-            ];
-            foreach (array_unique(array_filter($cache_keys)) as $cache_key) {
-                wp_cache_delete($cache_key, 'counts');
-            }
-        }
+        self::bust_product_counts();
 
         if (ob_get_level() > 0) {
             ob_end_clean();
         }
 
         wp_send_json_success(['message' => $message]);
+    }
+
+    /**
+     * Drops the cached wp_count_posts() numbers for products, so the silent
+     * fetch that follows a status change returns fresh tab counters. WordPress
+     * normally clears them in _transition_post_status, but persistent object
+     * caches and some hosting setups miss that, which left stale "Trash 6"
+     * badges after the rows themselves had updated.
+     */
+    private static function bust_product_counts() {
+        if (!function_exists('_count_posts_cache_key')) {
+            return;
+        }
+        $cache_keys = [
+            _count_posts_cache_key('product', 'readable'),
+            _count_posts_cache_key('product', ''),
+        ];
+        foreach (array_unique(array_filter($cache_keys)) as $cache_key) {
+            wp_cache_delete($cache_key, 'counts');
+        }
+    }
+
+    /**
+     * The ids of a bulk job the current user may change. A variation counts
+     * as its product. Someone who may edit (or delete) every product skips the
+     * per-product check, so administrators and shop managers pay nothing.
+     *
+     * @param int[]  $ids    Product or variation ids.
+     * @param string $action 'edit' or 'delete'.
+     * @return int[]
+     */
+    private static function filter_ids_user_can(array $ids, $action) {
+        $is_delete = 'delete' === $action;
+        $every     = $is_delete
+            ? current_user_can('delete_others_products') && current_user_can('delete_published_products') && current_user_can('delete_private_products')
+            : current_user_can('edit_others_products') && current_user_can('edit_published_products') && current_user_can('edit_private_products');
+        if ($every) {
+            return $ids;
+        }
+        $meta_cap = $is_delete ? 'delete_post' : 'edit_post';
+        return array_values(array_filter($ids, static function ($id) use ($meta_cap) {
+            $id    = (int) $id;
+            $owner = 'product_variation' === get_post_type($id) ? (int) wp_get_post_parent_id($id) : $id;
+            return $owner > 0 && current_user_can($meta_cap, $owner);
+        }));
     }
 
     // =========================================================================
@@ -3458,11 +3660,29 @@ class Brikpanel_Products_List {
         }
 
         $current = get_post_status($product_id);
+
+        // Neither badge is a toggle: a trashed product comes back through
+        // Restore (wp_untrash_post() gives back its earlier status and slug;
+        // publishing it from here skipped both), and a scheduled one needs a
+        // date, so the list opens the editor for it.
+        if (in_array($current, ['trash', 'future'], true)) {
+            wp_send_json_error(['message' => __('Invalid request.', 'brikpanel')]);
+        }
+
         $new_status = $current === 'publish' ? 'draft' : 'publish';
 
-        wp_update_post(['ID' => $product_id, 'post_status' => $new_status]);
+        // A product waiting for review is approved from its badge only by
+        // someone who may publish (WordPress's own rule).
+        if ('publish' === $new_status && !brikpanel_user_can_publish_products()) {
+            wp_send_json_error(['message' => __('You are not allowed to publish products.', 'brikpanel')]);
+        }
 
-        $label = $new_status === 'publish' ? __('Published', 'brikpanel') : __('Draft', 'brikpanel');
+        wp_update_post(['ID' => $product_id, 'post_status' => $new_status]);
+        self::bust_product_counts();
+
+        // What WordPress made of it: a product dated in the future is scheduled.
+        $new_status = (string) get_post_status($product_id);
+        $label      = brikpanel_product_status_label($new_status);
 
         wp_send_json_success([
             'message' => sprintf(
@@ -3779,15 +3999,21 @@ class Brikpanel_Products_List {
         if (function_exists('set_time_limit')) {
             @set_time_limit(120);
         }
+
+        // Only the products this person may change: a role limited to its own
+        // products must not reprice, retag or delete someone else's. The
+        // offset below still moves over the whole slice.
+        $allowed = self::filter_ids_user_can($slice, $job_type === 'delete' ? 'delete' : 'edit');
+
         wp_suspend_cache_addition(true);
         wp_defer_term_counting(true);
 
         if ($job_type === 'update') {
-            $result = $this->process_update_batch($slice, $payload['params']);
+            $result = $this->process_update_batch($allowed, $payload['params']);
         } elseif ($is_fast) {
-            $result = $this->process_delete_batch_fast($slice);
+            $result = $this->process_delete_batch_fast($allowed);
         } else {
-            $result = $this->process_delete_batch($slice, $payload['params']);
+            $result = $this->process_delete_batch($allowed, $payload['params']);
         }
 
         wp_defer_term_counting(false);
@@ -3908,6 +4134,12 @@ class Brikpanel_Products_List {
         // Header row
         fputcsv($output, $columns);
 
+        // "Published" in WooCommerce's own values (WC_Product_CSV_Exporter::
+        // get_column_value_published()), which its importer reads back: there
+        // 0 means private, so a draft or pending product written as 0 came back
+        // private. Anything else (scheduled) is a draft there too.
+        $published_values = ['draft' => -1, 'private' => 0, 'publish' => 1, 'pending' => 2];
+
         // Process in chunks to keep memory low
         $chunk_size = 50;
         $chunks = array_chunk($ids, $chunk_size);
@@ -3968,7 +4200,7 @@ class Brikpanel_Products_List {
                     $type,
                     $product->get_sku(),
                     brikpanel_plain_name($product->get_name()),
-                    $product->get_status() === 'publish' ? 1 : 0,
+                    $published_values[$product->get_status()] ?? -1,
                     $product->get_short_description(),
                     $product->get_description(),
                     $regular_price,
@@ -4871,6 +5103,13 @@ class Brikpanel_Products_List {
 
         if (!$v || !$v->is_type('variation')) {
             wp_send_json_error(['message' => __('Variation not found.', 'brikpanel')]);
+        }
+
+        // A variation is part of its product: the person must be allowed to
+        // edit that product, not only products in general.
+        $parent_id = (int) $v->get_parent_id();
+        if (!$parent_id || !current_user_can('edit_post', $parent_id)) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
         }
 
         if (isset($_POST['regular_price'])) {

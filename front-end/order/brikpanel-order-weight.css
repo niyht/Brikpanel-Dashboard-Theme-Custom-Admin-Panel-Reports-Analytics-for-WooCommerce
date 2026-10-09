@@ -1,0 +1,25 @@
+/**
+ * BrikPanel: product weights on the order edit screen
+ * (front-end/order/brikpanel-order-weight.php).
+ *
+ * Loaded with BrikPanel's order screen on or off, so the weight line reads
+ * like WooCommerce's own SKU line in both. A shade darker than that line's
+ * #757575: text people read is #616161 in BrikPanel.
+ */
+#woocommerce-order-items .woocommerce_order_items_wrapper table.woocommerce_order_items td.name .brikpanel-order-item-weight {
+	display: block;
+	margin-top: .5em;
+	font-size: .92em;
+	color: #616161;
+}
+
+/* A number and its unit stay on one line, also in a phone's item card. */
+#woocommerce-order-items .brikpanel-order-item-weight bdi,
+#woocommerce-order-items .brikpanel-order-weight-value bdi {
+	white-space: nowrap;
+}
+
+/* Bold like the amounts above it, which WooCommerce sets on .amount. */
+#woocommerce-order-items .brikpanel-order-weight-value {
+	font-weight: 700;
+}

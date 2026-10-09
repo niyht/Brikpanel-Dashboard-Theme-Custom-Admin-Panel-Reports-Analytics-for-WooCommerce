@@ -61,13 +61,18 @@ function brikpanel_review_increment_orders( $order_id ) {
 }
 
 /* ── Decide whether (and which) notice should appear ────────────────────────── */
-function brikpanel_review_get_active_notice() {
+/**
+ * @param int|null $now Unix time; the one-ask-at-a-time rule passes its own clock.
+ * @return string|false
+ */
+function brikpanel_review_get_active_notice( $now = null ) {
+    $now = null === $now ? time() : (int) $now;
     if ( get_option( 'brikpanel_review_dismissed' ) ) {
         return false;
     }
 
     $snooze_until = (int) get_option( 'brikpanel_review_snooze_until', 0 );
-    if ( $snooze_until && $snooze_until > time() ) {
+    if ( $snooze_until && $snooze_until > $now ) {
         return false;
     }
 
@@ -81,8 +86,23 @@ function brikpanel_review_get_active_notice() {
 }
 
 /* ── Render notice ──────────────────────────────────────────────────────────── */
-add_action( 'admin_notices', 'brikpanel_review_render_notice' );
+/**
+ * The request is one of the asks that take turns (includes/brikpanel-asks.php),
+ * so it prints last in the notice area: on all_admin_notices at PHP_INT_MAX,
+ * registered after the notice collector (admin_init 10) and the fallback
+ * sniffer (admin_init 20). By then every other box this page view prints in
+ * the notice hooks is known, and the request stays out of the way of all of
+ * them.
+ */
+add_action( 'admin_init', 'brikpanel_review_register_notice', 30 );
+function brikpanel_review_register_notice() {
+    add_action( 'all_admin_notices', 'brikpanel_review_render_notice', PHP_INT_MAX );
+}
+
 function brikpanel_review_render_notice() {
+    if ( ! function_exists( 'brikpanel_ask_allows' ) || ! brikpanel_ask_allows( 'review' ) ) {
+        return;
+    }
     if ( ! current_user_can( 'manage_options' ) ) {
         return;
     }
@@ -91,6 +111,7 @@ function brikpanel_review_render_notice() {
     if ( ! $type ) {
         return;
     }
+    brikpanel_ask_shown( 'review' );
 
     $nonce = wp_create_nonce( 'brikpanel_review_nonce' );
 
@@ -101,7 +122,7 @@ function brikpanel_review_render_notice() {
     );
     $body = __( 'It looks like BrikPanel is helping you run your store. If it has earned a place in your daily routine, would you take 30 seconds to share your experience in a review? Your honest words mean the world to our small team and help other store owners discover the plugin.', 'brikpanel' );
     ?>
-    <div class="notice brikpanel-notice brikpanel-review-notice" data-nonce="<?php echo esc_attr( $nonce ); ?>" data-trigger="<?php echo esc_attr( $type ); ?>">
+    <div class="notice brikpanel-notice brikpanel-review-notice brikpanel-ask" data-nonce="<?php echo esc_attr( $nonce ); ?>" data-trigger="<?php echo esc_attr( $type ); ?>">
         <div class="brikpanel-review-notice__inner">
             <div class="brikpanel-review-notice__icon" aria-hidden="true">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -374,6 +395,11 @@ function brikpanel_review_ajax_handler() {
 
         default:
             wp_send_json_error( [ 'message' => 'invalid_action' ], 400 );
+    }
+
+    // Whatever the answer, this ask is over for now: the next one waits.
+    if ( function_exists( 'brikpanel_ask_closed' ) ) {
+        brikpanel_ask_closed( 'review' );
     }
 
     wp_send_json_success();

@@ -42,7 +42,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 		<div class="bp-seg-card bp-seg-filter-bar">
 			<div class="bp-seg-chips" id="bp-seg-chips">
-				<?php // Preset chips swap between Orders / Customers context in JS. ?>
+				<?php // Preset chips, saved segments and "Save as segment": drawn per tab in JS. ?>
 			</div>
 			<div class="bp-seg-quick-search">
 				<input class="brikpanel-control" type="search" id="bp-seg-search" placeholder="<?php esc_attr_e( 'Search by name, email, order ID…', 'brikpanel' ); ?>" />
@@ -51,6 +51,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 					<span class="bp-seg-count-badge" id="bp-seg-active-filter-count" hidden>0</span>
 				</button>
 			</div>
+			<p class="bp-seg-save-status" id="bp-seg-save-status" role="status" aria-live="polite" hidden></p>
 		</div>
 
 		<div class="bp-seg-card bp-seg-more" id="bp-seg-more" hidden>
@@ -150,12 +151,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 				</div>
 
 				<div class="bp-seg-field brikpanel-field bp-seg-full">
-					<label for="bp-seg-products"><?php esc_html_e( 'Products', 'brikpanel' ); ?></label>
+					<label for="bp-seg-product-search"><?php esc_html_e( 'Products', 'brikpanel' ); ?></label>
 					<div class="bp-seg-product-picker">
 						<input class="brikpanel-control" type="text" id="bp-seg-product-search" autocomplete="off" placeholder="<?php esc_attr_e( 'Type to search products…', 'brikpanel' ); ?>" />
 						<div class="bp-seg-product-suggestions" id="bp-seg-product-suggestions" hidden></div>
 						<div class="bp-seg-selected-products" id="bp-seg-selected-products"></div>
 					</div>
+				</div>
+
+				<div class="bp-seg-field brikpanel-field bp-seg-full">
+					<label for="bp-seg-exclude-search"><?php esc_html_e( 'Exclude products', 'brikpanel' ); ?></label>
+					<div class="bp-seg-product-picker">
+						<input class="brikpanel-control" type="text" id="bp-seg-exclude-search" autocomplete="off" placeholder="<?php esc_attr_e( 'Search products to exclude…', 'brikpanel' ); ?>" aria-describedby="bp-seg-exclude-hint-orders bp-seg-exclude-hint-customers" />
+						<div class="bp-seg-product-suggestions" id="bp-seg-exclude-suggestions" hidden></div>
+						<div class="bp-seg-selected-products" id="bp-seg-excluded-products"></div>
+					</div>
+					<p class="bp-seg-field-hint bp-seg-orders-only" id="bp-seg-exclude-hint-orders"><?php esc_html_e( 'Leaves out orders that contain any of these products.', 'brikpanel' ); ?></p>
+					<p class="bp-seg-field-hint bp-seg-customers-only" id="bp-seg-exclude-hint-customers"><?php esc_html_e( 'Leaves out customers who ever bought any of these products.', 'brikpanel' ); ?></p>
 				</div>
 
 				<div class="bp-seg-field brikpanel-field bp-seg-full">

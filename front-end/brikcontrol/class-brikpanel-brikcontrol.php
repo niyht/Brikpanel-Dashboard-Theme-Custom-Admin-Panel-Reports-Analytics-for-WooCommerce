@@ -144,17 +144,16 @@ class Brikpanel_BrikControl {
     // PAGE REGISTRATION
     // =========================================================================
 
+    /**
+     * Registers Store Health under WooCommerce's menu, as a row only access
+     * plugins see (includes/brikpanel-screen-menu.php).
+     */
     public function register_page() {
-        $hook = add_submenu_page(
-            '',
-            __( 'Store Health', 'brikpanel' ),
-            '',
-            'manage_woocommerce',
-            self::PAGE_SLUG,
-            [ $this, 'render_page' ]
-        );
+        $hooks = function_exists( 'brikpanel_add_screen_page' )
+            ? brikpanel_add_screen_page( 'woocommerce', __( 'Store Health', 'brikpanel' ), 'manage_woocommerce', self::PAGE_SLUG, [ $this, 'render_page' ] )
+            : array_filter( [ add_submenu_page( '', __( 'Store Health', 'brikpanel' ), '', 'manage_woocommerce', self::PAGE_SLUG, [ $this, 'render_page' ] ) ] );
 
-        if ( $hook ) {
+        foreach ( $hooks as $hook ) {
             add_action( 'load-' . $hook, [ $this, 'on_page_load' ] );
         }
     }
@@ -766,7 +765,7 @@ class Brikpanel_BrikControl {
         ];
         if ( function_exists( 'brikpanel_user_can_open_settings' ) && brikpanel_user_can_open_settings() ) {
             $rec['link'] = [
-                'url'   => admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=analytics' ) . '#bp-jump=brikpanel_excluded_user_agents',
+                'url'   => admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=analytics' ) . '#bp-jump-brikpanel_excluded_user_agents',
                 'label' => __( 'Analytics settings', 'brikpanel' ),
             ];
         }

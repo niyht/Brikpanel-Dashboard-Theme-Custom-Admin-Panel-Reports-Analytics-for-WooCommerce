@@ -16,7 +16,30 @@
 	if (!$root) { return; }
 
 	// ---------- helpers ----------
-	function ajax(action, data) {
+	// Every failure is an Error with `kind` (session, cutoff, fetch, server)
+	// and `data`. A reply that is not BrikPanel's own (a PHP fatal, a host
+	// time-out, a front server's error page) used to reach r.json() and show
+	// the browser's "Unexpected token '<' ... is not valid JSON" in the toast.
+	function ajaxError(kind, message, data) {
+		var err = new Error(message);
+		err.kind = kind;
+		err.data = data || {};
+		return err;
+	}
+
+	function parseAnswer(text) {
+		try { return JSON.parse(text); } catch (e) { /* read below */ }
+		// PHP notices printed ahead of the answer: read from where it starts.
+		var at = text.lastIndexOf('{"success"');
+		if (at > 0) {
+			try { return JSON.parse(text.slice(at)); } catch (e2) { /* not ours */ }
+		}
+		return null;
+	}
+
+	function ajax(action, data, opts) {
+		opts = opts || {};
+		var fallback = opts.fallback || BP.i18n.server_error_generic;
 		var fd = new FormData();
 		fd.append('action', action);
 		fd.append('_ajax_nonce', BP.nonce);
@@ -37,34 +60,46 @@
 			method: 'POST',
 			credentials: 'same-origin',
 			body: fd
-		}).then(function (r) { return r.json(); })
-		.then(function (json) {
-			if (!json || typeof json !== 'object') {
-				throw new Error(BP.i18n.generic_error);
-			}
-			if (!json.success) {
-				var msg = (json.data && json.data.message) || BP.i18n.generic_error;
-				var err = new Error(msg);
-				err.data = json.data || {};
-				throw err;
-			}
-			return json.data || {};
+		}).then(function (r) {
+			return r.text().then(function (text) {
+				var raw = String(text || '').trim();
+				// "-1": the security token expired; "0": logged out, or no handler.
+				if (raw === '-1' || raw === '0') {
+					throw ajaxError('session', BP.i18n.session_expired, { http: r.status });
+				}
+				var json = parseAnswer(raw);
+				if (!json || typeof json !== 'object') {
+					throw ajaxError('cutoff', fallback, { http: r.status });
+				}
+				if (!json.success) {
+					var d = json.data;
+					var msg = (d && typeof d === 'object' && d.message) ? d.message
+						: ((typeof d === 'string' && d) ? d : BP.i18n.generic_error);
+					throw ajaxError('server', msg, (d && typeof d === 'object') ? d : {});
+				}
+				return json.data || {};
+			});
+		}, function () {
+			throw ajaxError('fetch', fallback, {});
 		});
 	}
 
 	function toast(message, tone) {
 		var $t = document.getElementById('bp-ads-toast');
 		if (!$t) { return; }
+		// Both timers go: the slide-out's own 320 ms hide used to fire after a
+		// new toast had appeared, and took that one away with it.
+		clearTimeout(toast._timer);
+		clearTimeout(toast._hideTimer);
 		$t.textContent = message;
 		$t.className = 'bp-ads-toast ' + (tone === 'error' ? 'is-error' : 'is-success');
 		$t.hidden = false;
 		// reflow then animate in
 		void $t.offsetWidth;
 		$t.classList.add('is-visible');
-		clearTimeout(toast._timer);
 		toast._timer = setTimeout(function () {
 			$t.classList.remove('is-visible');
-			setTimeout(function () { $t.hidden = true; }, 320);
+			toast._hideTimer = setTimeout(function () { $t.hidden = true; }, 320);
 		}, 3500);
 	}
 
@@ -86,8 +121,13 @@
 	(function () {
 		var tone = $root.getAttribute('data-flash-tone');
 		var msg  = $root.getAttribute('data-flash-message');
-		if (tone && msg) {
-			toast(msg, tone === 'success' ? 'success' : 'error');
+		if (tone) {
+			// An error flash carries no text of its own any more (the server
+			// fills the box from a one-time record), so a reload may arrive
+			// with none.
+			if (msg) {
+				toast(msg, tone === 'success' ? 'success' : 'error');
+			}
 			// Strip the flash params from the URL so refresh doesn't re-show.
 			if (window.history && window.history.replaceState) {
 				var url = new URL(window.location.href);
@@ -141,24 +181,123 @@
 		refreshAccountState($box.closest('.bp-ads-card'));
 	});
 
-	// ---------- action handlers ----------
-	function handleConnect($btn, platform, reauth) {
-		if (!platform) { return; }
-		busy($btn, true);
-		ajax('brikpanel_ads_oauth_start', { platform: platform, reauth: reauth ? 1 : 0 })
-			.then(function (data) {
-				if (data && data.authorize_url) {
-					window.location.href = data.authorize_url;
-				} else {
-					busy($btn, false);
-					toast(BP.i18n.generic_error, 'error');
-				}
-			})
-			.catch(function (err) {
-				busy($btn, false);
-				toast(err.message || BP.i18n.generic_error, 'error');
-			});
+	// ---------- connect / re-authorize ----------
+	// The server asks brksoft.com for the platform's sign-in address. When
+	// that request cannot get through, the browser asks once more (the server
+	// then uses IPv4 only) and says "Still trying…" meanwhile. If that fails
+	// too, the box in the card says what went wrong, why and what to do, and
+	// stays until the next click. The two cards share one guard, so two
+	// connects can never race.
+	var connectInFlight = false;
+
+	function connectParts($btn) {
+		var $card = cardForButton($btn);
+		return {
+			btn: $btn,
+			box: $card ? $card.querySelector('[data-role="connect-error"]') : null,
+			status: $card ? $card.querySelector('[data-role="connect-status"]') : null
+		};
 	}
+
+	function setConnectBusy(ui, on, statusText) {
+		busy(ui.btn, on);
+		if (ui.btn) {
+			if (on) { ui.btn.setAttribute('aria-busy', 'true'); } else { ui.btn.removeAttribute('aria-busy'); }
+		}
+		if (ui.status) { ui.status.textContent = on ? (statusText || '') : ''; }
+	}
+
+	function setBoxPart($box, role, text) {
+		var $el = $box.querySelector('[data-role="' + role + '"]');
+		if (!$el) { return; }
+		$el.textContent = text || '';
+		$el.hidden = !text;
+	}
+
+	function showConnectError(ui, info) {
+		if (!ui.box) {
+			toast(info.title || info.reason || BP.i18n.generic_error, 'error');
+			return;
+		}
+		// Shown first, filled after: role="alert" then reads the new text out.
+		ui.box.hidden = false;
+		setBoxPart(ui.box, 'connect-error-title', info.title);
+		setBoxPart(ui.box, 'connect-error-reason', info.reason);
+		setBoxPart(ui.box, 'connect-error-help', info.help);
+		var $row = ui.box.querySelector('[data-role="connect-error-detail-row"]');
+		var $code = ui.box.querySelector('[data-role="connect-error-detail"]');
+		if ($code) { $code.textContent = info.detail || ''; }
+		if ($row) { $row.hidden = !info.detail; }
+	}
+
+	function connectErrorInfo(err) {
+		if (err && err.kind === 'session') {
+			return { title: '', reason: err.message, help: '', detail: '' };
+		}
+		if (err && (err.kind === 'cutoff' || err.kind === 'fetch')) {
+			var http = err.data && err.data.http ? err.data.http : 0;
+			return {
+				title: BP.i18n.connect_failed_title,
+				reason: BP.i18n.connect_cut_off,
+				help: BP.i18n.connect_help,
+				detail: http ? 'HTTP ' + http : '' // i18n-ignore: protocol name and status number, not prose
+			};
+		}
+		var d = (err && err.data) || {};
+		return {
+			title: d.message || (err && err.message) || BP.i18n.generic_error,
+			reason: d.reason || '',
+			help: d.help || '',
+			detail: d.detail || ''
+		};
+	}
+
+	function handleConnect($btn, platform, reauth) {
+		if (!platform || connectInFlight) { return; }
+		connectInFlight = true;
+		var ui = connectParts($btn);
+		if (ui.box) { ui.box.hidden = true; }
+		setConnectBusy(ui, true, BP.i18n.connecting);
+
+		function attempt(n) {
+			return ajax('brikpanel_ads_oauth_start', { platform: platform, reauth: reauth ? 1 : 0, attempt: n }, { fallback: BP.i18n.connect_cut_off })
+				.then(function (data) {
+					if (data && data.authorize_url) {
+						// Stay busy while the browser leaves for the platform.
+						window.location.href = data.authorize_url;
+						return;
+					}
+					throw ajaxError('server', BP.i18n.generic_error, {});
+				})
+				.catch(function (err) {
+					var d = (err && err.data) || {};
+					// Only a request that never got an answer is worth repeating.
+					var again = n < 2 && (d.retry === true || (err && (err.kind === 'cutoff' || err.kind === 'fetch')));
+					if (again) {
+						setConnectBusy(ui, true, BP.i18n.still_trying);
+						return new Promise(function (resolve) { setTimeout(resolve, 1000); })
+							.then(function () { return attempt(n + 1); });
+					}
+					connectInFlight = false;
+					setConnectBusy(ui, false);
+					showConnectError(ui, connectErrorInfo(err));
+					if ($btn && document.activeElement === document.body) { $btn.focus(); }
+				});
+		}
+		attempt(1);
+	}
+
+	// Coming back with the Back button restores the page as it was left: a
+	// button still spinning for the trip to the consent screen.
+	window.addEventListener('pageshow', function (ev) {
+		if (!ev.persisted) { return; }
+		connectInFlight = false;
+		Array.prototype.forEach.call($root.querySelectorAll('[data-action="connect"], [data-action="reconnect"]'), function ($b) {
+			setConnectBusy(connectParts($b), false);
+		});
+	});
+
+	// ---------- action handlers ----------
 
 	function handleDisconnect($btn, platform) {
 		if (!platform) { return; }

@@ -159,6 +159,34 @@ function brikpanel_track_cart_addition( $cart_item_key, $product_id ) {
         return;
     }
 
+    // Only a browser that showed it is a person ranks products (3.3.30).
+    // Anyone else's add waits in the session until its tracker proves it.
+    if ( function_exists( 'brikpanel_request_is_human' ) && ! brikpanel_request_is_human() ) {
+        if ( function_exists( 'brikpanel_pending_add' ) ) {
+            brikpanel_pending_add( 'product', (int) $product_id );
+        }
+        return;
+    }
+
+    brikpanel_count_product_cart_addition( $product_id );
+}
+add_action('woocommerce_add_to_cart', 'brikpanel_track_cart_addition', 10, 2);
+
+/**
+ * Count one add of a product for this visitor today, unless already counted.
+ * Shared by the hook above and by the release of parked counts.
+ *
+ * Callers apply the tracking, staff, bot and person checks.
+ *
+ * @param int $product_id Parent product ID.
+ * @return bool Whether a count was written.
+ */
+function brikpanel_count_product_cart_addition( $product_id ) {
+    $product_id = (int) $product_id;
+    if ( $product_id <= 0 ) {
+        return false;
+    }
+
     // One add per visitor, per product, per day — the same rule the store-wide
     // "Add to cart" KPI uses, so the two numbers can be read together.
     $ledger = brikpanel_cart_addition_ledger( $product_id );
@@ -167,7 +195,7 @@ function brikpanel_track_cart_addition( $cart_item_key, $product_id ) {
         // The session already carried our stamp, so it is a client that keeps
         // state and its ledger is the accurate answer.
         if ( ! $ledger['first_today'] ) {
-            return;
+            return false;
         }
     } elseif ( ! ( $ledger['available'] && is_user_logged_in() ) ) {
         // A fresh session's empty ledger proves nothing, because a client that
@@ -184,7 +212,7 @@ function brikpanel_track_cart_addition( $cart_item_key, $product_id ) {
         // guard exists to prevent.
         if ( function_exists( 'brikpanel_client_daily_lock' )
             && ! brikpanel_client_daily_lock( 'atc_product_' . (int) $product_id ) ) {
-            return;
+            return false;
         }
     }
 
@@ -219,5 +247,5 @@ function brikpanel_track_cart_addition( $cart_item_key, $product_id ) {
             [ '%d', '%d', '%s' ]
         );
     }
+    return true;
 }
-add_action('woocommerce_add_to_cart', 'brikpanel_track_cart_addition', 10, 2);

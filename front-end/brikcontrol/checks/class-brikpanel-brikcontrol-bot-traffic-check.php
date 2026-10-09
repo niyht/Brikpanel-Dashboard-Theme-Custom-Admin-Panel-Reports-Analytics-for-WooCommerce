@@ -117,6 +117,24 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
     const LEGACY_BACKUP_OPTION = 'brikpanel_cart_count_cleanup_backup';
     const LEGACY_CHUNK_PREFIX  = 'brikpanel_cart_count_cleanup_backup_';
 
+    /** Nightly job that cleans bot traffic without a click (3.3.30). */
+    const AUTO_HOOK = 'brikpanel_bot_traffic_autoclean';
+
+    /** What the last nightly run did: { time, figures, entries, removed, left }. */
+    const AUTO_LOG_OPTION = 'brikpanel_bot_traffic_auto';
+
+    /** Findings every cleanup changed since the last undo, as keys. */
+    const APPLIED_OPTION = 'brikpanel_bot_traffic_applied';
+
+    /** Findings the merchant put back with Undo: the nightly run never touches them again. */
+    const KEPT_OPTION = 'brikpanel_bot_traffic_kept';
+
+    /** Upper bound for either key list. */
+    const KEYS_CAP = 5000;
+
+    /** Rounds one nightly run may clean (each a FIX_CHUNK batch). */
+    const AUTO_ROUNDS = 5;
+
     /** Columns the undo may write, per backup row type. */
     const UNDO_COLUMNS = [
         'v' => [ 'visitor_count', 'product_count', 'add_to_cart_count', 'checkout_count', 'mobile_count', 'tablet_count', 'desktop_count' ],
@@ -132,6 +150,14 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
      * @var bool
      */
     private $visitors_credible = false;
+
+    /**
+     * Store-wide days of the last scan (load_visitor_days()), kept for the
+     * nightly run's page rule.
+     *
+     * @var array
+     */
+    private $last_daily = [];
 
     /* ---------------------------------------------------------------------
      * Identity
@@ -225,6 +251,8 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         }
 
         $result['facts'] = [
+            // The last nightly cleanup (3.3.30): { time, figures, entries, removed, left }.
+            'auto'       => $this->auto_log(),
             'impossible' => $impossible,
             'extreme'    => $extreme,
             'cartab'     => $cartab,
@@ -244,6 +272,67 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
 
         return $result;
+    }
+
+    /**
+     * What the last nightly cleanup did.
+     *
+     * @return array{time:int,figures:int,entries:int,removed:int,left:int}
+     */
+    private function auto_log() {
+        $log = get_option( self::AUTO_LOG_OPTION, [] );
+        $log = is_array( $log ) ? $log : [];
+        return [
+            'time'    => (int) ( $log['time'] ?? 0 ),
+            'figures' => (int) ( $log['figures'] ?? 0 ),
+            'entries' => (int) ( $log['entries'] ?? 0 ),
+            'removed' => (int) ( $log['removed'] ?? 0 ),
+            'left'    => (int) ( $log['left'] ?? 0 ),
+        ];
+    }
+
+    /**
+     * One sentence about the nightly cleanup, '' before it ever ran.
+     *
+     * @param array $auto auto_log() as stored in the result.
+     * @return string
+     */
+    private function auto_sentence( array $auto ) {
+        $time = (int) ( $auto['time'] ?? 0 );
+        if ( $time <= 0 ) {
+            return __( 'Bot traffic is cleaned up automatically every night.', 'brikpanel' );
+        }
+        $when    = wp_date( brikpanel_datetime_format(), $time );
+        $figures = (int) ( $auto['figures'] ?? 0 );
+        $entries = (int) ( $auto['entries'] ?? 0 );
+        $done    = [];
+        if ( $figures > 0 ) {
+            $done[] = brikpanel_safe_sprintf(
+                /* translators: %s: number of daily figures lowered. */
+                _n( '%s daily figure lowered', '%s daily figures lowered', $figures, 'brikpanel' ),
+                brikpanel_number( $figures )
+            );
+        }
+        if ( $entries > 0 ) {
+            $done[] = brikpanel_safe_sprintf(
+                /* translators: %s: number of abandoned-cart entries deleted. */
+                _n( '%s abandoned-cart entry deleted', '%s abandoned-cart entries deleted', $entries, 'brikpanel' ),
+                brikpanel_number( $entries )
+            );
+        }
+        if ( empty( $done ) ) {
+            return brikpanel_safe_sprintf(
+                /* translators: %s: date and time of the last automatic cleanup. */
+                __( 'Bot traffic is cleaned up automatically every night. Last run %s: nothing needed cleaning.', 'brikpanel' ),
+                $when
+            );
+        }
+        return brikpanel_safe_sprintf(
+            /* translators: 1: date and time of the last automatic cleanup, 2: what it did, e.g. "3 daily figures lowered and 10 abandoned-cart entries deleted". */
+            __( 'Bot traffic is cleaned up automatically every night. Last run %1$s: %2$s.', 'brikpanel' ),
+            $when,
+            wp_sprintf_l( '%l', $done )
+        );
     }
 
     /**
@@ -410,6 +499,14 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         } else {
             $r['message'] = __( 'No day counted more add-to-carts than the store had visitors, no figure stands far above its own normal, and no abandoned-cart entry looks scripted.', 'brikpanel' );
         }
+
+        // The nightly cleanup leads (3.3.30): most of what this card used to
+        // ask about is now done without a click.
+        $auto_line = $this->auto_sentence( isset( $f['auto'] ) && is_array( $f['auto'] ) ? $f['auto'] : [] );
+        if ( $flagged > 0 ) {
+            $auto_line .= ' ' . __( 'Days still being counted, days you put back with Undo and days when sales rose too, which can be a real promotion, are left for you to decide.', 'brikpanel' );
+        }
+        $r['message'] = trim( $auto_line . ' ' . $r['message'] );
 
         if ( ! empty( $f['truncated'] ) && $flagged > 0 ) {
             $r['message'] = trim(
@@ -660,6 +757,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $s     = $this->settings();
         $daily = $has_visitors ? $this->load_visitor_days( $visitors, $s['from'] ) : [];
         $this->prime_visitor_credibility( $daily );
+        $this->last_daily = $daily;
 
         $findings = [];
         if ( $has_visitors ) {
@@ -800,10 +898,17 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
     private function find_in_series( $source, $table, $id_col, $val_col, array $s, array $daily ) {
         global $wpdb;
 
-        if ( 'page' === $source ) {
+        $is_page = ( 'page' === $source );
+        if ( $is_page ) {
             $s['multiplier'] *= self::PAGE_MULTIPLIER_FACTOR;
             $s['floor']      *= self::PAGE_FLOOR_FACTOR;
         }
+
+        // A page series is a post OR a term: the same number can be both, and
+        // until 3.3.30 their days were added up into one series. The series
+        // key carries the object type for pages ("post:12", "term:12").
+        $series_expr = $is_page ? "CONCAT(object_type, ':', {$id_col})" : $id_col;
+        $group_expr  = $is_page ? "{$id_col}, object_type" : $id_col;
 
         $threshold = max(
             1,
@@ -816,19 +921,19 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         // One row per qualifying series, worst first. Reading one extra row is
         // how we learn the list was cut short without a second COUNT query.
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- table and columns are internal; bound values are prepared.
-        $ids = $wpdb->get_col(
+        $keys = $wpdb->get_col(
             $wpdb->prepare(
-                "SELECT {$id_col}
+                "SELECT sid
                    FROM (
-                        SELECT {$id_col}, MAX(daily) AS worst
+                        SELECT sid, MAX(daily) AS worst
                           FROM (
-                                SELECT {$id_col}, DATE(date_column) AS day, SUM({$val_col}) AS daily
+                                SELECT {$series_expr} AS sid, DATE(date_column) AS day, SUM({$val_col}) AS daily
                                   FROM {$table}
                                  WHERE date_column >= %s
-                                 GROUP BY {$id_col}, DATE(date_column)
+                                 GROUP BY {$group_expr}, DATE(date_column)
                                 HAVING daily >= %d
                                ) d
-                         GROUP BY {$id_col}
+                         GROUP BY sid
                         ) p
                   ORDER BY worst DESC
                   LIMIT %d",
@@ -838,27 +943,38 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             )
         );
 
-        $ids       = array_values( array_filter( array_map( 'absint', (array) $ids ) ) );
-        $truncated = count( $ids ) > self::MAX_CANDIDATE_SERIES;
-        if ( $truncated ) {
-            $ids = array_slice( $ids, 0, self::MAX_CANDIDATE_SERIES );
+        // Normalised series keys: "type:id" for pages, the bare id otherwise.
+        $wanted = [];
+        foreach ( (array) $keys as $key ) {
+            if ( $is_page ) {
+                if ( preg_match( '/^(post|term):([1-9][0-9]*)$/', (string) $key, $m ) ) {
+                    $wanted[ $m[1] . ':' . (int) $m[2] ] = (int) $m[2];
+                }
+            } elseif ( absint( $key ) > 0 ) {
+                $wanted[ (string) absint( $key ) ] = absint( $key );
+            }
         }
-        if ( empty( $ids ) ) {
+
+        $truncated = count( $wanted ) > self::MAX_CANDIDATE_SERIES;
+        if ( $truncated ) {
+            $wanted = array_slice( $wanted, 0, self::MAX_CANDIDATE_SERIES, true );
+        }
+        if ( empty( $wanted ) ) {
             return [ 'findings' => [], 'truncated' => false ];
         }
 
         $findings = [];
-        foreach ( array_chunk( $ids, self::SERIES_CHUNK ) as $chunk ) {
-            $list = implode( ',', array_map( 'absint', $chunk ) );
+        foreach ( array_chunk( $wanted, self::SERIES_CHUNK, true ) as $chunk ) {
+            $list = implode( ',', array_unique( array_map( 'absint', array_values( $chunk ) ) ) );
 
             // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal names, absint()-mapped list, bound value prepared.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT {$id_col} AS sid, DATE(date_column) AS day, SUM({$val_col}) AS total
+                    "SELECT {$series_expr} AS sid, DATE(date_column) AS day, SUM({$val_col}) AS total
                        FROM {$table}
                       WHERE {$id_col} IN ({$list})
                         AND date_column >= %s
-                      GROUP BY {$id_col}, DATE(date_column)",
+                      GROUP BY {$group_expr}, DATE(date_column)",
                     $s['from'] . ' 00:00:00'
                 ),
                 ARRAY_A
@@ -866,10 +982,17 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
 
             $series = [];
             foreach ( (array) $rows as $row ) {
-                $series[ (int) $row['sid'] ][ (string) $row['day'] ] = (int) $row['total'];
+                $sid = (string) $row['sid'];
+                if ( ! isset( $chunk[ $sid ] ) ) {
+                    continue; // The other object type under the same number.
+                }
+                $series[ $sid ][ (string) $row['day'] ] = (int) $row['total'];
             }
 
             foreach ( $series as $sid => $days ) {
+                $ref   = (int) $chunk[ $sid ];
+                $otype = $is_page ? strtok( $sid, ':' ) : '';
+
                 $median         = $this->median( array_values( $days ) );
                 $enough_history = count( $days ) >= self::MIN_BASELINE_DAYS;
 
@@ -886,10 +1009,13 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                         : null;
 
                     $finding = $this->weigh(
-                        $source, $sid, $val_col, $date,
+                        $source, $ref, $val_col, $date,
                         $total, $ceiling, $normal
                     );
                     if ( $finding ) {
+                        if ( $is_page ) {
+                            $finding['otype'] = $otype;
+                        }
                         $findings[] = $finding;
                     }
                 }
@@ -1013,15 +1139,25 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
 
     /**
      * Readable name for a product or page row, falling back to its id.
+     *
+     * @param string $source 'cart' or 'page'.
+     * @param int    $id     Product, post or term id.
+     * @param string $otype  For pages: 'post', 'term', or '' when unknown.
      */
-    private function object_label( $source, $id ) {
-        $id    = (int) $id;
-        $title = get_the_title( $id );
+    private function object_label( $source, $id, $otype = '' ) {
+        $id = (int) $id;
+        if ( 'page' === $source && 'term' === $otype ) {
+            $term = get_term( $id );
+            if ( $term instanceof WP_Term ) {
+                return brikpanel_plain_name( $term->name );
+            }
+        }
+        $title = 'term' === $otype ? '' : get_the_title( $id );
         if ( is_string( $title ) && '' !== trim( $title ) ) {
             return brikpanel_plain_label( $title );
         }
         if ( 'page' === $source ) {
-            $term = get_term( $id );
+            $term = '' === $otype ? get_term( $id ) : null;
             if ( $term instanceof WP_Term ) {
                 return $term->name;
             }
@@ -1050,6 +1186,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             $out[] = [
                 'source'  => (string) $finding['source'],
                 'ref'     => (int) $finding['ref'],
+                'otype'   => (string) ( $finding['otype'] ?? '' ),
                 'column'  => (string) $finding['column'],
                 'date'    => (string) $finding['date'],
                 'current' => (int) $finding['current'],
@@ -1122,7 +1259,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                     $label = brikpanel_safe_sprintf(
                         /* translators: %s: page or product name. */
                         __( 'Page views: %s', 'brikpanel' ),
-                        $this->object_label( 'page', $ref )
+                        $this->object_label( 'page', $ref, (string) ( $finding['otype'] ?? '' ) )
                     );
                     break;
                 default:
@@ -1182,8 +1319,6 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
      * @return array { removed: int, has_more: bool, message: string }
      */
     public function run_fix( array $args = [] ) {
-        global $wpdb;
-
         // Fix and undo use separate locks in the framework, but for this check
         // they must not overlap: an undo deleting the restore point while a
         // cleanup appends to it would lose the new rows for good.
@@ -1195,7 +1330,18 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             ];
         }
 
-        $findings = (array) $this->scan_findings();
+        return $this->apply_findings( (array) $this->scan_findings() );
+    }
+
+    /**
+     * Correct the given findings and delete the certainly scripted
+     * abandoned-cart entries, writing the restore point first. Shared by the
+     * button and the nightly run.
+     *
+     * @param array $findings Findings from scan_findings(), worst first.
+     * @return array { removed: int, figures: int, entries: int, has_more: bool, message: string }
+     */
+    private function apply_findings( array $findings ) {
         $has_more = count( $findings ) > self::FIX_CHUNK;
         $batch    = array_slice( $findings, 0, self::FIX_CHUNK );
 
@@ -1203,6 +1349,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $figures = 0;
         $entries = 0;
         $full    = false;
+        $applied = [];
 
         // 1) Figures. Backup entries are collected per finding and written
         //    before the row changes, so a request that dies between the two
@@ -1222,6 +1369,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 break;
             }
             if ( ! $this->append_backup( $planned ) ) {
+                $this->remember_applied( $applied );
                 return [
                     'removed'  => $removed,
                     'figures'  => $figures,
@@ -1233,9 +1381,11 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             foreach ( $planned as $entry ) {
                 $this->apply_value( $entry );
             }
-            $removed += max( 0, $finding['current'] - $finding['target'] );
+            $removed  += max( 0, $finding['current'] - $finding['target'] );
+            $applied[] = $this->finding_key( $finding );
             $figures++;
         }
+        $this->remember_applied( $applied );
 
         // 2) Abandoned-cart entries: whole rows, copied before deletion.
         if ( ! $full && class_exists( 'Brikpanel_BrikControl_Cartab_Bot_Rows_Check' ) ) {
@@ -1259,10 +1409,13 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
 
         // The Live view is a 2-minute transient of whoever pinged last; a
         // crawl that is still running simply refills it, and one that stopped
-        // should not linger.
-        delete_transient( 'brikpanel_live_visitors' );
-        if ( function_exists( 'brikpanel_bust_data_caches' ) ) {
-            brikpanel_bust_data_caches();
+        // should not linger. Left alone when nothing changed: the nightly run
+        // must not empty the Live list just to find there was nothing to do.
+        if ( $figures + $entries > 0 ) {
+            delete_transient( 'brikpanel_live_visitors' );
+            if ( function_exists( 'brikpanel_bust_data_caches' ) ) {
+                brikpanel_bust_data_caches();
+            }
         }
 
         return [
@@ -1384,13 +1537,19 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             return [];
         }
 
-        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal names; bound values prepared.
+        // A page finding names its object type (3.3.30), so a post and a term
+        // that share a number are never corrected together. Findings stored
+        // before that carry none and fall back to the old, untyped match.
+        $otype = ( ! $is_cart && isset( $finding['otype'] ) && in_array( $finding['otype'], [ 'post', 'term' ], true ) ) ? $finding['otype'] : '';
+        $where = '' !== $otype ? $wpdb->prepare( ' AND object_type = %s', $otype ) : '';
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal names; bound values prepared ($where is prepared above).
         $rows = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT id, {$val_col} AS v
                    FROM {$table}
                   WHERE {$id_col} = %d
-                    AND date_column BETWEEN %s AND %s
+                    AND date_column BETWEEN %s AND %s{$where}
                   ORDER BY id ASC",
                 $sid,
                 $date . ' 00:00:00',
@@ -1496,6 +1655,365 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
     }
 
     /* ---------------------------------------------------------------------
+     * Nightly cleanup (3.3.30)
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Register the nightly job. Hooked to brikpanel_cron_register, which only
+     * runs while Store Health is on (its bootstrap stands the hook down
+     * otherwise).
+     *
+     * @return void
+     */
+    public static function register_autoclean() {
+        if ( ! class_exists( 'Brikpanel_Cron' ) ) {
+            return;
+        }
+        Brikpanel_Cron::register_handler(
+            self::AUTO_HOOK,
+            [ __CLASS__, 'cron_autoclean' ],
+            static function () {
+                return [
+                    'label'       => __( 'Bot traffic cleanup', 'brikpanel' ),
+                    'description' => __( 'Every night, lowers the analytics figures bots inflated and deletes scripted abandoned-cart entries, keeping a restore point.', 'brikpanel' ),
+                ];
+            }
+        );
+        // About 04:00 store time, every day. Only the offset may carry time:
+        // the reconcile fingerprint must not change from one request to the next.
+        try {
+            $next = ( new DateTimeImmutable( 'tomorrow 04:00', wp_timezone() ) )->getTimestamp();
+        } catch ( Exception $e ) {
+            $next = time() + DAY_IN_SECONDS;
+        }
+        Brikpanel_Cron::schedule_recurring( self::AUTO_HOOK, DAY_IN_SECONDS, [], max( 60, $next - time() ) );
+    }
+
+    /**
+     * Action Scheduler handler: clean, then save fresh cards for this check
+     * and the abandoned-cart one, so the page and the top bar shield show
+     * what is left.
+     *
+     * @param array $payload Unused.
+     * @return void
+     */
+    public static function cron_autoclean( $payload = [] ) {
+        if ( ! class_exists( 'Brikpanel_BrikControl_Registry' ) ) {
+            return;
+        }
+        $check = Brikpanel_BrikControl_Registry::get( 'bot_traffic' );
+        if ( ! $check instanceof self ) {
+            return;
+        }
+        $check->run_auto_cleanup();
+
+        if ( class_exists( 'Brikpanel_BrikControl_Storage' ) ) {
+            Brikpanel_BrikControl_Storage::save_check_result( 'bot_traffic', $check->run( [] ) );
+            $linked = Brikpanel_BrikControl_Registry::get( 'cartab_bot_rows' );
+            if ( $linked && ! $linked->supports_batching() ) {
+                Brikpanel_BrikControl_Storage::save_check_result( 'cartab_bot_rows', $linked->run( [] ) );
+            }
+        }
+    }
+
+    /**
+     * Clean what can be cleaned without asking.
+     *
+     * Only days that are over (today is still being counted), never a day the
+     * merchant put back with Undo, and only what cannot be a real promotion:
+     * an "impossible" day, a store-wide spike that sales did not follow, a
+     * product added to carts far above normal but hardly bought that day, or
+     * a page viewed more than three times per visitor the whole store had.
+     * Everything else stays listed for the merchant, as before. Every change
+     * goes through the same restore point as the button.
+     *
+     * @return array { figures, entries, removed, left } or { busy: true }.
+     */
+    public function run_auto_cleanup() {
+        $id = $this->get_id();
+        if ( get_transient( 'brikpanel_bc_undo_' . $id ) || get_transient( 'brikpanel_bc_fix_' . $id ) ) {
+            return [ 'busy' => true ];
+        }
+        set_transient( 'brikpanel_bc_fix_' . $id, 1, 10 * MINUTE_IN_SECONDS );
+
+        $totals = [ 'figures' => 0, 'entries' => 0, 'removed' => 0, 'left' => 0 ];
+        try {
+            $today  = wp_date( 'Y-m-d' );
+            $orders = null;
+            for ( $round = 0; $round < self::AUTO_ROUNDS; $round++ ) {
+                $findings = (array) $this->scan_findings();
+                $kept     = $this->read_keys( self::KEPT_OPTION );
+                $safe     = [];
+                foreach ( $findings as $finding ) {
+                    if ( (string) $finding['date'] >= $today ) {
+                        continue;
+                    }
+                    if ( isset( $kept[ $this->finding_key( $finding ) ] ) ) {
+                        continue;
+                    }
+                    if ( $this->is_auto_safe( $finding, $orders ) ) {
+                        $safe[] = $finding;
+                    }
+                }
+                $totals['left'] = count( $findings ) - count( $safe );
+
+                $outcome = $this->apply_findings( $safe );
+                $totals['figures'] += (int) ( $outcome['figures'] ?? 0 );
+                $totals['entries'] += (int) ( $outcome['entries'] ?? 0 );
+                $totals['removed'] += (int) ( $outcome['removed'] ?? 0 );
+
+                // Stop when nothing more can move: the batch was the last one,
+                // or the restore point refused.
+                if ( empty( $outcome['has_more'] ) || '' !== (string) ( $outcome['message'] ?? '' ) ) {
+                    break;
+                }
+            }
+        } finally {
+            delete_transient( 'brikpanel_bc_fix_' . $id );
+        }
+
+        update_option( self::AUTO_LOG_OPTION, [ 'time' => time() ] + $totals, false );
+        return $totals;
+    }
+
+    /**
+     * Whether a finding may be corrected without the merchant looking first.
+     *
+     * @param array      $finding Finding.
+     * @param array|null $orders  Paid orders per day, loaded on first need
+     *                            (false when they could not be read).
+     * @return bool
+     */
+    private function is_auto_safe( array $finding, &$orders ) {
+        if ( 'impossible' === $finding['rule'] ) {
+            return true;
+        }
+
+        switch ( $finding['source'] ) {
+            case 'visitors':
+                // A real campaign day brings orders with it; a bot day does not.
+                if ( null === $orders ) {
+                    $orders = $this->paid_orders_by_day();
+                }
+                if ( ! is_array( $orders ) ) {
+                    return false;
+                }
+                $day = (int) ( $orders['days'][ (string) $finding['date'] ] ?? 0 );
+                return $day < max( 3, 3 * (float) $orders['median'] );
+
+            case 'cart':
+                $sold = $this->product_orders_on_day( (int) $finding['ref'], (string) $finding['date'] );
+                return null !== $sold && $sold <= 2;
+
+            case 'page':
+                $visitors = isset( $this->last_daily[ (string) $finding['date'] ] ) ? (int) $this->last_daily[ (string) $finding['date'] ]['visitors'] : 0;
+                return $visitors >= self::MIN_CREDIBLE_VISITORS && (int) $finding['current'] > $visitors * 3;
+        }
+
+        return false;
+    }
+
+    /**
+     * Paid orders per store day over the scan window, and their median.
+     *
+     * Read from WooCommerce's own order table (HPOS or posts), grouped by
+     * hour in UTC and folded into store days here, so a day boundary in the
+     * store's timezone (and its daylight saving changes) lands where the
+     * counters put it.
+     *
+     * @return array{days:array<string,int>,median:float}|false
+     */
+    private function paid_orders_by_day() {
+        global $wpdb;
+
+        $statuses = function_exists( 'brikpanel_paid_order_statuses' ) ? array_values( (array) brikpanel_paid_order_statuses() ) : [ 'wc-processing', 'wc-completed' ];
+        if ( empty( $statuses ) ) {
+            return false;
+        }
+
+        $s    = $this->settings();
+        $from = get_gmt_from_date( $s['from'] . ' 00:00:00' );
+        $in   = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+
+        if ( 'yes' === get_option( 'woocommerce_custom_orders_table_enabled' ) ) {
+            $table = $wpdb->prefix . 'wc_orders';
+            if ( ! $this->table_exists( $table ) ) {
+                return false;
+            }
+            $sql = "SELECT DATE_FORMAT(date_created_gmt, '%%Y-%%m-%%d %%H') AS h, COUNT(*) AS c
+                      FROM {$table}
+                     WHERE type = 'shop_order' AND status IN ({$in}) AND date_created_gmt >= %s
+                     GROUP BY h";
+        } else {
+            $sql = "SELECT DATE_FORMAT(post_date_gmt, '%%Y-%%m-%%d %%H') AS h, COUNT(*) AS c
+                      FROM {$wpdb->posts}
+                     WHERE post_type = 'shop_order' AND post_status IN ({$in}) AND post_date_gmt >= %s
+                     GROUP BY h";
+        }
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal table names; statuses and date are placeholders.
+        $rows = $wpdb->get_results( $wpdb->prepare( $sql, array_merge( $statuses, [ $from ] ) ), ARRAY_A );
+        if ( ! is_array( $rows ) || '' !== (string) $wpdb->last_error ) {
+            return false;
+        }
+
+        $days = [];
+        foreach ( $rows as $row ) {
+            $ts = strtotime( $row['h'] . ':00:00 UTC' );
+            if ( false === $ts ) {
+                continue;
+            }
+            $day          = wp_date( 'Y-m-d', $ts );
+            $days[ $day ] = ( $days[ $day ] ?? 0 ) + (int) $row['c'];
+        }
+
+        // Median over every day of the window, days without an order included.
+        $values = [];
+        try {
+            $cursor = new DateTimeImmutable( $s['from'] . ' 12:00:00', wp_timezone() );
+            $end    = wp_date( 'Y-m-d' );
+            for ( $i = 0; $i < 3660; $i++ ) {
+                $day = $cursor->format( 'Y-m-d' );
+                if ( $day >= $end ) {
+                    break;
+                }
+                $values[] = (int) ( $days[ $day ] ?? 0 );
+                $cursor   = $cursor->modify( '+1 day' );
+            }
+        } catch ( Exception $e ) {
+            $values = array_values( $days );
+        }
+
+        return [ 'days' => $days, 'median' => $this->median( $values ) ];
+    }
+
+    /**
+     * Paid orders that contained a product on one store day, from
+     * WooCommerce Analytics' product lookup table.
+     *
+     * @param int    $product_id Parent product.
+     * @param string $date       Y-m-d (store day).
+     * @return int|null Null when the lookup table is missing or was never
+     *                  filled (then a count of zero would prove nothing).
+     */
+    private function product_orders_on_day( $product_id, $date ) {
+        global $wpdb;
+        static $usable = null;
+
+        $lookup = $wpdb->prefix . 'wc_order_product_lookup';
+        if ( null === $usable ) {
+            $usable = $this->table_exists( $lookup )
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal table name.
+                && (bool) $wpdb->get_var( "SELECT 1 FROM {$lookup} LIMIT 1" );
+        }
+        if ( ! $usable || $product_id <= 0 || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+            return null;
+        }
+
+        $statuses = function_exists( 'brikpanel_paid_order_statuses' ) ? array_values( (array) brikpanel_paid_order_statuses() ) : [ 'wc-processing', 'wc-completed' ];
+        if ( empty( $statuses ) ) {
+            return null;
+        }
+        $in = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+
+        if ( 'yes' === get_option( 'woocommerce_custom_orders_table_enabled' ) ) {
+            $join = "INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = l.order_id AND o.status IN ({$in})";
+        } else {
+            $join = "INNER JOIN {$wpdb->posts} o ON o.ID = l.order_id AND o.post_status IN ({$in})";
+        }
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal table names; values are placeholders.
+        $count = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(DISTINCT l.order_id)
+                   FROM {$lookup} l
+                   {$join}
+                  WHERE l.product_id = %d
+                    AND l.date_created BETWEEN %s AND %s",
+                array_merge( $statuses, [ $product_id, $date . ' 00:00:00', $date . ' 23:59:59' ] )
+            )
+        );
+
+        return null === $count ? null : (int) $count;
+    }
+
+    /**
+     * A finding's stable identity: what was corrected on which day.
+     *
+     * @param array $finding Finding.
+     * @return string
+     */
+    private function finding_key( array $finding ) {
+        $date = (string) ( $finding['date'] ?? '' );
+        if ( 'visitors' === ( $finding['source'] ?? '' ) ) {
+            return 'visitors|' . (string) ( $finding['column'] ?? '' ) . '|' . $date;
+        }
+        $otype = (string) ( $finding['otype'] ?? '' );
+        return (string) ( $finding['source'] ?? '' ) . '|' . ( '' !== $otype ? $otype . ':' : '' ) . (int) ( $finding['ref'] ?? 0 ) . '|' . $date;
+    }
+
+    /**
+     * A key list option as a set, without keys older than the scan window
+     * (those days are never looked at again).
+     *
+     * @param string $option Option name.
+     * @return array<string, true>
+     */
+    private function read_keys( $option ) {
+        $stored = get_option( $option, [] );
+        if ( ! is_array( $stored ) ) {
+            return [];
+        }
+        $from = $this->settings()['from'];
+        $set  = [];
+        foreach ( $stored as $key ) {
+            $key  = (string) $key;
+            $date = substr( $key, -10 );
+            if ( $date >= $from ) {
+                $set[ $key ] = true;
+            }
+        }
+        return $set;
+    }
+
+    /**
+     * Store a key set, newest last, capped.
+     *
+     * @param string $option Option name.
+     * @param array  $set    Keys as array keys.
+     * @return void
+     */
+    private function write_keys( $option, array $set ) {
+        $keys = array_keys( $set );
+        if ( count( $keys ) > self::KEYS_CAP ) {
+            $keys = array_slice( $keys, -self::KEYS_CAP );
+        }
+        if ( empty( $keys ) ) {
+            delete_option( $option );
+            return;
+        }
+        update_option( $option, $keys, false );
+    }
+
+    /**
+     * Note which findings a cleanup changed, so an undo knows what the
+     * merchant chose to keep.
+     *
+     * @param string[] $keys finding_key() values.
+     * @return void
+     */
+    private function remember_applied( array $keys ) {
+        if ( empty( $keys ) ) {
+            return;
+        }
+        $set = $this->read_keys( self::APPLIED_OPTION );
+        foreach ( $keys as $key ) {
+            $set[ (string) $key ] = true;
+        }
+        $this->write_keys( self::APPLIED_OPTION, $set );
+    }
+
+    /* ---------------------------------------------------------------------
      * Undo
      * ------------------------------------------------------------------ */
 
@@ -1514,6 +2032,14 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $restored  = 0;
         $restored += $this->replay( self::BACKUP_OPTION, self::BACKUP_CHUNK_PREFIX );
         $restored += $this->replay( self::LEGACY_BACKUP_OPTION, self::LEGACY_CHUNK_PREFIX );
+
+        // What was just put back is what the merchant wants to keep: the
+        // nightly run must not lower those days again (3.3.30).
+        $applied = $this->read_keys( self::APPLIED_OPTION );
+        if ( ! empty( $applied ) ) {
+            $this->write_keys( self::KEPT_OPTION, $this->read_keys( self::KEPT_OPTION ) + $applied );
+            delete_option( self::APPLIED_OPTION );
+        }
 
         if ( function_exists( 'brikpanel_bust_data_caches' ) ) {
             brikpanel_bust_data_caches();

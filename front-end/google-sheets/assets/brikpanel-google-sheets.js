@@ -36,36 +36,47 @@
 	// ---------------------------------------------------------------------
 	var toastEl = document.getElementById('bp-gs-toast');
 	var toastTimer = null;
+	// The 350 ms hide that follows the slide-out. It has to be cancellable:
+	// `dismissToast(); toast(...)` used to show the new toast and then hide it
+	// a third of a second later, so an error after a sticky "Syncing…" flashed
+	// by unread.
+	var toastHideTimer = null;
+	function hideToast() {
+		if (!toastEl) return;
+		clearTimeout(toastTimer);
+		clearTimeout(toastHideTimer);
+		toastEl.classList.remove('is-visible');
+		toastHideTimer = setTimeout(function () { toastEl.hidden = true; }, 350);
+	}
 	function toast(tone, message, opts) {
 		if (!toastEl) {
 			return;
 		}
 		opts = opts || {};
+		clearTimeout(toastTimer);
+		clearTimeout(toastHideTimer);
 		toastEl.textContent = message;
 		toastEl.setAttribute('data-tone', tone || 'info');
 		toastEl.hidden = false;
 		void toastEl.offsetWidth;
 		toastEl.classList.add('is-visible');
-		clearTimeout(toastTimer);
 		if (!opts.sticky) {
-			toastTimer = setTimeout(function () {
-				toastEl.classList.remove('is-visible');
-				setTimeout(function () { toastEl.hidden = true; }, 350);
-			}, opts.duration || 3500);
+			toastTimer = setTimeout(hideToast, opts.duration || 3500);
 		}
 	}
 	function dismissToast() {
-		if (!toastEl) return;
-		clearTimeout(toastTimer);
-		toastEl.classList.remove('is-visible');
-		setTimeout(function () { toastEl.hidden = true; }, 350);
+		hideToast();
 	}
 
 	// Surface OAuth-return flash on load.
 	var flashTone = root.getAttribute('data-flash-tone');
 	var flashMsg = root.getAttribute('data-flash-message');
-	if (flashTone && flashMsg) {
-		setTimeout(function () { toast(flashTone, flashMsg); }, 100);
+	if (flashTone) {
+		// An error flash carries no text of its own any more (the server fills
+		// the box from a one-time record), so a reload may arrive with none.
+		if (flashMsg) {
+			setTimeout(function () { toast(flashTone, flashMsg); }, 100);
+		}
 		// Clean URL so reload doesn't re-fire the toast.
 		if (window.history && window.history.replaceState) {
 			var url = new URL(window.location.href);
@@ -79,8 +90,39 @@
 
 	// ---------------------------------------------------------------------
 	// AJAX helper
+	//
+	// Every failure is an Error with `kind`:
+	//   session  the answer was "-1" (security token expired) or "0" (logged
+	//            out, or no handler)
+	//   cutoff   the answer was not BrikPanel's: a PHP fatal, a host time-out
+	//            or a front server's own error page
+	//   fetch    no answer at all
+	//   server   BrikPanel answered success:false; `data` is its payload
+	// A cutoff or fetch failure is told in the caller's words (opts.fallback):
+	// the sync buttons say "click Sync now again", which made no sense under
+	// any other button.
 	// ---------------------------------------------------------------------
-	function ajax(action, payload) {
+	function ajaxError(kind, message, data) {
+		var err = new Error(message);
+		err.kind = kind;
+		err.data = data || {};
+		err.payload = err.data;
+		return err;
+	}
+
+	function parseAnswer(text) {
+		try { return JSON.parse(text); } catch (e) { /* read below */ }
+		// PHP notices printed ahead of the answer: read from where it starts.
+		var at = text.lastIndexOf('{"success"');
+		if (at > 0) {
+			try { return JSON.parse(text.slice(at)); } catch (e2) { /* not ours */ }
+		}
+		return null;
+	}
+
+	function ajax(action, payload, opts) {
+		opts = opts || {};
+		var fallback = opts.fallback || i18n.server_error_generic;
 		var body = new URLSearchParams();
 		body.append('action', action);
 		body.append('_ajax_nonce', BrikpanelGS.nonce);
@@ -99,47 +141,155 @@
 			credentials: 'same-origin',
 			body: body
 		}).then(function (r) {
-			// A PHP fatal or a host-level timeout answers with an HTML error
-			// page, not JSON. Reporting that as the generic error hid the real
-			// cause, so name it instead of swallowing it.
 			return r.text().then(function (text) {
-				var parsed = null;
-				try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
-				if (parsed === null) {
-					var serverErr = new Error(i18n.server_error || i18n.generic_error);
-					serverErr.payload = { http: r.status, raw: text.slice(0, 500) };
-					throw serverErr;
+				var raw = String(text || '').trim();
+				if (raw === '-1' || raw === '0') {
+					throw ajaxError('session', i18n.session_expired, { http: r.status });
 				}
-				return parsed;
+				var j = parseAnswer(raw);
+				if (!j || typeof j !== 'object') {
+					throw ajaxError('cutoff', fallback, { http: r.status, raw: raw.slice(0, 500) });
+				}
+				if (j.success !== true) {
+					var d = j.data;
+					var msg = (d && typeof d === 'object' && d.message) ? d.message
+						: ((typeof d === 'string' && d) ? d : i18n.generic_error);
+					throw ajaxError('server', msg, (d && typeof d === 'object') ? d : {});
+				}
+				return j.data || {};
 			});
-		}).then(function (j) {
-			if (!j || j.success !== true) {
-				var msg = (j && j.data && j.data.message) ? j.data.message : i18n.generic_error;
-				var err = new Error(msg);
-				err.payload = j && j.data ? j.data : {};
-				throw err;
-			}
-			return j.data || {};
+		}, function () {
+			throw ajaxError('fetch', fallback, {});
 		});
 	}
 
 	// ---------------------------------------------------------------------
 	// Connect / Disconnect / Re-auth
+	//
+	// The server asks brksoft.com for Google's sign-in address. When that
+	// request cannot get through, the browser asks once more (the server then
+	// uses IPv4 only) and says "Still trying…" meanwhile. If that fails too,
+	// the box beside the button says what went wrong, why and what to do, and
+	// stays until the next click. It used to be a 3.5 s toast, "Could not
+	// reach the BrikPanel proxy. Please try again in a moment.", which sent a
+	// merchant whose host blocks outgoing connections round in circles.
 	// ---------------------------------------------------------------------
-	function startConnect() {
-		toast('info', i18n.connecting);
-		ajax('brikpanel_gs_oauth_start').then(function (data) {
-			if (data && data.authorize_url) {
-				window.location.href = data.authorize_url;
-			} else {
-				toast('error', i18n.generic_error);
-			}
-		}).catch(function (e) { toast('error', e.message); });
+	var connectBusy = false;
+
+	function connectParts(btn) {
+		var card = btn ? btn.closest('.bp-gs-card') : null;
+		return {
+			btn: btn,
+			box: card ? card.querySelector('[data-role="connect-error"]') : null,
+			status: card ? card.querySelector('[data-role="connect-status"]') : null
+		};
+	}
+
+	function setConnectBusy(ui, on, statusText) {
+		if (ui.btn) {
+			ui.btn.disabled = !!on;
+			if (on) { ui.btn.setAttribute('aria-busy', 'true'); } else { ui.btn.removeAttribute('aria-busy'); }
+		}
+		if (ui.status) { ui.status.textContent = on ? (statusText || '') : ''; }
+	}
+
+	function setBoxPart(box, role, text) {
+		var el = box.querySelector('[data-role="' + role + '"]');
+		if (!el) { return; }
+		el.textContent = text || '';
+		el.hidden = !text;
+	}
+
+	function hideConnectError(ui) {
+		if (ui.box) { ui.box.hidden = true; }
+	}
+
+	function showConnectError(ui, info) {
+		if (!ui.box) {
+			toast('error', info.title || info.reason || i18n.generic_error, { duration: 7000 });
+			return;
+		}
+		// Shown first, filled after: role="alert" then reads the new text out.
+		ui.box.hidden = false;
+		setBoxPart(ui.box, 'connect-error-title', info.title);
+		setBoxPart(ui.box, 'connect-error-reason', info.reason);
+		setBoxPart(ui.box, 'connect-error-help', info.help);
+		var row = ui.box.querySelector('[data-role="connect-error-detail-row"]');
+		var code = ui.box.querySelector('[data-role="connect-error-detail"]');
+		if (code) { code.textContent = info.detail || ''; }
+		if (row) { row.hidden = !info.detail; }
+	}
+
+	function connectErrorInfo(e) {
+		if (e && e.kind === 'session') {
+			return { title: '', reason: e.message, help: '', detail: '' };
+		}
+		if (e && (e.kind === 'cutoff' || e.kind === 'fetch')) {
+			var http = e.data && e.data.http ? e.data.http : 0;
+			return {
+				title: i18n.connect_failed_title,
+				reason: i18n.connect_cut_off,
+				help: i18n.connect_help,
+				detail: http ? 'HTTP ' + http : '' // i18n-ignore: protocol name and status number, not prose
+			};
+		}
+		var d = (e && e.data) || {};
+		return {
+			title: d.message || (e && e.message) || i18n.generic_error,
+			reason: d.reason || '',
+			help: d.help || '',
+			detail: d.detail || ''
+		};
+	}
+
+	function startConnect(ev) {
+		if (connectBusy) { return; }
+		var ui = connectParts(ev && ev.currentTarget);
+		connectBusy = true;
+		hideConnectError(ui);
+		setConnectBusy(ui, true, i18n.connecting);
+
+		function attempt(n) {
+			return ajax('brikpanel_gs_oauth_start', { attempt: n }, { fallback: i18n.connect_cut_off })
+				.then(function (data) {
+					if (data && data.authorize_url) {
+						// Stay busy while the browser leaves for Google.
+						window.location.href = data.authorize_url;
+						return;
+					}
+					throw ajaxError('server', i18n.generic_error, {});
+				})
+				.catch(function (e) {
+					var d = (e && e.data) || {};
+					// Only a request that never got an answer is worth repeating.
+					// A refusal, a 429 or an expired session would only repeat.
+					var again = n < 2 && (d.retry === true || (e && (e.kind === 'cutoff' || e.kind === 'fetch')));
+					if (again) {
+						setConnectBusy(ui, true, i18n.still_trying);
+						return new Promise(function (resolve) { setTimeout(resolve, 1000); })
+							.then(function () { return attempt(n + 1); });
+					}
+					connectBusy = false;
+					setConnectBusy(ui, false);
+					showConnectError(ui, connectErrorInfo(e));
+					if (ui.btn && document.activeElement === document.body) { ui.btn.focus(); }
+				});
+		}
+		attempt(1);
 	}
 	var connectBtn = document.getElementById('bp-gs-connect');
 	if (connectBtn) { connectBtn.addEventListener('click', startConnect); }
 	var reauthBtn = document.getElementById('bp-gs-reauth');
 	if (reauthBtn) { reauthBtn.addEventListener('click', startConnect); }
+	// Coming back with the Back button restores the page as it was left:
+	// a button still locked for the trip to Google.
+	window.addEventListener('pageshow', function (ev) {
+		if (!ev.persisted) { return; }
+		connectBusy = false;
+		[connectBtn, reauthBtn].forEach(function (btn) {
+			if (btn) { setConnectBusy(connectParts(btn), false); }
+		});
+	});
 	var disconnectBtn = document.getElementById('bp-gs-disconnect');
 	if (disconnectBtn) {
 		disconnectBtn.addEventListener('click', function () {
@@ -173,13 +323,13 @@
 			s.async = true;
 			s.defer = true;
 			s.onload = function () {
-				if (!window.gapi) { reject(new Error(i18n.picker_failed || 'gapi unavailable')); return; }
+				if (!window.gapi) { reject(new Error(i18n.picker_failed)); return; }
 				window.gapi.load('picker', {
 					callback: function () { resolve(); },
-					onerror: function () { reject(new Error(i18n.picker_failed || 'picker load failed')); }
+					onerror: function () { reject(new Error(i18n.picker_failed)); }
 				});
 			};
-			s.onerror = function () { reject(new Error(i18n.picker_failed || 'api.js load failed')); };
+			s.onerror = function () { reject(new Error(i18n.picker_failed)); };
 			document.head.appendChild(s);
 		});
 		return gapiLoadingPromise;
@@ -291,7 +441,7 @@
 			var input = document.getElementById('bp-gs-sheet-create-title');
 			var title = input ? input.value.trim() : '';
 			createBtn.disabled = true;
-			toast('info', i18n.creating || 'Creating spreadsheet…');
+			toast('info', i18n.creating);
 			ajax('brikpanel_gs_create_spreadsheet', { title: title })
 				.then(function (data) {
 					toast('success', i18n.created + ': ' + (data.spreadsheet_title || ''));
@@ -533,7 +683,8 @@
 		var PAGED = { orders: true, products: true };
 
 		function runPass(pass) {
-			return ajax('brikpanel_gs_sync_now', { flow: flow }).then(function (data) {
+			// A cut-off pass is resumable, which is what this fallback says.
+			return ajax('brikpanel_gs_sync_now', { flow: flow }, { fallback: i18n.server_error }).then(function (data) {
 				var result = (data && data.result) ? data.result : {};
 				totalOrders += Number(result.orders) || 0;
 				totalRows += Number(result.rows) || 0;
@@ -700,7 +851,12 @@
 						+ '<td>' + escapeHtml(e.message || '') + '</td>'
 						+ '</tr>';
 				}).join('');
-				panel.innerHTML = '<table><thead><tr><th>Time</th><th>Flow</th><th>Code</th><th>Message</th></tr></thead><tbody>' + rows + '</tbody></table>';
+				panel.innerHTML = '<table><thead><tr>'
+					+ '<th>' + escapeHtml(i18n.log_col_time) + '</th>'
+					+ '<th>' + escapeHtml(i18n.log_col_flow) + '</th>'
+					+ '<th>' + escapeHtml(i18n.log_col_code) + '</th>'
+					+ '<th>' + escapeHtml(i18n.log_col_message) + '</th>'
+					+ '</tr></thead><tbody>' + rows + '</tbody></table>';
 			}).catch(function (e) {
 				panel.innerHTML = '<div class="bp-gs-log-empty">' + escapeHtml(e.message) + '</div>';
 			});
@@ -725,13 +881,13 @@
 			var pillText = pill.querySelector('.bp-gs-pill-text');
 			if (s.connected) {
 				pill.setAttribute('data-state', 'live');
-				if (pillText) { pillText.textContent = (s.email || i18n.connected_label || 'Connected'); }
+				if (pillText) { pillText.textContent = (s.email || i18n.connected_label); }
 			} else {
 				// Token revoked externally — reflect it AND force a page reload
 				// once so the disconnected UI replaces the target-spreadsheet
 				// card. Use a sentinel attribute so we only reload once.
 				pill.setAttribute('data-state', 'off');
-				if (pillText) { pillText.textContent = (i18n.not_connected_label || 'Not connected'); }
+				if (pillText) { pillText.textContent = i18n.not_connected_label; }
 				if (!root.getAttribute('data-disconnect-reloaded')) {
 					root.setAttribute('data-disconnect-reloaded', '1');
 					setTimeout(function () { window.location.reload(); }, 500);

@@ -259,7 +259,7 @@ function brikpanel_module_settings_url( $page ) {
 	$url = add_query_arg( $args, admin_url( 'admin.php' ) );
 	// The settings page's search jump scrolls to the field and highlights it.
 	if ( ! empty( $page['option'] ) ) {
-		$url .= '#bp-jump=' . rawurlencode( (string) $page['option'] );
+		$url .= '#bp-jump-' . rawurlencode( (string) $page['option'] );
 	}
 	return $url;
 }

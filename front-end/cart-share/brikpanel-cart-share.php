@@ -293,17 +293,18 @@ class Brikpanel_Cart_Share {
     // ADMIN BUILDER PAGE
     // =========================================================================
 
+    /**
+     * Registers the page under WooCommerce's menu, as a row only access plugins
+     * see (includes/brikpanel-screen-menu.php). WooCommerce's menu, not
+     * Marketing: BrikPanel's sidebar shows Cart share in its "More" group, which
+     * is built from WooCommerce's menu, so the sidebar opens the right group.
+     */
     public function register_page() {
-        $hook = add_submenu_page(
-            '',
-            __( 'Cart share', 'brikpanel' ),
-            '',
-            self::CAPABILITY,
-            'brikpanel-cart-share',
-            [ $this, 'render_page' ]
-        );
+        $hooks = function_exists( 'brikpanel_add_screen_page' )
+            ? brikpanel_add_screen_page( 'woocommerce', __( 'Cart share', 'brikpanel' ), self::CAPABILITY, 'brikpanel-cart-share', [ $this, 'render_page' ] )
+            : array_filter( [ add_submenu_page( '', __( 'Cart share', 'brikpanel' ), '', self::CAPABILITY, 'brikpanel-cart-share', [ $this, 'render_page' ] ) ] );
 
-        if ( $hook ) {
+        foreach ( $hooks as $hook ) {
             add_action( 'load-' . $hook, function () {
                 global $title;
                 $title = __( 'Cart share', 'brikpanel' );

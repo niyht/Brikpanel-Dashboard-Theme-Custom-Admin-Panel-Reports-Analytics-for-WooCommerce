@@ -569,7 +569,7 @@ class Brikpanel_Ads_Dashboard {
 				'status'    => 'failed',
 				'refetch'   => false,
 				'platforms' => $detail,
-			], 502 );
+			] );
 		}
 
 		if ( $failed ) {
@@ -726,67 +726,14 @@ class Brikpanel_Ads_Dashboard {
 		}
 
 		$css = '
-			/* The ads cards are relocated by JS into the main KPI grid so they
-			   sit inline instead of dropping to a row of their own below. The
-			   column count is driven from the REAL card count by
-			   applyKpiColumns(), the way the Profit rows bp-profit-cols-N
-			   classes work, so adding a card can never leave the grid one
-			   track short with nothing on screen to say why.
-
-			   minmax(0, 1fr) rather than 1fr, and this matters: a bare 1fr
-			   track is minmax(auto, 1fr) and auto resolves to min-content, so
-			   a single long unbreakable figure sets a hard floor under its
-			   track and pushes the whole row past its container, which shows up
-			   as a horizontal scrollbar across the dashboard. The base sheet
-			   only sets min-width: 0 inside its 600px block, so every width
-			   above that was unprotected. */
-			.brikpanel-dash-cards.bp-kpi-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-			.brikpanel-dash-cards.bp-kpi-cols-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-			/* Six cards do not fit one row below ~1500px, so the row wraps to
-			   3-up and then 2-up. Sizing the wrapped rows as one keeps them the
-			   same height: without this the first row sat at its own content
-			   height and the row holding the taller ROAS card ran 40px lower,
-			   which reads as a rendering fault rather than as a design. At 6-up
-			   there is a single row and this is a no-op. Only implicit rows
-			   exist here, no grid-template-rows is declared anywhere, so it
-			   reaches every row the grid creates. */
-			.brikpanel-dash-cards.bp-kpi-cols-6,
-			.brikpanel-dash-cards.bp-kpi-cols-7 { grid-auto-rows: 1fr; }
-			/* min-width: 0 is what keeps a long figure from blowing its track
-			   out, and it stays. The clip that used to sit beside it does not.
-			   It was a second line of defence that cost more than it saved:
-			   it swallowed the "?" bubble, which is absolutely positioned and
-			   taller than the card, so the merchant got a black sliver instead
-			   of the sentence explaining the figure, and it silently cut the
-			   right-hand digits off a long store total, because at six across a
-			   card is about 160px of content and a formatted price has nowhere
-			   to break. A truncated revenue figure gets believed.
-
-			   overflow-wrap: anywhere replaces it and covers strictly more. It
-			   inherits, so it also reaches the span/bdi pair wc_price() nests
-			   inside the value, and unlike break-word it lowers the min-content
-			   size too, which is what actually lets a card shrink to its track
-			   instead of overflowing it. Nothing can spill any more, so there
-			   is nothing left to clip. */
-			.brikpanel-dash-cards.bp-kpi-cols-6 > .brikpanel-dash-card,
-			.brikpanel-dash-cards.bp-kpi-cols-7 > .brikpanel-dash-card {
-				min-width: 0;
-				overflow-wrap: anywhere;
-			}
-			@media (max-width: 1600px) {
-				.brikpanel-dash-cards.bp-kpi-cols-7 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-			}
-			@media (max-width: 1500px) {
-				.brikpanel-dash-cards.bp-kpi-cols-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-			}
-			@media (max-width: 1200px) {
-				.brikpanel-dash-cards.bp-kpi-cols-6,
-				.brikpanel-dash-cards.bp-kpi-cols-7 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-			}
-			@media (max-width: 960px) {
-				.brikpanel-dash-cards.bp-kpi-cols-6,
-				.brikpanel-dash-cards.bp-kpi-cols-7 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-			}
+			/* The ads cards are relocated by JS into the main KPI row
+			   (#brikpanel-kpi-cards) so they sit inline instead of dropping to
+			   a row of their own below. That row is laid out by the shared
+			   tiles helper (front-end/shared/brikpanel-tiles.js): six cards,
+			   3 + 3 or 2 + 2 + 2, the widest that fits the real figures, so
+			   no column count is set here. A figure overflows rather than
+			   breaking mid-number, which is what lets the helper see that a
+			   row is too tight. */
 			.brikpanel-dash-card[data-metric="roas"] .brikpanel-dash-card-delta {
 				color: #616161; font-size: 0.75rem;
 			}
@@ -920,17 +867,22 @@ class Brikpanel_Ads_Dashboard {
 				// every ads card except ROAS, with nothing in the console.
 				var cards = adsWrap.querySelectorAll('.brikpanel-dash-card');
 				if (!cards.length) return;
-				// The ads wrapper is rendered by the after-KPIs hook immediately
-				// following the headline KPI grid, so that grid is its nearest
-				// preceding .brikpanel-dash-cards sibling. Anchoring this way
-				// keeps the cards on the KPI row even though other grids (Profit)
-				// carry the same class.
-				var mainGrid = adsWrap.previousElementSibling;
-				while ( mainGrid && ! ( mainGrid.classList && mainGrid.classList.contains('brikpanel-dash-cards') ) ) {
-					mainGrid = mainGrid.previousElementSibling;
+				// The store cards row has its own id since October 2026. The
+				// sibling walk stays for a dashboard printed by an older copy:
+				// the ads wrapper follows the headline KPI grid, so that grid is
+				// its nearest preceding .brikpanel-dash-cards sibling.
+				var mainGrid = document.getElementById('brikpanel-kpi-cards');
+				if (!mainGrid) {
+					mainGrid = adsWrap.previousElementSibling;
+					while ( mainGrid && ! ( mainGrid.classList && mainGrid.classList.contains('brikpanel-dash-cards') ) ) {
+						mainGrid = mainGrid.previousElementSibling;
+					}
 				}
 				if (!mainGrid) return;
-				Array.prototype.forEach.call(cards, function (card) { mainGrid.appendChild(card); });
+				Array.prototype.forEach.call(cards, function (card) {
+					card.classList.add('bp-dv-kpi');
+					mainGrid.appendChild(card);
+				});
 				applyKpiColumns(mainGrid);
 				if (adsWrap.parentNode) { adsWrap.parentNode.removeChild(adsWrap); }
 			}

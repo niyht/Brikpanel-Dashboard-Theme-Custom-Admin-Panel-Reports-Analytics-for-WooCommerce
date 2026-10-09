@@ -156,7 +156,7 @@ function brikpanel_brikcontrol_stand_down() {
     if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
         return;
     }
-    Brikpanel_Cron::stand_down( [ 'brikpanel_brikcontrol_scan', 'brikpanel_brikcontrol_scan_batch' ] );
+    Brikpanel_Cron::stand_down( [ 'brikpanel_brikcontrol_scan', 'brikpanel_brikcontrol_scan_batch', 'brikpanel_bot_traffic_autoclean' ] );
 }
 
 // =============================================================================
@@ -201,6 +201,10 @@ Brikpanel_BrikControl::instance();
 // schedule check join Brikpanel_Cron::reconcile() instead of querying on
 // every request.
 add_action( 'brikpanel_cron_register', [ 'Brikpanel_BrikControl_Runner', 'register' ] );
+
+// Nightly bot traffic cleanup (3.3.30): what the "Bot traffic" card used to
+// wait for a click on, minus anything that could be a real promotion.
+add_action( 'brikpanel_cron_register', [ 'Brikpanel_BrikControl_Bot_Traffic_Check', 'register_autoclean' ] );
 
 /**
  * One-time repair for the kickoff pile-up that shipped before 3.2.70.

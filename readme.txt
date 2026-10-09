@@ -4,7 +4,7 @@ Donate link: https://donate.stripe.com/14AdR9ghJcxKaAqdzbc3m00
 Tags: woocommerce dashboard, woocommerce inventory management, google sheets, woocommerce bulk editor, abandoned cart
 Requires at least: 6.0
 Tested up to: 7.1
-Stable tag: 3.3.26
+Stable tag: 3.3.33
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -15,7 +15,7 @@ Free WooCommerce dashboard & sales report: abandoned cart recovery, Google Sheet
 
 **Live demo (no install needed):** [Explore the full BrikPanel admin on a real WooCommerce store](https://code.brksoft.com/wp-admin/)
 
-https://www.youtube.com/watch?v=pmtmVQifZME&t
+https://www.youtube.com/watch?v=PltNieszslw
 
 **BrikPanel turns the default WooCommerce admin panel into a clean, fast, all-in-one cockpit**: a modern WooCommerce dashboard, a real-time WooCommerce sales report, a powerful WooCommerce bulk editor, an inventory management workspace, an order management center, a coupon manager, a custom WP login page, and a real-time conversion tracking suite. Everything is free. Forever. No premium tier, no feature locks, no monthly subscriptions. A self-hosted **Shopify alternative for WooCommerce**: own your data, your products, and your customer list, with no monthly platform fee and no transaction fee.
 
@@ -303,7 +303,7 @@ and in your theme's footer, so a click takes effect without a reload:
 `    if (e.target.closest('#my-banner-reject') && window.brikpanel_stop_tracking) window.brikpanel_stop_tracking();`
 `}, true);`
 
-What visitor tracking stores in the browser, and only after consent when the setting is on: `brikpanel_vid` (a random id, 1 year, so a visit is counted once instead of once per page), `brikpanel_consent` (the value `1`, 30 days, remembering the choice), `brikpanel_add_to_cart_count_cookie` and `brikpanel_checkout_count_cookie` (until midnight, one funnel count per day), and the local storage keys `brikpanel_visitor_viewed_<date>` and `brikpanel_product_viewed_<date>`, plus, while "Traffic source in Live view" is on, the session storage key `brikpanel_entry_src` (where the visit came from, until the tab is closed). All of it is first-party and stays on your own site.
+What visitor tracking stores in the browser, and only after consent when the setting is on: `brikpanel_vid` (a random id, 1 year, so a visit is counted once instead of once per page), `brikpanel_human` (30 days: the date and a signature showing the browser was used by a person, and what was already counted for it that day, so bots and repeat counts stay out), `brikpanel_consent` (the value `1`, 30 days, remembering the choice), the local storage key `brikpanel_campaign_viewed` (the campaign links already counted today), plus, while "Traffic source in Live view" is on, the session storage key `brikpanel_entry_src` (where the visit came from, until the tab is closed). All of it is first-party and stays on your own site.
 
 This setting governs analytics. Abandoned-cart email capture is a separate feature with its own switch under **Cart abandonment**. For a guest it saves no cart and sets no cookie until they enter their email address; when they do, it reuses the same `brikpanel_vid` id to tie the cart to that address. A logged-in customer's email is already on their account, so their cart is saved as soon as it has items. The optional signup popup, if you turn it on, only keeps a few small entries in browser storage (that it was closed or used, the coupon it gave, whether the cookie banner was answered), so it does not keep reappearing.
 
@@ -453,12 +453,13 @@ Everything stays in your WordPress database. Visitor tracking writes to `wp_brik
 
 By default, nothing. BrikPanel only contacts an external service for features you explicitly opt into:
 
-* **Newsletter (optional).** From a dismissible card on the dashboard, or from the Newsletter row in WooCommerce > Settings > BrikPanel, BrikPanel offers to email you occasionally about new features, WooCommerce tips and ideas for growing your store. Only if you type your email address and tick the consent box is that address sent to our server at brksoft.com, together with your site address, site language and BrikPanel version, so we can add you to the list. Nothing is sent unless you fill in the form and consent, and you can unsubscribe from any email we send. Privacy policy: https://brksoft.com/privacy-policy/ . Terms: https://brksoft.com/terms-and-conditions/
+* **Newsletter and survey (optional).** The Newsletter row in WooCommerce > Settings > BrikPanel offers occasional emails about new features and tips. Only if you type your email and tick the consent box are that address, your site address, site language and BrikPanel version sent to brksoft.com. Unsubscribe from any email. A dashboard card links to a short survey on brksoft.com, carrying only your admin language. Privacy policy: https://brksoft.com/privacy-policy/ . Terms: https://brksoft.com/terms-and-conditions/
 * **Google Sheets sync and Google / Meta Ads (optional).** If you connect these, BrikPanel exchanges data with Google, Meta and our helper at brksoft.com to run the sync and read your ad spend: Google Sheets uses it only for authentication, while every Google Ads and Meta Ads request (ad account ID and token, site address, date range) passes through it. They only run after you connect the relevant account.
+* **Deactivation survey (optional).** Deactivating BrikPanel from the Plugins screen opens a short window asking why. "Skip and deactivate" sends nothing. Only "Send and deactivate" sends your answer, the days BrikPanel was in use, your BrikPanel, WordPress, WooCommerce and PHP versions and your admin language to our server at brksoft.com. Your site address, email and store data are never sent; the request's IP address is used only against floods and is not stored. Privacy policy: https://brksoft.com/privacy-policy/
 
 = Does deleting BrikPanel delete my data? =
 
-No. Deactivating or deleting BrikPanel keeps your expenses, suppliers, purchase orders, visitor history and settings, so a reinstall picks up where you left off. When you deactivate it, its scheduled background jobs stop. Regular jobs, such as syncs, nightly calculations and scans, start again on their own when you activate it. An import or export that was running at the moment you deactivated it, for example a Google Ads history import or a Google Sheets rebuild, does not resume, so start it again after you activate BrikPanel.
+No. Deactivating or deleting BrikPanel keeps your expenses, suppliers, purchase orders, visitor history and settings, so a reinstall picks up where you left off. Deactivating stops its background jobs. Regular ones, such as syncs and nightly scans, start again when you activate it; an import or export that was running, such as a Google Ads history import, must be started again.
 
 = Will BrikPanel always be free? =
 
@@ -471,121 +472,86 @@ BrikPanel, written as one word and without a "c". It is pronounced like "brick p
 == Screenshots ==
 
 1. Dashboard
-2. Cart Recovery
-3. Ads ROAS
-4. Sheets Sync
-5. Product List
-6. Quick Edit
-7. Bulk Edit
-8. Product Editor
-9. Customer LTV
-10. RFM Segments
-11. Cohort Retention
-12. Geo Analytics
-13. Live Visitors
-14. Order Search
-15. Orders Explorer
+2. Live Visitors
+3. Geo Analytics
+4. Cart Recovery
+5. Order Management
+6. Order Page
+7. Order Search
+8. Product List
+9. Quick Edit
+10. Bulk Edit
+11. Product Editor
+12. Categories
+13. Customer LTV
+14. RFM Segments
+15. Cohort Retention
 16. Customers Explorer
-17. Order Management
-18. Categories
-19. Coupons
-20. Add Coupon
-21. Login Page
-22. Order Page
+17. Orders Explorer
+18. Coupons
+19. Add Coupon
+20. Ads ROAS
+21. Sheets Sync
+22. Login Page
 
 == Changelog ==
 The full release history of every version is in changelog.txt, included with the plugin. The most recent releases are listed below.
+
+= 3.3.33 (2026-10-07) =
+* New: **Arrange the dashboard box by box.** Setting: Dashboard → "Dashboard sections" now lists every box on its own, such as Recent orders, Order rates and the Conversion funnel, so you can move or hide each one. Boxes joined by a line sit side by side, and a new "Customize" link on the dashboard's date line opens the list. Layouts you saved before look the same.
+* New: **Product weights on the order screen.** The order's Items tab shows each product's weight, such as "0.12 kg × 3 = 0.36 kg", and a "Total weight" line under the totals, with a note when a product that ships has no weight. Orders without weighted products look as before.
+* New: **The products list on phones works like an app.** Each row shows the image, name, price and a stock dot, a tap opens the product, and coming back keeps your place. Filters, sorting, quick edit and row actions open from the bottom of the screen, "Select" or a long press picks several products, more load as you scroll, and Undo brings back a trashed product.
+* New: **The product editor on phones works like an app.** Back and ⋯ sit at the top, the status and Save at the bottom, images are square tiles, each variation has its own page, and less used cards such as Organization, Description, Shipping and Linked products open as pages. Computers and tablets look as before.
+* New: **Ignore BrikPanel's access rules.** Setting: Access control → "Ignore BrikPanel's access rules", off by default. Turn it on when a plugin such as Advanced Access Manager or B2BKing decides who sees what: BrikPanel then stops applying its own choices of who sees menu items, top bar controls, dashboard widgets and orders analytics, and stops blocking hidden pages. Your saved rules are kept.
+* Tweak: **The new order popup works in a background tab.** The popup and the chime no longer stop when the BrikPanel tab is in the background. With several tabs open, the chime plays once and the popup shows in the tab you are looking at, after any open window is closed.
+* Tweak: **The new order popup for every new order.** It now also shows for completed orders and for orders on hold, marked "Awaiting payment". On an iPhone the chime works after your first tap, volume 0 is silent, and the item count uses the right plural in every language.
+* Fix: **Store Health on MySQL 8.** On MySQL 8.0.22 and later, the daily "Abandoned cart entries" check failed with a database error: the card stayed Pending, Bot traffic missed fake cart entries, the nightly cleanup could not remove them and the error log got new lines every day. It now works on MySQL 8, MySQL 5.7 and MariaDB.
+* Fix: **Stock total of variable products.** When the main product keeps the stock, it is counted once instead of once per variation, and switched-off variations are left out.
+* Fix: **Adding a category keeps the brands.** In the product editor, "Add new category" emptied the brand list, so the next save removed the product's brands.
+* Fix: **A status change counts as an unsaved change** in the product editor, so you are warned before leaving the page.
+* Tweak: **Stock badges follow your low stock threshold.** In the products list, the stock badge turns amber at the store's low stock threshold instead of a fixed 5, and red below zero.
+* Tweak: **A survey card instead of the newsletter card.** The card at the top of the dashboard opens a 2-minute survey on brksoft.com. The newsletter signup stays in WooCommerce > Settings > BrikPanel, with the survey above it.
+* Tweak: **One message at a time.** The welcome tour, the new store guide, the survey card, the review request and the BrikMentor cards take turns: one at a time, at least 7 days apart, and none while another notice is on the screen.
+* Fix: **Settings search opens the right row.** Six results, such as Dashboard sections and Top bar items, now open at their own row, and a tall row shows from its top.
+* Fix: **Keyboard focus on the order screen.** An item reached with the Tab key no longer hides under the fixed header and tab bar.
+
+= 3.3.31 (2026-10-05) =
+* Fix: **The dashboard in Firefox.** In Firefox, the dashboard's cards stacked one per line and its header took the phone layout on every screen size, and on a phone the Low stock list turned into cards. All of them look as they should again.
+* Fix: **The dashboard on a zoomed page.** On a zoomed page, the cards could stack one per line and the header could switch to its phone layout, even on a wide screen.
+* Fix: **The Order locations globe no longer goes blank.** Browsers without WebGL, such as LibreWolf, showed an empty box, and a globe that lost its graphics context stayed blank until the page was reloaded. A drawn globe now stands in, and the 3D globe comes back on its own.
+
+= 3.3.30 (2026-10-05) =
+* Fix: **Visitors are counted once a day, and only real people.** A visitor now counts after they move the mouse, tap, scroll or press a key. Bots, cloud servers, your staff and pages served from an old cache no longer add visitors, product views, add-to-carts or checkouts. A first-party cookie, `brikpanel_human`, remembers the check for 30 days and follows your cookie consent setting.
+* New: **Bot traffic is cleaned up every night.** Store Health lowers past days that bots inflated, leaves days with real sales for you to decide, and keeps an Undo. Days you put back with Undo are never touched again.
+* Tweak: **Simpler stock for variations.** Each variation now has one stock box with an ∞ button beside it: type how many you have, or press ∞ to sell it without counting. New variations start at 0, the bulk edit bar has the same ∞ button, and "Allow backorders?" sits in each variation's details.
+* Fix: **Top referrers tells two rows of the same site apart.** When one site sends visits through two channels, such as Google ads and Google search, each of its rows in Top referrers now names its channel.
+
+= 3.3.29 (2026-10-04) =
+* New: **A new dashboard look.** The store cards fit in one row, each with a small trend line, and one sales chart switches between Revenue, Orders and Avg. order value, with the previous period dashed. The Excel export and "Copy everything" stay the same.
+* New: **Today's sales in Live visitors.** The card lists up to 5 visitors and "N more". When no one is on the store, it shows today's sales so far and sales per hour.
+* New: **Products and pages card.** Best sellers, Most viewed pages and Most added to cart in one card with tabs. Most viewed pages also counts pages that are not products, such as the shop and home page.
+* Tweak: **Recent orders, Visitors and Customers redrawn.** Recent orders looks like the orders list. Visitors has Devices, Sources and Top campaigns tabs, and Customers shows new and returning customers with the VIP, loyal and at risk groups. Low stock rows show a badge and the variation.
+* Tweak: **The dashboard loads less.** BrikPanel draws its own charts, so Chart.js is loaded only when BrikMarket is active.
+* New: **A new welcome tour.** New users get a 4-step window instead of the 9-step tour. Each step shows one thing BrikPanel does with a small sketch, and the last screen links to the Dashboard, Orders, Customers and Google Sheets. If you closed the old tour, it does not open again.
+* New: **Deactivation survey.** Deactivating BrikPanel from the Plugins screen opens a short, optional question about why. "Skip and deactivate" sends nothing; "Send and deactivate" shares only your answer, the days BrikPanel was in use, version numbers and your admin language with brksoft.com, never your site address or store data.
+* New: **The products list remembers your sort.** The sort you pick is saved for each user and used the next time the list opens. Filters and the "Sort" button's custom order are not kept.
+* Fix: **Sorting by price keeps products without a price.** They no longer drop out of the list, and variable products sort by their lowest price going up and their highest price going down.
+
+= 3.3.28 (2026-10-02) =
+* New: **Top campaigns.** On the dashboard, Visitors by device → "Sources" lists the 5 campaigns that brought the most revenue, with their orders, conversion rate and revenue. The Excel export gets a "Campaigns" sheet. Campaign visits are counted from this version on and follow your visitor tracking and cookie consent settings.
+* New: **Abandoned carts in the Conversion funnel.** A line under the funnel shows the carts abandoned in the selected period, their value, how many were recovered and the change from the previous period. The Excel export has the same figures.
+* New: **Exclude products and saved segments.** Segments → More filters → "Exclude products" leaves out orders, or customers, that include those products. "+ Save as segment" keeps any filter under a name, as a button next to the presets.
+* Fix: **The Segments product filter finds new orders.** It now also finds orders WooCommerce has not yet processed for analytics, and a variable product covers all its variations. "Reset" no longer sends the old status choice.
+* Fix: **Menus moved into More keep their pages.** Tools, Settings or any other menu you move into the sidebar's More menu now opens its pages under it, and the page you are on stays highlighted.
+* Fix: **The dashboard header fits when BrikMarket is active.** The date buttons and "Copy everything" no longer shrink at every width; they stay in one line on wide screens, as they do without BrikMarket.
+
+= 3.3.27 (2026-10-01) =
+* Fix: **Connect buttons explain what went wrong.** When Google Sheets, Google Ads or Meta cannot be connected because the site cannot reach brksoft.com, BrikPanel tries once more by itself, then shows the reason and what to do in a box that stays on screen, with technical details you can send to your host.
+* Fix: **A failed or cancelled Google or Meta sign-in is explained.** The message now appears on the right card in plain words, instead of a raw code like "access_denied" or no message at all.
+* Fix: **Error messages are no longer hidden by Cloudflare or nginx.** Google Sheets and Ad Platforms errors reach the screen as written, so you no longer see "click Sync now again" under Connect or "Unexpected token '<'".
+* Tweak: **The Google Sheets page opens fast before you connect.** It no longer asks brksoft.com for settings it does not need yet. On sites that cannot reach brksoft.com, the page took about 20 seconds to open.
 
 = 3.3.26 (2026-09-29) =
 * New: **WhatsApp follow-up message.** Setting: Orders → "Message per order status" → "Follow-up message", one per status, empty by default. The first WhatsApp press on an order opens the status message; later presses open the follow-up ("Send follow-up") until the order's status changes.
 * Fix: **WhatsApp buttons follow a status change right away.** After changing the status from the list badge or the tracking number window, they no longer open the old status's message until the page is reloaded.
 * Tweak: **The Share cart button looks like your theme's buttons.** It now takes the same style as the other cart buttons, such as "Apply coupon", in both the classic and the block cart.
-
-= 3.3.25 (2026-09-28) =
-* New: **Several ad accounts.** Ad Platforms → "Ad accounts" is now a list: tick up to 20 Meta or Google Ads accounts. Each account's history loads and updates on its own, and ROAS, Expenses and Net profit add them all up. Reconnecting fills the missing days instead of loading three years again.
-* New: **Trakoo tracking numbers in WhatsApp and the orders list.** With Trakoo (Orders Tracking for WooCommerce) active, WhatsApp messages can use {tracking_number}, {carrier_name} and {tracking_url}, and each order in the list gets an "Add tracking number" button. Trakoo saves it, so its emails and status changes work as usual.
-* New: **Show menu items by permission.** In Navigation, a menu item can be shown to "Users with a permission", and a role list can "Show only to these roles" as well as hide from them.
-* New: **Block pages hidden from the menu.** Setting: Navigation → "Block pages hidden from the menu": people who cannot see an item cannot open its page from a link, search or shortcut either. Administrators are never blocked. Off by default.
-* New: **Publish products without a price.** Setting: Products → "Require a price to publish" can now be turned off. On by default, as before.
-* New: **A starting guide for new stores.** A store with no orders gets first steps on the dashboard, and empty cards and charts say why they are empty. Customer Analytics, Segments, Abandoned Carts and Orders do the same.
-* Fix: **Customers can retry payment with their own discount code.** A single-use popup or BrikMentor code held by the customer's own unpaid order is released when they come back, so they no longer see "usage limit reached".
-* Fix: **Removed the "Default status for new orders" setting.** With a status such as "Processing" chosen, the classic checkout skipped payment. Every order now starts as "Pending payment".
-* Fix: **No "no callback is registered" errors.** Switching off Abandoned carts, Store Health, Google Sheets or Ad Platforms removes their background jobs. "Failed (24h)" and "Done (24h)" in Scheduled Tasks count only the last 24 hours.
-* Fix: **Background jobs stop when BrikPanel is deactivated** and start again when it is activated. No data is deleted.
-* Fix: **The image remove button works in right-to-left languages and on touch screens.** The × no longer sits under the video button, and it is always visible on phones and tablets.
-* Fix: **No "set_cogs_value was called incorrectly" lines in the error log** when WooCommerce's cost of goods feature is off. BrikPanel still saves its own cost.
-* Fix: **Net profit change points the right way** when the previous period was a loss.
-* Fix: **Numbers, percentages, prices and dates follow the store settings on every screen,** not the browser language. Sentences with a count use the right plural in every language.
-* Fix: **Store Health shows its results in the admin's language.** The images card turns red only for large or missing images, and stores without images see "OK".
-* Fix: **The Low stock card tells the real state** and links to out-of-stock products. Variation names no longer repeat the SKU.
-* Fix: **Admin orders are left out of Recent Orders and the Excel report,** and dashboard numbers update right away when an order is trashed, restored or deleted.
-* Fix: **Sale prices are readable in the products list** again, also after quick edit.
-* Fix: **Menu hiding works for Categories, Tags and renamed items,** and BrikPanel search no longer lists pages hidden from the menu.
-* Tweak: **The products list looks like Orders.** One line per product with row icons, tabs and filters inside the card, and "Screen Options" next to Import. When the table does not fit, row buttons fold into a "⋯" menu first, then rows turn into cards.
-* Tweak: **One look on every screen.** Fields, buttons, badges and lists share one style. Lists and reports use the full width, forms 820px, with equal side margins. Titles use normal capitalisation and one size, and WordPress's blue accent is dark grey in the BrikPanel look.
-* Tweak: **Darker text.** Text meant to be read and status colours now have enough contrast.
-* Tweak: **All 9 languages are fully translated.** Two storefront texts changed (the popup's "Check your inbox…" and the login page footer): update them if you translated them yourself.
-* Tweak: **WooCommerce tested up to 11.1.** The Ad Platforms page now says that ad tokens are sent to the brksoft.com helper for syncing.
-
-= 3.3.24 (2026-09-26) =
-* New: **Page names in Live Visitors.** Each row shows the name of the product, page or category the visitor is on instead of its address, and the campaign and search term appear next to the source without hovering. Pages cached before the update show the address until the page cache is cleared.
-* New: **Tax kept in Revenue.** Dashboard → "Tax in the Profit section" (formerly "Exclude tax from Revenue and Expenses") has a new "Kept in Revenue (not in Expenses)" choice: Revenue keeps the tax and shows the amount under it, and Expenses leave it out. Net profit stays the same.
-* Fix: **Profit cards in right-to-left languages.** The buttons in the corner of the Revenue and Expenses cards no longer cover the card title.
-
-= 3.3.23 (2026-09-25) =
-* New: **Items sold on the dashboard.** The Orders and Order Rates cards show how many items were sold, each Recent Orders row shows its item count, and the Excel report has an "Items sold" row.
-* New: **Order dates in Recent Orders.** Each order on the dashboard shows its date, and its status in WooCommerce's translated wording.
-* New: **See where each live visitor came from.** Live visitors shows the source under the page, such as "Organic Search · google.com" or "Paid · bing.com". Hover for the campaign, search term and landing page. It respects cookie consent. Setting: Analytics → "Traffic source in Live view".
-* New: **Revenue and Expenses without tax.** Dashboard → "Exclude tax from Revenue and Expenses" shows Revenue without tax in the Profit section and leaves tax out of Expenses. Net profit stays the same. Off by default.
-* New: **Product videos for popular themes.** The product editor saves videos where WoodMart, Blocksy (with Companion Pro), Minimog, Shoptimizer / CommerceKit, Flatsome and Porto read them, and shows videos added from the theme.
-* New: **WooCommerce ads are hidden.** Promo cards (such as the one WooCommerce 11 puts above the Orders list), the "Sale" badge on Extensions and extension suggestions are switched off with WooCommerce's own switches. Setting: General → "Hide WooCommerce ads".
-* Fix: **Saving a product no longer erases Flatsome, Porto or CommerceKit data,** such as custom tabs, labels, layouts, custom CSS and videos.
-* Fix: **Saving before the gallery finished loading no longer removes product images** (a 3.3.22 regression). Changing a variation image or the gallery now warns about unsaved changes.
-* Fix: **Saving with a section closed no longer clears** a variation's sale dates and supplier, or a simple product's weight and dimensions.
-* Fix: **Names with "&" no longer show as `&amp;`** in lists, the product editor, pickers, search, emails, CSV exports and Google Sheets. Sheets writes a variation's option name instead of its slug, and tags like "<5kg" and ">10kg" no longer merge into one.
-* Fix: **Forgotten tabs no longer stay in Live visitors for days.** A page untouched for 30 minutes drops off the Live list and comes back as soon as the visitor is active. Idle tabs stop pinging the server.
-* Fix: **Tapping a status tab on a phone no longer selects every order.** An invisible "Select all" label covered the orders list.
-* Fix: **The customer name stays in the orders list.** When the Customer column is hidden or removed by another plugin, the name shows next to the order number. Long names no longer widen the list on phones.
-* Fix: **The order status badge works with plugins that replace the status column,** such as Flexible Refund. Clicking it opens the status menu, and other plugins' status colours now show.
-* Fix: **Better compatibility.** WP Bulk Delete's menu items can be clicked in the BrikPanel sidebar again, and PeproDev Ultimate Invoice no longer prints `var CURRENT_ORDER_MAIL = [];` in the orders list.
-* Tweak: **Tables fit their cards.** The variation table shows Variation, Price, Sale price, Stock and COGS, and the other fields open under each row's ▾ arrow. Wide tables (Scheduled Tasks, Segments, Abandoned Carts, Expenses and more) turn rows into cards instead of being cut off.
-* Fix: **Header bars keep the title and the Save button in view.** In the product editor, the order page and Google Sheets, extra buttons move into a "..." menu first, then the bar wraps, then labels turn into icons. The schedule date picker no longer closes at once or overflows on phones.
-* Fix: **Notices appear under the page title,** not inside the title row or the product editor's sticky header, and the review box is readable on phones.
-* Fix: **The "Write a review" button is readable on WordPress 7,** which colours links inside notices. Notices in Settings, the category screens and four other screens are fixed for the same reason.
-* Fix: **Other plugins' notices look right on BrikPanel pages.** BrikPanel no longer removes other plugins' stylesheets there, only their scripts, so their dismiss links, bell notices and dashboard widgets keep their styling. WordPress 7 "Dismiss" links no longer spill out of notices.
-* Fix: **The "Save changes" bar no longer covers settings.** It is a solid bar inside the settings column, stays at the bottom of the screen on phones and keeps clear of the side menu in right-to-left languages. Empty Save buttons are gone, and the Orders status bar no longer covers the bulk actions bar.
-* Fix: **No red "0" on the bell when nothing is waiting.** The same bug showed a "1 / 1" pager in Customer Analytics, a stuck "Counting…" box in Google Sheets, "Edit email" in the cart popup and a "Supplier SKU" row with no supplier. Zero counts like "Updates 0" are hidden in the side menu.
-* Fix: **The BrikMentor corner button no longer covers content.** It is now a labelled button, hidden on phones. Pages leave room for it, and the space beside its panel no longer blocks clicks.
-* Security: **Quote marks in variation SKUs, GTINs and names are now escaped in the product editor.**
-
-= 3.3.22 (2026-09-23) =
-* Fix: **BrikPanel no longer switches itself off when WooCommerce sits in a differently named folder.** WooCommerce is now recognised by its main file, the way WordPress itself loads it, so stores that keep it in a folder such as `wc-core/` get BrikPanel back. The same assumption also removed WooCommerce's own files from BrikPanel pages on such stores and hid Admin Menu Editor Pro; both are fixed.
-* Fix: **No more links to pages a user is not allowed to open.** Editors, authors and contributors no longer see an empty "More" row that led to a "not allowed" page. The same check now covers the WordPress toolbar, Cmd+K search, the top bar's Create menu, bell and logo, the product list's Import and Export buttons, the settings shortcuts, and users for whom a multisite network has switched BrikPanel off.
-* Fix: **The side menu no longer overlaps on older WooCommerce versions.** On stores whose Orders screen is the classic list (WooCommerce 4.0, and stores without HPOS), Orders and Customers could spill out beside the WooCommerce heading. The bell's links, the "back" links in order merge, the toolbar Analytics shortcut and the redirect after switching a module off were corrected for the same reason.
-* Fix: **The Navigation settings screen shows the menu in the same order as the sidebar.** It listed BrikMentor under "Site management", so saving without a change moved it there. Menus you already saved stay as they are.
-* Fix: **"Email" and "popup" no longer overlap in the Abandoned Carts header.** The row arrow shared a CSS class with the header switch, so its sizing hit the switch's label. Three similar clashes are fixed too: italic empty cells in the products list, the order screen's status menu taking styles from the orders list, and generic class names in styles loaded on every admin page, which could restyle other plugins and put a magnifier on BrikPanel's power switch in the toolbar.
-* Tweak: **Clearer wording.** The "Wait for cookie consent" setting now says it also covers signed-in customers, and the FAQ describes exactly which scripts load on the storefront, when, and where to switch each one off.
-* Developer: **The Abandoned Carts contact cells are filled through a filter.** The phone, WhatsApp and envelope cells now take their content from `brikpanel_cartab_outreach_rows`; BrikPanel itself only draws them. With BrikMentor 1.15.8 or later nothing changes on screen; an older BrikMentor shows a padlock asking to be updated.
-
-= 3.3.20 (2026-09-22) =
-* Fix: **The product editor, both product lists and the search box no longer break a store running an older WooCommerce.** The GTIN / barcode field uses a WooCommerce feature that arrived in WooCommerce 9.2. On anything older the call had nothing to answer it, and the page stopped dead with a critical error instead of simply leaving the field out. That hit the product editor, the WordPress products list, BrikPanel's own products list and any search that matched a product, which between them is most of a working day. The GTIN field now works on older WooCommerce as well, reading and writing the same place WooCommerce itself keeps it, so the barcodes entered there appear by themselves once the store updates WooCommerce, with nothing to move across.
-* Fix: **Coupons can be created and duplicated on an older WooCommerce again.** Saving a new coupon, or duplicating an existing one, called a WooCommerce feature added in WooCommerce 6.2. On an older store both buttons answered with a critical error and nothing was saved. A duplicated coupon is still created as a draft, so a copy never goes live on its own.
-* Fix: **The Google Sheets order sync no longer fails in the background on an older WooCommerce.** The part of the sync that keeps track of which orders are already in the sheet used a WooCommerce class added in WooCommerce 6.9. There was no visible error because the work runs in the background, the sync simply stopped.
-* Tweak: **The products list draws the GTIN column with one database query instead of one per variation.** A variable product with twenty variations used to cost twenty separate product lookups on every page of the list, for a single column.
-* Change: **BrikPanel now states that it supports WooCommerce 9.2 and later, and says so on stores below that.** Nothing is switched off and nothing behaves differently below it. Everything above keeps working on older stores; administrators simply see a dismissible notice recommending a WooCommerce update.
-* Developer: `includes/brikpanel-wc-compat.php` is now the single place that wraps any WooCommerce API newer than the oldest supported store, and `tools/wc-floor-audit.php` fails the build when one is called anywhere else or without a guard. It also treats `catch ( \Exception )` as no guard at all, because a missing method raises `Error`, which is what made this class of bug reach production three separate times.
-
-= 3.3.19 (2026-09-22) =
-* Change: **The abandoned carts list opens a cart's contents in place, from a small arrow at the start of the row.** The "Details" button used to sit in the last column, which on a table this wide was usually past the right edge of the screen, so reaching it meant scrolling sideways first. The arrow takes one narrow column and hands the whole actions column back, which is enough to bring another column of data into view. Clicking it slides the cart's items open underneath the row, lined up with the first column, and more than one row can be open at a time.
-* Fix: **"Admins only" now really means administrators.** Hiding a top bar control (the hidden-notices bell, the order notifications bell, the search box, any of them) or a sidebar menu item from everyone but administrators had no effect on a store manager whose role had been given the "manage options" permission with a role editor, which is a common setup. Those staff accounts kept seeing everything the rule was meant to hide. BrikPanel now checks for the real administrator role, and on a network for a network administrator, exactly as the dashboard widget rules and the settings lock already did. Real administrators and network administrators are unaffected and can never hide a control from themselves. Reported on the support forum.
-* Tweak: **Abandoned Carts and Customer Analytics now use the full width of the screen.** Both pages were held to a narrow centred column, so the Abandoned Carts table never had room for its columns and customer names wrapped onto three and four lines. It was worse after turning BrikMentor on, which adds a Phone and a Follow-ups column to the same narrow space. Both pages now run edge to edge like the Orders, Products and Segments lists, and on a wide screen the table finally fits without scrolling sideways. The search box and the explanatory lines stop growing past a comfortable reading width; everything else lines up with the table so the page reads as one block. Nothing changes on phones or tablets. Reported on the support forum.
-* Fix: **Dates across BrikPanel now use your store's timezone.** They were showing UTC, so on a store set to Istanbul every time was three hours early and any order placed late in the evening was stamped with the previous day. Reported on the support forum for the Segments page, where it was most visible, but the same fault ran through Customer Analytics, the Store Summary report and the daily rows exported to Google Sheets. Segments now matches the WooCommerce orders screen to the minute.
-* Fix: **Date filters now mean your store's day.** Picking "10 August", or the Today / Last 7 / 30 / 90 day shortcuts, used to select a London day. On a store three hours ahead that quietly pulled in the last three hours of the previous day and dropped the last three hours of the one you asked for, so the count looked plausible while the rows were wrong. Expect the numbers on these screens to shift a little after updating: they were wrong before.
-* Fix: **The "Yesterday" row of Sales by Period covered 45 hours instead of 24.** It started at London midnight of the day before yesterday and ran to your midnight, so it overlapped the Today row and counted some orders twice. Yesterday's revenue will drop after this update, and both rows now add up without double counting.
-* Fix: **The conversion funnel and cart abandonment rate were measured on two different clocks.** Visitor and checkout counts are recorded on your store's day while orders are stored in UTC, and the two windows were not lined up, so the percentages themselves were off rather than just their labels.
-* Fix: **Best and worst sales times are now your hours, not London's.** The day of week table was silently shifted and the peak hour was labelled "(UTC)". Both now use the store clock, which is the one you would schedule staff or ads around.
-* Fix: **The Segments CSV export matches what is on screen.** Three of its four date columns carried a raw UTC timestamp and the fourth a formatted date, so a file downloaded after filtering for a given day could contain rows stamped with the day before. Every date column is now your store's time in `2026-09-19 14:56` form, which sorts correctly in Excel, and each heading names the timezone it is using.
-* Fix: **Monthly tables and customer cohorts are grouped by your months.** Orders placed in the first hours of a month were credited to the previous one. Cohort retention is rebuilt once after updating so old and new rows cannot be mixed.
-* Fix: **Adding an expense just after midnight no longer files it under yesterday.** The date box was pre-filled with the London day while expenses are saved against your own day. Existing expenses are untouched.
-* Fix: **A coupon set to expire on a date now expires at the end of that day in your timezone.** It used to survive a few hours into the next day, and the WooCommerce coupon screen showed the wrong expiry date as a result.
-* Fix: **Twelve month tables no longer skip a month when viewed on the 31st.** Stepping back a month from the 31st landed in the same month again, which produced a duplicate column and a missing one on any screen with a monthly axis.

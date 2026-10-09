@@ -10,6 +10,7 @@
  *   $google_rows, $meta_rows        — rows of each card's account list
  *   $store_currency                 — the store's currency code
  *   $flash                          — { tone, message } from OAuth return
+ *   $connect_errors                 — failed-return box per platform slug, or '_page'
  *
  * @package BrikPanel
  */
@@ -18,11 +19,45 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+$connect_errors = isset( $connect_errors ) && is_array( $connect_errors ) ? $connect_errors : [];
+
+/**
+ * The box beside Connect / Re-authorize that says what went wrong, why, and
+ * what to do next. It stays until the next click: the toast it replaces was
+ * gone in 3.5 s, before anyone could read the reason out to their host.
+ * Filled here after a failed return from the platform, and by the script
+ * after a failed click. Empty parts stay hidden.
+ *
+ * @param array  $err         { title, reason, help, detail }
+ * @param string $extra_class
+ */
+$render_connect_error = function ( array $err, $extra_class = '' ) {
+	$title  = (string) ( $err['title'] ?? '' );
+	$reason = (string) ( $err['reason'] ?? '' );
+	$help   = (string) ( $err['help'] ?? '' );
+	$detail = (string) ( $err['detail'] ?? '' );
+	?>
+	<div class="bp-ads-connect-error<?php echo $extra_class !== '' ? ' ' . esc_attr( $extra_class ) : ''; ?>" data-role="connect-error" role="alert"<?php echo ( $title === '' && $reason === '' ) ? ' hidden' : ''; ?>>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+		<div>
+			<strong data-role="connect-error-title"<?php echo $title === '' ? ' hidden' : ''; ?>><?php echo esc_html( $title ); ?></strong>
+			<p class="bp-ads-card-sub" data-role="connect-error-reason"<?php echo $reason === '' ? ' hidden' : ''; ?>><?php echo esc_html( $reason ); ?></p>
+			<p class="bp-ads-card-sub" data-role="connect-error-help"<?php echo $help === '' ? ' hidden' : ''; ?>><?php echo esc_html( $help ); ?></p>
+			<p class="bp-ads-card-sub bp-ads-connect-error-detail" data-role="connect-error-detail-row"<?php echo $detail === '' ? ' hidden' : ''; ?>>
+				<?php esc_html_e( 'Technical details:', 'brikpanel' ); ?>
+				<code dir="ltr" data-role="connect-error-detail"><?php echo esc_html( $detail ); ?></code>
+			</p>
+		</div>
+	</div>
+	<?php
+};
+
 /**
  * Render a single platform card. Used twice — for Google and Meta — to avoid
  * 200 lines of nearly identical markup.
  */
-$render_platform_card = function ( $platform, $title, $tagline, $desc, $last_sync, $backfill, $locked = false, $disguise = false, $stale = false, $unreadable = false, $rows = [], $store_currency = '' ) {
+$render_platform_card = function ( $platform, $title, $tagline, $desc, $last_sync, $backfill, $locked = false, $disguise = false, $stale = false, $unreadable = false, $rows = [], $store_currency = '' ) use ( $connect_errors, $render_connect_error ) {
+	$connect_error = isset( $connect_errors[ $platform ] ) ? (array) $connect_errors[ $platform ] : [];
 	$is_connected = (bool) $desc['connected'];
 	$accounts     = (array) $desc['accounts'];
 	$last_ts      = (int) ( $last_sync['ts'] ?? 0 );
@@ -70,11 +105,17 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 						</p>
 					</div>
 				</div>
+				<?php
+				if ( $button_live ) {
+					$render_connect_error( $connect_error );
+				}
+				?>
 				<div class="bp-ads-actions">
 					<?php if ( $button_live ) : ?>
 						<button type="button" class="bp-ads-btn bp-ads-btn-primary" data-action="connect">
 							<?php echo esc_html( $connect_label ); ?>
 						</button>
+						<span class="bp-ads-connect-status" data-role="connect-status" role="status" aria-live="polite"></span>
 					<?php else : ?>
 						<button type="button" class="bp-ads-btn bp-ads-btn-primary" disabled aria-disabled="true">
 							<?php echo esc_html( $connect_label ); ?>
@@ -163,6 +204,7 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 						<?php esc_html_e( 'Google’s permission screen still asks for broad access (“See, edit, create, and delete your Google Ads accounts and data”) because the Google Ads API has only one permission and offers no read-only option. If you want the permission itself narrowed, connect with a Google account that has Read-only access to the Ads account.', 'brikpanel' ); ?>
 					</p>
 				<?php endif; ?>
+				<?php $render_connect_error( $connect_error ); ?>
 				<div class="bp-ads-actions">
 					<button type="button" class="bp-ads-btn bp-ads-btn-primary" data-action="connect">
 						<?php
@@ -173,6 +215,7 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 						}
 						?>
 					</button>
+					<span class="bp-ads-connect-status" data-role="connect-status" role="status" aria-live="polite"></span>
 				</div>
 
 			<?php else : ?>
@@ -375,6 +418,7 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 					</div>
 				<?php endif; ?>
 
+				<?php $render_connect_error( $connect_error ); ?>
 				<div class="bp-ads-actions">
 					<button type="button" class="bp-ads-btn bp-ads-btn-primary" data-action="sync-now" <?php disabled( ! $accounts ); ?>>
 						<?php esc_html_e( 'Sync now', 'brikpanel' ); ?>
@@ -385,6 +429,7 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 					<button type="button" class="bp-ads-btn bp-ads-btn-secondary" data-action="disconnect">
 						<?php esc_html_e( 'Disconnect', 'brikpanel' ); ?>
 					</button>
+					<span class="bp-ads-connect-status" data-role="connect-status" role="status" aria-live="polite"></span>
 				</div>
 
 			<?php endif; ?>
@@ -413,6 +458,12 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 		<?php brikpanel_header_end(); ?>
 
 		<div class="bp-ads-toast" id="bp-ads-toast" hidden></div>
+
+		<?php
+		if ( ! empty( $connect_errors['_page'] ) ) {
+			$render_connect_error( (array) $connect_errors['_page'], 'bp-ads-connect-error--page' );
+		}
+		?>
 
 		<div class="bp-ads-grid">
 			<?php

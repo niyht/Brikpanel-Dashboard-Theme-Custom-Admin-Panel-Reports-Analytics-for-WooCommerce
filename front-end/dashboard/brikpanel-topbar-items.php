@@ -219,6 +219,11 @@ function brikpanel_topbar_item_audience_allows( $key ) {
     if ( $audience === 'all' ) {
         return true;
     }
+    // "Ignore BrikPanel's access rules": the rule is kept but not applied. The
+    // owner's on/off list is checked separately in brikpanel_topbar_item_is_visible().
+    if ( function_exists( 'brikpanel_access_rules_ignored' ) && brikpanel_access_rules_ignored() ) {
+        return true;
+    }
     // Real administrators (and multisite super admins) always pass, so an owner
     // can never hide a control from their own account. Deliberately role-based
     // via brikpanel_user_is_administrator(): stores routinely grant
@@ -1055,6 +1060,11 @@ function brikpanel_render_topbar_items_field( $field ) {
                 <?php if ( $help !== '' ) : ?>
                     <p class="brikpanel-topbar-items-help"><?php echo esc_html( $help ); ?></p>
                 <?php endif; ?>
+                <?php
+                if ( function_exists( 'brikpanel_access_rules_ignored_print_note' ) ) {
+                    brikpanel_access_rules_ignored_print_note( 'choices', true );
+                }
+                ?>
                 <input type="hidden" name="brikpanel_topbar_items_submitted" value="1">
                 <ul class="brikpanel-topbar-items-list" role="list">
                     <?php foreach ( $items as $key => $item ) :

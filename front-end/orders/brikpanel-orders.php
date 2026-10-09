@@ -340,6 +340,14 @@ function brikpanel_settings_fields() {
         ? Brikpanel_Product_Editor::collect_wc_variation_sections()
         : [];
 
+    // While "Ignore BrikPanel's access rules" is on, a line under "Block pages
+    // hidden from the menu" says nothing is blocked. WooCommerce prints a
+    // checkbox's string desc_tip as-is inside <p class="description">; the note
+    // comes escaped. Off, the field is exactly what it always was.
+    $block_pages_note = ( function_exists('brikpanel_access_rules_ignored') && brikpanel_access_rules_ignored() )
+        ? [ 'desc_tip' => '<span class="brikpanel-override-note">' . brikpanel_access_rules_ignored_note('pages') . '</span>' ]
+        : [];
+
     $fields = [
         [
             'name' => __('Navigation', 'brikpanel'),
@@ -373,7 +381,7 @@ function brikpanel_settings_fields() {
             'type'    => 'checkbox',
             'desc'    => __('People who cannot see an item in the sidebar cannot open its page from a link either. Administrators are never blocked, and the dashboard and each person\'s own profile always stay open.', 'brikpanel'),
             'default' => 'no',
-        ],
+        ] + $block_pages_note,
         [
             'type' => 'brikpanel_nav_customizer',
             'id'   => 'brikpanel_nav_customizer_field',
@@ -644,7 +652,7 @@ function brikpanel_settings_fields() {
             'name'     => __('Dashboard sections', 'brikpanel'),
             'id'       => 'brikpanel_dashboard_sections',
             'type'     => 'brikpanel_dashboard_section_order',
-            'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder; the dashboard renders sections in the order shown here. Hidden sections skip rendering entirely, so their data is not fetched.', 'brikpanel'),
+            'desc'     => __('Tick a box to show it on the dashboard and use the arrows to move it. Boxes joined by a line sit side by side. Best sellers, Most viewed pages and Most added to cart become one box with tabs while they stay together, and so do Customers and Customer segments.', 'brikpanel'),
         ],
         [
             'name'     => __('Profit section fields', 'brikpanel'),
@@ -929,20 +937,20 @@ function brikpanel_settings_fields() {
             'name' => __('Order notifications', 'brikpanel'),
             'type' => 'title',
             'id'   => 'brk_order_notify_title',
-            'desc' => __('Real-time alerts when a new paid order arrives while you have the WordPress admin open.', 'brikpanel'),
+            'desc' => __('Real-time alerts when a new order arrives while you have the WordPress admin open.', 'brikpanel'),
         ],
         [
             'name'    => __('Show new order popup', 'brikpanel'),
             'id'      => 'brikpanel_order_notify_popup',
             'type'    => 'checkbox',
-            'desc'    => __('Display a slide-in card in the corner of the admin whenever a new paid order arrives.', 'brikpanel'),
+            'desc'    => __('Display a slide-in card in the corner of the admin whenever a new order arrives.', 'brikpanel'),
             'default' => 'yes',
         ],
         [
             'name'    => __('Play notification sound', 'brikpanel'),
             'id'      => 'brikpanel_order_notify_sound',
             'type'    => 'checkbox',
-            'desc'    => __('Play a short chime to alert you of new paid orders. Some browsers require an interaction with the page before audio can play automatically.', 'brikpanel'),
+            'desc'    => __('Play a short chime to alert you of new orders. Some browsers require an interaction with the page before audio can play automatically.', 'brikpanel'),
             'default' => 'yes',
         ],
         [
@@ -2640,7 +2648,7 @@ add_action( 'admin_head', function () {
 
     /* Sidebar settings search. Filters the PHP-built JSON index client-side;
        while a query is active the group nav is swapped for a flat result
-       list. Result links carry a `#bp-jump=<option id>` fragment — on arrival
+       list. Result links carry a `#bp-jump-<option id>` fragment — on arrival
        the target row is scrolled into view and flashed. All user-facing text
        is rendered by PHP (placeholder + empty state); this script only moves
        existing DOM around. */
@@ -2671,7 +2679,10 @@ add_action( 'admin_head', function () {
 
         function urlFor(item) {
             var url = base + (item.section ? '&section=' + encodeURIComponent(item.section) : '');
-            if (item.anchor) { url += '#bp-jump=' + encodeURIComponent(item.anchor); }
+            /* "#bp-jump-<id>", not "#bp-jump=<id>": WordPress's
+               site-health.js runs $(location.hash) on every page that loads
+               it, and the "=" made that a jQuery syntax error. */
+            if (item.anchor) { url += '#bp-jump-' + encodeURIComponent(item.anchor); }
             return url;
         }
 
@@ -2726,16 +2737,54 @@ add_action( 'admin_head', function () {
             }
         });
 
+        /* A field drawn by its own renderer (Top bar items, Dashboard sections,
+           Widget access, the editor and Quick Edit lists, the login logo hint)
+           prints no element with its option id, so its search result used to
+           land on the top of the section. Such a row is found by the name in
+           its heading instead, which the search index carries. */
+        function findJumpTarget(anchor) {
+            var el = document.getElementById(anchor);
+            if (el) { return el; }
+            var norm = function (s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); };
+            var names = index.filter(function (it) { return it.anchor === anchor; })
+                .map(function (it) { return norm(it.label); });
+            if (!names.length) { return null; }
+            var body = document.querySelector('.brikpanel-settings-section-body') || document;
+            var heads = body.querySelectorAll('th.titledesc');
+            for (var i = 0; i < heads.length; i++) {
+                if (names.indexOf(norm(heads[i].textContent)) !== -1) { return heads[i]; }
+            }
+            return null;
+        }
+
         function jumpToHashTarget() {
-            var m = window.location.hash.match(/^#bp-jump=(.+)$/);
+            /* "#bp-jump-<id>"; "#bp-jump=<id>" from older links still works. */
+            var m = window.location.hash.match(/^#bp-jump[-=](.+)$/);
             if (!m) { return; }
-            var el = document.getElementById(decodeURIComponent(m[1]));
+            var el = findJumpTarget(decodeURIComponent(m[1]));
             if (!el) { return; }
             var row = el.closest('tr') || el.closest('.bp-settings-card') || el;
             /* Same-section jumps arrive via hashchange: restore the nav. */
             if (input.value) { input.value = ''; render(); }
             window.setTimeout(function () {
-                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                /* A row taller than the screen (the Dashboard sections list,
+                   Top bar items) starts at its top, right under the fixed
+                   bars: centred, its heading and first rows were off screen. */
+                var bars = 0;
+                ['brikpanel-topbar', 'wpadminbar'].forEach(function (id) {
+                    var bar = document.getElementById(id);
+                    if (!bar) { return; }
+                    var cs = window.getComputedStyle(bar);
+                    if ('fixed' === cs.position && 'none' !== cs.display && 'hidden' !== cs.visibility) {
+                        bars = Math.max(bars, bar.getBoundingClientRect().bottom);
+                    }
+                });
+                var box = row.getBoundingClientRect();
+                if (box.height > (window.innerHeight - bars) * 0.8) {
+                    window.scrollTo({ top: Math.max(0, box.top + window.pageYOffset - bars - 16), behavior: 'smooth' });
+                } else {
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
                 row.classList.remove('bp-jump-flash');
                 void row.offsetWidth; /* restart the animation on repeat jumps */
                 row.classList.add('bp-jump-flash');

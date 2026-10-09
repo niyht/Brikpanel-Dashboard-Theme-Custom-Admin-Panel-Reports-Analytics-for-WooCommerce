@@ -296,9 +296,11 @@
 	display: none;
 }
 
+/* The radius again: WordPress's a:focus (0,1,1) squares a link-button's corners to 2px. */
 .brikpanel-btn:focus {
 	outline: none;
 	box-shadow: none;
+	border-radius: var(--brikpanel-control-radius);
 }
 
 .brikpanel-btn:focus-visible {
@@ -346,6 +348,24 @@
 	color: var(--brikpanel-ui-text);
 	background-color: #f7f7f7;
 	box-shadow: inset 0 0 0 1px var(--brikpanel-ui-border), 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* The one red button: confirming something that cannot be taken back (delete
+   for good). Colour is for danger only, as everywhere else in the palette. */
+.brikpanel-btn.brikpanel-btn--danger,
+.brikpanel-btn.brikpanel-btn--danger:visited {
+	color: #fff;
+	background-color: var(--brikpanel-ui-error);
+	border: 0;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-btn.brikpanel-btn--danger:hover,
+.brikpanel-btn.brikpanel-btn--danger:active,
+.brikpanel-btn.brikpanel-btn--danger:focus {
+	color: #fff;
+	background-color: #b3260b;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Text-only actions: a plain link look in the monochrome palette. */
@@ -424,7 +444,7 @@
 
 /* ── Badge ──────────────────────────────────────────────────────────────────── */
 /* One pill for short labels. `--new` is the dark "New" badge used by the
-   sidebar, the welcome tour, the menu editor and the settings menu. The 1rem
+   sidebar, the menu editor and the settings menu. The 1rem
    line keeps a sidebar row as tall as the count bubbles. */
 .brikpanel-badge {
 	display: inline-block;
@@ -474,6 +494,38 @@
 
 .brikpanel-bullets > li::marker {
 	color: var(--brikpanel-ui-text-placeholder);
+}
+
+/* ── Override note ──────────────────────────────────────────────────────────── */
+/* A grey line next to a setting that another setting overrides right now, with
+   a link to that setting (first use: "Ignore BrikPanel's access rules"). It is
+   printed only while it applies, so it needs no [hidden] guard. Never a
+   WordPress notice class (rules B4, B5). display: block because it also sits as
+   a <span> inside WooCommerce's checkbox description. The start border and
+   padding are logical, so they flip in right-to-left languages. */
+.brikpanel-override-note {
+	display: block;
+	margin: 0.5rem 0;
+	padding-inline-start: 0.625rem;
+	border-inline-start: 2px solid var(--brikpanel-ui-input-border);
+	font-size: 0.8125rem;
+	font-style: normal;
+	font-weight: 400;
+	line-height: 1.5;
+	color: var(--brikpanel-ui-text-secondary);
+}
+
+.brikpanel-override-note a,
+.brikpanel-override-note a:visited {
+	color: var(--brikpanel-ui-text);
+	font-weight: 550;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.brikpanel-override-note a:hover,
+.brikpanel-override-note a:focus {
+	color: var(--brikpanel-ui-primary-hover);
 }
 
 /* ── Page shell ─────────────────────────────────────────────────────────────── */

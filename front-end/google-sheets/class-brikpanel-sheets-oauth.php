@@ -29,6 +29,9 @@ class Brikpanel_Sheets_OAuth {
 	const NONCE_ACTION           = 'brikpanel_gs_nonce';
 	const RETURN_PARAM           = 'brikpanel_oauth_return';
 
+	/** Per-user transient a failed return leaves for the settings page (see Brikpanel_Proxy_Errors). */
+	const FLASH_PREFIX = 'brikpanel_gs_oauth_err_';
+
 	/**
 	 * Scopes requested at consent.
 	 *
@@ -65,19 +68,28 @@ class Brikpanel_Sheets_OAuth {
 			wp_send_json_error( [ 'message' => __( 'Permission denied.', 'brikpanel' ) ], 403 );
 		}
 
+		// The browser asks a second time, once, when the first request could
+		// not reach the proxy; that one goes over IPv4 only. The return trip
+		// after Google then uses the same address family, or a store whose
+		// start only worked over IPv4 would fail after the merchant consented.
+		$attempt = Brikpanel_Proxy_Errors::attempt_from_request();
+		$ipv4    = $attempt > 1;
+
 		$state    = bin2hex( random_bytes( 16 ) );
 		$verifier = self::base64url( random_bytes( 32 ) );
 		$challenge = self::base64url( hash( 'sha256', $verifier, true ) );
 
 		$return_url = admin_url( 'admin.php?page=brikpanel-google-sheets' );
 
+		$state_key = self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state );
 		set_transient(
-			self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state ),
+			$state_key,
 			[
 				'verifier'   => $verifier,
 				'return_url' => $return_url,
 				'user_id'    => get_current_user_id(),
 				'created_at' => time(),
+				'ipv4'       => $ipv4,
 			],
 			self::STATE_TTL
 		);
@@ -91,28 +103,33 @@ class Brikpanel_Sheets_OAuth {
 			'scope'                 => self::SCOPES,
 		];
 
-		$resp = wp_remote_post( BRIKPANEL_GS_PROXY_BASE . '/oauth/start', [
-			'timeout'   => 20,
-			'sslverify' => true,
-			'headers'   => [ 'Content-Type' => 'application/json', 'Accept' => 'application/json' ],
-			'body'      => wp_json_encode( $payload ),
-		] );
+		$resp = Brikpanel_Proxy_Errors::post(
+			BRIKPANEL_GS_PROXY_BASE . '/oauth/start',
+			[
+				'timeout'   => Brikpanel_Proxy_Errors::START_TIMEOUT,
+				'sslverify' => true,
+				'headers'   => [ 'Content-Type' => 'application/json', 'Accept' => 'application/json' ],
+				'body'      => wp_json_encode( $payload ),
+			],
+			BRIKPANEL_GS_PROXY_BASE,
+			$ipv4
+		);
 
 		$open = Brikpanel_Sheets_Proxy::open( $resp, 'oauth/start' );
-		if ( $open['wp_error'] ) {
-			Brikpanel_Sheets_Logger::log_request_error( 'oauth', 'oauth/start', $resp );
-			wp_send_json_error( [ 'message' => __( 'Could not reach the BrikPanel proxy. Please try again in a moment.', 'brikpanel' ) ], 502 );
-		}
-		$code = (int) $open['code'];
 		$body = $open['data'];
-		if ( ! $open['ok'] || empty( $body['authorize_url'] ) ) {
-			Brikpanel_Sheets_Logger::log_request_error( 'oauth', 'oauth/start', $resp, $code );
-			$message = in_array( $open['error'], [ 'unsigned', 'bad_sig', 'stale', 'malformed' ], true )
-				? __( 'The BrikPanel proxy returned an unverifiable response and was rejected.', 'brikpanel' )
-				: ( is_array( $body ) && ! empty( $body['message'] )
-					? (string) $body['message']
-					: __( 'Could not start OAuth: proxy returned an error.', 'brikpanel' ) );
-			wp_send_json_error( [ 'message' => $message ], 502 );
+		if ( $open['wp_error'] || ! $open['ok'] || empty( $body['authorize_url'] ) ) {
+			// Nothing will come back for this state.
+			delete_transient( $state_key );
+			Brikpanel_Sheets_Logger::log_request_error(
+				'oauth',
+				'oauth/start (attempt ' . $attempt . ( $ipv4 ? ', IPv4' : '' ) . ')',
+				$resp,
+				$open['wp_error'] ? 0 : (int) $open['code']
+			);
+			// HTTP 200 on purpose. A front server (Cloudflare, an nginx proxy)
+			// replaces a 502 body with its own page, and the merchant then read
+			// "click Sync now again" under the Connect button.
+			wp_send_json_error( Brikpanel_Proxy_Errors::payload( $resp, $open, BRIKPANEL_GS_PROXY_BASE, 'start', $attempt ) );
 		}
 
 		wp_send_json_success( [ 'authorize_url' => (string) $body['authorize_url'] ] );
@@ -148,7 +165,14 @@ class Brikpanel_Sheets_OAuth {
 	// =========================================================================
 
 	public function handle_return() {
-		if ( ! isset( $_GET[ self::RETURN_PARAM ] ) || ! isset( $_GET['state'] ) ) {
+		// A declined consent comes back with `brikpanel_oauth_error` + `state`
+		// and NO handoff token. Requiring the token here made the error branch
+		// below unreachable, so a merchant who clicked Cancel on Google's screen
+		// landed back on the page with no message at all. The Ad Platforms twin
+		// was fixed the same way.
+		$has_error  = isset( $_GET['brikpanel_oauth_error'] );
+		$has_return = isset( $_GET[ self::RETURN_PARAM ] );
+		if ( ( ! $has_return && ! $has_error ) || ! isset( $_GET['state'] ) ) {
 			return;
 		}
 		if ( ! is_admin() ) {
@@ -159,15 +183,17 @@ class Brikpanel_Sheets_OAuth {
 		}
 
 		$state   = sanitize_text_field( wp_unslash( $_GET['state'] ) );
-		$handoff = sanitize_text_field( wp_unslash( $_GET[ self::RETURN_PARAM ] ) );
+		$handoff = $has_return ? sanitize_text_field( wp_unslash( $_GET[ self::RETURN_PARAM ] ) ) : '';
 
-		// Optional: an `?brikpanel_oauth_error=...` short-circuit so the proxy
-		// can bubble user-facing errors (e.g. consent denied) back without
-		// going through the redeem step.
-		if ( isset( $_GET['brikpanel_oauth_error'] ) ) {
+		// The proxy bubbles the consent screen's error up (e.g. consent
+		// denied) without going through the redeem step. Show a sentence, not
+		// the raw "access_denied" code.
+		if ( $has_error ) {
 			$err = sanitize_text_field( wp_unslash( $_GET['brikpanel_oauth_error'] ) );
 			Brikpanel_Sheets_Logger::log( 'oauth', 'Proxy reported error during consent: ' . $err );
-			$this->finish_with_notice( 'error', $err );
+			// Burn the pending state so a stale one cannot be replayed.
+			delete_transient( self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state ) );
+			$this->finish_with_notice( 'error', Brikpanel_Proxy_Errors::consent_error_message( $err, 'sheets' ) );
 		}
 
 		$trans_key = self::STATE_TRANSIENT_PREFIX . hash( 'sha256', $state );
@@ -185,30 +211,33 @@ class Brikpanel_Sheets_OAuth {
 			$this->finish_with_notice( 'error', __( 'OAuth callback was for a different user. Aborted.', 'brikpanel' ) );
 		}
 
-		$resp = wp_remote_post( BRIKPANEL_GS_PROXY_BASE . '/oauth/redeem', [
-			'timeout'   => 20,
-			'sslverify' => true,
-			'headers'   => [ 'Content-Type' => 'application/json', 'Accept' => 'application/json' ],
-			'body'      => wp_json_encode( [
-				'handoff_token' => $handoff,
-				'site_url'      => home_url(),
-				'code_verifier' => $stash['verifier'],
-			] ),
-		] );
+		$ipv4 = ! empty( $stash['ipv4'] );
+		$resp = Brikpanel_Proxy_Errors::post(
+			BRIKPANEL_GS_PROXY_BASE . '/oauth/redeem',
+			[
+				'timeout'   => 20,
+				'sslverify' => true,
+				'headers'   => [ 'Content-Type' => 'application/json', 'Accept' => 'application/json' ],
+				'body'      => wp_json_encode( [
+					'handoff_token' => $handoff,
+					'site_url'      => home_url(),
+					'code_verifier' => $stash['verifier'],
+				] ),
+			],
+			BRIKPANEL_GS_PROXY_BASE,
+			$ipv4
+		);
 
 		$open = Brikpanel_Sheets_Proxy::open( $resp, 'oauth/redeem' );
-		if ( $open['wp_error'] ) {
-			Brikpanel_Sheets_Logger::log_request_error( 'oauth', 'oauth/redeem', $resp );
-			$this->finish_with_notice( 'error', __( 'Could not reach the BrikPanel proxy.', 'brikpanel' ) );
-		}
-		$code = (int) $open['code'];
 		$body = $open['data'];
-		if ( ! $open['ok'] || empty( $body['access_token'] ) ) {
-			Brikpanel_Sheets_Logger::log_request_error( 'oauth', 'oauth/redeem', $resp, $code );
-			if ( in_array( $open['error'], [ 'unsigned', 'bad_sig', 'stale', 'malformed' ], true ) ) {
-				$this->finish_with_notice( 'error', __( 'The BrikPanel proxy returned an unverifiable response and was rejected.', 'brikpanel' ) );
-			}
-			$this->finish_with_notice( 'error', __( 'OAuth redemption failed. Please try connecting again.', 'brikpanel' ) );
+		if ( $open['wp_error'] || ! $open['ok'] || empty( $body['access_token'] ) ) {
+			Brikpanel_Sheets_Logger::log_request_error(
+				'oauth',
+				'oauth/redeem' . ( $ipv4 ? ' (IPv4)' : '' ),
+				$resp,
+				$open['wp_error'] ? 0 : (int) $open['code']
+			);
+			$this->finish_with_notice( 'error', '', Brikpanel_Proxy_Errors::classify( $resp, $open ) );
 		}
 
 		// Granular-consent guard. Google lets the user complete OAuth while
@@ -264,19 +293,30 @@ class Brikpanel_Sheets_OAuth {
 	 * Redirect back to the settings page with a query flag the JS picks up
 	 * to surface a toast. Exits the request.
 	 *
+	 * An error does not travel in the address bar: it is left as a one-time
+	 * record for this user, and the page builds the box beside the Connect
+	 * button from it, in the viewer's language (Brikpanel_Proxy_Errors).
+	 *
 	 * @param string $tone    success|error
-	 * @param string $message
+	 * @param string $message A finished sentence; unused when $error is given.
+	 * @param array  $error   [code, kind, detail] from Brikpanel_Proxy_Errors::classify().
 	 */
-	private function finish_with_notice( $tone, $message ) {
-		$url = add_query_arg(
-			[
-				'page'                  => 'brikpanel-google-sheets',
-				'brikpanel_oauth_flash' => $tone,
-				'brikpanel_msg'         => rawurlencode( $message ),
-			],
-			admin_url( 'admin.php' )
-		);
-		wp_safe_redirect( $url );
+	private function finish_with_notice( $tone, $message, array $error = [] ) {
+		$args = [
+			'page'                  => 'brikpanel-google-sheets',
+			'brikpanel_oauth_flash' => $tone,
+		];
+		if ( $tone === 'error' ) {
+			Brikpanel_Proxy_Errors::store_flash(
+				self::FLASH_PREFIX,
+				$error
+					? [ 'code' => (string) $error[0], 'kind' => (string) $error[1], 'detail' => (string) $error[2] ]
+					: [ 'message' => (string) $message ]
+			);
+		} else {
+			$args['brikpanel_msg'] = rawurlencode( $message );
+		}
+		wp_safe_redirect( add_query_arg( $args, admin_url( 'admin.php' ) ) );
 		exit;
 	}
 

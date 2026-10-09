@@ -190,7 +190,9 @@
 .bp-ads-card-locked {
 	position: relative;
 }
-.bp-ads-card-locked .bp-ads-card-body {
+/* Not the connect error box: it is the one thing on a disguised card that
+   must read at full strength. */
+.bp-ads-card-locked .bp-ads-card-body > :not(.bp-ads-connect-error) {
 	opacity: 0.65;
 }
 .bp-ads-card-locked .bp-ads-card-header {
@@ -223,7 +225,8 @@
 /* Reconnect-required banner: the stored token stopped working, so the card is
    still "connected" but nothing is importing. Error-toned, not warning-toned,
    because it needs an action from the merchant. */
-.bp-ads-stale-note {
+.bp-ads-stale-note,
+.bp-ads-connect-error {
 	display: flex;
 	gap: 0.625rem;
 	align-items: flex-start;
@@ -234,14 +237,71 @@
 	border-radius: 0.5rem;
 	color: #a3271a;
 }
-.bp-ads-stale-note svg { flex-shrink: 0; margin-top: 0.1rem; }
-.bp-ads-stale-note strong {
+.bp-ads-stale-note svg,
+.bp-ads-connect-error svg { flex-shrink: 0; margin-top: 0.1rem; }
+.bp-ads-stale-note strong,
+.bp-ads-connect-error strong {
 	display: block;
 	font-size: 0.875rem;
 	margin-bottom: 0.2rem;
 	color: #8a1f14;
 }
-.bp-ads-stale-note .bp-ads-card-sub { color: #a3271a; margin: 0; }
+.bp-ads-stale-note .bp-ads-card-sub,
+.bp-ads-connect-error .bp-ads-card-sub { color: #a3271a; margin: 0; }
+
+/* Connect error box (views/page.php): the stale note's look, beside the
+   Connect / Re-authorize button. It says what went wrong, why and what to do
+   next, and stays until the next click, where the toast it replaced was gone
+   in 3.5 s. This page has no blanket [hidden] rule, and the box and its
+   parts set their own display, so both need the guard. */
+.bp-ads-connect-error[hidden],
+.bp-ads-connect-error [hidden] {
+	display: none;
+}
+.bp-ads-connect-error .bp-ads-card-sub + .bp-ads-card-sub {
+	margin-block-start: 0.375rem;
+}
+.bp-ads-connect-error .bp-ads-connect-error-detail {
+	font-size: 0.75rem;
+	color: #616161;
+	overflow-wrap: anywhere;
+}
+.bp-ads-connect-error-detail code {
+	margin: 0;
+	padding: 0;
+	background: none;
+	/* Monospace glyphs read a size larger than the label beside them. */
+	font-size: 0.92em;
+	color: inherit;
+	user-select: all;
+}
+.bp-ads-card-body > .bp-ads-connect-error {
+	margin-block: 1rem 0;
+}
+.bp-ads-connect-error--page {
+	margin-block: 0 1rem;
+}
+/* "Connecting…" / "Still trying…" beside the button while it works. */
+.bp-ads-connect-status {
+	align-self: center;
+	font-size: 0.8125rem;
+	color: #616161;
+}
+/* With the box showing, box and button sit together at the bottom of the
+   card: the two cards' buttons still line up, and the box never floats away
+   from the button it explains. Needs :has() for the gap above the box. */
+@supports selector(:has(a)) {
+	.bp-ads-grid .bp-ads-card-body > .bp-ads-connect-error:not([hidden]) {
+		margin-block-start: auto;
+	}
+	.bp-ads-grid .bp-ads-card-body > :has(+ .bp-ads-connect-error:not([hidden])) {
+		margin-block-end: 1rem;
+	}
+	.bp-ads-grid .bp-ads-card-body > .bp-ads-connect-error:not([hidden]) + .bp-ads-actions:last-child {
+		margin-block-start: 0;
+		padding-block-start: 0.75rem;
+	}
+}
 
 /* Neutral sibling of the stale note: an unfinished setup step, not a fault. */
 .bp-ads-todo-note {

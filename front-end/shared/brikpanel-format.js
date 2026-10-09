@@ -15,7 +15,7 @@
  * turned into the store's clock first.
  *
  * API: window.brikpanelFormat.number(n, decimals, trim), percent(v, decimals,
- * trim), money(v, {symbol, decimals}), compact(n), date(v, phpFormat),
+ * trim), money(v, {symbol, decimals}), compact(n), compactMoney(n), date(v, phpFormat),
  * dateTime(v), dateShort(v), dateShortTime(v), dayMonth(v), monthYear(v),
  * range(a, b), parts(v), now(), compare(a, b), fill(pattern, value),
  * format(pattern, values), plural(message, n), count(message, n),
@@ -185,6 +185,15 @@
 	function chartNumber(v) {
 		var n = Number(v) || 0;
 		return number(n, Math.abs(n % 1) > 0 ? 2 : 0, true);
+	}
+
+	/** Chart axis money: compact() with the store's currency symbol in its place ("₺12k"). */
+	function compactMoney(n) {
+		var m = L.money || {};
+		var v = Number(n) || 0;
+		var fmt = typeof m.format === 'string' && m.format ? m.format : '%1$s%2$s';
+		var out = fmt.replace('%1$s', m.symbol || '').replace('%2$s', compact(Math.abs(v)));
+		return (v < 0 && Math.abs(v) >= 0.005 ? '-' : '') + out;
 	}
 
 	/* ------------------------------------------------------------------ dates */
@@ -485,6 +494,7 @@
 		percent: percent,
 		money: money,
 		compact: compact,
+		compactMoney: compactMoney,
 		chartNumber: chartNumber,
 		fill: fill,
 		format: format,

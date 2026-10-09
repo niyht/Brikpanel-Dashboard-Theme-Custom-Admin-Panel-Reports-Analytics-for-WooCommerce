@@ -15,11 +15,32 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Saved segments are filters naming this store's own products, categories and
+ * payment methods by id, meaningless on another store: they never travel with
+ * a settings export. Registered here, above the class, so the export knows the
+ * key even while the Segments screen is switched off.
+ *
+ * @param array $map Registry so far.
+ * @return array
+ */
+add_filter( 'brikpanel_exportable_option_keys', 'brikpanel_segments_register_export_keys' );
+function brikpanel_segments_register_export_keys( $map ) {
+	$map['brikpanel_segments_saved'] = [ 'class' => 'site' ];
+	return $map;
+}
+
 class Brikpanel_Segments {
 
 	const PAGE_SLUG   = 'brikpanel-segments';
 	const NONCE_ACTION = 'brikpanel_segments_nonce';
 	const PAGE_SIZE   = 25;
+
+	/** Option holding the segments people saved, shared by everyone who opens Segments. */
+	const SAVED_OPTION = 'brikpanel_segments_saved';
+
+	/** Saved segments kept per tab. */
+	const SAVED_MAX = 30;
 
 	/** @var bool|null Cached HPOS detection. */
 	private $is_hpos = null;
@@ -36,6 +57,8 @@ class Brikpanel_Segments {
 		add_action( 'wp_ajax_brikpanel_segments_query_customers', [ $this, 'ajax_query_customers' ] );
 		add_action( 'wp_ajax_brikpanel_segments_export', [ $this, 'ajax_export_csv' ] );
 		add_action( 'wp_ajax_brikpanel_segments_search_products', [ $this, 'ajax_search_products' ] );
+		add_action( 'wp_ajax_brikpanel_segments_save_segment', [ $this, 'ajax_save_segment' ] );
+		add_action( 'wp_ajax_brikpanel_segments_delete_segment', [ $this, 'ajax_delete_segment' ] );
 	}
 
 	// =========================================================================
@@ -213,6 +236,26 @@ class Brikpanel_Segments {
 	// =========================================================================
 
 	private function parse_filters( array $input ) {
+		$f = $this->sanitize_filter_input( $input );
+
+		$f['page']     = max( 1, absint( $input['page'] ?? 1 ) );
+		$f['per_page'] = min( 200, max( 10, absint( $input['per_page'] ?? self::PAGE_SIZE ) ) );
+		$f['order']    = strtolower( $f['order'] ) === 'asc' ? 'ASC' : 'DESC';
+
+		$f = $this->apply_preset( $f );
+
+		return $f;
+	}
+
+	/**
+	 * The filter values a request (or a saved segment) carries, cleaned, with
+	 * no preset applied: a saved "Last 30 days" has to stay relative and be
+	 * turned into dates on the day it is used, not on the day it was saved.
+	 *
+	 * @param array $input Raw request values.
+	 * @return array
+	 */
+	private function sanitize_filter_input( array $input ) {
 		$f = [
 			'date_from'       => '',
 			'date_to'         => '',
@@ -225,6 +268,7 @@ class Brikpanel_Segments {
 			'shipping_min'    => null,
 			'shipping_max'    => null,
 			'product_ids'     => [],
+			'exclude_product_ids' => [],
 			'category_ids'    => [],
 			'coupon'          => '',
 			'search'          => '',
@@ -263,6 +307,9 @@ class Brikpanel_Segments {
 		if ( ! empty( $input['product_ids'] ) && is_array( $input['product_ids'] ) ) {
 			$f['product_ids'] = array_filter( array_map( 'absint', $input['product_ids'] ) );
 		}
+		if ( ! empty( $input['exclude_product_ids'] ) && is_array( $input['exclude_product_ids'] ) ) {
+			$f['exclude_product_ids'] = array_filter( array_map( 'absint', $input['exclude_product_ids'] ) );
+		}
 		if ( ! empty( $input['category_ids'] ) && is_array( $input['category_ids'] ) ) {
 			$f['category_ids'] = array_filter( array_map( 'absint', $input['category_ids'] ) );
 		}
@@ -281,13 +328,56 @@ class Brikpanel_Segments {
 			}
 		}
 
-		$f['page']     = max( 1, absint( $input['page'] ?? 1 ) );
-		$f['per_page'] = min( 200, max( 10, absint( $input['per_page'] ?? self::PAGE_SIZE ) ) );
-		$f['order']    = strtolower( $f['order'] ) === 'asc' ? 'ASC' : 'DESC';
-
-		$f = $this->apply_preset( $f );
-
 		return $f;
+	}
+
+	/**
+	 * SQL that is true when an order has a line of any of the given products.
+	 *
+	 * Read from the order's own line items, the same two tables on HPOS and
+	 * legacy storage, written in the same request as the order. WooCommerce's
+	 * analytics table (wc_order_product_lookup) is filled later in the
+	 * background, sometimes hours later: an order placed in the meantime was
+	 * missing from "bought X", and an "exclude X" built on that table would have
+	 * let it through. A variable product matches each of its variations: a
+	 * variation's line keeps its parent in _product_id.
+	 *
+	 * @param string $order_col Order id column of the outer query (o.id, o.ID).
+	 * @param int[]  $ids       Product or variation ids.
+	 * @param string $alias     Alias prefix, unique within the query.
+	 * @return array{0: string, 1: string[]} [ SQL, params ]
+	 */
+	private function product_line_exists_sql( $order_col, array $ids, $alias ) {
+		global $wpdb;
+
+		$ids          = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%s' ) );
+		$li           = $alias . 'li';
+		$im           = $alias . 'im';
+
+		$sql = "EXISTS (SELECT 1 FROM {$wpdb->prefix}woocommerce_order_items {$li}
+				INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta {$im}
+					ON {$im}.order_item_id = {$li}.order_item_id AND {$im}.meta_key IN ('_product_id','_variation_id')
+				WHERE {$li}.order_id = {$order_col} AND {$li}.order_item_type = 'line_item' AND {$im}.meta_value IN ({$placeholders}))";
+
+		return [ $sql, array_map( 'strval', $ids ) ];
+	}
+
+	/**
+	 * The expression that keys an order to its customer: the account when there
+	 * is one, otherwise the billing email (guests).
+	 *
+	 * @param bool   $hpos  Orders live in WooCommerce's own tables.
+	 * @param string $alias Alias of the orders table in the query.
+	 * @return string
+	 */
+	private function customer_key_sql( $hpos, $alias ) {
+		global $wpdb;
+
+		if ( $hpos ) {
+			return "IF({$alias}.customer_id > 0, CONCAT('u:', {$alias}.customer_id), CONCAT('e:', LOWER({$alias}.billing_email)))";
+		}
+		return "IFNULL((SELECT CASE WHEN pm_u.meta_value IS NOT NULL AND pm_u.meta_value+0 > 0 THEN CONCAT('u:', pm_u.meta_value) ELSE CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id={$alias}.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))) END FROM {$wpdb->postmeta} pm_u WHERE pm_u.post_id={$alias}.ID AND pm_u.meta_key='_customer_user'  ORDER BY pm_u.meta_id LIMIT 1), CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id={$alias}.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))))";
 	}
 
 	/**
@@ -589,13 +679,17 @@ class Brikpanel_Segments {
 			$params[] = $f['coupon'];
 		}
 
-		// Product filter (any of the given product IDs appear in the order).
-		// Uses wp_wc_order_product_lookup which is populated by WC analytics.
+		// Products: the order has a line of any of them, and (exclude) none of
+		// the other list, in the same order. See product_line_exists_sql().
 		if ( ! empty( $f['product_ids'] ) ) {
-			$placeholders = implode( ',', array_fill( 0, count( $f['product_ids'] ), '%d' ) );
-			$order_col = $hpos ? 'o.id' : 'o.ID';
-			$where[] = "EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_order_product_lookup opl WHERE opl.order_id = {$order_col} AND (opl.product_id IN ($placeholders) OR opl.variation_id IN ($placeholders)))";
-			$params = array_merge( $params, $f['product_ids'], $f['product_ids'] );
+			list( $pl_sql, $pl_params ) = $this->product_line_exists_sql( $hpos ? 'o.id' : 'o.ID', $f['product_ids'], 'inc' );
+			$where[] = $pl_sql;
+			$params  = array_merge( $params, $pl_params );
+		}
+		if ( ! empty( $f['exclude_product_ids'] ) ) {
+			list( $pl_sql, $pl_params ) = $this->product_line_exists_sql( $hpos ? 'o.id' : 'o.ID', $f['exclude_product_ids'], 'exc' );
+			$where[] = 'NOT ' . $pl_sql;
+			$params  = array_merge( $params, $pl_params );
 		}
 
 		// Category filter: any product in the order belongs to any of the categories
@@ -826,10 +920,9 @@ class Brikpanel_Segments {
 
 		// Product / category filter on the orders the customer has placed
 		if ( ! empty( $f['product_ids'] ) ) {
-			$placeholders = implode( ',', array_fill( 0, count( $f['product_ids'] ), '%d' ) );
-			$order_col    = $hpos ? 'o.id' : 'o.ID';
-			$order_where[] = "EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_order_product_lookup opl WHERE opl.order_id = {$order_col} AND (opl.product_id IN ($placeholders) OR opl.variation_id IN ($placeholders)))";
-			$params = array_merge( $params, $f['product_ids'], $f['product_ids'] );
+			list( $pl_sql, $pl_params ) = $this->product_line_exists_sql( $hpos ? 'o.id' : 'o.ID', $f['product_ids'], 'inc' );
+			$order_where[] = $pl_sql;
+			$params        = array_merge( $params, $pl_params );
 		}
 		if ( ! empty( $f['category_ids'] ) ) {
 			$placeholders = implode( ',', array_fill( 0, count( $f['category_ids'] ), '%d' ) );
@@ -850,8 +943,8 @@ class Brikpanel_Segments {
 
 		// Build aggregate per customer key. HPOS uses customer_id; for guests
 		// (customer_id = 0) we fall back to LOWER(billing_email).
+		$customer_key = $this->customer_key_sql( $hpos, 'o' );
 		if ( $hpos ) {
-			$customer_key   = "IF(o.customer_id > 0, CONCAT('u:', o.customer_id), CONCAT('e:', LOWER(o.billing_email)))";
 			$user_id_expr   = 'MAX(o.customer_id)';
 			$email_expr     = "MAX(o.billing_email)";
 			$phone_expr     = "MAX((SELECT oas.phone FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' LIMIT 1))";
@@ -863,7 +956,6 @@ class Brikpanel_Segments {
 			$last_expr      = 'MAX(o.date_created_gmt)';
 			$first_expr     = 'MIN(o.date_created_gmt)';
 		} else {
-			$customer_key   = "IFNULL((SELECT CASE WHEN pm_u.meta_value IS NOT NULL AND pm_u.meta_value+0 > 0 THEN CONCAT('u:', pm_u.meta_value) ELSE CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))) END FROM {$wpdb->postmeta} pm_u WHERE pm_u.post_id=o.ID AND pm_u.meta_key='_customer_user'  ORDER BY pm_u.meta_id LIMIT 1), CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))))";
 			$user_id_expr   = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user'  ORDER BY meta_id LIMIT 1))";
 			$email_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))";
 			$phone_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_phone'  ORDER BY meta_id LIMIT 1))";
@@ -938,6 +1030,21 @@ class Brikpanel_Segments {
 			$placeholders = implode( ',', array_fill( 0, count( $f['rfm_segments'] ), '%s' ) );
 			$outer_where[] = "rfm.rfm_segment IN ({$placeholders})";
 			$outer_params = array_merge( $outer_params, $f['rfm_segments'] );
+		}
+
+		// Exclude products: a customers list leaves out everyone who ever bought
+		// one of them in a counted order, not only the orders that hold it. The
+		// list is read once (a derived table) and NULL keys are kept out of it:
+		// a NULL in a NOT IN list makes the test unknown for every customer.
+		if ( ! empty( $f['exclude_product_ids'] ) ) {
+			list( $pl_sql, $pl_params ) = $this->product_line_exists_sql( $hpos ? 'o2.id' : 'o2.ID', $f['exclude_product_ids'], 'exc' );
+			$ex_key   = $this->customer_key_sql( $hpos, 'o2' );
+			$ex_from  = $hpos ? "{$wpdb->prefix}wc_orders o2" : "{$wpdb->posts} o2";
+			$ex_where = $hpos
+				? "o2.type = 'shop_order' AND o2.status IN ({$ltv_status_in})"
+				: "o2.post_type = 'shop_order' AND o2.post_status IN ({$ltv_status_in})";
+			$outer_where[] = "(agg.customer_key IS NULL OR agg.customer_key NOT IN (SELECT exk.ck FROM (SELECT DISTINCT {$ex_key} AS ck FROM {$ex_from} WHERE {$ex_where} AND {$pl_sql}) exk WHERE exk.ck IS NOT NULL))";
+			$outer_params  = array_merge( $outer_params, $pl_params );
 		}
 		$outer_where_sql = $outer_where ? ( 'WHERE ' . implode( ' AND ', $outer_where ) ) : '';
 
@@ -1043,6 +1150,224 @@ class Brikpanel_Segments {
 				'aov_display'     => wp_strip_all_tags( wc_price( $sum_orders > 0 ? $sum_spent / $sum_orders : 0 ) ),
 			],
 		];
+	}
+
+	// =========================================================================
+	// SAVED SEGMENTS
+	// =========================================================================
+
+	/**
+	 * The preset keys a tab offers. Plain keys, never labels: checking a saved
+	 * segment must not translate anything.
+	 *
+	 * @param string $tab 'orders' or 'customers'.
+	 * @return string[]
+	 */
+	private static function preset_keys( $tab ) {
+		if ( 'customers' === $tab ) {
+			return [ '', 'new_customers', 'repeat', 'vip', 'one_time', 'dormant', 'high_value' ];
+		}
+		return [ '', 'today', 'last7', 'last30', 'last90', 'processing', 'completed', 'pending', 'on_hold', 'refunded', 'cancelled', 'returns', 'free_shipping', 'paid_shipping', 'high_value' ];
+	}
+
+	/**
+	 * The filters a saved segment keeps: the ones its tab shows.
+	 *
+	 * @param string $tab 'orders' or 'customers'.
+	 * @return string[]
+	 */
+	private static function saved_filter_keys( $tab ) {
+		$both = [ 'date_from', 'date_to', 'countries', 'city', 'product_ids', 'exclude_product_ids', 'category_ids', 'search' ];
+		if ( 'customers' === $tab ) {
+			return array_merge( $both, [ 'spent_min', 'spent_max', 'order_count_min', 'order_count_max', 'last_order_from', 'last_order_to', 'registered_from', 'registered_to', 'rfm_segments' ] );
+		}
+		return array_merge( $both, [ 'statuses', 'total_min', 'total_max', 'payment_methods', 'coupon' ] );
+	}
+
+	/**
+	 * Filters as a saved segment stores them: this tab's keys only, no empty
+	 * values, dates that are dates, lists of a sane length, and no preset
+	 * applied (see sanitize_filter_input()).
+	 *
+	 * @param array  $input Raw request values.
+	 * @param string $tab   'orders' or 'customers'.
+	 * @return array
+	 */
+	private function saved_filters_from_input( array $input, $tab ) {
+		$f   = $this->sanitize_filter_input( $input );
+		$out = [];
+		foreach ( self::saved_filter_keys( $tab ) as $key ) {
+			$value = isset( $f[ $key ] ) ? $f[ $key ] : null;
+			if ( is_array( $value ) ) {
+				$value = array_slice( array_values( array_unique( $value ) ), 0, 'countries' === $key ? 250 : 100 );
+				if ( $value ) {
+					$out[ $key ] = $value;
+				}
+			} elseif ( is_int( $value ) || is_float( $value ) ) {
+				$out[ $key ] = $value;
+			} elseif ( is_string( $value ) && '' !== $value ) {
+				if ( preg_match( '/_(?:from|to)$/', $key ) && ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value ) ) {
+					continue;
+				}
+				$out[ $key ] = brikpanel_substr( $value, 0, 200 );
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Saved segments in the order they were saved, malformed rows dropped.
+	 *
+	 * @return array[]
+	 */
+	private static function saved_list() {
+		$list = get_option( self::SAVED_OPTION, [] );
+		if ( ! is_array( $list ) ) {
+			return [];
+		}
+		$out = [];
+		foreach ( $list as $seg ) {
+			if ( ! is_array( $seg ) || empty( $seg['id'] ) || ! isset( $seg['name'] ) || '' === (string) $seg['name'] || ! isset( $seg['tab'] ) || ! in_array( $seg['tab'], [ 'orders', 'customers' ], true ) ) {
+				continue;
+			}
+			$seg['filters'] = isset( $seg['filters'] ) && is_array( $seg['filters'] ) ? $seg['filters'] : [];
+			$seg['preset']  = isset( $seg['preset'] ) && is_string( $seg['preset'] ) ? $seg['preset'] : '';
+			$out[]          = $seg;
+		}
+		return $out;
+	}
+
+	/**
+	 * Saved segments as the screen script reads them, with product names
+	 * looked up now, so a renamed product shows its new name. A product that no
+	 * longer exists keeps its place under its id: dropping it would quietly turn
+	 * "bought X" into "every order".
+	 *
+	 * @return array[]
+	 */
+	public static function saved_for_js() {
+		$list = self::saved_list();
+		$ids  = [];
+		foreach ( $list as $seg ) {
+			foreach ( [ 'product_ids', 'exclude_product_ids' ] as $key ) {
+				if ( ! empty( $seg['filters'][ $key ] ) && is_array( $seg['filters'][ $key ] ) ) {
+					$ids = array_merge( $ids, array_map( 'absint', $seg['filters'][ $key ] ) );
+				}
+			}
+		}
+		$ids = array_values( array_unique( array_filter( $ids ) ) );
+		if ( $ids && function_exists( '_prime_post_caches' ) ) {
+			_prime_post_caches( $ids, false, false );
+		}
+
+		$out = [];
+		foreach ( $list as $seg ) {
+			$entry = [
+				'id'      => (string) $seg['id'],
+				'tab'     => $seg['tab'],
+				'name'    => (string) $seg['name'],
+				'preset'  => $seg['preset'],
+				'filters' => $seg['filters'],
+			];
+			foreach ( [ 'product_ids' => 'products', 'exclude_product_ids' => 'exclude_products' ] as $key => $js_key ) {
+				$entry[ $js_key ] = [];
+				$pids             = ! empty( $seg['filters'][ $key ] ) && is_array( $seg['filters'][ $key ] ) ? $seg['filters'][ $key ] : [];
+				foreach ( $pids as $pid ) {
+					$pid = absint( $pid );
+					if ( ! $pid ) {
+						continue;
+					}
+					$product = function_exists( 'wc_get_product' ) ? wc_get_product( $pid ) : null;
+					$entry[ $js_key ][] = [
+						'value' => $pid,
+						'label' => $product
+							? brikpanel_plain_label( $product->get_name() ) . ' (#' . $pid . ')'
+							/* translators: %d: product ID. */
+							: sprintf( __( 'Deleted product #%d', 'brikpanel' ), $pid ),
+					];
+				}
+			}
+			$out[] = $entry;
+		}
+		return $out;
+	}
+
+	/**
+	 * Save the current tab's filters under a name, for everyone who opens
+	 * Segments. A name already used on the tab is replaced only when the
+	 * request says so (the screen asks first: the list is shared).
+	 */
+	public function ajax_save_segment() {
+		$this->check_auth();
+
+		$name = isset( $_POST['name'] ) ? sanitize_text_field( wp_unslash( $_POST['name'] ) ) : '';
+		$name = brikpanel_substr( trim( (string) preg_replace( '/\s+/u', ' ', $name ) ), 0, 60 );
+		if ( '' === $name ) {
+			wp_send_json_error( [ 'code' => 'name' ] );
+		}
+
+		$tab    = ( isset( $_POST['tab'] ) && 'customers' === $_POST['tab'] ) ? 'customers' : 'orders';
+		$preset = isset( $_POST['preset'] ) ? sanitize_key( wp_unslash( $_POST['preset'] ) ) : '';
+		if ( ! in_array( $preset, self::preset_keys( $tab ), true ) ) {
+			$preset = '';
+		}
+		$filters = $this->saved_filters_from_input( $_POST, $tab );
+
+		$list   = self::saved_list();
+		$found  = null;
+		$in_tab = 0;
+		foreach ( $list as $i => $seg ) {
+			if ( $seg['tab'] !== $tab ) {
+				continue;
+			}
+			$in_tab++;
+			if ( brikpanel_strtolower( (string) $seg['name'] ) === brikpanel_strtolower( $name ) ) {
+				$found = $i;
+			}
+		}
+		if ( null !== $found && empty( $_POST['replace'] ) ) {
+			wp_send_json_error( [ 'code' => 'exists' ] );
+		}
+		if ( null === $found && $in_tab >= self::SAVED_MAX ) {
+			wp_send_json_error( [ 'code' => 'limit' ] );
+		}
+
+		$entry = [
+			'id'      => null !== $found ? (string) $list[ $found ]['id'] : wp_generate_uuid4(),
+			'tab'     => $tab,
+			'name'    => $name,
+			'preset'  => $preset,
+			'filters' => $filters,
+			'by'      => get_current_user_id(),
+			'at'      => time(),
+		];
+		if ( null !== $found ) {
+			$list[ $found ] = $entry;
+		} else {
+			$list[] = $entry;
+		}
+		update_option( self::SAVED_OPTION, array_values( $list ), false );
+
+		wp_send_json_success( [
+			'id'    => $entry['id'],
+			'saved' => self::saved_for_js(),
+		] );
+	}
+
+	/** Delete a saved segment, for everyone. */
+	public function ajax_delete_segment() {
+		$this->check_auth();
+
+		$id   = isset( $_POST['id'] ) ? sanitize_text_field( wp_unslash( $_POST['id'] ) ) : '';
+		$list = self::saved_list();
+		$kept = array_values( array_filter( $list, static function ( $seg ) use ( $id ) {
+			return (string) $seg['id'] !== $id;
+		} ) );
+		if ( count( $kept ) !== count( $list ) ) {
+			update_option( self::SAVED_OPTION, $kept, false );
+		}
+
+		wp_send_json_success( [ 'saved' => self::saved_for_js() ] );
 	}
 
 	// =========================================================================

@@ -333,6 +333,7 @@ if ( ! brikpanel_ads_module_is_enabled() ) {
 // =============================================================================
 require_once BRIKPANEL_PATH . 'includes/class-brikpanel-secret-vault.php';
 require_once BRIKPANEL_PATH . 'includes/class-brikpanel-proxy-envelope.php';
+require_once BRIKPANEL_PATH . 'includes/class-brikpanel-proxy-errors.php';
 require_once BRIKPANEL_ADS_DIR . 'class-brikpanel-ads-logger.php';
 require_once BRIKPANEL_ADS_DIR . 'class-brikpanel-ads-tokens.php';
 require_once BRIKPANEL_ADS_DIR . 'class-brikpanel-ads-proxy.php';

@@ -150,6 +150,11 @@ function brikpanel_dashboard_widget_audience_allows( $widget_id ) {
     if ( $audience === 'all' ) {
         return true;
     }
+    // "Ignore BrikPanel's access rules": the rule is kept but not applied.
+    // WordPress's own capability on the widget (Site Health) still holds.
+    if ( function_exists( 'brikpanel_access_rules_ignored' ) && brikpanel_access_rules_ignored() ) {
+        return true;
+    }
     // Real administrators (and multisite super admins) always pass, so an owner
     // can never hide a widget from their own account. Deliberately role-based via
     // brikpanel_user_is_administrator(): stores routinely grant `manage_options`
@@ -229,6 +234,11 @@ function brikpanel_render_dashboard_widget_access_field( $field ) {
                 <?php if ( $help !== '' ) : ?>
                     <p class="brikpanel-topbar-items-help"><?php echo esc_html( $help ); ?></p>
                 <?php endif; ?>
+                <?php
+                if ( function_exists( 'brikpanel_access_rules_ignored_print_note' ) ) {
+                    brikpanel_access_rules_ignored_print_note( 'choices' );
+                }
+                ?>
                 <input type="hidden" name="brikpanel_dashboard_widget_access_submitted" value="1">
                 <?php if ( empty( $widgets ) ) : ?>
                     <p class="brikpanel-topbar-items-help" style="margin:0;">

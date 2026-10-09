@@ -837,8 +837,8 @@ body.rtl .brikpanel-pe-metabox-content select:not([multiple]),body.rtl .brikpane
      the cell's background-image)
    - .tabs button / .nav-tab (third-party panel tabs use their own active
      state; our flat-button look erases the active highlight). */
-.brikpanel-pe-metabox-content button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab),.brikpanel-pe-metabox-content .button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab),.brikpanel-pe-metabox-content input[type="button"],.brikpanel-pe-metabox-content input[type="submit"],.brikpanel-pe-wc-fields-content button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab),.brikpanel-pe-wc-fields-content .button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab){display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:.375rem!important;padding:.5rem 1rem!important;font-size:.8125rem!important;font-weight:550!important;border:none!important;border-radius:var(--pe-radius-sm)!important;cursor:pointer!important;background:var(--pe-card)!important;color:var(--pe-text)!important;box-shadow:inset 0 0 0 1px var(--pe-border),0 1px 0 rgba(0,0,0,.05)!important;transition:background .15s ease!important;height:auto!important;line-height:1.3!important}
-.brikpanel-pe-metabox-content button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):hover,.brikpanel-pe-metabox-content .button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):hover,.brikpanel-pe-wc-fields-content button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):hover,.brikpanel-pe-wc-fields-content .button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):hover{background:#f7f7f7!important}
+.brikpanel-pe-metabox-content button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):not(.ct-revert),.brikpanel-pe-metabox-content .button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):not(.ct-revert),.brikpanel-pe-metabox-content input[type="button"],.brikpanel-pe-metabox-content input[type="submit"],.brikpanel-pe-wc-fields-content button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):not(.ct-revert),.brikpanel-pe-wc-fields-content .button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):not(.ct-revert){display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:.375rem!important;padding:.5rem 1rem!important;font-size:.8125rem!important;font-weight:550!important;border:none!important;border-radius:var(--pe-radius-sm)!important;cursor:pointer!important;background:var(--pe-card)!important;color:var(--pe-text)!important;box-shadow:inset 0 0 0 1px var(--pe-border),0 1px 0 rgba(0,0,0,.05)!important;transition:background .15s ease!important;height:auto!important;line-height:1.3!important}
+.brikpanel-pe-metabox-content button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):not(.ct-revert):hover,.brikpanel-pe-metabox-content .button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):not(.ct-revert):hover,.brikpanel-pe-wc-fields-content button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):not(.ct-revert):hover,.brikpanel-pe-wc-fields-content .button:not(.wp-color-result):not(.acf-icon-picker-list-icon):not(.nav-tab):not(.ct-revert):hover{background:#f7f7f7!important}
 
 /* Tab-like navigation (WPCode etc.) */
 .brikpanel-pe-metabox-content ul[class*="tabs"],.brikpanel-pe-metabox-content .wpcode-admin-tabs{display:flex!important;flex-wrap:wrap!important;gap:2px!important;list-style:none!important;margin:0 0 .75rem!important;padding:.25rem!important;background:#f7f7f7!important;border-radius:var(--pe-radius-sm)!important;border:1px solid var(--pe-border)!important}
@@ -856,7 +856,12 @@ body.rtl .brikpanel-pe-metabox-content select:not([multiple]),body.rtl .brikpane
 
 /* Hide toolbars, WC chrome */
 .brikpanel-pe-wc-fields-content .toolbar,.brikpanel-pe-metabox-content .toolbar{display:none!important}
-.brikpanel-pe-wc-fields-content .panel.hidden{display:none!important}
+/* Sub-panels a plugin keeps hidden inside its own panel stay hidden. The
+   plugin's panel itself (.brikpanel-pe-wc-panel) is exempt: WooCommerce marks
+   every tab panel `hidden` and shows the open one inline, so this rule hid whole
+   sections that use that class (Blocksy's Swatches and Thank you Page showed
+   only their heading). */
+.brikpanel-pe-wc-fields-content .panel.hidden:not(.brikpanel-pe-wc-panel){display:none!important}
 
 /* Variation reorder handle — narrow first column, invisible until the row is
    hovered or the handle is keyboard-focused, so the table reads exactly as
@@ -920,6 +925,7 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-var-details{width:0;min-width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:.75rem;padding:.75rem 1rem .875rem;padding-inline-start:3.5rem}
 .brikpanel-pe-var-details-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,9.5rem),1fr));gap:.625rem .875rem}
 .brikpanel-pe-var-detail{display:flex;flex-direction:column;gap:.25rem;min-width:0;margin:0}
+.brikpanel-pe-var-detail[hidden]{display:none}
 .brikpanel-pe-var-detail-label{font-size:.75rem;font-weight:600;color:var(--pe-text-secondary)}
 .brikpanel-pe-var-details select{width:100%;height:30px;box-sizing:border-box;padding:0 1.5rem 0 .5rem;font-size:.8125rem;line-height:normal;color:var(--pe-text);border:1px solid var(--pe-border);border-radius:4px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background:var(--pe-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right .5rem center;transition:border-color .15s ease,box-shadow .15s ease}
 .brikpanel-pe-var-details select:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
@@ -947,15 +953,30 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-var-extras .options_group{padding:0!important;border:none!important}
 .brikpanel-pe-var-extras .description{font-size:.75rem!important;color:var(--pe-text-secondary, #616161) !important;margin-top:.25rem!important;font-style:normal!important}
 
-/* WC Product Data tab groups (third-party fields grouped by original tab) */
-.brikpanel-pe-wc-tab-group{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--pe-border)}
-.brikpanel-pe-wc-tab-group:first-of-type{margin-top:0;padding-top:0;border-top:none}
+/* WC Product Data tab groups (third-party fields grouped by original tab).
+   The divider goes on a shown group that follows another shown group: hidden
+   groups (kept only for their values, or hidden for this product type) can sit
+   anywhere in the list, so :first-of-type could not tell which one leads. */
+.brikpanel-pe-wc-tab-group{margin-top:0;padding-top:0;border-top:none}
+.brikpanel-pe-wc-tab-group:not([hidden]):not([data-bp-unpicked])~.brikpanel-pe-wc-tab-group:not([hidden]):not([data-bp-unpicked]){margin-top:1rem;padding-top:1rem;border-top:1px solid var(--pe-border)}
 .brikpanel-pe-wc-tab-title{font-size:.8125rem!important;font-weight:600!important;color:var(--pe-text-secondary)!important;margin:0 0 .75rem!important;text-transform:none;letter-spacing:normal}
 /* Force-show third-party panel wrappers — WC hides them by default because
    they are normally behind a tab. Inside BrikPanel they must always be visible. */
 .brikpanel-pe-wc-fields-content .panel,.brikpanel-pe-wc-fields-content .woocommerce_options_panel,.brikpanel-pe-wc-fields-content .brikpanel-pe-wc-panel{display:block!important;padding:0!important}
 /* Hidden WC-shaped tab-nav used only to fire lazy-load handlers (see capture_wc_product_data_fields). */
 .brikpanel-pe-wc-tabsim{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(1px,1px,1px,1px);margin:0!important;padding:0!important;border:0!important}
+/* Blocksy's swatches editor (Blocksy Companion Pro). Its raw stored-value field
+   shows only until Blocksy's own editor mounts over it, and is posted either way. */
+.brikpanel-pe-wc-fields-content #ct_product_variation_swatches .options_group>p.form-field{display:none!important}
+/* Blocksy's "add some attributes first" message sits in a .notice inside a
+   .toolbar, both hidden card-wide as WooCommerce chrome. Here it is the only
+   explanation of an empty swatches section, so it shows as a quiet note. Scoped
+   to the panel id on purpose: every other notice stays hidden. */
+.brikpanel-pe-wc-fields-content #ct_product_variation_swatches .toolbar-top{display:block!important;margin:0!important;padding:0!important;border:0!important;background:none!important}
+.brikpanel-pe-wc-fields-content #ct_product_variation_swatches .toolbar-top .notice{display:block!important;height:auto!important;margin:0!important;padding:.75rem 1rem!important;border:1px solid var(--pe-border)!important;border-radius:var(--pe-radius-sm)!important;background:#f7f7f7!important;box-shadow:none!important}
+.brikpanel-pe-wc-fields-content #ct_product_variation_swatches .toolbar-top .notice p{margin:0!important;padding:0!important;font-size:.8125rem!important;line-height:1.5!important;color:var(--pe-text-secondary)!important}
+/* The card's select reset removes the space Blocksy keeps between "Type" and its select. */
+.brikpanel-pe-wc-fields-content #ct_product_variation_swatches .ct-accordion-item-controls select{margin-inline-start:.625rem!important}
 /* ============================================================
    Native-editor scaffold ("datawrap") reset.
    The card recreates the native ancestor chain
@@ -968,8 +989,10 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
    structural id-scoped rule; selectors carry the card class + id so
    they out-rank WC's (id + 1 class) in both LTR and RTL.
    ============================================================ */
+/* min-height: WooCommerce keeps every panel 175px tall to line up with its tab
+   list; stacked in the card that left an empty band under short sections. */
 .brikpanel-pe-wc-fields #woocommerce-product-data .woocommerce_options_panel,
-.brikpanel-pe-wc-fields #woocommerce-product-data .wc-metaboxes-wrapper{float:none!important;width:100%!important}
+.brikpanel-pe-wc-fields #woocommerce-product-data .wc-metaboxes-wrapper{float:none!important;width:100%!important;min-height:0!important}
 .brikpanel-pe-wc-fields #woocommerce-product-data .woocommerce_options_panel .wc-radios,
 .brikpanel-pe-wc-fields #woocommerce-product-data .wc-metaboxes-wrapper .wc-radios{float:none!important}
 .brikpanel-pe-wc-fields #woocommerce-product-data input.dp-applied{float:none!important}
@@ -1331,20 +1354,35 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 .brikpanel-pe-metabox-content .acf-repeater,.brikpanel-pe-metabox-content .acf-flexible-content,.brikpanel-pe-wc-fields-content .acf-repeater,.brikpanel-pe-wc-fields-content .acf-flexible-content{border:1px solid var(--pe-border);border-radius:var(--pe-radius-sm);overflow:hidden;background:#fff}
 .brikpanel-pe-metabox-content .acf-repeater .acf-table>thead>tr>th,.brikpanel-pe-wc-fields-content .acf-repeater .acf-table>thead>tr>th{background:#f7f7f7;border-bottom:1px solid var(--pe-border);font-weight:600;font-size:.75rem;text-transform:none;letter-spacing:normal;color:var(--pe-text-secondary)}
 
-/* Stock cell (field test B6): the Track switch, then the quantity box OR the
-   status select. Both sit in one grid cell sized by the wider of the two (the
-   select's longest option), so the column keeps its width when a row flips.
-   The inactive one is only made invisible, and is disabled and aria-hidden. */
-.brikpanel-pe-var-table .var-stock-ctl{display:inline-flex;align-items:center;gap:.375rem;vertical-align:middle}
-.brikpanel-pe-var-table .var-stock-pair{display:inline-grid}
-.brikpanel-pe-var-table .var-stock-pair>*{grid-area:1/1}
-.brikpanel-pe-var-table .var-stock-pair .is-off{visibility:hidden}
-.brikpanel-pe-var-table td .var-stock-pair input{min-width:0}
-.brikpanel-pe-var-table .var-stock-status{height:30px;box-sizing:border-box;padding:0 1.5rem 0 .5rem;font-size:.8125rem;line-height:normal;color:var(--pe-text);border:1px solid var(--pe-border);border-radius:4px;outline:none;cursor:pointer;background:var(--pe-card);transition:border-color .15s ease,box-shadow .15s ease;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23616161' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .5rem center}
-.brikpanel-pe-var-table .var-stock-status:focus{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
-.brikpanel-pe-switch-sm{width:34px;height:18px}
-.brikpanel-pe-switch-sm .brikpanel-pe-slider::before{width:12px;height:12px}
-.brikpanel-pe-switch-sm input:checked+.brikpanel-pe-slider::before{transform:translateX(16px)}
+/* Stock cell (field test B6): ONE box, the quantity with ∞ beside it. ∞
+   pressed means the row is not counted: the number steps aside for a word
+   (Unlimited, or the manual status picked in the row's details) and clicking
+   that word brings the number back. A fixed width keeps the column still when
+   a row flips: 8.5rem fits "Unlimited" in all nine languages with room to
+   spare, and the rarer manual statuses up to "On backorder"; a longer word
+   ends in an ellipsis. The box draws the border so the number and ∞ read as
+   one. */
+.brikpanel-pe-var-table .var-stock-box{display:inline-flex;align-items:stretch;width:8.5rem;max-width:100%;height:var(--brikpanel-control-h,40px);box-sizing:border-box;vertical-align:middle;background:var(--pe-card);border:1px solid var(--pe-border);border-radius:4px;overflow:hidden;transition:border-color .15s ease,box-shadow .15s ease}
+.brikpanel-pe-var-table .var-stock-box:focus-within{border-color:var(--pe-input-focus);box-shadow:0 0 0 1px var(--pe-input-focus)}
+/* The box is as tall as the price boxes beside it (the shared 40px control
+   height). min-height and line-height: WordPress gives number inputs its own
+   min-height and line-height 2, which pushed the digits below the middle. */
+.brikpanel-pe-var-table td .var-stock-box input.var-stock{flex:1 1 auto;width:auto;min-width:0;height:100%;min-height:0;padding-block:0;line-height:normal;border:0;border-radius:0;background:transparent;box-shadow:none}
+.brikpanel-pe-var-table td .var-stock-box input.var-stock[hidden]{display:none}
+.brikpanel-pe-var-table .var-stock-free{flex:1 1 auto;display:flex;align-items:center;min-width:0;margin:0;padding:0 .5rem;border:0;background:transparent;font:inherit;font-size:.8125rem;color:var(--pe-text-secondary);text-align:start;cursor:text}
+.brikpanel-pe-var-table .var-stock-free[hidden]{display:none}
+.brikpanel-pe-var-table .var-stock-free:hover{background:#fafafa;color:var(--pe-text)}
+.brikpanel-pe-var-table .var-stock-free:focus{outline:none}
+.brikpanel-pe-var-table .var-stock-free-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ∞, on every row and beside the strip's Stock box: a quiet suffix that turns
+   dark while pressed, like the editor's other on/off controls. */
+.brikpanel-pe-inf-btn{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:2rem;margin:0;padding:0;border:0;border-inline-start:1px solid var(--pe-border);border-radius:0;background:#f7f7f7;color:var(--pe-text-secondary);cursor:pointer;transition:background-color .15s ease,color .15s ease}
+.brikpanel-pe-inf-btn:hover{background:#ebebeb;color:var(--pe-text)}
+.brikpanel-pe-inf-btn[aria-pressed="true"]{background:var(--pe-primary);border-inline-start-color:var(--pe-primary);color:#fff}
+.brikpanel-pe-inf-btn[aria-pressed="true"]:hover{background:var(--pe-primary-hover)}
+.brikpanel-pe-inf-btn:focus{outline:none}
+.brikpanel-pe-inf-btn:focus-visible{box-shadow:inset 0 0 0 2px var(--pe-input-focus)}
+.brikpanel-pe-inf-btn[aria-pressed="true"]:focus-visible{box-shadow:inset 0 0 0 2px #fff}
 
 /* Variation tools panel — one quiet gray card holding a SINGLE toolbar strip:
    bulk edits, then sorting + "Default Form Values", side by side on ONE line.
@@ -1377,7 +1415,11 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
 /* Every control locks to the input-group's 34px outer height (2rem content +
    1px borders): the stock input fights WP admin's min-height:40px and the
    button's natural 32px — mismatched heights break the shared bottom line. */
-.brikpanel-pe-var-bulk #bpe-bulk-stock{width:calc(var(--bpe-ph,5) * 1.2ch + 1.75rem);height:2.125rem;min-height:0;flex:0 1 auto;min-width:3rem}
+.brikpanel-pe-var-bulk .brikpanel-pe-var-bulk-stock{flex:0 1 auto}
+.brikpanel-pe-var-bulk #bpe-bulk-stock{width:auto;min-width:0;height:100%;min-height:0}
+.brikpanel-pe-var-bulk #bpe-bulk-stock:disabled{background:transparent;box-shadow:none;cursor:default}
+/* Pressed ∞ puts "Unlimited" in the box: a state, so it reads like text. */
+.brikpanel-pe-var-bulk .brikpanel-pe-var-bulk-stock.is-unlimited #bpe-bulk-stock::placeholder{color:var(--pe-text-secondary);opacity:1}
 .brikpanel-pe-var-bulk #bpe-apply-bulk{height:2.125rem}
 
 /* Default Form Values — third segment of the strip, collapsed behind one
@@ -1607,7 +1649,7 @@ tr.brikpanel-pe-var-row-placeholder td{height:44px;background:#fafafa;border:1px
    etc.) from blowing out the page width on mobile. `overflow-x: clip` clips
    the box without creating a scroll container, so popovers/dropdowns that
    open downward still work. */
-body.admin_page_brikpanel-product-editor{overflow-x:clip}
+body.brikpanel-product-editor-page{overflow-x:clip}
 .brikpanel-pe{overflow-x:clip}
 
 /* Widescreen, part two — has to sit AFTER the variation-table rules above,
@@ -1645,36 +1687,18 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-var-table.is-stacked td.var-expand-cell{position:absolute;inset-inline-start:1.875rem;top:1.3rem;width:auto}
 .brikpanel-pe-var-table.is-stacked td.var-delete-cell{position:absolute;inset-inline-end:.75rem;top:1.2rem;width:auto}
 .brikpanel-pe-var-table.is-stacked td input:where([type="text"],[type="number"]){min-width:0}
-.brikpanel-pe-var-table.is-stacked .var-stock-ctl{display:flex}
-.brikpanel-pe-var-table.is-stacked .var-stock-pair{flex:1 1 auto;min-width:0}
-.brikpanel-pe-var-table.is-stacked .var-stock-pair>*{width:100%}
+.brikpanel-pe-var-table.is-stacked .var-stock-box{display:flex;width:100%}
 .brikpanel-pe-var-table.is-stacked .var-attr-picks{flex-direction:row;flex-wrap:wrap}
 .brikpanel-pe-var-table.is-stacked .var-attr-select{width:auto}
-.brikpanel-pe-var-table.is-stacked>tbody>tr.var-backorder-row:not([hidden]),
 .brikpanel-pe-var-table.is-stacked>tbody>tr.var-details-row:not([hidden]),
 .brikpanel-pe-var-table.is-stacked>tbody>tr.var-extras-row:not([hidden]){display:block}
 .brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-details,
-.brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-extras,
-.brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-backorder{width:auto;padding-inline-start:.875rem}
+.brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-extras{width:auto;padding-inline-start:.875rem}
 .brikpanel-pe-var-table.is-stacked .brikpanel-pe-var-details-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,8.5rem),1fr))}
 
 @media screen and (max-width:782px){
-/* Smaller sticky header. Which parts fold, take a second row or drop their
-   text is not decided here but by the header levels above (fit-row.js), from
-   the real width: a breakpoint cannot know the language or the controls a
-   product shows. */
-/* `top` must stay keyed to the bar that is actually above it. Hardcoding WP's
-   46px mobile admin-bar height parked the sticky header 46px down while the
-   BrikPanel top bar occupies 0-52px, so its first 6-7px sat underneath the bar
-   (and under its shadow) on every phone. The variable resolves to 52px when
-   the top bar is on; the 46px fallback covers the top-bar-off case, where WP's
-   own admin bar really is 46px at this breakpoint. */
-.brikpanel-pe-header{top:var(--bp-topbar-height,46px);padding:.5rem .875rem;gap:.5rem}
-.brikpanel-pe-header-left{gap:.375rem}
-.brikpanel-pe-header-left .brikpanel-pe-back{padding:.25rem .375rem}
-.brikpanel-pe-header-left h1{font-size:1.0625rem}
-.brikpanel-pe-header-right{gap:.375rem}
-.brikpanel-pe-content{padding:1rem}
+/* The sticky header gives way to the phone's two bars here (the "Phones" part
+   at the end of this file); the content padding is set there too. */
 .brikpanel-pe-row{grid-template-columns:1fr}
 .brikpanel-pe-row-3{grid-template-columns:1fr}
 .brikpanel-pe-var-templates{grid-template-columns:1fr}
@@ -1692,7 +1716,9 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-var-build-actions{flex-direction:column;align-items:stretch}
 .brikpanel-pe-var-build-actions > .brikpanel-pe-btn{width:100%}
 .brikpanel-pe-var-build-actions #bpe-clear-vars{margin-left:0}
-.brikpanel-pe-var-bulk{flex-direction:column;align-items:stretch;flex-wrap:nowrap;row-gap:.5rem;padding:.625rem}
+/* On a phone the edit-all group is a sheet (the "Phones" part) and sorting and
+   the defaults are in the card's "..." menu: the strip itself draws nothing. */
+.brikpanel-pe-var-bulk{display:block;margin:0;padding:0;background:none;border:0}
 .brikpanel-pe-var-bulk-group,
 .brikpanel-pe-var-bulk-group:first-child,
 .brikpanel-pe-var-tools-right{flex:0 0 auto;flex-direction:column;align-items:stretch;gap:.5rem}
@@ -1714,7 +1740,6 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-var-defaults-pop{left:0;right:0;min-width:0;max-width:none}
 .brikpanel-pe-card{padding:1rem}
 .brikpanel-pe-field input[type="text"],.brikpanel-pe-field input[type="number"],.brikpanel-pe-field textarea{font-size:1rem;padding:.75rem}
-.brikpanel-pe-gallery-item{width:70px;height:70px}
 .brikpanel-pe-btn{padding:.625rem 1rem;font-size:.875rem}
 .brikpanel-pe-inline-form{flex-wrap:wrap}
 /* Rich-text toolbar: let the formatting buttons wrap onto a second row instead
@@ -1754,9 +1779,12 @@ body.admin_page_brikpanel-product-editor{overflow-x:clip}
 .brikpanel-pe-status-wrap[data-status="private"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#4c1d95;box-shadow:0 0 0 3px rgba(76,29,149,.15)}
 .brikpanel-pe-status-wrap[data-status="password"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#b45309;box-shadow:0 0 0 3px rgba(180,83,9,.15)}
 .brikpanel-pe-status-wrap[data-status="future"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+/* Pending review: amber, apart from the password brown. */
+.brikpanel-pe-status-wrap[data-status="pending"] .brikpanel-pe-status-trigger .brikpanel-pe-status-dot{background:#d69e00;box-shadow:0 0 0 3px rgba(214,158,0,.18)}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="publish"]{background:var(--pe-success)}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="future"]{background:#2563eb}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="draft"]{background:#9ca3af}
+.brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="pending"]{background:#d69e00}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="private"]{background:#4c1d95}
 .brikpanel-pe-status-menu li .brikpanel-pe-status-dot[data-status="password"]{background:#b45309}
 
@@ -1906,15 +1934,6 @@ ul.ui-autocomplete.wp-tags-autocomplete .ui-menu-item-wrapper:hover{background:#
 .brikpanel-pe-radio input[type=radio]:checked{border-color:var(--pe-primary);box-shadow:0 0 0 1px var(--pe-primary)}
 .brikpanel-pe-radio input[type=radio]:checked::after{content:"";position:absolute;top:50%;left:50%;width:8px;height:8px;border-radius:50%;background:var(--pe-primary);transform:translate(-50%,-50%)}
 .brikpanel-pe-radio input[type=radio]:focus{outline:none;border-color:var(--pe-primary);box-shadow:0 0 0 1px var(--pe-primary)}
-/* Per-variation backorder sub-row — sits between main row and any
-   third-party extras row when the merchant picks "On backorder". */
-.brikpanel-pe-var-table tr.var-backorder-row>td{padding:0;background:#fafafa;border-top:none}
-.brikpanel-pe-var-table tr.var-main-row.has-backorder{border-bottom:none}
-/* width:0 + min-width:100% and wrapping: the two long radio labels must not
-   widen the table (field test B6). */
-.brikpanel-pe-var-backorder{width:0;min-width:100%;box-sizing:border-box;padding:.625rem 1.25rem;display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1.25rem;font-size:.8125rem;color:var(--pe-text)}
-.brikpanel-pe-var-backorder .brikpanel-pe-var-backorder-label{font-weight:600;color:var(--pe-text-secondary);font-size:.75rem;text-transform:none;letter-spacing:normal}
-.brikpanel-pe-var-backorder .brikpanel-pe-radio-group{flex-direction:row;flex-wrap:wrap;gap:.25rem 1rem}
 
 /* ---- Product Catalog Feed Pro (WPWOOF) panel polish ----------------------
    The plugin's product-data panel ships WooCommerce-native float layouts plus
@@ -1981,3 +2000,279 @@ ul.ui-autocomplete.wp-tags-autocomplete .ui-menu-item-wrapper:hover{background:#
 .brikpanel-pe-wc-fields-content #measurement_product_data table.wc-calculator-pricing-table td{vertical-align:middle}
 .brikpanel-pe-wc-fields-content #measurement_product_data td.wc-calculator-pricing-rule-range{white-space:nowrap;color:var(--pe-text-secondary, #616161)}
 .brikpanel-pe-wc-fields-content #measurement_product_data td.wc-calculator-pricing-rule-range input{display:inline-block!important;width:calc(50% - .75rem)!important;margin:0!important;vertical-align:middle}
+
+/* ==========================================================================
+   Phones (782px and narrower): the editor as an app (approved 2026-10-06,
+   option 3 "section pages"). brikpanel-product-editor.js, "PHONE", builds the
+   parts; the look is here. The header gives way to a bar on top (back, name,
+   "...") and a bar at the bottom (status, save). Rarely used cards become
+   rows that open a page sliding in from the side; the variations are
+   one-line rows with a page each; the attribute rows, the attribute picker
+   and the edit-all strip open as sheets from the bottom edge.
+   Stacking: pages 60, bottom bar 61 (under the BrikPanel top bar 99999 and its
+   menus, and under every sheet and window). A closed page is only moved out
+   of view and hidden (visibility), never display:none: the save reads and
+   validates fields on every page. An open page carries no transform, so tips
+   and menus fixed inside it stay where they belong.
+   Wider screens never show any of it.
+   ========================================================================== */
+.brikpanel-pe-ph-appbar,
+.brikpanel-pe-ph-bar{display:none}
+
+@keyframes bpe-ph-in{from{transform:translateX(100%)}}
+@keyframes bpe-ph-out{to{transform:translateX(100%)}}
+@keyframes bpe-ph-in-rtl{from{transform:translateX(-100%)}}
+@keyframes bpe-ph-out-rtl{to{transform:translateX(-100%)}}
+
+@media screen and (max-width:782px){
+.brikpanel-pe-header{display:none}
+.brikpanel-pe-content{padding:1rem 1rem calc(5.5rem + env(safe-area-inset-bottom,0px))}
+/* Focus and scrolled-to fields stay clear of the two bars (B7); the snack
+   rises above the bottom bar. */
+html.bpe-ph,
+html.bpe-ph body{scroll-padding-top:calc(var(--bp-topbar-height,46px) + 4.25rem);scroll-padding-bottom:calc(5.5rem + env(safe-area-inset-bottom,0px))}
+html.bpe-ph{--bp-snack-lift:70px}
+/* The page behind an open page does not scroll (the script puts it back). */
+html.bpe-ph-lock{overflow:hidden!important}
+
+/* ---- The bar on top: back, the product's name and kind, "..." ---------- */
+.brikpanel-pe-ph-appbar,
+.brikpanel-pe-ph-pagebar{display:grid;grid-template-columns:48px minmax(0,1fr) 48px;align-items:center;box-sizing:border-box;min-height:56px;padding:0 4px;background:#fff;border-bottom:1px solid #e3e3e3}
+.brikpanel-pe-ph-appbar{position:sticky;top:var(--bp-topbar-height,46px);z-index:55}
+.brikpanel-pe-ph-pagebar{position:sticky;top:0;z-index:5}
+.brikpanel-pe-ph-varbar{grid-template-columns:92px minmax(0,1fr) 92px}
+.brikpanel-pe-ph-barend{display:flex;justify-content:flex-end}
+.brikpanel-pe-ph-iconbtn{display:grid;place-items:center;box-sizing:border-box;width:44px;height:44px;margin:0;padding:0;color:#303030;text-decoration:none;background:transparent;border:0;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.brikpanel-pe-ph-iconbtn[hidden]{display:none}
+.brikpanel-pe-ph-iconbtn:active{color:#303030;background:#f1f1f1}
+/* Hover only where there is a pointer: a tap would leave it grey. */
+@media (hover:hover){.brikpanel-pe-ph-iconbtn:hover{color:#303030;background:#f1f1f1}}
+.brikpanel-pe-ph-iconbtn:focus{box-shadow:none}
+.brikpanel-pe-ph-iconbtn:focus-visible{outline:2px solid #303030;outline-offset:-2px}
+.brikpanel-pe-ph-iconbtn:disabled{color:#c4c4c4;background:transparent;cursor:default}
+.brikpanel-pe-ph-heading{display:grid;justify-items:center;min-width:0;line-height:1.3;text-align:center}
+.brikpanel-pe-ph-name{max-width:100%;overflow:hidden;color:#303030;font-size:16px;font-weight:650;white-space:nowrap;text-overflow:ellipsis}
+.brikpanel-pe-ph-sub{max-width:100%;overflow:hidden;color:#616161;font-size:13px;white-space:nowrap;text-overflow:ellipsis}
+.brikpanel-pe-ph-sub:empty{display:none}
+html[dir="rtl"] :is(#bpe-ph-back,.brikpanel-pe-ph-pageback,.brikpanel-pe-ph-chev,.brikpanel-pe-ph-varopen) svg{transform:scaleX(-1)}
+
+/* ---- The bar at the bottom: status and save, two equal thumb buttons ---- */
+/* The save half grows to its label when that is longer than half the bar
+   ("Zur Überprüfung einreichen" was cut at both ends); the status half then
+   shrinks, its label ending in "…". Equal halves otherwise. */
+.brikpanel-pe-ph-bar{position:fixed;inset:auto 0 0 0;z-index:61;display:grid;grid-template-columns:minmax(0,1fr) minmax(min-content,1fr);gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));background:#fff;border-top:1px solid #e3e3e3;box-shadow:0 -4px 16px rgba(0,0,0,.06);transition:transform .28s cubic-bezier(.4,0,.2,1),visibility 0s}
+/* The keyboard is up: the bar steps aside instead of riding on it. */
+html.bp-kbd-open .brikpanel-pe-ph-bar{transform:translateY(110%);visibility:hidden;transition:transform .2s ease,visibility 0s linear .2s}
+.brikpanel-pe-ph-bar .brikpanel-pe-ph-status,
+.brikpanel-pe-ph-bar .brikpanel-pe-ph-save{gap:10px;min-width:0;min-height:48px;padding:0 14px;font-size:15px;border-radius:12px}
+.brikpanel-pe-ph-bar .brikpanel-pe-ph-status{justify-content:flex-start}
+.brikpanel-pe-ph-status-label{flex:1 1 auto;min-width:0;overflow:hidden;text-align:start;white-space:nowrap;text-overflow:ellipsis}
+.brikpanel-pe-ph-status svg{flex:none;color:#616161}
+.brikpanel-pe-ph-save.is-busy{opacity:.7}
+/* Unsaved changes: a dot on the save button. */
+.brikpanel-pe-ph-dirty{display:none;flex:none;width:7px;height:7px;background:currentColor;border-radius:50%}
+.brikpanel-pe-ph-save.is-dirty .brikpanel-pe-ph-dirty{display:block}
+.brikpanel-pe-ph-dot{flex:none;width:10px;height:10px;background:#9ca3af;border-radius:50%}
+.brikpanel-pe-ph-dot[data-status="publish"]{background:#1a8917}
+.brikpanel-pe-ph-dot[data-status="future"]{background:#2563eb}
+.brikpanel-pe-ph-dot[data-status="pending"]{background:#d69e00}
+.brikpanel-pe-ph-dot[data-status="private"]{background:#4c1d95}
+.brikpanel-pe-ph-dot[data-status="password"]{background:#b45309}
+
+/* ---- Status and visibility, and the other sheets the script builds on
+   <body> (outside .brikpanel-pe, so no --pe-* colours but the switch's). -- */
+.brikpanel-pe-ph-form{--pe-primary:#303030;display:grid;gap:16px}
+.brikpanel-pe-ph-radios{display:flex;flex-direction:column;margin:0 -8px}
+.brikpanel-pe-ph-radio{display:flex;align-items:flex-start;gap:12px;box-sizing:border-box;width:100%;min-height:56px;margin:0;padding:12px 8px;font:inherit;color:#303030;text-align:start;background:none;border:0;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.brikpanel-pe-ph-radio:active{background:#f7f7f7}
+@media (hover:hover){.brikpanel-pe-ph-radio:hover{background:#f7f7f7}}
+.brikpanel-pe-ph-radio:focus-visible{outline:2px solid #303030;outline-offset:-2px}
+.brikpanel-pe-ph-radio .brikpanel-pe-ph-dot{margin-top:6px}
+.brikpanel-pe-ph-radio-text{display:grid;flex:1 1 auto;gap:2px;min-width:0}
+.brikpanel-pe-ph-radio-text>b{font-size:16px;font-weight:600;line-height:1.35}
+.brikpanel-pe-ph-radio-text>span{color:#616161;font-size:14px;line-height:1.35}
+.brikpanel-pe-ph-tick{display:grid;flex:none;place-items:center;width:24px;height:24px;color:#303030;visibility:hidden}
+.brikpanel-pe-ph-radio[aria-checked="true"] .brikpanel-pe-ph-tick{visibility:visible}
+.brikpanel-pe-ph-field{display:grid;gap:6px;min-width:0}
+.brikpanel-pe-ph-field[hidden]{display:none}
+.brikpanel-pe-ph-label{color:#303030;font-size:14px;font-weight:600}
+/* 16px: smaller type makes iOS zoom in on the field. */
+.wp-core-ui input.brikpanel-pe-ph-input,
+.wp-core-ui select.brikpanel-pe-ph-input{width:100%;height:46px;min-height:46px;font-size:16px}
+.brikpanel-pe-ph-switchrow{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding-top:8px;border-top:1px solid #e3e3e3;cursor:pointer}
+.brikpanel-pe-ph-switchrow-text{color:#303030;font-size:16px;font-weight:600}
+
+/* ---- The price card: the sale dates wait behind "Schedule the sale" ---- */
+#bpe-pricing-card.is-ph-sale-folded .brikpanel-pe-ph-saledates,
+#bpe-pricing-card.is-ph-sale-folded .brikpanel-pe-ph-salehelp{display:none}
+.brikpanel-pe-ph-salelink{min-height:44px;margin-top:4px;padding-inline:0}
+
+/* ---- Images: tiles, the featured one twice as large, Add at the end ----- */
+.brikpanel-pe-images .brikpanel-pe-dropzone{display:none}
+.brikpanel-pe-images .brikpanel-pe-gallery{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.brikpanel-pe-images .brikpanel-pe-gallery-item{box-sizing:border-box;width:auto;height:auto;aspect-ratio:1;border:1px solid #e3e3e3;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.brikpanel-pe-images .brikpanel-pe-gallery-item:first-child{grid-column:span 2;grid-row:span 2;border-color:#e3e3e3}
+.brikpanel-pe-images .brikpanel-pe-gallery-item-remove,
+.brikpanel-pe-images .brikpanel-pe-gallery-item-video{display:none}
+.brikpanel-pe-images .brikpanel-pe-gallery-item-badge{right:auto;bottom:8px;left:auto;inset-inline-start:8px;padding:2px 8px;color:#303030;font-size:12px;font-weight:600;line-height:1.5;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.brikpanel-pe-ph-addimg{display:grid;place-content:center;justify-items:center;gap:4px;box-sizing:border-box;aspect-ratio:1;margin:0;padding:0;font:inherit;color:#616161;font-size:13px;font-weight:600;background:#fafafa;border:1.5px dashed #c9c9c9;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.brikpanel-pe-ph-addimg:only-child{grid-column:1/-1;aspect-ratio:auto;min-height:120px}
+.brikpanel-pe-ph-addimg:active{background:#f1f1f1}
+.brikpanel-pe-ph-addimg:focus-visible{outline:2px solid #303030;outline-offset:2px}
+.brikpanel-pe-ph-addimg-icon{display:grid;place-items:center}
+
+/* ---- Attributes: one line each, the row's controls open as a sheet ------ */
+.brikpanel-pe-attr-row{padding-inline-start:0}
+.brikpanel-pe-attr-drag{display:none}
+.brikpanel-pe-ph-attrsum{display:flex;align-items:center;gap:12px;box-sizing:border-box;width:100%;min-height:56px;margin:0;padding:8px 0;font:inherit;color:#303030;text-align:start;background:none;border:0;border-top:1px solid #e3e3e3;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.brikpanel-pe-attr-row:first-child>.brikpanel-pe-ph-attrsum{border-top:0}
+.brikpanel-pe-ph-attrsum:focus-visible{outline:2px solid #303030;outline-offset:2px}
+.brikpanel-pe-ph-addattr{width:100%;min-height:44px;margin-top:8px}
+.brikpanel-pe-ph-addattr-icon{display:grid;place-items:center}
+
+/* ---- Rows that open a page ("Details", "From other plugins") ------------ */
+.brikpanel-pe-ph-sections{display:flex;flex-direction:column;gap:8px}
+.brikpanel-pe-ph-grouplabel{margin:8px 4px 0;color:#616161;font-size:13px;font-weight:600}
+.brikpanel-pe-ph-rows{display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid #e3e3e3;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.brikpanel-pe-ph-row{display:flex;align-items:center;gap:12px;box-sizing:border-box;width:100%;min-height:64px;margin:0;padding:10px 14px;font:inherit;color:#303030;text-align:start;background:#fff;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.brikpanel-pe-ph-row[hidden]{display:none}
+.brikpanel-pe-ph-row+.brikpanel-pe-ph-row{border-top:1px solid #e3e3e3}
+.brikpanel-pe-ph-row:active{background:#f7f7f7}
+.brikpanel-pe-ph-row:focus-visible{outline:2px solid #303030;outline-offset:-2px}
+.brikpanel-pe-ph-rowicon{display:grid;flex:none;place-items:center;width:36px;height:36px;color:#616161;border:1px solid #e3e3e3;border-radius:9px}
+.brikpanel-pe-ph-rowtext{display:grid;flex:1 1 auto;gap:2px;min-width:0}
+.brikpanel-pe-ph-rowtext>b{display:block;overflow:hidden;font-size:15px;font-weight:600;line-height:1.35;white-space:nowrap;text-overflow:ellipsis}
+.brikpanel-pe-ph-rowtag{display:inline-block;margin-inline-start:8px;padding:1px 7px;color:#616161;font-size:12px;font-weight:550;vertical-align:1px;background:#f1f1f1;border-radius:6px}
+.brikpanel-pe-ph-rowsum{overflow:hidden;color:#616161;font-size:13px;line-height:1.4;white-space:nowrap;text-overflow:ellipsis}
+.brikpanel-pe-ph-rowsum:empty{display:none}
+/* Summaries read their own direction (dir="auto"): an English line in a
+   right-to-left admin keeps its word order and its start, and still sits on
+   the right. */
+html[dir="rtl"] :is(.brikpanel-pe-ph-rowsum,.brikpanel-pe-ph-varsum,.brikpanel-pe-ph-varhead-title){text-align:right}
+.brikpanel-pe-ph-chev{display:grid;flex:none;place-items:center;color:#8a8a8a}
+
+/* ---- Pages: full screen under the top bar, sliding in from the side ----- */
+.brikpanel-pe-ph-page,
+.brikpanel-pe .brikpanel-pe-ph-inplace{position:fixed;top:var(--bp-topbar-height,46px);right:0;bottom:0;left:0;z-index:60;box-sizing:border-box;width:auto;max-width:none;margin:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;transform:translateX(100%);visibility:hidden;transition:transform .28s cubic-bezier(.4,0,.2,1),visibility 0s linear .28s}
+.brikpanel-pe-ph-page.is-ph-open,
+.brikpanel-pe .brikpanel-pe-ph-inplace.is-ph-open{transform:none;visibility:visible;box-shadow:0 0 24px rgba(0,0,0,.08);transition:transform .38s cubic-bezier(.4,0,.2,1),visibility 0s}
+html[dir="rtl"] .brikpanel-pe-ph-page:not(.is-ph-open),
+html[dir="rtl"] .brikpanel-pe .brikpanel-pe-ph-inplace:not(.is-ph-open){transform:translateX(-100%)}
+.brikpanel-pe-ph-page{padding-bottom:calc(5.5rem + env(safe-area-inset-bottom,0px));background:#f1f1f1}
+/* The open page takes the focus itself (the script): no ring around a whole screen. */
+.brikpanel-pe-ph-page:focus,
+.brikpanel-pe .brikpanel-pe-ph-inplace:focus,
+.brikpanel-pe .brikpanel-pe-var-table-wrap.is-ph-open:focus{outline:0}
+.brikpanel-pe-ph-pagebody{display:flex;flex-direction:column;gap:12px;padding:16px}
+/* Another plugin's card is the page itself: white, its own heading moved to
+   the page's bar. */
+.brikpanel-pe .brikpanel-pe-ph-inplace{padding:0 16px calc(5.5rem + env(safe-area-inset-bottom,0px));background:#fff;border:0;border-radius:0}
+.brikpanel-pe .brikpanel-pe-ph-inplace>.brikpanel-pe-ph-pagebar{margin:0 -16px 16px}
+.brikpanel-pe-ph-inplace>label,
+.brikpanel-pe-ph-inplace .brikpanel-pe-wc-fields-head>label,
+.brikpanel-pe-ph-inplace .postbox-header,
+.brikpanel-pe-ph-inplace>.brikpanel-pe-ext-title{display:none}
+
+/* ---- Variations: one line each on the card, a page each ---------------- */
+.brikpanel-pe-ph-varhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px}
+.brikpanel-pe-ph-varhead[hidden]{display:none}
+.brikpanel-pe-ph-varhead-title{color:#303030;font-size:15px;font-weight:600}
+.brikpanel-pe-var-build.is-ph-has-vars .brikpanel-pe-var-build-actions>.brikpanel-pe-btn{display:none}
+.brikpanel-pe-var-build.is-ph-has-vars .brikpanel-pe-var-table-section{margin-top:0}
+.brikpanel-pe-var-tools-right{display:none}
+.brikpanel-pe-var-table-wrap:not(.is-ph-open){overflow:visible;border:0;border-radius:0}
+.brikpanel-pe-var-table-wrap:not(.is-ph-open) .brikpanel-pe-var-table.is-stacked>tbody>tr.var-main-row{display:flex;align-items:center;box-sizing:border-box;min-height:64px;padding:10px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.brikpanel-pe-var-table-wrap:not(.is-ph-open) .brikpanel-pe-var-table.is-stacked>tbody>tr.var-main-row>td:not(.var-name),
+.brikpanel-pe-var-table-wrap:not(.is-ph-open) .brikpanel-pe-var-table.is-stacked>tbody>tr:is(.var-details-row,.var-extras-row){display:none}
+.brikpanel-pe-var-table-wrap:not(.is-ph-open) .brikpanel-pe-var-table.is-stacked td.var-name{flex:1 1 auto;min-width:0;padding:0}
+.brikpanel-pe-var-table.is-stacked .var-name-inner{gap:12px}
+/* Room for the stacked layers the image button draws past its right edge. */
+.brikpanel-pe-var-table.is-stacked .var-image-wrap{order:0;margin:0;margin-inline-end:10px}
+.brikpanel-pe-var-table-wrap:not(.is-ph-open) .var-image-wrap{pointer-events:none}
+.brikpanel-pe-var-table.is-stacked .var-name-text-wrap{flex:1 1 auto;order:1;align-items:stretch;min-width:0}
+.brikpanel-pe-var-table-wrap:not(.is-ph-open) .var-name-text{overflow:hidden;font-size:15px;font-weight:600;white-space:nowrap;text-overflow:ellipsis}
+.brikpanel-pe-ph-varsum{overflow:hidden;color:#616161;font-size:13px;font-weight:400;white-space:nowrap;text-overflow:ellipsis}
+.brikpanel-pe-ph-varsum:empty{display:none}
+.brikpanel-pe-var-table.is-stacked .var-enabled-switch{order:2;width:40px;height:22px;border-radius:22px}
+.brikpanel-pe-var-table.is-stacked .var-enabled-switch .brikpanel-pe-slider{border-radius:22px}
+.brikpanel-pe-var-table.is-stacked .var-enabled-switch .brikpanel-pe-slider::before{width:16px;height:16px;bottom:3px;inset-inline-start:3px}
+.brikpanel-pe-var-table.is-stacked .var-enabled-switch input:checked+.brikpanel-pe-slider::before{transform:translateX(18px)}
+html[dir="rtl"] .brikpanel-pe-var-table.is-stacked .var-enabled-switch input:checked+.brikpanel-pe-slider::before{transform:translateX(-18px)}
+/* A 44px target around the small switch. */
+.brikpanel-pe-var-table.is-stacked .var-enabled-switch::after{content:"";position:absolute;inset:-11px -6px}
+/* contrast-ok: an arrow icon with no text (3.45:1 passes the 3:1 rule for
+   graphics); the same grey as every row's arrow here. */
+.brikpanel-pe-ph-varopen{display:grid;flex:none;order:3;place-items:center;width:32px;height:44px;margin:0;margin-inline-end:-6px;padding:0;color:#8a8a8a;background:none;border:0;cursor:pointer}
+.brikpanel-pe-ph-varopen:focus-visible{outline:2px solid #303030;outline-offset:-2px;border-radius:8px}
+.brikpanel-pe-ph-active{display:none}
+
+/* A variation's page: the table's own box, full screen, its rows only. */
+.brikpanel-pe .brikpanel-pe-var-table-wrap.is-ph-open{position:fixed;top:var(--bp-topbar-height,46px);right:0;bottom:0;left:0;z-index:60;box-sizing:border-box;margin:0;padding:0 0 calc(5.5rem + env(safe-area-inset-bottom,0px));overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#f1f1f1;border:0;border-radius:0;animation:bpe-ph-in .38s cubic-bezier(.4,0,.2,1)}
+.brikpanel-pe .brikpanel-pe-var-table-wrap.is-ph-closing{animation:bpe-ph-out .28s cubic-bezier(.4,0,.2,1) forwards}
+html[dir="rtl"] .brikpanel-pe .brikpanel-pe-var-table-wrap.is-ph-open{animation-name:bpe-ph-in-rtl}
+html[dir="rtl"] .brikpanel-pe .brikpanel-pe-var-table-wrap.is-ph-closing{animation-name:bpe-ph-out-rtl}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-table.is-stacked{width:auto;margin:16px;overflow:hidden;background:#fff;border:1px solid #e3e3e3;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-table.is-stacked>tbody>tr:not(.is-ph-focus){display:none}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-table.is-stacked>tbody>tr.var-main-row{gap:14px 12px;padding:16px;border-top:0}
+.brikpanel-pe-var-table-wrap.is-ph-open tr.var-main-row>td:is(.var-drag-cell,.var-expand-cell,.var-delete-cell){display:none}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-table.is-stacked td.var-name{padding:0}
+.brikpanel-pe-var-table-wrap.is-ph-open .var-name-inner{flex-wrap:wrap}
+.brikpanel-pe-var-table-wrap.is-ph-open .var-image-btn{width:48px;height:48px}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-ph-active{display:block;flex:1 1 auto;order:1;color:#303030;font-size:16px;font-weight:600}
+.brikpanel-pe-var-table-wrap.is-ph-open .var-name-text-wrap{flex-basis:100%;order:9}
+.brikpanel-pe-var-table-wrap.is-ph-open tr.var-main-row:not(.is-orphan)>td.var-name:not(.var-name-manual) .var-name-text-wrap,
+.brikpanel-pe-var-table-wrap.is-ph-open :is(.var-name-text,.brikpanel-pe-ph-varsum,.brikpanel-pe-ph-varopen){display:none}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-table.is-stacked td input:where([type="text"],[type="number"]){height:44px;font-size:16px}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-table .var-stock-box{height:44px}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-table.is-stacked .var-stock-box input.var-stock{height:100%}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-details{gap:14px;padding:4px 16px 16px}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-details-grid{gap:14px 12px}
+.brikpanel-pe-var-table-wrap.is-ph-open .brikpanel-pe-var-details select{height:44px;font-size:16px}
+.brikpanel-pe .brikpanel-pe-ph-vardelete{display:flex;box-sizing:border-box;width:calc(100% - 32px);min-height:48px;margin:0 16px;font-size:15px;border-radius:12px}
+.brikpanel-pe .brikpanel-pe-ph-vardelete,
+.brikpanel-pe .brikpanel-pe-ph-vardelete:hover,
+.brikpanel-pe .brikpanel-pe-ph-vardelete:active,
+.brikpanel-pe .brikpanel-pe-ph-vardelete:focus{color:#d72c0d}
+
+/* ---- Sheets made of the editor's own parts (attached by the script) ----- */
+.brikpanel-pe .brikpanel-pe-ph-sheet{position:fixed;inset:auto 0 var(--bp-sheet-kb,0px) 0;z-index:100005;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;width:auto;max-width:none;max-height:calc(92vh - var(--bp-sheet-kb,0px));max-height:calc(92dvh - var(--bp-sheet-kb,0px));margin:0;padding:0 18px calc(18px + env(safe-area-inset-bottom,0px));overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;color:#303030;background:#fff;border:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.18);outline:0;transform:translateY(calc(100% + 24px));visibility:hidden;transition:transform .28s cubic-bezier(.4,0,.2,1),visibility 0s linear .28s}
+.brikpanel-pe .brikpanel-pe-ph-sheet.is-sheet-open{transform:none;visibility:visible;transition:transform .38s cubic-bezier(.4,0,.2,1),visibility 0s}
+.brikpanel-pe .brikpanel-pe-ph-sheet.is-sheet-open.is-sheet-dragging{transform:translateY(var(--bp-sheet-drag,0px));transition:none}
+.brikpanel-pe-ph-sheettitle{margin:0;color:#303030;font-size:17px;font-weight:650;line-height:1.3}
+.brikpanel-pe-ph-sheet :is(input[type="text"],input[type="number"],input[type="search"],select){font-size:16px}
+.brikpanel-pe-ph-sheet .brikpanel-pe-input-group.small{height:44px}
+.brikpanel-pe-ph-sheet .brikpanel-pe-input-group.small input{font-size:16px}
+.brikpanel-pe-var-bulk .brikpanel-pe-ph-sheet #bpe-bulk-active,
+.brikpanel-pe-var-bulk .brikpanel-pe-ph-sheet #bpe-apply-bulk{height:44px}
+.brikpanel-pe-ph-sheetdone{flex:none;width:100%}
+/* The attribute picker: its list opens in the sheet, not over it. */
+.brikpanel-pe-ph-sheet .brikpanel-pe-combo-trigger{min-height:46px;font-size:16px}
+.brikpanel-pe-ph-sheet .brikpanel-pe-combo-panel{position:static;margin-top:6px;box-shadow:none}
+.brikpanel-pe-ph-sheet .brikpanel-pe-combo-list{max-height:40vh}
+.brikpanel-pe-ph-sheet .brikpanel-pe-combo-option{padding:.75rem .625rem;font-size:15px}
+.brikpanel-pe-ph-sheet #bpe-attr-new-name,
+.brikpanel-pe-ph-sheet #bpe-attr-add{min-height:46px}
+/* An attribute row as a sheet: its name, the two switches as rows, the
+   values, Done; "Remove" says its name in words (the × keeps its label). */
+.brikpanel-pe-attr-row .brikpanel-pe-ph-sheet>label{display:flex;flex-direction:column;align-items:stretch;gap:0;margin:0;color:#303030;font-size:17px;font-weight:650}
+.brikpanel-pe-ph-sheet .brikpanel-pe-attr-row-controls{display:flex;flex-direction:column;align-items:stretch;gap:0;margin-top:8px;font-weight:400}
+.brikpanel-pe-ph-sheet .brikpanel-pe-showpage,
+#bpe-var-card.bpe-variable-on .brikpanel-pe-ph-sheet .brikpanel-pe-usevar{display:flex;flex-direction:row-reverse;align-items:center;justify-content:space-between;gap:12px;min-height:48px;color:#303030;font-size:15px;border-top:1px solid #e3e3e3}
+.brikpanel-pe-ph-sheet .brikpanel-pe-usevar-text{white-space:normal}
+.brikpanel-pe-ph-sheet .brikpanel-pe-usevar-slider{width:40px;height:22px;border-radius:22px}
+.brikpanel-pe-ph-sheet .brikpanel-pe-usevar-slider::before{width:16px;height:16px;top:3px;inset-inline-start:3px}
+.brikpanel-pe-ph-sheet :is(.brikpanel-pe-showpage,.brikpanel-pe-usevar) input:checked+.brikpanel-pe-usevar-slider::before{transform:translateX(18px)}
+html[dir="rtl"] .brikpanel-pe-ph-sheet :is(.brikpanel-pe-showpage,.brikpanel-pe-usevar) input:checked+.brikpanel-pe-usevar-slider::before{transform:translateX(-18px)}
+.brikpanel-pe-ph-sheet .brikpanel-pe-attr-remove{width:100%;height:48px;margin:0;font-size:0;color:#d72c0d;background:none;border:0;border-top:1px solid #e3e3e3;border-radius:0}
+.brikpanel-pe-ph-sheet .brikpanel-pe-attr-remove::after{content:attr(aria-label);font-size:15px;font-weight:550}
+.brikpanel-pe-ph-sheet .brikpanel-pe-tag-input-wrap{min-height:48px}
+
+@media (prefers-reduced-motion:reduce){
+.brikpanel-pe-ph-page,
+.brikpanel-pe .brikpanel-pe-ph-inplace,
+.brikpanel-pe .brikpanel-pe-ph-sheet,
+.brikpanel-pe-ph-bar{transition-duration:.01ms}
+.brikpanel-pe .brikpanel-pe-var-table-wrap.is-ph-open,
+.brikpanel-pe .brikpanel-pe-var-table-wrap.is-ph-closing{animation:none}
+}
+}

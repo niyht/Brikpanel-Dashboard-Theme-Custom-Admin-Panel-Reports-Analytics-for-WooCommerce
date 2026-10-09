@@ -88,6 +88,9 @@
 	var controllers = [];
 	var observer = null;
 	var styleReady = false;
+	// How much larger the row being measured is drawn than laid out (see
+	// drawnScale). Set at the start of every measurement.
+	var scale = 1;
 	// Until the page has loaded and its fonts are in (plus a second), text can
 	// still change width under a fitted row: a web font from the font stack
 	// swaps in. See `unfoldSpare`.
@@ -120,6 +123,22 @@
 
 	function splitClasses(cls) {
 		return String(cls || '').split(/\s+/).filter(Boolean);
+	}
+
+	// A CSS `zoom` on the page or an ancestor (a browser extension, an admin
+	// theme) scales what getBoundingClientRect reports in Safari and Chrome,
+	// but not clientWidth, offsetWidth or computed lengths. Mixing the two made
+	// every item look past its line's end at any zoom above 1, so every level
+	// failed and the header took its phone form on a wide screen. A scale
+	// transform does the same. 1 when the two agree within rounding, which is
+	// also the case for the browsers' own page zoom.
+	function drawnScale(el) {
+		var laid = el.offsetWidth;
+		var drawn = el.getBoundingClientRect().width;
+		if (!laid || !drawn || Math.abs(drawn - laid) <= 1) {
+			return 1;
+		}
+		return drawn / laid;
 	}
 
 	// One page-wide rule switches transitions off while a row is measured.
@@ -299,10 +318,25 @@
 		if (!rects.length) {
 			return true;
 		}
+		// The box's content edges in the items' own coordinates: its drawn rect
+		// less borders, padding and a scrollbar, scaled by drawnScale. Not
+		// clientWidth: Safari rounds it twice under a zoom.
 		var br = box.getBoundingClientRect();
 		var cs = window.getComputedStyle(box);
-		var left = br.left + box.clientLeft + (parseFloat(cs.paddingLeft) || 0);
-		var right = br.left + box.clientLeft + box.clientWidth - (parseFloat(cs.paddingRight) || 0);
+		var startInset = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+		var endInset = (parseFloat(cs.borderRightWidth) || 0) + (parseFloat(cs.paddingRight) || 0);
+		// A scrollbar sits at the end, or at the start where clientLeft counts it
+		// (right-to-left pages).
+		var bar = box.offsetWidth - box.clientWidth - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0);
+		if (bar >= 2) {
+			if (box.clientLeft > (parseFloat(cs.borderLeftWidth) || 0) + 1) {
+				startInset += bar;
+			} else {
+				endInset += bar;
+			}
+		}
+		var left = br.left + startInset * scale;
+		var right = br.right - endInset * scale;
 		for (var i = 0; i < rects.length; i++) {
 			if (rects[i].left < left - 1 || rects[i].right > right + 1) {
 				return false;
@@ -313,7 +347,7 @@
 			return false;
 		}
 		var room = right - left;
-		var gap = parseFloat(cs.columnGap);
+		var gap = parseFloat(cs.columnGap) * scale;
 		var spare = typeof ratio === 'number' ? Math.max(8, room * ratio) : 0;
 		if (isNaN(gap)) {
 			gap = 0;
@@ -327,6 +361,15 @@
 		return lines.length < 2 || lines[lines.length - 1].n >= 2;
 	}
 
+	// A title cut short by its own box. A title that is text inside the heading
+	// (an inline span) has no box to be cut by: Firefox reports its text width
+	// as scrollWidth against a clientWidth of 0, which read as cut at every
+	// level, so the dashboard header took its phone form in Firefox (field
+	// report 2026-10-05). Its wrapping is still checked by line.
+	function isCut(t) {
+		return window.getComputedStyle(t).display !== 'inline' && t.scrollWidth > t.clientWidth + 1;
+	}
+
 	function titleFits(root, sel) {
 		if (!sel) {
 			return true;
@@ -335,7 +378,7 @@
 		if (!t) {
 			return true;
 		}
-		if (t.scrollWidth > t.clientWidth + 1) {
+		if (isCut(t)) {
 			return false;
 		}
 		var range = document.createRange();
@@ -521,6 +564,9 @@
 		if (width < 1) {
 			return; // not laid out yet; the ResizeObserver tries again
 		}
+		scale = drawnScale(row);
+		// The copy is laid out in CSS pixels, which a zoom above does not count.
+		var laidWidth = width / scale;
 		var started = window.performance && performance.now ? performance.now() : 0;
 		var live = this.measure === 'live';
 		ensureMeasuringStyle();
@@ -532,7 +578,7 @@
 			var box = document.createElement('div');
 			box.setAttribute('aria-hidden', 'true');
 			box.setAttribute('inert', '');
-			box.style.cssText = 'position:absolute;left:0;top:0;width:' + width + 'px;height:0;overflow:hidden;visibility:hidden;pointer-events:none;contain:layout style';
+			box.style.cssText = 'position:absolute;left:0;top:0;width:' + laidWidth + 'px;height:0;overflow:hidden;visibility:hidden;pointer-events:none;contain:layout style';
 			var copy = row.cloneNode(true);
 			sanitizeCopy(copy);
 			stackLabels(copy);
@@ -540,7 +586,7 @@
 			copy.setAttribute('aria-hidden', 'true');
 			copy.style.setProperty('position', 'static', 'important');
 			copy.style.setProperty('box-sizing', 'border-box', 'important');
-			copy.style.setProperty('width', width + 'px', 'important');
+			copy.style.setProperty('width', laidWidth + 'px', 'important');
 			copy.style.setProperty('max-width', 'none', 'important');
 			copy.style.setProperty('margin', '0', 'important');
 			box.appendChild(copy);
@@ -614,7 +660,7 @@
 		if (!t) {
 			return;
 		}
-		var cut = t.scrollWidth > t.clientWidth + 1;
+		var cut = isCut(t);
 		if (cut) {
 			t.setAttribute('title', (t.textContent || '').trim());
 			t.setAttribute('data-bp-fit-cut', '1');
@@ -745,6 +791,7 @@
 		if (!this.row || this.index < 0 || this.fitted === false) {
 			return null;
 		}
+		scale = drawnScale(this.row);
 		var level = this.levels[this.index] || this.levels[0];
 		var maxes = this.maxes || [];
 		var spares = this.spares || [];

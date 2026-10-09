@@ -267,7 +267,6 @@ body.rtl .brikpanel-pe-wc-fields-content .select2-container--default .select2-se
 }
 
 body.rtl .brikpanel-pe-var-table th { text-align: right; }
-body.rtl .brikpanel-pe-var-table .var-stock-status,
 body.rtl .brikpanel-pe-var-details select { background-position: left 0.5rem center; padding-right: 0.5rem; padding-left: 1.5rem; }
 /* Variation image: the stacked-card edges fan out to the left, so the room
    the image keeps beside the Active switch moves to the left too. */
@@ -340,11 +339,6 @@ body.rtl p.search-box { float: left; }
 body.rtl .brikpanel-dash-table th { text-align: right; }
 body.rtl .brikpanel-dash-table th:last-child,
 body.rtl .brikpanel-dash-table td:last-child { text-align: left; }
-
-body.rtl .brikpanel-dash-live-ip { margin-left: 0; margin-right: 0.375rem; }
-
-body.rtl .brikpanel-device-pct,
-body.rtl .brikpanel-device-count { text-align: left; }
 
 body.rtl .brikpanel-subs-card--active,
 body.rtl .brikpanel-subs-card--hold,
@@ -706,30 +700,6 @@ body.rtl .brikpanel-topbar-cache-item { text-align: right; }
 
 
 /* =============================================================================
-   FILE: front-end/welcome/brikpanel-welcome.css
-   ============================================================================= */
-body.rtl .brikpanel-welcome-close { right: auto; left: 16px; }
-
-body.rtl .brikpanel-welcome-slide { transform: translateX(-60px); }
-body.rtl .brikpanel-welcome-slide.is-active { transform: translateX(0); }
-body.rtl .brikpanel-welcome-slide.is-exiting-left { transform: translateX(60px); }
-
-body.rtl .brikpanel-welcome-feature-mini,
-body.rtl .brikpanel-welcome-highlights li { text-align: right; }
-
-@keyframes bwListItemRtl {
-    from { transform: translateX(-20px); opacity: 0; }
-    to   { transform: translateX(0);     opacity: 1; }
-}
-body.rtl .brikpanel-welcome-slide.is-active .brikpanel-welcome-highlights li {
-    animation-name: bwListItemRtl;
-}
-
-body.rtl .brikpanel-welcome-confetti { left: auto; right: 0; }
-body.rtl .brikpanel-welcome-kbd { margin-left: 0; margin-right: 4px; }
-
-
-/* =============================================================================
    FILE: includes/cron/brikpanel-cron-page.css
    ============================================================================= */
 /* Header cells and row buttons use logical alignment (start / flex-end) in the
@@ -857,6 +827,11 @@ body.rtl #brikpanel-navigation .wp-submenu.wp-submenu:where(
 ) li a {
     padding-left: 0;
     padding-right: 1.5rem;
+}
+/* The pages of a menu moved into "More" sit one step further in. */
+body.rtl #brikpanel-navigation .wp-submenu .wp-submenu.wp-submenu li a {
+    padding-left: 0;
+    padding-right: 2rem;
 }
 
 /* This used to mirror a 0.1rem margin on the icon box. That margin is gone in

@@ -4,9 +4,10 @@
  *
  * Rendered by Brikpanel_Sheets_Settings::render_page().
  * Receives:
- *   $conn   — Brikpanel_Sheets_Tokens::describe()
- *   $config — bag of options + column mappings
- *   $flash  — { tone, message } from the OAuth return redirect
+ *   $conn          — Brikpanel_Sheets_Tokens::describe()
+ *   $config        — bag of options + column mappings
+ *   $flash         — { tone, message } from the OAuth return redirect
+ *   $connect_error — { title, reason, help, detail } of a failed return, or []
  *
  * @package BrikPanel
  */
@@ -16,6 +17,34 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_statuses() : [];
+$connect_error  = isset( $connect_error ) && is_array( $connect_error ) ? $connect_error : [];
+
+/**
+ * The box beside Connect / Re-authorize that says what went wrong, why, and
+ * what to do next. It stays until the next click: the toast it replaces was
+ * gone in 3.5 s, before anyone could read the reason out to their host.
+ * Filled here after a failed return from Google, and by the script after a
+ * failed click. Empty parts stay hidden.
+ *
+ * @param array $err { title, reason, help, detail }
+ */
+$bp_gs_render_connect_error = function ( array $err ) {
+	$title  = (string) ( $err['title'] ?? '' );
+	$reason = (string) ( $err['reason'] ?? '' );
+	$help   = (string) ( $err['help'] ?? '' );
+	$detail = (string) ( $err['detail'] ?? '' );
+	?>
+	<div class="bp-gs-callout bp-gs-connect-error" data-role="connect-error" role="alert"<?php echo ( $title === '' && $reason === '' ) ? ' hidden' : ''; ?>>
+		<strong data-role="connect-error-title"<?php echo $title === '' ? ' hidden' : ''; ?>><?php echo esc_html( $title ); ?></strong>
+		<span data-role="connect-error-reason"<?php echo $reason === '' ? ' hidden' : ''; ?>><?php echo esc_html( $reason ); ?></span>
+		<span class="bp-gs-connect-error-help" data-role="connect-error-help"<?php echo $help === '' ? ' hidden' : ''; ?>><?php echo esc_html( $help ); ?></span>
+		<span class="bp-gs-connect-error-detail" data-role="connect-error-detail-row"<?php echo $detail === '' ? ' hidden' : ''; ?>>
+			<?php esc_html_e( 'Technical details:', 'brikpanel' ); ?>
+			<code dir="ltr" data-role="connect-error-detail"><?php echo esc_html( $detail ); ?></code>
+		</span>
+	</div>
+	<?php
+};
 ?>
 <div class="wrap brikpanel-gs-wrap">
 	<div class="bp-gs brikpanel-shell__page"
@@ -93,10 +122,12 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 							<li><?php esc_html_e( 'Drive (per-file): create a new spreadsheet, or open only the one you pick', 'brikpanel' ); ?></li>
 							<li><?php esc_html_e( 'Email: to display which Google account is connected', 'brikpanel' ); ?></li>
 						</ul>
+						<?php $bp_gs_render_connect_error( $connect_error ); ?>
 						<div class="bp-gs-actions">
 							<button type="button" class="bp-gs-btn bp-gs-btn-primary" id="bp-gs-connect">
 								<?php esc_html_e( 'Connect Google Sheets', 'brikpanel' ); ?>
 							</button>
+							<span class="bp-gs-connect-status" data-role="connect-status" role="status" aria-live="polite"></span>
 						</div>
 					</div>
 				</div>
@@ -127,9 +158,11 @@ $order_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_stat
 								?>
 							</dd>
 						</dl>
+						<?php $bp_gs_render_connect_error( $connect_error ); ?>
 						<div class="bp-gs-actions">
 							<button type="button" class="bp-gs-btn bp-gs-btn-secondary" id="bp-gs-disconnect"><?php esc_html_e( 'Disconnect', 'brikpanel' ); ?></button>
 							<button type="button" class="bp-gs-btn bp-gs-btn-secondary" id="bp-gs-reauth"><?php esc_html_e( 'Re-authorize', 'brikpanel' ); ?></button>
+							<span class="bp-gs-connect-status" data-role="connect-status" role="status" aria-live="polite"></span>
 						</div>
 					</div>
 				</div>

@@ -253,7 +253,7 @@ body.wp-admin.brikpanel-chrome {
 	margin: 0.55rem 0.15rem;
 	border-top: 1px solid #e3e3e3;
 }
-#brikpanel-navigation li.brikpanel-has-open-submenu .brikpanel-menu-icon-title-chevron-container {
+#brikpanel-navigation li.brikpanel-has-open-submenu > .brikpanel-menu-icon-title-chevron-container {
 	padding-bottom: 0.4rem;
 }
 #brikpanel-navigation .wp-submenu:where(
@@ -268,6 +268,17 @@ body.wp-admin.brikpanel-chrome {
 	#toplevel_page_woocommerce.admin-menu-editor-active ul
 ) li a {
 	padding-left: 1.5rem;
+}
+/* A menu moved into "More" (Tools, Settings) lists its own pages under its
+   row (brikpanel_nav_render_more_row()): one step further in, and the rows
+   stay inside the list instead of taking the parent list's negative margin a
+   second time. */
+#brikpanel-navigation .wp-submenu .wp-submenu.wp-submenu li {
+	margin-left: 0;
+	margin-right: 0;
+}
+#brikpanel-navigation .wp-submenu .wp-submenu.wp-submenu li a {
+	padding-left: 2rem;
 }
 #brikpanel-navigation a {
 	display: flex;
@@ -367,7 +378,7 @@ body.wp-admin.brikpanel-chrome {
 }
 /* This ensures that no submenu item will get an icon, except for the
 WooCommerce submenu which we move out of a submenu visually. */
-#brikpanel-navigation .wp-submenu:not(#toplevel_page_woocommerce ul) img {
+#brikpanel-navigation .wp-submenu:not(#toplevel_page_woocommerce ul) img:not(.brikpanel-menu-chevron) {
 	display: none;
 }
 .brikpanel-current {
@@ -383,10 +394,13 @@ WooCommerce submenu which we move out of a submenu visually. */
    used to be a bare .visible { display: block } here as well; this file loads on
    every admin page, so it also forced core's and other plugins' .visible elements
    to block. */
-.brikpanel-has-open-submenu .brikpanel-submenu {
+/* Child combinators: a list opens with its own row only. A menu moved into
+   "More" has a list of its own inside "More"'s list, and opening "More" must
+   neither open it nor hide its arrow. */
+.brikpanel-has-open-submenu > .brikpanel-submenu {
 	display: block;
 }
-.brikpanel-has-open-submenu:not(.wp-not-current-submenu) .brikpanel-menu-chevron {
+.brikpanel-has-open-submenu:not(.wp-not-current-submenu) > .brikpanel-menu-icon-title-chevron-container > .brikpanel-menu-chevron {
 	display: none;
 }
 /* Sized to exactly match the 18px icon slot on the other side of the row, so a

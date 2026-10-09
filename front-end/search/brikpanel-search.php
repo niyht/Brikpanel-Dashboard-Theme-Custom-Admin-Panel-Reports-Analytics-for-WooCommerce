@@ -2160,8 +2160,11 @@ class Brikpanel_Pro_Search {
 				foreach ( $submenu[ $parent_slug ] as $sub ) {
 					// Rows written straight into $submenu never went through
 					// add_submenu_page()'s capability check, so every child is
-					// tested too, as core's own menu output does.
-					if ( ! is_array( $sub ) || empty( $sub[0] ) || empty( $sub[2] ) || ! self::row_is_openable( $sub ) ) {
+					// tested too, as core's own menu output does. A BrikPanel
+					// screen kept in the menu for access plugins only is no
+					// destination of its own (includes/brikpanel-screen-menu.php).
+					if ( ! is_array( $sub ) || empty( $sub[0] ) || empty( $sub[2] ) || ! self::row_is_openable( $sub )
+						|| ( function_exists( 'brikpanel_is_menu_only_row' ) && brikpanel_is_menu_only_row( $sub ) ) ) {
 						continue;
 					}
 					$label = $this->clean_menu_title( $sub[0] );

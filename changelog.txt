@@ -2,6 +2,60 @@
 
 This file contains the full release history of BrikPanel. The latest releases are kept in readme.txt; older versions are archived here.
 
+= 3.3.33 (2026-10-07) =
+* New: **Arrange the dashboard box by box.** Setting: Dashboard → "Dashboard sections" now lists every box on its own, such as Recent orders, Order rates and the Conversion funnel, so you can move or hide each one. Boxes joined by a line sit side by side, and a new "Customize" link on the dashboard's date line opens the list. Layouts you saved before look the same.
+* New: **Product weights on the order screen.** The order's Items tab shows each product's weight, such as "0.12 kg × 3 = 0.36 kg", and a "Total weight" line under the totals, with a note when a product that ships has no weight. Orders without weighted products look as before.
+* New: **The products list on phones works like an app.** Each row shows the image, name, price and a stock dot, a tap opens the product, and coming back keeps your place. Filters, sorting, quick edit and row actions open from the bottom of the screen, "Select" or a long press picks several products, more load as you scroll, and Undo brings back a trashed product.
+* New: **The product editor on phones works like an app.** Back and ⋯ sit at the top, the status and Save at the bottom, images are square tiles, each variation has its own page, and less used cards such as Organization, Description, Shipping and Linked products open as pages. Computers and tablets look as before.
+* New: **Ignore BrikPanel's access rules.** Setting: Access control → "Ignore BrikPanel's access rules", off by default. Turn it on when a plugin such as Advanced Access Manager or B2BKing decides who sees what: BrikPanel then stops applying its own choices of who sees menu items, top bar controls, dashboard widgets and orders analytics, and stops blocking hidden pages. Your saved rules are kept.
+* Tweak: **The new order popup works in a background tab.** The popup and the chime no longer stop when the BrikPanel tab is in the background. With several tabs open, the chime plays once and the popup shows in the tab you are looking at, after any open window is closed.
+* Tweak: **The new order popup for every new order.** It now also shows for completed orders and for orders on hold, marked "Awaiting payment". On an iPhone the chime works after your first tap, volume 0 is silent, and the item count uses the right plural in every language.
+* Fix: **Store Health on MySQL 8.** On MySQL 8.0.22 and later, the daily "Abandoned cart entries" check failed with a database error: the card stayed Pending, Bot traffic missed fake cart entries, the nightly cleanup could not remove them and the error log got new lines every day. It now works on MySQL 8, MySQL 5.7 and MariaDB.
+* Fix: **Stock total of variable products.** When the main product keeps the stock, it is counted once instead of once per variation, and switched-off variations are left out.
+* Fix: **Adding a category keeps the brands.** In the product editor, "Add new category" emptied the brand list, so the next save removed the product's brands.
+* Fix: **A status change counts as an unsaved change** in the product editor, so you are warned before leaving the page.
+* Tweak: **Stock badges follow your low stock threshold.** In the products list, the stock badge turns amber at the store's low stock threshold instead of a fixed 5, and red below zero.
+* Tweak: **A survey card instead of the newsletter card.** The card at the top of the dashboard opens a 2-minute survey on brksoft.com. The newsletter signup stays in WooCommerce > Settings > BrikPanel, with the survey above it.
+* Tweak: **One message at a time.** The welcome tour, the new store guide, the survey card, the review request and the BrikMentor cards take turns: one at a time, at least 7 days apart, and none while another notice is on the screen.
+* Fix: **Settings search opens the right row.** Six results, such as Dashboard sections and Top bar items, now open at their own row, and a tall row shows from its top.
+* Fix: **Keyboard focus on the order screen.** An item reached with the Tab key no longer hides under the fixed header and tab bar.
+
+= 3.3.31 (2026-10-05) =
+* Fix: **The dashboard in Firefox.** In Firefox, the dashboard's cards stacked one per line and its header took the phone layout on every screen size, and on a phone the Low stock list turned into cards. All of them look as they should again.
+* Fix: **The dashboard on a zoomed page.** On a zoomed page, the cards could stack one per line and the header could switch to its phone layout, even on a wide screen.
+* Fix: **The Order locations globe no longer goes blank.** Browsers without WebGL, such as LibreWolf, showed an empty box, and a globe that lost its graphics context stayed blank until the page was reloaded. A drawn globe now stands in, and the 3D globe comes back on its own.
+
+= 3.3.30 (2026-10-05) =
+* Fix: **Visitors are counted once a day, and only real people.** A visitor now counts after they move the mouse, tap, scroll or press a key. Bots, cloud servers, your staff and pages served from an old cache no longer add visitors, product views, add-to-carts or checkouts. A first-party cookie, `brikpanel_human`, remembers the check for 30 days and follows your cookie consent setting.
+* New: **Bot traffic is cleaned up every night.** Store Health lowers past days that bots inflated, leaves days with real sales for you to decide, and keeps an Undo. Days you put back with Undo are never touched again.
+* Tweak: **Simpler stock for variations.** Each variation now has one stock box with an ∞ button beside it: type how many you have, or press ∞ to sell it without counting. New variations start at 0, the bulk edit bar has the same ∞ button, and "Allow backorders?" sits in each variation's details.
+* Fix: **Top referrers tells two rows of the same site apart.** When one site sends visits through two channels, such as Google ads and Google search, each of its rows in Top referrers now names its channel.
+
+= 3.3.29 (2026-10-04) =
+* New: **A new dashboard look.** The store cards fit in one row, each with a small trend line, and one sales chart switches between Revenue, Orders and Avg. order value, with the previous period dashed. The Excel export and "Copy everything" stay the same.
+* New: **Today's sales in Live visitors.** The card lists up to 5 visitors and "N more". When no one is on the store, it shows today's sales so far and sales per hour.
+* New: **Products and pages card.** Best sellers, Most viewed pages and Most added to cart in one card with tabs. Most viewed pages also counts pages that are not products, such as the shop and home page.
+* Tweak: **Recent orders, Visitors and Customers redrawn.** Recent orders looks like the orders list. Visitors has Devices, Sources and Top campaigns tabs, and Customers shows new and returning customers with the VIP, loyal and at risk groups. Low stock rows show a badge and the variation.
+* Tweak: **The dashboard loads less.** BrikPanel draws its own charts, so Chart.js is loaded only when BrikMarket is active.
+* New: **A new welcome tour.** New users get a 4-step window instead of the 9-step tour. Each step shows one thing BrikPanel does with a small sketch, and the last screen links to the Dashboard, Orders, Customers and Google Sheets. If you closed the old tour, it does not open again.
+* New: **Deactivation survey.** Deactivating BrikPanel from the Plugins screen opens a short, optional question about why. "Skip and deactivate" sends nothing; "Send and deactivate" shares only your answer, the days BrikPanel was in use, version numbers and your admin language with brksoft.com, never your site address or store data.
+* New: **The products list remembers your sort.** The sort you pick is saved for each user and used the next time the list opens. Filters and the "Sort" button's custom order are not kept.
+* Fix: **Sorting by price keeps products without a price.** They no longer drop out of the list, and variable products sort by their lowest price going up and their highest price going down.
+
+= 3.3.28 (2026-10-02) =
+* New: **Top campaigns.** On the dashboard, Visitors by device → "Sources" lists the 5 campaigns that brought the most revenue, with their orders, conversion rate and revenue. The Excel export gets a "Campaigns" sheet. Campaign visits are counted from this version on and follow your visitor tracking and cookie consent settings.
+* New: **Abandoned carts in the Conversion funnel.** A line under the funnel shows the carts abandoned in the selected period, their value, how many were recovered and the change from the previous period. The Excel export has the same figures.
+* New: **Exclude products and saved segments.** Segments → More filters → "Exclude products" leaves out orders, or customers, that include those products. "+ Save as segment" keeps any filter under a name, as a button next to the presets.
+* Fix: **The Segments product filter finds new orders.** It now also finds orders WooCommerce has not yet processed for analytics, and a variable product covers all its variations. "Reset" no longer sends the old status choice.
+* Fix: **Menus moved into More keep their pages.** Tools, Settings or any other menu you move into the sidebar's More menu now opens its pages under it, and the page you are on stays highlighted.
+* Fix: **The dashboard header fits when BrikMarket is active.** The date buttons and "Copy everything" no longer shrink at every width; they stay in one line on wide screens, as they do without BrikMarket.
+
+= 3.3.27 (2026-10-01) =
+* Fix: **Connect buttons explain what went wrong.** When Google Sheets, Google Ads or Meta cannot be connected because the site cannot reach brksoft.com, BrikPanel tries once more by itself, then shows the reason and what to do in a box that stays on screen, with technical details you can send to your host.
+* Fix: **A failed or cancelled Google or Meta sign-in is explained.** The message now appears on the right card in plain words, instead of a raw code like "access_denied" or no message at all.
+* Fix: **Error messages are no longer hidden by Cloudflare or nginx.** Google Sheets and Ad Platforms errors reach the screen as written, so you no longer see "click Sync now again" under Connect or "Unexpected token '<'".
+* Tweak: **The Google Sheets page opens fast before you connect.** It no longer asks brksoft.com for settings it does not need yet. On sites that cannot reach brksoft.com, the page took about 20 seconds to open.
+
 = 3.3.26 (2026-09-29) =
 * New: **WhatsApp follow-up message.** Setting: Orders → "Message per order status" → "Follow-up message", one per status, empty by default. The first WhatsApp press on an order opens the status message; later presses open the follow-up ("Send follow-up") until the order's status changes.
 * Fix: **WhatsApp buttons follow a status change right away.** After changing the status from the list badge or the tracking number window, they no longer open the old status's message until the page is reloaded.
@@ -48,7 +102,7 @@ This file contains the full release history of BrikPanel. The latest releases ar
 * Fix: **Saving a product no longer erases Flatsome, Porto or CommerceKit data,** such as custom tabs, labels, layouts, custom CSS and videos.
 * Fix: **Saving before the gallery finished loading no longer removes product images** (a 3.3.22 regression). Changing a variation image or the gallery now warns about unsaved changes.
 * Fix: **Saving with a section closed no longer clears** a variation's sale dates and supplier, or a simple product's weight and dimensions.
-* Fix: **Names with "&" no longer show as "&amp;"** in lists, the product editor, pickers, search, emails, CSV exports and Google Sheets. Sheets writes a variation's option name instead of its slug, and tags like "<5kg" and ">10kg" no longer merge into one.
+* Fix: **Names with "&" no longer show as `&amp;`** in lists, the product editor, pickers, search, emails, CSV exports and Google Sheets. Sheets writes a variation's option name instead of its slug, and tags like "<5kg" and ">10kg" no longer merge into one.
 * Fix: **Forgotten tabs no longer stay in Live visitors for days.** A page untouched for 30 minutes drops off the Live list and comes back as soon as the visitor is active. Idle tabs stop pinging the server.
 * Fix: **Tapping a status tab on a phone no longer selects every order.** An invisible "Select all" label covered the orders list.
 * Fix: **The customer name stays in the orders list.** When the Customer column is hidden or removed by another plugin, the name shows next to the order number. Long names no longer widen the list on phones.

@@ -392,6 +392,12 @@ function brikpanel_is_bot_request( $count_speculative_as_bot = true ) {
  * @return bool
  */
 function brikpanel_scan_request_for_bot( $ua, $is_bot ) {
+    // A client that says it is automated is believed whatever its user agent
+    // claims; the device allowlist below does not rescue it.
+    if ( ! $is_bot && brikpanel_request_declares_automation() ) {
+        $is_bot = true;
+    }
+
     // An allowlisted device name exempts the request from the built-in token
     // list only. The merchant's own exclusions below still apply: someone who
     // adds their office IP means it regardless of what they browse from.
@@ -444,6 +450,22 @@ function brikpanel_scan_request_for_bot( $ua, $is_bot ) {
     }
 
     return $is_bot;
+}
+
+/**
+ * Whether the request carries a header only automated clients send (3.3.30).
+ *
+ * - Signature-Agent: AI agents that sign their requests (Web Bot Auth, RFC
+ *   9421) name themselves here. ChatGPT's agent browses with an ordinary
+ *   Chrome user agent and sends `Signature-Agent: "https://chatgpt.com"` on
+ *   every request, its page scripts' requests included.
+ * - From: crawlers put their operator's contact address in it (Googlebot,
+ *   Bingbot and many smaller ones). No browser sends it.
+ *
+ * @return bool
+ */
+function brikpanel_request_declares_automation() {
+    return ! empty( $_SERVER['HTTP_SIGNATURE_AGENT'] ) || ! empty( $_SERVER['HTTP_FROM'] );
 }
 
 /**

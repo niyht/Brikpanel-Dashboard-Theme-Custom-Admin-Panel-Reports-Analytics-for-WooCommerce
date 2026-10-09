@@ -2,9 +2,21 @@
 if( ! defined( 'ABSPATH' ) ) exit;
 
 /**
- * Sepete ekleme olayını sayar ve veritabanına kaydeder.
+ * Store-wide "Add to cart" figure: one per visitor per day.
+ *
+ * Runs on woocommerce_add_to_cart, which every add path fires (`?add-to-cart=`
+ * links, the classic AJAX button, the block cart's Store API). Until 3.3.30 it
+ * counted any client with a browser-like name, so a script that never ran
+ * JavaScript, or a Store API loop, filled the funnel. Now the browser must
+ * carry the "this is a person" mark (includes/brikpanel-human-proof.php) or be
+ * a signed-in customer; otherwise the add waits in the shopper's session and
+ * is counted the moment the same session's tracker proves itself.
+ *
+ * @param string $cart_item_key Unused.
+ * @param int    $product_id    Unused here (see brikpanel_track_cart_addition()).
+ * @return void
  */
-function brikpanel_add_to_cart_counter() {
+function brikpanel_add_to_cart_counter( $cart_item_key = '', $product_id = 0 ) {
     // Master tracking switch and cookie-consent gate. This counter runs on a
     // pure PHP hook with no JavaScript involved, so the visitor's consent has
     // to be readable server-side — that is what BrikPanel's own consent
@@ -13,13 +25,8 @@ function brikpanel_add_to_cart_counter() {
         return;
     }
 
-    // Skip tracking for admin users.
+    // Store staff are never counted.
     if ( brikpanel_is_admin_user() ) {
-        return;
-    }
-
-    // Cookie varsa, bu kullanıcı bugün zaten sayılmış demektir.
-    if ( isset( $_COOKIE['brikpanel_add_to_cart_count_cookie'] ) ) {
         return;
     }
 
@@ -27,26 +34,44 @@ function brikpanel_add_to_cart_counter() {
         return;
     }
 
-    // Reaching this line means the client did not present our daily cookie, so
-    // as far as this counter can tell it remembers nothing about today. That is
-    // either a real shopper's first add — counted, exactly as before — or a
-    // client that discards its memory between turns, which would otherwise be
-    // counted once per `?add-to-cart=` URL it follows. A server-side lock keyed
-    // on its address applies the same one-per-day cap the cookie gives everyone
-    // else. Holding cookies is not proof of memory, so this no longer waves a
-    // client through just because it sent some.
-    //
-    // Signed-in customers are exempt: their identity is durable and their
-    // cookie demonstrably works, so guessing at an address would only make two
-    // colleagues behind one office IP cancel each other out.
-    if ( ! is_user_logged_in()
-        && function_exists( 'brikpanel_client_daily_lock' )
-        && ! brikpanel_client_daily_lock( 'atc' ) ) {
+    if ( function_exists( 'brikpanel_request_is_human' ) && ! brikpanel_request_is_human() ) {
+        if ( function_exists( 'brikpanel_pending_add' ) ) {
+            brikpanel_pending_add( 'atc' );
+        }
         return;
     }
 
+    brikpanel_count_store_add_to_cart();
+}
+add_action( 'woocommerce_add_to_cart', 'brikpanel_add_to_cart_counter', 10, 2 );
+
+/**
+ * Count one store-wide add-to-cart for this browser today, unless it already
+ * has one. Shared by the hook above and by the release of parked counts.
+ *
+ * Callers apply the tracking, staff, bot and person checks.
+ *
+ * @return bool Whether a count was written.
+ */
+function brikpanel_count_store_add_to_cart() {
+    // Several adds can arrive in one request (a Store API batch, a shared
+    // cart link), before any cookie this request sets could be read back.
+    static $done = false;
+    if ( $done ) {
+        return false;
+    }
+
+    // Counted today already: the mark's flag, or the cookie earlier releases
+    // set (still honoured on the day this release arrives).
+    if ( ( function_exists( 'brikpanel_human_has_flag' ) && brikpanel_human_has_flag( 'a' ) )
+        || isset( $_COOKIE['brikpanel_add_to_cart_count_cookie'] ) ) {
+        $done = true;
+        return false;
+    }
+    $done = true;
+
     global $wpdb;
-    $table_name   = $wpdb->prefix . "brikpanel_visitors";
+    $table_name   = $wpdb->prefix . 'brikpanel_visitors';
     $current_date = wp_date( 'Y-m-d' );
 
     $updated = $wpdb->query( $wpdb->prepare(
@@ -62,12 +87,11 @@ function brikpanel_add_to_cart_counter() {
         );
     }
 
-    // --- DÜZELTME: Cookie'yi gün sonuna kadar geçerli yapıyoruz ---
-    // Bu, saat dilimi ne olursa olsun, cookie'nin tam olarak gece yarısı dolmasını sağlar.
-    $seconds_until_midnight = strtotime('tomorrow', current_time('timestamp')) - current_time('timestamp');
-    setcookie('brikpanel_add_to_cart_count_cookie', '1', time() + $seconds_until_midnight, COOKIEPATH, COOKIE_DOMAIN);
+    if ( function_exists( 'brikpanel_human_mark' ) ) {
+        brikpanel_human_mark( 'a' );
+    }
+    return true;
 }
-add_action( 'woocommerce_add_to_cart', 'brikpanel_add_to_cart_counter');
 
 
 /**

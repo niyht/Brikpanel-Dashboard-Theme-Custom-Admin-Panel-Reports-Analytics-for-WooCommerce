@@ -390,6 +390,9 @@ function brikpanel_tracking_cookie_names() {
     return [
         'brikpanel_vid',
         BRIKPANEL_CONSENT_COOKIE,
+        function_exists( 'brikpanel_human_cookie_name' ) ? brikpanel_human_cookie_name() : 'brikpanel_human',
+        // No longer written since 3.3.30 (the person mark carries both flags);
+        // still expired here for browsers that hold one from before.
         'brikpanel_add_to_cart_count_cookie',
         'brikpanel_checkout_count_cookie',
     ];
@@ -558,36 +561,18 @@ function brikpanel_consent_api_register() {
         __( 'Remembers that this visitor allowed analytics, so the choice survives the next page load.', 'brikpanel' )
     );
     wp_add_cookie_info(
-        'brikpanel_add_to_cart_count_cookie',
+        function_exists( 'brikpanel_human_cookie_name' ) ? brikpanel_human_cookie_name() : 'brikpanel_human',
         'BrikPanel',
         $category,
-        __( 'Until midnight', 'brikpanel' ),
-        __( 'Counts an add-to-cart once per day per visitor for the conversion funnel.', 'brikpanel' )
+        __( '30 days', 'brikpanel' ),
+        __( 'Shows that this browser was used by a person and what was already counted for it today (visit, product view, add-to-cart, checkout), so bots and repeat counts stay out of the store\'s analytics.', 'brikpanel' )
     );
     wp_add_cookie_info(
-        'brikpanel_checkout_count_cookie',
-        'BrikPanel',
-        $category,
-        __( 'Until midnight', 'brikpanel' ),
-        __( 'Counts a checkout visit once per day per visitor for the conversion funnel.', 'brikpanel' )
-    );
-    wp_add_cookie_info(
-        'brikpanel_visitor_viewed_*',
+        'brikpanel_campaign_viewed',
         'BrikPanel',
         $category,
         __( 'Until cleared', 'brikpanel' ),
-        __( 'Marks that this browser has already been counted as a visitor today.', 'brikpanel' ),
-        '',
-        false,
-        false,
-        'LOCALSTORAGE'
-    );
-    wp_add_cookie_info(
-        'brikpanel_product_viewed_*',
-        'BrikPanel',
-        $category,
-        __( 'Until cleared', 'brikpanel' ),
-        __( 'Marks that this browser has already been counted as a product viewer today.', 'brikpanel' ),
+        __( 'Marks the campaign links this browser has already been counted for today.', 'brikpanel' ),
         '',
         false,
         false,

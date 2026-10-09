@@ -2,7 +2,15 @@
 if( ! defined( 'ABSPATH' ) ) exit;
 
 /**
- * Ödeme sayfası ziyaretlerini sayar ve veritabanına kaydeder.
+ * Checkout visits for the funnel: one per visitor per day.
+ *
+ * Counted on the checkout page itself (template_redirect, after WooCommerce
+ * sent an empty cart back), so only a client that reached checkout with
+ * something in its cart gets here. Since 3.3.30 it must also be a browser
+ * carrying the "this is a person" mark or a signed-in customer; anyone else
+ * waits in the session until the checkout page's own tracker proves it.
+ *
+ * @return void
  */
 function brikpanel_checkout_counter() {
     // Sadece sitenin ön yüzünde ve ana ödeme sayfasında çalışır.
@@ -17,13 +25,8 @@ function brikpanel_checkout_counter() {
         return;
     }
 
-    // Skip tracking for admin users.
+    // Store staff are never counted.
     if ( brikpanel_is_admin_user() ) {
-        return;
-    }
-
-    // Cookie varsa, bu kullanıcı bugün zaten sayılmış demektir.
-    if ( isset( $_COOKIE['brikpanel_checkout_count_cookie'] ) ) {
         return;
     }
 
@@ -31,21 +34,41 @@ function brikpanel_checkout_counter() {
         return;
     }
 
-    // Same one-per-day cap the cookie above gives real shoppers, applied
-    // server-side to a client that arrives without it. A script looping through
-    // the checkout with a fresh cookie jar each turn sends cookies on the
-    // request itself and remembers nothing between turns, so "it sent a cookie"
-    // was never enough to tell it apart from a returning shopper.
-    //
-    // Signed-in customers are exempt — durable identity, working cookies.
-    if ( ! is_user_logged_in()
-        && function_exists( 'brikpanel_client_daily_lock' )
-        && ! brikpanel_client_daily_lock( 'checkout' ) ) {
+    if ( function_exists( 'brikpanel_request_is_human' ) && ! brikpanel_request_is_human() ) {
+        if ( function_exists( 'brikpanel_pending_add' ) ) {
+            brikpanel_pending_add( 'checkout' );
+        }
         return;
     }
 
+    brikpanel_count_checkout_visit();
+}
+add_action('template_redirect', 'brikpanel_checkout_counter');
+
+/**
+ * Count one checkout visit for this browser today, unless it already has one.
+ * Shared by the hook above and by the release of parked counts.
+ *
+ * Callers apply the tracking, staff, bot and person checks.
+ *
+ * @return bool Whether a count was written.
+ */
+function brikpanel_count_checkout_visit() {
+    static $done = false;
+    if ( $done ) {
+        return false;
+    }
+    $done = true;
+
+    // Counted today already: the mark's flag, or the cookie earlier releases
+    // set (still honoured on the day this release arrives).
+    if ( ( function_exists( 'brikpanel_human_has_flag' ) && brikpanel_human_has_flag( 'c' ) )
+        || isset( $_COOKIE['brikpanel_checkout_count_cookie'] ) ) {
+        return false;
+    }
+
     global $wpdb;
-    $table_name   = $wpdb->prefix . "brikpanel_visitors";
+    $table_name   = $wpdb->prefix . 'brikpanel_visitors';
     $current_date = wp_date( 'Y-m-d' );
 
     $updated = $wpdb->query( $wpdb->prepare(
@@ -61,12 +84,11 @@ function brikpanel_checkout_counter() {
         );
     }
 
-    // --- DÜZELTME: Cookie'yi gün sonuna kadar geçerli yapıyoruz ---
-    // Bu, saat dilimi ne olursa olsun, cookie'nin tam olarak gece yarısı dolmasını sağlar.
-    $seconds_until_midnight = strtotime('tomorrow', current_time('timestamp')) - current_time('timestamp');
-    setcookie('brikpanel_checkout_count_cookie', '1', time() + $seconds_until_midnight, COOKIEPATH, COOKIE_DOMAIN);
+    if ( function_exists( 'brikpanel_human_mark' ) ) {
+        brikpanel_human_mark( 'c' );
+    }
+    return true;
 }
-add_action('template_redirect', 'brikpanel_checkout_counter');
 
 
 /**

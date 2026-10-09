@@ -122,6 +122,28 @@ class Brikpanel_Ads_Settings {
 			&& function_exists( 'brikpanel_ads_meta_disguised' )
 			&& brikpanel_ads_meta_disguised();
 
+		// A failed return from Google or Meta leaves a one-time record, not a
+		// sentence in the address bar. Its box goes into the card of the
+		// platform the merchant clicked, or above the cards when that is not
+		// known or its card is locked (no button to put it beside). The toast
+		// keeps only the headline. Without a record (a reload, or a link
+		// someone typed) there is nothing to show.
+		$connect_errors = [];
+		if ( $flash['tone'] === 'error' ) {
+			$record = Brikpanel_Proxy_Errors::take_flash( Brikpanel_Ads_OAuth::FLASH_PREFIX );
+			$box    = Brikpanel_Proxy_Errors::flash_box( $record, BRIKPANEL_ADS_PROXY_BASE );
+			if ( $box ) {
+				$slot = (string) ( $record['platform'] ?? '' );
+				if ( ( $slot === Brikpanel_Ads_Tokens::PLATFORM_GOOGLE && $google_locked )
+					|| ( $slot === Brikpanel_Ads_Tokens::PLATFORM_META && $meta_locked )
+					|| ! in_array( $slot, [ Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, Brikpanel_Ads_Tokens::PLATFORM_META ], true ) ) {
+					$slot = '_page';
+				}
+				$connect_errors[ $slot ] = $box;
+			}
+			$flash['message'] = $box ? ( $box['title'] !== '' ? $box['title'] : $box['reason'] ) : '';
+		}
+
 		include BRIKPANEL_ADS_DIR . 'views/page.php';
 	}
 
@@ -164,7 +186,7 @@ class Brikpanel_Ads_Settings {
 				'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
 				'nonce'         => wp_create_nonce( self::NONCE_ACTION ),
 				'storeCurrency' => function_exists( 'get_woocommerce_currency' ) ? (string) get_woocommerce_currency() : '',
-				'i18n'          => [
+				'i18n'          => array_merge( [
 					'connecting'         => __( 'Connecting…', 'brikpanel' ),
 					'disconnect_confirm' => __( 'Disconnect this platform? Your synced spend data will be deleted.', 'brikpanel' ),
 					'syncing'            => __( 'Syncing…', 'brikpanel' ),
@@ -218,7 +240,7 @@ class Brikpanel_Ads_Settings {
 						'total_row'    => __( 'All time', 'brikpanel' ),
 						'months'       => __( 'Monthly breakdown', 'brikpanel' ),
 					],
-				],
+				], Brikpanel_Proxy_Errors::js_strings( Brikpanel_Proxy_Errors::host( BRIKPANEL_ADS_PROXY_BASE ) ) ),
 			]
 		);
 	}
@@ -323,7 +345,11 @@ class Brikpanel_Ads_Settings {
 			}
 		} catch ( \Throwable $e ) {
 			Brikpanel_Ads_Logger::log( $platform, 'list_accounts failed: ' . $e->getMessage() );
-			wp_send_json_error( [ 'message' => $e->getMessage() ], 502 );
+			// Every failure on this page is answered with HTTP 200 and
+			// success:false. A 5xx is replaced by a front server (Cloudflare, an
+			// nginx proxy) with its own HTML page, and the merchant read the
+			// browser's "Unexpected token '<'" instead of this message.
+			wp_send_json_error( [ 'message' => $e->getMessage() ] );
 		}
 
 		// Remembered for an hour so the card can name the accounts the merchant
@@ -391,7 +417,9 @@ class Brikpanel_Ads_Settings {
 
 		$result = self::apply_account_selection( $platform, $mode, $ids, $base );
 		if ( empty( $result['ok'] ) ) {
-			wp_send_json_error( [ 'message' => $result['message'] ], (int) ( $result['status'] ?? 400 ) );
+			// A 5xx would be swapped for a front server's own page (see ajax_list_accounts()).
+			$status = (int) ( $result['status'] ?? 400 );
+			wp_send_json_error( [ 'message' => $result['message'] ], $status >= 500 ? null : $status );
 		}
 		wp_send_json_success( [ 'message' => $result['message'] ] );
 	}
@@ -596,7 +624,7 @@ class Brikpanel_Ads_Settings {
 			wp_send_json_error( [ 'message' => __( 'Connect this platform first.', 'brikpanel' ) ], 400 );
 		}
 		if ( ! Brikpanel_Ads_Tokens::set_meta( Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, 'login_customer_id', $value ) ) {
-			wp_send_json_error( [ 'message' => __( 'Could not save the manager account ID. Please try again.', 'brikpanel' ) ], 500 );
+			wp_send_json_error( [ 'message' => __( 'Could not save the manager account ID. Please try again.', 'brikpanel' ) ] );
 		}
 		wp_send_json_success();
 	}
@@ -622,7 +650,7 @@ class Brikpanel_Ads_Settings {
 		try {
 			$result = ( new Brikpanel_Ads_Sync() )->run_inline( $platform, time() + Brikpanel_Ads_Sync::INLINE_BUDGET_SECONDS );
 		} catch ( \Throwable $e ) {
-			wp_send_json_error( [ 'message' => $e->getMessage() ], 502 );
+			wp_send_json_error( [ 'message' => $e->getMessage() ] );
 		}
 
 		// Distinct days, not rows: two accounts synced over the same week are

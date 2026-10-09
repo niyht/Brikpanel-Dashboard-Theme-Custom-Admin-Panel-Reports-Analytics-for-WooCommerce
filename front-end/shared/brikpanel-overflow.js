@@ -153,6 +153,29 @@
 		place(wrap);
 	}
 
+	// A menu marked `brikpanel-overflow--sheet` opens on a phone as a sheet
+	// from the bottom edge (front-end/shared/brikpanel-sheet.js), its items as
+	// a list of big rows. Picking one clicks the real item. The wrapper may
+	// name what the menu acts on: data-bp-sheet-title / -sub / -img.
+	function openAsSheet(wrap, trigger) {
+		var sheet = window.brikpanelSheet;
+		if (!sheet || !wrap.classList.contains('brikpanel-overflow--sheet') || !sheet.isPhone()) {
+			return false;
+		}
+		closeAll(null);
+		var title = wrap.getAttribute('data-bp-sheet-title') || '';
+		sheet.fromMenu(menuOf(wrap), {
+			trigger: trigger,
+			label: trigger.getAttribute('aria-label') || '',
+			context: title ? {
+				title: title,
+				sub: wrap.getAttribute('data-bp-sheet-sub') || '',
+				img: wrap.getAttribute('data-bp-sheet-img') || ''
+			} : null
+		});
+		return true;
+	}
+
 	// Capture: the trigger is ours alone, so nothing else (a row that opens on
 	// click, say) should see a tap on it.
 	document.addEventListener('click', function (e) {
@@ -162,6 +185,9 @@
 			if (wrap) {
 				e.preventDefault();
 				e.stopPropagation();
+				if (openAsSheet(wrap, t)) {
+					return;
+				}
 				if (wrap.classList.contains(OPEN)) {
 					close(wrap, false);
 				} else {

@@ -9,6 +9,11 @@
     var PE = brikpanelPE || {};
     var productData = window.brikpanelProductData || {};
 
+    // False for someone who may edit but not publish products: the page
+    // offers them Draft and Pending review, and the button reads "Submit for
+    // review" on the latter (the save applies WordPress's own rule too).
+    var canPublishProducts = PE.can_publish !== '0';
+
     // `imagesReady` stays false until the gallery has been hydrated from the
     // saved product. Until then a save must stay silent about images rather
     // than claim there are none — see the payload builder in saveProduct().
@@ -104,11 +109,14 @@
         initBackorderNotify();
         initLinkedProducts();
         initThirdPartyTabLazyLoad();
+        initThirdPartyTabTypes();
+        initBlocksySwatchesBridge();
         initWcDatawrapAnchor();
         initNativeLabelBridge();
         initThirdPartyHint();
         initCogsMirror();
         loadExistingData();
+        initPhone();
     }
 
     /* Discovery card shown when other plugins add fields to this product but
@@ -240,7 +248,13 @@
        classes the plugin listens on; firing a click here triggers the lazy
        render. The panel itself stays visible via CSS regardless. */
     function initThirdPartyTabLazyLoad() {
-        var $sims = $('.brikpanel-pe-wc-tabsim');
+        // Not for sections that are only on the page so their values survive
+        // the save ([data-bp-unpicked]): WooCommerce never opens a tab the
+        // merchant did not open, and every plugin handles that unloaded state
+        // on save. Loading them would also fire their scripted changes as edits.
+        var $sims = $('.brikpanel-pe-wc-tabsim').filter(function () {
+            return !$(this).closest('[data-bp-unpicked]').length;
+        });
         if (!$sims.length) return;
         $sims.each(function () {
             // Trigger handlers bound to the <li> (WC's `.{key}_tab`) and the
@@ -248,6 +262,162 @@
             // href and scroll the page to the anchor.
             $(this).find('li').addBack().trigger('click');
         });
+    }
+
+    /* WooCommerce shows a plugin's product-data tab only for the product types
+       its `show_if_*` / `hide_if_*` classes allow: Blocksy's Swatches tab is for
+       variable products only. The server prints each section shown or hidden for
+       the stored type (data-wc-tab-class carries those classes); this keeps it in
+       step while the merchant switches the type here. Same rule as
+       Brikpanel_Product_Editor::wc_tab_shown_for(), keep the two in step. A
+       hidden section still posts its fields. With no section left on screen the
+       whole card goes, by inline display, which is what the phone layout reads. */
+    function initThirdPartyTabTypes() {
+        var card = document.querySelector('.brikpanel-pe-wc-fields');
+        if (!card) return;
+        var groups = [].slice.call(card.querySelectorAll('.brikpanel-pe-wc-tab-group[data-wc-tab-class]:not([data-bp-unpicked])'));
+        if (!groups.length) return;
+
+        function isVariableType(t) {
+            return t === 'variable' || t.indexOf('variable-') === 0 || t.indexOf('variable_') === 0;
+        }
+        function context() {
+            var $pt = $('#bpe-product-type');
+            var type = ($pt.length && $pt.val()) ? String($pt.val()) : '';
+            if (!type) {
+                var stored = String(productData.product_type || 'simple');
+                type = $('#bpe-var-toggle').is(':checked') ? 'variable' : (isVariableType(stored) ? 'simple' : stored);
+            }
+            // Virtual and downloadable are per variation on variable products,
+            // and WooCommerce clears them on grouped and external ones.
+            var flags = !isVariableType(type) && type !== 'grouped' && type !== 'external';
+            var digital = flags && $('#bpe-digital-toggle').is(':checked');
+            return { type: type, digital: digital, virtual: flags && ($('#bpe-virtual-toggle').is(':checked') || digital) };
+        }
+        function shown(classes, c) {
+            var shows = classes.filter(function (x) { return x.indexOf('show_if_') === 0; });
+            var on = !shows.length
+                || shows.indexOf('show_if_' + c.type) !== -1
+                || (c.virtual && shows.indexOf('show_if_virtual') !== -1)
+                || (c.digital && shows.indexOf('show_if_downloadable') !== -1);
+            if (classes.indexOf('hide_if_' + c.type) !== -1
+                || (c.virtual && classes.indexOf('hide_if_virtual') !== -1)
+                || (c.digital && classes.indexOf('hide_if_downloadable') !== -1)) {
+                on = false;
+            }
+            return on;
+        }
+        function sync() {
+            var c = context();
+            groups.forEach(function (g) {
+                g.hidden = !shown(String(g.getAttribute('data-wc-tab-class') || '').split(/\s+/).filter(Boolean), c);
+            });
+            var any = [].some.call(card.querySelectorAll('.brikpanel-pe-wc-tab-group'), function (g) {
+                return !g.hidden && !g.hasAttribute('data-bp-unpicked') && g.style.display !== 'none';
+            });
+            card.style.display = any ? '' : 'none';
+            remountSwatchesIfShown();
+            phoneSummaries();
+        }
+        $(document).on('change', '#bpe-var-toggle, #bpe-product-type, #bpe-virtual-toggle, #bpe-digital-toggle', sync);
+        sync();
+    }
+
+    /* Blocksy's swatches editor (Blocksy Companion Pro) is a React app that
+       Blocksy mounts into its own panel a second after load. It keeps the whole
+       swatch setup in one hidden field, `ct-woo-attributes-list`, which the save
+       forwards with the card's other fields. The server prints a hidden copy of
+       the product's attributes (#bpe-native-attrs) for it to read, because this
+       editor has no WooCommerce Attributes panel.
+       - Its controls (type select, tooltip buttons, the media picker) fire no
+         event this page hears, so an observer compares the field with what was
+         loaded and marks the product unsaved.
+       - A save can create attribute values (new term ids): the server hands back
+         fresh rows and Blocksy is asked to read them again.
+       - On a slow page Blocksy can look before its panel is parsed and never
+         mount, so it is asked once more after load.
+       - If the field is gone at save time (Blocksy's app crashed), the save
+         sends the loaded value, so Blocksy does not read the gap as "delete". */
+    var swatches = { panel: null, loaded: null, baseline: null, pendingRemount: false };
+
+    function swatchesValue() {
+        var input = swatches.panel && swatches.panel.querySelector('[name="ct-woo-attributes-list"]');
+        return input ? input.value : null;
+    }
+
+    // Blocksy stores `[]` for "none" and re-encodes `\/` as `/`: compare the data.
+    function swatchesNorm(raw) {
+        if (raw === null || raw === undefined) return null;
+        try {
+            var v = JSON.parse(raw || '{}');
+            return JSON.stringify(v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+        } catch (e) {
+            return String(raw);
+        }
+    }
+
+    function initBlocksySwatchesBridge() {
+        var panel = document.querySelector('.brikpanel-pe-wc-fields #ct_product_variation_swatches');
+        if (!panel) return;
+        swatches.panel = panel;
+        swatches.loaded = swatchesValue();
+        swatches.baseline = swatchesNorm(swatches.loaded);
+        if (typeof MutationObserver !== 'undefined') {
+            var timer = 0;
+            new MutationObserver(function () {
+                if (timer) return;
+                timer = setTimeout(function () {
+                    timer = 0;
+                    var now = swatchesValue();
+                    if (now !== null && swatches.baseline !== null && swatchesNorm(now) !== swatches.baseline) state.dirty = true;
+                }, 60);
+            }).observe(panel, { subtree: true, childList: true, attributes: true });
+        }
+        var retry = function () {
+            setTimeout(function () {
+                var input = document.getElementById('ct-woo-attributes-list');
+                if (input && input.type !== 'hidden') $(document.body).trigger('woocommerce_attributes_saved');
+            }, 1200);
+        };
+        if (document.readyState === 'complete') { retry(); } else { $(window).on('load', retry); }
+    }
+
+    // Called with the save payload; returns the swatch value being sent.
+    function swatchesBeforeSend(data) {
+        if (document.getElementById('bpe-native-attrs')) data.native_attr_mirror = 1;
+        if (!swatches.panel) return null;
+        if (!data.hasOwnProperty('ct-woo-attributes-list') && swatches.loaded !== null) {
+            data['ct-woo-attributes-list'] = swatches.loaded;
+        }
+        return data.hasOwnProperty('ct-woo-attributes-list') ? String(data['ct-woo-attributes-list']) : null;
+    }
+
+    function afterSwatchesSave(resp, sent) {
+        if (swatches.panel && sent !== null) {
+            swatches.loaded = sent;
+            swatches.baseline = swatchesNorm(sent);
+            var now = swatchesValue();
+            // Changed again while the save was in flight: still unsaved.
+            if (now !== null && swatchesNorm(now) !== swatches.baseline) state.dirty = true;
+        }
+        var box = document.getElementById('bpe-native-attrs');
+        var mirror = resp && resp.native_attr_mirror;
+        if (!box || !mirror || typeof mirror.html !== 'string' || box.getAttribute('data-hash') === String(mirror.hash)) return;
+        box.innerHTML = mirror.html; // Built and escaped server-side.
+        box.setAttribute('data-hash', String(mirror.hash));
+        swatches.pendingRemount = true;
+        remountSwatchesIfShown();
+    }
+
+    // Blocksy rebuilds its editor from the attribute rows on this WooCommerce
+    // event. Held while the section is hidden; a type change that shows it
+    // calls this again.
+    function remountSwatchesIfShown() {
+        if (!swatches.pendingRemount || !swatches.panel) return;
+        var group = $(swatches.panel).closest('.brikpanel-pe-wc-tab-group')[0];
+        if (group && (group.hidden || group.hasAttribute('data-bp-unpicked'))) return;
+        swatches.pendingRemount = false;
+        $(document.body).trigger('woocommerce_attributes_saved');
     }
 
     /* Hidden copies of WooCommerce's native price/stock/weight labels
@@ -551,6 +721,7 @@
         $('#bpe-add-variation').on('click', addVariationManually);
         $('#bpe-clear-vars').on('click', clearAllVariations);
         $('#bpe-apply-bulk').on('click', applyBulk);
+        $('#bpe-bulk-stock-inf').on('click', toggleBulkUnlimited);
         // The sort select is an action menu: picking a mode sorts immediately
         // and the select snaps back to its placeholder.
         $('#bpe-var-sort').on('change', applyVariationSort);
@@ -657,6 +828,9 @@
             // A scripted event has no originalEvent (jQuery .trigger()) or is
             // untrusted (dispatchEvent); a real edit is always trusted.
             if (wcFieldsBooting && (!e.originalEvent || !e.originalEvent.isTrusted)) return;
+            // A section kept only for its values cannot be edited: whatever its
+            // own scripts do there is not the merchant's change.
+            if ($(e.target).closest('[data-bp-unpicked]').length) return;
             state.dirty = true;
         });
         // Password field lives in the header — track it separately
@@ -838,9 +1012,38 @@
             || (schedulingOn && (status === 'publish') && pubDateIsFuture());
         if (willSchedule) {
             $pub.text(PE.i18n.schedule || 'Schedule');
+        } else if (!canPublishProducts) {
+            // Someone who may not publish: the label follows the chosen status
+            // (the server prints the same at load), not the captured baseline,
+            // which would keep "Submit for review" after a switch to Draft.
+            if (status === 'pending') {
+                $pub.text(PE.i18n.submit_review);
+            } else if (status === 'publish' || status === 'private' || status === 'password') {
+                $pub.text(PE.i18n.update);
+            } else {
+                $pub.text(PE.i18n.save);
+            }
         } else {
             $pub.text($pub.data('origLabel'));
         }
+    }
+
+    /* Point the header's status control at `v` without marking the form
+       dirty: after a save whose stored status differs from the one chosen
+       (someone who may not publish asked to publish, a date ahead made it
+       Scheduled). Only for a status the menu lists. */
+    function syncHeaderStatus(v) {
+        var $wrap = $('.brikpanel-pe-status-wrap');
+        var $li = $wrap.find('li[role="option"][data-value="' + v + '"]'); // i18n-ignore: selector fragment
+        if (!$wrap.length || !$li.length) return;
+        $wrap.attr('data-status', v);
+        $wrap.find('li[role="option"]').removeClass('is-active');
+        $li.addClass('is-active');
+        $('#bpe-status-trigger .brikpanel-pe-status-trigger-label').text($li.find('strong').text());
+        $('#bpe-password-wrap').toggleClass('is-visible', v === 'password');
+        // The phone bar listens to this change (phoneSyncStatus()); the header
+        // sits outside the fields the dirty watcher covers.
+        $('#bpe-status').val(v).trigger('change');
     }
 
     /* Custom Visibility dropdown (replaces the old <select>) */
@@ -883,6 +1086,12 @@
 
         $menu.on('click', 'li[role="option"]', function () {
             var v = $(this).data('value');
+            // The status lives in the header, outside the fields the change
+            // watcher covers: a new one is an unsaved change of its own (the
+            // leave-page warning and the phone's unsaved dot rely on it).
+            if (String(v) !== String($hidden.val())) {
+                state.dirty = true;
+            }
             $hidden.val(v).trigger('change');
             $wrap.attr('data-status', v);
             $menu.find('li').removeClass('is-active');
@@ -1287,7 +1496,8 @@
         frame.on('close', disableClickToToggle);
         frame.on('select', function () {
             frame.state().get('selection').toJSON().forEach(function (att) {
-                addImage(att.id, (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url, att.alt);
+                addImage(att.id, (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url, att.alt,
+                    (att.sizes && att.sizes.medium) ? att.sizes.medium.url : att.url);
             });
         });
         frame.open();
@@ -1596,9 +1806,10 @@
 
     // `alt` is carried purely so the SEO analysers can read the featured
     // image the way they would on the native editor; it is never saved here.
-    function addImage(id, url, alt) {
+    // `urlM`: the medium size, which the phone layout shows for the featured image.
+    function addImage(id, url, alt, urlM) {
         if (state.images.some(function (i) { return i.id === id; })) return;
-        state.images.push({ id: id, url: url, alt: alt ? String(alt) : '' });
+        state.images.push({ id: id, url: url, url_m: urlM || '', alt: alt ? String(alt) : '' });
         renderGallery();
         state.dirty = true;
     }
@@ -1626,6 +1837,7 @@
         $g.sortable('refresh');
         // Whichever image sits first is the featured one the SEO analysers see.
         if (seoScheduleSync) seoScheduleSync();
+        phoneAfterGallery();
     }
 
     function syncImageOrder() {
@@ -2017,7 +2229,10 @@
     function renderedThirdPartyBoxes() {
         var ids = [];
         // Panels sit in per-tab groups inside the product-data card.
+        // Sections kept only for their values ([data-bp-unpicked]) do not count:
+        // the merchant never saw them, so a theme's handler stays detached.
         $('.brikpanel-pe-wc-fields').find('.brikpanel-pe-wc-panel[id], .panel[id]').each(function () {
+            if ($(this).closest('[data-bp-unpicked]').length) return;
             if (ids.indexOf(this.id) === -1) ids.push(this.id);
         });
         $('.brikpanel-pe-metaboxes-wrap .postbox[id]').each(function () { ids.push(this.id); });
@@ -2334,7 +2549,9 @@
 
             // Swap checklist — server-rendered HTML keeps depth classes,
             // hierarchical order, and the newly created term pre-checked.
-            $('.brikpanel-pe-cat-list').html(d.checklist_html);
+            // The category list only: the brand list wears the same class,
+            // and replacing it emptied the product's brands on the next save.
+            $('#bpe-cat-list').html(d.checklist_html);
 
             // The new term is pre-checked, so refresh the primary-category
             // dropdown to include it.
@@ -3828,10 +4045,12 @@
             if ($vfrom.length) v.sale_from = $vfrom.val() || '';
             var $vto = $scope.find('.var-sale-to');
             if ($vto.length) v.sale_to = $vto.val() || '';
-            v.manage_stock   = $row.find('.var-manage').is(':checked');
+            v.manage_stock   = varRowCounts($row);
             v.enabled        = $row.find('.var-enabled').is(':checked');
             v.stock_quantity = $row.find('.var-stock').val();
-            v.stock_status   = $row.find('.var-stock-status').val() || 'instock';
+            var $vstatus = $scope.find('.var-stock-status');
+            if ($vstatus.length) v.stock_status = $vstatus.val() || 'instock';
+            v.backorders     = readVarBackorders($scope, v, v.manage_stock);
             var $vsku = $scope.find('.var-sku');
             if ($vsku.length) v.sku = $vsku.val();
             var $vgtin = $scope.find('.var-gtin');
@@ -3856,10 +4075,6 @@
             }
             var $vendor = $scope.find('.var-vendor');
             if ($vendor.length) v.vendor_id = parseInt($vendor.val(), 10) || 0;
-            if (v.stock_status === 'onbackorder') {
-                var $back = $('#bpe-var-table-body tr.var-backorder-row[data-idx="' + idx + '"] input[type="radio"]:checked');
-                if ($back.length) v.backorders = $back.val() === 'notify' ? 'notify' : 'yes';
-            }
         });
     }
 
@@ -4047,11 +4262,11 @@
                 // every row from the last snapshot and wipe in-flight edits.
                 captureVarTableInputs();
                 captureVarExtraInputs();
-                // The backorder, details and extras rows are siblings of the
-                // main row, not children, so they would stay behind and
-                // visually detach from their variation. Drop them now; `stop`
-                // re-renders and rebuilds them in the new order.
-                $tb.find('tr.var-backorder-row, tr.var-details-row, tr.var-extras-row').remove(); // i18n-ignore: CSS selector, not user-facing text
+                // The details and extras rows are siblings of the main row,
+                // not children, so they would stay behind and visually detach
+                // from their variation. Drop them now; `stop` re-renders and
+                // rebuilds them in the new order.
+                $tb.find('tr.var-details-row, tr.var-extras-row').remove(); // i18n-ignore: CSS selector, not user-facing text
                 ui.placeholder.height(ui.item.outerHeight());
             },
             update: function () {
@@ -4153,11 +4368,11 @@
         Object.keys(combo).forEach(function (k) { sp.push(slugify(combo[k])); });
         return { id: ex ? ex.id : 0, attributes: combo, name: varDisplayName({ attributes: combo }),
             regular_price: ex ? ex.regular_price : '', sale_price: ex ? ex.sale_price : '',
-            stock_quantity: ex ? (ex.stock_quantity !== null ? ex.stock_quantity : '') : '',
+            // New variations count their stock and start at a visible 0, the
+            // way Shopify starts a new variant; ∞ next to the box makes one
+            // Unlimited. Existing ones keep whatever was saved.
+            stock_quantity: ex ? (ex.stock_quantity !== null ? ex.stock_quantity : '') : '0',
             stock_status: ex ? (ex.stock_status || 'instock') : 'instock',
-            // New variations track stock by default (quantity column
-            // active), preserving the prior behavior; existing ones keep
-            // whatever was saved.
             manage_stock: ex ? !!ex.manage_stock : true,
             // New variations are Active by default (matches WooCommerce);
             // regenerating keeps whatever active state an existing row had.
@@ -4200,7 +4415,7 @@
             manual: true,
             name: varDisplayName({ attributes: combo }),
             regular_price: '', sale_price: '', sale_from: '', sale_to: '',
-            stock_quantity: '', stock_status: 'instock', manage_stock: true,
+            stock_quantity: '0', stock_status: 'instock', manage_stock: true,
             enabled: true, backorders: 'no', sku: '', global_unique_id: '',
             tax_class: 'parent', shipping_class: '', images: [],
             cogs_value: '', vendor_id: 0, vendor_sku: ''
@@ -4224,10 +4439,11 @@
        "start this over" is not a change anyone wants to stage. The server
        deletes the children and keeps the parent variable with its attributes
        intact, so the very next click can be "Generate variations". */
-    function clearAllVariations() {
+    // `skipAsk`: the caller already asked (the phone asks with a sheet).
+    function clearAllVariations(e, skipAsk) {
         var n = (state.variations || []).length;
         if (!n) return;
-        if (!window.confirm(countText(PE.i18n.confirm_clear_variations, n))) return;
+        if (skipAsk !== true && !window.confirm(countText(PE.i18n.confirm_clear_variations, n))) return;
 
         var pid = parseInt($('#bpe-product-id').val() || 0, 10) || 0;
         if (!pid) {
@@ -4675,47 +4891,71 @@
        row does not fit (tablet, phone, long translations) the shared helper
        (front-end/shared/brikpanel-fit-table.js) stacks the rows into cards.
 
-       One variation is up to four sibling rows, all carrying its data-idx:
-       main, backorder (optional), details (always rendered, [hidden] while
-       closed) and extras (third-party fields, optional).
+       One variation is up to three sibling rows, all carrying its data-idx:
+       main, details (always rendered, [hidden] while closed) and extras
+       (third-party fields, optional).
        ------------------------------------------------------------------ */
 
     // The controls of one variation: its main row plus its details row.
     // Everything that reads a moved field (sale dates, SKU, GTIN, tax class,
-    // shipping class, supplier) must read through this scope.
+    // shipping class, supplier, the stock rule) must read through this scope.
     function varRowScope($main) {
         var idx = $main.attr('data-idx');
         return $main.add($main.siblings('tr.var-details-row[data-idx="' + idx + '"]'));
     }
 
-    function toggleVarStockControl($el, active) {
-        $el.prop('disabled', !active).toggleClass('is-off', !active);
-        if (active) {
-            $el.removeAttr('aria-hidden').removeAttr('tabindex');
-        } else {
-            $el.attr({ 'aria-hidden': 'true', tabindex: '-1' });
-        }
+    /* Stock cell. One box per row: the quantity, and ∞ beside it. ∞ off, the
+       row counts its stock (WooCommerce "manage stock") and the status follows
+       the number. ∞ on, the row is not counted and the box reads Unlimited, or
+       the manual status kept in the row's details (Out of stock, On backorder).
+       What happens at 0 and the manual status live behind ▾, so the row itself
+       carries a single control instead of a switch plus a box or a list. */
+    function varRowCounts($main) {
+        return $main.find('.var-stock-box').attr('data-manage') === '1';
     }
 
-    /* Track on: the quantity box is live and WooCommerce derives the status.
-       Track off: the status select is live. Both sit in one grid cell, so the
-       column keeps its width whichever one shows. Switching tracking off with
-       "On backorder" already chosen brings its backorder row back. */
-    function setVarTracking($main, on) {
-        var $status = $main.find('.var-stock-status');
-        $main.find('.var-manage').prop('checked', on);
-        toggleVarStockControl($main.find('.var-stock'), on);
-        toggleVarStockControl($status, !on);
-        var idx = $main.attr('data-idx');
-        var $back = $main.siblings('tr.var-backorder-row[data-idx="' + idx + '"]');
-        var showBack = !on && $back.length > 0 && $status.val() === 'onbackorder';
-        if ($back.length) { $back.prop('hidden', !showBack); }
-        $main.toggleClass('has-backorder', showBack);
+    /* The backorder rule a row is saved with: a counted row reads its "Allow
+       backorders?" select (a control that is not on the page keeps the stored
+       rule). An uncounted row has none: WooCommerce resets backorders to "no"
+       on every save of a product that does not manage stock. */
+    function readVarBackorders($scope, v, counts) {
+        if (!counts) return 'no';
+        var $b = $scope.find('.var-backorders');
+        return $b.length ? ($b.val() || 'no') : ((v && v.backorders) || 'no');
+    }
+
+    // The word an uncounted row shows in its box.
+    function syncVarStockStatus($main) {
+        var t = PE.i18n || {};
+        var status = varRowScope($main).find('.var-stock-status').val() || 'instock';
+        var word = status === 'outofstock' ? t.out_of_stock : (status === 'onbackorder' ? t.on_backorder : t.var_unlimited);
+        $main.find('.var-stock-free-text').text(word || '');
+    }
+
+    /* Switch a row between counting and not counting. Until the product is
+       saved the hidden box keeps the number, so switching back brings it back
+       (on save WooCommerce clears the count of a row it does not manage). A
+       counted row with an empty box shows 0, which is what WooCommerce would
+       save. */
+    function setVarStockMode($main, counts, focus) {
+        var $box = $main.find('.var-stock-box');
+        var $qty = $box.find('.var-stock');
+        var $scope = varRowScope($main);
+        $box.attr('data-manage', counts ? '1' : '0').toggleClass('is-unlimited', !counts);
+        $box.find('.var-stock-inf').attr('aria-pressed', counts ? 'false' : 'true');
+        $box.find('.var-stock-free').prop('hidden', counts);
+        $qty.prop('hidden', !counts);
+        if (counts && $.trim($qty.val() || '') === '') { $qty.val('0'); }
+        $scope.find('.var-stock-when-out').prop('hidden', !counts);
+        $scope.find('.var-stock-state').prop('hidden', counts);
+        syncVarStockStatus($main);
+        if (counts && focus) { $qty.trigger('focus').trigger('select'); }
     }
 
     // Whether anything behind ▾ holds a value, so a closed row still says so.
     function varStateHasDetails(v) {
         if (v.sale_from || v.sale_to || v.sku) return true;
+        if (v.manage_stock && v.backorders && v.backorders !== 'no') return true;
         if (productData.gtin_enabled && v.global_unique_id) return true;
         if (productData.tax_enabled && v.tax_class !== undefined && v.tax_class !== null && ('' + v.tax_class) !== 'parent') return true;
         if (productData.shipping_class_enabled && v.shipping_class) return true;
@@ -4734,6 +4974,9 @@
         if ($ship.length && ($ship.val() || '') !== '') { filled = true; }
         var $vendor = $scope.find('.var-vendor');
         if ($vendor.length && (parseInt($vendor.val(), 10) || 0) > 0) { filled = true; }
+        // Selling past 0 is only visible behind ▾, so a counted row says so.
+        var $back = $scope.find('.var-stock-when-out:not([hidden]) .var-backorders');
+        if ($back.length && ($back.val() || 'no') !== 'no') { filled = true; }
         return filled;
     }
 
@@ -4808,7 +5051,7 @@
     // so keep the longest names, a manual row (its dropdowns) and an orphan
     // row (its badge).
     function prepareVarTableClone(copy) {
-        $(copy).find('tr.var-backorder-row, tr.var-details-row, tr.var-extras-row').remove(); // i18n-ignore: CSS selector, not user-facing text
+        $(copy).find('tr.var-details-row, tr.var-extras-row').remove(); // i18n-ignore: CSS selector, not user-facing text
         var rows = Array.prototype.slice.call(copy.querySelectorAll('tbody tr.var-main-row')); // i18n-ignore: CSS selector, not user-facing text
         if (rows.length <= 24) return;
         var nameLen = function (tr) {
@@ -4863,8 +5106,11 @@
         var chevronSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="6 9 12 15 18 9"/></svg>';
         var clearSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true" focusable="false"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
         var moreSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false"><polyline points="9 6 15 12 9 18"/></svg>';
-        var detailField = function (label, control) {
-            return '<label class="brikpanel-pe-var-detail"><span class="brikpanel-pe-var-detail-label">' + esc(label) + '</span>' + control + '</label>';
+        var infSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z"/></svg>';
+        // `cls` names a field the stock mode swaps in and out; `off` starts it
+        // hidden (the shown one depends on whether the row counts its stock).
+        var detailField = function (label, control, cls, off) {
+            return '<label class="brikpanel-pe-var-detail' + (cls ? ' ' + cls : '') + '"' + (off ? ' hidden' : '') + '><span class="brikpanel-pe-var-detail-label">' + esc(label) + '</span>' + control + '</label>';
         };
         var dateField = function (cls, label, val) {
             return detailField(label, '<span class="var-date-field"><input type="text" class="' + cls + ' var-date" value="' + esc(val || '') + '" placeholder="' + esc(t.date_placeholder) + '" autocomplete="off">' +
@@ -4876,9 +5122,10 @@
             var stk = (v.stock_quantity !== '' && v.stock_quantity !== null && v.stock_quantity !== undefined) ? v.stock_quantity : '';
             var cogsv = hasCogs && v.cogs_value ? ('' + v.cogs_value).replace('.', sep) : '';
             var varStatus = v.stock_status || 'instock';
-            // Per-variation stock tracking. When on, the quantity input is
-            // active and WC derives the status; when off, the status select
-            // is. Mirrors the simple-product "Track quantity".
+            // Per-variation stock counting (WooCommerce "manage stock"). On,
+            // the quantity box is live and WC derives the status; off (∞), the
+            // row sells without counting. Mirrors the simple-product "Track
+            // quantity".
             var varManage = !!v.manage_stock;
             // "Active" state. Undefined (freshly generated rows) defaults to on,
             // matching WooCommerce, so new variations are purchasable by default.
@@ -4940,48 +5187,46 @@
             var statusOpts = '<option value="instock"' + (varStatus === 'instock' ? ' selected' : '') + '>' + esc(t.in_stock) + '</option>' +
                 '<option value="outofstock"' + (varStatus === 'outofstock' ? ' selected' : '') + '>' + esc(t.out_of_stock) + '</option>' +
                 '<option value="onbackorder"' + (varStatus === 'onbackorder' ? ' selected' : '') + '>' + esc(t.on_backorder) + '</option>';
-            var offAttrs = ' disabled aria-hidden="true" tabindex="-1"';
-            var stockTd = '<td class="var-stock-cell" data-bp-label="' + esc(t.var_stock) + '"><span class="var-stock-ctl">' +
-                '<label class="brikpanel-pe-switch brikpanel-pe-switch-sm var-track-switch" title="' + esc(t.var_track_stock) + '">' +
-                '<input type="checkbox" class="var-manage"' + (varManage ? ' checked' : '') + ' aria-label="' + esc(t.var_track_stock) + '">' +
-                '<span class="brikpanel-pe-slider"></span></label>' +
-                '<span class="var-stock-pair">' +
-                '<input type="number" class="var-stock' + (varManage ? '' : ' is-off') + '" value="' + esc('' + stk) + '" min="0" placeholder="0" aria-label="' + esc(t.var_stock_qty) + '"' + (varManage ? '' : offAttrs) + '>' +
-                '<select class="var-stock-status' + (varManage ? ' is-off' : '') + '" aria-label="' + esc(t.var_stock_status) + '"' + (varManage ? offAttrs : '') + '>' + statusOpts + '</select>' +
-                '</span></span></td>';
+            // One box: the quantity, or (∞ pressed) the word for a row that is
+            // not counted. That word is a button: clicking it is how a merchant
+            // goes back to typing a number.
+            var freeWord = varStatus === 'outofstock' ? t.out_of_stock : (varStatus === 'onbackorder' ? t.on_backorder : t.var_unlimited);
+            var stockTd = '<td class="var-stock-cell" data-bp-label="' + esc(t.var_stock) + '">' +
+                '<span class="var-stock-box' + (varManage ? '' : ' is-unlimited') + '" data-manage="' + (varManage ? '1' : '0') + '">' +
+                '<input type="number" class="var-stock" value="' + esc('' + stk) + '" min="0" placeholder="0" aria-label="' + esc(t.var_stock_qty) + '"' + (varManage ? '' : ' hidden') + '>' +
+                '<button type="button" class="var-stock-free" title="' + esc(t.var_track_stock) + '"' + (varManage ? ' hidden' : '') + '><span class="var-stock-free-text">' + esc(freeWord) + '</span></button>' +
+                '<button type="button" class="brikpanel-pe-inf-btn var-stock-inf" aria-pressed="' + (varManage ? 'false' : 'true') + '" aria-label="' + esc(t.var_unlimited_toggle) + '" title="' + esc(t.var_unlimited_toggle) + '">' + infSvg + '</button>' +
+                '</span></td>';
             var cogsTd = hasCogs ? '<td class="var-num-cell" data-bp-label="' + esc(t.cogs) + '"><input type="text" class="var-cogs" value="' + esc(cogsv) + '" data-price="1" placeholder="0' + sep + '00" aria-label="' + esc(t.cogs) + '"></td>' : '';
             var deleteTd = '<td class="var-delete-cell"><button type="button" class="var-delete-btn" data-idx="' + idx + '" aria-label="' + esc(t.delete_variation) + '" title="' + esc(t.delete_variation) + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button></td>';
 
             var rowClasses = 'var-main-row';
             if (hasExtra) rowClasses += ' has-extra';
-            if (hasBackorderNotify && !varManage && varStatus === 'onbackorder') rowClasses += ' has-backorder';
             if (!varEnabled) rowClasses += ' is-disabled';
             if (v._orphan) rowClasses += ' is-orphan';
             if (open) rowClasses += ' is-open';
             $tb.append('<tr data-idx="' + idx + '" class="' + rowClasses + '">' +
                 dragTd + expandTd + nameTd + priceTd + saleTd + stockTd + cogsTd + deleteTd + '</tr>');
 
-            // Per-variation backorder mode — only injected when the merchant
-            // enabled the sub-option in settings. Shown while the row's own
-            // status (tracking off) is "On backorder".
-            if (hasBackorderNotify) {
-                var varBackVal = (v.backorders === 'notify') ? 'notify' : 'yes';
-                var showBack = !varManage && varStatus === 'onbackorder';
-                $tb.append('<tr class="var-backorder-row" data-idx="' + idx + '"' + (showBack ? '' : ' hidden') + '>' +
-                    '<td colspan="' + baseCols + '">' +
-                    '<div class="brikpanel-pe-var-backorder">' +
-                    '<span class="brikpanel-pe-var-backorder-label">' + esc(t.backorder_label) + '</span>' +
-                    '<div class="brikpanel-pe-radio-group">' +
-                    '<label class="brikpanel-pe-radio"><input type="radio" name="var-backorders-' + idx + '" value="yes"' + (varBackVal === 'yes' ? ' checked' : '') + '><span>' + esc(t.backorder_silent) + '</span></label>' +
-                    '<label class="brikpanel-pe-radio"><input type="radio" name="var-backorders-' + idx + '" value="notify"' + (varBackVal === 'notify' ? ' checked' : '') + '><span>' + esc(t.backorder_notify) + '</span></label>' +
-                    '</div></div></td></tr>');
-            }
-
             // Details: always rendered, so the save payload always finds the
             // moved fields, and kept [hidden] while closed.
             var fields = dateField('var-sale-from', t.var_sale_start, v.sale_from) +
                 dateField('var-sale-to', t.var_sale_end, v.sale_to) +
                 detailField(t.var_sku, '<input type="text" class="var-sku" value="' + esc(v.sku || '') + '">');
+            // The stock rule. A counted row picks what happens at 0, with the
+            // simple product's "Allow backorders?" choices. An uncounted row
+            // keeps WooCommerce's manual status instead, which its box shows
+            // as Unlimited, Out of stock or On backorder. The notify choice
+            // follows the same setting as on simple products, and a rule set
+            // elsewhere is always offered so a save never changes it silently.
+            var backVal = v.backorders || 'no';
+            var backOpts = '<option value="no"' + (backVal === 'no' ? ' selected' : '') + '>' + esc(t.backorders_no) + '</option>';
+            if (hasBackorderNotify || backVal === 'notify') {
+                backOpts += '<option value="notify"' + (backVal === 'notify' ? ' selected' : '') + '>' + esc(t.backorders_notify) + '</option>';
+            }
+            backOpts += '<option value="yes"' + (backVal === 'yes' ? ' selected' : '') + '>' + esc(t.backorders_yes) + '</option>';
+            fields += detailField(t.backorders_label, '<select class="var-backorders">' + backOpts + '</select>', 'var-stock-when-out', !varManage);
+            fields += detailField(t.var_stock_status, '<select class="var-stock-status">' + statusOpts + '</select>', 'var-stock-state', varManage);
             if (hasGtin) {
                 fields += detailField(t.var_gtin, '<input type="text" class="var-gtin" value="' + esc(v.global_unique_id || '') + '" inputmode="numeric" autocomplete="off">');
             }
@@ -5060,30 +5305,13 @@
             var idx = $(this).data('idx');
             var confirmMsg = t.confirm_delete_variation;
             if (!window.confirm(confirmMsg)) return;
-            // Pull live DOM edits back into state.variations BEFORE the splice
+            deleteVariationAt(idx);
+        });
+        // ▾ opens the row's details (sale schedule, SKU, optional fields).
             // so unsaved price/stock/SKU edits on sibling rows survive the
             // re-render. Without this, renderVarTable() restores those rows
             // from the stale server-hydrated values and the user perceives
             // deleting one variation as wiping data from the others.
-            captureVarTableInputs();
-            captureVarExtraInputs();
-            // Remember what was removed. findExVar() also searches the
-            // server-hydrated snapshot, which still holds this row, so without
-            // this a later Generate would re-add it WITH ITS OLD ID and the
-            // save would quietly undo the deletion.
-            var gone = state.variations[idx];
-            if (gone && gone.id) {
-                (state.removedVariationIds || (state.removedVariationIds = {}))[gone.id] = true;
-            }
-            state.variations.splice(idx, 1);
-            state.dirty = true;
-            renderVarTable();
-            // When the last variation is removed there is nothing to show — hide
-            // the table. The product stays "Variable" per the top toggle until
-            // the user turns it off (save with zero variations falls back to a
-            // simple product server-side).
-            if (!state.variations.length) { $('#bpe-var-table-section').hide(); }
-        });
         // ▾ opens the row's details (sale schedule, SKU, optional fields).
         $tb.find('.var-expand-btn').on('click', function () {
             var $main = $(this).closest('tr.var-main-row');
@@ -5126,28 +5354,43 @@
             $row.toggleClass('is-disabled', !$cb.is(':checked'));
             state.dirty = true;
         });
-        // Per-variation "Track" toggle: the quantity box or the status select.
-        $tb.find('.var-manage').on('change', function () {
-            setVarTracking($(this).closest('tr.var-main-row'), $(this).is(':checked'));
+        // ∞ switches a row between counting its stock and Unlimited. Pressing
+        // it on a counted row means "sell without counting", so whatever
+        // status that row's count had left behind (0 is Out of stock) gives
+        // way to In stock.
+        $tb.find('.var-stock-inf').on('click', function () {
+            var $main = $(this).closest('tr.var-main-row');
+            var counts = !varRowCounts($main);
+            if (!counts) { varRowScope($main).find('.var-stock-status').val('instock'); }
+            setVarStockMode($main, counts, false);
+            markVarDetailsDot($main);
             state.dirty = true;
         });
-        // Reveal the per-variation backorder sub-row only when the row's
-        // stock status flips to "On backorder". Adds/removes the
-        // `has-backorder` class so the main row's bottom border merges.
-        if (hasBackorderNotify) {
-            // Delegated on the persistent table body, which survives re-renders,
-            // so namespace + off first or each render stacks another handler and
-            // one status change fires N times.
-            $tb.off('change.bpVarStatus').on('change.bpVarStatus', '.var-stock-status', function () {
-                var $sel = $(this);
-                var idx = $sel.closest('tr.var-main-row').data('idx');
-                var $mainRow = $tb.find('tr.var-main-row[data-idx="' + idx + '"]');
-                var $backRow = $tb.find('tr.var-backorder-row[data-idx="' + idx + '"]');
-                var on = $sel.val() === 'onbackorder';
-                if (on) { $backRow.removeAttr('hidden'); $mainRow.addClass('has-backorder'); }
-                else    { $backRow.attr('hidden', 'hidden'); $mainRow.removeClass('has-backorder'); }
-            });
-        }
+        // The word in an uncounted box goes back to typing a number. Leaving
+        // the box again without typing undoes that, so a stray click cannot
+        // turn an unlimited variation into one that is sold out at 0.
+        $tb.find('.var-stock-free').on('click', function () {
+            var $main = $(this).closest('tr.var-main-row');
+            setVarStockMode($main, true, true);
+            $main.find('.var-stock').attr('data-bp-undo', '1');
+        });
+        $tb.find('.var-stock').on('input', function () {
+            $(this).removeAttr('data-bp-undo');
+        }).on('blur', function (e) {
+            var $qty = $(this);
+            if ($qty.attr('data-bp-undo') !== '1') return;
+            $qty.removeAttr('data-bp-undo');
+            // Moving on to the same box's ∞ is a choice of its own: its click
+            // decides, so undoing first would make that click flip it back.
+            var $box = $qty.closest('.var-stock-box');
+            if (e.relatedTarget && $box[0] && $box[0].contains(e.relatedTarget)) return;
+            setVarStockMode($qty.closest('tr.var-main-row'), false, false);
+        });
+        // A manual status picked behind ▾ shows in the row's box at once.
+        $tb.find('tr.var-details-row').on('change', '.var-stock-status', function () {
+            var idx = $(this).closest('tr.var-details-row').attr('data-idx');
+            syncVarStockStatus($tb.find('tr.var-main-row[data-idx="' + idx + '"]'));
+        });
 
         // Flatpickr on every per-variation sale date input
         if (typeof flatpickr === 'function') {
@@ -5175,6 +5418,34 @@
 
         syncVarExpandAll();
         refitVarTable();
+        phoneAfterVarTable();
+    }
+
+    /* Removes the variation at `idx` (already confirmed by the caller). */
+    function deleteVariationAt(idx) {
+        // Pull live DOM edits back into state.variations BEFORE the splice
+        // so unsaved price/stock/SKU edits on sibling rows survive the
+        // re-render. Without this, renderVarTable() restores those rows
+        // from the stale server-hydrated values and the user perceives
+        // deleting one variation as wiping data from the others.
+        captureVarTableInputs();
+        captureVarExtraInputs();
+        // Remember what was removed. findExVar() also searches the
+        // server-hydrated snapshot, which still holds this row, so without
+        // this a later Generate would re-add it WITH ITS OLD ID and the
+        // save would quietly undo the deletion.
+        var gone = state.variations[idx];
+        if (gone && gone.id) {
+            (state.removedVariationIds || (state.removedVariationIds = {}))[gone.id] = true;
+        }
+        state.variations.splice(idx, 1);
+        state.dirty = true;
+        renderVarTable();
+        // When the last variation is removed there is nothing to show — hide
+        // the table. The product stays "Variable" per the top toggle until
+        // the user turns it off (save with zero variations falls back to a
+        // simple product server-side).
+        if (!state.variations.length) { $('#bpe-var-table-section').hide(); }
     }
 
     /* One dropdown per variation axis for a manually added row. The empty
@@ -5309,16 +5580,24 @@
         var price = $.trim($('#bpe-bulk-price').val());
         var salePrice = $.trim($('#bpe-bulk-sale-price').val());
         var stock = $.trim($('#bpe-bulk-stock').val());
+        var unlimited = $('#bpe-bulk-stock-inf').attr('aria-pressed') === 'true';
         if (price) $('#bpe-var-table-body .var-price').val(price);
         if (salePrice) $('#bpe-var-table-body .var-sale-price').val(salePrice);
-        if (stock !== '') {
-            // Setting a bulk quantity implies the merchant wants tracking on,
-            // so enable it across all rows (and disable the now-derived status
-            // select) before applying the value.
+        if (unlimited) {
+            // ∞ in the strip: every variation sells without counting.
             $('#bpe-var-table-body tr.var-main-row').each(function () {
                 var $row = $(this);
-                setVarTracking($row, true);
-                $row.find('.var-stock').val(stock);
+                varRowScope($row).find('.var-stock-status').val('instock');
+                setVarStockMode($row, false, false);
+                markVarDetailsDot($row);
+            });
+        } else if (stock !== '') {
+            // A bulk quantity means the merchant counts stock, so every row
+            // switches to counting with that number.
+            $('#bpe-var-table-body tr.var-main-row').each(function () {
+                var $row = $(this);
+                $row.find('.var-stock').val(stock).removeAttr('data-bp-undo');
+                setVarStockMode($row, true, false);
             });
         }
         // Bulk Active/Inactive — flip every row's toggle and its dimmed state.
@@ -5334,7 +5613,20 @@
         }
         // A bulk apply mutates the table — mark dirty so the unload guard and
         // background auto-save treat it as a real change.
-        if (price || salePrice || stock !== '' || active === '1' || active === '0') { state.dirty = true; }
+        if (price || salePrice || unlimited || stock !== '' || active === '1' || active === '0') { state.dirty = true; }
+    }
+
+    /* ∞ beside the strip's Stock box. Pressed, Apply makes every variation
+       Unlimited, so the number box steps aside and says so. */
+    function toggleBulkUnlimited() {
+        var $btn = $('#bpe-bulk-stock-inf');
+        var on = $btn.attr('aria-pressed') !== 'true';
+        var $qty = $('#bpe-bulk-stock');
+        var t = PE.i18n || {};
+        $btn.attr('aria-pressed', on ? 'true' : 'false');
+        if (on) { $qty.val(''); }
+        $qty.prop('disabled', on).attr('placeholder', on ? (t.var_unlimited || '') : ($qty.attr('data-placeholder') || ''));
+        $btn.closest('.brikpanel-pe-var-bulk-stock').toggleClass('is-unlimited', on);
     }
 
     /* Validation — only enforces required fields that are actually visible.
@@ -5378,8 +5670,8 @@
     /* Save */
     function saveProduct(status, silent) {
         if (state.saving) return;
-        if (!silent && (status === 'publish' || status === 'future') && !validateAll()) { showToast(PE.i18n.fill_required || 'Please fill in the required fields', 'error'); return; }
-        if (!silent && (status === 'publish' || status === 'future') && !validateSalePrice()) { showToast(PE.i18n.fill_price, 'error'); return; }
+        if (!silent && (status === 'publish' || status === 'future') && !validateAll()) { showToast(PE.i18n.fill_required || 'Please fill in the required fields', 'error'); phoneRevealError(); return; }
+        if (!silent && (status === 'publish' || status === 'future') && !validateSalePrice()) { showToast(PE.i18n.fill_price, 'error'); phoneRevealError(); return; }
         var name = $.trim($('#bpe-name').val());
         if (!name) { if (!silent) { showToast(PE.i18n.fill_name || 'Please fill in the product name', 'error'); validateField($('#bpe-name')); } return; }
 
@@ -5406,6 +5698,7 @@
                     },
                     failure: function () {
                         showToast(PE.i18n.fill_required || 'Please fill in the required fields', 'error');
+                        phoneRevealError();
                     }
                 });
                 return;
@@ -5730,9 +6023,23 @@
 
         // Everything EXCEPT the per-variation extras, which need re-indexing
         // and therefore get their own pass immediately below.
-        $('.brikpanel-pe-metaboxes-wrap :input[name], .brikpanel-pe-wc-fields :input[name], .brikpanel-pe-ext-card :input[name], #acf-form-data :input[name]').each(function () {
+        // Sections kept on the page only so their values survive the save
+        // ([data-bp-unpicked]) go last, and a name already taken from a shown
+        // section is not read again from them: a stale hidden copy must never
+        // overwrite what the merchant just edited.
+        var $named = $('.brikpanel-pe-metaboxes-wrap :input[name], .brikpanel-pe-wc-fields :input[name], .brikpanel-pe-ext-card :input[name], #acf-form-data :input[name]');
+        var $keptOnly = $named.filter(function () { return !!$(this).closest('[data-bp-unpicked]').length; });
+        var shownNames = {};
+        $named.not($keptOnly).each(function () {
             var $el = $(this), name = $el.attr('name');
             if (!name) return;
+            shownNames[name] = true;
+            if (($el.is(':checkbox') || $el.is(':radio')) && !$el.is(':checked')) return;
+            collectNamedInput(name, readInputValue($el));
+        });
+        $keptOnly.each(function () {
+            var $el = $(this), name = $el.attr('name');
+            if (!name || shownNames[name]) return;
             if (($el.is(':checkbox') || $el.is(':radio')) && !$el.is(':checked')) return;
             collectNamedInput(name, readInputValue($el));
         });
@@ -5954,8 +6261,10 @@
                     if ($c.length) return $c.val() || '';
                     return (fallback === undefined || fallback === null) ? '' : String(fallback);
                 };
-                var varManageStock = $mainRow.find('.var-manage').is(':checked');
-                var varStockStatus = $mainRow.find('.var-stock-status').val() || 'instock';
+                var varManageStock = varRowCounts($mainRow);
+                // The manual status (sent always, the server only uses it for
+                // a row that is not counted).
+                var varStockStatus = pickVar('.var-stock-status', v.stock_status) || 'instock';
                 var varObj = { id: v.id || 0, attributes: v.attributes,
                     enabled: $mainRow.find('.var-enabled').is(':checked') ? 1 : 0,
                     regular_price: parsePrice($mainRow.find('.var-price').val(), sep),
@@ -5973,19 +6282,8 @@
                 if ($varTax.length) varObj.tax_class = $varTax.val();
                 var $varShip = $scope.find('.var-shipping-class');
                 if ($varShip.length) varObj.shipping_class = $varShip.val();
-                // Backorder mode. When tracking is on, WC derives the status,
-                // so we roundtrip the stored backorder rule (preserving any
-                // existing "allow/notify"). When off, it only matters while
-                // the manually-chosen status is "On backorder".
-                if (varManageStock) {
-                    if (v.backorders && v.backorders !== 'no') varObj.backorders = v.backorders;
-                } else if (varStockStatus === 'onbackorder') {
-                    var $backRow = $('#bpe-var-table-body tr.var-backorder-row[data-idx="' + idx + '"]');
-                    var $backSel = $backRow.find('input[type="radio"]:checked');
-                    if ($backSel.length) {
-                        varObj.backorders = $backSel.val() === 'notify' ? 'notify' : 'yes';
-                    }
-                }
+                // Backorder rule: the counted row's "Allow backorders?".
+                varObj.backorders = readVarBackorders($scope, v, varManageStock);
                 var $cogsInput = $(this).find('.var-cogs');
                 if ($cogsInput.length) varObj.cogs_value = parsePrice($cogsInput.val(), sep);
                 var $varVendor = $scope.find('.var-vendor');
@@ -6003,6 +6301,10 @@
         } else {
             state.lastSubmittedVariations = [];
         }
+
+        // Blocksy swatches: ask for fresh attribute rows, never send a gap
+        // (see initBlocksySwatchesBridge()).
+        var sentSwatches = swatchesBeforeSend(data);
 
         // Build FormData so bracketed repeat keys (`field[0]`, `field[1]`…)
         // from third-party variation fields stay intact. $.post uses jQuery's
@@ -6028,6 +6330,7 @@
             state.saving = false; $pub.prop('disabled', false).text(op);
             if (r.success) {
                 state.dirty = false;
+                afterSwatchesSave(r.data, sentSwatches);
                 // Before the variation rows are redrawn, so their video
                 // buttons already show what was stored.
                 syncVideosFromServer(r.data.videos, videoSent);
@@ -6068,12 +6371,25 @@
                     // generated it from the title when left blank) so the field
                     // shows the real permalink without a reload.
                     if (typeof r.data.slug !== 'undefined') { $('#bpe-slug').val(r.data.slug); }
+                    // The status the server saved, which can differ from the one
+                    // chosen: "pending" for someone who may not publish, and a
+                    // date ahead makes it Scheduled. What follows goes by it,
+                    // and the header's status control is pointed at it.
+                    var saved = (typeof r.data.status === 'string' && r.data.status) ? r.data.status : status;
+                    if (saved !== status) {
+                        syncHeaderStatus(saved);
+                        updatePublishLabel(saved);
+                    }
+                    var savedLive = saved === 'publish' || saved === 'private' || saved === 'password';
                     // Keep the auto-save gate in sync: a product becomes live
                     // once saved as publish/private/password, and reverts when
                     // saved back to draft.
-                    $('#bpe-product-id').data('live', (status === 'publish' || status === 'private' || status === 'password') ? 1 : 0);
+                    $('#bpe-product-id').data('live', savedLive ? 1 : 0);
                     var newUrl = PE.admin_url + 'admin.php?page=brikpanel-product-editor&product_id=' + r.data.product_id;
-                    window.history.replaceState(null, '', newUrl);
+                    // The entry's state is kept: on a phone it says which page
+                    // is open, and the back gesture closes that page.
+                    window.history.replaceState(window.history.state, '', newUrl);
+                    phoneUrlChanged(newUrl);
                     // The header's secondary actions (View product / Duplicate /
                     // Add new) are printed for every product and hidden until
                     // they apply, inside "More actions" so the header levels
@@ -6085,7 +6401,7 @@
                     // Duplicate is available as soon as the product has an ID
                     // (draft, publish, private — all valid).
                     $dup.attr('data-id', r.data.product_id).data('id', r.data.product_id).prop('hidden', false);
-                    if (status === 'publish' || status === 'private' || status === 'password') {
+                    if (savedLive) {
                         $pub.text(PE.i18n.update || 'Update');
                         // The label a Scheduled status switches back to.
                         $pub.data('origLabel', PE.i18n.update || 'Update');
@@ -6094,11 +6410,15 @@
                             $('#bpe-view-product').attr('href', viewUrl).prop('hidden', false);
                         }
                         $('#bpe-add-new').prop('hidden', false);
+                    } else {
+                        // Nothing to view on the storefront (draft, pending,
+                        // scheduled), as when the page loads with that status.
+                        $('#bpe-view-product').prop('hidden', true);
                     }
                     $('#bpe-header-overflow').prop('hidden', false);
                     // A new product becomes an existing one with this save.
                     if (PE.i18n.edit_product) {
-                        $('#bpe-header h1').text(PE.i18n.edit_product);
+                        $('#bpe-header h1, #bpe-ph-h1').text(PE.i18n.edit_product);
                     }
                 }
             } else showToast(r.data.message || PE.i18n.error || 'An error occurred', 'error');
@@ -6245,7 +6565,7 @@
             return;
         }
         if (productData.gallery && productData.gallery.length) {
-            productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url, alt: i.alt ? String(i.alt) : '' }); });
+            productData.gallery.forEach(function (i) { state.images.push({ id: i.id, url: i.url, url_m: i.url_m || '', alt: i.alt ? String(i.alt) : '' }); });
             renderGallery();
         }
         // From here the gallery mirrors the saved product, so a save is
@@ -6691,6 +7011,14 @@
 
     /* Toast */
     function showToast(msg, type, duration) {
+        // A phone shows it in the strip at the bottom, above the save bar.
+        if (isPhoneEditor() && window.brikpanelSnack) {
+            window.brikpanelSnack.show(String(msg || ''), {
+                tone: type === 'error' ? 'error' : (type === 'success' ? 'success' : 'info'),
+                ms: duration || 0
+            });
+            return;
+        }
         var $c = $('#bpe-toast-container');
         if (!$c.length) { $c = $('<div id="bpe-toast-container" class="bpe-toast-container">'); $('body').append($c); }
         var $t = $('<div class="bpe-toast bpe-toast-' + type + '">' + esc(msg) + '</div>');
@@ -6723,6 +7051,1499 @@
     // SKU like `x" onfocus="…` closed the attribute and ran script in this
     // editor (field test B6 review, proven on a test store before the fix).
     function esc(s) { return escText(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+    // =========================================================================
+    // PHONE (782px and narrower): the editor the way a phone app shows it
+    // =========================================================================
+    // Approved 2026-10-06 (option 3, "section pages"): a bar on top (back, the
+    // product's name and kind, "..."), the status and the save button in a bar
+    // at the bottom, the images as tiles, the variations as one-line rows that
+    // open a page of their own, the attributes as rows that open as sheets, and
+    // the cards a merchant rarely needs gathered into rows ("Details", "From
+    // other plugins") that open as pages sliding in from the side.
+    //
+    // Nothing here saves or validates: every phone control drives the editor's
+    // own control (a click on the real button, a value written to the real
+    // field), so a save is the very one wider screens make, and every field
+    // stays on the page the whole time. A closed page is moved out of view,
+    // never display:none: validateAll() checks visible fields only, and a field
+    // missing from the payload gets cleared on save. Cards are moved, never
+    // copied: BrikPanel's own cards into their page (a comment marks the place
+    // they go back to on a wider screen); another plugin's card becomes a page
+    // where it stands, because moving a plugin's markup can break its scripts.
+    // Variation and attribute rows never move at all (the save pairs variation
+    // rows by their position). Styles: the "Phones" part at the end of
+    // brikpanel-product-editor.css.
+
+    var phoneMq = window.matchMedia ? window.matchMedia('(max-width: 782px)') : null;
+    var PH = {
+        ready: false,
+        built: false,
+        url: '',
+        pages: {},
+        open: null,
+        pushed: false,
+        stale: 0,
+        ignorePop: false,
+        returnTo: null,
+        inert: [],
+        markers: [],
+        scrollY: null,
+        sections: null,
+        varIdx: -1,
+        varWasOpen: false,
+        varClosing: null,
+        varHead: null,
+        bulk: null,
+        bulkSheet: null,
+        attrAdd: null,
+        attrAddEl: null,
+        attrAddBtn: null,
+        attrObserver: null
+    };
+    var PH_ICON = {
+        back: '<svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>',
+        chev: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m8 5.5 4.5 4.5L8 14.5"/></svg>',
+        up: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m5.5 12.5 4.5-4.5 4.5 4.5"/></svg>',
+        down: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg>',
+        more: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+        check: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></svg>',
+        plus: '<svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M10 4.5v11M4.5 10h11"/></svg>',
+        star: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m10 3.6 1.9 4 4.3.5-3.2 2.9.9 4.3L10 13.1l-3.9 2.2.9-4.3L3.8 8.1l4.3-.5L10 3.6Z"/></svg>',
+        external: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 4.5h4v4M15.5 4.5 9 11M14 11.5v3a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3"/></svg>',
+        copy: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="7" y="7" width="9" height="9" rx="1.5"/><path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-6A1.5 1.5 0 0 0 4 5.5v6A1.5 1.5 0 0 0 5.5 13H7"/></svg>',
+        play: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7"/><path d="M8.5 7.3v5.4l4.2-2.7-4.2-2.7Z"/></svg>',
+        trash: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.7 9.2a1 1 0 0 0 1 .8h4.6a1 1 0 0 0 1-.8L14 6"/></svg>',
+        wand: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m4 16 8.5-8.5M11 4.5v2M15.5 9h-2M14.2 5.8l-1.4 1.4M9.5 3.5l.7.7M16.5 10.5l-.7-.7"/></svg>',
+        edit: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.5 4.5 15.5 7.5 7.5 15.5H4.5v-3l8-8Z"/></svg>',
+        sort: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.5 4.5v11M4 13l2.5 2.5L9 13M13.5 15.5v-11M11 7l2.5-2.5L16 7"/></svg>',
+        pin: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4.5 5.5h11M4.5 10h11M4.5 14.5h6"/><circle cx="14.5" cy="14.5" r="1.6"/></svg>',
+        folder: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.5 6.5a1 1 0 0 1 1-1h3.4l1.6 1.8h6a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V6.5Z"/></svg>',
+        text: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M4.5 6h11M4.5 10h11M4.5 14h7"/></svg>',
+        truck: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 6h9v7.5h-9zM11.5 8.5h3.2l2.3 2.6v2.4h-5.5"/><circle cx="6" cy="14.5" r="1.4"/><circle cx="14" cy="14.5" r="1.4"/></svg>',
+        link: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M8.6 11.4a3 3 0 0 0 4.2 0l2.4-2.4a3 3 0 0 0-4.2-4.2l-1 1"/><path d="M11.4 8.6a3 3 0 0 0-4.2 0L4.8 11a3 3 0 0 0 4.2 4.2l1-1"/></svg>',
+        sliders: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M3.5 6h8M14.5 6h2M3.5 14h2M8.5 14h8"/><circle cx="13" cy="6" r="1.7"/><circle cx="7" cy="14" r="1.7"/></svg>',
+        globe: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="6.5"/><path d="M3.5 10h13M10 3.5c1.8 1.9 2.6 4 2.6 6.5S11.8 14.6 10 16.5C8.2 14.6 7.4 12.5 7.4 10S8.2 5.4 10 3.5Z"/></svg>',
+        plug: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7.5 3.5v3.5M12.5 3.5v3.5M5.5 7h9v2.5a4.5 4.5 0 0 1-9 0V7ZM10 14v2.5"/></svg>'
+    };
+    // BrikPanel's own cards a phone gathers into pages. The name, images,
+    // variations (with the attributes), price, cost and stock stay on the
+    // main page: they are what a merchant opens a product for.
+    var PH_GROUPS = [
+        { id: 'organization', icon: 'folder', title: 'ph_organization', sections: ['category', 'brand', 'tags'] },
+        { id: 'description', icon: 'text', title: 'ph_description', sections: ['short_desc', 'description'] },
+        { id: 'shipping', icon: 'truck', title: 'ph_shipping', sections: ['digital', 'weight', 'dimensions', 'shipping_class'] },
+        { id: 'linked', icon: 'link', title: 'ph_linked', sections: ['linked'] },
+        { id: 'more', icon: 'sliders', title: 'ph_more_options', sections: ['slug', 'gtin', 'tax', 'sold_individually', 'advanced'] }
+    ];
+    // Another plugin's card (or a BrikPanel card around another plugin's
+    // fields): a page where it stands.
+    var PH_FOREIGN = '.brikpanel-pe-seo-card, .brikpanel-pe-wc-fields, .brikpanel-pe-metabox-card, .brikpanel-pe-ext-card';
+
+    function isPhoneEditor() { return !!(phoneMq && phoneMq.matches); }
+    function phSheet() { return window.brikpanelSheet || null; }
+    function phT(key) { return (PE.i18n && PE.i18n[key]) || ''; }
+    function phTrim(v) { return String(v === null || v === undefined ? '' : v).trim(); }
+    function phText(el) { return el ? phTrim((el.textContent || '').replace(/\s+/g, ' ')) : ''; }
+    // Writes a text only when it changed: the attribute rows are watched by
+    // an observer, which would otherwise see every write of its own.
+    function phSetText(el, text) {
+        if (el && el.textContent !== text) { el.textContent = text; }
+    }
+    function phMake(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) { n.className = cls; }
+        if (text !== undefined && text !== null) { n.textContent = text; }
+        return n;
+    }
+    function phIcon(name, cls) {
+        var span = phMake('span', cls || 'brikpanel-pe-ph-rowicon');
+        span.setAttribute('aria-hidden', 'true');
+        span.innerHTML = PH_ICON[name] || PH_ICON.sliders; // Static markup.
+        return span;
+    }
+    function phFocus(el) {
+        if (!el || !el.focus || !document.documentElement.contains(el)) { return; }
+        try { el.focus({ preventScroll: true }); } catch (e) { /* not focusable */ }
+    }
+
+    // "Are you sure?" as a sheet on a phone, the browser's box elsewhere.
+    function phoneAsk(opts, fn) {
+        var S = phSheet();
+        if (isPhoneEditor() && S) {
+            S.confirm(opts).then(function (yes) { if (yes) { fn(); } });
+            return;
+        }
+        if (window.confirm(opts.text || opts.title || '')) { fn(); }
+    }
+
+    // A new product's first save writes its id into the address; a page
+    // closed after that must not bring the old address back (a reload would
+    // then open an empty new product).
+    function phoneUrlChanged(url) { PH.url = url; }
+
+    function initPhone() {
+        if (!document.getElementById('bpe-ph-appbar') || !phoneMq) { return; }
+        PH.ready = true;
+        PH.url = window.location.href;
+
+        // The save button wears a dot while anything is unsaved: every place
+        // that marks the editor dirty writes state.dirty, so it is watched there.
+        var dirty = !!state.dirty;
+        try {
+            Object.defineProperty(state, 'dirty', {
+                configurable: true,
+                enumerable: true,
+                get: function () { return dirty; },
+                set: function (v) {
+                    dirty = !!v;
+                    var b = document.getElementById('bpe-ph-save');
+                    if (b) { b.classList.toggle('is-dirty', dirty); }
+                }
+            });
+        } catch (e) {
+            // A frozen state object: the dot simply never shows.
+        }
+        $('#bpe-ph-save').toggleClass('is-dirty', dirty);
+
+        $('#bpe-ph-save').on('click', function () {
+            var pub = document.getElementById('bpe-publish');
+            if (pub && !pub.disabled) { pub.click(); }
+        });
+        $('#bpe-ph-status').on('click', openStatusSheet);
+        $('#bpe-ph-more').on('click', phoneMoreMenu);
+        $('#bpe-ph-back').on('click', phoneBackClick);
+
+        // The header's own controls change in many places; the phone bars
+        // follow them instead of being told.
+        if (typeof window.MutationObserver === 'function') {
+            var pub = document.getElementById('bpe-publish');
+            if (pub) {
+                new window.MutationObserver(phoneSyncSave).observe(pub, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+            }
+            var ovf = document.getElementById('bpe-header-overflow');
+            if (ovf) {
+                new window.MutationObserver(function () {
+                    $('#bpe-ph-more').prop('hidden', !!ovf.hidden);
+                }).observe(ovf, { attributes: true, attributeFilter: ['hidden'] });
+            }
+        }
+        $('#bpe-status').on('change', phoneSyncStatus);
+        $('#bpe-name').on('input change', phoneSyncTitle);
+        $('#bpe-var-toggle, #bpe-product-type').on('change', function () {
+            window.setTimeout(function () {
+                phoneSyncSub();
+                phoneSummaries();
+                phoneAttrRows();
+            }, 0);
+        });
+
+        // A tap on an image tile: its actions as a sheet.
+        $('#bpe-gallery').on('click', '.brikpanel-pe-gallery-item', phoneImageTap);
+        // A tap on a variation row opens its page; what is typed there keeps
+        // the row's one-line summary current.
+        $('#bpe-var-table-body').on('click', 'tr.var-main-row', phoneVarRowTap);
+        $('#bpe-var-table-body').on('input change', ':input', phoneVarInput);
+        // "Apply" in the edit-all sheet is the end of that task.
+        $('#bpe-apply-bulk').on('click', function () {
+            if (PH.bulkSheet && PH.bulkSheet.isOpen()) {
+                window.setTimeout(function () { PH.bulkSheet.close(); }, 0);
+            }
+        });
+        // "Custom" on an empty variable product: the attribute picker opens.
+        $('#bpe-var-templates').on('click', '.brikpanel-pe-var-template[data-template="custom"]', function () {
+            if (PH.built && PH.attrAdd) {
+                window.setTimeout(function () { PH.attrAdd.open(); }, 0);
+            }
+        });
+
+        // Plugins draw their fields late (on load, or after a request): the
+        // rows' summaries are read again then.
+        var lateSummaries = function () {
+            phoneSummaries();
+            window.setTimeout(phoneSummaries, 1500);
+        };
+        if (document.readyState === 'complete') {
+            lateSummaries();
+        } else {
+            window.addEventListener('load', lateSummaries);
+        }
+
+        // The back gesture closes an open page instead of leaving the editor.
+        $(window).on('popstate', phonePopState);
+        if (window.history.state && window.history.state.bpePage) {
+            try { window.history.replaceState(null, '', window.location.href); } catch (e) { /* stays */ }
+        }
+        // Escape closes an open page too (a sheet on top closes first: it
+        // stops the key itself).
+        document.addEventListener('keydown', function (e) {
+            if ((e.key === 'Escape' || e.key === 'Esc') && PH.open && !e.defaultPrevented) {
+                var S = phSheet();
+                if (S && S.isOpen()) { return; }
+                e.preventDefault();
+                phoneGoBack();
+            }
+        });
+        // The keyboard covers the bottom bar's place: the bar steps aside.
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', phoneKeyboard);
+        }
+
+        if (phoneMq.addEventListener) {
+            phoneMq.addEventListener('change', phoneSwitch);
+        } else if (phoneMq.addListener) {
+            phoneMq.addListener(phoneSwitch);
+        }
+        phoneSwitch();
+    }
+
+    function phoneSwitch() {
+        if (isPhoneEditor()) {
+            phoneEnter();
+        } else {
+            phoneLeave();
+        }
+    }
+
+    function phoneEnter() {
+        if (!PH.ready || PH.built) { return; }
+        PH.built = true;
+        document.documentElement.classList.add('bpe-ph');
+        phoneFoldSaleDates();
+        phoneBuildSections();
+        phoneBuildVarTools();
+        phoneBuildAttrUi();
+        phoneSyncTitle();
+        phoneSyncSub();
+        phoneSyncStatus();
+        phoneSyncSave();
+        renderGallery();
+        if (state.variations && state.variations.length) { refitVarTable(); }
+        phoneAfterVarTable();
+    }
+
+    function phoneLeave() {
+        if (!PH.built) { return; }
+        var S = phSheet();
+        if (S && S.isOpen()) { S.close(); }
+        if (PH.open) { phoneClosePage(true, true); }
+        phoneVarFlushClose();
+        phoneTeardownAttrUi();
+        phoneTeardownVarTools();
+        phoneTeardownSections();
+        phoneUnfoldSaleDates();
+        PH.built = false;
+        document.documentElement.classList.remove('bpe-ph', 'bp-kbd-open');
+        $('#bpe-var-table-body').find('.brikpanel-pe-ph-varsum, .brikpanel-pe-ph-varopen, .brikpanel-pe-ph-active').remove();
+        if (varFit) {
+            varFit.floor = 0;
+            varFit.refit();
+        }
+        renderGallery();
+    }
+
+    function phoneKeyboard() {
+        var vv = window.visualViewport;
+        if (!vv) { return; }
+        var kb = window.innerHeight - vv.height * (vv.scale || 1);
+        var t = document.activeElement;
+        var typing = !!(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)));
+        document.documentElement.classList.toggle('bp-kbd-open', !!(PH.built && typing && kb > 120));
+    }
+
+    // ---- The two bars ----------------------------------------------------
+    function phoneSyncTitle() {
+        if (!PH.ready) { return; }
+        var name = phTrim($('#bpe-name').val() || '');
+        $('#bpe-ph-name').text(name || phT('ph_add_product'));
+        $('.brikpanel-pe-ph-pagebar[data-sub="name"] .brikpanel-pe-ph-sub').text(name);
+    }
+
+    function phoneSyncSub() {
+        if (!PH.ready) { return; }
+        var sub;
+        var $type = $('#bpe-product-type');
+        if (isVariableOn()) {
+            sub = phT('ph_variable');
+            var n = (state.variations || []).length;
+            if (n > 0) { sub += ' · ' + countText(PE.i18n.ph_variations, n); }
+        } else if ($type.length && $type.val() && $type.val() !== 'simple') {
+            sub = phText($type.find('option:selected')[0]);
+        } else {
+            sub = phT('ph_simple');
+        }
+        $('#bpe-ph-sub').text(sub);
+    }
+
+    function phoneSyncStatus() {
+        if (!PH.ready) { return; }
+        var v = $('#bpe-status').val() || 'publish';
+        var $li = $('.brikpanel-pe-status-menu li[role="option"]').filter(function () { return this.getAttribute('data-value') === v; });
+        var label = phText($li.find('strong')[0]);
+        $('#bpe-ph-status-label').text(label);
+        $('#bpe-ph-status .brikpanel-pe-ph-dot').attr('data-status', v);
+    }
+
+    function phoneSyncSave() {
+        if (!PH.ready) { return; }
+        var pub = document.getElementById('bpe-publish');
+        var btn = document.getElementById('bpe-ph-save');
+        if (!pub || !btn) { return; }
+        $('#bpe-ph-save-label').text(phText(pub));
+        btn.disabled = !!pub.disabled;
+        btn.classList.toggle('is-busy', !!pub.disabled);
+    }
+
+    // "..." on top: the header's secondary actions (View product, Duplicate,
+    // Add new), each pressing the real one, in this tap (a new tab opens).
+    function phoneMoreMenu() {
+        var S = phSheet();
+        if (!S) { return; }
+        var items = [];
+        [['bpe-view-product', 'external'], ['bpe-duplicate', 'copy'], ['bpe-add-new', 'plus']].forEach(function (pair) {
+            var el = document.getElementById(pair[0]);
+            if (!el || el.hidden || el.disabled) { return; }
+            items.push({ label: phText(el), icon: PH_ICON[pair[1]], run: function () { el.click(); } });
+        });
+        if (items.length) { S.actions({ label: phT('ph_more_actions'), items: items, returnFocus: this }); }
+    }
+
+    // The list this product was opened from, when it is the page right
+    // before this one: going back to it is a step back in history, as an
+    // app does, so the phone's own back gesture afterwards does not land on
+    // this product again.
+    function phoneListReferrer(href) {
+        try {
+            if (window.history.length < 2 || !document.referrer) { return ''; }
+            var r = new URL(document.referrer);
+            var h = new URL(href, window.location.href);
+            if (r.origin !== h.origin || r.pathname !== h.pathname) { return ''; }
+            return r.searchParams.get('page') === h.searchParams.get('page') ? r.href : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // Back to the list. Unsaved changes ask first, in a sheet (a phone shows
+    // the browser's own "leave page?" box unreliably or not at all).
+    function phoneBackClick(e) {
+        if (!isPhoneEditor() || e.metaKey || e.ctrlKey || e.shiftKey) { return; }
+        var link = this;
+        var ref = phoneListReferrer(link.href);
+        if (!state.dirty && !ref) { return; }
+        e.preventDefault();
+        var go = function () {
+            var S = phSheet();
+            if (S && S.flagTransition) { S.flagTransition(ref || link.href, 'back'); }
+            if (ref) {
+                window.history.go(-(1 + PH.stale));
+            } else {
+                window.location.href = link.href;
+            }
+        };
+        if (!state.dirty) {
+            go();
+            return;
+        }
+        phoneAsk({
+            title: phT('ph_discard_title'),
+            text: phT('ph_discard_text'),
+            ok: phT('ph_discard'),
+            cancel: phT('ph_keep_editing'),
+            danger: true,
+            returnFocus: link
+        }, function () {
+            state.dirty = false;
+            go();
+        });
+    }
+
+    // The status, its password, the publish date, the catalog visibility and
+    // the featured switch: the header's controls, gathered in one sheet.
+    function openStatusSheet() {
+        var S = phSheet();
+        if (!S) { return; }
+        var body = phMake('div', 'brikpanel-pe-ph-form');
+
+        var list = phMake('div', 'brikpanel-pe-ph-radios');
+        list.setAttribute('role', 'radiogroup');
+        list.setAttribute('aria-label', phT('ph_status_title'));
+        body.appendChild(list);
+
+        var field = function (labelText, control, id) {
+            var box = phMake('div', 'brikpanel-pe-ph-field');
+            var label = phMake('label', 'brikpanel-pe-ph-label', labelText);
+            label.htmlFor = id;
+            control.id = id;
+            box.appendChild(label);
+            box.appendChild(control);
+            body.appendChild(box);
+            return box;
+        };
+
+        var $pw = $('#bpe-post-password');
+        var pw = phMake('input', 'brikpanel-control brikpanel-pe-ph-input');
+        pw.type = 'text';
+        pw.autocomplete = 'off';
+        pw.value = $pw.val() || '';
+        // Read-only like the header's field for someone who may not publish.
+        pw.readOnly = !!$pw.prop('readonly');
+        pw.addEventListener('input', function () { $pw.val(pw.value).trigger('input'); });
+        var pwBox = field(phT('ph_password'), pw, 'bpe-ph-password');
+
+        var $date = $('#bpe-schedule-date');
+        var date = null;
+        if ($date.length) {
+            date = phMake('input', 'brikpanel-control brikpanel-pe-ph-input');
+            date.type = 'datetime-local';
+            date.value = $date.val() || '';
+            date.addEventListener('change', function () { $date.val(date.value).trigger('change'); });
+            field(phT('ph_publish_date'), date, 'bpe-ph-date');
+        }
+
+        var $cvItems = $('#bpe-catvis-menu li[role="option"]');
+        if ($cvItems.length) {
+            var cv = phMake('select', 'brikpanel-control brikpanel-pe-ph-input');
+            $cvItems.each(function () {
+                var o = phMake('option', '', phText(this));
+                o.value = this.getAttribute('data-value') || '';
+                cv.appendChild(o);
+            });
+            cv.value = $('#bpe-catalog-visibility').val() || '';
+            cv.addEventListener('change', function () {
+                $cvItems.filter(function () { return this.getAttribute('data-value') === cv.value; }).first().each(function () { this.click(); });
+            });
+            field(phT('ph_catalog_visibility'), cv, 'bpe-ph-catvis');
+        }
+
+        var star = document.getElementById('bpe-featured-star');
+        if (star) {
+            var row = phMake('label', 'brikpanel-pe-ph-switchrow');
+            var sw = phMake('span', 'brikpanel-pe-switch');
+            var cb = phMake('input');
+            cb.type = 'checkbox';
+            cb.checked = $('#bpe-is-featured').val() === '1';
+            sw.appendChild(cb);
+            sw.appendChild(phMake('span', 'brikpanel-pe-slider'));
+            cb.addEventListener('change', function () {
+                if ((cb.checked ? '1' : '0') !== $('#bpe-is-featured').val()) { star.click(); }
+            });
+            row.appendChild(phMake('span', 'brikpanel-pe-ph-switchrow-text', phT('ph_featured')));
+            row.appendChild(sw);
+            body.appendChild(row);
+        }
+
+        var paint = function () {
+            var cur = $('#bpe-status').val() || 'publish';
+            Array.prototype.forEach.call(list.children, function (b) {
+                b.setAttribute('aria-checked', String(b.getAttribute('data-value') === cur));
+            });
+            pwBox.hidden = cur !== 'password';
+            if (date) { date.value = $date.val() || ''; }
+        };
+
+        $('.brikpanel-pe-status-menu li[role="option"]').each(function () {
+            var li = this;
+            var val = li.getAttribute('data-value') || '';
+            var b = phMake('button', 'brikpanel-pe-ph-radio');
+            b.type = 'button';
+            b.setAttribute('role', 'radio');
+            b.setAttribute('data-value', val);
+            var dot = phMake('span', 'brikpanel-pe-ph-dot');
+            dot.setAttribute('data-status', val);
+            dot.setAttribute('aria-hidden', 'true');
+            var text = phMake('span', 'brikpanel-pe-ph-radio-text');
+            text.appendChild(phMake('b', '', phText($(li).find('strong')[0])));
+            text.appendChild(phMake('span', '', phText($(li).find('small')[0])));
+            b.appendChild(dot);
+            b.appendChild(text);
+            b.appendChild(phIcon('check', 'brikpanel-pe-ph-tick'));
+            b.addEventListener('click', function () {
+                li.click();
+                window.setTimeout(function () {
+                    paint();
+                    if (val === 'password') { phFocus(pw); }
+                }, 0);
+            });
+            list.appendChild(b);
+        });
+        paint();
+
+        var done = phMake('button', 'brikpanel-btn brikpanel-btn--primary brikpanel-sheet__btn', phT('ph_done'));
+        done.type = 'button';
+        done.addEventListener('click', function () { S.close(); });
+
+        S.open({ title: phT('ph_status_title'), body: body, foot: done, onClose: phoneSyncStatus });
+    }
+
+    // ---- The price card ----------------------------------------------------
+    // A sale's start and end dates wait behind "Schedule the sale" while both
+    // are empty: most sales have none. The fields stay in the page (hidden),
+    // so the save reads them as always.
+    function phoneFoldSaleDates() {
+        var from = document.getElementById('bpe-sale-from');
+        var to = document.getElementById('bpe-sale-to');
+        var card = document.getElementById('bpe-pricing-card');
+        if (!from || !to || !card || phTrim(from.value) || phTrim(to.value)) { return; }
+        var row = $(from).closest('.brikpanel-pe-row').addClass('brikpanel-pe-ph-saledates');
+        row.next('.brikpanel-pe-help-text').addClass('brikpanel-pe-ph-salehelp');
+        var link = phMake('button', 'brikpanel-btn brikpanel-btn--link brikpanel-pe-ph-salelink', phT('ph_schedule_sale'));
+        link.type = 'button';
+        link.addEventListener('click', function () {
+            card.classList.remove('is-ph-sale-folded');
+            if (link.parentNode) { link.parentNode.removeChild(link); }
+            phFocus(from);
+        });
+        row.before(link);
+        card.classList.add('is-ph-sale-folded');
+    }
+
+    function phoneUnfoldSaleDates() {
+        var $card = $('#bpe-pricing-card').removeClass('is-ph-sale-folded');
+        $card.find('.brikpanel-pe-ph-salelink').remove();
+        $card.find('.brikpanel-pe-ph-saledates').removeClass('brikpanel-pe-ph-saledates');
+        $card.find('.brikpanel-pe-ph-salehelp').removeClass('brikpanel-pe-ph-salehelp');
+    }
+
+    // ---- Images ------------------------------------------------------------
+    // On a phone the gallery is tiles: the featured image twice as large (its
+    // medium size), an Add tile at the end, and a tap opens the image's actions.
+    function phoneAfterGallery() {
+        if (!PH.ready || !PH.built) { return; }
+        var g = document.getElementById('bpe-gallery');
+        if (!g) { return; }
+        var add = phMake('button', 'brikpanel-pe-ph-addimg');
+        add.type = 'button';
+        add.appendChild(phIcon('plus', 'brikpanel-pe-ph-addimg-icon'));
+        add.appendChild(phMake('span', '', phT('ph_add')));
+        add.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openMediaLibrary();
+        });
+        g.appendChild(add);
+        var first = g.querySelector('.brikpanel-pe-gallery-item img');
+        var img = state.images[0];
+        if (first && img && img.url_m && first.getAttribute('src') !== img.url_m) {
+            first.setAttribute('src', img.url_m);
+        }
+    }
+
+    function phoneImageTap(e) {
+        var S = phSheet();
+        if (!PH.built || !S || this.classList.contains('is-uploading')) { return; }
+        if ($(e.target).closest('button').length) { return; }
+        var id = parseInt($(this).attr('data-id'), 10);
+        var idx = -1;
+        for (var i = 0; i < state.images.length; i++) {
+            if (state.images[i].id === id) { idx = i; break; }
+        }
+        if (idx < 0) { return; }
+        var img = state.images[idx];
+        var items = [];
+        if (idx > 0) {
+            items.push({
+                label: phT('ph_set_featured'),
+                icon: PH_ICON.star,
+                run: function () {
+                    var at = state.images.indexOf(img);
+                    if (at > 0) {
+                        state.images.splice(at, 1);
+                        state.images.unshift(img);
+                        renderGallery();
+                        state.dirty = true;
+                    }
+                }
+            });
+        }
+        var vbtn = this.querySelector('.brikpanel-pe-gallery-item-video');
+        if (vbtn) {
+            items.push({ label: vbtn.getAttribute('aria-label') || vbtn.getAttribute('title') || '', icon: PH_ICON.play, run: function () { vbtn.click(); } });
+        }
+        items.push({ label: PE.i18n.remove_image || '', icon: PH_ICON.trash, danger: true, run: function () { removeImage(id); } });
+        S.actions({
+            context: { img: img.url, title: idx === 0 ? (PE.i18n.featured || '') : '' },
+            label: phT('ph_more_actions'),
+            items: items,
+            returnFocus: this
+        });
+    }
+
+    // ---- Pages -------------------------------------------------------------
+    function phonePageBar(title, subKind, onBack) {
+        var bar = phMake('div', 'brikpanel-pe-ph-pagebar');
+        if (subKind) { bar.setAttribute('data-sub', subKind); }
+        var back = phMake('button', 'brikpanel-pe-ph-iconbtn brikpanel-pe-ph-pageback');
+        back.type = 'button';
+        back.setAttribute('aria-label', phT('ph_back'));
+        back.innerHTML = PH_ICON.back; // Static markup.
+        back.addEventListener('click', onBack);
+        var head = phMake('div', 'brikpanel-pe-ph-heading');
+        var name = phMake('span', 'brikpanel-pe-ph-name', title);
+        name.setAttribute('dir', 'auto');
+        var sub = phMake('span', 'brikpanel-pe-ph-sub', subKind === 'name' ? phTrim($('#bpe-name').val() || '') : '');
+        sub.setAttribute('dir', 'auto');
+        head.appendChild(name);
+        head.appendChild(sub);
+        bar.appendChild(back);
+        bar.appendChild(head);
+        bar.appendChild(phMake('span', 'brikpanel-pe-ph-barend'));
+        return bar;
+    }
+
+    function phoneGoBack() {
+        if (PH.pushed) {
+            window.history.back();
+        } else {
+            phoneClosePage(false);
+        }
+    }
+
+    // Closes the open page at once, and drops the history entry it pushed
+    // without reacting to that step (a variation deleted from its page).
+    function phoneDismissPage() {
+        var pushed = PH.pushed;
+        phoneClosePage(false, true);
+        if (pushed) {
+            PH.ignorePop = true;
+            window.history.back();
+        }
+    }
+
+    // A card's own heading, for its row and its page.
+    function phoneCardTitle(card) {
+        var el = card.querySelector('.brikpanel-pe-wc-fields-head > label, .brikpanel-pe-ext-title, .postbox-header .hndle');
+        if (!el) { el = card.querySelector(':scope > label'); }
+        if (!el) { return ''; }
+        var copy = el.cloneNode(true);
+        $(copy).find('.brikpanel-pe-seo-plugin-badge, button, input, select, .screen-reader-text, .brikpanel-pe-attr-row-controls').remove();
+        return phText(copy);
+    }
+
+    function phoneBuildSections() {
+        var content = document.querySelector('.brikpanel-pe-content');
+        if (!content) { return; }
+        var details = [];
+        var foreign = [];
+
+        PH_GROUPS.forEach(function (g) {
+            var cards = [];
+            g.sections.forEach(function (slug) {
+                var card = content.querySelector('[data-bpe-section="' + slug + '"]');
+                if (card && card.parentNode && !card.closest('.brikpanel-pe-ph-page')) { cards.push(card); }
+            });
+            if (!cards.length) { return; }
+            var page = phMake('section', 'brikpanel-pe-ph-page');
+            page.setAttribute('data-page', g.id);
+            page.setAttribute('aria-label', phT(g.title));
+            page.appendChild(phonePageBar(phT(g.title), 'name', phoneGoBack));
+            var bodyEl = phMake('div', 'brikpanel-pe-ph-pagebody');
+            cards.forEach(function (card) {
+                var marker = document.createComment('bpe-ph:' + g.id);
+                card.parentNode.insertBefore(marker, card);
+                PH.markers.push({ marker: marker, card: card });
+                bodyEl.appendChild(card);
+            });
+            page.appendChild(bodyEl);
+            content.appendChild(page);
+            PH.pages[g.id] = { el: page, kind: 'own', group: g, cards: cards };
+            details.push(g.id);
+        });
+
+        var n = 0;
+        $(content).find(PH_FOREIGN).each(function () {
+            var card = this;
+            if (card.closest('.brikpanel-pe-ph-page, .brikpanel-pe-ph-inplace')) { return; }
+            var id = 'plugin-' + (++n);
+            var title = phoneCardTitle(card) || phT('ph_from_plugins');
+            card.classList.add('brikpanel-pe-ph-inplace');
+            card.setAttribute('data-page', id);
+            card.insertBefore(phonePageBar(title, 'name', phoneGoBack), card.firstChild);
+            PH.pages[id] = { el: card, kind: 'inplace', title: title };
+            foreign.push(id);
+        });
+
+        var wrap = phMake('div', 'brikpanel-pe-ph-sections');
+        var addGroup = function (heading, ids) {
+            if (!ids.length) { return; }
+            wrap.appendChild(phMake('p', 'brikpanel-pe-ph-grouplabel', heading));
+            var box = phMake('div', 'brikpanel-pe-ph-rows');
+            ids.forEach(function (id) {
+                var p = PH.pages[id];
+                var row = phMake('button', 'brikpanel-pe-ph-row');
+                row.type = 'button';
+                row.setAttribute('data-page', id);
+                row.appendChild(phIcon(p.kind === 'own' ? p.group.icon : (p.el.classList.contains('brikpanel-pe-seo-card') ? 'globe' : 'plug')));
+                var text = phMake('span', 'brikpanel-pe-ph-rowtext');
+                var b = phMake('b', '', p.kind === 'own' ? phT(p.group.title) : p.title);
+                // The SEO card names the plugin that draws it in its heading.
+                var badge = p.kind === 'inplace' ? p.el.querySelector(':scope > label .brikpanel-pe-seo-plugin-badge') : null;
+                if (badge && phText(badge)) {
+                    b.appendChild(phMake('span', 'brikpanel-pe-ph-rowtag', phText(badge)));
+                }
+                text.appendChild(b);
+                var sumEl = phMake('span', 'brikpanel-pe-ph-rowsum');
+                sumEl.setAttribute('dir', 'auto');
+                text.appendChild(sumEl);
+                row.appendChild(text);
+                row.appendChild(phIcon('chev', 'brikpanel-pe-ph-chev'));
+                row.addEventListener('click', function () { phoneOpenPage(id); });
+                p.row = row;
+                box.appendChild(row);
+            });
+            wrap.appendChild(box);
+        };
+        addGroup(phT('ph_details'), details);
+        addGroup(phT('ph_from_plugins'), foreign);
+        content.appendChild(wrap);
+        PH.sections = wrap;
+        phoneSummaries();
+    }
+
+    function phoneTeardownSections() {
+        PH.markers.forEach(function (m) {
+            if (m.marker.parentNode) {
+                m.marker.parentNode.insertBefore(m.card, m.marker);
+                m.marker.parentNode.removeChild(m.marker);
+            }
+        });
+        PH.markers = [];
+        Object.keys(PH.pages).forEach(function (id) {
+            var p = PH.pages[id];
+            if (p.kind === 'own') {
+                if (p.el.parentNode) { p.el.parentNode.removeChild(p.el); }
+            } else if (p.kind === 'inplace') {
+                p.el.classList.remove('brikpanel-pe-ph-inplace', 'is-ph-open');
+                p.el.removeAttribute('data-page');
+                p.el.removeAttribute('tabindex');
+                var bar = p.el.querySelector(':scope > .brikpanel-pe-ph-pagebar');
+                if (bar) { p.el.removeChild(bar); }
+            }
+        });
+        PH.pages = {};
+        if (PH.sections && PH.sections.parentNode) { PH.sections.parentNode.removeChild(PH.sections); }
+        PH.sections = null;
+    }
+
+    // The line under each row's name: what the page holds right now.
+    function phoneSummaries() {
+        if (!PH.built) { return; }
+        Object.keys(PH.pages).forEach(function (id) {
+            var p = PH.pages[id];
+            if (!p.row) { return; }
+            phSetText(p.row.querySelector('.brikpanel-pe-ph-rowsum'), phoneSummaryOf(id, p));
+            // A row whose cards the editor hides (a virtual product has no
+            // weight to set) is not offered.
+            p.row.hidden = p.kind === 'own'
+                ? !p.cards.some(function (c) { return c.style.display !== 'none'; })
+                : p.el.style.display === 'none';
+        });
+    }
+
+    function phoneSummaryOf(id, p) {
+        var names = function (sel) {
+            return $(sel).map(function () { return phText($(this).closest('label')[0]); }).get().filter(Boolean);
+        };
+        if (id === 'organization') {
+            var parts = names('#bpe-cat-list input:checked').concat(names('#bpe-brand-list input:checked'));
+            (state.tags || []).forEach(function (tg) { parts.push(String(tg)); });
+            return parts.length ? parts.join(', ') : phT('ph_no_category');
+        }
+        if (id === 'description') {
+            var txt = phText(document.getElementById('bpe-short-desc')) || phText(document.getElementById('bpe-description'));
+            return txt ? txt.slice(0, 120) : phT('ph_no_description');
+        }
+        if (id === 'shipping') {
+            if ($('#bpe-virtual-toggle').is(':checked')) { return phT('ph_virtual'); }
+            var unitOf = function (sel) {
+                return phText($(sel).closest('.brikpanel-pe-input-group').find('.brikpanel-pe-input-suffix')[0]);
+            };
+            var out = [];
+            var w = phTrim($('#bpe-weight').val() || '');
+            if (w) { out.push(phTrim(w + ' ' + unitOf('#bpe-weight'))); }
+            var dims = ['#bpe-length', '#bpe-width', '#bpe-height'].map(function (s) { return phTrim($(s).val() || ''); });
+            if (dims.some(Boolean)) {
+                out.push(phTrim(dims.map(function (d) { return d || '0'; }).join(' × ') + ' ' + unitOf('#bpe-length')));
+            }
+            var $sc = $('#bpe-shipping-class');
+            if ($sc.length && $sc.val()) { out.push(phText($sc.find('option:selected')[0])); }
+            return out.length ? out.join(' · ') : phT('ph_not_set');
+        }
+        if (id === 'linked') {
+            var up = (state.linked && state.linked.upsells) ? state.linked.upsells.length : 0;
+            var cross = (state.linked && state.linked.cross_sells) ? state.linked.cross_sells.length : 0;
+            if (!up && !cross) { return phT('ph_none'); }
+            var pair = phT('ph_pair');
+            var fmt = function (label, num) { return pair.replace('%1$s', label).replace('%2$s', fmtCount(num)); };
+            return fmt(phT('ph_upsells'), up) + ' · ' + fmt(phT('ph_cross_sells'), cross);
+        }
+        if (p.kind === 'own') {
+            return p.cards.filter(function (c) { return c.style.display !== 'none'; })
+                .map(function (c) { return phoneCardTitle(c); }).filter(Boolean).join(', ');
+        }
+        // Another plugin's card: the names of the first fields a merchant sees
+        // there (a plugin's hidden tabs do not count), else how many there are.
+        var labels = [];
+        $(p.el).find('label').each(function () {
+            if (labels.length >= 3 || !this.getClientRects().length || $(this).closest('.brikpanel-pe-ph-pagebar').length) { return; }
+            var copy = this.cloneNode(true);
+            $(copy).find('input, select, textarea, button, .screen-reader-text, .woocommerce-help-tip, .brikpanel-pe-seo-plugin-badge').remove();
+            var t = phText(copy).replace(/\s*[:*]+$/, '');
+            if (t && t.length <= 60 && labels.indexOf(t) < 0) { labels.push(t); }
+        });
+        if (labels.length) { return labels.join(', '); }
+        var fields = $(p.el).find('input, select, textarea').filter(function () {
+            return !/^(hidden|button|submit|reset)$/.test(this.type || '') && this.getClientRects().length > 0;
+        }).length;
+        return fields ? countText(PE.i18n.ph_fields, fields) : '';
+    }
+
+    // Everything but the open page answers no taps: the siblings of the page
+    // and of each of its parents, up to the editor (the bottom bar stays live).
+    function phoneInertAround(el) {
+        var list = [];
+        var stop = document.querySelector('.brikpanel-pe');
+        var node = el;
+        while (node && node !== stop && node.parentNode) {
+            var parent = node.parentNode;
+            for (var c = parent.firstElementChild; c; c = c.nextElementSibling) {
+                if (c === node || c.inert || c.id === 'bpe-ph-bar' || /^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(c.tagName)) { continue; }
+                c.inert = true;
+                list.push(c);
+            }
+            if (parent === stop) { break; }
+            node = parent;
+        }
+        return list;
+    }
+
+    // The page behind does not scroll while a page is open, and comes back
+    // where it was.
+    function phoneLock(on) {
+        var html = document.documentElement;
+        if (on) {
+            if (PH.scrollY === null) { PH.scrollY = window.pageYOffset; }
+            html.classList.add('bpe-ph-lock');
+            return;
+        }
+        html.classList.remove('bpe-ph-lock');
+        if (PH.scrollY !== null && window.pageYOffset !== PH.scrollY) { window.scrollTo(0, PH.scrollY); }
+        PH.scrollY = null;
+    }
+
+    function phonePush(id) {
+        try {
+            window.history.pushState({ bpePage: id }, '', window.location.href);
+            PH.pushed = true;
+        } catch (e) {
+            PH.pushed = false;
+        }
+    }
+
+    function phoneOpenPage(id) {
+        var p = PH.pages[id];
+        if (!p || PH.open === id) { return; }
+        if (PH.open) { phoneClosePage(true, true); }
+        phoneVarFlushClose();
+        PH.open = id;
+        PH.returnTo = p.row || document.activeElement;
+        phoneLock(true);
+        p.el.classList.add('is-ph-open');
+        p.el.scrollTop = 0;
+        PH.inert = phoneInertAround(p.el);
+        phonePush(id);
+        // The page itself takes the focus (a screen reader names it); a
+        // focused back button would show its ring after every tap.
+        p.el.setAttribute('tabindex', '-1');
+        window.setTimeout(function () { phFocus(p.el); }, 60);
+    }
+
+    // `silent`: closed by the code (a wider screen, another page), not by the
+    // merchant: no focus move, and the history entry the page pushed is left
+    // for the back gesture to skip. `instant`: no slide.
+    function phoneClosePage(silent, instant) {
+        var id = PH.open;
+        if (!id) { return; }
+        var p = PH.pages[id];
+        PH.open = null;
+        PH.inert.forEach(function (c) { c.inert = false; });
+        PH.inert = [];
+        if (id === 'var') {
+            phoneVarPageOff(instant);
+        } else if (p) {
+            p.el.classList.remove('is-ph-open');
+        }
+        if (PH.pushed && silent) { PH.stale++; }
+        PH.pushed = false;
+        phoneLock(false);
+        phoneSummaries();
+        if (!silent) { phFocus(PH.returnTo); }
+        PH.returnTo = null;
+    }
+
+    // The address the save gave a new product, kept on the entry the back
+    // step lands on.
+    function phoneKeepUrl() {
+        if (PH.url && window.location.href !== PH.url) {
+            try { window.history.replaceState(window.history.state, '', PH.url); } catch (e) { /* stays */ }
+        }
+    }
+
+    function phonePopState(e) {
+        var ev = e.originalEvent || e;
+        var st = ev.state || null;
+        if (PH.ignorePop) {
+            PH.ignorePop = false;
+            phoneKeepUrl();
+            return;
+        }
+        if (PH.open && !(st && st.bpePage === PH.open)) {
+            PH.pushed = false;
+            phoneClosePage(false);
+            phoneKeepUrl();
+            // Landed on an entry of a page closed earlier by the code: skip it,
+            // or the next back step would seem to do nothing.
+            if (st && st.bpePage && PH.stale > 0) {
+                PH.stale--;
+                PH.ignorePop = true;
+                window.history.back();
+            }
+            return;
+        }
+        if (!PH.open && PH.stale > 0) {
+            // A back step onto nothing (the page it opened was closed by the
+            // code): the merchant meant to go back, so go on.
+            PH.stale--;
+            window.history.back();
+        }
+    }
+
+    // A save stopped by a field on a closed page (a required field, ACF's own
+    // checks): that page opens and the field comes into view.
+    function phoneRevealError() {
+        if (!PH.built) { return; }
+        window.setTimeout(function () {
+            var el = document.querySelector('.brikpanel-pe-content .has-error, .brikpanel-pe-content .acf-error-message, .brikpanel-pe-content .acf-field.-error');
+            if (!el) { return; }
+            var page = el.closest('.brikpanel-pe-ph-page, .brikpanel-pe-ph-inplace');
+            var id = page ? page.getAttribute('data-page') : null;
+            if (id && id !== PH.open) { phoneOpenPage(id); }
+            window.setTimeout(function () {
+                try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) { el.scrollIntoView(); }
+            }, id ? 420 : 0);
+        }, 0);
+    }
+
+    // ---- Sheets made of the editor's own parts ----------------------------
+    // The edit-all strip, the attribute picker and each attribute row become
+    // a sheet where they stand (brikpanelSheet.attach): their fields and
+    // handlers stay put. Dressed as a dialog only while the phone layout is on.
+    function phoneSheetDress(el, label, title) {
+        el.classList.add('brikpanel-pe-ph-sheet');
+        el.setAttribute('role', 'dialog');
+        el.setAttribute('aria-modal', 'true');
+        if (label) { el.setAttribute('aria-label', label); }
+        var h = el.querySelector(':scope > .brikpanel-pe-ph-sheettitle');
+        if (title && !h) {
+            h = phMake('p', 'brikpanel-pe-ph-sheettitle');
+            h.setAttribute('aria-hidden', 'true');
+            var grip = el.querySelector(':scope > .brikpanel-sheet__grip');
+            el.insertBefore(h, grip ? grip.nextSibling : el.firstChild);
+        }
+        if (h) { phSetText(h, title || ''); }
+    }
+
+    function phoneSheetUndress(el) {
+        if (!el) { return; }
+        el.classList.remove('brikpanel-pe-ph-sheet');
+        el.removeAttribute('role');
+        el.removeAttribute('aria-modal');
+        el.removeAttribute('aria-label');
+        $(el).children('.brikpanel-pe-ph-sheettitle, .brikpanel-pe-ph-sheetdone').remove();
+        // An attribute's remove button goes back beside its switches.
+        var rm = el.querySelector(':scope > .brikpanel-pe-attr-remove');
+        var controls = el.querySelector('.brikpanel-pe-attr-row-controls');
+        if (rm && controls) { controls.appendChild(rm); }
+    }
+
+    // ---- Variations --------------------------------------------------------
+    // The card's tools as one "..." (generate, add, edit all, sort, defaults,
+    // delete all). While there are none yet, Generate and Add keep their own
+    // buttons.
+    function phoneBuildVarTools() {
+        var build = document.getElementById('bpe-var-build');
+        var S = phSheet();
+        if (!build || !S) { return; }
+        if (!PH.varHead) {
+            var head = phMake('div', 'brikpanel-pe-ph-varhead');
+            var title = phMake('span', 'brikpanel-pe-ph-varhead-title');
+            title.setAttribute('dir', 'auto');
+            head.appendChild(title);
+            var more = phMake('button', 'brikpanel-pe-ph-iconbtn');
+            more.type = 'button';
+            more.setAttribute('aria-haspopup', 'dialog');
+            more.setAttribute('aria-label', phT('ph_more_actions'));
+            more.innerHTML = PH_ICON.more; // Static markup.
+            more.addEventListener('click', phoneVarMenu);
+            head.appendChild(more);
+            build.insertBefore(head, build.firstChild);
+            PH.varHead = head;
+        }
+        var bulk = document.querySelector('#bpe-var-table-section .brikpanel-pe-var-bulk > .brikpanel-pe-var-bulk-group:not(.brikpanel-pe-var-sort)');
+        if (bulk) {
+            if (!PH.bulkSheet) { PH.bulkSheet = S.attach(bulk, {}); }
+            PH.bulk = bulk;
+            phoneSheetDress(bulk, phT('ph_edit_all'), phT('ph_edit_all'));
+        }
+        phoneVarHeadSync();
+    }
+
+    function phoneTeardownVarTools() {
+        if (PH.varHead && PH.varHead.parentNode) { PH.varHead.parentNode.removeChild(PH.varHead); }
+        PH.varHead = null;
+        phoneSheetUndress(PH.bulk);
+        $('#bpe-var-build').removeClass('is-ph-has-vars');
+    }
+
+    function phoneVarHeadSync() {
+        if (!PH.varHead) { return; }
+        var n = (state.variations || []).length;
+        phSetText(PH.varHead.querySelector('.brikpanel-pe-ph-varhead-title'), n ? countText(PE.i18n.ph_variations, n) : '');
+        PH.varHead.hidden = !n;
+        $('#bpe-var-build').toggleClass('is-ph-has-vars', n > 0);
+    }
+
+    function phoneVarMenu() {
+        var S = phSheet();
+        if (!S) { return; }
+        var t = PE.i18n;
+        var n = (state.variations || []).length;
+        // The next sheet waits for this one to slide away.
+        var later = function (fn) { return function () { window.setTimeout(fn, 300); }; };
+        var clickIt = function (sel) { return function () { var b = document.querySelector(sel); if (b) { b.click(); } }; };
+        var items = [
+            { label: phT('ph_generate'), icon: PH_ICON.wand, run: clickIt('#bpe-generate-vars') },
+            { label: phT('ph_add_manually'), icon: PH_ICON.plus, run: clickIt('#bpe-add-variation') }
+        ];
+        if (n && PH.bulkSheet) {
+            items.push({ label: phT('ph_edit_all'), icon: PH_ICON.edit, run: later(function () { PH.bulkSheet.open(); }) });
+        }
+        if (n > 1 && document.getElementById('bpe-var-sort')) {
+            items.push({ label: phT('ph_sort_variations'), icon: PH_ICON.sort, run: later(phoneSortSheet) });
+        }
+        if ($('#bpe-var-defaults').css('display') !== 'none' && $('#bpe-var-defaults-row .bpe-var-default').length) {
+            items.push({ label: phT('ph_default_values'), icon: PH_ICON.pin, run: later(phoneDefaultsSheet) });
+        }
+        if (n) {
+            items.push({
+                label: phT('ph_clear_variations'),
+                icon: PH_ICON.trash,
+                danger: true,
+                run: later(function () {
+                    phoneAsk({ text: countText(t.confirm_clear_variations, n), ok: phT('ph_clear_variations'), danger: true }, function () {
+                        clearAllVariations(null, true);
+                    });
+                })
+            });
+        }
+        S.actions({ label: phT('ph_more_actions'), items: items, returnFocus: this });
+    }
+
+    function phoneSortSheet() {
+        var S = phSheet();
+        var src = document.getElementById('bpe-var-sort');
+        if (!S || !src) { return; }
+        var items = [];
+        Array.prototype.forEach.call(src.options, function (o) {
+            if (!o.value) { return; }
+            items.push({ label: o.textContent, run: function () { $(src).val(o.value).trigger('change'); } });
+        });
+        S.actions({ title: phT('ph_sort_variations'), items: items });
+    }
+
+    // One select per axis, each driving the real one in the card.
+    function phoneDefaultsSheet() {
+        var S = phSheet();
+        if (!S) { return; }
+        var body = phMake('div', 'brikpanel-pe-ph-form');
+        collectVariationAttributes().forEach(function (a, i) {
+            var real = document.querySelector('#bpe-var-defaults-row .bpe-var-default[data-key="' + attrAxisKey(a) + '"]');
+            if (!real) { return; }
+            var box = phMake('div', 'brikpanel-pe-ph-field');
+            var label = phMake('label', 'brikpanel-pe-ph-label', a.name);
+            label.htmlFor = 'bpe-ph-default-' + i;
+            var sel = real.cloneNode(true);
+            sel.id = 'bpe-ph-default-' + i;
+            sel.className = 'brikpanel-control brikpanel-pe-ph-input';
+            sel.removeAttribute('data-key');
+            sel.value = real.value;
+            sel.addEventListener('change', function () { $(real).val(sel.value).trigger('change'); });
+            box.appendChild(label);
+            box.appendChild(sel);
+            body.appendChild(box);
+        });
+        var done = phMake('button', 'brikpanel-btn brikpanel-btn--primary brikpanel-sheet__btn', phT('ph_done'));
+        done.type = 'button';
+        done.addEventListener('click', function () { S.close(); });
+        S.open({ title: phT('ph_default_values'), body: body, foot: done });
+    }
+
+    // Every render of the table: rows as one-line summaries, a page kept on
+    // its variation, the count in the card's head and the app bar.
+    function phoneAfterVarTable() {
+        if (!PH.ready) { return; }
+        phoneSyncSub();
+        if (!PH.built) { return; }
+        if (varFit && varFit.floor !== Infinity) {
+            varFit.floor = Infinity;
+            varFit.refit();
+        }
+        phoneVarHeadSync();
+        $('#bpe-var-table-body tr.var-main-row').each(function () { phoneVarSummary(this); });
+        if (PH.open === 'var') {
+            if (state.variations[PH.varIdx]) {
+                phoneVarFocus(PH.varIdx);
+            } else {
+                phoneDismissPage();
+            }
+        }
+    }
+
+    function phoneMoney(raw) {
+        var v = parsePrice(String(raw || ''), PE.decimal_sep || ',');
+        var n = parseFloat(v);
+        if (!v || isNaN(n)) { return ''; }
+        return window.brikpanelFormat ? window.brikpanelFormat.money(n) : String(raw);
+    }
+
+    function phoneVarName($main) {
+        var name = phText($main.find('.var-name-text')[0]);
+        if (!name) {
+            name = $main.find('.var-attr-select').map(function () { return phText($(this).find('option:selected')[0]); }).get().filter(Boolean).join(' / ');
+        }
+        return name;
+    }
+
+    // The row's one line under its name (price · stock), the "Active" word
+    // its page shows beside the switch, and the arrow that opens the page.
+    function phoneVarSummary(tr) {
+        var inner = tr.querySelector('.var-name-inner');
+        var wrap = tr.querySelector('.var-name-text-wrap');
+        if (!inner || !wrap) { return; }
+        var $tr = $(tr);
+        var sum = wrap.querySelector('.brikpanel-pe-ph-varsum');
+        if (!sum) {
+            sum = phMake('span', 'brikpanel-pe-ph-varsum');
+            sum.setAttribute('dir', 'auto');
+            wrap.appendChild(sum);
+            var sw = inner.querySelector('.var-enabled-switch');
+            if (sw) {
+                var act = phMake('span', 'brikpanel-pe-ph-active', PE.i18n.variation_active || '');
+                act.setAttribute('aria-hidden', 'true');
+                inner.insertBefore(act, sw);
+            }
+            var open = phMake('button', 'brikpanel-pe-ph-varopen');
+            open.type = 'button';
+            open.innerHTML = PH_ICON.chev; // Static markup.
+            inner.appendChild(open);
+        }
+        tr.querySelector('.brikpanel-pe-ph-varopen').setAttribute('aria-label', phoneVarName($tr));
+        var price = phoneMoney($tr.find('.var-sale-price').val()) || phoneMoney($tr.find('.var-price').val());
+        var stock;
+        if ($tr.find('.var-stock-box').attr('data-manage') === '1') {
+            stock = countText(PE.i18n.ph_in_stock, parseInt($tr.find('.var-stock').val(), 10) || 0);
+        } else {
+            stock = phText($tr.find('.var-stock-free-text')[0]);
+        }
+        phSetText(sum, [price, stock].filter(Boolean).join(' · '));
+    }
+
+    function phoneVarInput() {
+        if (!PH.built) { return; }
+        var idx = $(this).closest('tr').attr('data-idx');
+        var main = document.querySelector('#bpe-var-table-body tr.var-main-row[data-idx="' + idx + '"]');
+        if (main) { phoneVarSummary(main); }
+        if (PH.open === 'var' && String(PH.varIdx) === String(idx)) { phoneVarBarSync(); }
+    }
+
+    function phoneVarRowTap(e) {
+        if (!PH.built || PH.open === 'var') { return; }
+        if ($(e.target).closest('.var-enabled-switch, .var-attr-select, .var-image-wrap, .var-drag-handle, input, select, textarea, a').length) { return; }
+        var idx = parseInt(this.getAttribute('data-idx'), 10);
+        if (isNaN(idx)) { return; }
+        e.preventDefault();
+        phoneOpenVarPage(idx, this.querySelector('.brikpanel-pe-ph-varopen'));
+    }
+
+    // A variation's page is the table's own box, full screen, showing that
+    // variation's rows only: nothing is moved or copied.
+    function phoneOpenVarPage(idx, returnTo) {
+        var wrap = document.querySelector('.brikpanel-pe-var-table-wrap');
+        if (!wrap) { return; }
+        if (PH.open) { phoneClosePage(true, true); }
+        phoneVarFlushClose();
+        PH.pages['var'] = { el: wrap, kind: 'var' };
+        PH.open = 'var';
+        PH.returnTo = returnTo || null;
+        PH.varIdx = -1;
+        if (!wrap.querySelector(':scope > .brikpanel-pe-ph-pagebar')) {
+            var bar = phonePageBar('', '', phoneGoBack);
+            bar.classList.add('brikpanel-pe-ph-varbar');
+            var end = bar.querySelector('.brikpanel-pe-ph-barend');
+            var step = function (cls, label, icon, by) {
+                var b = phMake('button', 'brikpanel-pe-ph-iconbtn ' + cls);
+                b.type = 'button';
+                b.setAttribute('aria-label', label);
+                b.innerHTML = PH_ICON[icon]; // Static markup.
+                b.addEventListener('click', function () { phoneVarFocus(PH.varIdx + by); });
+                end.appendChild(b);
+            };
+            step('brikpanel-pe-ph-prev', phT('ph_prev_variation'), 'up', -1);
+            step('brikpanel-pe-ph-next', phT('ph_next_variation'), 'down', 1);
+            wrap.insertBefore(bar, wrap.firstChild);
+            var del = phMake('button', 'brikpanel-btn brikpanel-btn--secondary brikpanel-pe-ph-vardelete', PE.i18n.delete_variation || '');
+            del.type = 'button';
+            del.addEventListener('click', function () {
+                var at = PH.varIdx;
+                phoneAsk({ text: PE.i18n.confirm_delete_variation || '', ok: PE.i18n.delete_variation || '', danger: true }, function () {
+                    phoneDismissPage();
+                    deleteVariationAt(at);
+                });
+            });
+            wrap.appendChild(del);
+        }
+        phoneLock(true);
+        wrap.classList.add('is-ph-open');
+        PH.inert = phoneInertAround(wrap);
+        phonePush('var');
+        phoneVarFocus(idx);
+        wrap.setAttribute('tabindex', '-1');
+        window.setTimeout(function () { phFocus(wrap); }, 60);
+    }
+
+    // Shows one variation on its page: its row as a form with its details
+    // open. Moving to another variation is the same.
+    function phoneVarFocus(idx) {
+        var wrap = document.querySelector('.brikpanel-pe-var-table-wrap');
+        var n = (state.variations || []).length;
+        if (!wrap || idx < 0 || idx >= n) { return; }
+        var $body = $('#bpe-var-table-body');
+        var $main = $body.find('tr.var-main-row[data-idx="' + idx + '"]');
+        if (!$main.length) { return; }
+        if (PH.varIdx !== idx) {
+            if (PH.varIdx >= 0) {
+                var $old = $body.find('tr.var-main-row[data-idx="' + PH.varIdx + '"]');
+                if ($old.length && !PH.varWasOpen) { setVarDetailsOpen($old, false, false); }
+            }
+            PH.varWasOpen = $main.hasClass('is-open');
+            PH.varIdx = idx;
+            wrap.scrollTop = 0;
+        }
+        $body.find('tr.is-ph-focus').removeClass('is-ph-focus');
+        $body.find('tr[data-idx="' + idx + '"]').addClass('is-ph-focus');
+        if (!$main.hasClass('is-open')) { setVarDetailsOpen($main, true, false); }
+        phoneVarBarSync();
+    }
+
+    function phoneVarBarSync() {
+        var wrap = document.querySelector('.brikpanel-pe-var-table-wrap');
+        var bar = wrap ? wrap.querySelector(':scope > .brikpanel-pe-ph-pagebar') : null;
+        if (!bar) { return; }
+        var n = (state.variations || []).length;
+        var $main = $('#bpe-var-table-body tr.var-main-row[data-idx="' + PH.varIdx + '"]');
+        phSetText(bar.querySelector('.brikpanel-pe-ph-name'), phoneVarName($main));
+        phSetText(bar.querySelector('.brikpanel-pe-ph-sub'), phT('ph_variation_of').replace('%1$s', fmtCount(PH.varIdx + 1)).replace('%2$s', fmtCount(n)));
+        bar.querySelector('.brikpanel-pe-ph-prev').disabled = PH.varIdx <= 0;
+        bar.querySelector('.brikpanel-pe-ph-next').disabled = PH.varIdx >= n - 1;
+    }
+
+    // The page slides away first (`instant`: at once, as when a wider screen
+    // or another page takes over), then the rows read as one-liners again.
+    function phoneVarPageOff(instant) {
+        var wrap = document.querySelector('.brikpanel-pe-var-table-wrap');
+        var idx = PH.varIdx;
+        var wasOpen = PH.varWasOpen;
+        delete PH.pages['var'];
+        PH.varIdx = -1;
+        PH.varWasOpen = false;
+        var finish = function () {
+            PH.varClosing = null;
+            var $body = $('#bpe-var-table-body');
+            var $main = $body.find('tr.var-main-row[data-idx="' + idx + '"]');
+            $body.find('tr.is-ph-focus').removeClass('is-ph-focus');
+            if ($main.length && !wasOpen) { setVarDetailsOpen($main, false, false); }
+            if (wrap) {
+                wrap.classList.remove('is-ph-open', 'is-ph-closing');
+                wrap.removeAttribute('tabindex');
+                $(wrap).children('.brikpanel-pe-ph-pagebar, .brikpanel-pe-ph-vardelete').remove();
+            }
+            if ($main.length && PH.built) { phoneVarSummary($main[0]); }
+        };
+        if (!wrap || instant || prefersReducedMotion()) {
+            finish();
+            return;
+        }
+        wrap.classList.add('is-ph-closing');
+        PH.varClosing = { timer: window.setTimeout(finish, 280), finish: finish };
+    }
+
+    function phoneVarFlushClose() {
+        if (PH.varClosing) {
+            window.clearTimeout(PH.varClosing.timer);
+            PH.varClosing.finish();
+        }
+    }
+
+    // ---- Attributes --------------------------------------------------------
+    // Each attribute row reads as one line (name, values, whether it builds
+    // variations); a tap opens the row's own controls as a sheet, with every
+    // control it has on a wider screen. Adding one is a sheet too.
+    function phoneBuildAttrUi() {
+        var list = document.getElementById('bpe-attr-list');
+        var S = phSheet();
+        if (!list || !S) { return; }
+        var add = document.querySelector('#bpe-var-attr-controls .brikpanel-pe-attr-add');
+        if (add) {
+            if (!PH.attrAdd) { PH.attrAdd = S.attach(add, {}); }
+            PH.attrAddEl = add;
+            phoneSheetDress(add, phT('ph_add_attribute'), phT('ph_add_attribute'));
+            if (!PH.attrAddBtn) {
+                var btn = phMake('button', 'brikpanel-btn brikpanel-btn--secondary brikpanel-pe-ph-addattr');
+                btn.type = 'button';
+                btn.setAttribute('aria-haspopup', 'dialog');
+                btn.appendChild(phIcon('plus', 'brikpanel-pe-ph-addattr-icon'));
+                btn.appendChild(phMake('span', '', phT('ph_add_attribute')));
+                btn.addEventListener('click', function () { if (PH.attrAdd) { PH.attrAdd.open(); } });
+                list.parentNode.insertBefore(btn, list.nextSibling);
+                PH.attrAddBtn = btn;
+            }
+        }
+        if (typeof window.MutationObserver === 'function') {
+            if (!PH.attrObserver) { PH.attrObserver = new window.MutationObserver(phoneAttrMutations); }
+            PH.attrObserver.observe(list, { childList: true, subtree: true });
+        }
+        $(list).on('change.bpeph', phoneAttrRows);
+        // Removing an attribute from its open sheet: the sheet closes first.
+        list.addEventListener('click', phoneAttrRemoveFirst, true);
+        phoneAttrRows();
+    }
+
+    function phoneTeardownAttrUi() {
+        var list = document.getElementById('bpe-attr-list');
+        if (PH.attrObserver) { PH.attrObserver.disconnect(); }
+        if (list) {
+            $(list).off('change.bpeph');
+            list.removeEventListener('click', phoneAttrRemoveFirst, true);
+            $(list).find('.brikpanel-pe-ph-attrsum').remove();
+            $(list).find('.brikpanel-pe-tag-group').each(function () { phoneSheetUndress(this); });
+        }
+        phoneSheetUndress(PH.attrAddEl);
+        if (PH.attrAddBtn && PH.attrAddBtn.parentNode) { PH.attrAddBtn.parentNode.removeChild(PH.attrAddBtn); }
+        PH.attrAddBtn = null;
+    }
+
+    function phoneAttrMutations(records) {
+        var list = document.getElementById('bpe-attr-list');
+        var added = [];
+        var relevant = false;
+        records.forEach(function (r) {
+            var t = r.target;
+            if (t.nodeType === 1 && t.closest('.brikpanel-pe-ph-attrsum, .brikpanel-pe-ph-sheettitle')) { return; }
+            relevant = true;
+            if (t === list) {
+                Array.prototype.forEach.call(r.addedNodes, function (n) {
+                    if (n.nodeType === 1 && n.classList.contains('brikpanel-pe-attr-row')) { added.push(n); }
+                });
+            }
+        });
+        if (!relevant) { return; }
+        phoneAttrRows();
+        // Picked in the "Add attribute" sheet: the new attribute's own sheet
+        // takes its place, ready for its values.
+        if (added.length && PH.attrAdd && PH.attrAdd.isOpen()) {
+            if (added.length === 1) {
+                phoneOpenAttrSheet(added[0]);
+            } else {
+                PH.attrAdd.close();
+            }
+        }
+    }
+
+    // An attribute row's own controls become its (closed) sheet once, when
+    // the row first shows on a phone.
+    function phoneAttrSheet(row) {
+        var S = phSheet();
+        var g = row ? row.querySelector(':scope > .brikpanel-pe-tag-group') : null;
+        if (!S || !g) { return null; }
+        var ctl = $(g).data('bpePhSheet');
+        if (!ctl) {
+            ctl = S.attach(g, {});
+            $(g).data('bpePhSheet', ctl);
+        }
+        if (!g.classList.contains('brikpanel-pe-ph-sheet')) {
+            phoneSheetDress(g, $(g).attr('data-attr-name') || '', '');
+            var done = phMake('button', 'brikpanel-btn brikpanel-btn--primary brikpanel-sheet__btn brikpanel-pe-ph-sheetdone', phT('ph_done'));
+            done.type = 'button';
+            done.addEventListener('click', function () { ctl.close(); });
+            g.appendChild(done);
+            // Removing the attribute is the last line of its sheet, under Done,
+            // away from the switches (its handler is bound to the button itself).
+            var rm = g.querySelector('.brikpanel-pe-attr-row-controls > .brikpanel-pe-attr-remove');
+            if (rm) { g.appendChild(rm); }
+        }
+        return ctl;
+    }
+
+    function phoneOpenAttrSheet(row) {
+        if (!PH.built) { return; }
+        var ctl = phoneAttrSheet(row);
+        if (ctl) { ctl.open(); }
+    }
+
+    function phoneAttrRemoveFirst(e) {
+        var rm = e.target.closest ? e.target.closest('.brikpanel-pe-attr-remove') : null;
+        if (!rm) { return; }
+        var g = rm.closest('.brikpanel-pe-tag-group');
+        var ctl = g ? $(g).data('bpePhSheet') : null;
+        if (ctl && ctl.isOpen()) {
+            ctl.close();
+            window.setTimeout(function () { phFocus(PH.attrAddBtn); }, 0);
+        }
+    }
+
+    function phoneAttrRows() {
+        if (!PH.built) { return; }
+        $('#bpe-attr-list > .brikpanel-pe-attr-row').each(function () {
+            var row = this;
+            var sum = row.querySelector(':scope > .brikpanel-pe-ph-attrsum');
+            if (!sum) {
+                sum = phMake('button', 'brikpanel-pe-ph-attrsum');
+                sum.type = 'button';
+                sum.setAttribute('aria-haspopup', 'dialog');
+                var text = phMake('span', 'brikpanel-pe-ph-rowtext');
+                text.appendChild(phMake('b'));
+                var sumLine = phMake('span', 'brikpanel-pe-ph-rowsum');
+                sumLine.setAttribute('dir', 'auto');
+                text.appendChild(sumLine);
+                sum.appendChild(text);
+                sum.appendChild(phIcon('chev', 'brikpanel-pe-ph-chev'));
+                sum.addEventListener('click', function () { phoneOpenAttrSheet(row); });
+                row.insertBefore(sum, row.firstChild);
+            }
+            phoneAttrSheet(row);
+            var $g = $(row).children('.brikpanel-pe-tag-group').first();
+            var vals = [];
+            $g.find('.brikpanel-pe-tag').each(function () {
+                vals.push(phTrim($(this).clone().children().remove().end().text()));
+            });
+            var line = vals.length ? vals.join(', ') : phT('ph_no_values');
+            if (isVariableOn() && $g.find('.brikpanel-pe-usevar-check').is(':checked')) {
+                line += ' · ' + phT('ph_used_for_variations');
+            }
+            phSetText(sum.querySelector('b'), $g.attr('data-attr-name') || '');
+            phSetText(sum.querySelector('.brikpanel-pe-ph-rowsum'), line);
+        });
+    }
 
     $(document).ready(init);
 })(jQuery);
