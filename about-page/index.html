@@ -16,6 +16,7 @@
      that is not black and white. */
   :root {
     --ink: #303030;          /* the pencil: same ink as the BrikPanel sketches */
+    --ghost: #dcdcd8;        /* the faint underdrawing the ink traces */
     --heading: #1d1d1f;
     --text: #424245;
     --muted: #6e6e73;
@@ -312,26 +313,43 @@
     .room__icon { width: 48px; height: 48px; margin-bottom: 16px; }
   }
 
-  /* ── Motion: only when JavaScript runs and the visitor allows it ─────── */
+  /* ── Motion ─────────────────────────────────────────────────────────────
+     A drawing is never blank. Script lays a faint pencil copy under it
+     (.ghost), hides the ink (.is-armed) and inks it in (.is-drawing) once
+     the drawing reaches the middle of the screen; the hero inks on load.
+     --d is when a line starts, --t how long it takes, --pace scales both.
+     Text fades up as it scrolls in. */
+  .ink.ghost { stroke: var(--ghost); }
   @media (prefers-reduced-motion: no-preference) {
     .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .9s var(--ease) var(--d, 0s), transform .9s var(--ease) var(--d, 0s); }
     .js .reveal.is-visible { opacity: 1; transform: none; }
 
-    /* The gap is longer than the line and the offset a hair past it, so an undrawn line leaves no round-cap dot. */
-    .js .sketch .ln { stroke-dasharray: 1 2; stroke-dashoffset: 1.01; }
-    .js .sketch.is-visible .ln { stroke-dashoffset: 0; transition: stroke-dashoffset var(--t, .8s) cubic-bezier(.55, .1, .25, 1) var(--d, 0s); }
-    .js .sketch .fade { opacity: 0; }
-    .js .sketch.is-visible .fade { opacity: 1; transition: opacity .8s ease var(--d, 0s); }
-    .js .sketch .note { clip-path: inset(-30% 100% -30% -10%); }
-    .js .sketch.is-visible .note { clip-path: inset(-30% -10% -30% -10%); transition: clip-path var(--t, .9s) cubic-bezier(.4, .1, .6, 1) var(--d, 0s); }
+    .hero { --pace: .75; }
+    /* The gap is longer than the line and the start a hair past it, so an undrawn line leaves no round-cap dot. */
+    .sketch.is-armed .ln { stroke-dasharray: 1 2; stroke-dashoffset: 1.01; }
+    .sketch.is-armed .fade { opacity: 0; }
+    .sketch.is-armed .note { clip-path: inset(-30% 100% -30% -10%); }
+    .sketch.is-armed .dots-in { opacity: 0; }
+    .sketch.is-drawing .ln { animation: ink-draw calc(var(--t, .8s) * var(--pace, 1)) cubic-bezier(.55, .1, .25, 1) calc(var(--d, 0s) * var(--pace, 1)) both; }
+    .sketch.is-drawing .fade { animation: ink-fade .8s ease calc(var(--d, 0s) * var(--pace, 1)) both; }
+    .sketch.is-drawing .dots-in { animation: ink-fade .7s ease calc(var(--d, 0s) * var(--pace, 1)) both; }
+    .sketch.is-drawing .note { animation: ink-write calc(var(--t, .9s) * var(--pace, 1)) cubic-bezier(.4, .1, .6, 1) calc(var(--d, 0s) * var(--pace, 1)) both; }
+    /* The hero is the first frame: its notes are already written. */
+    .hero .sketch.is-armed .note { clip-path: none; animation: none; }
 
-    .js .strike { background-size: 0% .52em; transition: background-size 1s cubic-bezier(.6, .1, .3, 1) .45s; }
-    .js .is-visible .strike { background-size: 100% .52em; }
-    .js .hl { background-size: 0% .56em; transition: background-size 1.1s cubic-bezier(.6, .1, .3, 1) .5s; }
-    .js .is-visible .hl { background-size: 100% .56em; }
-    .js .squiggle { background-size: 0% .3em; transition: background-size 1s cubic-bezier(.6, .1, .3, 1) .5s; }
-    .js .is-visible .squiggle { background-size: 100% .3em; }
+    .strike.is-armed { background-size: 0% .52em; }
+    .strike.is-drawing { animation: mark-strike 1s cubic-bezier(.6, .1, .3, 1) .25s both; }
+    .hl.is-armed { background-size: 0% .56em; }
+    .hl.is-drawing { animation: mark-hl 1.1s cubic-bezier(.6, .1, .3, 1) .3s both; }
+    .squiggle.is-armed { background-size: 0% .3em; }
+    .squiggle.is-drawing { animation: mark-squiggle 1s cubic-bezier(.6, .1, .3, 1) .3s both; }
   }
+  @keyframes ink-draw { from { stroke-dashoffset: 1.01; } to { stroke-dashoffset: 0; } }
+  @keyframes ink-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes ink-write { from { clip-path: inset(-30% 100% -30% -10%); } to { clip-path: inset(-30% -10% -30% -10%); } }
+  @keyframes mark-strike { from { background-size: 0% .52em; } to { background-size: 100% .52em; } }
+  @keyframes mark-hl { from { background-size: 0% .56em; } to { background-size: 100% .56em; } }
+  @keyframes mark-squiggle { from { background-size: 0% .3em; } to { background-size: 100% .3em; } }
 </style>
 </head>
 <body>
@@ -536,6 +554,25 @@
       </g>
     </svg>
   </section>
+  <script>
+    // Lines ink over a faint pencil copy of themselves, so a drawing is never blank.
+    var still = !window.matchMedia || matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function armSketch(el) {
+      if (el.classList.contains('sketch')) {
+        el.querySelectorAll('g.ink').forEach(function (g) {
+          var copy = g.cloneNode(true);
+          copy.classList.add('ghost');
+          copy.querySelectorAll('mask, .fade, .paper-fill, .solid').forEach(function (n) { n.remove(); });
+          copy.querySelectorAll('[mask]').forEach(function (n) { n.removeAttribute('mask'); });
+          copy.querySelectorAll('.ln').forEach(function (n) { n.classList.remove('ln'); });
+          g.parentNode.insertBefore(copy, g);
+        });
+      }
+      el.classList.add('is-armed');
+    }
+    function drawSketch(el) { el.classList.add('is-drawing'); }
+    if (!still) document.querySelectorAll('.hero .sketch').forEach(function (el) { armSketch(el); drawSketch(el); });
+  </script>
 
   <!-- ── Chapter I: the legend ──────────────────────────────────────── -->
   <section class="story">
@@ -635,7 +672,7 @@
     <path class="ln hair" pathLength="1" style="--d:1.1s;--t:.35s" d="M132 40C134.2 47.4 137.4 54.4 140.6 59.5M134.4 48L137.3 48.8M134.4 48L133.3 50.6M135.9 51.5L139 52.3M135.9 51.5L134.9 54.1M137.7 54.9L140.9 55.7M137.7 54.9L136.8 57.5M138.3 49.2L137.4 50.8"/>
     <path class="ln thin lp" pathLength="1" style="--d:1.2s;--t:.35s" d="M153.8 86.4C154.8 90.3 149.4 98.7 145.5 101C144.8 96.8 149.2 88.3 153.8 86.4Z"/>
     <path class="ln hair" pathLength="1" style="--d:1.4s;--t:.35s" d="M156 84C151.5 89.5 147.9 95.4 145.6 100.4M151.2 89.9L152.1 92.5M151.2 89.9L148.7 90.4M149.3 92.8L150.3 95.5M149.3 92.8L146.9 93.4M147.6 95.9L148.7 98.6M147.6 95.9L145.3 96.5M152.2 93.4L150.6 93.6"/>
-    <path class="dots" d="M70 20Q82 28 72 36Q62 44 74 50M128 12Q138 20 130 28M150 52Q160 62 152 72"/>
+    <path class="dots dots-in" style="--d:.9s" d="M70 20Q82 28 72 36Q62 44 74 50M128 12Q138 20 130 28M150 52Q160 62 152 72"/>
   </g>
 </svg><p class="panel__note">into the sea</p></li>
       </ol>
@@ -739,7 +776,7 @@
     <path class="ln thin lp" pathLength="1" style="--d:1.05s;--t:.7s" d="M66.9 123.9C67.8 124.8 70.4 124.8 71.3 124.3Q71.8 123.6 71.2 122.9C70.3 122.3 67.8 122.6 66.9 123.9ZM66.5 124.8C66.4 126.2 68.4 127.3 69.5 127.2Q70.5 126.8 70.5 126C70.1 125.3 68 124.3 66.5 124.8ZM65.9 125.3C65.1 126.5 66.1 128.2 67.1 128.4Q68.3 128.3 68.6 127.6C68.7 126.8 67.4 125.3 65.9 125.3ZM64.5 125.5C63 125.9 62.2 127.7 62.6 128.4Q63.3 128.9 64.3 128.7C65.1 128.2 65.6 126.4 64.5 125.5ZM63.6 125.1C62.2 124.9 60.4 126.3 60.1 127.1Q60.3 127.8 61.3 128C62.4 127.9 64 126.4 63.6 125.1ZM63.1 124.3C62.1 123.5 59.8 123.8 59.1 124.3Q58.7 125.1 59.3 125.7C60.2 126.1 62.5 125.6 63.1 124.3ZM63.4 123.2C63.4 122 61.5 120.9 60.4 120.9Q59.5 121.3 59.5 122.1C59.8 123 61.9 123.9 63.4 123.2ZM64.2 122.7C65.2 121.5 64.3 119.8 63.3 119.5Q62.2 119.5 61.7 120.2C61.6 121 62.7 122.6 64.2 122.7ZM65.4 122.5C67.1 121.9 67.8 119.9 67.2 119Q66.4 118.5 65.5 118.8C64.8 119.5 64.4 121.6 65.4 122.5ZM66.3 122.8C67.9 122.9 69.8 121.4 69.9 120.5Q69.6 119.7 68.6 119.6C67.5 119.9 65.9 121.5 66.3 122.8Z"/>
     <path class="ln thin lp" pathLength="1" style="--d:1.6s;--t:.3s" d="M64.4 122.3C64.6 122.4 65.5 122.3 65.9 122.4C66.3 122.6 66.7 122.9 66.9 123.2C67.1 123.6 67.2 124.1 67.1 124.4C67 124.8 66.5 125.2 66.1 125.4C65.7 125.6 65.1 125.8 64.6 125.8C64.2 125.7 63.7 125.4 63.4 125.1C63.1 124.8 62.9 124.4 62.9 124C62.9 123.6 63.1 123.1 63.4 122.8C63.7 122.5 64.6 122.3 64.8 122.2"/>
     <path class="fade" style="--d:1.65s;fill:url(#hatch)" d="M64.4 122.3C64.6 122.4 65.5 122.3 65.9 122.4C66.3 122.6 66.7 122.9 66.9 123.2C67.1 123.6 67.2 124.1 67.1 124.4C67 124.8 66.5 125.2 66.1 125.4C65.7 125.6 65.1 125.8 64.6 125.8C64.2 125.7 63.7 125.4 63.4 125.1C63.1 124.8 62.9 124.4 62.9 124C62.9 123.6 63.1 123.1 63.4 122.8C63.7 122.5 64.6 122.3 64.8 122.2"/>
-    <path class="dots" d="M178 140C210 104 266 98 318 126"/>
+    <path class="dots dots-in" style="--d:.7s" d="M178 140C210 104 266 98 318 126"/>
     <path class="ln thin lp" pathLength="1" style="--d:.9s;--t:.55s" d="M322 77.3C306.1 64.7 285 53.2 265.6 49.4Q265.2 60.1 273.4 61Q272.9 71.1 280.9 71.4Q281.5 80.6 290.7 79.9Q292.5 88.2 302.8 86.7Q304.4 94.3 314.6 92.2Q314.7 98.8 323.3 95.6"/>
     <path class="ln hair" pathLength="1" style="--d:1.35s;--t:.3s" d="M280.9 71.4L286.7 60.9M290.7 79.9L296.2 68.2M302.8 86.7L307 75.2"/>
     <path class="ln thin lp" pathLength="1" style="--d:1s;--t:.55s" d="M337.3 74C346.8 56.1 361.3 37 377.5 25.6Q382.2 35.2 375.1 39.4Q379.7 48.4 372.5 51.9Q375.6 60.6 367 63.7Q368.8 72 358.7 74.8Q360.4 82.4 350.2 84.6Q352.8 90.7 343.6 91.3"/>
@@ -1235,17 +1272,51 @@
 
 <script>
   (function () {
-    var items = document.querySelectorAll('.reveal, .sketch');
-    var show = function (el) { el.classList.add('is-visible'); };
-    if (!('IntersectionObserver' in window)) { items.forEach(show); }
+    // Text fades up as it scrolls in.
+    var texts = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) texts.forEach(function (el) { el.classList.add('is-visible'); });
     else {
       var io = new IntersectionObserver(function (entries) {
         entries.forEach(function (e) {
-          if (e.isIntersecting) { show(e.target); io.unobserve(e.target); }
+          if (e.isIntersecting) { e.target.classList.add('is-visible'); io.unobserve(e.target); }
         });
       }, { threshold: 0.2, rootMargin: '0px 0px -6% 0px' });
-      items.forEach(function (el) { io.observe(el); });
+      texts.forEach(function (el) { io.observe(el); });
     }
+    if (still) return;
+
+    // Drawings and pencil marks below the fold wait as faint sketches and ink in
+    // when they reach the middle of the screen. Anything on screen at load stays as drawn.
+    var vh = function () { return window.innerHeight || document.documentElement.clientHeight; };
+    var waiting = [];
+    document.querySelectorAll('.sketch:not(.is-armed), .strike, .hl, .squiggle').forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      if (!r.width || r.top < vh()) return;
+      armSketch(el);
+      waiting.push(el);
+    });
+    var queued = false;
+    var check = function () {
+      queued = false;
+      var mid = vh() / 2;
+      var atEnd = window.scrollY + vh() >= document.documentElement.scrollHeight - 2;
+      waiting = waiting.filter(function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.top + r.height / 2 > mid && !(atEnd && r.top < vh())) return true;
+        drawSketch(el);
+        return false;
+      });
+      if (!waiting.length) {
+        removeEventListener('scroll', onScroll);
+        removeEventListener('resize', onScroll);
+      }
+    };
+    var onScroll = function () {
+      if (!queued) { queued = true; requestAnimationFrame(check); }
+    };
+    addEventListener('scroll', onScroll, { passive: true });
+    addEventListener('resize', onScroll);
+    check();
   })();
 </script>
 </body>
