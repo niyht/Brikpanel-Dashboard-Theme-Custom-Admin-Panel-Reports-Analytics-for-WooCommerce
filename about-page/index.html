@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WooCommerce for Everyone · Brksoft</title>
+<meta name="description" content="Brksoft brings the ownership and freedom of WooCommerce and the premium, easy experience of Shopify together under one roof: BrikPanel.">
+<meta name="theme-color" content="#ffffff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Instrument+Serif:ital@0;1&family=Inter:opsz,wght@14..32,400..700&display=swap">
+<script>document.documentElement.classList.add('js')</script>
+<style>
+  /* ── Tokens ─────────────────────────────────────────────────────────────
+     One ink, one paper, one colour. The sun is the only thing on the page
+     that is not black and white. */
+  :root {
+    --ink: #303030;          /* the pencil: same ink as the BrikPanel sketches */
+    --heading: #1d1d1f;
+    --text: #424245;
+    --muted: #6e6e73;
+    --faint: #a1a1a6;
+    --hair: #ebebeb;
+    --paper: #f7f7f5;
+    --sun: #ffd25e;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    --gutter: clamp(20px, 5vw, 40px);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  svg { display: block; max-width: 100%; }
+  a { color: inherit; }
+  h1, h2, p, figure, blockquote { margin: 0; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 var(--gutter); }
+  .read { max-width: 680px; margin: 0 auto; }
+  .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+  /* ── Nav ──────────────────────────────────────────────────────────────── */
+  .nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255, 255, 255, .8);
+    -webkit-backdrop-filter: saturate(180%) blur(18px);
+    backdrop-filter: saturate(180%) blur(18px);
+    border-bottom: 1px solid transparent;
+    transition: border-color .3s ease;
+  }
+  .nav.is-scrolled { border-bottom-color: var(--hair); }
+  .nav__inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { font-size: 19px; font-weight: 650; letter-spacing: -.035em; color: var(--heading); text-decoration: none; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 40px; padding: 0 18px; border-radius: 999px;
+    background: var(--heading); color: #fff;
+    font-size: 15px; font-weight: 500; letter-spacing: -.01em; text-decoration: none;
+    transition: background-color .2s ease, transform .2s var(--ease);
+  }
+  .btn:hover { background: #000; transform: translateY(-1px); }
+  .btn:focus-visible { outline: 2px solid var(--heading); outline-offset: 3px; }
+  .btn--ghost { background: transparent; color: var(--heading); box-shadow: inset 0 0 0 1px #dedede; }
+  .btn--ghost:hover { background: var(--paper); }
+  .btn--lg { height: 50px; padding: 0 26px; font-size: 16px; }
+  .btn svg { width: 16px; height: 16px; transition: transform .2s var(--ease); }
+  .btn:hover svg { transform: translateX(2px); }
+
+  /* ── Type ─────────────────────────────────────────────────────────────── */
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    margin-bottom: 26px;
+    font-size: 14px; font-weight: 500; letter-spacing: -.005em; color: var(--muted);
+  }
+  .eyebrow::before, .eyebrow::after { content: ""; width: 18px; height: 1.5px; border-radius: 2px; background: currentColor; opacity: .5; }
+  .label {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 28px;
+    font-size: 14px; font-weight: 500; letter-spacing: -.005em; color: var(--muted);
+  }
+  .label::before { content: ""; width: 22px; height: 1.5px; border-radius: 2px; background: currentColor; opacity: .5; }
+
+  .statement {
+    font-size: clamp(36px, 5.2vw, 60px); line-height: 1.04; font-weight: 650;
+    letter-spacing: -.042em; color: var(--heading);
+    text-wrap: balance;
+  }
+  .quote {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(34px, 4.6vw, 54px); line-height: 1.1; letter-spacing: -.012em;
+    color: var(--heading);
+    text-wrap: balance;
+  }
+  .body {
+    font-size: clamp(18px, 1.6vw, 20px); line-height: 1.7; letter-spacing: -.012em; color: var(--text);
+  }
+  .body + .body { margin-top: 1.1em; }
+
+  /* ── Pencil marks on text ───────────────────────────────────────────────
+     Drawn as backgrounds so they follow the text when it wraps. */
+  .strike, .hl, .under {
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    background-repeat: no-repeat;
+  }
+  .strike {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 20' preserveAspectRatio='none'%3E%3Cpath d='M2 11.5C40 8.6 84 12.6 120 10.2S176 8.2 198 9.6' fill='none' stroke='%23303030' stroke-width='2.2' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3Cpath d='M7 14.2C52 12 108 14.6 150 12.6S187 12.2 195 12.8' fill='none' stroke='%23303030' stroke-width='1.5' stroke-linecap='round' vector-effect='non-scaling-stroke' opacity='.75'/%3E%3C/svg%3E");
+    background-position: 0 56%;
+    background-size: 100% .52em;
+  }
+  .hl {
+    background-color: transparent; color: inherit;
+    padding: 0 .06em; margin: 0 -.06em;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 24' preserveAspectRatio='none'%3E%3Cpath d='M4 6.5C48 3.4 128 4.2 197 5.4L195 19.6C130 22.4 54 21.4 3 18.6Z' fill='%23ffd25e' fill-opacity='.75'/%3E%3C/svg%3E");
+    background-position: 0 86%;
+    background-size: 100% .56em;
+  }
+  .under {
+    padding-bottom: .06em;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 16' preserveAspectRatio='none'%3E%3Cpath d='M3 9.5C52 5.6 132 5 197 6.8' fill='none' stroke='%23303030' stroke-width='2.4' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3Cpath d='M22 13C82 10 150 10.4 186 11.4' fill='none' stroke='%23303030' stroke-width='1.6' stroke-linecap='round' vector-effect='non-scaling-stroke' opacity='.75'/%3E%3C/svg%3E");
+    background-position: 0 100%;
+    background-size: 100% .3em;
+  }
+
+  /* ── Sketches ───────────────────────────────────────────────────────────
+     Every line (.ln, pathLength="1") draws itself once it scrolls in:
+     --d is when a line starts, --t how long it takes. */
+  .ink { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ink .thin { stroke-width: 1.5; }
+  .ink .bold { stroke-width: 2.6; }
+  .ink .dots { stroke-width: 2.8; stroke-dasharray: .1 10; }
+  .ink .solid { fill: var(--ink); stroke: none; }
+  .sun-fill { fill: var(--sun); }
+  .paper-fill { fill: #fff; }
+  .soft-fill { fill: #efefef; }
+  .ink .fade, .ink .paper-fill { stroke: none; }
+
+  .note {
+    position: absolute;
+    font-family: var(--hand); font-weight: 600; line-height: 1; color: var(--ink);
+    white-space: nowrap; pointer-events: none;
+  }
+
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  .hero { padding-top: clamp(56px, 9vw, 116px); text-align: center; }
+  .hero h1 {
+    font-size: clamp(48px, 8.6vw, 100px); line-height: .98; font-weight: 650;
+    letter-spacing: -.052em; color: var(--heading);
+  }
+  .hero__word { position: relative; display: inline-block; white-space: nowrap; }
+  .hero__word svg { position: absolute; left: -3%; bottom: -.22em; width: 106%; height: auto; overflow: visible; }
+  .hero__word .ink { stroke-width: 3.8; }
+  .hero__word .ink .thin { stroke-width: 2.6; }
+  .hero__lead {
+    max-width: 30ch; margin: 30px auto 0;
+    font-size: clamp(19px, 2vw, 23px); line-height: 1.45; letter-spacing: -.014em; color: var(--muted);
+    text-wrap: balance;
+  }
+  .hero__art { position: relative; max-width: 760px; margin: clamp(36px, 6vw, 64px) auto 0; container-type: inline-size; }
+  /* Anchored on the side its arrow leaves from, so it grows away from the sun. */
+  .hero__art .note { right: 29.7%; top: 4.5%; font-size: max(18px, 3.6cqw); transform: rotate(-6deg); transform-origin: right center; }
+
+  /* ── Story ────────────────────────────────────────────────────────────── */
+  .story { padding: clamp(72px, 12vw, 168px) 0 clamp(80px, 11vw, 150px); }
+  .warning {
+    margin: .35em 0 0;
+    font-family: var(--serif); font-style: italic;
+    font-size: clamp(28px, 3.4vw, 38px); line-height: 1.25; color: var(--muted);
+  }
+  .story .statement { margin-top: clamp(64px, 8vw, 96px); }
+  .story .statement + .body { margin-top: 26px; }
+  .story .quote { margin-top: clamp(48px, 6vw, 72px); }
+
+  /* ── Promise ──────────────────────────────────────────────────────────── */
+  .promise__card {
+    padding: clamp(56px, 8vw, 104px) clamp(24px, 6vw, 96px);
+    border-radius: clamp(24px, 3vw, 36px);
+    background: var(--paper);
+    text-align: center;
+  }
+  .promise__art { width: min(300px, 72%); margin: 0 auto clamp(28px, 4vw, 40px); }
+  .promise .statement { max-width: 17ch; margin: 0 auto; }
+  .promise__text {
+    max-width: 34ch; margin: 28px auto 0;
+    font-size: clamp(19px, 1.9vw, 22px); line-height: 1.5; letter-spacing: -.014em; color: var(--muted);
+    text-wrap: balance;
+  }
+
+  /* ── Two giants ───────────────────────────────────────────────────────── */
+  .giants { padding: clamp(104px, 14vw, 184px) 0 clamp(64px, 8vw, 112px); }
+  .giants__head { max-width: 720px; margin: 0 auto; text-align: center; }
+  .giants__head .body { margin-top: 28px; text-wrap: pretty; }
+  .giants .quote { margin-top: clamp(56px, 7vw, 88px); text-align: center; }
+  .giants__lead { max-width: 600px; margin: 24px auto 0; text-align: center; text-wrap: balance; }
+
+  .house { position: relative; max-width: 900px; margin: clamp(56px, 7vw, 88px) auto 0; container-type: inline-size; }
+  .house__roof { position: relative; }
+  .house__roof .note { left: 58.6%; top: 69.6%; font-size: clamp(15px, 3.6cqw, 32px); transform: translateY(-50%) rotate(-4deg); transform-origin: left center; }
+  .house__rooms {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    gap: clamp(10px, 2cqw, 20px);
+    width: 88%; margin: 6px auto 0;
+  }
+  .room {
+    height: 100%;
+    padding: clamp(24px, 3.4cqw, 32px);
+    border: 1px solid var(--hair); border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .03), 0 18px 40px -24px rgba(0, 0, 0, .14);
+    text-align: left;
+  }
+  .room__icon { width: 56px; height: 56px; margin-bottom: 22px; }
+  .room__icon .ink { stroke-width: 2.4; }
+  .room__icon .ink .thin { stroke-width: 1.8; }
+  .room__label { margin-bottom: 8px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+  .room__text { font-size: clamp(19px, 2.3cqw, 22px); line-height: 1.38; letter-spacing: -.02em; font-weight: 500; color: var(--heading); }
+  .room__text b { font-weight: 650; }
+  .plus { width: 34px; height: 34px; }
+  .house__ground { width: 100%; height: auto; margin-top: clamp(14px, 2.4cqw, 22px); }
+  .giants__close { max-width: 640px; margin: clamp(48px, 6vw, 72px) auto 0; text-align: center; text-wrap: balance; }
+  .giants__close b { font-weight: 600; color: var(--heading); }
+
+  /* ── Closing ──────────────────────────────────────────────────────────── */
+  .closing { padding: clamp(24px, 4vw, 56px) 0 clamp(104px, 14vw, 176px); text-align: center; }
+  .closing__aim { max-width: 600px; margin: 0 auto; color: var(--muted); text-wrap: balance; }
+  .closing__sun { width: min(240px, 60%); margin: clamp(56px, 7vw, 88px) auto clamp(20px, 3vw, 32px); }
+  .closing__title {
+    font-size: clamp(42px, 7.2vw, 88px); line-height: 1; font-weight: 650;
+    letter-spacing: -.05em; color: var(--heading);
+  }
+  /* Each half of the sentence keeps to itself: one line each, or two balanced lines each. */
+  .closing__title span { display: inline-block; text-wrap: balance; }
+  .closing__cta { margin-top: clamp(36px, 5vw, 52px); display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+  /* ── Footer ───────────────────────────────────────────────────────────── */
+  .footer { border-top: 1px solid var(--hair); }
+  .footer__inner { display: flex; justify-content: space-between; gap: 16px; padding-block: 28px; font-size: 14px; color: var(--muted); }
+
+  /* ── Small screens ────────────────────────────────────────────────────── */
+  @media (max-width: 640px) {
+    .nav .btn { height: 36px; padding: 0 14px; font-size: 14px; }
+    .ink { stroke-width: 2.4; }
+    .ink .thin { stroke-width: 1.9; }
+    /* The wide drawings shrink to less than half their size here: thicken their pencil. */
+    .hero__art .ink, .house__roof .ink, .house__ground .ink { stroke-width: 3; }
+    .hero__art .ink .thin, .house__roof .ink .thin { stroke-width: 2.3; }
+    .hero__art .ink .bold, .house__roof .ink .bold { stroke-width: 3.6; }
+    .hero__art .ink .dots { stroke-width: 3.4; }
+    .house__rooms { grid-template-columns: 1fr; width: 92%; }
+    .plus { justify-self: center; }
+    .room__icon { width: 48px; height: 48px; margin-bottom: 16px; }
+    .footer__inner { flex-direction: column; gap: 4px; }
+  }
+
+  /* ── Motion: only when JavaScript runs and the visitor allows it ─────── */
+  @media (prefers-reduced-motion: no-preference) {
+    .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .9s var(--ease) var(--d, 0s), transform .9s var(--ease) var(--d, 0s); }
+    .js .reveal.is-visible { opacity: 1; transform: none; }
+
+    /* The gap is longer than the line and the offset a hair past it, so an undrawn line leaves no round-cap dot. */
+    .js .sketch .ln { stroke-dasharray: 1 2; stroke-dashoffset: 1.01; }
+    .js .sketch.is-visible .ln { stroke-dashoffset: 0; transition: stroke-dashoffset var(--t, .8s) cubic-bezier(.55, .1, .25, 1) var(--d, 0s); }
+    .js .sketch .fade { opacity: 0; }
+    .js .sketch.is-visible .fade { opacity: 1; transition: opacity .8s ease var(--d, 0s); }
+    .js .sketch .note { clip-path: inset(-30% 100% -30% -10%); }
+    .js .sketch.is-visible .note { clip-path: inset(-30% -10% -30% -10%); transition: clip-path var(--t, .9s) cubic-bezier(.4, .1, .6, 1) var(--d, 0s); }
+
+    .js .strike { background-size: 0% .52em; transition: background-size 1s cubic-bezier(.6, .1, .3, 1) .45s; }
+    .js .is-visible .strike { background-size: 100% .52em; }
+    .js .hl { background-size: 0% .56em; transition: background-size 1.1s cubic-bezier(.6, .1, .3, 1) .5s; }
+    .js .is-visible .hl { background-size: 100% .56em; }
+    .js .under { background-size: 0% .3em; transition: background-size .9s cubic-bezier(.6, .1, .3, 1) .55s; }
+    .js .is-visible .under { background-size: 100% .3em; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Shared by every drawing: the hand-drawn wobble (same filter as the BrikPanel sketches) and a pencil hatch. -->
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="rough" x="-5%" y="-8%" width="110%" height="116%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.8" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <!-- Same wobble for drawings that are a single flat line: their box is too thin for the region above. -->
+    <filter id="rough-flat" x="-3%" y="-300%" width="106%" height="700%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.8" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <path d="M0 0V6" stroke="#303030" stroke-width="1.1" stroke-opacity=".5"/>
+    </pattern>
+  </defs>
+</svg>
+
+<header class="nav">
+  <div class="wrap nav__inner">
+    <!-- Swap the wordmark for your logo if you like. Both buttons open the live BrikPanel demo. -->
+    <a class="brand" href="https://brksoft.com/">Brksoft</a>
+    <a class="btn btn--ghost" href="https://code.brksoft.com/wp-admin/">Discover BrikPanel</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Hero ──────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow reveal">Our story</p>
+      <h1 class="reveal" style="--d:.08s">WooCommerce<br>
+        for <span class="hero__word sketch">Everyone<svg viewBox="0 0 300 26" aria-hidden="true" focusable="false"><g class="ink" filter="url(#rough-flat)"><path class="ln" pathLength="1" style="--d:.9s;--t:.6s" d="M4 17C58 10.5 152 7.2 296 9.4"/><path class="ln thin" pathLength="1" style="--d:1.35s;--t:.45s" d="M34 22.5C104 16.6 196 15.4 272 16.6"/></g></svg></span>
+      </h1>
+      <p class="hero__lead reveal" style="--d:.16s">That technological bird in our logo is not merely a symbol; it is our compass.</p>
+
+      <figure class="hero__art sketch" role="img" aria-label="A hand-drawn bird leaves an open cage and flies toward the sun, marked “your goals”.">
+        <svg viewBox="0 0 720 400" aria-hidden="true" focusable="false">
+          <g class="ink" filter="url(#rough)">
+            <!-- ground -->
+            <path class="ln thin" pathLength="1" style="--d:.5s;--t:.7s" d="M38 370.5C118 368.6 214 371.6 306 369.4"/>
+            <!-- cage: tray, dome, bars -->
+            <path class="fade" style="--d:1.3s;fill:url(#hatch)" d="M86 356H214V367H86Z"/>
+            <path class="ln" pathLength="1" style="--d:.6s;--t:.6s" d="M88 352H212C215 352 216 353.5 216 356V364C216 366.5 214.5 368 212 368H88C85.5 368 84 366.5 84 364V356C84 353.5 85.5 352 88 352Z"/>
+            <path class="ln" pathLength="1" style="--d:.8s;--t:.7s" d="M90 352V232C90 192 120 174 150 174C180 174 210 192 210 232V352"/>
+            <path class="ln thin" pathLength="1" style="--d:1.1s;--t:.4s" d="M90 232H210"/>
+            <path class="ln" pathLength="1" style="--d:1.15s;--t:.4s" d="M150 168.5V174M144 162.5C144 159 146.8 156.5 150 156.5C153.4 156.5 156 159.2 156 162.5C156 165.8 153.3 168.5 150 168.5C146.7 168.5 144 165.8 144 162.5Z"/>
+            <path class="ln thin" pathLength="1" style="--d:1.25s;--t:.8s" d="M108 352V232C108 198 130 176 150 174M126 352V232C126 204 138 180 150 174M150 232V174M174 232C174 204 162 180 150 174M192 352V232C192 198 170 176 150 174"/>
+            <path class="ln thin" pathLength="1" style="--d:1.5s;--t:.4s" d="M138 232V272M150 232V272M162 232V272M126 272H174M174 352V232"/>
+            <!-- the open door, swung out -->
+            <path class="paper-fill" d="M174 272L201 265.5V344.5L174 352Z"/>
+            <path class="ln" pathLength="1" style="--d:1.7s;--t:.6s" d="M174 272L201 265.5V344.5L174 352"/>
+            <path class="ln thin" pathLength="1" style="--d:1.95s;--t:.3s" d="M183 270V349.5M192 268V347"/>
+            <!-- flight path -->
+            <mask id="trail-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="720" height="400">
+              <path class="ln" pathLength="1" style="--d:2.05s;--t:.9s" d="M216 322C264 316 278 254 332 228C366 212 394 206 420 204" stroke="#fff" stroke-width="10"/>
+            </mask>
+            <path class="dots" mask="url(#trail-mask)" d="M216 322C264 316 278 254 332 228C366 212 394 206 420 204"/>
+            <!-- the bird -->
+            <g transform="translate(470 178) rotate(-30) scale(1.05)">
+              <path class="fade" style="--d:2.6s;fill:url(#hatch)" d="M18 -9C24 -30 32 -48 44 -64Q35 -66 34 -60Q26 -57 28 -50Q20 -48 21 -42Q13 -38 14 -31Q7 -26 9 -20Q4 -14 6 -9Z"/>
+              <path class="ln" pathLength="1" style="--d:2.55s;--t:.6s" d="M18 -9C24 -30 32 -48 44 -64Q35 -66 34 -60Q26 -57 28 -50Q20 -48 21 -42Q13 -38 14 -31Q7 -26 9 -20Q4 -14 6 -9"/>
+              <path class="paper-fill" d="M-26 -3C-38 -8 -50 -14 -62 -22C-54 -12 -48 -6 -40 0C-50 4 -60 8 -68 14C-54 12 -40 8 -26 3Z"/>
+              <path class="ln" pathLength="1" style="--d:2.9s;--t:.5s" d="M-26 -3C-38 -8 -50 -14 -62 -22C-54 -12 -48 -6 -40 0C-50 4 -60 8 -68 14C-54 12 -40 8 -26 3"/>
+              <path class="paper-fill" d="M8 -9C4 -36 -8 -62 -28 -82Q-36 -80 -34 -70Q-42 -64 -36 -56Q-42 -48 -34 -42Q-36 -32 -28 -28Q-26 -18 -20 -16Q-16 -9 -12 -8Z"/>
+              <path class="ln" pathLength="1" style="--d:2.3s;--t:.7s" d="M8 -9C4 -36 -8 -62 -28 -82Q-36 -80 -34 -70Q-42 -64 -36 -56Q-42 -48 -34 -42Q-36 -32 -28 -28Q-26 -18 -20 -16Q-16 -9 -12 -8"/>
+              <path class="ln thin" pathLength="1" style="--d:2.85s;--t:.4s" d="M-36 -56L-21 -51M-34 -42L-18 -39M-28 -28L-14 -27M-2 -44C-8 -38 -11 -30 -11 -19"/>
+              <path class="paper-fill" d="M46 -3L37 -7.5C35 -14 26 -16 20 -12C10 -10 -6 -9 -22 -4.5L-30 -2L-30 3C-18 10 4 14 22 8C31 5 36 1.5 38 -1Z"/>
+              <path class="ln" pathLength="1" style="--d:2.15s;--t:.7s" d="M46 -3L37 -7.5C35 -14 26 -16 20 -12C10 -10 -6 -9 -22 -4.5L-30 -2M-30 3C-18 10 4 14 22 8C31 5 36 1.5 38 -1L46 -3"/>
+              <path class="solid fade" style="--d:2.9s" d="M27.3 -9a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0 -3.6 0Z"/>
+            </g>
+            <!-- sun -->
+            <path class="sun-fill fade" style="--d:1.3s" d="M546 110a50 50 0 1 0 100 0a50 50 0 1 0 -100 0Z"/>
+            <path class="ln bold" pathLength="1" style="--d:.7s;--t:1s" d="M571.8 54.1C576.6 53.7 591.2 50.4 600.3 52.1C609.4 53.8 619.7 58 626.5 64.1C633.4 70.3 638.9 80.1 641.4 89C643.9 98 643.9 108.7 641.6 117.8C639.4 126.9 634.4 136.6 627.8 143.5C621.3 150.4 611.6 156.9 602.2 159.2C592.9 161.6 581.1 160.6 571.9 157.4C562.6 154.3 552.7 147.8 546.7 140.3C540.7 132.8 537.1 122 535.7 112.4C534.2 102.7 534.5 91.4 538.1 82.5C541.7 73.6 549.3 64.8 557.1 59.2C565 53.6 580.5 50.5 585.2 48.8"/>
+            <path class="ln" pathLength="1" style="--d:1.5s;--t:.8s" d="M659.8 108.9L673.8 109.9M652.4 135.8L661.3 140.3M622.9 165.8L631.3 181.7M592.4 174L592.8 184M549.8 161.3L540.7 174.4M532 143.1L524.5 148.2M520.1 100.3L503.1 99.4M528.2 71.1L518.5 66M556.1 42.8L548.8 29.7M583.9 34.3L583 24.3M627.1 44.6L636.6 29.4M650 67.9L657.7 63.3"/>
+            <!-- sky -->
+            <path class="ln thin" pathLength="1" style="--d:1s;--t:.8s" d="M268 84C258 84 255 74 263 69C264 60 275 57 282 62C286 50 306 49 311 61C320 58 331 65 327 75C335 77 335 84 327 84Z"/>
+            <path class="ln thin" pathLength="1" style="--d:1.6s;--t:.7s" d="M648 272C640 272 638 265 644 261C645 254 653 252 658 256C662 247 676 247 679 256C686 254 693 260 690 266C696 267 696 272 690 272Z"/>
+            <path class="ln thin" pathLength="1" style="--d:2.4s;--t:.4s" d="M372 112Q377 106 382 112Q387 106 392 112M398 95Q401.5 90.5 405 95Q408.5 90.5 412 95"/>
+            <path class="ln thin" pathLength="1" style="--d:3s;--t:.3s" d="M690 146V158M684 152H696"/>
+            <!-- note arrow -->
+            <path class="ln thin" pathLength="1" style="--d:3.6s;--t:.45s" d="M512 46C524 46 532 52 536 62"/>
+            <path class="ln thin" pathLength="1" style="--d:4s;--t:.2s" d="M529.5 57.5L536.5 63L538.5 54.5"/>
+          </g>
+        </svg>
+        <span class="note" aria-hidden="true" style="--d:3.1s;--t:.8s">your goals</span>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ── The legend ───────────────────────────────────────────────────── -->
+  <section class="story">
+    <div class="wrap">
+      <div class="read">
+        <p class="label reveal">The legend</p>
+        <p class="body reveal">According to legend, Icarus crafted wings of wax to escape his cage and attain freedom. He began to rise, soaring past his prison, but as he drew closer to the sun, its light dazzled his eyes. He climbed higher still, until the sun melted his waxen wings and he fell.</p>
+        <p class="body reveal">Most people read this story as a “warning”:</p>
+        <p class="warning reveal"><span class="strike">“Don’t fly too high, or you’ll fall.”</span></p>
+
+        <h2 class="statement reveal">We read it differently.</h2>
+        <p class="body reveal">Icarus may not have reached the sun, but he became the icon of those who possess a boundless passion to rise.</p>
+        <blockquote class="quote reveal">For us, the point is not the fall, it is <mark class="hl">the courage to rise</mark> in the first place.</blockquote>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── The promise ──────────────────────────────────────────────────── -->
+  <section class="promise">
+    <div class="wrap">
+      <div class="promise__card">
+        <svg class="promise__art sketch" viewBox="0 0 260 124" role="img" aria-label="A hand-drawn shopping bag flying on a pair of wings">
+          <g class="ink" filter="url(#rough)">
+            <!-- wings -->
+            <path class="paper-fill fade" style="--d:.9s" d="M152 62C166 48 190 30 222 22Q224 34 214 36Q214 48 202 48Q200 60 188 58Q184 70 172 68Q166 78 152.5 76Z"/>
+            <path class="paper-fill fade" style="--d:.9s" d="M108 62C94 48 70 30 38 22Q36 34 46 36Q46 48 58 48Q60 60 72 58Q76 70 88 68Q94 78 107.5 76Z"/>
+            <path class="ln" pathLength="1" style="--d:.7s;--t:.8s" d="M152 62C166 48 190 30 222 22Q224 34 214 36Q214 48 202 48Q200 60 188 58Q184 70 172 68Q166 78 152.5 76"/>
+            <path class="ln" pathLength="1" style="--d:.7s;--t:.8s" d="M108 62C94 48 70 30 38 22Q36 34 46 36Q46 48 58 48Q60 60 72 58Q76 70 88 68Q94 78 107.5 76"/>
+            <path class="ln thin" pathLength="1" style="--d:1.3s;--t:.5s" d="M158 64C172 52 190 40 212 30M102 64C88 52 70 40 48 30"/>
+            <path class="ln thin" pathLength="1" style="--d:1.6s;--t:.4s" d="M214 36L209 31M202 48L197 41M188 58L184 49M172 68L169 59M46 36L51 31M58 48L63 41M72 58L76 49M88 68L91 59"/>
+            <!-- the store's bag, with the four BrikPanel tiles on it -->
+            <path class="paper-fill" d="M110 54H150L153 93C153.3 95 152 96.5 150 96.5H110C108 96.5 106.7 95 107 93Z"/>
+            <path class="ln" pathLength="1" style="--d:.2s;--t:.7s" d="M110 54H150L153 93C153.3 95 152 96.5 150 96.5H110C108 96.5 106.7 95 107 93Z"/>
+            <path class="ln" pathLength="1" style="--d:.6s;--t:.4s" d="M121 54C121 40 139 40 139 54"/>
+            <path class="ln thin" pathLength="1" style="--d:.8s;--t:.3s" d="M110.4 61H149.6"/>
+            <path class="solid fade" style="--d:1.2s" d="M121 68h8v8h-8zM131 78h8v8h-8z"/>
+            <path class="fade" style="--d:1.35s;fill:#a3a3a3" d="M131 68h8v8h-8zM121 78h8v8h-8z"/>
+            <!-- lift -->
+            <path class="ln thin" pathLength="1" style="--d:1.8s;--t:.3s" d="M120 104V112M130 106V117M140 104V112"/>
+          </g>
+        </svg>
+        <h2 class="statement reveal">We exist so that our business partners’ wings <span class="under">never&nbsp;melt.</span></h2>
+        <p class="promise__text reveal" style="--d:.1s">As we carry you to the closest point to the sun (your goals), we offer you the sturdiest wings technology can provide.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Two giants, one roof ─────────────────────────────────────────── -->
+  <section class="giants">
+    <div class="wrap">
+      <header class="giants__head">
+        <h2 class="statement reveal">Two Giants, One Roof</h2>
+        <p class="body reveal" style="--d:.08s">For years, there has been a persistent dilemma in the e-commerce world: either you chose the freedom and budget-friendly structure of WooCommerce and wrestled with its complexity, or you chose the quality and ease of Shopify and resigned yourself to high costs and a rental model.</p>
+      </header>
+
+      <p class="quote reveal">We rejected this divide.</p>
+      <p class="body giants__lead reveal" style="--d:.08s">Brksoft exists to bring the best aspects of the world’s two largest e-commerce technologies together under a single roof.</p>
+
+      <div class="house">
+        <div class="house__roof sketch" role="img" aria-label="A hand-drawn roof over both: its window is the BrikPanel mark.">
+          <svg viewBox="0 0 900 230" aria-hidden="true" focusable="false">
+            <g class="ink" filter="url(#rough)">
+              <path class="fade" style="--d:1s;fill:url(#hatch)" d="M24 196L450 60L876 196V212L450 76L24 212Z"/>
+              <path class="ln bold" pathLength="1" style="--d:.15s;--t:1.1s" d="M14.5 199L450 60L885.5 199"/>
+              <path class="ln" pathLength="1" style="--d:.6s;--t:1s" d="M24 196V212L450 76L876 212V196"/>
+              <!-- chimney and smoke -->
+              <path class="ln" pathLength="1" style="--d:1.1s;--t:.5s" d="M690 136.6V104M722 146.8V104M684 104H728V96H684Z"/>
+              <path class="ln thin" pathLength="1" style="--d:1.5s;--t:.7s" d="M706 88C696 78 716 70 706 60C698 52 712 44 716 36"/>
+              <!-- the window: the BrikPanel mark -->
+              <path class="solid fade" style="--d:1.25s" d="M433 116H467C474.2 116 480 121.8 480 129V163C480 170.2 474.2 176 467 176H433C425.8 176 420 170.2 420 163V129C420 121.8 425.8 116 433 116Z"/>
+              <path class="ln" pathLength="1" style="--d:.95s;--t:.6s" d="M433 116H467C474.2 116 480 121.8 480 129V163C480 170.2 474.2 176 467 176H433C425.8 176 420 170.2 420 163V129C420 121.8 425.8 116 433 116Z"/>
+              <path class="fade" style="--d:1.5s;fill:#fff" d="M431.5 123H443.5C445.7 123 447.5 124.8 447.5 127V139C447.5 141.2 445.7 143 443.5 143H431.5C429.3 143 427.5 141.2 427.5 139V127C427.5 124.8 429.3 123 431.5 123ZM456.5 149H468.5C470.7 149 472.5 150.8 472.5 153V165C472.5 167.2 470.7 169 468.5 169H456.5C454.3 169 452.5 167.2 452.5 165V153C452.5 150.8 454.3 149 456.5 149Z"/>
+              <path class="fade" style="--d:1.65s;fill:#a3a3a3" d="M456.5 123H468.5C470.7 123 472.5 124.8 472.5 127V139C472.5 141.2 470.7 143 468.5 143H456.5C454.3 143 452.5 141.2 452.5 139V127C452.5 124.8 454.3 123 456.5 123ZM431.5 149H443.5C445.7 149 447.5 150.8 447.5 153V165C447.5 167.2 445.7 169 443.5 169H431.5C429.3 169 427.5 167.2 427.5 165V153C427.5 150.8 429.3 149 431.5 149Z"/>
+              <!-- the bird, at home on the ridge -->
+              <path class="paper-fill" d="M474 37L465 34C463 28 455 27 451 32C446 36 438 40 428 44L417 48L431 49C440 54 454 54 461 47C464 44 465 41 465 39Z"/>
+              <path class="ln" pathLength="1" style="--d:1.7s;--t:.7s" d="M474 37L465 34C463 28 455 27 451 32C446 36 438 40 428 44L417 48L431 49C440 54 454 54 461 47C464 44 465 41 465 39Z"/>
+              <path class="ln thin" pathLength="1" style="--d:2.2s;--t:.35s" d="M434 44C441 38 451 38 456 45M446 53L445 59M452 53L453 59"/>
+              <path class="solid fade" style="--d:2.3s" d="M458.7 33.2a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0 -2.8 0Z"/>
+              <!-- note arrow -->
+              <path class="ln thin" pathLength="1" style="--d:2.9s;--t:.4s" d="M524 160C512 162 500 160 490 155"/>
+              <path class="ln thin" pathLength="1" style="--d:3.25s;--t:.2s" d="M497 150.5L489 155L496.5 160.5"/>
+            </g>
+          </svg>
+          <span class="note" aria-hidden="true" style="--d:2.3s;--t:.7s">BrikPanel</span>
+        </div>
+
+        <div class="house__rooms">
+          <article class="room reveal">
+            <svg class="room__icon sketch" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+              <g class="ink" filter="url(#rough)" transform="rotate(-35 32 32)">
+                <path class="soft-fill fade" style="--d:.8s" d="M5 32C5 24.8 10.8 19.5 17.5 19.5C24.2 19.5 30 25 30 32C30 39 24.4 44.5 17.4 44.5C10.6 44.5 5.1 39.2 5 32Z"/>
+                <path class="ln" pathLength="1" style="--d:.3s;--t:.6s" d="M5 32C5 24.8 10.8 19.5 17.5 19.5C24.2 19.5 30 25 30 32C30 39 24.4 44.5 17.4 44.5C10.6 44.5 5.1 39.2 5 31"/>
+                <path class="ln thin" pathLength="1" style="--d:.8s;--t:.3s" d="M13.5 32a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/>
+                <path class="ln" pathLength="1" style="--d:.9s;--t:.4s" d="M30 32H59M49 32V41M55 32V39"/>
+              </g>
+            </svg>
+            <p class="room__label">WooCommerce</p>
+            <p class="room__text">We took the <b>“Ownership and Freedom”</b> power of WooCommerce.</p>
+          </article>
+
+          <svg class="plus sketch" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+            <g class="ink" filter="url(#rough)">
+              <path class="ln" pathLength="1" style="--d:.5s;--t:.3s" d="M20.5 7C20 15 20.6 24 20 33"/>
+              <path class="ln" pathLength="1" style="--d:.75s;--t:.3s" d="M7 20.4C15 19.8 25 20.6 33 19.9"/>
+            </g>
+          </svg>
+
+          <article class="room reveal" style="--d:.1s">
+            <svg class="room__icon sketch" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+              <g class="ink" filter="url(#rough)">
+                <path class="soft-fill fade" style="--d:.9s" d="M12 25L21 13H43L52 25L32 52Z"/>
+                <path class="ln" pathLength="1" style="--d:.4s;--t:.6s" d="M12 25L21 13H43L52 25L32 52Z"/>
+                <path class="ln thin" pathLength="1" style="--d:.9s;--t:.5s" d="M12 25H52M21 13L26.5 25L32 52L37.5 25L43 13M26.5 25L32 13L37.5 25"/>
+                <path class="ln thin" pathLength="1" style="--d:1.3s;--t:.25s" d="M56 4V12M52 8H60"/>
+              </g>
+            </svg>
+            <p class="room__label">Shopify</p>
+            <p class="room__text">We took the <b>“Premium User Experience and Ease”</b> of Shopify.</p>
+          </article>
+        </div>
+
+        <svg class="house__ground sketch" viewBox="0 0 900 12" aria-hidden="true" focusable="false">
+          <!-- A long flat line steps at 1x through the wobble filter, so this one wobbles in its own path. -->
+          <g class="ink">
+            <path class="ln" pathLength="1" style="--d:.2s;--t:1s" d="M8 6.6C120 5.4 230 7.3 360 6.1S600 5.1 720 6.5S850 5.7 892 6"/>
+          </g>
+        </svg>
+      </div>
+
+      <p class="body giants__close reveal">By merging the two through our in-house BrikPanel technology, we have succeeded in offering SMEs and entrepreneurs a service that is both <b>“Premium”</b> and <b>“Accessible”</b> in price.</p>
+    </div>
+  </section>
+
+  <!-- ── Closing ──────────────────────────────────────────────────────── -->
+  <section class="closing">
+    <div class="wrap">
+      <p class="body closing__aim reveal">Our aim is to ensure that businesses can rise freely and confidently, just like the bird in our logo, without being held back by technical barriers or exorbitant costs.</p>
+
+      <svg class="closing__sun sketch" viewBox="0 0 240 112" role="img" aria-label="A hand-drawn sun rising over the horizon">
+        <g class="ink" filter="url(#rough)">
+          <path class="sun-fill fade" style="--d:.9s" d="M81 93A42 42 0 0 1 165 93Z"/>
+          <path class="ln bold" pathLength="1" style="--d:.2s;--t:.9s" d="M76.3 96C77.3 92.4 78.6 80.6 82.1 74.1C85.6 67.6 91.1 60.7 97.4 56.9C103.8 53.2 112.4 51.6 120 51.5C127.6 51.4 136.2 52.8 142.9 56.4C149.5 60 155.9 66.5 159.7 73.1C163.5 79.7 164.7 92.2 165.7 96"/>
+          <path class="ln" pathLength="1" style="--d:1s;--t:.6s" d="M172.7 74.2L183.7 69.6M160.3 55.7L166 50M141.8 43.3L146.8 31.3M120 39L120 30M98.2 43.3L93.2 31.3M79.7 55.7L74 50M67.3 74.2L56.3 69.6"/>
+          <path class="ln" pathLength="1" style="--d:.1s;--t:.8s" d="M16 96.5C70 95.5 170 97.5 224 96"/>
+          <path class="ln thin" pathLength="1" style="--d:1.2s;--t:.5s" d="M58 104.5H90M108 106.5H150M166 103.5H186"/>
+          <path class="ln thin" pathLength="1" style="--d:1.5s;--t:.3s" d="M190 40Q194 35 198 40Q202 35 206 40"/>
+        </g>
+      </svg>
+
+      <h2 class="closing__title reveal"><span>You focus on the sun;</span> <span>leave the wings to us.</span></h2>
+      <div class="closing__cta reveal" style="--d:.1s">
+        <a class="btn btn--lg" href="https://code.brksoft.com/wp-admin/">Discover BrikPanel
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer__inner">
+    <span>© 2026 Brksoft</span>
+    <span>WooCommerce for Everyone</span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var items = document.querySelectorAll('.reveal, .sketch');
+    var show = function (el) { el.classList.add('is-visible'); };
+    if (!('IntersectionObserver' in window)) { items.forEach(show); }
+    else {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { show(e.target); io.unobserve(e.target); }
+        });
+      }, { threshold: 0.2, rootMargin: '0px 0px -6% 0px' });
+      items.forEach(function (el) { io.observe(el); });
+    }
+
+    var nav = document.querySelector('.nav');
+    var onScroll = function () { nav.classList.toggle('is-scrolled', window.scrollY > 4); };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+  })();
+</script>
+</body>
+</html>
