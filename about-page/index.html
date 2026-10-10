@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WooCommerce for Everyone · Brksoft</title>
-<meta name="description" content="Brksoft brings the ownership and freedom of WooCommerce and the premium, easy experience of Shopify together under one roof: BrikPanel.">
+<meta name="description" content="An old story about wings and the sun, and how Brksoft brings the freedom of WooCommerce and the ease of Shopify under one roof: BrikPanel.">
 <meta name="theme-color" content="#ffffff">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,19 +51,6 @@
   .read { max-width: 680px; margin: 0 auto; }
   .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
-  /* ── Nav ──────────────────────────────────────────────────────────────── */
-  .nav {
-    position: sticky; top: 0; z-index: 10;
-    background: rgba(255, 255, 255, .8);
-    -webkit-backdrop-filter: saturate(180%) blur(18px);
-    backdrop-filter: saturate(180%) blur(18px);
-    border-bottom: 1px solid transparent;
-    transition: border-color .3s ease;
-  }
-  .nav.is-scrolled { border-bottom-color: var(--hair); }
-  .nav__inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-  .brand { font-size: 19px; font-weight: 650; letter-spacing: -.035em; color: var(--heading); text-decoration: none; }
-
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
     height: 40px; padding: 0 18px; border-radius: 999px;
@@ -73,8 +60,6 @@
   }
   .btn:hover { background: #000; transform: translateY(-1px); }
   .btn:focus-visible { outline: 2px solid var(--heading); outline-offset: 3px; }
-  .btn--ghost { background: transparent; color: var(--heading); box-shadow: inset 0 0 0 1px #dedede; }
-  .btn--ghost:hover { background: var(--paper); }
   .btn--lg { height: 50px; padding: 0 26px; font-size: 16px; }
   .btn svg { width: 16px; height: 16px; transition: transform .2s var(--ease); }
   .btn:hover svg { transform: translateX(2px); }
@@ -111,7 +96,7 @@
 
   /* ── Pencil marks on text ───────────────────────────────────────────────
      Drawn as backgrounds so they follow the text when it wraps. */
-  .strike, .hl, .under {
+  .strike, .hl {
     -webkit-box-decoration-break: clone; box-decoration-break: clone;
     background-repeat: no-repeat;
   }
@@ -126,12 +111,6 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 24' preserveAspectRatio='none'%3E%3Cpath d='M4 6.5C48 3.4 128 4.2 197 5.4L195 19.6C130 22.4 54 21.4 3 18.6Z' fill='%23ffd25e' fill-opacity='.75'/%3E%3C/svg%3E");
     background-position: 0 86%;
     background-size: 100% .56em;
-  }
-  .under {
-    padding-bottom: .06em;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 16' preserveAspectRatio='none'%3E%3Cpath d='M3 9.5C52 5.6 132 5 197 6.8' fill='none' stroke='%23303030' stroke-width='2.4' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3Cpath d='M22 13C82 10 150 10.4 186 11.4' fill='none' stroke='%23303030' stroke-width='1.6' stroke-linecap='round' vector-effect='non-scaling-stroke' opacity='.75'/%3E%3C/svg%3E");
-    background-position: 0 100%;
-    background-size: 100% .3em;
   }
 
   /* ── Sketches ───────────────────────────────────────────────────────────
@@ -154,8 +133,29 @@
     white-space: nowrap; pointer-events: none;
   }
 
+  /* ── Heading ornaments ──────────────────────────────────────────────────
+     Pencil doodles hung on single words, sized in em so they follow the type. */
+  .nowrap { white-space: nowrap; }
+  .sparkled, .ringed, .roofed, .sunword { position: relative; display: inline-block; white-space: nowrap; }
+  .deco { position: absolute; height: auto; overflow: visible; pointer-events: none; }
+  .deco--shine { width: .52em; left: -.5em; top: -.26em; }
+  .deco--sparkle { width: .62em; right: -.66em; top: -.34em; }
+  .deco-you { position: absolute; left: calc(100% + .04em); top: .02em; width: 1.9em; height: .9em; pointer-events: none; }
+  .deco-you .deco { width: .66em; left: 0; top: .2em; }
+  .deco-you .note { left: .6em; top: .02em; font-size: .3em; letter-spacing: 0; transform: rotate(-7deg); }
+  .deco--glasses { position: static; display: inline-block; width: 1.3em; margin-left: .2em; vertical-align: -.04em; transform: rotate(-9deg); }
+  .deco--ring { left: -.2em; top: -.1em; width: calc(100% + .4em); height: calc(100% + .22em); }
+  .deco--roof { left: -6%; width: 112%; bottom: 82%; }
+  .sunword { z-index: 0; }
+  .deco--sun { z-index: -1; left: 50%; bottom: -.07em; width: 2.2em; transform: translateX(-50%); }
+  .squiggle {
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    padding-bottom: .1em;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 20' preserveAspectRatio='none'%3E%3Cpath d='M2 11q6-8 12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0t12 0' fill='none' stroke='%23303030' stroke-width='2' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E") no-repeat 0 100% / 100% .3em;
+  }
+
   /* ── Hero ─────────────────────────────────────────────────────────────── */
-  .hero { padding-top: clamp(56px, 9vw, 116px); text-align: center; }
+  .hero { padding-top: clamp(72px, 11vw, 148px); text-align: center; }
   .hero h1 {
     font-size: clamp(48px, 8.6vw, 100px); line-height: .98; font-weight: 650;
     letter-spacing: -.052em; color: var(--heading);
@@ -258,7 +258,7 @@
   .giants__close b { font-weight: 600; color: var(--heading); }
 
   /* ── Closing ──────────────────────────────────────────────────────────── */
-  .closing { padding: clamp(24px, 4vw, 56px) 0 clamp(104px, 14vw, 176px); text-align: center; }
+  .closing { padding: clamp(24px, 4vw, 56px) 0 clamp(96px, 13vw, 168px); text-align: center; }
   .flight { width: min(320px, 76%); height: auto; margin: 0 auto clamp(28px, 4vw, 44px); overflow: visible; }
   .closing__aim { max-width: 600px; margin: 0 auto; color: var(--muted); text-wrap: balance; }
   .closing__scene { width: 100%; max-width: 1000px; height: auto; margin: clamp(44px, 6vw, 80px) auto clamp(24px, 4vw, 44px); }
@@ -269,10 +269,6 @@
   /* Each half of the sentence keeps to itself: one line each, or two balanced lines each. */
   .closing__title span { display: inline-block; text-wrap: balance; }
   .closing__cta { margin-top: clamp(36px, 5vw, 52px); display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
-
-  /* ── Footer ───────────────────────────────────────────────────────────── */
-  .footer { border-top: 1px solid var(--hair); }
-  .footer__inner { display: flex; justify-content: space-between; gap: 16px; padding-block: 28px; font-size: 14px; color: var(--muted); }
 
   /* ── Flowers from the sides ─────────────────────────────────────────────
      They grow in the margins beside the text, sized to the room there, and
@@ -293,7 +289,6 @@
 
   /* ── Small screens ────────────────────────────────────────────────────── */
   @media (max-width: 640px) {
-    .nav .btn { height: 36px; padding: 0 14px; font-size: 14px; }
     .ink { stroke-width: 2.4; }
     .ink .thin { stroke-width: 1.9; }
     /* The wide drawings shrink to less than half their size here: thicken their pencil. */
@@ -312,9 +307,9 @@
     .closing__scene .ink .bold { stroke-width: 5.4; }
     .house__rooms { grid-template-columns: 1fr; width: 92%; }
     .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .deco-you { display: none; }
     .plus { justify-self: center; }
     .room__icon { width: 48px; height: 48px; margin-bottom: 16px; }
-    .footer__inner { flex-direction: column; gap: 4px; }
   }
 
   /* ── Motion: only when JavaScript runs and the visitor allows it ─────── */
@@ -334,8 +329,8 @@
     .js .is-visible .strike { background-size: 100% .52em; }
     .js .hl { background-size: 0% .56em; transition: background-size 1.1s cubic-bezier(.6, .1, .3, 1) .5s; }
     .js .is-visible .hl { background-size: 100% .56em; }
-    .js .under { background-size: 0% .3em; transition: background-size .9s cubic-bezier(.6, .1, .3, 1) .55s; }
-    .js .is-visible .under { background-size: 100% .3em; }
+    .js .squiggle { background-size: 0% .3em; transition: background-size 1s cubic-bezier(.6, .1, .3, 1) .5s; }
+    .js .is-visible .squiggle { background-size: 100% .3em; }
   }
 </style>
 </head>
@@ -362,24 +357,30 @@
   </defs>
 </svg>
 
-<header class="nav">
-  <div class="wrap nav__inner">
-    <!-- Swap the wordmark for your logo if you like. Both buttons open the live BrikPanel demo. -->
-    <a class="brand" href="https://brksoft.com/">Brksoft</a>
-    <a class="btn btn--ghost" href="https://code.brksoft.com/wp-admin/">Discover BrikPanel</a>
-  </div>
-</header>
-
 <main>
 
   <!-- ── Hero ──────────────────────────────────────────────────────────── -->
   <section class="hero">
     <div class="wrap">
       <p class="eyebrow reveal">Our story</p>
-      <h1 class="reveal" style="--d:.08s">WooCommerce<br>
-        for <span class="hero__word sketch">Everyone<svg viewBox="0 0 300 26" aria-hidden="true" focusable="false"><g class="ink" filter="url(#rough-flat)"><path class="ln" pathLength="1" style="--d:.9s;--t:.6s" d="M4 17C58 10.5 152 7.2 296 9.4"/><path class="ln thin" pathLength="1" style="--d:1.35s;--t:.45s" d="M34 22.5C104 16.6 196 15.4 272 16.6"/></g></svg></span>
+      <h1 class="reveal" style="--d:.08s"><span class="sparkled">WooCommerce<svg class="deco deco--shine sketch" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  <g class="ink" filter="url(#rough)">
+    <path class="ln bold" pathLength="1" style="--d:.9s;--t:.35s" d="M52 52L30 30M58 40L50 12M40 58L12 48"/>
+  </g>
+</svg><svg class="deco deco--sparkle sketch" viewBox="0 0 80 60" aria-hidden="true" focusable="false">
+  <g class="ink" filter="url(#rough)">
+    <path class="ln thin lp" pathLength="1" style="--d:1.1s;--t:.5s" d="M30 6C32 22 38 28 54 30C38 32 32 38 30 54C28 38 22 32 6 30C22 28 28 22 30 6Z"/>
+    <path class="ln thin" pathLength="1" style="--d:1.5s;--t:.25s" d="M68 4V18M61 11H75"/>
+  </g>
+</svg></span><br>
+        for <span class="hero__word sketch">Everyone<span class="deco-you sketch" aria-hidden="true"><svg class="deco" viewBox="0 0 90 54" aria-hidden="true" focusable="false">
+  <g class="ink" filter="url(#rough)">
+    <path class="ln thin" pathLength="1" style="--d:2s;--t:.45s" d="M84 8C64 2 30 10 12 44"/>
+    <path class="ln thin" pathLength="1" style="--d:2.4s;--t:.2s" d="M7 30L11 46L26 39"/>
+  </g>
+</svg><span class="note" style="--d:1.6s;--t:.6s">yes, you</span></span><svg viewBox="0 0 300 26" aria-hidden="true" focusable="false"><g class="ink" filter="url(#rough-flat)"><path class="ln" pathLength="1" style="--d:.9s;--t:.6s" d="M4 17C58 10.5 152 7.2 296 9.4"/><path class="ln thin" pathLength="1" style="--d:1.35s;--t:.45s" d="M34 22.5C104 16.6 196 15.4 272 16.6"/></g></svg></span>
       </h1>
-      <p class="hero__lead reveal" style="--d:.16s">That technological bird in our logo is not merely a symbol; it is our compass.</p>
+      <p class="hero__lead reveal" style="--d:.16s">An old story about wings and the sun is our compass. Here is how we read it.</p>
 
       <figure class="hero__art sketch" role="img" aria-label="A hand-drawn bird leaves an open cage and flies toward the sun, marked “your goals”.">
         <svg viewBox="0 0 720 400" aria-hidden="true" focusable="false">
@@ -541,7 +542,7 @@
     <div class="wrap">
       <div class="read">
         <p class="label reveal">Chapter I · The legend</p>
-        <p class="body reveal">According to legend, Icarus crafted wings of wax to escape his cage and attain freedom. He began to rise, soaring past his prison, but as he drew closer to the sun, its light dazzled his eyes. He climbed higher still, until the sun melted his waxen wings and he fell.</p>
+        <p class="body reveal">Icarus and his father were locked in a tower by the sea. They built wings from feathers and wax, and one morning Icarus flew out over the walls. The higher he rose, the brighter the sun became, until its light dazzled him. He kept climbing. The wax melted, the feathers came loose, and he fell into the sea.</p>
       </div>
       <ol class="panels" aria-label="The legend in four pictures">
         <li class="panel"><svg class="panel__art sketch" viewBox="0 0 220 170" role="img" aria-label="A candle melting wax beside feathers and a half-built wing">
@@ -596,7 +597,7 @@
     <path class="ln thin" pathLength="1" style="--d:1.5s;--t:.5s" d="M163.3 138.6C157.8 138.6 156.7 133.1 161.1 130.3C161.7 125.4 167.7 123.8 171.6 126.5C173.8 119.9 184.8 119.3 187.5 126C192.4 124.3 198.5 128.2 196.3 133.7C200.7 134.8 200.7 138.6 196.3 138.6Z"/>
     <path class="ln hair" pathLength="1" style="--d:1.6s;--t:.4s" d="M103.2 34.5C99.5 34.5 98.8 30.8 101.8 28.9C102.1 25.5 106.2 24.4 108.9 26.2C110.4 21.8 117.9 21.4 119.8 25.9C123.1 24.8 127.2 27.4 125.8 31.1C128.8 31.9 128.8 34.5 125.8 34.5Z"/>
   </g>
-</svg><p class="panel__note">soaring past his prison</p></li>
+</svg><p class="panel__note">over the walls</p></li>
         <li class="panel"><svg class="panel__art sketch" viewBox="0 0 220 170" role="img" aria-label="Icarus close to the sun, wax dripping from his wings">
   <g class="ink" filter="url(#rough)">
     <path class="ln thin" pathLength="1" style="--d:0s;--t:.7s" d="M6 9.4L212.4 10.1M209.7 7.6L210.2 164M212 160.3L6 159M8.8 162.8L10.8 6"/>
@@ -636,10 +637,10 @@
     <path class="ln hair" pathLength="1" style="--d:1.4s;--t:.35s" d="M156 84C151.5 89.5 147.9 95.4 145.6 100.4M151.2 89.9L152.1 92.5M151.2 89.9L148.7 90.4M149.3 92.8L150.3 95.5M149.3 92.8L146.9 93.4M147.6 95.9L148.7 98.6M147.6 95.9L145.3 96.5M152.2 93.4L150.6 93.6"/>
     <path class="dots" d="M70 20Q82 28 72 36Q62 44 74 50M128 12Q138 20 130 28M150 52Q160 62 152 72"/>
   </g>
-</svg><p class="panel__note">and he fell</p></li>
+</svg><p class="panel__note">into the sea</p></li>
       </ol>
       <div class="read">
-        <p class="body reveal">Most people read this story as a “warning”:</p>
+        <p class="body reveal">For centuries, people have told it as a warning:</p>
         <div class="warning-row reveal">
           <p class="warning"><span class="strike">“Don’t fly too high, or you’ll fall.”</span></p>
           <svg class="warning__sign sketch" viewBox="0 0 86 110" role="img" aria-label="A warning sign, crossed out">
@@ -716,8 +717,16 @@
     <div class="wrap">
       <div class="read">
         <p class="label reveal">Chapter II · Another reading</p>
-        <h2 class="statement reveal">We read it differently.</h2>
-        <p class="body reveal">Icarus may not have reached the sun, but he became the icon of those who possess a boundless passion to rise.</p>
+        <h2 class="statement reveal">We read it <span class="nowrap">differently.<svg class="deco deco--glasses sketch" viewBox="0 0 124 56" aria-hidden="true" focusable="false">
+  <g class="ink" filter="url(#rough)">
+    <path class="ln bold lp" pathLength="1" style="--d:.4s;--t:.45s" d="M31.2 15.9C33.1 16.2 39.4 16 42.6 17.9C45.8 19.7 49 23.4 50.2 26.9C51.4 30.5 51.5 35.7 49.9 39.1C48.4 42.5 44.4 45.7 41 47.2C37.5 48.7 32.8 49.1 29.2 48C25.6 47 21.7 44.1 19.6 41C17.5 37.8 15.9 32.8 16.5 29.1C17.1 25.4 20.2 21.4 23.2 18.9C26.3 16.4 32.7 14.9 34.6 14.2"/>
+    <path class="ln bold lp" pathLength="1" style="--d:.65s;--t:.45s" d="M87.1 15.8C89.1 16.1 95.5 15.9 98.7 17.8C101.8 19.6 104.8 23.4 106.1 27C107.3 30.6 107.7 35.8 106.2 39.2C104.7 42.7 100.7 46 97.2 47.7C93.6 49.3 88.5 50 85 48.8C81.4 47.7 77.8 44.2 75.8 40.9C73.7 37.6 72.3 33 72.8 29.2C73.3 25.4 75.7 20.6 78.6 18.1C81.6 15.7 88.6 15.1 90.6 14.5"/>
+    <path class="ln bold" pathLength="1" style="--d:.95s;--t:.2s" d="M51 29Q62 20 73 29"/>
+    <path class="ln thin" pathLength="1" style="--d:1.05s;--t:.3s" d="M17.5 27L4 17M106.5 27L120 15"/>
+    <path class="ln hair" pathLength="1" style="--d:1.3s;--t:.25s" d="M24 26Q27 20 34 19M80 26Q83 20 90 19"/>
+  </g>
+</svg></span></h2>
+        <p class="body reveal">Icarus never reached the sun. Yet thousands of years later, his name still belongs to everyone who dares to rise.</p>
       </div>
       <figure class="leap"><svg class="leap__art sketch" viewBox="0 0 640 250" role="img" aria-label="Icarus leaps from a cliff toward the sun, wings open">
   <g class="ink" filter="url(#rough)">
@@ -751,7 +760,7 @@
   </g>
 </svg></figure>
       <div class="read">
-        <blockquote class="quote reveal">For us, the point is not the fall, it is <mark class="hl">the courage to rise</mark> in the first place.</blockquote>
+        <blockquote class="quote reveal">We don’t remember the fall. We remember <mark class="hl">the courage</mark> it took to leave the ground.</blockquote>
       </div>
     </div>
     <svg class="flora flora--reading sketch" viewBox="0 0 300 480" aria-hidden="true" focusable="false">
@@ -825,8 +834,12 @@
             <path class="ln hair" pathLength="1" style="--d:2.1s;--t:.3s" d="M20 22V32M15 27H25M244 40V48M240 44H248M196 8V14M193 11H199"/>
           </g>
         </svg>
-        <h2 class="statement reveal">We exist so that our business partners’ wings <span class="under">never&nbsp;melt.</span></h2>
-        <p class="promise__text reveal" style="--d:.1s">As we carry you to the closest point to the sun (your goals), we offer you the sturdiest wings technology can provide.</p>
+        <h2 class="statement reveal">We build wings that <span class="ringed">never<svg class="deco deco--ring sketch" viewBox="0 0 300 128" aria-hidden="true" focusable="false" preserveAspectRatio="none">
+  <g class="ink" filter="url(#rough)">
+    <path class="ln bold" pathLength="1" style="--d:.5s;--t:.8s" d="M62 22C130 2 252 4 284 44C306 72 252 112 150 116C56 120 6 98 14 64C20 38 70 16 172 12"/>
+  </g>
+</svg></span> melt.</h2>
+        <p class="promise__text reveal" style="--d:.1s">Your goals are your sun. Fly as close to them as you dare. We make sure your wings hold.</p>
       </div>
     </div>
     <svg class="flora flora--card-left sketch" viewBox="0 0 220 280" aria-hidden="true" focusable="false">
@@ -921,8 +934,15 @@
     <div class="wrap">
       <header class="giants__head">
         <p class="eyebrow reveal">Chapter IV</p>
-        <h2 class="statement reveal">Two Giants, One Roof</h2>
-        <p class="body reveal" style="--d:.08s">For years, there has been a persistent dilemma in the e-commerce world: either you chose the freedom and budget-friendly structure of WooCommerce and wrestled with its complexity, or you chose the quality and ease of Shopify and resigned yourself to high costs and a rental model.</p>
+        <h2 class="statement reveal">Two Giants, <span class="roofed">One Roof<svg class="deco deco--roof sketch" viewBox="0 -26 400 102" aria-hidden="true" focusable="false">
+  <g class="ink" filter="url(#rough)">
+    <path class="ln bold" pathLength="1" style="--d:.4s;--t:.7s" d="M2 72L200 12L398 72"/>
+    <path class="ln thin" pathLength="1" style="--d:.85s;--t:.55s" d="M26 73L200 27L374 73"/>
+    <path class="ln thin" pathLength="1" style="--d:1.2s;--t:.35s" d="M300 42.3V20M318 47.8V20M294 20H324V13H294Z"/>
+    <path class="ln hair" pathLength="1" style="--d:1.5s;--t:.4s" d="M309 8C302 2 315 -3 308 -10C303 -15 311 -20 314 -24"/>
+  </g>
+</svg></span></h2>
+        <p class="body reveal" style="--d:.08s">For years, opening an online store meant picking a side. WooCommerce gave you freedom and a fair price, along with plenty of complexity. Shopify gave you polish and ease, and a bill every month for a store you never really owned.</p>
       </header>
 
       <figure class="crossroads sketch" role="img" aria-label="A merchant stands at a signpost: WooCommerce one way, freedom but complexity; Shopify the other, ease but rent.">
@@ -962,8 +982,8 @@
         <span class="note crossroads__rent" aria-hidden="true" style="--d:2.8s;--t:.7s">easy, but rented</span>
       </figure>
 
-      <p class="quote reveal">We rejected this divide.</p>
-      <p class="body giants__lead reveal" style="--d:.08s">Brksoft exists to bring the best aspects of the world’s two largest e-commerce technologies together under a single roof.</p>
+      <p class="quote reveal">We refused to <span class="squiggle">pick a side.</span></p>
+      <p class="body giants__lead reveal" style="--d:.08s">So we brought the best of both under one roof.</p>
 
       <div class="house">
         <div class="house__roof sketch" role="img" aria-label="A hand-drawn roof over both: its window is the BrikPanel mark.">
@@ -1003,8 +1023,8 @@
                 <path class="ln" pathLength="1" style="--d:.9s;--t:.4s" d="M30 32H59M49 32V41M55 32V39"/>
               </g>
             </svg>
-            <p class="room__label">WooCommerce</p>
-            <p class="room__text">We took the <b>“Ownership and Freedom”</b> power of WooCommerce.</p>
+            <p class="room__label">From WooCommerce</p>
+            <p class="room__text"><b>Ownership and freedom.</b> Your store, your data, your rules.</p>
           </article>
 
           <svg class="plus sketch" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
@@ -1023,8 +1043,8 @@
                 <path class="ln thin" pathLength="1" style="--d:1.3s;--t:.25s" d="M56 4V12M52 8H60"/>
               </g>
             </svg>
-            <p class="room__label">Shopify</p>
-            <p class="room__text">We took the <b>“Premium User Experience and Ease”</b> of Shopify.</p>
+            <p class="room__label">From Shopify</p>
+            <p class="room__text"><b>A premium, easy experience.</b> A fast, clean admin that feels good to use.</p>
           </article>
         </div>
 
@@ -1085,7 +1105,7 @@
         </svg>
       </div>
 
-      <p class="body giants__close reveal">By merging the two through our in-house BrikPanel technology, we have succeeded in offering SMEs and entrepreneurs a service that is both <b>“Premium”</b> and <b>“Accessible”</b> in price.</p>
+      <p class="body giants__close reveal">That roof is BrikPanel, the technology we build in-house. It gives small businesses and entrepreneurs a store that is <b>premium</b> in quality and <b>accessible</b> in price.</p>
     </div>
   </section>
 
@@ -1108,7 +1128,7 @@
         </g>
       </svg>
       <p class="eyebrow reveal">Epilogue</p>
-      <p class="body closing__aim reveal">Our aim is to ensure that businesses can rise freely and confidently, just like the bird in our logo, without being held back by technical barriers or exorbitant costs.</p>
+      <p class="body closing__aim reveal">We want every business to rise freely and with confidence, with no walls of complexity and no heavy costs holding it back.</p>
 
 <svg class="closing__scene sketch" viewBox="0 0 1000 330" role="img" aria-label="Sunflowers on both sides turn toward the rising sun while birds fly in">
         <g class="ink" filter="url(#rough)">
@@ -1195,7 +1215,14 @@
         </g>
       </svg>
 
-      <h2 class="closing__title reveal"><span>You focus on the sun;</span> <span>leave the wings to us.</span></h2>
+      <h2 class="closing__title reveal"><span>You focus on the <span class="sunword">sun<svg class="deco deco--sun sketch" viewBox="0 -12 220 132" aria-hidden="true" focusable="false">
+  <g class="ink" filter="url(#rough)">
+    <path class="sun-fill fade" style="--d:.45s" d="M40 99A72 72 0 0 1 184 99Z"/>
+    <path class="ln bold" pathLength="1" style="--d:.2s;--t:.55s" d="M36.4 100C37.7 93.7 38.2 72.8 44.2 62C50.3 51.2 61.7 41.7 72.7 35.3C83.6 29 97.4 24.3 110 24C122.6 23.6 137.3 27.1 148.5 33.3C159.7 39.5 170.9 50 177.4 61.1C183.8 72.2 185.5 93.5 187.1 100"/>
+    <path class="ln thin" pathLength="1" style="--d:.7s;--t:.45s" d="M29.2 70.6L16 65.8M47.1 41.3L38.3 33.2M75 21.4L68.5 6.8M110 14L110 0M145 21.4L151.5 6.8M172.9 41.3L181.7 33.2M190.8 70.6L204 65.8"/>
+    <path class="ln thin" pathLength="1" style="--d:.1s;--t:.5s" d="M24 101.5C80 99.8 140 101.6 196 100"/>
+  </g>
+</svg></span>;</span> <span>leave the wings to us.</span></h2>
       <div class="closing__cta reveal" style="--d:.1s">
         <a class="btn btn--lg" href="https://code.brksoft.com/wp-admin/">Discover BrikPanel
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
@@ -1205,13 +1232,6 @@
   </section>
 
 </main>
-
-<footer class="footer">
-  <div class="wrap footer__inner">
-    <span>© 2026 Brksoft</span>
-    <span>WooCommerce for Everyone</span>
-  </div>
-</footer>
 
 <script>
   (function () {
@@ -1226,11 +1246,6 @@
       }, { threshold: 0.2, rootMargin: '0px 0px -6% 0px' });
       items.forEach(function (el) { io.observe(el); });
     }
-
-    var nav = document.querySelector('.nav');
-    var onScroll = function () { nav.classList.toggle('is-scrolled', window.scrollY > 4); };
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
   })();
 </script>
 </body>
