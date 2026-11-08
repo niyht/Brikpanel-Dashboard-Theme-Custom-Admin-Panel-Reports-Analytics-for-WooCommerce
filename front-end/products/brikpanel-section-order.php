@@ -419,6 +419,14 @@ function brikpanel_render_section_order_field($field) {
     $default_order  = array_merge(brikpanel_pe_section_slugs(), $metabox_slugs, $acf_slugs);
     $default_hidden = array_merge(array_values(brikpanel_pe_section_default_hidden()), $metabox_slugs);
 
+    // Arrived from a product's "Hidden sections" button: offer the way back.
+    // Read-only (it only builds a link), and only for a product this person
+    // may edit.
+    $back_id = isset($_GET['bp_back']) ? absint(wp_unslash($_GET['bp_back'])) : 0;
+    if ($back_id && ('product' !== get_post_type($back_id) || !current_user_can('edit_post', $back_id))) {
+        $back_id = 0;
+    }
+
     $title    = !empty($field['name']) ? esc_html($field['name']) : '';
     $tooltip  = !empty($field['desc_tip']) && !empty($field['desc']) ? wc_help_tip($field['desc']) : '';
     $help     = (empty($field['desc_tip']) && !empty($field['desc'])) ? $field['desc'] : '';
@@ -430,6 +438,12 @@ function brikpanel_render_section_order_field($field) {
         </th>
         <td class="forminp">
             <div class="brikpanel-section-order" id="brikpanel-section-order" data-default-order="<?php echo esc_attr(wp_json_encode($default_order)); ?>" data-default-hidden="<?php echo esc_attr(wp_json_encode($default_hidden)); ?>">
+                <?php if ($back_id) : ?>
+                    <a class="brikpanel-section-order-back" href="<?php echo esc_url(admin_url('admin.php?page=brikpanel-product-editor&product_id=' . $back_id)); ?>">
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m12 5-5 5 5 5"/></svg>
+                        <?php esc_html_e('Back to the product', 'brikpanel'); ?>
+                    </a>
+                <?php endif; ?>
                 <?php if ($help !== '') : ?>
                     <p class="brikpanel-section-order-help"><?php echo esc_html($help); ?></p>
                 <?php endif; ?>
@@ -449,7 +463,7 @@ function brikpanel_render_section_order_field($field) {
                         ?>
                         <li class="brikpanel-section-order-row<?php echo $is_visible ? '' : ' is-hidden-section'; ?><?php echo $is_metabox ? ' is-metabox-section' : ''; ?>" data-slug="<?php echo esc_attr($slug); ?>">
                             <label class="brikpanel-section-order-toggle">
-                                <input type="checkbox" class="brikpanel-section-order-checkbox" name="brikpanel_pe_section_visibility[]" value="<?php echo esc_attr($slug); ?>" <?php checked($is_visible); ?>>
+                                <input type="checkbox" role="switch" class="brikpanel-section-order-checkbox" name="brikpanel_pe_section_visibility[]" value="<?php echo esc_attr($slug); ?>" <?php checked($is_visible); ?>>
                                 <span class="brikpanel-section-order-title"><?php echo esc_html($options[$slug]); ?><?php if ($is_metabox) : ?><span class="brikpanel-section-order-badge"><?php echo esc_html($badge_label); ?></span><?php endif; ?></span>
                             </label>
                             <div class="brikpanel-section-order-actions">
@@ -507,10 +521,11 @@ function brikpanel_render_section_order_field($field) {
             .brikpanel-section-order-row:hover {
                 background: #fafafa;
             }
+            /* Switched off: plain grey, not struck through. A struck-through
+               name read as "removed", not as "can be turned on". */
             .brikpanel-section-order-row.is-hidden-section .brikpanel-section-order-title {
-                color: #8a8a8a;
-                text-decoration: line-through;
-                text-decoration-color: #c8c8c8;
+                color: #616161;
+                font-weight: 500;
             }
             .brikpanel-section-order-toggle {
                 display: flex;
@@ -524,50 +539,83 @@ function brikpanel_render_section_order_field($field) {
                 color: #303030;
                 line-height: 1.4;
             }
-            /* Fully custom, animation-free checkbox. WordPress core styles the
-               admin checkbox with an SVG checkmark in ::before plus
-               `transition: all`, which makes the tick visibly animate/shimmer on
-               toggle ("movement"). We override appearance and draw a static
-               CSS checkmark with transition:none so there is zero motion. */
-            .brikpanel-section-order-checkbox {
+            /* An on/off switch, drawn from the checkbox itself (still a real
+               checkbox, so the form posts exactly as before). Scoped by the
+               list's id: the settings card styles every checkbox with
+               `.bp-settings-card .form-table input[type="checkbox"]` and draws
+               its own tick in ::after, which used to sit on top of this list's
+               own tick (a doubled check mark). Animation-free on purpose:
+               WordPress gives admin checkboxes `transition: all`, which made
+               the old box shimmer on toggle. */
+            #brikpanel-section-order .brikpanel-section-order-checkbox {
                 -webkit-appearance: none;
                 appearance: none;
                 margin: 0 !important;
-                width: 16px;
-                height: 16px;
-                border: 1px solid #8a8a8a;
-                border-radius: 4px;
-                background: #ffffff;
+                width: 32px;
+                min-width: 32px;
+                height: 18px;
+                padding: 0;
+                border: 0;
+                border-radius: 999px;
+                background: #cccccc;
+                box-shadow: none;
                 cursor: pointer;
                 flex-shrink: 0;
                 position: relative;
-                transition: none !important;
+                transition: none;
             }
-            .brikpanel-section-order-checkbox::before {
-                content: "" !important;
+            #brikpanel-section-order .brikpanel-section-order-checkbox::before {
+                content: "";
+                float: none;
                 position: absolute;
-                top: 1px;
-                left: 5px;
-                width: 4px;
-                height: 8px;
-                border: solid #ffffff;
-                border-width: 0 2px 2px 0;
-                transform: rotate(45deg);
-                opacity: 0;
-                background: none !important;
-                margin: 0 !important;
-                transition: none !important;
+                top: 2px;
+                inset-inline-start: 2px;
+                width: 14px;
+                height: 14px;
+                margin: 0;
+                border-radius: 50%;
+                background: #ffffff;
+                box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+                transition: none;
             }
-            .brikpanel-section-order-checkbox:checked {
+            #brikpanel-section-order .brikpanel-section-order-checkbox::after {
+                content: none;
+                display: none;
+            }
+            #brikpanel-section-order .brikpanel-section-order-checkbox:checked {
                 background: #303030;
-                border-color: #303030;
             }
-            .brikpanel-section-order-checkbox:checked::before {
-                opacity: 1;
+            #brikpanel-section-order .brikpanel-section-order-checkbox:checked::before {
+                inset-inline-start: 16px;
             }
-            .brikpanel-section-order-checkbox:focus {
+            #brikpanel-section-order .brikpanel-section-order-checkbox:focus {
                 outline: none;
-                box-shadow: 0 0 0 2px rgba(48, 48, 48, .15);
+                box-shadow: none;
+            }
+            #brikpanel-section-order .brikpanel-section-order-checkbox:focus-visible {
+                box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #303030;
+            }
+            .brikpanel-section-order-back {
+                display: inline-flex;
+                align-items: center;
+                gap: .25rem;
+                margin: 0 0 .625rem;
+                color: #303030;
+                font-size: .8125rem;
+                font-weight: 550;
+                text-decoration: none;
+            }
+            .brikpanel-section-order-back:hover {
+                text-decoration: underline;
+            }
+            .brikpanel-section-order-back:focus-visible {
+                outline: 2px solid #303030;
+                outline-offset: 2px;
+                border-radius: .25rem;
+                box-shadow: none;
+            }
+            [dir="rtl"] .brikpanel-section-order-back svg {
+                transform: scaleX(-1);
             }
             .brikpanel-section-order-title {
                 overflow: hidden;
@@ -595,6 +643,8 @@ function brikpanel_render_section_order_field($field) {
                 gap: 2px;
                 flex-shrink: 0;
             }
+            /* The order arrows stay on every row but stay quiet: switching a
+               section on is what most people come here for. */
             .brikpanel-section-order-btn {
                 display: inline-flex;
                 align-items: center;
@@ -602,25 +652,24 @@ function brikpanel_render_section_order_field($field) {
                 width: 26px;
                 height: 26px;
                 padding: 0;
-                background: #ffffff;
+                background: transparent;
                 color: #616161;
-                border: 1px solid #e3e3e3;
+                border: 0;
                 border-radius: .375rem;
                 cursor: pointer;
-                transition: all .15s ease;
+                transition: background-color .15s ease, color .15s ease;
             }
             .brikpanel-section-order-btn:hover:not(:disabled) {
-                background: #f4f4f4;
+                background: #f1f1f1;
                 color: #303030;
-                border-color: #c8c8c8;
             }
             .brikpanel-section-order-btn:focus {
                 outline: none;
                 box-shadow: 0 0 0 2px rgba(48, 48, 48, .15);
             }
             .brikpanel-section-order-btn:disabled {
-                opacity: .35;
-                cursor: not-allowed;
+                opacity: .3;
+                cursor: default;
             }
             .brikpanel-section-order-footer {
                 display: flex;

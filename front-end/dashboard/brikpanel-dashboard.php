@@ -52,9 +52,14 @@ class Brikpanel_Dashboard {
     // kept; a tab the card does not have falls back to its first one.
     const TAB_PREF_OPTION = 'brikpanel_dash_tabs';
     const TAB_KEYS        = [
-        'sales'    => [ 'r', 'o', 'aov' ],
-        'products' => [ 'sold', 'viewed', 'cart' ],
-        'visitors' => [ 'devices', 'sources', 'campaigns' ],
+        'sales'     => [ 'r', 'o', 'aov' ],
+        'products'  => [ 'sold', 'viewed', 'cart' ],
+        'visitors'  => [ 'devices', 'sources', 'campaigns' ],
+        // Locations of a store selling in one country: the globe or that
+        // country's region map.
+        'locations' => [ 'region', 'world' ],
+        // What the Locations card shows (3.3.40).
+        'locations_view' => [ 'orders', 'customers', 'visitors' ],
     ];
 
     // The Most viewed pages window loads this many rows at a time; the Excel
@@ -445,6 +450,17 @@ class Brikpanel_Dashboard {
         return $this->is_hpos;
     }
 
+    /**
+     * The region lookup behind the Order locations card, loaded on first use
+     * (the card and its data request only).
+     *
+     * @return string Class name.
+     */
+    private function regions() {
+        require_once __DIR__ . '/brikpanel-dashboard-regions.php';
+        return 'Brikpanel_Dashboard_Regions';
+    }
+
     // =========================================================================
     // PAGE REGISTRATION & REDIRECT
     // =========================================================================
@@ -520,7 +536,7 @@ class Brikpanel_Dashboard {
             'live'          => __( 'Live visitors', 'brikpanel' ),
             'funnel'        => __( 'Conversion funnel', 'brikpanel' ),
             'rates'         => __( 'Order rates', 'brikpanel' ),
-            'locations'     => __( 'Order locations globe + Top countries/cities', 'brikpanel' ),
+            'locations'     => __( 'Locations globe + Top countries/cities', 'brikpanel' ),
             'best_sellers'  => __( 'Best sellers', 'brikpanel' ),
             'most_viewed'   => __( 'Most viewed pages', 'brikpanel' ),
             'most_added'    => __( 'Most added to cart', 'brikpanel' ),
@@ -992,7 +1008,7 @@ class Brikpanel_Dashboard {
                                 <?php
                                 // "Keep screen on": phones only, in the folded menu.
                                 // front-end/dashboard/brikpanel-wake-lock.js shows it
-                                // where the browser can keep the screen awake. Parked
+                                // where the browser can keep the screen awake. Off
                                 // with the phone app (brikpanel_phone_app_enabled()).
                                 if ( brikpanel_phone_app_enabled() ) :
                                 ?>
@@ -1067,6 +1083,26 @@ class Brikpanel_Dashboard {
              * @since 3.1.28
              */
             do_action( 'brikpanel_dashboard_after_sections' );
+
+            // Visitor countries come from DB-IP's free list (CC BY 4.0), whose
+            // licence asks for a link on the pages that show them: one quiet
+            // line at the very bottom, while the cards that show countries do.
+            if ( ( isset( $visible['locations'] ) || isset( $visible['live'] ) )
+                && function_exists( 'brikpanel_frontend_tracking_enabled' ) && brikpanel_frontend_tracking_enabled() ) :
+                ?>
+                <p class="brikpanel-dash-credit">
+                    <?php
+                    // DB-IP's own wording for the credit, kept in the link.
+                    $credit_link = '<a href="' . esc_url( 'https://db-ip.com' ) . '" target="_blank" rel="noopener">' . esc_html__( 'IP Geolocation by DB-IP', 'brikpanel' ) . '</a>';
+                    printf(
+                        /* translators: %s: the link "IP Geolocation by DB-IP" to db-ip.com, where the visitor country list comes from. */
+                        esc_html__( 'Visitor countries: %s', 'brikpanel' ),
+                        $credit_link // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built above from esc_url() and esc_html__().
+                    );
+                    ?>
+                </p>
+                <?php
+            endif;
             ?>
 
         </div>
@@ -1716,8 +1752,14 @@ class Brikpanel_Dashboard {
         } else {
             $body = __( 'BrikPanel measures visitors and conversions from the day it was activated. There is no visitor history before that, so a recent install can read low or empty here. Your sales and orders are not affected. Those use your full WooCommerce history.', 'brikpanel' );
         }
-        // How a visitor is counted since 3.3.30 (the person check).
-        $body .= '<br><br>' . esc_html__( 'A visitor is counted once a day, after they move the mouse, tap, scroll or press a key on your store. Bots, your staff and pages nobody looked at are left out.', 'brikpanel' );
+        // How a visitor is counted: on the first input since 3.3.30 (the
+        // person check), or as soon as the page opens when the store asks for
+        // it (3.3.41, "Count visitors when the page opens").
+        if ( function_exists( 'brikpanel_count_on_open_enabled' ) && brikpanel_count_on_open_enabled() ) {
+            $body .= '<br><br>' . esc_html__( 'A visitor is counted once a day, as soon as a store page opens on their screen. Known bots, cloud servers, automated browsers and your staff are left out.', 'brikpanel' );
+        } else {
+            $body .= '<br><br>' . esc_html__( 'A visitor is counted once a day, after they move the mouse, tap, scroll or press a key on your store. Bots, your staff and pages nobody looked at are left out.', 'brikpanel' );
+        }
         $this->render_hint( $title, $body, $align );
     }
 
@@ -1831,7 +1873,7 @@ class Brikpanel_Dashboard {
         $returns_on    = ! $has_pref || brikpanel_dashboard_profit_field_enabled( 'returns' );
         // "Tax in the Profit section" (Settings, Dashboard): inside Expenses,
         // taken out of Revenue and Expenses, or kept in Revenue.
-        $tax_mode       = function_exists( 'brikpanel_profit_tax_mode' ) ? brikpanel_profit_tax_mode() : 'expenses';
+        $tax_mode       = function_exists( 'brikpanel_profit_tax_mode' ) ? brikpanel_profit_tax_mode() : 'excluded';
         $tax_in_revenue = 'revenue' === $tax_mode;
 
         // Revenue is paid orders for the period, optionally net of refunds, with
@@ -1842,14 +1884,14 @@ class Brikpanel_Dashboard {
             $rev_body = $returns_on
                 ? __( 'The total of all paid orders for the selected dates (Processing and Completed by default), with shipping included, tax taken out and any customer refunds in the period subtracted. Orders placed by store administrators are left out so your own test orders do not change it. Tax is taken out because of the "Tax in the Profit section" setting, so it is not in Expenses either.', 'brikpanel' )
                 : __( 'The total of all paid orders for the selected dates (Processing and Completed by default), with shipping included and tax taken out. Orders placed by store administrators are left out so your own test orders do not change it. Tax is taken out because of the "Tax in the Profit section" setting, so it is not in Expenses either.', 'brikpanel' );
-            $exp_body = __( 'Operating costs for the period: ad spend from connected ad platforms (store currency only), payment processing fees charged by the gateway, supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Tax is not here because it is already taken out of Revenue. Open the breakdown to see each part.', 'brikpanel' );
+            $exp_body = __( 'Operating costs for the period: ad spend from connected ad platforms (spend in another currency is converted with the rate under Settings, then Currency), payment processing fees charged by the gateway, supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Tax is not here because it is already taken out of Revenue. Open the breakdown to see each part.', 'brikpanel' );
         } else {
             $rev_body = $returns_on
                 ? __( 'The total of all paid orders for the selected dates (Processing and Completed by default), with tax and shipping included and any customer refunds in the period subtracted. Orders placed by store administrators are left out so your own test orders do not change it. You can change which statuses count under Settings, then Analytics.', 'brikpanel' )
                 : __( 'The total of all paid orders for the selected dates (Processing and Completed by default), with tax and shipping included. Orders placed by store administrators are left out so your own test orders do not change it. You can change which statuses count under Settings, then Analytics.', 'brikpanel' );
             $exp_body = $tax_in_revenue
-                ? __( 'Operating costs for the period: ad spend from connected ad platforms (store currency only), payment processing fees charged by the gateway, supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Tax is not here because it is shown under Revenue and taken off Net profit. Open the breakdown to see each part.', 'brikpanel' )
-                : __( 'Operating costs for the period: order tax, ad spend from connected ad platforms (store currency only), payment processing fees charged by the gateway, supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Open the breakdown to see each part.', 'brikpanel' );
+                ? __( 'Operating costs for the period: ad spend from connected ad platforms (spend in another currency is converted with the rate under Settings, then Currency), payment processing fees charged by the gateway, supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Tax is not here because it is shown under Revenue and taken off Net profit. Open the breakdown to see each part.', 'brikpanel' )
+                : __( 'Operating costs for the period: order tax, ad spend from connected ad platforms (spend in another currency is converted with the rate under Settings, then Currency), payment processing fees charged by the gateway, supplier and stock costs from received purchase orders, plus anything logged in the Expenses module. Open the breakdown to see each part.', 'brikpanel' );
         }
         ?>
             <!-- Profit -->
@@ -2304,21 +2346,44 @@ class Brikpanel_Dashboard {
     }
 
     public function render_section_locations() {
+        // A store selling in one country opens on that country's region map
+        // (yesterday's decision, worked out again by the data request), unless
+        // this user switched to the world.
+        $regions   = $this->regions();
+        $focus_cc  = $regions::stored_focus_country();
+        $loc_pref  = self::get_tab_preferences()['locations'] ?? '';
+        $loc_mode  = '' !== $focus_cc ? ( '' !== $loc_pref ? $loc_pref : 'region' ) : 'world';
+        $countries = WC()->countries->get_countries();
+        $focus_lbl = '' !== $focus_cc && isset( $countries[ $focus_cc ] ) ? brikpanel_plain_name( $countries[ $focus_cc ] ) : '';
+        // Orders, Customers or Visitors: the one this user opened last time
+        // (3.3.40). Visitors are always shown on the world globe, so the
+        // World | Country switch steps aside there.
+        $loc_view  = self::tab_for( 'locations_view', self::TAB_KEYS['locations_view'], 'orders' );
+        $loc_tabs  = [
+            'orders'    => __( 'Orders', 'brikpanel' ),
+            'customers' => __( 'Customers', 'brikpanel' ),
+            'visitors'  => __( 'Visitors', 'brikpanel' ),
+        ];
+        $visitors  = 'visitors' === $loc_view;
         ?>
-            <!-- Row: Order Locations Globe + Tables -->
+            <!-- Row: Locations globe + tables -->
             <div class="brikpanel-dash-row brikpanel-dash-row-2-1">
-                <div class="brikpanel-dash-panel brikpanel-dash-globe-panel" id="globe-panel">
+                <div class="brikpanel-dash-panel brikpanel-dash-globe-panel" id="globe-panel" data-loc-mode="<?php echo esc_attr( $loc_mode ); ?>" data-loc-pref="<?php echo esc_attr( $loc_pref ); ?>" data-loc-view="<?php echo esc_attr( $loc_view ); ?>">
                     <div class="brikpanel-dash-globe-header">
                         <div class="brikpanel-dash-globe-title-group">
-                            <h2 id="globe-panel-title"><?php esc_html_e( 'Order locations', 'brikpanel' ); ?></h2>
+                            <h2 id="globe-panel-title"><?php echo esc_html_x( 'Locations', 'dashboard card: where orders, customers and visitors come from', 'brikpanel' ); ?></h2>
                             <div class="brikpanel-loc-tabs" role="group" aria-label="<?php esc_attr_e( 'View mode', 'brikpanel' ); ?>">
-                                <button class="brikpanel-loc-tab brikpanel-loc-tab--active" data-view="orders" type="button">
-                                    <?php esc_html_e( 'Orders', 'brikpanel' ); ?>
-                                </button>
-                                <button class="brikpanel-loc-tab" data-view="customers" type="button">
-                                    <?php esc_html_e( 'Customers', 'brikpanel' ); ?>
-                                </button>
+                                <?php foreach ( $loc_tabs as $view => $label ) : ?>
+                                    <button class="brikpanel-loc-tab<?php echo $view === $loc_view ? ' brikpanel-loc-tab--active' : ''; ?>" data-view="<?php echo esc_attr( $view ); ?>" type="button" aria-pressed="<?php echo $view === $loc_view ? 'true' : 'false'; ?>">
+                                        <?php echo esc_html( $label ); ?>
+                                    </button>
+                                <?php endforeach; ?>
                             </div>
+                        </div>
+                        <?php // The world globe or the country's region map; the data request shows it when the store sells in one country. ?>
+                        <div class="brikpanel-loc-mode" role="group" aria-label="<?php echo esc_attr_x( 'Map', 'order locations card: the world globe or the country map', 'brikpanel' ); ?>" data-cc="<?php echo esc_attr( $focus_cc ); ?>"<?php echo ( '' === $focus_cc || $visitors ) ? ' hidden' : ''; ?>>
+                            <button class="brikpanel-loc-mode-btn" data-mode="world" type="button" aria-pressed="<?php echo 'world' === $loc_mode ? 'true' : 'false'; ?>"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c2 2.2 2 10.2 0 12.4M8 1.8c-2 2.2-2 10.2 0 12.4"/></svg><?php echo esc_html_x( 'World', 'order locations card: the world globe', 'brikpanel' ); ?></button>
+                            <button class="brikpanel-loc-mode-btn" data-mode="region" type="button" aria-pressed="<?php echo 'region' === $loc_mode ? 'true' : 'false'; ?>"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><path d="M8 14.2s4.6-4.3 4.6-7.6A4.6 4.6 0 0 0 3.4 6.6c0 3.3 4.6 7.6 4.6 7.6z"/><circle cx="8" cy="6.6" r="1.6"/></svg><span class="brikpanel-loc-mode-country"><?php echo esc_html( $focus_lbl ); ?></span></button>
                         </div>
                         <button class="brikpanel-dash-globe-theme-btn" id="globe-theme-toggle" type="button" title="<?php esc_attr_e( 'Toggle theme', 'brikpanel' ); ?>">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -2329,14 +2394,19 @@ class Brikpanel_Dashboard {
                     </div>
                     <?php // Beside the globe box, never inside it: the globe writes its size onto that box. ?>
                     <p class="brikpanel-dash-empty brikpanel-dash-globe-empty" hidden></p>
+                    <div class="brikpanel-loc-foot" hidden>
+                        <span class="brikpanel-loc-unknown"></span>
+                        <span class="brikpanel-loc-legend" aria-hidden="true"><?php echo esc_html_x( 'Less', 'map colour scale: fewer orders', 'brikpanel' ); ?><i></i><i></i><i></i><i></i><i></i><?php echo esc_html_x( 'More', 'map colour scale: more orders', 'brikpanel' ); ?></span>
+                    </div>
                 </div>
                 <div class="brikpanel-dash-panel brikpanel-dash-locations-panel">
-                    <h2 id="loc-panel-countries-title"><?php esc_html_e( 'Top countries', 'brikpanel' ); ?></h2>
+                    <?php // Visitors have no cities: their list is the only one. ?>
+                    <h2 id="loc-panel-countries-title"><?php echo esc_html( $visitors ? __( 'Top countries by visitors', 'brikpanel' ) : __( 'Top countries', 'brikpanel' ) ); ?></h2>
                     <div class="brikpanel-dash-table-wrap" id="top-countries-table">
                         <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
                     </div>
-                    <h2 class="brikpanel-dash-locations-h2" id="loc-panel-cities-title"><?php esc_html_e( 'Top cities', 'brikpanel' ); ?></h2>
-                    <div class="brikpanel-dash-table-wrap" id="top-cities-table">
+                    <h2 class="brikpanel-dash-locations-h2" id="loc-panel-cities-title"<?php echo $visitors ? ' hidden' : ''; ?>><?php esc_html_e( 'Top cities', 'brikpanel' ); ?></h2>
+                    <div class="brikpanel-dash-table-wrap" id="top-cities-table"<?php echo $visitors ? ' hidden' : ''; ?>>
                         <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
                     </div>
                 </div>
@@ -2511,14 +2581,17 @@ class Brikpanel_Dashboard {
      * @return void
      */
     private function render_customers_card( array $blocks ) {
+        // The Customers page: its list, or its RFM tab for a card that only
+        // shows the segments.
+        $tab    = in_array( 'types', $blocks, true ) ? [] : [ 'tab' => 'rfm' ];
         $ca_url = function_exists( 'brikpanel_module_url' )
-            ? brikpanel_module_url( 'brikpanel-customer-analytics', [], '', false )
-            : admin_url( 'admin.php?page=brikpanel-customer-analytics' );
+            ? brikpanel_module_url( 'brikpanel-customers', $tab, '', false )
+            : add_query_arg( array_merge( [ 'page' => 'brikpanel-customers' ], $tab ), admin_url( 'admin.php' ) );
         ?>
         <article class="bp-dv-card bp-dv-customers" data-bp-dv="customers" data-blocks="<?php echo esc_attr( implode( ' ', $blocks ) ); ?>">
             <div class="bp-dv-card-h">
                 <h2 class="bp-dv-title"><?php echo esc_html( in_array( 'types', $blocks, true ) ? __( 'Customers', 'brikpanel' ) : __( 'Segments', 'brikpanel' ) ); ?></h2>
-                <div class="bp-dv-aside"><?php $this->card_link( (string) $ca_url, __( 'Customer Analytics', 'brikpanel' ) ); ?></div>
+                <div class="bp-dv-aside"><?php $this->card_link( (string) $ca_url, __( 'View all', 'brikpanel' ) ); ?></div>
             </div>
             <div class="bp-dv-card-body bp-dv-cust-body">
                 <?php if ( in_array( 'types', $blocks, true ) ) : ?>
@@ -2806,8 +2879,8 @@ class Brikpanel_Dashboard {
 
     private function render_box_ltv() {
         $ca_url = function_exists( 'brikpanel_module_url' )
-            ? brikpanel_module_url( 'brikpanel-customer-analytics', [], '', false )
-            : admin_url( 'admin.php?page=brikpanel-customer-analytics' );
+            ? brikpanel_module_url( 'brikpanel-customers', [ 'tab' => 'ltv' ], '', false )
+            : admin_url( 'admin.php?page=brikpanel-customers&tab=ltv' );
         ?>
                 <article class="bp-dv-card bp-dv-ltv" data-bp-dv="ltv">
                     <div class="bp-dv-card-h">
@@ -2918,11 +2991,11 @@ class Brikpanel_Dashboard {
             // S"); `name` stays the one-line label for the Excel export.
             $title   = $name;
             $variant = '';
-            if ( 'product_variation' === $row->post_type && function_exists( 'wc_get_formatted_variation' ) ) {
+            if ( 'product_variation' === $row->post_type ) {
                 $parent = wc_get_product( $product->get_parent_id() );
                 if ( $parent ) {
                     $title   = brikpanel_plain_label( $parent->get_name() );
-                    $variant = brikpanel_plain_label( wc_get_formatted_variation( $product, true, false, false ) );
+                    $variant = brikpanel_plain_label( brikpanel_formatted_variation( $product, false ) );
                 }
             }
 
@@ -3372,15 +3445,39 @@ class Brikpanel_Dashboard {
     private function build_profit_block( $revenue, $start_gmt, $end_gmt, $start_local, $end_local, $exclude_marketplace = false ) {
         $s = brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local, $end_local, $exclude_marketplace );
 
-        // "Tax in the Profit section" (Settings, Dashboard). Inside Expenses
-        // (default): Revenue is what customers paid, tax included, and the tax
-        // is one of the Expenses lines. Taken out: Revenue is shown without the
-        // tax and Expenses no longer carries it. Kept in Revenue: Revenue keeps
-        // the tax and names the amount under its figure, Expenses drop it and
-        // Net profit takes it off. Net profit comes out the same in all three.
-        $tax_mode       = function_exists( 'brikpanel_profit_tax_mode' ) ? brikpanel_profit_tax_mode() : 'expenses';
+        // "Tax in the Profit section" (Settings, Dashboard). Taken out
+        // (default): Revenue is shown without the tax and Expenses do not carry
+        // it. Inside Expenses: Revenue is what customers paid, tax included,
+        // and the tax is one of the Expenses lines. Kept in Revenue: Revenue
+        // keeps the tax and names the amount under its figure, Expenses drop it
+        // and Net profit takes it off. Net profit comes out the same in all three.
+        $tax_mode       = function_exists( 'brikpanel_profit_tax_mode' ) ? brikpanel_profit_tax_mode() : 'excluded';
         $tax_excluded   = 'excluded' === $tax_mode;
         $tax_in_revenue = 'revenue' === $tax_mode;
+
+        // Per-field display preferences (BrikPanel ▸ Settings ▸ Dashboard).
+        // Returns is the only toggle that also changes the math: because it
+        // nets the Revenue top line (which must reconcile with Total Sales),
+        // hiding it would otherwise leave an unexplained gap, so turning it off
+        // means "ignore returns entirely". Cost of goods and Expenses always
+        // feed Net profit (they only affect the Net card, never the shared
+        // Revenue line); their toggle is display-only so the Net figure can
+        // never be quietly overstated by hiding a card.
+        $returns_on  = ! function_exists( 'brikpanel_dashboard_profit_field_enabled' ) || brikpanel_dashboard_profit_field_enabled( 'returns' );
+        $coupons_on  = function_exists( 'brikpanel_dashboard_profit_field_enabled' ) && brikpanel_dashboard_profit_field_enabled( 'coupons' );
+
+        // The snapshot's tax is net of the tax refunds gave back, because its
+        // Revenue is net of those refunds. Ignoring returns keeps Revenue gross,
+        // so the tax shown is the tax charged; Expenses carry the snapshot's net
+        // tax, so the difference joins them as well, and the Tax line in the
+        // Expenses list shows the same figure as the card works with.
+        $tax     = (float) ( $s['tax_raw'] ?? 0 );
+        $tax_gap = 0.0;
+        if ( ! $returns_on ) {
+            $tax_gross = (float) ( $s['tax_gross_raw'] ?? $tax );
+            $tax_gap   = $tax_gross - $tax;
+            $tax       = $tax_gross;
+        }
 
         // Expenses breakdown. External costs (ad spend, tax) keep their fixed
         // translated labels; manual expenses are listed by their OWN category
@@ -3420,19 +3517,29 @@ class Brikpanel_Dashboard {
         $bp_key = class_exists( 'Brikpanel_Expenses' ) ? Brikpanel_Expenses::BUILTIN_PARENT_PREFIX : '__brikpanel:';
         $flat   = [];
         foreach ( $fixed_labels as $key => $label ) {
-            $amount = (float) ( $s['breakdown'][ $key ] ?? 0 );
+            $amount = 'tax' === $key ? $tax : (float) ( $s['breakdown'][ $key ] ?? 0 );
             if ( $amount <= 0 ) {
                 continue; // hide empty components to keep the card clean
+            }
+            $row = [
+                'key'    => $key,
+                'label'  => $label,
+                'amount' => wc_price( $amount ),
+                'raw'    => $amount,
+            ];
+            // Ad spend billed in another currency was converted with the
+            // Settings > Currency rate. The account's own figure goes under
+            // the line, so it can be checked against the ad platform's.
+            if ( ! empty( $s['ad_spend_converted'][ $key ] ) && is_array( $s['ad_spend_converted'][ $key ] ) ) {
+                $note = $this->ad_spend_note( $s['ad_spend_converted'][ $key ] );
+                if ( '' !== $note ) {
+                    $row['note'] = $note;
+                }
             }
             $flat[] = [
                 'title'  => $bp_key . $key,
                 'parent' => '',
-                'row'    => [
-                    'key'    => $key,
-                    'label'  => $label,
-                    'amount' => wc_price( $amount ),
-                    'raw'    => $amount,
-                ],
+                'row'    => $row,
             ];
         }
 
@@ -3582,23 +3689,12 @@ class Brikpanel_Dashboard {
 
         $breakdown = self::nest_expense_lines( $flat );
 
-        // Per-field display preferences (BrikPanel ▸ Settings ▸ Dashboard).
-        // Returns is the only toggle that also changes the math: because it
-        // nets the Revenue top line (which must reconcile with Total Sales),
-        // hiding it would otherwise leave an unexplained gap, so turning it off
-        // means "ignore returns entirely". Cost of goods and Expenses always
-        // feed Net profit (they only affect the Net card, never the shared
-        // Revenue line); their toggle is display-only so the Net figure can
-        // never be quietly overstated by hiding a card.
-        $returns_on  = ! function_exists( 'brikpanel_dashboard_profit_field_enabled' ) || brikpanel_dashboard_profit_field_enabled( 'returns' );
-        $coupons_on  = function_exists( 'brikpanel_dashboard_profit_field_enabled' ) && brikpanel_dashboard_profit_field_enabled( 'coupons' );
-
         $gross    = (float) $s['revenue_raw'];
         $returns  = (float) $s['returns_raw'];
         $coupons  = (float) $s['coupons_raw'];
         $cogs     = (float) $s['cogs_raw'];
-        $expenses = (float) $s['expenses_total_raw'];
-        $tax      = (float) ( $s['tax_raw'] ?? 0 );
+        // $tax and $tax_gap were settled above, next to the Returns preference.
+        $expenses = (float) $s['expenses_total_raw'] + $tax_gap;
 
         $rev_raw = $returns_on ? ( $gross - $returns ) : $gross; // figure shown on the Revenue card
         if ( $tax_excluded ) {
@@ -3786,6 +3882,23 @@ class Brikpanel_Dashboard {
             $fees_tip = __( 'Payment fees are turned on, but none of the orders in this period record a processing fee. Your payment gateway may not store one, so this cost is not included.', 'brikpanel' );
         }
 
+        // Ad spend billed in a currency with no rate under Settings > Currency
+        // is not in Expenses, so Net profit reads higher than it is. Amounts
+        // carry their currency code: "$" alone could be any dollar.
+        $ads_tip     = '';
+        $ads_missing = is_array( $s['ad_spend_unconverted'] ?? null ) ? $s['ad_spend_unconverted'] : [];
+        if ( $ads_missing ) {
+            $parts = [];
+            foreach ( $ads_missing as $cur => $amount ) {
+                $parts[] = brikpanel_bidi_isolate_numbers( brikpanel_number( (float) $amount, 2 ) ) . ' ' . strtoupper( (string) $cur );
+            }
+            $ads_tip = brikpanel_safe_sprintf(
+                /* translators: %s: ad spend amounts with their currency codes, e.g. "1,076.49 USD" or "1,076.49 USD + 200.00 EUR". */
+                __( 'Ad spend of %s is billed in a currency with no exchange rate, so it is not counted. Add the rate under Settings, then Currency.', 'brikpanel' ),
+                implode( ' + ', $parts )
+            );
+        }
+
         return [
             'cogs_share'     => $share( $cogs_pct ),
             'expenses_share' => $share( $expenses_pct ),
@@ -3817,7 +3930,29 @@ class Brikpanel_Dashboard {
                 )
                 : '',
             'fees_tip'       => $fees_tip,
+            'ads_tip'        => $ads_tip,
         ];
+    }
+
+    /**
+     * The account's own figure under a converted ad spend line in the Expenses
+     * breakdown: "$1,076.49 · 1 USD = 0.76 GBP", one part per currency.
+     *
+     * @param array $converted Currency => [ 'amount' => original spend, 'rate' => rate ] of one platform.
+     * @return string Plain text.
+     */
+    private function ad_spend_note( array $converted ) {
+        $parts = [];
+        foreach ( $converted as $cur => $c ) {
+            $amount = (float) ( $c['amount'] ?? 0 );
+            $rate   = (float) ( $c['rate'] ?? 0 );
+            if ( $amount <= 0 || $rate <= 0 || ! function_exists( 'brikpanel_fx_rate_label' ) ) {
+                continue;
+            }
+            $parts[] = brikpanel_money_text( $amount, [ 'currency' => strtoupper( (string) $cur ) ] )
+                . ' · ' . brikpanel_bidi_isolate_numbers( brikpanel_fx_rate_label( (string) $cur, $rate ) );
+        }
+        return implode( ', ', $parts );
     }
 
     // =========================================================================
@@ -3892,12 +4027,25 @@ class Brikpanel_Dashboard {
         // share of revenue, so it is part of the identity for the same reason:
         // e (inside Expenses), x (taken out), r (kept in Revenue).
         $tax_keys    = [ 'expenses' => 'e', 'excluded' => 'x', 'revenue' => 'r' ];
-        $tax_mode    = function_exists( 'brikpanel_profit_tax_mode' ) ? brikpanel_profit_tax_mode() : 'expenses';
-        $tax_for_key = $tax_keys[ $tax_mode ] ?? 'e';
+        $tax_mode    = function_exists( 'brikpanel_profit_tax_mode' ) ? brikpanel_profit_tax_mode() : 'excluded';
+        $tax_for_key = $tax_keys[ $tax_mode ] ?? 'x';
+        // The Returns field of "Profit section fields" decides whether Revenue
+        // and Tax are net of refunds, and the Coupons field whether the Revenue
+        // list carries a coupons line: both change the payload, not just the
+        // view, so they join the identity for the reason spelled out above.
+        $fields_for_key = function_exists( 'brikpanel_dashboard_profit_field_enabled' )
+            ? ( brikpanel_dashboard_profit_field_enabled( 'returns' ) ? 'r' : '' ) . ( brikpanel_dashboard_profit_field_enabled( 'coupons' ) ? 'c' : '' )
+            : 'r';
         // The payload carries text in the requesting admin's language (month
         // names in the Recent Orders dates and chart labels, "Guest"), so
         // admins who use different languages must not share one copy.
         $locale_for_key = sanitize_key( function_exists( 'determine_locale' ) ? determine_locale() : get_locale() );
+        // A store selling in one country gets that country's region map
+        // (decided once a day); the copy carries its regions, so it depends
+        // on the country and on the map data's version.
+        $regions       = $this->regions();
+        $focus_for_key = $regions::focus_country( $this->is_hpos(), (bool) $exclude_mp_for_key );
+        $focus_for_key = '' === $focus_for_key ? '0' : $focus_for_key . str_replace( '.', '', $regions::version() );
         // "f2": the payload carries the store state behind the empty cards and
         // a zero-filled sales series since field test F, and the store state
         // says whether a visit was ever counted since f2; an older copy lacks
@@ -3907,11 +4055,18 @@ class Brikpanel_Dashboard {
         // the low-stock product and options lines and the order times. "g3":
         // Most viewed pages lists only pages a shopper can open, and the three
         // Products and pages lists carry their counts (most_viewed_total,
-        // top_products_total, most_cart_total).
-        $cache_key = 'bp_dash_g3_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key . '_sc' . $shipping_for_key . '_pf' . $fees_for_key . '_tx' . $tax_for_key . '_' . $locale_for_key;
+        // top_products_total, most_cart_total). "g4": cities carry their
+        // region, and the locations may carry a region map (focus). "g5": the
+        // locations carry the visitors' countries (3.3.40). "g6": ad spend in
+        // another currency is converted with the Settings > Currency rates and
+        // the copy carries what had no rate (3.3.41).
+        // The rates themselves join the key: a deleted rate fires no hook, and
+        // a copy holding converted spend must not outlive the rate behind it.
+        $fx_for_key = function_exists( 'brikpanel_fx_rates_signature' ) ? brikpanel_fx_rates_signature() : '0';
+        $cache_key  = 'bp_dash_g6_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key . '_sc' . $shipping_for_key . '_pf' . $fees_for_key . '_tx' . $tax_for_key . '_fl' . $fields_for_key . '_' . $locale_for_key . '_rf' . $focus_for_key . '_fx' . $fx_for_key;
         $cached    = get_transient( $cache_key );
         if ( false !== $cached ) {
-            wp_send_json_success( $this->with_tracking_state( $this->with_today( $cached ) ) );
+            wp_send_json_success( $this->with_data_ver( $this->with_tracking_state( $this->with_today( $cached ) ), $cache_ver ) );
         }
 
         $payload = $this->build_dashboard_payload( $range, $custom_start, $custom_end );
@@ -3924,7 +4079,25 @@ class Brikpanel_Dashboard {
             : self::CACHE_TTL;
         set_transient( $cache_key, $payload, $ttl );
 
-        wp_send_json_success( $this->with_tracking_state( $this->with_today( $payload ) ) );
+        wp_send_json_success( $this->with_data_ver( $this->with_tracking_state( $this->with_today( $payload ) ), $cache_ver ) );
+    }
+
+    /**
+     * Add the data version these figures were read at (the one in the cache
+     * key). A dashboard left open compares it with the version the top bar and
+     * the Live poll report, and fetches its figures again, quietly, when an
+     * order came in or changed meanwhile. Outside the cached copy, like the
+     * blocks below.
+     *
+     * @param mixed $payload Dashboard payload.
+     * @param int   $ver     brikpanel_data_cache_ver() as read for the cache key.
+     * @return mixed
+     */
+    private function with_data_ver( $payload, $ver ) {
+        if ( is_array( $payload ) ) {
+            $payload['data_ver'] = (int) $ver;
+        }
+        return $payload;
     }
 
     /**
@@ -4054,8 +4227,10 @@ class Brikpanel_Dashboard {
         // Recent orders
         $recent_orders = $this->get_recent_orders();
 
-        // Order locations (for globe)
+        // Order locations (for globe), and the visitors' countries for the
+        // card's Visitors tab, joined with those orders (3.3.40).
         $order_locations = $this->get_order_locations( $start_gmt, $end_gmt, $exclude_mp );
+        $order_locations['visitors'] = $this->get_visitor_locations( $start_local, $end_local, $order_locations['countries'] ?? [], $end_gmt, $exclude_mp );
 
         // Device breakdown (uses local dates for brikpanel_visitors table)
         $devices = $this->get_device_breakdown( $start_local, $end_local );
@@ -4294,9 +4469,29 @@ class Brikpanel_Dashboard {
         // Seconds since the visitor last did something, on the server's
         // clock: the card sorts by it and writes "3 min ago".
         $now = time();
+        // The visitor's country (3.3.40) in this admin's language. The row
+        // keeps only the code; the list line takes the short name ("United
+        // States", not "United States (US)"), the bubble the full one.
+        $wc_countries = $visitors && function_exists( 'WC' ) && WC()->countries ? WC()->countries->get_countries() : [];
         foreach ( $visitors as $i => $row ) {
             $last = isset( $row['interacted_at'] ) ? (int) $row['interacted_at'] : ( isset( $row['last_active'] ) ? (int) $row['last_active'] : $now );
             $visitors[ $i ]['ago'] = max( 0, $now - $last );
+
+            $code = isset( $row['country'] ) && is_string( $row['country'] ) ? $row['country'] : '';
+            $name = '' !== $code && isset( $wc_countries[ $code ] ) ? brikpanel_plain_name( $wc_countries[ $code ] ) : '';
+            $visitors[ $i ]['country']       = '' !== $name ? $code : '';
+            $visitors[ $i ]['country_name']  = $name;
+            $visitors[ $i ]['country_short'] = '' !== $name ? (string) preg_replace( '/\s*\([^()]{1,6}\)$/u', '', $name ) : '';
+        }
+        // The page asks for the data version too ("with_ver"), so a dashboard
+        // left open fetches its figures again after an order even when the top
+        // bar is off. A page loaded before this answer gained the field sends
+        // no flag and keeps getting the bare list it reads.
+        if ( ! empty( $_POST['with_ver'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified above.
+            wp_send_json_success( [
+                'visitors' => array_values( $visitors ),
+                'ver'      => function_exists( 'brikpanel_data_cache_ver' ) ? (int) brikpanel_data_cache_ver() : 0,
+            ] );
         }
         wp_send_json_success( $visitors );
     }
@@ -4542,17 +4737,14 @@ class Brikpanel_Dashboard {
     }
 
     /**
-     * The order meta key WooCommerce keeps an order-attribution field under.
-     * WooCommerce lets the prefix be changed with a filter, so it is asked.
+     * The order meta key WooCommerce keeps an order-attribution field under
+     * (brikpanel_wc_attribution_meta_key(), shared with the phone notification).
      *
      * @param string $field Field name, e.g. 'utm_campaign'.
      * @return string
      */
     private function wc_attribution_meta_key( $field ) {
-        $prefix = (string) apply_filters( 'wc_order_attribution_tracking_field_prefix', 'wc_order_attribution_' );
-        $prefix = trim( $prefix, '_' );
-        $key    = '_' . ( '' !== $prefix ? $prefix . '_' : '' ) . $field;
-        return preg_match( '/^[A-Za-z0-9_\-]{1,255}$/', $key ) ? $key : '_wc_order_attribution_' . $field;
+        return brikpanel_wc_attribution_meta_key( $field );
     }
 
     /**
@@ -5644,7 +5836,20 @@ class Brikpanel_Dashboard {
     // ORDER LOCATIONS (countries + cities for globe)
     // =========================================================================
 
-    private function get_order_locations( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
+    /**
+     * Where the period's paid orders come from: countries (all), cities (the
+     * top ones by orders and by customers) and, for a store selling in one
+     * country, its region block.
+     *
+     * @param string $start_gmt           Start, Y-m-d H:i:s GMT.
+     * @param string $end_gmt             End, Y-m-d H:i:s GMT.
+     * @param bool   $exclude_marketplace Leave marketplace orders out.
+     * @param bool   $counts_only         Only each country's order count, as
+     *                                    [ code => count ] (3.3.40, for the
+     *                                    Visitors tab); no city or region query.
+     * @return array
+     */
+    private function get_order_locations( $start_gmt, $end_gmt, $exclude_marketplace = false, $counts_only = false ) {
         global $wpdb;
 
         $include_statuses    = brikpanel_paid_order_statuses();
@@ -5688,10 +5893,12 @@ class Brikpanel_Dashboard {
                 $query_args
             );
 
-            // Cities: large dataset — run two LIMIT 10 passes (orders + customers) so both views
-            // get the correct top-N regardless of how the metrics rank cities.
+            // Cities: large dataset — run two LIMIT passes (orders + customers) so both views
+            // get the correct top-N regardless of how the metrics rank cities. Grouped by
+            // region too: "Merkez" in Tokat and "Merkez" in Sivas are two places.
             $city_base = $wpdb->prepare(
-                "SELECT ba.city AS city, ba.country AS code,
+                "SELECT ba.city AS city, ba.country AS code, COALESCE(ba.state, '') AS state,
+                        MAX(COALESCE(ba.postcode, '')) AS postcode,
                         COUNT(DISTINCT o.id) AS order_count,
                         {$customer_count_expr} AS customer_count,
                         SUM(ol.product_qty) AS total_quantity
@@ -5702,80 +5909,100 @@ class Brikpanel_Dashboard {
                  AND o.status IN ({$status_placeholders}){$admin_sql}{$mp_excl['sql']}
                  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s
                  AND ba.city IS NOT NULL AND ba.city != ''
-                 GROUP BY ba.city, ba.country",
+                 GROUP BY ba.city, ba.country, ba.state",
                 $query_args
             );
         } else {
-            $query_args = array_merge( $include_statuses, $exclusion['args'], $mp_excl['args'], [ $start_gmt, $end_gmt ] );
-
-            $customer_count_expr = "COUNT(DISTINCT
-                IF(CAST(COALESCE(pm_cust.meta_value, '0') AS UNSIGNED) > 0,
-                    CONCAT('u-', pm_cust.meta_value),
-                    IF(pm_email.meta_value IS NOT NULL AND pm_email.meta_value <> '',
-                        CONCAT('e-', LOWER(pm_email.meta_value)),
-                        CONCAT('o-', p.ID))))";
-
-            // Sales come from the order total (base-currency snapshot when one
-            // exists), exactly like the HPOS branch. This used to sum `_qty`
-            // from posts of type 'shop_order_item', which WooCommerce never
-            // creates, so every country showed 0 sales on a non-HPOS store.
-            // Each meta join is pinned to one row so a duplicate cannot
-            // multiply an order.
-            $fx_loc = brikpanel_base_total_sql( false, 'p.ID', 'CAST(pm_total.meta_value AS DECIMAL(20,4))', 'bpfxloc' );
+            // The old order storage. Sales come from the order total
+            // (base-currency snapshot when one exists), exactly like the HPOS
+            // branch. Every order's address, customer and total are read in
+            // one pass over the order meta (one row per order, so a value
+            // stored twice cannot count an order twice); joining the meta
+            // table once per value took ten times as long.
+            $regions = $this->regions();
+            $orders  = $regions::legacy_order_fields_sql(
+                $regions::order_ids_sql( false, (bool) $exclude_marketplace, $start_gmt, $end_gmt ),
+                $regions::legacy_fields()
+            );
+            $customer_count_expr = $regions::legacy_customers_sql();
             $country_query = $wpdb->prepare(
-                "SELECT pm.meta_value AS code,
-                        COUNT(DISTINCT p.ID) AS order_count,
+                "SELECT o.cc AS code,
+                        COUNT(*) AS order_count,
                         {$customer_count_expr} AS customer_count,
-                        COALESCE(SUM({$fx_loc['expr']}), 0) AS total_sales
-                 FROM {$wpdb->posts} p
-                 " . brikpanel_sql_single_meta_join( 'post', 'pm', 'p.ID', '_billing_country' ) . "
-                 " . brikpanel_sql_single_meta_join( 'post', 'pm_cust', 'p.ID', '_customer_user' ) . "
-                 " . brikpanel_sql_single_meta_join( 'post', 'pm_email', 'p.ID', '_billing_email' ) . "
-                 " . brikpanel_sql_single_meta_join( 'post', 'pm_total', 'p.ID', '_order_total' ) . "{$fx_loc['join']}
-                 WHERE p.post_type = 'shop_order'
-                 AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}{$mp_excl['sql']}
-                 AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s
-                 AND pm.meta_value IS NOT NULL AND pm.meta_value != ''
-                 GROUP BY pm.meta_value",
-                $query_args
+                        " . $regions::legacy_revenue_sql() . " AS total_sales
+                 FROM ({$orders['sql']}) o
+                 WHERE o.cc IS NOT NULL AND o.cc != ''
+                 GROUP BY o.cc",
+                $orders['args']
             );
 
             $city_base = $wpdb->prepare(
-                "SELECT pm_city.meta_value AS city, pm_country.meta_value AS code,
-                        COUNT(DISTINCT p.ID) AS order_count,
+                "SELECT o.city AS city, o.cc AS code, COALESCE(o.st, '') AS state,
+                        MAX(COALESCE(o.pc, '')) AS postcode,
+                        COUNT(DISTINCT o.id) AS order_count,
                         {$customer_count_expr} AS customer_count,
                         SUM(ol.product_qty) AS total_quantity
-                 FROM {$wpdb->posts} p
-                 " . brikpanel_sql_single_meta_join( 'post', 'pm_city', 'p.ID', '_billing_city' ) . "
-                 " . brikpanel_sql_single_meta_join( 'post', 'pm_country', 'p.ID', '_billing_country' ) . "
-                 " . brikpanel_sql_single_meta_join( 'post', 'pm_cust', 'p.ID', '_customer_user' ) . "
-                 " . brikpanel_sql_single_meta_join( 'post', 'pm_email', 'p.ID', '_billing_email' ) . "
-                 LEFT JOIN {$wpdb->prefix}wc_order_product_lookup ol ON p.ID = ol.order_id
-                 WHERE p.post_type = 'shop_order'
-                 AND p.post_status IN ({$status_placeholders}){$exclusion['sql']}{$mp_excl['sql']}
-                 AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s
-                 AND pm_city.meta_value IS NOT NULL AND pm_city.meta_value != ''
-                 GROUP BY pm_city.meta_value, pm_country.meta_value",
-                $query_args
+                 FROM ({$orders['sql']}) o
+                 LEFT JOIN {$wpdb->prefix}wc_order_product_lookup ol ON o.id = ol.order_id
+                 WHERE o.city IS NOT NULL AND o.city != ''
+                 GROUP BY o.city, o.cc, o.st",
+                $orders['args']
             );
         }
 
         $country_results = $wpdb->get_results( $country_query );
+        if ( $counts_only ) {
+            $counts = [];
+            foreach ( (array) $country_results as $row ) {
+                $counts[ (string) $row->code ] = (int) $row->order_count;
+            }
+            return $counts;
+        }
 
-        // Cities: dedupe-merge top 10 by orders with top 10 by customers.
-        $cities_by_orders    = $wpdb->get_results( $city_base . ' ORDER BY order_count DESC LIMIT 10' );
-        $cities_by_customers = $wpdb->get_results( $city_base . ' ORDER BY customer_count DESC, order_count DESC LIMIT 10' );
+        // Cities: the top 25 by orders and by customers, so spellings of one
+        // place merged below still leave a full top 10 for each view.
+        $cities_by_orders    = $wpdb->get_results( $city_base . ' ORDER BY order_count DESC LIMIT 25' );
+        $cities_by_customers = $wpdb->get_results( $city_base . ' ORDER BY customer_count DESC, order_count DESC LIMIT 25' );
 
-        $city_results = [];
+        // One row per city and region: the same SQL group comes back from both
+        // passes, and a region written two ways ("TR34", "İstanbul") is one.
+        $regions      = $this->regions();
+        $merged       = [];
         $seen_cities  = [];
         foreach ( array_merge( $cities_by_orders, $cities_by_customers ) as $row ) {
-            $key = strtolower( (string) $row->city ) . '|' . (string) $row->code;
+            $key = strtolower( (string) $row->city ) . '|' . (string) $row->code . '|' . strtolower( (string) $row->state );
             if ( isset( $seen_cities[ $key ] ) ) {
                 continue;
             }
             $seen_cities[ $key ] = true;
-            $city_results[]      = $row;
+
+            $city = trim( wp_strip_all_tags( (string) $row->city ) );
+            list( $region_key, $region_name ) = $regions::city_region( (string) $row->code, (string) $row->state, (string) $row->postcode, $city );
+            $merge_key = (string) $row->code . '|' . $region_key . '|' . $regions::fold( $city );
+            if ( ! isset( $merged[ $merge_key ] ) ) {
+                $merged[ $merge_key ] = [
+                    'name'      => $city,
+                    'country'   => (string) $row->code,
+                    'region'    => $region_name,
+                    'count'     => 0,
+                    'customers' => 0,
+                    'quantity'  => 0,
+                ];
+            }
+            $merged[ $merge_key ]['count']     += (int) $row->order_count;
+            $merged[ $merge_key ]['customers'] += (int) ( $row->customer_count ?? 0 );
+            $merged[ $merge_key ]['quantity']  += (int) ( $row->total_quantity ?? 0 );
         }
+        // The union of the top 10 by orders and the top 10 by customers, as before.
+        $by_orders = $merged;
+        uasort( $by_orders, static function ( $a, $b ) {
+            return $b['count'] <=> $a['count'];
+        } );
+        $by_customers = $merged;
+        uasort( $by_customers, static function ( $a, $b ) {
+            return [ $b['customers'], $b['count'] ] <=> [ $a['customers'], $a['count'] ];
+        } );
+        $city_results = array_slice( $by_orders, 0, 10, true ) + array_slice( $by_customers, 0, 10, true );
 
         $wc_countries = WC()->countries->get_countries();
 
@@ -5793,18 +6020,214 @@ class Brikpanel_Dashboard {
 
         $cities = [];
         foreach ( $city_results as $row ) {
-            $cities[] = [
-                'name'      => $row->city,
-                'country'   => $row->code,
-                'count'     => (int) $row->order_count,
-                'customers' => (int) ( $row->customer_count ?? 0 ),
-                'quantity'  => (int) ( $row->total_quantity ?? 0 ),
-            ];
+            // "Merkez, Tokat", "Springfield, IL"; a city named like its region
+            // once, written the region's way ("İSTANBUL" -> "İstanbul").
+            if ( '' === $row['region'] ) {
+                $row['label'] = $row['name'];
+            } elseif ( $regions::fold( $row['region'] ) === $regions::fold( $row['name'] ) ) {
+                $row['label'] = $row['region'];
+            } else {
+                /* translators: 1: city or district, 2: its province, state or region (name or postal code). */
+                $row['label'] = sprintf( _x( '%1$s, %2$s', 'city with its region in the top cities list', 'brikpanel' ), $row['name'], $row['region'] );
+            }
+            $cities[] = $row;
         }
 
-        return [
+        $locations = [
             'countries' => $countries,
             'cities'    => $cities,
+        ];
+        $focus = $this->region_focus_block( $start_gmt, $end_gmt, $exclude_marketplace );
+        if ( $focus ) {
+            $locations['focus'] = $focus;
+        }
+        return $locations;
+    }
+
+    /**
+     * Visitors per country for the Locations card's Visitors tab (3.3.40),
+     * each with the orders from that country on the same days (the Orders
+     * tab's rule: billing country of paid orders). Store-local days, like
+     * every visitor table.
+     *
+     * Countries come most visitors first. Visitors with no country found, and
+     * any code WooCommerce does not list, are counted in 'unknown', never as
+     * a row. A period that starts before countries were first counted
+     * ('brikpanel_visitor_countries_since') counts its orders from that day
+     * on too: 69 orders beside the 5 visitors of the update's first day said
+     * nothing. 'since' is that first day when the period starts before it and
+     * those earlier days had visitors or orders ('' otherwise), with
+     * 'since_label' written in the store's short date format.
+     *
+     * @param string $start_local     First day, Y-m-d (store time).
+     * @param string $end_local       Last day, Y-m-d (store time).
+     * @param array  $order_countries Rows of get_order_locations()['countries'] for the period.
+     * @param string $end_gmt         The period's end in GMT, for counting orders from the first counted day ('' to keep the period's).
+     * @param bool   $exclude_mp      Leave marketplace orders out, as the period's counts do.
+     * @return array{countries: array<int, array{code:string,name:string,visitors:int,orders:int}>, unknown: int, total: int, since: string, since_label: string}
+     */
+    private function get_visitor_locations( $start_local, $end_local, array $order_countries, $end_gmt = '', $exclude_mp = false ) {
+        global $wpdb;
+
+        $out   = [ 'countries' => [], 'unknown' => 0, 'total' => 0, 'since' => '', 'since_label' => '' ];
+        $table = $wpdb->prefix . 'brikpanel_visitor_countries';
+        if ( ! $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) ) {
+            return $out; // The database update has not run on this site yet.
+        }
+        $since       = (string) get_option( 'brikpanel_visitor_countries_since', '' );
+        $since_cuts  = 1 === preg_match( '/^\d{4}-\d{2}-\d{2}$/', $since ) && $start_local < $since;
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- internal table name; values prepared.
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT country, SUM(visitors) AS visitors
+               FROM {$table}
+              WHERE date_column BETWEEN %s AND %s
+              GROUP BY country",
+            $start_local,
+            $end_local
+        ), ARRAY_A );
+
+        $orders = [];
+        foreach ( $order_countries as $row ) {
+            if ( isset( $row['code'] ) ) {
+                $orders[ (string) $row['code'] ] = (int) ( $row['count'] ?? 0 );
+            }
+        }
+        // The same days as the visitors: orders from the first counted day on.
+        $orders_cut = false;
+        if ( $since_cuts && $rows && '' !== (string) $end_gmt && $since <= $end_local ) {
+            $from        = get_gmt_from_date( $since . ' 00:00:00' );
+            $since_count = $this->get_order_locations( $from, $end_gmt, $exclude_mp, true );
+            $orders_cut  = array_sum( $since_count ) !== array_sum( $orders );
+            $orders      = $since_count;
+        }
+        $wc_countries = WC()->countries->get_countries();
+        foreach ( (array) $rows as $row ) {
+            $visitors = (int) $row['visitors'];
+            if ( $visitors <= 0 ) {
+                continue;
+            }
+            $out['total'] += $visitors;
+            $code          = (string) $row['country'];
+            if ( '' === $code || ! isset( $wc_countries[ $code ] ) ) {
+                $out['unknown'] += $visitors;
+                continue;
+            }
+            $out['countries'][] = [
+                'code'     => $code,
+                // WooCommerce's list holds entities ("Cura&ccedil;ao").
+                'name'     => brikpanel_plain_name( $wc_countries[ $code ] ),
+                'visitors' => $visitors,
+                'orders'   => $orders[ $code ] ?? 0,
+            ];
+        }
+        usort( $out['countries'], static function ( $a, $b ) {
+            return [ $b['visitors'], $b['orders'], $a['code'] ] <=> [ $a['visitors'], $a['orders'], $b['code'] ];
+        } );
+
+        // A period that starts before countries were counted: say from when,
+        // but only when those earlier days had visitors or orders that are
+        // left out (a store that opened since has nothing missing).
+        if ( $since_cuts ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- internal table name; values prepared.
+            $before = $orders_cut ? 1 : (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COALESCE(SUM(visitor_count), 0) FROM {$wpdb->prefix}brikpanel_visitors WHERE date_column >= %s AND date_column < %s",
+                $start_local,
+                $since
+            ) );
+            if ( $before > 0 ) {
+                $out['since'] = $since;
+                try {
+                    $day = new DateTimeImmutable( $since . ' 12:00:00', wp_timezone() );
+                    // One piece on screen: the date never breaks over two lines.
+                    $out['since_label'] = str_replace( ' ', "\u{00A0}", wp_date( brikpanel_short_date_format(), $day->getTimestamp() ) );
+                } catch ( Exception $e ) {
+                    $out['since_label'] = $since;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * What a country's regions are called, as a list title: Provinces,
+     * States or Regions (Brikpanel_Dashboard_Regions::countries()).
+     *
+     * @param string $word 'province', 'state' or 'region'.
+     * @return string
+     */
+    private function region_word_title( $word ) {
+        if ( 'province' === $word ) {
+            return _x( 'Provinces', 'regions of a country, list title', 'brikpanel' );
+        }
+        if ( 'state' === $word ) {
+            return _x( 'States', 'regions of a country, list title', 'brikpanel' );
+        }
+        return _x( 'Regions', 'regions of a country, list title', 'brikpanel' );
+    }
+
+    /**
+     * One of a country's regions, as a column header: Province, State or Region.
+     *
+     * @param string $word 'province', 'state' or 'region'.
+     * @return string
+     */
+    private function region_word_label( $word ) {
+        if ( 'province' === $word ) {
+            return _x( 'Province', 'one region of a country, column header', 'brikpanel' );
+        }
+        if ( 'state' === $word ) {
+            return _x( 'State', 'one region of a country, column header', 'brikpanel' );
+        }
+        return _x( 'Region', 'one region of a country, column header', 'brikpanel' );
+    }
+
+    /**
+     * The region map of a store selling in one country: every region's name
+     * and the period's orders, customers and sales per region.
+     *
+     * @param string $start_gmt           From (UTC).
+     * @param string $end_gmt             To (UTC).
+     * @param bool   $exclude_marketplace Leave out marketplace orders, like the card.
+     * @return array|null Null when the dashboard keeps the globe.
+     */
+    private function region_focus_block( $start_gmt, $end_gmt, $exclude_marketplace ) {
+        $regions = $this->regions();
+        $cc      = $regions::focus_country( $this->is_hpos(), (bool) $exclude_marketplace );
+        $data    = '' !== $cc ? $regions::data( $cc ) : null;
+        if ( ! $data ) {
+            return null;
+        }
+        $agg   = $regions::aggregate( $cc, $this->is_hpos(), (bool) $exclude_marketplace, $start_gmt, $end_gmt );
+        $names = [];
+        foreach ( $data['keys'] as $idx => $key ) {
+            $names[ (string) $key ] = $regions::name( $cc, $idx );
+        }
+        $rows = [];
+        foreach ( $agg['rows'] as $idx => $r ) {
+            $rows[] = [
+                'key'       => (string) $data['keys'][ $idx ],
+                'count'     => (int) $r[0],
+                'customers' => (int) $r[1],
+                'total'     => html_entity_decode( wp_strip_all_tags( wc_price( (float) $r[2] ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
+                'raw'       => round( (float) $r[2], wc_get_price_decimals() ),
+            ];
+        }
+        usort( $rows, static function ( $a, $b ) {
+            return [ $b['count'], $b['customers'] ] <=> [ $a['count'], $a['customers'] ];
+        } );
+        $countries = WC()->countries->get_countries();
+        $words     = $regions::countries();
+        return [
+            'cc'       => $cc,
+            'country'  => isset( $countries[ $cc ] ) ? brikpanel_plain_name( $countries[ $cc ] ) : $cc,
+            'word'     => $words[ $cc ] ?? 'region',
+            'v'        => $regions::version(),
+            'names'    => $names,
+            'regions'  => $rows,
+            'orders'   => (int) $agg['orders'],
+            'unplaced' => (int) $agg['unplaced'],
         ];
     }
 
@@ -6396,7 +6819,7 @@ class Brikpanel_Dashboard {
      * carries *everything* on screen — one clean tab per section: Summary
      * (KPIs + profit + returns + LTV), Funnel, Order Status, Devices,
      * Customer Segments, Top Products, Most Viewed, Most Added to Cart,
-     * Sales Over Time, Countries, Cities, Low Stock, Subscriptions (when
+     * Sales Over Time, Countries, Cities, Visitor countries, Low Stock, Subscriptions (when
      * any), and Orders (every order in the window — the full record set).
      * A real workbook, not one stacked CSV, so each table is tidy, numbers
      * stay numeric, and it opens correctly in Excel / Google Sheets under
@@ -6739,14 +7162,55 @@ class Brikpanel_Dashboard {
         }
 
         // ---------- Sheet 11: Cities ----------
-        $cities = [ [ [ __( 'City', 'brikpanel' ), $H ], [ __( 'Country', 'brikpanel' ), $H ], [ __( 'Orders', 'brikpanel' ), $H ], [ __( 'Customers', 'brikpanel' ), $H ], [ __( 'Items', 'brikpanel' ), $H ] ] ];
+        $cities = [ [ [ __( 'City', 'brikpanel' ), $H ], [ _x( 'Region', 'province, state or region of a city', 'brikpanel' ), $H ], [ __( 'Country', 'brikpanel' ), $H ], [ __( 'Orders', 'brikpanel' ), $H ], [ __( 'Customers', 'brikpanel' ), $H ], [ __( 'Items', 'brikpanel' ), $H ] ] ];
         if ( empty( $locs['cities'] ) ) {
-            $cities[] = [ __( 'No data for this period', 'brikpanel' ), '', '', '', '' ];
+            $cities[] = [ __( 'No data for this period', 'brikpanel' ), '', '', '', '', '' ];
         } else {
             foreach ( $locs['cities'] as $ci ) {
-                $cities[] = [ $ci['name'], $ci['country'], (int) $ci['count'], (int) $ci['customers'], (int) $ci['quantity'] ];
+                $cities[] = [ $ci['name'], (string) ( $ci['region'] ?? '' ), $ci['country'], (int) $ci['count'], (int) $ci['customers'], (int) $ci['quantity'] ];
             }
         }
+
+        // ---------- Sheet 11b: Regions (stores selling in one country) ----------
+        $regions_sheet = null;
+        $regions_title = '';
+        if ( ! empty( $locs['focus'] ) ) {
+            $focus         = $locs['focus'];
+            $regions_title = $this->region_word_title( (string) $focus['word'] );
+            $regions_sheet = [ [ [ $this->region_word_label( (string) $focus['word'] ), $H ], [ __( 'Orders', 'brikpanel' ), $H ], [ __( 'Customers', 'brikpanel' ), $H ], [ sprintf( __( 'Revenue (%s)', 'brikpanel' ), $currency ), $H ] ] ];
+            foreach ( (array) $focus['regions'] as $re ) {
+                $regions_sheet[] = [ (string) ( $focus['names'][ $re['key'] ] ?? $re['key'] ), (int) $re['count'], (int) $re['customers'], $money( $re['raw'] ) ];
+            }
+            if ( (int) $focus['unplaced'] > 0 ) {
+                $regions_sheet[] = [ _x( 'Unknown', 'orders whose province, state or region was not found', 'brikpanel' ), (int) $focus['unplaced'], '', '' ];
+            }
+            if ( 1 === count( $regions_sheet ) ) {
+                $regions_sheet[] = [ __( 'No data for this period', 'brikpanel' ), '', '', '' ];
+            }
+        }
+
+        // ---------- Sheet 11c: Visitor countries (3.3.40) ----------
+        // The Locations card's Visitors tab, every country, with the source
+        // line DB-IP's licence asks for wherever its countries are shown.
+        $vlocs         = isset( $locs['visitors'] ) && is_array( $locs['visitors'] ) ? $locs['visitors'] : [];
+        $visitor_sheet = [ [ [ __( 'Country', 'brikpanel' ), $H ], [ __( 'Visitors', 'brikpanel' ), $H ], [ __( 'Orders', 'brikpanel' ), $H ] ] ];
+        foreach ( (array) ( $vlocs['countries'] ?? [] ) as $vc ) {
+            $visitor_sheet[] = [ (string) $vc['name'], (int) $vc['visitors'], (int) $vc['orders'] ];
+        }
+        if ( (int) ( $vlocs['unknown'] ?? 0 ) > 0 ) {
+            $visitor_sheet[] = [ _x( 'Unknown', 'visitors whose country was not found', 'brikpanel' ), (int) $vlocs['unknown'], '' ];
+        }
+        if ( 1 === count( $visitor_sheet ) ) {
+            $visitor_sheet[] = [ __( 'No data for this period', 'brikpanel' ), '', '' ];
+        }
+        $visitor_sheet[] = [ '', '', '' ];
+        if ( '' !== (string) ( $vlocs['since'] ?? '' ) ) {
+            /* translators: %s: the date visitor countries started being counted on this store. */
+            $visitor_sheet[] = [ sprintf( __( 'Counted since %s', 'brikpanel' ), (string) ( $vlocs['since_label'] ?? $vlocs['since'] ) ), '', '' ];
+        }
+        $credit_text     = __( 'IP Geolocation by DB-IP', 'brikpanel' ) . ' (https://db-ip.com)';
+        /* translators: %s: the link "IP Geolocation by DB-IP" to db-ip.com, where the visitor country list comes from. */
+        $visitor_sheet[] = [ sprintf( __( 'Visitor countries: %s', 'brikpanel' ), $credit_text ), '', '' ];
 
         // ---------- Sheet 12: Low Stock ----------
         $lowstock = [ [ [ __( 'Product', 'brikpanel' ), $H ], [ __( 'SKU', 'brikpanel' ), $H ], [ __( 'Remaining', 'brikpanel' ), $H ] ] ];
@@ -6800,6 +7264,8 @@ class Brikpanel_Dashboard {
                 'orderby'      => 'date',
                 'order'        => 'DESC',
                 'type'         => 'shop_order',
+                // Every status but the checkout draft (a cart, not an order).
+                'status'       => brikpanel_listed_order_statuses(),
                 'date_created' => $date_filter,
                 'return'       => 'objects',
             ];
@@ -6851,7 +7317,11 @@ class Brikpanel_Dashboard {
         $writer->add_sheet( __( 'Most added to cart', 'brikpanel' ), $carted, [ 1 => 40, 2 => 12 ] );
         $writer->add_sheet( __( 'Sales over time', 'brikpanel' ), $sot, [ 1 => 16, 2 => 16, 3 => 12 ], true );
         $writer->add_sheet( __( 'Countries', 'brikpanel' ), $countries, [ 1 => 24, 2 => 12, 3 => 14, 4 => 16 ] );
-        $writer->add_sheet( __( 'Cities', 'brikpanel' ), $cities, [ 1 => 22, 2 => 16, 3 => 12, 4 => 14, 5 => 10 ] );
+        if ( $regions_sheet ) {
+            $writer->add_sheet( $regions_title, $regions_sheet, [ 1 => 26, 2 => 12, 3 => 14, 4 => 16 ] );
+        }
+        $writer->add_sheet( __( 'Cities', 'brikpanel' ), $cities, [ 1 => 22, 2 => 20, 3 => 16, 4 => 12, 5 => 14, 6 => 10 ] );
+        $writer->add_sheet( __( 'Visitor countries', 'brikpanel' ), $visitor_sheet, [ 1 => 30, 2 => 12, 3 => 12 ] );
         $writer->add_sheet( __( 'Low stock', 'brikpanel' ), $lowstock, [ 1 => 40, 2 => 18, 3 => 12 ] );
         if ( $subs_sheet !== null ) {
             $writer->add_sheet( __( 'Subscriptions', 'brikpanel' ), $subs_sheet, [ 1 => 24, 2 => 12 ] );

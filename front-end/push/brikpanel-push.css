@@ -1,6 +1,7 @@
 /**
- * BrikPanel - phone notifications: the dashboard card on a phone, the repair
- * line, and "Your devices" in Settings > Notifications.
+ * BrikPanel - phone notifications: the dashboard card on a phone, the phone
+ * button's panel in the top bar, the repair line, and "Your devices" in
+ * Settings > Notifications.
  *
  * The card builds on .brikpanel-ea-card (includes/brikpanel-early-access.php);
  * buttons and the badge are the shared ones (front-end/shared/brikpanel-ui.css).
@@ -41,6 +42,33 @@
 	margin-inline-start: 0.25rem;
 	vertical-align: -0.1875rem;
 	color: #007aff;
+}
+/* Android's last step under "Order notifications are on": the battery setting. */
+.brikpanel-push-card__tip {
+	margin: 0.625rem 0 0;
+	padding: 0.625rem 0.75rem;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+	background: #f7f7f7;
+}
+.brikpanel-push-card__tip-title,
+.brikpanel-push-card__tip-body,
+.brikpanel-push-card__tip-path {
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: #303030;
+}
+.brikpanel-push-card__tip-title {
+	font-weight: 600;
+}
+.brikpanel-push-card__tip-body {
+	margin-top: 0.125rem;
+	color: #616161;
+}
+.brikpanel-push-card__tip-path {
+	margin-top: 0.375rem;
+	font-weight: 550;
 }
 .brikpanel-push-card__actions {
 	display: flex;
@@ -103,6 +131,184 @@
 	.brikpanel-push-card__actions .brikpanel-ea-card__cta {
 		display: flex;
 	}
+}
+
+/* ── The phone button in the top bar ────────────────────────────────────── */
+
+/* Its panel is the top bar's dropdown (brikpanel-topbar.css), roomier for a
+   few lines of text. At 782 px and less the top bar turns every dropdown into
+   a full-width scrolling sheet under the bar; the width rule steps back for
+   that, and the scrolling moves into the body: the panel opens by itself on a
+   phone and fills most of the screen there, so its X never scrolls away.
+   Closed, it also leaves the Tab order and the screen reader (its buttons stay
+   focusable under opacity alone), as the cache menu does; visibility flips only
+   after the fade-out, so the closing fade still plays. */
+#brikpanel-topbar .brikpanel-push-menu__panel {
+	box-sizing: border-box;
+	width: 22rem;
+	max-width: calc(100vw - 16px);
+	max-height: none;
+	padding: 0;
+	overflow: hidden;
+	text-align: start;
+	white-space: normal;
+	visibility: hidden;
+	transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s linear 0.15s;
+}
+#brikpanel-topbar .brikpanel-push-menu.is-open .brikpanel-push-menu__panel {
+	visibility: visible;
+	transition-delay: 0s;
+}
+@media (max-width: 782px) {
+	#brikpanel-topbar .brikpanel-push-menu__panel {
+		width: auto;
+		max-width: none;
+	}
+}
+#brikpanel-topbar .brikpanel-push-menu__body {
+	box-sizing: border-box;
+	max-height: calc(100vh - var(--bp-topbar-height, 52px) - 16px);
+	max-height: calc(100dvh - var(--bp-topbar-height, 52px) - 16px);
+	padding: 1rem;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+.brikpanel-push-menu__app {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin: 0 0 0.875rem;
+	padding-inline-end: 2.25rem;
+}
+/* While the panel is open its button looks pressed: the panel that opened by
+   itself says "the phone button at the top", and this is the one. */
+#brikpanel-topbar .brikpanel-push-menu.is-open > .brikpanel-push-menu__btn {
+	background: #f1f1f1;
+	border-color: #8a8a8a;
+	color: #303030;
+}
+/* The button stays on every phone: with notifications on, its arrow ("get it")
+   becomes a tick, and its panel says so. */
+.brikpanel-push-menu__tick {
+	display: none;
+}
+.brikpanel-push-menu.is-on .brikpanel-push-menu__get {
+	display: none;
+}
+.brikpanel-push-menu.is-on .brikpanel-push-menu__tick {
+	display: inline;
+}
+/* Its X: the panel opens by itself, so the way out is in sight, a full
+   finger's size, over the body that scrolls under it. */
+.brikpanel-push-menu__close {
+	position: absolute;
+	top: 0.375rem;
+	inset-inline-end: 0.375rem;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	padding: 0;
+	border: 0;
+	border-radius: 0.5rem;
+	background: var(--bp-topbar-bg, #fff);
+	color: #616161;
+	cursor: pointer;
+}
+.brikpanel-push-menu__close:hover {
+	background: #f1f1f1;
+	color: #303030;
+}
+.brikpanel-push-menu__close:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+/* Under the steps when the panel opened by itself: where to find it again. */
+.brikpanel-push-menu__hint {
+	margin: 0.75rem 0 0;
+	font-size: 0.8125rem;
+	line-height: 1.45;
+	color: #616161;
+	text-align: center;
+}
+/* BrikPanel's own icon (assets/pwa), a rounded tile: the shadow follows its shape. */
+.brikpanel-push-menu__icon {
+	display: block;
+	flex: 0 0 auto;
+	width: 44px;
+	height: 44px;
+	filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.18));
+}
+/* The store's Site Icon is a plain square: rounded the way the phone shows an app. */
+.brikpanel-push-menu__icon--store {
+	border-radius: 22%;
+	object-fit: cover;
+	background-color: #ffffff;
+	filter: none;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.brikpanel-push-menu__app-text {
+	min-width: 0;
+}
+/* The store's name, on one line however long it is. */
+.brikpanel-push-menu__name {
+	margin: 0;
+	overflow: hidden;
+	font-size: 0.9375rem;
+	font-weight: 600;
+	line-height: 1.3;
+	color: #303030;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.brikpanel-push-menu__sub {
+	margin: 0.125rem 0 0;
+	font-size: 0.8125rem;
+	line-height: 1.4;
+	color: #616161;
+}
+/* Inside the installed app, "works like an app" would only say where you are. */
+@media (display-mode: standalone) {
+	.brikpanel-push-menu__sub {
+		display: none;
+	}
+}
+.brikpanel-push-offer__title {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	line-height: 1.4;
+	color: #303030;
+}
+.brikpanel-push-offer__body {
+	margin: 0.125rem 0 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: #616161;
+}
+.brikpanel-push-menu .brikpanel-push-card__actions {
+	flex-direction: column;
+	align-items: stretch;
+	margin-top: 0.875rem;
+}
+.brikpanel-push-menu .brikpanel-push-offer__cta,
+.brikpanel-push-menu .brikpanel-push-card__btn {
+	justify-content: center;
+	width: 100%;
+}
+/* Its X: "Are you sure?" in place of the steps, the two answers side by side
+   (the way back is the dark one). Nothing in the panel hides the button. */
+.brikpanel-push-menu__confirm-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin: 0.875rem 0 0;
+}
+.brikpanel-push-menu__confirm-actions > .brikpanel-push-menu__confirm-btn {
+	flex: 1 1 7.5rem;
+	justify-content: center;
 }
 
 /* ── The repair line ────────────────────────────────────────────────────── */
@@ -284,6 +490,11 @@
 .brikpanel-push-devices__hint[hidden] {
 	display: none;
 }
+/* The battery step under the list (Android, on for this device): its own row. */
+.brikpanel-push-devices__tip {
+	flex: 1 1 100%;
+	margin: 0;
+}
 
 /* Phone: the buttons go under the words, lined up with them. */
 @media (max-width: 600px) {
@@ -294,5 +505,234 @@
 	.brikpanel-push-row__actions {
 		width: 100%;
 		padding-inline-start: 3rem;
+	}
+}
+
+/* ── Settings > Notifications: "Notification text" ─────────────────────────
+   A switch and two arrows per part (the Dashboard sections list), then the
+   notification the way the store's newest order reads. Every rule starts with
+   the root's id: the settings card restyles each checkbox in its tables as an
+   18 px box (front-end/orders/brikpanel-orders.php), and the switch's own
+   checkbox has to stay invisible over its track. */
+#brikpanel-push-parts {
+	max-width: 560px;
+}
+#brikpanel-push-parts .brikpanel-push-parts__help {
+	margin: 0 0 0.625rem;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: #616161;
+}
+#brikpanel-push-parts .brikpanel-push-parts__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	overflow: hidden;
+	background-color: #ffffff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+}
+#brikpanel-push-parts .brikpanel-push-parts__row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin: 0;
+	padding-block: 0.5rem;
+	padding-inline: 0.75rem;
+	border-top: 1px solid #f0f0f0;
+}
+#brikpanel-push-parts .brikpanel-push-parts__row:first-child {
+	border-top: 0;
+}
+#brikpanel-push-parts .brikpanel-push-parts__toggle {
+	display: flex;
+	flex: 0 1 auto;
+	align-items: center;
+	gap: 0.625rem;
+	min-width: 0;
+	margin: 0;
+	cursor: pointer;
+}
+#brikpanel-push-parts .brikpanel-push-parts__switch {
+	position: relative;
+	display: inline-block;
+	flex: 0 0 auto;
+	width: 40px;
+	height: 22px;
+}
+#brikpanel-push-parts .brikpanel-push-parts__switch input {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	opacity: 0;
+	cursor: pointer;
+	appearance: none;
+	-webkit-appearance: none;
+}
+#brikpanel-push-parts .brikpanel-push-parts__track {
+	position: absolute;
+	inset: 0;
+	background-color: #cccccc;
+	border-radius: 22px;
+	transition: background-color 0.15s ease;
+}
+#brikpanel-push-parts .brikpanel-push-parts__track::before {
+	content: "";
+	position: absolute;
+	top: 3px;
+	inset-inline-start: 3px;
+	width: 16px;
+	height: 16px;
+	background-color: #ffffff;
+	border-radius: 50%;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+	transition: transform 0.15s ease;
+}
+#brikpanel-push-parts .brikpanel-push-parts__switch input:checked + .brikpanel-push-parts__track {
+	background-color: #303030;
+}
+#brikpanel-push-parts .brikpanel-push-parts__switch input:checked + .brikpanel-push-parts__track::before {
+	transform: translateX(18px);
+}
+[dir="rtl"] #brikpanel-push-parts .brikpanel-push-parts__switch input:checked + .brikpanel-push-parts__track::before {
+	transform: translateX(-18px);
+}
+#brikpanel-push-parts .brikpanel-push-parts__switch input:focus-visible + .brikpanel-push-parts__track {
+	box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #303030;
+}
+#brikpanel-push-parts .brikpanel-push-parts__label {
+	min-width: 0;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.4;
+	color: #303030;
+}
+/* What the part says on the newest order, cut at the row's end. */
+#brikpanel-push-parts .brikpanel-push-parts__value {
+	flex: 1 1 0;
+	min-width: 0;
+	overflow: hidden;
+	font-size: 0.75rem;
+	line-height: 1.4;
+	color: #616161;
+	text-align: end;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* An off part: its name steps back to the secondary grey (still readable); the switch says the rest. */
+#brikpanel-push-parts .brikpanel-push-parts__row.is-off .brikpanel-push-parts__label {
+	color: #616161;
+}
+#brikpanel-push-parts .brikpanel-push-parts__actions {
+	display: flex;
+	flex: 0 0 auto;
+	gap: 2px;
+}
+#brikpanel-push-parts .brikpanel-push-parts__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	color: #616161;
+	background-color: #ffffff;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.375rem;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+#brikpanel-push-parts .brikpanel-push-parts__btn:hover:not(:disabled) {
+	color: #303030;
+	background-color: #f4f4f4;
+	border-color: #c8c8c8;
+}
+#brikpanel-push-parts .brikpanel-push-parts__btn:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 1px;
+}
+#brikpanel-push-parts .brikpanel-push-parts__btn:disabled {
+	opacity: 0.35;
+	cursor: not-allowed;
+}
+#brikpanel-push-parts .brikpanel-push-parts__preview {
+	margin-top: 1rem;
+}
+#brikpanel-push-parts .brikpanel-push-parts__preview-label {
+	margin: 0 0 0.375rem;
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: #616161;
+}
+/* The notification card: icon, the app's name and "now" on one line, then the title and the text. */
+#brikpanel-push-parts .brikpanel-push-parts__note {
+	display: grid;
+	grid-template-columns: 20px minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: 0.5rem;
+	padding: 0.75rem 0.875rem 0.8125rem;
+	background-color: #f7f7f7;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.875rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+#brikpanel-push-parts .brikpanel-push-parts__note-icon {
+	display: block;
+	width: 20px;
+	height: 20px;
+}
+#brikpanel-push-parts .brikpanel-push-parts__note-icon.is-store {
+	border-radius: 22%;
+	object-fit: cover;
+	background-color: #ffffff;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+#brikpanel-push-parts .brikpanel-push-parts__note-app,
+#brikpanel-push-parts .brikpanel-push-parts__note-time {
+	overflow: hidden;
+	font-size: 0.75rem;
+	line-height: 1.3;
+	color: #616161;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#brikpanel-push-parts .brikpanel-push-parts__note-title {
+	grid-column: 1 / -1;
+	margin: 0.5rem 0 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	line-height: 1.35;
+	color: #303030;
+}
+#brikpanel-push-parts .brikpanel-push-parts__note-body {
+	grid-column: 1 / -1;
+	min-height: 1.45em;
+	margin: 0.125rem 0 0;
+	font-size: 0.8125rem;
+	line-height: 1.45;
+	color: #303030;
+	overflow-wrap: anywhere;
+}
+/* A part the newest order lacks (no SKU, no campaign): its name, as a placeholder.
+   contrast-ok: a placeholder standing in for text the order does not have. */
+#brikpanel-push-parts .brikpanel-push-parts__note-body .is-example {
+	font-style: italic;
+	color: #8a8a8a;
+}
+#brikpanel-push-parts .brikpanel-push-parts__hint {
+	margin: 0.375rem 0 0;
+	font-size: 0.75rem;
+	line-height: 1.45;
+	color: #616161;
+}
+/* Narrow phone: the sample values leave the rows; the preview below still shows them. */
+@media (max-width: 480px) {
+	#brikpanel-push-parts .brikpanel-push-parts__value {
+		visibility: hidden;
 	}
 }

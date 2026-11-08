@@ -377,6 +377,24 @@ class Brikpanel_BrikControl_Runner {
     }
 
     /**
+     * Continue one check's scan in the background from $cursor, for a check
+     * that scanned the slices before it in its own request and saved its
+     * state (the image check after a cleanup or an undo). Takes the progress
+     * lock, so the page shows the bar and reloads when the chain is done.
+     *
+     * @since 3.3.37
+     *
+     * @param string $check_id
+     * @param int    $cursor   Items already scanned.
+     * @param int    $total    Items to scan in all.
+     * @return int|false Action id, or false when nothing could be queued.
+     */
+    public static function continue_check( $check_id, $cursor, $total ) {
+        Brikpanel_BrikControl_Storage::set_progress( $check_id, (int) $cursor, (int) $total );
+        return self::enqueue_next_batch( $check_id, (int) $cursor );
+    }
+
+    /**
      * Push an already-queued manual scan further out.
      *
      * The plugin-change cooldown is a floor on how often we ENQUEUE, not a

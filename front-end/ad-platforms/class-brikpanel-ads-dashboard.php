@@ -22,10 +22,11 @@
  *     currency is present we group spend per currency and the front-end
  *     shows them as "₺X + $Y" so the merchant knows both halves.
  *
- *   - Currency-aware ROAS / Net Profit. When the ad currency differs from
- *     the store currency, those derived figures can't be computed without
- *     a conversion rate. We omit them (UI shows "—") rather than print a
- *     bogus number the user will treat as gospel.
+ *   - Currency-aware ROAS / Net Profit. Spend billed in another currency is
+ *     converted with the rate the merchant entered under Settings > Currency
+ *     (brikpanel_ad_spend_to_store_currency()). When a currency has no rate,
+ *     those derived figures can't be computed, so we omit them (UI shows
+ *     "—") rather than print a bogus number the user will treat as gospel.
  *
  * @package BrikPanel
  * @since   3.0.0
@@ -262,15 +263,31 @@ class Brikpanel_Ads_Dashboard {
 			$by_platform[ $plat ]['spend'] += (float) $row['spend'];
 		}
 
-		// ROAS + Net Profit only when ad currency matches store currency.
+		// The spend in the store currency: billed in it, or converted with the
+		// rate the merchant entered under Settings > Currency. A currency with
+		// no rate keeps ROAS, cost per order and Net profit empty below, because
+		// dividing revenue by only part of the spend would print a better ROAS
+		// than the real one.
+		if ( function_exists( 'brikpanel_ad_spend_to_store_currency' ) ) {
+			$fx = brikpanel_ad_spend_to_store_currency( $totals, $store_currency );
+		} else {
+			$fx = [
+				'total'       => (float) ( $by_currency[ $store_currency ] ?? 0.0 ),
+				'unconverted' => array_diff_key( $by_currency, [ $store_currency => true ] ),
+			];
+		}
+		$unconverted = array_values( array_map( 'strval', array_keys( (array) $fx['unconverted'] ) ) );
+
+		// ROAS + Net Profit only when every currency could be brought into the
+		// store currency.
 		$roas_value      = null;
 		$net_profit      = null;
 		$net_profit_curr = $store_currency;
 		$same_currency_spend = 0.0;
 		$cost_per_order  = null;
 		$cpo_orders      = 0;
-		if ( $store_currency !== '' && isset( $by_currency[ $store_currency ] ) && count( $by_currency ) === 1 ) {
-			$same_currency_spend = (float) $by_currency[ $store_currency ];
+		if ( $store_currency !== '' && ! empty( $totals ) && empty( $unconverted ) ) {
+			$same_currency_spend = (float) $fx['total'];
 			if ( $same_currency_spend > 0 ) {
 				$roas_value = (float) $total_sales / $same_currency_spend;
 			}
@@ -304,7 +321,8 @@ class Brikpanel_Ads_Dashboard {
 		}
 
 		$payload['ad_spend'] = [
-			'currencies'         => $by_currency,                          // e.g. { TRY: 5000, USD: 200 }
+			'currencies'         => $by_currency,                          // e.g. { TRY: 5000, USD: 200 }, as billed
+			'unconverted'        => $unconverted,                          // currencies with no exchange rate, e.g. [ 'USD' ]
 			'by_platform'        => $by_platform,                          // e.g. { google_ads: { spend, currency } }
 			'store_currency'     => $store_currency,
 			'store_symbol'       => $currency_symbol,
@@ -1001,8 +1019,13 @@ class Brikpanel_Ads_Dashboard {
 				// keeps the sub-label honest: a null can equally mean zero spend
 				// or zero orders, and blaming the currency for either of those
 				// sends the merchant to the wrong settings page.
-				var crossCurrency = !!ad.has_data && !!ad.store_currency
-					&& (codes.length !== 1 || codes[0] !== ad.store_currency);
+				// Spend converted with a rate from Settings > Currency already
+				// counts as store currency; only a currency with no rate holds
+				// the figures back. A payload cached by an older build has no
+				// list and keeps the old reading.
+				var crossCurrency = !!ad.has_data && (Array.isArray(ad.unconverted)
+					? ad.unconverted.length > 0
+					: (!!ad.store_currency && (codes.length !== 1 || codes[0] !== ad.store_currency)));
 
 				var roasEl  = document.getElementById('card-roas');
 				var roasSub = document.getElementById('delta-roas');

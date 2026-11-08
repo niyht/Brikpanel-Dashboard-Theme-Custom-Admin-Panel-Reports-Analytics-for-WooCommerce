@@ -1,8 +1,11 @@
 /**
- * BrikPanel — Customer Analytics page logic.
+ * BrikPanel Customers page: the Lifetime value, RFM segments and Cohort
+ * retention tabs (once the Customer Analytics screen).
  *
- * Phase 1: LTV summary + top customers + distribution histogram + CSV export.
- * Phase 2 will activate the RFM tab; Phase 3 the Cohort tab.
+ * The page shell (front-end/customers/brikpanel-customers.js) owns the tab
+ * strip and calls window.brikpanelCustomerAnalytics.show( tab ); each tab
+ * loads its data the first time it is shown. A click on an RFM card opens
+ * All customers filtered to that segment.
  */
 ( function () {
 	'use strict';
@@ -20,9 +23,7 @@
 		rfmLoaded: false,
 		rfmSegments: [],
 		rfmDonut: null,
-		rfmActiveSegment: null,
-		rfmPage: 1,
-		rfmPerPage: 25,
+		ltvLoaded: false,
 		cohortLoaded: false,
 		cohortLine: null,
 		cohortMonths: 12
@@ -122,7 +123,7 @@
 		var meta = el( 'bp-ca-meta' );
 		if ( ! meta || typeof text !== 'string' || text === '' ) { return; }
 		meta.textContent = text;
-		var fit = window.brikpanelFitRow && window.brikpanelFitRow.auto( el( 'bp-ca-header' ) );
+		var fit = window.brikpanelFitRow && window.brikpanelFitRow.auto( el( CFG.header_id || 'bp-cus-header' ) );
 		if ( fit && typeof fit.refit === 'function' ) { fit.refit(); }
 	}
 
@@ -146,10 +147,10 @@
 		} );
 	}
 
-	// Both customer tables stack into cards when they cannot show every column
+	// The top-customers table stacks into cards when it cannot show every column
 	// in their card (field test B6: on a phone AOV, LTV and Last order scrolled
 	// out of sight). Labels come from the header texts.
-	var topFit = null, rfmFit = null;
+	var topFit = null;
 	function fitFor( tableId, current ) {
 		if ( current || ! window.brikpanelFitTable ) { return current; }
 		var table = el( tableId );
@@ -162,18 +163,6 @@
 		topFit = fitFor( 'bp-ca-top-customers', topFit );
 		if ( topFit ) { topFit.refit(); }
 	}
-	function setRfmBody( html ) {
-		var body = el( 'bp-ca-rfm-tbody' );
-		if ( ! body ) { return; }
-		body.innerHTML = html;
-		rfmFit = fitFor( 'bp-ca-rfm-table', rfmFit );
-		if ( rfmFit ) { rfmFit.refit(); }
-	}
-
-	// A long e-mail breaks only at its joints (after "@", before a dot), never
-	// mid-word (CLAUDE.md table rule). Callers wrap it, and a phone number, in
-	// an inline <span dir="ltr">: the characters keep their order on an RTL
-	// screen while the line itself still lines up with the name above it.
 	function emailHtml( email ) {
 		email = String( email || '' );
 		var at = email.indexOf( '@' );
@@ -219,8 +208,9 @@
 				+ ( c.phone ? '<div class="bp-ca-customer-phone"><span dir="ltr">' + escapeHtml( c.phone ) + '</span></div>' : '' )
 				+ '</div>';
 
-			if ( c.edit_url ) {
-				customerCell = '<a href="' + escapeHtml( c.edit_url ) + '" style="color: inherit; text-decoration: none;">' + customerCell + '</a>';
+			var href = c.profile_url || c.edit_url;
+			if ( href ) {
+				customerCell = '<a href="' + escapeHtml( href ) + '" style="color: inherit; text-decoration: none;">' + customerCell + '</a>';
 			}
 
 			var recencyText = '—';
@@ -360,7 +350,6 @@
 			var noCustomers = ! ( Number( d.total_customers ) > 0 );
 			if ( noCustomers || d.scored === false ) {
 				dropChart( 'rfmDonut' );
-				if ( state.rfmActiveSegment ) { clearRfmSelection(); }
 				showEmpty( 'bp-ca-rfm-layout', 'bp-ca-rfm-empty', true,
 					noCustomers ? i18n.rfm_no_customers : ( d.rfm_supported === false ? i18n.rfm_unsupported : i18n.rfm_not_scored ) );
 				return;
@@ -380,8 +369,7 @@
 		var html = '';
 		state.rfmSegments.forEach( function ( s ) {
 			var emptyClass = s.customers === 0 ? ' is-empty' : '';
-			var activeClass = s.key === state.rfmActiveSegment ? ' is-active' : '';
-			html += '<button type="button" class="bp-ca-rfm-card' + emptyClass + activeClass + '" data-segment="' + escapeHtml( s.key ) + '"'
+			html += '<button type="button" class="bp-ca-rfm-card' + emptyClass + '" data-segment="' + escapeHtml( s.key ) + '"'
 				+ ( s.customers === 0 ? ' disabled' : '' ) + '>'
 				+ '<div class="bp-ca-rfm-card-head">'
 				+ '<span class="bp-ca-rfm-card-name">'
@@ -404,7 +392,9 @@
 			card.addEventListener( 'click', function () {
 				if ( card.disabled ) { return; }
 				var seg = card.getAttribute( 'data-segment' );
-				selectRfmSegment( seg );
+				if ( window.brikpanelCustomers && typeof window.brikpanelCustomers.openSegment === 'function' ) {
+					window.brikpanelCustomers.openSegment( seg );
+				}
 			} );
 		} );
 	}
@@ -453,116 +443,6 @@
 		} );
 	}
 
-	function selectRfmSegment( segKey ) {
-		state.rfmActiveSegment = segKey;
-		state.rfmPage = 1;
-
-		// Update card visuals.
-		document.querySelectorAll( '.bp-ca-rfm-card' ).forEach( function ( c ) {
-			c.classList.toggle( 'is-active', c.getAttribute( 'data-segment' ) === segKey );
-		} );
-
-		var card = el( 'bp-ca-rfm-customers-card' );
-		card.hidden = false;
-
-		var seg = state.rfmSegments.find( function ( s ) { return s.key === segKey; } );
-		if ( seg ) {
-			el( 'bp-ca-rfm-customers-title' ).textContent = seg.label;
-			el( 'bp-ca-rfm-customers-sub' ).textContent = seg.description;
-		}
-		loadRfmCustomers();
-
-		// Scroll the section into view so the user sees the table without
-		// having to manually scroll.
-		card.scrollIntoView( { behavior: 'smooth', block: 'start' } );
-	}
-
-	function loadRfmCustomers() {
-		setRfmBody( '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.loading || 'Loading…' ) + '</td></tr>' );
-
-		fetchJSON( 'brikpanel_ca_rfm_customers', {
-			segment: state.rfmActiveSegment,
-			page: state.rfmPage,
-			per_page: state.rfmPerPage
-		} ).then( function ( res ) {
-			if ( ! res || ! res.success ) {
-				setRfmBody( '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.error || 'Could not load.' ) + '</td></tr>' );
-				return;
-			}
-			renderRfmRows( res.data.items || [] );
-			renderRfmPagination( res.data );
-		} );
-	}
-
-	function renderRfmRows( items ) {
-		if ( ! items.length ) {
-			// Its own sentence: the shared `empty` key says the store has no
-			// customers at all.
-			setRfmBody( '<tr><td class="bp-ca-empty" colspan="7">' + escapeHtml( i18n.rfm_segment_empty ) + '</td></tr>' );
-			return;
-		}
-		var html = '';
-		items.forEach( function ( c ) {
-			var pillClass = function ( score ) {
-				if ( score >= 4 ) { return ' is-high'; }
-				if ( score <= 2 ) { return ' is-low'; }
-				return '';
-			};
-			var pills = '<span class="bp-ca-rfm-pills">'
-				+ '<span class="bp-ca-rfm-pill' + pillClass( c.r_score ) + '" title="' + escapeHtml( i18n.rfm_recency || 'Recency' ) + '">' + c.r_score + '</span>'
-				+ '<span class="bp-ca-rfm-pill' + pillClass( c.f_score ) + '" title="' + escapeHtml( i18n.rfm_frequency || 'Frequency' ) + '">' + c.f_score + '</span>'
-				+ '<span class="bp-ca-rfm-pill' + pillClass( c.m_score ) + '" title="' + escapeHtml( i18n.rfm_monetary || 'Monetary' ) + '">' + c.m_score + '</span>'
-				+ '</span>';
-
-			var customerCell = '<div class="bp-ca-customer-cell">'
-				+ '<div class="bp-ca-customer-name">' + escapeHtml( c.name )
-				+ ( c.is_guest ? '<span class="bp-ca-guest-pill">' + escapeHtml( i18n.guest || 'Guest' ) + '</span>' : '' )
-				+ '</div>'
-				+ '<div class="bp-ca-customer-email"><span dir="ltr">' + emailHtml( c.email ) + '</span></div>'
-				+ ( c.phone ? '<div class="bp-ca-customer-phone"><span dir="ltr">' + escapeHtml( c.phone ) + '</span></div>' : '' )
-				+ '</div>';
-			if ( c.edit_url ) {
-				customerCell = '<a href="' + escapeHtml( c.edit_url ) + '" style="color: inherit; text-decoration: none;">' + customerCell + '</a>';
-			}
-
-			var recencyText = '—';
-			if ( c.recency_days !== null && typeof c.recency_days !== 'undefined' ) {
-				if ( c.recency_days === 0 ) { recencyText = i18n.today || 'Today'; }
-				else if ( c.recency_days === 1 ) { recencyText = i18n.yesterday || '1 day'; }
-				else { recencyText = c.recency_days + ' ' + ( i18n.days_ago || 'd' ); }
-			}
-
-			html += '<tr>'
-				+ '<td class="brikpanel-fit-lead">' + customerCell + '</td>'
-				+ '<td>' + pills + '</td>'
-				+ '<td class="num">' + c.order_count + '</td>'
-				+ '<td class="num">' + escapeHtml( c.aov_display ) + '</td>'
-				+ '<td class="num brikpanel-fit-headline"><strong>' + escapeHtml( c.total_spent_display ) + '</strong></td>'
-				+ '<td>' + escapeHtml( c.last_order || '—' ) + '</td>'
-				+ '<td class="num">' + escapeHtml( recencyText ) + '</td>'
-				+ '</tr>';
-		} );
-		setRfmBody( html );
-	}
-
-	function renderRfmPagination( data ) {
-		var pag = el( 'bp-ca-rfm-pagination' );
-		if ( data.pages <= 1 ) { pag.hidden = true; return; }
-		pag.hidden = false;
-		el( 'bp-ca-rfm-page-info' ).textContent = data.page + ' / ' + data.pages;
-		el( 'bp-ca-rfm-prev' ).disabled = data.page <= 1;
-		el( 'bp-ca-rfm-next' ).disabled = data.page >= data.pages;
-	}
-
-	function clearRfmSelection() {
-		state.rfmActiveSegment = null;
-		state.rfmPage = 1;
-		document.querySelectorAll( '.bp-ca-rfm-card' ).forEach( function ( c ) {
-			c.classList.remove( 'is-active' );
-		} );
-		el( 'bp-ca-rfm-customers-card' ).hidden = true;
-	}
-
 	// =========================================================================
 	// Cohort tab
 	// =========================================================================
@@ -595,9 +475,9 @@
 		var r = Math.round( 241 - eased * ( 241 - 48 ) );
 		var g = Math.round( 241 - eased * ( 241 - 48 ) );
 		var b = Math.round( 241 - eased * ( 241 - 48 ) );
-		// The text colour with the higher contrast on this shade: a fixed
-		// switch point left 27-46% cells between 2.8:1 and 4.5:1.
-		var fg = contrastRatio( r, 255 ) > contrastRatio( r, 48 ) ? '#ffffff' : '#303030';
+		// White, else the UI's near-black, else black: mid greys (about #77 to
+		// #95) reach 4.5:1 with neither white nor #303030, but always with black.
+		var fg = contrastRatio( r, 255 ) >= 4.5 ? '#ffffff' : ( contrastRatio( r, 48 ) >= 4.5 ? '#303030' : '#000000' );
 		return { bg: 'rgb(' + r + ',' + g + ',' + b + ')', fg: fg };
 	}
 
@@ -626,7 +506,7 @@
 		html += '<div class="bp-ca-cohort-cell bp-ca-cohort-cell-month">' + escapeHtml( i18n.cohort_month || 'Cohort' ) + '</div>';
 		html += '<div class="bp-ca-cohort-cell bp-ca-cohort-cell-size">' + escapeHtml( i18n.cohort_size || 'Size' ) + '</div>';
 		for ( var i = 0; i <= maxOffset; i++ ) {
-			html += '<div class="bp-ca-cohort-cell bp-ca-cohort-cell-empty" style="background:transparent;">M+' + i + '</div>';
+			html += '<div class="bp-ca-cohort-cell bp-ca-cohort-cell-head">M+' + i + '</div>';
 		}
 		html += '</div>';
 
@@ -740,19 +620,7 @@
 			if ( res && res.success ) {
 				setMeta( res.data.meta_text );
 				showToast( ( i18n.recomputed || 'Recomputed' ) + ' (' + res.data.rows_written + ' ' + ( i18n.rows || 'rows' ) + ', ' + res.data.duration + 's)' );
-				// Reload everything.
-				loadSummary();
-				loadTopCustomers();
-				loadHistogram();
-				if ( state.rfmLoaded ) {
-					loadRfmSummary();
-					if ( state.rfmActiveSegment ) {
-						loadRfmCustomers();
-					}
-				}
-				if ( state.cohortLoaded ) {
-					loadCohort();
-				}
+				reloadAll();
 			} else {
 				showToast( ( res && res.data && res.data.message ) || ( i18n.error || 'Could not recompute.' ), true );
 			}
@@ -764,35 +632,46 @@
 	}
 
 	// =========================================================================
-	// Tab switching (only LTV is active in Phase 1)
+	// Tabs (the page shell owns the strip and calls show())
 	// =========================================================================
 
-	function bindTabs() {
-		var tabs = document.querySelectorAll( '.bp-ca-tab' );
-		tabs.forEach( function ( tab ) {
-			tab.addEventListener( 'click', function () {
-				if ( tab.classList.contains( 'is-disabled' ) ) { return; }
-				var target = tab.getAttribute( 'data-tab' );
-				tabs.forEach( function ( t ) {
-					t.classList.toggle( 'is-active', t === tab );
-					t.setAttribute( 'aria-selected', t === tab ? 'true' : 'false' );
-				} );
-				document.querySelectorAll( '.bp-ca-tabpanel' ).forEach( function ( p ) {
-					p.hidden = p.getAttribute( 'data-panel' ) !== target;
-				} );
-
-				// Lazy-load the RFM tab the first time it's opened.
-				if ( target === 'rfm' && ! state.rfmLoaded ) {
-					state.rfmLoaded = true;
-					loadRfmSummary();
-				}
-				// Lazy-load the Cohort tab the first time it's opened.
-				if ( target === 'cohort' && ! state.cohortLoaded ) {
-					state.cohortLoaded = true;
-					loadCohort();
-				}
-			} );
+	function show( tab ) {
+		var root = el( 'bp-ca' );
+		if ( ! root ) { return; }
+		root.querySelectorAll( '.bp-ca-tabpanel' ).forEach( function ( p ) {
+			p.hidden = p.getAttribute( 'data-panel' ) !== tab;
 		} );
+		// Each tab loads the first time it is shown, never before: a page opened
+		// on All customers asks for none of this.
+		if ( tab === 'ltv' && ! state.ltvLoaded ) {
+			state.ltvLoaded = true;
+			loadSummary();
+			loadTopCustomers();
+			loadHistogram();
+		}
+		if ( tab === 'rfm' && ! state.rfmLoaded ) {
+			state.rfmLoaded = true;
+			loadRfmSummary();
+		}
+		if ( tab === 'cohort' && ! state.cohortLoaded ) {
+			state.cohortLoaded = true;
+			loadCohort();
+		}
+	}
+
+	// After a recompute or new exclusions: every tab already loaded, and the
+	// customer list, which leaves excluded people out too.
+	function reloadAll() {
+		if ( state.ltvLoaded ) {
+			loadSummary();
+			loadTopCustomers();
+			loadHistogram();
+		}
+		if ( state.rfmLoaded ) { loadRfmSummary(); }
+		if ( state.cohortLoaded ) { loadCohort(); }
+		if ( window.brikpanelSegmentsApi && typeof window.brikpanelSegmentsApi.reload === 'function' ) {
+			window.brikpanelSegmentsApi.reload();
+		}
 	}
 
 	// =========================================================================
@@ -950,15 +829,8 @@
 				setMeta( res.data.meta_text );
 				showToast( i18n.excl_saved || 'Exclusions saved' );
 				closeExclModal();
-				// Reflect the new metrics everywhere on the page.
-				loadSummary();
-				loadTopCustomers();
-				loadHistogram();
-				if ( state.rfmLoaded ) {
-					loadRfmSummary();
-					if ( state.rfmActiveSegment ) { loadRfmCustomers(); }
-				}
-				if ( state.cohortLoaded ) { loadCohort(); }
+				// Excluded people also leave the customer list.
+				reloadAll();
 			} else {
 				showToast( ( res && res.data && res.data.message ) || ( i18n.error || 'Something went wrong.' ), true );
 			}
@@ -1000,15 +872,9 @@
 
 	function init() {
 		bindExclModal();
-		bindTabs();
-		loadSummary();
-		loadTopCustomers();
-		loadHistogram();
 
-		el( 'bp-ca-refresh' ).addEventListener( 'click', recomputeNow );
-		el( 'bp-ca-export' ).addEventListener( 'click', function () {
-			window.location.href = CFG.export_url;
-		} );
+		var refresh = el( 'bp-ca-refresh' );
+		if ( refresh ) { refresh.addEventListener( 'click', recomputeNow ); }
 		el( 'bp-ca-prev' ).addEventListener( 'click', function () {
 			if ( state.topPage > 1 ) {
 				state.topPage--;
@@ -1020,23 +886,6 @@
 			loadTopCustomers();
 		} );
 
-		// RFM tab buttons
-		el( 'bp-ca-rfm-clear' ).addEventListener( 'click', clearRfmSelection );
-		el( 'bp-ca-rfm-export-segment' ).addEventListener( 'click', function () {
-			if ( ! state.rfmActiveSegment ) { return; }
-			window.location.href = CFG.rfm_export_url + '&segment=' + encodeURIComponent( state.rfmActiveSegment );
-		} );
-		el( 'bp-ca-rfm-prev' ).addEventListener( 'click', function () {
-			if ( state.rfmPage > 1 ) {
-				state.rfmPage--;
-				loadRfmCustomers();
-			}
-		} );
-		el( 'bp-ca-rfm-next' ).addEventListener( 'click', function () {
-			state.rfmPage++;
-			loadRfmCustomers();
-		} );
-
 		// Cohort tab buttons
 		el( 'bp-ca-cohort-window' ).addEventListener( 'change', function ( e ) {
 			state.cohortMonths = parseInt( e.target.value, 10 ) || 12;
@@ -1045,6 +894,11 @@
 		el( 'bp-ca-cohort-export' ).addEventListener( 'click', function () {
 			window.location.href = CFG.cohort_export_url;
 		} );
+
+		window.brikpanelCustomerAnalytics = { show: show, reload: reloadAll };
+		if ( [ 'ltv', 'rfm', 'cohort' ].indexOf( CFG.initial_tab ) !== -1 ) {
+			show( CFG.initial_tab );
+		}
 	}
 
 	if ( document.readyState === 'loading' ) {

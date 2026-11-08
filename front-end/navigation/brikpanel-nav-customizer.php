@@ -104,6 +104,11 @@ function brikpanel_nav_config_get( $refresh = false ) {
 		return $config = [ 'version' => 1, 'items' => [] ];
 	}
 	$decoded['items'] = isset( $decoded['items'] ) && is_array( $decoded['items'] ) ? $decoded['items'] : [];
+	// Rows of screens merged into another are rewritten here too, for a layout
+	// stored before the upgrade wrote it back (includes/brikpanel-nav-config-migrate.php).
+	if ( function_exists( 'brikpanel_nav_config_migrate' ) ) {
+		$decoded = brikpanel_nav_config_migrate( $decoded );
+	}
 	return $config = $decoded;
 }
 
@@ -895,6 +900,7 @@ function brikpanel_nav_customizer_icon_options() {
 		'customers'     => __( 'Customers', 'brikpanel' ),
 		'analytics'     => __( 'Analytics', 'brikpanel' ),
 		'marketing'     => __( 'Marketing', 'brikpanel' ),
+		'coupons'       => __( 'Coupons', 'brikpanel' ),
 		'payments'      => __( 'Payments', 'brikpanel' ),
 		'credit-card'   => __( 'Credit card', 'brikpanel' ),
 		'invoice'       => __( 'Invoice', 'brikpanel' ),
@@ -1170,12 +1176,13 @@ function brikpanel_nav_is_store_slug( $slug ) {
 	// (matched exactly so lookalikes such as "woocommerce-multi-currency" or
 	// "woocommerce-more"-imitating third-party slugs are not swept in).
 	static $exact = array(
-		'index.php'                   => true, // Dashboard
-		'woocommerce'                 => true, // Orders
-		'edit.php?post_type=product'  => true, // Products
-		'woocommerce-marketing'       => true, // Marketing
-		'woocommerce-more'            => true, // More
-		'wf_woocommerce_packing_list' => true,
+		'index.php'                      => true, // Dashboard
+		'woocommerce'                    => true, // Orders
+		'edit.php?post_type=product'     => true, // Products
+		'woocommerce-marketing'          => true, // Marketing
+		'edit.php?post_type=shop_coupon' => true, // Coupons (BRIKPANEL_NAV_COUPONS_SLUG)
+		'woocommerce-more'               => true, // More
+		'wf_woocommerce_packing_list'    => true,
 	);
 	if ( isset( $exact[ $slug ] ) ) {
 		return true;
@@ -1273,6 +1280,110 @@ function brikpanel_nav_demote_foreign_toplevels( &$menu ) {
 // =============================================================================
 
 /**
+ * Menus the sidebar files under "More" until the merchant places them
+ * elsewhere in the Navigation editor, which lists them in its "More menu"
+ * section.
+ *
+ * Marketing (owner's decision, 2026-10-19): Coupons, the page people opened it
+ * for, has a row of its own (brikpanel_nav_promote_coupons()). What is left is
+ * WooCommerce's Overview of channel extensions and the pages marketing plugins
+ * add there (Google for WooCommerce, Facebook, Pinterest, TikTok), which keep
+ * their dropdown inside "More".
+ *
+ * @return array<string,true> Top-level slugs.
+ */
+function brikpanel_nav_default_more_slugs() {
+	return [ 'woocommerce-marketing' => true ];
+}
+
+/**
+ * The row inside "More" that stands for a whole top-level menu.
+ *
+ * Its own pages stay in $submenu[ $slug ] (per-page hide rules still apply to
+ * them) and the sidebar draws them as a dropdown under this row
+ * (brikpanel_nav_more_plan()); index 7 remembers which menu that is.
+ * extract_meta() ignores it: no is_custom.
+ *
+ * @param string     $slug    Top-level slug.
+ * @param array      $row     Its $menu row.
+ * @param string     $title   Label to show.
+ * @param array|null $submenu The $submenu global.
+ * @return array A $submenu row for "More".
+ */
+function brikpanel_nav_more_row( $slug, array $row, $title, $submenu ) {
+	$top_cap = isset( $row[1] ) ? (string) $row[1] : 'read';
+	// WordPress keeps a top-level menu for a user who can open only some of its
+	// pages, under the top-level's own capability. The row inside "More" counts
+	// through the first page this user may open instead, so the menu does not
+	// vanish from "More" while its pages are open.
+	$cap = $top_cap;
+	if ( ! current_user_can( $top_cap ) && is_array( $submenu ) && ! empty( $submenu[ $slug ] ) && is_array( $submenu[ $slug ] ) ) {
+		foreach ( $submenu[ $slug ] as $child_row ) {
+			// A BrikPanel screen kept for access plugins only is no page of the menu.
+			if ( function_exists( 'brikpanel_is_menu_only_row' ) && brikpanel_is_menu_only_row( $child_row ) ) {
+				continue;
+			}
+			if ( is_array( $child_row ) && isset( $child_row[1] ) && ( is_string( $child_row[1] ) || is_int( $child_row[1] ) ) && current_user_can( $child_row[1] ) ) {
+				$cap = (string) $child_row[1];
+				break;
+			}
+		}
+	}
+	// WP submenu row shape: [ title, cap, file, page_title, classes ].
+	// Use admin.php?page= prefix unless the slug already looks like a URL/file.
+	$target = $slug;
+	if ( strpos( $slug, '.php' ) === false && strpos( $slug, '?' ) === false ) {
+		$target = 'admin.php?page=' . $slug;
+	}
+	return [
+		$title,
+		$cap,
+		$target,
+		$title,
+		'brikpanel-more-promoted',
+		'',
+		'',
+		[
+			'more_parent' => $slug,
+			'top_cap'     => $top_cap,
+		],
+	];
+}
+
+/**
+ * File the default "More" menus (brikpanel_nav_default_more_slugs()) under
+ * "More" on a sidebar no saved layout places. Without "More" (Admin Menu
+ * Editor owns the menu) they stay where they are.
+ *
+ * @param array $menu    The $menu global / copy, by reference.
+ * @param array $submenu The $submenu global / copy, by reference.
+ */
+function brikpanel_nav_default_into_more( &$menu, &$submenu ) {
+	if ( ! is_array( $menu ) || ! is_array( $submenu ) ) {
+		return;
+	}
+	$has_more = false;
+	foreach ( $menu as $item ) {
+		if ( is_array( $item ) && isset( $item[2] ) && 'woocommerce-more' === $item[2] ) {
+			$has_more = true;
+			break;
+		}
+	}
+	if ( ! $has_more ) {
+		return;
+	}
+	$default_more = brikpanel_nav_default_more_slugs();
+	foreach ( $menu as $key => $item ) {
+		$slug = ( is_array( $item ) && isset( $item[2] ) ) ? (string) $item[2] : '';
+		if ( '' === $slug || ! isset( $default_more[ $slug ] ) ) {
+			continue;
+		}
+		$submenu['woocommerce-more'][] = brikpanel_nav_more_row( $slug, $item, isset( $item[0] ) ? (string) $item[0] : $slug, $submenu );
+		unset( $menu[ $key ] );
+	}
+}
+
+/**
  * Apply the saved nav config to a copy of $menu (and optionally $submenu).
  *
  * - Reorders items per config.
@@ -1318,8 +1429,10 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null, &$dropped = n
 	}
 
 	if ( ! is_array( $menu ) || empty( $config['items'] ) ) {
-		// Nothing configured — leave $menu alone, anchor stays at the legacy
-		// hardcoded position (edit.php).
+		// Nothing configured — leave $menu alone apart from the menus "More"
+		// holds by default, anchor stays at the legacy hardcoded position
+		// (edit.php).
+		brikpanel_nav_default_into_more( $menu, $submenu );
 		return [ 'edit.php', [] ];
 	}
 
@@ -1476,47 +1589,8 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null, &$dropped = n
 				if ( ! empty( $cfg['label_override'] ) ) {
 					$title = (string) $cfg['label_override'];
 				}
-				$top_cap = isset( $row[1] ) ? (string) $row[1] : 'read';
-				// WordPress keeps a top-level menu for a user who can open only some
-				// of its pages, under the top-level's own capability. The row inside
-				// "More" counts through the first page this user may open instead,
-				// so the menu does not vanish from "More" while its pages are open.
-				$cap = $top_cap;
-				if ( ! current_user_can( $top_cap ) && ! empty( $submenu[ $slug ] ) && is_array( $submenu[ $slug ] ) ) {
-					foreach ( $submenu[ $slug ] as $child_row ) {
-						// A BrikPanel screen kept for access plugins only is no page of the menu.
-						if ( function_exists( 'brikpanel_is_menu_only_row' ) && brikpanel_is_menu_only_row( $child_row ) ) {
-							continue;
-						}
-						if ( is_array( $child_row ) && isset( $child_row[1] ) && ( is_string( $child_row[1] ) || is_int( $child_row[1] ) ) && current_user_can( $child_row[1] ) ) {
-							$cap = (string) $child_row[1];
-							break;
-						}
-					}
-				}
-				// WP submenu row shape: [ title, cap, file, page_title, classes ].
-				// Use admin.php?page= prefix unless the slug already looks like a URL/file.
-				$target = $slug;
-				if ( strpos( $slug, '.php' ) === false && strpos( $slug, '?' ) === false ) {
-					$target = 'admin.php?page=' . $slug;
-				}
-				// Index 7 remembers the menu this row stands for. Its own pages stay
-				// in $submenu[ $slug ] (per-page hide rules still apply to them below)
-				// and the sidebar draws them as a dropdown under this row. See
-				// brikpanel_nav_more_plan(). extract_meta() ignores it: no is_custom.
-				$submenu['woocommerce-more'][] = [
-					$title,
-					$cap,
-					$target,
-					$title,
-					'brikpanel-more-promoted',
-					'',
-					'',
-					[
-						'more_parent' => $slug,
-						'top_cap'     => $top_cap,
-					],
-				];
+				// Per-page hide rules still apply to its pages below.
+				$submenu['woocommerce-more'][] = brikpanel_nav_more_row( $slug, $row, $title, $submenu );
 				continue;
 			}
 
@@ -1618,8 +1692,9 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null, &$dropped = n
 	// When "Hide new menu items by default" is on, these unconfigured items are
 	// left OUT of the live sidebar until an administrator reviews them in the
 	// editor (which always lists them). Native separators are always kept.
-	$hide_new = brikpanel_nav_hide_new_items_enabled();
-	$index_of = static function ( array $rows, $slug ) {
+	$hide_new     = brikpanel_nav_hide_new_items_enabled();
+	$default_more = $more_supported ? brikpanel_nav_default_more_slugs() : [];
+	$index_of     = static function ( array $rows, $slug ) {
 		foreach ( $rows as $i => $row ) {
 			if ( isset( $row[2] ) && (string) $row[2] === (string) $slug ) {
 				return $i;
@@ -1645,6 +1720,12 @@ function brikpanel_nav_customizer_apply( &$menu, &$submenu = null, &$dropped = n
 			if ( $record ) {
 				$dropped[] = [ 'parent' => '', 'slug' => $slug, 'reason' => 'new' ];
 			}
+			continue;
+		}
+		// A menu "More" holds by default goes there, as on a sidebar no layout
+		// places (brikpanel_nav_default_into_more()).
+		if ( isset( $default_more[ $slug ] ) ) {
+			$submenu['woocommerce-more'][] = brikpanel_nav_more_row( $slug, $item, isset( $item[0] ) ? (string) $item[0] : $slug, $submenu );
 			continue;
 		}
 		if ( brikpanel_nav_is_store_slug( $slug ) ) {
@@ -1892,11 +1973,18 @@ function brikpanel_render_nav_customizer_field( $value ) {
 		}
 	}
 
+	// Menus the sidebar files under "More" until they are placed (Marketing)
+	// are listed in the "More menu" section, where the sidebar draws them.
+	$default_more = brikpanel_nav_default_more_slugs();
+
 	foreach ( $current_items as $idx => $ci ) {
 		if ( isset( $consumed[ $ci['slug'] ] ) ) {
 			continue;
 		}
 		$default_section = ( $anchor_pos !== null && $idx >= $anchor_pos ) ? 'site_management' : 'store';
+		if ( isset( $default_more[ $ci['slug'] ] ) && isset( $current_by_slug['woocommerce-more'] ) ) {
+			$default_section = 'more';
+		}
 		$rows[] = [
 			'type'           => 'system',
 			'slug'           => $ci['slug'],

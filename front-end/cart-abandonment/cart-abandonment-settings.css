@@ -114,6 +114,11 @@
 	margin-bottom: 0.75rem;
 }
 
+/* The handwritten-note boxes of the drawings not picked. */
+.bp-cpl-field[hidden] {
+	display: none;
+}
+
 .bp-cpl-label {
 	font-size: 0.8125rem;
 	font-weight: 600;

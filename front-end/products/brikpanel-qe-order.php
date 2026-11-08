@@ -360,7 +360,7 @@ function brikpanel_render_qe_field_order_field($field) {
                         ?>
                         <li class="brikpanel-qe-order-row<?php echo $is_visible ? '' : ' is-hidden-section'; ?>" data-slug="<?php echo esc_attr($slug); ?>">
                             <label class="brikpanel-qe-order-toggle">
-                                <input type="checkbox" class="brikpanel-qe-order-checkbox" name="brikpanel_qe_field_visibility[]" value="<?php echo esc_attr($slug); ?>" <?php checked($is_visible); ?>>
+                                <input type="checkbox" role="switch" class="brikpanel-qe-order-checkbox" name="brikpanel_qe_field_visibility[]" value="<?php echo esc_attr($slug); ?>" <?php checked($is_visible); ?>>
                                 <span class="brikpanel-qe-order-title"><?php echo esc_html($options[$slug]); ?></span>
                                 <?php if ($tags_html !== '') : ?>
                                     <span class="brikpanel-qe-order-tags"><?php echo $tags_html; ?></span>
@@ -421,10 +421,11 @@ function brikpanel_render_qe_field_order_field($field) {
             .brikpanel-qe-order-row:hover {
                 background: #fafafa;
             }
+            /* Switched off: plain grey, not struck through, the same as the
+               editor sections list above it on this settings page. */
             .brikpanel-qe-order-row.is-hidden-section .brikpanel-qe-order-title {
-                color: #8a8a8a;
-                text-decoration: line-through;
-                text-decoration-color: #c8c8c8;
+                color: #616161;
+                font-weight: 500;
             }
             .brikpanel-qe-order-toggle {
                 display: flex;
@@ -438,16 +439,57 @@ function brikpanel_render_qe_field_order_field($field) {
                 color: #303030;
                 line-height: 1.4;
             }
-            .brikpanel-qe-order-checkbox {
+            /* The same on/off switch as the editor sections list (see the note
+               in brikpanel-section-order.php): still a real checkbox, scoped by
+               the list's id so the settings card's own checkbox and tick do not
+               win, and animation-free. */
+            #brikpanel-qe-order .brikpanel-qe-order-checkbox {
+                -webkit-appearance: none;
+                appearance: none;
                 margin: 0 !important;
-                width: 14px;
-                height: 14px;
-                border-radius: 3px;
+                width: 32px;
+                min-width: 32px;
+                height: 18px;
+                padding: 0;
+                border: 0;
+                border-radius: 999px;
+                background: #cccccc;
+                box-shadow: none;
                 cursor: pointer;
                 flex-shrink: 0;
+                position: relative;
+                transition: none;
             }
-            .brikpanel-qe-order-checkbox:focus {
-                box-shadow: 0 0 0 2px rgba(48, 48, 48, .15);
+            #brikpanel-qe-order .brikpanel-qe-order-checkbox::before {
+                content: "";
+                float: none;
+                position: absolute;
+                top: 2px;
+                inset-inline-start: 2px;
+                width: 14px;
+                height: 14px;
+                margin: 0;
+                border-radius: 50%;
+                background: #ffffff;
+                box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+                transition: none;
+            }
+            #brikpanel-qe-order .brikpanel-qe-order-checkbox::after {
+                content: none;
+                display: none;
+            }
+            #brikpanel-qe-order .brikpanel-qe-order-checkbox:checked {
+                background: #303030;
+            }
+            #brikpanel-qe-order .brikpanel-qe-order-checkbox:checked::before {
+                inset-inline-start: 16px;
+            }
+            #brikpanel-qe-order .brikpanel-qe-order-checkbox:focus {
+                outline: none;
+                box-shadow: none;
+            }
+            #brikpanel-qe-order .brikpanel-qe-order-checkbox:focus-visible {
+                box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #303030;
             }
             .brikpanel-qe-order-title {
                 overflow: hidden;
@@ -488,25 +530,24 @@ function brikpanel_render_qe_field_order_field($field) {
                 width: 26px;
                 height: 26px;
                 padding: 0;
-                background: #ffffff;
+                background: transparent;
                 color: #616161;
-                border: 1px solid #e3e3e3;
+                border: 0;
                 border-radius: .375rem;
                 cursor: pointer;
-                transition: all .15s ease;
+                transition: background-color .15s ease, color .15s ease;
             }
             .brikpanel-qe-order-btn:hover:not(:disabled) {
-                background: #f4f4f4;
+                background: #f1f1f1;
                 color: #303030;
-                border-color: #c8c8c8;
             }
             .brikpanel-qe-order-btn:focus {
                 outline: none;
                 box-shadow: 0 0 0 2px rgba(48, 48, 48, .15);
             }
             .brikpanel-qe-order-btn:disabled {
-                opacity: .35;
-                cursor: not-allowed;
+                opacity: .3;
+                cursor: default;
             }
             .brikpanel-qe-order-footer {
                 display: flex;

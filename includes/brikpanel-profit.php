@@ -8,7 +8,8 @@
  * Net profit = Revenue − Cost of goods − Expenses, where Expenses is the
  * composite of:
  *   - Ad spend          (Ad Platforms, store currency only)
- *   - Tax               (WooCommerce order tax on paid orders)
+ *   - Tax               (item and shipping tax on paid orders, less the tax
+ *                        their refunds gave back; store currency)
  *   - Vendor / Inventory (auto-expense rows from received purchase orders)
  *   - Other operating   (everything else in the Expenses module)
  *
@@ -419,22 +420,61 @@ function brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, $limit = 
 }
 
 /**
- * Customer returns (refund amount) on paid orders inside [$start_gmt, $end_gmt].
+ * Order meta key holding an order's total in the store currency, written by the
+ * multi-currency engine (includes/brikpanel-currency.php).
  *
- * Only refunds whose PARENT order is itself a paid order in the window count,
- * so this reconciles with the same order basis as Revenue/COGS: a partial
- * refund on a still-processing/completed order reduces what the merchant
- * actually kept, but a fully refunded order has already dropped out of the
- * paid-status set (Revenue never counted it, so its refund must not be
- * double-subtracted here). Works for BOTH simple and variable products — the
- * refund lives on the order, not the line item, so variation structure is
- * irrelevant. Admin orders excluded to match the revenue basis.
+ * The currency module may not be loaded in every context that reads a snapshot
+ * (the Sheets sync bootstraps this file on its own), so the literal key is the
+ * fallback rather than relying on the constant being defined.
  *
- * Returned as a POSITIVE figure (the amount given back); callers subtract it.
- *
- * @return float
+ * @return string
  */
-function brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
+function brikpanel_profit_fx_meta_key() {
+	return defined( 'BRIKPANEL_BASE_TOTAL_META' ) ? BRIKPANEL_BASE_TOTAL_META : '_brikpanel_base_total';
+}
+
+/**
+ * SQL for an order's rate to the store currency, to multiply an amount the
+ * order stores in its own currency (tax, a refund, a discount).
+ *
+ * The engine keeps the store-currency equivalent of the whole order total, not
+ * a rate, so the order's own rate is base_total / total, as in
+ * brikpanel_profit_shipping_cost(). The meta only exists on orders that needed
+ * converting; every other order gets 1, so a single-currency store's figures
+ * are numerically untouched. A refund is in its parent's currency, so callers
+ * pass the PARENT's meta row and total.
+ *
+ * @param string $alias      Alias of the joined base-total meta row (first-row guarded).
+ * @param string $total_expr SQL for that order's own total.
+ * @return string
+ */
+function brikpanel_profit_fx_factor_sql( $alias, $total_expr ) {
+	return "(CASE WHEN {$alias}.meta_value IS NOT NULL AND {$alias}.meta_value <> '' AND {$total_expr} > 0
+			THEN CAST({$alias}.meta_value AS DECIMAL(20,4)) / {$total_expr}
+			ELSE 1 END)";
+}
+
+/**
+ * What customers were handed back on paid orders inside [$start_gmt, $end_gmt]:
+ * the refund amount and the tax inside it, both in the store currency.
+ *
+ * One query feeds brikpanel_profit_returns() and the refunded tax that
+ * brikpanel_profit_tax() takes off, so the two always describe the same
+ * refunds. Only refunds whose PARENT order is itself a paid order in the
+ * window count, so this reconciles with the same order basis as Revenue/COGS:
+ * a partial refund on a still-processing/completed order reduces what the
+ * merchant actually kept, but a fully refunded order has already dropped out
+ * of the paid-status set (Revenue never counted it, so its refund must not be
+ * double-subtracted here). Works for BOTH simple and variable products: the
+ * refund lives on the order. Admin orders excluded to match the revenue basis.
+ *
+ * The tax is what WooCommerce recorded on the refund itself (item and
+ * shipping tax, stored negative). A refund entered as a bare amount, with no
+ * lines, records none: WooCommerce cannot tell how much of it was tax either.
+ *
+ * @return array{amount: float, tax: float} Both POSITIVE; callers subtract them.
+ */
+function brikpanel_profit_refund_totals( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
@@ -442,32 +482,44 @@ function brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace = 
 	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 
 	if ( $is_hpos ) {
-		$sql  = "SELECT COALESCE(SUM(ABS(r.total_amount)), 0)
+		// wc_orders.tax_amount is the ITEM tax only (WooCommerce maps it to
+		// cart_tax); shipping tax sits in the operational-data row.
+		$f    = brikpanel_profit_fx_factor_sql( 'bpfx', 'o.total_amount' );
+		$sql  = "SELECT COALESCE(SUM(ABS(r.total_amount) * {$f}), 0) AS amount,
+				COALESCE(SUM(-(COALESCE(r.tax_amount, 0) + COALESCE(rod.shipping_tax_amount, 0)) * {$f}), 0) AS tax
 			FROM {$wpdb->prefix}wc_orders r
 			INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = r.parent_order_id
+			LEFT JOIN {$wpdb->prefix}wc_order_operational_data rod ON rod.order_id = r.id
+			LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', 'bpfx' ) . "
 			WHERE r.type = 'shop_order_refund'
 			  AND o.type = 'shop_order' AND o.status IN ($sp)
 			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
-		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$args = array_merge( [ brikpanel_profit_fx_meta_key() ], $statuses, [ $start_gmt, $end_gmt ] );
 		$excl = brikpanel_admin_order_exclusion_sql( true );
 		// The helper emits a bare `customer_id`; both wc_orders rows in this
-		// join own that column, so qualify it to the parent (o) to avoid an
-		// "ambiguous column" error.
+		// join own that column (NULL on the refund row), so qualify it to the
+		// parent (o) to avoid an "ambiguous column" error.
 		if ( ! empty( $excl['sql'] ) ) {
 			$excl['sql'] = str_replace( 'customer_id', 'o.customer_id', $excl['sql'] );
 		}
 	} else {
 		// Legacy: refund posts (post_parent = order) carry the given-back
-		// amount in `_refund_amount` (positive). Sum it against orders in the
-		// paid-status window.
-		$sql  = "SELECT COALESCE(SUM(CAST(IFNULL(ra.meta_value, '0') AS DECIMAL(20,4))), 0)
+		// amount in `_refund_amount` (positive) and their tax in `_order_tax`
+		// and `_order_shipping_tax` (negative). The rate comes from the parent.
+		$f    = brikpanel_profit_fx_factor_sql( 'bpfx', "CAST(COALESCE(tot.meta_value, '0') AS DECIMAL(20,4))" );
+		$sql  = "SELECT COALESCE(SUM(CAST(IFNULL(ra.meta_value, '0') AS DECIMAL(20,4)) * {$f}), 0) AS amount,
+				COALESCE(SUM(-(CAST(IFNULL(rt.meta_value, '0') AS DECIMAL(20,4)) + CAST(IFNULL(rs.meta_value, '0') AS DECIMAL(20,4))) * {$f}), 0) AS tax
 			FROM {$wpdb->posts} r
 			INNER JOIN {$wpdb->posts} o ON o.ID = r.post_parent
 			LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key = '_refund_amount' AND " . brikpanel_sql_first_meta_guard( 'post', 'ra' ) . "
+			LEFT JOIN {$wpdb->postmeta} rt ON rt.post_id = r.ID AND rt.meta_key = '_order_tax' AND " . brikpanel_sql_first_meta_guard( 'post', 'rt' ) . "
+			LEFT JOIN {$wpdb->postmeta} rs ON rs.post_id = r.ID AND rs.meta_key = '_order_shipping_tax' AND " . brikpanel_sql_first_meta_guard( 'post', 'rs' ) . "
+			LEFT JOIN {$wpdb->postmeta} tot ON tot.post_id = o.ID AND tot.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'tot' ) . "
+			LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = o.ID AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', 'bpfx' ) . "
 			WHERE r.post_type = 'shop_order_refund'
 			  AND o.post_type = 'shop_order' AND o.post_status IN ($sp)
 			  AND o.post_date_gmt >= %s AND o.post_date_gmt <= %s";
-		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$args = array_merge( [ brikpanel_profit_fx_meta_key() ], $statuses, [ $start_gmt, $end_gmt ] );
 		$excl = brikpanel_admin_order_exclusion_sql( false, 'o.ID' );
 	}
 
@@ -484,7 +536,33 @@ function brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace = 
 		$args = array_merge( $args, $mp['args'] );
 	}
 
-	$returns = (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+	$row = $wpdb->get_row( $wpdb->prepare( $sql, $args ), ARRAY_A ); // phpcs:ignore
+
+	return [
+		'amount' => (float) ( $row['amount'] ?? 0 ),
+		'tax'    => (float) ( $row['tax'] ?? 0 ),
+	];
+}
+
+/**
+ * Customer returns (refund amount) on paid orders inside [$start_gmt, $end_gmt],
+ * in the store currency. See brikpanel_profit_refund_totals() for which
+ * refunds count.
+ *
+ * Returned as a POSITIVE figure (the amount given back); callers subtract it.
+ *
+ * @param string     $start_gmt           Y-m-d H:i:s (UTC)
+ * @param string     $end_gmt             Y-m-d H:i:s (UTC)
+ * @param bool       $exclude_marketplace Match the order basis of the revenue.
+ * @param array|null $refunds             brikpanel_profit_refund_totals() for the same
+ *                                        window, when the caller already has it.
+ * @return float
+ */
+function brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace = false, $refunds = null ) {
+	if ( ! is_array( $refunds ) ) {
+		$refunds = brikpanel_profit_refund_totals( $start_gmt, $end_gmt, $exclude_marketplace );
+	}
+	$returns = (float) ( $refunds['amount'] ?? 0 );
 
 	/**
 	 * Filter the customer-returns total that nets down Revenue in the Profit
@@ -504,7 +582,8 @@ function brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace = 
  * is NOT subtracted again anywhere — it just tells the merchant how much they
  * gave away in promotions for the period. Admin orders excluded to match the
  * revenue basis. Works for simple and variable products alike (the discount
- * lives on the order).
+ * lives on the order). In the store currency, like the Revenue lines it sits
+ * next to.
  *
  * @return float
  */
@@ -518,20 +597,28 @@ function brikpanel_profit_coupons( $start_gmt, $end_gmt, $exclude_marketplace = 
 	if ( $is_hpos ) {
 		// HPOS keeps the discount amount in the operational-data table, not on
 		// wc_orders itself (which has no discount column), so join it in.
-		$sql  = "SELECT COALESCE(SUM(od.discount_total_amount), 0)
+		$f    = brikpanel_profit_fx_factor_sql( 'bpfx', 'o.total_amount' );
+		$sql  = "SELECT COALESCE(SUM(COALESCE(od.discount_total_amount, 0) * {$f}), 0)
 			FROM {$wpdb->prefix}wc_orders o
 			LEFT JOIN {$wpdb->prefix}wc_order_operational_data od ON od.order_id = o.id
+			LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', 'bpfx' ) . "
 			WHERE o.type = 'shop_order' AND o.status IN ($sp)
 			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
-		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$args = array_merge( [ brikpanel_profit_fx_meta_key() ], $statuses, [ $start_gmt, $end_gmt ] );
 		$excl = brikpanel_admin_order_exclusion_sql( true );
+		if ( ! empty( $excl['sql'] ) ) {
+			$excl['sql'] = str_replace( 'customer_id', 'o.customer_id', $excl['sql'] );
+		}
 	} else {
-		$sql  = "SELECT COALESCE(SUM(CAST(IFNULL(d.meta_value, '0') AS DECIMAL(20,4))), 0)
+		$f    = brikpanel_profit_fx_factor_sql( 'bpfx', "CAST(COALESCE(tot.meta_value, '0') AS DECIMAL(20,4))" );
+		$sql  = "SELECT COALESCE(SUM(CAST(IFNULL(d.meta_value, '0') AS DECIMAL(20,4)) * {$f}), 0)
 			FROM {$wpdb->posts} p
 			LEFT JOIN {$wpdb->postmeta} d ON d.post_id = p.ID AND d.meta_key = '_cart_discount' AND " . brikpanel_sql_first_meta_guard( 'post', 'd' ) . "
+			LEFT JOIN {$wpdb->postmeta} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'tot' ) . "
+			LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = p.ID AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', 'bpfx' ) . "
 			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
 			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
-		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$args = array_merge( [ brikpanel_profit_fx_meta_key() ], $statuses, [ $start_gmt, $end_gmt ] );
 		$excl = brikpanel_admin_order_exclusion_sql( false, 'p.ID' );
 	}
 
@@ -559,12 +646,17 @@ function brikpanel_profit_coupons( $start_gmt, $end_gmt, $exclude_marketplace = 
 }
 
 /**
- * Total WooCommerce tax on paid orders inside [$start_gmt, $end_gmt].
- * Admin orders excluded to match the revenue/COGS basis.
+ * Tax charged on paid orders inside [$start_gmt, $end_gmt], item and shipping
+ * tax, in the store currency, before any refund. Admin orders excluded to
+ * match the revenue/COGS basis.
+ *
+ * Unfiltered. The Profit section uses brikpanel_profit_tax(), which takes off
+ * what refunds gave back; this gross figure is what a dashboard that ignores
+ * refunds (its Returns field switched off) shows instead.
  *
  * @return float
  */
-function brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
+function brikpanel_profit_tax_gross( $start_gmt, $end_gmt, $exclude_marketplace = false ) {
 	global $wpdb;
 
 	$is_hpos  = get_option( 'woocommerce_custom_orders_table_enabled' ) === 'yes';
@@ -572,24 +664,36 @@ function brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace = fals
 	$sp       = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 
 	if ( $is_hpos ) {
-		$sql  = "SELECT COALESCE(SUM(o.tax_amount), 0)
+		// wc_orders.tax_amount is the ITEM tax only (WooCommerce maps it to
+		// cart_tax); shipping tax sits in the operational-data row. Either
+		// column can be NULL, which would drop the whole order from the SUM.
+		$f    = brikpanel_profit_fx_factor_sql( 'bpfx', 'o.total_amount' );
+		$sql  = "SELECT COALESCE(SUM((COALESCE(o.tax_amount, 0) + COALESCE(od.shipping_tax_amount, 0)) * {$f}), 0)
 			FROM {$wpdb->prefix}wc_orders o
+			LEFT JOIN {$wpdb->prefix}wc_order_operational_data od ON od.order_id = o.id
+			LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', 'bpfx' ) . "
 			WHERE o.type = 'shop_order' AND o.status IN ($sp)
 			  AND o.date_created_gmt >= %s AND o.date_created_gmt <= %s";
-		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$args = array_merge( [ brikpanel_profit_fx_meta_key() ], $statuses, [ $start_gmt, $end_gmt ] );
 		$excl = brikpanel_admin_order_exclusion_sql( true );
+		if ( ! empty( $excl['sql'] ) ) {
+			$excl['sql'] = str_replace( 'customer_id', 'o.customer_id', $excl['sql'] );
+		}
 	} else {
 		// Legacy: cart tax + shipping tax meta.
-		$sql  = "SELECT COALESCE(SUM(
+		$f    = brikpanel_profit_fx_factor_sql( 'bpfx', "CAST(COALESCE(tot.meta_value, '0') AS DECIMAL(20,4))" );
+		$sql  = "SELECT COALESCE(SUM((
 				CAST(IFNULL(t1.meta_value,'0') AS DECIMAL(20,4)) +
 				CAST(IFNULL(t2.meta_value,'0') AS DECIMAL(20,4))
-			), 0)
+			) * {$f}), 0)
 			FROM {$wpdb->posts} p
 			LEFT JOIN {$wpdb->postmeta} t1 ON t1.post_id = p.ID AND t1.meta_key = '_order_tax' AND " . brikpanel_sql_first_meta_guard( 'post', 't1' ) . "
 			LEFT JOIN {$wpdb->postmeta} t2 ON t2.post_id = p.ID AND t2.meta_key = '_order_shipping_tax' AND " . brikpanel_sql_first_meta_guard( 'post', 't2' ) . "
+			LEFT JOIN {$wpdb->postmeta} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'tot' ) . "
+			LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = p.ID AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', 'bpfx' ) . "
 			WHERE p.post_type = 'shop_order' AND p.post_status IN ($sp)
 			  AND p.post_date_gmt >= %s AND p.post_date_gmt <= %s";
-		$args = array_merge( $statuses, [ $start_gmt, $end_gmt ] );
+		$args = array_merge( [ brikpanel_profit_fx_meta_key() ], $statuses, [ $start_gmt, $end_gmt ] );
 		$excl = brikpanel_admin_order_exclusion_sql( false, 'p.ID' );
 	}
 
@@ -604,12 +708,38 @@ function brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace = fals
 		$args = array_merge( $args, $mp['args'] );
 	}
 
-	$tax = (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+	return (float) $wpdb->get_var( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
+}
+
+/**
+ * Tax on paid orders inside [$start_gmt, $end_gmt] that the store still owes:
+ * the tax charged minus the tax refunds gave back, in the store currency.
+ *
+ * WooCommerce never changes an order's tax when it is refunded; the refund is
+ * a separate record carrying its own (negative) tax. Returns already holds the
+ * full refund amount, tax included, so counting the order's whole tax as well
+ * took the refunded tax off Net profit twice.
+ *
+ * @param string     $start_gmt           Y-m-d H:i:s (UTC)
+ * @param string     $end_gmt             Y-m-d H:i:s (UTC)
+ * @param bool       $exclude_marketplace Match the order basis of the revenue.
+ * @param float|null $gross               brikpanel_profit_tax_gross() for the same window, when known.
+ * @param float|null $refunded            The refund tax from brikpanel_profit_refund_totals(), when known.
+ * @return float
+ */
+function brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace = false, $gross = null, $refunded = null ) {
+	if ( null === $gross ) {
+		$gross = brikpanel_profit_tax_gross( $start_gmt, $end_gmt, $exclude_marketplace );
+	}
+	if ( null === $refunded ) {
+		$refunded = brikpanel_profit_refund_totals( $start_gmt, $end_gmt, $exclude_marketplace )['tax'];
+	}
+	$tax = max( 0.0, (float) $gross - (float) $refunded );
 
 	/**
 	 * Filter the tax total that feeds the Profit section.
 	 *
-	 * @param float  $tax       Order tax for the window.
+	 * @param float  $tax       Order tax for the window, net of the tax refunds gave back.
 	 * @param string $start_gmt Y-m-d H:i:s (UTC)
 	 * @param string $end_gmt   Y-m-d H:i:s (UTC)
 	 */
@@ -914,25 +1044,29 @@ const BRIKPANEL_TAX_EXCLUDED_OPTION = 'brikpanel_profit_exclude_tax';
 /**
  * Where the dashboard Profit section puts order tax.
  *
- *  - 'expenses' (stored 'no', the default): Revenue is what customers paid,
- *    tax included, and the same tax is one of the Expenses.
- *  - 'excluded' (stored 'yes'): Revenue is shown without tax and Expenses
- *    leave it out.
+ *  - 'excluded' (stored 'yes', the default since 3.3.34): Revenue is shown
+ *    without tax and Expenses leave it out, so Revenue − Cost of goods −
+ *    Expenses is Net profit and every share of revenue is measured against
+ *    revenue without tax.
+ *  - 'expenses' (stored 'no', the default until 3.3.33): Revenue is what
+ *    customers paid, tax included, and the same tax is one of the Expenses.
  *  - 'revenue' (stored 'revenue'): Revenue keeps the tax and shows the amount
  *    under its figure, Expenses leave it out, and Net profit takes it off.
  *
- * Net profit is the same figure in all three. Dashboard display only; the
- * snapshot that Google Sheets and Copy for AI read keeps its own shape (tax
- * in its own column there).
+ * brikpanel_apply_profit_tax_default() moved every store to 'yes' once, so a
+ * stored 'no' is a choice made after that. Anything that is neither 'no' nor
+ * 'revenue' reads as the default. Net profit is the same figure in all three.
+ * Dashboard display only; the snapshot that Google Sheets and Copy for AI
+ * read keeps its own shape (tax in its own column there).
  *
  * @return string 'expenses' | 'excluded' | 'revenue'
  */
 function brikpanel_profit_tax_mode() {
-	$value = get_option( BRIKPANEL_TAX_EXCLUDED_OPTION, 'no' );
-	if ( 'yes' === $value ) {
-		return 'excluded';
+	$value = get_option( BRIKPANEL_TAX_EXCLUDED_OPTION, 'yes' );
+	if ( 'no' === $value ) {
+		return 'expenses';
 	}
-	return 'revenue' === $value ? 'revenue' : 'expenses';
+	return 'revenue' === $value ? 'revenue' : 'excluded';
 }
 
 /**
@@ -1961,21 +2095,24 @@ function brikpanel_profit_per_order_expenses( $start_gmt, $end_gmt, $exclude_mar
 }
 
 /**
- * Store-currency ad spend split per platform for a local date range. Foreign-
- * currency spend is ignored (can't be converted reliably). Every known platform
- * key is always present (0.0 when absent) so callers can rely on the shape.
- * Empty array shape still holds when the Ad Platforms module is absent.
+ * Ad spend for a local date range in the store currency, with what was
+ * converted and what was left out. Spend billed in another currency is
+ * converted with the rate from Settings > Currency; spend in a currency with
+ * no rate is not counted and is reported in `unconverted` (see
+ * brikpanel_ad_spend_to_store_currency()). One query per call.
  *
  * @param string $start_local Y-m-d H:i:s
  * @param string $end_local   Y-m-d H:i:s
- * @return array<string,float> Keyed by platform slug (google_ads, meta_ads).
+ * @return array{by_platform: array<string,float>, total: float, unconverted: array<string,float>, converted: array<string,array<string,array{amount:float,rate:float}>>}
  */
-function brikpanel_profit_ad_spend_by_platform( $start_local, $end_local ) {
+function brikpanel_profit_ad_spend_details( $start_local, $end_local ) {
 	$out = [
-		'google_ads' => 0.0,
-		'meta_ads'   => 0.0,
+		'by_platform' => [],
+		'total'       => 0.0,
+		'unconverted' => [],
+		'converted'   => [],
 	];
-	if ( ! class_exists( 'Brikpanel_Ads_Store' ) ) {
+	if ( ! class_exists( 'Brikpanel_Ads_Store' ) || ! function_exists( 'brikpanel_ad_spend_to_store_currency' ) ) {
 		return $out;
 	}
 	$start_date = substr( (string) $start_local, 0, 10 );
@@ -1989,34 +2126,58 @@ function brikpanel_profit_ad_spend_by_platform( $start_local, $end_local ) {
 		return $out;
 	}
 
-	$rows = Brikpanel_Ads_Store::totals_for_range( $start_date, $end_date );
-	foreach ( (array) $rows as $r ) {
-		$platform = isset( $r['platform'] ) ? (string) $r['platform'] : '';
-		if ( ! array_key_exists( $platform, $out ) ) {
+	return brikpanel_ad_spend_to_store_currency( (array) Brikpanel_Ads_Store::totals_for_range( $start_date, $end_date ), $store_cur );
+}
+
+/**
+ * Store-currency ad spend split per platform for a local date range. Spend in
+ * another currency is converted with the Settings > Currency rate, spend with
+ * no rate is left out. Every known platform key is always present (0.0 when
+ * absent) so callers can rely on the shape. Empty array shape still holds when
+ * the Ad Platforms module is absent.
+ *
+ * @param string     $start_local Y-m-d H:i:s
+ * @param string     $end_local   Y-m-d H:i:s
+ * @param array|null $details     brikpanel_profit_ad_spend_details() of the same
+ *                                range when the caller already has it.
+ * @return array<string,float> Keyed by platform slug (google_ads, meta_ads).
+ */
+function brikpanel_profit_ad_spend_by_platform( $start_local, $end_local, $details = null ) {
+	$out = [
+		'google_ads' => 0.0,
+		'meta_ads'   => 0.0,
+	];
+	if ( ! is_array( $details ) ) {
+		$details = brikpanel_profit_ad_spend_details( $start_local, $end_local );
+	}
+	foreach ( (array) ( $details['by_platform'] ?? [] ) as $platform => $amount ) {
+		if ( ! array_key_exists( (string) $platform, $out ) ) {
 			continue; // unknown platform — never silently fold into a known bucket
 		}
-		$cur = isset( $r['currency'] ) && $r['currency'] !== '' ? $r['currency'] : $store_cur;
-		if ( $cur === $store_cur ) {
-			$out[ $platform ] += (float) $r['spend'];
-		}
+		$out[ $platform ] += (float) $amount;
 	}
 
 	return $out;
 }
 
 /**
- * Ad spend in the STORE currency for a local date range. Foreign-currency
- * spend is ignored (can't be converted reliably). 0 when the Ad Platforms
- * module is absent or has no data. This is the combined total across every
- * platform; the per-platform split lives in
+ * Ad spend in the STORE currency for a local date range, converted where the
+ * merchant entered a rate and without the spend that has none. 0 when the Ad
+ * Platforms module is absent or has no data. This is the combined total
+ * across every platform; the per-platform split lives in
  * brikpanel_profit_ad_spend_by_platform().
  *
- * @param string $start_local Y-m-d H:i:s
- * @param string $end_local   Y-m-d H:i:s
+ * @param string     $start_local Y-m-d H:i:s
+ * @param string     $end_local   Y-m-d H:i:s
+ * @param array|null $by_platform brikpanel_profit_ad_spend_by_platform() of the
+ *                                same range when the caller already has it.
  * @return float
  */
-function brikpanel_profit_ad_spend( $start_local, $end_local ) {
-	$spend = (float) array_sum( brikpanel_profit_ad_spend_by_platform( $start_local, $end_local ) );
+function brikpanel_profit_ad_spend( $start_local, $end_local, $by_platform = null ) {
+	if ( ! is_array( $by_platform ) ) {
+		$by_platform = brikpanel_profit_ad_spend_by_platform( $start_local, $end_local );
+	}
+	$spend = (float) array_sum( $by_platform );
 
 	/**
 	 * Filter the store-currency ad spend that feeds the Profit section.
@@ -2056,13 +2217,19 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 	$missing_products = ( $revenue > 0 && (int) $coverage['missing_lines'] > 0 )
 		? brikpanel_profit_cogs_missing_products( $start_gmt, $end_gmt, 20, $exclude_marketplace )
 		: [];
-	$tax      = brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace );
-	$shipping = brikpanel_profit_shipping_cost( $start_gmt, $end_gmt, $exclude_marketplace );
-	$fees     = brikpanel_profit_payment_fees( $start_gmt, $end_gmt, $exclude_marketplace );
-	$returns  = brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace );
+	// One refund query feeds both Returns and the tax those refunds gave back.
+	$refunds   = brikpanel_profit_refund_totals( $start_gmt, $end_gmt, $exclude_marketplace );
+	$tax_gross = brikpanel_profit_tax_gross( $start_gmt, $end_gmt, $exclude_marketplace );
+	$tax       = brikpanel_profit_tax( $start_gmt, $end_gmt, $exclude_marketplace, $tax_gross, $refunds['tax'] );
+	$shipping  = brikpanel_profit_shipping_cost( $start_gmt, $end_gmt, $exclude_marketplace );
+	$fees      = brikpanel_profit_payment_fees( $start_gmt, $end_gmt, $exclude_marketplace );
+	$returns   = brikpanel_profit_returns( $start_gmt, $end_gmt, $exclude_marketplace, $refunds );
 	$coupons  = brikpanel_profit_coupons( $start_gmt, $end_gmt, $exclude_marketplace );
-	$ads_by   = brikpanel_profit_ad_spend_by_platform( $start_local, $end_local );
-	$ads      = brikpanel_profit_ad_spend( $start_local, $end_local );
+	// One read of the spend rows feeds the split, the total and the two
+	// currency lists below.
+	$ads_fx   = brikpanel_profit_ad_spend_details( $start_local, $end_local );
+	$ads_by   = brikpanel_profit_ad_spend_by_platform( $start_local, $end_local, $ads_fx );
+	$ads      = brikpanel_profit_ad_spend( $start_local, $end_local, $ads_by );
 
 	list( $exp_manual, $exp_inventory, $exp_other ) = brikpanel_profit_manual_expenses( $start_local, $end_local );
 	$exp_by_category = brikpanel_profit_manual_expenses_by_category( $start_local, $end_local );
@@ -2101,7 +2268,11 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		'returns_raw'        => $returns,
 		'coupons_raw'        => $coupons,
 		'cogs_raw'           => $cogs,
-		'tax_raw'            => $tax,
+		'tax_raw'            => $tax,        // charged minus refunded: what the store still owes
+		// The two parts of tax_raw. A dashboard that ignores refunds (its
+		// Returns field switched off) shows the gross figure instead.
+		'tax_gross_raw'      => $tax_gross,
+		'tax_refunded_raw'   => $refunds['tax'],
 		'shipping_cost_raw'  => $shipping,
 		// Scalar alongside the items below because the Excel export and the
 		// Sheets Profit tab read scalars, not lines — the same reason
@@ -2111,6 +2282,13 @@ function brikpanel_profit_snapshot( $revenue, $start_gmt, $end_gmt, $start_local
 		// Profit tab read scalars, not breakdown lines.
 		'payment_fees_raw'   => $fees['total'],
 		'ad_spend_raw'       => $ads,
+		// Ad spend billed in another currency. `converted` (platform =>
+		// currency => original amount and rate) is already inside ad_spend_raw
+		// and lets the breakdown line show the account's own figure;
+		// `unconverted` (currency => amount) had no rate and is NOT in it, so
+		// Expenses is understated until the merchant enters one.
+		'ad_spend_converted'   => $ads_fx['converted'],
+		'ad_spend_unconverted' => $ads_fx['unconverted'],
 		'exp_manual_raw'     => $exp_manual,
 		'exp_inventory_raw'  => $exp_inventory,
 		'exp_other_raw'      => $exp_other,

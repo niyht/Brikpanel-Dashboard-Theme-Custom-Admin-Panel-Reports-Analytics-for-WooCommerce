@@ -184,6 +184,13 @@ function brikpanel_export_placeholder_field_ids() {
 		// Lists the person's own phones (front-end/push/brikpanel-push-admin.php).
 		// The devices live in their own table and never travel in a settings file.
 		'brikpanel_push_devices_card',
+		// "Notification text" (front-end/push/brikpanel-push-admin.php): the row
+		// behind it is brikpanel_push_parts, registered by the phone module.
+		'brikpanel_push_parts_field',
+		// Order numbers card (front-end/orders/brikpanel-order-numbers.php): a
+		// start number applied once on save, and the "Next order number" line.
+		'brikpanel_order_numbers_start',
+		'brikpanel_order_numbers_preview_field',
 	];
 }
 
@@ -244,6 +251,7 @@ function brikpanel_export_core_table() {
 		'brikpanel_meta_fanout_refresh_done',
 		'brikpanel_native_cogs_backfilled',
 		'brikpanel_payment_fees_default_applied',
+		'brikpanel_profit_tax_default_applied',
 		'brikpanel_shipping_cost_default_applied',
 		'brikpanel_var_stock_fix_cursor',
 		'brikpanel_var_stock_fix_done',
@@ -296,11 +304,18 @@ function brikpanel_export_core_table() {
 		'brikpanel_bot_traffic_auto',
 		'brikpanel_bot_traffic_applied',
 		'brikpanel_bot_traffic_kept',
+		// Days the merchant marked as real traffic (3.3.34).
+		'brikpanel_bot_traffic_real_days',
+		// The day's decision whether Order locations shows one country's
+		// region map, worked out from this store's own orders.
+		'brikpanel_region_focus',
 		// Person check (3.3.30): when this site started it, and the cloud
 		// address rule's daily tally and pause.
 		'brikpanel_human_proof_since',
 		'brikpanel_dc_stats',
 		'brikpanel_dc_paused_until',
+		// The day this site started counting visitor countries (3.3.40).
+		'brikpanel_visitor_countries_since',
 		// Read-only escape hatches: nothing in the plugin ever writes these,
 		// they exist to be set by hand on one site for one reason.
 		'brikpanel_modern_segments',

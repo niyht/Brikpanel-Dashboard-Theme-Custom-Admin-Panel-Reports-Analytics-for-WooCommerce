@@ -377,7 +377,7 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 			'name' => __( 'Order custom fields', 'brikpanel' ),
 			'type' => 'title',
 			'id'   => 'brk_order_fields_title',
-			'desc' => __( 'Show a chosen list of order custom fields (extra checkout fields and other order meta) as a clean "Additional details" card on the order page. The card only appears for orders that actually have one of these fields filled in.', 'brikpanel' ),
+			'desc' => __( 'Show a chosen list of order custom fields (extra checkout fields and other order meta) as a clean "Additional details" card on the order page. The card only appears for orders that actually have one of these fields filled in. The same fields also print under the billing address on the order summary.', 'brikpanel' ),
 		],
 		[
 			'name'     => __( 'Fields to display', 'brikpanel' ),

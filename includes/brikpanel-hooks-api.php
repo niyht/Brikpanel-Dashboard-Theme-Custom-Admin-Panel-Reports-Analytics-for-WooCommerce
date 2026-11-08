@@ -201,6 +201,13 @@ function brikpanel_get_developer_hooks() {
             'example'     => "// Also find orders by a tracking number kept in order meta.\nadd_filter( 'brikpanel_search_order_ids', function ( \$ids, \$query, \$terms ) {\n    global \$wpdb;\n\n    \$found = \$wpdb->get_col(\n        \$wpdb->prepare(\n            \"SELECT order_id FROM {\$wpdb->prefix}wc_orders_meta\n             WHERE meta_key = '_tracking_number' AND meta_value = %s\n             LIMIT 20\",\n            \$query\n        )\n    );\n\n    // Put our own matches first so the cap never cuts them off.\n    return array_merge( array_map( 'absint', \$found ), \$ids );\n}, 10, 3 );",
         ],
         [
+            'name'        => 'brikpanel_order_numbers_should_number',
+            'type'        => 'filter',
+            'signature'   => 'apply_filters( "brikpanel_order_numbers_should_number", bool $number, WC_Order $order )',
+            'description' => __( 'Whether BrikPanel gives a new order the next sequential number. It runs once, when WooCommerce reports the order as placed, and only while Sequential order numbers is on (WooCommerce > Settings > BrikPanel > Orders). Return false to leave that order with its WooCommerce number, for example orders a marketplace sync imports. An order that already carries a number of its own keeps it either way. The number is stored in the _order_number order meta.', 'brikpanel' ),
+            'example'     => "// Marketplace orders keep their WooCommerce number.\nadd_filter( 'brikpanel_order_numbers_should_number', function ( \$number, \$order ) {\n    if ( 'my-marketplace' === \$order->get_created_via() ) {\n        return false;\n    }\n    return \$number;\n}, 10, 2 );",
+        ],
+        [
             'name'        => 'brikpanel_search_sources',
             'type'        => 'filter',
             'signature'   => 'apply_filters( "brikpanel_search_sources", array $sources, string $context )',

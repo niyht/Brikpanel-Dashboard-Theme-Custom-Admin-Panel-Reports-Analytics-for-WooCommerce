@@ -159,12 +159,16 @@ function brikpanel_get_status_emails( $reset = false ) {
 	return $cache;
 }
 
+// Flushed on option change, and when WPML switches language: the subject,
+// heading and body are translatable through WPML String Translation
+// (wpml-config.xml), which answers in the current language.
 $brikpanel_status_emails_reset = static function () {
 	brikpanel_get_status_emails( true );
 };
 add_action( 'add_option_' . BRIKPANEL_STATUS_EMAILS_OPTION, $brikpanel_status_emails_reset );
 add_action( 'update_option_' . BRIKPANEL_STATUS_EMAILS_OPTION, $brikpanel_status_emails_reset );
 add_action( 'delete_option_' . BRIKPANEL_STATUS_EMAILS_OPTION, $brikpanel_status_emails_reset );
+add_action( 'wpml_language_has_switched', $brikpanel_status_emails_reset );
 unset( $brikpanel_status_emails_reset );
 
 /**
@@ -294,6 +298,51 @@ function brikpanel_status_email_render( $order, $heading, $body ) {
 }
 
 /**
+ * Subject and full HTML of the email for one destination status, worded in
+ * the language current right now. The wording is read here, not handed in:
+ * with WPML String Translation the saved subject, heading, body and the
+ * status name come back in the current language, so the caller decides the
+ * language by switching around this call.
+ *
+ * @param string   $to    Destination status slug (bare).
+ * @param WC_Order $order Order.
+ * @return array{subject:string,html:string}
+ */
+function brikpanel_status_email_build( $to, $order ) {
+	$configs  = brikpanel_get_status_emails();
+	$cfg      = isset( $configs[ $to ] ) ? $configs[ $to ] : [ 'subject' => '', 'heading' => '', 'content' => '' ];
+	$defaults = brikpanel_status_email_defaults();
+
+	$subject_tpl = '' !== trim( $cfg['subject'] ) ? $cfg['subject'] : $defaults['subject'];
+	$heading_tpl = '' !== trim( $cfg['heading'] ) ? $cfg['heading'] : $defaults['heading'];
+	$content_tpl = '' !== trim( $cfg['content'] ) ? $cfg['content'] : $defaults['content'];
+
+	$subject = brikpanel_status_email_apply_tokens( $subject_tpl, $order, false );
+	$heading = brikpanel_status_email_apply_tokens( $heading_tpl, $order, false );
+	$body    = brikpanel_status_email_apply_tokens( $content_tpl, $order, true );
+
+	return [
+		'subject' => $subject,
+		'html'    => brikpanel_status_email_render( $order, $heading, $body ),
+	];
+}
+
+/**
+ * Forget the per-request copies of the email wording and the status names,
+ * so the next read asks the option (and WPML String Translation) again. Used
+ * around a language switch, also when WPML's language did not change but
+ * String Translation was just asked to translate them in wp-admin.
+ *
+ * @return void
+ */
+function brikpanel_status_email_forget_wording() {
+	brikpanel_get_status_emails( true );
+	if ( function_exists( 'brikpanel_get_custom_order_statuses' ) ) {
+		brikpanel_get_custom_order_statuses( true );
+	}
+}
+
+/**
  * On every order-status transition, send the configured email if the destination
  * status has one enabled. Wrapped in a try/catch so a mail failure can never
  * break the status change itself.
@@ -355,28 +404,48 @@ function brikpanel_status_email_on_status_changed( $order_id, $from, $to, $order
 			WC()->mailer();
 		}
 
-		$cfg      = $configs[ $to ];
-		$defaults = brikpanel_status_email_defaults();
-
-		$subject_tpl = '' !== trim( $cfg['subject'] ) ? $cfg['subject'] : $defaults['subject'];
-		$heading_tpl = '' !== trim( $cfg['heading'] ) ? $cfg['heading'] : $defaults['heading'];
-		$content_tpl = '' !== trim( $cfg['content'] ) ? $cfg['content'] : $defaults['content'];
-
-		$subject = brikpanel_status_email_apply_tokens( $subject_tpl, $order, false );
-		$heading = brikpanel_status_email_apply_tokens( $heading_tpl, $order, false );
-		$body    = brikpanel_status_email_apply_tokens( $content_tpl, $order, true );
-		$html    = brikpanel_status_email_render( $order, $heading, $body );
+		// Who receives it does not depend on the language; the wording does and
+		// is read inside brikpanel_status_email_build().
+		$cfg = $configs[ $to ];
 
 		// Send to the customer separately from staff so neither party's address is
 		// ever exposed in the other's To header (mirrors WooCommerce's own split
 		// between customer emails and admin emails).
 		$mailer = new WC_Email();
 
+		// The message as the staff copy reads it. The customer's copy is reused
+		// when nothing switched for it, so a store without WPML builds once.
+		$staff_message = null;
+
 		if ( $cfg['customer'] ) {
 			$customer_email = $order->get_billing_email();
 			if ( $customer_email && is_email( $customer_email ) ) {
 				$recipients = apply_filters( 'brikpanel_status_email_customer_recipient', $customer_email, $to, $order );
-				$mailer->send( $recipients, $subject, $html, $mailer->get_headers(), [] );
+				// The customer reads the order's language (WPML): the texts, the
+				// status name, WooCommerce's own words and the date are built in
+				// it, then everything goes back for the staff copy. A store
+				// without WPML, or an order whose language cannot be told, keeps
+				// the request's language as before.
+				// The option names, not the order-statuses module's constant: this
+				// file must keep working if that module could not be loaded.
+				$switched = function_exists( 'brikpanel_wpml_switch' )
+					? brikpanel_wpml_switch( brikpanel_wpml_order_language( $order ), [ BRIKPANEL_STATUS_EMAILS_OPTION, 'brikpanel_custom_order_statuses' ] )
+					: null;
+				try {
+					if ( null !== $switched ) {
+						brikpanel_status_email_forget_wording();
+					}
+					$message = brikpanel_status_email_build( $to, $order );
+					$mailer->send( $recipients, $message['subject'], $message['html'], $mailer->get_headers(), [] );
+				} finally {
+					if ( null !== $switched ) {
+						brikpanel_wpml_restore( $switched );
+						brikpanel_status_email_forget_wording();
+					}
+				}
+				if ( null === $switched ) {
+					$staff_message = $message;
+				}
 			}
 		}
 
@@ -397,7 +466,10 @@ function brikpanel_status_email_on_status_changed( $order_id, $from, $to, $order
 		 */
 		$staff = apply_filters( 'brikpanel_status_email_staff_recipients', $staff, $to, $order );
 		if ( $staff ) {
-			$mailer->send( implode( ', ', $staff ), $subject, $html, $mailer->get_headers(), [] );
+			if ( null === $staff_message ) {
+				$staff_message = brikpanel_status_email_build( $to, $order );
+			}
+			$mailer->send( implode( ', ', $staff ), $staff_message['subject'], $staff_message['html'], $mailer->get_headers(), [] );
 		}
 	} catch ( \Throwable $e ) {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {

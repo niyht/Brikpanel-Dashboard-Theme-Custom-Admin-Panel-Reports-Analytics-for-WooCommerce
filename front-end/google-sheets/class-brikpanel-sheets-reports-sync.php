@@ -210,8 +210,10 @@ class Brikpanel_Sheets_Reports_Sync {
 	}
 
 	/**
-	 * Profit snapshot per rolling window. Uses the shared profit helper so
-	 * the sheet always matches the dashboard's Profit section exactly.
+	 * Profit snapshot per rolling window. Uses the shared profit helper, so
+	 * Net profit always matches the dashboard's Profit section. The sheet keeps
+	 * its own shape: Revenue is gross and Tax is one of the costs, wherever the
+	 * dashboard's "Tax in the Profit section" setting puts it.
 	 */
 	private function build_profit() {
 		$header = [

@@ -474,9 +474,27 @@ class Brikpanel_Stock_Orders {
 				'qty_received' => (float) $r->qty_received,
 				'unit_cost'    => (float) $r->unit_cost,
 				'line_total'   => (float) $r->line_total,
-			];
+			] + self::supplier_code_fields( (int) $r->product_id, (int) $r->variation_id );
 		}
 		return $out;
+	}
+
+	/**
+	 * The supplier's own code for a line, as it is now on the product, with
+	 * its label ("AliExpress SKU:"): what the supplier knows the product by,
+	 * shown beside the store's SKU. Empty strings when there is none.
+	 *
+	 * @param int $product_id   Product, or a variation's main product.
+	 * @param int $variation_id Variation, 0 for none.
+	 * @return array{supplier_sku: string, supplier_sku_label: string}
+	 */
+	private static function supplier_code_fields( $product_id, $variation_id ) {
+		$code  = Brikpanel_Vendor_Product_Editor::resolve_vendor_sku( $product_id, $variation_id );
+		$label = '' !== $code['sku'] ? Brikpanel_Vendor_Product_Editor::vendor_sku_label( $code['vendor_id'] ) : '';
+		return [
+			'supplier_sku'       => '' !== $label ? $code['sku'] : '',
+			'supplier_sku_label' => $label,
+		];
 	}
 
 	// =========================================================================
@@ -835,10 +853,12 @@ class Brikpanel_Stock_Orders {
 		];
 		$ids = get_posts( $args );
 
-		// Also query variations / products by SKU directly.
+		// Also query variations / products by SKU directly, the store's or the
+		// supplier's own code: a supplier's invoice names products by its code.
 		global $wpdb;
 		$sku_ids = $wpdb->get_col( $wpdb->prepare(
-			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_sku' AND meta_value LIKE %s LIMIT 20",
+			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key IN ( '_sku', %s ) AND meta_value LIKE %s LIMIT 20",
+			Brikpanel_Vendor_Product_Editor::META_VENDOR_SKU,
 			'%' . $wpdb->esc_like( $term ) . '%'
 		) ); // phpcs:ignore
 
@@ -869,12 +889,12 @@ class Brikpanel_Stock_Orders {
 				$results[]    = [
 					'product_id'   => $parent_id,
 					'variation_id' => $product->get_id(),
-					'title'        => ( $parent ? brikpanel_plain_label( $parent->get_name() ) : '' ) . ', ' . brikpanel_plain_label( wc_get_formatted_variation( $product, true ) ),
+					'title'        => ( $parent ? brikpanel_plain_label( $parent->get_name() ) : '' ) . ', ' . brikpanel_plain_label( brikpanel_formatted_variation( $product ) ),
 					'sku'          => $product->get_sku(),
 					'cost'         => $this->resolve_existing_cost( $product ),
-				];
+				] + self::supplier_code_fields( $parent_id, $product->get_id() );
 			} elseif ( $product->is_type( 'variable' ) ) {
-				$children = $product->get_children();
+				$children = brikpanel_variation_ids( $product );
 				foreach ( $children as $vid ) {
 					$variation = wc_get_product( $vid );
 					if ( ! $variation ) {
@@ -888,10 +908,10 @@ class Brikpanel_Stock_Orders {
 					$results[]    = [
 						'product_id'   => $product->get_id(),
 						'variation_id' => $variation->get_id(),
-						'title'        => brikpanel_plain_label( $product->get_name() ) . ', ' . brikpanel_plain_label( wc_get_formatted_variation( $variation, true ) ),
+						'title'        => brikpanel_plain_label( $product->get_name() ) . ', ' . brikpanel_plain_label( brikpanel_formatted_variation( $variation ) ),
 						'sku'          => $variation->get_sku(),
 						'cost'         => $this->resolve_existing_cost( $variation ),
-					];
+					] + self::supplier_code_fields( $product->get_id(), $variation->get_id() );
 				}
 			} else {
 				$key = $product->get_id() . '|0';
@@ -905,7 +925,7 @@ class Brikpanel_Stock_Orders {
 					'title'        => brikpanel_plain_label( $product->get_name() ),
 					'sku'          => $product->get_sku(),
 					'cost'         => $this->resolve_existing_cost( $product ),
-				];
+				] + self::supplier_code_fields( $product->get_id(), 0 );
 			}
 			if ( count( $results ) >= 30 ) {
 				break;

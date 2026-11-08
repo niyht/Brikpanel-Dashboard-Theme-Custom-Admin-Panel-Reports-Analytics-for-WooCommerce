@@ -1,0 +1,13 @@
+/**
+ * BrikPanel: the supplier's code under each order line
+ * (front-end/vendors/class-brikpanel-vendor-order-items.php).
+ *
+ * Reads like WooCommerce's own SKU line and BrikPanel's weight line, with
+ * BrikPanel's order screen on or off: text people read is #616161.
+ */
+#woocommerce-order-items .woocommerce_order_items_wrapper table.woocommerce_order_items td.name .brikpanel-order-item-supplier-sku {
+	display: block;
+	margin-top: .5em;
+	font-size: .92em;
+	color: #616161;
+}

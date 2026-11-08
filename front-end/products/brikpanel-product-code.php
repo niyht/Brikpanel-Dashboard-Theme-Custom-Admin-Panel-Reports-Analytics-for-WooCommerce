@@ -124,7 +124,7 @@ function brikpanel_pcfw_product_code_display($product) {
 
     if ($product->is_type('variable')) {
         $found = [];
-        foreach ($product->get_children() as $cid) {
+        foreach (brikpanel_variation_ids($product) as $cid) {
             $vcode = trim((string) get_post_meta($cid, $key, true));
             if ($vcode !== '') {
                 $found[$vcode] = true;

@@ -1,0 +1,710 @@
+/* =============================================================================
+   BrikPanel - Store Health: unused images card
+   (front-end/brikcontrol/views/partials/unused-images-card.php)
+
+   Loaded on the Store Health page only; the card sits in the page's narrow
+   shell under the check cards and borrows their look (.brikpanel-bc-card,
+   .brikpanel-bc-progress, .brikpanel-bc-details). Buttons are the shared
+   .brikpanel-btn. The selection bar is the products list's: it floats at the
+   bottom of the grid while images are selected.
+
+   The preview is made into a sheet by front-end/shared/brikpanel-sheet.js
+   (focus, Escape, the dimmed and inert page, the back gesture): a window in
+   the middle of the screen on a desktop, a sheet from the bottom on a phone.
+   It is moved to <body>, so its rules stand on their own.
+   ============================================================================= */
+
+.brikpanel-unimg {
+	margin-top: 1rem;
+}
+
+.brikpanel-unimg .brikpanel-unimg-head {
+	flex-wrap: wrap;
+	margin-bottom: 0.5rem;
+}
+
+.brikpanel-unimg-lead {
+	margin: 0 0 0.25rem;
+	font-size: 0.875rem;
+	color: #303030;
+}
+
+.brikpanel-unimg-note {
+	margin: 0;
+	font-size: 0.75rem;
+	color: #616161;
+}
+
+.brikpanel-unimg-start {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 0.875rem;
+	margin-top: 0.875rem;
+}
+
+/* The scan's bar inside the card: the page's bar, on the card's grey. */
+.brikpanel-unimg .brikpanel-unimg-progress {
+	margin: 0.25rem 0 0.5rem;
+	background: #fafafa;
+	box-shadow: none;
+}
+
+.brikpanel-unimg-summary {
+	margin-bottom: 0.875rem;
+}
+
+.brikpanel-unimg-stale {
+	margin: 0 0 0.875rem;
+	padding: 0.625rem 0.75rem;
+	font-size: 0.8125rem;
+	color: var(--bp-warning-text, #8a6100);
+	background: var(--bp-warning-bg, #fdf6e3);
+	border: 1px solid var(--bp-warning-border, #f0d590);
+	border-radius: 0.5rem;
+}
+
+/* "Select all" at the start, the sort at the end; under each other when narrow. */
+.brikpanel-unimg-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 1rem;
+	margin-bottom: 0.625rem;
+}
+
+.brikpanel-unimg-sort {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-inline-start: auto;
+	font-size: 0.8125rem;
+	color: #616161;
+}
+
+.wp-core-ui select.brikpanel-unimg-sort-select {
+	width: auto;
+	min-width: 9.5rem;
+	max-width: 100%;
+}
+
+/* ---------------------------------------------------------------- the grid */
+.brikpanel-unimg-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(7.25rem, 1fr));
+	gap: 0.625rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.brikpanel-unimg-tile {
+	position: relative;
+	margin: 0;
+	aspect-ratio: 1 / 1;
+	overflow: hidden;
+	background: #f7f7f7;
+	border-radius: 0.625rem;
+	box-shadow: inset 0 0 0 1px #e3e3e3;
+	transition: box-shadow 0.15s ease;
+}
+
+.brikpanel-unimg-tile:hover {
+	box-shadow: inset 0 0 0 1px #c9c9c9;
+}
+
+.brikpanel-unimg-tile.is-selected {
+	box-shadow: inset 0 0 0 2px #303030;
+}
+
+.brikpanel-unimg-open {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	color: #616161;
+	background: none;
+	border: 0;
+	border-radius: inherit;
+	cursor: zoom-in;
+}
+
+.brikpanel-unimg-open:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.brikpanel-unimg-open:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: -2px;
+}
+
+.brikpanel-unimg-open img {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
+	padding: 0.375rem;
+	object-fit: contain;
+	transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* A picked image steps back a little, as in a photo library. */
+.brikpanel-unimg-tile.is-selected .brikpanel-unimg-open img {
+	transform: scale(0.9);
+}
+
+.brikpanel-unimg-missing {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.5rem;
+	font-size: 0.6875rem;
+	font-weight: 550;
+	line-height: 1.3;
+	color: #616161;
+	text-align: center;
+}
+
+.brikpanel-unimg-missing[hidden] {
+	display: none;
+}
+
+/* The tick box: a real checkbox under a drawn one, shown on hover, on focus,
+   while anything is selected, and always where there is no hover (touch). */
+.brikpanel-unimg-check {
+	position: absolute;
+	top: 0.25rem;
+	inset-inline-start: 0.25rem;
+	z-index: 1;
+	display: flex;
+	width: 1.75rem;
+	height: 1.75rem;
+	margin: 0;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+.brikpanel-unimg-tile:hover .brikpanel-unimg-check,
+.brikpanel-unimg-tile:focus-within .brikpanel-unimg-check,
+.brikpanel-unimg-tile.is-selected .brikpanel-unimg-check,
+.brikpanel-unimg-view.is-selecting .brikpanel-unimg-check {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.brikpanel-unimg-check {
+		opacity: 1;
+	}
+}
+
+.brikpanel-unimg-check input[type="checkbox"] {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.brikpanel-unimg-check-box {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	margin: auto;
+	background: #fff;
+	border-radius: 0.3125rem;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.14);
+	transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.brikpanel-unimg-check input[type="checkbox"]:checked + .brikpanel-unimg-check-box {
+	background: #303030;
+	box-shadow: 0 0 0 1px #303030, 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+
+.brikpanel-unimg-check input[type="checkbox"]:checked + .brikpanel-unimg-check-box::after {
+	content: "";
+	width: 0.5rem;
+	height: 0.28rem;
+	margin-top: -0.125rem;
+	border-bottom: 2px solid #fff;
+	border-left: 2px solid #fff;
+	transform: rotate(-45deg);
+}
+
+.brikpanel-unimg-check input[type="checkbox"]:focus-visible + .brikpanel-unimg-check-box {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.brikpanel-unimg-size {
+	position: absolute;
+	bottom: 0.375rem;
+	inset-inline-end: 0.375rem;
+	padding: 0.0625rem 0.4375rem;
+	font-size: 0.6875rem;
+	font-weight: 550;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.45;
+	color: #fff;
+	white-space: nowrap;
+	background: rgba(48, 48, 48, 0.82);
+	border-radius: 1rem;
+	pointer-events: none;
+}
+
+.brikpanel-unimg-more {
+	display: flex;
+	justify-content: center;
+	margin-top: 0.875rem;
+}
+
+.brikpanel-unimg-more[hidden] {
+	display: none;
+}
+
+/* ----------------------------------------------------- the selection bar */
+.brikpanel-unimg-bar {
+	position: sticky;
+	bottom: 1.25rem;
+	z-index: 30;
+	display: flex;
+	justify-content: center;
+	margin-top: 0.875rem;
+	pointer-events: none;
+}
+
+.brikpanel-unimg-bar[hidden] {
+	display: none;
+}
+
+/* While it shows, an image reached with Tab scrolls into view above it. */
+html:has(.brikpanel-unimg-bar:not([hidden])),
+html:has(.brikpanel-unimg-bar:not([hidden])) body {
+	scroll-padding-bottom: 5.5rem;
+}
+
+.brikpanel-unimg-bar-inner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 0.375rem;
+	box-sizing: border-box;
+	max-width: 100%;
+	padding: 0.5rem 0.625rem;
+	background: #fff;
+	border-radius: 0.75rem;
+	box-shadow: 0 8px 24px -6px rgba(26, 26, 26, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.06);
+	pointer-events: auto;
+	animation: brikpanel-unimg-bar-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes brikpanel-unimg-bar-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+}
+
+.brikpanel-unimg-bar-count {
+	padding: 0 0.5rem 0 0.375rem;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	font-variant-numeric: tabular-nums;
+	color: #303030;
+	white-space: nowrap;
+}
+
+.brikpanel-unimg-bar-link {
+	margin: 0;
+	padding: 0.3125rem 0.5rem;
+	font-family: inherit;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	line-height: 1.125rem;
+	color: #616161;
+	white-space: nowrap;
+	background: transparent;
+	border: 0;
+	border-radius: 0.5rem;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.brikpanel-unimg-bar-link[hidden] {
+	display: none;
+}
+
+.brikpanel-unimg-bar-link:hover {
+	color: #303030;
+	background: #f1f1f1;
+}
+
+.brikpanel-unimg-bar-link:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: -2px;
+}
+
+.brikpanel-unimg-bar-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.375rem;
+	padding-inline-start: 0.375rem;
+	border-inline-start: 1px solid #ebebeb;
+}
+
+.brikpanel-unimg.is-busy .brikpanel-unimg-grid {
+	opacity: 0.6;
+	transition: opacity 0.15s ease;
+}
+
+/* What the last action did, with Undo. Out of the layout while empty. */
+.brikpanel-unimg-status {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.25rem 0.75rem;
+	margin: 0.75rem 0 0;
+	font-size: 0.8125rem;
+	color: #303030;
+}
+
+.brikpanel-unimg-status:empty {
+	display: none;
+}
+
+.brikpanel-unimg .brikpanel-unimg-trash {
+	margin-top: 1rem;
+}
+
+.brikpanel-unimg-trash > .brikpanel-unimg-note {
+	margin: 0.25rem 0 0.75rem;
+}
+
+.brikpanel-unimg .brikpanel-unimg-foot {
+	display: block;
+	margin: 0;
+}
+
+/* ------------------------------------------------------------ the preview */
+.brikpanel-unimg-dialog {
+	position: fixed;
+	inset: 0;
+	z-index: 100005;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 19rem;
+	box-sizing: border-box;
+	width: min(62rem, calc(100vw - 4rem));
+	height: min(40rem, calc(100vh - 6rem));
+	margin: auto;
+	overflow: hidden;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	font-size: 0.875rem;
+	line-height: 1.5;
+	color: #303030;
+	background: #fff;
+	border-radius: 1rem;
+	box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.06);
+	outline: 0;
+	opacity: 0;
+	visibility: hidden;
+	transform: scale(0.98);
+	transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
+}
+
+.brikpanel-unimg-dialog *,
+.brikpanel-unimg-dialog *::before,
+.brikpanel-unimg-dialog *::after {
+	box-sizing: border-box;
+}
+
+.brikpanel-unimg-dialog.is-sheet-open,
+.brikpanel-unimg-dialog.is-open:not(.brikpanel-sheet-attached) {
+	opacity: 1;
+	visibility: visible;
+	transform: none;
+	transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s;
+}
+
+.brikpanel-unimg-dialog-media {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 0;
+	min-height: 0;
+	background: #f7f7f7;
+}
+
+.brikpanel-unimg-dialog-media img {
+	display: block;
+	max-width: 100%;
+	max-height: 100%;
+	padding: 1.5rem;
+	object-fit: contain;
+}
+
+.brikpanel-unimg-dialog-media img[hidden] {
+	display: none;
+}
+
+.brikpanel-unimg-nav {
+	position: absolute;
+	top: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	margin: -1.25rem 0 0;
+	padding: 0;
+	color: #303030;
+	background: #fff;
+	border: 0;
+	border-radius: 50%;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.04);
+	cursor: pointer;
+	transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.brikpanel-unimg-nav:hover:not(:disabled) {
+	background: #f1f1f1;
+}
+
+.brikpanel-unimg-nav:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.brikpanel-unimg-nav:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.brikpanel-unimg-nav--prev {
+	inset-inline-start: 0.75rem;
+}
+
+.brikpanel-unimg-nav--next {
+	inset-inline-end: 0.75rem;
+}
+
+/* Right to left the arrows point the way the list runs. */
+.rtl .brikpanel-unimg-nav svg {
+	transform: scaleX(-1);
+}
+
+.brikpanel-unimg-dialog-info {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	padding: 1rem 1.25rem 1.25rem;
+	overflow-y: auto;
+	border-inline-start: 1px solid #e3e3e3;
+}
+
+.brikpanel-unimg-dialog-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.brikpanel-unimg-dialog-pos {
+	margin: 0;
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+	color: #616161;
+}
+
+.brikpanel-unimg-close {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	margin: 0;
+	padding: 0;
+	color: #303030;
+	background: none;
+	border: 0;
+	border-radius: 0.5rem;
+	cursor: pointer;
+}
+
+.brikpanel-unimg-close:hover {
+	background: #f1f1f1;
+}
+
+.brikpanel-unimg-close:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.brikpanel-unimg-dialog-name {
+	margin: 0.75rem 0 1rem;
+	font-size: 1rem;
+	font-weight: 600;
+	line-height: 1.35;
+	color: #303030;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-unimg-facts {
+	display: grid;
+	gap: 0.75rem;
+	margin: 0 0 1.25rem;
+}
+
+.brikpanel-unimg-facts > div {
+	display: grid;
+	gap: 0.125rem;
+}
+
+.brikpanel-unimg-facts > div[hidden] {
+	display: none;
+}
+
+.brikpanel-unimg-facts dt {
+	font-size: var(--brikpanel-label-size, 0.8125rem);
+	font-weight: var(--brikpanel-label-weight, 550);
+	color: #616161;
+}
+
+.brikpanel-unimg-facts dd {
+	margin: 0;
+	color: #303030;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-unimg-facts a {
+	font-weight: 550;
+	color: #303030;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.brikpanel-unimg-facts a[hidden] {
+	display: none;
+}
+
+.brikpanel-unimg-dialog-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-top: auto;
+}
+
+.brikpanel-unimg-dialog-actions .brikpanel-unimg-act {
+	width: 100%;
+}
+
+/* ------------------------------------------------------------------ phones */
+@media (max-width: 782px) {
+	.brikpanel-unimg-grid {
+		grid-template-columns: repeat(auto-fill, minmax(6rem, 1fr));
+		gap: 0.5rem;
+	}
+
+	.brikpanel-unimg-sort {
+		margin-inline-start: 0;
+	}
+
+	.brikpanel-unimg-bar {
+		bottom: 0.75rem;
+	}
+
+	.brikpanel-unimg-bar-inner {
+		width: 100%;
+	}
+
+	.brikpanel-unimg-bar-actions {
+		flex: 1 1 100%;
+		justify-content: stretch;
+		padding-inline-start: 0;
+		border-inline-start: 0;
+	}
+
+	.brikpanel-unimg-bar-actions .brikpanel-unimg-act {
+		flex: 1 1 0;
+	}
+
+	/* The preview is a sheet from the bottom edge. */
+	.brikpanel-unimg-dialog {
+		inset: auto 0 0 0;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto auto auto;
+		width: 100%;
+		height: auto;
+		max-height: 92vh;
+		max-height: 92dvh;
+		margin: 0;
+		padding-bottom: env(safe-area-inset-bottom, 0px);
+		overflow-y: auto;
+		border-radius: 18px 18px 0 0;
+		opacity: 1;
+		transform: translateY(calc(100% + 24px));
+		transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.28s;
+	}
+
+	.brikpanel-unimg-dialog.is-sheet-open {
+		transform: none;
+		transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
+	}
+
+	.brikpanel-unimg-dialog.is-sheet-open.is-sheet-dragging {
+		transform: translateY(var(--bp-sheet-drag, 0px));
+		transition: none;
+	}
+
+	.brikpanel-unimg-dialog-media {
+		height: 42vh;
+		height: 42dvh;
+		min-height: 13rem;
+	}
+
+	.brikpanel-unimg-dialog-media img {
+		padding: 1rem;
+	}
+
+	.brikpanel-unimg-dialog-info {
+		padding: 0.875rem 1rem 1rem;
+		overflow: visible;
+		border-inline-start: 0;
+		border-top: 1px solid #e3e3e3;
+	}
+
+	.brikpanel-unimg-dialog-name {
+		margin: 0.375rem 0 0.75rem;
+	}
+
+	.brikpanel-unimg-facts {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.625rem 1rem;
+		margin-bottom: 1rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-unimg-dialog,
+	.brikpanel-unimg-dialog.is-sheet-open,
+	.brikpanel-unimg-open img,
+	.brikpanel-unimg-bar-inner {
+		transition-duration: 0.01ms;
+		animation-duration: 0.01ms;
+	}
+}

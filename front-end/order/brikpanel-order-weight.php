@@ -20,6 +20,9 @@
  * from the same views. That is also why nothing here checks the screen:
  * admin-ajax has none.
  *
+ * The orders export (front-end/orders/brikpanel-order-export.php) writes the
+ * same weights into its files, so a file and the order screen never disagree.
+ *
  * @package BrikPanel
  * @since   3.3.32
  */
@@ -42,12 +45,26 @@ function &brikpanel_order_weight_memo() {
 }
 
 /**
+ * Per-request memo of one item's weight by product: the orders export reads
+ * thousands of lines that share a few products, and building a product for
+ * every line cost a quarter of an export row.
+ *
+ * @return array Reference to the memo, keyed "product ID:variation ID".
+ */
+function &brikpanel_order_weight_unit_memo() {
+	static $memo = array();
+	return $memo;
+}
+
+/**
  * Forget the worked-out weights (after products or orders changed within one
  * request, which only tests do).
  */
 function brikpanel_order_weight_reset() {
-	$memo = &brikpanel_order_weight_memo();
-	$memo = array();
+	$memo  = &brikpanel_order_weight_memo();
+	$memo  = array();
+	$units = &brikpanel_order_weight_unit_memo();
+	$units = array();
 }
 
 /**
@@ -69,32 +86,44 @@ function brikpanel_order_weight_neutralized() {
  * placed falls back to its main product too; a product deleted outright has
  * no weight left to tell.
  *
+ * The answer is remembered by product for the rest of the request, but only
+ * while no plugin hands an order line a product of its own: lines with the
+ * same product could then weigh differently.
+ *
  * @param WC_Order_Item_Product $item Line.
  * @return float|null
  */
 function brikpanel_order_weight_of_item( $item ) {
+	$remember = ! has_filter( 'woocommerce_order_item_product' ) && ! has_filter( 'woocommerce_get_product_from_item' );
+	$key      = (int) $item->get_product_id() . ':' . (int) $item->get_variation_id();
+	$memo     = &brikpanel_order_weight_unit_memo();
+	if ( $remember && array_key_exists( $key, $memo ) ) {
+		return $memo[ $key ];
+	}
+
+	$unit    = 0.0;
 	$product = $item->get_product();
 	if ( ! $product instanceof WC_Product && $item->get_variation_id() ) {
 		$product = wc_get_product( $item->get_product_id() );
 	}
-	if ( ! $product instanceof WC_Product ) {
-		return 0.0;
+	if ( $product instanceof WC_Product ) {
+		if ( ! $product->needs_shipping() ) {
+			$unit = null;
+		} else {
+			// wc_format_decimal() reads a weight typed with the store's decimal comma.
+			$weight = (float) wc_format_decimal( $product->get_weight() );
+			$unit   = $weight > 0 ? $weight : 0.0;
+		}
 	}
-	if ( ! $product->needs_shipping() ) {
-		return null;
+	if ( $remember ) {
+		$memo[ $key ] = $unit;
 	}
-	// wc_format_decimal() reads a weight typed with the store's decimal comma.
-	$weight = (float) wc_format_decimal( $product->get_weight() );
-	return $weight > 0 ? $weight : 0.0;
+	return $unit;
 }
 
 /**
  * An order's product lines that have a weight, their total, and how many
- * lines that ship have none.
- *
- * Products are read as they are now: WooCommerce keeps no weight on the
- * order. Quantities are the ones ordered, refunds included, the way Items
- * Subtotal counts them.
+ * lines that ship have none, remembered for the rest of the request.
  *
  * @param WC_Abstract_Order|int $order Order or its ID.
  * @return array{lines: array<int, array{unit: float, qty: float, weight: float}>, total: float, missing: int}
@@ -105,15 +134,37 @@ function brikpanel_order_weight_summary( $order ) {
 	if ( $id && isset( $memo[ $id ] ) ) {
 		return $memo[ $id ];
 	}
+	if ( ! $order instanceof WC_Abstract_Order ) {
+		$order = $id ? wc_get_order( $id ) : null;
+	}
+	if ( ! $order instanceof WC_Abstract_Order ) {
+		return brikpanel_order_weight_compute( null );
+	}
 
+	$summary = brikpanel_order_weight_compute( $order );
+	if ( $id ) {
+		$memo[ $id ] = $summary;
+	}
+	return $summary;
+}
+
+/**
+ * The same as brikpanel_order_weight_summary(), worked out afresh: the orders
+ * export runs it over thousands of orders and must not keep each one.
+ *
+ * Products are read as they are now: WooCommerce keeps no weight on the
+ * order. Quantities are the ones ordered, refunds included, the way Items
+ * Subtotal counts them.
+ *
+ * @param WC_Abstract_Order|null $order Order; anything else has no weight.
+ * @return array{lines: array<int, array{unit: float, qty: float, weight: float}>, total: float, missing: int}
+ */
+function brikpanel_order_weight_compute( $order ) {
 	$summary = array(
 		'lines'   => array(),
 		'total'   => 0.0,
 		'missing' => 0,
 	);
-	if ( ! $order instanceof WC_Abstract_Order ) {
-		$order = $id ? wc_get_order( $id ) : null;
-	}
 	if ( ! $order instanceof WC_Abstract_Order ) {
 		return $summary;
 	}
@@ -140,33 +191,38 @@ function brikpanel_order_weight_summary( $order ) {
 		);
 		$summary['total'] += $weight;
 	}
-
-	if ( $id ) {
-		$memo[ $id ] = $summary;
-	}
 	return $summary;
 }
 
 /**
+ * The store's unit of weight as WooCommerce labels it, in WooCommerce's own
+ * translations (Russian "кг"); the unit's code on versions without labels.
+ * The orders export puts it in its column header.
+ *
+ * @return string
+ */
+function brikpanel_order_weight_unit_label() {
+	$unit = (string) get_option( 'woocommerce_weight_unit', 'kg' );
+	$i18n = '\Automattic\WooCommerce\Utilities\I18nUtil';
+	if ( class_exists( $i18n ) && method_exists( $i18n, 'get_weight_unit_label' ) ) {
+		return (string) $i18n::get_weight_unit_label( $unit );
+	}
+	return $unit;
+}
+
+/**
  * A weight in the store's unit with the store's number marks: "0.36 kg",
- * "1.234,5 g". Up to three decimals, trailing zeros dropped; the unit's label
- * comes from WooCommerce's own translations (Russian "кг").
+ * "1.234,5 g". Up to three decimals, trailing zeros dropped.
  *
  * @param float $value Weight.
  * @return string
  */
 function brikpanel_order_weight_text( $value ) {
-	$unit  = (string) get_option( 'woocommerce_weight_unit', 'kg' );
-	$label = $unit;
-	$i18n  = '\Automattic\WooCommerce\Utilities\I18nUtil';
-	if ( class_exists( $i18n ) && method_exists( $i18n, 'get_weight_unit_label' ) ) {
-		$label = (string) $i18n::get_weight_unit_label( $unit );
-	}
 	return brikpanel_safe_sprintf(
 		/* translators: A weight, e.g. "0.36 kg". 1: the number, already formatted. 2: the unit of weight (kg, g, lbs or oz). */
 		_x( '%1$s %2$s', 'weight value and unit', 'brikpanel' ),
 		brikpanel_number( $value, 3, true ),
-		$label
+		brikpanel_order_weight_unit_label()
 	);
 }
 

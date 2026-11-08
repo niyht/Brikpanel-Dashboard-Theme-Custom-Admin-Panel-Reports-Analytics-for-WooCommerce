@@ -1036,336 +1036,359 @@ class Brikpanel_Sheets_Products_Sync {
 			: [ 'instock', 'outofstock', 'onbackorder' ];
 
 		foreach ( $rows as $row_index => $row ) {
-			$product_id = isset( $row[ $pid_col ] ) ? (int) $row[ $pid_col ] : 0;
-			if ( $product_id <= 0 ) { continue; }
+			// One row must not stop the pull: a product another plugin's save
+			// hook throws on, or a value WooCommerce refuses, is logged and the
+			// next row goes on.
+			$product_id = 0;
+			try {
+				$product_id = isset( $row[ $pid_col ] ) ? (int) $row[ $pid_col ] : 0;
+				if ( $product_id <= 0 ) { continue; }
 
-			$product = wc_get_product( $product_id );
-			if ( ! $product ) { continue; }
+				$product = wc_get_product( $product_id );
+				if ( ! $product ) { continue; }
 
-			$checked++;
+				$checked++;
 
-			// Snapshot check first — if nothing in the row differs from what
-			// we last pushed, there's nothing to do; bail out before paying
-			// for the conflict-detection meta reads.
-			//
-			// Pad the pulled row back to the full column count before hashing:
-			// the Sheets API omits trailing empty cells, so a row whose last
-			// column(s) are blank (e.g. a product with no COGS, when COGS is the
-			// rightmost column) comes back shorter than the snapshot we hashed at
-			// push time. Without this, every such row hashes differently on every
-			// pull and gets needlessly re-queued for push — constant churn on a
-			// catalogue with many blank trailing cells.
-			$snapshot_hash = (string) $this->get_product_meta( $product, self::META_SNAPSHOT_HASH );
-			$row_values    = array_values( $row );
-			$col_count     = count( $columns );
-			if ( count( $row_values ) < $col_count ) {
-				$row_values = array_pad( $row_values, $col_count, '' );
-			}
-			$row_hash      = self::hash_row( $row_values );
-			if ( $snapshot_hash !== '' && $snapshot_hash === $row_hash ) {
-				continue;
-			}
+				// Snapshot check first — if nothing in the row differs from what
+				// we last pushed, there's nothing to do; bail out before paying
+				// for the conflict-detection meta reads.
+				//
+				// Pad the pulled row back to the full column count before hashing:
+				// the Sheets API omits trailing empty cells, so a row whose last
+				// column(s) are blank (e.g. a product with no COGS, when COGS is the
+				// rightmost column) comes back shorter than the snapshot we hashed at
+				// push time. Without this, every such row hashes differently on every
+				// pull and gets needlessly re-queued for push — constant churn on a
+				// catalogue with many blank trailing cells.
+				$snapshot_hash = (string) $this->get_product_meta( $product, self::META_SNAPSHOT_HASH );
+				$row_values    = array_values( $row );
+				$col_count     = count( $columns );
+				if ( count( $row_values ) < $col_count ) {
+					$row_values = array_pad( $row_values, $col_count, '' );
+				}
+				$row_hash      = self::hash_row( $row_values );
+				if ( $snapshot_hash !== '' && $snapshot_hash === $row_hash ) {
+					continue;
+				}
 
-			// Conflict guard: did Woo modify after our last push?
-			// META_SYNCED_AT is stored as current_time('mysql', true) which is
-			// already UTC; using get_gmt_from_date() would re-convert and shift
-			// by the site's timezone offset, giving false conflicts on every poll.
-			$last_push_mysql = (string) $this->get_product_meta( $product, self::META_SYNCED_AT );
-			$last_push_ts    = $last_push_mysql !== '' ? (int) strtotime( $last_push_mysql . ' UTC' ) : 0;
-			$woo_modified    = $product->get_date_modified();
-			$woo_modified_ts = $woo_modified ? (int) $woo_modified->getTimestamp() : 0;
+				// Conflict guard: did Woo modify after our last push?
+				// META_SYNCED_AT is stored as current_time('mysql', true) which is
+				// already UTC; using get_gmt_from_date() would re-convert and shift
+				// by the site's timezone offset, giving false conflicts on every poll.
+				$last_push_mysql = (string) $this->get_product_meta( $product, self::META_SYNCED_AT );
+				$last_push_ts    = $last_push_mysql !== '' ? (int) strtotime( $last_push_mysql . ' UTC' ) : 0;
+				$woo_modified    = $product->get_date_modified();
+				$woo_modified_ts = $woo_modified ? (int) $woo_modified->getTimestamp() : 0;
 
-			if ( $last_push_ts > 0 && $woo_modified_ts > ( $last_push_ts + 10 ) ) {
-				// Woo moved after our last push — Woo wins. Re-queue the
-				// product so the next push pass overwrites the stale cell.
-				$conflicts++;
-				$this->queue_push( $product_id );
-				continue;
-			}
+				if ( $last_push_ts > 0 && $woo_modified_ts > ( $last_push_ts + 10 ) ) {
+					// Woo moved after our last push — Woo wins. Re-queue the
+					// product so the next push pass overwrites the stale cell.
+					$conflicts++;
+					$this->queue_push( $product_id );
+					continue;
+				}
 
-			$row_changed     = false;
-			$needs_sheet_refresh = false;
+				$row_changed     = false;
+				$needs_sheet_refresh = false;
 
-			// ---- Stock quantity writeback ----
-			if ( $has_stock_col ) {
-				$sheet_stock_raw = $row[ (int) $col_map['stock'] ] ?? '';
-				// Empty cell = "do not touch" (e.g. variable parent rows
-				// where stock lives on variations). Non-numeric = ignore.
-				if ( $sheet_stock_raw !== '' && $sheet_stock_raw !== null && is_numeric( $sheet_stock_raw ) ) {
-					$sheet_stock = (int) $sheet_stock_raw;
-					if ( $product->get_manage_stock() ) {
-						$current_stock = (int) $product->get_stock_quantity();
-						if ( $current_stock !== $sheet_stock ) {
-							$result = wc_update_product_stock( $product, $sheet_stock, 'set' );
-							if ( is_wp_error( $result ) ) {
-								Brikpanel_Sheets_Logger::log( 'products', 'Stock apply failed for product ' . $product_id . ': ' . $result->get_error_message() );
-							} else {
-								$row_changed = true;
-								$product = wc_get_product( $product_id );
+				// ---- Stock quantity writeback ----
+				if ( $has_stock_col ) {
+					$sheet_stock_raw = $row[ (int) $col_map['stock'] ] ?? '';
+					// Empty cell = "do not touch" (e.g. variable parent rows
+					// where stock lives on variations). Non-numeric = ignore.
+					if ( $sheet_stock_raw !== '' && $sheet_stock_raw !== null && is_numeric( $sheet_stock_raw ) ) {
+						$sheet_stock = (int) $sheet_stock_raw;
+						if ( $product->get_manage_stock() ) {
+							$current_stock = (int) $product->get_stock_quantity();
+							if ( $current_stock !== $sheet_stock ) {
+								$result = wc_update_product_stock( $product, $sheet_stock, 'set' );
+								if ( is_wp_error( $result ) ) {
+									Brikpanel_Sheets_Logger::log( 'products', 'Stock apply failed for product ' . $product_id . ': ' . $result->get_error_message() );
+								} else {
+									$row_changed = true;
+									$product = wc_get_product( $product_id );
+								}
 							}
 						}
 					}
 				}
-			}
 
-			// ---- Stock status writeback ----
-			if ( $has_stock_status_col ) {
-				$sheet_status = trim( (string) ( $row[ (int) $col_map['stock_status'] ] ?? '' ) );
-				if ( $sheet_status !== '' && in_array( $sheet_status, $valid_stock_statuses, true ) ) {
-					$current_status = (string) $product->get_stock_status();
-					if ( $current_status !== $sheet_status ) {
-						if ( ! $product->get_manage_stock() ) {
-							// Unmanaged stock: set_stock_status() is honored
-							// directly. Save, then reload to verify (variable
-							// parents and a few WC plugins can roll it back).
-							$product->set_stock_status( $sheet_status );
-							$product->save();
-							$reloaded = wc_get_product( $product_id );
-							if ( $reloaded && (string) $reloaded->get_stock_status() === $sheet_status ) {
-								$row_changed = true;
-								$product = $reloaded;
-							} else {
-								Brikpanel_Sheets_Logger::log( 'products', 'Stock status apply did not stick for product ' . $product_id . ' (target ' . $sheet_status . '); WC reverted on save.' );
-							}
-						} else {
-							// Managed stock: WC auto-derives stock_status from
-							// stock_quantity (qty>0=instock, qty<=0 + backorders
-							// allowed=onbackorder, qty<=0 + no backorders=
-							// outofstock). set_stock_status() is silently
-							// reverted on save. Instead, nudge the qty/backorders
-							// so WC's auto-derive produces the user's chosen
-							// status. Matches Shopify's "tracked quantity"
-							// model where status follows qty.
-							$current_qty   = (int) $product->get_stock_quantity();
-							$target_qty    = $current_qty;
-							$touch_backord = false;
-							if ( $sheet_status === 'outofstock' ) {
-								if ( $current_qty > 0 ) { $target_qty = 0; }
-								// Backorders=no is required for outofstock at qty<=0.
-								if ( $product->get_backorders() !== 'no' ) {
-									$product->set_backorders( 'no' );
-									$touch_backord = true;
-								}
-							} elseif ( $sheet_status === 'instock' ) {
-								if ( $current_qty <= 0 ) { $target_qty = 1; }
-							} elseif ( $sheet_status === 'onbackorder' ) {
-								if ( $current_qty > 0 ) { $target_qty = 0; }
-								if ( $product->get_backorders() === 'no' ) {
-									$product->set_backorders( 'notify' );
-									$touch_backord = true;
-								}
-							}
-
-							$qty_changed = ( $target_qty !== $current_qty );
-							if ( $qty_changed || $touch_backord ) {
-								if ( $qty_changed ) {
-									$product->set_stock_quantity( $target_qty );
-								}
+				// ---- Stock status writeback ----
+				// Grouped and external products keep no stock status of their own in
+				// WooCommerce (an external one throws on anything but "in stock").
+				if ( $has_stock_status_col && ! $product->is_type( array( 'grouped', 'external' ) ) ) {
+					$sheet_status = trim( (string) ( $row[ (int) $col_map['stock_status'] ] ?? '' ) );
+					if ( $sheet_status !== '' && in_array( $sheet_status, $valid_stock_statuses, true ) ) {
+						$current_status = (string) $product->get_stock_status();
+						if ( $current_status !== $sheet_status ) {
+							if ( ! $product->get_manage_stock() ) {
+								// Unmanaged stock: set_stock_status() is honored
+								// directly. Save, then reload to verify (variable
+								// parents and a few WC plugins can roll it back).
+								$product->set_stock_status( $sheet_status );
 								$product->save();
 								$reloaded = wc_get_product( $product_id );
 								if ( $reloaded && (string) $reloaded->get_stock_status() === $sheet_status ) {
 									$row_changed = true;
-									$product     = $reloaded;
-									if ( $qty_changed && $has_stock_col ) {
-										// Our qty adjust diverged the sheet
-										// (still shows old qty) from Woo (new
-										// qty). Write the new qty to the stock
-										// cell immediately so subsequent pulls
-										// see sheet==Woo and don't ping-pong
-										// (apply qty from sheet -> auto-flip
-										// status -> re-apply status via qty).
-										$sheet_row_num = (int) $this->get_product_meta( $product, self::META_ROW );
-										if ( $sheet_row_num > 0 ) {
-											$stock_cell = self::col_letter( (int) $col_map['stock'] + 1 ) . $sheet_row_num;
-											try {
-												$client->values_update( $config['spreadsheet_id'], Brikpanel_Sheets_Client::a1_quote_tab( $config['tab'] ) . '!' . $stock_cell, [ [ $target_qty ] ] );
-											} catch ( Brikpanel_Sheets_Exception $e ) {
-												// Best-effort: if the write fails,
-												// queue_push will refresh the row
-												// on the next push pass instead.
-												$needs_sheet_refresh = true;
-												Brikpanel_Sheets_Logger::log( 'products', 'Stock cell refresh failed for product ' . $product_id . ': ' . $e->getMessage(), $e->http_code );
-											}
-										} else {
-											$needs_sheet_refresh = true;
-										}
-									}
-									Brikpanel_Sheets_Logger::log( 'products', 'Stock status set to ' . $sheet_status . ' for product ' . $product_id . ' via qty adjust (' . $current_qty . ' to ' . $target_qty . ')' . ( $touch_backord ? ' + backorders flag' : '' ) . '.' );
+									$product = $reloaded;
 								} else {
-									Brikpanel_Sheets_Logger::log( 'products', 'Stock status apply via qty adjust did not stick for product ' . $product_id . ' (target ' . $sheet_status . ', tried qty ' . $target_qty . ').' );
+									Brikpanel_Sheets_Logger::log( 'products', 'Stock status apply did not stick for product ' . $product_id . ' (target ' . $sheet_status . '); WC reverted on save.' );
 								}
-							}
-						}
-					}
-				}
-			}
-
-			// ---- Price / cost / status writeback ----
-			// Plain scalar setters batched into a single save(). Each guards on
-			// "cell present, valid, and actually different" so an untouched or
-			// blank cell is left alone (blank = "do not change", same convention
-			// as stock — a price cannot be *cleared* from the sheet). Works for
-			// simple products and variations alike; variations carry their own
-			// price/cost/status independent of the parent.
-			$setter_dirty = false;
-
-			// Variable parents derive their price from their variations and do
-			// not store a usable regular/sale price of their own — WC discards a
-			// value set on the parent, which would otherwise look "changed" on
-			// every pull and churn. Skip price writeback for them; the merchant
-			// edits each variation row instead.
-			$is_variable_parent = $product->is_type( 'variable' );
-
-			if ( isset( $col_map['regular_price'] ) && ! $is_variable_parent ) {
-				$raw = $row[ (int) $col_map['regular_price'] ] ?? '';
-				if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
-					$new = wc_format_decimal( $raw );
-					if ( self::decimal_changed( $new, $product->get_regular_price( 'edit' ) ) ) {
-						$product->set_regular_price( $new );
-						$setter_dirty = true;
-					}
-				}
-			}
-
-			if ( isset( $col_map['sale_price'] ) && ! $is_variable_parent ) {
-				$raw = $row[ (int) $col_map['sale_price'] ] ?? '';
-				if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
-					$new = wc_format_decimal( $raw );
-					if ( self::decimal_changed( $new, $product->get_sale_price( 'edit' ) ) ) {
-						$product->set_sale_price( $new );
-						$setter_dirty = true;
-					}
-				}
-			}
-
-			if ( isset( $col_map['cogs'] ) ) {
-				$raw = $row[ (int) $col_map['cogs'] ] ?? '';
-				if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
-					$new = wc_format_decimal( $raw );
-
-					// Compare against the EFFECTIVE cost, i.e. exactly what the
-					// push wrote into this cell. Comparing against the row's own
-					// raw meta (as this used to) is an asymmetry that corrupted
-					// Woo data without anyone touching the cost column:
-					//   - Inherited cost: variation has none, parent has 5. Push
-					//     writes 5; raw is '' so 5 !== '' looked like an edit and
-					//     froze 5 onto the variation. Later parent changes then
-					//     silently stopped applying to it.
-					//   - Additive: parent 5 + variation 2 = 7 pushed, raw 2, so
-					//     7 !== 2 looked like an edit and wrote raw = 7, making
-					//     the effective cost 12. Reproduced live by editing only
-					//     the STOCK cell, which is what drags the row into this
-					//     branch in the first place.
-					$is_variation = $product->is_type( 'variation' );
-					$cogs_parent  = $is_variation ? (int) $product->get_parent_id() : (int) $product->get_id();
-					$cogs_var     = $is_variation ? (int) $product->get_id() : 0;
-					$effective    = brikpanel_product_cogs( $cogs_parent, $cogs_var );
-					$cur          = ( null === $effective ) ? '' : wc_format_decimal( (string) $effective );
-
-					if ( self::decimal_changed( $new, $cur ) ) {
-						// The merchant means "this line's unit cost is $new". For
-						// an additive variation the stored value is the amount ON
-						// TOP of the parent, so store the difference and keep the
-						// effective cost equal to what they typed.
-						$store   = $new;
-						$skip    = false;
-						$additive = $is_variation
-							&& 'yes' === get_post_meta( $cogs_var, '_cogs_value_is_additive', true );
-
-						if ( $additive ) {
-							$parent_raw  = brikpanel_product_cogs_raw( $cogs_parent );
-							$parent_cost = ( '' === $parent_raw ) ? 0.0 : (float) $parent_raw;
-							$delta       = (float) $new - $parent_cost;
-							if ( $delta < 0 ) {
-								// Below the parent's own cost there is no additive
-								// value that produces it. Refuse rather than write
-								// a negative surcharge the merchant never intended.
-								$skip = true;
-								Brikpanel_Sheets_Logger::log(
-									'products',
-									'Pull skipped cost for variation ' . $cogs_var . ': ' . $new
-										. ' is below the parent cost (' . $parent_cost . ') and this'
-										. ' variation adds to the parent, so no additive value matches.'
-								);
 							} else {
-								$store = wc_format_decimal( (string) $delta );
+								// Managed stock: WC auto-derives stock_status from
+								// stock_quantity (qty>0=instock, qty<=0 + backorders
+								// allowed=onbackorder, qty<=0 + no backorders=
+								// outofstock). set_stock_status() is silently
+								// reverted on save. Instead, nudge the qty/backorders
+								// so WC's auto-derive produces the user's chosen
+								// status. Matches Shopify's "tracked quantity"
+								// model where status follows qty.
+								$current_qty   = (int) $product->get_stock_quantity();
+								$target_qty    = $current_qty;
+								$touch_backord = false;
+								if ( $sheet_status === 'outofstock' ) {
+									if ( $current_qty > 0 ) { $target_qty = 0; }
+									// Backorders=no is required for outofstock at qty<=0.
+									if ( $product->get_backorders() !== 'no' ) {
+										$product->set_backorders( 'no' );
+										$touch_backord = true;
+									}
+								} elseif ( $sheet_status === 'instock' ) {
+									if ( $current_qty <= 0 ) { $target_qty = 1; }
+								} elseif ( $sheet_status === 'onbackorder' ) {
+									if ( $current_qty > 0 ) { $target_qty = 0; }
+									if ( $product->get_backorders() === 'no' ) {
+										$product->set_backorders( 'notify' );
+										$touch_backord = true;
+									}
+								}
+
+								$qty_changed = ( $target_qty !== $current_qty );
+								if ( $qty_changed || $touch_backord ) {
+									if ( $qty_changed ) {
+										$product->set_stock_quantity( $target_qty );
+									}
+									$product->save();
+									$reloaded = wc_get_product( $product_id );
+									if ( $reloaded && (string) $reloaded->get_stock_status() === $sheet_status ) {
+										$row_changed = true;
+										$product     = $reloaded;
+										if ( $qty_changed && $has_stock_col ) {
+											// Our qty adjust diverged the sheet
+											// (still shows old qty) from Woo (new
+											// qty). Write the new qty to the stock
+											// cell immediately so subsequent pulls
+											// see sheet==Woo and don't ping-pong
+											// (apply qty from sheet -> auto-flip
+											// status -> re-apply status via qty).
+											$sheet_row_num = (int) $this->get_product_meta( $product, self::META_ROW );
+											if ( $sheet_row_num > 0 ) {
+												$stock_cell = self::col_letter( (int) $col_map['stock'] + 1 ) . $sheet_row_num;
+												try {
+													$client->values_update( $config['spreadsheet_id'], Brikpanel_Sheets_Client::a1_quote_tab( $config['tab'] ) . '!' . $stock_cell, [ [ $target_qty ] ] );
+												} catch ( Brikpanel_Sheets_Exception $e ) {
+													// Best-effort: if the write fails,
+													// queue_push will refresh the row
+													// on the next push pass instead.
+													$needs_sheet_refresh = true;
+													Brikpanel_Sheets_Logger::log( 'products', 'Stock cell refresh failed for product ' . $product_id . ': ' . $e->getMessage(), $e->http_code );
+												}
+											} else {
+												$needs_sheet_refresh = true;
+											}
+										}
+										Brikpanel_Sheets_Logger::log( 'products', 'Stock status set to ' . $sheet_status . ' for product ' . $product_id . ' via qty adjust (' . $current_qty . ' to ' . $target_qty . ')' . ( $touch_backord ? ' + backorders flag' : '' ) . '.' );
+									} else {
+										Brikpanel_Sheets_Logger::log( 'products', 'Stock status apply via qty adjust did not stick for product ' . $product_id . ' (target ' . $sheet_status . ', tried qty ' . $target_qty . ').' );
+									}
+								}
 							}
 						}
+					}
+				}
 
-						if ( ! $skip ) {
-							// Write the WHOLE cost-key set, exactly like the editor
-							// and Quick Edit do. Writing only BrikPanel's own key
-							// would be silently ignored on a store running a cost
-							// plugin: that plugin's key is read first, so the sheet
-							// edit would appear to save and change nothing.
-							if ( brikpanel_wc_cogs_enabled( $product ) ) {
-								$product->set_cogs_value( $store !== '' ? $store : null );
-							}
-							foreach ( brikpanel_cogs_meta_keys() as $cogs_key ) {
-								// `_cogs_total_value` is a WC_Product PROP, not plain
-								// meta: pushing it through the generic meta API trips
-								// WooCommerce's "doing it wrong" notice on every pulled
-								// row. set_cogs_value() above owns it while WC's COGS
-								// feature is on. With the feature off that setter stores
-								// nothing AND writes a "doing it wrong" line to the PHP
-								// error log on AJAX/REST requests, which is why it is
-								// only called once brikpanel_wc_cogs_enabled() says the
-								// feature is on; the legacy-key mirror covers the rest.
-								if ( '_cogs_total_value' === $cogs_key ) {
-									continue;
-								}
-								$product->update_meta_data( $cogs_key, $store );
-							}
+				// ---- Price / cost / status writeback ----
+				// Plain scalar setters batched into a single save(). Each guards on
+				// "cell present, valid, and actually different" so an untouched or
+				// blank cell is left alone (blank = "do not change", same convention
+				// as stock — a price cannot be *cleared* from the sheet). Works for
+				// simple products and variations alike; variations carry their own
+				// price/cost/status independent of the parent.
+				$setter_dirty = false;
+
+				// Variable parents derive their price from their variations and do
+				// not store a usable regular/sale price of their own — WC discards a
+				// value set on the parent, which would otherwise look "changed" on
+				// every pull and churn. Skip price writeback for them; the merchant
+				// edits each variation row instead.
+				// A grouped product is the same: its price comes from its products.
+				$is_variable_parent = $product->is_type( array( 'variable', 'grouped' ) );
+				// A WPML translation (or one of its variations) takes its price
+				// from the original product, which WooCommerce Multilingual
+				// copies to it: a price typed on its row is left unsaved, and
+				// the next push writes the real one back over it.
+				if ( function_exists( 'brikpanel_wpml_original_of' ) && brikpanel_wpml_original_of( $product_id ) ) {
+					$is_variable_parent = true;
+				}
+
+				if ( isset( $col_map['regular_price'] ) && ! $is_variable_parent ) {
+					$raw = $row[ (int) $col_map['regular_price'] ] ?? '';
+					if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
+						$new = wc_format_decimal( $raw );
+						if ( self::decimal_changed( $new, $product->get_regular_price( 'edit' ) ) ) {
+							$product->set_regular_price( $new );
 							$setter_dirty = true;
 						}
 					}
 				}
-			}
 
-			if ( isset( $col_map['status'] ) ) {
-				$raw = trim( (string) ( $row[ (int) $col_map['status'] ] ?? '' ) );
-				if ( $raw !== '' ) {
-					// Whitelist guards against trash/auto-draft and typos.
-					// Variations only meaningfully support enabled (publish) /
-					// disabled (private).
-					$allowed = $product->is_type( 'variation' )
-						? [ 'publish', 'private' ]
-						: [ 'publish', 'draft', 'pending', 'private' ];
-					if ( in_array( $raw, $allowed, true ) && $raw !== (string) $product->get_status() ) {
-						$product->set_status( $raw );
-						$setter_dirty = true;
+				if ( isset( $col_map['sale_price'] ) && ! $is_variable_parent ) {
+					$raw = $row[ (int) $col_map['sale_price'] ] ?? '';
+					if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
+						$new = wc_format_decimal( $raw );
+						if ( self::decimal_changed( $new, $product->get_sale_price( 'edit' ) ) ) {
+							$product->set_sale_price( $new );
+							$setter_dirty = true;
+						}
 					}
 				}
-			}
 
-			if ( $setter_dirty ) {
-				$product->save();
-				$row_changed = true;
-				// Regular/sale edits move the derived 'price' column too, so push
-				// the freshly-built row back to the sheet to keep every dependent
-				// cell in step with Woo.
-				$needs_sheet_refresh = true;
-				$product = wc_get_product( $product_id );
-			}
+				if ( isset( $col_map['cogs'] ) && ! $product->is_type( 'grouped' ) ) {
+					$raw = $row[ (int) $col_map['cogs'] ] ?? '';
+					if ( $raw !== '' && $raw !== null && is_numeric( $raw ) && (float) $raw >= 0 ) {
+						$new = wc_format_decimal( $raw );
 
-			if ( $row_changed ) {
-				$applied++;
-				$fresh_row = $this->build_row( $product, $columns );
-				$this->set_product_meta( $product, self::META_SNAPSHOT_HASH, self::hash_row( $fresh_row ) );
-				$this->set_product_meta( $product, self::META_SYNCED_AT, current_time( 'mysql', true ) );
-				if ( $needs_sheet_refresh ) {
+						// Compare against the EFFECTIVE cost, i.e. exactly what the
+						// push wrote into this cell. Comparing against the row's own
+						// raw meta (as this used to) is an asymmetry that corrupted
+						// Woo data without anyone touching the cost column:
+						//   - Inherited cost: variation has none, parent has 5. Push
+						//     writes 5; raw is '' so 5 !== '' looked like an edit and
+						//     froze 5 onto the variation. Later parent changes then
+						//     silently stopped applying to it.
+						//   - Additive: parent 5 + variation 2 = 7 pushed, raw 2, so
+						//     7 !== 2 looked like an edit and wrote raw = 7, making
+						//     the effective cost 12. Reproduced live by editing only
+						//     the STOCK cell, which is what drags the row into this
+						//     branch in the first place.
+						$is_variation = $product->is_type( 'variation' );
+						$cogs_parent  = $is_variation ? (int) $product->get_parent_id() : (int) $product->get_id();
+						$cogs_var     = $is_variation ? (int) $product->get_id() : 0;
+						$effective    = brikpanel_product_cogs( $cogs_parent, $cogs_var );
+						$cur          = ( null === $effective ) ? '' : wc_format_decimal( (string) $effective );
+
+						if ( self::decimal_changed( $new, $cur ) ) {
+							// The merchant means "this line's unit cost is $new". For
+							// an additive variation the stored value is the amount ON
+							// TOP of the parent, so store the difference and keep the
+							// effective cost equal to what they typed.
+							$store   = $new;
+							$skip    = false;
+							$additive = $is_variation
+								&& 'yes' === get_post_meta( $cogs_var, '_cogs_value_is_additive', true );
+
+							if ( $additive ) {
+								$parent_raw  = brikpanel_product_cogs_raw( $cogs_parent );
+								$parent_cost = ( '' === $parent_raw ) ? 0.0 : (float) $parent_raw;
+								$delta       = (float) $new - $parent_cost;
+								if ( $delta < 0 ) {
+									// Below the parent's own cost there is no additive
+									// value that produces it. Refuse rather than write
+									// a negative surcharge the merchant never intended.
+									$skip = true;
+									Brikpanel_Sheets_Logger::log(
+										'products',
+										'Pull skipped cost for variation ' . $cogs_var . ': ' . $new
+											. ' is below the parent cost (' . $parent_cost . ') and this'
+											. ' variation adds to the parent, so no additive value matches.'
+									);
+								} else {
+									$store = wc_format_decimal( (string) $delta );
+								}
+							}
+
+							if ( ! $skip ) {
+								// Write the WHOLE cost-key set, exactly like the editor
+								// and Quick Edit do. Writing only BrikPanel's own key
+								// would be silently ignored on a store running a cost
+								// plugin: that plugin's key is read first, so the sheet
+								// edit would appear to save and change nothing.
+								if ( brikpanel_wc_cogs_enabled( $product ) ) {
+									$product->set_cogs_value( $store !== '' ? $store : null );
+								}
+								foreach ( brikpanel_cogs_meta_keys() as $cogs_key ) {
+									// `_cogs_total_value` is a WC_Product PROP, not plain
+									// meta: pushing it through the generic meta API trips
+									// WooCommerce's "doing it wrong" notice on every pulled
+									// row. set_cogs_value() above owns it while WC's COGS
+									// feature is on. With the feature off that setter stores
+									// nothing AND writes a "doing it wrong" line to the PHP
+									// error log on AJAX/REST requests, which is why it is
+									// only called once brikpanel_wc_cogs_enabled() says the
+									// feature is on; the legacy-key mirror covers the rest.
+									if ( '_cogs_total_value' === $cogs_key ) {
+										continue;
+									}
+									$product->update_meta_data( $cogs_key, $store );
+								}
+								$setter_dirty = true;
+							}
+						}
+					}
+				}
+
+				if ( isset( $col_map['status'] ) ) {
+					$raw = trim( (string) ( $row[ (int) $col_map['status'] ] ?? '' ) );
+					if ( $raw !== '' ) {
+						// Whitelist guards against trash/auto-draft and typos.
+						// Variations only meaningfully support enabled (publish) /
+						// disabled (private).
+						$allowed = $product->is_type( 'variation' )
+							? [ 'publish', 'private' ]
+							: [ 'publish', 'draft', 'pending', 'private' ];
+						if ( in_array( $raw, $allowed, true ) && $raw !== (string) $product->get_status() ) {
+							$product->set_status( $raw );
+							$setter_dirty = true;
+						}
+					}
+				}
+
+				if ( $setter_dirty ) {
+					$product->save();
+					// WPML: an original's new price or stock reaches its translations.
+					if ( function_exists( 'brikpanel_wpml_sync_translations' ) ) {
+						brikpanel_wpml_sync_translations( $product_id );
+					}
+					$row_changed = true;
+					// Regular/sale edits move the derived 'price' column too, so push
+					// the freshly-built row back to the sheet to keep every dependent
+					// cell in step with Woo.
+					$needs_sheet_refresh = true;
+					$product = wc_get_product( $product_id );
+				}
+
+				if ( $row_changed ) {
+					$applied++;
+					$fresh_row = $this->build_row( $product, $columns );
+					$this->set_product_meta( $product, self::META_SNAPSHOT_HASH, self::hash_row( $fresh_row ) );
+					$this->set_product_meta( $product, self::META_SYNCED_AT, current_time( 'mysql', true ) );
+					if ( $needs_sheet_refresh ) {
+						$this->queue_push( $product_id );
+					}
+				} else {
+					// Row hash differed but no writable field changed — the user
+					// must have edited a read-only column (price, name, etc.).
+					// Refresh the snapshot so this row doesn't re-flag as
+					// "changed" on every subsequent pull, and re-queue the
+					// product so the next push overwrites the stray edit with
+					// the canonical Woo value.
+					$fresh_row = $this->build_row( $product, $columns );
+					$this->set_product_meta( $product, self::META_SNAPSHOT_HASH, self::hash_row( $fresh_row ) );
 					$this->queue_push( $product_id );
 				}
-			} else {
-				// Row hash differed but no writable field changed — the user
-				// must have edited a read-only column (price, name, etc.).
-				// Refresh the snapshot so this row doesn't re-flag as
-				// "changed" on every subsequent pull, and re-queue the
-				// product so the next push overwrites the stray edit with
-				// the canonical Woo value.
-				$fresh_row = $this->build_row( $product, $columns );
-				$this->set_product_meta( $product, self::META_SNAPSHOT_HASH, self::hash_row( $fresh_row ) );
-				$this->queue_push( $product_id );
+			} catch ( \Throwable $e ) {
+				Brikpanel_Sheets_Logger::log( 'products', 'Row skipped for product ' . $product_id . ': ' . $e->getMessage() );
+				continue;
 			}
 		}
 
@@ -1503,7 +1526,7 @@ class Brikpanel_Sheets_Products_Sync {
 				// Push the parent itself too — gives the merchant a summary
 				// row even though stock lives on variations.
 				$out[] = $product;
-				$children = $product->get_children();
+				$children = brikpanel_variation_ids( $product );
 				foreach ( $children as $child_id ) {
 					$child = wc_get_product( (int) $child_id );
 					if ( $child ) { $out[] = $child; }
@@ -1548,21 +1571,17 @@ class Brikpanel_Sheets_Products_Sync {
 			case 'name':          return brikpanel_plain_label( (string) $product->get_name() );
 			case 'variation_attributes':
 				if ( $product->is_type( 'variation' ) ) {
+					// Term names rather than the stored slugs ("black-white"),
+					// and attributes named outside ASCII by name rather than by
+					// their encoded keys (brikpanel_attr_pairs()).
 					$attrs = [];
-					foreach ( $product->get_variation_attributes() as $k => $v ) {
-						if ( $v === '' || ! is_scalar( $v ) ) { continue; }
-						$raw_name = str_replace( 'attribute_', '', $k );
-						$label    = wc_attribute_label( $raw_name );
-						if ( $label === '' || $label === $raw_name ) {
-							$label = brikpanel_title_case( $raw_name );
+					foreach ( brikpanel_attr_pairs( $product ) as $pair ) {
+						if ( $pair['value'] === '' ) { continue; }
+						$label = $pair['label'];
+						if ( $label === '' || $label === $pair['key'] ) {
+							$label = brikpanel_title_case( $pair['key'] );
 						}
-						// The stored value of a global attribute is the term
-						// slug ("black-white"); show the term name instead.
-						$value = (string) $product->get_attribute( $raw_name );
-						if ( $value === '' ) {
-							$value = (string) $v;
-						}
-						$attrs[] = brikpanel_plain_name( $label ) . ': ' . brikpanel_plain_name( $value );
+						$attrs[] = brikpanel_plain_name( $label ) . ': ' . brikpanel_plain_name( $pair['value'] );
 					}
 					return implode( '; ', $attrs );
 				}
@@ -1600,6 +1619,12 @@ class Brikpanel_Sheets_Products_Sync {
 				return null === $cogs ? '' : (float) $cogs;
 			case 'stock':
 				if ( ! $product->get_manage_stock() ) { return ''; }
+				// A variation that sells from the product's shared stock: the
+				// quantity lives on the product's own row. Repeating it on
+				// every size row showed it many times, and pulling those
+				// copies back let an old one overwrite the shared number. A
+				// blank cell is skipped by the pull.
+				if ( 'parent' === $product->get_manage_stock() ) { return ''; }
 				$q = $product->get_stock_quantity();
 				return $q === null ? '' : (int) $q;
 			case 'stock_status':  return (string) $product->get_stock_status();

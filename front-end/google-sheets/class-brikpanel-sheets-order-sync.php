@@ -1844,25 +1844,19 @@ class Brikpanel_Sheets_Order_Sync {
 				return $item ? $this->format_item_summary( $item ) : $this->order_items_summary( $order );
 			case 'variation_attributes':
 				if ( $is_var && $product ) {
+					// Term names rather than the stored slugs ("black-white"),
+					// and attributes named outside ASCII by name rather than by
+					// their encoded keys (brikpanel_attr_pairs()).
 					$attrs = [];
-					foreach ( $product->get_variation_attributes() as $k => $v ) {
-						if ( $v === '' || ! is_scalar( $v ) ) { continue; }
-						$raw_name = str_replace( 'attribute_', '', $k );
-						$label    = wc_attribute_label( $raw_name );
-						// wc_attribute_label returns the taxonomy label for
-						// global attributes ("pa_color" → "Color"), but for
-						// local attributes it just echoes the raw name as-is
-						// — which usually looks ugly when the user typed it
-						// in lowercase. Title-case as a sensible default.
-						if ( $label === '' || $label === $raw_name ) {
-							$label = brikpanel_title_case( $raw_name );
+					foreach ( brikpanel_attr_pairs( $product ) as $pair ) {
+						if ( $pair['value'] === '' ) { continue; }
+						// A custom attribute's name as typed; when that is its
+						// lowercase key, title-case it as a sensible default.
+						$label = $pair['label'];
+						if ( $label === '' || $label === $pair['key'] ) {
+							$label = brikpanel_title_case( $pair['key'] );
 						}
-						// Term name rather than the stored slug ("black-white").
-						$value = (string) $product->get_attribute( $raw_name );
-						if ( $value === '' ) {
-							$value = (string) $v;
-						}
-						$attrs[] = brikpanel_plain_name( $label ) . ': ' . brikpanel_plain_name( $value );
+						$attrs[] = brikpanel_plain_name( $label ) . ': ' . brikpanel_plain_name( $pair['value'] );
 					}
 					return implode( '; ', $attrs );
 				}
@@ -1879,7 +1873,18 @@ class Brikpanel_Sheets_Order_Sync {
 						} elseif ( ! is_scalar( $value ) ) {
 							continue;
 						}
-						$meta_strs[] = brikpanel_plain_label( wc_attribute_label( $key ) ) . ': ' . brikpanel_plain_label( (string) $value );
+						// The options of a variation deleted since: an attribute
+						// taxonomy (keyed encoded outside ASCII) holds the term
+						// slug; other keys read as WooCommerce shows them.
+						$taxonomy = brikpanel_attr_taxonomy_from_key( $key );
+						if ( $taxonomy !== '' ) {
+							$term  = get_term_by( 'slug', (string) $value, $taxonomy );
+							$value = ( $term && ! is_wp_error( $term ) ) ? $term->name : rawurldecode( (string) $value );
+							$label = wc_attribute_label( $taxonomy );
+						} else {
+							$label = wc_attribute_label( rawurldecode( $key ) );
+						}
+						$meta_strs[] = brikpanel_plain_label( $label ) . ': ' . brikpanel_plain_label( (string) $value );
 					}
 					return implode( '; ', $meta_strs );
 				}

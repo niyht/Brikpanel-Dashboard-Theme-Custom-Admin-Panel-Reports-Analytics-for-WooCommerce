@@ -449,17 +449,22 @@ function brikpanel_settings_fields() {
             'default' => 'yes',
         ],
         [
-            'name'    => __('Product type selector', 'brikpanel'),
-            'id'      => 'brikpanel_enable_product_types',
-            'type'    => 'checkbox',
-            'desc'    => __('Show a product type dropdown in the simplified editor so you can create subscription, variable subscription, bundle and other types registered by third-party plugins. When off, only simple and variable products can be created. Auto-enabled if a subscription/bookings/bundles plugin is active.', 'brikpanel'),
-            'default' => function_exists('brikpanel_has_custom_product_types') && brikpanel_has_custom_product_types() ? 'yes' : 'no',
-        ],
-        [
             'name'     => __('Visible editor sections', 'brikpanel'),
             'id'       => 'brikpanel_pe_visible_sections_field',
             'type'     => 'brikpanel_section_order',
-            'desc'     => __('Toggle a section to show or hide it. Use the arrows to reorder; the product editor renders sections in the order shown here. Metaboxes registered by other plugins (Yoast SEO, Rank Math, All in One SEO, SEOPress, custom post types, etc.) appear in this list automatically, tagged "Plugin". Enable and position any you want to edit right inside the BrikPanel editor.', 'brikpanel'),
+            // Kept short (owner, November 2026: switching a section on here
+            // should be simple and plain).
+            'desc'     => __('Turn a section on to show it on every product. Use the arrows to change the order. Boxes added by other plugins appear here too, tagged "Plugin".', 'brikpanel'),
+        ],
+        [
+            // Read by the product editor's folded "Hidden sections" box
+            // (owner's request, November 2026: a store could not find the
+            // shipping and linked products sections, which ship switched off).
+            'name'    => __('Suggest hidden sections in the product editor', 'brikpanel'),
+            'id'      => 'brikpanel_pe_suggest_hidden_sections',
+            'type'    => 'checkbox',
+            'desc'    => __('Show a folded "Hidden sections" box at the end of the product page, with the switched-off sections such as shipping weight and linked products. Open it to edit them without turning them on.', 'brikpanel'),
+            'default' => 'yes',
         ],
         [
             'name'    => __('Use the full screen width', 'brikpanel'),
@@ -480,6 +485,20 @@ function brikpanel_settings_fields() {
             'id'      => 'brikpanel_pe_require_price',
             'type'    => 'checkbox',
             'desc'    => __('Block publishing and updating a product while its price is empty. Turn it off to publish products without a price: they show in your store, but customers cannot add them to the cart. Drafts and variable products never need a price.', 'brikpanel'),
+            'default' => 'yes',
+        ],
+        [
+            'name'    => __('New products are virtual', 'brikpanel'),
+            'id'      => 'brikpanel_pe_new_products_virtual',
+            'type'    => 'checkbox',
+            'desc'    => __('In the product editor, every new product starts with "Virtual (no shipping)" switched on. Switch it off on a product that ships.', 'brikpanel'),
+            'default' => 'no',
+        ],
+        [
+            'name'    => __('Show other plugins\' product options', 'brikpanel'),
+            'id'      => 'brikpanel_pe_plugin_type_options',
+            'type'    => 'checkbox',
+            'desc'    => __('In the product editor, the Virtual / Digital card also shows the options other plugins add next to Virtual and Downloadable (for example "Subscription" or "Service"), for the product types they apply to. Their values are kept when you save, whether this is on or off.', 'brikpanel'),
             'default' => 'yes',
         ],
         [
@@ -665,7 +684,11 @@ function brikpanel_settings_fields() {
             'default'  => function_exists('brikpanel_dashboard_profit_field_labels') ? array_keys(brikpanel_dashboard_profit_field_labels()) : [],
         ],
         // Was the "Exclude tax from Revenue and Expenses" checkbox: 'no' and
-        // 'yes' keep their meaning, so nobody's dashboard changes on update.
+        // 'yes' keep their meaning. The default moved from 'no' to 'yes' in
+        // 3.3.34, and every store moved with it once
+        // (brikpanel_apply_profit_tax_default()); this default must match the
+        // fallback in brikpanel_profit_tax_mode(), or a store without a row
+        // would see one choice here and get the other on the dashboard.
         [
             'name'     => __('Tax in the Profit section', 'brikpanel'),
             'id'       => 'brikpanel_profit_exclude_tax',
@@ -677,7 +700,7 @@ function brikpanel_settings_fields() {
                 'yes'     => __('Taken out of Revenue and Expenses', 'brikpanel'),
                 'revenue' => __('Kept in Revenue (not in Expenses)', 'brikpanel'),
             ],
-            'default'  => 'no',
+            'default'  => 'yes',
         ],
         [
             'type' => 'sectionend',
@@ -721,8 +744,18 @@ function brikpanel_settings_fields() {
             'name'    => __('Visitor tracking', 'brikpanel'),
             'id'      => 'brikpanel_frontend_tracking',
             'type'    => 'checkbox',
-            'desc'    => __('Track visitors, page views, product views, add-to-carts, checkout visits and live visitors on your storefront. Turn this off if you already use a dedicated analytics tool. BrikPanel will stop adding any tracking scripts or requests to your store pages, and the related dashboard cards will simply stop receiving new data.', 'brikpanel'),
+            'desc'    => __('Track visitors and the countries they browse from, page views, product views, add-to-carts, checkout visits and live visitors on your storefront. Turn this off if you already use a dedicated analytics tool. BrikPanel will stop adding any tracking scripts or requests to your store pages, and the related dashboard cards will simply stop receiving new data.', 'brikpanel'),
             'default' => 'yes',
+        ],
+        [
+            // 3.3.41 (imaddd): stores that buy ad traffic compare Visitors with
+            // the ad platform's landing page views, which count a page that
+            // merely opened. See brikpanel_count_on_open_enabled().
+            'name'    => __('Count visitors when the page opens', 'brikpanel'),
+            'id'      => 'brikpanel_count_on_open',
+            'type'    => 'checkbox',
+            'desc'    => __('Off by default: a visitor is counted after they tap, scroll, move the mouse or press a key, which keeps bots out of your numbers. Turn this on to count a visitor as soon as a store page opens on their screen, the way Meta counts landing page views. Known bots, cloud servers, automated browsers and your staff are still left out, but some bots that look like real browsers may be counted. Conversion rate uses the same visitors.', 'brikpanel'),
+            'default' => 'no',
         ],
         [
             'name'     => __('Wait for cookie consent', 'brikpanel'),

@@ -1019,8 +1019,9 @@
         }
     }
 
-    // Counts a figure up from zero in its own format, then hands it back to
-    // the caller (done), which writes the finished server text again.
+    // Counts a figure up from zero (or from opts.from, the figure it showed
+    // before a refresh) in its own format, then hands it back to the caller
+    // (done), which writes the finished server text again.
     function countUp(el, to, fmt, opts) {
         opts = opts || {};
         if (reduced() || !el || !isFinite(to)) {
@@ -1029,9 +1030,10 @@
             }
             return;
         }
+        var from = isFinite(opts.from) ? Number(opts.from) : 0;
         var t0 = performance.now() + (opts.delay || 0);
         var dur = opts.duration || 700;
-        el.textContent = fmt(0);
+        el.textContent = fmt(from);
         var step = function (t) {
             var p = Math.min(1, Math.max(0, (t - t0) / dur));
             if (p >= 1) {
@@ -1042,7 +1044,7 @@
                 }
                 return;
             }
-            el.textContent = fmt(to * (1 - Math.pow(1 - p, 3)));
+            el.textContent = fmt(from + (to - from) * (1 - Math.pow(1 - p, 3)));
             window.requestAnimationFrame(step);
         };
         window.requestAnimationFrame(step);

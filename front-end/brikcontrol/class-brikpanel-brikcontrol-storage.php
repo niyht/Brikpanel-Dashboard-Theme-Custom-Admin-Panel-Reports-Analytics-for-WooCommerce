@@ -209,7 +209,8 @@ class Brikpanel_BrikControl_Storage {
 
     /**
      * A stored result without what only the full page needs (sample rows,
-     * the largest-images list): enough to write the one-line summary.
+     * the largest-images list, the bot traffic card's lists of days left
+     * alone): enough to write the one-line summary.
      *
      * @param array $result Stored result.
      * @return array
@@ -217,7 +218,7 @@ class Brikpanel_BrikControl_Storage {
     private static function lean_result( array $result ) {
         unset( $result['recommendations'] );
         if ( ! empty( $result['facts'] ) && is_array( $result['facts'] ) ) {
-            unset( $result['metadata'], $result['facts']['samples'], $result['facts']['largest'] );
+            unset( $result['metadata'], $result['facts']['samples'], $result['facts']['largest'], $result['facts']['explained_days'], $result['facts']['real_days'] );
         } elseif ( isset( $result['metadata'] ) && is_array( $result['metadata'] ) ) {
             // Written before 3.3.25: the image check still reads its figures
             // from here, so only the lists go.

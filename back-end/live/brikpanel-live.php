@@ -383,6 +383,15 @@ function brikpanel_record_live_visitor( $page_url, $is_exit = false, $entry = []
             $interacted_at = max( $previous, $now - min( max( 0, (int) $idle ), DAY_IN_SECONDS ) );
         }
 
+        // The visitor's country (3.3.40), looked up once per row: a row that
+        // already has one keeps it, '' ("not known") included, so a visitor
+        // with no country is not looked up again on every ping. Shown even
+        // with "Customer details in Live view" off: a country names nobody.
+        $country = isset( $visitors[ $visitor_id ]['country'] ) && is_string( $visitors[ $visitor_id ]['country'] )
+            && 1 === preg_match( '/^([A-Z]{2})?$/', $visitors[ $visitor_id ]['country'] )
+            ? $visitors[ $visitor_id ]['country']
+            : ( function_exists( 'brikpanel_request_country' ) ? brikpanel_request_country() : '' );
+
         $visitors[ $visitor_id ] = [
             'id'             => $visitor_id,
             'ip_address'     => $hashed_ip,
@@ -396,6 +405,7 @@ function brikpanel_record_live_visitor( $page_url, $is_exit = false, $entry = []
             'customer_phone' => $customer_phone,
             'last_active'    => $now,
             'interacted_at'  => $interacted_at,
+            'country'        => $country,
         ];
         if ( null !== $source ) {
             $visitors[ $visitor_id ]['source'] = $source;

@@ -254,6 +254,8 @@
                 var it = items[i];
                 var meta = [];
                 if (it.sku) meta.push(escapeHtml(cfg.i18n.sku) + ': ' + escapeHtml(it.sku));
+                // The supplier's own code ("AliExpress SKU: AE-30418"), label from the server.
+                if (it.supplier_sku && it.supplier_sku_label) meta.push(escapeHtml(it.supplier_sku_label) + ' ' + escapeHtml(it.supplier_sku));
                 // i18n-ignore: variation_label is _x()-wrapped in class-brikpanel-stock-orders.php:446; scanner can't trace the &&-guarded key chain.
                 if (it.variation_id) meta.push(((cfg.i18n && cfg.i18n.variation_label) || 'Variation #') + it.variation_id);
                 html +=
@@ -342,7 +344,11 @@
             var html = '';
             for (var i = 0; i < results.length; i++) {
                 var r = results[i];
-                var meta = r.sku ? r.sku : '';
+                var metaParts = [];
+                if (r.sku) metaParts.push(r.sku);
+                // Shown too, so a search by the supplier's code says why it matched.
+                if (r.supplier_sku && r.supplier_sku_label) metaParts.push(r.supplier_sku_label + ' ' + r.supplier_sku);
+                var meta = metaParts.join(' · ');
                 html += '<div class="brikpanel-so-suggestion" data-idx="' + i + '">' +
                             '<div>' + escapeHtml(r.title) + '</div>' +
                             (meta ? '<div class="brikpanel-so-suggestion-meta">' + escapeHtml(meta) + '</div>' : '') +
@@ -381,6 +387,8 @@
                 variation_id: r.variation_id,
                 title:        r.title,
                 sku:          r.sku || '',
+                supplier_sku:       r.supplier_sku || '',
+                supplier_sku_label: r.supplier_sku_label || '',
                 qty_ordered:  1,
                 qty_received: 0,
                 unit_cost:    parseFloat(r.cost) || 0,

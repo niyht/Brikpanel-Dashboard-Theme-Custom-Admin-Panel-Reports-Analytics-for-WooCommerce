@@ -1,0 +1,521 @@
+/**
+ * BrikPanel: printable order summary (front-end/orders/brikpanel-order-print.php).
+ *
+ * A page of its own, not an admin screen: no WordPress admin stylesheet is on
+ * it, only this file and the shared UI parts (front-end/shared/brikpanel-ui.css)
+ * for the two toolbar buttons. On screen every order is a white sheet on the
+ * grey page under a toolbar; on paper only the sheets print, one order per page.
+ *
+ * Colours are the BrikPanel UI ones (#303030 text, #616161 secondary text,
+ * #e3e3e3 lines). Directions are logical (start/end, inline/block), so a
+ * right-to-left admin language mirrors the sheet without rules of its own.
+ */
+
+.brikpanel-slip-page {
+	--brikpanel-slip-text: #303030;
+	--brikpanel-slip-muted: #616161;
+	--brikpanel-slip-line: #e3e3e3;
+	--brikpanel-slip-paper: #ffffff;
+	--brikpanel-slip-ground: #f1f1f1;
+	--brikpanel-slip-soft: #f7f7f7;
+	margin: 0;
+	background-color: var(--brikpanel-slip-ground);
+	color: var(--brikpanel-slip-text);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	color-scheme: light;
+}
+
+/* ---- Toolbar (screen only) ---------------------------------------------- */
+
+.brikpanel-slip-toolbar {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	background-color: var(--brikpanel-slip-paper);
+	border-block-end: 1px solid var(--brikpanel-slip-line);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.brikpanel-slip-toolbar__in {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem 1rem;
+	max-width: 210mm;
+	margin: 0 auto;
+	padding: 0.75rem 1rem;
+	box-sizing: border-box;
+}
+
+.brikpanel-slip-toolbar__title {
+	flex: 1 1 10rem;
+	min-width: 0;
+	margin: 0;
+	font-size: 0.9375rem;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-slip-toolbar__hint {
+	flex: 1 1 14rem;
+	min-width: 0;
+	margin: 0;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.8125rem;
+}
+
+/* The back arrow points the way the page reads. */
+[dir="rtl"] .brikpanel-slip-toolbar__arrow {
+	transform: scaleX(-1);
+	transform-origin: center;
+}
+
+/* ---- The page of sheets --------------------------------------------------- */
+
+.brikpanel-slip-stack {
+	display: grid;
+	justify-items: center;
+	gap: 1.5rem;
+	padding: 1.5rem 1rem 3rem;
+}
+
+.brikpanel-slip-notice,
+.brikpanel-slip-message {
+	width: 100%;
+	max-width: 210mm;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0.75rem 1rem;
+	background-color: var(--brikpanel-slip-paper);
+	border: 1px solid var(--brikpanel-slip-line);
+	border-radius: 0.75rem;
+}
+
+.brikpanel-slip-message {
+	padding: 2.5rem 1.5rem;
+	text-align: center;
+	font-size: 0.9375rem;
+}
+
+.brikpanel-slip {
+	width: 100%;
+	max-width: 210mm;
+	box-sizing: border-box;
+	padding: 13mm 14mm 12mm;
+	background-color: var(--brikpanel-slip-paper);
+	border-radius: 0.75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 10px 30px rgba(0, 0, 0, 0.05);
+}
+
+/* ---- Head: the store on one side, the order on the other ------------------ */
+
+.brikpanel-slip__head {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 1.5rem;
+	padding-block-end: 1.125rem;
+	border-block-end: 1px solid var(--brikpanel-slip-line);
+}
+
+.brikpanel-slip__store {
+	min-width: 0;
+}
+
+.brikpanel-slip__logo {
+	display: block;
+	width: auto;
+	height: auto;
+	max-width: 200px;
+	max-height: 56px;
+	object-fit: contain;
+}
+
+.brikpanel-slip__store-name {
+	margin: 0;
+	font-size: 1.125rem;
+	font-weight: 650;
+	letter-spacing: -0.01em;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-slip__store-address {
+	margin: 0.5rem 0 0;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.75rem;
+	line-height: 1.45;
+}
+
+.brikpanel-slip__doc {
+	flex: none;
+	text-align: end;
+}
+
+.brikpanel-slip__kicker {
+	margin: 0;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.75rem;
+	font-weight: 550;
+}
+
+.brikpanel-slip__number {
+	margin: 0.125rem 0 0;
+	font-size: 1.75rem;
+	font-weight: 650;
+	line-height: 1.15;
+	letter-spacing: -0.02em;
+	font-variant-numeric: tabular-nums;
+}
+
+.brikpanel-slip__date {
+	margin: 0.25rem 0 0;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.75rem;
+}
+
+/* ---- Addresses and order facts -------------------------------------------- */
+
+.brikpanel-slip__parties {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 1.25rem 1.5rem;
+	padding-block: 1.125rem 1.25rem;
+}
+
+.brikpanel-slip__party {
+	min-width: 0;
+}
+
+.brikpanel-slip__label {
+	margin: 0 0 0.375rem;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.75rem;
+	font-weight: 550;
+}
+
+.brikpanel-slip__address {
+	margin: 0;
+	font-style: normal;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-slip__contact {
+	margin: 0.375rem 0 0;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.75rem;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-slip__facts {
+	display: grid;
+	gap: 0.375rem;
+	margin: 0.5rem 0 0;
+}
+
+.brikpanel-slip__fact dt {
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.75rem;
+}
+
+.brikpanel-slip__fact dd {
+	margin: 0;
+	font-weight: 550;
+	overflow-wrap: anywhere;
+}
+
+/* ---- Items ---------------------------------------------------------------- */
+
+.brikpanel-slip__items {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.brikpanel-slip__items th {
+	padding: 0.5rem;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.75rem;
+	font-weight: 550;
+	text-align: start;
+	white-space: nowrap;
+	border-block-end: 1px solid var(--brikpanel-slip-text);
+}
+
+.brikpanel-slip__items td {
+	padding: 0.625rem 0.5rem;
+	vertical-align: middle;
+	border-block-end: 1px solid var(--brikpanel-slip-line);
+}
+
+.brikpanel-slip__items .brikpanel-slip__num {
+	text-align: end;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.brikpanel-slip__items .brikpanel-slip__pick {
+	width: 1rem;
+	padding-inline-end: 0.25rem;
+}
+
+/* An empty box to tick by hand while picking. */
+.brikpanel-slip__box {
+	display: block;
+	width: 14px;
+	height: 14px;
+	box-sizing: border-box;
+	border: 1.5px solid var(--brikpanel-slip-text);
+	border-radius: 3px;
+}
+
+.brikpanel-slip__sr {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+.brikpanel-slip__product {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	min-width: 0;
+}
+
+.brikpanel-slip__thumb {
+	display: block;
+	flex: none;
+	width: 44px;
+	height: 44px;
+	box-sizing: border-box;
+	object-fit: cover;
+	background-color: var(--brikpanel-slip-soft);
+	border: 1px solid var(--brikpanel-slip-line);
+	border-radius: 6px;
+}
+
+.brikpanel-slip__product-text {
+	min-width: 0;
+}
+
+.brikpanel-slip__name {
+	margin: 0;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-slip__options,
+.brikpanel-slip__sku-inline {
+	margin: 0.125rem 0 0;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.75rem;
+	overflow-wrap: anywhere;
+}
+
+/* The SKU has its own column; the copy under the name is for narrow screens. */
+.brikpanel-slip__product-text .brikpanel-slip__sku-inline {
+	display: none;
+}
+
+.brikpanel-slip__items .brikpanel-slip__sku-col {
+	font-size: 0.75rem;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-slip__qty strong {
+	display: block;
+	font-size: 1rem;
+	font-weight: 650;
+}
+
+.brikpanel-slip__qty small {
+	display: block;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.6875rem;
+	white-space: normal;
+}
+
+/* A bundle's or composite product's parts sit under it. */
+.brikpanel-slip__line.is-child .brikpanel-slip__product {
+	padding-inline-start: 1.5rem;
+}
+
+.brikpanel-slip__line.is-child .brikpanel-slip__thumb {
+	width: 32px;
+	height: 32px;
+}
+
+/* Everything on the line was refunded: nothing left to pick. */
+.brikpanel-slip__line.is-refunded .brikpanel-slip__name {
+	color: var(--brikpanel-slip-muted);
+	text-decoration: line-through;
+}
+
+/* ---- Note and totals ------------------------------------------------------ */
+
+.brikpanel-slip__bottom {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 1.25rem 2rem;
+	margin-block-start: 1.25rem;
+}
+
+.brikpanel-slip__note {
+	flex: 1 1 14rem;
+	min-width: 0;
+	padding: 0.75rem 0.875rem;
+	border: 1px solid var(--brikpanel-slip-line);
+	border-radius: 0.5rem;
+}
+
+.brikpanel-slip__note p {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-slip__totals {
+	flex: 0 1 18rem;
+	min-width: 15rem;
+	margin-inline-start: auto;
+	border-collapse: collapse;
+}
+
+.brikpanel-slip__totals th {
+	padding: 0.3125rem 0;
+	color: var(--brikpanel-slip-muted);
+	font-weight: 400;
+	text-align: start;
+}
+
+.brikpanel-slip__totals td {
+	padding-block: 0.3125rem;
+	padding-inline: 1.5rem 0;
+	text-align: end;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.brikpanel-slip__totals small {
+	display: block;
+	color: var(--brikpanel-slip-muted);
+	font-size: 0.6875rem;
+	white-space: normal;
+}
+
+.brikpanel-slip__sum.is-total th,
+.brikpanel-slip__sum.is-total td {
+	padding-block-start: 0.625rem;
+	border-block-start: 1px solid var(--brikpanel-slip-text);
+	color: var(--brikpanel-slip-text);
+	font-size: 1rem;
+	font-weight: 650;
+}
+
+/* ---- Narrow screens (a phone looking at the page, never paper) ------------ */
+
+@media screen and (max-width: 640px) {
+	.brikpanel-slip-stack {
+		padding: 1rem 0.875rem 2rem;
+	}
+
+	.brikpanel-slip {
+		padding: 1.25rem 1rem;
+		border-radius: 0.5rem;
+	}
+
+	.brikpanel-slip__head {
+		flex-wrap: wrap;
+	}
+
+	.brikpanel-slip__doc {
+		flex-basis: 100%;
+		text-align: start;
+	}
+
+	.brikpanel-slip__parties {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.brikpanel-slip__items .brikpanel-slip__pick,
+	.brikpanel-slip__items .brikpanel-slip__sku-col,
+	.brikpanel-slip__items .brikpanel-slip__price-col {
+		display: none;
+	}
+
+	.brikpanel-slip__line .brikpanel-slip__sku-inline {
+		display: block;
+	}
+
+	.brikpanel-slip__totals {
+		flex-basis: 100%;
+		min-width: 0;
+	}
+}
+
+/* ---- Paper ---------------------------------------------------------------- */
+
+/* The white border is the sheet's own padding, not a page margin: the print
+   window's "Margins" choice (None or Minimum, which Chrome remembers) drops
+   page margins, and the summary then ran into the paper's edge (wp.org,
+   Lincoln Cristiano, 6 Nov 2026). */
+@page {
+	margin: 0;
+}
+
+@media print {
+	.brikpanel-slip-page {
+		background-color: var(--brikpanel-slip-paper);
+	}
+
+	.brikpanel-slip-toolbar,
+	.brikpanel-slip-notice {
+		display: none;
+	}
+
+	.brikpanel-slip-stack {
+		display: block;
+		padding: 0;
+	}
+
+	/* clone: a long order keeps the border at the top and bottom of every page. */
+	.brikpanel-slip {
+		max-width: none;
+		padding: 12mm;
+		border-radius: 0;
+		box-shadow: none;
+		-webkit-box-decoration-break: clone;
+		box-decoration-break: clone;
+	}
+
+	/* One order per page. */
+	.brikpanel-slip + .brikpanel-slip {
+		break-before: page;
+	}
+
+	/* A long order goes on to a second page with the column names again. */
+	.brikpanel-slip__items thead {
+		display: table-header-group;
+	}
+
+	.brikpanel-slip__head,
+	.brikpanel-slip__parties,
+	.brikpanel-slip__items tr,
+	.brikpanel-slip__bottom {
+		break-inside: avoid;
+	}
+
+	.brikpanel-slip__thumb,
+	.brikpanel-slip__box {
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+}

@@ -1001,7 +1001,10 @@ class Brikpanel_BrikControl_Cartab_Bot_Rows_Check extends Brikpanel_BrikControl_
                 ? brikpanel_module_url( 'brikpanel-coupons' )
                 : admin_url( 'edit.php?post_type=shop_coupon' );
             $recs[] = [
-                'text'     => __( 'Popup signups among these entries were handed real coupons (codes starting with BRIK-). Each is single-use and locked to the address it was issued to, so nobody else can redeem it; review them in your coupon list if you want them gone.', 'brikpanel' ),
+                // No code start in this sentence: the merchant chooses it now
+                // (Email popup > "Code starts with"), and codes issued before a
+                // change keep the old one.
+                'text'     => __( 'Popup signups among these entries were handed real coupons. Each is single-use and locked to the address it was issued to, so nobody else can redeem it; review them in your coupon list if you want them gone.', 'brikpanel' ),
                 'priority' => 'low',
                 'link'     => [
                     'url'   => $coupons_url,

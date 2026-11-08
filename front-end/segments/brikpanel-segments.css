@@ -31,14 +31,27 @@
 	box-sizing: border-box;
 }
 
-/* ===== Header ===== */
+/* ===== Header (Orders explorer) ===== */
 .bp-seg-header {
+	--bp-overflow-size: 2rem; /* "More actions" as tall as the buttons */
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	flex-wrap: wrap;
 	gap: 1rem;
 	margin-bottom: 1rem;
+}
+
+/* Levels set by brikpanel-fit-row.js (views/page.php): `is-fold` folds Reset
+   filters into "More actions", `is-two-rows` puts the buttons on their own
+   row under the title. Measured, never guessed from the screen width. */
+.bp-seg-header.is-two-rows {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.bp-seg-header.is-two-rows .bp-seg-header-right {
+	justify-content: flex-end;
 }
 
 .bp-seg-header-left {
@@ -56,53 +69,10 @@
 	color: var(--bp-seg-text);
 }
 
-.bp-seg-count {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-width: 1.75rem;
-	height: 1.5rem;
-	padding: 0 0.5rem;
-	border-radius: 999px;
-	background: #ececec;
-	color: var(--bp-seg-text-secondary);
-	font-size: 0.75rem;
-	font-weight: 600;
-}
-
 .bp-seg-header-right {
 	display: flex;
+	align-items: center;
 	gap: 0.5rem;
-}
-
-/* ===== Tabs ===== */
-.bp-seg-tabs {
-	display: flex;
-	gap: 0;
-	margin-bottom: 1rem;
-	border-bottom: 1px solid var(--bp-seg-border);
-}
-
-.bp-seg-tab {
-	padding: 0.625rem 1rem;
-	font-size: 0.875rem;
-	font-weight: 550;
-	border: none;
-	background: transparent;
-	color: var(--bp-seg-text-secondary);
-	cursor: pointer;
-	border-bottom: 2px solid transparent;
-	margin-bottom: -1px;
-	transition: all 0.15s ease;
-}
-
-.bp-seg-tab:hover {
-	color: var(--bp-seg-text);
-}
-
-.bp-seg-tab.is-active {
-	color: var(--bp-seg-text);
-	border-bottom-color: var(--bp-seg-primary);
 }
 
 /* ===== Cards ===== */
@@ -785,19 +755,54 @@
 	pointer-events: none;
 }
 
+/* ===== Sortable column headers (customer list) ===== */
+/* The header text itself is the button; it keeps the header's look. */
+.bp-seg-table thead th .bp-seg-sort {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	color: inherit;
+	text-transform: inherit;
+	letter-spacing: inherit;
+	cursor: pointer;
+}
+
+.bp-seg-table thead th .bp-seg-sort:hover,
+.bp-seg-table thead th .bp-seg-sort.is-active {
+	color: var(--bp-seg-text);
+}
+
+.bp-seg-table thead th .bp-seg-sort:focus-visible {
+	outline: 2px solid var(--bp-seg-text);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.bp-seg-sort-arrow {
+	min-width: 0.625rem;
+}
+
+/* "Reset filters" sits after "More filters" on the Customers page. */
+.bp-seg-quick-search .bp-seg-reset-link {
+	flex: 0 0 auto;
+}
+
 /* ===== Tab-scoped visibility ===== */
 .brikpanel-segments[data-tab="customers"] .bp-seg-orders-only { display: none; }
 .brikpanel-segments[data-tab="orders"] .bp-seg-customers-only { display: none; }
 
 /* ===== Small screens ===== */
 @media (max-width: 720px) {
-	.bp-seg-header { flex-direction: column; align-items: flex-start; }
 	/* One line per child: in a column that may wrap, "stretch" only reaches
 	   the width of the widest child, not the card's. */
 	.bp-seg-filter-bar { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
 	.bp-seg-quick-search { max-width: none; min-width: 0; justify-content: flex-start; }
 	.bp-seg-grid { grid-template-columns: 1fr; }
-	.bp-seg-header-right { width: 100%; justify-content: flex-end; }
 
 	/* The results table needs no phone rules here: on a card this narrow
 	   brikpanel-segments.js always stacks its rows (see "Stacked rows"). */

@@ -40,39 +40,9 @@
 		}
 	}
 
-	function sendReceipt(token) {
-		if (!token || !C.receipt) return Promise.resolve();
-		var body = new URLSearchParams();
-		body.set('action', 'brikpanel_push_receipt');
-		body.set('r', String(token));
-		return fetch(C.receipt, {
-			method: 'POST',
-			body: body,
-			credentials: 'omit',
-			cache: 'no-store',
-			keepalive: true,
-		}).catch(function () { /* the receipt is best effort */ });
-	}
-
-	function tellWindows(kind) {
-		return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
-			list.forEach(function (client) {
-				try {
-					client.postMessage({ type: 'brikpanel-push', kind: kind || '' });
-				} catch (e) { /* ignore */ }
-			});
-		}).catch(function () { /* ignore */ });
-	}
-
-	self.addEventListener('push', function (event) {
-		var msg = read(event);
-		var n = (msg && typeof msg.notification === 'object' && msg.notification) || {};
+	/** Notification options from a message's notification part. */
+	function optionsFor(n) {
 		var data = (n.data && typeof n.data === 'object') ? n.data : {};
-
-		// Inside the PWA plugin's worker, messages that are not BrikPanel's
-		// (unreadable ones too) are left to that plugin's own handler.
-		if (C.shared && (!msg || data.bp !== 1)) return;
-
 		var options = {
 			body: typeof n.body === 'string' ? n.body : '',
 			icon: C.icon || undefined,
@@ -83,11 +53,116 @@
 		if (typeof n.tag === 'string' && n.tag) options.tag = n.tag;
 		if (typeof n.lang === 'string' && n.lang) options.lang = n.lang;
 		if (n.dir === 'rtl' || n.dir === 'ltr') options.dir = n.dir;
+		return { options: options, data: data };
+	}
+
+	/**
+	 * Tells the store the phone got it. A late receipt (the phone slept) is
+	 * answered with the orders sent in the meantime: Android may have dropped
+	 * their pushes, so they are shown here (the same tag replaces a copy that
+	 * still arrives, without a second sound).
+	 */
+	function sendReceipt(token, heard) {
+		if (!token || !C.receipt) return Promise.resolve();
+		var body = new URLSearchParams();
+		body.set('action', 'brikpanel_push_receipt');
+		body.set('r', String(token));
+		// What an open window said (tellWindows), for the server's logs only.
+		if (heard) body.set('w', String(heard));
+		return fetch(C.receipt, {
+			method: 'POST',
+			body: body,
+			credentials: 'omit',
+			cache: 'no-store',
+			keepalive: true,
+		}).then(function (res) {
+			return res && res.status === 200 ? res.json() : null;
+		}).then(function (json) {
+			var missed = json && Array.isArray(json.missed) ? json.missed.slice(0, 5) : [];
+			return Promise.all(missed.map(function (n) {
+				if (!n || typeof n !== 'object' || typeof n.title !== 'string' || !n.title) return null;
+				return self.registration.showNotification(n.title, optionsFor(n).options).catch(function () { /* ignore */ });
+			}));
+		}).catch(function () { /* the receipt is best effort */ });
+	}
+
+	/**
+	 * Tells the open admin windows to check for new orders now. A window on
+	 * screen is also asked whether it will play the cash register itself
+	 * (brikpanel-order-notify.js): then the phone's own notification comes
+	 * without a sound, so a new order is not heard twice. No answer within a
+	 * two seconds, or no window on screen: the notification keeps its sound.
+	 *
+	 * @return {Promise<string>} 'p' a window plays it, 'n' it cannot, 't' no answer in time, '0' no window on screen.
+	 */
+	function tellWindows(kind) {
+		return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+			var asks = [];
+			list.forEach(function (client) {
+				var msg = { type: 'brikpanel-push', kind: kind || '' };
+				if (client.visibilityState !== 'visible' || typeof MessageChannel === 'undefined') {
+					try {
+						client.postMessage(msg);
+					} catch (e) { /* ignore */ }
+					return;
+				}
+				asks.push(new Promise(function (resolve) {
+					var timer = setTimeout(function () { resolve('t'); }, 2000);
+					try {
+						var channel = new MessageChannel();
+						channel.port1.onmessage = function (e) {
+							clearTimeout(timer);
+							resolve(e.data && e.data.play ? 'p' : 'n');
+						};
+						msg.ask = 1;
+						client.postMessage(msg, [channel.port2]);
+					} catch (e) {
+						clearTimeout(timer);
+						resolve('n');
+					}
+				}));
+			});
+			if (!asks.length) {
+				return '0';
+			}
+			return Promise.all(asks).then(function (answers) {
+				// p: a window plays; n: a window said it cannot; t: no answer in time.
+				return answers.indexOf('p') !== -1 ? 'p' : (answers.indexOf('t') !== -1 ? 't' : 'n');
+			});
+		}).catch(function () {
+			return 'n';
+		});
+	}
+
+	self.addEventListener('push', function (event) {
+		var msg = read(event);
+		var n = (msg && typeof msg.notification === 'object' && msg.notification) || {};
+		var parts = optionsFor(n);
+		var data = parts.data;
+		var options = parts.options;
+
+		// Inside the PWA plugin's worker, messages that are not BrikPanel's
+		// (unreadable ones too) are left to that plugin's own handler.
+		if (C.shared && (!msg || data.bp !== 1)) return;
 
 		var title = (typeof n.title === 'string' && n.title) ? n.title : (C.title || '');
-		var shown = self.registration.showNotification(title, options).catch(function () { /* ignore */ });
-		var extras = Promise.all([sendReceipt(data.r), tellWindows(data.k)]);
-		var capped = Promise.race([extras, new Promise(function (resolve) { setTimeout(resolve, 8000); })]);
+		// Orders only: a test has no order for the window to find, so it always rings.
+		var order = data.k === 'order' || data.k === 'orders';
+		var asked = tellWindows(data.k);
+		var shown = asked.then(function (heard) {
+			if (order && heard === 'p') {
+				options.silent = true;
+			}
+			return self.registration.showNotification(title, options);
+		}).catch(function () {
+			return self.registration.showNotification(title, options);
+		}).catch(function () { /* ignore */ });
+		var receipt = asked.then(function (heard) {
+			return sendReceipt(data.r, heard);
+		}, function () {
+			return sendReceipt(data.r, '');
+		});
+		var capped = Promise.race([receipt, new Promise(function (resolve) { setTimeout(resolve, 8000); })]);
 
 		event.waitUntil(Promise.all([shown, capped]));
 	});

@@ -179,8 +179,16 @@ function brikpanel_human_issue( $flags ) {
 
     $day   = brikpanel_human_today();
     $flags = brikpanel_human_flags( $flags );
-    $value = '1.' . $day . '.' . $flags . '.' . brikpanel_human_sign( $day, $flags, $vid );
+    brikpanel_human_write( '1.' . $day . '.' . $flags . '.' . brikpanel_human_sign( $day, $flags, $vid ) );
+}
 
+/**
+ * Put a value in the mark's cookie, for the rest of this request as well.
+ *
+ * @param string $value The whole cookie value.
+ * @return void
+ */
+function brikpanel_human_write( $value ) {
     $name    = brikpanel_human_cookie_name();
     $current = isset( $_COOKIE[ $name ] ) ? (string) $_COOKIE[ $name ] : '';
     $_COOKIE[ $name ] = $value;
@@ -201,6 +209,69 @@ function brikpanel_human_issue( $flags ) {
             'samesite' => 'Lax',
         ]
     );
+}
+
+/* ---------------------------------------------------------------------------
+ * "Counted when the page opened" (3.3.41)
+ *
+ * With "Count visitors when the page opens" on, a page that opens on screen
+ * counts the day's visitor before anyone touches it. That browser has not
+ * proved it is a person, so it does not get the mark above: the add-to-cart
+ * and checkout counters would take it at its word. It gets a value of its own
+ * in the same cookie instead,
+ *
+ *     brikpanel_human = 0.<store day>.<flags>.<signature>
+ *
+ * which only remembers what the store day already counted for it. The
+ * signature covers "open" as well, so the value can never pass for a mark.
+ * When the person touches the page the mark replaces it and keeps its flags,
+ * so nothing is counted twice. One cookie, so consent withdrawal, the
+ * per-site names on a multisite network and the tracker's footprint check
+ * work for it unchanged.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * What the store day already counted for a browser counted on page open.
+ *
+ * @return array{today:bool,flags:string}
+ */
+function brikpanel_open_state() {
+    $none = [ 'today' => false, 'flags' => '' ];
+    $name = brikpanel_human_cookie_name();
+    $raw  = isset( $_COOKIE[ $name ] ) ? sanitize_text_field( wp_unslash( $_COOKIE[ $name ] ) ) : '';
+    if ( ! preg_match( '/^0\.(\d{4}-\d{2}-\d{2})\.([vpac]{0,4})\.([0-9a-f]{20})$/D', $raw, $m ) ) {
+        return $none;
+    }
+    // Only today's flags matter: yesterday's opened page counts nothing now.
+    if ( $m[1] !== brikpanel_human_today() ) {
+        return $none;
+    }
+    $vid = function_exists( 'brikpanel_visitor_id_from_cookie' ) ? brikpanel_visitor_id_from_cookie() : '';
+    if ( ! hash_equals( brikpanel_human_sign( 'open|' . $m[1], $m[2], $vid ), $m[3] ) ) {
+        return $none;
+    }
+    return [ 'today' => true, 'flags' => brikpanel_human_flags( $m[2] ) ];
+}
+
+/**
+ * Remember what was counted on page open today, without the person mark.
+ *
+ * Never overwrites a valid mark: a browser that proved itself keeps it.
+ *
+ * @param string $flags Flags counted today.
+ * @return void
+ */
+function brikpanel_open_issue( $flags ) {
+    if ( brikpanel_human_state()['valid'] ) {
+        return;
+    }
+    $vid = function_exists( '_brikpanel_get_visitor_id' ) ? (string) _brikpanel_get_visitor_id() : '';
+    if ( '' === $vid && function_exists( 'brikpanel_visitor_id_from_cookie' ) ) {
+        $vid = brikpanel_visitor_id_from_cookie();
+    }
+    $day   = brikpanel_human_today();
+    $flags = brikpanel_human_flags( $flags );
+    brikpanel_human_write( '0.' . $day . '.' . $flags . '.' . brikpanel_human_sign( 'open|' . $day, $flags, $vid ) );
 }
 
 /**
@@ -478,7 +549,13 @@ function brikpanel_human_proof_rollout() {
     /** This action is documented in includes/brikpanel-consent.php */
     do_action( 'brikpanel_flush_page_cache' );
 
-    if ( class_exists( 'Brikpanel_Cron' ) && Brikpanel_Cron::is_available() ) {
+    // Only while the nightly cleanup is switched on (Store Health settings,
+    // 3.3.34): when it is off, the job stands down in this very request, and
+    // scheduling it here as well would break stand_down()'s rule.
+    $nightly = class_exists( 'Brikpanel_BrikControl_Bot_Traffic_Check' )
+        ? Brikpanel_BrikControl_Bot_Traffic_Check::nightly_enabled()
+        : 'yes' === get_option( 'brikpanel_bot_traffic_nightly', 'yes' );
+    if ( $nightly && class_exists( 'Brikpanel_Cron' ) && Brikpanel_Cron::is_available() ) {
         Brikpanel_Cron::schedule_single( time() + 15 * MINUTE_IN_SECONDS, 'brikpanel_bot_traffic_autoclean', [], [ 'unique' => true ] );
     }
 }

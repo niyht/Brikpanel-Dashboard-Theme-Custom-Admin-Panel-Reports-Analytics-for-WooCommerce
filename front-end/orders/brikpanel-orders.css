@@ -1109,6 +1109,29 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 	white-space: normal;
 }
 
+/* Other plugins' plain-text headings (brikpanelForeignHeadings() in
+   brikpanel-orders.js) wrap to the width of what is in their column instead of
+   holding it open on one line: "Konfirmasi Pembayaran" over a "View File"
+   button. The label stops counting towards the column's width; the hidden copy
+   of the heading under it keeps the column as wide as the longest word, so a
+   word is never cut. A heading narrower than its cells keeps one line. */
+.wp-list-table thead th.bp-th-wrap .bp-th-label {
+	display: block;
+	contain: inline-size;
+	white-space: normal;
+	text-wrap: balance;
+}
+
+.wp-list-table thead th.bp-th-wrap::after {
+	content: attr(data-bp-heading);
+	display: block;
+	width: min-content;
+	height: 0;
+	overflow: hidden;
+	visibility: hidden;
+	white-space: normal;
+}
+
 /* Per-icon wrappers. Some plugins put each icon in its own <div> or <p>; those
    are block boxes and stack no matter what `white-space` says. `inline-block`
    changes only the *outer* display type, so the wrapper keeps its own box --
@@ -1968,6 +1991,7 @@ status show in the order number area. This is not needed for Brikpanel’s mobil
 
 /* Title on the left; Screen Options and Add order share one row on the right. */
 .brikpanel-page-top {
+	--bp-overflow-size: 32px; /* "More actions" as tall as the buttons */
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
@@ -2074,6 +2098,54 @@ body .wrap .brikpanel-page-top .wp-heading-inline {
 	outline: 2px solid #303030;
 	outline-offset: 2px;
 	box-shadow: inset 0 0 0 1px #e3e3e3;
+}
+
+/* Levels set by brikpanelFitRow (brikpanelPageHeader() in brikpanel-orders.js):
+   `is-fold` folds Export and the title buttons other plugins add into "More
+   actions", `is-two-rows` puts the buttons on their own row under the title. */
+.brikpanel-page-top.is-two-rows {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.brikpanel-page-top.is-two-rows .brikpanel-page-actions {
+	justify-content: flex-end;
+}
+
+/* Hidden while it holds no button (B3: the shared part gives it a display). */
+.brikpanel-page-actions .bp-orders-more[hidden] {
+	display: none;
+}
+
+/* Another plugin's title button in the menu keeps its grey look while the
+   menu is open in the row, the first one too, which `:first-of-type` above
+   would paint as the primary button. */
+.brikpanel-page-actions .bp-orders-more .page-title-action {
+	color: #303030 !important;
+	background-color: rgb(227, 227, 227) !important;
+	box-shadow: none;
+}
+
+.brikpanel-page-actions .bp-orders-more .page-title-action:hover {
+	background-color: #d4d4d4 !important;
+}
+
+/* Folded, it is a row of the menu. The button rules above carry !important
+   (they beat WordPress's own .page-title-action), so these do too. */
+.brikpanel-page-top.is-fold .bp-orders-more .brikpanel-overflow__menu > .page-title-action {
+	justify-content: flex-start !important;
+	height: auto !important;
+	min-height: 2.25rem !important;
+	padding: .5rem .625rem !important;
+	border-radius: .4375rem !important;
+	background-color: transparent !important;
+	font-size: .8125rem !important;
+	font-weight: 500 !important;
+	line-height: 1.3 !important;
+}
+
+.brikpanel-page-top.is-fold .bp-orders-more .brikpanel-overflow__menu > .page-title-action:hover {
+	background-color: #f7f7f7 !important;
 }
 
 /* Its panel opens as a card under the title row. */
@@ -2542,6 +2614,80 @@ html.brikpanel-modal-lock {
 /* Tabs that run under the search button fade out at that edge only while
    more tabs are hidden there: brikpanel-scroll-strip.js/.css (brikpanelTableHeader). */
 
+/* Orders explorer link (brikpanelOrdersExplorerLink): the search button's
+   look and size, so the 28px row keeps one rhythm (the shared .brikpanel-btn
+   is 40px). In the tab row it sits after the tabs, which end before it, and
+   keeps the search button's 54px and the 8px gap free at its end; it fades
+   with the tabs while the search is open. */
+.bp-orders-explorer,
+.bp-orders-explorer:visited {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	box-sizing: border-box;
+	height: 28px;
+	margin: 0;
+	padding: 0 10px;
+	border: 1px solid #e3e3e3;
+	border-radius: .5rem;
+	background-color: #fff;
+	color: #616161;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 26px;
+	text-decoration: none;
+	white-space: nowrap;
+	transition: background-color .15s ease, color .15s ease;
+}
+
+.bp-orders-explorer:hover,
+.bp-orders-explorer:focus {
+	background-color: #f7f7f7;
+	color: #303030;
+	box-shadow: none;
+}
+
+.bp-orders-explorer:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.brikpanel-orders-table-header-1 > .bp-orders-explorer {
+	/* Level with the search button, which is placed 8px from the top. */
+	align-self: flex-start;
+	margin-inline-end: 62px;
+	transition: background-color .15s ease, color .15s ease, opacity .2s ease .1s, visibility 0s;
+}
+
+.brikpanel-orders-table-header-1.bp-orders-explorer-nosearch > .bp-orders-explorer {
+	margin-inline-end: 0;
+}
+
+.brikpanel-orders-table-header-1:has(.expanded) > .bp-orders-explorer {
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	transition: opacity .12s ease, visibility 0s .12s;
+}
+
+/* The tabs end before the link, so no band is kept for the search button. */
+.brikpanel-orders-table-header-1.bp-orders-explorer-in-row .subsubsub {
+	padding-inline-end: 0;
+}
+
+/* In the filter row (a tab row with no room for it): last, at the row's end,
+   and out of the Tab order while the row is closed. */
+.brikpanel-filters > .bp-orders-explorer {
+	margin-inline-start: auto;
+	visibility: hidden;
+	transition: background-color .15s ease, color .15s ease, visibility 0s .3s;
+}
+
+.brikpanel-orders-table-header-1:has(.expanded) + .brikpanel-filters-collapse > .brikpanel-filters > .bp-orders-explorer {
+	visibility: visible;
+	transition-delay: 0s;
+}
+
 /* No animation while the page sets itself up (search already open on load). */
 .bp-anim-off,
 .bp-anim-off *,
@@ -3008,6 +3154,15 @@ body.post-type-shop_order .wp-list-table tbody th.column-primary {
 	box-shadow: 0 8px 24px -6px rgba(26, 26, 26, .2), 0 0 0 1px rgba(0, 0, 0, .06);
 }
 
+/* With nothing ticked the bar is transparent, but on a phone it keeps its
+   padding at the bottom of the screen: its buttons must not take the taps and
+   focus meant for the rows under them. Visibility switches back at once when
+   the bar shows and only after its fade when it hides. */
+.brikpanel-bulk-actions:not(.show) {
+	visibility: hidden;
+	pointer-events: none;
+}
+
 /* Many bulk actions (custom statuses, plugins) must not push the bar past the
    card: it scrolls sideways instead. */
 .brikpanel-bulk-actions.show {
@@ -3052,6 +3207,33 @@ body.post-type-shop_order .wp-list-table tbody th.column-primary {
 
 .brikpanel-bulk-actions button.is-destructive {
 	color: #d72c0d;
+}
+
+/* Another plugin's button for the ticked orders (BP_BULK_BAR_BUTTONS in
+   brikpanel-orders.js: AgenWebsite Shipping's "Pengiriman Massal") keeps its
+   count badge beside the label, in the bar and in the folded menu. */
+.brikpanel-bulk-actions button.brikpanel-bulk-primary {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+/* In the bar it is the one dark button, the plugin's main action; in the
+   folded menu it is a menu line like the others. */
+.brikpanel-bulk-actions > button.brikpanel-bulk-primary {
+	background-color: #303030;
+	box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .2), inset 0 1px 0 rgba(255, 255, 255, .1);
+	color: #fff;
+}
+
+.brikpanel-bulk-actions > button.brikpanel-bulk-primary:hover {
+	background-color: #1a1a1a;
+}
+
+/* The plugin disables it while it checks the orders; the disabled hover rule
+   further up would paint it white under its white label. */
+.brikpanel-bulk-actions > button.brikpanel-bulk-primary[disabled]:hover {
+	background-color: #303030;
 }
 
 /* ---- Motion preferences ----------------------------------------------------------- */
@@ -3125,11 +3307,14 @@ body.bp-orders-compact .brikpanel-order-number:has(> .bp-order-buyer) > .order-v
 	flex-shrink: 0;
 }
 
-/* Quick actions in the short row: the preview beside the order number and
-   WhatsApp in its own column, both as small boxed icon buttons. Screen
-   Options shows or hides the WhatsApp column as usual. */
+/* Quick actions in the short row: the preview beside the order number,
+   WhatsApp and Print in their own columns, all as small boxed icon buttons.
+   Screen Options shows or hides both columns as usual; Print starts hidden
+   (front-end/orders/brikpanel-order-print.php). */
 body.bp-orders-compact .wp-list-table th.column-brikpanel_whatsapp,
-body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp {
+body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp,
+body.bp-orders-compact .wp-list-table th.column-brikpanel_print,
+body.bp-orders-compact .wp-list-table td.column-brikpanel_print {
 	width: 1% !important;
 	padding-left: 4px !important;
 	padding-right: 8px !important;
@@ -3138,6 +3323,7 @@ body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp {
 }
 
 body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-list-link,
+body.bp-orders-compact .wp-list-table td.column-brikpanel_print .brikpanel-print-list-link,
 body.bp-orders-compact #the-list .brikpanel-order-number .order-preview {
 	box-sizing: border-box;
 	position: relative;
@@ -3164,22 +3350,26 @@ body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa
 }
 
 body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-list-link:hover,
+body.bp-orders-compact .wp-list-table td.column-brikpanel_print .brikpanel-print-list-link:hover,
 body.bp-orders-compact #the-list .brikpanel-order-number .order-preview:hover {
 	background: #f7f7f7;
 	transform: none;
 }
 
+body.bp-orders-compact .wp-list-table td.column-brikpanel_print .brikpanel-print-list-link:hover,
 body.bp-orders-compact #the-list .brikpanel-order-number .order-preview:hover {
 	color: #303030;
 }
 
 body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-list-link:focus-visible,
+body.bp-orders-compact .wp-list-table td.column-brikpanel_print .brikpanel-print-list-link:focus-visible,
 body.bp-orders-compact #the-list .brikpanel-order-number .order-preview:focus-visible {
 	outline: 2px solid #303030;
 	outline-offset: 2px;
 }
 
-body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-glyph {
+body.bp-orders-compact .wp-list-table td.column-brikpanel_whatsapp .brikpanel-wa-glyph,
+body.bp-orders-compact .wp-list-table td.column-brikpanel_print .brikpanel-print-list-link svg {
 	width: 16px;
 	height: 16px;
 }
@@ -3472,6 +3662,13 @@ body.bp-orders-compact .wp-list-table tbody tr.bp-order-detail:not(.inline-edit-
 .bp-od .bp-od-btn.disabled {
 	opacity: .6;
 	cursor: progress;
+}
+
+/* Screen Options hides the panel's Print button together with its column
+   (front-end/orders/brikpanel-order-print.php); WordPress's .hidden alone
+   loses to the button's own display. */
+.bp-od .bp-od-btn.hidden {
+	display: none;
 }
 
 .bp-od-wa .brikpanel-wa-glyph {
@@ -3816,13 +4013,15 @@ body.bp-orders-compact #posts-filter {
 	}
 }
 
-/* The WhatsApp column header is its mark, keeping the column narrow; the
-   text stays for screen readers and Screen Options. */
-body.bp-orders-compact .wp-list-table thead th.column-brikpanel_whatsapp {
+/* The WhatsApp and Print column headers are their marks, keeping the columns
+   narrow; the text stays for screen readers and Screen Options. */
+body.bp-orders-compact .wp-list-table thead th.column-brikpanel_whatsapp,
+body.bp-orders-compact .wp-list-table thead th.column-brikpanel_print {
 	font-size: 0 !important;
 }
 
-body.bp-orders-compact .wp-list-table thead th.column-brikpanel_whatsapp::before {
+body.bp-orders-compact .wp-list-table thead th.column-brikpanel_whatsapp::before,
+body.bp-orders-compact .wp-list-table thead th.column-brikpanel_print::before {
 	content: "";
 	display: inline-block;
 	width: 14px;
@@ -3831,6 +4030,11 @@ body.bp-orders-compact .wp-list-table thead th.column-brikpanel_whatsapp::before
 	background-color: #8a8a8a;
 	-webkit-mask: url(icons/bp-whatsapp.svg) center / contain no-repeat;
 	mask: url(icons/bp-whatsapp.svg) center / contain no-repeat;
+}
+
+body.bp-orders-compact .wp-list-table thead th.column-brikpanel_print::before {
+	-webkit-mask-image: url(icons/bp-print.svg);
+	mask-image: url(icons/bp-print.svg);
 }
 
 /* ---- Detail panel: WooCommerce's action buttons with their names ---- */
@@ -4044,4 +4248,70 @@ body.bp-orders-compact .wp-list-table thead th.column-brikpanel_whatsapp::before
 	outline: 2px solid #303030;
 	outline-offset: 2px;
 	box-shadow: inset 0 0 0 1px #e3e3e3;
+}
+
+/* ===== New orders bar =====
+   "1 new order · Show" between the summary and an Orders list left open
+   (brikpanelNewOrdersBar in brikpanel-orders.js). The list never moves under
+   the merchant's hand; Show opens the same tab again. The button is the shared
+   .brikpanel-btn, only its place is set here. */
+.brikpanel-orders-newbar {
+	box-sizing: border-box;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 12px;
+	padding-block: 6px;
+	padding-inline: 16px 6px;
+	background-color: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: .75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+	animation: brikpanel-orders-newbar-in .22s cubic-bezier(.4, 0, .2, 1);
+}
+
+.brikpanel-orders-newbar[hidden] {
+	display: none;
+}
+
+.brikpanel-orders-newbar__dot {
+	flex: 0 0 auto;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background-color: #1a8917;
+	box-shadow: 0 0 0 4px rgba(26, 137, 23, .14);
+}
+
+/* Does not grow: the text stays beside the dot even when its own direction
+   (dir="auto") differs from the page's. */
+.brikpanel-orders-newbar__text {
+	flex: 0 1 auto;
+	min-width: 0;
+	color: #303030;
+	font-size: .875rem;
+	font-weight: 550;
+	line-height: 1.4;
+}
+
+.brikpanel-orders-newbar__show {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+}
+
+@keyframes brikpanel-orders-newbar-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brikpanel-orders-newbar {
+		animation: none;
+	}
 }

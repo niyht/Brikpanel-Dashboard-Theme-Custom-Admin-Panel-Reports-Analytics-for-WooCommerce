@@ -336,6 +336,312 @@
     line-height: 1.5;
 }
 
+/* Coupon and checkout card */
+.brikpanel-cs-label-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
+    margin-bottom: 0.375rem;
+}
+.brikpanel-cs-label {
+    font-size: var(--brikpanel-label-size, 0.8125rem);
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--cs-text);
+}
+.brikpanel-cs-optional {
+    font-size: 0.75rem;
+    color: var(--cs-text-secondary);
+}
+.brikpanel-cs-field-hint {
+    margin: 0.375rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--cs-text-secondary);
+}
+.brikpanel-cs-field-hint a,
+.brikpanel-cs-field-hint a:visited {
+    color: var(--cs-text);
+    font-weight: 550;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.brikpanel-cs-field-hint a:hover,
+.brikpanel-cs-field-hint a:focus {
+    color: var(--cs-primary-hover);
+}
+
+/* Coupon search rows: the code over what it gives, why it cannot be used at
+   the end. A greyed-out row cannot be picked. */
+.brikpanel-cs-coupon-option-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+.brikpanel-cs-coupon-option-code {
+    font-weight: 550;
+    color: var(--cs-text);
+    overflow-wrap: anywhere;
+}
+.brikpanel-cs-coupon-option-summary {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--cs-text-secondary);
+}
+.brikpanel-cs-coupon-option-note {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 550;
+    color: var(--cs-error);
+}
+.brikpanel-cs-suggestion.is-disabled {
+    cursor: default;
+}
+.brikpanel-cs-suggestion.is-disabled:hover {
+    background: transparent;
+}
+.brikpanel-cs-suggestion.is-disabled .brikpanel-cs-coupon-option-code {
+    color: var(--cs-text-secondary);
+}
+/* "Create coupon" stays at the bottom of the list while it scrolls, so it is
+   in sight under eight coupons too; rows keep clear of it when the keyboard
+   brings them into view. */
+.brikpanel-cs-suggestion.brikpanel-cs-coupon-create {
+    position: sticky;
+    bottom: 0;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    font-weight: 550;
+    color: var(--cs-text);
+    background: #fff;
+}
+.brikpanel-cs-suggestion.brikpanel-cs-coupon-create:hover,
+.brikpanel-cs-suggestion.brikpanel-cs-coupon-create.is-active {
+    background: #f7f7f7;
+}
+.brikpanel-cs-coupon-option + .brikpanel-cs-coupon-create {
+    margin-top: 0.25rem;
+    border-top: 1px solid var(--cs-border);
+    border-radius: 0 0 0.375rem 0.375rem;
+}
+.brikpanel-cs-coupon-option {
+    scroll-margin-bottom: 3rem;
+}
+.brikpanel-cs-coupon-create svg {
+    flex-shrink: 0;
+}
+
+/* The coupon on the link */
+.brikpanel-cs-coupon {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    padding-inline: 0.75rem 0.5rem;
+    border: 1px solid var(--cs-border);
+    border-radius: 0.5rem;
+    background: #fafafa;
+}
+.brikpanel-cs-coupon-icon {
+    flex-shrink: 0;
+    color: var(--cs-text-secondary);
+}
+.brikpanel-cs-coupon-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+.brikpanel-cs-coupon-code {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--cs-text);
+    overflow-wrap: anywhere;
+}
+.brikpanel-cs-coupon-summary {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--cs-text-secondary);
+}
+
+/* New coupon: code, then type and amount side by side (one per line on a
+   phone, from the shared filter row), then the buttons. */
+.brikpanel-cs-coupon-new {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid var(--cs-border);
+    border-radius: 0.5rem;
+    background: #fafafa;
+}
+.brikpanel-cs-new-field {
+    flex: 1 1 12rem;
+}
+/* On a phone the shared row is a column, where that basis would be a height. */
+@media screen and (max-width: 640px) {
+    .brikpanel-cs-new-field {
+        flex: none;
+    }
+}
+.brikpanel-cs-coupon-new .brikpanel-cs-note {
+    margin: 0;
+}
+.brikpanel-cs-new-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* Amount box with its unit in front: % or the store currency. */
+.brikpanel-cs-input-group {
+    display: flex;
+    align-items: stretch;
+    box-sizing: border-box;
+    height: var(--brikpanel-control-h, 2.5rem);
+    background-color: #fff;
+    border: 1px solid var(--cs-input-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.brikpanel-cs-input-group:focus-within {
+    border-color: var(--cs-text);
+    box-shadow: 0 0 0 1px var(--cs-text);
+}
+.brikpanel-cs-input-group.is-error {
+    border-color: var(--cs-error);
+    box-shadow: 0 0 0 1px var(--cs-error);
+}
+.brikpanel-cs-input-prefix {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+    color: var(--cs-text-secondary);
+    white-space: nowrap;
+    background: #f7f7f7;
+    border-inline-end: 1px solid var(--cs-border);
+}
+.wp-core-ui .brikpanel-cs-input-group input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0 0.75rem;
+    font-family: inherit;
+    font-size: 0.875rem;
+    line-height: normal;
+    color: var(--cs-text);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+.wp-core-ui .brikpanel-cs-input-group input[type="text"]:focus {
+    outline: none;
+    box-shadow: none;
+}
+.wp-core-ui .brikpanel-cs-input-group input[type="text"]::placeholder {
+    color: var(--cs-text-placeholder);
+    opacity: 1;
+}
+/* WordPress's own phone size for form boxes, so iOS does not zoom on focus. */
+@media screen and (max-width: 782px) {
+    .wp-core-ui .brikpanel-cs-input-group input[type="text"] {
+        font-size: 16px;
+    }
+}
+
+/* "Go straight to checkout": the words are the label, the switch at the end. */
+.brikpanel-cs-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--cs-border);
+}
+.brikpanel-cs-option-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+    cursor: pointer;
+}
+.brikpanel-cs-option-title {
+    font-size: 0.875rem;
+    font-weight: 550;
+    line-height: 1.4;
+    color: var(--cs-text);
+}
+.brikpanel-cs-option-help {
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--cs-text-secondary);
+}
+
+.brikpanel-cs-switch {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: 40px;
+    height: 22px;
+}
+/* The real checkbox lies over the drawn switch, invisible: it takes the click,
+   the keyboard focus and the screen reader's "switch, off". */
+.brikpanel-cs .brikpanel-cs-switch input[type="checkbox"] {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+.brikpanel-cs-switch-slider {
+    position: absolute;
+    inset: 0;
+    background: #ccc;
+    border-radius: 22px;
+    pointer-events: none;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.brikpanel-cs-switch-slider::before {
+    content: "";
+    position: absolute;
+    bottom: 3px;
+    inset-inline-start: 3px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.15s ease;
+}
+.brikpanel-cs-switch input:checked + .brikpanel-cs-switch-slider {
+    background: var(--cs-primary);
+}
+.brikpanel-cs-switch input:checked + .brikpanel-cs-switch-slider::before {
+    transform: translateX(18px);
+}
+[dir="rtl"] .brikpanel-cs-switch input:checked + .brikpanel-cs-switch-slider::before {
+    transform: translateX(-18px);
+}
+.brikpanel-cs-switch input:focus-visible + .brikpanel-cs-switch-slider {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--cs-primary);
+}
+
 /* Toast */
 .brikpanel-cs-toast-container {
     position: fixed;

@@ -1000,7 +1000,7 @@ final class Brikpanel_Video {
             }
         }
         if ($product->is_type('variable')) {
-            $children = array_map('intval', (array) $product->get_children());
+            $children = brikpanel_variation_ids($product);
             if ($children) {
                 update_meta_cache('post', $children);
                 foreach ($children as $child) {

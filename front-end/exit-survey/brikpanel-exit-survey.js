@@ -12,6 +12,11 @@
  * The click is caught on the document because a plugin search redraws the
  * rows. A modified click, or a browser without <dialog>, deactivates as before.
  *
+ * "It slowed down my site" and "Something did not work" also carry a summary of
+ * how pages arrived in this browser, worked out from the page arrival watch's
+ * samples (front-end/net-watch/brikpanel-net-watch.js) and listed in the
+ * window, under the comment box, before anything is sent.
+ *
  * Server side and markup: includes/brikpanel-exit-survey.php.
  */
 (function () {
@@ -20,6 +25,7 @@
 	const cfg = window.brikpanelExitSurvey;
 	if (!cfg || !cfg.nonce || !cfg.plugin) return;
 	const t = cfg.i18n || {};
+	const diagReasons = Array.isArray(cfg.diag) ? cfg.diag : [];
 
 	const $dialog = document.getElementById('brikpanel-exit-survey');
 	if (!$dialog || typeof $dialog.showModal !== 'function') return;
@@ -44,13 +50,108 @@
 
 	const panelOf = key => $form.querySelector('.bp-exit__more[data-reason="' + key + '"]'); // i18n-ignore: CSS selector
 
-	// Only the picked reason shows its questions; Send waits for a reason.
+	// Only the picked reason shows its questions; Send waits for a reason. The
+	// privacy line names the speed numbers when the picked reason sends them.
 	const sync = () => {
 		const picked = reason();
 		$form.querySelectorAll('.bp-exit__more').forEach($more => {
 			$more.hidden = $more.dataset.reason !== picked;
 		});
+		const diag = diagReasons.includes(picked);
+		$form.querySelectorAll('[data-bp-exit-privacy]').forEach($p => { // i18n-ignore: CSS selector
+			$p.hidden = ($p.dataset.bpExitPrivacy === 'diag') !== diag;
+		});
 		$send.disabled = busy || !picked;
+	};
+
+	// The page arrival watch's samples for this site, summed up: how many,
+	// how many were stuck and never came, medians in milliseconds, protocol
+	// shares in percent. Nothing in it says which page or when.
+	const netSummary = () => {
+		let rows = [];
+		try {
+			const db = JSON.parse(window.localStorage.getItem(String(cfg.netKey || '')) || 'null');
+			if (db && Array.isArray(db.s)) rows = db.s.slice(-40);
+		} catch (e) {
+			rows = [];
+		}
+		const now = Date.now() / 1000;
+		const out = { n: 0, stuck: 0, never: 0 };
+		const lists = { srv: [], ttfb: [], dom: [], load: [] };
+		const proto = { h3: 0, h2: 0, h1: 0 };
+		let protoSeen = 0;
+		rows.forEach(r => {
+			if (!r || typeof r !== 'object') return;
+			out.n++;
+			// A page still open in another tab is not "never": a minute's grace.
+			if (r.w) {
+				out.stuck++;
+				if (!r.c && now - (Number(r.t) || 0) > 60) out.never++;
+			}
+			if (r.srv > 0) lists.srv.push(Number(r.srv));
+			if (r.d && r.ttfb >= 0) lists.ttfb.push(Number(r.ttfb));
+			if (r.c && r.dcl > 0) lists.dom.push(Number(r.dcl));
+			if (r.d && r.ld > 0) lists.load.push(Number(r.ld));
+			const p = String(r.pr || '');
+			if (p) {
+				protoSeen++;
+				if (p.indexOf('h3') === 0) proto.h3++;
+				else if (p === 'h2') proto.h2++;
+				else if (p.indexOf('http/1') === 0) proto.h1++;
+			}
+		});
+		Object.keys(lists).forEach(k => {
+			const a = lists[k].filter(v => isFinite(v)).sort((x, y) => x - y);
+			if (a.length) out[k] = Math.round(a[Math.floor(a.length / 2)]);
+		});
+		if (protoSeen) {
+			Object.keys(proto).forEach(k => {
+				out[k] = Math.round((proto[k] * 100) / protoSeen);
+			});
+		}
+		return out;
+	};
+
+	const fmt = window.brikpanelFormat;
+	const num = (v, d) => (fmt ? fmt.number(v, d || 0) : String(v));
+	const secs = ms => String(t.sec || '%s').replace('%s', num(ms / 1000, 1));
+	const pct = v => (fmt ? fmt.percent(v, 0) : String(v));
+
+	// The browser's part of the list in the window, exactly what goes out.
+	let net = null;
+	const fillNet = () => {
+		net = netSummary();
+		const lines = [];
+		if (!net.n) {
+			lines.push([t.netNone, '']);
+		} else {
+			lines.push([t.netPages, num(net.n)]);
+			lines.push([t.netStuck, num(net.stuck)]);
+			lines.push([t.netNever, num(net.never)]);
+			if (net.srv != null) lines.push([t.netSrv, secs(net.srv)]);
+			if (net.ttfb != null) lines.push([t.netTtfb, secs(net.ttfb)]);
+			if (net.dom != null) lines.push([t.netDom, secs(net.dom)]);
+			if (net.load != null) lines.push([t.netLoad, secs(net.load)]);
+			[['h3', 'HTTP/3'], ['h2', 'HTTP/2'], ['h1', 'HTTP/1.1']].forEach(([k, name]) => { // i18n-ignore: protocol names
+				if (net[k]) lines.push([String(t.netProto || '%s').replace('%s', name), pct(net[k])]);
+			});
+		}
+		$form.querySelectorAll('[data-bp-exit-net]').forEach($dl => { // i18n-ignore: CSS selector
+			$dl.textContent = '';
+			lines.forEach(([label, value]) => {
+				const $row = document.createElement('div');
+				$row.className = 'bp-exit__fact';
+				const $dt = document.createElement('dt');
+				$dt.textContent = label || '';
+				$row.appendChild($dt);
+				if (value !== '') {
+					const $dd = document.createElement('dd');
+					$dd.textContent = value;
+					$row.appendChild($dd);
+				}
+				$dl.appendChild($row);
+			});
+		});
 	};
 
 	const lockScroll = on => document.documentElement.classList.toggle('bp-exit-lock', on);
@@ -89,6 +190,7 @@
 		target = $link.href;
 		$opener = $link;
 		reset();
+		if (diagReasons.length) fillNet();
 		lockScroll(true);
 		$dialog.showModal();
 	};
@@ -182,6 +284,7 @@
 			if ($feature) body.append('feature', $feature.value);
 			if ($comment) body.append('comment', $comment.value);
 		}
+		if (net && diagReasons.includes(picked)) body.append('net', JSON.stringify(net));
 
 		const controller = typeof AbortController === 'function' ? new AbortController() : null;
 		const timer = window.setTimeout(() => {

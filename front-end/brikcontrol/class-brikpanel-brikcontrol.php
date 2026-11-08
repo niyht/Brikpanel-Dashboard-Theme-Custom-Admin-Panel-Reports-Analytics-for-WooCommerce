@@ -62,6 +62,7 @@ class Brikpanel_BrikControl {
         add_action( 'wp_ajax_brikpanel_brikcontrol_dismiss',  [ $this, 'ajax_dismiss' ] );
         add_action( 'wp_ajax_brikpanel_brikcontrol_fix',      [ $this, 'ajax_fix' ] );
         add_action( 'wp_ajax_brikpanel_brikcontrol_undo',     [ $this, 'ajax_undo' ] );
+        add_action( 'wp_ajax_brikpanel_brikcontrol_row_action', [ $this, 'ajax_row_action' ] );
 
         // Plugin activation / deactivation invalidates the cached health
         // verdict because the active optimizer set is what gates how we
@@ -211,8 +212,16 @@ class Brikpanel_BrikControl {
                 'fix_failed'         => __( 'Cleanup failed. Please try again.', 'brikpanel' ),
                 'undo_running'       => __( 'Restoring…', 'brikpanel' ),
                 'undo_failed'        => __( 'Could not restore. Please try again.', 'brikpanel' ),
+                // A row button (3.3.34): "Real day" and "Unmark" in the bot traffic lists.
+                'row_running'        => __( 'Saving…', 'brikpanel' ),
+                'row_failed'         => __( 'Could not save. Please try again.', 'brikpanel' ),
             ],
         ] );
+
+        // The unused images card under the checks (3.3.39).
+        if ( class_exists( 'Brikpanel_BrikControl_Unused_Images' ) ) {
+            Brikpanel_BrikControl_Unused_Images::enqueue_assets();
+        }
     }
 
     // =========================================================================
@@ -607,7 +616,8 @@ class Brikpanel_BrikControl {
         delete_transient( $lock );
 
         // Re-run the check so the card the page reloads into is truthful.
-        // Batched checks cannot be re-run inline; they wait for the next scan.
+        // Batched checks cannot be re-run here; one whose cleanup changes what
+        // it scans rescans itself in run_fix() (the image check, 3.3.37).
         if ( ! $check->supports_batching() ) {
             Brikpanel_BrikControl_Storage::save_check_result( $check_id, $check->run( [] ) );
         }
@@ -691,6 +701,62 @@ class Brikpanel_BrikControl {
             'restored' => $restored,
             'message'  => trim( implode( ' ', array_filter( $parts, 'strlen' ) ) ),
             'note'     => '' !== (string) ( $outcome['message'] ?? '' ),
+        ] );
+    }
+
+    /**
+     * A check's row button (3.3.34): today the bot traffic lists' "Real day"
+     * and "Unmark". Same guards as the cleanup and the undo; the check checks
+     * the value itself (bc_row_action()). The cleanup lock is held while the
+     * mark is written and the card is rescanned, so a cleanup in another tab
+     * or the nightly run never acts on the list from before it. Marking a day
+     * changes no abandoned-cart entry, so the linked check is not rerun.
+     */
+    public function ajax_row_action() {
+        $this->verify_ajax();
+
+        $check_id = isset( $_POST['check_id'] ) ? sanitize_key( wp_unslash( $_POST['check_id'] ) ) : '';
+        $op       = isset( $_POST['op'] ) ? sanitize_key( wp_unslash( $_POST['op'] ) ) : '';
+        $value    = isset( $_POST['value'] ) ? sanitize_text_field( wp_unslash( $_POST['value'] ) ) : '';
+        $check    = '' !== $check_id ? Brikpanel_BrikControl_Registry::get( $check_id ) : null;
+        if ( ! $check || ! method_exists( $check, 'bc_row_action' ) || '' === $op ) {
+            wp_send_json_error( [ 'message' => __( 'Invalid request.', 'brikpanel' ) ], 400 );
+        }
+
+        $lock = 'brikpanel_bc_fix_' . $check_id;
+        if ( get_transient( $lock ) ) {
+            wp_send_json_error( [ 'message' => __( 'A cleanup is running for this check. Try again in a moment.', 'brikpanel' ) ], 409 );
+        }
+        if ( get_transient( 'brikpanel_bc_undo_' . $check_id ) ) {
+            wp_send_json_error( [ 'message' => __( 'An undo is running for this check. Try again in a moment.', 'brikpanel' ) ], 409 );
+        }
+        set_transient( $lock, 1, 2 * MINUTE_IN_SECONDS );
+
+        try {
+            $outcome = $check->bc_row_action( $op, $value );
+            $outcome = is_array( $outcome ) ? $outcome : [];
+            if ( ! empty( $outcome['ok'] ) && ! $check->supports_batching() ) {
+                Brikpanel_BrikControl_Storage::save_check_result( $check_id, $check->run( [] ) );
+            }
+        } catch ( \Throwable $e ) {
+            delete_transient( $lock );
+            wp_send_json_error( [ 'message' => __( 'Could not save. Please try again.', 'brikpanel' ) ], 500 );
+        }
+
+        delete_transient( $lock );
+
+        if ( empty( $outcome['ok'] ) ) {
+            $status = (int) ( $outcome['status'] ?? 400 );
+            wp_send_json_error(
+                [ 'message' => (string) ( $outcome['message'] ?? __( 'Invalid request.', 'brikpanel' ) ) ],
+                in_array( $status, [ 400, 409 ], true ) ? $status : 400
+            );
+        }
+
+        wp_send_json_success( [
+            'check_id' => $check_id,
+            'message'  => (string) ( $outcome['message'] ?? '' ),
+            'note'     => false,
         ] );
     }
 

@@ -14,8 +14,10 @@
 	// State
 	// -----------------------------------------------------------------------
 
+	// One screen each now: the Customers page shows the customer list
+	// (lock_tab 'customers') and the Orders explorer the order list.
 	const state = {
-		tab: 'orders',
+		tab: CFG.lock_tab === 'customers' ? 'customers' : 'orders',
 		page: 1,
 		sort: '',
 		order: 'desc',
@@ -100,6 +102,12 @@
 			{ key: 'high_value', label: I18N.preset_high_value || 'High value' },
 		],
 	};
+
+	// The bell's "New customers today" opens the list on this preset; its chip
+	// shows only then, so the everyday chip row stays as it was.
+	if (CFG.initial && CFG.initial.preset === 'new_today') {
+		PRESETS.customers.splice(1, 0, { key: 'new_today', label: I18N.preset_new_today });
+	}
 
 	// -----------------------------------------------------------------------
 	// Helpers
@@ -330,21 +338,34 @@
 		}).join(''));
 	}
 
+	// Columns a click sorts by, and the server's name for each.
+	const SORTABLE = { orders: 'count', spent: 'spent', lastOrder: '', since: 'since' };
+
+	function sortHeader(key, label, numeric) {
+		const sortKey = SORTABLE[key];
+		const active = state.sort === sortKey;
+		const dir = state.order === 'asc' ? 'ascending' : 'descending';
+		const arrow = active ? (state.order === 'asc' ? '↑' : '↓') : '';
+		return '<th' + (numeric ? ' class="bp-seg-num"' : '') + (active ? ' aria-sort="' + dir + '"' : '') + '>'
+			+ '<button type="button" class="bp-seg-sort' + (active ? ' is-active' : '') + '" data-sort="' + escape(sortKey) + '">'
+			+ escape(label) + '<span class="bp-seg-sort-arrow" aria-hidden="true">' + arrow + '</span></button></th>';
+	}
+
 	function renderCustomersTable(data, narrowed) {
 		const L = {
-			customer: I18N.col_customer, email: I18N.col_email, phone: I18N.col_phone, registered: I18N.col_registered,
-			orders: I18N.col_orders, spent: I18N.col_spent, aov: I18N.col_aov, lastOrder: I18N.col_last_order,
+			customer: I18N.col_customer, phone: I18N.col_phone, location: I18N.col_location, segment: I18N.col_segment,
+			orders: I18N.col_orders, spent: I18N.col_spent, lastOrder: I18N.col_last_order, since: I18N.col_since,
 		};
 		el('bp-seg-thead').innerHTML =
 			'<tr>'
 			+ '<th>' + escape(L.customer) + '</th>'
-			+ '<th>' + escape(L.email) + '</th>'
 			+ '<th>' + escape(L.phone) + '</th>'
-			+ '<th>' + escape(L.registered) + '</th>'
-			+ '<th class="bp-seg-num">' + escape(L.orders) + '</th>'
-			+ '<th class="bp-seg-num">' + escape(L.spent) + '</th>'
-			+ '<th class="bp-seg-num">' + escape(L.aov) + '</th>'
-			+ '<th>' + escape(L.lastOrder) + '</th>'
+			+ '<th>' + escape(L.location) + '</th>'
+			+ '<th>' + escape(L.segment) + '</th>'
+			+ sortHeader('orders', L.orders, true)
+			+ sortHeader('spent', L.spent, true)
+			+ sortHeader('lastOrder', L.lastOrder, false)
+			+ sortHeader('since', L.since, false)
 			+ '</tr>';
 
 		if (!data.items.length) {
@@ -352,20 +373,22 @@
 			return;
 		}
 
+		// Every row opens the customer's page, guests included.
 		setBody(data.items.map(function (c) {
-			const nameCell = c.edit_url
-				? '<a class="bp-seg-primary-link" href="' + escape(c.edit_url) + '">' + escape(c.name) + '</a>'
-				: escape(c.name) + ' <span class="bp-seg-subtle">(' + escape(I18N.guest) + ')</span>';
+			const name = c.profile_url
+				? '<a class="bp-seg-primary-link" href="' + escape(c.profile_url) + '">' + escape(c.name) + '</a>'
+				: escape(c.name);
+			const guest = c.is_guest ? ' <span class="bp-seg-subtle">(' + escape(I18N.guest) + ')</span>' : '';
 			return '<tr>'
-				+ '<td class="bp-seg-customer bp-seg-cell-title">' + nameCell + '</td>'
-				+ '<td class="bp-seg-customer"' + cellLabel(L.email) + '>' + (c.email ? emailHtml(c.email) : '—') + '</td>'
+				+ '<td class="bp-seg-customer bp-seg-cell-title">' + name + guest + (c.email && c.email !== c.name ? '<div class="bp-seg-subtle">' + emailHtml(c.email) + '</div>' : '') + '</td>'
 				+ '<td class="bp-seg-phone"' + cellLabel(L.phone) + '>' + (c.phone ? ltrHtml(c.phone) : '—') + '</td>'
-				+ '<td' + cellLabel(L.registered) + '>' + escape(c.registered || '—') + '</td>'
+				+ '<td' + cellLabel(L.location) + '>' + escape(c.location || '—') + '</td>'
+				+ '<td' + cellLabel(L.segment) + '>' + (c.rfm_label ? '<span class="brikpanel-badge">' + escape(c.rfm_label) + '</span>' : '—') + '</td>'
 				// String(): escape() drops a bare 0, and a customer with no orders showed an empty cell.
 				+ '<td class="bp-seg-num"' + cellLabel(L.orders) + '>' + escape(String(c.order_count || 0)) + '</td>'
 				+ '<td class="bp-seg-num bp-seg-cell-headline"' + cellLabel(L.spent) + '>' + c.total_spent_display + '</td>'
-				+ '<td class="bp-seg-num"' + cellLabel(L.aov) + '>' + c.aov_display + '</td>'
 				+ '<td' + cellLabel(L.lastOrder) + '>' + escape(c.last_order || '—') + '</td>'
+				+ '<td' + cellLabel(L.since) + '>' + escape(c.since || '—') + '</td>'
 				+ '</tr>';
 		}).join(''));
 	}
@@ -384,7 +407,8 @@
 
 	function renderStats(data) {
 		el('bp-seg-stat-count').textContent = formatNumber(data.summary.count);
-		el('bp-seg-count').textContent = formatNumber(data.summary.count);
+		const headCount = el('bp-seg-count');
+		if (headCount) headCount.textContent = formatNumber(data.summary.count);
 		el('bp-seg-stat-revenue').innerHTML = data.summary.revenue_display || '—';
 		el('bp-seg-stat-aov').innerHTML = data.summary.aov_display || '—';
 		el('bp-seg-stat-revenue-label').textContent = state.tab === 'customers'
@@ -811,6 +835,21 @@
 		});
 	}
 
+	function exportCsv() {
+		collectFilters();
+		const params = new URLSearchParams();
+		params.append('action', 'brikpanel_segments_export');
+		params.append('_wpnonce', CFG.nonce);
+		params.append('tab', state.tab);
+		const reqData = buildRequestData();
+		Object.keys(reqData).forEach(function (k) {
+			const v = reqData[k];
+			if (Array.isArray(v)) v.forEach(function (it) { params.append(k + '[]', it); });
+			else if (v !== '' && v !== null && v !== undefined) params.append(k, v);
+		});
+		window.location.href = CFG.ajax_url + '?' + params.toString();
+	}
+
 	// -----------------------------------------------------------------------
 	// Event wiring
 	// -----------------------------------------------------------------------
@@ -934,20 +973,23 @@
 		el('bp-seg-prev').addEventListener('click', function () { if (state.page > 1) { state.page--; runQuery(); } });
 		el('bp-seg-next').addEventListener('click', function () { state.page++; runQuery(); });
 
-		// Export
-		el('bp-seg-export').addEventListener('click', function () {
-			collectFilters();
-			const params = new URLSearchParams();
-			params.append('action', 'brikpanel_segments_export');
-			params.append('_wpnonce', CFG.nonce);
-			params.append('tab', state.tab);
-			const reqData = buildRequestData();
-			Object.keys(reqData).forEach(function (k) {
-				const v = reqData[k];
-				if (Array.isArray(v)) v.forEach(function (it) { params.append(k + '[]', it); });
-				else if (v !== '' && v !== null && v !== undefined) params.append(k, v);
-			});
-			window.location.href = CFG.ajax_url + '?' + params.toString();
+		// Export (the Customers page's header button calls exportCsv() itself)
+		const exportBtn = el('bp-seg-export');
+		if (exportBtn) exportBtn.addEventListener('click', exportCsv);
+
+		// Sortable column headers (customer list)
+		el('bp-seg-thead').addEventListener('click', function (e) {
+			const btn = e.target.closest('[data-sort]');
+			if (!btn) return;
+			const key = btn.dataset.sort;
+			if (state.sort === key) {
+				state.order = state.order === 'asc' ? 'desc' : 'asc';
+			} else {
+				state.sort = key;
+				state.order = 'desc';
+			}
+			state.page = 1;
+			runQuery();
 		});
 
 		// Product pickers
@@ -960,10 +1002,56 @@
 	// -----------------------------------------------------------------------
 
 	ROOT.setAttribute('data-tab', state.tab);
+	// Where the page was opened: the bell's preset, or an RFM segment.
+	if (CFG.initial) {
+		if (typeof CFG.initial.preset === 'string') state.preset = CFG.initial.preset;
+		if (Array.isArray(CFG.initial.rfm_segments)) state.filters.rfm_segments = CFG.initial.rfm_segments.slice();
+	}
 	renderChips();
 	wire();
 	fitTable();
 	// A saved segment is applied only once the option lists it names exist.
 	const optionsReady = loadFilterOptions();
-	optionsReady.then(runQuery);
+
+	// The Customers page can open on another tab: the list then loads the
+	// first time its tab is shown (start()), never in the background.
+	let started = false;
+	function start() {
+		if (started) return;
+		started = true;
+		optionsReady.then(runQuery);
+	}
+
+	// All customers, filtered to one RFM segment (a click on an RFM card).
+	function openSegment(seg) {
+		state.preset = '';
+		state.savedId = '';
+		state.page = 1;
+		state.filters.rfm_segments = [String(seg)];
+		const select = function () {
+			const rfmEl = el('bp-seg-rfm');
+			if (rfmEl) Array.from(rfmEl.options).forEach(function (o) { o.selected = o.value === String(seg); });
+		};
+		select();
+		const panel = el('bp-seg-more');
+		if (panel && panel.hidden) {
+			panel.hidden = false;
+			el('bp-seg-toggle-more').setAttribute('aria-expanded', 'true');
+		}
+		renderChips();
+		if (!started) {
+			started = true;
+			optionsReady.then(function () { select(); runQuery(); });
+		} else {
+			runQuery();
+		}
+	}
+
+	window.brikpanelSegmentsApi = {
+		start: start,
+		reload: function () { if (started) runQuery(); },
+		exportCsv: exportCsv,
+		openSegment: openSegment,
+	};
+	if (!CFG.defer) start();
 })();

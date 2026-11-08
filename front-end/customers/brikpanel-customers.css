@@ -1,0 +1,110 @@
+/**
+ * BrikPanel Customers page: header and tab strip. The All customers tab is
+ * styled by brikpanel-segments.css, the analytics tabs by
+ * brikpanel-customer-analytics.css; only the shell around them lives here.
+ *
+ * @package BrikPanel
+ */
+
+/* Anything the page hides with [hidden] stays hidden, whatever display its
+   class sets (CLAUDE.md "Gizleme kuralı"). */
+.bp-cus [hidden] {
+	display: none;
+}
+
+/* ===== Header ===== */
+.bp-cus-header {
+	--bp-overflow-size: 2rem; /* "More actions" as tall as the buttons */
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 1rem;
+	margin-bottom: 1rem;
+}
+
+.bp-cus-header-left h1 {
+	margin: 0;
+	padding: 0;
+	font-size: var(--brikpanel-title-size, 1.125rem);
+	font-weight: var(--brikpanel-title-weight, 600);
+	line-height: var(--brikpanel-title-line, 1.3);
+	color: #303030;
+}
+
+.bp-cus-header-right {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+/* Levels set by brikpanel-fit-row.js (views/page.php): `is-fold` folds
+   Exclude and Recompute into "More actions", `is-two-rows` puts the buttons
+   on their own row under the title. */
+.bp-cus-header.is-two-rows {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.bp-cus-header.is-two-rows .bp-cus-header-right {
+	justify-content: flex-end;
+}
+
+/* ===== Tab strip =====
+   A shared scroll strip (data-bp-strip): one line that scrolls in itself on a
+   phone. The underline is an inset shadow, not a border: the scrolling box
+   would cut a border pulled down with a negative margin. */
+.bp-cus-tabs {
+	display: flex;
+	gap: 0;
+	margin: 0 0 1rem;
+	box-shadow: inset 0 -1px 0 #e3e3e3;
+}
+
+.bp-cus-tab {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.75rem 1rem;
+	border-bottom: 2px solid transparent;
+	font-size: 0.875rem;
+	font-weight: 550;
+	line-height: 1.4;
+	color: #616161;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.bp-cus-tab:hover {
+	color: #303030;
+}
+
+/* WordPress rings every focused link; a clicked tab needs none (the
+   keyboard ring is :focus-visible below). */
+.bp-cus-tab:focus {
+	color: #303030;
+	outline: none;
+	box-shadow: none;
+}
+
+.bp-cus-tab.is-active {
+	color: #303030;
+	border-bottom-color: #303030;
+}
+
+.bp-cus-tab:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: -2px;
+	box-shadow: none;
+}
+
+/* "Last refreshed: …" belongs to the analytics tabs, which read the nightly
+   table; the list is live and does not need it. */
+.bp-cus-meta {
+	margin: 0 0 0.75rem;
+	font-size: 0.8125rem;
+	color: #616161;
+}
+
+.bp-cus[data-tab="all"] .bp-cus-meta {
+	display: none;
+}

@@ -221,40 +221,144 @@ $plugins_active = isset( $meta['plugins']['active'] ) && is_array( $meta['plugin
     <?php endif; ?>
 
     <?php
-    // Generic sample table: a check hands over plain rows plus its own column
-    // headings, all translated server-side.
-    if ( ! empty( $meta['samples'] ) && is_array( $meta['samples'] ) ) :
-        $sample_cols  = ( ! empty( $meta['samples_cols'] ) && is_array( $meta['samples_cols'] ) )
-            ? $meta['samples_cols']
-            : [];
-        $sample_title = ! empty( $meta['samples_title'] )
-            ? (string) $meta['samples_title']
-            : __( 'Details', 'brikpanel' );
+    // Generic sample tables: a check hands over plain rows plus its own column
+    // headings, all translated server-side, and 'tables' adds more of the same
+    // shape (3.3.34). A check that answers bc_row_action() may give a row a
+    // button: the '..._actions' list lines up with the rows (null for none).
+    // Assigned on every card: the cards share this scope (views/page.php).
+    $bc_tables = [];
+    if ( ! empty( $meta['samples'] ) && is_array( $meta['samples'] ) ) {
+        $bc_tables[] = [
+            'id'      => 'samples',
+            'title'   => ! empty( $meta['samples_title'] ) ? (string) $meta['samples_title'] : __( 'Details', 'brikpanel' ),
+            'cols'    => ( ! empty( $meta['samples_cols'] ) && is_array( $meta['samples_cols'] ) ) ? $meta['samples_cols'] : [],
+            'rows'    => $meta['samples'],
+            'actions' => ( isset( $meta['samples_actions'] ) && is_array( $meta['samples_actions'] ) ) ? $meta['samples_actions'] : [],
+        ];
+    }
+    foreach ( ( isset( $meta['tables'] ) && is_array( $meta['tables'] ) ) ? $meta['tables'] : [] as $bc_extra ) {
+        if ( is_array( $bc_extra ) && ! empty( $bc_extra['rows'] ) && is_array( $bc_extra['rows'] ) ) {
+            $bc_tables[] = [
+                'id'      => sanitize_key( (string) ( $bc_extra['id'] ?? '' ) ),
+                'title'   => isset( $bc_extra['title'] ) ? (string) $bc_extra['title'] : __( 'Details', 'brikpanel' ),
+                'cols'    => ( isset( $bc_extra['cols'] ) && is_array( $bc_extra['cols'] ) ) ? $bc_extra['cols'] : [],
+                'rows'    => $bc_extra['rows'],
+                'actions' => ( isset( $bc_extra['actions'] ) && is_array( $bc_extra['actions'] ) ) ? $bc_extra['actions'] : [],
+            ];
+        }
+    }
+    $bc_row_ok      = $check_obj && $can_manage && method_exists( $check_obj, 'bc_row_action' );
+    $bc_any_buttons = false;
+
+    foreach ( $bc_tables as $bc_table ) :
+        $bc_buttons     = $bc_row_ok && ! empty( array_filter( $bc_table['actions'], 'is_array' ) );
+        $bc_any_buttons = $bc_any_buttons || $bc_buttons;
         ?>
-        <details class="brikpanel-bc-details">
-            <summary><?php echo esc_html( $sample_title ); ?></summary>
+        <details class="brikpanel-bc-details" data-bc-list="<?php echo esc_attr( $bc_table['id'] ); ?>">
+            <summary><?php echo esc_html( $bc_table['title'] ); ?></summary>
             <div class="brikpanel-bc-table-wrap">
             <table class="brikpanel-bc-largest-table brikpanel-fit-table">
-                <?php if ( ! empty( $sample_cols ) ) : ?>
+                <?php if ( ! empty( $bc_table['cols'] ) ) : ?>
                     <thead>
                         <tr>
-                            <?php foreach ( $sample_cols as $col ) : ?>
+                            <?php foreach ( $bc_table['cols'] as $col ) : ?>
                                 <th><?php echo esc_html( (string) $col ); ?></th>
                             <?php endforeach; ?>
+                            <?php // The button column has no heading: fit-table would print it above every stacked button. ?>
+                            <?php if ( $bc_buttons ) : ?><th></th><?php endif; ?>
                         </tr>
                     </thead>
                 <?php endif; ?>
                 <tbody>
-                    <?php foreach ( $meta['samples'] as $sample_row ) : ?>
+                    <?php
+                    foreach ( $bc_table['rows'] as $bc_index => $sample_row ) :
+                        $bc_action = ( $bc_buttons && isset( $bc_table['actions'][ $bc_index ] ) && is_array( $bc_table['actions'][ $bc_index ] ) )
+                            ? $bc_table['actions'][ $bc_index ]
+                            : null;
+                        ?>
                         <tr>
                             <?php foreach ( (array) $sample_row as $cell ) : ?>
                                 <td><?php echo esc_html( (string) $cell ); ?></td>
                             <?php endforeach; ?>
+                            <?php if ( $bc_action ) : ?>
+                                <td class="brikpanel-fit-full brikpanel-bc-sample-cell"><button type="button" class="brikpanel-btn brikpanel-btn--link brikpanel-bc-sample-btn"
+                                    data-bc-row-action="<?php echo esc_attr( $check_id ); ?>"
+                                    data-bc-row-op="<?php echo esc_attr( (string) ( $bc_action['op'] ?? '' ) ); ?>"
+                                    data-bc-row-value="<?php echo esc_attr( (string) ( $bc_action['value'] ?? '' ) ); ?>"
+                                    data-bc-row-list="<?php echo esc_attr( $bc_table['id'] ); ?>"
+                                    <?php if ( ! empty( $bc_action['aria'] ) ) : ?>aria-label="<?php echo esc_attr( (string) $bc_action['aria'] ); ?>"<?php endif; ?>
+                                    <?php if ( ! empty( $bc_action['confirm'] ) ) : ?>data-bc-row-confirm="<?php echo esc_attr( (string) $bc_action['confirm'] ); ?>"<?php endif; ?>><?php echo esc_html( (string) ( $bc_action['label'] ?? '' ) ); ?></button></td>
+                            <?php elseif ( $bc_buttons ) : ?>
+                                <?php // Empty, not blank: fit-table hides an empty cell when the rows stack. ?>
+                                <td></td>
+                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
             </div>
+        </details>
+    <?php endforeach; ?>
+    <?php if ( $bc_any_buttons ) : ?>
+        <?php // One live region per card for what a row button did; it collapses while empty. ?>
+        <p class="brikpanel-bc-sample-result" data-bc-row-result role="status" aria-live="polite"></p>
+    <?php endif; ?>
+
+    <?php
+    // Products with missing images (3.3.37): one row per product image that
+    // is gone, files missing from the server first (the shop shows those
+    // broken). Names, links and labels were written for this viewer by the
+    // check's bc_present(). Assigned on every card: the cards share this scope.
+    $bc_missing = ( isset( $meta['missing']['rows'] ) && is_array( $meta['missing']['rows'] ) && ! empty( $meta['missing']['rows'] ) )
+        ? $meta['missing']
+        : null;
+    if ( null !== $bc_missing ) :
+        ?>
+        <details class="brikpanel-bc-details" data-bc-list="missing">
+            <summary><?php echo esc_html( (string) ( $bc_missing['title'] ?? '' ) ); ?></summary>
+            <div class="brikpanel-bc-table-wrap">
+            <table class="brikpanel-bc-largest-table brikpanel-fit-table">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'Product', 'brikpanel' ); ?></th>
+                        <th><?php esc_html_e( 'Image', 'brikpanel' ); ?></th>
+                        <th><?php esc_html_e( 'Problem', 'brikpanel' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    foreach ( $bc_missing['rows'] as $bc_miss ) :
+                        if ( ! is_array( $bc_miss ) ) {
+                            continue;
+                        }
+                        $bc_miss_url    = (string) ( $bc_miss['url'] ?? '' );
+                        $bc_miss_name   = (string) ( $bc_miss['product'] ?? '' );
+                        $bc_miss_detail = (string) ( $bc_miss['detail'] ?? '' );
+                        ?>
+                        <tr>
+                            <td class="brikpanel-fit-lead">
+                                <?php if ( '' !== $bc_miss_url ) : ?>
+                                    <a href="<?php echo esc_url( $bc_miss_url ); ?>"><?php echo esc_html( $bc_miss_name ); ?></a>
+                                <?php else : ?>
+                                    <?php echo esc_html( $bc_miss_name ); ?>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php echo esc_html( (string) ( $bc_miss['image'] ?? '' ) ); ?>
+                                <?php if ( '' !== $bc_miss_detail ) : ?>
+                                    <?php // File names have no spaces: they may break after their own "-", "_" and "." (B2). ?>
+                                    <span class="brikpanel-bc-missing-detail"><?php echo implode( '<wbr>', array_map( 'esc_html', (array) preg_split( '/(?<=[\-_.])/', $bc_miss_detail, -1, PREG_SPLIT_NO_EMPTY ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- every piece is escaped. ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo esc_html( (string) ( $bc_miss['problem'] ?? '' ) ); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            </div>
+            <?php if ( ! empty( $bc_missing['note'] ) ) : ?>
+                <p class="brikpanel-bc-list-note"><?php echo esc_html( (string) $bc_missing['note'] ); ?></p>
+            <?php endif; ?>
         </details>
     <?php endif; ?>
 

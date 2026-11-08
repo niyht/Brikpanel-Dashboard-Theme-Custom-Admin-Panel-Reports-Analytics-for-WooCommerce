@@ -261,9 +261,11 @@
     /**
      * Wires the cache-clear control(s) rendered into the topbar.
      *
-     * Supports both layouts:
+     * Supports these layouts:
      *  - Single bare icon button (one cache plugin active).
      *  - Icon button + dropdown of plugin-specific entries (2+ active).
+     *  - Icon button + dropdown of LiteSpeed's own purge options, alone or
+     *    as a group in the 2+ dropdown ("Cache button" setting on its menu).
      */
     function initCacheClear() {
         var topbar = document.getElementById('brikpanel-topbar');
@@ -289,6 +291,110 @@
                 clearCache(item.getAttribute('data-cache-id'), trigger || item);
             });
         });
+
+        // LiteSpeed's purge options: LiteSpeed's own links, run in the
+        // background. A modified or middle click keeps the browser's default,
+        // which follows the link: LiteSpeed purges and comes back with its
+        // notice. A link that leaves this site is never fetched.
+        topbar.querySelectorAll('.brikpanel-topbar-cache-type[href]').forEach(function (link) {
+            link.addEventListener('click', function (e) {
+                if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                var url = litespeedPurgeUrl(link);
+                if (!url) return;
+                e.preventDefault();
+                e.stopPropagation();
+                var trigger = topbar.querySelector('.brikpanel-topbar-cache-btn[data-topbar-toggle="cache"]');
+                closeAllTopbarMenus();
+                purgeLiteSpeedOption(url, link.getAttribute('data-cache-label') || '', trigger);
+            });
+        });
+    }
+
+    /**
+     * The broom's spinner for the length of a purge. Returns false when a purge
+     * is already running, so a second click cannot start another one.
+     */
+    function setCacheBusy(trigger, busy) {
+        if (!trigger) return true;
+        if (busy) {
+            if (trigger.classList.contains('is-loading')) return false;
+            trigger.classList.add('is-loading');
+            trigger.setAttribute('aria-busy', 'true');
+        } else {
+            trigger.classList.remove('is-loading');
+            trigger.removeAttribute('aria-busy');
+        }
+        return true;
+    }
+
+    /**
+     * The URL to fetch for one of LiteSpeed's purge links, or null when it
+     * cannot be fetched from here (another origin, no beacon). With
+     * `_litespeed_ori` LiteSpeed sends the request on to `_wp_http_referer`
+     * once it has purged; pointing that at a tiny core image keeps an admin
+     * page from rendering in the background, and arriving there is the proof
+     * that LiteSpeed accepted the purge (its nonce and capability checks).
+     */
+    function litespeedPurgeUrl(link) {
+        var cfg = window.brikpanelTopbar || {};
+        if (!cfg.cache_beacon || typeof URL !== 'function') return null;
+        var url;
+        try {
+            url = new URL(link.href, window.location.href);
+        } catch (err) {
+            return null;
+        }
+        if (url.origin !== window.location.origin) return null;
+        url.searchParams.set('_litespeed_ori', '1');
+        url.searchParams.set('_wp_http_referer', cfg.cache_beacon);
+        return url;
+    }
+
+    /**
+     * Runs one LiteSpeed purge option and reports it as a toast. LiteSpeed
+     * answers a purge with a redirect; a request that did not end up at the
+     * beacon was turned away (a nonce gone stale on a page left open, a lost
+     * session) and purged nothing, so it asks for a reload instead.
+     */
+    function purgeLiteSpeedOption(url, label, trigger) {
+        var cfg = window.brikpanelTopbar || {};
+        var i18n = cfg.i18n || {};
+        if (!setCacheBusy(trigger, true)) return;
+
+        var controller = typeof AbortController === 'function' ? new AbortController() : null;
+        var timer = controller ? setTimeout(function () { controller.abort(); }, 60000) : null;
+
+        fetch(url.toString(), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            redirect: 'follow',
+            signal: controller ? controller.signal : undefined
+        })
+        .then(function (r) {
+            // Only a refused request has a page as its body: never download it.
+            if (r.body && typeof r.body.cancel === 'function') {
+                r.body.cancel().catch(function () {});
+            }
+            var landed = '';
+            try {
+                landed = new URL(r.url).pathname;
+            } catch (err) {
+                landed = '';
+            }
+            if (landed === cfg.cache_beacon) {
+                var format = window.brikpanelFormat && window.brikpanelFormat.format;
+                showTopbarToast(format ? format(i18n.cache_type_purged, [label]) : label, 'success');
+            } else {
+                showTopbarToast(i18n.cache_retry, 'error');
+            }
+        })
+        .catch(function () {
+            showTopbarToast(i18n.cache_failed, 'error');
+        })
+        .finally(function () {
+            if (timer) clearTimeout(timer);
+            setCacheBusy(trigger, false);
+        });
     }
 
     /**
@@ -299,12 +405,7 @@
     function clearCache(cacheId, trigger) {
         var cfg = window.brikpanelTopbar || {};
         if (!cfg.ajax_url || !cfg.cache_nonce || !cfg.cache_action) return;
-        if (trigger && trigger.classList.contains('is-loading')) return;
-
-        if (trigger) {
-            trigger.classList.add('is-loading');
-            trigger.setAttribute('aria-busy', 'true');
-        }
+        if (!setCacheBusy(trigger, true)) return;
 
         var i18n = cfg.i18n || {};
         var body = new URLSearchParams();
@@ -332,10 +433,7 @@
             showTopbarToast(i18n.cache_failed || 'Cache could not be cleared.', 'error');
         })
         .finally(function () {
-            if (trigger) {
-                trigger.classList.remove('is-loading');
-                trigger.removeAttribute('aria-busy');
-            }
+            setCacheBusy(trigger, false);
         });
     }
 
@@ -702,7 +800,13 @@
         topbar.querySelectorAll('.brikpanel-topbar-menu.is-open').forEach(function (menu) {
             menu.classList.remove('is-open');
             var btn = menu.querySelector('[data-topbar-toggle]');
-            if (btn) btn.setAttribute('aria-expanded', 'false');
+            if (!btn) return;
+            btn.setAttribute('aria-expanded', 'false');
+            // A closed menu can be gone from the Tab order (the cache menu is
+            // visibility: hidden then): hand focus back to its button instead
+            // of letting it drop to the page.
+            var focused = document.activeElement;
+            if (focused && focused !== btn && menu.contains(focused)) btn.focus();
         });
     }
 
@@ -736,8 +840,21 @@
         .then(function (json) {
             if (!json || !json.success || !json.data) return;
             renderTopbarStats(json.data);
+            announceDataVersion(json.data.ver);
         })
         .catch(function () { /* silent */ });
+    }
+
+    // The shared data version moves on with every order event. A screen left
+    // open (the dashboard, the Orders summary) listens on document and fetches
+    // its figures again when the version is newer than the one it shows, so
+    // it needs no poll of its own.
+    function announceDataVersion(ver) {
+        ver = parseInt(ver, 10) || 0;
+        if (!ver) return;
+        try {
+            document.dispatchEvent(new CustomEvent('brikpanel:data-version', { detail: { ver: ver } }));
+        } catch (e) { /* old WebView without CustomEvent: the screens keep their figures */ }
     }
 
     function renderTopbarStats(data) {

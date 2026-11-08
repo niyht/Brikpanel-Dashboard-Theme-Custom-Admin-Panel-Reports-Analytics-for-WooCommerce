@@ -194,6 +194,7 @@ function brikpanel_flush_topbar_counts() {
  */
 function brikpanel_delete_topbar_counts() {
     delete_transient( 'brikpanel_topbar_counts' );
+    delete_transient( 'brikpanel_topbar_new_customers' );
 }
 add_action( 'woocommerce_trash_order',              'brikpanel_flush_topbar_counts' );
 add_action( 'woocommerce_untrash_order',            'brikpanel_flush_topbar_counts' );
@@ -958,6 +959,47 @@ function brikpanel_frontend_tracking_enabled() {
 }
 
 /**
+ * Whether a visitor counts as soon as a store page opens (3.3.41).
+ *
+ * Off by default: since 3.3.30 a visitor counts only after a person's first
+ * touch, mouse movement, wheel or key, which keeps bots out. A store that
+ * buys ad traffic compares Visitors with the ad platform's landing page
+ * views, which count every page that opened, so for social traffic (many
+ * leave without touching) Visitors read about half and the conversion rate
+ * about double (imaddd, October 2026). With this on, the tracker also sends
+ * one request when the page is on screen; the server counts the day's
+ * visitor, product view, page view and campaign from it with every other
+ * check intact (bot names, cloud addresses, cross-site posts, the daily lock
+ * of a browser without cookies), but issues no "this is a person" mark: the
+ * add-to-cart and checkout counters still wait for a real input.
+ * WooCommerce ▸ Settings ▸ BrikPanel ▸ Analytics.
+ *
+ * @since 3.3.41
+ *
+ * @return bool
+ */
+function brikpanel_count_on_open_enabled() {
+    return 'yes' === get_option( 'brikpanel_count_on_open', 'no' );
+}
+
+/**
+ * Every order status a list of orders shows: all of WooCommerce's except the
+ * block checkout's draft, for wc_get_orders() calls that list orders.
+ *
+ * WooCommerce adds 'wc-checkout-draft' to wc_get_order_statuses(), so a query
+ * that names no status also loads the carts left on the checkout page, while
+ * WooCommerce's own orders list hides them. Up to 3.3.40 they showed in
+ * Ctrl+K and the dashboard's Excel export as orders.
+ *
+ * @since 3.3.41
+ *
+ * @return string[] wc- prefixed status keys.
+ */
+function brikpanel_listed_order_statuses() {
+    return array_values( array_diff( array_keys( wc_get_order_statuses() ), [ 'wc-checkout-draft' ] ) );
+}
+
+/**
  * Interval, in seconds, between live-visitor pings from an open storefront tab.
  *
  * Clamped to 10–300: below 10 s the ping would defeat its own server-side
@@ -1653,97 +1695,10 @@ function brikpanel_ajax_order_item_downloads() {
 add_action( 'wp_ajax_brikpanel_order_item_downloads', 'brikpanel_ajax_order_item_downloads' );
 
 /**
- * Detect whether any WooCommerce-extending plugin is active that introduces
- * new product types beyond the core simple/variable/grouped/external set.
- *
- * Known signals:
- *  - Any class/constant shipped by the major subscription/booking plugins.
- *  - A non-core key in `wc_get_product_types()` — catches any plugin that
- *    registers its own type via the `product_type_selector` filter without
- *    needing us to hardcode its class names.
- *
- * Used to pick the *default* for `brikpanel_enable_product_types`. Admins
- * can override the result from the settings screen.
- *
- * @return bool
- */
-function brikpanel_has_custom_product_types() {
-    static $cached = null;
-    if ( null !== $cached ) {
-        return $cached;
-    }
-
-    $known_classes = [
-        'WC_Subscriptions',                 // WooCommerce Subscriptions (Automattic)
-        'WC_Subscriptions_Plugin',
-        'WCS_ATT',                          // All Products for Subscriptions
-        'Wps_Subscription',                 // Subscriptions for WooCommerce (WP Swings)
-        'Wps_Sfw_Woocommerce',
-        'YITH_WC_Subscription',             // YITH WooCommerce Subscription
-        'YITH_YWSBS_Subscription',
-        'SUMOSubscriptions',                // SUMO Subscriptions
-        'RNSSubscription',
-        'WT_WC_Subscriptions',              // WebToffee Subscriptions for WooCommerce
-        'WT_Subscription',
-        'WC_Bookings',                      // WooCommerce Bookings (adds 'booking' type)
-        'WC_Product_Bundle',                // WooCommerce Product Bundles
-        'WC_Memberships',                   // WC Memberships doesn't add product types,
-                                            // but admins with it installed still want the
-                                            // extra product-data sections surfaced here.
-    ];
-    foreach ( $known_classes as $cls ) {
-        if ( class_exists( $cls ) ) {
-            return $cached = true;
-        }
-    }
-
-    $known_constants = [
-        'WCS_INIT_TIMESTAMP',               // WC Subscriptions
-        'WPS_SFW_VERSION',                  // WP Swings
-        'YITH_YWSBS_VERSION',
-        'YITH_YWSBS_INIT',
-        'RNSSUBSCRIPTION_VERSION',          // SUMO
-        'WT_WCSBS_VERSION',                 // WebToffee Subscriptions
-    ];
-    foreach ( $known_constants as $const ) {
-        if ( defined( $const ) ) {
-            return $cached = true;
-        }
-    }
-
-    if ( function_exists( 'wc_get_product_types' ) ) {
-        $core = [ 'simple', 'variable', 'grouped', 'external' ];
-        $all  = array_keys( (array) wc_get_product_types() );
-        foreach ( $all as $type ) {
-            if ( ! in_array( $type, $core, true ) ) {
-                return $cached = true;
-            }
-        }
-    }
-
-    return $cached = false;
-}
-
-/**
- * Resolve the effective value of the "Enable product type selector" setting.
- *
- * Option default auto-switches based on whether any plugin has registered
- * custom product types. Admins can flip it on/off explicitly — once saved,
- * their explicit value wins over the auto-default.
- *
- * @return bool
- */
-function brikpanel_product_type_selector_enabled() {
-    $default = brikpanel_has_custom_product_types() ? 'yes' : 'no';
-    return get_option( 'brikpanel_enable_product_types', $default ) === 'yes';
-}
-
-/**
  * Return the product-type choices that should appear in the BrikPanel
- * editor dropdown. Starts from `wc_get_product_types()` (so any plugin
- * registering a type is included automatically) and strips 'grouped' /
- * 'external' — the BrikPanel simplified editor does not yet provide
- * first-class UI for those two core types.
+ * editor's type choice. Starts from `wc_get_product_types()` (so any plugin
+ * registering a type is included automatically). Grouped and external
+ * products have their own cards since 3.3.43.
  *
  * @return array<string, string> type_slug => label
  */
@@ -1756,7 +1711,6 @@ function brikpanel_editor_product_types() {
     }
 
     $types = (array) wc_get_product_types();
-    unset( $types['grouped'], $types['external'] );
 
     if ( empty( $types['simple'] ) ) {
         $types = array_merge( [ 'simple' => __( 'Simple product', 'brikpanel' ) ], $types );
@@ -2672,29 +2626,42 @@ if ( ! function_exists( 'brikpanel_order_numbers_for_ids' ) ) {
 			return $map;
 		}
 
-		// 'post__in' is the ID list key both storage backends understand: the
-		// HPOS query reads it, and the legacy one hands it to WP_Query. 'include'
-		// looks like the modern spelling but HPOS ignores it and returns the
-		// whole table.
-		$orders = wc_get_orders(
-			array(
-				'post__in' => $ids,
-				'limit'    => -1,
-				'type'     => 'shop_order',
-				'status'   => 'any',
-			)
-		);
-
-		if ( ! is_array( $orders ) ) {
+		// BrikPanel's own sequential numbers (front-end/orders/brikpanel-order-numbers.php)
+		// sit in order meta, so while its filter is the only one the numbers are
+		// one query per thousand orders instead of an order object per row.
+		if ( function_exists( 'brikpanel_order_numbers_filter_is_ours_only' ) && brikpanel_order_numbers_filter_is_ours_only() ) {
+			foreach ( array_chunk( $ids, 1000 ) as $chunk ) {
+				$map = array_replace( $map, brikpanel_order_numbers_map( $chunk ) );
+			}
 			return $map;
 		}
 
-		// WC_Order, not WC_Abstract_Order: get_order_number() lives on WC_Order
-		// alone, and a refund is an abstract order without it. 'type' should keep
-		// refunds out already, but a fatal is too high a price for trusting that.
-		foreach ( $orders as $order ) {
-			if ( $order instanceof WC_Order ) {
-				$map[ $order->get_id() ] = (string) $order->get_order_number();
+		// 'post__in' is the ID list key both storage backends understand: the
+		// HPOS query reads it, and the legacy one hands it to WP_Query. 'include'
+		// looks like the modern spelling but HPOS ignores it and returns the
+		// whole table. Loaded 200 at a time, so an export of thousands of rows
+		// never holds every order object at once.
+		foreach ( array_chunk( $ids, 200 ) as $chunk ) {
+			$orders = wc_get_orders(
+				array(
+					'post__in' => $chunk,
+					'limit'    => -1,
+					'type'     => 'shop_order',
+					'status'   => 'any',
+				)
+			);
+
+			if ( ! is_array( $orders ) ) {
+				continue;
+			}
+
+			// WC_Order, not WC_Abstract_Order: get_order_number() lives on WC_Order
+			// alone, and a refund is an abstract order without it. 'type' should keep
+			// refunds out already, but a fatal is too high a price for trusting that.
+			foreach ( $orders as $order ) {
+				if ( $order instanceof WC_Order ) {
+					$map[ $order->get_id() ] = (string) $order->get_order_number();
+				}
 			}
 		}
 
@@ -2730,6 +2697,7 @@ if ( ! function_exists( 'brikpanel_order_numbers_for_ids' ) ) {
 //
 // Columns that are NOT UTC, and must never go through the *_utc helpers:
 // brikpanel_visitors.date_column, brikpanel_referrers.date_column,
+// brikpanel_visitor_countries.date_column,
 // brikpanel_visited_pages.date_column, brikpanel_cart_tracking.date_column,
 // brikpanel_expenses.expense_date, brikpanel_stock_orders.*_date and
 // brikpanel_ad_spend.date are all written in site-local time on purpose.
@@ -3397,5 +3365,253 @@ if ( ! function_exists( 'brikpanel_db_supports_window_functions' ) ) {
 		$version   = (string) $wpdb->db_version();
 		$supported = '' !== $version && version_compare( $version, '8.0', '>=' );
 		return $supported;
+	}
+}
+
+if ( ! function_exists( 'brikpanel_stock_box_unchanged' ) ) {
+	/**
+	 * Whether a stock box was saved with the quantity it opened with, so the
+	 * stored quantity has to stay. Orders keep selling while an editing screen
+	 * is open: writing the box's opening number back on save (the product
+	 * editor's 60-second autosave included) raised the stock again and let the
+	 * store oversell. WooCommerce's own editor guards the same way with
+	 * _original_stock. A box the merchant changed is still written.
+	 *
+	 * @param WC_Product $product  Product or variation, as stored before the save.
+	 * @param int        $posted   Quantity the screen sent.
+	 * @param mixed      $original The box's opening value, sent next to it; null
+	 *                             when the screen did not send one (older page).
+	 * @return bool True when the stored quantity must be kept.
+	 */
+	function brikpanel_stock_box_unchanged( $product, $posted, $original ) {
+		if ( null === $original || ! is_scalar( $original ) || ! $product instanceof WC_Product ) {
+			return false;
+		}
+		$original = trim( (string) wp_unslash( $original ) );
+		if ( '' === $original || ! is_numeric( $original ) ) {
+			return false;
+		}
+		// Tracking only now switched on: the number typed is the new stock.
+		if ( true !== $product->get_manage_stock( 'edit' ) ) {
+			return false;
+		}
+		return (int) $original === (int) $posted;
+	}
+}
+
+if ( ! function_exists( 'brikpanel_variation_follows_parent_stock' ) ) {
+	/**
+	 * Whether a variation sells from its product's shared stock (WooCommerce's
+	 * product-level stock): it counts no stock of its own while the product
+	 * does. In 'view' context WooCommerce then reports its manage_stock as
+	 * 'parent' and the product's quantity, backorder rule and SKU as its own.
+	 *
+	 * @param WC_Product $variation Variation.
+	 * @return bool
+	 */
+	function brikpanel_variation_follows_parent_stock( $variation ) {
+		return $variation instanceof WC_Product
+			&& 'parent' === $variation->get_manage_stock();
+	}
+}
+
+if ( ! class_exists( 'Brikpanel_Variation_Ids' ) ) {
+	/**
+	 * The variations of variable products, read from the posts table and kept
+	 * for the rest of the request. A variation saved, switched on or off, or
+	 * deleted drops its product's entry (clean_post_cache), so the next read
+	 * is fresh. See brikpanel_variation_ids().
+	 */
+	final class Brikpanel_Variation_Ids {
+
+		/**
+		 * Product ID => list of [variation ID, post status], in WooCommerce's
+		 * order.
+		 *
+		 * @var array<int, array<int, array{0:int, 1:string}>>
+		 */
+		private static $rows = array();
+
+		/** @var bool */
+		private static $hooked = false;
+
+		/**
+		 * The variations of one product.
+		 *
+		 * @param int $parent_id Product ID.
+		 * @return array<int, array{0:int, 1:string}>
+		 */
+		public static function rows( $parent_id ) {
+			$parent_id = (int) $parent_id;
+			if ( ! array_key_exists( $parent_id, self::$rows ) ) {
+				self::prime( array( $parent_id ) );
+			}
+			return isset( self::$rows[ $parent_id ] ) ? self::$rows[ $parent_id ] : array();
+		}
+
+		/**
+		 * Reads the variations of many products at once: a list page asks for
+		 * every row's product in one query instead of one per row.
+		 *
+		 * @param int[] $parent_ids Product IDs.
+		 */
+		public static function prime( array $parent_ids ) {
+			global $wpdb;
+			$ids = array();
+			foreach ( $parent_ids as $id ) {
+				$id = (int) $id;
+				if ( $id > 0 && ! array_key_exists( $id, self::$rows ) ) {
+					$ids[ $id ] = $id;
+				}
+			}
+			if ( ! $ids ) {
+				return;
+			}
+			if ( ! self::$hooked ) {
+				self::$hooked = true;
+				add_action( 'clean_post_cache', array( __CLASS__, 'forget' ), 10, 2 );
+			}
+			foreach ( array_chunk( array_values( $ids ), 500 ) as $chunk ) {
+				$in    = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+				$found = $wpdb->get_results(
+					$wpdb->prepare(
+						// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $in holds one %d per ID.
+						"SELECT ID, post_parent, post_status FROM {$wpdb->posts}
+						 WHERE post_type = 'product_variation'
+						   AND post_status IN ('publish', 'private')
+						   AND post_parent IN ($in)
+						 ORDER BY menu_order ASC, ID ASC",
+						$chunk
+					),
+					ARRAY_N
+				);
+				foreach ( $chunk as $id ) {
+					self::$rows[ (int) $id ] = array();
+				}
+				foreach ( (array) $found as $row ) {
+					self::$rows[ (int) $row[1] ][] = array( (int) $row[0], (string) $row[2] );
+				}
+			}
+		}
+
+		/**
+		 * clean_post_cache: a variation or product changed, its list is read
+		 * again on the next call.
+		 *
+		 * @param int     $post_id Post ID.
+		 * @param WP_Post $post    Post.
+		 */
+		public static function forget( $post_id, $post = null ) {
+			if ( ! $post instanceof WP_Post ) {
+				return;
+			}
+			if ( 'product_variation' === $post->post_type ) {
+				unset( self::$rows[ (int) $post->post_parent ] );
+			} elseif ( 'product' === $post->post_type ) {
+				unset( self::$rows[ (int) $post_id ] );
+			}
+		}
+	}
+}
+
+if ( ! function_exists( 'brikpanel_variation_ids' ) ) {
+	/**
+	 * Every variation of a variable product, switched-off (private) ones
+	 * included, in WooCommerce's order (menu order, then ID).
+	 *
+	 * Read from the posts table on purpose, not through WC_Product_Variable::
+	 * get_children(). That list runs through the woocommerce_variable_
+	 * children_args and woocommerce_get_children filters, and variation
+	 * swatches plugins use them to hide switched-off variations everywhere,
+	 * the admin included (Woo Variation Swatches keeps published ones only).
+	 * BrikPanel's screens then lost those variations: the product editor did
+	 * not show them, so they could not be switched back on, a copy of the
+	 * product left them out and a bulk price change skipped them. WooCommerce's
+	 * own variation panel reads them with a query of its own for the same reason.
+	 *
+	 * @param WC_Product|int $product  Variable product or its ID.
+	 * @param string[]       $statuses Statuses to keep: publish and private (all
+	 *                                 WooCommerce counts), or publish alone for
+	 *                                 what can be bought.
+	 * @return int[]
+	 */
+	function brikpanel_variation_ids( $product, $statuses = array( 'publish', 'private' ) ) {
+		$parent_id = $product instanceof WC_Product ? (int) $product->get_id() : (int) $product;
+		if ( $parent_id <= 0 ) {
+			return array();
+		}
+		$keep = array_flip( (array) $statuses );
+		$ids  = array();
+		foreach ( Brikpanel_Variation_Ids::rows( $parent_id ) as $row ) {
+			if ( isset( $keep[ $row[1] ] ) ) {
+				$ids[] = $row[0];
+			}
+		}
+		return $ids;
+	}
+}
+
+if ( ! function_exists( 'brikpanel_prime_variation_ids' ) ) {
+	/**
+	 * Reads the variations of many products in one query, for a list that
+	 * then asks brikpanel_variation_ids() row by row.
+	 *
+	 * @param int[] $product_ids Product IDs (simple ones are harmless).
+	 */
+	function brikpanel_prime_variation_ids( array $product_ids ) {
+		Brikpanel_Variation_Ids::prime( $product_ids );
+	}
+}
+
+if ( ! function_exists( 'brikpanel_variable_stock_summary' ) ) {
+	/**
+	 * Stock of a variable product as one number: the products list badge, the
+	 * Stock column BrikPanel puts on WooCommerce's own product list, and the
+	 * quick stock edits that must not double count read it.
+	 *
+	 * Published variations that count their own stock add their quantity. The
+	 * product's shared stock counts once, however many variations sell from it
+	 * (a product with 40 in shared stock and 7 sizes used to show 280).
+	 * Switched-off (private) variations are not for sale and do not count.
+	 *
+	 * @param WC_Product $product Variable product.
+	 * @return array{qty:int|null, manage_stock:bool, backorders:bool, uses_shared:bool, own_count:int}
+	 *               qty is null when nothing is counted; own_count is how many
+	 *               published variations count their own stock.
+	 */
+	function brikpanel_variable_stock_summary( $product ) {
+		$total        = 0;
+		$manage_stock = false;
+		$backorders   = false;
+		$uses_shared  = false;
+		$own_count    = 0;
+		foreach ( brikpanel_variation_ids( $product, array( 'publish' ) ) as $cid ) {
+			$v = wc_get_product( $cid );
+			if ( ! $v || 'publish' !== $v->get_status() ) {
+				continue;
+			}
+			$managed = $v->get_manage_stock();
+			if ( 'parent' === $managed ) {
+				$uses_shared = true;
+			} elseif ( $managed ) {
+				$manage_stock = true;
+				$own_count++;
+				$total += (int) $v->get_stock_quantity();
+			}
+			if ( $v->backorders_allowed() ) {
+				$backorders = true;
+			}
+		}
+		if ( $uses_shared ) {
+			$manage_stock = true;
+			$total       += (int) $product->get_stock_quantity();
+		}
+		return [
+			'qty'          => $manage_stock ? $total : null,
+			'manage_stock' => $manage_stock,
+			'backorders'   => $backorders,
+			'uses_shared'  => $uses_shared,
+			'own_count'    => $own_count,
+		];
 	}
 }

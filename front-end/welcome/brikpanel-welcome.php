@@ -200,9 +200,9 @@ add_action( 'admin_footer', function () {
     $links[] = [
         'icon'  => 'customers',
         'title' => __( 'Customers', 'brikpanel' ),
-        'desc'  => __( 'Lifetime value and segments', 'brikpanel' ),
+        'desc'  => __( 'Every customer, segments and lifetime value', 'brikpanel' ),
         'cta'   => _x( 'Open', 'welcome tour link', 'brikpanel' ),
-        'url'   => function_exists( 'brikpanel_module_url' ) ? brikpanel_module_url( 'brikpanel-customer-analytics' ) : admin_url( 'admin.php?page=brikpanel-customer-analytics' ),
+        'url'   => function_exists( 'brikpanel_module_url' ) ? brikpanel_module_url( 'brikpanel-customers' ) : admin_url( 'admin.php?page=brikpanel-customers' ),
         'here'  => false,
     ];
     if ( ! function_exists( 'brikpanel_module_available' ) || brikpanel_module_available( 'brikpanel-google-sheets' ) ) {

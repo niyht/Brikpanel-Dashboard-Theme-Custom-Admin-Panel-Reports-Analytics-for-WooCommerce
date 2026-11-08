@@ -35,7 +35,7 @@ const BP_ICONBAR_KNOWN_COLUMNS = new Set([
 	'trial_end_date', 'next_payment_date', 'last_payment_date', 'end_date', 'orders',
 	// BrikPanel
 	'payment_method', 'order_items', 'tax_total', 'brikpanel_whatsapp',
-	'brikpanel_customer', 'brikpanel_shipping_method',
+	'brikpanel_print', 'brikpanel_customer', 'brikpanel_shipping_method',
 ]);
 
 /* A run of this many icon controls turns the treatment on. A lone icon cannot
@@ -88,6 +88,14 @@ document.addEventListener('DOMContentLoaded', () => {
 		console.error(error);
 	}
 
+	// After the icon columns, which it leaves alone, and before anything below
+	// measures the columns (the sticky order column).
+	try {
+		brikpanelForeignHeadings();
+	} catch (error) {
+		console.error(error);
+	}
+
 	// Each pass runs behind its own guard: one pass throwing on a page it did
 	// not expect (a store with no orders yet has no list table) must not skip
 	// every pass after it.
@@ -101,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		[brikpanelTableHeader, true],
 		[brikpanelOrderSearch, true],
 		[brikpanelFilters, true],
+		[brikpanelOrdersExplorerLink, true],
 		[() => brikpanelBulkActions(getBulkActions()), true],
 		[brikpanelPagination, true],
 		[brikpanelOrderNumberNamePreview, true],
@@ -111,6 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		[brikpanelEmptyTrashButton, false],
 		[brikpanelAddFiltersToOrderLinks, true],
 		[brikpanelListTableSearchResultCount, true],
+		[brikpanelNewOrdersBar, true],
 	].filter(([, needsTable]) => hasTable || !needsTable).map(([pass]) => pass);
 	try {
 		passes.forEach(pass => {
@@ -326,8 +336,19 @@ function brikpanelOrdersOverviewSection() {
 		});
 	}
 
-	function loadOverview(range) {
-		$summaryCard.classList.add('is-loading');
+	// Data version of the figures on screen, and a quiet reload in flight.
+	let shownVer = parseInt(brikpanelOrdersOverview.data_ver, 10) || 0;
+	let quietBusy = false;
+
+	// quiet: the store moved on while the page stood open. The figures stay
+	// (no loading look) until the new ones arrive.
+	function loadOverview(range, quiet = false) {
+		if (quiet) {
+			if (quietBusy) return;
+			quietBusy = true;
+		} else {
+			$summaryCard.classList.add('is-loading');
+		}
 		const body = new FormData();
 		body.append('action', 'brikpanel_orders_overview');
 		body.append('_ajax_nonce', brikpanelOrdersOverview.nonce);
@@ -336,15 +357,30 @@ function brikpanelOrdersOverviewSection() {
 		fetch(brikpanelOrdersOverview.ajax_url, { method: 'POST', body })
 			.then(r => r.json())
 			.then(response => {
+				if (quiet) quietBusy = false;
 				if (!response.success) { $summaryCard.classList.remove('is-loading'); return; }
 				// A newer request may have superseded this one.
 				if (response.data.range && response.data.range !== currentRange) return;
+				shownVer = Math.max(shownVer, parseInt(response.data.ver, 10) || 0);
 				$summaryCard.classList.remove('is-loading');
 				renderSummary(response.data.summary);
 				renderMarketplaces(response.data.marketplaces);
 			})
-			.catch(() => { $summaryCard.classList.remove('is-loading'); });
+			.catch(() => {
+				if (quiet) quietBusy = false;
+				$summaryCard.classList.remove('is-loading');
+			});
 	}
+
+	// A page left open follows the store: the top bar (or the new-orders bar's
+	// own poll) reports the data version, the order alert says an order came in.
+	document.addEventListener('brikpanel:data-version', (e) => {
+		const ver = parseInt(e && e.detail ? e.detail.ver : 0, 10) || 0;
+		if (ver > shownVer && !document.hidden) loadOverview(currentRange, true);
+	});
+	document.addEventListener('brikpanel:new-orders', () => {
+		if (!document.hidden) loadOverview(currentRange, true);
+	});
 
 	let $mpCard = null;
 	/* Marketplace card (BrikMarket): one row per marketplace under the summary.
@@ -409,6 +445,168 @@ function brikpanelOrdersOverviewSection() {
 }
 
 /**
+ * The list as WooCommerce first shows it: first page, newest first, no search
+ * and no filter (a status tab is fine). Only there do new orders surely land
+ * on top, so only there the new-orders bar counts them. Form fields the
+ * filter button sends with their "everything" value count as no filter; any
+ * other filled-in parameter, another plugin's filter included, turns it off.
+ *
+ * @return {boolean}
+ */
+function brikpanelPlainOrdersView() {
+	const free = new Set([
+		'page', 'status', 'post_type', 'post_status', 'filter_action', '_wpnonce', '_wp_http_referer', 'mode',
+		// One-time notices after a bulk action.
+		'changed', 'bulk_action', 'ids', 'message', 'deleted', 'trashed', 'untrashed', 'updated',
+	]);
+	const neutral = {
+		paged: ['1'],
+		orderby: ['date'],
+		order: ['desc', 'DESC'],
+		m: ['0'],
+		action: ['-1'],
+		action2: ['-1'],
+		'search-filter': ['all'],
+	};
+	for (const [key, value] of new URLSearchParams(window.location.search)) {
+		if (free.has(key) || value === '') continue;
+		if (Object.prototype.hasOwnProperty.call(neutral, key) && neutral[key].includes(value)) continue;
+		return false;
+	}
+	return true;
+}
+
+/**
+ * "1 new order · Show" above an Orders list left open (field report, 23 Oct
+ * 2026: the alert came, the list did not change). The rows never move under
+ * the merchant's hand: the bar counts the orders that came in after the
+ * newest one on this page, and Show opens the same tab again.
+ *
+ * Woken by the data version the top bar reports and by the new-order alert.
+ * With neither (no top bar for this user) it asks for the version itself
+ * once a minute while the page is on screen, and passes a newer one on, so
+ * the summary above follows too.
+ */
+function brikpanelNewOrdersBar() {
+	const cfg = window.brikpanelOrdersOverview;
+	const $form = document.querySelector('#wc-orders-filter') ?? document.querySelector('#posts-filter');
+	if (!cfg || !cfg.ajax_url || !cfg.nonce || !$form) return;
+	const i18n = cfg.i18n || {};
+
+	// The newest order on this page. A list whose rows cannot be read counts
+	// nothing, or it would count every order in the tab.
+	let afterId = 0;
+	let rows = 0;
+	document.querySelectorAll('#the-list > tr').forEach($tr => {
+		const m = /^(?:order|post)-(\d+)$/.exec($tr.id || '');
+		if (!m) return;
+		rows++;
+		afterId = Math.max(afterId, parseInt(m[1], 10) || 0);
+	});
+	const empty = !rows && !!document.querySelector('#the-list > tr.no-items');
+	const params = new URLSearchParams(window.location.search);
+	const tab = params.get('status') || params.get('post_status') || 'all';
+	const counts = brikpanelPlainOrdersView() && (rows > 0 || empty);
+
+	let knownVer = parseInt(cfg.data_ver, 10) || 0;
+	let heardAt = 0;
+	let busy = false;
+	let again = false;
+	let $bar = null;
+	let $text = null;
+
+	function show(count) {
+		if (!(count > 0)) {
+			if ($bar) $bar.hidden = true;
+			return;
+		}
+		if (!$bar) {
+			$bar = makeElement('div', { class: 'brikpanel-orders-newbar', role: 'status', 'aria-live': 'polite', hidden: 'hidden' });
+			$bar.append(makeElement('span', { class: 'brikpanel-orders-newbar__dot', 'aria-hidden': 'true' }));
+			// dir="auto": an English text in a right-to-left admin keeps its own
+			// order ("12 new orders", not "new orders 12").
+			$text = makeElement('span', { class: 'brikpanel-orders-newbar__text', dir: 'auto' });
+			const $show = makeElement('button', {
+				type: 'button',
+				class: 'brikpanel-btn brikpanel-btn--secondary brikpanel-orders-newbar__show',
+			}, { textContent: i18n.show_new_orders || '' });
+			$show.addEventListener('click', () => {
+				$show.disabled = true;
+				// The same tab again, without the one-time notices of a bulk action.
+				const here = new URL(window.location.href);
+				const next = new URL(here.origin + here.pathname);
+				['page', 'status', 'post_type', 'post_status'].forEach(key => {
+					const value = here.searchParams.get(key);
+					if (value) next.searchParams.set(key, value);
+				});
+				window.location.assign(next.toString());
+			});
+			$bar.append($text, $show);
+			$form.insertAdjacentElement('beforebegin', $bar);
+		}
+		$text.textContent = window.brikpanelFormat && typeof window.brikpanelFormat.count === 'function'
+			? window.brikpanelFormat.count(i18n.new_orders, count)
+			: String(count);
+		$bar.hidden = false;
+	}
+
+	// polled: the minute poll, which sends the version it knows (the server
+	// then skips the count while nothing changed) and passes a newer one on.
+	function ask(polled = false) {
+		if (busy) {
+			again = true;
+			return;
+		}
+		busy = true;
+		const body = new FormData();
+		body.append('action', 'brikpanel_orders_new_count');
+		body.append('_ajax_nonce', cfg.nonce);
+		body.append('known_ver', polled ? String(knownVer) : '0');
+		if (counts) {
+			body.append('after_id', String(afterId));
+			body.append('status', tab);
+		}
+		fetch(cfg.ajax_url, { method: 'POST', body, credentials: 'same-origin' })
+			.then(r => r.json())
+			.then(res => {
+				if (!res || !res.success || !res.data) return;
+				const ver = parseInt(res.data.ver, 10) || 0;
+				const moved = ver > knownVer;
+				knownVer = Math.max(knownVer, ver);
+				if (typeof res.data.count !== 'undefined') show(parseInt(res.data.count, 10) || 0);
+				if (polled && moved) {
+					try {
+						document.dispatchEvent(new CustomEvent('brikpanel:data-version', { detail: { ver, from: 'orders-list' } }));
+					} catch (e) { /* old WebView: the summary keeps its figures */ }
+				}
+			})
+			.catch(() => {})
+			.finally(() => {
+				busy = false;
+				if (again) {
+					again = false;
+					ask();
+				}
+			});
+	}
+
+	document.addEventListener('brikpanel:data-version', (e) => {
+		const detail = e && e.detail ? e.detail : {};
+		if (detail.from === 'orders-list') return;
+		heardAt = Date.now();
+		const ver = parseInt(detail.ver, 10) || 0;
+		if (counts && ver > knownVer && !document.hidden) ask();
+	});
+	document.addEventListener('brikpanel:new-orders', () => {
+		if (counts && !document.hidden) ask();
+	});
+	setInterval(() => {
+		if (document.hidden || Date.now() - heardAt < 70000) return;
+		ask(true);
+	}, 60000);
+}
+
+/**
  * Makes adjustments to the orders table to make it scroll horizontally
  */
 function brikpanelTableScroll() {
@@ -433,9 +631,27 @@ function brikpanelPageHeader() {
 	$heading.insertAdjacentElement('beforebegin', $header);
 	$header.insertAdjacentElement('afterbegin', $heading);
 	const $pageActions = makeElement('div', { class: 'brikpanel-page-actions' });
-	document.querySelectorAll('.page-title-action').forEach($pageAction => {
-		$pageActions.insertAdjacentElement('beforeend', $pageAction);
-	});
+
+	/* Add order (the first title button, WooCommerce's own) ends the row. The
+	   secondary ones, Export (front-end/orders/brikpanel-order-export.js) and
+	   the buttons other plugins add to the title, sit in a "More actions" menu
+	   before it: open in the row while it has room, folded into "..." when it
+	   has not (front-end/shared/brikpanel-overflow.js). Two tracking plugins
+	   used to push the row off a phone's screen. */
+	const $titleActions = Array.from(document.querySelectorAll('.page-title-action'));
+	const $primary = $titleActions.shift() || null;
+	const more = brikpanelOrdersMoreMenu();
+	if (more) {
+		const $export = window.brikpanelOrderExport && typeof window.brikpanelOrderExport.button === 'function'
+			? window.brikpanelOrderExport.button()
+			: null;
+		if ($export) more.menu.append($export);
+		$titleActions.forEach($pageAction => more.menu.append($pageAction));
+		$pageActions.append(more.wrap);
+	} else {
+		$titleActions.forEach($pageAction => $pageActions.append($pageAction));
+	}
+	if ($primary) $pageActions.append($primary);
 
 	/* WordPress's Screen Options toggle joins the page actions, so the title row
 	   holds everything instead of the toggle floating on a row of its own. The
@@ -452,6 +668,71 @@ function brikpanelPageHeader() {
 	}
 
 	$header.insertAdjacentElement('beforeend', $pageActions);
+
+	if (more) {
+		brikpanelOrdersAdoptTitleActions($pageActions, more, $primary);
+	}
+
+	/* The row gives way in a fixed order, measured on its real width (CLAUDE.md,
+	   "Başlık satırı kuralı"): one line while it fits; then the secondary
+	   buttons fold into "..."; then the buttons take their own row under the
+	   title. Measured on the row itself ('live'): Screen Options is styled
+	   through WordPress ids that a measuring copy would not keep, and the page
+	   is still hidden (#wpbody-content without .show) on the first fit. */
+	if (window.brikpanelFitRow) {
+		window.brikpanelFitRow($header, {
+			measure: 'live',
+			title: '.wp-heading-inline',
+			lines: [''],
+			levels: ['', 'is-fold', { cls: 'is-fold is-two-rows', lines: ['.brikpanel-page-actions'] }],
+		});
+	}
+}
+
+/**
+ * The "More actions" menu of the title row, built from the shared markup; the
+ * trigger comes from PHP (brikpanel_overflow_trigger()). Null when the page has
+ * no trigger markup (BrikPanel's script config missing).
+ *
+ * @returns {{wrap: HTMLElement, menu: HTMLElement}|null}
+ */
+function brikpanelOrdersMoreMenu() {
+	const trigger = window.brikpanelOrdersOverview && window.brikpanelOrdersOverview.more_trigger;
+	if (typeof trigger !== 'string' || trigger.indexOf('brikpanel-overflow__trigger') === -1) return null;
+	const wrap = makeElement('div', { class: 'brikpanel-overflow bp-orders-more' });
+	wrap.insertAdjacentHTML('afterbegin', trigger);
+	const menu = makeElement('div', { class: 'brikpanel-overflow__menu', id: 'bp-orders-more-menu' });
+	wrap.append(menu);
+	return { wrap, menu };
+}
+
+/**
+ * Keep the menu in step with the buttons in it: hidden while empty, and a
+ * title button another plugin adds later (the Orders Tracking plugin puts two
+ * after the first title button on jQuery ready, after this script ran) joins
+ * the menu instead of standing after Add order.
+ *
+ * @param {HTMLElement} $pageActions The row's button group.
+ * @param {{wrap: HTMLElement, menu: HTMLElement}} more The menu.
+ * @param {HTMLElement|null} $primary Add order.
+ */
+function brikpanelOrdersAdoptTitleActions($pageActions, more, $primary) {
+	const sync = () => {
+		Array.from($pageActions.children).forEach($child => {
+			if ($child !== $primary && $child.classList.contains('page-title-action')) {
+				more.menu.append($child);
+			}
+		});
+		// Something else may have been put after Add order: it stays the last.
+		if ($primary && $primary.parentElement === $pageActions && $pageActions.lastElementChild !== $primary) {
+			$pageActions.append($primary);
+		}
+		more.wrap.hidden = more.menu.children.length === 0;
+	};
+	sync();
+	if (typeof window.MutationObserver === 'function') {
+		new window.MutationObserver(sync).observe($pageActions, { childList: true });
+	}
 }
 
 /**
@@ -867,6 +1148,85 @@ function brikpanelFilters() {
 }
 
 /**
+ * The Orders explorer (the Segments screen's order list) has no sidebar row:
+ * brikpanel-segments.php prints its link after WooCommerce's Filter button.
+ * Here it sits in the tab row, beside the search button, while the tabs keep
+ * room for their first two; otherwise it goes to the end of the filter row the
+ * search button opens. Decided from widths, never from the screen size: the
+ * language, the store's statuses and their counts change them.
+ */
+function brikpanelOrdersExplorerLink() {
+	const $link = document.querySelector('.bp-orders-explorer');
+	const $header1 = document.querySelector('.brikpanel-orders-table-header-1');
+	const $subsubsub = $header1?.querySelector('.subsubsub');
+	if (!$link || !$subsubsub) return;
+
+	// The list's own look replaces WordPress's button; brikpanelFilters() hid
+	// everything of the filter box that is not a dropdown.
+	$link.classList.remove('button');
+	$link.style.display = '';
+	const $wrap = $link.closest('.bp-orders-explorer-wrap');
+	$header1.insertBefore($link, $subsubsub.nextSibling);
+	$wrap?.remove();
+
+	// The search button is hidden when WooCommerce printed no search box.
+	const hasSearch = !!document.querySelector('.brikpanel-search .search-box');
+	$header1.classList.toggle('bp-orders-explorer-nosearch', !hasSearch);
+	const strip = window.brikpanelScrollStrip ? window.brikpanelScrollStrip($subsubsub) : null;
+
+	// The row's 8px gap, and the 54px search button with the gap before it
+	// (brikpanel-orders.css). Fixed numbers, not read from the page: an open
+	// search drops the row's gap, and the link has no end margin in the
+	// filter row, so reading them would give another answer in each place.
+	const gap = 8;
+	const band = hasSearch ? 62 : 0;
+	let inRow = null;
+	const place = () => {
+		const style = window.getComputedStyle($header1);
+		const inner = $header1.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+		const tabs = Array.from($subsubsub.children).slice(0, 2);
+		const tabsWidth = tabs.reduce((w, $li) => w + $li.getBoundingClientRect().width, 0)
+			+ (tabs.length > 1 ? parseFloat(window.getComputedStyle($subsubsub).columnGap) || 0 : 0);
+		const fits = inner - band - gap - $link.getBoundingClientRect().width >= tabsWidth;
+		if (fits === inRow) return;
+		inRow = fits;
+		if (fits) {
+			$header1.insertBefore($link, $subsubsub.nextSibling);
+		} else {
+			document.querySelector('.brikpanel-filters')?.append($link);
+		}
+		$header1.classList.toggle('bp-orders-explorer-in-row', fits);
+		if (strip) {
+			// The tabs end before the link; without it they run under the search button.
+			strip.endClear = fits ? 0 : 58;
+			strip.lastActive = null;
+			strip.schedule(true);
+		}
+	};
+	place();
+
+	// "Clear filters" joins the filter row a frame later: the link stays last.
+	waitForElement('.brikpanel-filters .brikpanel-clear-filter').then(() => {
+		if (inRow === false) document.querySelector('.brikpanel-filters')?.append($link);
+	});
+
+	let frame = 0;
+	const schedule = () => {
+		if (frame) return;
+		frame = window.requestAnimationFrame(() => {
+			frame = 0;
+			place();
+		});
+	};
+	if (typeof window.ResizeObserver === 'function') {
+		new window.ResizeObserver(schedule).observe($header1);
+	} else {
+		window.addEventListener('resize', schedule);
+	}
+	document.fonts?.ready?.then(schedule);
+}
+
+/**
  * Get the bulk actions from the native WooCommerce dropdown for use in ours.
  * By grabbing them from here, we ensure compatibility with any plugin that adds
  * bulk actions as well as users of WooCommerce in all languages.
@@ -891,6 +1251,14 @@ function getBulkActions() {
 	}
 	return actions;
 }
+
+/* Buttons other plugins put on the orders page for the ticked orders. They join
+   the bulk action bar, before "Bulk actions", instead of standing where the
+   plugin put them: AgenWebsite Shipping's "Pengiriman Massal" floats right
+   before hr.wp-header-end, which BrikPanel's title row leaves under the
+   overview card, so it squeezed the orders card and pushed columns out of the
+   row (wp.org, sizulku, 20 Oct 2026). */
+const BP_BULK_BAR_BUTTONS = '.aw-bulk-ship-trigger'; // i18n-ignore: CSS selector, not user-facing text
 
 /**
  * Creates Shopify-style bulk actions that shows only when items are selected
@@ -1039,21 +1407,90 @@ function brikpanelBulkActions(actions) {
 		}
 	});
 
+	/* Other plugins' buttons for the ticked orders (BP_BULK_BAR_BUTTONS) sit in
+	   the bar before "Bulk actions" while it has room for them, else at the top
+	   of the menu. A node moved in the DOM loses focus, so one already in the
+	   right place stays put. */
+	const $pinned = [];
+	const placePinned = (inMenu) => {
+		const $parent = inMenu ? $menu : $bulkActions;
+		const $anchor = inMenu
+			? ([...$menu.children].find($child => !$pinned.includes($child)) || null)
+			: $menuToggle;
+		$pinned.forEach($button => {
+			if ($button.parentElement !== $parent) $parent.insertBefore($button, $anchor);
+		});
+	};
+
 	const syncCompact = () => {
 		const $card = document.querySelector('#wc-orders-filter') ?? document.querySelector('#posts-filter');
 		const available = window.matchMedia('(max-width: 520px)').matches
 			? window.innerWidth - 24
 			: Math.max(240, ($card ? $card.clientWidth : window.innerWidth) - 24);
 		$bulkActions.style.maxWidth = `${available}px`;
+		placePinned(false);
 		$bulkActions.classList.remove('is-compact');
-		const natural = $selectedCount.getBoundingClientRect().width + $menu.scrollWidth + 48;
+		const width = $el => $el.getBoundingClientRect().width;
+		const pinnedWidth = $pinned.reduce((sum, $button) => sum + width($button) + 6, 0);
+		const natural = width($selectedCount) + pinnedWidth + $menu.scrollWidth + 48;
 		const compact = natural > available;
 		$bulkActions.classList.toggle('is-compact', compact);
+		// Folded, the bar still holds the count, these buttons and "Bulk
+		// actions"; where even that does not fit (a phone) they lead the menu.
+		if (compact && $pinned.length && width($selectedCount) + pinnedWidth + width($menuToggle) + 48 > available) {
+			placePinned(true);
+		}
 		if (!compact) closeMenu();
 	};
 	syncCompact();
 	window.addEventListener('resize', syncCompact);
 	if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncCompact);
+
+	// Refit at most once a frame when a pinned button changes size.
+	let syncQueued = false;
+	const queueSync = () => {
+		if (syncQueued) return;
+		syncQueued = true;
+		window.requestAnimationFrame(() => {
+			syncQueued = false;
+			syncCompact();
+		});
+	};
+
+	const adopt = $button => {
+		if (!($button instanceof HTMLButtonElement) || $pinned.includes($button)) return;
+		// WordPress's own button look would win over the bar's.
+		$button.classList.remove('button', 'button-primary');
+		$button.classList.add('brikpanel-bulk-primary');
+		// Set by the plugin to line the button up with "Add order".
+		$button.style.removeProperty('margin-top');
+		$pinned.push($button);
+		syncCompact();
+		if (typeof window.MutationObserver === 'function') {
+			// Its count badge appears with the first tick and its label changes
+			// while it checks the orders: the bar is measured again.
+			new window.MutationObserver(queueSync).observe($button, {
+				subtree: true,
+				childList: true,
+				characterData: true,
+				attributes: true,
+				attributeFilter: ['hidden', 'disabled'],
+			});
+		}
+	};
+
+	/* AgenWebsite adds its button on jQuery ready, after this pass ran, as a
+	   child of .wrap. Its click handler and count badge are bound by class on
+	   document, so the moved node keeps working. */
+	document.querySelectorAll(BP_BULK_BAR_BUTTONS).forEach(adopt);
+	const $wrap = document.querySelector('#wpbody-content .wrap') ?? document.querySelector('.wrap');
+	if ($wrap && typeof window.MutationObserver === 'function') {
+		new window.MutationObserver(records => {
+			records.forEach(record => record.addedNodes.forEach($node => {
+				if ($node.nodeType === Node.ELEMENT_NODE && $node.matches(BP_BULK_BAR_BUTTONS)) adopt($node);
+			}));
+		}).observe($wrap, { childList: true });
+	}
 }
 
 /**
@@ -1171,7 +1608,7 @@ function brikpanelCompactRows() {
 	   WooCommerce's order_status unless a plugin swapped it for its own
 	   (brikpanel-orders.php names it; mirrors brikpanel_orders_compact_base_row_columns()). */
 	const statusColumn = window.brikpanelStatusInline?.column || 'order_status';
-	const ROW_COLUMNS = new Set(['cb', 'order_number', 'brikpanel_whatsapp', 'brikpanel_customer', 'order_date', statusColumn, 'payment_method', 'brikpanel_shipping_method', 'order_total']);
+	const ROW_COLUMNS = new Set(['cb', 'order_number', 'brikpanel_whatsapp', 'brikpanel_print', 'brikpanel_customer', 'order_date', statusColumn, 'payment_method', 'brikpanel_shipping_method', 'order_total']);
 	// Columns whose content never moves to the panel.
 	const DROPPED_COLUMNS = new Set();
 	// Columns the user keeps in the row ("Show in the row" in Screen Options).
@@ -1323,6 +1760,14 @@ function brikpanelCompactRows() {
 		const $cell = makeElement('td', { class: 'no-link', colspan: String(visibleColumns()) });
 		const $wrap = makeElement('div', { class: 'bp-order-detail-wrap' });
 		$wrap.append($template.content.cloneNode(true));
+		// The Print button shows and hides with its column, and Screen Options
+		// only reaches what is already in the page: take the column's state now.
+		const $printHead = $headRow?.querySelector(':scope > .column-brikpanel_print');
+		if ($printHead) {
+			$wrap.querySelectorAll('.bp-od-actions > .column-brikpanel_print').forEach($btn => {
+				$btn.classList.toggle('hidden', $printHead.classList.contains('hidden'));
+			});
+		}
 
 		builtRows.add($row);
 		placeRow($row);
@@ -1826,6 +2271,65 @@ function brikpanelIconActionColumns() {
 		// BrikPanel lays out itself. Columns this pass left alone keep the
 		// header they had.
 		$th.classList.add('brikpanel-iconbar-col');
+	}
+}
+
+/**
+ * Other plugins' column headings wrap instead of holding their column open.
+ *
+ * BrikPanel keeps every heading on one line, which suits the short labels of
+ * the columns it lays out itself. A plugin's two-word heading then made its
+ * column far wider than what is in it: "Konfirmasi Pembayaran" over a "View
+ * File" button (wp.org, sizulku, 20 Oct 2026). The heading's text moves into a
+ * block that does not count towards the column's width (contain: inline-size,
+ * in the CSS), so the column takes the width of its cells and the heading
+ * wraps to fit; a heading narrower than its cells keeps its one line. A hidden
+ * copy of the heading (::after, from data-bp-heading) keeps the column at
+ * least as wide as the heading's longest word, so no word is cut.
+ *
+ * Only headings that are text. A sort link, an icon, a control, something the
+ * plugin positions itself, a label kept for screen readers or a plugin's own
+ * ::after is left as the plugin drew it, and so is a one-word heading, which
+ * cannot wrap. Icon-action columns wrap already (brikpanelIconActionColumns,
+ * which runs first).
+ */
+function brikpanelForeignHeadings() {
+	const $table = document.querySelector('.wp-list-table');
+	if (!$table) return;
+
+	// Every heading is read before any is written, as in brikpanelIconActionColumns.
+	const plans = [];
+	for (const $th of $table.querySelectorAll('thead th.manage-column')) { // i18n-ignore: CSS selector, not user-facing text
+		if ($th.classList.contains('brikpanel-iconbar-col')) continue;
+
+		const columnClass = [...$th.classList].find(name => name.startsWith('column-'));
+		const column = columnClass ? columnClass.slice('column-'.length) : '';
+		if (!column || BP_ICONBAR_KNOWN_COLUMNS.has(column)) continue;
+
+		// Markup in the heading is fine while it only carries text. An icon (an
+		// element with no text), anything placed on its own or anything to click
+		// stays as the plugin drew it: Orders Tracking pins a refresh icon to the
+		// end of its heading, which a wrapped heading would send astray.
+		const $inner = [...$th.querySelectorAll('*')];
+		if ($inner.some($el => $el.matches('a, button, input, select, textarea, img, svg, canvas, video, .screen-reader-text, [title], [role], [tabindex], [onclick]') // i18n-ignore: CSS selector, not user-facing text
+			|| $el.textContent.trim() === ''
+			|| ['absolute', 'fixed'].includes(window.getComputedStyle($el).position))) continue;
+
+		const text = $th.textContent.replace(/\s+/g, ' ').trim();
+		if (!text.includes(' ')) continue;
+
+		const after = window.getComputedStyle($th, '::after').content;
+		if (after && after !== 'none' && after !== 'normal') continue;
+
+		plans.push({ $th, text });
+	}
+
+	for (const { $th, text } of plans) {
+		const $label = makeElement('span', { class: 'bp-th-label' });
+		$label.append(...$th.childNodes);
+		$th.append($label);
+		$th.dataset.bpHeading = text;
+		$th.classList.add('bp-th-wrap');
 	}
 }
 

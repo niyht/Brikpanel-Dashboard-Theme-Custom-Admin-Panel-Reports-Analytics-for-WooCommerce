@@ -419,7 +419,7 @@ function brikpanel_tracking_cookie_names() {
  *   and the prize would be removing a row from a store that self-expires in
  *   two minutes regardless.
  * - NOT the analytics tables. wp_brikpanel_visitors, _visited_pages,
- *   _referrers and _cart_tracking hold daily integer totals with no link to
+ *   _referrers, _visitor_countries and _cart_tracking hold daily integer totals with no link to
  *   any visitor: there is nothing personal in them to erase, and making them
  *   decrementable from an unauthenticated endpoint would hand anyone a
  *   button that zeroes a merchant's analytics. This is the single most
@@ -641,3 +641,7 @@ add_action( 'update_option_brikpanel_frontend_tracking', 'brikpanel_consent_purg
 // ($option, $value), which the comparison above reads as a change: fine.
 add_action( 'update_option_brikpanel_live_traffic_source', 'brikpanel_consent_purge_page_cache', 10, 2 );
 add_action( 'add_option_brikpanel_live_traffic_source', 'brikpanel_consent_purge_page_cache', 10, 2 );
+// "Count visitors when the page opens" (3.3.41) is printed into the cached
+// tracker too: without a purge, turning it on would not reach cached pages.
+add_action( 'update_option_brikpanel_count_on_open', 'brikpanel_consent_purge_page_cache', 10, 2 );
+add_action( 'add_option_brikpanel_count_on_open', 'brikpanel_consent_purge_page_cache', 10, 2 );

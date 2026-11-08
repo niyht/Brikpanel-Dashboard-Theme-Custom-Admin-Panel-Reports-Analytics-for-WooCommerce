@@ -541,7 +541,7 @@ function brikpanel_dashboard_get_section_order() {
 function brikpanel_dashboard_profit_field_labels() {
     return [
         'cogs'     => __( 'Cost of goods', 'brikpanel' ),
-        'expenses' => __( 'Expenses (taxes, ad spend, supplier costs)', 'brikpanel' ),
+        'expenses' => __( 'Expenses (ad spend, supplier costs)', 'brikpanel' ),
         'returns'  => __( 'Returns (refunds)', 'brikpanel' ),
         'coupons'  => __( 'Coupons (discounts given)', 'brikpanel' ),
     ];

@@ -122,7 +122,17 @@
 		wrap.classList.remove('is-up', 'is-fixed');
 		var m = menu.getBoundingClientRect();
 		var band = visibleBand(wrap);
-		if (m.bottom <= band.bottom + 1) {
+		// The menu fades in from 4px higher (brikpanel-overflow.css) and is
+		// measured at that first moment: without the lift a menu that ends up
+		// 4px past the window's edge looked as if it fit (the product list's
+		// "Plugin actions" menu at 1920x1000).
+		var lift = 0;
+		try {
+			lift = new window.DOMMatrixReadOnly(window.getComputedStyle(menu).transform).m42 || 0;
+		} catch (e) {
+			lift = 0;
+		}
+		if (m.bottom - lift <= band.bottom + 1) {
 			return;
 		}
 		var tr = t.getBoundingClientRect();

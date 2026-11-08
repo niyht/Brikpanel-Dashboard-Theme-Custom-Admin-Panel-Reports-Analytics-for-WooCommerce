@@ -281,6 +281,7 @@ function brikpanel_topbar_builtin_item_keys() {
         'live',
         'search',
         'create',
+        'phone_app',
         'notifications',
         'hidden_notices',
         'view_site',
@@ -736,6 +737,23 @@ function brikpanel_topbar_items_label_map() {
             'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
         ],
     ];
+
+    // The phone app button (front-end/push/brikpanel-push-admin.php) sits just
+    // before the order bell, and exists only while the phone app does
+    // (define( 'BRIKPANEL_PHONE_APP', false ) removes both).
+    if ( function_exists( 'brikpanel_push_menu_render' ) ) {
+        $with = [];
+        foreach ( $map as $key => $entry ) {
+            if ( 'notifications' === $key ) {
+                $with['phone_app'] = [
+                    'label' => __( 'Phone app button', 'brikpanel' ),
+                    'icon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 7v7"/><path d="M9 11.5l3 3 3-3"/></svg>',
+                ];
+            }
+            $with[ $key ] = $entry;
+        }
+        $map = $with;
+    }
 
     foreach ( brikpanel_topbar_registered_items() as $key => $item ) {
         if ( ! $item['settings'] || isset( $map[ $key ] ) ) {

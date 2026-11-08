@@ -59,6 +59,36 @@ class Brikpanel_Cart_Abandonment {
 	const ORDER_VISITOR_META = '_brikpanel_cartab_vid';
 
 	/**
+	 * Order meta: the cart this order was paid from has been dealt with, either
+	 * by WooCommerce emptying it or by settle_paid_cart(). Written once; an order
+	 * carrying it is never armed again. See settle_paid_cart().
+	 */
+	const ORDER_SETTLED_META = '_brikpanel_cart_settled';
+
+	/** User meta prefix (the blog id is appended): a customer's paid orders whose cart still has to be settled. */
+	const SETTLE_USER_META = '_brikpanel_cart_settle_';
+
+	/** Transient prefix holding the same list for a guest, keyed by browser id. */
+	const SETTLE_TRANSIENT = 'brikpanel_cart_settle_';
+
+	/** WC session slot: per cart line, when the shopper added to it and how much was there just before. */
+	const TOUCH_SESSION = 'brikpanel_cartab_touch';
+
+	/** Most orders one shopper can have waiting to be settled; older ones drop off. */
+	const SETTLE_MAX_ORDERS = 20;
+
+	/** What popup coupon codes start with while the merchant has not chosen a start of their own. */
+	const POPUP_PREFIX_DEFAULT = 'BRIK';
+
+	/**
+	 * Longest start a merchant can choose. A code is the start, a dash and six
+	 * random characters: it has to fit the popup's code box on a phone, and the
+	 * popup only remembers codes of up to 32 characters (CODE_RE in
+	 * cart-abandonment.js).
+	 */
+	const POPUP_PREFIX_MAX = 16;
+
+	/**
 	 * Orders already credited this request. woocommerce_order_status_changed
 	 * can fire several times for one order in a single save.
 	 *
@@ -107,6 +137,17 @@ class Brikpanel_Cart_Abandonment {
 			add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_settings_assets' ] );
 		}
 
+		// The popup coupon's code start is cleaned on every write, not only on
+		// the settings screen: an import and a companion plugin's settings card
+		// write the same option, and every one of them passes through here.
+		// Registered before the collection switch below, so a store that has
+		// collection off still cannot save a start that would break its codes
+		// once collection goes back on.
+		add_filter( 'sanitize_option_brikpanel_cartab_popup_coupon_prefix', [ __CLASS__, 'sanitize_popup_coupon_prefix' ] );
+		// The popup coupon's minimum spend, for the same reason and on the same
+		// footing: one cleaner for every road into the option.
+		add_filter( 'sanitize_option_brikpanel_cartab_popup_coupon_minimum', [ __CLASS__, 'sanitize_popup_coupon_minimum' ] );
+
 		if ( ! self::is_enabled() ) {
 			return;
 		}
@@ -150,6 +191,14 @@ class Brikpanel_Cart_Abandonment {
 		add_action( 'woocommerce_before_delete_order',                [ $this, 'on_order_deleted' ] );
 		add_action( 'woocommerce_before_trash_order',                 [ $this, 'on_order_deleted' ] );
 		add_action( 'before_delete_post',                             [ $this, 'on_legacy_order_deleted' ] );
+
+		// Paid items the shopper never came back for: take them out of the cart
+		// the way the thank-you page would have. See settle_paid_cart().
+		add_action( 'woocommerce_cart_loaded_from_session',        [ $this, 'settle_paid_cart' ], 20 );
+		add_action( 'woocommerce_cart_emptied',                    [ $this, 'on_cart_emptied' ] );
+		add_action( 'woocommerce_add_to_cart',                     [ $this, 'note_add_touch' ], 30, 3 );
+		add_action( 'woocommerce_cart_item_restored',              [ $this, 'note_restore_touch' ] );
+		add_action( 'woocommerce_after_cart_item_quantity_update', [ $this, 'note_quantity_touch' ], 10, 3 );
 	}
 
 	// =========================================================================
@@ -166,11 +215,158 @@ class Brikpanel_Cart_Abandonment {
 		return max( 0, min( 100, (int) get_option( 'brikpanel_cartab_popup_discount', 10 ) ) );
 	}
 
-	/** Selected offer-badge animation style, whitelisted against known styles. */
+	/**
+	 * What popup coupon codes start with: the merchant's own start, cleaned,
+	 * or BRIK while none is set.
+	 *
+	 * Cleaned again on read, not only on save: an older import or a direct
+	 * database edit can hold anything. Read only when a code is minted or a
+	 * screen shows the setting, never while the plugin loads.
+	 *
+	 * Public and named so a companion plugin can tell whether this BrikPanel
+	 * lets the merchant choose the start before it offers the field itself.
+	 *
+	 * @since 3.3.36
+	 * @return string
+	 */
+	public static function popup_coupon_prefix() {
+		$prefix = self::sanitize_popup_coupon_prefix( get_option( 'brikpanel_cartab_popup_coupon_prefix', '' ) );
+		return '' === $prefix ? self::POPUP_PREFIX_DEFAULT : $prefix;
+	}
+
+	/**
+	 * Clean a typed code start into something a coupon code can safely begin
+	 * with: Latin letters and digits in capitals, every other run of characters
+	 * turned into one dash, at most POPUP_PREFIX_MAX long. "dmt hoşgeldin 4"
+	 * becomes DMT-HOSGELDIN-4.
+	 *
+	 * Accented and Turkish letters lose their marks first. WooCommerce stores a
+	 * code holding a Turkish İ as "i" plus a combining dot, and a shopper who
+	 * types that code in small letters, or with a plain I, is told it does not
+	 * exist (checked on WooCommerce 11.0.1). Letters from other scripts are
+	 * dropped; nothing usable left means "use the default".
+	 *
+	 * Capitals come from strtr(), not strtoupper(): before PHP 8.2 strtoupper()
+	 * follows the server locale. Cleaning a cleaned start changes nothing.
+	 *
+	 * @since 3.3.36
+	 * @param mixed $raw Typed or stored value.
+	 * @return string '' when nothing usable is left.
+	 */
+	public static function sanitize_popup_coupon_prefix( $raw ) {
+		if ( ! is_scalar( $raw ) ) {
+			return '';
+		}
+		$text = remove_accents( (string) $raw );
+		// A decomposed letter keeps its mark as a character of its own, which the
+		// next step would turn into a dash in the middle of a word.
+		$text = (string) preg_replace( '/\p{Mn}+/u', '', $text );
+		$text = (string) preg_replace( '/[^A-Za-z0-9]+/', '-', $text );
+		$text = self::ascii_upper( $text );
+		$text = substr( trim( $text, '-' ), 0, self::POPUP_PREFIX_MAX );
+		return rtrim( $text, '-' );
+	}
+
+	/**
+	 * The smallest cart subtotal the popup coupon works on, in the decimal form
+	 * WooCommerce stores ("25.50"), or '' while the merchant has set none.
+	 *
+	 * Cleaned again on read, like the code start: an older import or a direct
+	 * database edit can hold anything. Read only when a code is minted or a
+	 * screen shows the setting, never while the plugin loads.
+	 *
+	 * Public and named so a companion plugin can tell whether this BrikPanel
+	 * takes a minimum before it offers the field itself.
+	 *
+	 * @since 3.3.41
+	 * @return string
+	 */
+	public static function popup_coupon_minimum() {
+		return self::sanitize_popup_coupon_minimum( get_option( 'brikpanel_cartab_popup_coupon_minimum', '' ) );
+	}
+
+	/**
+	 * Clean a typed or stored minimum spend: '' for none, otherwise a decimal
+	 * string with the store's price decimals ("25.50").
+	 *
+	 * A plain number is read as one; anything else goes through WooCommerce's
+	 * own reader, which knows the shop's decimal separator, so "25,50" means
+	 * what it says in a shop that writes prices that way. Zero, negative and
+	 * unreadable values all mean no minimum: WooCommerce ignores a minimum of 0
+	 * itself. The rules match the minimum BrikMentor writes onto its own codes,
+	 * so one amount reads the same on both plugins' screens.
+	 *
+	 * @since 3.3.41
+	 * @param mixed $raw Typed or stored value.
+	 * @return string '' when there is no minimum.
+	 */
+	public static function sanitize_popup_coupon_minimum( $raw ) {
+		if ( ! is_scalar( $raw ) ) {
+			return '';
+		}
+		$raw = trim( (string) $raw );
+		if ( '' === $raw ) {
+			return '';
+		}
+		if ( is_numeric( $raw ) ) {
+			$amount = (float) $raw;
+		} elseif ( function_exists( 'wc_format_decimal' ) ) {
+			$amount = (float) wc_format_decimal( $raw );
+		} else {
+			return '';
+		}
+		if ( ! is_finite( $amount ) || $amount <= 0 ) {
+			return '';
+		}
+		$decimals = function_exists( 'wc_get_price_decimals' ) ? max( 0, (int) wc_get_price_decimals() ) : 2;
+		$text     = number_format( $amount, $decimals, '.', '' );
+		// A shop with no decimals rounds 0.4 down to nothing, which is no minimum.
+		return (float) $text > 0 ? $text : '';
+	}
+
+	/**
+	 * Capitals for the ASCII letters of a string, whatever the server locale.
+	 * Every other byte, including those of multibyte characters, is left alone.
+	 *
+	 * @param string $text
+	 * @return string
+	 */
+	private static function ascii_upper( $text ) {
+		return strtr( (string) $text, 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' );
+	}
+
+	/**
+	 * Selected "Offer animation", whitelisted against the known keys.
+	 *
+	 * The keys are older than the pencil drawings: 3.3.43 redrew every one, so
+	 * a saved choice keeps working. slot = handwriting (the default since
+	 * 3.3.43), assembly = ring, classic = coupon cut out by scissors,
+	 * envelope = envelope (the default before), pocket = gift box,
+	 * scratch = eraser.
+	 *
+	 * @return string
+	 */
 	public static function popup_style() {
-		$style = (string) get_option( 'brikpanel_cartab_popup_style', 'envelope' );
-		$known = [ 'pocket', 'scratch', 'slot', 'envelope', 'assembly', 'classic' ];
-		return in_array( $style, $known, true ) ? $style : 'envelope';
+		$style = (string) get_option( 'brikpanel_cartab_popup_style', 'slot' );
+		$known = [ 'slot', 'assembly', 'classic', 'envelope', 'pocket', 'scratch' ];
+		return in_array( $style, $known, true ) ? $style : 'slot';
+	}
+
+	/**
+	 * The handwritten note each drawing writes beside itself, as style => slot
+	 * of the popup's own wording. Handwriting has none: its word is the
+	 * discount badge word.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function popup_note_slots() {
+		return [
+			'assembly' => 'noteRing',
+			'classic'  => 'noteCoupon',
+			'envelope' => 'noteEnvelope',
+			'pocket'   => 'noteGift',
+			'scratch'  => 'noteEraser',
+		];
 	}
 
 	/**
@@ -376,6 +572,9 @@ class Brikpanel_Cart_Abandonment {
 			'couponHintApplied' => __( 'Already on your cart, the discount is in your total.', 'brikpanel' ),
 			'couponHintAuto'    => __( 'Saved. It goes on your cart automatically, and you can still type it in at checkout.', 'brikpanel' ),
 			'couponSaved'       => __( 'Your code is saved. Reopen it any time from the tab at the bottom of the page.', 'brikpanel' ),
+			// Shown under the code only when the code carries a minimum spend.
+			/* translators: %s: the smallest cart subtotal the code works on, with its currency, e.g. "$30.00" */
+			'couponMinimum'     => __( 'Minimum spend %s', 'brikpanel' ),
 			'couponTeaser'      => __( 'Your code', 'brikpanel' ),
 			'couponTeaserLabel' => __( 'Show your discount code', 'brikpanel' ),
 			/* translators: %s: the visitor's email address */
@@ -388,7 +587,19 @@ class Brikpanel_Cart_Abandonment {
 			'copy'              => __( 'Copy', 'brikpanel' ),
 			'copied'            => __( 'Copied!', 'brikpanel' ),
 			'offBadge'          => __( 'OFF', 'brikpanel' ),
-			'scratchMe'         => __( 'Scratch me', 'brikpanel' ),
+			// The handwritten notes beside the offer drawings, one per drawing
+			// (popup_note_slots()). Short: the popup fits them in by shrinking
+			// and leaves out a note that still does not fit.
+			/* translators: Handwritten note beside a discount that a pencil ring has just been drawn round, in the store's signup popup. One to three words. */
+			'noteRing'          => _x( 'just for you', 'popup handwritten note', 'brikpanel' ),
+			/* translators: Handwritten note pointing at a hand-drawn discount coupon that a pair of scissors cuts out. One to three words. */
+			'noteCoupon'        => _x( 'cut & save', 'popup handwritten note', 'brikpanel' ),
+			/* translators: Handwritten note pointing at a card with the discount that rises out of an opened envelope. One to three words. */
+			'noteEnvelope'      => _x( 'for you', 'popup handwritten note', 'brikpanel' ),
+			/* translators: Handwritten note pointing at a discount tag that comes out of a gift box. One to three words. */
+			'noteGift'          => _x( 'a little gift', 'popup handwritten note', 'brikpanel' ),
+			/* translators: Handwritten note pointing at a discount that an eraser has just rubbed free of pencil shading. One or two words. */
+			'noteEraser'        => _x( 'surprise!', 'popup handwritten note', 'brikpanel' ),
 		];
 	}
 
@@ -1066,6 +1277,11 @@ class Brikpanel_Cart_Abandonment {
 	 * human labels (taxonomy label + term name) so exports and BrikMentor
 	 * emails can render "Size: L" without a further lookup.
 	 *
+	 * The labels are the ones WooCommerce shows in the cart: a custom
+	 * attribute's name as the merchant typed it ("Size", not its key "size"),
+	 * and an attribute named outside ASCII by name, where up to 3.3.36 its
+	 * encoded key and term slug were stored ("pa_%d0%b2…: %d1%81…").
+	 *
 	 * @return array{items:array,count:int,total:float,currency:string}
 	 */
 	private static function cart_snapshot() {
@@ -1082,17 +1298,8 @@ class Brikpanel_Cart_Abandonment {
 			$product = ( isset( $item['data'] ) && $item['data'] instanceof WC_Product ) ? $item['data'] : null;
 			$attrs   = [];
 			if ( ! empty( $item['variation'] ) && is_array( $item['variation'] ) ) {
-				foreach ( $item['variation'] as $key => $value ) {
-					$taxonomy = str_replace( 'attribute_', '', (string) $key );
-					$label    = function_exists( 'wc_attribute_label' ) ? wc_attribute_label( $taxonomy ) : $taxonomy;
-					$value    = (string) $value;
-					if ( taxonomy_exists( $taxonomy ) ) {
-						$term = get_term_by( 'slug', $value, $taxonomy );
-						if ( $term && ! is_wp_error( $term ) ) {
-							$value = $term->name;
-						}
-					}
-					$attrs[ $label ] = $value;
+				foreach ( brikpanel_attr_pairs( $item['variation'], $product ) as $pair ) {
+					$attrs[ $pair['label'] ] = $pair['value'];
 				}
 			}
 			$qty            = (float) $item['quantity'];
@@ -1481,7 +1688,8 @@ class Brikpanel_Cart_Abandonment {
 	 *
 	 * @param string $email Validated, lowercased email.
 	 * @param int    $id    Cart-abandonment entry id.
-	 * @return array{coupon?:string,discount?:int,expires?:int,autoapply?:bool,applied?:bool,coupon_emailed?:bool,email?:string}
+	 * @return array{coupon?:string,discount?:int,expires?:int,minimum?:string,autoapply?:bool,applied?:bool,coupon_emailed?:bool,email?:string}
+	 *         `minimum` is the code's minimum spend as plain money text, set only when it has one.
 	 */
 	private static function deliver_popup_coupon( $email, $id ) {
 		// A popup coupon only exists while the merchant actually runs the
@@ -1531,14 +1739,20 @@ class Brikpanel_Cart_Abandonment {
 		// its email carries the code and its own one-click apply link, and a
 		// coupon quietly sitting on the cart would contradict both the email and
 		// the "check your inbox" the popup is showing.
-		return array_merge(
-			[
-				'coupon'   => $coupon['code'],
-				'discount' => $coupon['amount'],
-				'expires'  => isset( $coupon['expires'] ) ? (int) $coupon['expires'] : 0,
-			],
-			self::autoapply_popup_coupon( $coupon, $email )
-		);
+		$inline = [
+			'coupon'   => $coupon['code'],
+			'discount' => $coupon['amount'],
+			'expires'  => isset( $coupon['expires'] ) ? (int) $coupon['expires'] : 0,
+		];
+		// The code's minimum spend as an amount only: the popup writes the
+		// sentence around it in the page's own language. The amount is in the
+		// store currency, which is the currency the rule was set in; a currency
+		// switcher's visitor currency would put a foreign symbol on it.
+		$minimum = isset( $coupon['minimum'] ) ? (string) $coupon['minimum'] : '';
+		if ( '' !== $minimum && function_exists( 'brikpanel_money_text' ) ) {
+			$inline['minimum'] = brikpanel_money_text( (float) $minimum, [ 'currency' => (string) get_option( 'woocommerce_currency' ) ] );
+		}
+		return array_merge( $inline, self::autoapply_popup_coupon( $coupon, $email ) );
 	}
 
 	/**
@@ -1577,6 +1791,9 @@ class Brikpanel_Cart_Abandonment {
 			'email' => $email,
 			'exp'   => isset( $coupon['expires'] ) ? (int) $coupon['expires'] : 0,
 			'n'     => 0,
+			// Whether the code has a minimum spend at all, so the pass below
+			// only loads the coupon for the codes that can be waiting on one.
+			'min'   => isset( $coupon['minimum'] ) ? (string) $coupon['minimum'] : '',
 		] );
 
 		// Deliberately the same worker the hooks use, so "signed up with a full
@@ -1627,7 +1844,8 @@ class Brikpanel_Cart_Abandonment {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * @param array $record {code, email, exp, n}.
+	 * @param array $record {code, email, exp, n, min}. `min` is absent on records
+	 *                      parked before 3.3.41.
 	 */
 	private static function park_coupon( $record ) {
 		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
@@ -1692,8 +1910,10 @@ class Brikpanel_Cart_Abandonment {
 	/**
 	 * Resolve the parked coupon. The record is deleted on every terminal
 	 * verdict — applied, expired, deleted, or ten fruitless passes — and the
-	 * only outcomes that keep it cost a session array read. That is what stops
-	 * this from ever becoming a retry that runs for the life of a session.
+	 * only outcomes that keep it cost a session array read (plus one coupon
+	 * read for a code with a minimum spend, while the cart is under it). That
+	 * is what stops this from ever becoming a retry that runs for the life of
+	 * a session.
 	 *
 	 * @return bool Whether the code is on the cart now.
 	 */
@@ -1729,6 +1949,14 @@ class Brikpanel_Cart_Abandonment {
 			return false;
 		}
 
+		// A cart still under the code's minimum spend is not an attempt either.
+		// WooCommerce refuses the code until the cart grows, and this runs on
+		// every request, so counting it would use up all ten passes while the
+		// shopper is still browsing and drop the code before they get there.
+		if ( ! empty( $record['min'] ) && self::below_coupon_minimum( (string) $record['code'] ) ) {
+			return false;
+		}
+
 		$record['n'] = (int) $record['n'] + 1;
 		self::park_coupon( $record );
 		if ( $record['n'] > 10 ) {
@@ -1747,6 +1975,40 @@ class Brikpanel_Cart_Abandonment {
 		}
 
 		return $applied;
+	}
+
+	/**
+	 * Is the cart still under this coupon's minimum spend?
+	 *
+	 * WooCommerce's own test (WC_Discounts::validate_coupon_minimum_amount),
+	 * asked without applying anything: the minimum in the 'view' context, so a
+	 * currency switcher converts it the way WooCommerce's check does, against
+	 * the same displayed subtotal and through the same filter. A coupon that
+	 * cannot be read answers "no": the pass then runs and the usual checks
+	 * decide.
+	 *
+	 * @param string $code Coupon code.
+	 * @return bool
+	 */
+	private static function below_coupon_minimum( $code ) {
+		if ( ! class_exists( 'WC_Coupon' ) || ! function_exists( 'wc_get_coupon_id_by_code' ) || ! function_exists( 'wc_add_number_precision' ) ) {
+			return false;
+		}
+		try {
+			$id = (int) wc_get_coupon_id_by_code( $code );
+			if ( ! $id ) {
+				return false;
+			}
+			$coupon  = new WC_Coupon( $id );
+			$minimum = (float) $coupon->get_minimum_amount();
+			if ( $minimum <= 0 ) {
+				return false;
+			}
+			$subtotal = wc_remove_number_precision( wc_add_number_precision( (float) WC()->cart->get_displayed_subtotal() ) );
+			return (bool) apply_filters( 'woocommerce_coupon_validate_minimum_amount', $minimum > $subtotal, $coupon, $subtotal );
+		} catch ( Throwable $e ) {
+			return false;
+		}
 	}
 
 	/**
@@ -1907,12 +2169,14 @@ class Brikpanel_Cart_Abandonment {
 	/**
 	 * Return (or lazily create) the signup coupon for an email: percent
 	 * discount at the configured rate, single use, restricted to that email,
-	 * valid for 30 days. One live coupon per email — a fresh one is only
-	 * generated when the previous one was used or expired.
+	 * valid for 30 days, with the configured minimum spend if there is one.
+	 * One live coupon per email — a fresh one is only generated when the
+	 * previous one was used or expired.
 	 *
 	 * @param string $email Validated, lowercased email.
-	 * @return array{code:string,amount:int,expires:int}|null `expires` is a UTC
-	 *         timestamp, 0 when the coupon never expires.
+	 * @return array{code:string,amount:int,expires:int,minimum:string}|null
+	 *         `expires` is a UTC timestamp, 0 when the coupon never expires.
+	 *         `minimum` is the code's own minimum spend ("25.50"), '' for none.
 	 */
 	private static function get_or_create_popup_coupon( $email ) {
 		$discount = self::popup_discount();
@@ -1941,17 +2205,27 @@ class Brikpanel_Cart_Abandonment {
 				&& ( ! $expires || $expires->getTimestamp() > time() );
 			if ( $usable ) {
 				return [
-					'code'    => $coupon->get_code(),
+					// WooCommerce hands a stored code back in small letters. It
+					// goes out the way it was minted, in capitals: the popup only
+					// remembers a code in capitals, so a repeat signup used to see
+					// its code once and then lose it from the "Your code" tab.
+					// Redemption ignores case either way.
+					'code'    => self::ascii_upper( $coupon->get_code() ),
 					'amount'  => (int) $coupon->get_amount(),
 					'expires' => $expires ? $expires->getTimestamp() : 0,
+					// The rule this code was minted with, not today's setting:
+					// a code already sent keeps its rules.
+					'minimum' => self::sanitize_popup_coupon_minimum( $coupon->get_minimum_amount( 'edit' ) ),
 				];
 			}
 		}
 
-		// Generate a unique, readable code.
-		$code = '';
+		// Generate a unique, readable code: the merchant's start, then six
+		// random characters. A code already issued keeps the start it had.
+		$prefix = self::popup_coupon_prefix();
+		$code   = '';
 		for ( $i = 0; $i < 5; $i++ ) {
-			$candidate = 'BRIK-' . strtoupper( wp_generate_password( 6, false, false ) );
+			$candidate = $prefix . '-' . self::ascii_upper( wp_generate_password( 6, false, false ) );
 			if ( ! wc_get_coupon_id_by_code( $candidate ) ) {
 				$code = $candidate;
 				break;
@@ -1964,6 +2238,9 @@ class Brikpanel_Cart_Abandonment {
 		// Kept in a local so the caller can be told when the code dies without
 		// re-reading the coupon.
 		$expires_at = time() + 30 * DAY_IN_SECONDS;
+		// Written only when the merchant set one, so a store that never touched
+		// the setting mints the coupon it always has, field for field.
+		$minimum = self::popup_coupon_minimum();
 
 		try {
 			$coupon = new WC_Coupon();
@@ -1979,6 +2256,9 @@ class Brikpanel_Cart_Abandonment {
 			$coupon->set_individual_use( self::popup_coupon_individual_use( $email ) );
 			$coupon->set_email_restrictions( [ $email ] );
 			$coupon->set_date_expires( $expires_at );
+			if ( '' !== $minimum ) {
+				$coupon->set_minimum_amount( $minimum );
+			}
 			$coupon->set_description( __( 'Signup popup coupon (BrikPanel cart abandonment)', 'brikpanel' ) );
 			$coupon->save();
 			update_post_meta( $coupon->get_id(), '_brikpanel_cartab_email', $email );
@@ -1986,7 +2266,7 @@ class Brikpanel_Cart_Abandonment {
 			return null;
 		}
 
-		return [ 'code' => $code, 'amount' => $discount, 'expires' => $expires_at ];
+		return [ 'code' => $code, 'amount' => $discount, 'expires' => $expires_at, 'minimum' => $minimum ];
 	}
 
 	/**
@@ -2586,6 +2866,7 @@ class Brikpanel_Cart_Abandonment {
 		}
 		$this->recovered_this_request[ $order_id ] = true;
 		$this->mark_recovered( $order );
+		$this->arm_paid_cart_settle( $order instanceof WC_Order ? $order : $order_id );
 	}
 
 	/**
@@ -2863,6 +3144,465 @@ class Brikpanel_Cart_Abandonment {
 		// Rows that never merged (already recovered, or belonging to nobody
 		// open) still need reporting back to the caller.
 		return array_values( array_unique( array_merge( $survivors, array_diff( $ids, $drop ) ) ) );
+	}
+
+	// =========================================================================
+	// Paid cart settlement
+	// =========================================================================
+
+	/**
+	 * Take the paid items out of a cart whose owner never came back for them.
+	 *
+	 * WooCommerce empties the cart after a payment only from the shopper's own
+	 * browser: on the thank-you page, or (classic checkout only) on the next
+	 * page view in the same session through order_awaiting_payment. A shopper
+	 * who pays on the bank's page (PayTR iframe, 3-D Secure) and closes the tab
+	 * gets neither. The paid items stay in the session cart, and for a customer
+	 * with an account in the saved cart as well, which WooCommerce merges back
+	 * on every request whose session holds no cart: after a logout, or once the
+	 * session has expired. mirror_cart() then opens a fresh row for a basket
+	 * that was paid for, it turns "Abandoned" an hour later, and an outreach
+	 * provider emails the customer about items they already own.
+	 * just_repurchased() only ever covered the first six hours of that.
+	 *
+	 * This finishes the thank-you page's job on the shopper's next request.
+	 * Every rule is there so it can never take out something the shopper
+	 * still wants:
+	 *  - only orders from the store's own checkout, armed when the order first
+	 *    becomes a sale (arm_paid_cart_settle());
+	 *  - only the shopper the order belongs to: the account, or for a guest
+	 *    the browser id stamped on the order at checkout;
+	 *  - only the order's own lines, matched on product and variation, up to
+	 *    the quantity paid; everything else in the cart is left alone;
+	 *  - never what the shopper added, topped up or restored after the order
+	 *    was created (touch_cart_line());
+	 *  - once per order, and not at all once WooCommerce has emptied the cart
+	 *    itself (on_cart_emptied()).
+	 *
+	 * Runs right after WooCommerce has merged the saved cart and before it
+	 * writes the session back (WC_Cart_Session::get_cart_from_session()), so
+	 * what is taken out here is what gets stored.
+	 *
+	 * @param WC_Cart $cart Cart just loaded from the session.
+	 */
+	public function settle_paid_cart( $cart ) {
+		if ( ! $cart instanceof WC_Cart || $cart->is_empty() ) {
+			return;
+		}
+		if ( ( is_admin() && ! wp_doing_ajax() ) || self::is_staff() ) {
+			return;
+		}
+
+		$user_id = get_current_user_id();
+		$visitor = '';
+		if ( ! $user_id ) {
+			// A guest has no saved cart: the paid items can only still be in
+			// the very session that went through checkout, which
+			// stamp_checkout_visitor() marked. Any other guest is done here
+			// without a single query.
+			if ( ! WC()->session || ! WC()->session->get( 'brikpanel_cartab_order_pending' ) ) {
+				return;
+			}
+			$visitor = self::existing_visitor_id();
+		}
+
+		$armed = self::armed_orders( $user_id, $visitor );
+		if ( ! $armed ) {
+			return;
+		}
+
+		$touched = self::cart_touches();
+		$changed = false;
+		$pending = [];
+
+		foreach ( $armed as $order_id ) {
+			$order = wc_get_order( $order_id );
+			if ( ! self::settles_cart( $order ) ) {
+				continue; // Gone, no longer a sale, or already settled: forget it.
+			}
+
+			list( $took, $seen ) = self::take_paid_lines( $cart, $order, $touched );
+			$changed             = $changed || $took;
+
+			// The saved cart is a second copy, and it can be the only one still
+			// holding the paid lines: wc_empty_cart() clears the session cart but
+			// keeps it. While that is so, stay armed; WooCommerce merges it back
+			// on the next request whose session holds no cart, and the lines
+			// are taken out then.
+			if ( ! $seen && $user_id && self::saved_cart_holds_order( $user_id, $order ) ) {
+				$pending[] = (int) $order_id;
+				continue;
+			}
+			self::release_paid_order( $cart, $order, $took );
+			self::mark_settled( $order );
+		}
+
+		if ( $pending !== $armed ) {
+			self::store_armed_orders( $user_id, $visitor, $pending );
+		}
+
+		if ( $changed ) {
+			$cart->calculate_totals();
+		}
+	}
+
+	/**
+	 * Remove one order's paid lines from the cart.
+	 *
+	 * @param WC_Cart              $cart
+	 * @param WC_Order             $order
+	 * @param array<string,int>    $touched Cart item key => when the shopper last added, increased or restored it.
+	 * @return array{0:bool,1:bool} Whether anything was taken out, and whether the
+	 *                              cart held any of the order's lines at all.
+	 */
+	private static function take_paid_lines( $cart, $order, array $touched ) {
+		$created = $order->get_date_created() ? $order->get_date_created()->getTimestamp() : 0;
+		$took    = false;
+		$seen    = false;
+
+		foreach ( $order->get_items() as $item ) {
+			if ( ! $item instanceof WC_Order_Item_Product ) {
+				continue;
+			}
+			$product_id   = (int) $item->get_product_id();
+			$variation_id = (int) $item->get_variation_id();
+			$remaining    = (float) $item->get_quantity();
+			if ( $product_id <= 0 || $remaining <= 0 ) {
+				continue;
+			}
+
+			// A copy of the contents, so removing lines below cannot upset the loop.
+			foreach ( $cart->get_cart() as $key => $line ) {
+				if ( $remaining <= 0 ) {
+					break;
+				}
+				if ( (int) ( $line['product_id'] ?? 0 ) !== $product_id || (int) ( $line['variation_id'] ?? 0 ) !== $variation_id ) {
+					continue;
+				}
+				$seen = true;
+
+				// Only what was already in the line when the order was placed
+				// can be the paid leftover. Whatever the shopper added, topped up
+				// or restored after that is a new purchase in the making and
+				// stays. No creation date, no way to tell: leave the line alone.
+				$line_qty  = (float) ( $line['quantity'] ?? 0 );
+				$paid_part = $created ? self::quantity_before_order( $touched, $key, $created, $line_qty ) : 0.0;
+				$take      = min( $paid_part, $remaining );
+				if ( $take <= 0 ) {
+					continue;
+				}
+				if ( $take >= $line_qty ) {
+					$cart->remove_cart_item( $key );
+				} else {
+					$cart->set_quantity( $key, $line_qty - $take, false );
+				}
+				$remaining -= $take;
+				$took       = true;
+			}
+		}
+
+		return [ $took, $seen ];
+	}
+
+	/**
+	 * The rest of what the thank-you page does for a paid order.
+	 *
+	 * The session stops waiting for the order. WooCommerce's own after-payment
+	 * check (wc_clear_cart_after_payment) empties the WHOLE cart on the first
+	 * page view once that order is paid; left armed after the paid lines are
+	 * already out, it would wipe whatever the shopper has put in since.
+	 *
+	 * When the paid lines were taken out, the order's coupons come off the cart
+	 * too, as they would have on the thank-you page. A spent single-use code
+	 * left applied would greet the next basket with a usage-limit error.
+	 *
+	 * @param WC_Cart  $cart
+	 * @param WC_Order $order
+	 * @param bool     $took Whether paid lines were taken out of the cart.
+	 */
+	private static function release_paid_order( $cart, $order, $took ) {
+		if ( WC()->session && (int) WC()->session->get( 'order_awaiting_payment' ) === (int) $order->get_id() ) {
+			WC()->session->set( 'order_awaiting_payment', null );
+		}
+		if ( ! $took ) {
+			return;
+		}
+		foreach ( $order->get_coupon_codes() as $code ) {
+			if ( $cart->has_discount( $code ) ) {
+				$cart->remove_coupon( $code );
+			}
+		}
+	}
+
+	/**
+	 * Arm the cart settlement for an order that has just become a sale.
+	 *
+	 * Only orders from the store's own checkout qualify: an order an admin
+	 * keyed in, a subscription renewal or a REST import was never built from
+	 * this shopper's cart, so there is nothing in it to settle.
+	 *
+	 * @param WC_Order|int $order
+	 */
+	private function arm_paid_cart_settle( $order ) {
+		if ( ! $order instanceof WC_Order ) {
+			$order = wc_get_order( $order );
+		}
+		if ( ! self::settles_cart( $order ) ) {
+			return;
+		}
+
+		$user_id = (int) $order->get_customer_id();
+		$visitor = $user_id ? '' : self::order_visitor_id( $order );
+		if ( ! $user_id && '' === $visitor ) {
+			return; // No account and no browser id: nothing to find the cart by.
+		}
+
+		$armed   = self::armed_orders( $user_id, $visitor );
+		$armed[] = (int) $order->get_id();
+		self::store_armed_orders( $user_id, $visitor, $armed );
+	}
+
+	/**
+	 * WooCommerce emptied the shopper's cart itself (thank-you page, cash on
+	 * delivery, bank transfer, or the shopper emptying it), so the paid lines
+	 * are gone and the armed orders are settled as they stand. That is also what
+	 * keeps a bank transfer that is marked paid days later from touching
+	 * whatever the shopper has put in the cart since.
+	 *
+	 * For a customer with an account the saved cart is checked too:
+	 * wc_empty_cart() keeps it, and as long as it still holds the paid lines the
+	 * order stays armed for the request that merges them back.
+	 *
+	 * @param bool $clear_persistent_cart Passed since WooCommerce 9.7; not relied on.
+	 */
+	public function on_cart_emptied( $clear_persistent_cart = true ) {
+		if ( self::is_staff() ) {
+			return;
+		}
+		$user_id = get_current_user_id();
+		$visitor = $user_id ? '' : self::existing_visitor_id();
+		$armed   = self::armed_orders( $user_id, $visitor );
+		if ( ! $armed ) {
+			return;
+		}
+
+		$pending = [];
+		foreach ( $armed as $order_id ) {
+			$order = wc_get_order( $order_id );
+			if ( ! self::settles_cart( $order ) ) {
+				continue;
+			}
+			if ( $user_id && self::saved_cart_holds_order( $user_id, $order ) ) {
+				$pending[] = (int) $order_id;
+				continue;
+			}
+			self::mark_settled( $order );
+		}
+		self::store_armed_orders( $user_id, $visitor, $pending );
+	}
+
+	/**
+	 * The shopper added a product. On a line that was already in the cart this
+	 * is a top-up, and what was there before it is the line minus the amount
+	 * just added.
+	 *
+	 * @param string    $cart_item_key
+	 * @param int       $product_id Unused.
+	 * @param int|float $quantity   Amount added.
+	 */
+	public function note_add_touch( $cart_item_key, $product_id = 0, $quantity = 0 ) {
+		$cart_item_key = (string) $cart_item_key;
+		$line          = ( function_exists( 'WC' ) && WC()->cart ) ? WC()->cart->get_cart_item( $cart_item_key ) : [];
+		$before        = max( 0, (float) ( $line['quantity'] ?? 0 ) - (float) $quantity );
+		self::touch_cart_line( $cart_item_key, $before );
+	}
+
+	/**
+	 * The shopper brought back a line they had removed: nothing of it was in the
+	 * cart a moment ago.
+	 *
+	 * @param string $cart_item_key
+	 */
+	public function note_restore_touch( $cart_item_key ) {
+		self::touch_cart_line( (string) $cart_item_key, 0 );
+	}
+
+	/**
+	 * The shopper changed a quantity. Only an increase counts: a lower number is
+	 * not a new purchase in the making, and settle_paid_cart() lowers quantities
+	 * itself.
+	 *
+	 * @param string    $cart_item_key
+	 * @param int|float $quantity
+	 * @param int|float $old_quantity
+	 */
+	public function note_quantity_touch( $cart_item_key, $quantity, $old_quantity ) {
+		if ( (float) $quantity > (float) $old_quantity ) {
+			self::touch_cart_line( (string) $cart_item_key, (float) $old_quantity );
+		}
+	}
+
+	/**
+	 * Remember that the shopper put more of a line into the cart, and how much
+	 * of it was there just before. settle_paid_cart() reads the first such
+	 * record after an order to know how much of the line is the paid leftover:
+	 * at most what was there before the shopper started adding again.
+	 *
+	 * @param string    $key    Cart item key.
+	 * @param int|float $before Quantity of the line just before this addition.
+	 */
+	private static function touch_cart_line( $key, $before ) {
+		if ( '' === $key || ! function_exists( 'WC' ) || ! WC()->session ) {
+			return;
+		}
+		$touched   = self::cart_touches();
+		$entries   = ( isset( $touched[ $key ] ) && is_array( $touched[ $key ] ) ) ? $touched[ $key ] : [];
+		$entries[] = [ time(), (float) $before ];
+		// A handful per line is plenty: only the first one after the latest
+		// order is ever read.
+		$touched[ $key ] = array_slice( $entries, -5 );
+		// Bounded: only lines still in the cart are worth remembering.
+		if ( WC()->cart ) {
+			$touched = array_intersect_key( $touched, WC()->cart->get_cart() + [ $key => true ] );
+		}
+		WC()->session->set( self::TOUCH_SESSION, array_slice( $touched, -100, null, true ) );
+	}
+
+	/** @return array<string,array<int,array{0:int,1:float}>> Cart item key => [ [ when, quantity before ], ... ]. */
+	private static function cart_touches() {
+		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+			return [];
+		}
+		$touched = WC()->session->get( self::TOUCH_SESSION );
+		return is_array( $touched ) ? $touched : [];
+	}
+
+	/**
+	 * How much of a cart line was already there when the order was placed, as
+	 * far as the touch records can tell: the "before" quantity of the first
+	 * addition after the order, or the whole line when the shopper has not
+	 * added to it since.
+	 *
+	 * @param array     $touched  See cart_touches().
+	 * @param string    $key      Cart item key.
+	 * @param int       $created  Order creation time (unix).
+	 * @param int|float $line_qty Current quantity of the line.
+	 * @return float
+	 */
+	private static function quantity_before_order( array $touched, $key, $created, $line_qty ) {
+		if ( isset( $touched[ $key ] ) && ! is_array( $touched[ $key ] ) ) {
+			return 0.0; // Unreadable record: assume the shopper's own, keep the line.
+		}
+		$entries = isset( $touched[ $key ] ) ? $touched[ $key ] : [];
+		foreach ( $entries as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				return 0.0; // Unreadable record: assume the shopper's own, keep the line.
+			}
+			if ( (int) ( $entry[0] ?? 0 ) >= (int) $created ) {
+				return min( (float) $line_qty, max( 0.0, (float) ( $entry[1] ?? 0 ) ) );
+			}
+		}
+		return (float) $line_qty;
+	}
+
+	/**
+	 * Whether this order's cart is one the settlement may act on: a sale from
+	 * the store's own checkout that has not been settled yet.
+	 *
+	 * @param WC_Order|false|null $order
+	 * @return bool
+	 */
+	private static function settles_cart( $order ) {
+		return $order instanceof WC_Order
+			&& 'shop_order' === $order->get_type()
+			&& in_array( (string) $order->get_created_via(), [ 'checkout', 'store-api' ], true )
+			&& ! in_array( (string) $order->get_status(), self::non_sale_statuses(), true )
+			&& ! $order->get_meta( self::ORDER_SETTLED_META );
+	}
+
+	/**
+	 * @param WC_Order $order
+	 */
+	private static function mark_settled( $order ) {
+		$order->update_meta_data( self::ORDER_SETTLED_META, time() );
+		// Meta only, for the reason stamp_checkout_visitor() gives.
+		$order->save_meta_data();
+	}
+
+	/**
+	 * Whether the customer's saved cart still holds any of this order's lines.
+	 *
+	 * @param int      $user_id
+	 * @param WC_Order $order
+	 * @return bool
+	 */
+	private static function saved_cart_holds_order( $user_id, $order ) {
+		$saved = get_user_meta( $user_id, '_woocommerce_persistent_cart_' . get_current_blog_id(), true );
+		$lines = ( is_array( $saved ) && isset( $saved['cart'] ) && is_array( $saved['cart'] ) ) ? $saved['cart'] : [];
+		if ( ! $lines ) {
+			return false;
+		}
+
+		$paid = [];
+		foreach ( $order->get_items() as $item ) {
+			if ( $item instanceof WC_Order_Item_Product ) {
+				$paid[ (int) $item->get_product_id() . ':' . (int) $item->get_variation_id() ] = true;
+			}
+		}
+		foreach ( $lines as $line ) {
+			if ( is_array( $line ) && isset( $paid[ (int) ( $line['product_id'] ?? 0 ) . ':' . (int) ( $line['variation_id'] ?? 0 ) ] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Orders armed for one shopper: an account, or a guest's browser id.
+	 *
+	 * @param int    $user_id
+	 * @param string $visitor
+	 * @return int[]
+	 */
+	private static function armed_orders( $user_id, $visitor ) {
+		if ( $user_id ) {
+			$ids = get_user_meta( $user_id, self::SETTLE_USER_META . get_current_blog_id(), true );
+		} elseif ( '' !== $visitor ) {
+			$ids = get_transient( self::SETTLE_TRANSIENT . md5( $visitor ) );
+		} else {
+			return [];
+		}
+		return is_array( $ids ) ? array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) ) : [];
+	}
+
+	/**
+	 * @param int    $user_id
+	 * @param string $visitor
+	 * @param int[]  $ids
+	 */
+	private static function store_armed_orders( $user_id, $visitor, array $ids ) {
+		$ids = array_slice( array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) ), -self::SETTLE_MAX_ORDERS );
+
+		if ( $user_id ) {
+			$key = self::SETTLE_USER_META . get_current_blog_id();
+			if ( $ids ) {
+				update_user_meta( $user_id, $key, $ids );
+			} else {
+				delete_user_meta( $user_id, $key );
+			}
+			return;
+		}
+		if ( '' === $visitor ) {
+			return;
+		}
+		// A guest's cart only lives as long as the guest session (two days by
+		// default), so a week is plenty and the record cleans itself up.
+		$key = self::SETTLE_TRANSIENT . md5( $visitor );
+		if ( $ids ) {
+			set_transient( $key, $ids, WEEK_IN_SECONDS );
+		} else {
+			delete_transient( $key );
+		}
 	}
 
 	// =========================================================================
@@ -3228,6 +3968,7 @@ class Brikpanel_Cart_Abandonment {
 			if ( ! empty( $item['attributes'] ) && is_array( $item['attributes'] ) ) {
 				$clean = [];
 				foreach ( $item['attributes'] as $label => $value ) {
+					list( $label, $value ) = self::readable_attribute( (string) $label, (string) $value, (int) ( $item['product_id'] ?? 0 ) );
 					$clean[ brikpanel_plain_text_from_html( $label ) ] = brikpanel_plain_text_from_html( $value );
 				}
 				$item['attributes'] = $clean;
@@ -3236,6 +3977,37 @@ class Brikpanel_Cart_Abandonment {
 		unset( $item );
 
 		return $items;
+	}
+
+	/**
+	 * A label and option from a snapshot taken before 3.3.37, readable again.
+	 *
+	 * For an attribute named outside ASCII those snapshots hold WooCommerce's
+	 * encoded key and the term slug ("pa_%d0%b2…: %d1%81…") instead of
+	 * "Вид: Спортен"; see cart_snapshot(). Anything else comes back as it is,
+	 * without a lookup.
+	 *
+	 * @param string $label      Stored label.
+	 * @param string $value      Stored option.
+	 * @param int    $product_id The item's product, for a custom attribute's typed name.
+	 * @return string[] [ label, value ]
+	 */
+	private static function readable_attribute( $label, $value, $product_id ) {
+		if ( ! preg_match( '/%[0-9a-f]{2}/i', $label . $value ) ) {
+			return [ $label, $value ];
+		}
+
+		$taxonomy = brikpanel_attr_taxonomy_from_key( $label );
+		if ( '' !== $taxonomy ) {
+			$term  = get_term_by( 'slug', $value, $taxonomy );
+			$value = ( $term && ! is_wp_error( $term ) ) ? (string) $term->name : $value;
+			$label = (string) wc_attribute_label( $taxonomy );
+		} elseif ( $product_id > 0 && preg_match( '/%[0-9a-f]{2}/i', $label ) ) {
+			$product = wc_get_product( $product_id );
+			$label   = $product ? (string) wc_attribute_label( $label, $product ) : $label;
+		}
+
+		return [ rawurldecode( $label ), rawurldecode( $value ) ];
 	}
 
 	/** Normalize a DB row into the public array shape. */
@@ -4588,9 +5360,23 @@ class Brikpanel_Cart_Abandonment {
 			__( 'Abandoned at (UTC)', 'brikpanel' ),
 			__( 'Recovered at (UTC)', 'brikpanel' ),
 			__( 'Order ID', 'brikpanel' ),
+			// The number the shop shows for the recovered order, which a
+			// sequential-number plugin can make different from the ID.
+			__( 'Order number', 'brikpanel' ),
 		];
 
-		$to_line = static function ( array $row ) use ( $statuses, $sources ) {
+		// One lookup per batch of 500 rows, not one per row.
+		$numbers_for = static function ( array $rows ) {
+			$ids = [];
+			foreach ( $rows as $row ) {
+				if ( (int) $row['order_id'] > 0 ) {
+					$ids[] = (int) $row['order_id'];
+				}
+			}
+			return $ids ? brikpanel_order_numbers_for_ids( $ids ) : [];
+		};
+
+		$to_line = static function ( array $row, array $numbers = [] ) use ( $statuses, $sources ) {
 			return [
 				$row['email'],
 				$row['first_name'],
@@ -4607,6 +5393,7 @@ class Brikpanel_Cart_Abandonment {
 				$row['abandoned_at'],
 				$row['recovered_at'],
 				$row['order_id'] > 0 ? $row['order_id'] : '',
+				$row['order_id'] > 0 ? ( $numbers[ (int) $row['order_id'] ] ?? (string) $row['order_id'] ) : '',
 			];
 		};
 
@@ -4621,7 +5408,8 @@ class Brikpanel_Cart_Abandonment {
 			fputcsv( $out, $header );
 			$offset = 0;
 			do {
-				$rows = self::query_entries( array_merge( $args, [ 'limit' => 500, 'offset' => $offset ] ) );
+				$rows    = self::query_entries( array_merge( $args, [ 'limit' => 500, 'offset' => $offset ] ) );
+				$numbers = $numbers_for( $rows );
 				foreach ( $rows as $row ) {
 					// CSV only, on purpose — do NOT move this into $to_line().
 					// Every value here is typed by an anonymous storefront
@@ -4631,7 +5419,7 @@ class Brikpanel_Cart_Abandonment {
 					// writer emits text cells as t="inlineStr", which Excel
 					// never evaluates, so guarding there would only stamp a
 					// stray apostrophe onto every phone number in the workbook.
-					fputcsv( $out, brikpanel_csv_safe_row( $to_line( $row ) ) );
+					fputcsv( $out, brikpanel_csv_safe_row( $to_line( $row, $numbers ) ) );
 				}
 				$offset += 500;
 			} while ( count( $rows ) === 500 );
@@ -4649,9 +5437,10 @@ class Brikpanel_Cart_Abandonment {
 
 		$offset = 0;
 		do {
-			$rows = self::query_entries( array_merge( $args, [ 'limit' => 500, 'offset' => $offset ] ) );
+			$rows    = self::query_entries( array_merge( $args, [ 'limit' => 500, 'offset' => $offset ] ) );
+			$numbers = $numbers_for( $rows );
 			foreach ( $rows as $row ) {
-				$sheet[] = $to_line( $row );
+				$sheet[] = $to_line( $row, $numbers );
 			}
 			$offset += 500;
 		} while ( count( $rows ) === 500 );
@@ -4660,7 +5449,7 @@ class Brikpanel_Cart_Abandonment {
 		$writer->add_sheet(
 			__( 'Abandoned carts', 'brikpanel' ),
 			$sheet,
-			[ 1 => 30, 2 => 14, 3 => 14, 4 => 16, 5 => 10, 6 => 11, 7 => 7, 8 => 11, 9 => 9, 10 => 50, 11 => 19, 12 => 19, 13 => 19, 14 => 19, 15 => 9 ],
+			[ 1 => 30, 2 => 14, 3 => 14, 4 => 16, 5 => 10, 6 => 11, 7 => 7, 8 => 11, 9 => 9, 10 => 50, 11 => 19, 12 => 19, 13 => 19, 14 => 19, 15 => 9, 16 => 12 ],
 			true
 		);
 		$xlsx = $writer->build();
@@ -4747,13 +5536,23 @@ class Brikpanel_Cart_Abandonment {
 			} else {
 				$fields['couponHint'] = [ 'label' => __( 'Coupon note', 'brikpanel' ), 'type' => 'textarea', 'group' => 'system' ];
 			}
+			// Only while the code carries a minimum spend: without one the line
+			// never shows, and a box for it would be text nobody reads.
+			if ( '' !== self::popup_coupon_minimum() ) {
+				$fields['couponMinimum'] = [ 'label' => __( 'Minimum spend note', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			}
 			$fields['couponSaved']  = [ 'label' => __( 'Reopen note', 'brikpanel' ),        'type' => 'textarea', 'group' => 'system' ];
 			$fields['couponTeaser'] = [ 'label' => __( 'Floating tab after signup', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
 			$fields['copy']         = [ 'label' => __( 'Copy button', 'brikpanel' ),        'type' => 'text', 'group' => 'system' ];
 			$fields['copied']       = [ 'label' => __( 'Copy button, once copied', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
 			$fields['offBadge']     = [ 'label' => __( 'Discount badge word', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
-			if ( 'scratch' === self::popup_style() ) {
-				$fields['scratchMe'] = [ 'label' => __( 'Scratch card label', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			// One box per drawing, all in the form, only the chosen drawing's
+			// shown (the settings script follows the "Offer animation" select).
+			// All in the form because the save checks slots against this list:
+			// a note typed in the same save that switches the drawing must not
+			// be dropped for belonging to the old one.
+			foreach ( self::popup_note_slots() as $style => $slot ) {
+				$fields[ $slot ] = [ 'label' => __( 'Handwritten note', 'brikpanel' ), 'type' => 'text', 'group' => 'system', 'sketch' => $style, 'max' => 40 ];
 			}
 		}
 
@@ -4919,15 +5718,18 @@ class Brikpanel_Cart_Abandonment {
 							$id    = 'bp-cpl-' . sanitize_html_class( $locale . '-' . $slot );
 							$value = isset( $values[ $slot ] ) ? (string) $values[ $slot ] : '';
 							$hint  = isset( $placeholders[ $slot ] ) ? (string) $placeholders[ $slot ] : '';
+							$max   = isset( $field['max'] ) ? (int) $field['max'] : 500;
+							// A drawing's note box: only the chosen drawing's is shown.
+							$sketch = isset( $field['sketch'] ) ? (string) $field['sketch'] : '';
 							?>
-							<div class="bp-cpl-field">
+							<div class="bp-cpl-field"<?php echo '' !== $sketch ? ' data-cpl-sketch="' . esc_attr( $sketch ) . '"' . ( self::popup_style() !== $sketch ? ' hidden' : '' ) : ''; ?>>
 								<label class="bp-cpl-label" for="<?php echo esc_attr( $id ); ?>"><?php echo esc_html( $field['label'] ); ?></label>
 								<?php if ( 'textarea' === $field['type'] ) : ?>
 									<textarea id="<?php echo esc_attr( $id ); ?>"
 										class="bp-cpl-input bp-cpl-textarea"
 										name="<?php echo esc_attr( $base ) . '[' . esc_attr( $slot ) . ']'; ?>"
 										rows="2"
-										maxlength="500"
+										maxlength="<?php echo esc_attr( $max ); ?>"
 										placeholder="<?php echo esc_attr( $hint ); ?>"><?php echo esc_textarea( $value ); ?></textarea>
 								<?php else : ?>
 									<input type="text"
@@ -4935,7 +5737,7 @@ class Brikpanel_Cart_Abandonment {
 										class="bp-cpl-input"
 										name="<?php echo esc_attr( $base ) . '[' . esc_attr( $slot ) . ']'; ?>"
 										value="<?php echo esc_attr( $value ); ?>"
-										maxlength="500"
+										maxlength="<?php echo esc_attr( $max ); ?>"
 										placeholder="<?php echo esc_attr( $hint ); ?>"
 										autocomplete="off">
 								<?php endif; ?>
@@ -5043,6 +5845,10 @@ class Brikpanel_Cart_Abandonment {
 					continue;
 				}
 				$value = self::sanitize_popup_text( null, [ 'id' => self::POPUP_I18N_OPTION ], $text );
+				// A handwritten note is a few words written onto a drawing.
+				if ( isset( $fields[ $slot ]['max'] ) ) {
+					$value = brikpanel_substr( $value, 0, (int) $fields[ $slot ]['max'] );
+				}
 				if ( '' === $value ) {
 					unset( $bucket[ $slot ] );
 				} else {
@@ -5182,6 +5988,46 @@ class Brikpanel_Cart_Abandonment {
 			'custom_attributes' => [ 'min' => 0, 'max' => 100, 'step' => 1 ],
 			'css'               => 'width:90px;',
 		];
+		// No 'default' on purpose: an empty box means BRIK (the placeholder
+		// says so), and a merchant who clears the box must see it empty rather
+		// than have a default typed back in. Cleaned by the sanitize_option
+		// filter registered in the constructor.
+		$fields[] = [
+			'title'             => __( 'Code starts with', 'brikpanel' ),
+			'desc'              => sprintf(
+				/* translators: %s: an example popup coupon code, such as BRIK-7K2P9Q. */
+				__( 'Codes look like %s', 'brikpanel' ),
+				self::popup_coupon_prefix() . '-7K2P9Q'
+			),
+			'desc_tip'          => __( 'Each signup coupon is this text plus 6 random characters. Use Latin letters, numbers and dashes; accented letters lose their marks. Leave it empty for BRIK. Codes already sent keep the start they had.', 'brikpanel' ),
+			'id'                => 'brikpanel_cartab_popup_coupon_prefix',
+			'type'              => 'text',
+			'placeholder'       => self::POPUP_PREFIX_DEFAULT,
+			'custom_attributes' => [
+				'maxlength'    => self::POPUP_PREFIX_MAX,
+				'dir'          => 'ltr',
+				'spellcheck'   => 'false',
+				'autocomplete' => 'off',
+			],
+			'css'               => 'width:220px;',
+		];
+		// Directly under the code start, which a test pins to sit right after
+		// the discount. No 'default' on purpose, like the code start: an empty
+		// box means no minimum, and a merchant who clears it must see it empty.
+		// Cleaned by the sanitize_option filter registered in the constructor.
+		$fields[] = [
+			'title'             => sprintf(
+				/* translators: %s: the store's currency symbol, e.g. "$". */
+				__( 'Minimum spend (%s)', 'brikpanel' ),
+				function_exists( 'get_woocommerce_currency_symbol' ) ? html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ) : ''
+			),
+			'desc_tip'          => __( 'Below this cart total the signup code does not work. Leave it empty for no minimum. An automatically applied code waits until the cart reaches it. Codes already sent keep their rules.', 'brikpanel' ),
+			'id'                => 'brikpanel_cartab_popup_coupon_minimum',
+			'type'              => 'number',
+			'placeholder'       => __( 'No minimum', 'brikpanel' ),
+			'custom_attributes' => [ 'min' => 0, 'step' => 'any' ],
+			'css'               => 'width:150px;',
+		];
 		$fields[] = [
 			'title'    => __( 'Apply automatically', 'brikpanel' ),
 			'desc'     => __( 'Add the signup coupon to the visitor\'s cart for them', 'brikpanel' ),
@@ -5192,17 +6038,18 @@ class Brikpanel_Cart_Abandonment {
 		];
 		$fields[] = [
 			'title'    => __( 'Offer animation', 'brikpanel' ),
-			'desc_tip' => __( 'Visual style of the animated discount badge at the top of the popup. Only shown while a popup discount is set.', 'brikpanel' ),
+			'desc_tip' => __( 'A pencil drawing of the discount at the top of the popup. It draws itself once when the popup opens. Only shown while a popup discount is set.', 'brikpanel' ),
 			'id'       => 'brikpanel_cartab_popup_style',
 			'type'     => 'select',
-			'default'  => 'envelope',
+			'default'  => 'slot',
+			// Keys kept from the older animations (see popup_style()).
 			'options'  => [
-				'envelope' => __( 'Sealed envelope: the seal pops and the coupon rises', 'brikpanel' ),
-				'pocket'   => __( 'Pocket card: coupon springs out of a pocket', 'brikpanel' ),
-				'scratch'  => __( 'Scratch card: a coin scratches the foil away', 'brikpanel' ),
-				'slot'     => __( 'Slot machine: reels spin and land on the discount', 'brikpanel' ),
-				'assembly' => __( 'Magnetic assembly: pieces fly in and form the coupon', 'brikpanel' ),
-				'classic'  => __( 'Classic ticket: floating coupon with a shine sweep', 'brikpanel' ),
+				'slot'     => __( 'Handwriting: the discount writes itself in pencil', 'brikpanel' ),
+				'assembly' => __( 'Ring: the discount is circled in pencil, with a note', 'brikpanel' ),
+				'classic'  => __( 'Coupon: scissors cut out a hand-drawn coupon', 'brikpanel' ),
+				'envelope' => __( 'Envelope: the seal comes off and a card rises', 'brikpanel' ),
+				'pocket'   => __( 'Gift box: the lid pops off and the discount tag comes out', 'brikpanel' ),
+				'scratch'  => __( 'Eraser: an eraser rubs the pencil shading off the discount', 'brikpanel' ),
 			],
 			'css'      => 'width:340px;',
 		];

@@ -49,13 +49,99 @@ function brikpanel_orders_overview_handler() {
 
     $config = brikpanel_overview_range_config( $range );
 
+    // Read before the figures: an order that lands while they are counted
+    // moves the version on, and the open page asks again.
+    $ver = function_exists( 'brikpanel_data_cache_ver' ) ? (int) brikpanel_data_cache_ver() : 0;
+
     $data = [
         'range'        => $range,
         'summary'      => brikpanel_get_range_summary( $config ),
         'marketplaces' => brikpanel_get_marketplace_stats( $config['start_gmt'] ),
+        // The data version these figures belong to: the Orders screen fetches
+        // them again when the top bar (or the poll below) reports a newer one.
+        'ver'          => $ver,
     ];
 
     wp_send_json_success( $data );
+}
+
+add_action( 'wp_ajax_brikpanel_orders_new_count', 'brikpanel_orders_new_count_handler' );
+
+/**
+ * Orders that came in after the newest one on an Orders list left open, in the
+ * list's status tab: the "1 new order · Show" bar above the list.
+ *
+ * known_ver is the data version the page saw last. While it is still the
+ * current one nothing changed and the answer says so without a query: the
+ * page asks every minute when nothing else (the top bar) reports the version.
+ * Without after_id only the version is returned (a filtered list, which shows
+ * no bar, still keeps its summary up to date).
+ *
+ * @return void
+ */
+function brikpanel_orders_new_count_handler() {
+    check_ajax_referer( 'brikpanel_nonce_action' );
+
+    // The Orders list's own capability: WooCommerce registers the screen with
+    // the shop_order type's edit_posts.
+    if ( ! current_user_can( 'edit_shop_orders' ) ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+    }
+
+    $ver   = function_exists( 'brikpanel_data_cache_ver' ) ? (int) brikpanel_data_cache_ver() : 0;
+    $known = isset( $_POST['known_ver'] ) ? absint( wp_unslash( $_POST['known_ver'] ) ) : 0;
+    if ( $known && $known === $ver ) {
+        wp_send_json_success( [ 'ver' => $ver, 'unchanged' => true ] );
+    }
+    if ( ! isset( $_POST['after_id'] ) ) {
+        wp_send_json_success( [ 'ver' => $ver ] );
+    }
+
+    $after    = absint( wp_unslash( $_POST['after_id'] ) );
+    $status   = isset( $_POST['status'] ) ? sanitize_key( wp_unslash( $_POST['status'] ) ) : 'all';
+    $is_hpos  = function_exists( 'brikpanel_wc_hpos_enabled' )
+        ? brikpanel_wc_hpos_enabled()
+        : 'yes' === get_option( 'woocommerce_custom_orders_table_enabled' );
+    $statuses = brikpanel_orders_list_tab_statuses( $status, $is_hpos );
+    if ( ! $statuses ) {
+        wp_send_json_success( [ 'ver' => $ver, 'count' => 0 ] );
+    }
+
+    global $wpdb;
+    $marks = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+    $args  = array_merge( [ $after ], $statuses );
+    if ( $is_hpos ) {
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only; the table name comes from $wpdb.
+        $count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}wc_orders WHERE type = 'shop_order' AND id > %d AND status IN ({$marks})", $args ) );
+    } else {
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only; the table name comes from $wpdb.
+        $count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'shop_order' AND ID > %d AND post_status IN ({$marks})", $args ) );
+    }
+
+    wp_send_json_success( [ 'ver' => $ver, 'count' => $count ] );
+}
+
+/**
+ * The statuses an Orders list tab shows: one status, or for "All" the ones
+ * WooCommerce's own list takes (every order status shown in the All list,
+ * and on its own order tables after its default-statuses filter, see
+ * ListTable::set_status_args()).
+ *
+ * @param string $status  The tab: 'all' or an order status ('wc-processing').
+ * @param bool   $is_hpos Orders in WooCommerce's own tables.
+ * @return string[] Status keys; empty for a status that does not exist.
+ */
+function brikpanel_orders_list_tab_statuses( $status, $is_hpos ) {
+    $known = array_keys( wc_get_order_statuses() );
+    if ( '' !== $status && 'all' !== $status ) {
+        return in_array( $status, $known, true ) ? [ $status ] : [];
+    }
+    $statuses = array_values( array_intersect( $known, get_post_stati( [ 'show_in_admin_all_list' => true ], 'names' ) ) );
+    if ( $is_hpos ) {
+        /** This filter is documented in woocommerce/src/Internal/Admin/Orders/ListTable.php */
+        $statuses = (array) apply_filters( 'woocommerce_shop_order_list_table_default_statuses', $statuses );
+    }
+    return array_values( array_filter( array_map( 'strval', $statuses ) ) );
 }
 
 /**

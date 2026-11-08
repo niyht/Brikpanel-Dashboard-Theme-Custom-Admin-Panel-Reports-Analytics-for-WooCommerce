@@ -53,9 +53,11 @@ body.rtl .bp-order-notify.is-visible {
     transform: translateX(0);
 }
 
-/* The subtitle has dir="auto" (an untranslated English line keeps its own
-   order); it still lines up with the title on the right. */
-body.rtl .bp-order-notify__title small {
+/* The subtitle and the summary card's "+2 more" have dir="auto" (an
+   untranslated English line keeps its own order); they still line up with the
+   title on the right. */
+body.rtl .bp-order-notify__title small,
+body.rtl .bp-order-notify__more {
     text-align: right;
 }
 
@@ -172,6 +174,43 @@ body.rtl .bp-order-notify__title small {
 .bp-order-notify__row .value--total {
     font-size: 0.9375rem;
     font-weight: 700;
+}
+
+/* Summary card for three or more new orders, one row per order:
+   "#88357 Deniz Test ... $39.00". A long name gives way, the amount stays whole.
+   The gap between number and name is a flex gap: the number sits in a <bdi>,
+   whose own direction is left to right, so a margin on it landed on the wrong
+   side in right-to-left admins. */
+.bp-order-notify__row--pile .label {
+    display: flex;
+    gap: 0.375rem;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.bp-order-notify__row--pile .value {
+    flex: 0 0 auto;
+    max-width: none;
+}
+
+.bp-order-notify__no {
+    flex: 0 0 auto;
+    color: #303030;
+    font-weight: 600;
+}
+
+.bp-order-notify__who {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* "+2 more" under the rows. */
+.bp-order-notify__more {
+    padding-top: 0.25rem;
+    font-size: 0.75rem;
+    color: #616161;
 }
 
 .bp-order-notify__actions {

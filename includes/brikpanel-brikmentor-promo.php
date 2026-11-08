@@ -311,12 +311,12 @@ function brikpanel_brikmentor_price_text( $format ) {
     return brikpanel_brikmentor_nb_units( $text );
 }
 
-/* ── Floating launch button (Abandoned Carts + Customer Analytics) ──────────── */
+/* ── Floating launch button (Abandoned Carts + Customers) ────────────────────── */
 
 /**
  * The screens that get the floating button, keyed by their page slug. Each
- * screen carries its own pitch copy; the Customer Analytics screen swaps the
- * copy per active tab (LTV / RFM / Cohort) client-side.
+ * screen carries its own pitch copy; the Customers screen swaps the copy per
+ * open tab (All customers / RFM / Lifetime value / Cohort) client-side.
  *
  * @return array<string, array>
  */
@@ -344,24 +344,30 @@ function brikpanel_brikmentor_fab_screens() {
                 'lock-mail' => __( 'Writing to one shopper at a time is the slow way back. BrikMentor follows up on every abandoned cart for you: a reminder written for the cart it belongs to, sent on a schedule you set once. Cart recovery emails bring back 5-10% of total revenue in a store that runs them properly.', 'brikpanel' ),
             ),
         ),
-        'brikpanel-customer-analytics' => array(
+        'brikpanel-customers'          => array(
             'context'  => 'analytics',
             'title'    => __( 'Turn this data into revenue', 'brikpanel' ),
-            // Default body (LTV tab is the landing tab); the rest are swapped
-            // in client-side when the merchant changes tabs.
+            // The body of the tab the page opens on (set below); the others
+            // are swapped in client-side when the merchant changes tabs.
             // Each variant describes a flow BrikMentor actually ships (post
             // purchase, winback), in the terms of the tab on screen. Nothing
             // here may promise targeting the product does not have: there is
             // no LTV-keyed campaign and no cohort-keyed campaign, so neither
             // is claimed.
-            'body'     => __( 'Lifetime value grows one repeat order at a time. BrikMentor follows up a few days after each completed order with the products other customers bought alongside it, then starts a win-back series for the buyers who drift away.', 'brikpanel' ),
+            'body'     => '',
             'variants' => array(
+                'all'    => __( 'The easiest sale is to someone who has already bought from you. BrikMentor follows up a few days after each completed order with the products other customers bought alongside it, and starts a win-back series for anyone who has not ordered in months.', 'brikpanel' ),
                 'ltv'    => __( 'Lifetime value grows one repeat order at a time. BrikMentor follows up a few days after each completed order with the products other customers bought alongside it, then starts a win-back series for the buyers who drift away.', 'brikpanel' ),
                 'rfm'    => __( 'These segments are ready-made audiences. BrikMentor reads them straight from BrikPanel: pick the ones to re-engage (At Risk, Can\'t Lose Them and Hibernating by default) and it sends a reminder first, a coupon only if that is not enough.', 'brikpanel' ),
                 'cohort' => __( 'A retention curve that flattens out is repeat revenue leaking away. BrikMentor scans your customers daily, starts a win-back series for anyone who has not ordered in months, and cancels it the moment they buy again.', 'brikpanel' ),
             ),
         ),
     );
+
+    $tab = class_exists( 'Brikpanel_Customers' ) ? Brikpanel_Customers::tab() : 'all';
+    $screens['brikpanel-customers']['body'] = isset( $screens['brikpanel-customers']['variants'][ $tab ] )
+        ? $screens['brikpanel-customers']['variants'][ $tab ]
+        : $screens['brikpanel-customers']['variants']['all'];
 
     // Figures keep their unit ("25 %") on the same line in every locale.
     foreach ( $screens as $slug => $screen ) {
@@ -374,12 +380,19 @@ function brikpanel_brikmentor_fab_screens() {
     return $screens;
 }
 
-/** Current screen's floating-button config, or null when not applicable. */
+/**
+ * Current screen's floating-button config, or null when not applicable. One
+ * customer's page (Customers, ?customer=) has none: it is about that person,
+ * not about the data the pitch talks about.
+ */
 function brikpanel_brikmentor_current_fab_screen() {
     if ( ! isset( $_GET['page'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen check.
         return null;
     }
-    $page    = sanitize_key( wp_unslash( $_GET['page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    $page = sanitize_key( wp_unslash( $_GET['page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if ( 'brikpanel-customers' === $page && class_exists( 'Brikpanel_Customers' ) && Brikpanel_Customers::is_profile_request() ) {
+        return null;
+    }
     $screens = brikpanel_brikmentor_fab_screens();
     return isset( $screens[ $page ] ) ? $screens[ $page ] : null;
 }
@@ -620,7 +633,7 @@ function brikpanel_brikmentor_render_fab() {
         var panel   = root.querySelector('[data-bm-panel]');
         var fab     = root.querySelector('[data-bm-fab]');
         var body    = root.querySelector('[data-bm-body]');
-        // Tab-specific pitch copy (Customer Analytics). Empty object elsewhere.
+        // Tab-specific pitch copy (Customers). Empty object elsewhere.
         var variants = <?php echo wp_json_encode( $variants ); ?>;
 
         // The CTA names the surface that opened the panel (`via`), so the relay
@@ -641,7 +654,7 @@ function brikpanel_brikmentor_render_fab() {
         // can put it back. Without it, opening once from the padlock would leave
         // its copy behind for every later open from the floating button.
         var defaultBody = body ? body.textContent : '';
-        // The tab-driven variant in force, if any (Customer Analytics). It wins
+        // The tab-driven variant in force, if any (Customers). It wins
         // over the default so the floating button keeps talking about the data
         // on screen, and loses to an opener that names its own variant.
         var screenKey = null;
@@ -722,13 +735,11 @@ function brikpanel_brikmentor_render_fab() {
             setOpen(false, false);
         });
 
-        // On Customer Analytics, follow the LTV / RFM / Cohort tabs so the
-        // pitch always talks about the data on screen.
+        // On Customers, follow the tabs (front-end/customers/brikpanel-customers.js
+        // announces each switch) so the pitch always talks about the data on screen.
         if (body && variants && Object.keys(variants).length) {
-            document.addEventListener('click', function (e) {
-                var tab = e.target && e.target.closest ? e.target.closest('.bp-ca-tab') : null;
-                if (!tab) return;
-                var key = tab.getAttribute('data-tab');
+            document.addEventListener('brikpanel:customers-tab', function (e) {
+                var key = e.detail && e.detail.tab;
                 if (key && variants[key]) { screenKey = key; body.textContent = variants[key]; }
             });
         }
@@ -1519,8 +1530,8 @@ function brikpanel_bm_ajax_pitch_dismiss() {
 }
 
 /**
- * Styles and the dismiss script the pitch cards share (dashboard, Customer
- * Analytics). Printed at most once per request, on top of the base card styles
+ * Styles and the dismiss script the pitch cards share (dashboard,
+ * Customers). Printed at most once per request, on top of the base card styles
  * the launch card already ships.
  *
  * @return void
@@ -1658,7 +1669,8 @@ function brikpanel_brikmentor_rfm_label( array $pitch ) {
 
 add_action( 'brikpanel_ca_after_header', 'brikpanel_brikmentor_render_analytics_pitch', 20 );
 /**
- * The pitch card on Customer Analytics, in the store's own numbers.
+ * The pitch card on Customers (under its header, every tab), in the store's
+ * own numbers.
  *
  * The count is the customers in the segments the win-back series writes to,
  * which is exactly what that screen's RFM tab shows the merchant. Same card as
@@ -1690,7 +1702,7 @@ function brikpanel_brikmentor_render_analytics_pitch() {
     brikpanel_ask_shown( 'bm_pitch_ca' );
 
     $screens      = brikpanel_brikmentor_fab_screens();
-    $body         = isset( $screens['brikpanel-customer-analytics']['variants']['rfm'] ) ? $screens['brikpanel-customer-analytics']['variants']['rfm'] : '';
+    $body         = isset( $screens['brikpanel-customers']['variants']['rfm'] ) ? $screens['brikpanel-customers']['variants']['rfm'] : '';
     $cta_url      = brikpanel_brikmentor_url();
     $checkout_url = brikpanel_brikmentor_checkout_url( 'analytics' );
     $nonce        = wp_create_nonce( 'brikpanel_bm_pitch_nonce' );
@@ -1790,8 +1802,9 @@ function brikpanel_brikmentor_pin_menu( &$menu ) {
 add_filter( 'brikpanel_nav_new_item_after', 'brikpanel_brikmentor_menu_first_position', 10, 2 );
 /**
  * Where the entry first appears in a sidebar the merchant customized before
- * this version existed: after Marketing, the same spot it takes on a store
- * that never touched the customizer. Without this the customizer would file
+ * this version existed: after Coupons, the same spot it takes on a store
+ * that never touched the customizer (Coupons stands where Marketing stood
+ * before Marketing moved into "More"). Without this the customizer would file
  * a never-seen row at the very end, inside the collapsed Site management
  * group, and the entry would be invisible on exactly the stores that care
  * enough about their sidebar to have arranged it.
@@ -1801,7 +1814,7 @@ add_filter( 'brikpanel_nav_new_item_after', 'brikpanel_brikmentor_menu_first_pos
  * @return string
  */
 function brikpanel_brikmentor_menu_first_position( $after, $slug ) {
-    return ( BRIKPANEL_BM_PAGE_SLUG === (string) $slug ) ? 'woocommerce-marketing' : $after;
+    return ( BRIKPANEL_BM_PAGE_SLUG === (string) $slug ) ? 'edit.php?post_type=shop_coupon' : $after;
 }
 
 add_filter( 'brikpanel_nav_item_title', 'brikpanel_brikmentor_menu_badge', 10, 2 );

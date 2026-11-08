@@ -20,13 +20,23 @@
  *     it away. One nobody closes retires 30 days after it was first shown. One
  *     that was picked but never shown for 7 days (its screen was never opened)
  *     steps aside without starting a quiet period.
- *  5. Order: guide, phone notifications card (only on a phone), survey,
+ *  5. Order: guide, phone notifications card (only on a phone, and only on a
+ *     dashboard whose top bar has no phone button: see rule 8), survey,
  *     review, BrikMentor announcement, BrikMentor dashboard card, BrikMentor
  *     Customer Analytics card, BrikMentor card at the bottom of the dashboard.
  *  6. When another notice box is on screen (an error, a "saved" message,
  *     BrikPanel's own system notices) no ask shows on that page view.
  *  7. No asks for users BrikPanel is switched off for, in Network Admin, on
  *     plugin, update and editor screens, or during AJAX, cron and REST.
+ *  8. The panel of the top bar's phone button stands outside the line (owner,
+ *     27 October 2026: on a phone it opens by itself on every page until the
+ *     person presses its X and confirms, because people skip it and then ask
+ *     why no notifications come). It keeps rules 1, 2, 6 and 7: on a page view
+ *     where it will open, no ask shows (brikpanel_asks_screen_taken()), and it
+ *     does not open next to the welcome tour, another ask or a notice box. As
+ *     an ask it would keep its turn until that X and hold back the survey and
+ *     the BrikMentor cards on the computer too (rule 4); this way a page view
+ *     on the computer never waits for the phone.
  *
  * Every surface asks brikpanel_ask_allows( $id ) before it prints, calls
  * brikpanel_ask_shown( $id ) when it does print, and calls
@@ -92,6 +102,11 @@ if ( ! defined( 'BRIKPANEL_SURVEY_URL' ) ) {
  * - scope: 'site' for a one-shot that is closed on this site only (phone
  *   notifications are turned on per site; a network has many).
  *
+ * 'push' is the phone notifications card on the dashboard, for a phone whose
+ * top bar has no phone button (the owner hid it under Top bar items). Its
+ * "done" also records that the person closed the button's panel for good,
+ * so the card never follows it (front-end/push/brikpanel-push-admin.php).
+ *
  * @return array<string,array{kind:string,family:string,cap:string,module:string,scope?:string}>
  */
 function brikpanel_asks_registry() {
@@ -102,7 +117,7 @@ function brikpanel_asks_registry() {
         'review'        => array( 'kind' => 'ask', 'family' => '', 'cap' => 'manage_options', 'module' => '' ),
         'bm_announce'   => array( 'kind' => 'ask', 'family' => 'bm', 'cap' => 'manage_woocommerce', 'module' => '' ),
         'bm_pitch_dash' => array( 'kind' => 'ask', 'family' => 'bm', 'cap' => 'manage_woocommerce', 'module' => 'brikpanel-dashboard' ),
-        'bm_pitch_ca'   => array( 'kind' => 'ask', 'family' => 'bm', 'cap' => 'manage_woocommerce', 'module' => 'brikpanel-customer-analytics' ),
+        'bm_pitch_ca'   => array( 'kind' => 'ask', 'family' => 'bm', 'cap' => 'manage_woocommerce', 'module' => 'brikpanel-customers' ),
         'bm_live'       => array( 'kind' => 'ask', 'family' => 'bm', 'cap' => 'manage_options', 'module' => 'brikpanel-dashboard' ),
     );
 }
@@ -680,10 +695,37 @@ function brikpanel_ask_current() {
  * @return bool
  */
 function brikpanel_ask_allows( $id ) {
-    if ( ! brikpanel_asks_in_scope() || brikpanel_asks_hold() || brikpanel_asks_url_hold() ) {
+    if ( ! brikpanel_asks_in_scope() || brikpanel_asks_hold() || brikpanel_asks_url_hold() || brikpanel_asks_screen_taken() ) {
         return false;
     }
     return brikpanel_ask_current() === $id;
+}
+
+/**
+ * Whether a window outside the line has this page view (rule 8: the phone
+ * button's panel opens on it). Like a notice box (rule 6), it holds every ask
+ * back on this page view without taking anyone's turn.
+ *
+ * @return bool
+ */
+function brikpanel_asks_screen_taken() {
+    /**
+     * Whether a window outside the one-ask line opens on this page view.
+     *
+     * @param bool $taken
+     */
+    return (bool) apply_filters( 'brikpanel_asks_screen_taken', false );
+}
+
+/**
+ * Whether any ask was drawn on this page view, for a window outside the line
+ * that must not open next to one (rule 8).
+ *
+ * @return bool
+ */
+function brikpanel_asks_on_page() {
+    $request = &brikpanel_asks_request();
+    return ! empty( $request['rendered'] );
 }
 
 /**
@@ -720,10 +762,14 @@ function brikpanel_ask_rendered( $id ) {
  * The merchant closed an ask (X, "Not now", the button that answers it).
  * Writes straight away: AJAX handlers end the request right after.
  *
- * @param string $id Ask id, or 'welcome'.
+ * @param string $id          Ask id, or 'welcome'.
+ * @param bool   $start_quiet False when it was not put in front of the person
+ *                            on that page view (the phone button's panel
+ *                            closed for good after they opened it themselves):
+ *                            it is done, the other asks keep their days.
  * @return void
  */
-function brikpanel_ask_closed( $id ) {
+function brikpanel_ask_closed( $id, $start_quiet = true ) {
     $user_id = get_current_user_id();
     $id      = sanitize_key( (string) $id );
     if ( ! $user_id || ( 'welcome' !== $id && ! isset( brikpanel_asks_registry()[ $id ] ) ) ) {
@@ -731,7 +777,7 @@ function brikpanel_ask_closed( $id ) {
     }
     $now                   = brikpanel_asks_now();
     list( $site, $person ) = brikpanel_asks_read_fresh( $user_id );
-    list( $site, $person ) = brikpanel_asks_apply_close( $site, $person, $id, $now, true );
+    list( $site, $person ) = brikpanel_asks_apply_close( $site, $person, $id, $now, (bool) $start_quiet );
     $site['rev']++;
     brikpanel_asks_store( $user_id, $site, $person );
 
@@ -997,7 +1043,7 @@ function brikpanel_ask_ajax_close() {
     $ask      = isset( $_POST['ask'] ) ? sanitize_key( wp_unslash( $_POST['ask'] ) ) : '';
     $registry = brikpanel_asks_registry();
     // Who may close it is who it is for: administrators for the survey, store
-    // managers too for the phone card.
+    // managers too for the phone offer.
     $cap = in_array( $ask, array( 'survey', 'push' ), true ) ? $registry[ $ask ]['cap'] : 'manage_options';
     if ( ! current_user_can( $cap ) ) {
         wp_send_json_error( array( 'reason' => 'forbidden' ), 403 );

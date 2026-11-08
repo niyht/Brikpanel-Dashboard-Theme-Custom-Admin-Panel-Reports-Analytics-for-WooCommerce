@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.3.33
+ * Version: 3.3.48
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.3.33');
+define('BRIKPANEL_VERSION', '3.3.48');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -314,6 +314,7 @@ function brikpanel_drop_subsite_tables($tables, $blog_id) {
         'brikpanel_visited_pages',
         'brikpanel_referrers',
         'brikpanel_campaign_visits',
+        'brikpanel_visitor_countries',
         'brikpanel_expenses',
         'brikpanel_expense_skips',
         'brikpanel_cohort_retention',
@@ -719,14 +720,15 @@ brikpanel_require('front-end/order-statuses/brikpanel-order-statuses.php');
 brikpanel_require('front-end/order-statuses/brikpanel-status-emails.php');
 
 // Phone notifications (Web Push), the Home Screen app and "Keep screen on" on
-// the dashboard: parked until they are tested on real phones. The code ships,
-// but none of it loads unless wp-config.php has
-// define( 'BRIKPANEL_PHONE_APP', true ). When on, the module loads on every
+// the dashboard. On for every site since 27 Oct 2026, after a full test on a
+// real Samsung Galaxy A56 (Chrome app, Brave, Firefox); before that it was
+// parked behind this switch. define( 'BRIKPANEL_PHONE_APP', false ) in
+// wp-config.php switches all of it off on one site. The module loads on every
 // request for the same reason as the emails above: orders reach a new status
 // at checkout, in payment webhooks and in cron jobs, not only in wp-admin. The
-// gate file loads either way (export keys, jobs left by a test).
+// gate file loads either way (export keys, jobs left behind when it is off).
 function brikpanel_phone_app_enabled() {
-    return defined( 'BRIKPANEL_PHONE_APP' ) && BRIKPANEL_PHONE_APP;
+    return ! defined( 'BRIKPANEL_PHONE_APP' ) || BRIKPANEL_PHONE_APP;
 }
 brikpanel_require('front-end/push/brikpanel-push-gate.php');
 if ( brikpanel_phone_app_enabled() ) {
@@ -736,6 +738,30 @@ if ( brikpanel_phone_app_enabled() ) {
 // WhatsApp follow-ups: a status change drops an order's press note. Global for
 // the same reason: statuses change outside wp-admin too.
 brikpanel_require('front-end/orders/brikpanel-order-whatsapp-press.php');
+
+// Pack sizes: a variation that sells from the product's shared stock can take
+// more than one unit per sale (a 5-pack takes 5). Global: stock moves at
+// checkout, in payment webhooks, in the REST API and in wp-admin, and the shop
+// shows whole packs. A no-op for every product without the switch.
+brikpanel_require('includes/brikpanel-pack-sizes.php');
+
+// Variation titles: WooCommerce names a variation of an attribute outside ASCII
+// ("Вид") with the option's slug ("Hoodie - спортен"). Global: WooCommerce
+// rebuilds the title whenever it reads or saves a variation, on any request,
+// and writes it back when it changed.
+brikpanel_require('includes/brikpanel-variation-title.php');
+
+// The shop's custom product order (the products list's Sort mode). Global: a
+// store that started its custom order newest first puts each newly published
+// product on top, and products are published from wp-admin, BrikPanel's
+// editor, the REST API, imports, cron and WP-CLI.
+brikpanel_require('includes/brikpanel-product-order.php');
+
+// Sequential order numbers (off by default). Global: orders are placed at
+// checkout, through the Store API, the REST API, payment webhooks and cron,
+// and every one of them must get its number when it is placed, not later in
+// wp-admin. Its settings card is admin-only inside the file.
+brikpanel_require('front-end/orders/brikpanel-order-numbers.php');
 
 // The text domain is loaded above the WooCommerce dependency guard, near the
 // top of this file, so the guard's own notice is translated too.
@@ -791,6 +817,10 @@ function brikpanel_init_admin() {
     brikpanel_require('front-end/orders/brikpanel-orders-compact.php');
     brikpanel_require('front-end/orders/brikpanel-orders-stats.php');
     brikpanel_require('front-end/orders/brikpanel-order-merge.php');
+    // Export button on the orders list (Excel / CSV).
+    brikpanel_require('front-end/orders/brikpanel-order-export.php');
+    // Printable order summary: orders list bulk action + order page Print button.
+    brikpanel_require('front-end/orders/brikpanel-order-print.php');
     brikpanel_require('front-end/currency/brikpanel-currency-settings.php');
     brikpanel_require('front-end/order/brikpanel-order-fields.php');
     brikpanel_require('front-end/order/brikpanel-order-shipping-cost.php');
@@ -806,8 +836,13 @@ function brikpanel_init_admin() {
     brikpanel_require('front-end/products/brikpanel-product-code.php');
     brikpanel_require('front-end/products/brikpanel-category-enhancements.php');
     brikpanel_require('front-end/coupons/brikpanel-coupons.php');
+    // The one customer list (Customers page, Segments, Ctrl+K, the bell).
+    brikpanel_require('front-end/customers/class-brikpanel-customers-engine.php');
+    brikpanel_require('front-end/customers/class-brikpanel-customer-profile.php');
     brikpanel_require('front-end/segments/brikpanel-segments.php');
     brikpanel_require('front-end/customer-analytics/brikpanel-customer-analytics.php');
+    // The Customers page (its list and analytics tabs come from the two above).
+    brikpanel_require('front-end/customers/brikpanel-customers.php');
     brikpanel_require('front-end/expenses/brikpanel-expenses.php');
     brikpanel_require('front-end/vendors/brikpanel-vendors.php');
 
@@ -1267,6 +1302,10 @@ brikpanel_require('includes/brikpanel-helpers.php');
 // browser (field test E2/E9). Needs the date format helpers above.
 brikpanel_require('includes/brikpanel-format.php');
 brikpanel_require('includes/brikpanel-languages.php');
+// WPML: the order's language for status emails, the product list's language
+// tag, and the rule that a translation's price comes from its original.
+// Every helper returns at once on a store without WPML.
+brikpanel_require('includes/brikpanel-wpml.php');
 brikpanel_require('includes/brikpanel-currency.php');
 brikpanel_require('includes/brikpanel-profit.php');
 
@@ -1333,6 +1372,8 @@ brikpanel_require('includes/brikpanel-bot-filter.php');
 // =============================================================================
 brikpanel_require('includes/brikpanel-datacenter.php');
 brikpanel_require('includes/brikpanel-human-proof.php');
+// The visitor's country, from the list that ships with the plugin (3.3.40).
+brikpanel_require('includes/brikpanel-ip-country.php');
 
 // =============================================================================
 // ACCESS CONTROL — per-user / per-role interface gate
@@ -1351,6 +1392,16 @@ brikpanel_require('includes/brikpanel-access-control.php');
 // Also the one place other screens ask before linking to a module's page.
 // =============================================================================
 brikpanel_require('includes/brikpanel-module-pages.php');
+
+// =============================================================================
+// SAVED SIDEBAR ACROSS VERSIONS
+//
+// Rewrites the rows of a saved Navigation layout whose screen was merged into
+// another (Segments + Customer Analytics became Customers). File level: the
+// upgrade routine writes it back on plugins_loaded, before the Navigation
+// module loads on init.
+// =============================================================================
+brikpanel_require('includes/brikpanel-nav-config-migrate.php');
 
 // =============================================================================
 // SCREENS IN WORDPRESS'S MENU
@@ -1375,6 +1426,14 @@ brikpanel_require('includes/brikpanel-admin-columns-bridge.php');
 // ENQUEUE SCRIPTS & STYLES
 // =============================================================================
 brikpanel_require('includes/brikpanel-enqueue.php');
+
+// =============================================================================
+// PAGE ARRIVAL WATCH
+// A small inline script at the top of every admin <head>: keeps how fast pages
+// arrive in this browser and explains a page that gets stuck on the way (a
+// fast server and a stuck connection: HTTP/3, antivirus, network).
+// =============================================================================
+brikpanel_require('includes/brikpanel-net-watch.php');
 
 // =============================================================================
 // FOREIGN ASSET ISOLATION
@@ -1417,6 +1476,9 @@ brikpanel_require('includes/brikpanel-brikmentor-promo.php');
 // =============================================================================
 brikpanel_require('includes/cron/brikpanel-cron.php');
 brikpanel_require('includes/cron/customer-analytics-jobs.php');
+// The folder an export is written to between requests, and its cleanup
+// (a cron event, so it is loaded outside wp-admin too).
+brikpanel_require('includes/brikpanel-export-files.php');
 
 // =============================================================================
 // BRIKCONTROL — Store Health panel (loaded outside the is_admin gate so the
@@ -1490,6 +1552,17 @@ brikpanel_require('front-end/cart-share/brikpanel-cart-share.php');
 // exist while that module is switched off.
 // =============================================================================
 brikpanel_require('includes/brikpanel-coupon-hold.php');
+
+// =============================================================================
+// AUTOMATIC COUPONS — "Apply automatically", the minimum/maximum items rule
+// and coupon links (?bp-coupon=CODE), set in the coupon window.
+//
+// Loaded outside the is_admin gate: the rule runs inside WooCommerce's coupon
+// validation and the coupons are added when the cart's totals are worked out
+// (front-end, AJAX and Store API requests). A store with no automatic coupon
+// pays one autoloaded option read.
+// =============================================================================
+brikpanel_require('front-end/coupons/brikpanel-auto-coupons.php');
 
 // =============================================================================
 // STORE SUMMARY (on-demand Markdown digest, triggered from dashboard "Copy
@@ -1581,6 +1654,20 @@ function brikpanel_create_table() {
         campaign VARCHAR(190) NOT NULL DEFAULT '',
         hits INT UNSIGNED NOT NULL DEFAULT 0,
         UNIQUE KEY uniq_day_campaign (date_column, campaign)
+    ) $charset_collate;";
+
+    // Daily visitors per country (3.3.40): counted with the day's visitor
+    // count, once per visitor, so a day's rows add up to its visitor_count
+    // like the traffic sources do. country = '' when no country was found.
+    // Only the two-letter code is kept, never the address it came from. The
+    // unique key starts with the day, so it serves the date ranges too.
+    $visitor_countries_table = $wpdb->prefix . "brikpanel_visitor_countries";
+    $sql_visitor_countries = "CREATE TABLE $visitor_countries_table (
+        id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        date_column DATE NOT NULL,
+        country CHAR(2) NOT NULL DEFAULT '',
+        visitors INT UNSIGNED NOT NULL DEFAULT 0,
+        UNIQUE KEY uniq_day_country (date_column, country)
     ) $charset_collate;";
 
     $expenses_table = $wpdb->prefix . "brikpanel_expenses";
@@ -1812,6 +1899,7 @@ function brikpanel_create_table() {
     dbDelta($sql_visited_pages);
     dbDelta($sql_referrers);
     dbDelta($sql_campaign_visits);
+    dbDelta($sql_visitor_countries);
     dbDelta($sql_expenses);
     dbDelta($sql_expense_skips);
     dbDelta($sql_customer_metrics);
@@ -1835,6 +1923,11 @@ function brikpanel_create_table() {
     if ( false === get_option( 'brikpanel_recurring_engine_since', false ) ) {
         add_option( 'brikpanel_recurring_engine_since', gmdate( 'Y-m-d H:i:s' ), '', false );
     }
+
+    // The store day visitor countries started being counted: the dashboard
+    // says "Counted since" for a period that starts earlier. add_option()
+    // writes nothing when it is already there, so only the first run sets it.
+    add_option( 'brikpanel_visitor_countries_since', wp_date( 'Y-m-d' ), '', false );
 }
 
 /**
@@ -1911,6 +2004,49 @@ function brikpanel_enable_payment_fees_default() {
 }
 
 /**
+ * Take tax out of Revenue and Expenses in the dashboard Profit section by
+ * default ("Tax in the Profit section", stored 'yes').
+ *
+ * Until 3.3.33 the default was "Inside Expenses": tax was one of the Expenses,
+ * so Expenses looked bigger than what the store spends, and every share of
+ * revenue, the margin included, was measured against revenue with tax. Taken
+ * out, Revenue − Cost of goods − Expenses is Net profit and the margin is
+ * measured against the money the store keeps.
+ *
+ * Unlike the shipping and payment-fee defaults above, this one also moves a
+ * store holding 'no': 'no' was the old default, written by any save of the
+ * Dashboard settings section, so it says nothing about a choice (the owner
+ * decided on 11 October 2026 that every store moves once). 'yes' and 'revenue'
+ * are choices and stay. The one-shot marker makes this run once per site
+ * whatever route brought it here, so a merchant who picks "Inside Expenses"
+ * afterwards keeps it.
+ *
+ * The same release changed how Tax itself is counted (shipping tax on HPOS,
+ * the tax refunds gave back, other currencies), so the shared data version is
+ * bumped for every store, not only for those whose setting moved (the
+ * dashboard's _tx key segment covers those). Bumped directly: the
+ * once-per-request guard in brikpanel_bust_data_caches() would skip every site
+ * after the first in a network-activation loop.
+ */
+function brikpanel_apply_profit_tax_default() {
+    if (get_option('brikpanel_profit_tax_default_applied') === 'yes') {
+        return;
+    }
+    $current = get_option('brikpanel_profit_exclude_tax', false);
+    if (false === $current) {
+        // Not autoloaded: only the dashboard reads it, and the admin prime
+        // list (includes/brikpanel-option-prime.php) already carries it.
+        add_option('brikpanel_profit_exclude_tax', 'yes', '', false);
+    } elseif ('yes' !== $current && 'revenue' !== $current) {
+        update_option('brikpanel_profit_exclude_tax', 'yes');
+    }
+    if (function_exists('brikpanel_bump_data_cache_ver')) {
+        brikpanel_bump_data_cache_ver();
+    }
+    update_option('brikpanel_profit_tax_default_applied', 'yes', false);
+}
+
+/**
  * Whether BrikPanel has never been set up on the current site.
  *
  * A missing brikpanel_db_version alone does not prove it. The stamp arrived in
@@ -1951,6 +2087,7 @@ function brikpanel_provision_site() {
     brikpanel_enable_cogs_default();
     brikpanel_enable_shipping_cost_default();
     brikpanel_enable_payment_fees_default();
+    brikpanel_apply_profit_tax_default();
     // Stores that already had WooCommerce's native Cost of Goods populated
     // before installing BrikPanel need the catch-up pass here too: stamping
     // db_version below makes brikpanel_maybe_upgrade_db() return early on
@@ -2058,6 +2195,14 @@ add_action('plugins_loaded', 'brikpanel_enable_cogs_default', 20);
 add_action('plugins_loaded', 'brikpanel_enable_shipping_cost_default', 20);
 
 /**
+ * The same path brings the "Tax in the Profit section" default to existing
+ * installs on upgrade, for the same reason. The marker is primed on every
+ * request (brikpanel_prime_keys_always()), so once it is written this costs
+ * nothing.
+ */
+add_action('plugins_loaded', 'brikpanel_apply_profit_tax_default', 20);
+
+/**
  * Safety net for the native COGS backfill. The version-transition path in
  * brikpanel_maybe_upgrade_db() is skipped whenever brikpanel_db_version
  * already equals the current version — which is exactly the state a fresh
@@ -2143,6 +2288,11 @@ function brikpanel_maybe_upgrade_db() {
     brikpanel_enable_payment_fees_default();
     brikpanel_cartab_dedupe_recovery_credit();
     brikpanel_timezone_fix_rebuild();
+    // A saved sidebar layout keeps its shape when a screen it lists was merged
+    // into another; read-time rewriting covers the requests before this runs.
+    if (function_exists('brikpanel_nav_config_migrate_stored')) {
+        brikpanel_nav_config_migrate_stored();
+    }
     // Re-assert autoload on the write-once markers. Idempotent, and running it
     // on every version bump means a call site that drifts one back to
     // autoload=off self-corrects on the next release instead of silently
@@ -3276,9 +3426,10 @@ function brikpanel_unify_cogs_to_native() {
  * with a quantity of 0, which pins the parent to `outofstock`. Because
  * WC_Product_Variable::sync() trusts a parent that manages its own stock, the
  * whole product keeps reporting out of stock even when its variations carry
- * real stock. BrikPanel never manages stock at the parent level for variable
- * products (the inventory card is hidden — each variation owns its stock), so
- * this state is always a bug.
+ * real stock. That state is a bug only when no variation sells from the
+ * product's quantity: WooCommerce's shared stock (the product counts stock and
+ * variations without a count of their own follow it) is a real setting, which
+ * BrikPanel's "Shared stock" switch edits, and is never touched here.
  *
  * This walks every variable product whose parent is managing stock AND is
  * marked out of stock AND has at least one in-stock variation — the exact
@@ -3349,11 +3500,12 @@ function brikpanel_fix_variable_parent_stock() {
             continue;
         }
 
-        // Inspect the variations once: does any manage its own stock, and is
-        // any currently in stock?
+        // Inspect the variations once: does any manage its own stock, does
+        // any sell from the product's shared stock, and is any in stock?
         $has_self_managed_child = false;
+        $has_following_child    = false;
         $has_instock_child      = false;
-        foreach ($product->get_children() as $cid) {
+        foreach (brikpanel_variation_ids($product) as $cid) {
             $child = wc_get_product($cid);
             if (!$child) {
                 continue;
@@ -3362,13 +3514,19 @@ function brikpanel_fix_variable_parent_stock() {
             // 'parent' appears only in view context when inheriting).
             if (true === $child->get_manage_stock('edit')) {
                 $has_self_managed_child = true;
+            } else {
+                $has_following_child = true;
             }
             if ($child->is_in_stock()) {
                 $has_instock_child = true;
             }
-            if ($has_self_managed_child && $has_instock_child) {
-                break;
-            }
+        }
+
+        // A variation sells from the product's quantity: that is shared
+        // stock, sold out or not, and clearing it would leave those
+        // variations counting nothing (unlimited).
+        if ($has_following_child) {
+            continue;
         }
 
         $parent_qty = $product->get_stock_quantity('edit');

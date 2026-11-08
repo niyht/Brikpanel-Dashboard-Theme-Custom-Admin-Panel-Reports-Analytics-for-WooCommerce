@@ -2020,11 +2020,12 @@ class Brikpanel_Store_Summary {
 
 	/**
 	 * Store-currency ad spend rolled up per month for the report window.
-	 * Foreign-currency rows are dropped rather than converted, exactly as
-	 * brikpanel_profit_ad_spend_by_platform() does; the count of dropped rows
-	 * is reported back so the caveat section can disclose it.
+	 * Spend billed in another currency is converted with the Settings >
+	 * Currency rate, exactly as brikpanel_profit_ad_spend_by_platform() does;
+	 * spend in a currency with no rate is left out. Both are reported back
+	 * (`converted`, `foreign`) so the caveat section can disclose them.
 	 *
-	 * @return array{months:array<string,array<string,float>>,foreign:array<string,float>,platforms:string[],first:string,last:string}
+	 * @return array{months:array<string,array<string,float>>,foreign:array<string,float>,converted:array<string,array{amount:float,rate:float}>,platforms:string[],first:string,last:string}
 	 */
 	private function ads_monthly() {
 		static $out = null;
@@ -2032,46 +2033,56 @@ class Brikpanel_Store_Summary {
 			return $out;
 		}
 
-		$out = [ 'months' => [], 'foreign' => [], 'platforms' => [], 'first' => '', 'last' => '' ];
-		if ( ! class_exists( 'Brikpanel_Ads_Store' ) ) {
+		$out = [ 'months' => [], 'foreign' => [], 'converted' => [], 'platforms' => [], 'first' => '', 'last' => '' ];
+		if ( ! class_exists( 'Brikpanel_Ads_Store' ) || ! function_exists( 'brikpanel_ad_spend_to_store_currency' ) ) {
 			return $out;
 		}
 
 		$w         = $this->profit_window();
-		$store_cur = $this->currency_code();
-		$rows      = Brikpanel_Ads_Store::daily_breakdown( $w['start_date'], $w['end_date'] );
+		$store_cur = strtoupper( (string) $this->currency_code() );
+		$rates     = function_exists( 'brikpanel_manual_fx_rates' ) ? brikpanel_manual_fx_rates() : [];
+		$by_month  = [];
 
-		foreach ( (array) $rows as $r ) {
+		foreach ( (array) Brikpanel_Ads_Store::daily_breakdown( $w['start_date'], $w['end_date'] ) as $r ) {
 			$date     = isset( $r['date'] ) ? (string) $r['date'] : '';
 			$platform = isset( $r['platform'] ) ? (string) $r['platform'] : '';
-			$cur      = isset( $r['currency'] ) && '' !== $r['currency'] ? (string) $r['currency'] : $store_cur;
-			$spend    = isset( $r['spend'] ) ? (float) $r['spend'] : 0.0;
 			if ( '' === $date || '' === $platform ) {
 				continue;
 			}
-			if ( $cur !== $store_cur ) {
-				if ( ! isset( $out['foreign'][ $cur ] ) ) {
-					$out['foreign'][ $cur ] = 0.0;
+			$by_month[ substr( $date, 0, 7 ) ][] = $r;
+
+			// The window covers the days whose spend counts: billed in the
+			// store currency, or in one that has a rate.
+			$cur = strtoupper( isset( $r['currency'] ) && '' !== $r['currency'] ? (string) $r['currency'] : $store_cur );
+			if ( $cur === $store_cur || isset( $rates[ $cur ] ) ) {
+				if ( '' === $out['first'] || $date < $out['first'] ) {
+					$out['first'] = $date;
 				}
-				$out['foreign'][ $cur ] += $spend;
-				continue;
+				if ( '' === $out['last'] || $date > $out['last'] ) {
+					$out['last'] = $date;
+				}
 			}
-			$ym = substr( $date, 0, 7 );
-			if ( ! isset( $out['months'][ $ym ] ) ) {
-				$out['months'][ $ym ] = [];
+		}
+
+		// One conversion per month, by the same rule as the Profit section.
+		foreach ( $by_month as $ym => $rows ) {
+			$fx = brikpanel_ad_spend_to_store_currency( $rows, $store_cur );
+			foreach ( $fx['by_platform'] as $platform => $amount ) {
+				$out['months'][ $ym ][ $platform ] = (float) $amount;
+				if ( ! in_array( $platform, $out['platforms'], true ) ) {
+					$out['platforms'][] = $platform;
+				}
 			}
-			if ( ! isset( $out['months'][ $ym ][ $platform ] ) ) {
-				$out['months'][ $ym ][ $platform ] = 0.0;
+			foreach ( $fx['unconverted'] as $cur => $amount ) {
+				$out['foreign'][ $cur ] = ( $out['foreign'][ $cur ] ?? 0.0 ) + (float) $amount;
 			}
-			$out['months'][ $ym ][ $platform ] += $spend;
-			if ( ! in_array( $platform, $out['platforms'], true ) ) {
-				$out['platforms'][] = $platform;
-			}
-			if ( '' === $out['first'] || $date < $out['first'] ) {
-				$out['first'] = $date;
-			}
-			if ( '' === $out['last'] || $date > $out['last'] ) {
-				$out['last'] = $date;
+			foreach ( $fx['converted'] as $per_currency ) {
+				foreach ( $per_currency as $cur => $c ) {
+					if ( ! isset( $out['converted'][ $cur ] ) ) {
+						$out['converted'][ $cur ] = [ 'amount' => 0.0, 'rate' => (float) $c['rate'] ];
+					}
+					$out['converted'][ $cur ]['amount'] += (float) $c['amount'];
+				}
 			}
 		}
 
@@ -2105,7 +2116,8 @@ class Brikpanel_Store_Summary {
 	// computed from what the merchant has actually filled in, and the gaps are
 	// silent by nature: a product with no cost contributes zero COGS, an order
 	// paid by bank transfer carries no processor fee, ad spend billed in a
-	// foreign currency is dropped rather than converted. Stated plainly here,
+	// foreign currency is converted at one flat rate or, with no rate, dropped
+	// rather than added at face value. Stated plainly here,
 	// those become caveats a reader can reason about; left implicit, they read
 	// as a healthy margin.
 	// =========================================================================
@@ -2204,6 +2216,19 @@ class Brikpanel_Store_Summary {
 					$ads['last']
 				);
 			}
+			if ( ! empty( $ads['converted'] ) ) {
+				$parts = [];
+				foreach ( $ads['converted'] as $cur => $c ) {
+					$parts[] = brikpanel_number( (float) $c['amount'], 2 ) . ' ' . $this->md_cell( $cur )
+						. ' (' . brikpanel_fx_rate_label( (string) $cur, (float) $c['rate'], $this->currency_code() ) . ')';
+				}
+				$notes[] = '- **' . __( 'Foreign-currency ad spend is converted at one rate', 'brikpanel' ) . ':** ' . sprintf(
+					/* translators: 1: amounts with their currency codes and the rate used, e.g. "1,076.49 USD (1 USD = 0.76 GBP)", 2: store currency code */
+					__( '%1$s was billed in another currency and converted to %2$s at the rate the merchant entered, the same rate for every day. Daily exchange-rate moves are not reflected.', 'brikpanel' ),
+					implode( ', ', $parts ),
+					$this->currency_code()
+				);
+			}
 			if ( ! empty( $ads['foreign'] ) ) {
 				$parts = [];
 				foreach ( $ads['foreign'] as $cur => $amount ) {
@@ -2211,7 +2236,7 @@ class Brikpanel_Store_Summary {
 				}
 				$notes[] = '- **' . __( 'Foreign-currency ad spend is excluded', 'brikpanel' ) . ':** ' . sprintf(
 					/* translators: 1: list of amounts and currencies, 2: store currency code */
-					__( '%1$s was billed in a currency other than the store currency (%2$s) and is NOT converted or counted. Real advertising cost is higher than reported.', 'brikpanel' ),
+					__( '%1$s was billed in a currency other than the store currency (%2$s) and has no exchange rate under Settings, Currency, so it is NOT counted. Real advertising cost is higher than reported.', 'brikpanel' ),
 					implode( ' + ', $parts ),
 					$this->currency_code()
 				);
@@ -2258,9 +2283,7 @@ class Brikpanel_Store_Summary {
 			return '';
 		}
 
-		$store_cur   = $this->currency_code();
-		$total_store = 0.0;
-		$currencies  = [];
+		$store_cur = $this->currency_code();
 
 		$lines   = [];
 		$lines[] = '## ' . __( 'Advertising (last 12 months)', 'brikpanel' );
@@ -2278,11 +2301,6 @@ class Brikpanel_Store_Summary {
 			$cpc    = $clicks > 0 ? brikpanel_number( $spend / $clicks, 2 ) . ' ' . $cur : '—';
 			$cpm    = $imp > 0 ? brikpanel_number( ( $spend / $imp ) * 1000, 2 ) . ' ' . $cur : '—';
 
-			$currencies[ $cur ] = true;
-			if ( $cur === $store_cur ) {
-				$total_store += $spend;
-			}
-
 			$lines[] = '| ' . $this->md_cell( $this->ad_platform_label( $r['platform'] ) )
 				. ' | ' . $this->md_cell( $cur )
 				. ' | ' . brikpanel_number( $spend, 2 )
@@ -2291,10 +2309,16 @@ class Brikpanel_Store_Summary {
 				. ' | ' . $ctr . ' | ' . $cpc . ' | ' . $cpm . ' |';
 		}
 
-		// Revenue and blended efficiency. ROAS only when every imported row is
-		// billed in the store currency — mixing an unconverted USD spend into a
-		// TRY revenue would produce a confident, wrong ratio.
-		$single_currency = ( 1 === count( $currencies ) && isset( $currencies[ $store_cur ] ) );
+		// Revenue and blended efficiency. Spend billed in another currency is
+		// converted with the Settings > Currency rate, as in the Profit
+		// section. ROAS only when every currency could be converted: mixing an
+		// unconverted USD spend into a TRY revenue would produce a confident,
+		// wrong ratio.
+		$fx = function_exists( 'brikpanel_ad_spend_to_store_currency' )
+			? brikpanel_ad_spend_to_store_currency( $rows, $store_cur )
+			: [ 'total' => 0.0, 'unconverted' => [ '?' => 1.0 ] ];
+		$total_store     = (float) $fx['total'];
+		$single_currency = empty( $fx['unconverted'] );
 		$revenue         = function_exists( 'brikpanel_get_total_revenue' )
 			? (float) brikpanel_get_total_revenue( $w['start_gmt'], $w['end_gmt'], false )
 			: 0.0;
@@ -2314,13 +2338,16 @@ class Brikpanel_Store_Summary {
 			}
 		} else {
 			$lines[] = '- **' . __( 'ROAS', 'brikpanel' ) . ':** *' . sprintf(
-				/* translators: %s: store currency code */
-				__( 'not calculated: spend is billed in more than one currency, or in a currency other than the store currency (%s), and BrikPanel does not convert ad spend.', 'brikpanel' ),
+				/* translators: 1: currency codes with no exchange rate, e.g. "USD", 2: store currency code */
+				__( 'not calculated: part of the spend is billed in %1$s, which has no exchange rate to %2$s under Settings, Currency.', 'brikpanel' ),
+				implode( ', ', array_map( function ( $code ) {
+					return $this->md_cell( (string) $code );
+				}, array_keys( (array) $fx['unconverted'] ) ) ),
 				$this->currency_code()
 			) . '*';
 		}
 
-		// Monthly trend, store-currency rows only.
+		// Monthly trend in the store currency (converted where a rate exists).
 		$ads = $this->ads_monthly();
 		if ( ! empty( $ads['months'] ) ) {
 			$platforms = $ads['platforms'];
@@ -2770,7 +2797,10 @@ class Brikpanel_Store_Summary {
 		// products (parent _stock is NULL). Using both covers the simple
 		// product case (cost on parent) and the variable case (cost per
 		// variation) without double-counting because variable parents
-		// usually carry no _stock value.
+		// usually carry no _stock value. Only rows that count their stock
+		// (_manage_stock = yes): a variation that sells from the product's
+		// shared stock keeps an old _stock WooCommerce never clears, and the
+		// shared quantity is already counted once on the product row.
 		// Cost joins come from the central key list so a store keeping its
 		// costs in a third-party cost plugin is not summarised as zero-cost.
 		$cost      = brikpanel_cogs_sql_join_set( 'sc', 'p.ID' );
@@ -2785,6 +2815,7 @@ class Brikpanel_Store_Summary {
 				COALESCE(SUM(CAST(stock.meta_value AS DECIMAL(20,4)) * CAST(IFNULL({$cost['value']},'0') AS DECIMAL(20,4))), 0) AS cogs_value
 			 FROM {$wpdb->posts} p
 			 " . brikpanel_sql_single_meta_join( 'post', 'stock', 'p.ID', '_stock', "stock.meta_value <> ''", 'INNER' ) . "
+			 " . brikpanel_sql_single_meta_join( 'post', 'managed', 'p.ID', '_manage_stock', "managed.meta_value = 'yes'", 'INNER' ) . "
 			 " . brikpanel_sql_single_meta_join( 'post', 'price', 'p.ID', '_price' ) . "
 			 {$cost['joins']}
 			 WHERE p.post_type IN ('product','product_variation') AND p.post_status='publish'"
@@ -3038,9 +3069,10 @@ class Brikpanel_Store_Summary {
 	 *
 	 * Bases match the headline so the columns reconcile: revenue uses the KPI
 	 * status set with multi-currency conversion (as brikpanel_get_total_revenue
-	 * does), refunds are attributed to the PARENT order's month (as
-	 * brikpanel_profit_returns does, not the refund's own date), and COGS
-	 * resolves cost from the product exactly as brikpanel_profit_cogs does.
+	 * does), refunds are attributed to the PARENT order's month and converted
+	 * with the parent's rate (as brikpanel_profit_returns does, not the
+	 * refund's own date), and COGS resolves cost from the product exactly as
+	 * brikpanel_profit_cogs does.
 	 *
 	 * @return array<string, array{rev:float,ref:float,cogs:float,ads:float,exp:float}>
 	 */
@@ -3092,24 +3124,33 @@ class Brikpanel_Store_Summary {
 		}
 
 		// --- Refunds (bucketed by the parent order's month) ------------------
-		$pred = $this->paid_order_predicate( 'o' );
+		// In the store currency like the revenue above: a refund is in its
+		// parent's currency, so it takes the parent's rate.
+		$pred   = $this->paid_order_predicate( 'o' );
+		$fx_key = brikpanel_profit_fx_meta_key();
 		if ( $is_hpos ) {
-			$sql = "SELECT " . brikpanel_month_bucket_sql( 'o.date_created_gmt' ) . " AS ym, COALESCE(SUM(ABS(r.total_amount)),0) AS v
+			$f   = brikpanel_profit_fx_factor_sql( 'bpfx', 'o.total_amount' );
+			$sql = "SELECT " . brikpanel_month_bucket_sql( 'o.date_created_gmt' ) . " AS ym, COALESCE(SUM(ABS(r.total_amount) * {$f}),0) AS v
 					FROM {$wpdb->prefix}wc_orders r
 					INNER JOIN {$wpdb->prefix}wc_orders o ON o.id = r.parent_order_id
+					LEFT JOIN {$wpdb->prefix}wc_orders_meta bpfx ON bpfx.order_id = o.id AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'order', 'bpfx' ) . "
 					WHERE r.type='shop_order_refund' AND {$pred['where']}
 					  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
 					GROUP BY ym";
 		} else {
-			$sql = "SELECT " . brikpanel_month_bucket_sql( 'o.post_date_gmt' ) . " AS ym, COALESCE(SUM(CAST(IFNULL(ra.meta_value,'0') AS DECIMAL(20,4))),0) AS v
+			$f   = brikpanel_profit_fx_factor_sql( 'bpfx', "CAST(COALESCE(tot.meta_value, '0') AS DECIMAL(20,4))" );
+			$sql = "SELECT " . brikpanel_month_bucket_sql( 'o.post_date_gmt' ) . " AS ym, COALESCE(SUM(CAST(IFNULL(ra.meta_value,'0') AS DECIMAL(20,4)) * {$f}),0) AS v
 					FROM {$wpdb->posts} r
 					INNER JOIN {$wpdb->posts} o ON o.ID = r.post_parent
 					LEFT JOIN {$wpdb->postmeta} ra ON ra.post_id = r.ID AND ra.meta_key='_refund_amount' AND " . brikpanel_sql_first_meta_guard( 'post', 'ra' ) . "
+					LEFT JOIN {$wpdb->postmeta} tot ON tot.post_id = o.ID AND tot.meta_key='_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'tot' ) . "
+					LEFT JOIN {$wpdb->postmeta} bpfx ON bpfx.post_id = o.ID AND bpfx.meta_key = %s AND " . brikpanel_sql_first_meta_guard( 'post', 'bpfx' ) . "
 					WHERE r.post_type='shop_order_refund' AND {$pred['where']}
 					  AND {$pred['date_col']} >= %s AND {$pred['date_col']} <= %s
 					GROUP BY ym";
 		}
-		$args = array_merge( $pred['args'], [ $w['start_gmt'], $w['end_gmt'] ] );
+		// The meta key's placeholder sits in a JOIN, ahead of the WHERE's.
+		$args = array_merge( [ $fx_key ], $pred['args'], [ $w['start_gmt'], $w['end_gmt'] ] );
 		foreach ( $this->fold_to_months( $wpdb->get_results( $wpdb->prepare( $sql, $args ) ), [ 'v' ] ) as $r ) { // phpcs:ignore
 			if ( isset( $axis[ $r->ym ] ) ) { $axis[ $r->ym ]['ref'] = (float) $r->v; }
 		}
@@ -3151,7 +3192,7 @@ class Brikpanel_Store_Summary {
 			}
 		}
 
-		// --- Ad spend (store currency only) ----------------------------------
+		// --- Ad spend (store currency, converted where a rate exists) --------
 		$ads = $this->ads_monthly();
 		foreach ( $ads['months'] as $ym => $per_platform ) {
 			if ( isset( $axis[ $ym ] ) ) {
@@ -3180,7 +3221,7 @@ class Brikpanel_Store_Summary {
 
 		$lines   = [];
 		$lines[] = '## ' . __( 'Profitability (last 12 months)', 'brikpanel' );
-		$lines[] = '*' . __( 'These are the same figures the BrikPanel Dashboard profit card shows. Net = Revenue − Refunds − Cost of goods − every tracked cost (advertising, tax, payment fees, shipping cost, recorded expenses, percentage and per-order costs).', 'brikpanel' ) . '*';
+		$lines[] = '*' . __( 'Built from the same data as the BrikPanel Dashboard profit card. Tax is counted here as a cost, so revenue and the margins below include tax and can differ from the card. Net = Revenue − Refunds − Cost of goods − every tracked cost (advertising, tax, payment fees, shipping cost, recorded expenses, percentage and per-order costs).', 'brikpanel' ) . '*';
 		$lines[] = '';
 		$lines[] = '- **' . __( 'Gross sales', 'brikpanel' ) . ':** ' . $this->money( $revenue );
 		$lines[] = '- **' . __( 'Refunds', 'brikpanel' ) . ':** ' . $this->money( $returns );
@@ -4700,7 +4741,7 @@ class Brikpanel_Store_Summary {
 			'brikpanel_modern_dashboard'      => __( 'Modern Dashboard', 'brikpanel' ),
 			'brikpanel_modern_navigation'     => __( 'Modern Navigation', 'brikpanel' ),
 			'brikpanel_modern_login'          => __( 'Modern Login', 'brikpanel' ),
-			'brikpanel_modern_segments'       => __( 'Customer segments', 'brikpanel' ),
+			'brikpanel_modern_segments'       => __( 'Orders explorer', 'brikpanel' ),
 			'brikpanel_modern_coupons'        => __( 'Modern Coupons UI', 'brikpanel' ),
 			'brikpanel_simple_product_editor' => __( 'Simple Product Editor', 'brikpanel' ),
 			'brikpanel_modern_products_list'  => __( 'Modern Products List', 'brikpanel' ),

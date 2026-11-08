@@ -21,6 +21,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  * required from anywhere (tools/test-wc-detect.php loads it under WP-CLI).
  */
 
+// WooCommerce's Coupons row, which the sidebar draws as a row of its own
+// (brikpanel_nav_promote_coupons()). Its slug is WooCommerce's, so saved
+// Navigation layouts and page access name it the same way.
+if ( ! defined( 'BRIKPANEL_NAV_COUPONS_SLUG' ) ) {
+	define( 'BRIKPANEL_NAV_COUPONS_SLUG', 'edit.php?post_type=shop_coupon' );
+}
+
 if ( ! function_exists( 'brikpanel_nav_icon_style' ) ) {
 	/**
 	 * Resolve the sidebar icon style preference ('solid' | 'line'). 'solid' is the
@@ -91,11 +98,13 @@ if ( ! function_exists( 'brikpanel_nav_line_icon_slugs' ) ) {
 
 if ( ! function_exists( 'brikpanel_nav_ame_active' ) ) {
 	/**
-	 * Whether Admin Menu Editor is running and so owns the admin menu layout.
+	 * Whether Admin Menu Editor draws the admin menu layout, so BrikPanel leaves
+	 * its own out: no "More" folding, no "Site management" group, WooCommerce as
+	 * a plain group, and AME's saved menu loaded into the sidebar.
 	 *
-	 * Lives here, not in brikpanel-navigation.php, because the sidebar renderer
-	 * and the customizer's snapshot of it both branch on this answer and must
-	 * never disagree; this file is loaded before either of them.
+	 * Lives here, not in brikpanel-navigation.php, because the sidebar renderer,
+	 * the customizer's snapshot of it and the page access rules all branch on
+	 * this answer and must never disagree; this file is loaded before any of them.
 	 *
 	 * Asked by class, never by folder. The old check was
 	 * is_plugin_active( 'admin-menu-editor/menu-editor.php' ), which only sees the
@@ -106,10 +115,51 @@ if ( ! function_exists( 'brikpanel_nav_ame_active' ) ) {
 	 * define, and it is exactly what AME itself asks to detect another copy of
 	 * itself (includes/version-conflict-check.php).
 	 *
+	 * Except when the merchant built the saved Navigation layout on BrikPanel's
+	 * own menu (brikpanel_nav_layout_built_on_brikpanel()). Up to 3.3.20 every
+	 * Pro store got BrikPanel's layout, and a layout can also be older than the
+	 * AME install. Handing such a store to AME took the layout apart on the next
+	 * update: the renamed "More" group vanished, the rows moved into it and the
+	 * "Site management" rows landed loose in the main list, and the Navigation
+	 * screen called the "More" row safe to delete (wp.org, 3.3.22 to 3.3.40). A
+	 * store that never saved a layout, or saved it while AME drew the menu,
+	 * keeps AME.
+	 *
 	 * @return bool
 	 */
 	function brikpanel_nav_ame_active() {
-		return class_exists( 'WPMenuEditor', false );
+		return class_exists( 'WPMenuEditor', false ) && ! brikpanel_nav_layout_built_on_brikpanel();
+	}
+}
+
+if ( ! function_exists( 'brikpanel_nav_layout_built_on_brikpanel' ) ) {
+	/**
+	 * Whether the saved Navigation layout was built on BrikPanel's own menu.
+	 *
+	 * The Navigation screen saves every row it lists, and two rows exist only
+	 * where BrikPanel draws its own menu: the synthetic "More" group and the
+	 * Settings row lifted out of WooCommerce (brikpanel_nav_relocate_wc_submenus()).
+	 * A layout holding either was saved from BrikPanel's menu; one saved while
+	 * Admin Menu Editor drew the menu holds neither. Reads the memoised config,
+	 * so asking once per sidebar row costs no query.
+	 *
+	 * @return bool
+	 */
+	function brikpanel_nav_layout_built_on_brikpanel() {
+		if ( ! function_exists( 'brikpanel_nav_config_get' ) ) {
+			return false;
+		}
+		$config = brikpanel_nav_config_get();
+		if ( empty( $config['items'] ) || ! is_array( $config['items'] ) ) {
+			return false;
+		}
+		foreach ( $config['items'] as $item ) {
+			if ( is_array( $item ) && isset( $item['type'], $item['slug'] ) && 'system' === $item['type']
+				&& ( 'woocommerce-more' === $item['slug'] || 'admin.php?page=wc-settings' === $item['slug'] ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 }
 
@@ -222,6 +272,11 @@ if ( ! function_exists( 'brikpanel_nav_store_tail_anchor' ) ) {
 	 * (`edit.php`, the same line brikpanel_nav_demote_foreign_toplevels() uses)
 	 * is skipped, so Settings and More are never pulled down there with it.
 	 *
+	 * Marketing is still a candidate: the sidebar files it under "More" only
+	 * after this order is laid (brikpanel_nav_customizer_apply()), and Coupons,
+	 * which stands right above it, is then directly above Settings. Without
+	 * Marketing, Coupons is the last store row.
+	 *
 	 * @param array $menu $menu-shaped rows.
 	 * @return string Slug, or '' when no candidate qualifies.
 	 */
@@ -239,6 +294,7 @@ if ( ! function_exists( 'brikpanel_nav_store_tail_anchor' ) ) {
 
 		$candidates = array(
 			'woocommerce-marketing',
+			BRIKPANEL_NAV_COUPONS_SLUG,
 			brikpanel_nav_wc_analytics_slug( $menu ),
 			'wc-admin&path=/payments/overview',
 			'wc-admin&path=/payments/connect',
@@ -247,9 +303,8 @@ if ( ! function_exists( 'brikpanel_nav_store_tail_anchor' ) ) {
 			'wf_woocommerce_packing_list',
 			'brikpanel-abandoned-carts',
 			'brikpanel-google-sheets',
-			'brikpanel-customer-analytics',
-			'brikpanel-segments',
 			'edit.php?post_type=product',
+			'brikpanel-customers',
 			'brikmarket',
 			'woocommerce',
 		);
@@ -292,17 +347,18 @@ if ( ! function_exists( 'brikpanel_nav_apply_store_order' ) ) {
 		// Products sorts below Posts. Pinning it here keeps it, and the BrikPanel
 		// rows pinned beneath it, in the store section.
 		$menu = brikpanel_nav_move_after( $menu, 'edit.php?post_type=product', 'woocommerce' );
+		// Customers directly below WooCommerce (Orders), where WooCommerce's own
+		// Customers row sat before it moved into More; Products follows it. After
+		// the Products move, or Products would land between the two.
+		$menu = brikpanel_nav_move_after( $menu, 'brikpanel-customers', 'woocommerce' );
 		$menu = brikpanel_nav_move_after( $menu, 'admin.php?page=wc-settings&tab=checkout', 'edit.php?post_type=product' );
 		$menu = brikpanel_nav_move_after( $menu, 'wf_woocommerce_packing_list', 'edit.php?post_type=product' );
 
-		// BrikPanel's own analytics sit directly under Products: Segments,
-		// Customer Analytics, Google Sheets, then Abandoned Carts (after Sheets
-		// when present, otherwise after Customer Analytics; the second call is a
-		// no-op without Sheets).
-		$menu = brikpanel_nav_move_after( $menu, 'brikpanel-segments', 'edit.php?post_type=product' );
-		$menu = brikpanel_nav_move_after( $menu, 'brikpanel-customer-analytics', 'brikpanel-segments' );
-		$menu = brikpanel_nav_move_after( $menu, 'brikpanel-google-sheets', 'brikpanel-customer-analytics' );
-		$menu = brikpanel_nav_move_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-customer-analytics' );
+		// BrikPanel's own rows sit directly under Products: Google Sheets, then
+		// Abandoned Carts (after Sheets when present, otherwise after Products;
+		// the second call is a no-op without Sheets).
+		$menu = brikpanel_nav_move_after( $menu, 'brikpanel-google-sheets', 'edit.php?post_type=product' );
+		$menu = brikpanel_nav_move_after( $menu, 'brikpanel-abandoned-carts', 'edit.php?post_type=product' );
 		$menu = brikpanel_nav_move_after( $menu, 'brikpanel-abandoned-carts', 'brikpanel-google-sheets' );
 
 		// Settings, then More, close the store part. Both follow the same row,

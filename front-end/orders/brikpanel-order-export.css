@@ -1,0 +1,422 @@
+/* =============================================================================
+   Orders list export (brikpanel-order-export.js): the title row's Export
+   button and its window. Loaded on the orders list for the people who can
+   export. The window follows the tracking number window on the same screen
+   (brikpanel-order-tracking.css); its buttons are the shared ones
+   (front-end/shared/brikpanel-ui.css).
+   ============================================================================= */
+
+/* ── Export in the title row ────────────────────────────────────────────────
+   Drawn like Screen Options beside it. Folded into "More actions" it is a
+   menu row: the shared menu rules (0,4,1) win over these. */
+.brikpanel-page-actions .bp-oexp-open {
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	/* The same space before it as WordPress gives every title button. */
+	margin: 0;
+	margin-inline-start: 4px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: .5rem;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px #e3e3e3, 0 1px 0 rgba(0, 0, 0, .05);
+	color: #303030;
+	font-family: inherit;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 1;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color .15s ease;
+}
+
+.brikpanel-page-actions .bp-oexp-open:hover {
+	background: #f7f7f7;
+}
+
+.brikpanel-page-actions .bp-oexp-open:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.bp-oexp-open__icon {
+	flex: none;
+	color: #616161;
+}
+
+/* ── The window ─────────────────────────────────────────────────────────────
+   No display value on the dialog: the browser hides a closed <dialog> with
+   its own dialog:not([open]) rule. The padding lives on the parts inside, so
+   a click on the dialog element itself is always the dimmed page. */
+.bp-oexp {
+	box-sizing: border-box;
+	width: min(28rem, calc(100% - 2rem));
+	max-width: none;
+	max-height: calc(100dvh - 2rem);
+	margin: auto;
+	padding: 0;
+	overflow: auto;
+	color: #303030;
+	background: #fff;
+	border: 1px solid #e3e3e3;
+	border-radius: .75rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, .08), 0 20px 48px rgba(0, 0, 0, .18);
+}
+
+.bp-oexp::backdrop {
+	background: rgba(26, 26, 26, .45);
+}
+
+.bp-oexp__form {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+}
+
+.bp-oexp__head {
+	display: flex;
+	align-items: flex-start;
+	gap: .75rem;
+	padding: 1.25rem 1.5rem .75rem;
+}
+
+.bp-oexp__title {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	font-size: var(--brikpanel-card-title-size, .9375rem);
+	font-weight: var(--brikpanel-card-title-weight, 600);
+	line-height: 1.4;
+	color: #303030;
+}
+
+.bp-oexp__close {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	margin-block-start: -.25rem;
+	margin-inline-end: -.5rem;
+	padding: 0;
+	color: #616161;
+	background: transparent;
+	border: 0;
+	border-radius: .5rem;
+	cursor: pointer;
+}
+
+.bp-oexp__close[hidden] {
+	display: none;
+}
+
+.bp-oexp__close:hover {
+	color: #303030;
+	background: #f1f1f1;
+}
+
+.bp-oexp__close:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.bp-oexp__body {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	padding: .25rem 1.5rem 1.25rem;
+}
+
+.bp-oexp__choose {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.bp-oexp__choose[hidden] {
+	display: none;
+}
+
+.bp-oexp__group {
+	display: flex;
+	flex-direction: column;
+	gap: .5rem;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.bp-oexp__legend {
+	margin: 0 0 .375rem;
+	padding: 0;
+	font-size: var(--brikpanel-label-size, .8125rem);
+	font-weight: var(--brikpanel-label-weight, 550);
+	line-height: 1.5;
+	color: #303030;
+}
+
+/* One choice: a bordered row, the chosen one outlined in the text colour. */
+.bp-oexp__option {
+	display: flex;
+	align-items: flex-start;
+	gap: .625rem;
+	margin: 0;
+	padding: .625rem .75rem;
+	border: 1px solid #e3e3e3;
+	border-radius: .5rem;
+	cursor: pointer;
+	transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.bp-oexp__option[hidden] {
+	display: none;
+}
+
+.bp-oexp__option:hover {
+	border-color: #8a8a8a;
+}
+
+.bp-oexp__option:has(input:checked) {
+	border-color: #303030;
+	box-shadow: 0 0 0 1px #303030;
+}
+
+.bp-oexp__option input[type="radio"] {
+	flex: none;
+	margin: .1875rem 0 0;
+}
+
+/* The window puts the focus on the chosen option when it opens. After a
+   click the outlined row already shows it; WordPress's ring (on :focus) stays
+   for the keyboard only. */
+.bp-oexp__option input[type="radio"]:focus:not(:focus-visible) {
+	box-shadow: none;
+	outline: 0;
+}
+
+.bp-oexp__option-text {
+	display: flex;
+	flex-direction: column;
+	gap: .125rem;
+	min-width: 0;
+}
+
+.bp-oexp__option-title {
+	font-size: .875rem;
+	line-height: 1.4;
+	color: #303030;
+	overflow-wrap: anywhere;
+}
+
+.bp-oexp__hint {
+	font-size: .8125rem;
+	line-height: 1.45;
+	color: #616161;
+}
+
+/* contrast-ok: a choice this server cannot make, greyed like any disabled control. */
+.bp-oexp__option.is-disabled {
+	cursor: default;
+}
+
+.bp-oexp__option.is-disabled:hover {
+	border-color: #e3e3e3;
+}
+
+/* contrast-ok: disabled choice. */
+.bp-oexp__option.is-disabled .bp-oexp__option-title,
+.bp-oexp__option.is-disabled .bp-oexp__hint {
+	color: #8a8a8a;
+}
+
+.bp-oexp__note {
+	margin: 0;
+	padding: .625rem .75rem;
+	font-size: .8125rem;
+	line-height: 1.5;
+	color: #303030;
+	background: #f7f7f7;
+	border-radius: .5rem;
+}
+
+.bp-oexp__note[hidden] {
+	display: none;
+}
+
+/* ── Progress ────────────────────────────────────────────────────────────── */
+.bp-oexp__progress {
+	display: flex;
+	flex-direction: column;
+	gap: .5rem;
+	padding: .25rem 0 .5rem;
+}
+
+.bp-oexp__progress[hidden] {
+	display: none;
+}
+
+.bp-oexp__bar {
+	position: relative;
+	height: .5rem;
+	overflow: hidden;
+	background: #f1f1f1;
+	border-radius: 999px;
+}
+
+.bp-oexp__fill {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	width: 0;
+	background: #303030;
+	border-radius: inherit;
+	transition: width .3s ease;
+}
+
+/* Before the count is known: a short piece sliding across. */
+.bp-oexp__bar.is-waiting .bp-oexp__fill {
+	width: 30%;
+	animation: bp-oexp-wait 1.2s ease-in-out infinite;
+}
+
+@keyframes bp-oexp-wait {
+	from {
+		inset-inline-start: -30%;
+	}
+
+	to {
+		inset-inline-start: 100%;
+	}
+}
+
+.bp-oexp__count {
+	margin: 0;
+	font-size: .875rem;
+	font-weight: 550;
+	line-height: 1.5;
+	color: #303030;
+	font-variant-numeric: tabular-nums;
+}
+
+.bp-oexp__status {
+	margin: 0;
+	font-size: .8125rem;
+	line-height: 1.5;
+	color: #616161;
+}
+
+.bp-oexp__count[hidden],
+.bp-oexp__status[hidden] {
+	display: none;
+}
+
+.bp-oexp__error {
+	margin: 0;
+	font-size: .8125rem;
+	line-height: 1.5;
+	color: #d72c0d;
+}
+
+.bp-oexp__error[hidden] {
+	display: none;
+}
+
+.bp-oexp__foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: .5rem;
+	padding: 1rem 1.5rem;
+	border-top: 1px solid #e3e3e3;
+}
+
+/* The shared button sets a display of its own (B3). */
+.bp-oexp__foot .bp-oexp__btn[hidden] {
+	display: none;
+}
+
+@media screen and (max-width: 782px) {
+	.bp-oexp__head {
+		padding: 1rem 1rem .5rem;
+	}
+
+	.bp-oexp__body {
+		padding: .25rem 1rem 1rem;
+	}
+
+	.bp-oexp__foot {
+		padding: .75rem 1rem;
+	}
+
+	.bp-oexp__foot .bp-oexp__btn {
+		flex: 1 1 0;
+		min-height: var(--brikpanel-control-h, 2.5rem);
+	}
+}
+
+/* ── Notice after an export ─────────────────────────────────────────────────
+   Top corner at the end of the line (the left one in right-to-left languages),
+   just under the top bar; the script measures the bar and sets the offset. */
+.bp-oexp-toast {
+	position: fixed;
+	top: var(--bp-oexp-top, 44px);
+	inset-inline-end: 20px;
+	z-index: 100002;
+	box-sizing: border-box;
+	max-width: min(22rem, calc(100vw - 2rem));
+	padding: .75rem 1rem;
+	font-size: .8125rem;
+	font-weight: 550;
+	line-height: 1.5;
+	color: #1a6b15;
+	background: #e4f5e1;
+	border: 1px solid #b7e1b0;
+	border-radius: .5rem;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, .08);
+	opacity: 0;
+	transform: translateX(110%);
+	transition: transform .3s cubic-bezier(.4, 0, .2, 1), opacity .3s ease;
+	pointer-events: none;
+}
+
+.rtl .bp-oexp-toast {
+	transform: translateX(-110%);
+}
+
+.bp-oexp-toast.is-in {
+	opacity: 1;
+	transform: none;
+}
+
+/* A file cut at Excel's row limit: said plainly, not as a success. */
+.bp-oexp-toast.is-warn {
+	color: #303030;
+	background: #fff;
+	border-color: #e3e3e3;
+}
+
+@media screen and (max-width: 782px) {
+	.bp-oexp-toast {
+		inset-inline-end: 14px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bp-oexp__fill,
+	.bp-oexp__option,
+	.bp-oexp-toast,
+	.brikpanel-page-actions .bp-oexp-open {
+		transition: none;
+	}
+
+	.bp-oexp__bar.is-waiting .bp-oexp__fill {
+		width: 100%;
+		opacity: .35;
+		animation: none;
+	}
+}

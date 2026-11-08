@@ -98,4 +98,11 @@ uasort( $ordered, static function ( $a, $b ) use ( $status_weight ) {
         endif;
         ?>
     </div>
+
+    <?php
+    // A cleanup tool rather than a check: no status, after the checks (3.3.39).
+    if ( class_exists( 'Brikpanel_BrikControl_Unused_Images' ) ) {
+        Brikpanel_BrikControl_Unused_Images::render_card();
+    }
+    ?>
 </div>

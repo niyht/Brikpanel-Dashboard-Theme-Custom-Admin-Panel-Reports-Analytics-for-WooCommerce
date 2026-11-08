@@ -248,6 +248,14 @@
             return form.querySelector('input[type="text"]:not([disabled]), textarea:not([disabled]), select:not([disabled])');
         }
 
+        // Blocksy's colour picker, opened from a swatch field in the panel.
+        // It lives at the end of <body> and only while it is open.
+        function pickerOpen() {
+            return Array.prototype.some.call(document.querySelectorAll('.ct-option-modal'), function (el) {
+                return el.getClientRects().length > 0;
+            });
+        }
+
         var api = {
             open: function (focusNode) {
                 if (!isOpen) {
@@ -314,11 +322,17 @@
 
             // The media library, select2 and friends handle their own keys.
             var target = event.target;
-            if (target && target.closest && target.closest('.media-modal, .select2-container, .ui-autocomplete, .wp-picker-container')) {
+            if (target && target.closest && target.closest('.media-modal, .select2-container, .ui-autocomplete, .wp-picker-container, .ct-option-modal')) {
                 return;
             }
 
             if (event.key === 'Escape') {
+                // Blocksy's picker ignores Esc and closes on a click outside
+                // it; closing the panel under it would leave the picker alone
+                // on the page with its field gone.
+                if (pickerOpen()) {
+                    return;
+                }
                 event.preventDefault();
                 api.close();
                 return;
@@ -784,6 +798,242 @@
     }
 
     // =========================================================================
+    // ROW LINKS: BESIDE THE NAME OR UNDER IT
+    // =========================================================================
+
+    /* On wide screens with a mouse the row links (Edit, Quick Edit, …) may
+       float at the right end of the name cell, so every row stays one line.
+       They only do when, in every visible row, the whole link line fits
+       between the end of the name and the cell edge; otherwise they keep
+       their own line under the name (CSS default). Measured, not read off the
+       screen width: the labels are longer in Dutch or German, plugins add
+       links, and extra columns (SEO scores) narrow the name column. Up to
+       3.3.39 the line always floated, grew left past the card edge and cut
+       off "Edit" (wp.org report, 2026-10-24).
+
+       The CSS keeps the name column equally wide in both layouts, so reading
+       the live table is enough and the choice cannot flip back and forth. */
+    function fitRowActions() {
+        var card = document.querySelector('.brikpanel-tax-card');
+        if (!card || !window.matchMedia) {
+            return;
+        }
+
+        var tables = Array.prototype.filter.call(card.querySelectorAll('table.wp-list-table'), function (table) {
+            return table.tBodies.length > 0;
+        });
+        if (!tables.length) {
+            return;
+        }
+
+        var wideQuery = window.matchMedia('(min-width: 1100px) and (hover: hover)');
+        var INLINE    = 'brikpanel-tax-actions-inline';
+        var BOX_PAD   = 36; // .row-actions padding while it floats: 32px fade + 4px.
+        var BOX_INSET = 8;  // Its distance from the cell edge.
+        var widths    = {}; // Link line text -> width on one line.
+        var flips     = [];
+        var frozen    = false;
+        var queued    = false;
+
+        // A hidden copy of a link line gives its one-line width without
+        // touching the table (the live line may be wrapped under the name).
+        var probe = make('div', { 'class': 'brikpanel-tax-actions-probe', 'aria-hidden': 'true', inert: '' });
+        probe.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none';
+        card.appendChild(probe);
+
+        function lineWidth(actions) {
+            var key = actions.textContent.replace(/\s+/g, ' ').trim();
+            if (Object.prototype.hasOwnProperty.call(widths, key)) {
+                return widths[key];
+            }
+
+            var copy = actions.cloneNode(true);
+            copy.classList.remove('visible');
+            [copy].concat(Array.prototype.slice.call(copy.querySelectorAll('[id], [name], [for], [form]'))).forEach(function (el) {
+                ['id', 'name', 'for', 'form'].forEach(function (attr) {
+                    el.removeAttribute(attr);
+                });
+            });
+            copy.style.cssText = 'position:absolute;top:0;left:0;width:max-content;min-width:0;max-width:none;margin:0;padding:0;white-space:nowrap;transform:none';
+
+            probe.appendChild(copy);
+            widths[key] = copy.getBoundingClientRect().width;
+            probe.removeChild(copy);
+            return widths[key];
+        }
+
+        // Where the visible name text ends (starts, right to left). Read from
+        // the text itself: in tree rows the <strong> is a flex box as wide as
+        // the cell. A name cut short with "…" measures past the cell, so its
+        // row keeps the links under it.
+        function nameEdge(cell, actions, rtl) {
+            var edge  = null;
+            var range = document.createRange();
+
+            function take(text) {
+                if (!text.nodeValue.trim()) {
+                    return;
+                }
+                range.selectNodeContents(text);
+                Array.prototype.forEach.call(range.getClientRects(), function (rect) {
+                    if (!rect.width || !rect.height) {
+                        return;
+                    }
+                    var side = rtl ? rect.left : rect.right;
+                    edge = edge === null ? side : (rtl ? Math.min(edge, side) : Math.max(edge, side));
+                });
+            }
+
+            for (var child = cell.firstChild; child && child !== actions; child = child.nextSibling) {
+                if (child.nodeType === 3) {
+                    take(child);
+                    continue;
+                }
+                if (child.nodeType !== 1) {
+                    continue;
+                }
+                // The quick edit data and everything after the name line.
+                if (child.tagName === 'BR' || child.classList.contains('hidden')) {
+                    break;
+                }
+                if (child.classList.contains('screen-reader-text')) {
+                    continue;
+                }
+                var walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null);
+                for (var text = walker.nextNode(); text; text = walker.nextNode()) {
+                    if (!text.parentElement || !text.parentElement.closest('.screen-reader-text')) {
+                        take(text);
+                    }
+                }
+            }
+
+            if (range.detach) {
+                range.detach();
+            }
+            return edge;
+        }
+
+        function rowFits(row, rtl) {
+            var actions = row.querySelector('.row-actions');
+            var cell    = actions && actions.closest('td, th');
+            if (!cell) {
+                return true;
+            }
+
+            var box  = cell.getBoundingClientRect();
+            var need = lineWidth(actions) + BOX_PAD;
+            var edge = nameEdge(cell, actions, rtl);
+
+            if (rtl) {
+                return box.left + BOX_INSET + need <= (edge === null ? box.right : edge);
+            }
+            return box.right - BOX_INSET - need >= (edge === null ? box.left : edge);
+        }
+
+        function tableFits(table) {
+            var rtl = window.getComputedStyle(table).direction === 'rtl';
+            for (var b = 0; b < table.tBodies.length; b++) {
+                var rows = table.tBodies[b].rows;
+                for (var r = 0; r < rows.length; r++) {
+                    // Collapsed tree branches and filtered rows are not drawn.
+                    if (!rows[r].querySelector('.row-actions') || !rows[r].getClientRects().length) {
+                        continue;
+                    }
+                    if (!rowFits(rows[r], rtl)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // A guard against anything that keeps resizing the column after each
+        // switch: stay under the name until the window itself is resized.
+        function noteFlip() {
+            var now = Date.now();
+            flips = flips.filter(function (time) {
+                return now - time < 1000;
+            });
+            flips.push(now);
+            if (flips.length > 4) {
+                frozen = true;
+            }
+        }
+
+        function measure() {
+            queued = false;
+            var wide = wideQuery.matches && !frozen;
+
+            tables.forEach(function (table) {
+                // While Quick Edit is open the rows stay as they are, so the
+                // form does not jump under the cursor.
+                if (wide && table.querySelector('tr.inline-edit-row')) {
+                    return;
+                }
+                var inline = wide && tableFits(table);
+                if (inline !== table.classList.contains(INLINE)) {
+                    table.classList.toggle(INLINE, inline);
+                    noteFlip();
+                }
+            });
+        }
+
+        function schedule() {
+            if (queued) {
+                return;
+            }
+            queued = true;
+            window.requestAnimationFrame(measure);
+        }
+
+        // The name column header changes width with the window, the folded
+        // admin menu and Screen Options columns.
+        if (window.ResizeObserver) {
+            var resized = new window.ResizeObserver(schedule);
+            tables.forEach(function (table) {
+                resized.observe(table.querySelector('thead .column-name') || table);
+            });
+        }
+
+        // Rows added, edited or deleted over AJAX, the tree's icons and
+        // counters, branches opened or closed, the live filter.
+        if (window.MutationObserver) {
+            var changed = new window.MutationObserver(schedule);
+            tables.forEach(function (table) {
+                Array.prototype.forEach.call(table.tBodies, function (body) {
+                    changed.observe(body, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true,
+                        attributeFilter: ['class', 'style', 'hidden']
+                    });
+                });
+            });
+        }
+
+        window.addEventListener('resize', function () {
+            frozen = false;
+            flips  = [];
+            schedule();
+        });
+
+        if (wideQuery.addEventListener) {
+            wideQuery.addEventListener('change', schedule);
+        } else if (wideQuery.addListener) {
+            wideQuery.addListener(schedule);
+        }
+
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function () {
+                widths = {};
+                schedule();
+            });
+        }
+
+        schedule();
+    }
+
+    // =========================================================================
     // EDIT SCREENS
     // =========================================================================
 
@@ -819,9 +1069,11 @@
             step(buildPagination);
             step(buildBulkBar);
             step(bindTermAdd);
+            step(fitRowActions);
         } else if (MODE === 'attributes') {
             step(buildAttributesTable);
             step(attributeSubmitFeedback);
+            step(fitRowActions);
         } else {
             step(markEditCard);
         }

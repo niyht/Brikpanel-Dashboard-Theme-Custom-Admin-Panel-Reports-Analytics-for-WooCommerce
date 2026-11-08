@@ -64,11 +64,16 @@ function brikpanel_prime_keys_always() {
 
 		// Module gates read at file scope.
 		'brikpanel_brikcontrol_enabled',
+		// Read by the cron registration on every request (3.3.34).
+		'brikpanel_bot_traffic_nightly',
 		'brikpanel_gs_module_enabled',
 		'brikpanel_ads_module_enabled',
 		'brikpanel_cartab_enabled',
 		'brikpanel_vendors_enabled',
 		'brikpanel_cart_share_enabled',
+		// Automatic coupons' index (front-end/coupons/brikpanel-auto-coupons.php),
+		// read whenever a cart loads; most stores never write it.
+		'brikpanel_auto_coupons',
 		'brikpanel_cart_share_frontend_button',
 
 		// Google Sheets schedule configuration, read at file scope on every
@@ -100,6 +105,9 @@ function brikpanel_prime_keys_always() {
 		// Front-end tracking emitter.
 		'brikpanel_frontend_tracking',
 		'brikpanel_tracking_require_consent',
+		// Printed into the storefront tracker (count a visitor when the page
+		// opens, 3.3.41), so read on every storefront page.
+		'brikpanel_count_on_open',
 		// Start of the person check's transition window, read on init by
 		// brikpanel_human_proof_maybe_roll_out() (autoloaded once written).
 		'brikpanel_human_proof_since',
@@ -130,6 +138,7 @@ function brikpanel_prime_keys_always() {
 		'brikpanel_db_version',
 		'brikpanel_cogs_default_applied',
 		'brikpanel_shipping_cost_default_applied',
+		'brikpanel_profit_tax_default_applied',
 		'brikpanel_cartab_failed_recovery_repair_done',
 		'brikpanel_cartab_zeroed_repair_done',
 		'brikpanel_cos_legacy_migrated',
@@ -206,6 +215,8 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_topbar_custom_link_url',
 		'brikpanel_topbar_item_audience',
 		'brikpanel_topbar_item_hide_roles',
+		// Cache button: one click or LiteSpeed's purge menu (read while the bar renders).
+		'brikpanel_topbar_cache_button',
 
 		// Profit: gates the shipping-cost deduction, the per-order Shipping cost
 		// metabox, the Expenses breakdown row AND the dashboard transient key, so
@@ -219,8 +230,9 @@ function brikpanel_prime_keys_admin() {
 		// same admin-only paths as the shipping-cost gate above.
 		'brikpanel_payment_fees_enabled',
 
-		// Profit: takes tax out of Revenue and Expenses on the dashboard, and
-		// joins the dashboard transient key. Same admin-only paths as above.
+		// Profit: where tax sits on the dashboard (Inside Expenses, taken out
+		// of Revenue and Expenses, or kept in Revenue), and part of the
+		// dashboard transient key. Same admin-only paths as above.
 		'brikpanel_profit_exclude_tax',
 
 		// Dashboard widget access + layout.
@@ -320,6 +332,10 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_orders_overview_hidden_roles',
 		'brikpanel_whatsapp_enabled',
 		'brikpanel_whatsapp_hidden_roles',
+		// Sequential order numbers: read on plugins_loaded on every request to
+		// decide whether any of its hooks are added at all.
+		'brikpanel_order_numbers',
+		'brikpanel_order_numbers_used',
 
 		// Misc.
 		'brikpanel_ads_cache_version',
@@ -356,6 +372,8 @@ function brikpanel_option_autoload_map() {
 		'brikpanel_activated_at'                    => true,
 		'brikpanel_review_dismissed'                => true,
 		'brikpanel_ea_subscribed'                   => true,
+		// Written once, when the first sequential order number is given.
+		'brikpanel_order_numbers_used'              => true,
 	);
 }
 
@@ -391,6 +409,7 @@ function brikpanel_option_autoload_denylist() {
 		'brikpanel_dashboard_section_order'             => 'unbounded, screen-scoped',
 		'brikpanel_excluded_user_ids'                   => 'unbounded',
 		'brikpanel_data_cache_ver'                      => 'write-hot: bumped on every order',
+		'brikpanel_order_numbers_last'                  => 'write-hot: bumped on every new order',
 		'brikpanel_ca_cache_ver'                        => 'write-hot',
 		'brikpanel_ads_cache_version'                   => 'write-hot',
 		'brikpanel_completed_orders_count'              => 'write-hot',

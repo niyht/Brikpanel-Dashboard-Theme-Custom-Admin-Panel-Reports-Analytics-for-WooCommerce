@@ -17,6 +17,10 @@
  * welcome tour, the BrikMentor announcement, any modal) or while another
  * notification holds the corner, and they come one at a time, never stacked.
  * Waiting toasts are shared by the tabs, so changing page does not lose them.
+ *
+ * Three or more waiting orders come as one summary card (how many, their
+ * total, the newest three) instead of a card each: after a few hours away a
+ * busy store would otherwise get a long row of cards to click away.
  */
 (function () {
     'use strict';
@@ -48,6 +52,10 @@
     var TAB_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
     var MAX_QUEUE = 10;
     var MAX_IDS = 50;
+    // This many waiting orders come as one summary card, which names the
+    // newest PILE_ROWS of them.
+    var PILE_MIN = 3;
+    var PILE_ROWS = 3;
     // A card that waited this long for a tab on screen is old news.
     var QUEUE_MAX_AGE = 24 * 60 * 60 * 1000;
     var LEASE_RENEW = 5000;
@@ -62,18 +70,24 @@
     // ------------------------------------------------------------------
 
     var memory = {};
+    // While localStorage takes writes it is the only truth: a key another tab
+    // removed is gone here too. Reading this tab's own copy instead brought a
+    // removed record back (the pile counter showed up again in a second tab).
+    // Once storage refuses, the tab carries on from memory alone.
+    var stored = true;
 
     function lsGet(key) {
-        try {
-            var v = window.localStorage.getItem(PREFIX + key);
-            if (v !== null) return v;
-        } catch (e) { /* blocked storage: memory only */ }
+        if (stored) {
+            try {
+                return window.localStorage.getItem(PREFIX + key);
+            } catch (e) { stored = false; /* blocked storage: memory only */ }
+        }
         return Object.prototype.hasOwnProperty.call(memory, key) ? memory[key] : null;
     }
 
     function lsSet(key, value) {
         memory[key] = value;
-        try { window.localStorage.setItem(PREFIX + key, value); } catch (e) { /* ignore */ }
+        try { window.localStorage.setItem(PREFIX + key, value); } catch (e) { stored = false; }
     }
 
     function lsRemove(key) {
@@ -134,9 +148,67 @@
     }
 
     function setQueue(q) {
-        if (q.length > MAX_QUEUE) q = q.slice(-MAX_QUEUE);
+        if (q.length > MAX_QUEUE) {
+            // The oldest cards make way; the summary card still counts them.
+            foldIntoMore(q.slice(0, q.length - MAX_QUEUE));
+            q = q.slice(-MAX_QUEUE);
+        }
         if (q.length) lsSet('q', JSON.stringify(q));
         else lsRemove('q');
+    }
+
+    // New orders without a card of their own: the server sends only the
+    // newest five, the queue keeps only ten. The summary card counts them.
+    // { n: how many, s: { currency: total } or null when a total is not
+    // known, t: last added }.
+    function getMore() {
+        var m = lsJSON('more', null);
+        if (!m || typeof m !== 'object' || !((parseInt(m.n, 10) || 0) > 0)) return null;
+        if (m.t && (Date.now() - m.t) >= QUEUE_MAX_AGE) {
+            lsRemove('more');
+            return null;
+        }
+        return m;
+    }
+
+    function addMore(n, sums) {
+        n = parseInt(n, 10) || 0;
+        if (n < 1) return;
+        var m = getMore() || { n: 0, s: {} };
+        var merged = (m.s && sums && typeof sums === 'object') ? m.s : null;
+        if (merged) {
+            Object.keys(sums).forEach(function (cur) {
+                var v = parseFloat(sums[cur]);
+                if (!merged || isNaN(v)) {
+                    merged = null;
+                    return;
+                }
+                merged[cur] = (parseFloat(merged[cur]) || 0) + v;
+            });
+        }
+        m.n = (parseInt(m.n, 10) || 0) + n;
+        m.s = merged;
+        m.t = Date.now();
+        lsSet('more', JSON.stringify(m));
+    }
+
+    function foldIntoMore(items) {
+        var sums = {};
+        var known = true;
+        var n = 0;
+        var now = Date.now();
+        items.forEach(function (it) {
+            if (!usable(it, now)) return;
+            var o = it.o;
+            n++;
+            var a = parseFloat(o.amount);
+            if (isNaN(a) || !o.currency) {
+                known = false;
+                return;
+            }
+            sums[o.currency] = (sums[o.currency] || 0) + a;
+        });
+        addMore(n, known ? sums : null);
     }
 
     function queueHas(id) {
@@ -316,7 +388,31 @@
         return String(count);
     }
 
-    function buildToast(order) {
+    // One row of a card: a label and its value.
+    function row(label, value, valueClass) {
+        var r = document.createElement('div');
+        r.className = 'bp-order-notify__row';
+        var l = document.createElement('span');
+        l.className = 'label';
+        l.textContent = label;
+        var v = document.createElement('span');
+        v.className = 'value' + (valueClass ? ' ' + valueClass : '');
+        v.dir = 'auto';
+        // Total may include currency HTML entities (&pound; &euro;) — use innerHTML for those, escape for others.
+        if (valueClass === 'value--total') {
+            v.innerHTML = value;
+        } else {
+            v.textContent = value;
+        }
+        r.appendChild(l);
+        r.appendChild(v);
+        return r;
+    }
+
+    // A card: icon, title and subtitle, rows, Dismiss and a link, and a bar
+    // that runs out. o: { title, subtitle (text or node), tag, body (nodes),
+    // href, linkText }.
+    function buildCard(o) {
         var root = document.createElement('div');
         root.className = 'bp-order-notify';
         root.setAttribute('role', 'status');
@@ -338,19 +434,25 @@
         // keeps its own order ("New order!", not "!New order").
         var titleText = document.createElement('span');
         titleText.dir = 'auto';
-        titleText.textContent = i18n.title || 'New order';
-        var subtitle = document.createElement('small');
-        subtitle.dir = 'auto';
-        subtitle.textContent = fmtText(i18n.subtitle || 'Order #%number%', { number: order.number });
-        if (order.awaiting) {
-            // A bank transfer waits on-hold: the money is not in yet.
-            var tag = document.createElement('span');
-            tag.className = 'bp-order-notify__tag';
-            tag.textContent = i18n.awaiting || 'Awaiting payment';
-            subtitle.appendChild(tag);
-        }
+        titleText.textContent = o.title;
         title.appendChild(titleText);
-        title.appendChild(subtitle);
+        if (o.subtitle || o.tag) {
+            var subtitle = document.createElement('small');
+            subtitle.dir = 'auto';
+            if (o.subtitle && typeof o.subtitle === 'object') {
+                subtitle.appendChild(o.subtitle);
+            } else if (o.subtitle) {
+                subtitle.textContent = o.subtitle;
+            }
+            if (o.tag) {
+                // A bank transfer waits on-hold: the money is not in yet.
+                var tag = document.createElement('span');
+                tag.className = 'bp-order-notify__tag';
+                tag.textContent = o.tag;
+                subtitle.appendChild(tag);
+            }
+            title.appendChild(subtitle);
+        }
 
         var close = document.createElement('button');
         close.type = 'button';
@@ -366,45 +468,17 @@
 
         var body = document.createElement('div');
         body.className = 'bp-order-notify__body';
-
-        function row(label, value, valueClass) {
-            var r = document.createElement('div');
-            r.className = 'bp-order-notify__row';
-            var l = document.createElement('span');
-            l.className = 'label';
-            l.textContent = label;
-            var v = document.createElement('span');
-            v.className = 'value' + (valueClass ? ' ' + valueClass : '');
-            v.dir = 'auto';
-            // Total may include currency HTML entities (&pound; &euro;) — use innerHTML for those, escape for others.
-            if (valueClass === 'value--total') {
-                v.innerHTML = value;
-            } else {
-                v.textContent = value;
-            }
-            r.appendChild(l);
-            r.appendChild(v);
-            return r;
-        }
-
-        body.appendChild(row(i18n.totalLabel || 'Total', order.total, 'value--total'));
-        if (order.itemCount) {
-            body.appendChild(row(i18n.itemsLabel || 'Items', itemsText(order.itemCount)));
-        }
-        if (order.customer) {
-            body.appendChild(row(i18n.customerLabel || 'Customer', order.customer));
-        }
-        if (order.payment) {
-            body.appendChild(row(i18n.paymentLabel || 'Payment', order.payment));
-        }
+        (o.body || []).forEach(function (node) {
+            body.appendChild(node);
+        });
 
         var actions = document.createElement('div');
         actions.className = 'bp-order-notify__actions';
 
         var view = document.createElement('a');
         view.className = 'bp-order-notify__btn bp-order-notify__btn--primary';
-        view.href = order.editUrl;
-        view.textContent = i18n.view || 'View order';
+        view.href = o.href;
+        view.textContent = o.linkText;
 
         var dismiss = document.createElement('button');
         dismiss.type = 'button';
@@ -454,19 +528,135 @@
         return root;
     }
 
-    // The toast on screen; only one at a time.
+    function buildToast(order) {
+        var body = [row(i18n.totalLabel || 'Total', order.total, 'value--total')];
+        if (order.itemCount) {
+            body.push(row(i18n.itemsLabel || 'Items', itemsText(order.itemCount)));
+        }
+        if (order.customer) {
+            body.push(row(i18n.customerLabel || 'Customer', order.customer));
+        }
+        if (order.payment) {
+            body.push(row(i18n.paymentLabel || 'Payment', order.payment));
+        }
+        return buildCard({
+            title: i18n.title || 'New order',
+            subtitle: fmtText(i18n.subtitle || 'Order #%number%', { number: order.number }),
+            tag: order.awaiting ? (i18n.awaiting || 'Awaiting payment') : '',
+            body: body,
+            href: order.editUrl,
+            linkText: i18n.view || 'View order',
+        });
+    }
+
+    function countText(msg, n) {
+        if (msg && window.brikpanelFormat && typeof window.brikpanelFormat.count === 'function') {
+            return window.brikpanelFormat.count(msg, n);
+        }
+        return String(n);
+    }
+
+    // "Total $122.00" on the summary card, the amount in its own <bdi> so a
+    // right-to-left admin keeps it whole. Only when every order is in the
+    // store currency and its amount is known; otherwise null (no line).
+    function pileTotal(list, more) {
+        var BF = window.brikpanelFormat;
+        var cur = cfg.currency;
+        if (!cur || !i18n.pileTotal || !BF || typeof BF.money !== 'function') return null;
+        var sum = 0;
+        for (var i = 0; i < list.length; i++) {
+            var o = list[i].o || {};
+            var a = parseFloat(o.amount);
+            if (o.currency !== cur || isNaN(a)) return null;
+            sum += a;
+        }
+        if (more) {
+            if (!more.s || typeof more.s !== 'object') return null;
+            var keys = Object.keys(more.s);
+            for (var k = 0; k < keys.length; k++) {
+                if (keys[k] !== cur) return null;
+                sum += parseFloat(more.s[keys[k]]) || 0;
+            }
+        }
+        var pattern = String(i18n.pileTotal);
+        var at = /%(?:1\$)?s/.exec(pattern);
+        var out = document.createDocumentFragment();
+        var amount = document.createElement('bdi');
+        amount.textContent = BF.money(sum);
+        if (at) out.appendChild(document.createTextNode(pattern.slice(0, at.index)));
+        out.appendChild(amount);
+        if (at) out.appendChild(document.createTextNode(pattern.slice(at.index + at[0].length)));
+        return out;
+    }
+
+    // "#88357 Deniz Test ... $39.00": one of the newest orders on the summary
+    // card. The number sits in a <bdi>, as on the dashboard.
+    function pileRow(order) {
+        var r = document.createElement('div');
+        r.className = 'bp-order-notify__row bp-order-notify__row--pile';
+        var l = document.createElement('span');
+        l.className = 'label';
+        var no = document.createElement('bdi');
+        no.className = 'bp-order-notify__no';
+        no.textContent = '#' + order.number;
+        l.appendChild(no);
+        if (order.customer) {
+            var who = document.createElement('span');
+            who.className = 'bp-order-notify__who';
+            who.dir = 'auto';
+            who.textContent = order.customer;
+            l.appendChild(who);
+        }
+        var v = document.createElement('span');
+        v.className = 'value';
+        v.dir = 'auto';
+        // Price HTML from the server, as in row().
+        v.innerHTML = order.total || '';
+        r.appendChild(l);
+        r.appendChild(v);
+        return r;
+    }
+
+    // One card for a pile of new orders: how many, their total, the newest
+    // ones by name and how many more. `more` counts orders that never had a
+    // card of their own.
+    function buildPile(items, more) {
+        var list = items.slice().sort(function (a, b) { return orderId(b.o) - orderId(a.o); });
+        var count = list.length + (more ? (parseInt(more.n, 10) || 0) : 0);
+        var body = list.slice(0, PILE_ROWS).map(function (it) { return pileRow(it.o); });
+        var rest = count - body.length;
+        if (rest > 0) {
+            var line = document.createElement('div');
+            line.className = 'bp-order-notify__more';
+            line.dir = 'auto';
+            line.textContent = countText(i18n.pileMore, rest);
+            body.push(line);
+        }
+        return buildCard({
+            title: countText(i18n.pileTitle, count),
+            subtitle: pileTotal(list, more),
+            body: body,
+            href: cfg.ordersUrl || '',
+            linkText: i18n.viewOrders || '',
+        });
+    }
+
+    // The card on screen; only one at a time.
     var current = null;
+
+    function showCard(card) {
+        var s = getStack();
+        current = card;
+        s.appendChild(card);
+        // Force reflow so the transition runs.
+        // eslint-disable-next-line no-unused-expressions
+        card.offsetHeight;
+        card.classList.add('is-visible');
+    }
 
     function showToast(order) {
         if (!enablePopup) return;
-        var s = getStack();
-        var toast = buildToast(order);
-        current = toast;
-        s.appendChild(toast);
-        // Force reflow so the transition runs.
-        // eslint-disable-next-line no-unused-expressions
-        toast.offsetHeight;
-        toast.classList.add('is-visible');
+        showCard(buildToast(order));
     }
 
     function isRtl() {
@@ -574,43 +764,57 @@
         return item;
     }
 
-    // Takes the next card nobody has shown yet. Two tabs on screen (two
-    // windows side by side) never take the same card.
+    // Every waiting card at once, for one summary card, when PILE_MIN or more
+    // wait or the server counted orders it did not send: { pile, more }.
+    // Otherwise take(wanted), one card as before.
+    function takeBatch(wanted) {
+        var now = Date.now();
+        var items = getQueue().filter(function (it) { return usable(it, now); });
+        var more = getMore();
+        if (!more && items.length < PILE_MIN) return take(wanted);
+        setQueue([]);
+        lsRemove('more');
+        addIds('shown', items.map(function (it) { return orderId(it.o); }));
+        return { pile: items, more: more };
+    }
+
+    // Takes the next card nobody has shown yet (or the whole pile). Two tabs
+    // on screen (two windows side by side) never take the same card.
     function takeNext(done) {
         if (locks) {
             // The lock is held a moment after taking: Firefox runs tabs in
             // separate processes and hands localStorage writes to the others
             // only when the writing task ends.
             locks.request(LOCK + '-q', function () {
-                var item = take();
+                var item = takeBatch();
                 return new Promise(function (resolve) {
                     setTimeout(function () { resolve(item); }, 60);
                 });
             }).then(done, function () { done(null); });
             return;
         }
-        // Without Web Locks: claim the card, wait a moment and look again.
-        // When two tabs claim the same card at once, the last claim wins.
+        // Without Web Locks: claim the card (or the pile it opens), wait a
+        // moment and look again. When two tabs claim at once, the last claim wins.
         var now = Date.now();
         var next = null;
         getQueue().some(function (it) {
             if (usable(it, now)) { next = it; return true; }
             return false;
         });
-        if (!next) {
+        if (!next && !getMore()) {
             take(-1);
             done(null);
             return;
         }
-        var id = orderId(next.o);
-        var stamp = TAB_ID + ':' + id;
+        var id = next ? orderId(next.o) : 0;
+        var stamp = TAB_ID + ':' + (next ? id : 'more');
         lsSet('claim', stamp);
         setTimeout(function () {
-            if (lsGet('claim') !== stamp || hasId('shown', id)) {
+            if (lsGet('claim') !== stamp || (next ? hasId('shown', id) : !getMore())) {
                 done(null);
                 return;
             }
-            done(take(id));
+            done(takeBatch(next ? id : undefined));
         }, 80 + Math.floor(Math.random() * 60));
     }
 
@@ -621,7 +825,7 @@
     function drain() {
         if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
         if (current || taking || document.hidden) return;
-        if (!getQueue().length) return;
+        if (!getQueue().length && !getMore()) return;
         if (busy()) {
             retryTimer = setTimeout(drain, 1000);
             return;
@@ -630,6 +834,18 @@
         takeNext(function (item) {
             taking = false;
             if (!item) return;
+            if (item.pile) {
+                // One sound (if the polling tab could not play), one burst of
+                // confetti and one card for the whole pile.
+                playOnce(item.pile.map(function (it) { return orderId(it.o); }));
+                fireConfetti();
+                if (enablePopup) {
+                    showCard(buildPile(item.pile, item.more));
+                } else {
+                    drain();
+                }
+                return;
+            }
             // The tab that polled may not have been allowed to play (no tap
             // yet): the tab on screen plays it then, once.
             playOnce([orderId(item.o)]);
@@ -659,9 +875,20 @@
         lsSet('signal', JSON.stringify({ type: type, data: data || null, t: Date.now(), from: TAB_ID }));
     }
 
+    // New orders came in: the screen under the card (the dashboard, the Orders
+    // summary) fetches its figures again, so the number moves with the card
+    // instead of after a reload. Every tab hears it: the polling tab from
+    // handle(), the others from the 'orders' message.
+    function tellPage() {
+        try {
+            document.dispatchEvent(new CustomEvent('brikpanel:new-orders'));
+        } catch (e) { /* old WebView without CustomEvent: the next version check catches up */ }
+    }
+
     function onSignal(type, data) {
         if (type === 'orders') {
             drain();
+            tellPage();
         } else if (type === 'poll') {
             pollNow();
         } else if (type === 'replay' && data && Array.isArray(data.ids)) {
@@ -743,7 +970,13 @@
         var baseline = parseInt(data.baseline, 10) || 0;
         // First call: just establish the baseline silently.
         if (data.firstRun) {
-            setLastSeen(baseline);
+            if (baseline > 0) {
+                setLastSeen(baseline);
+            } else if (lsGet('last') === null) {
+                // No new order in the shop yet: remember that the baseline was
+                // taken, or the shop's first order would silently become it.
+                lsSet('last', '0');
+            }
             return;
         }
         var fresh = [];
@@ -752,7 +985,20 @@
             if (id > 0 && !hasId('shown', id) && !queueHas(id)) fresh.push(order);
         });
         if (baseline) setLastSeen(baseline);
+        // The server sends the newest five; it counts the rest for the
+        // summary card.
+        var more = data.more && typeof data.more === 'object' ? data.more : null;
+        var moreCount = more ? (parseInt(more.count, 10) || 0) : 0;
+        if (moreCount > 0 && (enablePopup || enableConfetti)) {
+            addMore(more.count, more.sums);
+            if (!fresh.length) {
+                setTimeout(function () { announce('orders'); }, 0);
+                drain();
+            }
+        }
         celebrate(fresh);
+        // With the sound alone (no card) the screen still follows the order.
+        if (fresh.length || moreCount > 0) tellPage();
     }
 
     function poll(isRetry) {
@@ -765,6 +1011,9 @@
         formData.append('action', 'brikpanel_check_new_orders');
         formData.append('security', nonce);
         formData.append('last_seen', String(getLastSeen()));
+        // A browser that never looked also sends 0: "known" tells the server
+        // this one took its baseline (maybe while the shop had no order yet).
+        if (lsGet('last') !== null) formData.append('known', '1');
 
         fetch(cfg.ajaxUrl, {
             method: 'POST',
@@ -930,7 +1179,7 @@
     window.addEventListener('storage', function (e) {
         if (!e || !e.key || e.key.indexOf(PREFIX) !== 0) return;
         var key = e.key.slice(PREFIX.length);
-        if (key === 'q') {
+        if (key === 'q' || key === 'more') {
             drain();
         } else if (key === 'signal' && !channel) {
             var s = parseJSON(e.newValue, null);
@@ -941,10 +1190,19 @@
     });
 
     // A phone notification reached this browser (BrikPanel's service
-    // worker): check now instead of waiting for the next interval.
+    // worker): check now instead of waiting for the next interval. A worker
+    // that asks (a port comes with the message) learns whether this tab, on
+    // screen, plays the cash register itself: then the phone's own
+    // notification stays quiet and the order is heard once.
     if (navigator.serviceWorker && typeof navigator.serviceWorker.addEventListener === 'function') {
         navigator.serviceWorker.addEventListener('message', function (e) {
             if (!e || !e.data || e.data.type !== 'brikpanel-push') return;
+            var port = e.ports && e.ports[0];
+            if (port) {
+                try {
+                    port.postMessage({ play: !!(isLeader && !document.hidden && enableSound && audio && unlocked) });
+                } catch (x) { /* the worker shows its notification with sound */ }
+            }
             if (isLeader) pollNow();
             else announce('poll');
         });
@@ -953,6 +1211,11 @@
     function start() {
         // The nonce printed with this page is the freshest one.
         if (cfg.nonce) lsSet('nonce', String(cfg.nonce));
+        // The order this screen edits is already in front of the person (a tap
+        // on its phone notification lands here): no card and no sound for it,
+        // in any tab.
+        var viewing = parseInt(cfg.viewing, 10) || 0;
+        if (viewing > 0) addIds('shown', [viewing]);
         if (locks) requestLock(!document.hidden);
         else startLease();
         armUnlock();
@@ -975,7 +1238,9 @@
             leader: isLeader,
             mode: locks ? 'locks' : 'lease',
             lastSeen: getLastSeen(),
+            known: lsGet('last') !== null,
             queue: getQueue().length,
+            more: (getMore() || { n: 0 }).n,
             failures: failures,
             unlocked: unlocked,
             stopped: stopped,
@@ -988,17 +1253,33 @@
         else announce('poll');
     };
 
-    // Manual trigger for QA / hooks API.
+    // Manual trigger for QA / hooks API. A number queues that many sample
+    // orders at once: BrikpanelOrderNotify.test(5) shows the summary card.
     cfg.test = function (order) {
-        var o = order || {
-            number: 'TEST',
-            total: '$99.00',
-            itemCount: 2,
-            customer: 'Jane Doe', // i18n-ignore: demo/preview test data for sound notification QA function
-            payment: 'Credit card', // i18n-ignore: demo/preview test data for sound notification QA function
-            editUrl: '#',
+        var BF = window.brikpanelFormat;
+        var sample = function (id) {
+            return {
+                id: id,
+                number: 'TEST',
+                total: BF && typeof BF.money === 'function' ? BF.money(99) : '99.00',
+                amount: 99,
+                currency: cfg.currency,
+                itemCount: 2,
+                customer: 'Jane Doe', // i18n-ignore: demo/preview test data for sound notification QA function
+                payment: 'Credit card', // i18n-ignore: demo/preview test data for sound notification QA function
+                editUrl: '#',
+            };
         };
         // A test order gets a one-off id, so "heard" and "shown" never hold it back.
+        if (typeof order === 'number') {
+            var list = [];
+            var n = Math.max(1, Math.min(MAX_QUEUE, Math.floor(order) || 1));
+            var base = -Date.now();
+            for (var k = 0; k < n; k++) list.push(sample(base - k));
+            celebrate(list);
+            return;
+        }
+        var o = order || sample(0);
         o.id = orderId(o) || -Date.now();
         celebrate([o]);
     };

@@ -135,12 +135,41 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
     /** Rounds one nightly run may clean (each a FIX_CHUNK batch). */
     const AUTO_ROUNDS = 5;
 
+    /** Switch for the nightly run in the Store Health settings (3.3.34): 'yes' (default) or 'no'. */
+    const NIGHTLY_OPTION = 'brikpanel_bot_traffic_nightly';
+
+    /**
+     * Days the merchant marked as real traffic with the card's "Real day"
+     * button (3.3.34): left out of the list, the button and the nightly run.
+     */
+    const REAL_DAYS_OPTION = 'brikpanel_bot_traffic_real_days';
+
+    /** Upper bound for the real days list. */
+    const REAL_DAYS_CAP = 1000;
+
+    /**
+     * Share of a day's extra visitors that ads, social sites, email or
+     * campaign links must account for before the day counts as an ad or
+     * campaign day and its spikes are left alone (3.3.34). Filterable.
+     */
+    const EXPLAINED_SHARE = 0.5;
+
+    /** A smaller share than that still keeps the nightly run away from the day: the merchant decides. */
+    const MIXED_SHARE = 0.2;
+
+    /** Page views one visitor plausibly leaves on one page in a day (the nightly run's page measure). */
+    const VIEWS_PER_VISITOR = 3;
+
+    /** Ad and campaign days the card lists, newest first. */
+    const EXPLAINED_LIST_CAP = 60;
+
     /** Columns the undo may write, per backup row type. */
     const UNDO_COLUMNS = [
         'v' => [ 'visitor_count', 'product_count', 'add_to_cart_count', 'checkout_count', 'mobile_count', 'tablet_count', 'desktop_count' ],
         'c' => [ 'cart_count' ],
         'r' => [ 'hits' ],
         'p' => [ 'visit_count' ],
+        'g' => [ 'visitors' ],
     ];
 
     /**
@@ -158,6 +187,46 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
      * @var array
      */
     private $last_daily = [];
+
+    /**
+     * Days the merchant marked as real, as a set. Read at the start of every
+     * scan (3.3.34).
+     *
+     * @var array<string, true>
+     */
+    private $real_days = [];
+
+    /**
+     * Days whose visitor figure an earlier cleanup lowered and Undo has not
+     * put back, as a set: there the figure is this check's own estimate, not
+     * a count, so nothing else is judged against it (3.3.34).
+     *
+     * @var array<string, true>
+     */
+    private $corrected_days = [];
+
+    /**
+     * Per day of the last scan, how many of its extra visitors ads, social
+     * sites, email and campaign links account for (explain_days()).
+     *
+     * @var array<string, array{visitors:int,extra:int,explained:int,share:float}>
+     */
+    private $explanations = [];
+
+    /**
+     * Days whose findings the last scan left alone as ad or campaign days.
+     *
+     * @var array<string, true>
+     */
+    private $explained_dates = [];
+
+    /**
+     * Lowered days of the last scan whose traffic sources still look like an
+     * ad or campaign day: lowered before 3.3.34 recognised such days.
+     *
+     * @var int
+     */
+    private $ad_like_lowered = 0;
 
     /* ---------------------------------------------------------------------
      * Identity
@@ -198,11 +267,13 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
      *    "Abandoned cart entries" check grades them. A stored schema 2 result
      *    could still be Critical for them alone, so it is rescanned once
      *    (Storage::maybe_heal()).
+     * 4: ad and campaign days and days marked real are left out (3.3.34). A
+     *    stored schema 3 result can still list them, so it is rescanned once.
      *
      * @return int
      */
     public function bc_schema() {
-        return 3;
+        return 4;
     }
 
     /* ---------------------------------------------------------------------
@@ -267,6 +338,13 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             // The worst day/series pairs as data (source, id, column, local
             // date, recorded, corrected, rule); names come at render time.
             'samples'    => $scan['samples'],
+            // Left alone (3.3.34): ad and campaign days as [date, visitors,
+            // explained share], days marked real, and lowered days that look
+            // like ad or campaign days.
+            'explained'      => (int) $scan['explained'],
+            'explained_days' => $scan['explained_days'],
+            'real_days'      => $scan['real_days'],
+            'ad_like'        => (int) $scan['ad_like'],
         ];
 
         $result['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
@@ -383,6 +461,21 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         $flagged    = $impossible + $extreme;
         $total      = $flagged + $cartab;
 
+        // Left alone (3.3.34): ad and campaign days, days marked real, and
+        // lowered days that look like ad days. The switch is read here, at
+        // display time: turning it on or off does not rescan.
+        $explained = (int) ( $f['explained'] ?? 0 );
+        $real_days = array_values(
+            array_filter(
+                (array) ( $f['real_days'] ?? [] ),
+                static function ( $day ) {
+                    return is_string( $day ) && 1 === preg_match( '/^\d{4}-\d{2}-\d{2}$/', $day );
+                }
+            )
+        );
+        $ad_like   = (int) ( $f['ad_like'] ?? 0 );
+        $nightly   = self::nightly_enabled();
+
         // Scripted abandoned-cart entries alone leave the card OK (their own
         // check grades them), so they are mentioned as something the cleanup
         // can also take care of, not as bot traffic found here (field test F2).
@@ -486,7 +579,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                         brikpanel_number( $cartab )
                     );
             }
-            $parts[]      = __( 'The cleanup lowers each flagged figure to the highest value it could honestly have had, scales that day\'s traffic sources and device counts to match, deletes the flagged entries, and keeps everything it changed so one click puts it back.', 'brikpanel' );
+            $parts[]      = __( 'The cleanup lowers each flagged figure to the highest value it could honestly have had, scales that day\'s traffic sources, device counts and visitor countries to match, deletes the flagged entries, and keeps everything it changed so one click puts it back.', 'brikpanel' );
             $r['message'] = implode( ' ', $parts );
         } elseif ( $cartab > 0 ) {
             $r['message'] = $cartab_check
@@ -496,15 +589,38 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                     $cartab_check->get_label()
                 )
                 : __( 'The cleanup deletes scripted entries and keeps a copy of each, so one click puts them back.', 'brikpanel' );
+        } elseif ( $explained > 0 || ! empty( $real_days ) ) {
+            $r['message'] = __( 'Apart from the days left alone below, no day counted more add-to-carts than the store had visitors, no figure stands far above its own normal, and no abandoned-cart entry looks scripted.', 'brikpanel' );
         } else {
             $r['message'] = __( 'No day counted more add-to-carts than the store had visitors, no figure stands far above its own normal, and no abandoned-cart entry looks scripted.', 'brikpanel' );
         }
 
         // The nightly cleanup leads (3.3.30): most of what this card used to
-        // ask about is now done without a click.
-        $auto_line = $this->auto_sentence( isset( $f['auto'] ) && is_array( $f['auto'] ) ? $f['auto'] : [] );
-        if ( $flagged > 0 ) {
-            $auto_line .= ' ' . __( 'Days still being counted, days you put back with Undo and days when sales rose too, which can be a real promotion, are left for you to decide.', 'brikpanel' );
+        // ask about is now done without a click, unless it is switched off in
+        // the Store Health settings (3.3.34).
+        if ( $nightly ) {
+            $auto_line = $this->auto_sentence( isset( $f['auto'] ) && is_array( $f['auto'] ) ? $f['auto'] : [] );
+            if ( $flagged > 0 ) {
+                $auto_line .= ' ' . __( 'Days still being counted, days you put back with Undo, and days when sales or ad visitors rose too, which can be a real promotion, are left for you to decide.', 'brikpanel' );
+            }
+        } else {
+            $auto_line = brikpanel_safe_sprintf(
+                /* translators: %s: label of the cleanup button, "Clean up bot traffic". */
+                __( 'The nightly cleanup is off: bot traffic is only listed here, and nothing changes until you click "%s".', 'brikpanel' ),
+                $this->get_fix_label()
+            );
+        }
+        if ( $explained > 0 ) {
+            $auto_line .= ' ' . brikpanel_safe_sprintf(
+                /* translators: %s: number of days. */
+                _n(
+                    '%s day with extra visitors from ads, social sites, email or campaign links was left alone.',
+                    '%s days with extra visitors from ads, social sites, email or campaign links were left alone.',
+                    $explained,
+                    'brikpanel'
+                ),
+                brikpanel_number( $explained )
+            );
         }
         $r['message'] = trim( $auto_line . ' ' . $r['message'] );
 
@@ -523,13 +639,55 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         // the status does not.
         if ( $flagged > 0 ) {
             $r['recommendations'][] = [
-                'text'     => __( 'Open the list below first. The cleanup rewrites your own analytics history, and a real campaign day can look like a robot day. You can undo it afterwards.', 'brikpanel' ),
+                'text'     => brikpanel_safe_sprintf(
+                    /* translators: %s: label of the row button that marks a day as real traffic, "Real day". */
+                    __( 'Open the list below first. A real campaign day can look like a robot day: mark it with "%s" and it is left alone. The cleanup rewrites your own analytics history, and you can undo it afterwards.', 'brikpanel' ),
+                    __( 'Real day', 'brikpanel' )
+                ),
                 'priority' => 'high',
             ];
             if ( class_exists( 'Brikpanel_BrikControl' ) ) {
                 $r['recommendations'][] = Brikpanel_BrikControl::exclusion_recommendation();
             }
+            // Where to turn the nightly cleanup back on (3.3.34).
+            if ( ! $nightly && function_exists( 'brikpanel_user_can_open_settings' ) && brikpanel_user_can_open_settings() ) {
+                $r['recommendations'][] = [
+                    'text'     => __( 'The nightly cleanup is switched off in the Store Health settings.', 'brikpanel' ),
+                    'priority' => 'medium',
+                    'link'     => [
+                        'url'   => admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=store-health' ) . '#bp-jump-' . self::NIGHTLY_OPTION,
+                        'label' => __( 'Store Health settings', 'brikpanel' ),
+                    ],
+                ];
+            }
         }
+
+        // Days an earlier cleanup lowered that look like ad or campaign days
+        // (before 3.3.34 recognised them): Undo puts them back, and the
+        // cleanup button then lowers only what still looks like bots.
+        if ( $ad_like > 0 && $undoable > 0 ) {
+            array_unshift(
+                $r['recommendations'],
+                [
+                    'text'     => brikpanel_safe_sprintf(
+                        /* translators: 1: number of days, 2: label of the Undo button, 3: label of the cleanup button. */
+                        _n(
+                            '%1$s day an earlier cleanup lowered looks like an ad or campaign day: most of its visitors came from ads, social sites or email. "%2$s" puts every lowered day back, and "%3$s" then lowers only the days that still look like bots.',
+                            '%1$s days an earlier cleanup lowered look like ad or campaign days: most of their visitors came from ads, social sites or email. "%2$s" puts every lowered day back, and "%3$s" then lowers only the days that still look like bots.',
+                            $ad_like,
+                            'brikpanel'
+                        ),
+                        brikpanel_number( $ad_like ),
+                        __( 'Undo last correction', 'brikpanel' ),
+                        $this->get_fix_label()
+                    ),
+                    'priority' => 'high',
+                ]
+            );
+        }
+
+        // Rows and their "Real day" buttons come from one loop, so they line up.
+        $samples = $this->build_samples( (array) ( $f['samples'] ?? [] ), $cartab );
 
         // Four figures, one line each: a fifth tile ("Days scanned") pushed two
         // labels onto a second line and left the row ragged (field test E7).
@@ -567,19 +725,97 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                         'tone'  => $overcount > 0 ? 'warn' : '',
                     ],
                 ],
-                'samples'       => $this->build_samples( (array) ( $f['samples'] ?? [] ), $cartab ),
-                'samples_title' => __( 'What would change', 'brikpanel' ),
-                'samples_cols'  => [
+                'samples'         => $samples['rows'],
+                'samples_actions' => $samples['actions'],
+                'samples_title'   => __( 'What would change', 'brikpanel' ),
+                'samples_cols'    => [
                     __( 'Date', 'brikpanel' ),
                     __( 'What', 'brikpanel' ),
                     __( 'Recorded', 'brikpanel' ),
                     __( 'Corrected to', 'brikpanel' ),
                     __( 'Why', 'brikpanel' ),
                 ],
+                // Days marked real (with Unmark) and ad or campaign days left
+                // alone (3.3.34). Drawn even when nothing is flagged, so a
+                // mark can always be taken off again.
+                'tables'          => $this->left_alone_tables( $real_days, (array) ( $f['explained_days'] ?? [] ), $explained ),
             ]
         );
 
         return $r;
+    }
+
+    /**
+     * The card's tables of what was left alone, as data for the card.
+     *
+     * @param string[] $real_days Days marked real, newest first.
+     * @param array    $explained explained_list() output.
+     * @param int      $count     Ad and campaign days in all (the list is capped).
+     * @return array
+     */
+    private function left_alone_tables( array $real_days, array $explained, $count ) {
+        $tables = [];
+
+        if ( ! empty( $real_days ) ) {
+            $rows    = [];
+            $actions = [];
+            foreach ( $real_days as $day ) {
+                $label     = $this->local_day_label( $day );
+                $rows[]    = [ $label ];
+                $actions[] = [
+                    'op'    => 'unreal',
+                    'value' => $day,
+                    'label' => __( 'Unmark', 'brikpanel' ),
+                    'aria'  => brikpanel_safe_sprintf(
+                        /* translators: %s: a day, e.g. "Sep 12, 2026". The text before the colon is the button's label, "Unmark". */
+                        __( 'Unmark: %s', 'brikpanel' ),
+                        $label
+                    ),
+                ];
+            }
+            $tables[] = [
+                'id'      => 'real',
+                'title'   => brikpanel_safe_sprintf(
+                    /* translators: %s: number of days. */
+                    _n( '%s day you marked as real', '%s days you marked as real', count( $real_days ), 'brikpanel' ),
+                    brikpanel_number( count( $real_days ) )
+                ),
+                'cols'    => [ __( 'Date', 'brikpanel' ) ],
+                'rows'    => $rows,
+                'actions' => $actions,
+            ];
+        }
+
+        $rows = [];
+        foreach ( $explained as $day ) {
+            if ( ! is_array( $day ) || empty( $day['date'] ) ) {
+                continue;
+            }
+            $rows[] = [
+                $this->local_day_label( (string) $day['date'] ),
+                brikpanel_number( (int) ( $day['visitors'] ?? 0 ) ),
+                brikpanel_percent( 100 * (float) ( $day['share'] ?? 0 ), 0 ),
+            ];
+        }
+        if ( ! empty( $rows ) ) {
+            $count    = max( (int) $count, count( $rows ) );
+            $tables[] = [
+                'id'    => 'explained',
+                'title' => brikpanel_safe_sprintf(
+                    /* translators: %s: number of days. */
+                    _n( '%s ad or campaign day left alone', '%s ad or campaign days left alone', $count, 'brikpanel' ),
+                    brikpanel_number( $count )
+                ),
+                'cols'  => [
+                    __( 'Date', 'brikpanel' ),
+                    __( 'Visitors', 'brikpanel' ),
+                    __( 'Extra visitors from ads, social sites and email', 'brikpanel' ),
+                ],
+                'rows'  => $rows,
+            ];
+        }
+
+        return $tables;
     }
 
     /**
@@ -726,7 +962,43 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             'floor'      => $s['floor'],
             'truncated'  => $truncated,
             'samples'    => $this->sample_findings( $findings ),
+            'explained'      => count( $this->explained_dates ),
+            'explained_days' => $this->explained_list(),
+            'real_days'      => $this->real_day_list(),
+            'ad_like'        => $this->ad_like_lowered,
         ];
+    }
+
+    /**
+     * The ad and campaign days of the last scan, newest first, as data:
+     * [ date, visitors that day, share of its extra visitors explained ].
+     *
+     * @return array
+     */
+    private function explained_list() {
+        $dates = array_keys( $this->explained_dates );
+        rsort( $dates, SORT_STRING );
+        $out = [];
+        foreach ( array_slice( $dates, 0, self::EXPLAINED_LIST_CAP ) as $date ) {
+            $x     = $this->explanations[ $date ] ?? null;
+            $out[] = [
+                'date'     => (string) $date,
+                'visitors' => $x ? (int) $x['visitors'] : 0,
+                'share'    => $x ? round( (float) $x['share'], 3 ) : 0.0,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Days marked real inside the scan window, newest first.
+     *
+     * @return string[]
+     */
+    private function real_day_list() {
+        $dates = array_keys( $this->real_days );
+        rsort( $dates, SORT_STRING );
+        return array_values( $dates );
     }
 
     /**
@@ -741,6 +1013,14 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         global $wpdb;
 
         $truncated = false;
+
+        // What the last scan learned goes; the merchant's marks and the
+        // cleanups' own record are read fresh (3.3.34).
+        $this->explanations    = [];
+        $this->explained_dates = [];
+        $this->ad_like_lowered = 0;
+        $this->real_days       = $this->read_real_days();
+        $this->corrected_days  = $this->read_corrected_days();
 
         $visitors = $wpdb->prefix . 'brikpanel_visitors';
         $cart     = $wpdb->prefix . 'brikpanel_cart_tracking';
@@ -773,6 +1053,10 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             $findings  = array_merge( $findings, $part['findings'] );
             $truncated = $truncated || $part['truncated'];
         }
+
+        // One place decides what is left alone, so the card, the button and
+        // the nightly run always agree (3.3.34).
+        $findings = $this->set_aside( $findings, $daily, $s );
 
         usort(
             $findings,
@@ -863,7 +1147,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 // for product views (once per visitor, but a different day
                 // boundary is possible) or checkout (a cart survives the day it
                 // was filled, and recovery links reach checkout directly).
-                $ceiling = ( 'atc' === $key ) ? $this->visitor_ceiling( $day['visitors'], $day['atc'] ) : null;
+                $ceiling = ( 'atc' === $key ) ? $this->visitor_ceiling( $day['visitors'], $day['atc'], (string) $date ) : null;
 
                 $finding = $this->weigh(
                     'visitors', $day['id'], $meta['col'], $date,
@@ -918,9 +1202,14 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             )
         );
 
+        // Days marked real never compete for the candidate slots (3.3.34); the
+        // full history is still read below, so the medians stay whole.
+        $skip_days = array_keys( $this->real_days );
+        $skip_sql  = empty( $skip_days ) ? '' : ' AND DATE(date_column) NOT IN (' . implode( ',', array_fill( 0, count( $skip_days ), '%s' ) ) . ')';
+
         // One row per qualifying series, worst first. Reading one extra row is
         // how we learn the list was cut short without a second COUNT query.
-        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- table and columns are internal; bound values are prepared.
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- table and columns are internal; bound values are prepared ($skip_sql is placeholders only).
         $keys = $wpdb->get_col(
             $wpdb->prepare(
                 "SELECT sid
@@ -929,7 +1218,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                           FROM (
                                 SELECT {$series_expr} AS sid, DATE(date_column) AS day, SUM({$val_col}) AS daily
                                   FROM {$table}
-                                 WHERE date_column >= %s
+                                 WHERE date_column >= %s{$skip_sql}
                                  GROUP BY {$group_expr}, DATE(date_column)
                                 HAVING daily >= %d
                                ) d
@@ -937,9 +1226,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                         ) p
                   ORDER BY worst DESC
                   LIMIT %d",
-                $s['from'] . ' 00:00:00',
-                $threshold,
-                self::MAX_CANDIDATE_SERIES + 1
+                array_merge( [ $s['from'] . ' 00:00:00' ], $skip_days, [ $threshold, self::MAX_CANDIDATE_SERIES + 1 ] )
             )
         );
 
@@ -1002,7 +1289,7 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                         // One product cannot be added by more people than
                         // visited the whole store that day.
                         $visitors = isset( $daily[ $date ] ) ? (int) $daily[ $date ]['visitors'] : 0;
-                        $ceiling  = $this->visitor_ceiling( $visitors, $total );
+                        $ceiling  = $this->visitor_ceiling( $visitors, $total, (string) $date );
                     }
                     $normal = ( $enough_history && $this->is_extreme( $total, $median, $s['multiplier'], $s['floor'] ) )
                         ? (int) round( $median )
@@ -1038,6 +1325,555 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         return is_array( $rows ) ? (int) $rows['total'] : 0;
     }
 
+    /* ---------------------------------------------------------------------
+     * Ad and campaign days, days marked real (3.3.34)
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Whether the nightly cleanup runs: "Clean up bot traffic every night" in
+     * WooCommerce > Settings > BrikPanel > Store Health.
+     *
+     * @return bool
+     */
+    public static function nightly_enabled() {
+        return 'yes' === get_option( self::NIGHTLY_OPTION, 'yes' );
+    }
+
+    /**
+     * Take out of the findings what the merchant or the store's own traffic
+     * explains: every finding on a day marked real, and the "extreme"
+     * findings of a day whose extra visitors came mostly from ads, social
+     * sites, email or campaign links. An "impossible" finding stays unless
+     * its day is marked real: it is arithmetic, not a judgement.
+     *
+     * @param array $findings Findings of this scan.
+     * @param array $daily    load_visitor_days() output.
+     * @param array $s        settings().
+     * @return array The findings that remain.
+     */
+    private function set_aside( array $findings, array $daily, array $s ) {
+        $left    = [];
+        $extreme = false;
+        foreach ( $findings as $finding ) {
+            if ( isset( $this->real_days[ (string) $finding['date'] ] ) ) {
+                continue;
+            }
+            $left[]  = $finding;
+            $extreme = $extreme || 'extreme' === $finding['rule'];
+        }
+
+        // Lowered days are only worth a look while Undo can still put them back.
+        $lowered = ! empty( $this->corrected_days ) && $this->undoable_rows() > 0;
+        if ( ( ! $extreme && ! $lowered ) || ! $this->recognises_campaigns() ) {
+            return $left;
+        }
+
+        $sources            = $this->load_source_days( $s );
+        $this->explanations = $this->explain_days( $daily, $s, $sources );
+        if ( $lowered ) {
+            $this->ad_like_lowered = $this->count_ad_like_lowered( $sources );
+        }
+        if ( ! $extreme || empty( $this->explanations ) ) {
+            return $left;
+        }
+
+        $out = [];
+        foreach ( $left as $finding ) {
+            if ( 'extreme' === $finding['rule'] && $this->explained_away( $finding ) ) {
+                $this->explained_dates[ (string) $finding['date'] ] = true;
+                continue;
+            }
+            $out[] = $finding;
+        }
+        return $out;
+    }
+
+    /**
+     * Whether an "extreme" finding is the ad or campaign traffic of its day.
+     *
+     * The day's visitor figure goes when ads and known sources account for
+     * the agreed share of its extra visitors. Every other figure of that day
+     * goes only as far as those visitors can carry it: one product view,
+     * add-to-cart or checkout each (counted once a day, with the tolerance
+     * the add-to-cart ceiling uses), three views of one page each. So a small
+     * campaign cannot hide a bot wave on one product the same day.
+     *
+     * @param array $finding Finding.
+     * @return bool
+     */
+    private function explained_away( array $finding ) {
+        $x = $this->explanations[ (string) $finding['date'] ] ?? null;
+        if ( null === $x || $x['explained'] <= 0 || $x['share'] < $this->explained_share() ) {
+            return false;
+        }
+        if ( 'visitors' === $finding['source'] && 'visitor_count' === $finding['column'] ) {
+            return true;
+        }
+        $per_visitor = ( 'page' === $finding['source'] ) ? self::VIEWS_PER_VISITOR : self::CEILING_TOLERANCE;
+        return max( 0, (int) $finding['current'] - (int) $finding['target'] ) <= $per_visitor * $x['explained'];
+    }
+
+    /**
+     * For each day with more visitors than usual, how many of the extra
+     * visitors ads, social sites, email and campaign links account for.
+     *
+     * Three counts, each against its own normal, so a store that advertises
+     * every day does not explain an ordinary day's bots away: the clicks its
+     * connected ad accounts reported, the visitors whose first visit that
+     * day came from a social site, a paid link or email, and the visits from
+     * tagged campaign links. The largest counts, capped at the day's extra
+     * visitors: they overlap, an ad click is also a social or paid visit.
+     *
+     * @param array $daily   load_visitor_days() output.
+     * @param array $s       settings().
+     * @param array $sources load_source_days() output.
+     * @return array<string, array{visitors:int,extra:int,explained:int,share:float}>
+     */
+    private function explain_days( array $daily, array $s, array $sources ) {
+        if ( count( $daily ) < self::MIN_BASELINE_DAYS ) {
+            return [];
+        }
+        $normal = $this->median( array_column( $daily, 'visitors' ) );
+        $clicks = $this->extra_ad_clicks( $daily, $s );
+        $known  = $this->extra_known_visits( $sources );
+        $camps  = $this->extra_campaign_visits( $daily, $s );
+
+        $out = [];
+        foreach ( $daily as $date => $day ) {
+            $date  = (string) $date;
+            $extra = (int) floor( (int) $day['visitors'] - $normal );
+            if ( $extra <= 0 ) {
+                continue;
+            }
+            $explained = (int) min( $extra, max( $clicks[ $date ] ?? 0, $known[ $date ] ?? 0, $camps[ $date ] ?? 0 ) );
+            if ( $explained <= 0 ) {
+                continue;
+            }
+            $out[ $date ] = [
+                'visitors'  => (int) $day['visitors'],
+                'extra'     => $extra,
+                'explained' => $explained,
+                'share'     => $explained / $extra,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Ad clicks above their normal, per day, from the spend BrikPanel imports
+     * from connected Meta and Google accounts (the rows stay when the ads
+     * module is switched off, and so does what they prove).
+     *
+     * Meta reports every click on an ad (likes, comments, the profile), not
+     * only visits to the store, so its clicks weigh half. A day's normal is
+     * the median over the scan window, days without ads counting 0.
+     *
+     * @param array $daily load_visitor_days() output.
+     * @param array $s     settings().
+     * @return array<string, int>
+     */
+    private function extra_ad_clicks( array $daily, array $s ) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'brikpanel_ad_spend';
+        if ( ! $this->table_exists( $table ) ) {
+            return [];
+        }
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal table name; bound value prepared.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT `date` AS day, platform, SUM(clicks) AS clicks
+                   FROM {$table}
+                  WHERE `date` >= %s
+                  GROUP BY `date`, platform",
+                $s['from']
+            ),
+            ARRAY_A
+        );
+        if ( empty( $rows ) ) {
+            return [];
+        }
+
+        $weights = [];
+        $by_day  = [];
+        foreach ( $rows as $row ) {
+            $platform = (string) $row['platform'];
+            if ( ! isset( $weights[ $platform ] ) ) {
+                /**
+                 * Filters how many store visits one reported ad click stands for.
+                 *
+                 * @since 3.3.34
+                 * @param float  $weight   0 to 1. Google 1; Meta and anything else 0.5,
+                 *                         Meta counting every click on an ad.
+                 * @param string $platform 'google_ads', 'meta_ads' or another stored platform.
+                 */
+                $weight               = (float) apply_filters( 'brikpanel_bot_traffic_click_weight', 'google_ads' === $platform ? 1.0 : 0.5, $platform );
+                $weights[ $platform ] = max( 0.0, min( 1.0, $weight ) );
+            }
+            $day            = substr( (string) $row['day'], 0, 10 );
+            $by_day[ $day ] = ( $by_day[ $day ] ?? 0.0 ) + $weights[ $platform ] * (int) $row['clicks'];
+        }
+
+        $values = [];
+        foreach ( array_keys( $daily ) as $date ) {
+            $values[] = (int) round( $by_day[ (string) $date ] ?? 0.0 );
+        }
+        $normal = $this->median( $values );
+
+        $out = [];
+        foreach ( $by_day as $date => $clicks ) {
+            $over = (int) floor( $clicks - $normal );
+            if ( $over > 0 ) {
+                $out[ (string) $date ] = $over;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Visitors per day and traffic channel, for the days that have a record
+     * of where their visitors came from: one per visitor and day, written
+     * with the visitor count since 3.1.46.
+     *
+     * @param array $s settings().
+     * @return array<string, array<string, int>>
+     */
+    private function load_source_days( array $s ) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'brikpanel_referrers';
+        if ( ! $this->table_exists( $table ) ) {
+            return [];
+        }
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal table name; bound value prepared.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT date_column AS day, channel, SUM(hits) AS hits
+                   FROM {$table}
+                  WHERE date_column >= %s
+                  GROUP BY date_column, channel",
+                $s['from']
+            ),
+            ARRAY_A
+        );
+
+        $out = [];
+        foreach ( (array) $rows as $row ) {
+            $out[ substr( (string) $row['day'], 0, 10 ) ][ (string) $row['channel'] ] = (int) $row['hits'];
+        }
+        return $out;
+    }
+
+    /**
+     * Visitors from the explaining channels above their normal, per day.
+     *
+     * A channel's normal is its median over the days that have a source
+     * record, a day without that channel counting 0 (a newsletter channel is
+     * quiet most days). A day without any source record explains nothing:
+     * it is unknown, not direct.
+     *
+     * @param array $sources load_source_days() output.
+     * @return array<string, int>
+     */
+    private function extra_known_visits( array $sources ) {
+        if ( count( $sources ) < self::MIN_BASELINE_DAYS ) {
+            return [];
+        }
+        $channels = $this->explaining_channels();
+        $normal   = [];
+        foreach ( $channels as $channel ) {
+            $values = [];
+            foreach ( $sources as $mix ) {
+                $values[] = (int) ( $mix[ $channel ] ?? 0 );
+            }
+            $normal[ $channel ] = $this->median( $values );
+        }
+
+        $out = [];
+        foreach ( $sources as $date => $mix ) {
+            $over = 0.0;
+            foreach ( $channels as $channel ) {
+                $over += max( 0.0, (int) ( $mix[ $channel ] ?? 0 ) - $normal[ $channel ] );
+            }
+            if ( $over >= 1 ) {
+                $out[ (string) $date ] = (int) floor( $over );
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Visits from tagged campaign links above their normal, per day. Links
+     * shared by SMS, QR code or WhatsApp arrive without a referrer and look
+     * direct; their campaign tag is still counted (since 3.3.28).
+     *
+     * @param array $daily load_visitor_days() output.
+     * @param array $s     settings().
+     * @return array<string, int>
+     */
+    private function extra_campaign_visits( array $daily, array $s ) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'brikpanel_campaign_visits';
+        if ( ! $this->table_exists( $table ) ) {
+            return [];
+        }
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal table name; bound value prepared.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT date_column AS day, SUM(hits) AS hits
+                   FROM {$table}
+                  WHERE date_column >= %s
+                  GROUP BY date_column",
+                $s['from']
+            ),
+            ARRAY_A
+        );
+        if ( empty( $rows ) ) {
+            return [];
+        }
+
+        $by_day = [];
+        foreach ( $rows as $row ) {
+            $by_day[ substr( (string) $row['day'], 0, 10 ) ] = (int) $row['hits'];
+        }
+        $values = [];
+        foreach ( array_keys( $daily ) as $date ) {
+            $values[] = (int) ( $by_day[ (string) $date ] ?? 0 );
+        }
+        $normal = $this->median( $values );
+
+        $out = [];
+        foreach ( $by_day as $date => $hits ) {
+            $over = (int) floor( $hits - $normal );
+            if ( $over > 0 ) {
+                $out[ (string) $date ] = $over;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Lowered days whose recorded sources still look like an ad or campaign
+     * day. The cleanup scaled every source of a day by the same ratio, so
+     * the mix survives the lowering.
+     *
+     * @param array $sources load_source_days() output.
+     * @return int
+     */
+    private function count_ad_like_lowered( array $sources ) {
+        $channels = $this->explaining_channels();
+        $share    = $this->explained_share();
+        $count    = 0;
+        foreach ( array_keys( $this->corrected_days ) as $date ) {
+            $mix   = $sources[ (string) $date ] ?? [];
+            $total = array_sum( $mix );
+            if ( $total < self::MIN_CREDIBLE_VISITORS ) {
+                continue;
+            }
+            $known = 0;
+            foreach ( $channels as $channel ) {
+                $known += (int) ( $mix[ $channel ] ?? 0 );
+            }
+            if ( $known >= $share * $total ) {
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    /**
+     * Traffic channels whose visitors make a spike an ad or campaign day.
+     * Search and referral are left out by default: a search engine or some
+     * other site as the referrer is the easiest thing for a bot to fake.
+     *
+     * @return string[]
+     */
+    private function explaining_channels() {
+        /**
+         * Filters the traffic channels whose extra visitors make a day an ad or campaign day.
+         *
+         * @since 3.3.34
+         * @param string[] $channels Default social, paid and email. Also possible:
+         *                           search, referral. Direct never counts.
+         */
+        $channels = (array) apply_filters( 'brikpanel_bot_traffic_explaining_channels', [ 'social', 'paid', 'email' ] );
+        $channels = array_intersect( array_map( 'strval', $channels ), [ 'social', 'paid', 'email', 'search', 'referral' ] );
+        return array_values( array_unique( $channels ) );
+    }
+
+    /**
+     * Share of a day's extra visitors the explaining counts must reach.
+     *
+     * @return float
+     */
+    private function explained_share() {
+        /**
+         * Filters the share of a day's extra visitors that ads, social sites,
+         * email and campaign links must account for before the day is left
+         * alone as an ad or campaign day.
+         *
+         * @since 3.3.34
+         * @param float $share 0.2 to 1, default 0.5.
+         */
+        $share = (float) apply_filters( 'brikpanel_bot_traffic_explained_share', self::EXPLAINED_SHARE );
+        return max( self::MIXED_SHARE, min( 1.0, $share ) );
+    }
+
+    /**
+     * Whether ad and campaign days are recognised at all.
+     *
+     * @return bool
+     */
+    private function recognises_campaigns() {
+        /**
+         * Filters whether the bot traffic check recognises ad and campaign days and leaves them alone.
+         *
+         * @since 3.3.34
+         * @param bool $on Default true.
+         */
+        return (bool) apply_filters( 'brikpanel_bot_traffic_recognise_campaigns', true );
+    }
+
+    /**
+     * Rows both restore points hold, the old check's included: what Undo
+     * would put back.
+     *
+     * @return int
+     */
+    private function undoable_rows() {
+        return $this->read_backup_index()['count'] + $this->read_index( self::LEGACY_BACKUP_OPTION )['count'];
+    }
+
+    /**
+     * Days marked real inside the scan window, as a set.
+     *
+     * @return array<string, true>
+     */
+    private function read_real_days() {
+        $stored = get_option( self::REAL_DAYS_OPTION, [] );
+        if ( ! is_array( $stored ) ) {
+            return [];
+        }
+        $from = $this->settings()['from'];
+        $set  = [];
+        foreach ( $stored as $day ) {
+            $day = (string) $day;
+            if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $day ) && $day >= $from ) {
+                $set[ $day ] = true;
+            }
+        }
+        return $set;
+    }
+
+    /**
+     * Store the days marked real, newest kept past the cap; gone when empty.
+     *
+     * @param array<string, true> $set Days as array keys.
+     * @return void
+     */
+    private function write_real_days( array $set ) {
+        $days = array_map( 'strval', array_keys( $set ) );
+        rsort( $days, SORT_STRING );
+        $days = array_slice( $days, 0, self::REAL_DAYS_CAP );
+        if ( empty( $days ) ) {
+            delete_option( self::REAL_DAYS_OPTION );
+            return;
+        }
+        update_option( self::REAL_DAYS_OPTION, $days, false );
+    }
+
+    /**
+     * Days whose visitor figure a cleanup lowered and Undo has not put back.
+     *
+     * @return array<string, true>
+     */
+    private function read_corrected_days() {
+        $set = [];
+        foreach ( array_keys( $this->read_keys( self::APPLIED_OPTION ) ) as $key ) {
+            $key = (string) $key;
+            if ( 0 === strpos( $key, 'visitors|visitor_count|' ) ) {
+                $set[ substr( $key, -10 ) ] = true;
+            }
+        }
+        return $set;
+    }
+
+    /**
+     * A store day this check looks at: Y-m-d, a real date, inside the scan
+     * window and not after today.
+     *
+     * @param string $day Candidate.
+     * @return bool
+     */
+    private function valid_day( $day ) {
+        $day = (string) $day;
+        if ( ! preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $day, $m ) || ! checkdate( (int) $m[2], (int) $m[3], (int) $m[1] ) ) {
+            return false;
+        }
+        return $day >= $this->settings()['from'] && $day <= wp_date( 'Y-m-d' );
+    }
+
+    /**
+     * The card's row buttons: "Real day" marks a day as real traffic, so the
+     * list, the button and the nightly run leave all of it alone; "Unmark"
+     * takes the mark off again. Called by
+     * Brikpanel_BrikControl::ajax_row_action(), which checks the nonce and
+     * the permission, holds the cleanup lock and saves a fresh result.
+     *
+     * @param string $op    'real' or 'unreal'.
+     * @param string $value The day, Y-m-d.
+     * @return array { ok: bool, status: int, message: string }
+     */
+    public function bc_row_action( $op, $value ) {
+        $op    = (string) $op;
+        $value = (string) $value;
+
+        if ( ! in_array( $op, [ 'real', 'unreal' ], true ) || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value ) ) {
+            return [ 'ok' => false, 'status' => 400, 'message' => __( 'Invalid request.', 'brikpanel' ) ];
+        }
+        // A mark needs a day this check looks at; Unmark takes off whatever
+        // is stored, even a day the window has since left behind.
+        if ( 'real' === $op && ! $this->valid_day( $value ) ) {
+            return [ 'ok' => false, 'status' => 400, 'message' => __( 'That day is outside the days this check looks at.', 'brikpanel' ) ];
+        }
+
+        $set = $this->read_real_days();
+        if ( 'real' === $op ) {
+            $set[ $value ] = true;
+        } else {
+            unset( $set[ $value ] );
+        }
+        $this->write_real_days( $set );
+
+        $label = $this->local_day_label( $value );
+        if ( 'unreal' === $op ) {
+            return [
+                'ok'      => true,
+                'status'  => 200,
+                'message' => brikpanel_safe_sprintf(
+                    /* translators: %s: a day, e.g. "Sep 12, 2026". */
+                    __( '%s is back in the bot traffic check.', 'brikpanel' ),
+                    $label
+                ),
+            ];
+        }
+
+        $message = brikpanel_safe_sprintf(
+            /* translators: %s: a day, e.g. "Sep 12, 2026". */
+            __( '%s is marked as real. The bot traffic cleanup leaves it alone.', 'brikpanel' ),
+            $label
+        );
+        if ( isset( $this->read_corrected_days()[ $value ] ) ) {
+            $message .= ' ' . brikpanel_safe_sprintf(
+                /* translators: %s: label of the Undo button, "Undo last correction". */
+                __( 'Figures an earlier cleanup lowered on this day stay lowered. "%s" puts them back.', 'brikpanel' ),
+                __( 'Undo last correction', 'brikpanel' )
+            );
+        }
+        return [ 'ok' => true, 'status' => 200, 'message' => $message ];
+    }
+
     /**
      * Decide once whether this store's visitor figures can be used as evidence.
      *
@@ -1055,13 +1891,20 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
     /**
      * The ceiling a day's visitor count puts on an add-to-cart figure.
      *
-     * @param int $visitors Visitors recorded that day.
-     * @param int $value    Figure being judged.
+     * @param int    $visitors Visitors recorded that day.
+     * @param int    $value    Figure being judged.
+     * @param string $date     The day, Y-m-d.
      * @return int|null Null when the visitor figure proves nothing.
      */
-    private function visitor_ceiling( $visitors, $value ) {
+    private function visitor_ceiling( $visitors, $value, $date = '' ) {
         $visitors = (int) $visitors;
         if ( ! $this->visitors_credible || $visitors < self::MIN_CREDIBLE_VISITORS ) {
+            return null;
+        }
+        // A visitor figure an earlier cleanup lowered is this check's own
+        // estimate: measured against it, the day's real add-to-carts would
+        // look impossible and be lowered in turn, night after night (3.3.34).
+        if ( isset( $this->corrected_days[ (string) $date ] ) ) {
             return null;
         }
         return ( (float) $value > $visitors * self::CEILING_TOLERANCE ) ? $visitors : null;
@@ -1198,11 +2041,13 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
     }
 
     /**
-     * Detail rows for the card table, in the viewer's language.
+     * Detail rows for the card table, in the viewer's language, and each
+     * row's "Real day" button (3.3.34), built in the same loop so they line up.
+     * The scripted-cart row has no day and no button.
      *
      * @param array $findings sample_findings() output.
      * @param int   $cartab   Scripted abandoned-cart entries.
-     * @return array
+     * @return array{rows: array, actions: array}
      */
     private function build_samples( array $findings, $cartab ) {
         $ids = [];
@@ -1223,9 +2068,20 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             'checkout_count'    => __( 'Checkout visits', 'brikpanel' ),
         ];
 
+        // A day with an "impossible" figure asks before it is marked real:
+        // more adds than visitors is what bots leave behind.
+        $impossible_days = [];
+        foreach ( $findings as $finding ) {
+            if ( is_array( $finding ) && 'impossible' === ( $finding['rule'] ?? '' ) ) {
+                $impossible_days[ (string) ( $finding['date'] ?? '' ) ] = true;
+            }
+        }
+
         $samples = [];
+        $actions = [];
         if ( $cartab > 0 ) {
             $cartab_check = class_exists( 'Brikpanel_BrikControl_Registry' ) ? Brikpanel_BrikControl_Registry::get( 'cartab_bot_rows' ) : null;
+            $actions[]    = null;
             $samples[]    = [
                 '',
                 __( 'Abandoned-cart entries written by scripts', 'brikpanel' ),
@@ -1274,16 +2130,37 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 $why = __( 'Far above its own normal', 'brikpanel' );
             }
 
+            $date      = (string) ( $finding['date'] ?? '' );
+            $day_label = $this->local_day_label( $date );
             $samples[] = [
-                $this->local_day_label( (string) ( $finding['date'] ?? '' ) ),
+                $day_label,
                 $label,
                 brikpanel_number( (int) ( $finding['current'] ?? 0 ) ),
                 brikpanel_number( (int) ( $finding['target'] ?? 0 ) ),
                 $why,
             ];
+            $actions[] = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date )
+                ? [
+                    'op'      => 'real',
+                    'value'   => $date,
+                    'label'   => __( 'Real day', 'brikpanel' ),
+                    'aria'    => brikpanel_safe_sprintf(
+                        /* translators: %s: a day, e.g. "Sep 12, 2026". The text before the colon is the button's label, "Real day". */
+                        __( 'Real day: %s', 'brikpanel' ),
+                        $day_label
+                    ),
+                    'confirm' => isset( $impossible_days[ $date ] )
+                        ? brikpanel_safe_sprintf(
+                            /* translators: %s: a day, e.g. "Sep 12, 2026". */
+                            __( 'On %s the store counted more add-to-carts than visitors, which bots usually cause. Mark the whole day as real anyway?', 'brikpanel' ),
+                            $day_label
+                        )
+                        : '',
+                ]
+                : null;
         }
 
-        return $samples;
+        return [ 'rows' => $samples, 'actions' => $actions ];
     }
 
     /**
@@ -1431,9 +2308,9 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
 
     /**
      * Backup entries for one store-wide column on one day, plus the cascade a
-     * lowered visitor figure implies: that day's device counts and
-     * traffic-source hits are scaled by the same ratio so the cards that break
-     * visitors down keep adding up.
+     * lowered visitor figure implies: that day's device counts, traffic-source
+     * hits and visitor countries are scaled by the same ratio so the cards
+     * that break visitors down keep adding up.
      *
      * A day can span several rows; the correction lands on the first and the
      * rest are zeroed, exactly as the per-series tables are handled.
@@ -1508,6 +2385,46 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 $new = (int) floor( $old * $ratio );
                 if ( $old !== $new ) {
                     $planned[] = [ 't' => 'r', 'id' => (int) $hit['id'], 'col' => 'hits', 'old' => $old, 'new' => $new ];
+                }
+            }
+        }
+
+        // Visitor countries (3.3.40), by the same ratio. Rounded by largest
+        // remainder rather than down, so the day's countries still add up to
+        // its corrected visitor count instead of falling a few short.
+        $countries = $wpdb->prefix . 'brikpanel_visitor_countries';
+        if ( $this->table_exists( $countries ) ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery -- internal table; bound value prepared.
+            $counts = (array) $wpdb->get_results(
+                $wpdb->prepare( "SELECT id, visitors FROM {$countries} WHERE date_column = %s ORDER BY id ASC", $date ),
+                ARRAY_A
+            );
+            $sum   = 0;
+            $parts = [];
+            foreach ( $counts as $count ) {
+                $sum += (int) $count['visitors'];
+            }
+            $goal = min( $sum, (int) round( $sum * $ratio ) );
+            $kept = 0;
+            foreach ( $counts as $count ) {
+                $exact   = (int) $count['visitors'] * $ratio;
+                $floor   = (int) floor( $exact );
+                $parts[] = [ 'id' => (int) $count['id'], 'old' => (int) $count['visitors'], 'new' => $floor, 'rest' => $exact - $floor ];
+                $kept   += $floor;
+            }
+            usort( $parts, static function ( $a, $b ) {
+                return ( $b['rest'] <=> $a['rest'] ) ?: ( $a['id'] <=> $b['id'] );
+            } );
+            foreach ( $parts as $i => $part ) {
+                if ( $kept >= $goal ) {
+                    break;
+                }
+                $parts[ $i ]['new']++;
+                $kept++;
+            }
+            foreach ( $parts as $part ) {
+                if ( $part['old'] !== $part['new'] ) {
+                    $planned[] = [ 't' => 'g', 'id' => $part['id'], 'col' => 'visitors', 'old' => $part['old'], 'new' => $part['new'] ];
                 }
             }
         }
@@ -1669,6 +2586,16 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
         if ( ! class_exists( 'Brikpanel_Cron' ) ) {
             return;
         }
+        // Switched off in the Store Health settings (3.3.34): nothing runs at
+        // night. stand_down() cancels what is queued and lets a job already
+        // picked up end quietly; it must never share a request with the
+        // registration below, hence the early return.
+        if ( ! self::nightly_enabled() ) {
+            if ( Brikpanel_Cron::is_available() ) {
+                Brikpanel_Cron::stand_down( [ self::AUTO_HOOK ] );
+            }
+            return;
+        }
         Brikpanel_Cron::register_handler(
             self::AUTO_HOOK,
             [ __CLASS__, 'cron_autoclean' ],
@@ -1698,7 +2625,9 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
      * @return void
      */
     public static function cron_autoclean( $payload = [] ) {
-        if ( ! class_exists( 'Brikpanel_BrikControl_Registry' ) ) {
+        // The switch is read again: a job queued before it was turned off
+        // must not clean anything (3.3.34).
+        if ( ! self::nightly_enabled() || ! class_exists( 'Brikpanel_BrikControl_Registry' ) ) {
             return;
         }
         $check = Brikpanel_BrikControl_Registry::get( 'bot_traffic' );
@@ -1725,7 +2654,9 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
      * product added to carts far above normal but hardly bought that day, or
      * a page viewed more than three times per visitor the whole store had.
      * Everything else stays listed for the merchant, as before. Every change
-     * goes through the same restore point as the button.
+     * goes through the same restore point as the button. Days marked real
+     * and ad or campaign days never reach this point (set_aside()), and a day
+     * partly from ads is left for the merchant (3.3.34).
      *
      * @return array { figures, entries, removed, left } or { busy: true }.
      */
@@ -1789,6 +2720,14 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
             return true;
         }
 
+        // Ads, social sites, email or campaign links brought part of the day's
+        // extra visitors, not enough to leave the day alone but enough that
+        // lowering it would erase real visitors too: the merchant decides (3.3.34).
+        $date = (string) $finding['date'];
+        if ( isset( $this->explanations[ $date ] ) && $this->explanations[ $date ]['share'] >= self::MIXED_SHARE ) {
+            return false;
+        }
+
         switch ( $finding['source'] ) {
             case 'visitors':
                 // A real campaign day brings orders with it; a bot day does not.
@@ -1806,8 +2745,13 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 return null !== $sold && $sold <= 2;
 
             case 'page':
-                $visitors = isset( $this->last_daily[ (string) $finding['date'] ] ) ? (int) $this->last_daily[ (string) $finding['date'] ]['visitors'] : 0;
-                return $visitors >= self::MIN_CREDIBLE_VISITORS && (int) $finding['current'] > $visitors * 3;
+                // Against a visitor figure an earlier cleanup lowered, every
+                // real page of that day would look like a crawl (3.3.34).
+                if ( isset( $this->corrected_days[ $date ] ) ) {
+                    return false;
+                }
+                $visitors = isset( $this->last_daily[ $date ] ) ? (int) $this->last_daily[ $date ]['visitors'] : 0;
+                return $visitors >= self::MIN_CREDIBLE_VISITORS && (int) $finding['current'] > $visitors * self::VIEWS_PER_VISITOR;
         }
 
         return false;
@@ -2180,6 +3124,8 @@ class Brikpanel_BrikControl_Bot_Traffic_Check extends Brikpanel_BrikControl_Chec
                 return $wpdb->prefix . 'brikpanel_referrers';
             case 'p':
                 return $wpdb->prefix . 'brikpanel_visited_pages';
+            case 'g':
+                return $wpdb->prefix . 'brikpanel_visitor_countries';
         }
         return '';
     }

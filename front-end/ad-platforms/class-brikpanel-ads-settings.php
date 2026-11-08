@@ -186,6 +186,9 @@ class Brikpanel_Ads_Settings {
 				'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
 				'nonce'         => wp_create_nonce( self::NONCE_ACTION ),
 				'storeCurrency' => function_exists( 'get_woocommerce_currency' ) ? (string) get_woocommerce_currency() : '',
+				// The Settings > Currency rates, so the currency note can say
+				// which ticked accounts are converted while boxes change.
+				'fxRates'       => function_exists( 'brikpanel_manual_fx_rates' ) ? (object) brikpanel_manual_fx_rates() : (object) [],
 				'i18n'          => array_merge( [
 					'connecting'         => __( 'Connecting…', 'brikpanel' ),
 					'disconnect_confirm' => __( 'Disconnect this platform? Your synced spend data will be deleted.', 'brikpanel' ),
@@ -208,6 +211,9 @@ class Brikpanel_Ads_Settings {
 					'remove_confirm'     => __( 'The spend imported from the accounts you unticked will be deleted. Continue?', 'brikpanel' ),
 					'not_selected'       => _x( 'Not selected', 'ad account that has imported spend but is not ticked', 'brikpanel' ),
 					'currency_note'      => function_exists( 'brikpanel_js_plural' ) ? brikpanel_js_plural( self::currency_note_noop() ) : [ 'forms' => [ '%s' ], 'en' => true ],
+					'currency_converted' => self::currency_converted_pattern(),
+					/* translators: an exchange rate. 1: a currency code, 2: what one unit of it is worth, 3: the store currency code. Example: 1 USD = 0.76 GBP */
+					'fx_rate'            => __( '1 %1$s = %2$s %3$s', 'brikpanel' ),
 					'manual_empty'       => __( 'Enter an ad account ID first.', 'brikpanel' ),
 					'manager_suffix'     => __( 'Manager', 'brikpanel' ),
 					/* translators: %1$d = chunks completed, %2$d = total chunks (each chunk is 90 days). */
@@ -590,22 +596,99 @@ class Brikpanel_Ads_Settings {
 	}
 
 	/**
-	 * The card's note about ticked accounts in another currency. One message
-	 * for PHP (_n) and JS (brikpanel_js_plural), so both share a translation.
+	 * The card's note about ticked accounts in another currency that has no
+	 * exchange rate yet. One message for PHP (_n) and JS (brikpanel_js_plural),
+	 * so both share a translation.
 	 *
-	 * ROAS has one figure for the whole store and no exchange rate to bring
-	 * the spend into the store currency, so the dashboard leaves it empty for
-	 * a period with such spend, and Net profit leaves that spend out.
+	 * ROAS has one figure for the whole store, so the dashboard leaves it empty
+	 * for a period with spend it cannot convert, and Net profit leaves that
+	 * spend out, until the merchant enters a rate under Settings > Currency.
 	 *
 	 * @return array Nooped plural.
 	 */
 	public static function currency_note_noop() {
 		/* translators: %s: ad account names or IDs, comma separated */
 		return _n_noop(
-			'%s uses a different currency from your store. Its spend is left out of Net profit, and ROAS stays empty for periods with its spend.',
-			'%s use a different currency from your store. Their spend is left out of Net profit, and ROAS stays empty for periods with their spend.',
+			'%s uses a different currency from your store. Add an exchange rate so its spend counts in Net profit and ROAS.',
+			'%s use a different currency from your store. Add an exchange rate so their spend counts in Net profit and ROAS.',
 			'brikpanel'
 		);
+	}
+
+	/**
+	 * The note's sentence for a ticked account currency that has a rate.
+	 *
+	 * @return string Pattern: 1 = currency code, 2 = the rate as brikpanel_fx_rate_label() writes it.
+	 */
+	public static function currency_converted_pattern() {
+		/* translators: 1: a currency code, e.g. USD; 2: the exchange rate used, e.g. "1 USD = 0.76 GBP" */
+		return __( 'Spend in %1$s is converted at %2$s.', 'brikpanel' );
+	}
+
+	/**
+	 * The card's currency note as the page first draws it: ticked accounts in
+	 * another currency, converted with the Settings > Currency rate or waiting
+	 * for one. updateCurrencyNote() in the card script builds the same text
+	 * while boxes change.
+	 *
+	 * @param array  $rows           account_rows() of the card.
+	 * @param string $store_currency Store currency code.
+	 * @return string Empty when every ticked account bills in the store currency.
+	 */
+	public static function currency_note_text( array $rows, $store_currency ) {
+		$store   = strtoupper( (string) $store_currency );
+		$rates   = function_exists( 'brikpanel_manual_fx_rates' ) ? brikpanel_manual_fx_rates() : [];
+		$missing = [];
+		$done    = [];
+		foreach ( $rows as $row ) {
+			$cur = strtoupper( (string) ( $row['currency'] ?? '' ) );
+			if ( empty( $row['selected'] ) || '' === $cur || '' === $store || $cur === $store ) {
+				continue;
+			}
+			if ( isset( $rates[ $cur ] ) ) {
+				$done[ $cur ] = (float) $rates[ $cur ];
+			} else {
+				$missing[] = '' !== (string) $row['name'] ? (string) $row['name'] : (string) $row['id'];
+			}
+		}
+
+		$parts = [];
+		if ( $missing ) {
+			$parts[] = sprintf(
+				translate_nooped_plural( self::currency_note_noop(), count( $missing ), 'brikpanel' ),
+				implode( ', ', $missing )
+			);
+		}
+		foreach ( $done as $cur => $rate ) {
+			$parts[] = sprintf( self::currency_converted_pattern(), $cur, brikpanel_fx_rate_label( $cur, $rate, $store ) );
+		}
+		return implode( ' ', $parts );
+	}
+
+	/**
+	 * Currencies the ad accounts bill in, other than the store's: the rows the
+	 * Settings > Currency table needs. Ticked accounts count (their spend is on
+	 * its way) and so does any account with imported spend, because every
+	 * imported row is added up on the dashboard.
+	 *
+	 * @return array<string, string[]> Currency code => platform slugs, by code.
+	 */
+	public static function foreign_currencies() {
+		$store = function_exists( 'get_woocommerce_currency' ) ? strtoupper( (string) get_woocommerce_currency() ) : '';
+		$out   = [];
+		foreach ( [ Brikpanel_Ads_Tokens::PLATFORM_GOOGLE, Brikpanel_Ads_Tokens::PLATFORM_META ] as $platform ) {
+			foreach ( self::account_rows( $platform, Brikpanel_Ads_Tokens::describe( $platform ) ) as $row ) {
+				$cur = $row['currency'];
+				if ( '' === $cur || $cur === $store || ( ! $row['selected'] && ! $row['has_data'] ) ) {
+					continue;
+				}
+				if ( ! in_array( $platform, $out[ $cur ] ?? [], true ) ) {
+					$out[ $cur ][] = $platform;
+				}
+			}
+		}
+		ksort( $out );
+		return $out;
 	}
 
 	// =========================================================================

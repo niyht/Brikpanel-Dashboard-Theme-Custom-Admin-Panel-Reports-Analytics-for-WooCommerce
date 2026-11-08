@@ -77,7 +77,10 @@
         // exiting restores it instead of stranding the user on menu_order.
         sortMode: false,
         prevSort: null,
-        sortSaving: false
+        sortSaving: false,
+        // The dragged row's ID of a drop made while a save was running (0 when
+        // unknown), saved as soon as that save ends; null when none waits.
+        sortPending: null
     };
 
     var searchTimer = null;
@@ -498,6 +501,8 @@
             $(this).addClass('active');
             state.status = $(this).data('status');
             state.page = 1;
+            // Other plugins' actions are not offered in the Trash.
+            applyPluginActions();
             fetchProducts();
         });
 
@@ -575,6 +580,7 @@
             exitSortMode(true);
             fetchProducts();
         });
+        $(document).on('click', '#bpl-sort-start', startCustomOrder);
 
         // Column visibility dropdown
         var $colsBtn     = $('#bpl-columns-btn');
@@ -1585,14 +1591,24 @@
             start: function (e, ui) {
                 ui.placeholder.height(ui.item.height());
             },
-            stop: function () {
-                saveProductOrder();
+            stop: function (e, ui) {
+                saveProductOrder(parseInt(ui.item.attr('data-id'), 10) || 0);
             }
         });
     }
 
-    function saveProductOrder() {
-        if (state.sortSaving) return;
+    /**
+     * Saves the order of the rows on screen. The server lets these products
+     * take each other's places without moving any other product, and sends
+     * back their numbers for the Sort order column. A drop made while a save
+     * is still running is saved right after it, not lost.
+     */
+    function saveProductOrder(movedId) {
+        if (state.sortSaving) {
+            state.sortPending = movedId || state.sortPending || 0;
+            return;
+        }
+        state.sortPending = null;
 
         var ids = [];
         $('#bpl-table-body > tr.brikpanel-pl-row').each(function () {
@@ -1615,9 +1631,16 @@
             state.products = reordered;
         }
 
-        var base = (state.page - 1) * state.per_page;
         state.sortSaving = true;
         showProgress();
+
+        function finish() {
+            state.sortSaving = false;
+            hideProgress();
+            if (state.sortPending !== null && state.sortPending !== undefined && state.sortMode) {
+                saveProductOrder(state.sortPending);
+            }
+        }
 
         $.ajax({
             url: PL.ajax_url,
@@ -1626,22 +1649,90 @@
                 action: 'brikpanel_save_product_order',
                 security: PL.nonce,
                 ids: ids,
-                base: base
+                moved: movedId || 0
             },
             success: function (res) {
-                state.sortSaving = false;
-                hideProgress();
                 if (res && res.success) {
-                    showToast(PL.i18n.sort_saved || 'Order saved', 'success');
+                    showSavedOrderNumbers(res.data && res.data.orders);
+                    showToast(PL.i18n.sort_saved, 'success');
                 } else {
-                    var msg = (res && res.data && res.data.message) || PL.i18n.sort_save_failed || 'Could not save order. Please try again.';
-                    showToast(msg, 'error');
+                    showToast((res && res.data && res.data.message) || PL.i18n.sort_save_failed, 'error');
                 }
+                finish();
             },
             error: function () {
-                state.sortSaving = false;
+                showToast(PL.i18n.sort_save_failed, 'error');
+                finish();
+            }
+        });
+    }
+
+    /** Writes the saved numbers into the Sort order column and the list's memory. */
+    function showSavedOrderNumbers(orders) {
+        if (!orders || typeof orders !== 'object') return;
+        for (var i = 0; i < state.products.length; i++) {
+            var p = state.products[i];
+            if (Object.prototype.hasOwnProperty.call(orders, p.id)) {
+                p.menu_order = parseInt(orders[p.id], 10) || 0;
+            }
+        }
+        $('#bpl-table-body > tr.brikpanel-pl-row').each(function () {
+            var id = $(this).attr('data-id');
+            if (!Object.prototype.hasOwnProperty.call(orders, id)) return;
+            var value = String(parseInt(orders[id], 10) || 0);
+            $(this).find('.brikpanel-pl-menu-order-cell').attr('data-value', value).text(value);
+        });
+    }
+
+    /**
+     * "Start custom order" in the Sort mode banner of a store that lists the
+     * newest products first: the server numbers every product newest first
+     * and makes the custom order the store's default sorting, so the store
+     * looks the same until a product is moved. The banner then turns into the
+     * usual drag hint and the list reloads in the new order.
+     */
+    function startCustomOrder() {
+        var $btn = $('#bpl-sort-start');
+        if (!$btn.length || $btn.prop('disabled')) return;
+        if (PL.has_custom_order && !window.confirm(PL.i18n.sort_start_confirm)) return;
+
+        var label = $btn.text();
+        $btn.prop('disabled', true).text(PL.i18n.sort_starting);
+        showProgress();
+
+        $.ajax({
+            url: PL.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'brikpanel_start_custom_order',
+                security: PL.nonce
+            },
+            success: function (res) {
                 hideProgress();
-                showToast(PL.i18n.sort_save_failed || 'Could not save order. Please try again.', 'error');
+                if (!res || !res.success) {
+                    $btn.prop('disabled', false).text(label);
+                    showToast((res && res.data && res.data.message) || PL.i18n.sort_start_failed, 'error');
+                    return;
+                }
+                PL.has_custom_order = true;
+                if (res.data && res.data.overridden) {
+                    $btn.prop('disabled', false).text(label);
+                    showToast(res.data.message, 'error');
+                } else {
+                    PL.store_sort = 'menu_order';
+                    $btn.remove();
+                    $('#bpl-sort-hint').removeClass('is-unused')
+                        .find('.brikpanel-pl-sort-hint-text').text(PL.i18n.sort_hint);
+                    $('#bpl-sort-done').removeClass('secondary').addClass('primary');
+                    showToast(res.data && res.data.message ? res.data.message : PL.i18n.sort_started, 'success');
+                }
+                state.page = 1;
+                fetchProducts();
+            },
+            error: function () {
+                hideProgress();
+                $btn.prop('disabled', false).text(label);
+                showToast(PL.i18n.sort_start_failed, 'error');
             }
         });
     }
@@ -1666,7 +1757,8 @@
         // Variable products: cost is stored per variation (edited via the
         // variation popup / quick edit), so the aggregated parent cell stays
         // read-only. Simple products get an inline-editable cost.
-        if (!p || p.type === 'variable') {
+        // A grouped product has no cost of its own (its products do).
+        if (!p || p.type === 'variable' || p.type === 'grouped') {
             return inner + flag;
         }
         var cogsVal = (p.cogs_value === '' || p.cogs_value == null) ? '' : String(p.cogs_value);
@@ -1839,6 +1931,16 @@
         var priceEditable = isVariable ?
             '<span class="brikpanel-pl-editable brikpanel-pl-price-cell" data-field="price" data-value="">' + priceDisplay + '</span>' :
             '<span class="brikpanel-pl-editable brikpanel-pl-price-cell" data-field="price" data-value="' + escAttr(p.regular_price || '') + '">' + priceDisplay + '</span>';
+        // A grouped product's price range comes from its products: nothing
+        // to type here (WooCommerce keeps no price of its own for a group).
+        if (p.type === 'grouped') {
+            priceEditable = priceDisplay;
+        }
+        // A WPML translation takes its price from the original product
+        // (WooCommerce Multilingual copies it there): nothing to type here.
+        if (p.translation_of) {
+            priceEditable = '<span class="brikpanel-pl-price-cell brikpanel-pl-price-locked" title="' + escAttr(PL.i18n.price_from_original) + '">' + priceDisplay + '</span>';
+        }
 
         var catText;
         if (!p.categories.length) {
@@ -1881,6 +1983,18 @@
                     '" aria-label="' + escAttr(vTitle) + '">' + escHtml(String(vCount)) + '</span>';
             }
             typeLabel = '<span class="brikpanel-pl-type-badge">' + escHtml(PL.i18n.variable) + vBadge + '</span>';
+        }
+
+        // WPML: which language the row is in, a small tag after the name (the
+        // list shows every language, so the same product can appear twice).
+        // The code is what shows; the language's name is its tooltip and what
+        // a screen reader says.
+        var langTag = '';
+        if (p.lang && p.lang.code) {
+            langTag = '<span class="brikpanel-pl-lang" title="' + escAttr(p.lang.name) + '">' +
+                '<span class="screen-reader-text">' + escHtml(BF ? BF.format(PL.i18n.lang_label, [p.lang.name]) : p.lang.name) + '</span>' +
+                '<span aria-hidden="true">' + escHtml(String(p.lang.code).toUpperCase()) + '</span>' +
+                '</span>';
         }
 
         var trashActions = '';
@@ -2068,7 +2182,7 @@
             // "…" goes at the end of the name's own language, or an English
             // name on a right-to-left screen lost its first words instead.
             '<td class="brikpanel-pl-cell-name brikpanel-pl-col brikpanel-pl-col-name">' +
-                '<div class="brikpanel-pl-name-line">' + featuredStarHtml + '<a href="' + escAttr(editHref) + '" class="brikpanel-pl-product-name-link" title="' + escAttr(p.name) + '"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text" dir="auto">' + escHtml(p.name) + '</span></a>' + typeLabel + '</div>' +
+                '<div class="brikpanel-pl-name-line">' + featuredStarHtml + '<a href="' + escAttr(editHref) + '" class="brikpanel-pl-product-name-link" title="' + escAttr(p.name) + '"' + (PL.open_in_new_tab ? ' target="_blank" rel="noopener"' : '') + '><span class="brikpanel-pl-product-name-text" dir="auto">' + escHtml(p.name) + '</span></a>' + langTag + typeLabel + '</div>' +
                 rowMetaHtml +
                 phoneLinesHtml +
             '</td>' +
@@ -2226,7 +2340,7 @@
         $pop.on('click', '.brikpanel-pl-stock-popover-save', function () {
             var qty = $pop.find('.brikpanel-pl-stock-popover-qty').val();
             var status = $pop.find('.brikpanel-pl-toggle-opt.is-active').data('value') || 'instock';
-            saveStockPopover(productId, qty, status, $el);
+            saveStockPopover(productId, qty, status, $el, currentStock);
         });
         // Enter in qty field saves
         $pop.on('keydown', '.brikpanel-pl-stock-popover-qty', function (e) {
@@ -2250,12 +2364,15 @@
         }, 50);
     }
 
-    function saveStockPopover(productId, qty, status, $cell) {
+    function saveStockPopover(productId, qty, status, $cell, openedQty) {
         var data = {
             action: 'brikpanel_quick_edit_product',
             security: PL.nonce,
             product_id: productId,
             stock: qty,
+            // The number the box opened with: saved unchanged, the stored
+            // stock stays (orders may have lowered it meanwhile).
+            stock_original: openedQty,
             stock_status: status
         };
 
@@ -2717,10 +2834,26 @@
             loadDrawerVariations(product.id);
         } else {
             $('.brikpanel-pl-qe-simple-only').show();
+            // WooCommerce keeps no stock and no virtual/digital switches for
+            // grouped and external products, and no price or cost of its own
+            // for a group (the save ignores them as well).
+            if (product.type === 'grouped' || product.type === 'external') {
+                $('.brikpanel-pl-qe-simple-only').filter('[data-qe-slug="inventory"], [data-qe-slug="stock_status"], [data-qe-slug="digital"]').hide();
+            }
+            if (product.type === 'grouped') {
+                $('.brikpanel-pl-qe-simple-only').filter('[data-qe-slug="pricing"], [data-qe-slug="cogs"]').hide();
+            }
             $('#bpl-qe-variations').hide().empty();
             $('#bpl-qe-price').val(product.regular_price || '');
             $('#bpl-qe-sale-price').val(product.sale_price || '');
-            $('#bpl-qe-stock').val(product.stock !== null ? product.stock : '');
+            // A WPML translation takes its price from the original product:
+            // the boxes lock and a line says where to change it.
+            var priceLocked = !!product.translation_of;
+            $('#bpl-qe-price, #bpl-qe-sale-price').prop('disabled', priceLocked);
+            $('#bpl-qe-price-lock').prop('hidden', !priceLocked);
+            $('#bpl-qe-price-lock-link').attr('href', priceLocked ? (product.original_edit_url || '#') : '#');
+            var qeStock = (product.stock !== null && product.stock !== undefined) ? String(product.stock) : '';
+            $('#bpl-qe-stock').val(qeStock).attr('data-original', qeStock);
             // COGS — only writes when the field is rendered (slug visible).
             // Avoid `|| ''` here: a legit zero cost arrives as either the
             // string "0" or the JS number 0 depending on whether WC's native
@@ -2838,13 +2971,28 @@
             mainData['custom_tax_ids[' + tax + ']'] = ids.join(',');
         });
 
+        // The product's shared stock (WooCommerce's product-level stock that
+        // its variations sell from): sent only when changed and a number, an
+        // empty value would switch it off. No status: the product's status
+        // decides every variation that follows it.
+        var $sharedStock = isVariable ? $('#bpl-qe-shared-stock') : $();
+        if ($sharedStock.length) {
+            var sharedQty = $.trim($sharedStock.val() || '');
+            if (sharedQty !== '' && sharedQty !== String($sharedStock.attr('data-original'))) {
+                mainData.stock = sharedQty;
+                mainData.stock_original = $sharedStock.attr('data-original') || '';
+            }
+        }
+
         if (!isVariable) {
-            if ($('#bpl-qe-price').length) {
+            // Locked for a WPML translation: its price comes from the original.
+            if ($('#bpl-qe-price').length && !$('#bpl-qe-price').prop('disabled')) {
                 mainData.regular_price = $('#bpl-qe-price').val();
                 mainData.sale_price = $('#bpl-qe-sale-price').val();
             }
             if ($('#bpl-qe-stock').length) {
                 mainData.stock = $('#bpl-qe-stock').val();
+                mainData.stock_original = $('#bpl-qe-stock').attr('data-original') || '';
             }
             if ($('#bpl-qe-stock-status').length) {
                 mainData.stock_status = $('#bpl-qe-stock-status').val();
@@ -2904,8 +3052,12 @@
                     var varId = parseInt($item.data('var-id'));
                     var varData = { action: 'brikpanel_save_variation', security: PL.nonce, variation_id: varId };
 
-                    $item.find('.brikpanel-pl-qe-var-input').each(function () {
+                    // A locked box (a WPML translation's price) is not sent.
+                    $item.find('.brikpanel-pl-qe-var-input').not(':disabled').each(function () {
                         varData[$(this).data('field')] = $(this).val();
+                        if ($(this).data('field') === 'stock') {
+                            varData.stock_original = $(this).attr('data-original') || '';
+                        }
                     });
 
                     $.ajax({
@@ -3034,6 +3186,10 @@
         var bar = document.getElementById('bpl-bulk-bar');
         if (!bar) {
             return;
+        }
+        // Other plugins' actions are asked for once, when the bar first shows.
+        if (count > 0 || mSelecting) {
+            loadPluginActions();
         }
         if (isPhoneList()) {
             // A phone's bar stays up for as long as Select is on, the count in
@@ -3690,7 +3846,7 @@
                     $popup.html('<div class="brikpanel-pl-var-popup-empty">' + escHtml(PL.i18n.no_variations) + '</div>');
                     return;
                 }
-                renderVariationPopup($popup, res.data.variations, field, productId);
+                renderVariationPopup($popup, res.data.variations, field, productId, res.data.parent || null);
             },
             error: function () {
                 $popup.html('<div class="brikpanel-pl-var-popup-empty">' + escHtml(PL.i18n.error) + '</div>');
@@ -3698,22 +3854,39 @@
         });
     }
 
-    function renderVariationPopup($popup, variations, field, productId) {
+    function renderVariationPopup($popup, variations, field, productId, parent) {
         var title = field === 'stock' ? PL.i18n.stock_by_variation : PL.i18n.price_by_variation;
         var html = '<div class="brikpanel-pl-var-popup-header">' +
             '<span class="brikpanel-pl-var-popup-title">' + escHtml(title) + '</span>' +
             '<button class="brikpanel-pl-var-popup-close" aria-label="' + escHtml(PL.i18n.popup_close || 'Close') + '">&times;</button></div>';
 
+        // WooCommerce's shared stock: the product counts one quantity that the
+        // variations without a count of their own sell from. It is shown once,
+        // on top; those variations say "Shared" instead of repeating it (each
+        // box used to show it and Apply saved it into every one: 7 × 40).
+        var shared = field === 'stock' && parent && parent.shared;
         html += '<div class="brikpanel-pl-var-popup-body">';
+        if (shared) {
+            var sharedVal = (parent.stock === null || parent.stock === undefined) ? '' : String(parseInt(parent.stock, 10));
+            html += '<div class="brikpanel-pl-var-popup-row brikpanel-pl-var-popup-shared">';
+            html += '<div class="brikpanel-pl-var-popup-name">' + escHtml(PL.i18n.shared_stock) + '</div>';
+            html += '<div class="brikpanel-pl-var-popup-fields">';
+            html += '<input type="number" class="brikpanel-pl-var-popup-input" data-field="shared_stock" value="' + escAttr(sharedVal) + '" data-original="' + escAttr(sharedVal) + '" min="0" aria-label="' + escAttr(PL.i18n.shared_stock) + '">';
+            html += '</div></div>';
+        }
         for (var i = 0; i < variations.length; i++) {
             var v = variations[i];
             html += '<div class="brikpanel-pl-var-popup-row" data-var-id="' + v.id + '">';
             html += '<div class="brikpanel-pl-var-popup-name">' + escHtml(v.name) + '</div>';
 
-            if (field === 'stock') {
+            if (field === 'stock' && v.shared) {
+                html += '<div class="brikpanel-pl-var-popup-fields"><span class="brikpanel-pl-var-shared">' + escHtml(PL.i18n.var_shared) + '</span></div>';
+            } else if (field === 'stock') {
                 var stockVal = v.stock !== null ? v.stock : '';
                 html += '<div class="brikpanel-pl-var-popup-fields">';
-                html += '<input type="number" class="brikpanel-pl-var-popup-input" data-field="stock" value="' + escAttr(stockVal) + '" min="0" placeholder="—">'; // i18n-ignore: empty-value marker, not text.
+                // data-original: an unchanged box keeps the stored stock,
+                // which orders may have lowered while the window was open.
+                html += '<input type="number" class="brikpanel-pl-var-popup-input" data-field="stock" value="' + escAttr(stockVal) + '" data-original="' + escAttr(stockVal) + '" min="0" placeholder="—">'; // i18n-ignore: empty-value marker, not text.
                 html += '</div>';
             } else {
                 html += '<div class="brikpanel-pl-var-popup-fields">';
@@ -3747,11 +3920,42 @@
         // Apply all
         $popup.on('click', '.brikpanel-pl-var-popup-apply', function () {
             var $btn = $(this);
-            var $rows = $popup.find('.brikpanel-pl-var-popup-row');
-            var pending = $rows.length;
+            // Only rows with a box of their own: a variation that sells from
+            // the shared stock has nothing to send.
+            var $rows = $popup.find('.brikpanel-pl-var-popup-row[data-var-id]').filter(function () {
+                return $(this).find('.brikpanel-pl-var-popup-input').length > 0;
+            });
+            var $sharedInput = $popup.find('.brikpanel-pl-var-popup-shared input[data-field="shared_stock"]');
+            // The shared quantity goes to the product, and only when it was
+            // changed and is a number: an empty value would switch the shared
+            // stock off. Never with a status, which would be forced onto
+            // every variation.
+            var sharedVal = $sharedInput.length ? $.trim($sharedInput.val() || '') : '';
+            var sendShared = $sharedInput.length && sharedVal !== '' && sharedVal !== String($sharedInput.attr('data-original'));
+            var pending = $rows.length + (sendShared ? 1 : 0);
             var saved = 0;
 
+            if (!pending) { closeVariationPopup(); return; }
             $btn.prop('disabled', true).text(PL.i18n.saving);
+
+            var done = function () {
+                pending--;
+                if (pending <= 0) {
+                    showToast(countText(PL.i18n.variations_saved, saved), 'success');
+                    closeVariationPopup();
+                    reconcileList();
+                }
+            };
+
+            if (sendShared) {
+                $.ajax({
+                    url: PL.ajax_url,
+                    type: 'POST',
+                    data: { action: 'brikpanel_quick_edit_product', security: PL.nonce, product_id: productId,
+                        stock: sharedVal, stock_original: $sharedInput.attr('data-original') || '' },
+                    complete: done
+                });
+            }
 
             $rows.each(function () {
                 var $row = $(this);
@@ -3760,6 +3964,9 @@
 
                 $row.find('.brikpanel-pl-var-popup-input').each(function () {
                     data[$(this).data('field')] = $(this).val();
+                    if ($(this).data('field') === 'stock') {
+                        data.stock_original = $(this).attr('data-original') || '';
+                    }
                 });
 
                 $.ajax({
@@ -3769,14 +3976,7 @@
                     success: function (res) {
                         if (res.success) saved++;
                     },
-                    complete: function () {
-                        pending--;
-                        if (pending <= 0) {
-                            showToast(countText(PL.i18n.variations_saved, saved), 'success');
-                            closeVariationPopup();
-                            reconcileList();
-                        }
-                    }
+                    complete: done
                 });
             });
         });
@@ -3820,13 +4020,35 @@
                     $container.html('<p class="brikpanel-pl-empty-note" style="text-align:center;padding:1rem;">' + escHtml(PL.i18n.no_variations) + '</p>');
                     return;
                 }
-                renderDrawerVariations($container, res.data.variations, productId);
+                renderDrawerVariations($container, res.data.variations, productId, res.data.parent || null);
             }
         });
     }
 
-    function renderDrawerVariations($container, variations, productId) {
-        var html = '<div class="brikpanel-pl-qe-var-list">';
+    function renderDrawerVariations($container, variations, productId, parent) {
+        var html = '';
+        // WooCommerce's shared stock: one quantity on the product that the
+        // variations without a count of their own sell from. Edited once,
+        // here; those variations show "Shared" and have no Availability of
+        // their own (the product's status decides theirs).
+        if (parent && parent.shared) {
+            var sharedQty = (parent.stock === null || parent.stock === undefined) ? '' : String(parseInt(parent.stock, 10));
+            html += '<div class="brikpanel-pl-qe-field brikpanel-pl-qe-shared-stock">' +
+                '<label for="bpl-qe-shared-stock">' + escHtml(PL.i18n.shared_stock) + '</label>' +
+                '<input type="number" id="bpl-qe-shared-stock" min="0" value="' + escAttr(sharedQty) + '" data-original="' + escAttr(sharedQty) + '" aria-describedby="bpl-qe-shared-stock-help">' +
+                '<small class="brikpanel-pl-toggle-help" id="bpl-qe-shared-stock-help">' + escHtml(PL.i18n.shared_stock_help) + '</small>' +
+                '</div>';
+        }
+        // A WPML translation takes its variations' prices from the original
+        // product: those boxes lock, one line says where to change them.
+        var lockRow = getProductById(productId);
+        var priceLocked = !!(lockRow && lockRow.translation_of);
+        var lockAttr = priceLocked ? ' disabled' : '';
+        if (priceLocked) {
+            html += '<p class="brikpanel-pl-qe-lock-note">' + escHtml(PL.i18n.price_from_original) +
+                ' <a href="' + escAttr(lockRow.original_edit_url || '#') + '">' + escHtml(PL.i18n.edit_original) + '</a></p>';
+        }
+        html += '<div class="brikpanel-pl-qe-var-list">';
         var cogsVisible = !!PL.qe_cogs_visible;
         for (var i = 0; i < variations.length; i++) {
             var v = variations[i];
@@ -3835,8 +4057,8 @@
             html += '<div class="brikpanel-pl-qe-var-item" data-var-id="' + v.id + '">';
             html += '<div class="brikpanel-pl-qe-var-name">' + escHtml(v.name) + '</div>';
             html += '<div class="brikpanel-pl-qe-var-fields">';
-            html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.price_label || 'Price') + '</label><input type="text" class="brikpanel-pl-qe-var-input" data-field="regular_price" value="' + escAttr(v.regular_price || '') + '"></div>';
-            html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.sale_label || 'Sale') + '</label><input type="text" class="brikpanel-pl-qe-var-input" data-field="sale_price" value="' + escAttr(v.sale_price || '') + '"></div>';
+            html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.price_label || 'Price') + '</label><input type="text" class="brikpanel-pl-qe-var-input" data-field="regular_price" value="' + escAttr(v.regular_price || '') + '"' + lockAttr + '></div>';
+            html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.sale_label || 'Sale') + '</label><input type="text" class="brikpanel-pl-qe-var-input" data-field="sale_price" value="' + escAttr(v.sale_price || '') + '"' + lockAttr + '></div>';
             if (cogsVisible) {
                 // Same falsy guard as the simple-product field: a saved "0"
                 // cost arrives as either string "0" or number 0 (WC native
@@ -3845,7 +4067,12 @@
                 var vCogs = (v.cogs_value === '' || v.cogs_value == null) ? '' : String(v.cogs_value);
                 html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.cogs_label || 'Cost') + '</label><input type="text" class="brikpanel-pl-qe-var-input" data-field="cogs_value" value="' + escAttr(vCogs) + '" inputmode="decimal"></div>';
             }
-            html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.stock_label || 'Stock') + '</label><input type="number" class="brikpanel-pl-qe-var-input" data-field="stock" value="' + escAttr(stockVal) + '" min="0"></div>';
+            if (v.shared) {
+                html += '<div class="brikpanel-pl-qe-field brikpanel-pl-qe-var-shared-field"><label>' + escHtml(PL.i18n.stock_label || 'Stock') + '</label><span class="brikpanel-pl-var-shared">' + escHtml(PL.i18n.var_shared) + '</span></div>';
+                html += '</div></div>';
+                continue;
+            }
+            html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.stock_label || 'Stock') + '</label><input type="number" class="brikpanel-pl-qe-var-input" data-field="stock" value="' + escAttr(stockVal) + '" data-original="' + escAttr(stockVal) + '" min="0"></div>';
             html += '</div>';
             html += '<div class="brikpanel-pl-qe-field"><label>' + escHtml(PL.i18n.stock_status_label || 'Availability') + '</label>';
             html += '<div class="brikpanel-pl-toggle-group" role="radiogroup">' +
@@ -3861,8 +4088,9 @@
 
         $container.html(html).data('parent-id', productId);
 
-        // Toggle click handler for each variation row
-        $container.on('click', '.brikpanel-pl-qe-var-item .brikpanel-pl-toggle-opt', function () {
+        // Toggle click handler for each variation row. The container stays
+        // for the next product: bind once, not once per opening.
+        $container.off('click.bplQeVar').on('click.bplQeVar', '.brikpanel-pl-qe-var-item .brikpanel-pl-toggle-opt', function () {
             var $grp = $(this).closest('.brikpanel-pl-toggle-group');
             $grp.find('.brikpanel-pl-toggle-opt').removeClass('is-active');
             $(this).addClass('is-active');
@@ -4000,6 +4228,9 @@
     }
 
     function openBulkModal() {
+        // Other plugins' actions join the "Selected products" list when they arrive.
+        loadPluginActions();
+
         // Update selected count info
         var count = state.selected.length;
         if (count > 0) {
@@ -4164,7 +4395,8 @@
         var isShipping = action === 'set_weight' || action === 'set_length' ||
                          action === 'set_width' || action === 'set_height';
         // Maintenance actions need no value: they recompute from existing data.
-        var isNoValue = action === 'repair_visibility';
+        // Nor do other plugins' actions: the plugin decides what they do.
+        var isNoValue = action === 'repair_visibility' || action.indexOf(PLUGIN_VALUE) === 0;
         // Rounding swaps the single value input for its own digit + direction picker.
         var isRound = action === 'round_prices';
 
@@ -4209,6 +4441,13 @@
         var which   = activeTab === 'bpl-bulk-tab-sel' ? 'sel' : 'cat';
         var action  = $('#bpl-bulk-action-' + which).val() || '';
         var isTax   = isTaxAction(action);
+
+        // Another plugin's action (only on "Selected products"): WordPress runs
+        // it, as on WooCommerce's list. The window closes once it is confirmed.
+        if (action.indexOf(PLUGIN_VALUE) === 0) {
+            startPluginAction(action.slice(PLUGIN_VALUE.length), closeBulkModal);
+            return;
+        }
 
         // Collect taxonomy term IDs from the visible picker when a tax action runs,
         // plus any brand-new names typed into the free-text box beside it.
@@ -4356,6 +4595,7 @@
         $('#bpl-progress-percent').text(fmtPct(0));
         $('#bpl-progress-fill').css('width', '0%');
         $('#bpl-progress-errors').hide().text('');
+        $('#bpl-progress-note').prop('hidden', true).text('');
         $('#bpl-progress-cancel').show().prop('disabled', false);
         $('#bpl-progress-done').hide();
         $('#bpl-progress-backdrop').addClass('open').attr('aria-hidden', 'false');
@@ -4386,6 +4626,15 @@
                 .text(countText(PL.i18n.bulk_errors_count, errorCount))
                 .show();
         }
+
+        // WPML translations a price action left to their original product:
+        // not an error (the original's new price reaches them), said apart.
+        var leftToOriginal = (bulkJob && bulkJob.translationsSkipped) || 0;
+        if (leftToOriginal > 0) {
+            $('#bpl-progress-note')
+                .text(countText(PL.i18n.bulk_translations_skipped, leftToOriginal))
+                .prop('hidden', false);
+        }
     }
 
     function closeProgressModal() {
@@ -4393,7 +4642,7 @@
     }
 
     function runBulkJob(jobType, params) {
-        bulkJob = { id: null, cancelled: false, totalErrors: 0 };
+        bulkJob = { id: null, cancelled: false, totalErrors: 0, translationsSkipped: 0 };
         openProgressModal(jobType, 0);
 
         var prepareData = $.extend({
@@ -4455,6 +4704,9 @@
             processedSoFar += d.processed || 0;
             if (d.errors && d.errors.length) {
                 bulkJob.totalErrors += d.errors.length;
+            }
+            if (d.translations_skipped) {
+                bulkJob.translationsSkipped += parseInt(d.translations_skipped, 10) || 0;
             }
             updateProgressModal(processedSoFar, d.total);
 
@@ -5317,12 +5569,312 @@
     }
 
     // =========================================================================
+    // OTHER PLUGINS' BULK ACTIONS
+    // =========================================================================
+    // Plugins add bulk actions to WooCommerce's product list: Epos Now's "Send
+    // to Slynk", Yoast's "Bulk edit", Rank Math's and SEOPress's robots
+    // settings. The list asks WordPress for them on that list's own screen
+    // (Brikpanel_Products_List::maybe_send_plugin_bulk_actions(); once a page,
+    // when the selection bar or the Bulk update window first opens) and shows
+    // them in three places: at the end of the bar's "Bulk actions" menu under a
+    // line (a folded bar, a phone's sheet), in a "Plugin actions" menu of their
+    // own while the bar's buttons sit in the row, and in the Bulk update
+    // window's "Selected products" list. A chosen one is posted to WordPress's
+    // bulk action route on edit.php with WordPress's own nonce, the same
+    // request WooCommerce's "Apply" makes: the plugin's own handler runs, and
+    // WordPress sends the browser back here, or wherever the plugin sends it
+    // (Yoast opens its bulk editor).
+    var PB = PL.plugin_bulk || null;
+    var PLUGIN_VALUE = 'plugin__';
+    var PLUGIN_RETURN_KEY = 'bplPluginAction';
+    // The answer costs WordPress about as much as opening a page, so the tab
+    // keeps it for ten minutes. A different user, site, language or set of
+    // active plugins (`sig`, includes/brikpanel-enqueue.php) asks again.
+    var PLUGIN_CACHE_KEY = 'bplPluginActions';
+    var PLUGIN_CACHE_MS = 600000;
+    var pluginActions = { groups: [], byKey: {}, request: null };
+    var pluginSubmitting = false;
+
+    function readPluginCache() {
+        try {
+            var c = JSON.parse(window.sessionStorage.getItem(PLUGIN_CACHE_KEY) || 'null');
+            if (c && c.sig === PB.sig && Array.isArray(c.groups) && (Date.now() - (parseInt(c.ts, 10) || 0)) < PLUGIN_CACHE_MS) {
+                return c.groups;
+            }
+        } catch (e) {
+            // No storage: asked every time instead.
+        }
+        return null;
+    }
+
+    function writePluginCache(groups) {
+        try {
+            window.sessionStorage.setItem(PLUGIN_CACHE_KEY, JSON.stringify({ sig: PB.sig, ts: Date.now(), groups: groups }));
+        } catch (e) {
+            // No storage: asked every time instead.
+        }
+    }
+
+    function loadPluginActions() {
+        if (!PB || !PB.list_url || pluginActions.request) {
+            return;
+        }
+        var cached = readPluginCache();
+        if (cached) {
+            pluginActions.request = true;
+            setPluginActions(cached);
+            return;
+        }
+        pluginActions.request = $.ajax({
+            url: PB.list_url,
+            type: 'GET',
+            dataType: 'json',
+            dataFilter: function (raw) {
+                if (typeof raw !== 'string') return raw;
+                var i = raw.indexOf('{');
+                return i > 0 ? raw.slice(i) : raw;
+            },
+            success: function (res) {
+                if (!res || !res.success || !res.data || !Array.isArray(res.data.groups)) {
+                    return;
+                }
+                writePluginCache(res.data.groups);
+                setPluginActions(res.data.groups);
+            }
+            // On a failure nothing is added: the list works as it did.
+        });
+    }
+
+    function setPluginActions(groups) {
+        var clean = [];
+        var byKey = {};
+        groups.forEach(function (g) {
+            if (!g || !Array.isArray(g.items)) { return; }
+            var label = typeof g.label === 'string' ? g.label : '';
+            var items = g.items.filter(function (it) {
+                return it && typeof it.key === 'string' && it.key !== '' && typeof it.label === 'string' && it.label !== '' && !byKey[it.key];
+            });
+            items.forEach(function (it) { byKey[it.key] = { label: it.label, group: label }; });
+            if (items.length) { clean.push({ label: label, items: items }); }
+        });
+        pluginActions.groups = clean;
+        pluginActions.byKey = byKey;
+        applyPluginActions();
+    }
+
+    // "Yoast SEO: Bulk edit": the plugin's name in front, in this language's order.
+    function pluginActionName(key) {
+        var info = pluginActions.byKey[key];
+        if (!info) { return ''; }
+        if (!info.group || !BF || !PL.i18n.plugin_action_label) { return info.label; }
+        return BF.format(PL.i18n.plugin_action_label, [info.group, info.label]);
+    }
+
+    // A menu row. In a computer's menu the plugin's name stands over its
+    // actions, so the name in front of each one is only read out (screen
+    // readers); a phone's sheet has no headings and shows it.
+    function pluginButtonHtml(item, extraClass) {
+        var full = pluginActionName(item.key) || item.label;
+        var inner = escHtml(full);
+        var cut = full.length - item.label.length;
+        if (cut > 0 && full.slice(cut) === item.label) {
+            inner = '<span class="brikpanel-pl-bulk-prefix">' + escHtml(full.slice(0, cut)) + '</span>' + escHtml(item.label);
+        }
+        return '<button type="button" class="brikpanel-pl-btn secondary small brikpanel-pl-bulk-pa' + extraClass + '" data-bpl-plugin-action="' + escAttr(item.key) + '">' + inner + '</button>';
+    }
+
+    function pluginMenuHtml(extraClass, withLine) {
+        var html = '';
+        pluginActions.groups.forEach(function (g) {
+            if (g.label) {
+                html += '<span class="brikpanel-pl-bulk-group' + extraClass + '" aria-hidden="true">' + escHtml(g.label) + '</span>';
+            }
+            g.items.forEach(function (it) { html += pluginButtonHtml(it, extraClass); });
+        });
+        if (html && withLine) {
+            html = '<span class="brikpanel-pl-menu-sep' + extraClass + '" aria-hidden="true"></span>' + html;
+        }
+        return html;
+    }
+
+    // Draws the actions into their three places, or takes them out: in the
+    // Trash the products can only come back or go for good.
+    function applyPluginActions() {
+        var show = pluginActions.groups.length > 0 && state.status !== 'trash';
+
+        var $main = $('#bpl-bulk-more');
+        $main.children('.brikpanel-pl-bulk-pa-copy').remove();
+        var wrap = document.querySelector('.brikpanel-pl-bulk-plugins');
+        var $own = $('#bpl-bulk-plugins-menu');
+        var $select = $('#bpl-bulk-action-sel');
+        var wasPlugin = ($select.val() || '').indexOf(PLUGIN_VALUE) === 0;
+        $select.children('optgroup.bpl-bulk-plugin-group').remove();
+
+        if (show) {
+            $main.append(pluginMenuHtml(' brikpanel-pl-bulk-pa-copy', true));
+            $own.html(pluginMenuHtml('', false));
+            var opts = '';
+            pluginActions.groups.forEach(function (g) {
+                opts += '<optgroup class="bpl-bulk-plugin-group" label="' + escAttr(g.label || PL.i18n.plugin_actions || '') + '">';
+                g.items.forEach(function (it) {
+                    opts += '<option value="' + escAttr(PLUGIN_VALUE + it.key) + '">' + escHtml(it.label) + '</option>';
+                });
+                opts += '</optgroup>';
+            });
+            $select.append(opts);
+        } else {
+            $own.empty();
+        }
+        if (wrap && wrap.hidden === show) {
+            wrap.hidden = !show;
+            var bar = document.getElementById('bpl-bulk-bar');
+            if (bar && !bar.hidden) {
+                syncBulkFold();
+            }
+        }
+        // The chosen action went away with them: back to the first one.
+        if (wasPlugin && !show) {
+            $select.prop('selectedIndex', 0);
+            refreshBulkValueUI();
+        }
+    }
+
+    function startPluginAction(key, onConfirmed) {
+        var info = pluginActions.byKey[key];
+        if (!info || pluginSubmitting || !PB) {
+            return;
+        }
+        var ids = state.selected.slice();
+        var n = ids.length;
+        if (!n) {
+            showToast(PL.i18n.bulk_no_selection, 'error');
+            return;
+        }
+        var max = parseInt(PB.max, 10) || 999;
+        if (n > max) {
+            showToast(countText(PL.i18n.plugin_action_too_many, max), 'error');
+            return;
+        }
+        var name = pluginActionName(key);
+        askThen(pluralText(PL.i18n.plugin_action_confirm, n, [name, fmtNum(n)]), PL.i18n.plugin_action_run, false, function () {
+            if (onConfirmed) {
+                onConfirmed();
+            }
+            submitPluginAction(key, name, ids);
+        });
+    }
+
+    // The same request WooCommerce's list makes when "Apply" is pressed:
+    // edit.php checks WordPress's bulk nonce and the user, hands the products
+    // to the plugin's handler, and redirects to `_wp_http_referer` (this list,
+    // marked so it can say what ran) or to where the plugin sends it.
+    function submitPluginAction(key, name, ids) {
+        if (pluginSubmitting || !PB.run_url || !PB.nonce) {
+            return;
+        }
+        pluginSubmitting = true;
+
+        var token = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        var here = window.location.pathname + window.location.search;
+        try {
+            window.sessionStorage.setItem(PLUGIN_RETURN_KEY, JSON.stringify({ token: token, name: name, n: ids.length, url: here, ts: Date.now() }));
+        } catch (e) {
+            // No storage: the list comes back without the message.
+        }
+        var back = here + (here.indexOf('?') === -1 ? '?' : '&') + 'bpl_pa=' + encodeURIComponent(token);
+
+        var fields = [['post_type', 'product'], ['action', key], ['_wpnonce', PB.nonce], ['_wp_http_referer', back]];
+        ids.forEach(function (id) { fields.push(['post[]', String(id)]); });
+
+        // WooCommerce's list sends its form in the address (GET), and an older
+        // plugin may read the products from there only, so the same here. A
+        // selection too long for an address goes in the body instead, with
+        // `action` still in the address: BrikPanel lets edit.php through only
+        // with it (Brikpanel_Products_List::redirect_default_list()).
+        var base = PB.run_url.split('?')[0];
+        var query = fields.map(function (f) { return encodeURIComponent(f[0]) + '=' + encodeURIComponent(f[1]); }).join('&');
+        var form = document.createElement('form');
+        if ((base + '?' + query).length <= 6000) {
+            form.method = 'get';
+            form.action = base;
+        } else {
+            form.method = 'post';
+            form.action = base + '?post_type=product&action=' + encodeURIComponent(key);
+        }
+        form.hidden = true;
+        fields.forEach(function (f) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = f[0];
+            input.value = f[1];
+            form.appendChild(input);
+        });
+        document.body.appendChild(form);
+
+        setBulkLoading(true);
+        form.submit();
+    }
+
+    // Back from edit.php: the address loses the mark (and WordPress's `paged`,
+    // and anything the plugin added for its own screen) and the list says what
+    // ran. Only for the request this tab sent, within ten minutes.
+    function handlePluginActionReturn() {
+        var params;
+        try { params = new URLSearchParams(window.location.search); }
+        catch (e) { return; }
+        var token = params.get('bpl_pa');
+        if (!token) {
+            return;
+        }
+        var saved = null;
+        try {
+            saved = JSON.parse(window.sessionStorage.getItem(PLUGIN_RETURN_KEY) || 'null');
+            window.sessionStorage.removeItem(PLUGIN_RETURN_KEY);
+        } catch (e) {
+            saved = null;
+        }
+        var ours = !!saved && saved.token === token && (Date.now() - (parseInt(saved.ts, 10) || 0)) < 600000;
+        var url;
+        if (ours && typeof saved.url === 'string' && saved.url.indexOf(window.location.pathname) === 0) {
+            url = saved.url;
+        } else {
+            params.delete('bpl_pa');
+            params.delete('paged');
+            var qs = params.toString();
+            url = window.location.pathname + (qs ? '?' + qs : '');
+        }
+        try { window.history.replaceState(null, '', url + window.location.hash); } catch (e) {}
+
+        var n = ours ? (parseInt(saved.n, 10) || 0) : 0;
+        if (n > 0 && typeof saved.name === 'string' && saved.name) {
+            showToast(pluralText(PL.i18n.plugin_action_done, n, [saved.name, fmtNum(n)]), 'success');
+        }
+    }
+
+    function initPluginBulkActions() {
+        $(document).on('click', '[data-bpl-plugin-action]', function () {
+            startPluginAction($(this).attr('data-bpl-plugin-action'));
+        });
+        // Back to this page from the browser's cache (the Back button after
+        // the request left): the list can send again.
+        window.addEventListener('pageshow', function (e) {
+            if (e.persisted && pluginSubmitting) {
+                pluginSubmitting = false;
+                setBulkLoading(false);
+            }
+        });
+    }
+
+    // =========================================================================
     // BOOT
     // =========================================================================
 
     function init() {
+        // First: it may put the list's own address back before the state is read from it.
+        handlePluginActionReturn();
         bindEvents();
         initBulkModal();
+        initPluginBulkActions();
         readTaxFiltersFromDom();
         readStateFromUrl();
         // A search or a filter carried in by the URL (a reload, the editor's

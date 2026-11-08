@@ -60,6 +60,10 @@
  * Everything is filterable so site owners and integrators can opt a page or a
  * handle back in.
  *
+ * One exception to "core is always kept", on phones only: a short list of
+ * desktop-only scripts from WordPress and WooCommerce (the Ctrl+K command
+ * palette and the data layer it searches), see brikpanel_isolation_sweep_phone().
+ *
  * @package BrikPanel
  * @since 3.2.11
  */
@@ -300,3 +304,91 @@ function brikpanel_isolation_sweep_assets() {
 	}
 }
 add_action( 'admin_enqueue_scripts', 'brikpanel_isolation_sweep_assets', PHP_INT_MAX );
+
+/**
+ * Whether the current admin screen is WooCommerce's order list or order
+ * screen (HPOS or the posts table): the phone app spends most of its time
+ * there, and BrikPanel draws them although they are WooCommerce's pages.
+ *
+ * @return bool
+ */
+function brikpanel_isolation_is_orders_screen() {
+	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+	if ( ! $screen || ! isset( $screen->id ) ) {
+		return false;
+	}
+	$ids = array( 'woocommerce_page_wc-orders', 'edit-shop_order', 'shop_order' );
+	if ( function_exists( 'wc_get_page_screen_id' ) ) {
+		$ids[] = (string) wc_get_page_screen_id( 'shop-order' );
+	}
+	return in_array( (string) $screen->id, $ids, true );
+}
+
+/**
+ * Phones: leave out the scripts a phone has no use for on BrikPanel's screens.
+ *
+ * WordPress 7 and WooCommerce load their Ctrl+K command palette on every admin
+ * screen, and with it the data layer it searches (`wp-abilities`, `wc-entities`).
+ * All of them lean on `wp-core-data`, which depends on the whole block editor:
+ * on the BrikPanel dashboard of a live store that was 45 of its 113 files and
+ * 3.3 MB of its 5.8 MB (measured 2026-11-07). A phone has no keyboard to open
+ * the palette, yet it read all of that before the screen answered a tap: with a
+ * phone's processor on 4G the dashboard was ready after 6 seconds and the product
+ * screen after 15. The product screen also leaves out two scripts that cannot run
+ * there: WooCommerce's guided tour of its classic product editor, which pulls in
+ * WooCommerce's whole admin app, and Yoast SEO's AI content planner, a banner
+ * drawn on the first block of the block editor that pulls in the whole block
+ * editor (Yoast's SEO card keeps its own scripts). On a copy of that store, with
+ * a phone's processor on 4G and an empty cache, the dashboard downloaded 1.7 MB
+ * instead of 2.3 and was ready 2.3 seconds sooner; the product screen downloaded
+ * 3.8 MB instead of 5.0, was ready 1.4 seconds sooner and had no block editor
+ * left on it (measured 2026-11-08).
+ *
+ * Phones only (wp_is_mobile(); an iPad presents itself as a Mac and keeps
+ * everything), on BrikPanel's own pages and the order screens. Dequeue only: a
+ * script that needs one of these names it as a dependency and WordPress loads
+ * it back. Owner decision (8 November 2026): no setting; the list is filterable.
+ *
+ * @return void
+ */
+function brikpanel_isolation_sweep_phone() {
+	if ( ! is_admin() || wp_doing_ajax() || ! function_exists( 'wp_is_mobile' ) || ! wp_is_mobile() ) {
+		return;
+	}
+	// People the BrikPanel interface is switched off for see the native admin.
+	if ( function_exists( 'brikpanel_access_should_neutralize' ) && brikpanel_access_should_neutralize() ) {
+		return;
+	}
+	$page = brikpanel_isolation_current_page();
+	if ( '' === $page && ! brikpanel_isolation_is_orders_screen() ) {
+		return;
+	}
+
+	$handles = array(
+		'wp-core-commands',
+		'wc-admin-command-palette',
+		'wc-admin-command-palette-analytics',
+		'wp-abilities',
+		'wc-entities',
+	);
+	if ( 'brikpanel-product-editor' === $page ) {
+		$handles[] = 'wc-admin-variable-product-tour';
+		$handles[] = 'yoast-seo-ai-content-planner';
+	}
+
+	/**
+	 * Scripts left out on a phone on BrikPanel's screens and the order screens.
+	 *
+	 * @since 3.3.48
+	 *
+	 * @param string[] $handles Script handles to dequeue.
+	 * @param string   $page    BrikPanel page slug, '' on an order screen.
+	 */
+	$handles = apply_filters( 'brikpanel_phone_skip_scripts', $handles, $page );
+	foreach ( (array) $handles as $handle ) {
+		if ( is_string( $handle ) && '' !== $handle ) {
+			wp_dequeue_script( $handle );
+		}
+	}
+}
+add_action( 'admin_enqueue_scripts', 'brikpanel_isolation_sweep_phone', PHP_INT_MAX );

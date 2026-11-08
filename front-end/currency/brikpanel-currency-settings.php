@@ -114,7 +114,7 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
         'name' => __( 'Currency', 'brikpanel' ),
         'type' => 'title',
         'id'   => 'brk_currency_title',
-        'desc' => __( 'When your store takes orders in more than one currency, BrikPanel converts every order to your store currency before adding it up, so Revenue, Average Order Value and the sales chart are never a meaningless mix of currencies. If you use a multi-currency plugin such as CURCY, the exact rate from the day of each sale is read automatically from the order; you only need the rates below for currencies that arrive without one.', 'brikpanel' ),
+        'desc' => __( 'When your store takes orders in more than one currency, BrikPanel converts every order to your store currency before adding it up, so Revenue, Average Order Value and the sales chart are never a meaningless mix of currencies. If you use a multi-currency plugin such as CURCY, the exact rate from the day of each sale is read automatically from the order; you only need the rates below for currencies that arrive without one. The same rates convert the spend of Google Ads and Meta accounts that bill in another currency, so it counts in Expenses, Net profit and ROAS.', 'brikpanel' ),
     ];
     $fields[] = [
         // The id is the option this card writes, so the settings export walker
@@ -132,13 +132,22 @@ add_filter( 'brikpanel_settings_fields', function ( $fields ) {
 
 /**
  * Render the rate table. One row per non-base currency found in the store's
- * order history: "1 <CUR> = [ rate ] <BASE>".
+ * order history or billed by a connected ad account: "1 <CUR> = [ rate ] <BASE>",
+ * with what uses that rate beside it.
  */
 function brikpanel_render_fx_rates_field() {
-    $base       = strtoupper( (string) brikpanel_base_currency() );
-    $currencies = brikpanel_order_currencies_in_use();
-    $foreign    = array_values( array_diff( $currencies, [ $base ] ) );
-    $rates      = brikpanel_manual_fx_rates();
+    $base   = strtoupper( (string) brikpanel_base_currency() );
+    $orders = array_values( array_diff( array_map( 'strtoupper', brikpanel_order_currencies_in_use() ), [ $base ] ) );
+    // Ad accounts that bill in another currency: the same rate converts their
+    // spend (brikpanel_ad_spend_to_store_currency()).
+    $ads     = class_exists( 'Brikpanel_Ads_Settings' ) ? Brikpanel_Ads_Settings::foreign_currencies() : [];
+    $foreign = array_values( array_unique( array_merge( $orders, array_keys( $ads ) ) ) );
+    sort( $foreign );
+    $rates           = brikpanel_manual_fx_rates();
+    $platform_labels = [
+        'google_ads' => __( 'Google Ads', 'brikpanel' ),
+        'meta_ads'   => __( 'Meta Ads', 'brikpanel' ),
+    ];
     ?>
     </table>
     <section class="bp-settings-card bp-settings-card--custom bp-fx-card">
@@ -170,6 +179,14 @@ function brikpanel_render_fx_rates_field() {
                 <?php foreach ( $foreign as $code ) :
                     $code = strtoupper( $code );
                     $val  = isset( $rates[ $code ] ) ? $rates[ $code ] : '';
+                    // What this rate converts, so a row the merchant never
+                    // took an order in still explains itself.
+                    $uses = in_array( $code, $orders, true ) ? [ __( 'Orders', 'brikpanel' ) ] : [];
+                    foreach ( (array) ( $ads[ $code ] ?? [] ) as $platform ) {
+                        if ( isset( $platform_labels[ $platform ] ) ) {
+                            $uses[] = $platform_labels[ $platform ];
+                        }
+                    }
                     ?>
                     <div class="bp-fx-row">
                         <span class="bp-fx-unit">1 <?php echo esc_html( $code ); ?></span>
@@ -186,12 +203,22 @@ function brikpanel_render_fx_rates_field() {
                             autocomplete="off"
                         >
                         <span class="bp-fx-base"><?php echo esc_html( $base ); ?></span>
+                        <?php if ( $uses ) : ?>
+                            <span class="bp-fx-uses"><?php echo esc_html( implode( ', ', $uses ) ); ?></span>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
             </div>
-            <p class="bp-fx-hint">
-                <?php esc_html_e( 'Leave a rate empty to count those orders at their original number (no conversion). Orders that already carry a rate from your multi-currency plugin ignore the values here and always use their own day-of-sale rate.', 'brikpanel' ); ?>
-            </p>
+            <?php if ( $orders ) : ?>
+                <p class="bp-fx-hint">
+                    <?php esc_html_e( 'Leave a rate empty to count those orders at their original number (no conversion). Orders that already carry a rate from your multi-currency plugin ignore the values here and always use their own day-of-sale rate.', 'brikpanel' ); ?>
+                </p>
+            <?php endif; ?>
+            <?php if ( $ads ) : ?>
+                <p class="bp-fx-hint">
+                    <?php esc_html_e( 'Ad spend in a currency without a rate is not counted in Expenses, Net profit or ROAS. The rate you enter is used for every day of spend.', 'brikpanel' ); ?>
+                </p>
+            <?php endif; ?>
         <?php endif; ?>
     </section>
     <table class="form-table">
@@ -213,14 +240,16 @@ function brikpanel_fx_rates_styles() {
         .bp-fx-card__title{margin:0 0 .25rem;font-size:var(--brikpanel-card-title-size,.9375rem);font-weight:600;color:#303030}
         .bp-fx-card__sub{margin:0 0 1rem;font-size:.8125rem;color:#616161}
         .bp-fx-list{display:flex;flex-direction:column;gap:.625rem}
-        .bp-fx-row{display:flex;align-items:center;gap:.625rem}
+        .bp-fx-row{display:flex;flex-wrap:wrap;align-items:center;gap:.625rem}
         .bp-fx-unit{min-width:84px;font-weight:600;font-size:.875rem;color:#303030}
         /* contrast-ok: the "=" between a currency and its rate, decoration. */
         .bp-fx-eq{color:#8a8a8a;font-weight:600}
         .bp-fx-input{width:160px;padding:.5rem .625rem;border:1px solid #8a8a8a;border-radius:.5rem;font-size:.875rem}
         .bp-fx-input:focus{border-color:#303030;box-shadow:0 0 0 1px #303030;outline:none}
         .bp-fx-base{font-weight:600;font-size:.875rem;color:#616161}
+        .bp-fx-uses{font-size:.75rem;color:#616161}
         .bp-fx-hint,.bp-fx-empty{margin:1rem 0 0;font-size:.75rem;color:#616161;line-height:1.5}
+        .bp-fx-hint + .bp-fx-hint{margin-top:.375rem}
         .bp-fx-empty{margin-top:0}
     </style>
     <?php

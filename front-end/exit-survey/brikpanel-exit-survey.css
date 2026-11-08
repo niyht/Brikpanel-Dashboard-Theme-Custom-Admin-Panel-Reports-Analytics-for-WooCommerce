@@ -163,6 +163,77 @@ html.bp-exit-lock {
 	width: 100%;
 }
 
+/* The speed numbers "slow" and "something did not work" send, listed before
+   Send: closed by default, a quiet line under the comment box. */
+.bp-exit__diag {
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: #616161;
+}
+
+.bp-exit__diag > summary {
+	width: fit-content;
+	font-weight: 550;
+	color: #303030;
+	border-radius: 0.25rem;
+	cursor: pointer;
+}
+
+.bp-exit__diag > summary:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+
+.bp-exit__diag-text {
+	margin: 0.375rem 0 0;
+}
+
+.bp-exit__diag-head {
+	margin: 0.75rem 0 0.25rem;
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: #303030;
+}
+
+/* Label and value on one line; a long translation wraps under its label and
+   the value keeps its place at the end. */
+.bp-exit__facts {
+	margin: 0;
+	padding: 0.125rem 0.75rem;
+	background: #f7f7f7;
+	border: 1px solid #e3e3e3;
+	border-radius: 0.5rem;
+}
+
+.bp-exit__fact {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding-block: 0.3125rem;
+}
+
+.bp-exit__fact + .bp-exit__fact {
+	border-top: 1px solid #e3e3e3;
+}
+
+.bp-exit__fact dt {
+	min-width: 0;
+	margin: 0;
+	color: #616161;
+}
+
+.bp-exit__fact dd {
+	flex: none;
+	margin: 0;
+	color: #303030;
+	font-weight: 550;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* Two of these: the plain one and the one naming the speed numbers; the
+   script shows one, the other keeps the browser's [hidden]. */
 .bp-exit__privacy {
 	margin: 0;
 	padding: 0 1.5rem 1rem;

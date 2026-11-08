@@ -101,6 +101,21 @@ function brikpanel_brikcontrol_register_settings_field( $fields ) {
             'desc'    => __( 'When on, the Store Health page, topbar shield and daily background scans are active. When off, the entire module is dormant: no menu item, no topbar icon, and no scheduled scans.', 'brikpanel' ),
             'default' => 'yes',
         ],
+        // Owner decision (11 Oct 2026, wp.org request "bot traffic cleanup
+        // flags my real paid traffic"): the nightly cleanup can be switched
+        // off, on by default as before. Read by
+        // Brikpanel_BrikControl_Bot_Traffic_Check::nightly_enabled().
+        [
+            'name'    => __( 'Clean up bot traffic every night', 'brikpanel' ),
+            'id'      => 'brikpanel_bot_traffic_nightly',
+            'type'    => 'checkbox',
+            'desc'    => brikpanel_safe_sprintf(
+                /* translators: %s: label of the Store Health cleanup button, "Clean up bot traffic". */
+                __( 'When on, Store Health lowers the past days that bots inflated every night, and you can undo it. When off, bot traffic is only listed on the Store Health page until you click "%s".', 'brikpanel' ),
+                __( 'Clean up bot traffic', 'brikpanel' )
+            ),
+            'default' => 'yes',
+        ],
         [
             'type' => 'sectionend',
             'id'   => 'brk_brikcontrol_title',
@@ -156,7 +171,7 @@ function brikpanel_brikcontrol_stand_down() {
     if ( ! class_exists( 'Brikpanel_Cron' ) || ! Brikpanel_Cron::is_available() ) {
         return;
     }
-    Brikpanel_Cron::stand_down( [ 'brikpanel_brikcontrol_scan', 'brikpanel_brikcontrol_scan_batch', 'brikpanel_bot_traffic_autoclean' ] );
+    Brikpanel_Cron::stand_down( [ 'brikpanel_brikcontrol_scan', 'brikpanel_brikcontrol_scan_batch', 'brikpanel_bot_traffic_autoclean', 'brikpanel_unused_images_scan_step' ] );
 }
 
 // =============================================================================
@@ -183,6 +198,8 @@ require_once BRIKPANEL_PATH . 'front-end/brikcontrol/checks/class-brikpanel-brik
 require_once BRIKPANEL_PATH . 'front-end/brikcontrol/class-brikpanel-brikcontrol-registry.php';
 require_once BRIKPANEL_PATH . 'front-end/brikcontrol/class-brikpanel-brikcontrol-runner.php';
 require_once BRIKPANEL_PATH . 'front-end/brikcontrol/class-brikpanel-brikcontrol.php';
+require_once BRIKPANEL_PATH . 'front-end/brikcontrol/class-brikpanel-brikcontrol-unused-images-scanner.php';
+require_once BRIKPANEL_PATH . 'front-end/brikcontrol/class-brikpanel-brikcontrol-unused-images.php';
 
 // Default check registration. Other plugins can extend by hooking the
 // `brikpanel_brikcontrol_checks` filter or calling
@@ -195,6 +212,10 @@ Brikpanel_BrikControl_Registry::register( new Brikpanel_BrikControl_Cost_Duplica
 
 // Boot the public façade (admin menu + AJAX).
 Brikpanel_BrikControl::instance();
+
+// The unused images card (3.3.39): a tool under the checks, not a check. Its
+// scan runs only after a click, a slice per background job.
+Brikpanel_BrikControl_Unused_Images::boot();
 
 // Register Action Scheduler handlers + recurring schedule. The register hook
 // fires on init priority 20 once Action Scheduler is ready, and lets the

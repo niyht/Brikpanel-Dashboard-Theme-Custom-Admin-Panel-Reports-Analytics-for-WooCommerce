@@ -656,6 +656,9 @@ function brikpanel_nav_request_groups( $file, array $args ) {
 				}
 				break;
 			case 'brikpanel-merge-orders':
+			case 'brikpanel-segments':
+				// Merge orders and the Orders explorer open from the orders
+				// list and show orders: closed wherever that list is closed.
 				$groups[] = [ $orders_screen( 'shop_order' ), $list( 'shop_order' ) ];
 				break;
 			case 'wc-orders':
@@ -1058,8 +1061,10 @@ function brikpanel_nav_blocked_sources_meta_key() {
  *
  * The palette searches over admin-ajax, where WordPress builds no menu, so the
  * answer is worked out on full page loads (from the page guard) and kept in
- * user meta, written only when it changes. Orders, products and customers
- * each open their own screens (an order, the product editor, a user profile).
+ * user meta, written only when it changes. Orders and products each open
+ * their own screens (an order, the product editor). A customer opens on the
+ * Customers screen, or on the WordPress profile when that one is closed, so
+ * the two are noted apart ('customers', 'users') and the palette decides.
  *
  * @return void
  */
@@ -1071,7 +1076,8 @@ function brikpanel_nav_remember_blocked_sources() {
 	$screens = [
 		'orders'    => function_exists( 'brikpanel_wc_orders_list_url' ) ? brikpanel_wc_orders_list_url() : admin_url( 'edit.php?post_type=shop_order' ),
 		'products'  => admin_url( 'admin.php?page=brikpanel-product-editor&product_id=1' ),
-		'customers' => admin_url( 'users.php' ),
+		'customers' => admin_url( 'admin.php?page=brikpanel-customers' ),
+		'users'     => admin_url( 'users.php' ),
 	];
 	$closed = [];
 	foreach ( $screens as $source => $url ) {
@@ -1099,7 +1105,8 @@ function brikpanel_nav_remember_blocked_sources() {
  * setting and the user's role again, so turning the setting off opens the
  * sources at once.
  *
- * @param string $source Source id ('orders', 'products', 'customers').
+ * @param string $source Source id ('orders', 'products'), or a screen
+ *                       customer results open ('customers', 'users').
  * @return bool
  */
 function brikpanel_nav_search_source_blocked( $source ) {

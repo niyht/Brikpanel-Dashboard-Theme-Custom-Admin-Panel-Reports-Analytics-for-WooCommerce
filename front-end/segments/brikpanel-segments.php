@@ -46,11 +46,16 @@ class Brikpanel_Segments {
 	private $is_hpos = null;
 
 	public function __construct() {
-		if ( get_option( 'brikpanel_modern_segments', 'yes' ) !== 'yes' ) {
-			return;
+		// The switch hides this screen and nothing else. The Customers page
+		// reads its customer list through the same AJAX actions below, and
+		// every one of them still checks the nonce and manage_woocommerce.
+		if ( get_option( 'brikpanel_modern_segments', 'yes' ) === 'yes' ) {
+			// After WooCommerce builds its menu: the screen goes under it.
+			add_action( 'admin_menu', [ $this, 'register_page' ], 30 );
+			// Its way in: a link after the orders list's filters.
+			add_action( 'woocommerce_order_list_table_extra_tablenav', [ $this, 'print_orders_list_link_hpos' ], 10, 2 );
+			add_action( 'manage_posts_extra_tablenav', [ $this, 'print_orders_list_link_legacy' ] );
 		}
-
-		add_action( 'admin_menu', [ $this, 'register_page' ] );
 
 		add_action( 'wp_ajax_brikpanel_segments_filter_options', [ $this, 'ajax_filter_options' ] );
 		add_action( 'wp_ajax_brikpanel_segments_query_orders', [ $this, 'ajax_query_orders' ] );
@@ -76,25 +81,86 @@ class Brikpanel_Segments {
 	// PAGE REGISTRATION
 	// =========================================================================
 
+	/**
+	 * The Orders explorer: a screen under WooCommerce's menu with no sidebar
+	 * row of its own (Orders stays highlighted, brikpanel_screen_menu_current_row()),
+	 * opened from the Orders list. Its address keeps the old Segments slug, so
+	 * links and bookmarks to Segments still open the order list.
+	 *
+	 * @return void
+	 */
 	public function register_page() {
-		// Promoted to a top-level menu item; the modern-nav layer
-		// (front-end/navigation/) re-positions it directly after Products.
-		$hook = add_menu_page(
-			__( 'Segments', 'brikpanel' ),
-			__( 'Segments', 'brikpanel' ),
-			'manage_woocommerce',
-			self::PAGE_SLUG,
-			[ $this, 'render_page' ],
-			'dashicons-chart-bar',
-			56.6
-		);
+		$title = __( 'Orders explorer', 'brikpanel' );
+		$hooks = function_exists( 'brikpanel_add_screen_page' )
+			? brikpanel_add_screen_page( 'woocommerce', $title, 'manage_woocommerce', self::PAGE_SLUG, [ $this, 'render_page' ] )
+			: array_filter( [ add_submenu_page( '', $title, '', 'manage_woocommerce', self::PAGE_SLUG, [ $this, 'render_page' ] ) ] );
 
-		if ( $hook ) {
-			add_action( 'load-' . $hook, function () {
-				global $title;
-				$title = __( 'Segments', 'brikpanel' );
+		foreach ( $hooks as $hook ) {
+			add_action( 'load-' . $hook, static function () {
+				// Set before admin-header.php runs, or WordPress strips a null title.
+				$GLOBALS['title'] = __( 'Orders explorer', 'brikpanel' );
 			} );
 		}
+	}
+
+	// =========================================================================
+	// LINK FROM THE ORDERS LIST
+	// =========================================================================
+
+	/**
+	 * "Orders explorer" after the Filter button of WooCommerce's order list
+	 * (HPOS). The screen has no sidebar row, so this link is how people find
+	 * it. BrikPanel's own list moves it next to the search button
+	 * (brikpanelOrdersExplorerLink() in brikpanel-orders.js).
+	 *
+	 * @param string $order_type Order type of the list.
+	 * @param string $which      'top' or 'bottom'.
+	 * @return void
+	 */
+	public function print_orders_list_link_hpos( $order_type, $which ) {
+		if ( 'shop_order' === $order_type && 'top' === $which ) {
+			$this->print_orders_list_link( false );
+		}
+	}
+
+	/**
+	 * The same link on the order list of posts storage, where the hook fires
+	 * after the filters' box closes: it gets a box of its own.
+	 *
+	 * @param string $which 'top' or 'bottom'.
+	 * @return void
+	 */
+	public function print_orders_list_link_legacy( $which ) {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( 'top' === $which && $screen && 'edit-shop_order' === $screen->id ) {
+			$this->print_orders_list_link( true );
+		}
+	}
+
+	/**
+	 * Printed only for someone who can open the screen: not while it is off,
+	 * nor for a user BrikPanel or its access rules keep out of it.
+	 *
+	 * @param bool $own_box Wrap the link in a box of the list's filter row.
+	 * @return void
+	 */
+	private function print_orders_list_link( $own_box ) {
+		$url = function_exists( 'brikpanel_module_url' ) ? brikpanel_module_url( self::PAGE_SLUG, [], '', false ) : '';
+		if ( '' === $url ) {
+			return;
+		}
+		if ( function_exists( 'brikpanel_nav_url_blocked_for_current_user' ) && brikpanel_nav_url_blocked_for_current_user( $url ) ) {
+			return;
+		}
+		$link = sprintf(
+			'<a class="button bp-orders-explorer" href="%1$s">%2$s</a>',
+			esc_url( $url ),
+			esc_html__( 'Orders explorer', 'brikpanel' )
+		);
+		if ( $own_box ) {
+			$link = '<div class="alignleft actions bp-orders-explorer-wrap">' . $link . '</div>';
+		}
+		echo $link; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from esc_url() and esc_html__() above.
 	}
 
 	// =========================================================================
@@ -127,6 +193,11 @@ class Brikpanel_Segments {
 		$order_statuses = [];
 		if ( function_exists( 'wc_get_order_statuses' ) ) {
 			foreach ( wc_get_order_statuses() as $slug => $label ) {
+				// The block checkout's draft is never listed (query_orders()),
+				// so a "Draft" choice could only ever show an empty list.
+				if ( 'wc-checkout-draft' === $slug ) {
+					continue;
+				}
 				$order_statuses[] = [
 					'value' => preg_replace( '/^wc-/', '', $slug ),
 					'label' => $label,
@@ -278,6 +349,8 @@ class Brikpanel_Segments {
 			'spent_max'       => null,
 			'last_order_from' => '',
 			'last_order_to'   => '',
+			'first_order_from' => '',
+			'first_order_to'  => '',
 			'registered_from' => '',
 			'registered_to'   => '',
 			'rfm_segments'    => [],
@@ -288,7 +361,7 @@ class Brikpanel_Segments {
 			'order'           => 'desc',
 		];
 
-		foreach ( [ 'date_from', 'date_to', 'city', 'coupon', 'search', 'last_order_from', 'last_order_to', 'registered_from', 'registered_to', 'preset', 'sort', 'order' ] as $k ) {
+		foreach ( [ 'date_from', 'date_to', 'city', 'coupon', 'search', 'last_order_from', 'last_order_to', 'first_order_from', 'first_order_to', 'registered_from', 'registered_to', 'preset', 'sort', 'order' ] as $k ) {
 			if ( isset( $input[ $k ] ) ) {
 				$f[ $k ] = sanitize_text_field( wp_unslash( $input[ $k ] ) );
 			}
@@ -348,36 +421,7 @@ class Brikpanel_Segments {
 	 * @return array{0: string, 1: string[]} [ SQL, params ]
 	 */
 	private function product_line_exists_sql( $order_col, array $ids, $alias ) {
-		global $wpdb;
-
-		$ids          = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
-		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%s' ) );
-		$li           = $alias . 'li';
-		$im           = $alias . 'im';
-
-		$sql = "EXISTS (SELECT 1 FROM {$wpdb->prefix}woocommerce_order_items {$li}
-				INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta {$im}
-					ON {$im}.order_item_id = {$li}.order_item_id AND {$im}.meta_key IN ('_product_id','_variation_id')
-				WHERE {$li}.order_id = {$order_col} AND {$li}.order_item_type = 'line_item' AND {$im}.meta_value IN ({$placeholders}))";
-
-		return [ $sql, array_map( 'strval', $ids ) ];
-	}
-
-	/**
-	 * The expression that keys an order to its customer: the account when there
-	 * is one, otherwise the billing email (guests).
-	 *
-	 * @param bool   $hpos  Orders live in WooCommerce's own tables.
-	 * @param string $alias Alias of the orders table in the query.
-	 * @return string
-	 */
-	private function customer_key_sql( $hpos, $alias ) {
-		global $wpdb;
-
-		if ( $hpos ) {
-			return "IF({$alias}.customer_id > 0, CONCAT('u:', {$alias}.customer_id), CONCAT('e:', LOWER({$alias}.billing_email)))";
-		}
-		return "IFNULL((SELECT CASE WHEN pm_u.meta_value IS NOT NULL AND pm_u.meta_value+0 > 0 THEN CONCAT('u:', pm_u.meta_value) ELSE CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id={$alias}.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))) END FROM {$wpdb->postmeta} pm_u WHERE pm_u.post_id={$alias}.ID AND pm_u.meta_key='_customer_user'  ORDER BY pm_u.meta_id LIMIT 1), CONCAT('e:', LOWER((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id={$alias}.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))))";
+		return Brikpanel_Customers_Engine::product_line_exists_sql( $order_col, $ids, $alias );
 	}
 
 	/**
@@ -407,19 +451,7 @@ class Brikpanel_Segments {
 	 * @return void
 	 */
 	private function add_day_window( $column, $from, $to, array &$clauses, array &$params ) {
-		$bounds = brikpanel_local_range_bounds_utc( $from, $to );
-
-		// An unparseable date yields no bound at all rather than an epoch one, so
-		// a hand-edited export URL widens the result set instead of emptying it.
-		if ( '' !== $bounds['start'] ) {
-			$clauses[] = $column . ' >= %s';
-			$params[]  = $bounds['start'];
-		}
-
-		if ( '' !== $bounds['end_exclusive'] ) {
-			$clauses[] = $column . ' < %s';
-			$params[]  = $bounds['end_exclusive'];
-		}
+		Brikpanel_Customers_Engine::day_window( $column, $from, $to, $clauses, $params );
 	}
 
 	/**
@@ -507,9 +539,19 @@ class Brikpanel_Segments {
 					$f['order_count_min'] = 5;
 				}
 				break;
+			// A new customer is someone whose first paid order falls in the window,
+			// guests included. It used to read the sign-up date, which no guest
+			// has, so a store of guest checkouts never had a "new" customer.
 			case 'new_customers':
-				if ( $f['registered_from'] === '' ) {
-					$f['registered_from'] = brikpanel_store_date( 'Y-m-d', '-29 days' );
+				if ( $f['first_order_from'] === '' ) {
+					$f['first_order_from'] = brikpanel_store_date( 'Y-m-d', '-29 days' );
+				}
+				break;
+			// The bell's "New customers today": the same rule for one store day.
+			case 'new_today':
+				if ( $f['first_order_from'] === '' && $f['first_order_to'] === '' ) {
+					$f['first_order_from'] = brikpanel_store_date( 'Y-m-d' );
+					$f['first_order_to']   = $f['first_order_from'];
 				}
 				break;
 			case 'one_time':
@@ -569,14 +611,18 @@ class Brikpanel_Segments {
 		$params = [];
 		$where  = [];
 
+		// Both stores keep a block checkout draft as 'wc-checkout-draft'
+		// ('checkout-draft' is only what WC_Order::get_status() returns). Up to
+		// 3.3.40 it was left in: a cart left on the checkout page topped this
+		// list as a "Draft" order and counted in its totals and CSV.
 		if ( $hpos ) {
 			$from = "{$wpdb->prefix}wc_orders o";
 			$where[] = "o.type = 'shop_order'";
-			$where[] = "o.status NOT IN ('trash','auto-draft','checkout-draft')";
+			$where[] = "o.status NOT IN ('trash','auto-draft','draft','checkout-draft','wc-checkout-draft')";
 		} else {
 			$from = "{$wpdb->posts} o";
 			$where[] = "o.post_type = 'shop_order'";
-			$where[] = "o.post_status NOT IN ('trash','auto-draft')";
+			$where[] = "o.post_status NOT IN ('trash','auto-draft','draft','checkout-draft','wc-checkout-draft')";
 		}
 
 		// Date range. The merchant picks store days; the column is UTC.
@@ -705,29 +751,51 @@ class Brikpanel_Segments {
 			$params = array_merge( $params, $f['category_ids'] );
 		}
 
-		// Free-text search: order id, billing email, billing name
+		// Free-text search: order number, billing email, billing name
 		if ( $f['search'] !== '' ) {
-			$like = '%' . $wpdb->esc_like( $f['search'] ) . '%';
-			if ( ctype_digit( $f['search'] ) ) {
-				$order_col = $hpos ? 'o.id' : 'o.ID';
-				$where[]  = "($order_col = %d OR " . ( $hpos
-						? "o.billing_email LIKE %s OR EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' AND (oas.first_name LIKE %s OR oas.last_name LIKE %s OR CONCAT_WS(' ', oas.first_name, oas.last_name) LIKE %s))"
-						: "EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm_s WHERE pm_s.post_id=o.ID AND pm_s.meta_key IN ('_billing_email','_billing_first_name','_billing_last_name') AND pm_s.meta_value LIKE %s)"
-					) . ")";
-				$params[] = (int) $f['search'];
-				$params[] = $like;
-				if ( $hpos ) {
-					$params[] = $like; $params[] = $like; $params[] = $like;
-				}
-			} else {
-				if ( $hpos ) {
-					$where[]  = "(o.billing_email LIKE %s OR EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' AND (oas.first_name LIKE %s OR oas.last_name LIKE %s OR CONCAT_WS(' ', oas.first_name, oas.last_name) LIKE %s)))";
-					$params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+			// "#1001" is how the shop writes a number; the '#' is not part of it.
+			$term = ltrim( $f['search'], '#' );
+			if ( '' === $term ) {
+				$term = $f['search'];
+			}
+			$like      = '%' . $wpdb->esc_like( $term ) . '%';
+			$order_col = $hpos ? 'o.id' : 'o.ID';
+			$meta_t    = $hpos ? "{$wpdb->prefix}wc_orders_meta" : $wpdb->postmeta;
+			$meta_c    = $hpos ? 'order_id' : 'post_id';
+			$parts     = [];
+
+			// A number a sequential-number plugin stored (BrikPanel's own
+			// included), typed with or without its prefix.
+			$numbers = function_exists( 'brikpanel_order_numbers_candidates' ) ? brikpanel_order_numbers_candidates( $term ) : [];
+			$keys    = function_exists( 'brikpanel_order_numbers_display_keys' ) ? brikpanel_order_numbers_display_keys() : [ '_order_number' ];
+			$key_in  = implode( ',', array_fill( 0, count( $keys ), '%s' ) );
+			if ( $numbers ) {
+				$parts[] = "EXISTS (SELECT 1 FROM {$meta_t} onm WHERE onm.{$meta_c} = {$order_col} AND onm.meta_key IN ({$key_in}) AND onm.meta_value IN (" . implode( ',', array_fill( 0, count( $numbers ), '%s' ) ) . '))';
+				$params  = array_merge( $params, $keys, $numbers );
+			}
+
+			if ( ctype_digit( $term ) ) {
+				if ( has_filter( 'woocommerce_order_number' ) ) {
+					// The ID only counts for an order that shows it: one with no
+					// stored number. Otherwise 1001 would also bring up the order
+					// whose ID is 1001 but whose number is something else.
+					$parts[] = "({$order_col} = %d AND NOT EXISTS (SELECT 1 FROM {$meta_t} onx WHERE onx.{$meta_c} = {$order_col} AND onx.meta_key IN ({$key_in}) AND onx.meta_value <> ''))";
+					$params[] = (int) $term;
+					$params   = array_merge( $params, $keys );
 				} else {
-					$where[]  = "EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm_s WHERE pm_s.post_id=o.ID AND pm_s.meta_key IN ('_billing_email','_billing_first_name','_billing_last_name') AND pm_s.meta_value LIKE %s)";
-					$params[] = $like;
+					$parts[]  = "{$order_col} = %d";
+					$params[] = (int) $term;
 				}
 			}
+
+			if ( $hpos ) {
+				$parts[]  = "o.billing_email LIKE %s OR EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' AND (oas.first_name LIKE %s OR oas.last_name LIKE %s OR CONCAT_WS(' ', oas.first_name, oas.last_name) LIKE %s))";
+				$params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+			} else {
+				$parts[]  = "EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm_s WHERE pm_s.post_id=o.ID AND pm_s.meta_key IN ('_billing_email','_billing_first_name','_billing_last_name') AND pm_s.meta_value LIKE %s)";
+				$params[] = $like;
+			}
+			$where[] = '(' . implode( ' OR ', $parts ) . ')';
 		}
 
 		// Sort
@@ -854,302 +922,14 @@ class Brikpanel_Segments {
 	}
 
 	/**
-	 * Build customer segmentation from per-customer order aggregates.
+	 * The customer list: one page, its total and its sums, by the Customers
+	 * engine's rules (front-end/customers/class-brikpanel-customers-engine.php).
 	 *
-	 * Strategy: group HPOS orders (or legacy posts + _customer_user meta) to
-	 * compute order_count / spent / last_order per customer_id, then join
-	 * to wp_users to resolve identities. Guest orders are aggregated by
-	 * billing_email (customer_id = 0) so shops with mostly-guest checkouts
-	 * still get meaningful segmentation.
+	 * @param array $f Filters.
+	 * @return array
 	 */
 	private function query_customers( array $f ) {
-		global $wpdb;
-
-		$hpos = $this->is_hpos();
-
-		// Build the inner per-customer aggregate query so all customer-level
-		// filters (spent range, order count, last order date, recency
-		// filters that depend on orders) are applied consistently.
-		$params = [];
-		$order_where = [];
-		$ltv_status_in = brikpanel_statuses_sql_in( brikpanel_ltv_counted_statuses() );
-		if ( $hpos ) {
-			$order_from = "{$wpdb->prefix}wc_orders o";
-			$order_where[] = "o.type = 'shop_order'";
-			$order_where[] = "o.status IN ({$ltv_status_in})";
-		} else {
-			$order_from = "{$wpdb->posts} o";
-			$order_where[] = "o.post_type = 'shop_order'";
-			$order_where[] = "o.post_status IN ({$ltv_status_in})";
-		}
-
-		// Exclude POS/staff accounts the merchant flagged so this customer
-		// list matches the Customer Analytics page. Mirrors the customer-key
-		// expression: HPOS reads o.customer_id directly; legacy reads the
-		// order's _customer_user meta. The Orders tab is intentionally left
-		// untouched — it lists every order (shop numbers).
-		if ( function_exists( 'brikpanel_excluded_customer_sql' ) ) {
-			$excl_expr = $hpos
-				? 'o.customer_id'
-				: "IFNULL((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user'  ORDER BY meta_id LIMIT 1)+0, 0)";
-			$excl_sql = brikpanel_excluded_customer_sql( $excl_expr );
-			if ( $excl_sql !== '' ) {
-				// Strip the leading " AND " — order_where entries are joined with AND.
-				$order_where[] = ltrim( substr( $excl_sql, 5 ) );
-			}
-		}
-
-		// Country filter at order level (applies only to aggregated orders)
-		if ( ! empty( $f['countries'] ) ) {
-			$placeholders = implode( ',', array_fill( 0, count( $f['countries'] ), '%s' ) );
-			if ( $hpos ) {
-				$order_where[] = "EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_order_addresses oa WHERE oa.order_id = o.id AND oa.address_type='billing' AND oa.country IN ($placeholders))";
-			} else {
-				$order_where[] = "EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm_co WHERE pm_co.post_id = o.ID AND pm_co.meta_key='_billing_country' AND pm_co.meta_value IN ($placeholders))";
-			}
-			$params = array_merge( $params, $f['countries'] );
-		}
-		if ( $f['city'] !== '' ) {
-			if ( $hpos ) {
-				$order_where[] = "EXISTS (SELECT 1 FROM {$wpdb->prefix}wc_order_addresses oa2 WHERE oa2.order_id = o.id AND oa2.address_type='billing' AND oa2.city LIKE %s)";
-			} else {
-				$order_where[] = "EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm_ci WHERE pm_ci.post_id = o.ID AND pm_ci.meta_key='_billing_city' AND pm_ci.meta_value LIKE %s)";
-			}
-			$params[] = '%' . $wpdb->esc_like( $f['city'] ) . '%';
-		}
-
-		// Product / category filter on the orders the customer has placed
-		if ( ! empty( $f['product_ids'] ) ) {
-			list( $pl_sql, $pl_params ) = $this->product_line_exists_sql( $hpos ? 'o.id' : 'o.ID', $f['product_ids'], 'inc' );
-			$order_where[] = $pl_sql;
-			$params        = array_merge( $params, $pl_params );
-		}
-		if ( ! empty( $f['category_ids'] ) ) {
-			$placeholders = implode( ',', array_fill( 0, count( $f['category_ids'] ), '%d' ) );
-			$order_col    = $hpos ? 'o.id' : 'o.ID';
-			$order_where[] = "EXISTS (
-				SELECT 1 FROM {$wpdb->prefix}wc_order_product_lookup opl2
-				INNER JOIN {$wpdb->term_relationships} tr ON tr.object_id = opl2.product_id
-				INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_cat'
-				WHERE opl2.order_id = {$order_col} AND tt.term_id IN ($placeholders)
-			)";
-			$params = array_merge( $params, $f['category_ids'] );
-		}
-
-		// Date range on orders (if user wants "customers who ordered in period")
-		$this->add_day_window( $hpos ? 'o.date_created_gmt' : 'o.post_date_gmt', $f['date_from'], $f['date_to'], $order_where, $params );
-
-		$order_where_sql = implode( ' AND ', $order_where );
-
-		// Build aggregate per customer key. HPOS uses customer_id; for guests
-		// (customer_id = 0) we fall back to LOWER(billing_email).
-		$customer_key = $this->customer_key_sql( $hpos, 'o' );
-		if ( $hpos ) {
-			$user_id_expr   = 'MAX(o.customer_id)';
-			$email_expr     = "MAX(o.billing_email)";
-			$phone_expr     = "MAX((SELECT oas.phone FROM {$wpdb->prefix}wc_order_addresses oas WHERE oas.order_id = o.id AND oas.address_type='billing' LIMIT 1))";
-			// Convert each order to the store base currency before summing the
-			// customer's spend (multi-currency safe). The join is added to
-			// $order_from below.
-			$fx_cust        = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount', 'bpfxcust' );
-			$total_expr     = "COALESCE(SUM({$fx_cust['expr']}), 0)";
-			$last_expr      = 'MAX(o.date_created_gmt)';
-			$first_expr     = 'MIN(o.date_created_gmt)';
-		} else {
-			$user_id_expr   = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_customer_user'  ORDER BY meta_id LIMIT 1))";
-			$email_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_email'  ORDER BY meta_id LIMIT 1))";
-			$phone_expr     = "MAX((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_billing_phone'  ORDER BY meta_id LIMIT 1))";
-			$raw_total_sub  = "(SELECT CAST(meta_value AS DECIMAL(20,4)) FROM {$wpdb->postmeta} WHERE post_id=o.ID AND meta_key='_order_total'  ORDER BY meta_id LIMIT 1)";
-			$fx_cust        = brikpanel_base_total_sql( false, 'o.ID', $raw_total_sub, 'bpfxcust' );
-			$total_expr     = "COALESCE(SUM({$fx_cust['expr']}), 0)";
-			$last_expr      = 'MAX(o.post_date_gmt)';
-			$first_expr     = 'MIN(o.post_date_gmt)';
-		}
-		// Add the base-total snapshot join to the per-customer aggregate source.
-		$order_from .= $fx_cust['join'];
-
-		// HAVING clauses for post-aggregation filters (spent, count, last order, registered)
-		$having = [];
-		$having_params = [];
-		if ( $f['spent_min'] !== null ) {
-			$having[] = 'total_spent >= %f';
-			$having_params[] = $f['spent_min'];
-		}
-		if ( $f['spent_max'] !== null ) {
-			$having[] = 'total_spent <= %f';
-			$having_params[] = $f['spent_max'];
-		}
-		if ( $f['order_count_min'] !== null ) {
-			$having[] = 'order_count >= %d';
-			$having_params[] = $f['order_count_min'];
-		}
-		if ( $f['order_count_max'] !== null ) {
-			$having[] = 'order_count <= %d';
-			$having_params[] = $f['order_count_max'];
-		}
-		// last_order_date is MAX() of a UTC column, so the same conversion applies.
-		$this->add_day_window( 'last_order_date', $f['last_order_from'], $f['last_order_to'], $having, $having_params );
-
-		$having_sql = $having ? ( 'HAVING ' . implode( ' AND ', $having ) ) : '';
-
-		// Inner aggregate subquery
-		$inner_sql = "SELECT
-				{$customer_key} AS customer_key,
-				{$user_id_expr} AS user_id,
-				{$email_expr} AS email,
-				{$phone_expr} AS phone,
-				COUNT(*) AS order_count,
-				{$total_expr} AS total_spent,
-				{$last_expr} AS last_order_date,
-				{$first_expr} AS first_order_date
-			FROM {$order_from}
-			WHERE {$order_where_sql}
-			GROUP BY customer_key
-			{$having_sql}";
-
-		$inner_params = array_merge( $params, $having_params );
-
-		// Search + registration date filter wrap the aggregate
-		$outer_where = [];
-		$outer_params = [];
-		if ( $f['search'] !== '' ) {
-			$like = '%' . $wpdb->esc_like( $f['search'] ) . '%';
-			$outer_where[] = '(agg.email LIKE %s OR u.display_name LIKE %s OR u.user_email LIKE %s OR CONCAT_WS(" ", bm_fn.meta_value, bm_ln.meta_value) LIKE %s)';
-			$outer_params[] = $like; $outer_params[] = $like; $outer_params[] = $like; $outer_params[] = $like;
-		}
-		// wp_users.user_registered is documented by core as UTC.
-		$this->add_day_window( 'u.user_registered', $f['registered_from'], $f['registered_to'], $outer_where, $outer_params );
-
-		// RFM segment filter — relies on the precomputed customer_metrics
-		// table which is keyed by customer_key (matching the aggregate
-		// expression above). Customers without a row in that table are
-		// excluded when an RFM filter is active.
-		$rfm_join = '';
-		if ( ! empty( $f['rfm_segments'] ) ) {
-			$rfm_join = " INNER JOIN {$wpdb->prefix}brikpanel_customer_metrics rfm ON rfm.customer_key = agg.customer_key ";
-			$placeholders = implode( ',', array_fill( 0, count( $f['rfm_segments'] ), '%s' ) );
-			$outer_where[] = "rfm.rfm_segment IN ({$placeholders})";
-			$outer_params = array_merge( $outer_params, $f['rfm_segments'] );
-		}
-
-		// Exclude products: a customers list leaves out everyone who ever bought
-		// one of them in a counted order, not only the orders that hold it. The
-		// list is read once (a derived table) and NULL keys are kept out of it:
-		// a NULL in a NOT IN list makes the test unknown for every customer.
-		if ( ! empty( $f['exclude_product_ids'] ) ) {
-			list( $pl_sql, $pl_params ) = $this->product_line_exists_sql( $hpos ? 'o2.id' : 'o2.ID', $f['exclude_product_ids'], 'exc' );
-			$ex_key   = $this->customer_key_sql( $hpos, 'o2' );
-			$ex_from  = $hpos ? "{$wpdb->prefix}wc_orders o2" : "{$wpdb->posts} o2";
-			$ex_where = $hpos
-				? "o2.type = 'shop_order' AND o2.status IN ({$ltv_status_in})"
-				: "o2.post_type = 'shop_order' AND o2.post_status IN ({$ltv_status_in})";
-			$outer_where[] = "(agg.customer_key IS NULL OR agg.customer_key NOT IN (SELECT exk.ck FROM (SELECT DISTINCT {$ex_key} AS ck FROM {$ex_from} WHERE {$ex_where} AND {$pl_sql}) exk WHERE exk.ck IS NOT NULL))";
-			$outer_params  = array_merge( $outer_params, $pl_params );
-		}
-		$outer_where_sql = $outer_where ? ( 'WHERE ' . implode( ' AND ', $outer_where ) ) : '';
-
-		// Sort
-		$sort_col = 'agg.last_order_date';
-		if ( $f['sort'] === 'spent' ) {
-			$sort_col = 'agg.total_spent';
-		} elseif ( $f['sort'] === 'count' ) {
-			$sort_col = 'agg.order_count';
-		} elseif ( $f['sort'] === 'first_order' ) {
-			$sort_col = 'agg.first_order_date';
-		}
-		$direction = $f['order'] === 'ASC' ? 'ASC' : 'DESC';
-
-		// Count (wraps the aggregate)
-		$count_sql = "SELECT COUNT(*) FROM ({$inner_sql}) agg
-			{$rfm_join}
-			LEFT JOIN {$wpdb->users} u ON CAST(agg.user_id AS UNSIGNED) = u.ID
-			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
-			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
-			{$outer_where_sql}";
-		$count_params = array_merge( $inner_params, $outer_params );
-		$total = (int) $wpdb->get_var( $count_params ? $wpdb->prepare( $count_sql, $count_params ) : $count_sql ); // phpcs:ignore
-
-		// Summary
-		$sum_sql = "SELECT COALESCE(SUM(agg.total_spent),0) AS total_spent, COALESCE(SUM(agg.order_count),0) AS orders FROM ({$inner_sql}) agg
-			{$rfm_join}
-			LEFT JOIN {$wpdb->users} u ON CAST(agg.user_id AS UNSIGNED) = u.ID
-			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
-			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
-			{$outer_where_sql}";
-		$sum_row = $wpdb->get_row( $count_params ? $wpdb->prepare( $sum_sql, $count_params ) : $sum_sql ); // phpcs:ignore
-		$sum_spent  = (float) ( $sum_row->total_spent ?? 0 );
-		$sum_orders = (int) ( $sum_row->orders ?? 0 );
-
-		// Page
-		$offset = ( $f['page'] - 1 ) * $f['per_page'];
-
-		$page_sql = "SELECT agg.*,
-				u.display_name,
-				u.user_email AS registered_email,
-				u.user_registered,
-				bm_fn.meta_value AS billing_first_name,
-				bm_ln.meta_value AS billing_last_name,
-				bm_ph.meta_value AS billing_phone_meta
-			FROM ({$inner_sql}) agg
-			{$rfm_join}
-			LEFT JOIN {$wpdb->users} u ON CAST(agg.user_id AS UNSIGNED) = u.ID
-			LEFT JOIN {$wpdb->usermeta} bm_fn ON bm_fn.user_id = u.ID AND bm_fn.meta_key = 'billing_first_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_fn' ) . "
-			LEFT JOIN {$wpdb->usermeta} bm_ln ON bm_ln.user_id = u.ID AND bm_ln.meta_key = 'billing_last_name' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ln' ) . "
-			LEFT JOIN {$wpdb->usermeta} bm_ph ON bm_ph.user_id = u.ID AND bm_ph.meta_key = 'billing_phone' AND " . brikpanel_sql_first_meta_guard( 'user', 'bm_ph' ) . "
-			{$outer_where_sql}
-			ORDER BY {$sort_col} {$direction}
-			LIMIT %d OFFSET %d";
-		$page_params = array_merge( $count_params, [ $f['per_page'], $offset ] );
-		$rows = $wpdb->get_results( $wpdb->prepare( $page_sql, $page_params ) ); // phpcs:ignore
-
-		$items = [];
-		foreach ( $rows as $r ) {
-			$user_id = (int) $r->user_id;
-			$name = trim( trim( (string) $r->billing_first_name . ' ' . (string) $r->billing_last_name ) );
-			if ( $name === '' ) {
-				$name = brikpanel_plain_name( (string) $r->display_name );
-			}
-			if ( $name === '' ) {
-				$name = (string) ( $r->registered_email ?: $r->email );
-			}
-
-			$items[] = [
-				'user_id'              => $user_id,
-				'name'                 => $name,
-				'email'                => (string) ( $r->registered_email ?: $r->email ),
-				'phone'                => (string) ( $r->phone ?: $r->billing_phone_meta ),
-				// wp_users.user_registered is UTC; so are MIN()/MAX() of *_gmt below.
-				'registered'           => brikpanel_local_date( $r->user_registered, $user_id ? '' : __( 'Guest', 'brikpanel' ) ),
-				'registered_export'    => brikpanel_local_datetime( $r->user_registered, 'Y-m-d H:i:s' ),
-				'order_count'          => (int) $r->order_count,
-				'total_spent'          => (float) $r->total_spent,
-				'total_spent_display'  => wp_strip_all_tags( wc_price( (float) $r->total_spent ) ),
-				'last_order'           => brikpanel_local_date( $r->last_order_date ),
-				'last_order_export'    => brikpanel_local_datetime( $r->last_order_date, 'Y-m-d H:i:s' ),
-				'first_order'          => brikpanel_local_date( $r->first_order_date ),
-				'first_order_export'   => brikpanel_local_datetime( $r->first_order_date, 'Y-m-d H:i:s' ),
-				'aov'                  => $r->order_count > 0 ? ( (float) $r->total_spent / (int) $r->order_count ) : 0,
-				'aov_display'          => wp_strip_all_tags( wc_price( $r->order_count > 0 ? ( (float) $r->total_spent / (int) $r->order_count ) : 0 ) ),
-				'edit_url'             => $user_id ? admin_url( 'user-edit.php?user_id=' . $user_id ) : '',
-				'is_guest'             => $user_id === 0,
-			];
-		}
-
-		return [
-			'items'   => $items,
-			'total'   => $total,
-			'page'    => $f['page'],
-			'per_page' => $f['per_page'],
-			'pages'   => (int) ceil( $total / $f['per_page'] ),
-			'summary' => [
-				'count'           => $total,
-				'revenue'         => $sum_spent,
-				'revenue_display' => wp_strip_all_tags( wc_price( $sum_spent ) ),
-				'orders'          => $sum_orders,
-				'aov'             => $sum_orders > 0 ? $sum_spent / $sum_orders : 0,
-				'aov_display'     => wp_strip_all_tags( wc_price( $sum_orders > 0 ? $sum_spent / $sum_orders : 0 ) ),
-			],
-		];
+		return Brikpanel_Customers_Engine::query( $f );
 	}
 
 	// =========================================================================
@@ -1165,7 +945,7 @@ class Brikpanel_Segments {
 	 */
 	private static function preset_keys( $tab ) {
 		if ( 'customers' === $tab ) {
-			return [ '', 'new_customers', 'repeat', 'vip', 'one_time', 'dormant', 'high_value' ];
+			return [ '', 'new_customers', 'new_today', 'repeat', 'vip', 'one_time', 'dormant', 'high_value' ];
 		}
 		return [ '', 'today', 'last7', 'last30', 'last90', 'processing', 'completed', 'pending', 'on_hold', 'refunded', 'cancelled', 'returns', 'free_shipping', 'paid_shipping', 'high_value' ];
 	}
@@ -1179,7 +959,7 @@ class Brikpanel_Segments {
 	private static function saved_filter_keys( $tab ) {
 		$both = [ 'date_from', 'date_to', 'countries', 'city', 'product_ids', 'exclude_product_ids', 'category_ids', 'search' ];
 		if ( 'customers' === $tab ) {
-			return array_merge( $both, [ 'spent_min', 'spent_max', 'order_count_min', 'order_count_max', 'last_order_from', 'last_order_to', 'registered_from', 'registered_to', 'rfm_segments' ] );
+			return array_merge( $both, [ 'spent_min', 'spent_max', 'order_count_min', 'order_count_max', 'last_order_from', 'last_order_to', 'first_order_from', 'first_order_to', 'registered_from', 'registered_to', 'rfm_segments' ] );
 		}
 		return array_merge( $both, [ 'statuses', 'total_min', 'total_max', 'payment_methods', 'coupon' ] );
 	}
@@ -1392,7 +1172,8 @@ class Brikpanel_Segments {
 
 		nocache_headers();
 		header( 'Content-Type: text/csv; charset=UTF-8' );
-		header( 'Content-Disposition: attachment; filename="brikpanel-segments-' . $tab . '-' . brikpanel_store_date( 'Ymd-His' ) . '.csv"' );
+		$file = 'customers' === $tab ? 'brikpanel-customers-' : 'brikpanel-segments-orders-';
+		header( 'Content-Disposition: attachment; filename="' . $file . brikpanel_store_date( 'Ymd-His' ) . '.csv"' );
 
 		$out = fopen( 'php://output', 'w' );
 		// UTF-8 BOM so Excel opens non-ASCII characters cleanly.
@@ -1424,7 +1205,12 @@ class Brikpanel_Segments {
 				__( 'City', 'brikpanel' ),
 				__( 'Payment', 'brikpanel' ),
 				__( 'Total', 'brikpanel' ),
+				// Last, so spreadsheets that read the columns by position keep
+				// working. The number the shop shows, which a sequential-number
+				// plugin can make different from the ID.
+				__( 'Order number', 'brikpanel' ),
 			] );
+			$numbers = brikpanel_order_numbers_for_ids( array_column( $result['items'], 'id' ) );
 			foreach ( $result['items'] as $item ) {
 				fputcsv( $out, brikpanel_csv_safe_row( [
 					$item['id'],
@@ -1437,10 +1223,12 @@ class Brikpanel_Segments {
 					$item['city'],
 					$item['payment'],
 					$item['total'],
+					$numbers[ (int) $item['id'] ] ?? (string) $item['id'],
 				] ) );
 			}
 		} else {
-			$result = $this->query_customers( $filters );
+			// The first ten columns keep their old order (spreadsheets and
+			// mailing tools read them by position); new ones go at the end.
 			fputcsv( $out, [
 				__( 'User ID', 'brikpanel' ),
 				__( 'Name', 'brikpanel' ),
@@ -1455,8 +1243,15 @@ class Brikpanel_Segments {
 				sprintf( __( 'First order (%s)', 'brikpanel' ), $tz_label ),
 				/* translators: %s: the store's timezone, for example Europe/Istanbul. */
 				sprintf( __( 'Last order (%s)', 'brikpanel' ), $tz_label ),
+				__( 'Country', 'brikpanel' ),
+				__( 'City', 'brikpanel' ),
+				__( 'RFM segment', 'brikpanel' ),
+				/* translators: %s: the store's timezone, for example Europe/Istanbul. */
+				sprintf( __( 'Customer since (%s)', 'brikpanel' ), $tz_label ),
 			] );
-			foreach ( $result['items'] as $item ) {
+			// Every matching customer, read in batches: the old export asked for
+			// one page of 10,000 and silently cut a larger list there.
+			Brikpanel_Customers_Engine::export( $filters, static function ( $item ) use ( $out ) {
 				fputcsv( $out, brikpanel_csv_safe_row( [
 					$item['user_id'] ?: '',
 					$item['name'],
@@ -1468,8 +1263,12 @@ class Brikpanel_Segments {
 					$item['aov'],
 					$item['first_order_export'],
 					$item['last_order_export'],
+					$item['country'],
+					$item['city'],
+					$item['rfm_label'],
+					$item['since_export'],
 				] ) );
-			}
+			} );
 		}
 
 		fclose( $out );

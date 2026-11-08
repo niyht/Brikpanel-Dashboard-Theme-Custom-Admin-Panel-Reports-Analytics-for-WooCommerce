@@ -371,26 +371,46 @@
 		updateCurrencyNote($card);
 	}
 
-	// Ticked accounts that spend in another currency than the store: the
-	// dashboard cannot put that spend into ROAS or Net profit.
+	// Ticked accounts that spend in another currency than the store: converted
+	// with the Settings > Currency rate, or left out of ROAS and Net profit
+	// until one is entered. The same text the page draws first
+	// (Brikpanel_Ads_Settings::currency_note_text()).
 	function updateCurrencyNote($card) {
 		var $note = $card.querySelector('[data-role="currency-note"]');
 		if (!$note) { return; }
+		var $text = $note.querySelector('[data-role="currency-note-text"]');
 		var store = String(BP.storeCurrency || '').toUpperCase();
-		var names = [];
+		var rates = BP.fxRates || {};
+		var missing = [];
+		var done = {};
+		var order = [];
 		accountChecks($card).forEach(function ($c) {
 			var cur = String($c.getAttribute('data-currency') || '').toUpperCase();
-			if ($c.checked && store && cur && cur !== store) {
-				names.push($c.getAttribute('data-name') || $c.value);
+			if (!$c.checked || !store || !cur || cur === store) { return; }
+			if (Object.prototype.hasOwnProperty.call(rates, cur) && Number(rates[cur]) > 0) {
+				if (!done[cur]) {
+					done[cur] = Number(rates[cur]);
+					order.push(cur);
+				}
+			} else {
+				missing.push($c.getAttribute('data-name') || $c.value);
 			}
 		});
-		if (!names.length || !window.brikpanelFormat) {
-			$note.textContent = '';
+		if (!$text || (!missing.length && !order.length) || !window.brikpanelFormat) {
+			if ($text) { $text.textContent = ''; }
 			$note.hidden = true;
 			return;
 		}
 		var F = window.brikpanelFormat;
-		$note.textContent = F.format(F.plural(BP.i18n.currency_note, names.length), [names.join(', ')]);
+		var parts = [];
+		if (missing.length) {
+			parts.push(F.format(F.plural(BP.i18n.currency_note, missing.length), [missing.join(', ')]));
+		}
+		order.forEach(function (cur) {
+			var rate = F.format(BP.i18n.fx_rate, [cur, F.number(done[cur], 6, true), store]);
+			parts.push(F.format(BP.i18n.currency_converted, [cur, rate]));
+		});
+		$text.textContent = parts.join(' ');
 		$note.hidden = false;
 	}
 

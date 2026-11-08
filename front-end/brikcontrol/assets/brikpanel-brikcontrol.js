@@ -255,4 +255,102 @@
                 restore(i18n.undo_failed || '');
             });
     });
+    // Row buttons (3.3.34): "Real day" and "Unmark" in the bot traffic lists.
+    // One request, every row button of the card locked meanwhile, then a
+    // reload so the card re-renders from the freshly saved result. The lists
+    // the merchant was working in open again after the reload instead of
+    // falling back closed; someone on the keyboard also gets the focus back
+    // on the first of them (a mouse user would only see a stray focus ring).
+    var REOPEN_KEY = 'brikpanel_bc_reopen';
+
+    (function reopenLists() {
+        var saved = null;
+        try {
+            saved = JSON.parse(window.sessionStorage.getItem(REOPEN_KEY) || 'null');
+            window.sessionStorage.removeItem(REOPEN_KEY);
+        } catch (err) {
+            saved = null;
+        }
+        if (!saved || !saved.check || !saved.lists || !saved.lists.length) return;
+        var card = null;
+        Array.prototype.forEach.call(document.querySelectorAll('[data-bc-check]'), function (el) {
+            if (!card && el.getAttribute('data-bc-check') === saved.check) card = el;
+        });
+        if (!card) return;
+        var first = null;
+        saved.lists.forEach(function (id) {
+            Array.prototype.forEach.call(card.querySelectorAll('details[data-bc-list]'), function (d) {
+                if (d.getAttribute('data-bc-list') !== id) return;
+                d.open = true;
+                if (!first) first = d;
+            });
+        });
+        if (!first) return;
+        var summary = first.querySelector('summary');
+        if (summary && saved.keyboard) {
+            summary.focus();
+        }
+        first.scrollIntoView({ block: 'nearest' });
+    })();
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('[data-bc-row-action]');
+        if (!btn || btn.disabled) return;
+        e.preventDefault();
+
+        // Written by the check on the server, only for a day whose figures
+        // look like bots beyond doubt.
+        var confirmText = btn.getAttribute('data-bc-row-confirm');
+        if (confirmText && !window.confirm(confirmText)) return;
+
+        var i18n     = cfg.i18n || {};
+        var checkId  = btn.getAttribute('data-bc-row-action');
+        var op       = btn.getAttribute('data-bc-row-op') || '';
+        var list     = btn.getAttribute('data-bc-row-list') || '';
+        var card     = btn.closest('[data-bc-check]');
+        // A click the keyboard made (Enter or Space) has no pointer detail.
+        var keyboard = e.detail === 0;
+        var buttons  = card ? card.querySelectorAll('[data-bc-row-action]') : [btn];
+        var resultEl = card ? card.querySelector('[data-bc-row-result]') : null;
+        // Captured from the DOM: the server rendered it translated.
+        var original = btn.textContent;
+
+        Array.prototype.forEach.call(buttons, function (b) { b.disabled = true; });
+        btn.textContent = i18n.row_running || original;
+        if (resultEl) resultEl.textContent = '';
+
+        var restore = function (message) {
+            Array.prototype.forEach.call(buttons, function (b) { b.disabled = false; });
+            btn.textContent = original;
+            if (resultEl) resultEl.textContent = message;
+        };
+
+        var fd = new FormData();
+        fd.append('action', 'brikpanel_brikcontrol_row_action');
+        fd.append('security', cfg.nonce);
+        fd.append('check_id', checkId);
+        fd.append('op', op);
+        fd.append('value', btn.getAttribute('data-bc-row-value') || '');
+
+        fetch(cfg.ajax_url, { method: 'POST', credentials: 'same-origin', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+                if (json && json.success && json.data) {
+                    if (resultEl) resultEl.textContent = json.data.message || '';
+                    // The list the day left, and the one it went to.
+                    var lists = op === 'real' ? [list, 'real'] : [list, 'samples'];
+                    try {
+                        window.sessionStorage.setItem(REOPEN_KEY, JSON.stringify({ check: checkId, lists: lists, keyboard: keyboard }));
+                    } catch (err) {
+                        // Private window or blocked storage: the lists just stay closed.
+                    }
+                    setTimeout(function () { window.location.reload(); }, 2000);
+                    return;
+                }
+                restore((json && json.data && json.data.message) || i18n.row_failed || '');
+            })
+            .catch(function () {
+                restore(i18n.row_failed || '');
+            });
+    });
 })();

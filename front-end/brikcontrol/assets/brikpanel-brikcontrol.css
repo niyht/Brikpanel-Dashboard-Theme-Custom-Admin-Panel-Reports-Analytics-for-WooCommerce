@@ -534,7 +534,8 @@
 
 .brikpanel-bc-largest-table th,
 .brikpanel-bc-largest-table td {
-    text-align: left;
+    /* start, not left: right to left the cells read from the right. */
+    text-align: start;
     padding: 0.4rem 0.5rem;
     border-bottom: 1px solid #e3e3e3;
 }
@@ -586,6 +587,43 @@
 .brikpanel-bc-details .brikpanel-bc-largest-table.is-stacked > tbody > tr:not([hidden]) {
     gap: 0.5rem 1rem;
     padding: 0.625rem 0.5rem;
+}
+
+/* Row buttons in the sample tables (3.3.34): "Real day", "Unmark". At the
+   row's end in table mode; on a line of their own once the rows stack. */
+.brikpanel-bc-largest-table .brikpanel-bc-sample-cell {
+    text-align: end;
+    white-space: nowrap;
+}
+
+.brikpanel-bc-details .brikpanel-bc-largest-table.is-stacked .brikpanel-bc-sample-cell {
+    text-align: start;
+}
+
+/* What a row button did, under the card's lists; out of the layout while empty. */
+.brikpanel-bc-card .brikpanel-bc-sample-result {
+    margin: 0.5rem 0 0;
+    font-size: 0.75rem;
+    color: #616161;
+}
+
+.brikpanel-bc-card .brikpanel-bc-sample-result:empty {
+    display: none;
+}
+
+/* Products with missing images (3.3.37): under where the image was shown,
+   the missing files' names or how many images; and the line under a list
+   cut short. */
+.brikpanel-bc-missing-detail {
+    display: block;
+    font-size: 0.75rem;
+    color: #616161;
+}
+
+.brikpanel-bc-list-note {
+    margin: 0.5rem 0 0.25rem;
+    font-size: 0.75rem;
+    color: #616161;
 }
 
 /* Card footer */

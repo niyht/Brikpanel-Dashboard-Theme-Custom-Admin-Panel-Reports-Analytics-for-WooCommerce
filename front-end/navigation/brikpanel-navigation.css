@@ -406,11 +406,13 @@ WooCommerce submenu which we move out of a submenu visually. */
 /* Sized to exactly match the 18px icon slot on the other side of the row, so a
    row with a submenu chevron is not a pixel taller than one without — that 1px
    difference made the menu's vertical rhythm drift wherever expandable and
-   plain items alternate. The 10x10 glyph keeps a 4px hit-area cushion. */
+   plain items alternate. The 10x10 glyph keeps a 4px hit-area cushion.
+   The size is !important: a theme's own image rule for the admin outranked this
+   one-class rule and resized the arrow (wp.org support, apattee, 2026-10-14). */
 .brikpanel-menu-chevron {
 	box-sizing: border-box;
-	width: 18px;
-	height: 18px;
+	width: 18px !important;
+	height: 18px !important;
 	padding: 0.25rem;
 	border-radius: 0.25rem;
 	transition: background-color 0.1s linear;

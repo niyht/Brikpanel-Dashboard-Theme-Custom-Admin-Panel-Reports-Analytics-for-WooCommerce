@@ -104,9 +104,93 @@ function brikpanel_move_dashboard_to_top( $menu_order ) {
 add_filter( 'menu_order', 'brikpanel_move_dashboard_to_top', 999 );
 
 /**
+ * Coupons gets a row of its own in the sidebar, where Marketing stood (owner's
+ * decision, 2026-10-19). Marketing itself is filed under "More"
+ * (brikpanel_nav_default_more_slugs()): on a store without a marketing plugin
+ * it holds nothing but WooCommerce's Overview, a list of channel extensions to
+ * install, so people opened it for Coupons alone, two clicks deep.
+ *
+ * The row is WooCommerce's own Coupons row lifted out of Marketing (or out of
+ * WooCommerce's menu where Marketing is off: WooCommerce 4.0, the marketing
+ * feature switched off) with its title, slug and capability, so the coupon
+ * screens, saved Navigation layouts and page access keep naming it the same
+ * way. It goes right above Marketing; without Marketing, right below
+ * Analytics. Where WooCommerce already gives coupons a menu of their own (people
+ * outside WooCommerce's menu get one), nothing changes. Part of the shared
+ * relocation, so the sidebar, the Navigation editor and page access agree.
+ *
+ * @param array $menu    The $menu global / snapshot, by reference (mutated).
+ * @param array $submenu The $submenu global / snapshot, by reference (mutated).
+ */
+function brikpanel_nav_promote_coupons( &$menu, &$submenu ) {
+	if ( ! is_array( $menu ) || ! is_array( $submenu ) ) {
+		return;
+	}
+	foreach ( $menu as $row ) {
+		if ( is_array( $row ) && isset( $row[2] ) && BRIKPANEL_NAV_COUPONS_SLUG === $row[2] ) {
+			return;
+		}
+	}
+
+	$found = null;
+	foreach ( array( 'woocommerce-marketing', 'woocommerce' ) as $parent ) {
+		if ( empty( $submenu[ $parent ] ) || ! is_array( $submenu[ $parent ] ) ) {
+			continue;
+		}
+		foreach ( $submenu[ $parent ] as $key => $row ) {
+			if ( is_array( $row ) && isset( $row[2] ) && BRIKPANEL_NAV_COUPONS_SLUG === $row[2] ) {
+				$found = $row;
+				unset( $submenu[ $parent ][ $key ] );
+				break 2;
+			}
+		}
+	}
+	if ( null === $found ) {
+		return;
+	}
+
+	$title = ( isset( $found[0] ) && '' !== (string) $found[0] ) ? (string) $found[0] : __( 'Coupons', 'brikpanel' );
+	$row   = array(
+		$title,
+		isset( $found[1] ) ? $found[1] : 'edit_shop_coupons',
+		BRIKPANEL_NAV_COUPONS_SLUG,
+		( isset( $found[3] ) && '' !== (string) $found[3] ) ? (string) $found[3] : $title,
+		'menu-top menu-icon-shop_coupon',
+		'menu-posts-shop_coupon',
+		'dashicons-tickets-alt',
+	);
+
+	$rows      = array_values( $menu );
+	$analytics = brikpanel_nav_wc_analytics_slug( $rows );
+	$at        = array( 'woocommerce-marketing' => null, 'analytics' => null, 'edit.php' => null );
+	foreach ( $rows as $index => $item ) {
+		$slug = ( is_array( $item ) && isset( $item[2] ) && is_string( $item[2] ) ) ? $item[2] : '';
+		if ( 'woocommerce-marketing' === $slug && null === $at['woocommerce-marketing'] ) {
+			$at['woocommerce-marketing'] = $index;
+		} elseif ( '' !== $analytics && $analytics === $slug && null === $at['analytics'] ) {
+			$at['analytics'] = $index + 1;
+		} elseif ( 'edit.php' === $slug && null === $at['edit.php'] ) {
+			$at['edit.php'] = $index;
+		}
+	}
+	$insert = count( $rows );
+	foreach ( $at as $index ) {
+		if ( null !== $index ) {
+			$insert = $index;
+			break;
+		}
+	}
+	array_splice( $rows, $insert, 0, array( $row ) );
+	$menu = $rows;
+}
+
+/**
  * Relocate WooCommerce's crowded submenu into a synthetic "More" top-level
- * item, promote "Settings" to its own top-level entry, and keep Orders /
- * Customers directly under the WooCommerce item.
+ * item, promote "Settings" to its own top-level entry, and keep Orders (and
+ * Subscriptions) directly under the WooCommerce item. WooCommerce's Customers
+ * report goes into "More" as "Customers report": BrikPanel's own Customers
+ * page takes its place in the sidebar. Coupons becomes a row of its own
+ * (brikpanel_nav_promote_coupons()).
  *
  * This is the SINGLE source of truth for that relocation. Both the live sidebar
  * renderer (brikpanel_get_navigation_items) and the settings-page customizer
@@ -117,8 +201,8 @@ add_filter( 'menu_order', 'brikpanel_move_dashboard_to_top', 999 );
  * them into "More", and per-submenu hide flags never matched.
  *
  * Moved submenu slugs are rewritten to the `admin.php?page=<slug>` form (the
- * shape the renderer links them with); Orders / Customers / Subscriptions stay
- * under WooCommerce with their original slugs.
+ * shape the renderer links them with); Orders / Subscriptions stay under
+ * WooCommerce with their original slugs.
  *
  * This runs in admin_footer, long after WordPress removed every menu row the
  * current user may not open (add_submenu_page() refuses them outright, and
@@ -140,6 +224,10 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 	if ( ! is_array( $submenu ) ) {
 		$submenu = array();
 	}
+
+	// Coupons first, while it is still under Marketing or WooCommerce: below,
+	// WooCommerce's rows are moved into "More".
+	brikpanel_nav_promote_coupons( $menu, $submenu );
 
 	// Add the synthetic "More" top-level entry once.
 	$has_more = false;
@@ -184,7 +272,6 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 			'edit.php?post_type=shop_order',
 			'wc-orders--shop_subscription',
 			'edit.php?post_type=shop_subscription',
-			'wc-admin&path=/customers',
 		);
 
 		foreach ( $submenu_items as $sub_key => $sub_item ) {
@@ -200,6 +287,14 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 			// also pass for the Cart share row below.
 			if ( in_array( $slug, $skip_slugs, true )
 				|| ( function_exists( 'brikpanel_is_menu_only_row' ) && brikpanel_is_menu_only_row( $sub_item ) ) ) {
+				continue;
+			}
+
+			// WooCommerce keeps a second "Coupons" here that only redirects to
+			// the coupon list, for people used to its old place. In "More" it
+			// repeated the Coupons row the sidebar now draws on its own.
+			if ( 'coupons-moved' === $slug ) {
+				unset( $submenu_items[ $sub_key ] );
 				continue;
 			}
 
@@ -224,6 +319,14 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 				}
 				unset( $submenu_items[ $sub_key ] );
 				continue;
+			}
+
+			// WooCommerce's Customers report keeps its place in "More" under a
+			// name of its own, so the sidebar never shows two "Customers" rows
+			// (BrikPanel's Customers page sits right under Orders).
+			if ( 'wc-admin&path=/customers' === $slug ) {
+				$temp[0] = __( 'Customers report', 'brikpanel' );
+				$temp[3] = __( 'Customers report', 'brikpanel' );
 			}
 
 			// Any other WooCommerce submenu (incl. third-party additions) → More.
@@ -286,6 +389,78 @@ function brikpanel_nav_relocate_wc_submenus( &$menu, &$submenu ) {
 			);
 		}
 	}
+}
+
+/**
+ * The menu the current screen belongs to, as the sidebar reads it: WordPress's
+ * $parent_file, except on coupon screens.
+ *
+ * WordPress names Marketing as the parent of every coupon screen (WooCommerce
+ * files coupons there, and BrikPanel's coupon list is registered under it for
+ * access plugins), or WooCommerce where Marketing is off. The sidebar draws
+ * Coupons as a row of its own (brikpanel_nav_promote_coupons()), so on those
+ * screens that row is the current one, and Marketing, wherever it stands
+ * ("More" by default), stays closed instead of opening "More".
+ *
+ * WooCommerce's app pages go the other way: WordPress names WooCommerce as the
+ * parent of all of them (they all run on WooCommerce's Home page, wc-admin),
+ * also of the ones WooCommerce files under Marketing (its Overview, Google for
+ * WooCommerce, Pinterest, Reddit, Snapchat). Those open Marketing, and with it
+ * "More", so the sidebar still shows where they are.
+ *
+ * @return string
+ */
+function brikpanel_nav_parent_file() {
+	global $parent_file, $typenow, $plugin_page;
+
+	$parent = is_string( $parent_file ) ? $parent_file : '';
+	if ( brikpanel_nav_ame_active() ) {
+		return $parent;
+	}
+	if ( in_array( $parent, array( 'woocommerce-marketing', 'woocommerce' ), true ) ) {
+		$coupons = 'shop_coupon' === $typenow
+			|| ( is_string( $plugin_page ) && 'brikpanel-coupons' === $plugin_page );
+		if ( $coupons ) {
+			return BRIKPANEL_NAV_COUPONS_SLUG;
+		}
+	}
+	if ( 'wc-admin' === $plugin_page && brikpanel_nav_wc_page_under( 'woocommerce-marketing' ) ) {
+		return 'woocommerce-marketing';
+	}
+	return $parent;
+}
+
+/**
+ * Whether the WooCommerce app page being viewed is filed, at any depth, under
+ * the WooCommerce page $ancestor (Google for WooCommerce's settings sit under
+ * its own group, which sits under Marketing). Read from WooCommerce's page
+ * registry, the one that builds the page's own breadcrumbs.
+ *
+ * @param string $ancestor WooCommerce page id.
+ * @return bool
+ */
+function brikpanel_nav_wc_page_under( $ancestor ) {
+	$class = 'Automattic\WooCommerce\Admin\PageController';
+	// The registry only knows the current page once the screen is set.
+	if ( ! did_action( 'current_screen' ) || ! class_exists( $class ) ) {
+		return false;
+	}
+	$controller = $class::get_instance();
+	$page       = $controller->get_current_page();
+	if ( ! is_array( $page ) || ! method_exists( $controller, 'get_pages' ) ) {
+		return false;
+	}
+	$pages = (array) $controller->get_pages();
+	$seen  = array();
+	$id    = isset( $page['parent'] ) && is_string( $page['parent'] ) ? $page['parent'] : '';
+	while ( '' !== $id && ! isset( $seen[ $id ] ) ) {
+		if ( $ancestor === $id ) {
+			return true;
+		}
+		$seen[ $id ] = true;
+		$id          = ( isset( $pages[ $id ]['parent'] ) && is_string( $pages[ $id ]['parent'] ) ) ? $pages[ $id ]['parent'] : '';
+	}
+	return false;
 }
 
 /**
@@ -502,7 +677,6 @@ function brikpanel_nav_render_child_row( $sub_item, $item_slug, $admin_is_parent
 		'edit.php?post_type=shop_order'        => array( 'icon_file' => 'orders' ), // Non-HPOS
 		'wc-orders--shop_subscription'         => array( 'icon_file' => 'subscriptions' ),
 		'edit.php?post_type=shop_subscription' => array( 'icon_file' => 'subscriptions' ), // Non-HPOS
-		'wc-admin&path=/customers'             => array( 'icon_file' => 'customers' ),
 		// Eklentilerde eklenen WooCommerce alt menüleri:
 		'wpo_wcpdf_options_page'               => array(
 			'icon_file' => 'invoice',
@@ -646,7 +820,7 @@ if (isset($submenu_file)) {
 }
 
 // Belirli sayfalarda menüyü aktif göster
-if ($sub_item_slug === 'wc-admin&path=/customers' && $path === '/customers') {
+if ($sub_item_slug === 'admin.php?page=wc-admin&path=/customers' && $path === '/customers') {
     $class[] = 'brikpanel-current';
 }
 if ($sub_item_slug === 'admin.php?page=wc-admin&path=/add-product' && $path === '/add-product') {
@@ -703,6 +877,17 @@ if ($sub_item_slug === 'admin.php?page=wc-admin&path=/marketing' && $path === '/
     $class[] = 'brikpanel-current';
     $class[] = 'brikpanel-has-open-submenu';
 }
+
+	// Any other WooCommerce app page a plugin lists (Google for WooCommerce,
+	// Pinterest, Reddit under Marketing): its row is the current one on exactly
+	// its own path.
+	if ( 'wc-admin' === $page && '' !== $path && ! in_array( 'brikpanel-current', $class, true ) ) {
+		$app = strpos( $sub_item_slug, 'wc-admin&path=' );
+		if ( false !== $app && substr( $sub_item_slug, $app + strlen( 'wc-admin&path=' ) ) === $path ) {
+			$class[]          = 'brikpanel-current';
+			$aria_attributes .= ' aria-current="page"';
+		}
+	}
 
 	return array( $class, $aria_attributes );
 }
@@ -802,10 +987,11 @@ function brikpanel_nav_header_is_plugin_page( $header_slug, $parent_slug ) {
  * @return array{rows: array<int, array>, active: bool}
  */
 function brikpanel_nav_more_plan( array $listed, $submenu ) {
-	global $self, $parent_file, $typenow;
+	global $self, $typenow;
 
-	$rows   = array();
-	$active = false;
+	$parent_file = brikpanel_nav_parent_file();
+	$rows        = array();
+	$active      = false;
 	foreach ( $listed as $row ) {
 		$real = function_exists( 'brikpanel_nav_more_parent' ) ? brikpanel_nav_more_parent( $row ) : '';
 		if ( '' === $real ) {
@@ -835,13 +1021,9 @@ function brikpanel_nav_more_plan( array $listed, $submenu ) {
 			continue;
 		}
 
-		if ( 1 === count( $children ) ) {
-			list( $only_href ) = brikpanel_nav_child_href( (string) $children[0][2], $real, $admin_is_parent );
-			if ( $only_href === $href ) {
-				$children = array();
-			}
-		}
-
+		// Decided before a lone page is folded into the row below: the row
+		// stands for that page too (Marketing's Overview, a WooCommerce app
+		// page WordPress names no parent for).
 		$open = ( $parent_file && $parent_file === $real ) || ( empty( $typenow ) && $self === $real );
 		if ( ! $open ) {
 			foreach ( $children as $child ) {
@@ -853,6 +1035,13 @@ function brikpanel_nav_more_plan( array $listed, $submenu ) {
 			}
 		}
 		$active = $active || $open;
+
+		if ( 1 === count( $children ) ) {
+			list( $only_href ) = brikpanel_nav_child_href( (string) $children[0][2], $real, $admin_is_parent );
+			if ( $only_href === $href ) {
+				$children = array();
+			}
+		}
 
 		$rows[] = array(
 			'row'             => $row,
@@ -1064,7 +1253,7 @@ add_action( 'admin_footer', 'brikpanel_render_navigation' );
  * builds our custom HTML structure.
  */
 function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
-	global $menu, $submenu, $self, $parent_file, $submenu_file, $plugin_page, $typenow;
+	global $menu, $submenu, $self, $submenu_file, $plugin_page, $typenow;
 
 	// If Admin Menu Editor is active, load its custom menu. The three methods
 	// are checked up front because this now also runs for Admin Menu Editor
@@ -1126,24 +1315,58 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			//   $brikpanel_group_open   — a wrapper <div> is waiting to be closed
 			//   $brikpanel_group_offset — strlen($html) right BEFORE the heading was
 			//                             appended, so an empty group can be undone
-			//   $brikpanel_group_rows   — rows emitted since the heading opened
+			//   $brikpanel_group_rows   — rows with a link emitted since the heading
+			//                             opened (spacers never count)
 			$brikpanel_group_open   = false;
 			$brikpanel_group_offset = 0;
 			$brikpanel_group_rows   = 0;
 
+			// The same for the "Site management" heading. It is printed on its
+			// anchor row and its wrapper runs to the end of the menu, so it is
+			// judged once the loop is done: with no row this user can open after
+			// it, the heading goes.
+			$brikpanel_sm_open   = false;
+			$brikpanel_sm_offset = 0;
+			$brikpanel_sm_rows   = 0;
+
+			// Spacers printed since the last row with a link, as [start, end)
+			// offsets into $html, and whether a heading was dropped after them. A
+			// divider left in front of a heading this user does not get divides
+			// nothing, so it goes too. One the owner put at the very end, with no
+			// dropped heading after it, stays.
+			$brikpanel_tail_decor   = array();
+			$brikpanel_tail_dropped = false;
+
+			// Undo everything printed from $offset on: a heading with nothing under
+			// it, together with its wrapper and the spacers in it.
+			$brikpanel_cut = function ( $offset ) use ( &$html, &$brikpanel_tail_decor, &$brikpanel_tail_dropped ) {
+				$html                 = substr( $html, 0, $offset );
+				$brikpanel_tail_decor = array_values(
+					array_filter(
+						$brikpanel_tail_decor,
+						static function ( $span ) use ( $offset ) {
+							return $span[0] < $offset;
+						}
+					)
+				);
+				$brikpanel_tail_dropped = true;
+			};
+
 			// Close the currently open heading group, dropping the heading entirely
-			// when nothing rendered under it. An empty group happens for real: every
-			// row inside it can be capability- or role-filtered away for the current
-			// user, and a lone heading with a toggle that opens nothing is worse than
-			// no heading at all.
-			$brikpanel_close_group = function () use ( &$html, &$brikpanel_group_open, &$brikpanel_group_offset, &$brikpanel_group_rows ) {
+			// when no row with a link rendered under it. An empty group happens for
+			// real: every row inside it can be capability- or role-filtered away for
+			// the current user (an access plugin such as AAM, or BrikPanel's own
+			// rules), and a lone heading with a toggle that opens nothing, or only a
+			// divider, is worse than no heading at all.
+			$brikpanel_close_group = function () use ( &$html, &$brikpanel_group_open, &$brikpanel_group_offset, &$brikpanel_group_rows, $brikpanel_cut ) {
 				if ( ! $brikpanel_group_open ) {
 					return;
 				}
 				if ( $brikpanel_group_rows === 0 ) {
-					// Nothing was appended after the heading, so truncating back to
-					// the recorded offset removes exactly the heading + wrapper.
-					$html = substr( $html, 0, $brikpanel_group_offset );
+					// Nothing with a link was appended after the heading, so
+					// truncating back to the recorded offset removes exactly the
+					// heading, its wrapper and any spacer in it.
+					$brikpanel_cut( $brikpanel_group_offset );
 				} else {
 					$html .= '</div>';
 				}
@@ -1160,6 +1383,10 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			// holding it opens, wherever the sidebar placed it
 			// (includes/brikpanel-screen-menu.php).
 			$brikpanel_screen_row = function_exists( 'brikpanel_screen_menu_current_row' ) ? brikpanel_screen_menu_current_row() : null;
+
+			// The menu the screen belongs to, with coupon screens answered by the
+			// Coupons row rather than Marketing (brikpanel_nav_parent_file()).
+			$brikpanel_parent_file = brikpanel_nav_parent_file();
 
 			// Loop through each top-level menu and build HTML.
 			foreach ( $menu as $key => $item ) {
@@ -1215,6 +1442,12 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					// $heading is computed, ahead of every skip branch — covers all
 					// the places further down that emit $heading.
 					$brikpanel_close_group();
+					// Every branch below prints $heading before anything else of this
+					// row, so the heading starts here. The end of the loop cuts back to
+					// this point when nothing this user can open came after it.
+					$brikpanel_sm_open   = true;
+					$brikpanel_sm_offset = strlen( $html );
+					$brikpanel_sm_rows   = 0;
 				}
 
 				// $submenu_items: the children the dropdown shows. $brikpanel_header_row:
@@ -1261,7 +1494,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				}
 
 				// The WooCommerce top-level is normally a SILENT container: its
-				// Orders / Customers children are rendered as flat top-level rows,
+				// Orders (and Subscriptions) children are rendered as flat top-level rows,
 				// so the row itself deliberately carries no label, padding, hover
 				// or radius (brikpanel-navigation.css excludes
 				// #toplevel_page_woocommerce from those rules) — otherwise that
@@ -1271,9 +1504,8 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				// "WooCommerce" link instead, and the stripped styling left it 8px
 				// to the left of every other item, shorter, and with no hover
 				// state. That is the misalignment non-administrator accounts hit:
-				// Orders needs `edit_others_shop_orders` and Customers needs
-				// `view_woocommerce_reports`, so a staff role without them (or a
-				// store that hid both rows in Navigation settings) sees the bare
+				// Orders needs `edit_others_shop_orders`, so a staff role without
+				// it (or a store that hid the row in Navigation settings) sees the bare
 				// row an administrator never does. Flag it so the stylesheet can
 				// style it like any other menu item.
 				//
@@ -1338,7 +1570,8 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				strpos($page, 'wc-reports') !== false ||
 				strpos($page, 'wc-status') !== false ||
 				strpos($page, 'wc-addons') !== false ||
-				strpos($path, '/extensions') !== false
+				strpos($path, '/extensions') !== false ||
+				'/customers' === $path
 			);
 		// A page of a menu moved into "More" opens "More" too.
 		if ( $brikpanel_more_plan && $brikpanel_more_plan['active'] ) {
@@ -1360,7 +1593,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 
 		// Menü aktiflik durumu
 		if (
-			($parent_file && $item_slug === $parent_file) ||
+			($brikpanel_parent_file && $item_slug === $brikpanel_parent_file) ||
 			(empty($typenow) && $self === $item_slug) ||
 			$viewing_add_product_page ||
 			$viewing_payments_page ||
@@ -1546,9 +1779,22 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			continue;
 		}
 
-		if ( $brikpanel_group_open ) {
-			$brikpanel_group_rows++;
+		// Spacers (and Admin Menu Editor's separators) only decorate: a heading
+		// with nothing but them under it is still empty. Every other row that
+		// gets here carries a link.
+		$brikpanel_row_is_decor = $is_separator
+			|| ( isset( $item[7] ) && is_array( $item[7] ) && ! empty( $item[7]['is_spacer'] ) );
+		if ( ! $brikpanel_row_is_decor ) {
+			if ( $brikpanel_group_open ) {
+				$brikpanel_group_rows++;
+			}
+			if ( $brikpanel_sm_open ) {
+				$brikpanel_sm_rows++;
+			}
+			$brikpanel_tail_decor   = array();
+			$brikpanel_tail_dropped = false;
 		}
+		$brikpanel_row_start = strlen( $html );
 
 		$html .= "
 			$heading
@@ -1590,14 +1836,14 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			$spacer_variant = ( isset( $item[7]['variant'] ) && $item[7]['variant'] === 'line' ) ? 'line' : 'space';
 			$html .= '<span class="brikpanel-nav-spacer-inner brikpanel-nav-spacer-' . esc_attr( $spacer_variant ) . '" aria-hidden="true"></span>';
 			$html .= '</li>';
+			$brikpanel_tail_decor[] = array( $brikpanel_row_start, strlen( $html ) );
 			continue;
 		}
 
 		// Özel ikon atamaları:
 		$has_custom_icon = array(
 			'edit.php?post_type=product' => 'products',
-			'brikpanel-segments' => 'payments',
-			'brikpanel-customer-analytics' => 'credit-card',
+			'brikpanel-customers' => 'customers',
 			'brikpanel-google-sheets' => 'google-sheets',
 			'brikpanel-vendors' => 'invoice',
 			'brikpanel-expenses' => 'payments',
@@ -1610,6 +1856,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			'wc-admin&path=/payments/overview' => 'payments',
 			'wc-admin&path=/analytics/overview' => 'analytics',
 			'woocommerce-marketing' => 'marketing',
+			BRIKPANEL_NAV_COUPONS_SLUG => 'coupons',
 			'admin.php?page=wc-settings' => 'settings',
 			'woocommerce-more' => 'more',
 			'index.php' => 'home',
@@ -1702,7 +1949,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 				)
 			) {
 				$admin_is_parent = true;
-				// WooCommerce keeps Orders / Customers surfaced directly beneath it
+				// WooCommerce keeps Orders surfaced directly beneath it
 				// with no parent label or chevron — BrikPanel deliberately hides the
 				// "WooCommerce" branding so the sidebar reads as clean Shopify-style
 				// items. Everything else that used to live under WooCommerce has been
@@ -1820,12 +2067,32 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		}
 
 		$html .= '</li>';
+		if ( $brikpanel_row_is_decor ) {
+			// An Admin Menu Editor separator (spacers were recorded above).
+			$brikpanel_tail_decor[] = array( $brikpanel_row_start, strlen( $html ) );
+		}
 	}
 
 	// Last user-created group never met a following heading, so close it here.
 	// (The built-in "Site management" wrapper is deliberately left open — the
 	// browser closes it at </ul>, exactly as it always has.)
 	$brikpanel_close_group();
+
+	// The "Site management" heading follows the groups' rule: when no row this
+	// user can open came after it, the heading and its wrapper go, with any
+	// spacer or emptied group inside.
+	if ( $brikpanel_sm_open && 0 === $brikpanel_sm_rows ) {
+		$brikpanel_cut( $brikpanel_sm_offset );
+	}
+
+	// Spacers left after the last row with a link, in front of a heading that
+	// was dropped, divide nothing. Taken out back to front, so the offsets of
+	// the earlier ones still hold.
+	if ( $brikpanel_tail_dropped ) {
+		foreach ( array_reverse( $brikpanel_tail_decor ) as $brikpanel_span ) {
+			$html = substr( $html, 0, $brikpanel_span[0] ) . substr( $html, $brikpanel_span[1] );
+		}
+	}
 
 	if ( brikpanel_nav_ame_active() ) {
 		global $wp_menu_editor;

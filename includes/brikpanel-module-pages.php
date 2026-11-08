@@ -79,14 +79,31 @@ function brikpanel_module_pages() {
 			'fallback'       => admin_url( 'edit.php?post_type=shop_coupon' ),
 			'fallback_label' => __( 'Open the WooCommerce coupon list', 'brikpanel' ),
 		],
+		// The Orders explorer (the Segments screen's order list) keeps its slug.
 		'brikpanel-segments'      => [
-			'label'          => __( 'Segments', 'brikpanel' ),
+			'label'          => __( 'Orders explorer', 'brikpanel' ),
 			'enabled'        => $yes( 'brikpanel_modern_segments' ),
 			'cap'            => 'manage_woocommerce',
 			'section'        => null,
 			'option'         => '',
-			'fallback'       => admin_url( 'index.php' ),
-			'fallback_label' => $back_home,
+			'fallback'       => function_exists( 'brikpanel_wc_orders_list_url' ) ? brikpanel_wc_orders_list_url() : admin_url( 'edit.php?post_type=shop_order' ),
+			'fallback_label' => __( 'Open the WooCommerce order list', 'brikpanel' ),
+		],
+		// No switch of its own: listed so a person with BrikPanel's interface
+		// switched off gets a way to WooCommerce's own customer screen instead
+		// of WordPress's bare "not allowed" page, and so links to it can ask
+		// brikpanel_module_url(). WooCommerce's Customers report exists only
+		// while its Analytics is on; the user list stands in otherwise.
+		'brikpanel-customers'     => [
+			'label'          => __( 'Customers', 'brikpanel' ),
+			'enabled'        => '__return_true',
+			'cap'            => 'manage_woocommerce',
+			'section'        => null,
+			'option'         => '',
+			'fallback'       => ( function_exists( 'brikpanel_wc_analytics_enabled' ) && brikpanel_wc_analytics_enabled() )
+				? admin_url( 'admin.php?page=wc-admin&path=/customers' )
+				: admin_url( 'users.php?role=customer' ),
+			'fallback_label' => __( 'Open the WooCommerce customer list', 'brikpanel' ),
 		],
 		'brikpanel-vendors'       => [
 			'label'          => __( 'Suppliers', 'brikpanel' ),

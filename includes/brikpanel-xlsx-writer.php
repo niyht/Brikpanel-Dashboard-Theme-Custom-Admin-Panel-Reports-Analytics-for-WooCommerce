@@ -15,8 +15,16 @@
  * everywhere.
  *
  * Scope on purpose: inline strings + numeric cells, a small fixed style
- * palette (normal / bold / header / title), per-column widths and an
- * optional frozen header row. That's all the report needs.
+ * palette (normal / bold / header / title / date), per-column widths and an
+ * optional frozen header row. That's all the reports need.
+ *
+ * Two ways to fill a sheet:
+ *   - add_sheet(): the rows in memory, for small reports;
+ *   - add_sheet_file(): a sheet whose XML a caller wrote to a file a piece at
+ *     a time (sheet_head_xml(), row_xml() per row, sheet_tail_xml()), for
+ *     lists too long to hold in memory, such as the orders list export
+ *     (front-end/orders/brikpanel-order-export.php). The file goes into the
+ *     ZIP as it is, so building the workbook never holds it in memory.
  *
  * @package BrikPanel
  * @since   3.0.4
@@ -35,8 +43,9 @@ class Brikpanel_XLSX_Writer {
 	const S_BOLD   = 1;
 	const S_HEADER = 2; // bold + light-grey fill — table column headers
 	const S_TITLE  = 3; // larger bold — section titles
+	const S_DATE   = 4; // date and time, shown in the reader's own regional format
 
-	/** @var array<int,array{name:string,rows:array,cols:array,freeze:bool}> */
+	/** @var array<int,array{name:string,rows:array,cols:array,freeze:bool,file:string}> */
 	private $sheets = [];
 
 	/**
@@ -54,6 +63,24 @@ class Brikpanel_XLSX_Writer {
 			'rows'   => $rows,
 			'cols'   => $cols,
 			'freeze' => (bool) $freeze,
+			'file'   => '',
+		];
+	}
+
+	/**
+	 * Append a worksheet whose complete XML is already in a file: what
+	 * sheet_head_xml(), row_xml() for each row and sheet_tail_xml() wrote.
+	 *
+	 * @param string $name Tab name.
+	 * @param string $path Readable file holding the worksheet XML.
+	 */
+	public function add_sheet_file( $name, $path ) {
+		$this->sheets[] = [
+			'name'   => $this->clean_sheet_name( $name, count( $this->sheets ) + 1 ),
+			'rows'   => [],
+			'cols'   => [],
+			'freeze' => false,
+			'file'   => (string) $path,
 		];
 	}
 
@@ -63,18 +90,40 @@ class Brikpanel_XLSX_Writer {
 	 * @return string|false
 	 */
 	public function build() {
-		if ( ! class_exists( 'ZipArchive' ) || empty( $this->sheets ) ) {
-			return false;
-		}
-
 		$tmp = wp_tempnam( 'brikpanel-xlsx' );
 		if ( ! $tmp ) {
 			return false;
 		}
 
-		$zip = new ZipArchive();
-		if ( $zip->open( $tmp, ZipArchive::OVERWRITE ) !== true ) {
+		if ( ! $this->build_to_file( $tmp ) ) {
 			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			return false;
+		}
+
+		$bytes = file_get_contents( $tmp ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+
+		return $bytes;
+	}
+
+	/**
+	 * Build the workbook into $path (overwritten).
+	 *
+	 * @param string $path Destination file.
+	 * @return bool
+	 */
+	public function build_to_file( $path ) {
+		if ( ! class_exists( 'ZipArchive' ) || empty( $this->sheets ) ) {
+			return false;
+		}
+		foreach ( $this->sheets as $sheet ) {
+			if ( '' !== $sheet['file'] && ! is_readable( $sheet['file'] ) ) {
+				return false;
+			}
+		}
+
+		$zip = new ZipArchive();
+		if ( $zip->open( $path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
 			return false;
 		}
 
@@ -87,18 +136,92 @@ class Brikpanel_XLSX_Writer {
 		$zip->addFromString( 'xl/styles.xml', $this->styles_xml() );
 
 		foreach ( $this->sheets as $i => $sheet ) {
-			$zip->addFromString(
-				'xl/worksheets/sheet' . ( $i + 1 ) . '.xml',
-				$this->sheet_xml( $sheet )
-			);
+			$entry = 'xl/worksheets/sheet' . ( $i + 1 ) . '.xml';
+			if ( '' !== $sheet['file'] ) {
+				// Read by ZipArchive when the archive is closed, a block at a
+				// time: a sheet of 100,000 orders never sits in memory.
+				$zip->addFile( $sheet['file'], $entry );
+			} else {
+				$zip->addFromString( $entry, $this->sheet_xml( $sheet ) );
+			}
 		}
 
-		$zip->close();
+		return $zip->close();
+	}
 
-		$bytes = file_get_contents( $tmp ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	// =========================================================================
+	// STREAMING PIECES (a sheet written to a file a part at a time)
+	// =========================================================================
 
-		return $bytes;
+	/**
+	 * Everything of a worksheet before its first row.
+	 *
+	 * @param array $cols   1-based column widths.
+	 * @param bool  $freeze Freeze the first row.
+	 * @return string
+	 */
+	public static function sheet_head_xml( array $cols = [], $freeze = false ) {
+		$col_xml = '';
+		if ( ! empty( $cols ) ) {
+			$col_xml .= '<cols>';
+			foreach ( $cols as $idx => $width ) {
+				$col_xml .= '<col min="' . (int) $idx . '" max="' . (int) $idx . '" width="' . (float) $width . '" customWidth="1"/>';
+			}
+			$col_xml .= '</cols>';
+		}
+
+		if ( $freeze ) {
+			// Keep the header row visible while scrolling a long order list.
+			$pane = '<sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView>';
+		} else {
+			$pane = '<sheetView workbookViewId="0"/>';
+		}
+
+		return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+			. '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+			. '<sheetViews>' . $pane . '</sheetViews>'
+			. '<sheetFormatPr defaultRowHeight="15"/>'
+			. $col_xml
+			. '<sheetData>';
+	}
+
+	/**
+	 * One row, numbered $r (1-based).
+	 *
+	 * @param array $row Cells: a scalar or [ value, styleIndex ].
+	 * @param int   $r   Row number.
+	 * @return string
+	 */
+	public static function row_xml( array $row, $r ) {
+		$r     = (int) $r;
+		$cells = '';
+		$c     = 0;
+		foreach ( $row as $cell ) {
+			$c++;
+			$cells .= self::cell_xml( $cell, self::col_letter( $c ) . $r );
+		}
+		return '<row r="' . $r . '">' . $cells . '</row>';
+	}
+
+	/**
+	 * Everything of a worksheet after its last row.
+	 *
+	 * @return string
+	 */
+	public static function sheet_tail_xml() {
+		return '</sheetData></worksheet>';
+	}
+
+	/**
+	 * A spreadsheet date: days since 1899-12-30, read as the wall clock it was
+	 * written in. Pass the local time as a Unix-style count (a WC_DateTime's
+	 * getOffsetTimestamp()), so the cell shows the store's own time.
+	 *
+	 * @param int $local_timestamp Seconds, already shifted to local time.
+	 * @return float
+	 */
+	public static function date_serial( $local_timestamp ) {
+		return round( ( (int) $local_timestamp ) / DAY_IN_SECONDS + 25569, 6 );
 	}
 
 	// =========================================================================
@@ -130,7 +253,7 @@ class Brikpanel_XLSX_Writer {
 	private function workbook_xml() {
 		$sheets = '';
 		foreach ( $this->sheets as $i => $sheet ) {
-			$sheets .= '<sheet name="' . $this->xml( $sheet['name'] ) . '" sheetId="' . ( $i + 1 ) . '" r:id="rId' . ( $i + 1 ) . '"/>';
+			$sheets .= '<sheet name="' . self::xml( $sheet['name'] ) . '" sheetId="' . ( $i + 1 ) . '" r:id="rId' . ( $i + 1 ) . '"/>';
 		}
 		return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
 			. '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
@@ -154,6 +277,9 @@ class Brikpanel_XLSX_Writer {
 	/**
 	 * Fixed monochrome style palette, in step with the BrikPanel design
 	 * system (near-black text, light-grey header fill — no bright colour).
+	 *
+	 * The date style uses built-in number format 22, which every spreadsheet
+	 * shows in its reader's own regional date and time format.
 	 */
 	private function styles_xml() {
 		return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -170,57 +296,31 @@ class Brikpanel_XLSX_Writer {
 			. '</fills>'
 			. '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
 			. '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-			. '<cellXfs count="4">'
+			. '<cellXfs count="5">'
 				. '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
 				. '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
 				. '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
 				. '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+				. '<xf numFmtId="22" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
 			. '</cellXfs>'
 			. '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
 			. '</styleSheet>';
 	}
 
 	private function sheet_xml( array $sheet ) {
-		$cols = '';
-		if ( ! empty( $sheet['cols'] ) ) {
-			$cols .= '<cols>';
-			foreach ( $sheet['cols'] as $idx => $width ) {
-				$cols .= '<col min="' . (int) $idx . '" max="' . (int) $idx . '" width="' . (float) $width . '" customWidth="1"/>';
-			}
-			$cols .= '</cols>';
-		}
-
-		$pane = '';
-		if ( ! empty( $sheet['freeze'] ) ) {
-			// Keep the header row visible while scrolling a long order list.
-			$pane = '<sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView>';
-		} else {
-			$pane = '<sheetView workbookViewId="0"/>';
-		}
-
 		$data = '';
 		$r    = 0;
 		foreach ( $sheet['rows'] as $row ) {
 			$r++;
-			$cells = '';
-			$c     = 0;
-			foreach ( $row as $cell ) {
-				$c++;
-				$cells .= $this->cell_xml( $cell, $this->col_letter( $c ) . $r );
-			}
-			$data .= '<row r="' . $r . '">' . $cells . '</row>';
+			$data .= self::row_xml( $row, $r );
 		}
 
-		return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-			. '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-			. '<sheetViews>' . $pane . '</sheetViews>'
-			. '<sheetFormatPr defaultRowHeight="15"/>'
-			. $cols
-			. '<sheetData>' . $data . '</sheetData>'
-			. '</worksheet>';
+		return self::sheet_head_xml( $sheet['cols'], ! empty( $sheet['freeze'] ) )
+			. $data
+			. self::sheet_tail_xml();
 	}
 
-	private function cell_xml( $cell, $ref ) {
+	private static function cell_xml( $cell, $ref ) {
 		$style = self::S_NORMAL;
 		$value = $cell;
 
@@ -243,14 +343,14 @@ class Brikpanel_XLSX_Writer {
 		}
 
 		return '<c r="' . $ref . '"' . $s . ' t="inlineStr"><is><t xml:space="preserve">'
-			. $this->xml( $value ) . '</t></is></c>';
+			. self::xml( $value ) . '</t></is></c>';
 	}
 
 	// =========================================================================
 	// HELPERS
 	// =========================================================================
 
-	private function col_letter( $n ) {
+	private static function col_letter( $n ) {
 		$s = '';
 		while ( $n > 0 ) {
 			$m = ( $n - 1 ) % 26;
@@ -260,10 +360,18 @@ class Brikpanel_XLSX_Writer {
 		return $s;
 	}
 
-	private function xml( $str ) {
+	private static function xml( $str ) {
+		$str = (string) $str;
+		// A customer note or an imported name can carry bytes XML 1.0 does not
+		// allow (control characters, broken UTF-8). One of them in a cell and
+		// Excel refuses the whole file, so they are dropped here.
+		if ( function_exists( 'wp_check_invalid_utf8' ) ) {
+			$str = wp_check_invalid_utf8( $str, true );
+		}
+		$str = (string) preg_replace( '/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u', '', $str );
 		// ENT_XML1 keeps the output valid 1.0 XML; UTF-8 preserves accented
 		// names and non-Latin scripts (Turkish, Cyrillic, CJK…).
-		return htmlspecialchars( (string) $str, ENT_QUOTES | ENT_XML1, 'UTF-8' );
+		return htmlspecialchars( $str, ENT_QUOTES | ENT_XML1, 'UTF-8' );
 	}
 
 	private function clean_sheet_name( $name, $fallback_index ) {

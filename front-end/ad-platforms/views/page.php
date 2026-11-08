@@ -244,13 +244,9 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 				<?php
 				// Ticked accounts in another currency than the store, known from
 				// their imported spend or from the last account list the platform
-				// returned. The script keeps this note current while boxes change.
-				$foreign = [];
-				foreach ( $rows as $row ) {
-					if ( $row['selected'] && $row['currency'] !== '' && $store_currency !== '' && $row['currency'] !== $store_currency ) {
-						$foreign[] = $row['name'] !== '' ? $row['name'] : $row['id'];
-					}
-				}
+				// returned: converted with the Settings > Currency rate, or waiting
+				// for one. The script keeps this note current while boxes change.
+				$currency_note = Brikpanel_Ads_Settings::currency_note_text( $rows, $store_currency );
 				?>
 				<fieldset class="bp-ads-field bp-ads-accounts-field" data-role="accounts-field"
 					data-saved="<?php echo esc_attr( wp_json_encode( array_values( $accounts ) ) ); ?>">
@@ -301,14 +297,10 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 							<?php esc_html_e( 'Save', 'brikpanel' ); ?>
 						</button>
 					</div>
-					<p class="bp-ads-inline-hint" data-role="currency-note"<?php echo $foreign ? '' : ' hidden'; ?>><?php
-						if ( $foreign ) {
-							echo esc_html( sprintf(
-								translate_nooped_plural( Brikpanel_Ads_Settings::currency_note_noop(), count( $foreign ), 'brikpanel' ),
-								implode( ', ', $foreign )
-							) );
-						}
-					?></p>
+					<div class="bp-ads-inline-hint bp-ads-currency-note" data-role="currency-note"<?php echo '' === $currency_note ? ' hidden' : ''; ?>>
+						<span data-role="currency-note-text"><?php echo esc_html( $currency_note ); ?></span>
+						<a class="brikpanel-btn brikpanel-btn--link bp-ads-currency-link" href="<?php echo esc_url( admin_url( 'admin.php?page=wc-settings&tab=brikpanel&section=currency' ) ); ?>"><?php esc_html_e( 'Set exchange rates', 'brikpanel' ); ?></a>
+					</div>
 				</fieldset>
 
 				<details class="bp-ads-manual">
@@ -526,7 +518,7 @@ $render_platform_card = function ( $platform, $title, $tagline, $desc, $last_syn
 					<li><?php esc_html_e( 'Connect each platform once. Tokens are stored encrypted on this server and are sent only over HTTPS to our brksoft.com helper, which fetches your ad spend from Google and Meta.', 'brikpanel' ); ?></li>
 					<li><?php esc_html_e( 'For each account you tick, the last 3 years of daily spend are loaded in the background (90-day chunks every 30 seconds).', 'brikpanel' ); ?></li>
 					<li><?php esc_html_e( 'After that, the last 7 days are refreshed once per day to capture late corrections.', 'brikpanel' ); ?></li>
-					<li><?php esc_html_e( 'Spend is stored in the ad account currency. The dashboard shows ad-currency totals next to your store revenue so you can compare them directly.', 'brikpanel' ); ?></li>
+					<li><?php esc_html_e( 'Spend is stored in each ad account’s own currency. When that differs from your store currency, the dashboard converts it with the exchange rate you enter under Settings, then Currency.', 'brikpanel' ); ?></li>
 				</ul>
 			</div>
 		</div>

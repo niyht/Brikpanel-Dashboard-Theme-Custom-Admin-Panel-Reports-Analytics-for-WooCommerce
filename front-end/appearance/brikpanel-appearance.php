@@ -58,9 +58,13 @@ function brikpanel_brand_logo_is_enabled() {
  *     a stylesheet arrived on the target as one long line, every time.
  *     brikpanel_appearance_sanitize_custom_css() is the cleaner the settings
  *     screen itself uses, so an imported sheet is exactly as safe as a typed one.
- *   - The external logo URL is portable (it points at a CDN, not at this site's
- *     media library) but was only reaching the file through a hand-kept list.
- *     Its companion attachment id stays behind, classified `site` by the walk.
+ *   - The external logo URL is portable (a CDN address, or a path such as
+ *     /wp-content/uploads/logo.png that works on every copy of the site) but
+ *     was only reaching the file through a hand-kept list. It goes through the
+ *     settings screen's own cleaner, so a value the screen would refuse is
+ *     skipped instead of being written as a broken address, and a full URL
+ *     that points at the exporting site is repointed at this one. Its
+ *     companion attachment id stays behind, classified `site` by the walk.
  *
  * @param array $map Registry so far.
  * @return array
@@ -74,10 +78,12 @@ function brikpanel_appearance_register_export_keys( $map ) {
 		'default'  => '',
 	];
 	$map['brikpanel_brand_logo_url'] = [
-		'class'   => 'portable',
-		'group'   => 'appearance',
-		'type'    => 'url',
-		'default' => '',
+		'class'        => 'portable',
+		'group'        => 'appearance',
+		'type'         => 'url',
+		'sanitize'     => 'brikpanel_brand_logo_clean_url',
+		'default'      => '',
+		'rewrite_urls' => true,
 	];
 	return $map;
 }
@@ -88,8 +94,14 @@ function brikpanel_appearance_register_export_keys( $map ) {
  * of probing the options themselves.
  *
  * Two sources are supported, in priority order:
- *   1. An explicit external URL (e.g. a logo hosted on a CDN). Stored as
- *      `brikpanel_brand_logo_url`. Wins when set so an admin can override a
+ *   1. An address typed into the settings field: a full URL (e.g. a logo hosted
+ *      on a CDN) or a path that starts with / (e.g. /wp-content/uploads/logo.png).
+ *      Stored as `brikpanel_brand_logo_url`, a path exactly as typed, so the
+ *      logo follows the site when it moves to another address (staging to
+ *      live). The browser resolves a path against the page it is on, which
+ *      suits the two places that draw the logo, the top bar and the login page;
+ *      anything that renders it outside the site, an email for example, has to
+ *      make it absolute first. Wins when set so an admin can override a
  *      previously picked media item without clearing it first.
  *   2. A WordPress media library attachment. Stored as `brikpanel_brand_logo_id`.
  */
@@ -104,6 +116,50 @@ function brikpanel_brand_logo_get_url() {
 	}
 	$url = wp_get_attachment_image_url( $id, 'full' );
 	return is_string( $url ) ? $url : '';
+}
+
+/**
+ * Clean an address for the brand logo field, typed on the settings screen or
+ * read from an imported settings file.
+ *
+ * Accepted: a full http(s) URL, a protocol-relative one (//cdn.example.com/…)
+ * and a path that starts with a single / (/wp-content/uploads/logo.png). A path
+ * is kept as typed, which is what lets one value work on the development,
+ * staging and live copies of a site. esc_url_raw() is restricted to http(s), so
+ * a javascript: or data: payload can never reach the top bar <img> or the login
+ * page CSS, and it drops the quotes and backslashes a value would need to break
+ * out of that CSS.
+ *
+ * Anything else ("logo.png", "wp-content/…", "{home_url}/logo.png") is refused
+ * rather than guessed at: esc_url_raw() alone would turn it into
+ * http://logo.png, a broken logo the merchant would only notice later.
+ *
+ * @param mixed $value Raw value.
+ * @return string|null '' to clear the field, the cleaned address, or null when
+ *                     the value is not an address the field accepts.
+ */
+function brikpanel_brand_logo_clean_url( $value ) {
+	if ( ! is_scalar( $value ) ) {
+		return null;
+	}
+	$raw = trim( (string) $value );
+	if ( $raw === '' ) {
+		return '';
+	}
+	$is_path = strpos( $raw, '/' ) === 0 && strpos( $raw, '//' ) !== 0;
+	if ( ! $is_path && ! preg_match( '#^(?:https?:)?//#i', $raw ) ) {
+		return null;
+	}
+	$clean = esc_url_raw( $raw, [ 'http', 'https' ] );
+	if ( ! is_string( $clean ) || $clean === '' ) {
+		return null;
+	}
+	// A path has to come out as a path: with its backslash stripped, "/\/x.test"
+	// would otherwise turn into an address on another host.
+	if ( $is_path && strpos( $clean, '//' ) === 0 ) {
+		return null;
+	}
+	return $clean;
 }
 
 /**
@@ -631,8 +687,22 @@ function brikpanel_brand_logo_render_field( $field ) {
 				</div>
 				<input type="hidden" name="<?php echo esc_attr( $id ); ?>" id="<?php echo esc_attr( $id ); ?>" value="<?php echo esc_attr( $value ); ?>" />
 				<div class="brikpanel-logo-picker__url">
-					<label for="<?php echo esc_attr( $url_id ); ?>"><?php esc_html_e( 'Or load from an image URL (CDN)', 'brikpanel' ); ?></label>
-					<input type="url" inputmode="url" class="regular-text code" name="<?php echo esc_attr( $url_id ); ?>" id="<?php echo esc_attr( $url_id ); ?>" value="<?php echo esc_attr( $custom_url ); ?>" placeholder="https://cdn.mysite.com/logo.png" autocomplete="off" spellcheck="false" />
+					<label for="<?php echo esc_attr( $url_id ); ?>"><?php esc_html_e( 'Or load from an image URL or path', 'brikpanel' ); ?></label>
+					<?php
+					// type="text", not "url": the browser's URL check refuses a path
+					// such as /wp-content/uploads/logo.png and then blocks the whole
+					// settings form. brikpanel_brand_logo_clean_url() checks it on save.
+					?>
+					<input type="text" inputmode="url" dir="ltr" class="regular-text code" name="<?php echo esc_attr( $url_id ); ?>" id="<?php echo esc_attr( $url_id ); ?>" value="<?php echo esc_attr( $custom_url ); ?>" placeholder="https://cdn.mysite.com/logo.png" autocomplete="off" spellcheck="false" aria-describedby="<?php echo esc_attr( $url_id . '_hint' ); ?>" />
+					<div class="brikpanel-logo-picker__hint" id="<?php echo esc_attr( $url_id . '_hint' ); ?>">
+						<?php
+						printf(
+							/* translators: %s: an example path to an image on this site, /wp-content/uploads/logo.png */
+							esc_html__( 'Paste a full URL, or a path that starts with /, like %s. A path keeps working when you move the site to another address, for example from staging to live.', 'brikpanel' ),
+							'<code>/wp-content/uploads/logo.png</code>'
+						);
+						?>
+					</div>
 				</div>
 			</div>
 			<?php if ( $desc !== '' ) : ?>
@@ -675,27 +745,37 @@ add_action( 'woocommerce_update_options_brikpanel', function () {
 } );
 
 /**
- * Persist the external brand logo URL on settings submit. Sanitized with
- * esc_url_raw and restricted to http(s) (plus protocol-relative) so the option
- * can never carry a javascript: or data: payload into the topbar / login CSS.
- * An empty or invalid value clears the override and falls back to the media
- * library pick (if any).
+ * Persist the brand logo address on settings submit. What the field accepts is
+ * decided by brikpanel_brand_logo_clean_url(): a full http(s) URL, a
+ * protocol-relative one or a path that starts with /. An empty value clears
+ * the override and falls back to the media library pick (if any).
+ *
+ * A value the cleaner refuses keeps the logo that is already there and says
+ * why. It used to be saved as whatever esc_url_raw() guessed ("logo.png"
+ * became http://logo.png), a broken logo with no message. WooCommerce shows
+ * only the errors when there are any, so the message also says the rest of the
+ * section was saved.
+ *
+ * The woocommerce-settings nonce is checked by WC_Admin_Settings::save() before
+ * this action runs.
  */
-add_action( 'woocommerce_update_options_brikpanel', function () {
+function brikpanel_brand_logo_save_url() {
 	if ( ! current_user_can( 'manage_woocommerce' ) ) {
 		return;
 	}
 	if ( ! isset( $_POST['brikpanel_brand_logo_url'] ) ) {
 		return;
 	}
-	$raw = trim( (string) wp_unslash( $_POST['brikpanel_brand_logo_url'] ) );
-	if ( $raw === '' ) {
-		update_option( 'brikpanel_brand_logo_url', '' );
+	$clean = brikpanel_brand_logo_clean_url( wp_unslash( $_POST['brikpanel_brand_logo_url'] ) );
+	if ( $clean === null ) {
+		if ( class_exists( 'WC_Admin_Settings' ) ) {
+			WC_Admin_Settings::add_error( __( 'The logo address was not saved. Use a full URL that starts with https:// or a path that starts with /. Your other settings were saved.', 'brikpanel' ) );
+		}
 		return;
 	}
-	$clean = esc_url_raw( $raw, [ 'http', 'https' ] );
-	update_option( 'brikpanel_brand_logo_url', is_string( $clean ) ? $clean : '' );
-} );
+	update_option( 'brikpanel_brand_logo_url', $clean );
+}
+add_action( 'woocommerce_update_options_brikpanel', 'brikpanel_brand_logo_save_url' );
 
 /**
  * Load the media library on the BrikPanel WC settings tab plus the styles &
@@ -736,6 +816,8 @@ add_action( 'admin_enqueue_scripts', function () {
 			.brikpanel-logo-picker__url { flex:1 1 100%; display:flex; flex-direction:column; gap:0.375rem; margin-top:0.25rem; }
 			.brikpanel-logo-picker__url label { font-size:0.8125rem; font-weight:600; color:#616161; }
 			.brikpanel-logo-picker__url input { max-width:420px; }
+			.brikpanel-logo-picker__hint { max-width:420px; font-size:0.75rem; line-height:1.55; color:#616161; }
+			.brikpanel-logo-picker__hint code { font-size:inherit; white-space:nowrap; }
 	';
 	wp_register_style( 'brikpanel-logo-picker', false, [], BRIKPANEL_VERSION );
 	wp_enqueue_style( 'brikpanel-logo-picker' );

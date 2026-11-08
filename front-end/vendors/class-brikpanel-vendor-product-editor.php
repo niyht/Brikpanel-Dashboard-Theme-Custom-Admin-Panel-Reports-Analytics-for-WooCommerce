@@ -128,6 +128,64 @@ class Brikpanel_Vendor_Product_Editor {
 		return (int) get_post_meta( absint( $product_id ), self::META_VENDOR_ID, true );
 	}
 
+	/**
+	 * The supplier's own code for a product or variation, and the supplier it
+	 * belongs to: what the order screen and stock orders show beside the
+	 * store's SKU.
+	 *
+	 * A variation's own code wins. Without one it uses its main product's,
+	 * but only while it is bought from the same supplier: a variation bought
+	 * elsewhere does not borrow a code that means nothing to that supplier.
+	 * No supplier means no code, as the product editor hides the code box
+	 * while the supplier is "None".
+	 *
+	 * @param int $product_id   Product, or a variation's main product.
+	 * @param int $variation_id Variation, 0 for none.
+	 * @return array{vendor_id: int, sku: string} Both empty when there is nothing to show.
+	 */
+	public static function resolve_vendor_sku( $product_id, $variation_id = 0 ) {
+		$product_id   = absint( $product_id );
+		$variation_id = absint( $variation_id );
+
+		$parent_vendor = $product_id ? (int) get_post_meta( $product_id, self::META_VENDOR_ID, true ) : 0;
+		$vendor_id     = $parent_vendor;
+		$sku           = '';
+		if ( $variation_id ) {
+			$override = (int) get_post_meta( $variation_id, self::META_VENDOR_ID, true );
+			if ( $override > 0 ) {
+				$vendor_id = $override;
+			}
+			$sku = trim( (string) get_post_meta( $variation_id, self::META_VENDOR_SKU, true ) );
+		}
+		if ( '' === $sku && $product_id && $vendor_id === $parent_vendor ) {
+			$sku = trim( (string) get_post_meta( $product_id, self::META_VENDOR_SKU, true ) );
+		}
+
+		if ( $vendor_id <= 0 || '' === $sku ) {
+			return [ 'vendor_id' => 0, 'sku' => '' ];
+		}
+		return [ 'vendor_id' => $vendor_id, 'sku' => $sku ];
+	}
+
+	/**
+	 * "AliExpress SKU:", the label in front of a supplier's code, or '' when
+	 * the supplier no longer exists.
+	 *
+	 * @param int $vendor_id Supplier.
+	 * @return string
+	 */
+	public static function vendor_sku_label( $vendor_id ) {
+		$name = Brikpanel_Vendors::vendor_name( $vendor_id );
+		if ( '' === $name ) {
+			return '';
+		}
+		return brikpanel_safe_sprintf(
+			/* translators: Label in front of a supplier's own product code, e.g. "AliExpress SKU:" on an order line. %s: the supplier's name. */
+			_x( '%s SKU:', 'supplier name, then the product code that supplier uses', 'brikpanel' ),
+			$name
+		);
+	}
+
 	// =========================================================================
 	// Products list column
 	// =========================================================================

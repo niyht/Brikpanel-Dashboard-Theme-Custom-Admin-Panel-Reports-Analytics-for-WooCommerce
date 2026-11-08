@@ -325,9 +325,11 @@ class Brikpanel_Master_Switch {
 			? 'admin.php?page=wc-admin&path=/customers'
 			: 'users.php?role=customer';
 		$map = array(
-			'brikpanel-products'          => 'edit.php?post_type=product',
-			'brikpanel-coupons'           => 'edit.php?post_type=shop_coupon',
-			'brikpanel-customer-analytics' => $customers_screen,
+			'brikpanel-products'  => 'edit.php?post_type=product',
+			'brikpanel-coupons'   => 'edit.php?post_type=shop_coupon',
+			'brikpanel-customers' => $customers_screen,
+			// The Orders explorer shows orders.
+			'brikpanel-segments'  => ( 'yes' === get_option( 'woocommerce_custom_orders_table_enabled' ) ) ? 'admin.php?page=wc-orders' : 'edit.php?post_type=shop_order',
 		);
 
 		/**

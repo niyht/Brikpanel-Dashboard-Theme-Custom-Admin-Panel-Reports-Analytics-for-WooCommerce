@@ -247,7 +247,12 @@
         $('#bpc-generate-code').on('click', function () {
             var code = generateCouponCode();
             $('#bpc-code').val(code).focus();
+            updateCouponLink();
         });
+
+        // The coupon link follows the code as it is typed.
+        $('#bpc-code').on('input', updateCouponLink);
+        $('#bpc-copy-link').on('click', copyCouponLink);
 
         // Discount type changes prefix symbol
         $('#bpc-discount-type').on('change', function () {
@@ -634,6 +639,12 @@
         // Type display
         var typeLabel = getTypeLabel(c.discount_type);
 
+        // An automatic coupon carries a small "Auto" badge next to its code
+        // (outside the code's own span: other handlers read that text).
+        var autoBadge = c.auto_apply === 'yes'
+            ? ' <span class="brikpanel-badge brikpanel-cp-auto-badge" title="' + escAttr(CP.i18n.auto_title) + '">' + escHtml(CP.i18n.auto_badge) + '</span>'
+            : '';
+
         // Amount display
         var amountDisplay = formatAmount(c.amount, c.discount_type);
 
@@ -726,7 +737,7 @@
 
         return '<tr class="brikpanel-cp-row" data-id="' + c.id + '">' +
             '<td class="brikpanel-cp-cell-check"><input type="checkbox" class="brikpanel-cp-row-check brikpanel-cp-checkbox" value="' + c.id + '"' + checked + '></td>' +
-            '<td class="brikpanel-cp-cell-code brikpanel-fit-lead"><span class="brikpanel-cp-code-text">' + escHtml(c.code) + '</span>' + aseActionsHtml + '</td>' +
+            '<td class="brikpanel-cp-cell-code brikpanel-fit-lead"><span class="brikpanel-cp-code-text">' + escHtml(c.code) + '</span>' + autoBadge + aseActionsHtml + '</td>' +
             '<td class="brikpanel-cp-cell-type"><span class="brikpanel-cp-type-badge">' + escHtml(typeLabel) + '</span></td>' +
             '<td class="brikpanel-cp-cell-amount brikpanel-fit-headline"><span class="brikpanel-cp-editable brikpanel-cp-amount-cell" data-field="amount" data-value="' + escAttr(c.amount) + '">' + amountDisplay + '</span></td>' +
             '<td class="brikpanel-cp-cell-desc"><span class="brikpanel-cp-desc-cell">' + descHtml + '</span></td>' +
@@ -874,6 +885,22 @@
 
         $('#bpc-limit-items').val(isNew ? '' : (coupon.limit_usage_to_x_items || ''));
 
+        // Automatic coupons: the switch, the item range and the coupon link.
+        $('#bpc-auto-apply').prop('checked', isNew ? false : coupon.auto_apply === 'yes');
+        $('#bpc-min-items').val(isNew ? '' : (coupon.min_items || ''));
+        $('#bpc-max-items').val(isNew ? '' : (coupon.max_items || ''));
+        updateCouponLink();
+
+        // Other plugins' settings for this coupon are on WooCommerce's own
+        // coupon screen: a saved coupon gets the note and the link there.
+        var $note = $('#bpc-plugin-note');
+        if (CP.plugin_settings && !isNew && CP.coupon_edit_url) {
+            $('#bpc-plugin-note-link').attr('href', CP.coupon_edit_url.replace('__ID__', String(coupon.id)));
+            $note.prop('hidden', false);
+        } else {
+            $note.prop('hidden', true);
+        }
+
         // Clear any leftover search input / suggestions in token pickers.
         $('.brikpanel-cp-token-input').val('');
         $('.brikpanel-cp-token-suggestions').attr('hidden', true).empty();
@@ -939,7 +966,10 @@
             individual_use: $('#bpc-individual-use').is(':checked') ? 'yes' : 'no',
             exclude_sale_items: $('#bpc-exclude-sale').is(':checked') ? 'yes' : 'no',
             usage_limit: $('#bpc-usage-limit').val(),
-            usage_limit_per_user: $('#bpc-usage-limit-user').val()
+            usage_limit_per_user: $('#bpc-usage-limit-user').val(),
+            auto_apply: $('#bpc-auto-apply').is(':checked') ? 'yes' : 'no',
+            min_items: String($('#bpc-min-items').val() || '').trim(),
+            max_items: String($('#bpc-max-items').val() || '').trim()
         };
 
         // Advanced restriction fields - only sent if the corresponding setting is on
@@ -1355,6 +1385,42 @@
         return escHtml(type === 'percent' ? BF.percent(parseFloat(amount), 2) : BF.money(parseFloat(amount)));
     }
 
+    /* The coupon link: the store's home page with ?bp-coupon=CODE (the
+       parameter the cart share link uses for its coupon too). */
+    function updateCouponLink() {
+        var code = String($('#bpc-code').val() || '').trim();
+        var base = String(CP.link_base || '');
+        var link = '';
+        if (code && base) {
+            link = base + (base.indexOf('?') === -1 ? '?' : '&') + encodeURIComponent(CP.link_var || 'bp-coupon') + '=' + encodeURIComponent(code); // i18n-ignore: URL parameter name, not text.
+        }
+        $('#bpc-link').val(link);
+        $('#bpc-copy-link').prop('disabled', !link);
+    }
+
+    function copyCouponLink() {
+        var $input = $('#bpc-link');
+        var link = $input.val();
+        if (!link) return;
+        var selectIt = function () {
+            $input.trigger('focus');
+            $input[0].select();
+        };
+        var fallback = function () {
+            selectIt();
+            var ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            showToast(ok ? CP.i18n.link_copied : CP.i18n.copy_failed, ok ? 'success' : 'info');
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(link).then(function () {
+                showToast(CP.i18n.link_copied, 'success');
+            }, fallback);
+        } else {
+            fallback();
+        }
+    }
+
     function updateAmountPrefix() {
         var type = $('#bpc-discount-type').val();
         if (type === 'percent') {
@@ -1393,6 +1459,10 @@
         if (!$('#brikpanel-coupons-list').length) return;
         bindEvents();
         fetchCoupons();
+        // The top bar's "Create > Coupon" opens this page with action=new.
+        if (/[?&]action=new(?:&|$)/.test(window.location.search)) {
+            openDrawer(0);
+        }
     });
 
 })(jQuery);

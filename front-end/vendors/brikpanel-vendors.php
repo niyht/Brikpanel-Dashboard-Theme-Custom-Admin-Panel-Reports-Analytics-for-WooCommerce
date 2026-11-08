@@ -13,6 +13,8 @@
  *   - Brikpanel_Vendor_Settings        — WC settings tab section + field filters
  *   - Brikpanel_Vendor_Product_Editor  — vendor selector inside the BrikPanel
  *                                        product editor (simple + variations)
+ *   - Brikpanel_Vendor_Order_Items     — the supplier's code under each line
+ *                                        of an order's items
  *
  * The settings class always loads so the toggles appear in WC settings even
  * before the user enables the master switch. The other classes self-gate on
@@ -31,6 +33,7 @@ require_once __DIR__ . '/class-brikpanel-vendor-settings.php';
 require_once __DIR__ . '/class-brikpanel-vendors.php';
 require_once __DIR__ . '/class-brikpanel-stock-orders.php';
 require_once __DIR__ . '/class-brikpanel-vendor-product-editor.php';
+require_once __DIR__ . '/class-brikpanel-vendor-order-items.php';
 
 new Brikpanel_Vendor_Settings();
 
@@ -41,4 +44,5 @@ if ( 'yes' === get_option( 'brikpanel_vendors_enabled', 'no' ) ) {
 	new Brikpanel_Vendors();
 	new Brikpanel_Stock_Orders();
 	new Brikpanel_Vendor_Product_Editor();
+	new Brikpanel_Vendor_Order_Items();
 }

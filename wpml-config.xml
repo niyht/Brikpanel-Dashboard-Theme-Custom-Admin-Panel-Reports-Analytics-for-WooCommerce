@@ -1,0 +1,10 @@
+<wpml-config>
+  <admin-texts>
+    <key name="brikpanel_custom_order_statuses">
+      <key name="*"><key name="label"/></key>
+    </key>
+    <key name="brikpanel_status_emails">
+      <key name="*"><key name="subject"/><key name="heading"/><key name="content"/></key>
+    </key>
+  </admin-texts>
+</wpml-config>

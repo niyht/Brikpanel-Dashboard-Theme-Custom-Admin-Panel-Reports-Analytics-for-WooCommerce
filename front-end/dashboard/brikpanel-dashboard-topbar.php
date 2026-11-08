@@ -21,6 +21,8 @@ class Brikpanel_Dashboard_Topbar {
     /** Cached notification-bell counts, see get_notification_counts() and brikpanel_flush_topbar_counts(). */
     const COUNTS_TRANSIENT = 'brikpanel_topbar_counts';
     const COUNTS_TTL       = MINUTE_IN_SECONDS;
+    /** The bell's "New customers today" number, kept apart (new_customers_today()). */
+    const NEW_CUSTOMERS_TRANSIENT = 'brikpanel_topbar_new_customers';
 
     private static $instance = null;
 
@@ -244,6 +246,10 @@ class Brikpanel_Dashboard_Topbar {
             'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
             'cache_nonce'     => class_exists( 'Brikpanel_Cache_Clear' ) ? wp_create_nonce( Brikpanel_Cache_Clear::NONCE_ACTION ) : '',
             'cache_action'    => class_exists( 'Brikpanel_Cache_Clear' ) ? Brikpanel_Cache_Clear::AJAX_ACTION : '',
+            // Where LiteSpeed is asked to send a background purge back to: a
+            // core image, so no admin page renders for it, and landing there
+            // proves LiteSpeed accepted the purge (brikpanel-topbar.js).
+            'cache_beacon'    => (string) wp_parse_url( includes_url( 'images/blank.gif' ), PHP_URL_PATH ),
             // "Hide third-party admin notices" (on by default). Off, the bell's
             // sweep leaves foreign notices on the page, as the setting promises.
             'hide_foreign'    => get_option( 'brikpanel_hide_foreign_notices', 'yes' ) === 'yes',
@@ -262,6 +268,9 @@ class Brikpanel_Dashboard_Topbar {
                 'toggle_nav'     => __( 'Toggle navigation', 'brikpanel' ),
                 'cache_clearing' => __( 'Clearing cache…', 'brikpanel' ),
                 'cache_failed'   => __( 'Cache could not be cleared.', 'brikpanel' ),
+                /* translators: %s: what was purged, a cache plugin or one of LiteSpeed's purge options (e.g. "CSS/JS Cache") */
+                'cache_type_purged' => __( '%s purged.', 'brikpanel' ),
+                'cache_retry'    => __( 'Could not clear. Reload the page and try again.', 'brikpanel' ),
                 'close'          => __( 'Close', 'brikpanel' ),
             ],
         ] );
@@ -439,6 +448,16 @@ class Brikpanel_Dashboard_Topbar {
                     <?php endif; ?>
 
                     <?php $slot( 'right', 'after', 'create' ); ?>
+                    <?php $slot( 'right', 'before', 'phone_app' ); ?>
+                    <?php
+                    // The phone app button (front-end/push/brikpanel-push-admin.php): on a
+                    // phone only, until notifications are on there. Absent with the phone
+                    // app off (BRIKPANEL_PHONE_APP).
+                    if ( function_exists( 'brikpanel_push_menu_render' ) ) {
+                        brikpanel_push_menu_render();
+                    }
+                    ?>
+                    <?php $slot( 'right', 'after', 'phone_app' ); ?>
                     <?php $slot( 'right', 'before', 'notifications' ); ?>
 
                     <!-- Notifications -->
@@ -452,17 +471,29 @@ class Brikpanel_Dashboard_Topbar {
                     $brikpanel_order_type     = get_post_type_object( 'shop_order' );
                     $brikpanel_bell_orders    = $brikpanel_order_type && current_user_can( $brikpanel_order_type->cap->edit_posts );
                     $brikpanel_bell_oos       = current_user_can( 'edit_products' );
+                    // "New customers today" opens the Customers list on the same rule
+                    // its count uses: customers whose first paid order is today.
+                    // Without the Customers page (a third party removed it), the old
+                    // targets: WooCommerce's report, or the Users list when its
+                    // Analytics is off (brikpanel_wc_analytics_enabled() explains how
+                    // "off" is read on each WooCommerce release).
                     $brikpanel_analytics_on   = function_exists( 'brikpanel_wc_analytics_enabled' ) && brikpanel_wc_analytics_enabled();
-                    $brikpanel_bell_customers = current_user_can( $brikpanel_analytics_on ? 'view_woocommerce_reports' : 'list_users' );
+                    if ( class_exists( 'Brikpanel_Customers' ) ) {
+                        $brikpanel_bell_customers = current_user_can( 'manage_woocommerce' );
+                        $brikpanel_customers_url  = Brikpanel_Customers::url( 'all', [ 'preset' => 'new_today' ] );
+                    } else {
+                        $brikpanel_bell_customers = current_user_can( $brikpanel_analytics_on ? 'view_woocommerce_reports' : 'list_users' );
+                        $brikpanel_customers_url  = $brikpanel_analytics_on
+                            ? admin_url( 'admin.php?page=wc-admin&path=/customers' )
+                            : admin_url( 'users.php?role=customer' );
+                    }
                     // With "Block pages hidden from the menu" on, a row whose screen the
                     // Navigation rules close for this user would only open the
                     // "not available" card, so it is left out like a 403 row.
                     if ( function_exists( 'brikpanel_nav_url_blocked_for_current_user' ) ) {
                         $brikpanel_bell_orders    = $brikpanel_bell_orders && ! brikpanel_nav_url_blocked_for_current_user( brikpanel_wc_orders_list_url( 'processing' ) );
                         $brikpanel_bell_oos       = $brikpanel_bell_oos && ! brikpanel_nav_url_blocked_for_current_user( brikpanel_out_of_stock_url() );
-                        $brikpanel_bell_customers = $brikpanel_bell_customers && ! brikpanel_nav_url_blocked_for_current_user(
-                            $brikpanel_analytics_on ? admin_url( 'admin.php?page=wc-admin&path=/customers' ) : admin_url( 'users.php?role=customer' )
-                        );
+                        $brikpanel_bell_customers = $brikpanel_bell_customers && ! brikpanel_nav_url_blocked_for_current_user( $brikpanel_customers_url );
                     }
                     $brikpanel_show_bell      = brikpanel_topbar_item_is_visible( 'notifications' )
                         && current_user_can( 'manage_woocommerce' )
@@ -520,18 +551,7 @@ class Brikpanel_Dashboard_Topbar {
                                 <span class="brikpanel-topbar-dropdown-row-count" id="brikpanel-topbar-notif-oos">0</span>
                             </a>
                             <?php endif; ?>
-                            <?php
-                            if ( $brikpanel_bell_customers ) :
-                                // The count measures first-time buyers today (WooCommerce
-                                // customers, guest checkouts included), so link to the Woo
-                                // Customers report rather than the WordPress Users list, and
-                                // fall back to the Users list only when Analytics is off.
-                                // brikpanel_wc_analytics_enabled() explains how "off" is read
-                                // on each WooCommerce release.
-                                $brikpanel_customers_url = $brikpanel_analytics_on
-                                    ? admin_url( 'admin.php?page=wc-admin&path=/customers' )
-                                    : admin_url( 'users.php?role=customer' );
-                                ?>
+                            <?php if ( $brikpanel_bell_customers ) : ?>
                             <a class="brikpanel-topbar-dropdown-row" role="menuitem" href="<?php echo esc_url( $brikpanel_customers_url ); ?>">
                                 <span class="brikpanel-topbar-dropdown-row-label"><?php esc_html_e( 'New customers today', 'brikpanel' ); ?></span>
                                 <span class="brikpanel-topbar-dropdown-row-count" id="brikpanel-topbar-notif-customers">0</span>
@@ -764,9 +784,18 @@ class Brikpanel_Dashboard_Topbar {
      * - 2+ active plugins → icon button + dropdown listing each plugin and a
      *   "Clear all" entry.
      * - 0 active plugins → nothing rendered (no DOM cost).
+     * - LiteSpeed Cache with the "Cache button" setting on its menu → a
+     *   dropdown of LiteSpeed's own purge options (see render_litespeed_group()),
+     *   alone or as the LiteSpeed group of the 2+ plugin dropdown. When
+     *   LiteSpeed's admin bar offered none on this request, the one-click
+     *   button stays.
+     * - Extras (Elementor's cache) have no row: a click that purges every
+     *   active cache clears them too, and its title, LiteSpeed's "Clear
+     *   everything" line or the line under "Clear all caches" says so. They
+     *   never render the control on their own.
      *
      * Only users with `manage_options` see the control, mirroring the
-     * capability check enforced in the AJAX handler.
+     * capability check enforced in the AJAX handler (and LiteSpeed's own).
      */
     private function render_cache_clear_button() {
         if ( ! class_exists( 'Brikpanel_Cache_Clear' ) ) {
@@ -780,15 +809,25 @@ class Brikpanel_Dashboard_Topbar {
         if ( empty( $active ) ) {
             return;
         }
+        $extra_parts = Brikpanel_Cache_Clear::extra_parts();
 
         $broom_svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.36 2.72l1.42 1.42-5.72 5.71-1.42-1.42z"/><path d="M14.27 8.83l-2.12 2.12-1.42-1.41 2.13-2.13"/><path d="M5.5 12.5l4 4"/><path d="M3 21l3.5-3.5a3 3 0 0 1 4.24 0l1.76 1.76a3 3 0 0 1 0 4.24"/><path d="M8 22l1.5-1.5"/><path d="M11.5 18.5L13 17"/></svg>';
 
+        $litespeed_items = isset( $active['litespeed'] ) && Brikpanel_Cache_Clear::litespeed_menu_mode()
+            ? Brikpanel_Cache_Clear::litespeed_items()
+            : [];
+
         // Single plugin — render a flat icon button (no dropdown).
-        if ( count( $active ) === 1 ) {
+        if ( count( $active ) === 1 && empty( $litespeed_items ) ) {
             $id    = key( $active );
             $label = current( $active );
-            /* translators: %s: cache plugin name (e.g. "WP Rocket") */
-            $title = sprintf( __( 'Purge %s', 'brikpanel' ), $label );
+            $title = 'litespeed' === $id
+                ? Brikpanel_Cache_Clear::litespeed_purge_all_title( true )
+                : sprintf(
+                    /* translators: %s: cache plugin name (e.g. "WP Rocket"), or a list ending with what goes along (e.g. "WP Rocket and Elementor cache") */
+                    __( 'Purge %s', 'brikpanel' ),
+                    wp_sprintf_l( '%l', array_merge( [ $label ], $extra_parts ) )
+                );
             ?>
             <button type="button"
                     class="brikpanel-topbar-icon-btn brikpanel-topbar-cache-btn"
@@ -802,7 +841,10 @@ class Brikpanel_Dashboard_Topbar {
             return;
         }
 
-        // Multiple plugins — icon button opens a dropdown listing each.
+        // A dropdown: 2+ plugins, LiteSpeed's purge menu, or both. The toggle
+        // carries no data-cache-id, so a click opens the menu and purges nothing.
+        $only_litespeed = count( $active ) === 1;
+        $menu_class     = 'brikpanel-topbar-dropdown brikpanel-topbar-dropdown-cache' . ( $litespeed_items ? ' brikpanel-topbar-dropdown-cache-types' : '' );
         ?>
         <div class="brikpanel-topbar-menu" data-topbar-menu="cache">
             <button type="button"
@@ -815,19 +857,71 @@ class Brikpanel_Dashboard_Topbar {
                 <?php echo $broom_svg; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG markup ?>
                 <span class="brikpanel-topbar-cache-spinner" aria-hidden="true"></span>
             </button>
-            <div class="brikpanel-topbar-dropdown brikpanel-topbar-dropdown-cache" role="menu">
+            <div class="<?php echo esc_attr( $menu_class ); ?>" role="menu">
+                <?php if ( $only_litespeed ) : ?>
+                <div class="brikpanel-topbar-dropdown-header"><?php echo esc_html( $active['litespeed'] ); ?></div>
+                <?php $this->render_litespeed_group( $litespeed_items, $broom_svg, true ); ?>
+                <?php else : ?>
                 <div class="brikpanel-topbar-dropdown-header">
                     <?php esc_html_e( 'Clear cache', 'brikpanel' ); ?>
                 </div>
                 <button type="button"
-                        class="brikpanel-topbar-dropdown-item brikpanel-topbar-cache-item"
+                        class="brikpanel-topbar-dropdown-item brikpanel-topbar-cache-item<?php echo $extra_parts ? ' brikpanel-topbar-cache-entry' : ''; ?>"
                         role="menuitem"
                         data-cache-id="all">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <?php if ( $extra_parts ) : ?>
+                    <span class="brikpanel-topbar-cache-text">
+                        <span class="brikpanel-topbar-cache-label"><?php esc_html_e( 'Clear all caches', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-topbar-cache-desc"><?php
+                            echo esc_html( sprintf(
+                                /* translators: %s: what else this click clears, e.g. "Elementor cache" */
+                                __( 'Also clears the %s', 'brikpanel' ),
+                                wp_sprintf_l( '%l', $extra_parts )
+                            ) );
+                        ?></span>
+                    </span>
+                    <?php else : ?>
                     <span><?php esc_html_e( 'Clear all caches', 'brikpanel' ); ?></span>
+                    <?php endif; ?>
                 </button>
                 <div class="brikpanel-topbar-dropdown-sep" aria-hidden="true"></div>
-                <?php foreach ( $active as $id => $label ) : ?>
+                <?php
+                $last = count( $active ) - 1;
+                $row  = 0;
+                foreach ( $active as $id => $label ) :
+                    if ( 'litespeed' === $id && $litespeed_items ) :
+                        // LiteSpeed's own options, framed as a group of their own.
+                        if ( $row > 0 ) :
+                            ?>
+                <div class="brikpanel-topbar-dropdown-sep" aria-hidden="true"></div>
+                            <?php
+                        endif;
+                        ?>
+                <div class="brikpanel-topbar-dropdown-header"><?php echo esc_html( $label ); ?></div>
+                        <?php
+                        $this->render_litespeed_group( $litespeed_items, $broom_svg );
+                        if ( $row < $last ) :
+                            ?>
+                <div class="brikpanel-topbar-dropdown-sep" aria-hidden="true"></div>
+                            <?php
+                        endif;
+                    elseif ( 'litespeed' === $id ) :
+                        // One click for LiteSpeed too, with what that click clears.
+                        ?>
+                    <button type="button"
+                            class="brikpanel-topbar-dropdown-item brikpanel-topbar-cache-item brikpanel-topbar-cache-entry"
+                            role="menuitem"
+                            data-cache-id="litespeed">
+                        <?php echo $broom_svg; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG markup ?>
+                        <span class="brikpanel-topbar-cache-text">
+                            <span class="brikpanel-topbar-cache-label"><?php echo esc_html( $label ); ?></span>
+                            <span class="brikpanel-topbar-cache-desc"><?php echo esc_html( Brikpanel_Cache_Clear::litespeed_purge_all_summary() ); ?></span>
+                        </span>
+                    </button>
+                        <?php
+                    else :
+                        ?>
                     <button type="button"
                             class="brikpanel-topbar-dropdown-item brikpanel-topbar-cache-item"
                             role="menuitem"
@@ -835,9 +929,59 @@ class Brikpanel_Dashboard_Topbar {
                         <?php echo $broom_svg; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG markup ?>
                         <span><?php echo esc_html( $label ); ?></span>
                     </button>
-                <?php endforeach; ?>
+                        <?php
+                    endif;
+                    $row++;
+                endforeach;
+                ?>
+                <?php endif; ?>
             </div>
         </div>
+        <?php
+    }
+
+    /**
+     * LiteSpeed's purge options inside the cache dropdown.
+     *
+     * The first row, "Clear everything", is LiteSpeed's Purge All through
+     * BrikPanel's own AJAX purge (the same as the one-click button), with what
+     * it clears underneath. The others are LiteSpeed's own admin bar links:
+     * its nonce, its translated labels, and only what applies to this site
+     * (see Brikpanel_Cache_Clear::litespeed_items()). The top bar script
+     * fetches them in the background; a modified or middle click just follows
+     * LiteSpeed's link, which purges and comes back with LiteSpeed's notice.
+     *
+     * @param array  $items       Brikpanel_Cache_Clear::litespeed_items().
+     * @param string $broom_svg   Static icon markup.
+     * @param bool   $with_extras LiteSpeed is the only cache, so its "Clear
+     *                            everything" takes the extras along.
+     */
+    private function render_litespeed_group( array $items, $broom_svg, $with_extras = false ) {
+        ?>
+                <button type="button"
+                        class="brikpanel-topbar-dropdown-item brikpanel-topbar-cache-item brikpanel-topbar-cache-entry"
+                        role="menuitem"
+                        data-cache-id="litespeed">
+                    <?php echo $broom_svg; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static SVG markup ?>
+                    <span class="brikpanel-topbar-cache-text">
+                        <span class="brikpanel-topbar-cache-label"><?php esc_html_e( 'Clear everything', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-topbar-cache-desc"><?php echo esc_html( Brikpanel_Cache_Clear::litespeed_purge_all_summary( $with_extras ) ); ?></span>
+                    </span>
+                </button>
+                <div class="brikpanel-topbar-dropdown-sep" aria-hidden="true"></div>
+                <?php foreach ( $items as $item ) : ?>
+                <a class="brikpanel-topbar-dropdown-item brikpanel-topbar-cache-type brikpanel-topbar-cache-entry"
+                   role="menuitem"
+                   href="<?php echo esc_url( $item['href'] ); ?>"
+                   data-cache-label="<?php echo esc_attr( $item['label'] ); ?>">
+                    <span class="brikpanel-topbar-cache-text">
+                        <span class="brikpanel-topbar-cache-label"><?php echo esc_html( $item['label'] ); ?></span>
+                        <?php if ( 'litespeed-purge-all-lscache' === $item['id'] ) : ?>
+                        <span class="brikpanel-topbar-cache-desc"><?php echo esc_html_x( 'Page cache', 'LiteSpeed LSCache purge option', 'brikpanel' ); ?></span>
+                        <?php endif; ?>
+                    </span>
+                </a>
+                <?php endforeach; ?>
         <?php
     }
 
@@ -862,6 +1006,12 @@ class Brikpanel_Dashboard_Topbar {
         wp_send_json_success( [
             'live'          => $live,
             'notifications' => $counts,
+            // The shared data version (brikpanel_data_cache_ver()): a screen
+            // left open (the dashboard, the Orders summary) compares it with
+            // the one its figures came with and fetches them again when an
+            // order changed. This poll runs on every screen anyway, so the
+            // screens need no poll of their own.
+            'ver'           => function_exists( 'brikpanel_data_cache_ver' ) ? (int) brikpanel_data_cache_ver() : 0,
         ] );
     }
 
@@ -907,8 +1057,12 @@ class Brikpanel_Dashboard_Topbar {
      */
     private function get_notification_counts() {
         $ver    = function_exists( 'brikpanel_data_cache_ver' ) ? (int) brikpanel_data_cache_ver() : 0;
+        // "Today" is part of the key: at midnight the new-customer count starts
+        // again from zero on the next poll, not a minute later.
+        $day    = wp_date( 'Y-m-d' );
         $cached = get_transient( self::COUNTS_TRANSIENT );
-        if ( is_array( $cached ) && isset( $cached['ver'], $cached['data'] ) && (int) $cached['ver'] === $ver && is_array( $cached['data'] ) ) {
+        if ( is_array( $cached ) && isset( $cached['ver'], $cached['data'], $cached['day'] ) && (int) $cached['ver'] === $ver
+            && $cached['day'] === $day && is_array( $cached['data'] ) ) {
             return $cached['data'];
         }
 
@@ -937,10 +1091,10 @@ class Brikpanel_Dashboard_Topbar {
         $oos = (int) $oos_query->found_posts;
         wp_reset_postdata();
 
-        // New customers today = first-time buyers (returning_customer = 0), matching
-        // the dashboard "Customer Types" widget. This counts guest checkouts too, which
-        // a registration-date query (WP_User_Query) silently misses, so the two numbers
-        // stay consistent. Falls back to user-registration count if WC analytics is off.
+        // New customers today = customers whose first paid order is today, guest
+        // checkouts included: the Customers list's "New today" view the row opens,
+        // counted by the same code. Without the Customers page, first-time buyers
+        // from WooCommerce's stats table, or registrations when it is missing.
         global $wpdb;
         $start_local   = wp_date( 'Y-m-d 00:00:00' );
         $end_local     = wp_date( 'Y-m-d 23:59:59' );
@@ -948,10 +1102,13 @@ class Brikpanel_Dashboard_Topbar {
         $end_gmt       = get_gmt_from_date( $end_local );
         $stats_table   = $wpdb->prefix . 'wc_order_stats';
         $new_customers = 0;
-        $has_stats     = function_exists( 'brikpanel_paid_statuses_sql' )
+        $engine        = class_exists( 'Brikpanel_Customers_Engine' );
+        $has_stats     = ! $engine && function_exists( 'brikpanel_paid_statuses_sql' )
             && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $stats_table ) );
 
-        if ( $has_stats ) {
+        if ( $engine ) {
+            $new_customers = $this->new_customers_today( $ver, $day );
+        } elseif ( $has_stats ) {
             $new_customers = (int) $wpdb->get_var( $wpdb->prepare(
                 "SELECT COUNT(*) FROM {$stats_table}
                 WHERE returning_customer = 0
@@ -980,9 +1137,34 @@ class Brikpanel_Dashboard_Topbar {
             'total'      => $counts['processing'] + $counts['pending'] + $counts['onhold'],
         ];
 
-        set_transient( self::COUNTS_TRANSIENT, [ 'ver' => $ver, 'data' => $data ], self::COUNTS_TTL );
+        set_transient( self::COUNTS_TRANSIENT, [ 'ver' => $ver, 'day' => $day, 'data' => $data ], self::COUNTS_TTL );
 
         return $data;
+    }
+
+    /**
+     * Customers whose first paid order is today, the Customers list's rule.
+     *
+     * On WooCommerce's own order tables the answer comes from an index in a
+     * few milliseconds, so it follows every order like the other rows. On the
+     * posts tables it needs a pass over every order's customer meta (about 2 s
+     * on 100,000 orders), so there it is worked out at most every five
+     * minutes instead of after each new order.
+     *
+     * @param int    $ver Shared data version.
+     * @param string $day Today, local 'Y-m-d'.
+     * @return int
+     */
+    private function new_customers_today( $ver, $day ) {
+        $hpos   = Brikpanel_Customers_Engine::hpos();
+        $cached = get_transient( self::NEW_CUSTOMERS_TRANSIENT );
+        if ( is_array( $cached ) && isset( $cached['day'], $cached['n'], $cached['ver'] ) && $cached['day'] === $day
+            && ( ! $hpos || (int) $cached['ver'] === $ver ) ) {
+            return (int) $cached['n'];
+        }
+        $n = (int) Brikpanel_Customers_Engine::first_time_buyers( $day, $day );
+        set_transient( self::NEW_CUSTOMERS_TRANSIENT, [ 'day' => $day, 'ver' => $ver, 'n' => $n ], $hpos ? self::COUNTS_TTL : 5 * MINUTE_IN_SECONDS );
+        return $n;
     }
 }
 

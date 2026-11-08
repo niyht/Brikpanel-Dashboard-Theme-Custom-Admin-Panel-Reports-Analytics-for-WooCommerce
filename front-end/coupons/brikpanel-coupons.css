@@ -979,6 +979,52 @@
     box-shadow: 0 0 0 1px var(--input-focus);
 }
 
+/* The coupon link: read-only, a URL as it is (no code styling), and it may
+   shrink next to its button on a phone. */
+.brikpanel-cp-code-row input[type="text"].brikpanel-cp-link-input {
+    min-width: 0;
+    font-family: inherit;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-secondary, #616161);
+    background: #f7f7f7;
+}
+
+/* "Auto" next to an automatic coupon's code in the list. */
+.brikpanel-cp-auto-badge {
+    margin-inline-start: 0.375rem;
+}
+
+/* Other plugins' settings live on WooCommerce's coupon screen: a note at
+   the top of the drawer with the link there. */
+.brikpanel-cp-plugin-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: #f7f7f7;
+    color: var(--text-secondary, #616161);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.brikpanel-cp-plugin-note[hidden] {
+    display: none;
+}
+
+.brikpanel-cp-plugin-note svg {
+    flex: 0 0 auto;
+    margin-top: 0.15rem;
+}
+
+.brikpanel-cp-plugin-note a {
+    color: var(--text);
+    font-weight: 550;
+}
+
 /* ---------- Input Group ---------- */
 .brikpanel-cp-input-group {
     display: flex;

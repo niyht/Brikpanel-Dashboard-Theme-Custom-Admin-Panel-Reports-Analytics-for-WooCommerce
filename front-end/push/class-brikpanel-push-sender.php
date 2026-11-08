@@ -9,13 +9,17 @@
  *
  * The order hooks (brikpanel-push.php) only mark the order
  * (`_brikpanel_push` = "q:<time>") and keep it for the end of the request.
- * Sending waits until the page has been handed over:
+ * Sending happens at the end of the same request, never later:
  *  - WP-CLI, cron and background jobs: at the end of the request;
- *  - PHP-FPM and LiteSpeed: after the response is finished;
- *  - anything else: a background job, so a checkout never waits for a push service.
- * The first two also leave a job two minutes out, in case the request dies
- * mid-way. Before sending, the order is locked and its mark read again from
- * the database: an order is sent once ("s:<time>:<accepted>/<tried>").
+ *  - PHP-FPM and LiteSpeed: after the response is finished, nobody waits;
+ *  - anything else (mod_php, CGI): at the end of the request, with tight
+ *    time limits, like WooCommerce's own order emails. A background job
+ *    there would wait for the next visitor: WordPress runs its jobs only
+ *    when someone opens the site (27 October 2026, a quiet test store: no
+ *    notification for 10 minutes, then one the moment the site was opened).
+ * Each also leaves a job two minutes out, in case the request dies mid-way.
+ * Before sending, the order is locked and its mark read again from the
+ * database: an order is sent once ("s:<time>:<accepted>/<tried>").
  *
  * Each notification carries a signed delivery receipt the phone sends back.
  * A phone that stops confirming for six hours, or that its push service
@@ -35,8 +39,15 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 		const META         = '_brikpanel_push';
 		const TTL          = 14400;  // The push service drops a notification it could not deliver in 4 hours.
 		const PAD          = 1024;   // Every message is padded to the same size: its length tells nothing.
-		const TIMEOUT      = 8;      // Seconds for one push service.
-		const BUDGET       = 25;     // Seconds for one run, all devices together.
+		const TIMEOUT        = 8;    // Nobody waits (WP-CLI, cron, jobs): seconds for one push service...
+		const BUDGET         = 25;   // ...and for one run, all devices together.
+		const FINISH_TIMEOUT = 4;    // After the response was handed over (PHP-FPM, LiteSpeed)...
+		const FINISH_BUDGET  = 10;   // ...in case a host does not really let the visitor go.
+		const WAIT_TIMEOUT   = 2;    // While the visitor still waits (mod_php, CGI)...
+		const WAIT_BUDGET    = 3;    // ...the devices left over go to the retry job.
+		const STALL_PAUSE    = 600;  // A push service stalled a visitor's request: background jobs for 10 minutes.
+		const CATCH_UP_AFTER = 15;   // A receipt this many seconds late: the phone slept, later pushes may be lost (catch_up()).
+		const STALL_KEY      = 'brikpanel_push_stall';
 		const SUMMARY_FROM = 3;      // This many orders at once: one "3 new orders" message.
 		const FLOOD_MAX    = 30;     // Messages per window and site...
 		const FLOOD_WINDOW = 300;    // ...of five minutes; the rest wait for one summary at its end.
@@ -60,6 +71,9 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 		/** @var bool Whether the end-of-request sender is hooked. */
 		private static $hooked = false;
 
+		/** @var string How the current send is paced: '' nobody waits, 'finish' handed over, 'wait' the visitor waits. */
+		private static $pace = '';
+
 		/** @var string[] Status in storage before a save, "site:order" => status. */
 		private static $stash = array();
 
@@ -72,6 +86,16 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 				remove_action( 'shutdown', array( __CLASS__, 'dispatch' ), PHP_INT_MAX );
 			}
 			self::$hooked = false;
+			self::$pace   = '';
+		}
+
+		/**
+		 * Whether the current send is under the tight limits (tests).
+		 *
+		 * @return bool
+		 */
+		public static function waiting() {
+			return 'wait' === self::$pace;
 		}
 
 		/**
@@ -214,18 +238,40 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 		// ------------------------------------------------------------------
 
 		/**
-		 * How this request sends: 'inline' (nobody waits for it), 'finish'
-		 * (hand the response over first) or 'async' (a background job).
+		 * Whether this request is WP-CLI, cron or a background job: nobody waits for it.
+		 *
+		 * @return bool
+		 */
+		private static function background() {
+			return ( defined( 'WP_CLI' ) && WP_CLI ) || wp_doing_cron() || did_action( 'action_scheduler_before_execute' );
+		}
+
+		/**
+		 * Whether a push service stalled a visitor's request in the last ten
+		 * minutes (unreachable from this server, or down): until then a
+		 * checkout does not wait for it again.
+		 *
+		 * @return bool
+		 */
+		public static function stalled() {
+			return (int) get_transient( self::STALL_KEY ) > Brikpanel_Push_Store::now_ts();
+		}
+
+		/**
+		 * How this request sends: 'inline' (at the end of the request),
+		 * 'finish' (hand the response over first) or 'async' (a background
+		 * job: it waits for the next visitor, so only after a stall or
+		 * through the filter).
 		 *
 		 * @return string
 		 */
 		public static function mode() {
-			if ( ( defined( 'WP_CLI' ) && WP_CLI ) || wp_doing_cron() || did_action( 'action_scheduler_before_execute' ) ) {
+			if ( self::background() ) {
 				$mode = 'inline';
 			} elseif ( function_exists( 'fastcgi_finish_request' ) || function_exists( 'litespeed_finish_request' ) ) {
 				$mode = 'finish';
 			} else {
-				$mode = 'async';
+				$mode = self::stalled() ? 'async' : 'inline';
 			}
 			/**
 			 * How phone notifications leave this request.
@@ -277,26 +323,36 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 				return;
 			}
 			if ( 'finish' === $mode ) {
-				self::finish_response();
+				// A host that cannot really hand the response over: the visitor waits.
+				self::$pace = self::finish_response() ? 'finish' : 'wait';
+			} elseif ( ! self::background() ) {
+				// The visitor still waits for this response (mod_php, CGI):
+				// short limits, and a closed browser tab does not stop it.
+				self::$pace = 'wait';
+				ignore_user_abort( true );
 			}
-			foreach ( $todo as $blog => $ids ) {
-				$switched = is_multisite() && (int) $blog !== get_current_blog_id() && switch_to_blog( (int) $blog );
-				try {
-					self::send_orders( $ids );
-				} catch ( \Throwable $e ) {
-					self::log( 'dispatch', $e );
-				} finally {
-					if ( $switched ) {
-						restore_current_blog();
+			try {
+				foreach ( $todo as $blog => $ids ) {
+					$switched = is_multisite() && (int) $blog !== get_current_blog_id() && switch_to_blog( (int) $blog );
+					try {
+						self::send_orders( $ids );
+					} catch ( \Throwable $e ) {
+						self::log( 'dispatch', $e );
+					} finally {
+						if ( $switched ) {
+							restore_current_blog();
+						}
 					}
 				}
+			} finally {
+				self::$pace = '';
 			}
 		}
 
 		/**
 		 * Hands the response over, so nobody waits for the push services.
 		 *
-		 * @return void
+		 * @return bool Whether the server says it did.
 		 */
 		private static function finish_response() {
 			ignore_user_abort( true );
@@ -304,10 +360,12 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 				session_write_close();
 			}
 			if ( function_exists( 'fastcgi_finish_request' ) ) {
-				fastcgi_finish_request();
-			} elseif ( function_exists( 'litespeed_finish_request' ) ) {
-				litespeed_finish_request();
+				return (bool) fastcgi_finish_request();
 			}
+			if ( function_exists( 'litespeed_finish_request' ) ) {
+				return (bool) litespeed_finish_request();
+			}
+			return false;
 		}
 
 		// ------------------------------------------------------------------
@@ -551,10 +609,20 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 			if ( ! $keys || ! $devices ) {
 				return $result;
 			}
-			$start  = microtime( true );
-			$retry  = array();
-			$alerts = array();
-			$phones = false;
+			$start   = microtime( true );
+			$retry   = array();
+			$alerts  = array();
+			$phones  = false;
+			if ( 'wait' === self::$pace ) {
+				$budget  = self::WAIT_BUDGET;
+				$timeout = self::WAIT_TIMEOUT;
+			} elseif ( 'finish' === self::$pace ) {
+				$budget  = self::FINISH_BUDGET;
+				$timeout = self::FINISH_TIMEOUT;
+			} else {
+				$budget  = self::BUDGET;
+				$timeout = self::TIMEOUT;
+			}
 
 			foreach ( self::by_locale( $devices ) as $locale => $rows ) {
 				$switched = self::switch_locale( $locale );
@@ -564,14 +632,18 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 						continue;
 					}
 					foreach ( $rows as $row ) {
-						$left = self::BUDGET - ( microtime( true ) - $start );
+						$left = $budget - ( microtime( true ) - $start );
 						if ( $left < 1 ) {
 							$retry[ 30 ][] = (int) $row['id'];
 							continue;
 						}
 						++$result['tried'];
-						$out = self::push( $row, $base, $keys, min( self::TIMEOUT, $left ) );
+						$out = self::push( $row, $base, $keys, min( $timeout, $left ) );
 						self::record( $row, $out );
+						if ( ! $out['ok'] && 'wait' === self::$pace && ( 'timeout' === $out['reason'] || $out['took'] >= 1500 ) ) {
+							// The next checkouts do not wait for it: background jobs for ten minutes.
+							set_transient( self::STALL_KEY, Brikpanel_Push_Store::now_ts() + self::STALL_PAUSE, self::STALL_PAUSE );
+						}
 						if ( $out['ok'] ) {
 							++$result['ok'];
 							$phones = $phones || ! empty( $row['phone'] );
@@ -665,7 +737,7 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 		 * @param array  $base    message() result.
 		 * @param array  $keys    The site's signing key.
 		 * @param float  $timeout Seconds.
-		 * @return array{ok:bool,code:int,reason:string,retry:int,gone:bool,t:int}
+		 * @return array{ok:bool,code:int,reason:string,retry:int,gone:bool,t:int,took:int}
 		 */
 		private static function push( array $row, array $base, array $keys, $timeout ) {
 			$sent = Brikpanel_Push_Store::now_ts();
@@ -676,6 +748,7 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 				'retry'  => 0,
 				'gone'   => false,
 				't'      => $sent,
+				'took'   => 0,
 			);
 			$endpoint = (string) $row['endpoint'];
 			if ( ! self::allowed_endpoint( $endpoint ) ) {
@@ -702,7 +775,11 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 				return $fail;
 			}
 
-			$response = wp_safe_remote_post(
+			// Not wp_safe_remote_post(): allowed_endpoint() above already limits the
+			// address to the push services, and the safe version's own host lookup
+			// is outside the timeout (a stalled DNS server would hold a checkout).
+			$start    = microtime( true );
+			$response = wp_remote_post(
 				$endpoint,
 				array(
 					'timeout'     => max( 1, (int) floor( $timeout ) ),
@@ -717,15 +794,16 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 					'body'        => $body,
 				)
 			);
-			$out      = self::classify( $response, $audience );
-			$out['t'] = $sent;
+			$out         = self::classify( $response, $audience );
+			$out['t']    = $sent;
+			$out['took'] = (int) round( ( microtime( true ) - $start ) * 1000 );
 			return $out;
 		}
 
 		/**
 		 * Reads a push service's answer.
 		 *
-		 * @param array|WP_Error $response wp_safe_remote_post() result.
+		 * @param array|WP_Error $response wp_remote_post() result.
 		 * @param string         $audience Push service.
 		 * @return array{ok:bool,code:int,reason:string,retry:int,gone:bool}
 		 */
@@ -831,19 +909,12 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 				if ( ! $order instanceof WC_Order ) {
 					return null;
 				}
-				$number = (string) $order->get_order_number();
-				$title  = $order->has_status( 'on-hold' )
-					/* translators: %s: order number. Phone notification for an order that waits for a bank transfer or a cheque. */
-					? sprintf( __( 'New order #%s, awaiting payment', 'brikpanel' ), $number )
-					/* translators: %s: order number. Phone notification title. */
-					: sprintf( __( 'New order #%s', 'brikpanel' ), $number );
-				$parts = array( $store, brikpanel_money_text( $order->get_total(), array( 'currency' => $order->get_currency() ) ) );
-				$items = (int) $order->get_item_count();
-				if ( $items > 0 ) {
-					/* translators: %s: number of items. */
-					$parts[] = sprintf( _n( '%s item', '%s items', $items, 'brikpanel' ), brikpanel_number( $items ) );
-				}
-				return self::payload( $title, implode( ' · ', array_filter( $parts, 'strlen' ) ), self::order_url( $order ), 'bp-order-' . $order->get_id(), array( 'k' => 'order', 'o' => (int) $order->get_id() ), $locale );
+				// A short title, the details on the line under it: Samsung phones
+				// put the title, the store's address and the time on one line and
+				// cut a longer title (the order number went first, 27 Oct 2026).
+				/* translators: Phone notification title for a new order. */
+				$title = _x( 'New order', 'phone notification title', 'brikpanel' );
+				return self::payload( $title, self::order_text( $order ), self::order_url( $order ), 'bp-order-' . $order->get_id(), array( 'k' => 'order', 'o' => (int) $order->get_id() ), $locale );
 			}
 
 			if ( 'summary' === $kind ) {
@@ -854,9 +925,161 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 			}
 
 			if ( 'test' === $kind ) {
-				return self::payload( __( 'Test notification', 'brikpanel' ), __( 'New orders will show up like this.', 'brikpanel' ), self::settings_url(), 'bp-test', array( 'k' => 'test' ), $locale );
+				// The store's newest order, the way its notification reads with the
+				// parts chosen under "Notification text": the test shows the real thing.
+				$latest = self::latest_order();
+				$body   = $latest ? self::order_text( $latest ) : '';
+				return self::payload( __( 'Test notification', 'brikpanel' ), '' !== $body ? $body : __( 'New orders will show up like this.', 'brikpanel' ), self::settings_url(), 'bp-test', array( 'k' => 'test' ), $locale );
 			}
 			return null;
+		}
+
+		/**
+		 * The line under an order notification's title: the parts the store
+		 * chose under "Notification text", in its order, joined by " · ". An
+		 * order waiting for a bank transfer or a cheque always says so first.
+		 *
+		 * @param WC_Order $order Order.
+		 * @return string
+		 */
+		public static function order_text( $order ) {
+			$chosen = function_exists( 'brikpanel_push_parts' ) ? brikpanel_push_parts() : array( 'on' => array( 'total', 'items', 'number' ) );
+			$values = self::parts( $order, $chosen['on'] );
+			$parts  = array();
+			if ( $order->has_status( 'on-hold' ) ) {
+				// Waits for a bank transfer or a cheque: not paid yet.
+				$parts[] = __( 'Awaiting payment', 'brikpanel' );
+			}
+			foreach ( $chosen['on'] as $key ) {
+				if ( isset( $values[ $key ] ) && '' !== $values[ $key ] ) {
+					$parts[] = $values[ $key ];
+				}
+			}
+			return implode( ' · ', $parts );
+		}
+
+		/**
+		 * The parts an order notification can show, in the current language.
+		 * A part the order does not have (no campaign, no items) is ''.
+		 *
+		 * @param WC_Order      $order Order.
+		 * @param string[]|null $keys  Only these parts (null: all of them).
+		 * @return array<string,string>
+		 */
+		public static function parts( $order, $keys = null ) {
+			$keys = null === $keys ? brikpanel_push_parts_keys() : (array) $keys;
+			$out  = array();
+			foreach ( $keys as $key ) {
+				switch ( $key ) {
+					case 'total':
+						$out[ $key ] = brikpanel_money_text( $order->get_total(), array( 'currency' => $order->get_currency() ) );
+						break;
+					case 'items':
+						$items = (int) $order->get_item_count();
+						/* translators: %s: number of items. */
+						$out[ $key ] = $items > 0 ? sprintf( _n( '%s item', '%s items', $items, 'brikpanel' ), brikpanel_number( $items ) ) : '';
+						break;
+					case 'number':
+						/* translators: %s: order number, e.g. #1234. Shown in a phone notification. */
+						$out[ $key ] = sprintf( _x( '#%s', 'order number in a phone notification', 'brikpanel' ), (string) $order->get_order_number() );
+						break;
+					case 'skus':
+						$out[ $key ] = self::skus( $order );
+						break;
+					case 'campaign':
+						$out[ $key ] = self::campaign( $order );
+						break;
+					case 'store':
+						$out[ $key ] = self::store_name();
+						break;
+				}
+			}
+			return $out;
+		}
+
+		/**
+		 * What was ordered (apattee: "so we could see what was ordered"): each
+		 * product's SKU (a variation without its own gets its parent's from
+		 * WooCommerce), its short name where it has none, "×2" for a quantity,
+		 * the first three, then how many more.
+		 *
+		 * @param WC_Order $order Order.
+		 * @return string
+		 */
+		private static function skus( $order ) {
+			$codes = array();
+			$more  = 0;
+			foreach ( $order->get_items( 'line_item' ) as $item ) {
+				if ( ! $item instanceof WC_Order_Item_Product ) {
+					continue;
+				}
+				if ( count( $codes ) >= 3 ) {
+					++$more;
+					continue;
+				}
+				$product = $item->get_product();
+				$code    = $product instanceof WC_Product ? trim( (string) $product->get_sku() ) : '';
+				if ( '' === $code ) {
+					$code = self::clip( self::plain( $item->get_name() ), 24 );
+				}
+				if ( '' === $code ) {
+					continue;
+				}
+				$qty = (int) $item->get_quantity();
+				if ( $qty > 1 ) {
+					/* translators: 1: SKU or product name, 2: quantity, e.g. "TEE-S ×2". Shown in a phone notification. */
+					$code = sprintf( _x( '%1$s ×%2$s', 'SKU and quantity in a phone notification', 'brikpanel' ), $code, brikpanel_number( $qty ) );
+				}
+				$codes[] = $code;
+			}
+			if ( ! $codes ) {
+				return '';
+			}
+			$text = implode( ', ', $codes );
+			if ( $more > 0 ) {
+				/* translators: %s: how many more products the order has. Shown in a phone notification after three SKUs. */
+				$text .= ' ' . sprintf( _n( '+%s more', '+%s more', $more, 'brikpanel' ), brikpanel_number( $more ) );
+			}
+			return $text;
+		}
+
+		/**
+		 * The campaign WooCommerce credited the order to (its order attribution
+		 * keeps the last campaign link the customer came through); '' without one.
+		 *
+		 * @param WC_Order $order Order.
+		 * @return string
+		 */
+		private static function campaign( $order ) {
+			$key  = function_exists( 'brikpanel_wc_attribution_meta_key' ) ? brikpanel_wc_attribution_meta_key( 'utm_campaign' ) : '_wc_order_attribution_utm_campaign';
+			$raw  = $order->get_meta( $key );
+			$name = function_exists( 'brikpanel_campaign_normalize' ) ? brikpanel_campaign_normalize( $raw ) : ( is_scalar( $raw ) ? trim( (string) $raw ) : '' );
+			if ( '(none)' === $name ) {
+				$name = '';
+			}
+			return '' === $name ? '' : self::clip( self::plain( $name ), 30 );
+		}
+
+		/**
+		 * The store's newest order that would notify (the test reads it; the
+		 * Settings preview asks for a paid one first, so its sample has no
+		 * "Awaiting payment"); null when there is none.
+		 *
+		 * @param string[] $statuses Statuses to look in.
+		 * @return WC_Order|null
+		 */
+		public static function latest_order( array $statuses = array( 'processing', 'completed', 'on-hold' ) ) {
+			$orders = wc_get_orders(
+				array(
+					'type'    => 'shop_order',
+					'status'  => $statuses,
+					'limit'   => 1,
+					'orderby' => 'date',
+					'order'   => 'DESC',
+				)
+			);
+			$order = is_array( $orders ) && $orders ? reset( $orders ) : null;
+			return $order instanceof WC_Order ? $order : null;
 		}
 
 		/**
@@ -986,7 +1209,9 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 		}
 
 		/**
-		 * A device's name in the current language ("iPhone · BrikPanel app").
+		 * A device's name in the current language ("iPhone · Home Screen app",
+		 * "Android · Chrome"). The installed app is not named: the store's own
+		 * name is already on every email and screen that lists devices.
 		 *
 		 * @param array $row Device row.
 		 * @return string
@@ -1008,19 +1233,30 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 				$system = __( 'Device', 'brikpanel' );
 			}
 			if ( ! empty( $row['standalone'] ) ) {
-				$app = __( 'BrikPanel app', 'brikpanel' );
+				$app = _x( 'Home Screen app', 'device name: opened from the home screen, not in a browser tab', 'brikpanel' );
 			} else {
-				$browsers = array(
-					'chrome'  => 'Chrome',
-					'safari'  => 'Safari',
-					'firefox' => 'Firefox',
-					'edge'    => 'Edge',
-					'samsung' => 'Samsung Internet',
-					'opera'   => 'Opera',
-				);
-				$app = isset( $row['browser'], $browsers[ $row['browser'] ] ) ? $browsers[ $row['browser'] ] : '';
+				$app = self::browser_label( isset( $row['browser'] ) ? (string) $row['browser'] : '' );
 			}
 			return '' === $app ? $system : $system . ' · ' . $app;
+		}
+
+		/**
+		 * A browser's product name from the key brikpanel-push.js saves.
+		 *
+		 * @param string $key Browser key.
+		 * @return string '' when unknown.
+		 */
+		public static function browser_label( $key ) {
+			$names = array(
+				'chrome'  => 'Chrome',
+				'safari'  => 'Safari',
+				'firefox' => 'Firefox',
+				'edge'    => 'Edge',
+				'samsung' => 'Samsung Internet',
+				'opera'   => 'Opera',
+				'brave'   => 'Brave',
+			);
+			return isset( $names[ $key ] ) ? $names[ $key ] : '';
 		}
 
 		// ------------------------------------------------------------------
@@ -1093,6 +1329,93 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 			}
 			Brikpanel_Push_Store::mark_confirmed( $receipt['device'], $receipt['t'] );
 			return true;
+		}
+
+		/**
+		 * The orders sent to a device after the one its receipt confirms, for
+		 * the phone to show itself. Chrome and Brave on Android queue every
+		 * push in one background task while the phone sleeps and drop the
+		 * next ones until it runs (BackgroundTaskSchedulerJobService::schedule
+		 * skips a task id that is already pending): 27 October 2026, Galaxy
+		 * A56, two orders during sleep, only the first ever showed. A late
+		 * receipt is the sign; a quick one means nothing was held back, and
+		 * costs no query. Same words as the push, in the device owner's
+		 * language; three or more as one summary.
+		 *
+		 * @param string $token Receipt, already confirmed.
+		 * @return array[] Notification parts (title, body, navigate, tag, lang, dir, data), oldest first.
+		 */
+		public static function catch_up( $token ) {
+			global $wpdb;
+			$receipt = self::read_receipt( $token );
+			if ( ! $receipt || ! self::live() ) {
+				return array();
+			}
+			$since = (int) $receipt['t'];
+			if ( Brikpanel_Push_Store::now_ts() - $since < self::CATCH_UP_AFTER ) {
+				return array();
+			}
+			$row = Brikpanel_Push_Store::get( $receipt['device'] );
+			if ( ! $row || 'active' !== $row['status'] || ! self::user_may_receive( (int) $row['user_id'] ) ) {
+				return array();
+			}
+			// Marks are "s:<10-digit time>:<accepted>/<tried>", so the newer ones sort after "s:<since>".
+			if ( function_exists( 'brikpanel_wc_hpos_enabled' ) && brikpanel_wc_hpos_enabled() ) {
+				$rows = $wpdb->get_results( $wpdb->prepare( "SELECT order_id AS id, meta_value AS mark FROM {$wpdb->prefix}wc_orders_meta WHERE meta_key = %s AND meta_value > %s AND meta_value < %s LIMIT 50", self::META, 's:' . $since, 't' ), ARRAY_A ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			} else {
+				$rows = $wpdb->get_results( $wpdb->prepare( "SELECT post_id AS id, meta_value AS mark FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value > %s AND meta_value < %s LIMIT 50", self::META, 's:' . $since, 't' ), ARRAY_A ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			}
+			$found = array();
+			foreach ( (array) $rows as $hit ) {
+				if ( ! preg_match( '/^s:(\d+):(\d+)\/(\d+)$/', (string) $hit['mark'], $m ) || (int) $m[1] <= $since || (int) $m[3] < 1 ) {
+					continue;
+				}
+				$order = wc_get_order( (int) $hit['id'] );
+				if ( ! $order instanceof WC_Order || '' !== self::skip_reason( $order, 0 ) ) {
+					continue;
+				}
+				$found[ (int) $m[1] . '.' . $order->get_id() ] = $order;
+			}
+			if ( ! $found ) {
+				return array();
+			}
+			ksort( $found, SORT_NATURAL );
+			$locale   = (string) get_user_locale( (int) $row['user_id'] );
+			$switched = self::switch_locale( $locale );
+			$out      = array();
+			try {
+				if ( count( $found ) >= self::SUMMARY_FROM ) {
+					$msg = self::message(
+						array(
+							'kind'  => 'summary',
+							'count' => count( $found ),
+						),
+						$locale
+					);
+					if ( $msg ) {
+						$out[] = $msg['notification'];
+					}
+				} else {
+					foreach ( $found as $order ) {
+						$msg = self::message(
+							array(
+								'kind'  => 'order',
+								'order' => (int) $order->get_id(),
+								'obj'   => $order,
+							),
+							$locale
+						);
+						if ( $msg ) {
+							$out[] = $msg['notification'];
+						}
+					}
+				}
+			} finally {
+				if ( $switched ) {
+					restore_previous_locale();
+				}
+			}
+			return $out;
 		}
 
 		// ------------------------------------------------------------------
@@ -1265,22 +1588,23 @@ if ( ! class_exists( 'Brikpanel_Push_Sender' ) ) {
 				$store  = self::store_name();
 				$device = self::device_name( $row );
 				if ( 'gone' === $kind ) {
-					/* translators: 1: store name, 2: device name, like "iPhone · BrikPanel app". */
+					/* translators: 1: store name, 2: device name, like "iPhone · Home Screen app". */
 					$subject = sprintf( __( '[%1$s] Order notifications stopped on %2$s', 'brikpanel' ), $store, $device );
 					$heading = __( 'Order notifications stopped', 'brikpanel' );
 					$lines   = array(
-						/* translators: %s: device name, like "iPhone · BrikPanel app". */
+						/* translators: %s: device name, like "iPhone · Home Screen app". */
 						sprintf( __( 'Your phone (%s) no longer accepts order notifications from this store.', 'brikpanel' ), $device ),
-						__( 'This happens when the BrikPanel app is removed from the Home Screen, notifications are turned off for it, or the browser data is cleared.', 'brikpanel' ),
+						/* translators: %s: the app's name on the phone, which is the store's name. */
+						sprintf( __( 'This happens when the %s app is removed from the Home Screen, notifications are turned off for it, or the browser data is cleared.', 'brikpanel' ), function_exists( 'brikpanel_pwa_app_short_name' ) ? brikpanel_pwa_app_short_name() : $store ),
 						__( 'To get them again, open your store admin on that phone and turn order notifications on.', 'brikpanel' ),
 					);
 				} else {
 					$since = wp_date( brikpanel_datetime_format(), (int) strtotime( $row['pending_since'] . ' UTC' ) );
-					/* translators: 1: store name, 2: device name, like "iPhone · BrikPanel app". */
+					/* translators: 1: store name, 2: device name, like "iPhone · Home Screen app". */
 					$subject = sprintf( __( '[%1$s] Is %2$s still getting order notifications?', 'brikpanel' ), $store, $device );
 					$heading = __( 'Order notifications not confirmed', 'brikpanel' );
 					$lines   = array(
-						/* translators: 1: device name, like "iPhone · BrikPanel app", 2: date and time. */
+						/* translators: 1: device name, like "iPhone · Home Screen app", 2: date and time. */
 						sprintf( __( 'Your phone (%1$s) has not confirmed any order notification since %2$s.', 'brikpanel' ), $device, $since ),
 						__( 'If they stopped arriving, open BrikPanel on that phone: it checks the notifications and turns them back on when it can.', 'brikpanel' ),
 						__( 'If the phone was simply switched off, you can ignore this email.', 'brikpanel' ),

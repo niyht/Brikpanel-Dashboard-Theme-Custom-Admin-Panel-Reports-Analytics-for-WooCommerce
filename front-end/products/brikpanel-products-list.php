@@ -45,9 +45,15 @@ class Brikpanel_Products_List {
         add_action('wp_ajax_brikpanel_pl_save_columns',  [$this, 'ajax_save_columns']);
         add_action('wp_ajax_brikpanel_pl_save_sort',     [$this, 'ajax_save_sort']);
         add_action('wp_ajax_brikpanel_save_product_order', [$this, 'ajax_save_product_order']);
+        add_action('wp_ajax_brikpanel_start_custom_order', [$this, 'ajax_start_custom_order']);
 
         // Export selected products as CSV
         add_action('admin_post_brikpanel_export_selected_products', [$this, 'handle_export_selected']);
+
+        // Other plugins' bulk actions, asked for on WooCommerce's own list
+        // screen (maybe_send_plugin_bulk_actions()). Last, so every plugin has
+        // set itself up for that screen first.
+        add_action('load-edit.php', [$this, 'maybe_send_plugin_bulk_actions'], PHP_INT_MAX);
     }
 
     // =========================================================================
@@ -389,8 +395,9 @@ class Brikpanel_Products_List {
         }
 
         if ($pagenow === 'edit.php' && isset($_GET['post_type']) && sanitize_key($_GET['post_type']) === 'product') {
-            // Don't redirect if it's a specific sub-action, sub-page, or taxonomy page
-            if (!empty($_GET['action']) || !empty($_GET['action2']) || !empty($_GET['page']) || !empty($_GET['taxonomy'])) {
+            // Don't redirect if it's a specific sub-action, sub-page, or taxonomy page,
+            // or the list asking which bulk actions other plugins add here.
+            if (!empty($_GET['action']) || !empty($_GET['action2']) || !empty($_GET['page']) || !empty($_GET['taxonomy']) || !empty($_GET['brikpanel_bulk_actions'])) {
                 return;
             }
 
@@ -498,28 +505,13 @@ class Brikpanel_Products_List {
             // product's quantity as its own (get_manage_stock() is 'parent'):
             // that quantity is counted once, not once per variation (a product
             // with 10 in stock and 6 such variations showed 60). A switched-off
-            // variation (status private) is not for sale and not counted.
-            $total       = 0;
-            $uses_parent = false;
-            foreach ($product->get_children() as $cid) {
-                $v = wc_get_product($cid);
-                if (!$v || 'publish' !== $v->get_status()) continue;
-                $managed = $v->get_manage_stock();
-                if ('parent' === $managed) {
-                    $uses_parent = true;
-                } elseif ($managed) {
-                    $manage_stock = true;
-                    $total += (int) $v->get_stock_quantity();
-                }
-                if ($v->backorders_allowed()) {
-                    $backorders = true;
-                }
-            }
-            if ($uses_parent) {
-                $manage_stock = true;
-                $total += (int) $product->get_stock_quantity();
-            }
-            $qty = $manage_stock ? $total : null;
+            // variation (status private) is not for sale and not counted. The
+            // rule lives in brikpanel_variable_stock_summary(), shared with the
+            // Stock column on WooCommerce's own product list.
+            $summary      = brikpanel_variable_stock_summary($product);
+            $qty          = $summary['qty'];
+            $manage_stock = $summary['manage_stock'];
+            $backorders   = $summary['backorders'];
         } else {
             $manage_stock = (bool) $product->get_manage_stock();
             $qty          = $manage_stock ? $product->get_stock_quantity() : null;
@@ -586,7 +578,7 @@ class Brikpanel_Products_List {
         $blank_pair   = ['cogs' => $blank, 'profit' => $blank_profit, 'variation_skus' => $blank_skus];
 
         if ($product->is_type('variable')) {
-            $children = $product->get_children();
+            $children = brikpanel_variation_ids($product);
             $total    = count($children);
             if ($total === 0) {
                 return $blank_pair;
@@ -930,7 +922,7 @@ class Brikpanel_Products_List {
         $value = trim(brikpanel_wc_gtin($product));
 
         if ($value === '' && $product->is_type('variable')) {
-            $found = self::child_gtins($product->get_children());
+            $found = self::child_gtins(brikpanel_variation_ids($product));
 
             if (count($found) === 1) {
                 return ['value' => $found[0], 'tooltip' => '', 'multi' => false];
@@ -1209,6 +1201,360 @@ class Brikpanel_Products_List {
         <?php
     }
 
+    // =========================================================================
+    // OTHER PLUGINS' BULK ACTIONS
+    // =========================================================================
+    //
+    // Plugins add bulk actions to WooCommerce's product list through
+    // `bulk_actions-edit-product` and run them through
+    // `handle_bulk_actions-edit-product` (Epos Now's "Send to Slynk", Rank
+    // Math, Yoast, SEOPress). This list replaces that screen, so they were out
+    // of reach (wp.org support, richardlampitt, 19 Oct 2026). The list now
+    // offers them under the selection bar's actions and in the Bulk update
+    // window, and runs a chosen one by sending the selected products to
+    // WordPress's own bulk action route on edit.php, the same request
+    // WooCommerce's "Apply" makes (brikpanel-products-list.js). An action that
+    // only works through its plugin's script on that page is left out
+    // (filter `brikpanel_list_script_only_bulk_actions`).
+
+    /**
+     * Answers "which bulk actions do other plugins add to WooCommerce's product
+     * list?" from inside a real request for that list:
+     * edit.php?post_type=product&brikpanel_bulk_actions=1&_bpnonce=...
+     *
+     * Several plugins add their actions only on that screen: Rank Math on
+     * `current_screen` and SEOPress while its files load, both only when
+     * $pagenow is edit.php. Asking the filter on the BrikPanel page would miss
+     * them, so the list asks here, at the end of `load-edit.php`: every plugin
+     * has set itself up for the screen and nothing has been drawn yet.
+     *
+     * Read only. Nothing runs here; the answer is keys and plain-text labels.
+     */
+    public function maybe_send_plugin_bulk_actions() {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- the nonce is checked below, once the request is ours.
+        if (empty($_GET['brikpanel_bulk_actions'])) {
+            return;
+        }
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen || 'edit-product' !== $screen->id) {
+            return;
+        }
+
+        $nonce = isset($_GET['_bpnonce']) ? sanitize_text_field(wp_unslash($_GET['_bpnonce'])) : '';
+        if (!wp_verify_nonce($nonce, 'brikpanel_products_list_nonce') || !current_user_can('edit_products')) {
+            wp_send_json_error(null, 403);
+        }
+
+        nocache_headers();
+        wp_send_json_success(['groups' => self::get_plugin_bulk_actions($screen->id)]);
+    }
+
+    /**
+     * The other plugins' bulk actions of the product list, grouped as the list
+     * shows them. Only meaningful on the product list screen itself (see
+     * maybe_send_plugin_bulk_actions()).
+     *
+     * @param string $screen_id The list screen, `edit-product`.
+     * @return array List of [ 'label' => string, 'items' => [ [ 'key' => string, 'label' => string ], ... ] ].
+     */
+    public static function get_plugin_bulk_actions($screen_id = 'edit-product') {
+        // What WP_Posts_List_Table::get_bulk_actions() hands the filter on the
+        // list's normal view, so a callback that places its entry next to
+        // WordPress's own finds them. They are left out again below.
+        $base     = [];
+        $type_obj = get_post_type_object('product');
+        if ($type_obj && current_user_can($type_obj->cap->edit_posts)) {
+            $base['edit'] = 'edit';
+        }
+        if ($type_obj && current_user_can($type_obj->cap->delete_posts)) {
+            $delete_key          = EMPTY_TRASH_DAYS ? 'trash' : 'delete';
+            $base[ $delete_key ] = $delete_key;
+        }
+
+        // A callback written for WordPress's list table runs here as it would
+        // there; one that throws takes only the plugin actions away, never
+        // the answer (same guard as the ASE bridge's column pass).
+        try {
+            // phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores -- WordPress core hook name.
+            $actions = apply_filters("bulk_actions-{$screen_id}", $base);
+        } catch (\Throwable $e) {
+            $actions = [];
+        }
+        $actions = is_array($actions) ? $actions : [];
+
+        $groups = self::normalize_plugin_bulk_actions($actions);
+
+        /**
+         * Filters the other plugins' bulk actions the BrikPanel product list
+         * offers (the selection bar's menu and the Bulk update window).
+         *
+         * @since 3.3.37
+         *
+         * @param array $groups  List of [ 'label' => string ('' = not grouped),
+         *                       'items' => [ [ 'key' => string, 'label' => string ], ... ] ].
+         * @param array $actions The `bulk_actions-edit-product` result they came from.
+         */
+        $groups = apply_filters('brikpanel_products_plugin_bulk_actions', $groups, $actions);
+
+        // A filter may hand back anything: keep the shape the script reads.
+        $out = [];
+        foreach ((array) $groups as $group) {
+            if (!is_array($group) || empty($group['items']) || !is_array($group['items'])) {
+                continue;
+            }
+            $items = [];
+            foreach ($group['items'] as $item) {
+                if (is_array($item) && isset($item['key'], $item['label']) && self::is_plugin_bulk_key($item['key'])) {
+                    $label = trim(wp_strip_all_tags((string) $item['label']));
+                    if ('' !== $label) {
+                        $items[] = ['key' => (string) $item['key'], 'label' => $label];
+                    }
+                }
+            }
+            if ($items) {
+                $out[] = [
+                    'label' => isset($group['label']) ? trim(wp_strip_all_tags((string) $group['label'])) : '',
+                    'items' => $items,
+                ];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Turns a `bulk_actions-edit-product` result into the groups the list
+     * shows. Free of side effects so tools/test-plugin-bulk-actions.php can
+     * feed it any shape a plugin returns.
+     *
+     * - WordPress's own actions are left out: the list has its own controls
+     *   for them (filter `brikpanel_list_native_bulk_actions`).
+     * - A nested array is a group (an <optgroup> since WordPress 5.6, e.g.
+     *   "Yoast SEO"); actions that come without one share the first group,
+     *   whose label is ''.
+     * - Some plugins put a heading among their actions as an option of its own
+     *   that their script disables ("↓ Rank Math"). Such a heading becomes the
+     *   group of the actions whose keys start with its prefix (filter
+     *   `brikpanel_bulk_action_headings`).
+     * - Rank Math's own rules for its actions apply (rank_math_bulk_allowed()).
+     *
+     * @param array      $actions Key => label, or group label => [ key => label ].
+     * @param array|null $env     Rank Math's state (rank_math_bulk_env()); null reads this site.
+     * @return array List of [ 'label' => string, 'items' => [ [ 'key' => string, 'label' => string ], ... ] ].
+     */
+    public static function normalize_plugin_bulk_actions(array $actions, $env = null) {
+        if (!is_array($env)) {
+            $env = self::rank_math_bulk_env();
+        }
+
+        /**
+         * Filters the bulk action keys the BrikPanel product list leaves out
+         * because it has its own control for them (WordPress's Edit, Move to
+         * Trash, Restore and Delete permanently).
+         *
+         * @since 3.3.37
+         *
+         * @param string[] $keys Keys of the `bulk_actions-edit-product` filter.
+         */
+        $native = array_map('strval', (array) apply_filters('brikpanel_list_native_bulk_actions', ['edit', 'trash', 'untrash', 'delete']));
+
+        /**
+         * Filters the bulk actions that only work through their plugin's own
+         * script on WooCommerce's product list, so the BrikPanel list leaves
+         * them out: sent to WordPress they would do nothing. Elementor AI's
+         * "Unify with Elementor AI" catches WooCommerce's Apply button and
+         * opens its own window; WordPress has no handler for it.
+         *
+         * @since 3.3.37
+         *
+         * @param string[] $keys Keys of the `bulk_actions-edit-product` filter.
+         */
+        $native = array_merge($native, array_map('strval', (array) apply_filters('brikpanel_list_script_only_bulk_actions', ['elementor-ai-unify-product-images'])));
+
+        /**
+         * Filters the heading entries some plugins put among their bulk actions,
+         * as heading key => key prefix of the actions under it.
+         *
+         * @since 3.3.37
+         *
+         * @param array $headings Heading key => action key prefix.
+         */
+        $headings = (array) apply_filters('brikpanel_bulk_action_headings', [
+            'rank_math_options'    => 'rank_math_',
+            'rank_math_ai_options' => 'rank_math_content_ai_',
+        ]);
+
+        // Labels come as the plugin wrote them for an <option>: entities
+        // ("&#8595; Rank Math"), sometimes markup. Plain text, arrows that only
+        // marked a heading in a dropdown removed.
+        $clean = static function ($text) {
+            $text = html_entity_decode(wp_strip_all_tags((string) $text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $text = (string) preg_replace('/\s+/u', ' ', $text);
+            return trim($text);
+        };
+
+        // A heading's label is known before its actions are placed: a plugin can
+        // add some of its actions ahead of its heading (Rank Math's Content AI
+        // ones come from a filter of a different priority).
+        $heading_labels = [];
+        foreach ($headings as $heading_key => $prefix) {
+            $heading_key = (string) $heading_key;
+            if (isset($actions[ $heading_key ]) && !is_array($actions[ $heading_key ]) && '' !== (string) $prefix) {
+                $label = trim((string) preg_replace('/^[\x{2193}\x{2B07}\x{21E9}\s]+/u', '', $clean($actions[ $heading_key ])));
+                if ('' !== $label) {
+                    $heading_labels[ $heading_key ] = $label;
+                }
+            }
+        }
+
+        $groups = ['' => []];
+        $seen   = [];
+        $add    = static function ($group, $key, $label) use (&$groups, &$seen) {
+            if (isset($seen[ $key ])) {
+                return;
+            }
+            $seen[ $key ] = true;
+            if (!isset($groups[ $group ])) {
+                $groups[ $group ] = [];
+            }
+            $groups[ $group ][] = ['key' => $key, 'label' => $label];
+        };
+
+        foreach ($actions as $key => $value) {
+            if (is_array($value)) {
+                $group = $clean($key);
+                foreach ($value as $inner_key => $inner_label) {
+                    $inner_key = (string) $inner_key;
+                    if (is_array($inner_label) || in_array($inner_key, $native, true) || !self::is_plugin_bulk_key($inner_key)
+                        || !self::rank_math_bulk_allowed($inner_key, $env)) {
+                        continue;
+                    }
+                    $label = $clean($inner_label);
+                    if ('' !== $label) {
+                        $add($group, $inner_key, $label);
+                    }
+                }
+                continue;
+            }
+
+            $key = (string) $key;
+            if (in_array($key, $native, true) || isset($headings[ $key ]) || !self::is_plugin_bulk_key($key)
+                || !self::rank_math_bulk_allowed($key, $env)) {
+                continue;
+            }
+            $label = $clean($value);
+            if ('' === $label) {
+                continue;
+            }
+
+            // Under the heading whose prefix the key starts with, the longest
+            // prefix first (Rank Math's Content AI actions also start with
+            // Rank Math's own prefix).
+            $group   = '';
+            $longest = 0;
+            foreach ($heading_labels as $heading_key => $heading_label) {
+                $prefix = (string) $headings[ $heading_key ];
+                if (0 === strpos($key, $prefix) && strlen($prefix) > $longest) {
+                    $group   = $heading_label;
+                    $longest = strlen($prefix);
+                }
+            }
+            $add($group, $key, $label);
+        }
+
+        $out = [];
+        foreach ($groups as $label => $items) {
+            if ($items) {
+                $out[] = ['label' => (string) $label, 'items' => $items];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * A bulk action key the list can carry in a URL and a form field. Plugins
+     * use plain identifiers ("sew_bulk_send_product_to_slynk",
+     * "elementor-ai-unify-product-images"); anything else is left out.
+     *
+     * @param mixed $key Action key.
+     * @return bool
+     */
+    private static function is_plugin_bulk_key($key) {
+        return is_string($key) && 1 === preg_match('/^[A-Za-z0-9_.:-]{1,100}$/', $key);
+    }
+
+    /**
+     * Rank Math's own rules for its bulk actions, which its script on
+     * WooCommerce's list applies before anything runs (Rank Math 1.0.280,
+     * assets/admin/js/post-list.js). Without them the list would offer actions
+     * that do nothing: the free plugin leaves the `rank_math_bulk_*` ones to
+     * Rank Math PRO (its script shows a PRO notice instead), and the Content
+     * AI ones need a connected site with credits.
+     *
+     * @param string $key Action key.
+     * @param array  $env Rank Math's state (rank_math_bulk_env()).
+     * @return bool True to offer the action.
+     */
+    private static function rank_math_bulk_allowed($key, array $env) {
+        if (0 !== strpos($key, 'rank_math_') || empty($env['rank_math'])) {
+            // Not Rank Math's, or its state could not be read: offered as
+            // WooCommerce's list offers it.
+            return true;
+        }
+        $connected = !empty($env['connected']);
+        $credits   = isset($env['credits']) ? (int) $env['credits'] : 0;
+        $plan      = isset($env['plan']) ? (string) $env['plan'] : '';
+
+        if (0 === strpos($key, 'rank_math_bulk')) {
+            if (empty($env['pro'])) {
+                return false;
+            }
+            return 'rank_math_bulk_detect_keyword_intent' !== $key || $connected;
+        }
+        if ('rank_math_content_ai_fetch_image_alt' === $key) {
+            return $connected && $credits >= 50;
+        }
+        if (in_array($key, ['rank_math_content_ai_fetch_seo_title', 'rank_math_content_ai_fetch_seo_description', 'rank_math_content_ai_fetch_seo_title_description'], true)) {
+            return $connected && $credits > 0 && '' !== $plan && 'free' !== $plan;
+        }
+        return true;
+    }
+
+    /**
+     * What rank_math_bulk_allowed() needs to know about Rank Math on this
+     * site. The credits are the ones Rank Math keeps; nothing is fetched.
+     *
+     * @return array [ 'rank_math' => bool (state read), 'pro' => bool, 'connected' => bool, 'credits' => int, 'plan' => string ].
+     */
+    private static function rank_math_bulk_env() {
+        $env = [
+            'rank_math' => false,
+            'pro'       => defined('RANK_MATH_PRO_FILE'),
+            'connected' => false,
+            'credits'   => 0,
+            'plan'      => '',
+        ];
+        $helper = '\RankMath\Helper';
+        if (!class_exists($helper)) {
+            return $env;
+        }
+        try {
+            if (is_callable([$helper, 'is_site_connected'])) {
+                $env['connected'] = (bool) call_user_func([$helper, 'is_site_connected']);
+            }
+            if (is_callable([$helper, 'get_content_ai_credits'])) {
+                $env['credits'] = (int) call_user_func([$helper, 'get_content_ai_credits']);
+            }
+            if (is_callable([$helper, 'get_content_ai_plan'])) {
+                $env['plan'] = (string) call_user_func([$helper, 'get_content_ai_plan']);
+            }
+            $env['rank_math'] = true;
+        } catch (\Throwable $e) {
+            // Rank Math changed its helpers: its actions are offered as
+            // WooCommerce's list offers them.
+        }
+        return $env;
+    }
+
     /**
      * Outputs the shared term-picker pool used by taxonomy bulk actions. One
      * collapsible checkbox list per bulk taxonomy; JS reveals the matching one
@@ -1342,6 +1688,14 @@ class Brikpanel_Products_List {
                             <input type="text" id="bpl-qe-sale-price">
                         </div>
                     </div>
+                    <?php
+                    // WPML: shown (and the boxes above locked) when the product
+                    // opened is a translation, whose price comes from its original.
+                    if (function_exists('brikpanel_wpml_products_translated') && brikpanel_wpml_products_translated()) :
+                        $bpl_lock = brikpanel_wpml_price_lock_note();
+                        ?>
+                        <p class="brikpanel-pl-qe-lock-note" id="bpl-qe-price-lock" hidden><?php echo esc_html($bpl_lock['text']); ?> <a href="#" id="bpl-qe-price-lock-link"><?php echo esc_html($bpl_lock['link']); ?></a></p>
+                    <?php endif; ?>
                 </div>
                 <?php
                 break;
@@ -1933,10 +2287,34 @@ class Brikpanel_Products_List {
                         </div>
                     </div>
                 </div>
-                <div class="brikpanel-pl-sort-hint" id="bpl-sort-hint" hidden>
+<?php
+                // The shop uses this order only while its default sorting is the
+                // custom order (WooCommerce's "Default product sorting"). A store
+                // that shows the newest products first can start a custom order
+                // here that begins in that same order (includes/brikpanel-product-order.php).
+                $bpl_store_sort = function_exists('brikpanel_product_order_store_sort') ? brikpanel_product_order_store_sort() : 'menu_order';
+                $bpl_sort_used  = 'menu_order' === $bpl_store_sort;
+                $bpl_can_start  = 'date' === $bpl_store_sort && current_user_can('manage_woocommerce');
+                ?>
+                <div class="brikpanel-pl-sort-hint<?php echo esc_attr($bpl_sort_used ? '' : ' is-unused'); ?>" id="bpl-sort-hint" hidden>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    <span><?php esc_html_e('Drag the handle on the left of each row to set the order products appear in your storefront. Changes are saved automatically.', 'brikpanel'); ?></span>
-                    <button type="button" class="brikpanel-pl-btn primary small" id="bpl-sort-done"><?php esc_html_e('Done sorting', 'brikpanel'); ?></button>
+                    <?php if ($bpl_sort_used) : ?>
+                        <span class="brikpanel-pl-sort-hint-text"><?php esc_html_e('Drag the handle on the left of each row to set the order products appear in your storefront. Changes are saved automatically.', 'brikpanel'); ?></span>
+                    <?php elseif ('date' === $bpl_store_sort) : ?>
+                        <span class="brikpanel-pl-sort-hint-text"><?php esc_html_e('Your store lists the newest products first, so the order you set here does not show there yet.', 'brikpanel'); ?> <?php
+                            if ($bpl_can_start) {
+                                esc_html_e('Start a custom order: your products keep their newest-first order, you can move any of them, and new products still appear on top.', 'brikpanel');
+                            } else {
+                                esc_html_e('A store manager can start a custom order here.', 'brikpanel');
+                            }
+                        ?></span>
+                    <?php else : ?>
+                        <span class="brikpanel-pl-sort-hint-text"><?php esc_html_e('Your store sorts products another way, so the order you set here does not show there. To use it, set Default product sorting to "Default sorting (custom ordering + name)" under Appearance > Customize.', 'brikpanel'); ?></span>
+                    <?php endif; ?>
+                    <?php if ($bpl_can_start) : ?>
+                        <button type="button" class="brikpanel-pl-btn primary small brikpanel-pl-sort-start" id="bpl-sort-start"><?php esc_html_e('Start custom order', 'brikpanel'); ?></button>
+                    <?php endif; ?>
+                    <button type="button" class="brikpanel-pl-btn <?php echo esc_attr($bpl_can_start ? 'secondary' : 'primary'); ?> small" id="bpl-sort-done"><?php esc_html_e('Done sorting', 'brikpanel'); ?></button>
                 </div>
                 <div class="brikpanel-pl-table-wrap">
                     <table class="brikpanel-pl-table" id="bpl-table"<?php echo $table_attrs; // already-escaped attrs ?>>
@@ -2018,7 +2396,7 @@ class Brikpanel_Products_List {
                             <span class="brikpanel-pl-bulk-more-short"><?php echo esc_html_x('Actions', 'button that opens the bulk actions on phones', 'brikpanel'); ?></span>
                             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l5-5 5 5"/></svg>
                         </button>
-                        <div class="brikpanel-overflow__menu" id="bpl-bulk-more">
+                        <div class="brikpanel-overflow__menu brikpanel-pl-bulk-menu" id="bpl-bulk-more">
                             <button type="button" class="brikpanel-pl-btn secondary small" id="bpl-bulk-export">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                                 <?php esc_html_e('Export selected', 'brikpanel'); ?>
@@ -2052,6 +2430,24 @@ class Brikpanel_Products_List {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                 <?php esc_html_e('Delete permanently', 'brikpanel'); ?>
                             </button>
+                        </div>
+                    </div>
+                    <?php
+                    // Other plugins' bulk actions (Send to Slynk, Yoast's Bulk
+                    // edit ...), filled in by brikpanel-products-list.js once it
+                    // has asked WordPress for them. While the bar's own buttons
+                    // sit in the row they keep a menu of their own here, always
+                    // folded (`is-fold`), as a row's plugin actions do; when the
+                    // bar folds, and on a phone, they join "Bulk actions" under
+                    // a line instead and this one hides.
+                    ?>
+                    <div class="brikpanel-pl-bulk-plugins is-fold" hidden>
+                        <div class="brikpanel-overflow">
+                            <button type="button" class="brikpanel-overflow__trigger brikpanel-pl-bulk-plugins-btn" aria-expanded="false" aria-controls="bpl-bulk-plugins-menu">
+                                <span><?php esc_html_e('Plugin actions', 'brikpanel'); ?></span>
+                                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l5-5 5 5"/></svg>
+                            </button>
+                            <div class="brikpanel-overflow__menu brikpanel-pl-bulk-menu" id="bpl-bulk-plugins-menu"></div>
                         </div>
                     </div>
                 </div>
@@ -2349,6 +2745,7 @@ class Brikpanel_Products_List {
                             <span id="bpl-progress-percent">0%</span>
                         </div>
                         <p class="bpl-progress-errors" id="bpl-progress-errors"></p>
+                        <p class="bpl-progress-note" id="bpl-progress-note" hidden></p>
                     </div>
                     <div class="bpl-progress-footer">
                         <button type="button" class="brikpanel-pl-btn secondary" id="bpl-progress-cancel"><?php esc_html_e('Cancel', 'brikpanel'); ?></button>
@@ -2604,9 +3001,11 @@ class Brikpanel_Products_List {
             $args['brikpanel_pl_price_sort'] = $order;
         } elseif ($orderby === 'menu') {
             // Custom storefront order: products without an explicit
-            // menu_order (defaults to 0) tie-break by title so the list is
-            // deterministic and matches WC frontend ordering.
-            $args['orderby'] = ['menu_order' => 'ASC', 'title' => 'ASC'];
+            // menu_order (defaults to 0) tie-break by title, then ID, so the
+            // list is deterministic, matches WC frontend ordering, and pages
+            // line up with the whole order brikpanel_product_order_place()
+            // reads (equal names, such as two "Hoodie", keep one order).
+            $args['orderby'] = ['menu_order' => 'ASC', 'title' => 'ASC', 'ID' => 'ASC'];
             unset($args['order']);
         }
 
@@ -2681,8 +3080,20 @@ class Brikpanel_Products_List {
         if (!empty($raw_tax_filters)) {
             $allowed_taxonomies = get_object_taxonomies('product');
             foreach ($raw_tax_filters as $tax_slug => $term_slug) {
-                $tax_slug  = sanitize_key($tax_slug);
-                $term_slug = sanitize_title($term_slug);
+                // A taxonomy name is not a key: sanitize_key() keeps a-z0-9_-
+                // only, so an attribute created in Cyrillic (`pa_сезон`) became
+                // `pa_`, the clause was dropped and the list showed every
+                // product under the "Сезон: Лято" chip. The name is taken as
+                // sent, or decoded from WooCommerce's key (`pa_%d1%81…`), and
+                // still has to be one of the product's registered taxonomies.
+                $tax_raw  = is_scalar($tax_slug) ? trim((string) $tax_slug) : '';
+                $tax_slug = in_array($tax_raw, $allowed_taxonomies, true)
+                    ? $tax_raw
+                    : brikpanel_attr_taxonomy_from_key($tax_raw);
+                if ($tax_slug === '') {
+                    $tax_slug = sanitize_key($tax_raw);
+                }
+                $term_slug = is_scalar($term_slug) ? sanitize_title((string) $term_slug) : '';
                 if ($tax_slug === '' || $term_slug === '') {
                     continue;
                 }
@@ -2815,6 +3226,17 @@ class Brikpanel_Products_List {
         // raised by the column action itself, so anything else in the body
         // could escape and leave the global loop pointing at a stale query for
         // the rest of the request.
+        // Every row's variations in one query; the stock, cost, GTIN and
+        // count cells below read them from there.
+        brikpanel_prime_variation_ids(wp_list_pluck($query->posts, 'ID'));
+
+        // WPML: every row's language and, for a translation, its original, in
+        // one query. Empty on a store without WPML (or with one language).
+        $wpml_rows  = function_exists('brikpanel_wpml_product_languages')
+            ? brikpanel_wpml_product_languages(wp_list_pluck($query->posts, 'ID'))
+            : [];
+        $wpml_names = $wpml_rows ? brikpanel_wpml_languages() : [];
+
         try {
             foreach ($query->posts as $post) {
                 $product = wc_get_product($post->ID);
@@ -2960,15 +3382,15 @@ class Brikpanel_Products_List {
                     'tag_ids'        => $tag_ids,
                     'custom_taxonomies' => (object) $custom_taxonomy_ids,
                     'type'           => $product->get_type(),
-                    // Variation count for the "Variable" badge. get_children()
-                    // was already resolved for this object by
-                    // compute_stock_info() and compute_cost_payloads() above,
-                    // and WooCommerce memoises it on the data store, so this
+                    // Variation count for the "Variable" badge. The variations
+                    // were read for the whole page before the loop
+                    // (brikpanel_prime_variation_ids()), switched-off ones
+                    // included as WooCommerce counts them, so this
                     // costs no extra query. Keyed off the class rather than
                     // the type string so third-party variable types
                     // (variable-subscription and friends) carry the number too.
                     'variation_count' => ($product instanceof WC_Product_Variable)
-                        ? count($product->get_children())
+                        ? count(brikpanel_variation_ids($product))
                         : 0,
                     'is_featured'    => $product->is_featured(),
                     'is_downloadable' => $product->is_downloadable(),
@@ -2979,6 +3401,22 @@ class Brikpanel_Products_List {
                     'extra_cells'    => (object) $extra_cells,
                     'extra_actions'  => $extra_actions,
                 ];
+
+                // WPML: the small language tag next to the name, and on a
+                // translation the original whose price it takes (the price
+                // cell and the quick-edit price boxes lock, with a link there).
+                if (isset($wpml_rows[$post->ID])) {
+                    $row_lang = $wpml_rows[$post->ID]['lang'];
+                    $original = (int) $wpml_rows[$post->ID]['original'];
+                    $products[count($products) - 1]['lang'] = [
+                        'code' => $row_lang,
+                        'name' => isset($wpml_names[$row_lang]) ? (string) $wpml_names[$row_lang]['name'] : strtoupper($row_lang),
+                    ];
+                    $products[count($products) - 1]['translation_of'] = $original;
+                    $products[count($products) - 1]['original_edit_url'] = $original
+                        ? admin_url('admin.php?page=brikpanel-product-editor&product_id=' . $original)
+                        : '';
+                }
             }
         } finally {
             if ($loop_published) {
@@ -3042,20 +3480,16 @@ class Brikpanel_Products_List {
     // =========================================================================
 
     /**
-     * Persists the storefront display order set by drag-and-drop in the
-     * products list. Receives an ordered array of product IDs from the
-     * current page; assigns each one a menu_order starting at the page's
-     * offset (page-1 * per_page) so order is preserved across pages.
+     * Saves the storefront order a user set by dragging rows in Sort mode.
+     * Receives the IDs of the rows on screen, top to bottom.
      *
-     * Mirrors the contract of WooCommerce's native sortable list: only the
-     * IDs visible on the page are reflowed, and untouched products keep
-     * their existing menu_order — collisions are tie-broken by title in
-     * ajax_fetch_products(), so the global ordering remains stable.
+     * The products take each other's places and no other product moves
+     * (brikpanel_product_order_place()). Up to 3.3.45 this numbered only the
+     * visible page from its offset, so on a store that was never sorted
+     * (every product at 0) the first drag sent the products of every other
+     * page ahead of page 1 in the shop.
      *
-     * Direct UPDATE on wp_posts (no wp_update_post) because (1) menu_order
-     * does not need post-meta side effects, (2) avoids triggering
-     * save_post hooks that could rebuild expensive indexes / clear caches
-     * on every drag, and (3) matches what WC_Admin_Post_Types does.
+     * The reply carries the saved numbers so the Sort order cells stay true.
      */
     public function ajax_save_product_order() {
         check_ajax_referer('brikpanel_products_list_nonce', 'security');
@@ -3064,77 +3498,93 @@ class Brikpanel_Products_List {
             wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')], 403);
         }
 
-        $raw_ids = isset($_POST['ids']) && is_array($_POST['ids']) ? $_POST['ids'] : [];
-        $ids = [];
-        foreach ($raw_ids as $id) {
-            $id = absint($id);
-            if ($id > 0) {
-                $ids[] = $id;
-            }
-        }
-
-        if (empty($ids)) {
-            wp_send_json_error(['message' => __('No products to reorder.', 'brikpanel')]);
-        }
+        $raw_ids = isset($_POST['ids']) && is_array($_POST['ids']) ? wp_unslash($_POST['ids']) : [];
 
         // Cap at the bulk-job ceiling: same input class as the bulk update
-        // pipeline, same defensive bound. A single page should never come
-        // close to this in practice.
-        if (count($ids) > self::BULK_MAX_IDS) {
+        // pipeline, same defensive bound. A page holds at most 100 rows.
+        if (count($raw_ids) > self::BULK_MAX_IDS) {
             wp_send_json_error(['message' => __('Too many products to reorder in a single request.', 'brikpanel')]);
         }
 
-        $base = max(0, intval($_POST['base'] ?? 0));
+        // Products the user can edit, once each, in the order given. The
+        // client sends IDs, so each one is checked before its number moves.
+        $ids = [];
+        foreach ($raw_ids as $id) {
+            $id = absint($id);
+            if ($id < 1 || isset($ids[$id]) || 'product' !== get_post_type($id) || !current_user_can('edit_post', $id)) {
+                continue;
+            }
+            $ids[$id] = $id;
+        }
+        $ids = array_values($ids);
 
-        global $wpdb;
-        $updated = 0;
+        if (count($ids) < 2) {
+            wp_send_json_error(['message' => __('No products to reorder.', 'brikpanel')]);
+        }
 
         // Buffer any incidental output triggered by cache-purge hooks on
         // 3rd-party plugins (e.g. WP Rocket's missing-table notices) so
         // the JSON response isn't corrupted by stray HTML.
         ob_start();
 
-        foreach ($ids as $idx => $id) {
-            $new_order = $base + $idx;
+        $result  = brikpanel_product_order_place($ids);
+        $changes = $result['changes'];
 
-            // Verify the post is actually a product the user can edit
-            // before mutating menu_order — prevents passing arbitrary post
-            // IDs from the client.
-            $post = get_post($id);
-            if (!$post || $post->post_type !== 'product') {
-                continue;
-            }
-            if (!current_user_can('edit_post', $id)) {
-                continue;
-            }
-
-            $result = $wpdb->update(
-                $wpdb->posts,
-                ['menu_order' => $new_order],
-                ['ID' => $id],
-                ['%d'],
-                ['%d']
-            );
-
-            if ($result !== false) {
+        // A page of rows: clear each one's caches the way a save does, so
+        // page-cache plugins that listen to it refresh the products too.
+        if (count($changes) <= 200) {
+            foreach (array_keys($changes) as $id) {
                 clean_post_cache($id);
-                $updated++;
             }
         }
 
-        // Storefront product loops cache the ordered ID set; bust it so
-        // the new order is visible on the front-end immediately.
-        if (function_exists('wc_delete_product_transients')) {
-            foreach ($ids as $id) {
-                wc_delete_product_transients($id);
-            }
-        }
+        $moved = absint($_POST['moved'] ?? 0);
+        brikpanel_product_order_announce(isset($result['orders'][$moved]) ? $moved : (int) $ids[0], $changes);
 
         ob_end_clean();
 
         wp_send_json_success([
-            'updated' => $updated,
+            'updated' => count($changes),
+            'orders'  => (object) $result['orders'],
             'message' => __('Order saved.', 'brikpanel'),
+        ]);
+    }
+
+    /**
+     * Starts a custom order that begins newest first and makes it the shop's
+     * default sorting: the button in the Sort mode banner of a store that
+     * shows the newest products first. Nothing in the shop moves until a
+     * product is moved; new products keep appearing on top.
+     *
+     * Changes WooCommerce's "Default product sorting", so it needs the right to
+     * manage WooCommerce as well as to edit products.
+     */
+    public function ajax_start_custom_order() {
+        check_ajax_referer('brikpanel_products_list_nonce', 'security');
+
+        if (!current_user_can('edit_products') || !current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')], 403);
+        }
+
+        ob_start();
+        $result = brikpanel_product_order_start_newest_first();
+        brikpanel_product_order_announce($result['first'], $result['changes']);
+        ob_end_clean();
+
+        if ('menu_order' !== $result['store_sort']) {
+            // The option is set, but the theme or another plugin still decides
+            // the shop's sorting through WooCommerce's filter.
+            wp_send_json_success([
+                'store_sort' => $result['store_sort'],
+                'overridden' => true,
+                'message'    => __('Products are numbered newest first, but your theme or another plugin still sets the store\'s sort order. Set its default product sorting to custom ordering.', 'brikpanel'),
+            ]);
+        }
+
+        wp_send_json_success([
+            'store_sort' => 'menu_order',
+            'overridden' => false,
+            'message'    => __('Custom order started. Your store still lists the newest products first until you move one.', 'brikpanel'),
         ]);
     }
 
@@ -3179,29 +3629,59 @@ class Brikpanel_Products_List {
             }
         }
 
-        if (isset($_POST['regular_price'])) {
+        // WooCommerce keeps no price of its own for a grouped product (it comes
+        // from the products in the group) and no stock for grouped or external
+        // products. An external product even throws on stock management, which
+        // used to fail this whole request. Such keys are ignored for them.
+        $no_own_price = $product->is_type('grouped');
+        $no_stock     = $product->is_type(['grouped', 'external']);
+
+        // A WPML translation takes its price from the original product, as
+        // WooCommerce Multilingual keeps it (its own editor locks the fields).
+        // The list shows the boxes locked; a price posted anyway is ignored.
+        if (function_exists('brikpanel_wpml_original_of') && brikpanel_wpml_original_of($product_id)) {
+            $no_own_price = true;
+        }
+
+        if (!$no_own_price && isset($_POST['regular_price'])) {
             $product->set_regular_price(wc_format_decimal(sanitize_text_field($_POST['regular_price'])));
         }
 
-        if (isset($_POST['sale_price'])) {
+        if (!$no_own_price && isset($_POST['sale_price'])) {
             $sale = sanitize_text_field($_POST['sale_price']);
             $product->set_sale_price($sale !== '' ? wc_format_decimal($sale) : '');
         }
 
-        if (isset($_POST['stock']) && $_POST['stock'] !== '') {
-            $stock = intval($_POST['stock']);
-            $product->set_manage_stock(true);
-            $product->set_stock_quantity($stock);
-            // If stock_status is not explicitly sent (e.g. inline row edit),
-            // auto-derive it from the quantity so the row badge stays consistent.
-            if (!isset($_POST['stock_status'])) {
-                $product->set_stock_status($stock > 0 ? 'instock' : 'outofstock');
+        // A box saved with the number it opened with keeps the stored
+        // quantity: orders may have lowered it since the window opened.
+        $is_variable_product = $product->is_type('variable');
+        if (!$no_stock && isset($_POST['stock']) && $_POST['stock'] !== '') {
+            $stock    = intval($_POST['stock']);
+            $keep_qty = brikpanel_stock_box_unchanged($product, $stock, $_POST['stock_original'] ?? null);
+            if ($is_variable_product) {
+                // A variable product's own quantity is WooCommerce's shared
+                // stock. It is written only while the product already counts
+                // it: switching counting on here would make a leftover that
+                // pins the product out of stock (3.2.17).
+                if (true === $product->get_manage_stock('edit') && !$keep_qty) {
+                    $product->set_stock_quantity($stock);
+                }
+            } else {
+                $product->set_manage_stock(true);
+                if (!$keep_qty) {
+                    $product->set_stock_quantity($stock);
+                }
+                // If stock_status is not explicitly sent (e.g. inline row edit),
+                // auto-derive it from the quantity so the row badge stays consistent.
+                if (!isset($_POST['stock_status'])) {
+                    $product->set_stock_status((int) $product->get_stock_quantity('edit') > 0 ? 'instock' : 'outofstock');
+                }
             }
-        } elseif (isset($_POST['stock']) && $_POST['stock'] === '') {
+        } elseif (!$no_stock && isset($_POST['stock']) && $_POST['stock'] === '' && !$is_variable_product) {
             $product->set_manage_stock(false);
         }
 
-        if (isset($_POST['stock_status'])) {
+        if (!$no_stock && isset($_POST['stock_status'])) {
             $stock_status = sanitize_key($_POST['stock_status']);
             if (in_array($stock_status, ['instock', 'outofstock', 'onbackorder'], true)) {
                 $product->set_stock_status($stock_status);
@@ -3309,7 +3789,7 @@ class Brikpanel_Products_List {
         // (legacy inline edits) leave the flags untouched. The drawer hides
         // these toggles for variable products entirely — that case is handled
         // through the full editor where per-variation propagation happens.
-        if ((isset($_POST['is_downloadable']) || isset($_POST['is_virtual'])) && !$product->is_type('variable')) {
+        if ((isset($_POST['is_downloadable']) || isset($_POST['is_virtual'])) && !$product->is_type(['variable', 'grouped', 'external'])) {
             $is_downloadable = !empty($_POST['is_downloadable']);
             $is_virtual      = !empty($_POST['is_virtual']) || $is_downloadable;
             $product->set_downloadable($is_downloadable);
@@ -3363,7 +3843,7 @@ class Brikpanel_Products_List {
         // prop-sync logic so the explicit value sticks. We also fire
         // `woocommerce_product_set_stock_status` so any listeners that depend
         // on the change still see it.
-        if (isset($_POST['stock_status'])) {
+        if (!$no_stock && isset($_POST['stock_status'])) {
             $requested_status = sanitize_key($_POST['stock_status']);
             if (in_array($requested_status, ['instock', 'outofstock', 'onbackorder'], true)) {
                 global $wpdb;
@@ -3378,7 +3858,7 @@ class Brikpanel_Products_List {
                 // the shop out of sync with what the admin just clicked.
                 $targets = [$product_id];
                 if ($product->is_type('variable')) {
-                    foreach ($product->get_children() as $child_id) {
+                    foreach (brikpanel_variation_ids($product) as $child_id) {
                         $targets[] = (int) $child_id;
                     }
                 }
@@ -3402,6 +3882,12 @@ class Brikpanel_Products_List {
                     do_action('woocommerce_product_set_stock_status', $pid, $requested_status, wc_get_product($pid));
                 }
             }
+        }
+
+        // WPML: an original's new price (and what else WooCommerce
+        // Multilingual keeps in step) reaches its translations.
+        if (function_exists('brikpanel_wpml_sync_translations')) {
+            brikpanel_wpml_sync_translations($product_id);
         }
 
         // Return updated product data
@@ -3478,7 +3964,7 @@ class Brikpanel_Products_List {
                 // this is belt and braces — but the two builders drifting
                 // apart is exactly what used to blank cells after an edit.
                 'variation_count' => ($product instanceof WC_Product_Variable)
-                    ? count($product->get_children())
+                    ? count(brikpanel_variation_ids($product))
                     : 0,
                 'is_downloadable' => $product->is_downloadable(),
                 'is_virtual'      => $product->is_virtual(),
@@ -3906,11 +4392,25 @@ class Brikpanel_Products_List {
                 if (!in_array($round_mode, ['nearest', 'up', 'down'], true)) {
                     $round_mode = 'nearest';
                 }
+                // The variation filter is a stored attribute key and value from
+                // ajax_get_variation_attributes(). sanitize_text_field() deleted
+                // the `%xx` octets of a non-ASCII key or term slug ("Размер",
+                // `pa_вид`), the filter came out empty, and an empty filter means
+                // every variation: a price meant for one size hit all of them.
+                $attr_key_raw = isset($_POST['attr_key']) && is_scalar($_POST['attr_key']) ? trim((string) wp_unslash($_POST['attr_key'])) : '';
+                $attr_val_raw = isset($_POST['attr_val']) && is_scalar($_POST['attr_val']) ? trim((string) wp_unslash($_POST['attr_val'])) : '';
+                $attr_key     = brikpanel_attr_key_clean($attr_key_raw);
+                $attr_val     = brikpanel_attr_value_clean($attr_val_raw);
+                // One value was asked for ("All variations" sends none). A filter
+                // that does not survive cleaning is refused, never widened.
+                if ($attr_val_raw !== '' && ($attr_key === '' || $attr_val === '')) {
+                    wp_send_json_error(['message' => __('Invalid request.', 'brikpanel')]);
+                }
                 $params = [
                     'action'     => $action,
                     'value'      => sanitize_text_field($_POST['value'] ?? ''),
-                    'attr_key'   => sanitize_text_field($_POST['attr_key'] ?? ''),
-                    'attr_val'   => sanitize_text_field($_POST['attr_val'] ?? ''),
+                    'attr_key'   => $attr_key,
+                    'attr_val'   => $attr_val,
                     'round_mode' => $round_mode,
                 ];
             }
@@ -4039,6 +4539,8 @@ class Brikpanel_Products_List {
             'total'       => $total,
             'done'        => $done,
             'errors'      => $result['errors'],
+            // WPML translations a price action left to their original.
+            'translations_skipped' => (int) ($result['translations_skipped'] ?? 0),
         ]);
     }
 
@@ -4258,6 +4760,30 @@ class Brikpanel_Products_List {
         $is_cogs = ($action === 'set_cogs');
         $is_repair = ($action === 'repair_visibility');
         $has_attr_filter = ($attr_key !== '' && $attr_val !== '');
+        // A variation that sells from its product's shared stock has no stock
+        // of its own: setting it here gave it a separate copy of the shared
+        // number. Without a variation filter the product's own quantity is
+        // what changes (below); a filtered or directly picked variation like
+        // that is reported instead of changed.
+        $is_stock    = in_array($action, ['set_stock', 'increase_stock'], true);
+        $shared_note = __("Uses the product's shared stock. Change it on the product.", 'brikpanel');
+        // WooCommerce keeps no price, cost or stock of its own for a grouped
+        // product, no stock for an external one and ships neither: such a
+        // row is reported instead of changed (an external product even
+        // throws on stock management).
+        $group_note    = __('A grouped product takes its price and stock from the products in it. Change them there.', 'brikpanel');
+        $external_note = __('External products have no stock in WooCommerce.', 'brikpanel');
+        $no_ship_note  = __('Grouped and external products are not shipped, so they have no weight or size.', 'brikpanel');
+        // A WPML translation takes its price from its original product, which
+        // WooCommerce Multilingual copies to it: a price action leaves the
+        // translation as it is and counts it, so the result can say so (it is
+        // not an error: the original's new price reaches it). One query reads
+        // the batch.
+        $check_translations   = $is_price && function_exists('brikpanel_wpml_original_of');
+        $translations_skipped = 0;
+        if ($check_translations) {
+            brikpanel_wpml_product_languages($parent_ids);
+        }
 
         // A product_cat "remove" can strip a product's last category; those rows
         // are swept once at the end of the batch instead of checked per product.
@@ -4304,11 +4830,20 @@ class Brikpanel_Products_List {
                 $product = wc_get_product($pid);
                 if (!$product) continue;
 
+                if ($check_translations && brikpanel_wpml_original_of($pid)) {
+                    $translations_skipped++;
+                    continue;
+                }
+
                 // Weight/dimensions are stored on the product post (the parent
                 // default for variable products); variations inherit when their
                 // own value is empty, so we set the parent and leave overrides
                 // intact.
                 if ($is_shipping) {
+                    if ($product->is_type(['grouped', 'external'])) {
+                        $errors[] = ['id' => (int) $pid, 'message' => $no_ship_note];
+                        continue;
+                    }
                     $this->apply_bulk_action($product, $action, $value, $opts);
                     $product->save();
                     $processed++;
@@ -4317,15 +4852,19 @@ class Brikpanel_Products_List {
 
                 if ($product->get_type() === 'variable') {
                     if ($is_price || $is_cogs || $has_attr_filter) {
-                        foreach ($product->get_children() as $vid) {
+                        foreach (brikpanel_variation_ids($product) as $vid) {
                             $v = wc_get_product($vid);
                             if (!$v) continue;
                             if ($has_attr_filter) {
                                 $match = false;
                                 foreach ($v->get_attributes() as $k => $vl) {
-                                    if ($k === $attr_key && $vl === $attr_val) { $match = true; break; }
+                                    if ($k === $attr_key && ($vl === $attr_val || brikpanel_attr_value_clean($vl) === $attr_val)) { $match = true; break; }
                                 }
                                 if (!$match) continue;
+                            }
+                            if ($is_stock && brikpanel_variation_follows_parent_stock($v)) {
+                                $errors[] = ['id' => (int) $vid, 'message' => $shared_note];
+                                continue;
                             }
                             $this->apply_bulk_action($v, $action, $value, $opts);
                             $v->save();
@@ -4338,7 +4877,7 @@ class Brikpanel_Products_List {
                             $product->save();
                             $processed++;
                         } else {
-                            foreach ($product->get_children() as $vid) {
+                            foreach (brikpanel_variation_ids($product) as $vid) {
                                 $v = wc_get_product($vid);
                                 if (!$v) continue;
                                 $this->apply_bulk_action($v, $action, $value, $opts);
@@ -4350,6 +4889,18 @@ class Brikpanel_Products_List {
                     }
                 } else {
                     if ($has_attr_filter) continue;
+                    if ($is_stock && $product->is_type('variation') && brikpanel_variation_follows_parent_stock($product)) {
+                        $errors[] = ['id' => (int) $pid, 'message' => $shared_note];
+                        continue;
+                    }
+                    if (($is_price || $is_cogs || $is_stock) && $product->is_type('grouped')) {
+                        $errors[] = ['id' => (int) $pid, 'message' => $group_note];
+                        continue;
+                    }
+                    if ($is_stock && $product->is_type('external')) {
+                        $errors[] = ['id' => (int) $pid, 'message' => $external_note];
+                        continue;
+                    }
                     $this->apply_bulk_action($product, $action, $value, $opts);
                     $product->save();
                     $processed++;
@@ -4380,7 +4931,24 @@ class Brikpanel_Products_List {
             }
         }
 
-        return ['processed' => $processed, 'errors' => $errors];
+        // WPML: the originals this batch changed hand their new values to
+        // their translations (once per product, after the variations).
+        if ($processed && function_exists('brikpanel_wpml_sync_translations') && brikpanel_wpml_products_translated()) {
+            $touched = [];
+            foreach ($parent_ids as $pid) {
+                $pid = (int) $pid;
+                $touched[('product_variation' === get_post_type($pid)) ? (int) wp_get_post_parent_id($pid) : $pid] = true;
+            }
+            foreach (array_keys($touched) as $tid) {
+                try {
+                    brikpanel_wpml_sync_translations($tid);
+                } catch (\Throwable $e) {
+                    $errors[] = ['id' => $tid, 'message' => $e->getMessage()];
+                }
+            }
+        }
+
+        return ['processed' => $processed, 'errors' => $errors, 'translations_skipped' => $translations_skipped];
     }
 
     /**
@@ -4763,7 +5331,7 @@ class Brikpanel_Products_List {
                 if ($permanent) {
                     $product = wc_get_product($pid);
                     if ($product && $product->get_type() === 'variable') {
-                        foreach ($product->get_children() as $vid) {
+                        foreach (brikpanel_variation_ids($product) as $vid) {
                             if ($delete_imgs) {
                                 $vimg = get_post_thumbnail_id($vid);
                                 if ($vimg) wp_delete_attachment($vimg, true);
@@ -5045,17 +5613,34 @@ class Brikpanel_Products_List {
             wp_send_json_error(['message' => __('Not a variable product.', 'brikpanel')]);
         }
 
-        $variations = [];
-        foreach ($product->get_children() as $var_id) {
+        // This product, not just products in general: the same check the
+        // save handlers make before they change any of these variations.
+        if (!current_user_can('edit_post', $product_id)) {
+            wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
+        }
+
+        $variations  = [];
+        $any_follows = false;
+        foreach (brikpanel_variation_ids($product) as $var_id) {
             $v = wc_get_product($var_id);
             if (!$v || !$v->exists()) continue;
+
+            // A variation that sells from the product's shared stock reports
+            // the product's quantity as its own in 'view' context; the windows
+            // showed it in every row and saved it back into each (7 × 40).
+            $own_count = (true === $v->get_manage_stock('edit'));
+            $follows   = brikpanel_variation_follows_parent_stock($v);
+            if ($follows) {
+                $any_follows = true;
+            }
 
             $attrs = $v->get_attributes();
             $parts = [];
             foreach ($attrs as $key => $val) {
                 if ($val === '') { $parts[] = __('Any', 'brikpanel'); continue; }
-                $tax = str_starts_with($key, 'pa_') ? $key : 'pa_' . $key;
-                if (taxonomy_exists($tax)) {
+                // The key of a non-ASCII taxonomy is its encoded name.
+                $tax = brikpanel_attr_taxonomy_from_key(str_starts_with($key, 'pa_') ? $key : 'pa_' . $key);
+                if ($tax !== '') {
                     $term = get_term_by('slug', $val, $tax);
                     $parts[] = $term ? html_entity_decode($term->name, ENT_QUOTES | ENT_HTML5, 'UTF-8') : $val;
                 } else {
@@ -5069,9 +5654,12 @@ class Brikpanel_Products_List {
                 'sku'           => $v->get_sku() ?? '',
                 'regular_price' => $v->get_regular_price(),
                 'sale_price'    => $v->get_sale_price(),
-                'stock'         => $v->get_manage_stock() ? $v->get_stock_quantity() : null,
+                // Its own counted quantity only; null for a row that counts
+                // nothing or follows the shared stock (see `shared`).
+                'stock'         => $own_count ? $v->get_stock_quantity('edit') : null,
                 'stock_status'  => $v->get_stock_status() ?: 'instock',
-                'manage_stock'  => $v->get_manage_stock(),
+                'manage_stock'  => $own_count,
+                'shared'        => $follows,
                 'sale_from'     => $v->get_date_on_sale_from() ? $v->get_date_on_sale_from()->date('Y-m-d') : '',
                 'sale_to'       => $v->get_date_on_sale_to()   ? $v->get_date_on_sale_to()->date('Y-m-d')   : '',
                 // Always emit as a JSON string (a bare 0 would be collapsed
@@ -5084,7 +5672,15 @@ class Brikpanel_Products_List {
             ];
         }
 
-        wp_send_json_success(['variations' => $variations]);
+        wp_send_json_success([
+            'variations' => $variations,
+            // WooCommerce's shared stock: the one quantity the following
+            // variations sell from. The windows show it once, at the top.
+            'parent'     => [
+                'shared' => $any_follows && true === $product->get_manage_stock('edit'),
+                'stock'  => $product->get_stock_quantity('edit'),
+            ],
+        ]);
     }
 
     // =========================================================================
@@ -5112,6 +5708,13 @@ class Brikpanel_Products_List {
             wp_send_json_error(['message' => __('Permission denied.', 'brikpanel')]);
         }
 
+        // A variation of a WPML translation takes its price and sale dates from
+        // the original product's variation (WooCommerce Multilingual keeps
+        // them in step). The list locks the boxes; posted values are ignored.
+        if (function_exists('brikpanel_wpml_original_of') && brikpanel_wpml_original_of($parent_id)) {
+            unset($_POST['regular_price'], $_POST['sale_price'], $_POST['sale_from'], $_POST['sale_to']);
+        }
+
         if (isset($_POST['regular_price'])) {
             $v->set_regular_price(wc_format_decimal(sanitize_text_field($_POST['regular_price'])));
         }
@@ -5130,13 +5733,28 @@ class Brikpanel_Products_List {
             $v->set_date_on_sale_to(preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) ? $raw : null);
         }
 
+        // A variation that sells from the product's shared stock has no stock
+        // or status of its own to set from the list: a quantity here used to
+        // give it its own copy of the shared number (7 sizes × 40 = 280), and
+        // its status is the product's. The shared quantity is changed on the
+        // product; giving one size its own count is done in the product editor.
+        $follows_shared = brikpanel_variation_follows_parent_stock($v);
+        if ($follows_shared) {
+            unset($_POST['stock'], $_POST['stock_status']);
+        }
+
         $has_stock_qty = isset($_POST['stock']) && $_POST['stock'] !== '';
         if ($has_stock_qty) {
+            // A box saved unchanged keeps the stored quantity: orders may have
+            // lowered it since the window opened.
+            $keep_qty = brikpanel_stock_box_unchanged($v, intval($_POST['stock']), $_POST['stock_original'] ?? null);
             $v->set_manage_stock(true);
-            $v->set_stock_quantity(intval($_POST['stock']));
+            if (!$keep_qty) {
+                $v->set_stock_quantity(intval($_POST['stock']));
+            }
             if (!isset($_POST['stock_status'])) {
                 // Legacy inline edits that only touch quantity still auto-derive.
-                $v->set_stock_status(intval($_POST['stock']) > 0 ? 'instock' : 'outofstock');
+                $v->set_stock_status((int) $v->get_stock_quantity('edit') > 0 ? 'instock' : 'outofstock');
             }
         }
         if (isset($_POST['stock_status'])) {
@@ -5178,6 +5796,11 @@ class Brikpanel_Products_List {
         }
 
         WC_Product_Variable::sync($v->get_parent_id());
+
+        // WPML: the original's variations reach its translations.
+        if (function_exists('brikpanel_wpml_sync_translations')) {
+            brikpanel_wpml_sync_translations($parent_id);
+        }
 
         $fresh = wc_get_product($var_id);
         wp_send_json_success([
@@ -5223,17 +5846,27 @@ class Brikpanel_Products_List {
         foreach ($ids as $pid) {
             $product = wc_get_product($pid);
             if (!$product || $product->get_type() !== 'variable') continue;
-            foreach ($product->get_children() as $var_id) {
+            // The product's own attribute names, by WooCommerce's key: a custom
+            // attribute's label is its name ("Размер"), which its encoded key
+            // (`%d1%80…`) cannot be turned back into reliably.
+            $parent_names = [];
+            foreach ($product->get_attributes() as $parent_attr_key => $parent_attr) {
+                if ($parent_attr instanceof WC_Product_Attribute) {
+                    $parent_names[$parent_attr_key] = $parent_attr->get_name();
+                }
+            }
+            foreach (brikpanel_variation_ids($product) as $var_id) {
                 $v = wc_get_product($var_id);
                 if (!$v) continue;
                 foreach ($v->get_attributes() as $key => $val) {
                     if ($val === '') continue;
-                    $tax = str_starts_with($key, 'pa_') ? $key : 'pa_' . $key;
-                    $label = wc_attribute_label($key);
+                    // The key of a non-ASCII taxonomy is its encoded name.
+                    $tax = brikpanel_attr_taxonomy_from_key(str_starts_with($key, 'pa_') ? $key : 'pa_' . $key);
+                    $label = wc_attribute_label($tax !== '' ? $tax : ($parent_names[$key] ?? $key));
                     if (!$label || $label === $key) {
-                        $label = ucfirst(str_replace(['pa_', '-', '_'], ['', ' ', ' '], $key));
+                        $label = ucfirst(str_replace(['pa_', '-', '_'], ['', ' ', ' '], urldecode($key)));
                     }
-                    if (taxonomy_exists($tax)) {
+                    if ($tax !== '') {
                         $term = get_term_by('slug', $val, $tax);
                         $display = $term ? html_entity_decode($term->name, ENT_QUOTES | ENT_HTML5, 'UTF-8') : $val;
                     } else {

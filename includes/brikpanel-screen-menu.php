@@ -270,7 +270,10 @@ function brikpanel_screen_menu_current_row() {
 			return 'admin.php?page=brikpanel-cart-share';
 
 		case 'brikpanel-merge-orders':
-			// WooCommerce's own order screen when orders live in its tables.
+		case 'brikpanel-segments':
+			// Orders: Merge orders opens from its bulk action, the Orders
+			// explorer from the list. WooCommerce's own order screen when orders
+			// live in its tables.
 			if ( isset( $submenu['woocommerce'] ) && is_array( $submenu['woocommerce'] ) ) {
 				foreach ( $submenu['woocommerce'] as $row ) {
 					if ( is_array( $row ) && isset( $row[2] ) && 'wc-orders' === $row[2] ) {

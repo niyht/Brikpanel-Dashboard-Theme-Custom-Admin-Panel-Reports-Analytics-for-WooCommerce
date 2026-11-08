@@ -37,6 +37,29 @@
 			e.preventDefault();
 			show( tab.getAttribute( 'data-cpl-locale' ) );
 		} );
+
+		followDrawing( card );
+	}
+
+	// Every drawing's handwritten-note box is in the form; the one for the
+	// drawing picked in "Offer animation" is shown, so changing the drawing
+	// shows its note at once rather than after a save.
+	function followDrawing( card ) {
+		var select = document.getElementById( 'brikpanel_cartab_popup_style' );
+		var boxes = card.querySelectorAll( '[data-cpl-sketch]' );
+		if ( ! select || ! boxes.length ) {
+			return;
+		}
+		function sync() {
+			for ( var i = 0; i < boxes.length; i++ ) {
+				boxes[ i ].hidden = boxes[ i ].getAttribute( 'data-cpl-sketch' ) !== select.value;
+			}
+		}
+		select.addEventListener( 'change', sync );
+		// A select dressed by selectWoo reports changes through jQuery only.
+		if ( window.jQuery ) {
+			window.jQuery( select ).on( 'change', sync );
+		}
 	}
 
 	function boot() {

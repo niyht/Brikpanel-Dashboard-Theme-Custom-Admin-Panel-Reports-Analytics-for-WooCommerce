@@ -167,6 +167,12 @@ function brikpanel_get_custom_order_statuses( $reset = false ) {
  * Flush the per-request status cache the moment the option changes, so any
  * later read in the same request (the post-save settings render, the
  * wc_order_statuses filter, the colour CSS) sees the new value immediately.
+ *
+ * Also when WPML switches language: the labels are translatable through WPML
+ * String Translation (wpml-config.xml in the plugin root), which hands out the
+ * option in the current language. Without this the first read (init) would
+ * decide the language for the whole request, and an email built in the order's
+ * language would still name the status in the admin's.
  */
 $brikpanel_cos_reset = static function () {
 	brikpanel_get_custom_order_statuses( true );
@@ -174,6 +180,7 @@ $brikpanel_cos_reset = static function () {
 add_action( 'add_option_' . BRIKPANEL_CUSTOM_STATUSES_OPTION, $brikpanel_cos_reset );
 add_action( 'update_option_' . BRIKPANEL_CUSTOM_STATUSES_OPTION, $brikpanel_cos_reset );
 add_action( 'delete_option_' . BRIKPANEL_CUSTOM_STATUSES_OPTION, $brikpanel_cos_reset );
+add_action( 'wpml_language_has_switched', $brikpanel_cos_reset );
 unset( $brikpanel_cos_reset );
 
 /**

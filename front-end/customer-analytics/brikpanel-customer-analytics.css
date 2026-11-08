@@ -473,14 +473,16 @@
    900px rule below still collapses it to one column. */
 .bp-ca-rfm-layout {
 	display: grid;
-	grid-template-columns: 1fr 280px;
+	/* minmax(0, …): a plain 1fr track never shrinks below the donut canvas's
+	   last drawn width, which pushed the block 40px past a 360px phone. */
+	grid-template-columns: minmax(0, 1fr) 280px;
 	gap: 1.5rem;
 	align-items: start;
 }
 
 @media (max-width: 900px) {
-	.bp-ca-rfm-layout { grid-template-columns: 1fr; }
-	.bp-ca-rfm-chart { max-width: 320px; margin: 0 auto; }
+	.bp-ca-rfm-layout { grid-template-columns: minmax(0, 1fr); }
+	.bp-ca-rfm-chart { width: 100%; max-width: 320px; margin: 0 auto; }
 }
 
 .bp-ca-rfm-grid {
@@ -590,6 +592,8 @@
 }
 
 .bp-ca-rfm-chart {
+	box-sizing: border-box;
+	min-width: 0;
 	background: #fafafa;
 	border: 1px solid #e3e3e3;
 	border-radius: 0.5rem;
@@ -597,6 +601,11 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
+}
+
+/* Chart.js sizes the canvas to the box; the box must be free to shrink. */
+.bp-ca-rfm-chart canvas {
+	max-width: 100%;
 }
 
 .bp-ca-rfm-actions {
@@ -696,7 +705,13 @@
 
 .bp-ca-cohort-cell-empty {
 	background: transparent;
-	color: #c0c0c0;
+	color: #c0c0c0; /* contrast-ok: the "—" of a month that has not come yet, not text to read */
+}
+
+/* The M+0, M+1 … column heads are labels to read. */
+.bp-ca-cohort-cell-head {
+	background: transparent;
+	color: #616161;
 }
 
 .bp-ca-cohort-cell-month {

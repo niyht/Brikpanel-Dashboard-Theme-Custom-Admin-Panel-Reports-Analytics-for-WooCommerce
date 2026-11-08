@@ -7,10 +7,9 @@
  * Google's, Mozilla's or Microsoft's push service, encrypted end to end. No
  * BrikPanel server and no paid service in between.
  *
- * Parked until tested on real phones: brikpanel.php loads this file only when
- * wp-config.php has define( 'BRIKPANEL_PHONE_APP', true ). Then it loads on
- * every request (orders change status at checkout, in webhooks and in cron
- * jobs too): this file holds the setting, the order hooks, the delivery
+ * brikpanel.php loads this file on every request (orders change status at
+ * checkout, in webhooks and in cron jobs too) unless wp-config.php has
+ * define( 'BRIKPANEL_PHONE_APP', false ): this file holds the setting, the order hooks, the delivery
  * receipt, the logout and the background jobs. The export keys and the jobs'
  * stand-down live in brikpanel-push-gate.php (loaded either way), the sending
  * in class-brikpanel-push-sender.php, the screens in brikpanel-push-admin.php,
@@ -228,13 +227,21 @@ add_action( 'woocommerce_after_order_object_save', 'brikpanel_push_after_save', 
  * with this site's secret keys (Brikpanel_Push_Sender::read_receipt()).
  * Anything else is ignored, with the same empty answer.
  *
+ * A receipt that comes late (the phone slept) is answered with the orders
+ * sent after it, which the phone may never have received: the worker shows
+ * them (Brikpanel_Push_Sender::catch_up()).
+ *
  * @return void
  */
 function brikpanel_push_receipt() {
 	// phpcs:ignore WordPress.Security.NonceVerification.Missing -- signed receipt, see above.
-	$token = isset( $_POST['r'] ) ? sanitize_text_field( wp_unslash( $_POST['r'] ) ) : '';
-	if ( '' !== $token && strlen( $token ) <= 64 ) {
-		Brikpanel_Push_Sender::confirm( $token );
+	$token  = isset( $_POST['r'] ) ? sanitize_text_field( wp_unslash( $_POST['r'] ) ) : '';
+	$missed = array();
+	if ( '' !== $token && strlen( $token ) <= 64 && Brikpanel_Push_Sender::confirm( $token ) ) {
+		$missed = Brikpanel_Push_Sender::catch_up( $token );
+	}
+	if ( $missed ) {
+		wp_send_json( array( 'missed' => $missed ) );
 	}
 	wp_die( '', '', array( 'response' => 204 ) );
 }

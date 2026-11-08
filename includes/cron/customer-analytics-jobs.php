@@ -79,6 +79,17 @@ function brikpanel_recompute_customer_metrics_handler() {
 	$excl_hpos   = function_exists( 'brikpanel_excluded_customer_sql' ) ? brikpanel_excluded_customer_sql( 'o.customer_id' ) : '';
 	$excl_legacy = function_exists( 'brikpanel_excluded_customer_sql' ) ? brikpanel_excluded_customer_sql( 'IFNULL(cu_meta.meta_value+0, 0)' ) : '';
 
+	// Money in the store's base currency, the same rule as the Customers list
+	// and the dashboard: a foreign-currency order counts at its converted
+	// total. Summing raw totals mixed currencies on multi-currency stores and
+	// skewed every RFM money score built on them.
+	$fx_hpos   = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount', 'bpcafx' );
+	$fx_legacy = brikpanel_base_total_sql( false, 'o.ID', 'CAST(tot_meta.meta_value AS DECIMAL(20,4))', 'bpcafx' );
+
+	// Orders WordPress's privacy eraser anonymised all carry one placeholder
+	// email; together they are not one customer (the Customers list skips them).
+	$erased = esc_sql( class_exists( 'Brikpanel_Customers_Engine' ) ? Brikpanel_Customers_Engine::ERASED_EMAIL : 'deleted@site.invalid' );
+
 	// Aggregation runs entirely inside MySQL via INSERT...SELECT...ON DUPLICATE
 	// KEY UPDATE. This avoids loading every customer row into PHP, which on a
 	// 100k+ customer store would peak hundreds of MB and OOM weak hosts.
@@ -96,13 +107,13 @@ function brikpanel_recompute_customer_metrics_handler() {
 				MIN(o.date_created_gmt) AS first_order_date,
 				MAX(o.date_created_gmt) AS last_order_date,
 				COUNT(*) AS order_count,
-				COALESCE(SUM(o.total_amount), 0) AS total_spent,
-				COALESCE(SUM(o.total_amount), 0) / NULLIF(COUNT(*), 0) AS aov,
+				COALESCE(SUM({$fx_hpos['expr']}), 0) AS total_spent,
+				COALESCE(SUM({$fx_hpos['expr']}), 0) / NULLIF(COUNT(*), 0) AS aov,
 				GREATEST(0, TIMESTAMPDIFF(DAY, MAX(o.date_created_gmt), UTC_TIMESTAMP())) AS recency_days
-			FROM {$wpdb->prefix}wc_orders o
+			FROM {$wpdb->prefix}wc_orders o{$fx_hpos['join']}
 			WHERE o.type = 'shop_order'
 			  AND o.status IN ({$status_in})
-			  AND (o.customer_id > 0 OR (o.billing_email IS NOT NULL AND o.billing_email <> ''))
+			  AND (o.customer_id > 0 OR (o.billing_email IS NOT NULL AND o.billing_email <> '' AND LOWER(o.billing_email) <> '{$erased}'))
 			  {$excl_hpos}
 			GROUP BY customer_key
 		";
@@ -119,17 +130,18 @@ function brikpanel_recompute_customer_metrics_handler() {
 				MIN(o.post_date_gmt) AS first_order_date,
 				MAX(o.post_date_gmt) AS last_order_date,
 				COUNT(*) AS order_count,
-				COALESCE(SUM(CAST(tot_meta.meta_value AS DECIMAL(20,4))), 0) AS total_spent,
-				COALESCE(SUM(CAST(tot_meta.meta_value AS DECIMAL(20,4))), 0) / NULLIF(COUNT(*), 0) AS aov,
+				COALESCE(SUM({$fx_legacy['expr']}), 0) AS total_spent,
+				COALESCE(SUM({$fx_legacy['expr']}), 0) / NULLIF(COUNT(*), 0) AS aov,
 				GREATEST(0, TIMESTAMPDIFF(DAY, MAX(o.post_date_gmt), UTC_TIMESTAMP())) AS recency_days
 			FROM {$wpdb->posts} o
 			LEFT JOIN {$wpdb->postmeta} cu_meta  ON cu_meta.post_id  = o.ID AND cu_meta.meta_key  = '_customer_user' AND " . brikpanel_sql_first_meta_guard( 'post', 'cu_meta' ) . "
 			LEFT JOIN {$wpdb->postmeta} em_meta  ON em_meta.post_id  = o.ID AND em_meta.meta_key  = '_billing_email' AND " . brikpanel_sql_first_meta_guard( 'post', 'em_meta' ) . "
 			LEFT JOIN {$wpdb->postmeta} ph_meta  ON ph_meta.post_id  = o.ID AND ph_meta.meta_key  = '_billing_phone' AND " . brikpanel_sql_first_meta_guard( 'post', 'ph_meta' ) . "
 			LEFT JOIN {$wpdb->postmeta} tot_meta ON tot_meta.post_id = o.ID AND tot_meta.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'tot_meta' ) . "
+			{$fx_legacy['join']}
 			WHERE o.post_type = 'shop_order'
 			  AND o.post_status IN ({$status_in})
-			  AND (cu_meta.meta_value+0 > 0 OR em_meta.meta_value <> '')
+			  AND (cu_meta.meta_value+0 > 0 OR (em_meta.meta_value <> '' AND LOWER(em_meta.meta_value) <> '{$erased}'))
 			  {$excl_legacy}
 			GROUP BY customer_key
 		";

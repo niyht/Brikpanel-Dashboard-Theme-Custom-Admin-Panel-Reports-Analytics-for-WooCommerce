@@ -1,0 +1,11 @@
+/**
+ * BrikPanel: pop-up scroll locks on the screens whose <html> clips
+ * (brikpanel-scroll-lock.js). While a pop-up holds the page with
+ * `body { overflow: hidden }`, <html> stops clipping, so the browser hands that
+ * lock to the window and the page keeps its place. !important because the
+ * clip it lifts is a screen's own rule (brikpanel-orders.css,
+ * brikpanel-products-list.css), whatever its selector.
+ */
+html.brikpanel-scroll-held {
+	overflow: visible !important;
+}

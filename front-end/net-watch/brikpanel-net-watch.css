@@ -1,0 +1,115 @@
+/* BrikPanel page arrival watch (includes/brikpanel-net-watch.php). Inserted by
+   brikpanel-net-watch.js only when the box shows. Self-contained on purpose:
+   the shared BrikPanel stylesheets may be the very files that are stuck, so
+   the look of brikpanel-ui.css (card, text colours, focus ring) is repeated here. */
+.bp-netw {
+	position: fixed;
+	inset-block-start: calc(var(--bp-topbar-height, 32px) + 12px);
+	inset-inline: 0;
+	z-index: 100050;
+	display: flex;
+	justify-content: center;
+	padding-inline: 12px;
+	pointer-events: none;
+	font: 400 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+.bp-netw[hidden] {
+	display: none;
+}
+.bp-netw .bp-netw__card {
+	pointer-events: auto;
+	position: relative;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 560px;
+	max-height: calc(100vh - var(--bp-topbar-height, 32px) - 24px);
+	overflow-y: auto;
+	padding-block: 14px;
+	padding-inline: 16px 44px;
+	background: #fff;
+	color: #303030;
+	border: 1px solid #e3e3e3;
+	border-radius: 12px;
+	box-shadow: 0 6px 24px rgba(0, 0, 0, .14);
+}
+.bp-netw .bp-netw__title {
+	margin: 0 0 4px;
+	font-size: 15px;
+	font-weight: 600;
+	color: #303030;
+}
+.bp-netw .bp-netw__text {
+	margin: 0 0 6px;
+	color: #616161;
+}
+.bp-netw .bp-netw__x {
+	position: absolute;
+	inset-block-start: 8px;
+	inset-inline-end: 8px;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: #616161;
+	font-size: 20px;
+	line-height: 1;
+	cursor: pointer;
+}
+.bp-netw .bp-netw__x:hover {
+	background: #f1f1f1;
+	color: #303030;
+}
+.bp-netw .bp-netw__more summary {
+	cursor: pointer;
+	font-weight: 550;
+	color: #303030;
+}
+.bp-netw .bp-netw__steps {
+	margin: 6px 0 0;
+	padding-inline-start: 20px;
+	color: #616161;
+}
+.bp-netw .bp-netw__steps li {
+	margin: 0 0 4px;
+}
+.bp-netw .bp-netw__steps code {
+	padding: 1px 4px;
+	border: 1px solid #e3e3e3;
+	border-radius: 4px;
+	background: #f7f7f7;
+	color: #303030;
+	font-size: 12px;
+	word-break: break-all;
+}
+.bp-netw .bp-netw__copy {
+	margin-inline: 6px;
+	padding: 0 8px;
+	border: 1px solid #e3e3e3;
+	border-radius: 6px;
+	background: #fff;
+	color: #303030;
+	font: inherit;
+	font-size: 12px;
+	line-height: 20px;
+	cursor: pointer;
+}
+.bp-netw .bp-netw__copy:hover {
+	background: #f7f7f7;
+}
+.bp-netw .bp-netw__x:focus-visible,
+.bp-netw .bp-netw__copy:focus-visible,
+.bp-netw .bp-netw__more summary:focus-visible {
+	outline: 2px solid #303030;
+	outline-offset: 2px;
+}
+@media (max-width: 600px) {
+	.bp-netw {
+		inset-block-start: calc(var(--bp-topbar-height, 46px) + 8px);
+		padding-inline: 8px;
+	}
+	.bp-netw .bp-netw__card {
+		font-size: 13px;
+	}
+}

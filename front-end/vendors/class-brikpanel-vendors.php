@@ -981,7 +981,7 @@ class Brikpanel_Vendors {
 			$parent       = $is_variation ? wc_get_product( $product->get_parent_id() ) : null;
 			// Plain text: stored names and term names can hold "&amp;".
 			$title        = $is_variation
-				? ( ( $parent ? brikpanel_plain_label( $parent->get_name() ) : '' ) . ', ' . brikpanel_plain_label( wc_get_formatted_variation( $product, true ) ) )
+				? ( ( $parent ? brikpanel_plain_label( $parent->get_name() ) : '' ) . ', ' . brikpanel_plain_label( brikpanel_formatted_variation( $product ) ) )
 				: brikpanel_plain_label( $product->get_name() );
 
 			// Raw meta read (native first, legacy fallback) — unlike
@@ -1107,5 +1107,32 @@ class Brikpanel_Vendors {
 			$out[ (int) $r->id ] = $r->name;
 		}
 		return $out;
+	}
+
+	/**
+	 * A supplier's name, inactive ones included: an order placed while it was
+	 * active still came from it. '' when there is no such supplier.
+	 *
+	 * Every name is read with the first call and kept for the request, so an
+	 * order with many lines asks once.
+	 *
+	 * @param int $id Supplier ID.
+	 * @return string
+	 */
+	public static function vendor_name( $id ) {
+		static $names = null;
+		$id = absint( $id );
+		if ( ! $id ) {
+			return '';
+		}
+		if ( null === $names ) {
+			global $wpdb;
+			$table = $wpdb->prefix . self::TABLE;
+			$names = [];
+			foreach ( (array) $wpdb->get_results( "SELECT id, name FROM {$table}" ) as $r ) { // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name from $wpdb->prefix, no input.
+				$names[ (int) $r->id ] = (string) $r->name;
+			}
+		}
+		return isset( $names[ $id ] ) ? $names[ $id ] : '';
 	}
 }

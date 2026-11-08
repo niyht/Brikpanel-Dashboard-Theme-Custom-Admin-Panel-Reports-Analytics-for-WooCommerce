@@ -645,6 +645,19 @@ body.bp-order-tabs {
 	white-space: nowrap;
 }
 
+/* The name opens the customer's page: it reads as the name, the underline
+   says it is a link. */
+.bp-osummary__name-link {
+	color: #303030;
+	text-decoration: none;
+}
+
+.bp-osummary__name-link:hover,
+.bp-osummary__name-link:focus {
+	color: #303030;
+	text-decoration: underline;
+}
+
 .bp-osummary__orders {
 	color: #616161;
 	font-size: .75rem;
@@ -1657,6 +1670,18 @@ body.bp-order-tabs {
 .brikpanel-modern-edit.bp-order-tabs #side-sortables .postbox .inside .button {
 	max-width: 100%;
 	white-space: normal;
+}
+
+/* A box clips its rounded corners, which would cut off the plugin's own
+   drop-down or menu where it opens past the box's edge. While one does,
+   brikpanel-order.js (watchColumnPopups) marks the box and it stops clipping;
+   the header keeps the corners round meanwhile. */
+.brikpanel-modern-edit #side-sortables > .postbox.bp-box-spill {
+	overflow: visible;
+}
+
+.brikpanel-modern-edit #side-sortables > .postbox.bp-box-spill > .postbox-header {
+	border-radius: calc(.75rem - 1px) calc(.75rem - 1px) 0 0;
 }
 
 /* ---- Order header: status colours as on the orders list, quiet focus ---- */

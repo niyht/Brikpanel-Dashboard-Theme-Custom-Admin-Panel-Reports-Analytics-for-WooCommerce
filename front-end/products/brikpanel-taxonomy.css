@@ -1052,10 +1052,13 @@ body.brikpanel-tax .brikpanel-tax-card .row-actions.visible {
     opacity: 1;
 }
 
-/* Wide screens with a mouse: the actions float at the right end of the name
-   cell instead of taking a second line, so every row is one compact line
-   like the orders list and all cells share the same vertical centre. A fade
-   in the row's own colour keeps a long name from running under the links. */
+/* Wide screens with a mouse. The actions keep their own line under the name,
+   as on narrow screens, unless every visible row's links fit beside its name
+   without covering it. Then fitRowActions() (brikpanel-taxonomy-screen.js)
+   sets .brikpanel-tax-actions-inline on the table and they float at the right
+   end of the name cell, so every row is one compact line like the orders
+   list. Up to 3.3.39 they always floated: in longer languages the line grew
+   left past the card edge, which cut off "Edit", and it covered the name. */
 @media screen and (min-width: 1100px) and (hover: hover) {
     body.brikpanel-tax .brikpanel-tax-card .wp-list-table tbody > tr {
         --bptax-row-bg: #fff;
@@ -1073,12 +1076,22 @@ body.brikpanel-tax .brikpanel-tax-card .row-actions.visible {
         position: relative;
     }
 
+    /* Under the name the links wrap inside the name cell and never widen the
+       column, so the cell is as wide in both layouts and the measurement
+       cannot flip back and forth. */
     body.brikpanel-tax .brikpanel-tax-card .wp-list-table tbody .row-actions {
+        width: 0;
+        min-width: 100%;
+    }
+
+    body.brikpanel-tax .brikpanel-tax-card .wp-list-table.brikpanel-tax-actions-inline tbody .row-actions {
         position: absolute;
         top: 50%;
         right: 8px;
         left: auto;
         z-index: 2;
+        width: auto;
+        min-width: 0;
         margin: 0;
         padding: 4px 4px 4px 32px;
         background: linear-gradient(to right, rgba(255, 255, 255, 0), var(--bptax-row-bg) 28px);
@@ -1087,17 +1100,33 @@ body.brikpanel-tax .brikpanel-tax-card .row-actions.visible {
         white-space: nowrap;
     }
 
-    body.brikpanel-tax .brikpanel-tax-card .wp-list-table tbody tr:hover .row-actions,
-    body.brikpanel-tax .brikpanel-tax-card .wp-list-table tbody tr:focus-within .row-actions,
-    body.brikpanel-tax .brikpanel-tax-card .wp-list-table tbody .row-actions.visible {
+    body.brikpanel-tax .brikpanel-tax-card .wp-list-table.brikpanel-tax-actions-inline tbody tr:hover .row-actions,
+    body.brikpanel-tax .brikpanel-tax-card .wp-list-table.brikpanel-tax-actions-inline tbody tr:focus-within .row-actions,
+    body.brikpanel-tax .brikpanel-tax-card .wp-list-table.brikpanel-tax-actions-inline tbody .row-actions.visible {
         pointer-events: auto;
     }
 
-    body.rtl.brikpanel-tax .brikpanel-tax-card .wp-list-table tbody .row-actions {
+    body.rtl.brikpanel-tax .brikpanel-tax-card .wp-list-table.brikpanel-tax-actions-inline tbody .row-actions {
         right: auto;
         left: 8px;
         padding: 4px 32px 4px 4px;
         background: linear-gradient(to left, rgba(255, 255, 255, 0), var(--bptax-row-bg) 28px);
+    }
+}
+
+/* With the links on their own line the row is taller than its values, so the
+   other cells line up with the name at the top, as in WordPress' own lists,
+   instead of sitting halfway down next to empty space. A wrapped link line
+   breaks between links ("Stel in als standaard" stays in one piece); a link
+   longer than the whole line still wraps inside. */
+@media screen and (min-width: 783px) {
+    body.brikpanel-tax .brikpanel-tax-card .wp-list-table:not(.brikpanel-tax-actions-inline) > tbody > tr > td,
+    body.brikpanel-tax .brikpanel-tax-card .wp-list-table:not(.brikpanel-tax-actions-inline) > tbody > tr > th {
+        vertical-align: top;
+    }
+
+    body.brikpanel-tax .brikpanel-tax-card .wp-list-table tbody .row-actions a {
+        display: inline-block;
     }
 }
 
@@ -1697,6 +1726,16 @@ body.brikpanel-tax-motion .brikpanel-tax-backdrop {
 
 body.brikpanel-tax-motion .brikpanel-tax-backdrop.is-open {
     transition: opacity .28s ease, visibility 0s;
+}
+
+/* Pop-ups that a field in the panel opens at the end of <body> come above
+   the panel. Blocksy Pro's colour picker (swatch fields on attribute terms)
+   is fixed at z-index 100000, so it opened out of sight under the panel and
+   the backdrop, and no colour could be picked (wp.org report, 2026-10-27).
+   A foreign element on purpose: the selector has to outrank Blocksy's own
+   `.ct-option-modal` rule, and it only applies while the panel is open. */
+body.brikpanel-tax-panel-open .ct-option-modal {
+    z-index: 100021;
 }
 
 body.brikpanel-tax-has-panel #col-left.brikpanel-tax-panel .brikpanel-tax-panel-head {

@@ -65,8 +65,9 @@ class Brikpanel_Customer_Analytics {
 	}
 
 	public function __construct() {
-		add_action( 'admin_menu', [ $this, 'register_page' ] );
-
+		// No screen of its own any more: its three tabs live on the Customers
+		// page (front-end/customers/). The AJAX actions and CSV exports below
+		// serve that page under their old names.
 		add_action( 'wp_ajax_brikpanel_ca_ltv_summary',       [ $this, 'ajax_ltv_summary' ] );
 		add_action( 'wp_ajax_brikpanel_ca_ltv_top_customers', [ $this, 'ajax_ltv_top_customers' ] );
 		add_action( 'wp_ajax_brikpanel_ca_ltv_distribution',  [ $this, 'ajax_ltv_distribution' ] );
@@ -83,33 +84,28 @@ class Brikpanel_Customer_Analytics {
 	}
 
 	// =========================================================================
-	// PAGE REGISTRATION
+	// PANELS (shown on the Customers page)
 	// =========================================================================
 
-	public function register_page() {
-		// Promoted to a top-level menu item; the modern-nav layer
-		// (front-end/navigation/) re-positions it directly after Segments.
-		$hook = add_menu_page(
-			__( 'Customer Analytics', 'brikpanel' ),
-			__( 'Customer Analytics', 'brikpanel' ),
-			'manage_woocommerce',
-			self::PAGE_SLUG,
-			[ $this, 'render_page' ],
-			'dashicons-businessperson',
-			56.7
-		);
-
-		if ( $hook ) {
-			add_action( 'load-' . $hook, function () {
-				global $title;
-				$title = __( 'Customer Analytics', 'brikpanel' );
-			} );
-		}
+	/**
+	 * The Lifetime value, RFM segments and Cohort retention panels, plus the
+	 * Exclude customers window, for the Customers page.
+	 *
+	 * @param string $bp_cus_tab The tab the page opened on (the others start hidden).
+	 * @return void
+	 */
+	public static function render_panels( $bp_cus_tab = 'all' ) {
+		include __DIR__ . '/views/panels.php';
 	}
 
-	public function render_page() {
-		$metrics = $this->compute_metrics_meta();
-		include __DIR__ . '/views/page.php';
+	/**
+	 * "Last refreshed: ..." (or why there is nothing yet), for the Customers page.
+	 *
+	 * @return string
+	 */
+	public static function refreshed_line() {
+		$ca = ( new ReflectionClass( __CLASS__ ) )->newInstanceWithoutConstructor();
+		return $ca->meta_text( $ca->compute_metrics_meta() );
 	}
 
 	// =========================================================================
@@ -301,6 +297,7 @@ class Brikpanel_Customer_Analytics {
 				'first_order'         => brikpanel_local_date( $r->first_order_date ),
 				'last_order'          => brikpanel_local_date( $r->last_order_date ),
 				'edit_url'            => $user_id ? admin_url( 'user-edit.php?user_id=' . $user_id ) : '',
+				'profile_url'         => class_exists( 'Brikpanel_Customers_Engine' ) ? Brikpanel_Customers_Engine::profile_url( (string) $r->customer_key ) : '',
 				'is_guest'            => $user_id === 0,
 			];
 		}
@@ -618,6 +615,7 @@ class Brikpanel_Customer_Analytics {
 				'm_score'             => (int) $r->m_score,
 				'last_order'          => brikpanel_local_date( $r->last_order_date ),
 				'edit_url'            => $user_id ? admin_url( 'user-edit.php?user_id=' . $user_id ) : '',
+				'profile_url'         => class_exists( 'Brikpanel_Customers_Engine' ) ? Brikpanel_Customers_Engine::profile_url( (string) $r->customer_key ) : '',
 				'is_guest'            => $user_id === 0,
 			];
 		}

@@ -53,6 +53,97 @@ class Brikpanel_Coupons {
         ];
     }
 
+    /**
+     * Whether another plugin adds settings to WooCommerce's coupon screen
+     * (Auto Coupons, Smart Coupons, B2BKing…). The drawer does not draw
+     * them, so it points to that screen when there are any.
+     *
+     * Reads who is hooked, fires nothing: a callback on one of WooCommerce's
+     * coupon panel actions, or a tab added by `woocommerce_coupon_data_tabs`,
+     * that comes from neither WooCommerce (its Brands feature hooks the usage
+     * restriction panel) nor BrikPanel.
+     *
+     * @return bool
+     */
+    public static function coupon_plugin_settings() {
+        static $cached = null;
+        if (null !== $cached) {
+            return $cached;
+        }
+        global $wp_filter;
+        $own = array_filter([
+            defined('WC_ABSPATH') ? self::real_dir(WC_ABSPATH) : '',
+            defined('BRIKPANEL_PATH') ? self::real_dir(BRIKPANEL_PATH) : '',
+        ]);
+        $hooks = ['woocommerce_coupon_options', 'woocommerce_coupon_options_usage_restriction', 'woocommerce_coupon_options_usage_limit', 'woocommerce_coupon_data_panels'];
+        foreach ($hooks as $hook) {
+            if (empty($wp_filter[$hook]) || !($wp_filter[$hook] instanceof WP_Hook)) {
+                continue;
+            }
+            foreach ($wp_filter[$hook]->callbacks as $callbacks) {
+                foreach ($callbacks as $callback) {
+                    $file = self::callback_file($callback['function'] ?? null);
+                    if ($file === '') {
+                        continue;
+                    }
+                    $mine = false;
+                    foreach ($own as $dir) {
+                        if (strpos($file, $dir) === 0) {
+                            $mine = true;
+                            break;
+                        }
+                    }
+                    if (!$mine) {
+                        return $cached = true;
+                    }
+                }
+            }
+        }
+        try {
+            $core = ['general' => [], 'usage_restriction' => [], 'usage_limit' => []];
+            $tabs = apply_filters('woocommerce_coupon_data_tabs', $core);
+            if (is_array($tabs) && array_diff_key($tabs, $core)) {
+                return $cached = true;
+            }
+        } catch (\Throwable $e) {
+            unset($e);
+        }
+        return $cached = false;
+    }
+
+    /**
+     * @param mixed $function A WP_Hook callback.
+     * @return string The file that declares it (real path), '' when unknown.
+     */
+    private static function callback_file($function) {
+        try {
+            if (is_string($function) && strpos($function, '::') !== false) {
+                $function = explode('::', $function, 2);
+            }
+            if ($function instanceof \Closure || (is_string($function) && function_exists($function))) {
+                $ref = new \ReflectionFunction($function);
+            } elseif (is_array($function) && count($function) === 2) {
+                $ref = new \ReflectionMethod(is_object($function[0]) ? get_class($function[0]) : (string) $function[0], (string) $function[1]);
+            } elseif (is_object($function) && method_exists($function, '__invoke')) {
+                $ref = new \ReflectionMethod($function, '__invoke');
+            } else {
+                return '';
+            }
+            $file = (string) $ref->getFileName();
+        } catch (\Throwable $e) {
+            return '';
+        }
+        return $file === '' ? '' : wp_normalize_path((string) (realpath($file) ?: $file));
+    }
+
+    /**
+     * @param string $dir Directory.
+     * @return string Its real path with a trailing slash.
+     */
+    private static function real_dir($dir) {
+        return trailingslashit(wp_normalize_path((string) (realpath($dir) ?: $dir)));
+    }
+
     // =========================================================================
     // PAGE REGISTRATION & REDIRECT
     // =========================================================================
@@ -253,6 +344,20 @@ class Brikpanel_Coupons {
                 <div class="brikpanel-cp-drawer-body">
                     <input type="hidden" id="bpc-coupon-id" value="">
 
+                    <?php
+                    // Other plugins' coupon settings live only on WooCommerce's
+                    // own coupon screen (this drawer does not draw them). The
+                    // script shows the note for a saved coupon when
+                    // coupon_plugin_settings() found any.
+                    ?>
+                    <div class="brikpanel-cp-plugin-note" id="bpc-plugin-note" hidden>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        <span>
+                            <?php esc_html_e('Other plugins add settings to this coupon.', 'brikpanel'); ?>
+                            <a href="#" id="bpc-plugin-note-link"><?php esc_html_e('Open in WooCommerce', 'brikpanel'); ?></a>
+                        </span>
+                    </div>
+
                     <!-- General Section -->
                     <div class="brikpanel-cp-drawer-section">
                         <h4 class="brikpanel-cp-drawer-section-title"><?php esc_html_e('General', 'brikpanel'); ?></h4>
@@ -302,8 +407,28 @@ class Brikpanel_Coupons {
                         </div>
 
                         <div class="brikpanel-cp-qe-field">
+                            <label class="brikpanel-cp-toggle-label">
+                                <span><?php esc_html_e('Apply automatically', 'brikpanel'); ?></span>
+                                <span class="brikpanel-cp-toggle">
+                                    <input type="checkbox" id="bpc-auto-apply" aria-describedby="bpc-auto-apply-hint">
+                                    <span class="brikpanel-cp-toggle-slider"></span>
+                                </span>
+                            </label>
+                            <span class="brikpanel-cp-field-hint" id="bpc-auto-apply-hint"><?php esc_html_e('Added to the cart by itself when the cart meets this coupon\'s rules. Shoppers do not type the code. When several automatic coupons fit, the one with the biggest discount is used.', 'brikpanel'); ?></span>
+                        </div>
+
+                        <div class="brikpanel-cp-qe-field">
                             <label for="bpc-expiry"><?php esc_html_e('Expiry date', 'brikpanel'); ?></label>
                             <input type="date" id="bpc-expiry">
+                        </div>
+
+                        <div class="brikpanel-cp-qe-field">
+                            <label for="bpc-link"><?php esc_html_e('Coupon link', 'brikpanel'); ?></label>
+                            <div class="brikpanel-cp-code-row">
+                                <input type="text" id="bpc-link" class="brikpanel-cp-link-input" dir="ltr" readonly aria-describedby="bpc-link-hint">
+                                <button type="button" class="brikpanel-cp-btn secondary small" id="bpc-copy-link"><?php esc_html_e('Copy link', 'brikpanel'); ?></button>
+                            </div>
+                            <span class="brikpanel-cp-field-hint" id="bpc-link-hint"><?php esc_html_e('Opens your store with this coupon added. It takes effect once the cart meets the coupon\'s rules.', 'brikpanel'); ?></span>
                         </div>
                     </div>
 
@@ -327,6 +452,18 @@ class Brikpanel_Coupons {
                                 </div>
                             </div>
                         </div>
+
+                        <div class="brikpanel-cp-qe-row">
+                            <div class="brikpanel-cp-qe-field">
+                                <label for="bpc-min-items"><?php esc_html_e('Minimum items', 'brikpanel'); ?></label>
+                                <input type="number" id="bpc-min-items" min="0" step="1" inputmode="numeric" placeholder="<?php esc_attr_e('No minimum', 'brikpanel'); ?>" aria-describedby="bpc-items-hint">
+                            </div>
+                            <div class="brikpanel-cp-qe-field">
+                                <label for="bpc-max-items"><?php esc_html_e('Maximum items', 'brikpanel'); ?></label>
+                                <input type="number" id="bpc-max-items" min="0" step="1" inputmode="numeric" placeholder="<?php esc_attr_e('No maximum', 'brikpanel'); ?>" aria-describedby="bpc-items-hint">
+                            </div>
+                        </div>
+                        <span class="brikpanel-cp-field-hint brikpanel-cp-items-hint" id="bpc-items-hint"><?php esc_html_e('Counts the items in the cart this coupon can discount. For tiers, give each coupon a range, e.g. 1 to 5, 6 to 10.', 'brikpanel'); ?></span>
 
                         <div class="brikpanel-cp-qe-field">
                             <label class="brikpanel-cp-toggle-label">
@@ -616,6 +753,10 @@ class Brikpanel_Coupons {
                     'email_restrictions'       => implode(', ', $email_restrictions),
                     'email_labels'             => $this->build_email_labels($email_restrictions),
                     'limit_usage_to_x_items'   => $limit_items ? (int) $limit_items : '',
+                    // Automatic coupons (front-end/coupons/brikpanel-auto-coupons.php).
+                    'auto_apply'               => class_exists('Brikpanel_Auto_Coupons') && Brikpanel_Auto_Coupons::is_auto($coupon) ? 'yes' : 'no',
+                    'min_items'                => class_exists('Brikpanel_Auto_Coupons') ? Brikpanel_Auto_Coupons::item_limit($coupon, 'min') : '',
+                    'max_items'                => class_exists('Brikpanel_Auto_Coupons') ? Brikpanel_Auto_Coupons::item_limit($coupon, 'max') : '',
                     'extra_cells'              => (object) $extra_cells,
                     'extra_actions'            => $extra_actions,
                 ];
@@ -821,6 +962,37 @@ class Brikpanel_Coupons {
             $coupon->set_limit_usage_to_x_items($limit_items !== '' ? intval($limit_items) : '');
         }
 
+        // Automatic coupons: "Apply automatically" and the item count rule.
+        // Written only when the key is in the payload: the table's inline
+        // amount edit sends the core fields alone and must not clear these.
+        if (class_exists('Brikpanel_Auto_Coupons')) {
+            if (array_key_exists('auto_apply', $_POST)) {
+                $auto = 'yes' === sanitize_key(wp_unslash($_POST['auto_apply']));
+                if ($auto) {
+                    $coupon->update_meta_data(Brikpanel_Auto_Coupons::META_AUTO, 'yes');
+                } else {
+                    $coupon->delete_meta_data(Brikpanel_Auto_Coupons::META_AUTO);
+                }
+            }
+            $min_items = array_key_exists('min_items', $_POST)
+                ? Brikpanel_Auto_Coupons::sanitize_item_limit(wp_unslash($_POST['min_items']))
+                : Brikpanel_Auto_Coupons::item_limit($coupon, 'min');
+            $max_items = array_key_exists('max_items', $_POST)
+                ? Brikpanel_Auto_Coupons::sanitize_item_limit(wp_unslash($_POST['max_items']))
+                : Brikpanel_Auto_Coupons::item_limit($coupon, 'max');
+            if ('' !== $min_items && '' !== $max_items && $max_items < $min_items) {
+                wp_send_json_error(['message' => __('Maximum items cannot be less than minimum items.', 'brikpanel')]);
+            }
+            foreach (['min' => $min_items, 'max' => $max_items] as $which => $value) {
+                $key = 'min' === $which ? Brikpanel_Auto_Coupons::META_MIN : Brikpanel_Auto_Coupons::META_MAX;
+                if ('' === $value) {
+                    $coupon->delete_meta_data($key);
+                } else {
+                    $coupon->update_meta_data($key, (int) $value);
+                }
+            }
+        }
+
         // Set status - default publish for new coupons.
         // The status is staged before the save and reasserted after it: older
         // WooCommerce has no WC_Coupon::set_status(), and a brand-new coupon
@@ -966,6 +1138,14 @@ class Brikpanel_Coupons {
         $new_coupon->set_excluded_product_categories($original->get_excluded_product_categories());
         $new_coupon->set_email_restrictions($original->get_email_restrictions());
         $new_coupon->set_limit_usage_to_x_items($original->get_limit_usage_to_x_items());
+        if (class_exists('Brikpanel_Auto_Coupons')) {
+            foreach ([Brikpanel_Auto_Coupons::META_AUTO, Brikpanel_Auto_Coupons::META_MIN, Brikpanel_Auto_Coupons::META_MAX] as $key) {
+                $value = $original->get_meta($key, true, 'edit');
+                if ('' !== $value && null !== $value) {
+                    $new_coupon->update_meta_data($key, $value);
+                }
+            }
+        }
         brikpanel_wc_coupon_set_status($new_coupon, 'draft');
 
         $new_coupon->save();

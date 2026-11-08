@@ -178,6 +178,35 @@ function brikpanel_record_traffic_source( $channel, $host ) {
 }
 
 /**
+ * Counts one visitor for today under their country, '' when it is not known
+ * (3.3.40). Called together with the day's visitor count, so a day's rows add
+ * up to its visitor_count the way the traffic sources do.
+ *
+ * Upsert on the (day, country) unique key. Only the two-letter code is
+ * stored, never the address it was found from.
+ *
+ * @param string $country Code from brikpanel_request_country(), or ''.
+ */
+function brikpanel_record_visitor_country( $country ) {
+    global $wpdb;
+    $country = ( is_string( $country ) && 1 === preg_match( '/^[A-Z]{2}$/', $country ) ) ? $country : '';
+    $table   = $wpdb->prefix . 'brikpanel_visitor_countries';
+
+    // A site whose database update has not run yet has no table: count
+    // nothing rather than print a database error into the tracker's answer.
+    $quiet = $wpdb->suppress_errors( true );
+    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    $wpdb->query( $wpdb->prepare(
+        "INSERT INTO {$table} (date_column, country, visitors)
+         VALUES (%s, %s, 1)
+         ON DUPLICATE KEY UPDATE visitors = visitors + 1",
+        wp_date( 'Y-m-d' ),
+        $country
+    ) );
+    $wpdb->suppress_errors( $quiet );
+}
+
+/**
  * A campaign name as it is stored and compared: the way WooCommerce keeps
  * utm_campaign on an order (sanitize_text_field), spaces collapsed, at most
  * 100 characters. '' for nothing, and for "(none)", which WooCommerce's own
@@ -326,6 +355,11 @@ function brikpanel_record_visitor_view( $referrer = '', $landing_url = '', $appl
     $site_host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
     $source    = brikpanel_classify_traffic_source( $referrer, $landing_url, $site_host );
     brikpanel_record_traffic_source( $source['channel'], $source['host'] );
+
+    // And the country of the same visit, for the dashboard's Locations card.
+    if ( function_exists( 'brikpanel_request_country' ) ) {
+        brikpanel_record_visitor_country( brikpanel_request_country() );
+    }
 }
 
 /**

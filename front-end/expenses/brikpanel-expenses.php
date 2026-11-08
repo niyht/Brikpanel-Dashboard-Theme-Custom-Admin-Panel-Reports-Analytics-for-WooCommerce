@@ -1496,9 +1496,13 @@ class Brikpanel_Expenses {
 	 *
 	 * Each entry is gated on the same condition that lets its row appear on the
 	 * card, so the picker never offers a parent the merchant could not possibly
-	 * see. The labels MUST stay identical to the ones build_profit_block() uses
-	 * for the rows themselves, or the picker and the card would name the same
-	 * thing differently.
+	 * see. Tax is the exception: its row only appears while "Tax in the Profit
+	 * section" keeps tax inside Expenses (no longer the default), but this list
+	 * is also the save path's allowlist (parent_expense_options()), so gating it
+	 * would refuse every edit of an expense already filed under Tax. Such an
+	 * expense still counts and is listed on its own line. The labels MUST stay
+	 * identical to the ones build_profit_block() uses for the rows themselves,
+	 * or the picker and the card would name the same thing differently.
 	 *
 	 * @return array<string,string>
 	 */

@@ -20,9 +20,15 @@
 /* Re-publish the topbar height on a higher-specificity selector than :root so
    a sibling plugin that defines --bp-topbar-height on its own :root (same
    specificity, cascade decides by load order) can never clobber it and squish
-   the topbar. html.brikpanel-has-topbar (0,1,1) always beats :root (0,1,0). */
+   the topbar. html.brikpanel-has-topbar (0,1,1) always beats :root (0,1,0).
+   WordPress publishes its own bar's height (32px, 46px on phones) for what has
+   to start below the bar: WooCommerce's order fulfillment drawer, WooCommerce
+   Shipping's label window, a sticky Marketplace header, the page's
+   scroll-padding-top. This bar replaces WordPress's and is taller, so that value
+   is this bar's height too; otherwise those started 20px under the bar. */
 html.brikpanel-has-topbar {
     --bp-topbar-height: 52px;
+    --wp-admin--admin-bar--height: var(--bp-topbar-height);
 }
 
 /* ---- Push core admin layout below our fixed topbar ---- */
@@ -864,8 +870,57 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     to { transform: rotate(360deg); }
 }
 
-/* Cache dropdown — slightly wider than the default to fit plugin names. */
-.brikpanel-topbar-dropdown-cache { min-width: 240px; }
+/* Cache dropdown — slightly wider than the default to fit plugin names.
+   Closed, it also leaves the Tab order: opacity alone keeps its buttons and
+   LiteSpeed's links focusable while invisible. visibility flips only after
+   the fade-out, so the close animation still plays; this restates the base
+   dropdown transition, which the shorthand would otherwise replace. */
+.brikpanel-topbar-dropdown-cache {
+    min-width: 240px;
+    visibility: hidden;
+    transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s linear 0.15s;
+}
+
+.brikpanel-topbar-menu.is-open .brikpanel-topbar-dropdown-cache {
+    visibility: visible;
+    transition-delay: 0s;
+}
+
+/* LiteSpeed's purge menu ("Cache button" setting): wider for the grey lines,
+   and scrolling inside itself when a site lists every option on a short
+   screen. Phones already get the full-width sheet with its own scroll. */
+@media (min-width: 783px) {
+    .brikpanel-topbar-dropdown-cache-types {
+        min-width: 280px;
+        max-width: 320px;
+        max-height: calc(100vh - var(--bp-topbar-height) - 16px);
+        overflow-y: auto;
+    }
+}
+
+/* LiteSpeed rows: a label with an optional grey line under it, the icon
+   level with the first line. */
+.brikpanel-topbar-cache-entry { align-items: flex-start; }
+.brikpanel-topbar-cache-entry svg { margin-top: 1px; }
+
+.brikpanel-topbar-cache-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+    text-align: start;
+}
+
+.brikpanel-topbar-cache-desc {
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.35;
+    color: var(--bp-topbar-text-2, #616161);
+}
+
+/* LiteSpeed's own options carry no icon: their text lines up with
+   "Clear everything" above them (16px icon + 0.5rem gap). */
+.brikpanel-topbar-cache-type { padding-inline-start: calc(0.625rem + 16px + 0.5rem); }
 
 /* The shared broom SVG markup is sized via CSS so the same source can be
    reused as both the topbar icon (20×20 via .brikpanel-topbar-icon-btn) and
@@ -889,7 +944,8 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     cursor: pointer;
 }
 
-.brikpanel-topbar-cache-item:focus-visible {
+.brikpanel-topbar-cache-item:focus-visible,
+.brikpanel-topbar-cache-type:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px rgba(48, 48, 48, 0.18);
 }

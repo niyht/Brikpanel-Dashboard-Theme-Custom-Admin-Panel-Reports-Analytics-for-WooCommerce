@@ -565,6 +565,24 @@ function brikpanel_wc_orders_list_url( $status = '' ) {
 }
 
 /**
+ * The order meta key WooCommerce keeps an order-attribution field under
+ * (Order Attribution, WooCommerce 8.5.0). WooCommerce lets the prefix be
+ * changed with a filter, so it is asked; a key it would not write falls back
+ * to the default one. Used by the dashboard's campaigns and the phone
+ * notification's campaign, so both read the same key.
+ *
+ * @since 3.3.42
+ * @param string $field Field name, e.g. 'utm_campaign'.
+ * @return string
+ */
+function brikpanel_wc_attribution_meta_key( $field ) {
+    $prefix = (string) apply_filters( 'wc_order_attribution_tracking_field_prefix', 'wc_order_attribution_' );
+    $prefix = trim( $prefix, '_' );
+    $key    = '_' . ( '' !== $prefix ? $prefix . '_' : '' ) . $field;
+    return preg_match( '/^[A-Za-z0-9_\-]{1,255}$/', $key ) ? $key : '_wc_order_attribution_' . $field;
+}
+
+/**
  * The report WooCommerce opens from its own Analytics menu.
  *
  * WooCommerce Admin 1.2 (bundled from WooCommerce 4.2.0) added the Overview

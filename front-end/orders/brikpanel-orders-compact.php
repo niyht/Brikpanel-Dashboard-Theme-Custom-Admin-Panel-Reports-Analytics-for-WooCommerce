@@ -95,7 +95,8 @@ add_action( 'wp_ajax_brikpanel_orders_row_columns', 'brikpanel_orders_compact_sa
  */
 function brikpanel_orders_compact_base_row_columns( $status_key = 'order_status' ) {
 	$status = '' === (string) $status_key ? array() : array( (string) $status_key );
-	return array_merge( array( 'cb', 'order_number', 'brikpanel_whatsapp', 'brikpanel_customer', 'order_date' ), $status, array( 'payment_method', 'brikpanel_shipping_method', 'order_total' ) );
+	// brikpanel_print: hidden until the person turns it on (front-end/orders/brikpanel-order-print.php).
+	return array_merge( array( 'cb', 'order_number', 'brikpanel_whatsapp', 'brikpanel_print', 'brikpanel_customer', 'order_date' ), $status, array( 'payment_method', 'brikpanel_shipping_method', 'order_total' ) );
 }
 
 /**
@@ -571,11 +572,37 @@ function brikpanel_orders_compact_whatsapp_visible() {
  * @return string HTML.
  */
 function brikpanel_orders_compact_item_html( $item ) {
+	$parts = brikpanel_orders_compact_item_parts( $item );
+
+	$html  = '<li><span class="bp-od-qty">' . esc_html( sprintf(
+		/* translators: %s: item quantity. Shown before the product name, e.g. "2 ×". */
+		__( '%s ×', 'brikpanel' ),
+		wc_stock_amount( $item->get_quantity() )
+	) ) . '</span><span class="bp-od-item">' . brikpanel_orders_compact_bdi( $parts['name'] );
+	if ( $parts['options'] ) {
+		$html .= '<span class="bp-od-options">' . brikpanel_orders_compact_bdi( implode( ' / ', $parts['options'] ) ) . '</span>';
+	}
+	$html .= '</span></li>';
+	return $html;
+}
+
+/**
+ * The plain name of an item line and the options chosen for it, as the detail
+ * panel shows them: variation attributes as plain values (left out when the
+ * name already carries them), any other visible meta as "Label: value". The
+ * orders export writes the same (front-end/orders/brikpanel-order-export.php).
+ *
+ * @param WC_Order_Item_Product $item Line item.
+ * @return array{name: string, options: string[]}
+ */
+function brikpanel_orders_compact_item_parts( $item ) {
 	$attribute_keys = array();
 	$variation_id   = (int) $item->get_variation_id();
 	if ( $variation_id && function_exists( 'wc_get_product_variation_attributes' ) ) {
 		foreach ( array_keys( (array) wc_get_product_variation_attributes( $variation_id ) ) as $key ) {
-			$attribute_keys[] = substr( $key, strlen( 'attribute_' ) );
+			// Decoded, as get_formatted_meta_data() hands the key back: a
+			// custom attribute "Размер" is stored as `attribute_%d1%80…`.
+			$attribute_keys[] = rawurldecode( substr( $key, strlen( 'attribute_' ) ) );
 		}
 	}
 
@@ -591,8 +618,10 @@ function brikpanel_orders_compact_item_html( $item ) {
 		}
 		if ( in_array( $meta->key, $attribute_keys, true ) || 0 === strpos( (string) $meta->key, 'pa_' ) ) {
 			// WooCommerce already skips attributes that are part of the name,
-			// but compares against the raw name, which markup can defeat.
-			if ( function_exists( 'wc_is_attribute_in_product_name' ) && wc_is_attribute_in_product_name( $value, $name ) ) {
+			// but compares against the raw name, which markup can defeat, and
+			// folds case only in ASCII: a title holding "спортен" kept
+			// "Спортен" on the line under it.
+			if ( brikpanel_attr_in_name( $value, $name, (string) $meta->value ) ) {
 				continue;
 			}
 			$options[] = $value;
@@ -602,16 +631,36 @@ function brikpanel_orders_compact_item_html( $item ) {
 		}
 	}
 
-	$html  = '<li><span class="bp-od-qty">' . esc_html( sprintf(
-		/* translators: %s: item quantity. Shown before the product name, e.g. "2 ×". */
-		__( '%s ×', 'brikpanel' ),
-		wc_stock_amount( $item->get_quantity() )
-	) ) . '</span><span class="bp-od-item">' . brikpanel_orders_compact_bdi( $name );
-	if ( $options ) {
-		$html .= '<span class="bp-od-options">' . brikpanel_orders_compact_bdi( implode( ' / ', $options ) ) . '</span>';
+	return array(
+		'name'    => $name,
+		'options' => $options,
+	);
+}
+
+/**
+ * Whether two phone numbers reach the same line, however each was written:
+ * "+62 812-0000-1111" and "0812 0000 1111" are one number.
+ *
+ * @param string $a         A number as the customer typed it.
+ * @param string $a_country Two-letter country of the address it belongs to.
+ * @param string $b         The other number.
+ * @param string $b_country Two-letter country of its address.
+ * @return bool
+ */
+function brikpanel_orders_compact_same_phone( $a, $a_country, $b, $b_country ) {
+	if ( function_exists( 'brikpanel_phone_to_e164' ) ) {
+		$e164_a = brikpanel_phone_to_e164( $a, $a_country );
+		$e164_b = brikpanel_phone_to_e164( $b, $b_country );
+		if ( '' !== $e164_a && '' !== $e164_b ) {
+			return $e164_a === $e164_b;
+		}
 	}
-	$html .= '</span></li>';
-	return $html;
+
+	// Not dialable as written: compare what is left once separators and a
+	// trunk zero are taken out.
+	$digits_a = ltrim( (string) preg_replace( '/\D+/', '', (string) $a ), '0' );
+	$digits_b = ltrim( (string) preg_replace( '/\D+/', '', (string) $b ), '0' );
+	return '' !== $digits_a && $digits_a === $digits_b;
 }
 
 /**
@@ -670,9 +719,12 @@ function brikpanel_orders_compact_detail_html( $order ) {
 			$shipping_name = $billing_name;
 		}
 	}
-	$shipping_phone = method_exists( $order, 'get_shipping_phone' ) ? (string) $order->get_shipping_phone() : '';
-	if ( '' === $shipping_phone ) {
-		$shipping_phone = $billing_phone;
+	// Ship to names a phone only when the parcel goes to a number other than
+	// the buyer's: Billing already lists that one, and repeating it under the
+	// address only added a line (wp.org, sizulku, 20 Oct 2026).
+	$shipping_phone = method_exists( $order, 'get_shipping_phone' ) ? trim( (string) $order->get_shipping_phone() ) : '';
+	if ( '' !== $shipping_phone && brikpanel_orders_compact_same_phone( $shipping_phone, $order->get_shipping_country(), $billing_phone, $order->get_billing_country() ) ) {
+		$shipping_phone = '';
 	}
 	$ship = '';
 	if ( $shipping_lines ) {
@@ -744,6 +796,11 @@ function brikpanel_orders_compact_detail_html( $order ) {
 	// click handler is delegated on the document, so it works from here too.
 	if ( 'trash' !== $order->get_status() ) {
 		$actions .= '<button type="button" class="bp-od-btn bp-od-btn-secondary order-preview" data-order-id="' . absint( $order->get_id() ) . '">' . esc_html__( 'Preview', 'brikpanel' ) . '</button>';
+	}
+	// The Print column's button, for phones, where the row shows no icons. Shown
+	// and hidden with that column (front-end/orders/brikpanel-order-print.php).
+	if ( function_exists( 'brikpanel_order_print_panel_button' ) ) {
+		$actions .= brikpanel_order_print_panel_button( $order );
 	}
 	// Trakoo's tracking number, without opening the order (front-end/orders/brikpanel-order-tracking.php).
 	if ( function_exists( 'brikpanel_order_tracking_button_html' ) ) {
